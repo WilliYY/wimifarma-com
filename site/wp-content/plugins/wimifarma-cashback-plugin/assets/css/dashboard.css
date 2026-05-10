@@ -1,0 +1,55 @@
+.wfwc-metric-card {
+    padding: 22px;
+    display: grid;
+    gap: 8px;
+    background: var(--wfwc-panel-alt);
+    border: 1px solid var(--wfwc-line);
+    border-radius: 18px;
+}
+
+.wfwc-metric-card strong {
+    font-size: clamp(1.5rem, 2vw, 2rem);
+    letter-spacing: -0.03em;
+}
+
+.wfwc-metric-card.is-primary {
+    background: linear-gradient(160deg, #0f5132, #0c4229);
+    border-color: transparent;
+}
+
+.wfwc-metric-card.is-primary span,
+.wfwc-metric-card.is-primary strong,
+.wfwc-metric-card.is-primary small {
+    color: #ffffff;
+}
+
+.wfwc-metric-card.is-warning {
+    background: var(--wfwc-warning-soft);
+    border-color: var(--wfwc-warning-line);
+}
+
+.wfwc-metric-card.is-warning span,
+.wfwc-metric-card.is-warning strong,
+.wfwc-metric-card.is-warning small {
+    color: var(--wfwc-warning);
+}
+
+.wfwc-metric-card.is-dark {
+    background: var(--wfwc-dark);
+    border-color: transparent;
+}
+
+.wfwc-metric-card.is-dark span,
+.wfwc-metric-card.is-dark strong,
+.wfwc-metric-card.is-dark small {
+    color: #f2f7f4;
+}
+
+.wfwc-metric-card.is-neutral {
+    background: #f7faf8;
+}
+
+.wfwc-metric-card.is-soft {
+    background: var(--wfwc-primary-soft);
+    border-color: var(--wfwc-primary-soft-line);
+}

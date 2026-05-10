@@ -1,0 +1,792 @@
+:root {
+	--cookieadmin-primary-color: #001d39;
+	--cookieadmin-primary-hover-color: #985e23;
+	
+	--cookieadmin-secondary-color: #0046b2;
+	--cookieadmin-secondary-hover-color: #0065ff;
+	
+	--cookieadmin-txcolor: #0f172a;
+	
+	--cookieadmin-green-txtcolor: #3a8356;
+	--cookieadmin-warning-txtcolor: #9c7930;
+	--cookieadmin-red-txtcolor: #b55355;
+	
+	--cookieadmin-green-color: #15a448;
+	--cookieadmin-warning-color: #e9b306;
+	--cookieadmin-red-color: #dd2727;
+}
+
+/* Header */
+.cookieadmin-metabox-holder{
+	background-color: #ffffff;
+	padding: 10px;
+	margin-top:20px;
+	min-height: 90vh;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Footer */
+.cookieadmin-twitter{
+	border: 1px solid #E2E8F0;
+	padding: 10px;
+	border-radius: 1px;
+	width:40%;
+	background:#FFF;
+	padding:15px;
+	margin:auto;
+}
+
+.cookieadmin-footer{
+	padding: 10px;
+}
+
+.cookieadmin-twitter > span{
+	font-size:16px;
+	font-weight:600;
+}
+
+.cookieadmin-twitter > input{
+	margin-top:10px;
+	float:right;
+}
+
+/* Buttons */
+.cookieadmin-btn{
+display: inline-flex;
+outline: 0;
+text-align: center;
+cursor: pointer;
+padding: 6px 10px;
+border-radius: 3px;
+border: 1px solid transparent;
+transition: background .3s ease, border-color .3s ease;
+font-weight: 600;
+font-size: 13px !important;
+text-decoration: none;
+}
+
+.cookieadmin-btn-primary{
+background: var(--cookieadmin-primary-color);
+border-color: var(--cookieadmin-primary-color);
+color: #fff;
+}
+
+.cookieadmin-btn-primary:hover{
+background: var(--cookieadmin-primary-hover-color);
+border-color: var(--cookieadmin-primary-hover-color);
+}
+
+.cookieadmin-btn-secondary{
+background: var(--cookieadmin-secondary-color);
+border-color: var(--cookieadmin-secondary-color);
+color: #fff;
+}
+
+.cookieadmin-btn-secondary:hover{
+background: var(--cookieadmin-secondary-hover-color);
+border-color: var(--cookieadmin-secondary-hover-color);
+}
+
+.cookieadmin-btn-transparent{
+background-color:transparent;
+color: currentcolor;
+}
+
+.cookieadmin-btn-transparent:active{
+	outline:0;
+}
+
+/* Buttons End */
+
+/* Dashboard Overview page css */
+
+.cookieadmin-postbox-container{
+	flex:1;
+}
+
+.cookieadmin-postbox-container h2{
+	display: flex;
+	align-items: center;
+	gap:10px;
+	padding: 0 0 15px 0;
+	border-bottom: 1px solid #e0e0e0;
+	font-size:1.3rem;
+	line-height:2rem;
+}
+
+.cookieadmin-uppercase{
+text-transform: uppercase;
+}
+
+.cookieadmin-admin-row{
+display:flex;
+gap: 10px;
+margin-bottom: 20px;
+}
+
+.cookieadmin-admin-row .cookieadmin-is-block{
+border: 1px solid #E2E8F0;
+padding: 10px;
+width: 100%;
+border-radius:1px;
+}
+
+.cookieadmin-admin-row .cookieadmin-is-block-25{
+border: 1px solid #E2E8F0;
+padding: 10px;
+width: 25%;
+border-radius:1px;
+}
+
+.cookieadmin-stats-name{
+margin-bottom:5px;
+font-size:16px;
+font-weight:600;
+}
+
+.cookieadmin-stat-status-indicator{
+border-radius:50%;
+width: 12px;
+height:12px;
+background-color: #e2e2e2;
+margin-right: 10px;
+}
+
+.cookieadmin-stats-number{
+font-size:1.5rem;
+line-height:2.5rem;
+}
+
+.cookieadmin-block-link{
+display:inline-flex;
+font-size: 12px;
+font-weight:400;
+color: blue;
+cursor:pointer;
+}
+
+.cookieadmin-block-link > a{
+text-decoration:none;
+}
+
+.cookieadmin-green{
+color: var(--cookieadmin-green-color);
+}
+
+.cookieadmin-red{
+color: var(--cookieadmin-red-color);
+}
+
+.cookieadmin_view_column {
+	float: left;
+	width: 25%;
+	padding: 0 15px;
+	box-sizing: border-box;
+}
+
+/* Clear floats after the columns */
+.cookieadmin_view_row:after {
+	content: "";
+	display: table;
+	clear: both;
+}
+
+.cookieadmin_view_row{
+	margin: 15px 0px;
+}
+
+/* Style the counter cards */
+.cookieadmin_card {
+	box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+	text-align: center;
+	background-color: #9ec1c0;
+	color: white;
+	font-family: Arial, Helvetica, sans-serif;
+	margin: 5px;
+	min-width: 220px;
+}
+
+.cookieadmin_view_icon {font-size:50px;}
+
+/* Dashboard Overview page css End */
+
+
+/*  Consent page css */
+
+.cookieadmin-postbox-container { 
+	max-width: 92vw;
+	float: unset;
+	margin: 10px;
+}
+
+.cookieadmin-metabox-holder label, .cookieadmin-metabox-holder input {
+	padding: 5px;
+	margin-right: 5px;
+	font-size: 15px;
+}
+
+.cookieadmin-metabox-holder label{
+	font-weight: 501;
+}
+
+.cookieadmin_hide{
+	display:none;
+}
+
+.cookieadmin_title{
+	text-align: center;
+	color: black;
+	font-weight: 600;
+	font-size: 20px;
+	margin: 2px;
+}
+
+.cookieadmin_consent-contents {
+	display: flex;
+	margin: 0px 5px;
+}
+
+.cookieadmin_consent_settings {
+	display: flex;
+	width: 100%;
+	flex-direction: column;
+	background: #ffffff;
+	/*margin-left: -3px;*/
+}
+
+.cookieadmin_law {
+	padding: 20px;
+	background: aliceblue;
+	margin: 10px;
+	height: fit-content;
+	font-size: 14px;
+	font-family: sans-serif;
+}
+
+.cookieadmin-contents {
+	width: 100%;
+}
+
+.cookieadmin-setting {
+	display: flex;
+	padding: 6px 0px;
+	justify-content: flex-start;
+}
+
+.cookieadmin-setting-head {
+	width: 100%;
+	padding: 5px;
+	align-content: center;
+}
+
+.cookieadmin-setting-contents {
+	align-items: baseline;
+	padding: 5px;
+	margin: 5px;
+}
+
+.cookieadmin-setting-results {
+	align-items: baseline;
+	padding: 5px;
+	margin: 5px;
+	width: 80%;
+}
+
+.cookieadmin-metabox-holder input[type="color"] {
+	border: 0px;
+	padding: 0px;
+	margin: 0px;
+}
+
+.cookieadmin-color-holder{
+	max-width: 110px;
+}
+
+.cookieadmin-title {
+	font-size:16px;
+	font-weight:600;
+	padding: 10px;
+	margin: 5px;
+	min-width: 15%;
+	cursor:pointer;
+}
+
+.cookieadmin-desc {
+	font-size:14px;
+	padding: 0 0 0 10px;
+}
+
+.cookieadmin-color-input{
+	border: 1px solid;
+	margin: 0px;
+	margin-left: -8px;
+	max-width: 75%;
+	padding: 0 8px !important;
+}
+
+.cookieadmin-vertical{
+	display: flex;
+	flex-direction: column;
+	margin: 2px 30px 2px 0px;
+}
+
+.cookieadmin-horizontal{
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.cookieadmin-input{
+	padding-right: 20px;
+}
+
+.cookieadmin-collapsible-notice{
+	padding: 8px;
+	background-color: #ffffc6;
+	font-size: 14px;
+	border-radius: 4px;
+	max-width: fit-content;
+	margin: auto;
+}
+
+.cookieadmin-collapsible-notice:before{
+	content: "\1F6C8  ";
+}
+
+.cookieadmin-policy-gens{
+	justify-content: space-evenly;
+}
+
+.cookieadmin-cookie-scan, .cookieadmin-consent-logs{
+	justify-content: end;
+}
+
+.cookieadmin-cookie-scan{
+	display: flex;
+	flex-direction: row;
+}
+
+.cookieadmin-setting-colors{
+	justify-content: space-between;
+}
+
+.cookieadmin-buttons{
+	flex: auto;
+	justify-content: space-between;
+	margin: 5px;
+}
+
+.cookieadmin-button{
+	padding: 5px;
+	row-gap: 5px;
+}
+
+.cookieadmin-button-color{
+	justify-content: space-between;
+	min-width: 34%;
+}
+
+
+/* Dashboard Consent page css End*/
+
+
+/* Website consent box  */
+
+
+
+
+
+
+
+
+
+.cookieadmin_btn-primary {
+	background-color: #007cba;
+	color: white;
+	border-color: #007cba;
+}
+
+.cookieadmin_btn-secondary {
+	background-color: #f6f7f7;
+	color: #007cba;
+	border-color: #007cba;
+}
+
+.cookieadmin_btn_accept{
+	color: #ffffff;
+	background-color: #1863dc;
+	border-color: rgb(24, 99, 220);
+}
+
+.cookieadmin_pl0{
+	padding-left:0px;
+}
+
+
+.cookieadmin-manager-cookie-scan, .cookieadmin-manager-consent-logs, .cookieadmin-manager-cookie-categorize{
+	flex-wrap: wrap;
+	justify-content: space-between;
+}
+
+.cookieadmin-manager-result{
+	padding: 10px;
+	width: 100%;
+}
+
+.cookieadmin-consent-logs-pagination{
+	padding: 15px;
+	margin: 5px;
+	width: 100%;
+}
+
+.cookieadmin-logs-paginate{
+	font-size: 2em;
+	text-decoration:none;
+}
+
+.cookieadmin-icon{
+	height: 60px;
+	display: inline-block;
+}
+
+.cookieadmin-logo{
+	width: 250px;
+	display: inline-block;
+}
+
+
+.cookieadmin-tag.active {
+  background: #000;
+  color: #fff;
+}
+
+.cookieadmin_edit_icon, .cookieadmin_delete_icon{
+	margin: 2px;
+}
+
+.cookieadmin_edit_icon:hover {
+	color : blue !important;
+	font-size: 22px !important;
+}
+
+.cookieadmin_delete_icon:hover {
+	color : red !important;
+	font-size: 22px;
+}
+
+/* Website consent box End*/
+
+
+
+
+ /* --- Modal Styles Start --- */
+
+/* The Admin Edit/Add Cookie Modal Overlay/Backdrop */
+.cookieadmin_modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.6);
+	display: none; /* Initially hidden */
+	justify-content: center;
+	align-items: center;
+	z-index: 1000;
+}
+
+/* The Modal Container */
+.cookieadmin_modal-container {
+	background-color: #ffffff;
+	border-radius: 4px;
+	width: 100%;
+	max-width: 600px;
+	box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* When the modal is active */
+.cookieadmin_modal-overlay.active {
+	display: flex;
+}
+
+/* Modal Header */
+.cookieadmin_modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 16px 24px;
+	border-bottom: 1px solid #e0e0e0;
+}
+
+.cookieadmin_modal-header h2 {
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.cookieadmin_modal-close-btn {
+	background: none;
+	border: none;
+	font-size: 1.5rem;
+	cursor: pointer;
+	color: #50575e;
+}
+
+/* Modal Body (the form) */
+.cookieadmin_modal-body {
+	padding: 24px;
+}
+
+.cookieadmin_form-group {
+	margin-bottom: 20px;
+	display: grid;
+	grid-template-columns: 120px 1fr; /* Label and Input alignment */
+	align-items: center;
+	gap: 16px;
+}
+
+.cookieadmin_form-group label {
+	font-weight: 500;
+	color: #1d2327;
+}
+
+.cookieadmin_form-group input,
+.cookieadmin_form-group select,
+.cookieadmin_form-group textarea {
+	width: 95%;
+	padding: 8px 12px;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	font-size: 14px;
+	box-sizing: border-box; /* Important for padding and width */
+}
+
+.cookieadmin_form-group textarea {
+	min-height: 120px;
+	resize: vertical;
+	align-self: flex-start; /* Align textarea with top of label */
+}
+
+/* Modal Footer */
+.cookieadmin_modal-footer {
+	display: flex;
+	justify-content: flex-end;
+	padding: 16px 24px;
+	border-top: 1px solid #e0e0e0;
+	background-color: #f6f7f7;
+}
+
+/* --- Modal Styles End --- */
+
+/* Table */
+
+.cookieadmin-table{
+	padding: 2px;
+	font-size: 14px;
+	text-align: left;
+	width: 100%;
+	table-layout: fixed;
+	word-wrap: anywhere;
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+
+.cookieadmin-table tbody{
+	border-radius: 8px;
+	overflow: hidden;
+	display: table-row-group;
+	border: 1px solid #ddd;
+}
+
+table.cookieadmin-table thead{
+	background-color: #263544;
+	color: #ffffff;
+	font-weight: 500 !important;
+	padding: 0px;
+	border: 1px solid #ddd;
+}
+
+table.cookieadmin-table th{
+	padding: 10px 10px;
+}
+
+table.cookieadmin-table td{
+	background: white;
+	padding: 10px;
+	border-bottom: 1px solid #ddd;
+	line-height: 1.5;
+}
+
+/* Table End */
+
+/* Badges End */
+
+.cookieadmin-badge{
+	display: inline-block;
+	padding: 3px 10px 5px 10px;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.1;
+	border-radius: 1rem;
+	color: #000;
+	border: 1px solid #000;
+	background-color: #fff;
+}
+
+.cookieadmin-success{
+	color: #06923E;
+	border: 1px solid #16C47F;
+	background-color: #eefef4;
+}
+
+.cookieadmin-warning{
+	color: #b49046;
+	border: 1px solid #b49046;
+	background-color: #fffbe8;
+}
+
+.cookieadmin-danger{
+	color: #ED3500;
+	border: 1px solid #E55050;
+	background-color: #fef2f2;
+}
+
+.cookieadmin-info{
+	color: #4682A9;
+	border: 1px solid #5EABD6;
+	background-color: #f0fbff;
+}
+
+/* Badges End */
+
+.cookieadmin-cookie-categorized tbody > tr:first-child td::before {
+	content: "⮟";
+	position: relative;
+	float: right;
+	font-size: 17px;
+}
+
+.cookieadmin-cookie-categorized tbody:not(:last-of-type)::after {
+	content: "";
+	display: table-row;
+	height: 30px; /* This is your gap */
+}
+
+.cookieadmin-cookie-categorized tbody > tr:first-child td {
+	font-weight: bold !important;
+	padding: 15px !important;
+	cursor: pointer;
+	background: #EFEFEF !important;
+}
+
+.cookieadmin-cookie-categorized tbody:is(.collapsed) > tr:first-child td::before {
+	transform: rotate(90deg); /* expanded */
+}
+
+.cookieadmin-empty-row td {
+	text-align: center;
+	font-style: italic;
+	background-color: #f5f5f5;
+	opacity: 0.8;
+	pointer-events: none; /* feels disabled */
+}
+
+.cookieadmin_dialog_modal_close_btn{
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+	font-size: 24px;
+	font-weight: bold;
+}
+
+/* Dialog success/failure messages */
+
+#cookieadmin-message{
+	margin-right: 10px;
+	font-weight: 500;
+	padding: 5px;
+}
+
+.cookieadmin-success-message {
+	color: #22c55e;
+}
+
+.cookieadmin-error-message {
+	color: #dc2626;
+}
+
+/* --- Auto Categorize Cookies End --- */
+
+
+
+/* --- Override Dashicons Start --- */
+.cookieadmin-metabox-holder .dashicons {
+	cursor: pointer;
+}
+/* --- Override Dashicons End --- */
+
+
+
+/* CookieAdmin Tooltip Start */
+
+.cookieadmin-tooltip {
+	position: fixed;
+	background: #5d5d5d;
+	color: #fff;
+	padding: 6px 10px;
+	border-radius: 4px;
+	font-size: 12px;
+	white-space: nowrap;
+	pointer-events: none;
+	z-index: 999999;
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+
+
+/* CookieAdmin Tooltip End */
+
+
+.cookieadmin-buttons-div {
+	display: flex;
+	flex-direction: row;
+}
+
+.cookieadmin-add-cookie-div {
+	border-right: 1px solid #e0e0e0;
+	padding-right: 10px;
+}
+
+/* Consent Expiry */
+#cookieadmin_consent_logs_expiry_days {
+	width: 50px;
+	text-align: center;
+	margin: 0px 10px;
+	padding: 0px;
+	height: 30px;
+}
+
+.cookieadmin-purge-consent-btn{
+	background-color: #dc3545 !important;
+	color: white !important;
+	border-color: unset !important;
+}
+
+.cookieadmin-setting-logs{
+	display: flex;
+	align-items: center;
+}
+
+.cookieadmin-save-settings{
+	border-top: 1px solid #e0e0e0;
+	margin-bottom: 15vh;
+}

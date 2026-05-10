@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Miauby">
+  <defs>
+    <linearGradient id="bg" x1="36" y1="22" x2="222" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#19c2c2"/>
+      <stop offset="1" stop-color="#9f1038"/>
+    </linearGradient>
+    <linearGradient id="face" x1="80" y1="60" x2="176" y2="186" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe2ea"/>
+      <stop offset="1" stop-color="#ffc0d0"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="64" fill="url(#bg)"/>
+  <path d="M77 94 57 47c-2-5 3-10 8-8l52 21h22l52-21c5-2 10 3 8 8l-20 47c9 13 14 29 14 47 0 47-29 82-65 82s-65-35-65-82c0-18 5-34 14-47Z" fill="#2b0713"/>
+  <path d="M83 100 72 67l34 18c7-3 14-5 22-5s15 2 22 5l34-18-11 33c8 11 12 25 12 41 0 39-25 69-57 69s-57-30-57-69c0-16 4-30 12-41Z" fill="url(#face)"/>
+  <path d="M104 133c0 7-5 12-12 12s-12-5-12-12 5-12 12-12 12 5 12 12Zm72 0c0 7-5 12-12 12s-12-5-12-12 5-12 12-12 12 5 12 12Z" fill="#2b0713"/>
+  <path d="M119 154h18l-9 10-9-10Z" fill="#9f1038"/>
+  <path d="M102 177c13 12 39 12 52 0" fill="none" stroke="#2b0713" stroke-width="8" stroke-linecap="round"/>
+  <path d="M48 177h51M44 197h54M157 177h51M158 197h54" stroke="#2b0713" stroke-width="7" stroke-linecap="round" opacity=".8"/>
+  <text x="128" y="39" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#fff">Miauby</text>
+</svg>

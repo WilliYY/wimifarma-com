@@ -1,0 +1,513 @@
+# Limit Login Attempts Swedish Translation
+# Copyright (C) 2009 Johan Eenfeldt
+# This file is distributed under the same license as the Wordpress package.
+# Johan Eenfeldt <johan.eenfeldt@kostdoktorn.se>, 2009.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: limit-login-attempts 1.2\n"
+"Report-Msgid-Bugs-To: http://wordpress.org/tag/limit-login-attempts\n"
+"POT-Creation-Date: 2018-03-02 12:06+0100\n"
+"PO-Revision-Date: 2018-03-02 12:06+0100\n"
+"Last-Translator: Johan Eenfeldt <johan.eenfeldt@kostdoktorn.se>\n"
+"Language-Team: Swedish\n"
+"Language: sv_SE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 1.8.12\n"
+
+#: admin_page/options.php:4
+msgid ""
+"WPS Limit Login limits attempts to connect to your WordPress administration."
+msgstr ""
+
+#: blocks/blacklist.php:7 blocks/menu.php:15
+msgid "Blacklist"
+msgstr ""
+
+#: blocks/blacklist.php:8
+msgid ""
+"Defines a list of IP addresses for which you want to completely block access "
+"to the login page."
+msgstr ""
+
+#: blocks/blacklist.php:9 blocks/whitelist.php:18
+msgid "One IP range (88.88.88.86/90) or IP(88.88.88.86) per line"
+msgstr ""
+
+#: blocks/blacklist.php:11
+msgid "which will block all ip between 88.88.88.86 and 88.88.88.90"
+msgstr ""
+
+#: blocks/blacklist.php:14 blocks/settings.php:78 blocks/whitelist.php:23
+msgid "Save"
+msgstr ""
+
+#: blocks/log.php:6
+msgid "Statistics"
+msgstr "Statistik"
+
+#: blocks/log.php:12
+#, php-format
+msgid "%d lockout since last reset"
+msgid_plural "%d lockouts since last reset"
+msgstr[0] "%d blockering sedan r&auml;knaren nollst&auml;lldes"
+msgstr[1] "%d blockeringar sedan r&auml;knaren nollst&auml;lldes"
+
+#: blocks/log.php:16
+msgid "No lockouts yet"
+msgstr "Inga blockeringar har skett &auml;nnu"
+
+#: blocks/log.php:20
+#, fuzzy, php-format
+#| msgid "%d IP is currently blocked from trying to log in"
+msgid "%d IP is currently blocked from trying to log in"
+msgid_plural "%d IPs is currently blocked from trying to log in"
+msgstr[0] ""
+"%d IP &auml;r f&ouml;r n&auml;rvarande blockerade fr&aring;n att logga in"
+msgstr[1] ""
+"%d IP &auml;r f&ouml;r n&auml;rvarande blockerade fr&aring;n att logga in"
+
+#: blocks/log.php:25
+msgid "Reset Counter"
+msgstr "Nollst&auml;ll r&auml;knare"
+
+#: blocks/log.php:29
+msgid "Restore Lockouts"
+msgstr "Ta bort blockeringar"
+
+#: blocks/log.php:41
+msgid "Lockout log"
+msgstr "Log &ouml;ver blockeringar"
+
+#: blocks/log.php:42
+msgid ""
+"You can unlock an IP address individually (by clicking on \"Unlock\" red "
+"button)."
+msgstr ""
+
+#: blocks/log.php:48
+msgid "Clear Log"
+msgstr "Rensa Log"
+
+#: blocks/log.php:55 blocks/log.php:64
+msgid "Date"
+msgstr ""
+
+#: blocks/log.php:56 blocks/log.php:65
+msgctxt "Internet address"
+msgid "IP"
+msgstr "IP"
+
+#: blocks/log.php:57 blocks/log.php:66
+msgid "Users"
+msgstr ""
+
+#: blocks/log.php:58 blocks/log.php:67
+msgid "Gateway"
+msgstr ""
+
+#: blocks/log.php:66
+msgid "lockout"
+msgid_plural "lockouts"
+msgstr[0] ""
+msgstr[1] ""
+
+#: blocks/log.php:71
+msgid "Unlock"
+msgstr ""
+
+#: blocks/log.php:73 blocks/log.php:98
+msgid "Unlocked"
+msgstr ""
+
+#: blocks/menu.php:5 blocks/settings.php:10
+msgid "Configuration"
+msgstr ""
+
+#: blocks/menu.php:10 blocks/whitelist.php:15
+msgid "Whitelist"
+msgstr ""
+
+#: blocks/menu.php:20
+msgid "Log"
+msgstr ""
+
+#: blocks/pub-wps-hide-login.php:13
+msgid "Install WPS Hide Login"
+msgstr ""
+
+#: blocks/pub-wps-hide-login.php:25
+msgid "Enable WPS Hide login"
+msgstr ""
+
+#: blocks/pub-wps-hide-login.php:43
+msgid "Secure access to your WordPress administration"
+msgstr ""
+
+#: blocks/pub-wps-hide-login.php:47
+msgid "More about WPS Hide Login"
+msgstr ""
+
+#: blocks/pub-wpsbidouille.php:13
+msgid "Install WPS Bidouille"
+msgstr ""
+
+#: blocks/pub-wpsbidouille.php:25
+msgid "Enable WPS Bidouille"
+msgstr ""
+
+#: blocks/pub-wpsbidouille.php:43
+msgid ""
+"WPS Bidouille provides information about your WordPress and contains "
+"optimization tools."
+msgstr ""
+
+#: blocks/pub-wpsbidouille.php:47
+msgid "More about WPS Bidouille"
+msgstr ""
+
+#: blocks/pub-wpserveur.php:13
+msgid "Install Migrate Guru"
+msgstr ""
+
+#: blocks/pub-wpserveur.php:25
+msgid "Enable Migrate Guru"
+msgstr ""
+
+#: blocks/pub-wpserveur.php:44
+msgid "Discover the specialized WordPress hosting with WPServeur!"
+msgstr ""
+
+#: blocks/pub-wpserveur.php:45
+msgid "For fast, secure and efficient hosting."
+msgstr ""
+
+#: blocks/pub-wpserveur.php:46
+msgid "We only do WordPress but we do it well!"
+msgstr ""
+
+#: blocks/pub-wpserveur.php:47
+#, php-format
+msgid ""
+"(-10% discount on your subscription with the promo code <strong>WPSC&T</"
+"strong>)"
+msgstr ""
+
+#: blocks/pub-wpserveur.php:51
+msgid "Subscribe to WPServeur"
+msgstr ""
+
+#: blocks/pub-wpserveur.php:55
+msgid "More about Migrate guru"
+msgstr ""
+
+#: blocks/settings.php:16
+msgid "Let network sites use their own settings"
+msgstr ""
+
+#: blocks/settings.php:17
+msgid ""
+"If disabled, the global settings will be forcibly applied to the entire "
+"network."
+msgstr ""
+
+#: blocks/settings.php:21
+msgid "Use global settings"
+msgstr ""
+
+#: blocks/settings.php:42
+msgid "allowed retries"
+msgstr "till&aring;tna misslyckanden"
+
+#: blocks/settings.php:42
+msgid "for a period of"
+msgstr ""
+
+#: blocks/settings.php:44
+msgid "minutes"
+msgstr ""
+
+#: blocks/settings.php:48
+msgid "hours until retries are reset"
+msgstr "timmar tills misslyckanden nollst&auml;lls"
+
+#: blocks/settings.php:52
+msgid "lockouts increase lockout time to"
+msgstr "blockeringar &ouml;kar tiden till"
+
+#: blocks/settings.php:54
+msgid "hours"
+msgstr "timmar"
+
+#: blocks/settings.php:59
+msgid "Email to admin after"
+msgstr "E-post till administrat&ouml;r efter"
+
+#: blocks/settings.php:61
+msgid "lockouts"
+msgstr "blockeringar"
+
+#: blocks/settings.php:64
+msgid "Show Credit Link?"
+msgstr ""
+
+#: blocks/settings.php:65
+msgid ""
+"By default, WPS Limit Login will display the following message on the login "
+"form:"
+msgstr ""
+
+#: blocks/settings.php:67 classes/plugin.php:1239
+msgid "Login form protected by"
+msgstr ""
+
+#: blocks/settings.php:70
+msgid ""
+"This helps others know about the plugin so they can protect their blogs as "
+"well if they like. However, you can disable this message if you prefer."
+msgstr ""
+
+#: blocks/settings.php:74
+msgid "Show credit link"
+msgstr ""
+
+#: blocks/settings.php:81
+msgid "Reset the original settings"
+msgstr ""
+
+#: blocks/whitelist.php:16
+msgid ""
+"Sets a list of IP addresses that will have no attempt limit and will never "
+"be blocked. Be careful, you must put trusted IP addresses (example: the IP "
+"address of your home), you must never put the IP address of a public network "
+"(Internet cafe or other)."
+msgstr ""
+
+#: blocks/whitelist.php:17
+#, php-format
+msgid "Add your IP address (%s) to a whitelist."
+msgstr ""
+
+#: blocks/whitelist.php:20
+msgid ""
+"which will add all ip between 88.88.88.86 and 88.88.88.90 in the whitelist"
+msgstr ""
+
+#: classes/plugin.php:210 classes/plugin.php:968
+#, php-format
+msgid "<strong>%d</strong> attempt remaining."
+msgid_plural "<strong>%d</strong> attempts remaining."
+msgstr[0] "<strong>%d</strong> f&ouml;rs&ouml;k &aring;terst&aring;r."
+msgstr[1] "<strong>%d</strong> f&ouml;rs&ouml;k &aring;terst&aring;r."
+
+#: classes/plugin.php:263 classes/plugin.php:753 classes/plugin.php:814
+msgid "<strong>ERROR</strong>: Too many failed login attempts."
+msgstr ""
+"<strong>Fel</strong>: F&ouml;r m&aring;nga misslyckade f&ouml;rs&ouml;k."
+
+#: classes/plugin.php:596
+#, php-format
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] "%d timme"
+msgstr[1] "%d timmar"
+
+#: classes/plugin.php:602
+#, php-format
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] "%d minut"
+msgstr[1] "%d minuter"
+
+#: classes/plugin.php:609
+#, php-format
+msgid "[%s - WPS Limit Login] Failed login attempts from whitelisted IP"
+msgstr ""
+
+#: classes/plugin.php:613
+#, php-format
+msgid "[%s - WPS Limit Login] Too many failed login attempts"
+msgstr ""
+
+#: classes/plugin.php:618
+#, php-format
+msgid "%d failed login attempts (%d lockout(s)) from IP: %s"
+msgstr "%d misslyckade inloggningar (blockad %d gång(er)) från IP: %s"
+
+#: classes/plugin.php:622
+#, php-format
+msgid "Last user attempted: %s"
+msgstr "Misslyckades senast med användare : %s"
+
+#: classes/plugin.php:626
+msgid "IP was NOT blocked because of external whitelist."
+msgstr "IP blockerades INTE på grund av extern vitlista."
+
+#: classes/plugin.php:628
+#, php-format
+msgid "IP was blocked for %s"
+msgstr "IP blockerades i %s"
+
+#: classes/plugin.php:818
+msgid "Please try again later."
+msgstr "F&ouml;rs&ouml;k igen senare."
+
+#: classes/plugin.php:826
+#, php-format
+msgid "Please try again in %d hour."
+msgid_plural "Please try again in %d hours."
+msgstr[0] "F&ouml;rs&ouml;k igen om %d timme."
+msgstr[1] "F&ouml;rs&ouml;k igen om %d timmar."
+
+#: classes/plugin.php:828
+#, php-format
+msgid "Please try again in %d minute."
+msgid_plural "Please try again in %d minutes."
+msgstr[0] "F&ouml;rs&ouml;k igen om %d minut."
+msgstr[1] "F&ouml;rs&ouml;k igen om %d minuter."
+
+#: classes/plugin.php:896
+msgid "<strong>ERROR</strong>: Incorrect username or password."
+msgstr "<strong>Fel</strong>: Felaktigt anv&auml;ndarnamn eller l&ouml;senord."
+
+#: classes/plugin.php:919
+msgid "WC Error"
+msgstr ""
+
+#: classes/plugin.php:1071
+msgid "Cleared IP log"
+msgstr "Rensade IP loggen"
+
+#: classes/plugin.php:1077
+msgid "Reset lockout count"
+msgstr "Nollst&auml;llde r&auml;knaren f&ouml;r blockeringar"
+
+#: classes/plugin.php:1083
+msgid "Cleared current lockouts"
+msgstr "Tog bort aktuella blockeringar"
+
+#: classes/plugin.php:1106 classes/plugin.php:1124 classes/plugin.php:1142
+msgid "Options saved."
+msgstr ""
+
+#. Plugin Name of the plugin/theme
+msgid "WPS Limit Login"
+msgstr ""
+
+#. Description of the plugin/theme
+msgid "Limit connection attempts by IP address"
+msgstr ""
+
+#. Author of the plugin/theme
+msgid "WPServeur, NicolasKulka"
+msgstr ""
+
+#. Author URI of the plugin/theme
+msgid "https://wpserveur.net"
+msgstr ""
+
+#~ msgid "Total lockouts"
+#~ msgstr "Antal blockeringar"
+
+#~ msgid "Active lockouts"
+#~ msgstr "Aktiva blockeringar"
+
+#~ msgid "Options"
+#~ msgstr "Inst&auml;llningar"
+
+#~ msgid "Lockout"
+#~ msgstr "Blockering"
+
+#~ msgid "minutes lockout"
+#~ msgstr "minuters blockering"
+
+#~ msgid "Notify on lockout"
+#~ msgstr "Notifiera om blockering"
+
+#~ msgid "Tried to log in as"
+#~ msgstr "F&ouml;rs&ouml;kte logga in som"
+
+#~ msgid "[%s] Failed login attempts from whitelisted IP"
+#~ msgstr "[%s] För många misslyckade inloggningar från IP i vitlista"
+
+#~ msgid "[%s] Too many failed login attempts"
+#~ msgstr "[%s] För många misslyckade inloggningar"
+
+#~ msgid "Options changed"
+#~ msgstr "Inst&auml;llningar &auml;ndrade"
+
+#~ msgid "It appears the site is reached directly (from your IP: %s)"
+#~ msgstr "Sajten tycks vara direktansluten (från din IP: %s)"
+
+#~ msgid ""
+#~ "It appears the site is reached through a proxy server (proxy IP: %s, your "
+#~ "IP: %s)"
+#~ msgstr ""
+#~ "Sajten tycks ansluta genom en proxy server (proxy IP: %s, din IP: %s)"
+
+#~ msgid ""
+#~ "<strong>Current setting appears to be invalid</strong>. Please make sure "
+#~ "it is correct. Further information can be found <a href=\"%s\" title=\"FAQ"
+#~ "\">here</a>"
+#~ msgstr ""
+#~ "<strong>Nuvarande inställningar kan vara fel</strong>. Säkerställ att de "
+#~ "är korrekta. Mer information kan hittas <a href=\"%s\" title=\"FAQ\">här</"
+#~ "a>"
+
+#~ msgid "Limit Login Attempts Settings"
+#~ msgstr "Limit Login Attempts Inst&auml;llningar"
+
+#~ msgid "Site connection"
+#~ msgstr "Sajten ansluter"
+
+#~ msgid "Direct connection"
+#~ msgstr "Direktansluten"
+
+#~ msgid "From behind a reversy proxy"
+#~ msgstr "Bakom en reverse proxy"
+
+#~ msgid "Handle cookie login"
+#~ msgstr "Hantera inloggning med kakor"
+
+#~ msgid "Yes"
+#~ msgstr "Ja"
+
+#~ msgid "No"
+#~ msgstr "Nej"
+
+#~ msgid "Log IP"
+#~ msgstr "Logga IP"
+
+#~ msgid "Change Options"
+#~ msgstr "&Auml;ndra Inst&auml;llningar"
+
+#~ msgid "%d lockout"
+#~ msgid_plural "%d lockouts"
+#~ msgstr[0] "%d blockering"
+#~ msgstr[1] "%d blockeringar"
+
+#~ msgid "Limit Login Attempts"
+#~ msgstr "Limit Login Attempts"
+
+#~ msgid "http://devel.kostdoktorn.se/limit-login-attempts"
+#~ msgstr "http://devel.kostdoktorn.se/limit-login-attempts"
+
+#~ msgid ""
+#~ "Limit rate of login attempts, including by way of cookies, for each IP."
+#~ msgstr ""
+#~ "Limit rate of login attempts, including by way of cookies, for each IP."
+
+#~ msgid "Johan Eenfeldt"
+#~ msgstr "Johan Eenfeldt"
+
+#~ msgid "http://devel.kostdoktorn.se"
+#~ msgstr "http://devel.kostdoktorn.se"
+
+#~ msgid "IP|Internet address"
+#~ msgstr "IP"
+
+#~ msgid "<strong>NOTE:</strong> Only works in Wordpress 2.7 or later"
+#~ msgstr "<strong>OBS:</strong> Fungerar endast i WordPress 2.7 eller senare"

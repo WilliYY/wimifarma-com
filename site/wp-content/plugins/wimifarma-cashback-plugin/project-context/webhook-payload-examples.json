@@ -1,0 +1,98 @@
+{
+  "purchase_registered": {
+    "event": "purchase_registered",
+    "source": "wimifarma-cashback",
+    "sent_at": "2026-04-20 23:10:00",
+    "message": "Obrigado pela compra, Ana Souza. Voce recebeu R$ 5,00 de cashback e ele expira em 04/06/2026.",
+    "reference": "purchase-123",
+    "meta": {
+      "attempt_number": 1,
+      "max_attempts": 3,
+      "is_retry": false,
+      "url_setting_key": "purchase_webhook_url",
+      "message_template_key": "message_purchase",
+      "related_type": "purchase",
+      "related_id": 123,
+      "site_url": "https://wimifarma.com/",
+      "plugin_version": "1.1.0"
+    },
+    "data": {
+      "client_id": 45,
+      "client_name": "Ana Souza",
+      "client_phone": "11999887766",
+      "client_phone_digits": "11999887766",
+      "purchase_id": 123,
+      "purchase_amount": 100,
+      "purchase_amount_formatted": "R$ 100,00",
+      "cashback_generated": 5,
+      "cashback_generated_formatted": "R$ 5,00",
+      "cashback_used": 0,
+      "cashback_used_formatted": "R$ 0,00",
+      "net_amount": 100,
+      "net_amount_formatted": "R$ 100,00",
+      "purchase_date": "2026-04-20 22:55:00",
+      "purchase_date_formatted": "20/04/2026 22:55",
+      "expires_at": "2026-06-04 22:55:00",
+      "expires_at_formatted": "04/06/2026",
+      "attendant_id": 9,
+      "attendant_name": "Juliana Lima"
+    }
+  },
+  "cashback_expiration_alert": {
+    "event": "cashback_expiration_alert",
+    "source": "wimifarma-cashback",
+    "sent_at": "2026-04-20 09:00:00",
+    "message": "Ola, Ana Souza. Seu cashback de R$ 18,50 expira em 30/04/2026.",
+    "reference": "expiration-45-10-2026-04-30",
+    "meta": {
+      "attempt_number": 1,
+      "max_attempts": 3,
+      "is_retry": false,
+      "url_setting_key": "expiration_webhook_url",
+      "message_template_key": "message_expiration",
+      "related_type": "client",
+      "related_id": 45,
+      "site_url": "https://wimifarma.com/",
+      "plugin_version": "1.1.0"
+    },
+    "data": {
+      "client_id": 45,
+      "client_name": "Ana Souza",
+      "client_phone": "11999887766",
+      "client_phone_digits": "11999887766",
+      "expiring_amount": 18.5,
+      "expiring_amount_formatted": "R$ 18,50",
+      "expires_at": "2026-04-30",
+      "expires_at_formatted": "30/04/2026",
+      "days_to_expire": 10,
+      "trigger_date": "2026-04-20"
+    }
+  },
+  "client_birthday": {
+    "event": "client_birthday",
+    "source": "wimifarma-cashback",
+    "sent_at": "2026-04-20 08:00:00",
+    "message": "Feliz aniversario, Ana Souza. A equipe Wimifarma deseja um dia especial para voce.",
+    "reference": "birthday-45-20260420",
+    "meta": {
+      "attempt_number": 1,
+      "max_attempts": 3,
+      "is_retry": false,
+      "url_setting_key": "birthday_webhook_url",
+      "message_template_key": "message_birthday",
+      "related_type": "client",
+      "related_id": 45,
+      "site_url": "https://wimifarma.com/",
+      "plugin_version": "1.1.0"
+    },
+    "data": {
+      "client_id": 45,
+      "client_name": "Ana Souza",
+      "client_phone": "11999887766",
+      "client_phone_digits": "11999887766",
+      "birth_date": "1990-04-20",
+      "birth_date_formatted": "20/04/1990",
+      "trigger_date": "2026-04-20"
+    }
+  }
+}

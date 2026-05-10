@@ -1,0 +1,51 @@
+/*
+Theme Name: Wimifarma Cashback Theme
+Theme URI: https://wimifarma.com
+Author: Wimifarma
+Author URI: https://wimifarma.com
+Description: Tema leve e classico para as paginas publicas do sistema de cashback da Wimifarma.
+Version: 1.4.9
+Requires at least: 6.0
+Tested up to: 6.8
+Text Domain: wimifarma-cashback-theme
+*/
+
+body {
+    margin: 0;
+    background:
+        linear-gradient(180deg, #fff5f7 0, #fffdfd 360px);
+    color: #421922;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+}
+
+.site-header,
+.site-footer {
+    padding: 18px 20px;
+    background: linear-gradient(135deg, #8c1931, #c03b56);
+    color: #fff;
+}
+
+.site-header a,
+.site-footer a {
+    color: #fff;
+    text-decoration: none;
+}
+
+.site-main {
+    min-height: 60vh;
+    padding: 30px 0 60px;
+}
+
+.site-content-card {
+    background: #ffffff;
+    border: 1px solid #ecd7db;
+    border-radius: 24px;
+    padding: 30px;
+    box-shadow: 0 22px 52px rgba(112, 23, 39, 0.08);
+}
+
+.entry-title {
+    margin-top: 0;
+    color: #8c1931;
+}

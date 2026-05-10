@@ -1,0 +1,26 @@
+CHANGELOG
+
+[1.1.0] - 2026-04-20
+- integracao com n8n ampliada e documentada
+- payloads JSON enriquecidos com dados brutos e formatados
+- retry automatico basico de webhook com WP-Cron
+- logs com referencia e numero da tentativa
+- novas configuracoes de tentativas e intervalo de retry
+
+[1.0.0] - 2026-04-20
+- criacao do plugin principal Wimifarma Cashback
+- criacao das tabelas proprias do sistema
+- cadastro de clientes com telefone, aniversario, status e atendente responsavel
+- cadastro de atendentes com status e vinculo opcional com usuario WordPress
+- registro de compras com calculo automatico de cashback
+- geracao de credito com validade padrao configuravel
+- regra de uso minimo de cashback com multiplicador configuravel
+- historico completo por cliente
+- dashboard administrativo
+- relatorios por atendente
+- logs de automacao e seguranca basica
+- integracao pronta com n8n por webhook
+- rotina diaria via WP-Cron para aniversario e expiracao
+- shortcodes publicos para login e consulta
+- tema opcional leve para paginas publicas
+- documentacao de instalacao, uso e contexto tecnico

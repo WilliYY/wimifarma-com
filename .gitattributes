@@ -1,0 +1,25 @@
+* text=auto
+
+*.css text eol=lf
+*.htaccess text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.php text eol=lf
+*.scss text eol=lf
+*.sql text eol=lf
+*.txt text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+
+*.gif binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.png binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.zip binary

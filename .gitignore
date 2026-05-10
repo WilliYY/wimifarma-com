@@ -1,0 +1,24 @@
+/backups/
+/mysql/
+.env
+/site/miauw/config.local.php
+**/config.local.php
+**/error_log
+*.sql
+!/docker/mysql/init/*.sql
+*.zip
+
+# WordPress generated/runtime files.
+/site/wp-content/backuply/
+/site/wp-content/cache/
+/site/wp-content/upgrade/
+/site/wp-content/uploads/
+/site/wp-content/speedycache-config/
+/site/wp-content/advanced-cache.php
+/site/wp-content/mu-plugins/endurance-page-cache.php
+/site/miauw/relatorios/*.ndjson
+/site/miauw/relatorios/*.pdf
+
+# Premium plugins should not be pushed to a public repository.
+/site/wp-content/plugins/*-pro/
+/site/wp-content/plugins/loginizer-security/

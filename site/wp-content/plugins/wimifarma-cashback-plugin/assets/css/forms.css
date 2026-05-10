@@ -1,0 +1,108 @@
+.wfwc-form,
+.wfwc-field-stack,
+.wfwc-field-grid,
+.wfwc-checkbox-stack,
+.wfwc-settings-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.wfwc-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wfwc-field-stack label,
+.wfwc-field-grid label {
+    display: grid;
+    gap: 8px;
+}
+
+.wfwc-field-stack span,
+.wfwc-field-grid span {
+    color: var(--wfwc-text);
+    font-weight: 700;
+}
+
+.wfwc-wrap input[type="text"],
+.wfwc-wrap input[type="search"],
+.wfwc-wrap input[type="url"],
+.wfwc-wrap input[type="date"],
+.wfwc-wrap input[type="datetime-local"],
+.wfwc-wrap input[type="number"],
+.wfwc-wrap select,
+.wfwc-wrap textarea {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 14px;
+    border: 1px solid var(--wfwc-line-strong);
+    padding: 0 14px;
+    background: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.wfwc-wrap input[type="search"][data-wfwc-quick-search] {
+    min-height: 54px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.wfwc-search-form-dark input[type="search"][data-wfwc-quick-search] {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--wfwc-text);
+}
+
+.wfwc-wrap textarea {
+    min-height: 110px;
+    padding: 12px 14px;
+}
+
+.wfwc-checkbox-stack label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+}
+
+.wfwc-checkbox-stack input[type="checkbox"] {
+    margin: 0;
+}
+
+.wfwc-form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-start;
+}
+
+.wfwc-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wfwc-simulator-result {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding-top: 12px;
+}
+
+.wfwc-simulator-result strong {
+    font-size: 1.15rem;
+    color: var(--wfwc-primary);
+}
+
+.wfwc-simulator-message {
+    font-size: 13px;
+}
+
+.wfwc-simulator-message.is-invalid {
+    color: var(--wfwc-danger);
+    font-weight: 700;
+}
+
+@media (max-width: 980px) {
+    .wfwc-field-grid,
+    .wfwc-settings-grid {
+        grid-template-columns: 1fr;
+    }
+}

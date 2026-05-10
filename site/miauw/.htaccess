@@ -1,0 +1,3 @@
+<FilesMatch "^(config\.local\.php|config\.local\.example\.php|README-MIAUW\.txt|AGENTS\.md|bootstrap\.php|miauw-.*\.php)$">
+    Require all denied
+</FilesMatch>

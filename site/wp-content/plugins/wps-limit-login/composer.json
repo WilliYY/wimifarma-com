@@ -1,0 +1,30 @@
+{
+  "name":"wpserveur/wps-limit-login",
+  "description":"Limit connection attempts by IP address.",
+  "keywords":[
+    "login",
+    "limit login",
+    "security",
+    "authentication",
+    "WPS Limit Login",
+    "wps-limit-login",
+    "Limit Login Attempts",
+    "Limit Login Attempts Reloaded",
+    "Limit Login Attempts Revamped"
+  ],
+  "homepage":"https://www.wpserveur.net/",
+  "authors":[
+    {
+      "name":"WPServeur",
+      "email":"nicolas@wpserveur.net",
+      "homepage":"https://www.wpserveur.net/",
+      "role": "Lead Developer"
+    }
+  ],
+  "type":"wordpress-plugin",
+  "minimum-stability":"stable",
+  "license":"GPL-3.0+",
+  "require":{
+    "php":">=5.6.0"
+  }
+}

@@ -1,0 +1,45 @@
+services:
+  wimifarma-com-db:
+    image: mysql:8.0
+    container_name: wimifarma-com-db
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-wimifarma_dev_root}
+      MYSQL_DATABASE: wimifarma_wp
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+    volumes:
+      - ./mysql:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-com-web:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: wimifarma-com-web
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-com-db
+    environment:
+      WIMIFARMA_DB_HOST: wimifarma-com-db
+      WIMIFARMA_DB_USER: wimifarma_user
+      WIMIFARMA_DB_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      WIMIFARMA_WP_DB_NAME: wimifarma_wp
+      WIMIFARMA_APP_DB_NAME: wimifarma_app
+      WP_CACHE: ${WP_CACHE:-}
+      MIAUW_OPENAI_API_KEY: ${MIAUW_OPENAI_API_KEY:-}
+      MIAUW_OPENAI_MODEL: ${MIAUW_OPENAI_MODEL:-gpt-5.4-mini}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+    ports:
+      - "127.0.0.1:3002:80"
+    volumes:
+      - ./site:/var/www/html
+    networks:
+      - wimifarma-com-network
+
+networks:
+  wimifarma-com-network:
+    name: wimifarma-com-network

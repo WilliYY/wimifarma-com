@@ -1,0 +1,9 @@
+Options -Indexes
+
+<FilesMatch "^miauby-internal-diagnostics-.*\.(ndjson|log|json|txt)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(php|phtml|phar)$">
+    Require all denied
+</FilesMatch>
