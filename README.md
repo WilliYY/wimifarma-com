@@ -1,107 +1,160 @@
-# wimifarma-com
+# Wimifarma
 
-Projeto interno da Wimifarma migrado do HostGator para VPS Ubuntu/Oracle, rodando com Docker.
+Projeto interno da Wimifarma migrado do HostGator para VPS Ubuntu/Oracle, com WordPress e modulos internos em PHP rodando via Docker.
 
-Estado base documentado em 2026-05-10.
+Estado base desta documentacao: 2026-05-10.
+
+## Objetivo do sistema
+
+O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
+
+- site WordPress principal em `site/`;
+- Cashback para clientes, compras, creditos e resgates;
+- Cotacao para controle de itens, fornecedores, precos e status de compras;
+- Financeiro para fechamento, sangrias, PIX, maquininhas e auditoria;
+- Tarefas internas;
+- Miauby, assistente interno com integracao OpenAI e recursos de diagnostico.
+
+O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evoluir em uma VPS mais flexivel, com Docker, controle de versao, deploy rastreavel e espaco para novos modulos.
+
+## Status atual
+
+- Projeto local em `C:\Projetos\wimifarma-com`.
+- Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
+- Docker Compose sobe `wimifarma-com-web` e `wimifarma-com-db`.
+- Banco local importado do HostGator no volume ignorado `mysql/`.
+- `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*` e `miauw_*`.
+- `wimifarma_wp` contem WordPress com prefixo `wptl_`.
+- Rotas de login dos modulos responderam HTTP 200 na auditoria local.
+- `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
+- WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
+- DNS GoDaddy e Nginx Proxy Manager estavam em configuracao para `wimifarma.com`.
+
+Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
 ## Stack
 
 - PHP 8.3 com Apache
 - MySQL 8.0
-- WordPress na raiz de `site/`
-- Modulos internos em PHP puro dentro de `site/`
-- Docker Compose em `docker-compose.yml`
+- WordPress na raiz publica `site/`
+- Modulos internos em PHP procedural
+- Docker Compose
+- Nginx Proxy Manager no VPS para publicar dominios
+- OpenAI API usada pelo Miauby
 
-## Modulos principais
+## Instalar localmente
 
-- `site/`: WordPress e raiz publica do dominio.
-- `site/cashback/`: sistema de cashback/clientes/compras/resgates.
-- `site/cotacao/`: sistema de cotacao. Deve evoluir para sincronizacao forte com Google Sheets.
-- `site/financeiro/`: financeiro interno.
-- `site/tarefa/`: tarefas internas.
-- `site/miauw/`: Miauby, assistente interno com API OpenAI.
+1. Entrar na pasta do projeto:
 
-## Banco de dados
+```powershell
+cd C:\Projetos\wimifarma-com
+```
 
-O Compose cria dois bancos:
-
-- `wimifarma_wp`: WordPress, prefixo `wptl_`.
-- `wimifarma_app`: modulos internos, incluindo cashback, cotacao, financeiro e Miauby.
-
-No ambiente local atual, os dumps do HostGator ja foram importados no volume `mysql/`, que fica ignorado pelo Git.
-
-## Rodar local
-
-1. Configure os segredos locais:
+2. Criar o `.env` local a partir do exemplo:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Depois edite `.env` com as senhas reais do ambiente.
+3. Editar `.env` com valores reais do ambiente local. Nunca versionar `.env`.
 
-2. Configure o Miauby:
-
-- Opcao A: criar `site/miauw/config.local.php` a partir de `site/miauw/config.local.example.php`.
-- Opcao B: definir `MIAUW_OPENAI_API_KEY` no `.env`.
-
-3. Suba os containers:
+4. Opcionalmente configurar o Miauby por arquivo local:
 
 ```powershell
+Copy-Item site\miauw\config.local.example.php site\miauw\config.local.php
+```
+
+Depois editar `site\miauw\config.local.php`. Esse arquivo tambem nao deve ser versionado.
+
+## Como rodar
+
+```powershell
+cd C:\Projetos\wimifarma-com
 docker compose up -d --build
 ```
 
-4. Acesse:
+URL local principal:
 
-- WordPress: http://127.0.0.1:3002/
-- Cashback: http://127.0.0.1:3002/cashback/login.php
-- Cotacao: http://127.0.0.1:3002/cotacao/login.php
-- Financeiro: http://127.0.0.1:3002/financeiro/login.php
-- Tarefas: http://127.0.0.1:3002/tarefa/login.php
-- Miauby: http://127.0.0.1:3002/miauw/login.php
+- `http://127.0.0.1:3002/`
 
-5. Verificacoes rapidas:
+Rotas internas principais:
+
+- `http://127.0.0.1:3002/cashback/login.php`
+- `http://127.0.0.1:3002/cotacao/login.php`
+- `http://127.0.0.1:3002/financeiro/login.php`
+- `http://127.0.0.1:3002/tarefa/login.php`
+- `http://127.0.0.1:3002/miauw/login.php`
+- `http://127.0.0.1:3002/miauw/widget-status.php`
+
+## Comandos principais
 
 ```powershell
 docker compose ps
-curl.exe -L http://127.0.0.1:3002/miauw/widget-status.php
-curl.exe -L http://127.0.0.1:3002/cashback/login.php
+docker compose logs --tail=80 wimifarma-com-web
+docker compose logs --tail=80 wimifarma-com-db
+docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
+curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 ```
 
-## Estado da auditoria em 2026-05-10
+Mais comandos ficam em `docs/05-comandos.md`.
 
-- Docker Compose subiu `wimifarma-com-db` e `wimifarma-com-web`.
-- Banco local importado: `wimifarma_app` com 36 tabelas e `wimifarma_wp` com 21 tabelas.
-- Dados principais encontrados: 1 usuario interno, 242 itens de cotacao e 286 mensagens do Miauby.
-- `miauw/widget-status.php` respondeu `api_ready: true`.
-- Login de Cashback, Cotacao, Financeiro, Tarefas e Miauby respondeu HTTP 200.
-- `cotacao/api.php` respondeu HTTP 401 sem sessao, comportamento esperado.
-- WordPress raiz e `wp-login.php` responderam HTTP 200, mas ficaram lentos no Docker Desktop Windows com a lista de plugins restaurada do HostGator.
-- O mu-plugin `endurance-page-cache.php`, especifico de HostGator, foi colocado em quarentena fora do projeto.
-
-Ponto de atencao: se a lentidao do WordPress tambem aparecer no VPS Linux, priorizar limpeza/revisao de plugins e cache antes de mudar DNS definitivo.
-
-## Restaurar banco local se o volume sumir
-
-Os backups foram movidos para fora da raiz do projeto:
+## Estrutura de pastas
 
 ```text
-C:\Projetos\wimifarma-com-backups-local-20260510
+.
+|-- docker/
+|   |-- php/Dockerfile
+|   `-- mysql/init/
+|-- docs/
+|-- mysql/                  # volume local ignorado pelo Git
+|-- site/
+|   |-- cashback/
+|   |-- cotacao/
+|   |-- financeiro/
+|   |-- miauw/
+|   |-- tarefa/
+|   |-- wp-admin/
+|   |-- wp-content/
+|   |-- wp-includes/
+|   `-- wp-config.php
+|-- .env.example
+|-- docker-compose.yml
+|-- AGENTS.md
+`-- README.md
 ```
 
-Com os containers rodando e os arquivos de backup presentes nesse caminho, importe:
+## Variaveis de ambiente
 
-```powershell
-docker run --rm -v "C:\Projetos\wimifarma-com-backups-local-20260510:/backups:ro" --network wimifarma-com-network mysql:8.0 sh -c "mysql -h wimifarma-com-db -uwimifarma_user -p$MYSQL_PASSWORD wimifarma_app < /backups/backup-hostgator-milen645-cashback-2026-05-09.sql"
+Variaveis esperadas em `.env`:
 
-docker run --rm -v "C:\Projetos\wimifarma-com-backups-local-20260510:/backups:ro" --network wimifarma-com-network mysql:8.0 sh -c "mysql -h wimifarma-com-db -uwimifarma_user -p$MYSQL_PASSWORD wimifarma_wp < /backups/backup-hostgator-milen645-wp357-2026-05-09.sql"
+```text
+MYSQL_ROOT_PASSWORD
+MYSQL_PASSWORD
+WIMIFARMA_DB_HOST
+WIMIFARMA_DB_USER
+WIMIFARMA_DB_PASSWORD
+WIMIFARMA_WP_DB_NAME
+WIMIFARMA_APP_DB_NAME
+RSSSL_KEY
+WP_AUTH_KEY
+WP_SECURE_AUTH_KEY
+WP_LOGGED_IN_KEY
+WP_NONCE_KEY
+WP_AUTH_SALT
+WP_SECURE_AUTH_SALT
+WP_LOGGED_IN_SALT
+WP_NONCE_SALT
+WP_CACHE
+MIAUW_OPENAI_API_KEY
+MIAUW_OPENAI_MODEL
+MIAUW_GUARDIAN_TOKEN
 ```
 
-No Windows local, se a variavel nao estiver no shell, substitua `$MYSQL_PASSWORD` pela senha do `.env`.
+Nao colocar valores reais no README, em commits ou em issues publicas.
 
-## Segredos e arquivos fora do Git
+## Arquivos fora do Git
 
-Este repositorio esta publico no GitHub no momento em que este README foi criado. Mesmo sendo projeto interno, nao versionar:
+Nao versionar:
 
 - `.env`
 - `site/miauw/config.local.php`
@@ -110,58 +163,57 @@ Este repositorio esta publico no GitHub no momento em que este README foi criado
 - `backups/`
 - dumps `.sql`
 - arquivos `.zip`
-- cache do WordPress
-- plugins premium `*-pro` e `loginizer-security`
+- cache WordPress
+- plugins premium `*-pro`
+- `site/wp-content/plugins/loginizer-security`
+- relatorios gerados em `site/miauw/relatorios/`
 
-O arquivo `.env.example` documenta as variaveis sem valores reais.
+## Deploy no VPS
 
-## Deploy no VPS via PuTTY
+O VPS atual usa Ubuntu/Oracle, PuTTY para terminal e WinSCP para arquivos.
 
-No servidor Ubuntu, depois que as alteracoes estiverem no GitHub:
+Pasta observada no VPS:
 
 ```bash
-cd /var/www/wimifarma-com
+/home/ubuntu/projetos/wimifarma-com
+```
+
+Quando o VPS estiver usando Git para este projeto, o fluxo padrao sera:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
 git pull origin main
-cp -n .env.example .env
-nano .env
 docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 ```
 
-Se for o primeiro deploy via Git:
+Portas importantes:
 
-```bash
-sudo mkdir -p /var/www
-cd /var/www
-git clone https://github.com/WilliYY/wimifarma-com.git
-cd wimifarma-com
-cp .env.example .env
-nano .env
-docker compose up -d --build
-```
+- container/proxy interno: `wimifarma-com-web:80`
+- bind local do Compose: `127.0.0.1:3002`
+- tunel local do PuTTY usado em testes: `127.0.0.1:13002`
+- publico: `80/443` via Nginx Proxy Manager
 
-Importante: o Compose publica o Apache em `127.0.0.1:3002`. Em producao, o dominio deve apontar para um proxy web no VPS, como Nginx/Caddy/Traefik, que encaminhe `wimifarma.com` para `127.0.0.1:3002`.
+Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 
-## DNS GoDaddy
+## Documentacao
 
-Quando o VPS estiver validado:
+- `AGENTS.md`: manual obrigatorio para futuras conversas do Codex/agentes.
+- `docs/00-visao-geral.md`: visao geral e mapa funcional.
+- `docs/01-arquitetura.md`: arquitetura tecnica.
+- `docs/02-banco-de-dados.md`: bancos, tabelas e cuidados.
+- `docs/03-fluxos-do-sistema.md`: fluxos de usuario e operacao.
+- `docs/04-padroes-de-codigo.md`: padroes existentes.
+- `docs/05-comandos.md`: comandos locais, VPS, auditoria e Git.
+- `docs/06-pendencias.md`: backlog tecnico encontrado.
+- `docs/07-historico-de-decisoes.md`: decisoes tecnicas importantes.
+- `docs/08-autenticacao-e-permissoes.md`: login, sessao, roles e riscos.
+- `docs/09-deploy-e-ambiente.md`: VPS, DNS, proxy, portas e deploy.
+- `docs/10-integracoes.md`: OpenAI, Farmacia Popular, GoDaddy, NPM e Google Sheets futuro.
+- `docs/11-seguranca.md`: segredos, headers, CSRF, riscos e hardening.
+- `docs/15-logs-e-auditoria.md`: logs, auditoria e diagnostico.
+- `docs/16-testes.md`: validacoes atuais e evolucao de testes.
+- `docs/17-performance.md`: performance, cache e cuidados WordPress.
 
-- Registro `A` de `@` apontando para o IP publico do VPS.
-- Registro `A` de `www` apontando para o IP publico do VPS, ou `CNAME www -> @`.
-- TTL baixo durante migracao, por exemplo 600 segundos.
-- Depois confirmar SSL/HTTPS no proxy do VPS antes de considerar finalizado.
-
-## Direcao futura da cotacao
-
-A area de cotacao deve virar uma ferramenta forte, com sincronizacao bidirecional e confiavel com Google Sheets:
-
-- Importar e atualizar itens mantendo IDs estaveis.
-- Detectar conflitos entre sistema e planilha.
-- Registrar auditoria de cada alteracao.
-- Permitir atualizacao em lote sem perder formatacao.
-- Espelhar status, fornecedor, preco, observacoes e categorias.
-- Ter jobs de sincronizacao e tela de diagnostico.
-- Usar Miauby para resumir divergencias, pendencias e oportunidades.
-
-Antes de implementar essa parte, mapear as tabelas `cotacao_*`, definir fonte de verdade por campo e escolher o mecanismo de autenticacao do Google Sheets.
+Leia `AGENTS.md` antes de qualquer alteracao.
