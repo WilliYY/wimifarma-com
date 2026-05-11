@@ -647,19 +647,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!response.ok || !json.ok) {
                     throw new Error(json.message || 'Nao foi possivel salvar.');
                 }
-                var localDataActions = {
-                    save_row: true,
-                    add_empty_rows: true,
-                    delete_row: true,
-                    add_category: true,
-                    delete_category: true,
-                    save_conditional_rule: true,
-                    delete_conditional_rule: true,
-                    sync_filter: true,
+                var skipImmediateSyncStateActions = {
                     presence_ping: true
                 };
 
-                if (action !== 'sync_pull' && !localDataActions[action]) {
+                if (action !== 'sync_pull' && !skipImmediateSyncStateActions[action]) {
                     rememberSyncState(json.sync || json.state || (json.snapshot ? json.snapshot.state : null), {
                         deferUnappliedStructure: true
                     });
@@ -2047,11 +2039,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        var text = normalizeText(input.value);
-        var urgent = text.indexOf('urgente') !== -1 || text.indexOf('urgencia') !== -1;
-        var order = text.indexOf('encomenda') !== -1;
-        cell.classList.toggle('is-category-urgent', urgent);
-        cell.classList.toggle('is-category-order', !urgent && order);
+        cell.classList.remove('is-category-urgent', 'is-category-order');
         updateOrderRegisteredInfo(row, '', '', Boolean(allowClientStamp));
     }
 
@@ -4868,6 +4856,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function renderCategoryOptions(categories, replaceKnown, searchTerm) {
         if (!categoryOptionsBox || !Array.isArray(categories)) {
+            return;
+        }
+
+        if (categoryPopover && categoryPopover.hidden) {
+            if (replaceKnown) {
+                replaceKnownCategories(categories);
+            } else {
+                rememberCategories(categories);
+            }
             return;
         }
 

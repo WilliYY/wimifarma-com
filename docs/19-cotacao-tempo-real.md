@@ -26,6 +26,10 @@ Em 2026-05-11, foi validado por simulacao com duas sessoes autenticadas que:
 
 Tambem em 2026-05-11, a digitacao de categoria passou a usar debounce curto em `site/cotacao/app.js` para lista de categorias, filtro da grade e opcoes relacionadas. O objetivo e evitar que cada tecla force varredura completa da planilha e cause travadas perceptiveis.
 
+Em nova auditoria de categoria no mesmo dia, foi identificado que a aba que salvava uma alteracao ainda podia receber depois um snapshot completo por `sync_pull`, porque saves locais nao atualizavam a versao conhecida de sync no frontend. Isso fazia a propria tela reaplicar dados que ela tinha acabado de gravar. O fluxo foi ajustado para atualizar a versao conhecida apos mutacoes locais, mantendo `presence_ping` fora desse avanco porque presenca nao e mudanca de dados da planilha.
+
+Tambem foi removida a logica antiga de classes fixas para `urgente` e `encomenda`. Essas cores agora devem vir somente de `cotacao_regras_formatacao`, para evitar conflito entre regra condicional e CSS/JS legado. Quando o popover de categoria esta fechado, o frontend apenas memoriza categorias novas e nao reconstrui a lista visual escondida a cada save.
+
 Miauby acompanha alertas operacionais da Cotacao, mas encomenda so vira alerta/comentario de balao quando passa de 1 dia sem baixa/pedido. Antes disso, a encomenda deve continuar como fluxo normal da Cotacao para evitar ruido operacional.
 
 Na mesma auditoria local, o banco tinha 243 itens e 53 categorias, e a rota autenticada `/cotacao/` apareceu nos logs com cerca de 1,46 MB de HTML. Isso ainda funciona, mas indica que o proximo gargalo provavel sera peso inicial da tela/snapshot quando a planilha crescer.
@@ -65,6 +69,8 @@ Tabelas:
 
 - Cada item precisa manter ID estavel.
 - Ordem, categoria, status, prioridade, observacao, vencedor e formatacao nao podem ser sobrescritos sem auditoria.
+- Alteracao de categoria nao pode apagar produto, fornecedor, preco, observacao, vencedor nem formatacao de outra celula.
+- Cores automaticas por categoria devem ser configuradas por regra condicional, nao por comportamento fixo escondido no codigo.
 - Precos por fornecedor devem continuar ligados a `item_id` e `fornecedor_id`.
 - Filtro ativo nao pode esconder conflito de dados; se outro usuario estiver em linha fora do filtro, a interface deve indicar isso.
 - Encomenda da Cotacao nao deve gerar alerta do Miauby antes de completar mais de 1 dia sem baixa/pedido.
@@ -78,6 +84,10 @@ Tabelas:
 - Presencas antigas sao limpas por tempo de atividade.
 - A interface marca celulas remotas com classe CSS e cor por usuario, sem bloquear edicao por enquanto.
 - `presence_ping` exige sessao e CSRF, como as demais acoes internas.
+- Mutacoes locais, como `save_row`, `add_empty_rows`, `delete_row`, `sync_filter` e regras condicionais, devem chamar `rememberSyncState()` com o estado retornado pela API. Isso evita que a propria aba processe a mesma mudanca de novo via snapshot completo.
+- `presence_ping` continua sem avancar versao de sync local, porque presenca e temporaria e nao representa mudanca de dados.
+- `cotacao_add_category()` aceita `touchSync=false` quando chamada dentro de `cotacao_save_item()`, evitando dois toques de sync para um unico save de linha.
+- As classes legadas `is-category-urgent` e `is-category-order` nao devem ser usadas para cor automatica; a origem correta e `cotacao_regras_formatacao`.
 - A troca imediata de linguagem/banco nao foi adotada como primeiro passo para a travada de categoria. O gargalo observado era compatível com recalculo de UI/filtros, entao a correcao inicial fica no frontend e no contrato de sync atual.
 - Para chegar mais perto do Sheets, o proximo salto tecnico recomendado e um canal de eventos em tempo real, preferencialmente SSE ou WebSocket, com fila de eventos por celula/linha. Banco novo so deve entrar depois de medir gargalos reais de MySQL/PHP.
 
@@ -88,13 +98,15 @@ Tabelas:
 - Alterar seletor de celula/linha sem atualizar `app.js` pode quebrar marca remota.
 - Sincronizar com Google Sheets sem IDs estaveis pode duplicar linhas ou sobrescrever valores.
 - Tratar filtro como fonte de verdade pode causar divergencia entre computadores.
+- Reintroduzir cor fixa por nome de categoria pode duplicar comportamento e gerar resultado diferente da regra condicional configurada pelo usuario.
+- Rodar verificacoes paralelas que inicializam schema pode gerar lock/deadlock temporario no MySQL; preferir auditoria sequencial.
 
 ## Pendencias
 
 - Criar conflito por campo com versao anterior/atual.
 - Criar log de eventos de edicao para auditoria fina.
 - Avaliar Server-Sent Events ou WebSocket para reduzir delay.
-- Medir em navegador real a digitacao de categoria com muitos itens/categorias apos o debounce.
+- Medir em navegador real a digitacao de categoria com muitos itens/categorias apos o debounce e apos a correcao de reaplicacao de snapshot local.
 - Reduzir peso inicial da tela autenticada quando a quantidade de itens crescer, com paginacao virtual ou carregamento incremental.
 - Reduzir peso de `sync_pull` quando a tabela crescer, avaliando snapshot incremental por versao/evento.
 - Criar tela de diagnostico de sync/presenca.

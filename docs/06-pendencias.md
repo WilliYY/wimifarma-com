@@ -72,6 +72,8 @@ Estado:
 - Existe primeira camada de presenca ao vivo em `cotacao_presencas`, com `presence_ping`, total de usuarios, chips de usuarios ativos e marca visual de celula remota.
 - Em 2026-05-11, simulacao com duas sessoes validou `sync_pull`, preservacao de campos separados e presenca com 2 usuarios.
 - A digitacao em categoria passou a usar debounce no frontend para reduzir travadas ao recalcular filtro/opcoes.
+- Uma auditoria posterior removeu duplicidade entre cores fixas antigas de `urgente`/`encomenda` e a formatacao condicional, e tambem impediu que a propria aba reaplicasse via snapshot completo a mudanca que acabou de salvar.
+- As regras de cor da categoria agora devem ser mantidas em `cotacao_regras_formatacao`.
 - Nao ha integracao Google Sheets implementada.
 - Ainda nao ha motor de conflito por campo nem canal WebSocket/SSE.
 
@@ -84,7 +86,7 @@ Evolucao:
 - Definir ID estavel por item, fonte de verdade por campo, tratamento de conflito, auditoria e job de sync.
 - Definir se a proxima etapa sera polling reforcado, Server-Sent Events ou WebSocket.
 - Criar diagnostico de sync/presenca para operador.
-- Medir performance com muitos itens/categorias antes de trocar linguagem ou banco. A proxima evolucao mais parecida com Sheets tende a ser canal de eventos em tempo real e snapshot incremental.
+- Medir performance com muitos itens/categorias em navegador real depois da correcao de snapshot local antes de trocar linguagem ou banco. A proxima evolucao mais parecida com Sheets tende a ser canal de eventos em tempo real e snapshot incremental.
 
 ### Miauby generativo com skills controladas
 

@@ -554,3 +554,32 @@ Riscos/cuidados:
 
 - Se a data da encomenda estiver ausente ou incorreta, o alerta pode atrasar ou aparecer indevidamente.
 - O balao deve continuar curto e sem codigo; detalhes completos ficam na aba de alertas.
+
+## 2026-05-11 - Cotacao remove duplicidade de categoria e evita snapshot proprio
+
+Decisao:
+
+- Remover a cor automatica fixa de `urgente` e `encomenda` baseada em classes CSS/JS antigas.
+- Deixar cores de categoria sob responsabilidade das regras de formatacao condicional em `cotacao_regras_formatacao`.
+- Atualizar a versao conhecida de sync no frontend apos mutacoes locais, evitando que a propria aba reaplique via `sync_pull` um snapshot completo que ela acabou de salvar.
+- Evitar rebuild visual da lista de categorias quando o popover esta fechado.
+- Evitar toque duplicado de sync ao adicionar categoria dentro de `cotacao_save_item()`.
+
+Motivo:
+
+- O usuario relatou lag persistente ao alterar categoria e lembrou que antes havia regra fixa para `urgente`/`encomenda`, depois substituida por bloco de formatacao condicional.
+- A auditoria encontrou dois fatores de travamento: duplicidade visual da categoria e self-replay de snapshot apos save local.
+
+Impacto:
+
+- `site/cotacao/app.js`
+- `site/cotacao/cotacao-funcoes.php`
+- `site/cotacao/styles.css`
+- `docs/19-cotacao-tempo-real.md`
+- `docs/06-pendencias.md`
+
+Riscos/cuidados:
+
+- Se o usuario quiser mudar a cor de `urgente` ou `encomenda`, deve editar a regra condicional, nao recriar CSS fixo.
+- A Cotacao ainda usa polling e snapshot; para comportamento realmente proximo do Google Sheets, o proximo salto e evento incremental com SSE/WebSocket e conflito por campo.
+- Testes de schema devem ser sequenciais para evitar lock temporario no MySQL.

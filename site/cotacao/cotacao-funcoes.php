@@ -754,16 +754,6 @@ function cotacao_cell_style_attrs(array $styles, string $key): string
 
 function cotacao_category_condition_class(string $category): string
 {
-    $category = cotacao_filter_text($category);
-
-    if (strpos($category, 'urgente') !== false || strpos($category, 'urgencia') !== false) {
-        return ' is-category-urgent';
-    }
-
-    if (cotacao_category_is_order($category)) {
-        return ' is-category-order';
-    }
-
     return '';
 }
 
@@ -1529,7 +1519,7 @@ function cotacao_category_normalize(string $name): string
     return strtolower(trim($name));
 }
 
-function cotacao_add_category(int $blockId, string $name): array
+function cotacao_add_category(int $blockId, string $name, bool $touchSync = true): array
 {
     $name = cotacao_category_normalize($name);
 
@@ -1559,7 +1549,9 @@ function cotacao_add_category(int $blockId, string $name): array
     }
 
     cotacao_audit('adicionar_categoria', 'cotacao_categorias', null, null, array('bloco_id' => $blockId, 'nome' => $name));
-    cotacao_sync_touch($blockId, 'dados');
+    if ($touchSync) {
+        cotacao_sync_touch($blockId, 'dados');
+    }
 
     return array('nome' => $name, 'ordem' => $order);
 }
@@ -1843,7 +1835,7 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
                 : null;
 
             if (trim((string) $payload['categoria']) !== '') {
-                cotacao_add_category($blockId, $payload['categoria']);
+                cotacao_add_category($blockId, $payload['categoria'], false);
             }
         }
 

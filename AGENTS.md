@@ -157,6 +157,10 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Cotacao usa `cotacao_presencas` para a primeira camada de colaboracao ao vivo: usuarios ativos, filtro atual, celula/coluna em foco e estado de edicao.
 - Em 2026-05-11, a Cotacao foi testada com duas sessoes autenticadas: uma sessao criou item, a segunda recebeu por `sync_pull`, edicoes separadas em `produto` e `categoria` foram preservadas por patch de campo, `presence_ping` retornou 2 usuarios e a linha temporaria foi removida.
 - A digitacao em `categoria` na Cotacao nao deve recalcular filtro/opcoes a cada tecla; `site/cotacao/app.js` usa debounce curto para lista de categorias, filtro da grade e opcoes de vencedor.
+- Cores de `urgente`, `encomenda` e outras categorias devem vir de `cotacao_regras_formatacao`; nao recriar classes fixas no CSS/JS para categorias especificas sem motivo tecnico claro.
+- Apos mutacoes locais da Cotacao, como `save_row`, `sync_filter` e regras condicionais, `site/cotacao/app.js` deve atualizar a versao conhecida de sync imediatamente para evitar reaplicar na propria tela um snapshot completo que ela acabou de salvar.
+- Quando o popover de categoria estiver fechado, nao reconstruir opcoes de categoria a cada save/digitacao; apenas atualizar a memoria local de categorias.
+- Evite diagnosticos paralelos que chamem `cotacao_ensure_schema()` varias vezes ao mesmo tempo; durante auditoria, rode esse tipo de verificacao em sequencia para reduzir risco de lock/deadlock no MySQL.
 - `wimifarma_wp` possui tabelas WordPress `wptl_*`.
 - `site/miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava presente.
 - Miauby evita carregar 30 alertas completos apenas para contar badge; usar `miauw_intelligence_active_alert_count()` quando precisar de contador.
@@ -213,7 +217,7 @@ Estado atual:
 
 - A Cotacao ja possui polling de `sync_pull`, sincronizacao de filtro compartilhado e presenca ao vivo por `presence_ping`.
 - A presenca mostra total de pessoas usando, chips dos outros usuarios e marca celulas remotas visiveis mesmo quando o outro usuario esta filtrado em outra categoria.
-- Para travadas na troca/digitacao de categoria, investigar primeiro recalculo visual no `site/cotacao/app.js`, carga de `sync_pull` e tamanho da snapshot antes de trocar linguagem ou banco.
+- Para travadas na troca/digitacao de categoria, investigar primeiro recalculo visual no `site/cotacao/app.js`, reaplicacao indevida de snapshot na propria aba, carga de `sync_pull` e tamanho da snapshot antes de trocar linguagem ou banco.
 - Isso ainda nao substitui um motor robusto estilo Google Sheets. Para edicao simultanea forte, evoluir com conflito por campo, fila de eventos ou WebSocket/SSE.
 
 Antes de implementar:

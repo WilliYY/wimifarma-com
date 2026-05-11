@@ -1776,26 +1776,6 @@ textarea.winner-output {
     background: #f1f3f4 !important;
 }
 
-.category-cell.is-category-urgent[data-color=""] {
-    background: #60a5fa !important;
-}
-
-.category-cell.is-category-order[data-color=""] {
-    background: #ef4444 !important;
-}
-
-.category-cell.is-category-urgent[data-color=""] .sheet-input,
-.category-cell.is-category-order[data-color=""] .sheet-input {
-    color: #111827 !important;
-    font-weight: 400;
-}
-
-.sheet-grid .sheet-row td.category-cell.is-category-urgent .sheet-input,
-.sheet-grid .sheet-row td.category-cell.is-category-order .sheet-input {
-    color: #111827 !important;
-    font-weight: 400;
-}
-
 .winner-price {
     background: #93c5fd !important;
 }
@@ -2054,8 +2034,6 @@ textarea.winner-output {
 
 .sheet-grid .sheet-row td.sheet-cell.category-cell .sheet-input,
 .sheet-grid .sheet-row td.sheet-cell.category-cell .category-input,
-.sheet-grid .sheet-row td.sheet-cell.category-cell.is-category-urgent .sheet-input,
-.sheet-grid .sheet-row td.sheet-cell.category-cell.is-category-order .sheet-input,
 .sheet-grid .sheet-row td.sheet-cell.category-cell.is-conditional-format .sheet-input {
     color: #111827 !important;
     -webkit-text-fill-color: #111827 !important;
