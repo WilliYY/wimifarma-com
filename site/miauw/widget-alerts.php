@@ -71,9 +71,9 @@ function miauw_widget_alerts_payload(array $user): array
     $alerts = function_exists('miauw_intelligence_public_alerts')
         ? miauw_intelligence_public_alerts(20)
         : array();
-    $count = function_exists('miauw_intelligence_active_alerts')
-        ? count(miauw_intelligence_active_alerts(30))
-        : count($alerts);
+    $count = function_exists('miauw_intelligence_active_alert_count')
+        ? miauw_intelligence_active_alert_count()
+        : (function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : count($alerts));
 
     $mapped = array_map(static function (array $alert): array {
         return array(

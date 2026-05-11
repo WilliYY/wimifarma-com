@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var conditionalRulesScript = document.getElementById('conditional-rules-data');
     var saveTimers = new WeakMap();
     var supplierTimers = {};
+    var categoryOptionsTimer = null;
+    var gridFilterRefreshTimer = null;
+    var winnerOptionsTimer = null;
     var undoStack = [];
     var redoStack = [];
     var isApplyingUndo = false;
@@ -1663,7 +1666,7 @@ document.addEventListener('DOMContentLoaded', function () {
             applyConditionalFormatting(row);
 
             if (Array.isArray(result.categories)) {
-                renderCategoryOptions(result.categories, true);
+                scheduleCategoryOptionsRefresh(result.categories, true, 120);
             }
 
             setStatus('Salvo agora', 'saved');
@@ -4674,6 +4677,13 @@ document.addEventListener('DOMContentLoaded', function () {
         winnerOptionsBox.appendChild(noWinner);
     }
 
+    function scheduleWinnerOptionsRefresh(delay) {
+        clearTimeout(winnerOptionsTimer);
+        winnerOptionsTimer = setTimeout(function () {
+            updateWinnerOptions();
+        }, delay || 140);
+    }
+
     function updateFilterButtons() {
         var categoryButton = document.querySelector('[data-open-category-filter]');
         var productColorButton = document.querySelector('[data-open-product-color-filter]');
@@ -4760,6 +4770,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 window.scrollBy(0, delta);
             }
         }
+    }
+
+    function scheduleGridFilterRefresh(delay, options) {
+        clearTimeout(gridFilterRefreshTimer);
+        gridFilterRefreshTimer = setTimeout(function () {
+            applyGridFilters(options || { status: false });
+        }, delay || 180);
     }
 
     function applyCategoryFilter(value, options) {
@@ -4885,6 +4902,13 @@ document.addEventListener('DOMContentLoaded', function () {
             label.appendChild(text);
             categoryOptionsBox.appendChild(label);
         });
+    }
+
+    function scheduleCategoryOptionsRefresh(categories, replaceKnown, delay, searchTerm) {
+        clearTimeout(categoryOptionsTimer);
+        categoryOptionsTimer = setTimeout(function () {
+            renderCategoryOptions(Array.isArray(categories) ? categories : [], replaceKnown, searchTerm);
+        }, delay || 160);
     }
 
     function openCategoryPopover(button) {
@@ -5090,16 +5114,16 @@ document.addEventListener('DOMContentLoaded', function () {
             updateRowWinner(priceRow);
             applyConditionalFormatting(priceRow);
             if (winnerFilterValue) {
-                applyGridFilters({ status: false });
+                scheduleGridFilterRefresh(140, { status: false });
             }
-            updateWinnerOptions();
+            scheduleWinnerOptionsRefresh(160);
         }
 
         if (target.classList.contains('category-input')) {
             updateCategoryConditional(target.closest('tr'), true);
-            renderCategoryOptions([]);
-            if (categoryTerms().length || productColorFilterValue) {
-                applyGridFilters({ status: false });
+            scheduleCategoryOptionsRefresh([], false, 180);
+            if (hasActiveGridFilter()) {
+                scheduleGridFilterRefresh(180, { status: false });
             }
         }
 
@@ -5303,9 +5327,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (target.classList.contains('category-input')) {
             updateCategoryConditional(row, true);
-            renderCategoryOptions([]);
-            if (categoryTerms().length || productColorFilterValue) {
-                applyGridFilters({ status: false });
+            scheduleCategoryOptionsRefresh([], false, 180);
+            if (hasActiveGridFilter()) {
+                scheduleGridFilterRefresh(180, { status: false });
             }
         }
 

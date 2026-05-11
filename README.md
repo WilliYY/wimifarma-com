@@ -32,8 +32,9 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
 - A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `site/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
-- A Cotacao possui primeira camada de presenca ao vivo: usuarios ativos, celula/coluna em foco, edicao ativa e indicacao quando outro usuario esta fora do filtro atual.
-- Miauby possui `miauw_skill_registry()` para inventariar skills por modulo, risco, nivel, permissao, auditoria e executor antes de novas autonomias.
+- A Cotacao possui primeira camada de presenca ao vivo: usuarios ativos, celula/coluna em foco, edicao ativa e indicacao quando outro usuario esta fora do filtro atual. Em 2026-05-11, foi validado por duas sessoes que edicoes por campo preservam produto/categoria sem sobrescrita.
+- A edicao de categoria na Cotacao usa atualizacao visual com debounce para reduzir travadas ao filtrar/recalcular opcoes.
+- Miauby possui `miauw_skill_registry()` para inventariar skills por modulo, risco, nivel, permissao, auditoria e executor antes de novas autonomias. Consultas de alertas e conhecimentos foram aliviadas para reduzir trabalho repetido.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 

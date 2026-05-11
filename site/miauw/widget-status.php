@@ -52,7 +52,9 @@ try {
                 $alerts = function_exists('miauw_intelligence_public_alerts')
                     ? miauw_intelligence_public_alerts(3)
                     : miauw_intelligence_active_alerts(3);
-                $payload['guardian_alert_count'] = count(miauw_intelligence_active_alerts(30));
+                $payload['guardian_alert_count'] = function_exists('miauw_intelligence_active_alert_count')
+                    ? miauw_intelligence_active_alert_count()
+                    : count(miauw_intelligence_active_alerts(30));
                 $payload['guardian_alerts'] = array_map(static function (array $alert): array {
                     return array(
                         'id' => (int) ($alert['id'] ?? 0),

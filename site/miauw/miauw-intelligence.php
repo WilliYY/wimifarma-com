@@ -406,6 +406,24 @@ function miauw_intelligence_active_alerts(int $limit = 8, ?string $module = null
     return $stmt->fetchAll() ?: array();
 }
 
+function miauw_intelligence_active_alert_count(?string $module = null): int
+{
+    miauw_intelligence_ensure_schema();
+    miauw_intelligence_expire_old_alerts(48);
+    $params = array();
+    $where = "status IN ('novo', 'visto')";
+
+    if ($module !== null && $module !== '') {
+        $where .= ' AND modulo = ?';
+        $params[] = $module;
+    }
+
+    $stmt = db()->prepare("SELECT COUNT(*) FROM miauw_alertas WHERE $where");
+    $stmt->execute($params);
+
+    return (int) $stmt->fetchColumn();
+}
+
 function miauw_intelligence_public_alert(array $alert): array
 {
     $context = miauw_intelligence_decode_json((string) ($alert['contexto'] ?? ''));

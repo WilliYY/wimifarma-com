@@ -20,6 +20,8 @@ Miauby ja possui:
 - skills de consulta e escrita limitada em `site/miauw/miauw-skills.php`.
 - `miauw_skill_registry()` com metadados de modulo, nivel, risco, permissao, executor, entrada, saida, auditoria e efeitos.
 - tool `diagnostico_skills` para o Miauby consultar o inventario de capacidades sem expor segredos.
+- contador de alertas por `miauw_intelligence_active_alert_count()`, evitando carregar listas completas apenas para badges/status.
+- busca de conhecimento em `miauw_knowledge_for()` com pre-filtro por termos relevantes antes do ranking, para manter o contexto generativo mais rapido conforme a memoria crescer.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -70,6 +72,8 @@ Integracoes:
 - Criar avaliacao simples de skills: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
 - Criar tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
+- Preferir respostas operacionais e sem codigo para usuarios finais. Codigo, SQL, stack trace e comandos devem aparecer apenas em contexto tecnico autorizado.
+- Medir latencia do widget e da API antes de aumentar contexto, modelos ou autonomia. Primeiro otimizar consultas, cache e tools controladas.
 
 ## Riscos ao alterar
 
@@ -78,6 +82,7 @@ Integracoes:
 - Respostas longas demais no widget podem atrapalhar fluxo do funcionario.
 - Aumentar contexto demais pode elevar custo e lentidao.
 - Misturar comandos de financeiro, cotacao e cashback pode registrar dado no modulo errado.
+- Otimizacoes de contexto podem esconder conhecimento antigo se o pre-filtro for estreito demais; manter fallback para conhecimentos recentes e revisar com exemplos reais.
 
 ## Pendencias
 
@@ -86,6 +91,7 @@ Integracoes:
 - Criar testes de exemplos para intents de financeiro, cotacao, tarefa e alertas.
 - Definir tela administrativa para revisar memorias e padroes aprendidos.
 - Definir quando Miauby pode executar escrita automaticamente e quando precisa pedir confirmacao.
+- Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 
 ## Como pode evoluir
 

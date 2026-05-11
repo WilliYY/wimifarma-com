@@ -476,3 +476,55 @@ Riscos/cuidados:
 
 - Registry nao substitui testes. Skills de escrita ainda precisam de validacao, logs estruturados e revisao de padroes.
 - Novas tools OpenAI devem ser registradas antes de uso.
+
+## 2026-05-11 - Cotacao otimiza categoria antes de trocar stack
+
+Decisao:
+
+- Manter PHP/MySQL na Cotacao por enquanto e corrigir primeiro a travada de categoria no frontend.
+- Usar debounce curto para recalculo de lista de categorias, filtro da grade e opcoes de vencedor.
+- Validar sincronizacao com duas sessoes antes de propor troca de linguagem ou banco.
+
+Motivo:
+
+- A travada observada ao mexer em categoria era compativel com recalculo de UI/filtro a cada tecla, nao necessariamente com limite do MySQL.
+- Trocar linguagem ou banco sem medir poderia aumentar risco de migracao sem resolver o gargalo real.
+
+Impacto:
+
+- `site/cotacao/app.js`
+- `docs/19-cotacao-tempo-real.md`
+- `docs/06-pendencias.md`
+
+Riscos/cuidados:
+
+- Se a tabela crescer muito, `sync_pull` ainda pode ficar pesado por enviar snapshots completos.
+- A proxima evolucao para se aproximar do Sheets deve ser snapshot incremental e canal SSE/WebSocket com eventos por celula/linha.
+
+## 2026-05-11 - Miauby reduz trabalho repetido no status e no contexto
+
+Decisao:
+
+- Criar `miauw_intelligence_active_alert_count()` para contar alertas ativos com `COUNT(*)`.
+- Usar o contador em widget, API e painel em vez de carregar ate 30 alertas completos apenas para badge.
+- Filtrar conhecimentos por termos relevantes em `miauw_knowledge_for()` antes do ranking.
+
+Motivo:
+
+- O widget e as respostas do Miauby precisam ficar leves enquanto a memoria, alertas e padroes aumentam.
+- O usuario quer evoluir Miauby como assistente generativo, mas sem aumentar latencia nem expor detalhes tecnicos desnecessarios.
+
+Impacto:
+
+- `site/miauw/miauw-intelligence.php`
+- `site/miauw/miauw-funcoes.php`
+- `site/miauw/api.php`
+- `site/miauw/widget-status.php`
+- `site/miauw/widget-alerts.php`
+- `site/miauw/index.php`
+- `docs/18-miauby-evolucao-generativa.md`
+
+Riscos/cuidados:
+
+- O pre-filtro de conhecimento precisa ser revisado com exemplos reais para nao esconder informacoes antigas importantes.
+- Codigo, SQL e stack traces devem continuar fora das respostas operacionais do Miauby para usuarios finais.

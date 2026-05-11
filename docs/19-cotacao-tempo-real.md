@@ -17,6 +17,17 @@ A Cotacao ja possui:
 - marca visual na celula onde outro usuario esta focado/editando quando a linha esta visivel;
 - aviso textual quando outro usuario esta fora do filtro atual.
 
+Em 2026-05-11, foi validado por simulacao com duas sessoes autenticadas que:
+
+- uma sessao cria uma linha e a outra recebe o item por `sync_pull`;
+- edicao separada em `produto` e `categoria` preserva os dois campos, sem sobrescrita silenciosa;
+- `presence_ping` retorna 2 usuarios ativos em sessoes diferentes;
+- a linha temporaria de auditoria foi removida ao final do teste.
+
+Tambem em 2026-05-11, a digitacao de categoria passou a usar debounce curto em `site/cotacao/app.js` para lista de categorias, filtro da grade e opcoes relacionadas. O objetivo e evitar que cada tecla force varredura completa da planilha e cause travadas perceptiveis.
+
+Na mesma auditoria local, o banco tinha 243 itens e 53 categorias, e a rota autenticada `/cotacao/` apareceu nos logs com cerca de 1,46 MB de HTML. Isso ainda funciona, mas indica que o proximo gargalo provavel sera peso inicial da tela/snapshot quando a planilha crescer.
+
 Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea forte ainda depende de conflito por campo, fila de eventos e canal de tempo real mais eficiente.
 
 ## Arquivos, rotas e tabelas envolvidos
@@ -64,6 +75,8 @@ Tabelas:
 - Presencas antigas sao limpas por tempo de atividade.
 - A interface marca celulas remotas com classe CSS e cor por usuario, sem bloquear edicao por enquanto.
 - `presence_ping` exige sessao e CSRF, como as demais acoes internas.
+- A troca imediata de linguagem/banco nao foi adotada como primeiro passo para a travada de categoria. O gargalo observado era compatível com recalculo de UI/filtros, entao a correcao inicial fica no frontend e no contrato de sync atual.
+- Para chegar mais perto do Sheets, o proximo salto tecnico recomendado e um canal de eventos em tempo real, preferencialmente SSE ou WebSocket, com fila de eventos por celula/linha. Banco novo so deve entrar depois de medir gargalos reais de MySQL/PHP.
 
 ## Riscos ao alterar
 
@@ -78,9 +91,12 @@ Tabelas:
 - Criar conflito por campo com versao anterior/atual.
 - Criar log de eventos de edicao para auditoria fina.
 - Avaliar Server-Sent Events ou WebSocket para reduzir delay.
+- Medir em navegador real a digitacao de categoria com muitos itens/categorias apos o debounce.
+- Reduzir peso inicial da tela autenticada quando a quantidade de itens crescer, com paginacao virtual ou carregamento incremental.
+- Reduzir peso de `sync_pull` quando a tabela crescer, avaliando snapshot incremental por versao/evento.
 - Criar tela de diagnostico de sync/presenca.
 - Definir contrato Google Sheets: ID estavel, fonte de verdade por campo, sentido do sync e resolucao de conflito.
-- Criar testes com dois usuarios/sessoes e filtros diferentes.
+- Transformar o teste manual de duas sessoes em smoke test automatizado.
 
 ## Como pode evoluir
 

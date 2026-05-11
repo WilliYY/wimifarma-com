@@ -77,7 +77,9 @@ try {
             $reply['text'] = miauw_widget_compact_reply((string) ($reply['text'] ?? ''), $message);
         }
         miauw_add_message($conversationId, null, 'assistant', $reply['text'], $reply['model'], (bool) $reply['fallback']);
-        $guardianCount = function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : 0;
+        $guardianCount = function_exists('miauw_intelligence_active_alert_count')
+            ? miauw_intelligence_active_alert_count()
+            : (function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : 0);
         $guardianAlerts = function_exists('miauw_intelligence_public_alerts')
             ? miauw_intelligence_public_alerts(3)
             : (function_exists('miauw_intelligence_active_alerts') ? miauw_intelligence_active_alerts(3) : array());
@@ -125,7 +127,9 @@ try {
             miauw_json(array('ok' => false, 'message' => 'Esse alerta ja sumiu ou nao esta disponivel.'), 404);
         }
 
-        $guardianCount = function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : 0;
+        $guardianCount = function_exists('miauw_intelligence_active_alert_count')
+            ? miauw_intelligence_active_alert_count()
+            : (function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : 0);
         miauw_json(array(
             'ok' => true,
             'message' => 'Alerta apagado da tela. Historico preservado para auditoria.',

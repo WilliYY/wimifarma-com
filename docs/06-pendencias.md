@@ -70,6 +70,8 @@ Estado:
 
 - Existem tabelas `cotacao_*` e `cotacao_sync_estado`.
 - Existe primeira camada de presenca ao vivo em `cotacao_presencas`, com `presence_ping`, total de usuarios, chips de usuarios ativos e marca visual de celula remota.
+- Em 2026-05-11, simulacao com duas sessoes validou `sync_pull`, preservacao de campos separados e presenca com 2 usuarios.
+- A digitacao em categoria passou a usar debounce no frontend para reduzir travadas ao recalcular filtro/opcoes.
 - Nao ha integracao Google Sheets implementada.
 - Ainda nao ha motor de conflito por campo nem canal WebSocket/SSE.
 
@@ -82,6 +84,7 @@ Evolucao:
 - Definir ID estavel por item, fonte de verdade por campo, tratamento de conflito, auditoria e job de sync.
 - Definir se a proxima etapa sera polling reforcado, Server-Sent Events ou WebSocket.
 - Criar diagnostico de sync/presenca para operador.
+- Medir performance com muitos itens/categorias antes de trocar linguagem ou banco. A proxima evolucao mais parecida com Sheets tende a ser canal de eventos em tempo real e snapshot incremental.
 
 ### Miauby generativo com skills controladas
 
@@ -89,6 +92,7 @@ Estado:
 
 - Miauby ja possui OpenAI, tools controladas, memoria, alertas e padroes.
 - `miauw_skill_registry()` foi criado para inventariar skills por modulo, nivel, risco, permissao, executor e auditoria.
+- Contador de alertas e busca de conhecimentos foram otimizados em 2026-05-11 para reduzir carga repetida.
 - A evolucao generativa ainda precisa de logs estruturados de execucao, testes de intents e tela de revisao de memorias/padroes.
 
 Risco:

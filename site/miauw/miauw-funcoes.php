@@ -1658,12 +1658,44 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
 
 function miauw_knowledge_for(string $message): string
 {
-    $stmt = db()->query('SELECT titulo, conteudo, tags FROM miauw_conhecimentos WHERE ativo = 1');
-    $items = $stmt->fetchAll();
     $messageWords = preg_split('/[^a-z0-9]+/i', strtolower($message));
     $messageWords = array_values(array_filter(array_unique($messageWords ?: array()), static function ($word): bool {
         return strlen((string) $word) >= 4;
     }));
+
+    $items = array();
+    if ($messageWords) {
+        $params = array();
+        $where = array();
+        foreach (array_slice($messageWords, 0, 6) as $word) {
+            $where[] = '(titulo LIKE ? OR tags LIKE ? OR conteudo LIKE ?)';
+            $like = '%' . $word . '%';
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $stmt = db()->prepare(
+            'SELECT titulo, conteudo, tags
+             FROM miauw_conhecimentos
+             WHERE ativo = 1 AND (' . implode(' OR ', $where) . ')
+             ORDER BY updated_at DESC, id DESC
+             LIMIT 120'
+        );
+        $stmt->execute($params);
+        $items = $stmt->fetchAll();
+    }
+
+    if (!$items) {
+        $stmt = db()->query(
+            'SELECT titulo, conteudo, tags
+             FROM miauw_conhecimentos
+             WHERE ativo = 1
+             ORDER BY updated_at DESC, id DESC
+             LIMIT 80'
+        );
+        $items = $stmt->fetchAll();
+    }
 
     $scored = array();
     foreach ($items as $item) {

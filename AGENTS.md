@@ -149,14 +149,18 @@ docker compose logs --tail=80 wimifarma-com-web
 
 Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualmente.
 
-## Estado validado em 2026-05-10
+## Estado validado em 2026-05-11
 
 - Containers sobem com Docker Compose.
 - Banco local importado do HostGator para `mysql/`.
 - `wimifarma_app` possui tabelas `wf_*`, `cotacao_*`, `financeiro_*` e `miauw_*`.
 - Cotacao usa `cotacao_presencas` para a primeira camada de colaboracao ao vivo: usuarios ativos, filtro atual, celula/coluna em foco e estado de edicao.
+- Em 2026-05-11, a Cotacao foi testada com duas sessoes autenticadas: uma sessao criou item, a segunda recebeu por `sync_pull`, edicoes separadas em `produto` e `categoria` foram preservadas por patch de campo, `presence_ping` retornou 2 usuarios e a linha temporaria foi removida.
+- A digitacao em `categoria` na Cotacao nao deve recalcular filtro/opcoes a cada tecla; `site/cotacao/app.js` usa debounce curto para lista de categorias, filtro da grade e opcoes de vencedor.
 - `wimifarma_wp` possui tabelas WordPress `wptl_*`.
 - `site/miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava presente.
+- Miauby evita carregar 30 alertas completos apenas para contar badge; usar `miauw_intelligence_active_alert_count()` quando precisar de contador.
+- `miauw_knowledge_for()` filtra conhecimentos por termos relevantes antes do ranking para manter a memoria escalavel.
 - `cashback/login.php`, `cotacao/login.php`, `financeiro/login.php`, `tarefa/login.php` e `miauw/login.php` responderam 200.
 - `cotacao/api.php` respondeu 401 sem sessao, esperado.
 - WordPress raiz e `wp-login.php` responderam 200, porem lentos no Docker Desktop Windows com plugins restaurados.
@@ -208,6 +212,7 @@ Estado atual:
 
 - A Cotacao ja possui polling de `sync_pull`, sincronizacao de filtro compartilhado e presenca ao vivo por `presence_ping`.
 - A presenca mostra total de pessoas usando, chips dos outros usuarios e marca celulas remotas visiveis mesmo quando o outro usuario esta filtrado em outra categoria.
+- Para travadas na troca/digitacao de categoria, investigar primeiro recalculo visual no `site/cotacao/app.js`, carga de `sync_pull` e tamanho da snapshot antes de trocar linguagem ou banco.
 - Isso ainda nao substitui um motor robusto estilo Google Sheets. Para edicao simultanea forte, evoluir com conflito por campo, fila de eventos ou WebSocket/SSE.
 
 Antes de implementar:

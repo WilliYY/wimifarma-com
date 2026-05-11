@@ -21,7 +21,9 @@ try {
         $guardianAlerts = function_exists('miauw_intelligence_public_alerts')
             ? miauw_intelligence_public_alerts(5)
             : miauw_intelligence_active_alerts(5);
-        $guardianAlertCount = count(miauw_intelligence_active_alerts(30));
+        $guardianAlertCount = function_exists('miauw_intelligence_active_alert_count')
+            ? miauw_intelligence_active_alert_count()
+            : count(miauw_intelligence_active_alerts(30));
     }
 
     if (function_exists('miauw_intelligence_recent_patterns')) {
