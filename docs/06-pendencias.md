@@ -29,14 +29,17 @@ Estado:
 
 - Localmente `WP_HOME/WP_SITEURL` sao ajustados para `127.0.0.1:3002` ou `localhost:3002`.
 - No VPS/testes, WordPress ja mostrou redirects para porta de tunel em algumas condicoes.
+- A home publica tambem mostrou HTML antigo com assets `http://wimifarma.com/...`, compativel com cache estatico do SpeedyCache.
 
 Risco:
 
 - `wptl_options.home` e `siteurl` incorretos causam redirect para HostGator, tunel local ou HTTP.
+- `advanced-cache.php` pode servir home antiga antes das correcoes de HTTPS rodarem.
 
 Evolucao:
 
 - Depois do SSL, ajustar `home` e `siteurl` para `https://wimifarma.com` de forma controlada.
+- Manter page cache publico desligado ate limpar cache runtime e validar que o HTML nao contem assets `http://`.
 
 ### Definir fluxo Git no VPS atual
 
@@ -107,14 +110,17 @@ Estado:
 
 - WordPress ficou lento localmente no Docker Desktop Windows.
 - Plugins e caches restaurados do HostGator sao suspeitos.
+- SpeedyCache/`advanced-cache.php` pode esconder mudancas de HTTPS e servir HTML antigo da home.
 
 Risco:
 
 - A lentidao pode reaparecer no VPS Linux.
+- Reativar page cache antes da hora pode quebrar novamente apenas a home publica.
 
 Evolucao:
 
 - Medir tempos no VPS, revisar plugins/cache/tema, ativar cache apenas depois de HTTPS correto.
+- Criar procedimento seguro para limpar e reativar SpeedyCache quando a migracao estabilizar.
 
 ## Baixa prioridade
 

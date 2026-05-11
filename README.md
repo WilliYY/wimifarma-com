@@ -29,6 +29,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
 - WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
 - DNS GoDaddy e Nginx Proxy Manager estavam em configuracao para `wimifarma.com`.
+- Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
@@ -145,6 +146,7 @@ WP_SECURE_AUTH_SALT
 WP_LOGGED_IN_SALT
 WP_NONCE_SALT
 WP_CACHE
+WIMIFARMA_PUBLIC_PAGE_CACHE
 MIAUW_OPENAI_API_KEY
 MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN

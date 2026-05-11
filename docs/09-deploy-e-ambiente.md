@@ -28,6 +28,9 @@ VPS Ubuntu/Oracle:
 - `.env.example`
 - `site/wp-config.php`
 - `site/wp-content/mu-plugins/wimifarma-public-https.php`
+- `site/wp-content/advanced-cache.php`
+- `site/wp-content/cache/`
+- `site/wp-content/speedycache-config/`
 - Nginx Proxy Manager externo a este repositorio
 - GoDaddy DNS externo a este repositorio
 
@@ -47,6 +50,9 @@ VPS Ubuntu/Oracle:
 - Manter `site/wp-config.php` reconhecendo HTTPS atras do proxy para evitar CSS/JS com `http://`.
 - Para hosts publicos `wimifarma.com` e `www.wimifarma.com`, manter `site/wp-config.php` forcando HTTPS e canonicalizando `WP_HOME`/`WP_SITEURL` para `https://wimifarma.com`.
 - Manter `site/wp-content/mu-plugins/wimifarma-public-https.php` ativo para normalizar URLs publicas de tema/plugins para `https://wimifarma.com`.
+- Manter cache de pagina WordPress/SpeedyCache desligado por padrao durante a migracao.
+- Em hosts publicos, ativar page cache somente com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que o HTML publico nao contiver assets `http://wimifarma.com/...`.
+- Quando aparecer home sem CSS/JS por mixed content, limpar ou mover `advanced-cache.php`, `cache/` e `speedycache-config/` antes de culpar tema ou proxy.
 - Manter `site/.htaccess` redirecionando HTTP publico para HTTPS sem afetar `127.0.0.1:3002`.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter `.env` local em cada ambiente.
@@ -63,6 +69,7 @@ VPS Ubuntu/Oracle:
 - O WordPress tambem forca HTTPS para `wimifarma.com` e `www.wimifarma.com`, define `WP_CONTENT_URL` publico e usa um MU plugin para corrigir URLs que plugins/tema emitam como `http://`.
 - O redirect HTTP -> HTTPS tambem fica protegido por `.htaccess` para cobrir casos em que o Force SSL do proxy nao aplicar como esperado.
 - O Apache do container habilita `AllowOverride All` em `/var/www/html` para permitir regras do WordPress e redirects do projeto.
+- `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
 
 ## Riscos ao alterar
 
@@ -75,6 +82,7 @@ VPS Ubuntu/Oracle:
 - Se `AllowOverride` ficar desativado, o `.htaccess` sera ignorado e `http://wimifarma.com` podera continuar respondendo 200.
 - Remover a canonicalizacao publica em `wp-config.php` pode fazer `www.wimifarma.com` ou assets do tema voltarem para `http://`.
 - Remover o MU plugin de HTTPS publico pode permitir que plugins antigos voltem a emitir assets inseguros.
+- `advanced-cache.php` do SpeedyCache roda antes dos MU plugins quando `WP_CACHE` esta ligado; ele pode servir uma home antiga com URLs `http://` mesmo que o resto do WordPress ja esteja corrigido.
 
 ## Pendencias
 
@@ -82,6 +90,7 @@ VPS Ubuntu/Oracle:
 - Confirmar propagacao DNS definitiva nos principais resolvedores.
 - Validar certificado Let's Encrypt para `wimifarma.com` e `www.wimifarma.com` apos cada mudanca de proxy.
 - Validar se o HTML publico gera assets com `https://`.
+- Limpar cache runtime do SpeedyCache no VPS apos o deploy da correcao de HTTPS/cache.
 - Criar rotina de rollback.
 
 ## Evolucao futura

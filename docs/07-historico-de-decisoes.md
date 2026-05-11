@@ -235,3 +235,33 @@ Riscos/cuidados:
 - Esta regra e especifica para os hosts publicos. Manter excecao local para `127.0.0.1:3002` e `localhost:3002`.
 - Se novos dominios publicos forem adicionados ao mesmo WordPress, incluir explicitamente na lista ou revisar a canonicalizacao.
 - O MU plugin faz substituicao exata apenas dos dominios publicos conhecidos; nao usar para corrigir outros dominios sem revisar.
+
+## 2026-05-11 - Page cache publico fica opt-in durante estabilizacao HTTPS
+
+Decisao:
+
+- Manter `WP_CACHE=false` por padrao durante a migracao.
+- Em `wimifarma.com` e `www.wimifarma.com`, permitir cache de pagina somente se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
+- Definir `DONOTCACHEPAGE` para hosts publicos quando o cache estiver desligado.
+
+Motivo:
+
+- A home publica continuou retornando HTML com assets `http://wimifarma.com/wp-content/...` mesmo depois das correcoes de HTTPS. Como `advanced-cache.php` do SpeedyCache roda antes dos MU plugins quando `WP_CACHE` esta ativo, ele pode servir HTML estatico antigo e quebrar apenas a tela inicial por mixed content.
+
+Impacto:
+
+- `site/wp-config.php`
+- `.env.example`
+- `AGENTS.md`
+- `README.md`
+- `docs/01-arquitetura.md`
+- `docs/06-pendencias.md`
+- `docs/09-deploy-e-ambiente.md`
+- `docs/11-seguranca.md`
+- `docs/17-performance.md`
+
+Riscos/cuidados:
+
+- O VPS pode ter `advanced-cache.php`, `cache/` e `speedycache-config/` ignorados pelo Git; limpar ou mover esses arquivos runtime apos o deploy.
+- Reativar cache publico somente depois de validar que a home nao possui assets `http://wimifarma.com/...`.
+- Se houver necessidade de performance antes disso, medir primeiro e documentar a estrategia de cache.

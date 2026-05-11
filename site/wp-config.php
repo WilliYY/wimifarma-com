@@ -21,9 +21,6 @@ if ( ! function_exists( 'wimifarma_env' ) ) {
 //Begin Really Simple Security key
 define('RSSSL_KEY', wimifarma_env( 'RSSSL_KEY', 'dev-rsssl-key-change-me' ));
 //END Really Simple Security key
-$wimifarma_cache_host = $_SERVER['HTTP_HOST'] ?? '';
-$wimifarma_cache_default = in_array( $wimifarma_cache_host, array( '127.0.0.1:3002', 'localhost:3002' ), true ) ? 'false' : 'true';
-define('WP_CACHE', filter_var( wimifarma_env( 'WP_CACHE', $wimifarma_cache_default ), FILTER_VALIDATE_BOOLEAN )); // Added by SpeedyCache
 
 $wimifarma_forwarded_proto = strtolower( (string) ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) );
 $wimifarma_forwarded_ssl   = strtolower( (string) ( $_SERVER['HTTP_X_FORWARDED_SSL'] ?? '' ) );
@@ -31,6 +28,19 @@ $wimifarma_http_host       = strtolower( (string) ( $_SERVER['HTTP_HOST'] ?? '' 
 $wimifarma_http_host_name  = preg_replace( '/:\d+$/', '', $wimifarma_http_host );
 $wimifarma_public_hosts    = array( 'wimifarma.com', 'www.wimifarma.com' );
 $wimifarma_is_public_host  = in_array( $wimifarma_http_host_name, $wimifarma_public_hosts, true );
+$wimifarma_is_local_host   = in_array( $wimifarma_http_host, array( '127.0.0.1:3002', 'localhost:3002' ), true );
+
+// Page cache is opt-in during migration. Stale SpeedyCache HTML can bypass
+// WordPress filters and reintroduce http:// public assets on the home page.
+$wimifarma_cache_env = $wimifarma_is_public_host
+	? wimifarma_env( 'WIMIFARMA_PUBLIC_PAGE_CACHE', 'false' )
+	: wimifarma_env( 'WP_CACHE', 'false' );
+$wimifarma_cache_enabled = filter_var( $wimifarma_cache_env, FILTER_VALIDATE_BOOLEAN );
+define( 'WP_CACHE', $wimifarma_cache_enabled ); // Added by SpeedyCache.
+
+if ( $wimifarma_is_public_host && ! $wimifarma_cache_enabled && ! defined( 'DONOTCACHEPAGE' ) ) {
+	define( 'DONOTCACHEPAGE', true );
+}
 
 if (
 	in_array( 'https', array_map( 'trim', explode( ',', $wimifarma_forwarded_proto ) ), true )
@@ -141,7 +151,7 @@ if ( $wimifarma_is_public_host ) {
 	define( 'WP_SITEURL', 'https://wimifarma.com' );
 	define( 'WP_CONTENT_URL', 'https://wimifarma.com/wp-content' );
 	define( 'FORCE_SSL_ADMIN', true );
-} elseif ( in_array( $wimifarma_http_host, array( '127.0.0.1:3002', 'localhost:3002' ), true ) ) {
+} elseif ( $wimifarma_is_local_host ) {
 	define( 'WP_HOME', 'http://' . $wimifarma_http_host );
 	define( 'WP_SITEURL', 'http://' . $wimifarma_http_host );
 	define( 'DISABLE_WP_CRON', true );

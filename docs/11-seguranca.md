@@ -39,7 +39,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Segredos por ambiente/config local.
 - Repositorio tratado como publico.
 - SSL via Nginx Proxy Manager, nao diretamente no Apache do container.
-- `WP_CACHE` pode ser desligado durante migracao para evitar comportamento inesperado.
+- `WP_CACHE` e cache publico ficam desligados por padrao durante migracao para evitar HTML antigo, mixed content e comportamento inesperado.
 
 ## Riscos ao alterar
 

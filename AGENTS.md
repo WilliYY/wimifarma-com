@@ -100,6 +100,12 @@ Nao versionar:
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
 
+Cache de pagina WordPress/SpeedyCache deve ficar opt-in durante a migracao:
+
+- `WP_CACHE=false` por padrao;
+- hosts publicos `wimifarma.com` e `www.wimifarma.com` so ativam page cache com `WIMIFARMA_PUBLIC_PAGE_CACHE=true`;
+- se a home publica sair com assets `http://wimifarma.com/wp-content/...`, investigar e limpar `site/wp-content/advanced-cache.php`, `site/wp-content/cache/` e `site/wp-content/speedycache-config/`.
+
 O Miauby pode carregar a chave por:
 
 - `site/miauw/config.local.php`, ou
@@ -151,7 +157,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `cotacao/api.php` respondeu 401 sem sessao, esperado.
 - WordPress raiz e `wp-login.php` responderam 200, porem lentos no Docker Desktop Windows com plugins restaurados.
 - WordPress local exigiu ajuste para `WP_HOME/WP_SITEURL` em `localhost:3002`.
-- Cache WordPress/SpeedyCache foi desativado por padrao apenas em localhost para evitar travamento local.
+- Cache WordPress/SpeedyCache ficou opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
 - `endurance-page-cache.php`, mu-plugin especifico de HostGator, foi movido para quarentena fora do projeto.
 - `.dockerignore` limita o contexto de build a `docker/php/Dockerfile`, evitando envio de `.env`, `mysql/` e backups ao Docker.
 

@@ -55,12 +55,13 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - PHP/Apache foi escolhido por compatibilidade com WordPress e modulos PHP migrados.
 - MySQL 8.0 foi usado para manter compatibilidade com dados importados.
 - `.dockerignore` reduz contexto de build para evitar enviar dados sensiveis e volume MySQL ao Docker.
-- `WP_CACHE` pode ser desligado por padrao em localhost para evitar travamento local com cache restaurado.
+- Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
 
 ## Riscos ao alterar
 
 - Trocar nomes dos containers quebra referencias de rede e Nginx Proxy Manager.
 - Alterar `site/wp-config.php` pode quebrar WordPress e redirects.
+- Reativar cache de pagina antes de limpar `advanced-cache.php` e caches antigos pode servir HTML velho com assets `http://`.
 - Recriar o volume `mysql/` sem backup perde dados importados.
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.
 
