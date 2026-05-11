@@ -189,3 +189,23 @@ Riscos/cuidados:
 
 - Nao remover a condicao de `X-Forwarded-Proto`, pois HTTPS externo chega como HTTP interno ao Apache.
 - Validar `curl -I http://wimifarma.com` apos deploy; deve retornar 301 para HTTPS.
+
+## 2026-05-11 - Apache deve permitir .htaccess no document root
+
+Decisao:
+
+- Configurar o Dockerfile para habilitar `AllowOverride All` em `/var/www/html`.
+
+Motivo:
+
+- O projeto depende de `site/.htaccess` para redirects HTTPS e regras WordPress. Se o Apache ignorar `.htaccess`, `http://wimifarma.com` pode continuar respondendo 200 e o navegador abrir a home como "Nao seguro".
+
+Impacto:
+
+- `docker/php/Dockerfile`
+- `site/.htaccess`
+- `docs/09-deploy-e-ambiente.md`
+
+Riscos/cuidados:
+
+- Regras em `.htaccess` passam a valer no container; validar contra loops e manter excecao para localhost.

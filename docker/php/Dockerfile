@@ -13,7 +13,14 @@ RUN apt-get update \
     && docker-php-ext-install -j"$(nproc)" gd mysqli pdo_mysql zip \
     && a2enmod rewrite headers expires \
     && echo 'ServerName localhost' > /etc/apache2/conf-available/wimifarma-servername.conf \
+    && { \
+        echo '<Directory /var/www/html>'; \
+        echo '    AllowOverride All'; \
+        echo '    Require all granted'; \
+        echo '</Directory>'; \
+    } > /etc/apache2/conf-available/wimifarma-override.conf \
     && a2enconf wimifarma-servername \
+    && a2enconf wimifarma-override \
     && rm -rf /var/lib/apt/lists/*
 
 RUN { \

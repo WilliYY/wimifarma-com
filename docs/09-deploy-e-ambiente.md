@@ -45,6 +45,7 @@ VPS Ubuntu/Oracle:
 - Manter o Nginx Proxy Manager enviando `X-Forwarded-Proto: https` para o Apache.
 - Manter `site/wp-config.php` reconhecendo HTTPS atras do proxy para evitar CSS/JS com `http://`.
 - Manter `site/.htaccess` redirecionando HTTP publico para HTTPS sem afetar `127.0.0.1:3002`.
+- Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter `.env` local em cada ambiente.
 - Antes de deploy, fazer commit e push da alteracao.
 - Depois de deploy, rodar `docker compose ps` e logs.
@@ -57,6 +58,7 @@ VPS Ubuntu/Oracle:
 - O Compose atual publica web apenas em `127.0.0.1:3002`.
 - WordPress precisa tratar `X-Forwarded-Proto: https` como HTTPS real, porque o Apache recebe HTTP interno do proxy.
 - O redirect HTTP -> HTTPS tambem fica protegido por `.htaccess` para cobrir casos em que o Force SSL do proxy nao aplicar como esperado.
+- O Apache do container habilita `AllowOverride All` em `/var/www/html` para permitir regras do WordPress e redirects do projeto.
 
 ## Riscos ao alterar
 
@@ -66,6 +68,7 @@ VPS Ubuntu/Oracle:
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
 - Se o WordPress nao reconhecer HTTPS atras do proxy, ele gera assets `http://` e o navegador bloqueia CSS/JS por mixed content.
 - Uma regra de HTTPS sem considerar `X-Forwarded-Proto` pode criar loop infinito atras do proxy.
+- Se `AllowOverride` ficar desativado, o `.htaccess` sera ignorado e `http://wimifarma.com` podera continuar respondendo 200.
 
 ## Pendencias
 
