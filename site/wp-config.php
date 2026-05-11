@@ -27,9 +27,15 @@ define('WP_CACHE', filter_var( wimifarma_env( 'WP_CACHE', $wimifarma_cache_defau
 
 $wimifarma_forwarded_proto = strtolower( (string) ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) );
 $wimifarma_forwarded_ssl   = strtolower( (string) ( $_SERVER['HTTP_X_FORWARDED_SSL'] ?? '' ) );
+$wimifarma_http_host       = strtolower( (string) ( $_SERVER['HTTP_HOST'] ?? '' ) );
+$wimifarma_http_host_name  = preg_replace( '/:\d+$/', '', $wimifarma_http_host );
+$wimifarma_public_hosts    = array( 'wimifarma.com', 'www.wimifarma.com' );
+$wimifarma_is_public_host  = in_array( $wimifarma_http_host_name, $wimifarma_public_hosts, true );
+
 if (
 	in_array( 'https', array_map( 'trim', explode( ',', $wimifarma_forwarded_proto ) ), true )
 	|| $wimifarma_forwarded_ssl === 'on'
+	|| $wimifarma_is_public_host
 ) {
 	$_SERVER['HTTPS']      = 'on';
 	$_SERVER['SERVER_PORT'] = '443';
@@ -125,8 +131,10 @@ define( 'WP_DEBUG', false );
 
 /* Add any custom values between this line and the "stop editing" line. */
 
-$wimifarma_http_host = $_SERVER['HTTP_HOST'] ?? '';
-if ( in_array( $wimifarma_http_host, array( '127.0.0.1:3002', 'localhost:3002' ), true ) ) {
+if ( $wimifarma_is_public_host ) {
+	define( 'WP_HOME', 'https://wimifarma.com' );
+	define( 'WP_SITEURL', 'https://wimifarma.com' );
+} elseif ( in_array( $wimifarma_http_host, array( '127.0.0.1:3002', 'localhost:3002' ), true ) ) {
 	define( 'WP_HOME', 'http://' . $wimifarma_http_host );
 	define( 'WP_SITEURL', 'http://' . $wimifarma_http_host );
 	define( 'DISABLE_WP_CRON', true );

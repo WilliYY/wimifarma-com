@@ -209,3 +209,23 @@ Impacto:
 Riscos/cuidados:
 
 - Regras em `.htaccess` passam a valer no container; validar contra loops e manter excecao para localhost.
+
+## 2026-05-11 - Hosts publicos devem forcar HTTPS no WordPress
+
+Decisao:
+
+- Configurar `site/wp-config.php` para tratar `wimifarma.com` e `www.wimifarma.com` como HTTPS e canonicalizar `WP_HOME`/`WP_SITEURL` para `https://wimifarma.com`.
+
+Motivo:
+
+- Mesmo com DNS, SSL e redirect funcionando, o HTML publico ainda podia sair com CSS/JS/imagens em `http://wimifarma.com/wp-content/...` quando o WordPress nao recebia ou nao reconhecia corretamente os headers do proxy. Isso quebrava o layout por mixed content.
+
+Impacto:
+
+- `site/wp-config.php`
+- `docs/09-deploy-e-ambiente.md`
+
+Riscos/cuidados:
+
+- Esta regra e especifica para os hosts publicos. Manter excecao local para `127.0.0.1:3002` e `localhost:3002`.
+- Se novos dominios publicos forem adicionados ao mesmo WordPress, incluir explicitamente na lista ou revisar a canonicalizacao.
