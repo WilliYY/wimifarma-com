@@ -13,6 +13,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - A home publica mostrou HTML com assets `http://wimifarma.com/...` mesmo apos ajustes de HTTPS, indicando cache estatico antigo do SpeedyCache/`advanced-cache.php`.
 - Mesmo sem header de SpeedyCache, a home publica ainda podia gerar parte dos assets em `http://`; o tema ganhou uma segunda camada de normalizacao HTTPS.
 - A raiz `/` passou a ser servida por `site/home.php`, sem bootstrap do WordPress, para isolar a primeira tela de plugins/cache enquanto a migracao estabiliza.
+- A home standalone usa video de fundo em tela inteira e tres GIFs animados; manter o movimento leve e reaproveitar o padrao dos logins.
 
 ## Arquivos, rotas e servicos envolvidos
 
@@ -73,6 +74,7 @@ Servicos:
 - Se `https://wimifarma.com/home.php` retornar 404, o problema visual publico ainda nao esta no CSS; o arquivo de estabilizacao nao chegou ao servidor publico.
 - Plugins premium ignorados pelo Git podem existir no ambiente e afetar comportamento.
 - Aumentar recursos sem medir pode mascarar problema de plugin.
+- Animacoes da home nao devem bloquear clique nos cards nem cobrir permanentemente os acessos.
 
 ## Pendencias
 

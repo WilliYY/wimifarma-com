@@ -58,7 +58,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - WordPress na raiz `site/`.
-- Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao.
+- Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores de acesso e GIFs decorativos com o mesmo padrao de movimento dos logins.
 - Modulos internos PHP puro:
   - `site/cashback`
   - `site/cotacao`
@@ -213,6 +213,7 @@ Antes de implementar:
 - Criar job/cron de sincronizacao.
 - Criar tela de diagnostico do sync.
 - Usar Miauby para resumir divergencias e tarefas pendentes.
+- Evoluir Miauby por skills controladas, registry de ferramentas, auditoria e revisao de padroes; veja `docs/18-miauby-evolucao-generativa.md`.
 
 Evite sincronizacao por string solta. Use API estruturada do Google Sheets quando conector/credencial estiver definido.
 

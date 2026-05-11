@@ -102,14 +102,45 @@ $modules = array(
         }
 
         .wf-page {
+            position: relative;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            isolation: isolate;
+            overflow-x: hidden;
+        }
+
+        .wf-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: -2;
+            overflow: hidden;
+            background: #d9ecfb;
+        }
+
+        .wf-backdrop video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.78;
+            filter: saturate(1.06);
+        }
+
+        .wf-backdrop::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(180deg, rgba(246, 248, 251, 0.2), rgba(246, 248, 251, 0.9) 68%, rgba(246, 248, 251, 0.96)),
+                linear-gradient(90deg, rgba(246, 248, 251, 0.76), rgba(246, 248, 251, 0.18) 48%, rgba(246, 248, 251, 0.76));
         }
 
         .wf-header {
-            border-bottom: 1px solid #d9e1ec;
-            background: rgba(255, 255, 255, 0.96);
+            position: relative;
+            z-index: 3;
+            padding: 28px 0 12px;
         }
 
         .wf-shell {
@@ -118,11 +149,9 @@ $modules = array(
         }
 
         .wf-header-inner {
-            min-height: 78px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 24px;
+            justify-content: flex-start;
         }
 
         .wf-brand {
@@ -139,178 +168,62 @@ $modules = array(
             height: auto;
         }
 
-        .wf-nav {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            gap: 8px;
-        }
-
-        .wf-nav a {
-            min-height: 38px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 14px;
-            border: 1px solid #d9e1ec;
-            border-radius: 8px;
-            background: #ffffff;
-            color: #334155;
-            font-size: 0.94rem;
-            font-weight: 700;
-            text-decoration: none;
-        }
-
         .wf-main {
-            flex: 1;
-            padding: 42px 0 54px;
-        }
-
-        .wf-hero {
-            display: grid;
-            grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
-            align-items: center;
-            gap: 34px;
-        }
-
-        .wf-hero-copy {
-            display: grid;
-            gap: 18px;
-            align-content: center;
-        }
-
-        .wf-kicker {
-            width: fit-content;
-            margin: 0;
-            padding: 8px 10px;
-            border: 1px solid #c7d2fe;
-            border-radius: 8px;
-            background: #eef2ff;
-            color: #334155;
-            font-size: 0.78rem;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
-
-        .wf-title {
-            margin: 0;
-            color: #0f172a;
-            font-size: 3.7rem;
-            line-height: 0.95;
-            letter-spacing: 0;
-        }
-
-        .wf-summary {
-            max-width: 620px;
-            margin: 0;
-            color: #475569;
-            font-size: 1.08rem;
-            line-height: 1.55;
-        }
-
-        .wf-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 4px;
-        }
-
-        .wf-button {
-            min-height: 46px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 18px;
-            border-radius: 8px;
-            border: 1px solid #0f172a;
-            background: #0f172a;
-            color: #ffffff;
-            font-weight: 800;
-            text-decoration: none;
-        }
-
-        .wf-button.is-secondary {
-            border-color: #d9e1ec;
-            background: #ffffff;
-            color: #0f172a;
-        }
-
-        .wf-stage {
             position: relative;
-            min-height: 420px;
-            border: 1px solid #d9e1ec;
-            border-radius: 8px;
+            z-index: 2;
+            display: flex;
+            align-items: flex-end;
+            padding: 38px 0 54px;
+        }
+
+        .wf-visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
             overflow: hidden;
-            background: #ffffff;
-            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
 
-        .wf-stage video {
-            position: absolute;
+        .wf-runners {
+            position: fixed;
             inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0.42;
-        }
-
-        .wf-stage-panel {
-            position: absolute;
-            inset: auto 22px 22px 22px;
-            min-height: 112px;
-            display: grid;
-            gap: 8px;
-            align-content: center;
-            padding: 18px;
-            border: 1px solid rgba(217, 225, 236, 0.9);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(5px);
-        }
-
-        .wf-stage-panel strong {
-            font-size: 1.12rem;
-            color: #0f172a;
-        }
-
-        .wf-stage-panel span {
-            color: #475569;
-            line-height: 1.45;
+            z-index: 1;
+            pointer-events: none;
+            overflow: hidden;
         }
 
         .wf-runner {
             position: absolute;
+            left: 0;
+            top: 0;
             height: auto;
             pointer-events: none;
+            opacity: 0.98;
             filter: drop-shadow(0 16px 24px rgba(15, 23, 42, 0.18));
+            transform: translate3d(var(--wf-runner-x, 16vw), var(--wf-runner-y, 58vh), 0) scaleX(var(--wf-runner-dir, 1));
+            will-change: transform;
         }
 
         .wf-runner.is-nyan {
-            width: min(42%, 330px);
-            left: 9%;
-            top: 24%;
-            animation: wf-float-a 7s ease-in-out infinite;
+            width: clamp(178px, 21vw, 340px);
         }
 
         .wf-runner.is-duck {
-            width: min(23%, 170px);
-            right: 17%;
-            top: 30%;
-            animation: wf-float-b 7.5s ease-in-out infinite;
+            width: clamp(112px, 12vw, 190px);
         }
 
         .wf-runner.is-dragon {
-            width: min(20%, 150px);
-            right: 13%;
-            bottom: 32%;
-            animation: wf-float-c 6.5s ease-in-out infinite;
+            width: clamp(62px, 7vw, 122px);
         }
 
         .wf-modules {
             display: grid;
             grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 14px;
-            margin-top: 28px;
         }
 
         .wf-card {
@@ -321,7 +234,8 @@ $modules = array(
             padding: 18px;
             border: 1px solid #d9e1ec;
             border-radius: 8px;
-            background: #ffffff;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(5px);
             text-decoration: none;
             box-shadow: 0 16px 34px rgba(15, 23, 42, 0.05);
             transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
@@ -384,68 +298,9 @@ $modules = array(
             font-size: 0.9rem;
         }
 
-        .wf-footer {
-            border-top: 1px solid #d9e1ec;
-            background: #ffffff;
-        }
-
-        .wf-footer-inner {
-            min-height: 58px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            color: #64748b;
-            font-size: 0.92rem;
-        }
-
-        @keyframes wf-float-a {
-            0%, 100% {
-                transform: translate3d(0, 0, 0);
-            }
-
-            50% {
-                transform: translate3d(18px, -14px, 0);
-            }
-        }
-
-        @keyframes wf-float-b {
-            0%, 100% {
-                transform: translate3d(0, 0, 0) rotate(-2deg);
-            }
-
-            50% {
-                transform: translate3d(-14px, 12px, 0) rotate(2deg);
-            }
-        }
-
-        @keyframes wf-float-c {
-            0%, 100% {
-                transform: translate3d(0, 0, 0) rotate(1deg);
-            }
-
-            50% {
-                transform: translate3d(12px, 10px, 0) rotate(-2deg);
-            }
-        }
-
         @media (max-width: 1040px) {
             .wf-header-inner {
-                align-items: flex-start;
-                flex-direction: column;
-                padding: 16px 0;
-            }
-
-            .wf-nav {
-                justify-content: flex-start;
-            }
-
-            .wf-hero {
-                grid-template-columns: 1fr;
-            }
-
-            .wf-stage {
-                min-height: 360px;
+                justify-content: center;
             }
 
             .wf-modules {
@@ -459,62 +314,23 @@ $modules = array(
             }
 
             .wf-main {
-                padding: 28px 0 38px;
-            }
-
-            .wf-title {
-                font-size: 2.45rem;
-            }
-
-            .wf-summary {
-                font-size: 1rem;
-            }
-
-            .wf-actions,
-            .wf-nav {
-                width: 100%;
-            }
-
-            .wf-button,
-            .wf-nav a {
-                width: 100%;
-            }
-
-            .wf-stage {
-                min-height: 320px;
-            }
-
-            .wf-stage-panel {
-                inset: auto 12px 12px 12px;
-                padding: 14px;
+                padding: 26px 0 36px;
             }
 
             .wf-runner.is-nyan {
-                width: 62%;
-                left: 5%;
-                top: 24%;
+                width: clamp(150px, 52vw, 260px);
             }
 
             .wf-runner.is-duck {
-                width: 34%;
-                right: 8%;
-                top: 36%;
+                width: clamp(94px, 30vw, 150px);
             }
 
             .wf-runner.is-dragon {
-                width: 30%;
-                right: 12%;
-                bottom: 34%;
+                width: clamp(54px, 19vw, 92px);
             }
 
             .wf-modules {
                 grid-template-columns: 1fr;
-            }
-
-            .wf-footer-inner {
-                align-items: flex-start;
-                flex-direction: column;
-                padding: 16px 0;
             }
         }
 
@@ -533,45 +349,29 @@ $modules = array(
 </head>
 <body>
 <div class="wf-page">
+    <div class="wf-backdrop" aria-hidden="true">
+        <video autoplay muted loop playsinline preload="metadata">
+            <source src="<?php echo wf_home_e(wf_home_asset('assets/video/looping.mp4')); ?>" type="video/mp4">
+        </video>
+    </div>
+
+    <div class="wf-runners" aria-hidden="true">
+        <img class="wf-runner is-nyan" data-wf-runner="nyan" src="<?php echo wf_home_e(wf_home_asset('assets/img/nyan.gif')); ?>" alt="">
+        <img class="wf-runner is-duck" data-wf-runner="duck" src="<?php echo wf_home_e(wf_home_asset('assets/img/pato.gif')); ?>" alt="">
+        <img class="wf-runner is-dragon" data-wf-runner="dragon" src="<?php echo wf_home_e(wf_home_asset('assets/img/toothless.gif')); ?>" alt="">
+    </div>
+
     <header class="wf-header">
         <div class="wf-shell wf-header-inner">
             <a class="wf-brand" href="<?php echo wf_home_e(wf_home_url('/')); ?>" aria-label="Wimifarma">
                 <img src="<?php echo wf_home_e(wf_home_asset('assets/img/logo-wimifarma-official.svg')); ?>" alt="Wimifarma" width="236" height="72">
             </a>
-            <nav class="wf-nav" aria-label="Acessos rapidos">
-                <?php foreach ($modules as $module): ?>
-                    <a href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>"><?php echo wf_home_e($module['name']); ?></a>
-                <?php endforeach; ?>
-            </nav>
         </div>
     </header>
 
     <main class="wf-main">
         <div class="wf-shell">
-            <section class="wf-hero" aria-labelledby="wf-home-title">
-                <div class="wf-hero-copy">
-                    <p class="wf-kicker">Portal interno</p>
-                    <h1 id="wf-home-title" class="wf-title">Wimifarma</h1>
-                    <p class="wf-summary">Ferramentas internas para atendimento, compras, financeiro, tarefas e apoio operacional em um ambiente unico.</p>
-                    <div class="wf-actions" aria-label="Principais acessos">
-                        <a class="wf-button" href="<?php echo wf_home_e(wf_home_url('/cashback/')); ?>">Abrir Cashback</a>
-                        <a class="wf-button is-secondary" href="<?php echo wf_home_e(wf_home_url('/cotacao/')); ?>">Abrir Cotacao</a>
-                    </div>
-                </div>
-
-                <div class="wf-stage" aria-hidden="true">
-                    <video autoplay muted loop playsinline preload="metadata">
-                        <source src="<?php echo wf_home_e(wf_home_asset('assets/video/looping.mp4')); ?>" type="video/mp4">
-                    </video>
-                    <img class="wf-runner is-nyan" src="<?php echo wf_home_e(wf_home_asset('assets/img/nyan.gif')); ?>" alt="">
-                    <img class="wf-runner is-duck" src="<?php echo wf_home_e(wf_home_asset('assets/img/pato.gif')); ?>" alt="">
-                    <img class="wf-runner is-dragon" src="<?php echo wf_home_e(wf_home_asset('assets/img/toothless.gif')); ?>" alt="">
-                    <div class="wf-stage-panel">
-                        <strong>Central Wimifarma</strong>
-                        <span>Acesso rapido aos sistemas usados na rotina da equipe.</span>
-                    </div>
-                </div>
-            </section>
+            <h1 class="wf-visually-hidden">Wimifarma</h1>
 
             <section class="wf-modules" aria-label="Sistemas Wimifarma">
                 <?php foreach ($modules as $module): ?>
@@ -586,14 +386,127 @@ $modules = array(
             </section>
         </div>
     </main>
-
-    <footer class="wf-footer">
-        <div class="wf-shell wf-footer-inner">
-            <span>Wimifarma</span>
-            <span>Portal interno</span>
-        </div>
-    </footer>
 </div>
+<script>
+    (function () {
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function initHomeRunners() {
+            var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            var nodes = Array.prototype.slice.call(document.querySelectorAll('[data-wf-runner]'));
+
+            if (reducedMotion || nodes.length === 0) {
+                return;
+            }
+
+            var pointer = {
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+                active: false
+            };
+
+            var startingPoints = {
+                nyan: { x: 0.12, y: 0.26, vx: 0.58, vy: -0.28 },
+                duck: { x: 0.62, y: 0.34, vx: -0.66, vy: 0.34 },
+                dragon: { x: 0.74, y: 0.58, vx: 0.58, vy: -0.28 }
+            };
+
+            var states = nodes.map(function (node, index) {
+                var kind = node.getAttribute('data-wf-runner') || 'runner';
+                var start = startingPoints[kind] || {
+                    x: 0.16 + (index * 0.18),
+                    y: 0.58 - (index * 0.2),
+                    vx: index % 2 === 0 ? 0.58 : -0.66,
+                    vy: index % 2 === 0 ? -0.28 : 0.34
+                };
+
+                return {
+                    node: node,
+                    x: clamp(window.innerWidth * start.x, 18, Math.max(18, window.innerWidth - 160)),
+                    y: clamp(window.innerHeight * start.y, 72, Math.max(72, window.innerHeight - 160)),
+                    vx: start.vx,
+                    vy: start.vy,
+                    phase: Math.random() * Math.PI * 2
+                };
+            });
+
+            window.addEventListener('pointermove', function (event) {
+                pointer.x = event.clientX;
+                pointer.y = event.clientY;
+                pointer.active = true;
+            }, { passive: true });
+
+            window.addEventListener('pointerleave', function () {
+                pointer.active = false;
+            }, { passive: true });
+
+            window.addEventListener('blur', function () {
+                pointer.active = false;
+            });
+
+            var lastTick = performance.now();
+
+            function tick(now) {
+                var dt = Math.min(32, now - lastTick) / 16.67;
+                lastTick = now;
+
+                states.forEach(function (state, index) {
+                    var rect = state.node.getBoundingClientRect();
+                    var width = rect.width || 140;
+                    var height = rect.height || 120;
+                    var centerX = state.x + (width / 2);
+                    var centerY = state.y + (height / 2);
+                    var dx = centerX - pointer.x;
+                    var dy = centerY - pointer.y;
+                    var distance = Math.max(1, Math.hypot(dx, dy));
+
+                    if (pointer.active && distance < 220) {
+                        var flee = (220 - distance) / 220;
+                        state.vx += (dx / distance) * flee * 0.76;
+                        state.vy += (dy / distance) * flee * 0.76;
+                    } else {
+                        state.vx += Math.cos((now / 900) + state.phase) * 0.014 * dt;
+                        state.vy += Math.sin((now / 1100) + state.phase + index) * 0.014 * dt;
+                    }
+
+                    state.vx = clamp(state.vx * 0.992, -2.25, 2.25);
+                    state.vy = clamp(state.vy * 0.992, -1.9, 1.9);
+                    state.x += state.vx * dt;
+                    state.y += state.vy * dt;
+
+                    var maxX = Math.max(12, window.innerWidth - width - 12);
+                    var maxY = Math.max(68, window.innerHeight - height - 12);
+
+                    if (state.x < 12 || state.x > maxX) {
+                        state.vx *= -0.86;
+                        state.x = clamp(state.x, 12, maxX);
+                    }
+
+                    if (state.y < 68 || state.y > maxY) {
+                        state.vy *= -0.86;
+                        state.y = clamp(state.y, 68, maxY);
+                    }
+
+                    state.node.style.setProperty('--wf-runner-x', state.x.toFixed(1) + 'px');
+                    state.node.style.setProperty('--wf-runner-y', state.y.toFixed(1) + 'px');
+                    state.node.style.setProperty('--wf-runner-dir', state.vx < 0 ? '-1' : '1');
+                });
+
+                window.requestAnimationFrame(tick);
+            }
+
+            window.requestAnimationFrame(tick);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initHomeRunners);
+        } else {
+            initHomeRunners();
+        }
+    }());
+</script>
 <script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js')); ?>" defer></script>
 </body>
 </html>

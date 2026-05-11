@@ -82,6 +82,30 @@ Arquivos/tabelas candidatos:
 - `cotacao_sync_estado`
 - `cotacao_auditoria`
 
+### Miauby skills generativas
+
+Objetivo:
+
+- Evoluir Miauby para entender padroes operacionais e gerar sugestoes melhores, sem liberar acesso bruto ao banco ou escrita sem controle.
+
+Arquivos candidatos:
+
+- `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-skills.php`
+- `site/miauw/miauw-intelligence.php`
+- `site/miauw/miauw-system-map.php`
+
+Direcao:
+
+- criar registry formal de skills;
+- separar skills de leitura, sugestao e escrita;
+- validar permissao, schema e auditoria por skill;
+- revisar memorias e padroes antes de transformar em automacao.
+
+Documento especifico:
+
+- `docs/18-miauby-evolucao-generativa.md`
+
 ## Regras que precisam ser preservadas
 
 - Nao salvar chaves externas no Git.

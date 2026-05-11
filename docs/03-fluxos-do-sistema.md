@@ -8,7 +8,7 @@ Este documento descreve os fluxos reais encontrados no sistema e os cuidados par
 
 Entrada publica:
 
-- `/`: home/portal independente em `site/home.php`.
+- `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 
 Rotas de login:
 
@@ -179,6 +179,13 @@ Tabelas principais:
 - `miauw_padroes`
 - `miauw_farmacia_popular_valores`
 - `miauw_farmacia_popular_atualizacoes`
+
+Direcao de evolucao:
+
+- evoluir por skills controladas, nao por acesso livre ao banco;
+- registrar padroes e memorias com revisao e auditoria;
+- separar leitura, sugestao e escrita;
+- documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.
 
 ## WordPress
 

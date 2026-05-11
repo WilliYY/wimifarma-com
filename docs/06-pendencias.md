@@ -79,6 +79,21 @@ Evolucao:
 
 - Definir ID estavel por item, fonte de verdade por campo, tratamento de conflito, auditoria e job de sync.
 
+### Miauby generativo com skills controladas
+
+Estado:
+
+- Miauby ja possui OpenAI, tools controladas, memoria, alertas e padroes.
+- A evolucao generativa ainda precisa de um registry formal de skills, testes de intents e tela de revisao de memorias/padroes.
+
+Risco:
+
+- Autonomia sem schema, permissao e auditoria pode gravar dados errados ou aprender padroes ruins.
+
+Evolucao:
+
+- Seguir `docs/18-miauby-evolucao-generativa.md` antes de criar novas tools generativas.
+
 ### Migracoes de banco versionadas
 
 Estado:

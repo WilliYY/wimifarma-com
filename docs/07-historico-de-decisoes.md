@@ -351,3 +351,53 @@ Riscos/cuidados:
 - Nao apagar caches runtime do VPS sem preservar backup/quarentena quando houver duvida.
 - Depois do deploy, validar `X-Served-By: wimifarma-static-home` em `/` e `/home.php`.
 - Se o header aparecer no container mas nao no dominio, corrigir Nginx Proxy Manager em vez de mexer no tema.
+
+## 2026-05-11 - Home publica reduzida para fundo visual e cards
+
+Decisao:
+
+- Remover da home standalone o hero textual, botoes principais, navegacao superior e painel central.
+- Usar o video de cenario como fundo de tela inteira.
+- Manter apenas logo e cards inferiores de acesso aos modulos.
+- Fazer os tres GIFs decorativos se moverem pela tela e se afastarem suavemente do ponteiro, reaproveitando o padrao de movimento usado nos logins.
+
+Motivo:
+
+- O usuario decidiu que a home publica deve ser mais visual e servir como entrada simples para os sistemas internos, sem blocos explicativos redundantes.
+
+Impacto:
+
+- `site/home.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/03-fluxos-do-sistema.md`
+- `docs/07-historico-de-decisoes.md`
+
+Riscos/cuidados:
+
+- Validar desktop e mobile, porque os GIFs ficam em posicao fixa e nao podem cobrir permanentemente os cards.
+- Manter `prefers-reduced-motion` respeitado.
+- Se novos elementos forem adicionados na home, preservar a regra de nao recriar o hero textual removido nesta decisao.
+
+## 2026-05-11 - Miauby deve evoluir por skills controladas
+
+Decisao:
+
+- Registrar a direcao de evolucao do Miauby em `docs/18-miauby-evolucao-generativa.md`.
+- Tratar novas capacidades generativas como skills com schema, permissao, auditoria e testes, antes de liberar automacao de escrita.
+
+Motivo:
+
+- O usuario quer que Miauby entenda padroes e seja mais generativo, mas isso precisa evoluir sem risco de escrita incorreta no banco ou aprendizado de padroes ruins.
+
+Impacto:
+
+- `docs/18-miauby-evolucao-generativa.md`
+- `docs/10-integracoes.md`
+- `docs/06-pendencias.md`
+
+Riscos/cuidados:
+
+- Nao adicionar tools soltas sem registry.
+- Separar leitura, sugestao e escrita.
+- Revisar memorias e padroes aprendidos antes de transformar em automacao.

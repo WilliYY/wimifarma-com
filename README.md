@@ -30,7 +30,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
 - DNS GoDaddy e Nginx Proxy Manager estavam em configuracao para `wimifarma.com`.
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
-- A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, para estabilizar a primeira tela durante a migracao.
+- A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
@@ -229,5 +229,6 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 - `docs/15-logs-e-auditoria.md`: logs, auditoria e diagnostico.
 - `docs/16-testes.md`: validacoes atuais e evolucao de testes.
 - `docs/17-performance.md`: performance, cache e cuidados WordPress.
+- `docs/18-miauby-evolucao-generativa.md`: direcao para skills, padroes e autonomia segura do Miauby.
 
 Leia `AGENTS.md` antes de qualquer alteracao.
