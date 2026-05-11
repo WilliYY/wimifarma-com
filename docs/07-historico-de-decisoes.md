@@ -169,3 +169,23 @@ Riscos/cuidados:
 
 - Manter o Proxy Host do Nginx Proxy Manager enviando os headers padrao.
 - Validar o HTML publico com `curl` para confirmar links `https://` em CSS e JS.
+
+## 2026-05-11 - Redirect HTTPS publico tambem protegido por .htaccess
+
+Decisao:
+
+- Adicionar `site/.htaccess` com redirect HTTP -> HTTPS para hosts publicos, respeitando `X-Forwarded-Proto: https` e ignorando localhost.
+
+Motivo:
+
+- Mesmo com Force SSL ligado no Nginx Proxy Manager, `http://wimifarma.com` ainda respondeu 200 em testes. A regra no Apache cobre esse caso sem afetar o acesso local `127.0.0.1:3002`.
+
+Impacto:
+
+- `site/.htaccess`
+- `docs/09-deploy-e-ambiente.md`
+
+Riscos/cuidados:
+
+- Nao remover a condicao de `X-Forwarded-Proto`, pois HTTPS externo chega como HTTP interno ao Apache.
+- Validar `curl -I http://wimifarma.com` apos deploy; deve retornar 301 para HTTPS.

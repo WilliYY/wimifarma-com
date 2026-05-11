@@ -44,6 +44,7 @@ VPS Ubuntu/Oracle:
 - Nao usar porta de tunel no proxy publico.
 - Manter o Nginx Proxy Manager enviando `X-Forwarded-Proto: https` para o Apache.
 - Manter `site/wp-config.php` reconhecendo HTTPS atras do proxy para evitar CSS/JS com `http://`.
+- Manter `site/.htaccess` redirecionando HTTP publico para HTTPS sem afetar `127.0.0.1:3002`.
 - Manter `.env` local em cada ambiente.
 - Antes de deploy, fazer commit e push da alteracao.
 - Depois de deploy, rodar `docker compose ps` e logs.
@@ -55,6 +56,7 @@ VPS Ubuntu/Oracle:
 - Nginx Proxy Manager deve concentrar SSL e dominios.
 - O Compose atual publica web apenas em `127.0.0.1:3002`.
 - WordPress precisa tratar `X-Forwarded-Proto: https` como HTTPS real, porque o Apache recebe HTTP interno do proxy.
+- O redirect HTTP -> HTTPS tambem fica protegido por `.htaccess` para cobrir casos em que o Force SSL do proxy nao aplicar como esperado.
 
 ## Riscos ao alterar
 
@@ -63,6 +65,7 @@ VPS Ubuntu/Oracle:
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
 - Se o WordPress nao reconhecer HTTPS atras do proxy, ele gera assets `http://` e o navegador bloqueia CSS/JS por mixed content.
+- Uma regra de HTTPS sem considerar `X-Forwarded-Proto` pode criar loop infinito atras do proxy.
 
 ## Pendencias
 
