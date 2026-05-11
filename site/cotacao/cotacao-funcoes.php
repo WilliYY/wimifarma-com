@@ -138,6 +138,29 @@ function cotacao_schema_statements(): array
             KEY idx_cotacao_regra_bloco (bloco_id, ativo, ordem),
             KEY idx_cotacao_regra_coluna (bloco_id, coluna_chave, ativo)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS cotacao_presencas (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            bloco_id INT UNSIGNED NOT NULL,
+            client_id VARCHAR(80) NOT NULL,
+            usuario_id INT UNSIGNED NULL,
+            usuario_nome VARCHAR(120) NOT NULL DEFAULT '',
+            cor VARCHAR(20) NOT NULL DEFAULT '#2563eb',
+            item_id INT UNSIGNED NULL,
+            row_order INT NULL,
+            col_key VARCHAR(80) NOT NULL DEFAULT '',
+            col_label VARCHAR(120) NOT NULL DEFAULT '',
+            filtro_categoria VARCHAR(255) NOT NULL DEFAULT '',
+            filtro_cor VARCHAR(20) NOT NULL DEFAULT '',
+            filtro_vencedor VARCHAR(40) NOT NULL DEFAULT '',
+            editando TINYINT(1) NOT NULL DEFAULT 0,
+            ultima_atividade DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_cotacao_presenca_client (bloco_id, client_id),
+            KEY idx_cotacao_presenca_bloco (bloco_id, ultima_atividade),
+            KEY idx_cotacao_presenca_item (bloco_id, item_id, col_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         "CREATE TABLE IF NOT EXISTS cotacao_sync_estado (
             bloco_id INT UNSIGNED NOT NULL,
             versao BIGINT UNSIGNED NOT NULL DEFAULT 1,
@@ -1057,6 +1080,155 @@ function cotacao_sync_snapshot(int $blockId): array
         'items' => cotacao_sync_items_payload($blockId),
         'categories' => cotacao_categories($blockId),
         'rules' => cotacao_conditional_rules($blockId),
+        'server_time' => date('Y-m-d H:i:s'),
+    );
+}
+
+function cotacao_presence_color(int $userId, string $clientId): string
+{
+    $palette = array('#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#ea580c', '#0891b2', '#be123c', '#0f766e');
+    $seed = $userId > 0 ? (string) $userId : $clientId;
+    $index = abs((int) crc32($seed !== '' ? $seed : 'cotacao')) % count($palette);
+
+    return $palette[$index];
+}
+
+function cotacao_presence_text($value, int $max): string
+{
+    $text = trim((string) $value);
+    $text = preg_replace('/\s+/', ' ', $text) ?: '';
+
+    return substr($text, 0, max(1, $max));
+}
+
+function cotacao_presence_client_id(string $clientId): string
+{
+    $clientId = preg_replace('/[^a-zA-Z0-9:_-]/', '', trim($clientId)) ?: '';
+    if ($clientId === '') {
+        $session = function_exists('session_id') ? session_id() : '';
+        $clientId = 'session-' . substr(hash('sha256', $session !== '' ? $session : uniqid('cotacao', true)), 0, 18);
+    }
+
+    return substr($clientId, 0, 80);
+}
+
+function cotacao_presence_payload(array $payload): array
+{
+    $filter = cotacao_sync_filter_payload(array(
+        'categoria' => $payload['categoria'] ?? $payload['filter_category'] ?? $payload['category'] ?? '',
+        'cor' => $payload['cor'] ?? $payload['filter_color'] ?? $payload['product_color'] ?? $payload['productColor'] ?? '',
+        'vencedor' => $payload['vencedor'] ?? $payload['filter_winner'] ?? $payload['winner'] ?? '',
+    ));
+
+    $itemId = max(0, (int) ($payload['item_id'] ?? 0));
+    $rowOrderRaw = $payload['row_order'] ?? null;
+    $rowOrder = is_numeric($rowOrderRaw) ? (int) $rowOrderRaw : null;
+    $colKey = preg_replace('/[^a-zA-Z0-9:_-]/', '', trim((string) ($payload['col_key'] ?? ''))) ?: '';
+
+    return array(
+        'client_id' => cotacao_presence_client_id((string) ($payload['client_id'] ?? '')),
+        'item_id' => $itemId > 0 ? $itemId : null,
+        'row_order' => $rowOrder,
+        'col_key' => substr($colKey, 0, 80),
+        'col_label' => cotacao_presence_text($payload['col_label'] ?? '', 120),
+        'filtro_categoria' => $filter['categoria'],
+        'filtro_cor' => $filter['cor'],
+        'filtro_vencedor' => $filter['vencedor'],
+        'editando' => !empty($payload['editando']) || !empty($payload['editing']) ? 1 : 0,
+    );
+}
+
+function cotacao_presence_cleanup(int $blockId): void
+{
+    $stmt = db()->prepare('DELETE FROM cotacao_presencas WHERE bloco_id = ? AND ultima_atividade < DATE_SUB(NOW(), INTERVAL 45 SECOND)');
+    $stmt->execute(array($blockId));
+}
+
+function cotacao_presence_ping(int $blockId, array $user, array $payload): array
+{
+    cotacao_presence_cleanup($blockId);
+    $presence = cotacao_presence_payload($payload);
+    $userId = (int) ($user['id'] ?? 0);
+    $userName = cotacao_presence_text($user['username'] ?? $user['nome'] ?? 'Usuario', 120);
+    $color = cotacao_presence_color($userId, $presence['client_id']);
+
+    $stmt = db()->prepare(
+        'INSERT INTO cotacao_presencas
+            (bloco_id, client_id, usuario_id, usuario_nome, cor, item_id, row_order, col_key, col_label, filtro_categoria, filtro_cor, filtro_vencedor, editando, ultima_atividade)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+            usuario_id = VALUES(usuario_id),
+            usuario_nome = VALUES(usuario_nome),
+            cor = VALUES(cor),
+            item_id = VALUES(item_id),
+            row_order = VALUES(row_order),
+            col_key = VALUES(col_key),
+            col_label = VALUES(col_label),
+            filtro_categoria = VALUES(filtro_categoria),
+            filtro_cor = VALUES(filtro_cor),
+            filtro_vencedor = VALUES(filtro_vencedor),
+            editando = VALUES(editando),
+            ultima_atividade = NOW(),
+            updated_at = NOW()'
+    );
+    $stmt->execute(array(
+        $blockId,
+        $presence['client_id'],
+        $userId > 0 ? $userId : null,
+        $userName,
+        $color,
+        $presence['item_id'],
+        $presence['row_order'],
+        $presence['col_key'],
+        $presence['col_label'],
+        $presence['filtro_categoria'],
+        $presence['filtro_cor'],
+        $presence['filtro_vencedor'],
+        $presence['editando'],
+    ));
+
+    return cotacao_presence_list($blockId, $presence['client_id']);
+}
+
+function cotacao_presence_list(int $blockId, string $selfClientId = ''): array
+{
+    cotacao_presence_cleanup($blockId);
+    $selfClientId = cotacao_presence_client_id($selfClientId);
+    $stmt = db()->prepare(
+        'SELECT *
+         FROM cotacao_presencas
+         WHERE bloco_id = ?
+           AND ultima_atividade >= DATE_SUB(NOW(), INTERVAL 30 SECOND)
+         ORDER BY ultima_atividade DESC, id DESC
+         LIMIT 30'
+    );
+    $stmt->execute(array($blockId));
+    $users = array();
+
+    foreach (($stmt->fetchAll() ?: array()) as $row) {
+        $clientId = (string) ($row['client_id'] ?? '');
+        $users[] = array(
+            'client_id' => $clientId,
+            'self' => $selfClientId !== '' && hash_equals($selfClientId, $clientId),
+            'name' => (string) ($row['usuario_nome'] ?? 'Usuario'),
+            'color' => (string) ($row['cor'] ?? '#2563eb'),
+            'item_id' => isset($row['item_id']) ? (int) $row['item_id'] : null,
+            'row_order' => isset($row['row_order']) ? (int) $row['row_order'] : null,
+            'col_key' => (string) ($row['col_key'] ?? ''),
+            'col_label' => (string) ($row['col_label'] ?? ''),
+            'filters' => array(
+                'category' => (string) ($row['filtro_categoria'] ?? ''),
+                'productColor' => (string) ($row['filtro_cor'] ?? ''),
+                'winner' => (string) ($row['filtro_vencedor'] ?? ''),
+            ),
+            'editing' => !empty($row['editando']),
+            'last_seen' => (string) ($row['ultima_atividade'] ?? ''),
+        );
+    }
+
+    return array(
+        'total' => count($users),
+        'users' => $users,
         'server_time' => date('Y-m-d H:i:s'),
     );
 }

@@ -18,6 +18,8 @@ Miauby ja possui:
 - alertas e padroes em `miauw_alertas`, `miauw_alerta_eventos` e `miauw_padroes`;
 - varredura operacional em `site/miauw/miauw-intelligence.php`;
 - skills de consulta e escrita limitada em `site/miauw/miauw-skills.php`.
+- `miauw_skill_registry()` com metadados de modulo, nivel, risco, permissao, executor, entrada, saida, auditoria e efeitos.
+- tool `diagnostico_skills` para o Miauby consultar o inventario de capacidades sem expor segredos.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -59,12 +61,12 @@ Integracoes:
 
 ## Decisoes tecnicas recomendadas
 
-- Criar um registro formal de skills com nome, modulo, permissao exigida, schema de entrada, schema de saida, risco e funcao PHP executora.
+- Manter o registro formal de skills com nome, modulo, permissao exigida, schema de entrada, schema de saida, risco e funcao PHP executora.
 - Separar skills em tres niveis:
   - leitura: consulta dados e gera resumo;
   - sugestao: detecta padroes e propoe proximo passo;
   - escrita: altera dados somente com validacao e auditoria.
-- Criar uma camada `miauw_skill_registry()` antes de adicionar novas tools soltas.
+- Usar `miauw_skill_registry()` antes de adicionar novas tools soltas.
 - Criar avaliacao simples de skills: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
 - Criar tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
@@ -79,8 +81,7 @@ Integracoes:
 
 ## Pendencias
 
-- Mapear todas as tools atuais de `miauw_openai_tools()`.
-- Criar `miauw_skill_registry()` com metadados e permissao.
+- Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Criar logs estruturados para execucao de skill.
 - Criar testes de exemplos para intents de financeiro, cotacao, tarefa e alertas.
 - Definir tela administrativa para revisar memorias e padroes aprendidos.
@@ -88,7 +89,7 @@ Integracoes:
 
 ## Como pode evoluir
 
-- Fase 1: documentar tools atuais e criar registry sem mudar comportamento.
+- Fase 1: documentar tools atuais e criar registry sem mudar comportamento. Em andamento/concluido parcialmente.
 - Fase 2: adicionar testes de intents e respostas proibidas.
 - Fase 3: criar painel de diagnostico e revisao de memoria/padroes.
 - Fase 4: transformar padroes recorrentes em sugestoes de melhoria de processo.

@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var csrf = document.querySelector('meta[name="wfwc-csrf"]');
     var csrfToken = csrf ? csrf.getAttribute('content') : '';
     var saveStatus = document.querySelector('[data-save-status]');
+    var presenceSummary = document.querySelector('[data-presence-summary]');
+    var presenceList = document.querySelector('[data-presence-list]');
     var categoryFilterValue = document.getElementById('category-filter-value');
     var categoryPopover = document.getElementById('category-filter-popover');
     var categoryOptionsBox = document.querySelector('[data-category-options]');
@@ -55,6 +57,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var syncPendingSnapshot = null;
     var syncReloading = false;
     var syncErrorCount = 0;
+    var presenceTimer = null;
+    var presencePinging = false;
+    var presenceLast = null;
     var minFontSize = 8;
     var maxFontSize = 36;
     var defaultFontSize = 20;
@@ -345,6 +350,167 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
+    function presenceCssValue(value) {
+        value = String(value || '');
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+
+        return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    }
+
+    function presenceColumnLabel(cell) {
+        if (!cell) {
+            return '';
+        }
+
+        var key = String(cell.dataset.colKey || '');
+        if (key.indexOf('supplier-') === 0) {
+            var priceInput = cell.querySelector('.price-input[data-supplier-name]');
+            return priceInput ? String(priceInput.dataset.supplierName || '') : 'Fornecedor';
+        }
+
+        var header = grid.querySelector('thead th[data-col-index="' + presenceCssValue(cell.dataset.col || '') + '"]');
+        if (header) {
+            var label = header.querySelector('input') ? header.querySelector('input').value : header.textContent;
+            return String(label || '').replace(/\s+/g, ' ').trim();
+        }
+
+        return key;
+    }
+
+    function currentPresencePayload() {
+        var cell = activeCell || grid.querySelector('td.sheet-cell.is-active-cell');
+        var row = cell ? cell.closest('tr.sheet-row') : activeRow;
+        var filter = readFilterState();
+
+        return {
+            client_id: syncClientId,
+            item_id: row ? Number(row.dataset.itemId || 0) : 0,
+            row_order: row ? Number(row.dataset.rowOrder || 0) : 0,
+            col_key: cell ? String(cell.dataset.colKey || '') : '',
+            col_label: presenceColumnLabel(cell),
+            categoria: filter.category || '',
+            cor: filter.productColor || '',
+            vencedor: filter.winner || '',
+            editando: Boolean(cell && cell.classList.contains('is-editing-cell'))
+        };
+    }
+
+    function presencePayloadKey(payload) {
+        return JSON.stringify({
+            item_id: payload.item_id || 0,
+            row_order: payload.row_order || 0,
+            col_key: payload.col_key || '',
+            categoria: payload.categoria || '',
+            cor: payload.cor || '',
+            vencedor: payload.vencedor || '',
+            editando: Boolean(payload.editando)
+        });
+    }
+
+    function presenceCellForUser(user) {
+        if (!user || !user.col_key) {
+            return null;
+        }
+
+        var row = null;
+        var itemId = Number(user.item_id || 0);
+        if (itemId > 0) {
+            row = grid.querySelector('tbody tr.sheet-row[data-item-id="' + itemId + '"]');
+        }
+
+        if (!row && user.row_order !== null && user.row_order !== undefined) {
+            row = grid.querySelector('tbody tr.sheet-row[data-row-order="' + Number(user.row_order || 0) + '"]');
+        }
+
+        if (!row || row.hidden || row.style.display === 'none') {
+            return null;
+        }
+
+        return row.querySelector('td.sheet-cell[data-col-key="' + presenceCssValue(user.col_key) + '"]');
+    }
+
+    function clearPresenceMarks() {
+        grid.querySelectorAll('td.sheet-cell.is-remote-active, td.sheet-cell.is-remote-editing').forEach(function (cell) {
+            cell.classList.remove('is-remote-active', 'is-remote-editing');
+            cell.style.removeProperty('--remote-presence-color');
+        });
+    }
+
+    function renderPresence(payload) {
+        presenceLast = payload || presenceLast;
+        var users = presenceLast && Array.isArray(presenceLast.users) ? presenceLast.users : [];
+        var total = Number((presenceLast && presenceLast.total) || users.length || 1);
+        var others = users.filter(function (user) {
+            return !user.self;
+        });
+
+        if (presenceSummary) {
+            presenceSummary.textContent = total === 1 ? '1 pessoa usando' : String(total) + ' pessoas usando';
+        }
+
+        if (presenceList) {
+            presenceList.innerHTML = '';
+            others.slice(0, 6).forEach(function (user) {
+                var chip = document.createElement('span');
+                var where = user.col_label ? String(user.col_label) : 'na planilha';
+                var outOfFilter = presenceCellForUser(user) ? '' : ' fora do filtro atual';
+                chip.className = 'presence-chip';
+                chip.style.setProperty('--presence-color', String(user.color || '#2563eb'));
+                chip.textContent = String(user.name || 'Usuario') + ' em ' + where + outOfFilter;
+                presenceList.appendChild(chip);
+            });
+        }
+
+        clearPresenceMarks();
+        others.forEach(function (user) {
+            var cell = presenceCellForUser(user);
+            if (!cell) {
+                return;
+            }
+
+            cell.classList.add('is-remote-active');
+            cell.style.setProperty('--remote-presence-color', String(user.color || '#2563eb'));
+            if (user.editing) {
+                cell.classList.add('is-remote-editing');
+            }
+        });
+    }
+
+    function sendPresence(force) {
+        if (presencePinging || !syncClientId || syncReloading) {
+            return;
+        }
+
+        var payload = currentPresencePayload();
+        var key = presencePayloadKey(payload);
+        if (!force && sendPresence.lastKey === key) {
+            return;
+        }
+
+        sendPresence.lastKey = key;
+        presencePinging = true;
+        api('presence_ping', payload).then(function (result) {
+            if (result && result.presence) {
+                renderPresence(result.presence);
+            }
+        }).catch(function () {
+            if (presenceSummary) {
+                presenceSummary.textContent = 'Presenca instavel';
+            }
+        }).finally(function () {
+            presencePinging = false;
+        });
+    }
+
+    function schedulePresencePing(delay) {
+        clearTimeout(presenceTimer);
+        presenceTimer = setTimeout(function () {
+            sendPresence(false);
+        }, delay || 120);
+    }
+
     function filterStatesEqual(a, b) {
         a = a || {};
         b = b || {};
@@ -362,6 +528,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!filterStatesEqual(before, after)) {
             pushUndo({ type: 'filter', before: before, after: after });
             queueSharedFilterSync(after);
+            schedulePresencePing(180);
         }
     }
 
@@ -386,6 +553,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!isApplyingRemoteSync) {
             queueSharedFilterSync(readFilterState());
         }
+        schedulePresencePing(120);
         return true;
     }
 
@@ -484,7 +652,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     delete_category: true,
                     save_conditional_rule: true,
                     delete_conditional_rule: true,
-                    sync_filter: true
+                    sync_filter: true,
+                    presence_ping: true
                 };
 
                 if (action !== 'sync_pull' && !localDataActions[action]) {
@@ -982,6 +1151,7 @@ document.addEventListener('DOMContentLoaded', function () {
             updateProductColorOptions();
             updateWinnerOptions();
             applyGridFilters({ status: false });
+            renderPresence(presenceLast);
         } finally {
             isApplyingRemoteSync = false;
         }
@@ -1064,23 +1234,28 @@ document.addEventListener('DOMContentLoaded', function () {
     function startLiveSync() {
         var loop = function () {
             pullSync();
+            sendPresence(true);
             window.setTimeout(loop, document.hidden ? 5000 : 1200);
         };
 
         document.addEventListener('visibilitychange', function () {
             if (!document.hidden) {
                 pullSync();
+                sendPresence(true);
                 flushPendingSyncSnapshot();
             }
         });
         window.addEventListener('focus', function () {
             pullSync();
+            sendPresence(true);
             flushPendingSyncSnapshot();
         });
         window.addEventListener('online', function () {
             pullSync();
+            sendPresence(true);
             flushPendingSyncSnapshot();
         });
+        sendPresence(true);
         window.setTimeout(loop, 900);
     }
 
@@ -3344,6 +3519,7 @@ document.addEventListener('DOMContentLoaded', function () {
             activeRow = activeCell ? activeCell.closest('tr') : null;
             updateActiveRowIndicator();
             updateFontSizeIndicator();
+            schedulePresencePing(120);
             return;
         }
 
@@ -3354,6 +3530,7 @@ document.addEventListener('DOMContentLoaded', function () {
         anchorCell = cell;
         updateActiveRowIndicator();
         updateFontSizeIndicator();
+        schedulePresencePing(120);
     }
 
     function selectCellRange(start, end) {
@@ -3388,6 +3565,7 @@ document.addEventListener('DOMContentLoaded', function () {
         activeRow = end.closest('tr');
         updateActiveRowIndicator();
         updateFontSizeIndicator();
+        schedulePresencePing(120);
     }
 
     function cellBy(rowIndex, colIndex) {
@@ -3420,6 +3598,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         updateActiveRowIndicator();
         updateFontSizeIndicator();
+        schedulePresencePing(120);
     }
 
     function selectColumnRange(startCol, endCol) {
@@ -3465,6 +3644,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         updateActiveRowIndicator();
         updateFontSizeIndicator();
+        schedulePresencePing(120);
     }
 
     function selectRowsRange(startRow, endRow) {
@@ -3503,6 +3683,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         updateActiveRowIndicator();
         updateFontSizeIndicator();
+        schedulePresencePing(120);
     }
 
     function selectAllCells() {
@@ -3526,6 +3707,7 @@ document.addEventListener('DOMContentLoaded', function () {
         updateActiveRowIndicator();
         updateFontSizeIndicator();
         setStatus('Edicao em massa: todas as celulas selecionadas', 'waiting');
+        schedulePresencePing(120);
     }
 
     function closeEditingFields() {
@@ -3953,6 +4135,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
+        schedulePresencePing(80);
         return true;
     }
 
@@ -3982,6 +4165,7 @@ document.addEventListener('DOMContentLoaded', function () {
             window.getSelection().removeAllRanges();
         }
         autoGrow(field);
+        schedulePresencePing(120);
     }
 
     function clearSelectedCells() {
@@ -4858,6 +5042,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (row && grid.contains(row)) {
             activeRow = row;
         }
+
+        var cell = sheetCellFrom(event.target);
+        if (cell) {
+            activeCell = cell;
+            anchorCell = anchorCell || cell;
+            schedulePresencePing(120);
+        }
     });
 
     document.addEventListener('focusout', function (event) {
@@ -4876,6 +5067,10 @@ document.addEventListener('DOMContentLoaded', function () {
             window.setTimeout(function () {
                 applyGridFilters({ status: false, preserveEditing: false });
             }, 0);
+        }
+
+        if (wasSheetEditing || event.target.matches('.supplier-name-input')) {
+            schedulePresencePing(160);
         }
     });
 
@@ -4918,6 +5113,7 @@ document.addEventListener('DOMContentLoaded', function () {
             applyConditionalFormatting(inputRow);
             scheduleRowSave(inputRow, 850, dirtyInfoForInput(target));
             updateSelectionSummary();
+            schedulePresencePing(650);
         }
 
         if (target.classList.contains('supplier-name-input') && !target.readOnly) {

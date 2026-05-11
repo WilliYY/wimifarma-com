@@ -40,8 +40,18 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/financeiro/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/tarefa/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/login.php
+curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 ```
+
+## Local - home e Cotacao tempo real
+
+```powershell
+curl.exe -I -H "Host: wimifarma.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:3002/
+curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
+```
+
+O endpoint `cotacao/api.php?action=presence_ping` exige sessao e CSRF da Cotacao. Valide pela interface logada quando mexer em presenca ao vivo.
 
 ## Banco - inventario
 

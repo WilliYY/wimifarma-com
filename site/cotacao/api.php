@@ -239,6 +239,15 @@ try {
         cotacao_json(array('ok' => true, 'state' => $state, 'message' => 'Filtro sincronizado.'));
     }
 
+    if ($action === 'presence_ping') {
+        $presence = cotacao_presence_ping((int) $block['id'], cotacao_api_require_user(), $_POST);
+        cotacao_json(array(
+            'ok' => true,
+            'presence' => $presence,
+            'message' => 'Presenca atualizada.',
+        ));
+    }
+
     if ($action === 'sync_pull') {
         $knownVersion = max(0, (int) ($_POST['known_version'] ?? 0));
         $knownDataVersion = array_key_exists('known_data_version', $_POST)

@@ -313,7 +313,9 @@ h1 {
 }
 
 .user-pill,
-.sheet-count {
+.sheet-count,
+.presence-pill,
+.presence-chip {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -329,6 +331,48 @@ h1 {
     min-width: 132px;
     background: #fff7f8;
     border-color: var(--line);
+}
+
+.presence-pill {
+    gap: 8px;
+    background: #eefdf5;
+    border-color: rgba(22, 163, 74, 0.26);
+    color: #166534;
+}
+
+.presence-pill::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.presence-list {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.presence-chip {
+    gap: 7px;
+    min-height: 34px;
+    padding: 7px 10px;
+    background: #ffffff;
+    color: var(--ink);
+    font-size: 12px;
+}
+
+.presence-chip::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--presence-color, #2563eb);
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .notice {
@@ -1552,6 +1596,14 @@ textarea.winner-output {
 .sheet-cell {
     position: relative;
     cursor: cell;
+}
+
+.sheet-cell.is-remote-active {
+    box-shadow: inset 0 0 0 2px var(--remote-presence-color, #7c3aed);
+}
+
+.sheet-cell.is-remote-editing {
+    background-image: linear-gradient(135deg, rgba(124, 58, 237, 0.10), rgba(255, 255, 255, 0));
 }
 
 .sheet-cell.is-cell-selected::after,

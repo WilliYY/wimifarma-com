@@ -60,6 +60,7 @@ $modules = array(
         'description' => 'Prioridades, historico e conclusoes.',
         'href' => '/tarefa/',
         'accent' => 'rose',
+        'task_badge' => true,
     ),
     array(
         'name' => 'Miauby',
@@ -173,7 +174,7 @@ $modules = array(
             z-index: 2;
             display: flex;
             align-items: flex-end;
-            padding: 38px 0 54px;
+            padding: 28px 0 clamp(176px, 19vh, 244px);
         }
 
         .wf-visually-hidden {
@@ -227,6 +228,7 @@ $modules = array(
         }
 
         .wf-card {
+            position: relative;
             min-height: 186px;
             display: grid;
             grid-template-rows: auto auto 1fr auto;
@@ -298,6 +300,30 @@ $modules = array(
             font-size: 0.9rem;
         }
 
+        .wf-card-badge {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            min-width: 32px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 0 9px;
+            background: #dc2626;
+            color: #ffffff;
+            font-size: 0.82rem;
+            font-style: normal;
+            font-weight: 950;
+            line-height: 1;
+            box-shadow: 0 10px 22px rgba(220, 38, 38, 0.26);
+        }
+
+        .wf-card-badge[hidden] {
+            display: none;
+        }
+
         @media (max-width: 1040px) {
             .wf-header-inner {
                 justify-content: center;
@@ -314,7 +340,7 @@ $modules = array(
             }
 
             .wf-main {
-                padding: 26px 0 36px;
+                padding: 24px 0 96px;
             }
 
             .wf-runner.is-nyan {
@@ -377,6 +403,9 @@ $modules = array(
                 <?php foreach ($modules as $module): ?>
                     <a class="wf-card" href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>" data-accent="<?php echo wf_home_e($module['accent']); ?>">
                         <i class="wf-card-mark" aria-hidden="true"></i>
+                        <?php if (!empty($module['task_badge'])): ?>
+                            <em class="wf-card-badge" data-wf-task-badge hidden aria-label="Tarefas abertas"></em>
+                        <?php endif; ?>
                         <h2><?php echo wf_home_e($module['name']); ?></h2>
                         <span><?php echo wf_home_e($module['label']); ?></span>
                         <p><?php echo wf_home_e($module['description']); ?></p>
@@ -504,6 +533,48 @@ $modules = array(
             document.addEventListener('DOMContentLoaded', initHomeRunners);
         } else {
             initHomeRunners();
+        }
+    }());
+</script>
+<script>
+    (function () {
+        function initTaskBadge() {
+            var badge = document.querySelector('[data-wf-task-badge]');
+
+            if (!badge || !window.fetch) {
+                return;
+            }
+
+            fetch('<?php echo wf_home_e(wf_home_url('/tarefa/badge.php')); ?>', {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            }).then(function (response) {
+                if (!response.ok) {
+                    throw new Error('badge unavailable');
+                }
+
+                return response.json();
+            }).then(function (payload) {
+                var open = Number(payload && payload.open ? payload.open : 0);
+
+                if (!Number.isFinite(open) || open <= 0) {
+                    badge.hidden = true;
+                    return;
+                }
+
+                badge.textContent = open > 99 ? '99+' : String(open);
+                badge.setAttribute('aria-label', open === 1 ? '1 tarefa aberta' : String(open) + ' tarefas abertas');
+                badge.hidden = false;
+            }).catch(function () {
+                badge.hidden = true;
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTaskBadge);
+        } else {
+            initTaskBadge();
         }
     }());
 </script>

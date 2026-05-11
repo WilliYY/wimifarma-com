@@ -401,3 +401,78 @@ Riscos/cuidados:
 - Nao adicionar tools soltas sem registry.
 - Separar leitura, sugestao e escrita.
 - Revisar memorias e padroes aprendidos antes de transformar em automacao.
+
+## 2026-05-11 - Home publica com cards elevados e badge de tarefas
+
+Decisao:
+
+- Subir os cards inferiores da home para abrir espaco para novos cards futuros.
+- Manter a home apenas como portal visual de entrada.
+- Exibir badge vermelho no card de Tarefas com o total de tarefas abertas retornado por `/tarefa/badge.php`.
+
+Motivo:
+
+- O usuario quer a home simples, visual e pronta para ganhar novos modulos sem reconstruir a tela.
+- Tarefas precisa mostrar pendencias de forma imediata.
+
+Impacto:
+
+- `site/home.php`
+- `site/tarefa/badge.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/03-fluxos-do-sistema.md`
+
+Riscos/cuidados:
+
+- O badge depende de endpoint publico interno; se o usuario nao estiver autenticado ou o endpoint falhar, a home deve continuar carregando sem quebrar.
+- Validar responsividade porque os cards estao mais altos.
+
+## 2026-05-11 - Cotacao ganha primeira camada de presenca ao vivo
+
+Decisao:
+
+- Criar `cotacao_presencas` e a acao `presence_ping`.
+- Mostrar total de usuarios usando a Cotacao, chips de presenca e marca visual da celula/coluna onde outro usuario esta ativo.
+- Indicar quando outro usuario esta fora do filtro atual.
+
+Motivo:
+
+- O usuario precisa que a Cotacao evolua para uma experiencia forte de uso simultaneo, parecida com Google Sheets, sem divergencia entre computadores.
+
+Impacto:
+
+- `site/cotacao/cotacao-funcoes.php`
+- `site/cotacao/api.php`
+- `site/cotacao/index.php`
+- `site/cotacao/app.js`
+- `site/cotacao/styles.css`
+- `docs/19-cotacao-tempo-real.md`
+
+Riscos/cuidados:
+
+- Esta camada mostra presenca, mas ainda nao resolve conflito forte de escrita.
+- O proximo passo deve ser conflito por campo, auditoria de eventos e avaliacao de WebSocket/SSE.
+
+## 2026-05-11 - Miauby formaliza registry de skills
+
+Decisao:
+
+- Criar `miauw_skill_registry()` com metadados de modulo, nivel, risco, permissao, executor, entrada, saida, auditoria e efeitos.
+- Expor diagnostico seguro por `diagnostico_skills`.
+- Usar o registry como contexto do Miauby antes de novas autonomias.
+
+Motivo:
+
+- O usuario quer um Miauby mais generativo, capaz de entender padroes e apoiar operacao, mas sem liberar escrita solta no banco.
+
+Impacto:
+
+- `site/miauw/miauw-skills.php`
+- `site/miauw/miauw-funcoes.php`
+- `docs/18-miauby-evolucao-generativa.md`
+
+Riscos/cuidados:
+
+- Registry nao substitui testes. Skills de escrita ainda precisam de validacao, logs estruturados e revisao de padroes.
+- Novas tools OpenAI devem ser registradas antes de uso.

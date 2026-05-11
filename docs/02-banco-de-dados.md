@@ -42,6 +42,7 @@ Inventario real observado em 2026-05-10:
 - `cotacao_auditoria`: auditoria da cotacao.
 - `cotacao_regras_formatacao`: regras visuais/formatacao.
 - `cotacao_sync_estado`: estado de versao/filtros/sync.
+- `cotacao_presencas`: presenca temporaria de usuarios na Cotacao, com client id, usuario, filtro atual, item/linha/coluna em foco e estado de edicao.
 - `financeiro_fechamentos`: fechamento diario.
 - `financeiro_sangrias`: sangrias por fechamento.
 - `financeiro_maquininhas`: lancamentos de maquininha.
@@ -104,6 +105,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `cotacao_precos` depende de item e fornecedor.
 - `cotacao_sync_estado` e chave para futura sincronizacao com planilhas.
+- `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `wptl_options` guarda URLs do WordPress e pode causar redirects errados se alterado sem cuidado.
@@ -121,6 +123,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Mudar prefixo `wptl_` quebra WordPress.
 - Alterar `wptl_options.home` e `wptl_options.siteurl` sem planejar pode redirecionar para tunel ou dominio errado.
 - Mudar colunas de cotacao sem preservar ordem/formatacao prejudica futura sincronizacao com Google Sheets.
+- Alterar `cotacao_presencas` sem compatibilidade pode quebrar a indicacao de usuarios ativos e selecao remota na tela.
 
 ## Pendencias
 
@@ -129,6 +132,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Criar backup automatizado antes de deploy.
 - Ajustar URLs definitivas do WordPress apos DNS/SSL.
 - Definir IDs estaveis e fonte de verdade para Cotacao + Google Sheets.
+- Definir motor robusto de conflito por campo para edicao simultanea forte na Cotacao.
 
 ## Evolucao futura
 

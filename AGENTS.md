@@ -58,7 +58,8 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - WordPress na raiz `site/`.
-- Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores de acesso e GIFs decorativos com o mesmo padrao de movimento dos logins.
+- Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro e GIFs decorativos com o mesmo padrao de movimento dos logins.
+- O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - Modulos internos PHP puro:
   - `site/cashback`
   - `site/cotacao`
@@ -153,6 +154,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Containers sobem com Docker Compose.
 - Banco local importado do HostGator para `mysql/`.
 - `wimifarma_app` possui tabelas `wf_*`, `cotacao_*`, `financeiro_*` e `miauw_*`.
+- Cotacao usa `cotacao_presencas` para a primeira camada de colaboracao ao vivo: usuarios ativos, filtro atual, celula/coluna em foco e estado de edicao.
 - `wimifarma_wp` possui tabelas WordPress `wptl_*`.
 - `site/miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava presente.
 - `cashback/login.php`, `cotacao/login.php`, `financeiro/login.php`, `tarefa/login.php` e `miauw/login.php` responderam 200.
@@ -202,6 +204,12 @@ Antes de substituir a pasta atual do VPS por uma pasta clonada, preservar `.env`
 
 Objetivo do usuario: transformar a cotacao em uma ferramenta forte, espelhada com Google Sheets.
 
+Estado atual:
+
+- A Cotacao ja possui polling de `sync_pull`, sincronizacao de filtro compartilhado e presenca ao vivo por `presence_ping`.
+- A presenca mostra total de pessoas usando, chips dos outros usuarios e marca celulas remotas visiveis mesmo quando o outro usuario esta filtrado em outra categoria.
+- Isso ainda nao substitui um motor robusto estilo Google Sheets. Para edicao simultanea forte, evoluir com conflito por campo, fila de eventos ou WebSocket/SSE.
+
 Antes de implementar:
 
 - Mapear tabelas `cotacao_*`.
@@ -214,6 +222,7 @@ Antes de implementar:
 - Criar tela de diagnostico do sync.
 - Usar Miauby para resumir divergencias e tarefas pendentes.
 - Evoluir Miauby por skills controladas, registry de ferramentas, auditoria e revisao de padroes; veja `docs/18-miauby-evolucao-generativa.md`.
+- Para tempo real da Cotacao, seguir `docs/19-cotacao-tempo-real.md`.
 
 Evite sincronizacao por string solta. Use API estruturada do Google Sheets quando conector/credencial estiver definido.
 

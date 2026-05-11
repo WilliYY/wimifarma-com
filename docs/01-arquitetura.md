@@ -24,6 +24,8 @@ Arquivos principais:
 - `site/home.php`
 - `site/wp-config.php`
 - `site/cashback/config.php`
+- `site/cotacao/api.php`
+- `site/cotacao/app.js`
 - `.env.example`
 
 Containers:
@@ -59,6 +61,7 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - `.dockerignore` reduz contexto de build para evitar enviar dados sensiveis e volume MySQL ao Docker.
 - Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
+- A Cotacao mantem a primeira camada de colaboracao via polling HTTP (`sync_pull` e `presence_ping`) antes de adotar WebSocket/SSE.
 
 ## Riscos ao alterar
 
@@ -81,3 +84,4 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - Adicionar healthchecks no Compose.
 - Criar rotinas de backup automatico do MySQL.
 - Separar jobs/cron em container proprio quando Miauby e sincronizacao crescerem.
+- Avaliar um servico dedicado de tempo real para Cotacao se o uso simultaneo crescer alem do polling atual.

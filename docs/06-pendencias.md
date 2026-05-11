@@ -69,7 +69,9 @@ Evolucao:
 Estado:
 
 - Existem tabelas `cotacao_*` e `cotacao_sync_estado`.
+- Existe primeira camada de presenca ao vivo em `cotacao_presencas`, com `presence_ping`, total de usuarios, chips de usuarios ativos e marca visual de celula remota.
 - Nao ha integracao Google Sheets implementada.
+- Ainda nao ha motor de conflito por campo nem canal WebSocket/SSE.
 
 Risco:
 
@@ -78,13 +80,16 @@ Risco:
 Evolucao:
 
 - Definir ID estavel por item, fonte de verdade por campo, tratamento de conflito, auditoria e job de sync.
+- Definir se a proxima etapa sera polling reforcado, Server-Sent Events ou WebSocket.
+- Criar diagnostico de sync/presenca para operador.
 
 ### Miauby generativo com skills controladas
 
 Estado:
 
 - Miauby ja possui OpenAI, tools controladas, memoria, alertas e padroes.
-- A evolucao generativa ainda precisa de um registry formal de skills, testes de intents e tela de revisao de memorias/padroes.
+- `miauw_skill_registry()` foi criado para inventariar skills por modulo, nivel, risco, permissao, executor e auditoria.
+- A evolucao generativa ainda precisa de logs estruturados de execucao, testes de intents e tela de revisao de memorias/padroes.
 
 Risco:
 
@@ -93,6 +98,7 @@ Risco:
 Evolucao:
 
 - Seguir `docs/18-miauby-evolucao-generativa.md` antes de criar novas tools generativas.
+- Criar testes para confirmar que skills de escrita recusam dados incompletos ou ambiguidade.
 
 ### Migracoes de banco versionadas
 

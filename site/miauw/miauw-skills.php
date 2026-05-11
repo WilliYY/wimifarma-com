@@ -94,6 +94,442 @@ function miauw_skill_money($value): string
     return 'R$ ' . number_format((float) $value, 2, ',', '.');
 }
 
+function miauw_skill_registry(): array
+{
+    static $registry = null;
+
+    if (is_array($registry)) {
+        return $registry;
+    }
+
+    $registry = array(
+        'resumo_financeiro' => array(
+            'nome' => 'resumo_financeiro',
+            'titulo' => 'Resumo financeiro',
+            'modulo' => 'financeiro',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_financeiro_summary',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('mes', 'ano'),
+            'saida' => 'Resumo textual de fechamentos, divergencias e lancamentos.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'resumo_cashback' => array(
+            'nome' => 'resumo_cashback',
+            'titulo' => 'Resumo cashback',
+            'modulo' => 'cashback',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_cashback_summary',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('mes', 'ano'),
+            'saida' => 'Resumo textual de compras, creditos, resgates e saldo ativo.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'resumo_cotacao' => array(
+            'nome' => 'resumo_cotacao',
+            'titulo' => 'Resumo cotacao',
+            'modulo' => 'cotacao',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_cotacao_summary',
+            'openai_tool' => false,
+            'local_action' => false,
+            'entrada' => array('mes', 'ano'),
+            'saida' => 'Resumo textual de itens, urgentes, encomendas e blocos ativos.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'buscar_cliente' => array(
+            'nome' => 'buscar_cliente',
+            'titulo' => 'Buscar cliente',
+            'modulo' => 'cashback',
+            'nivel' => 'leitura',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_client_lookup',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('busca'),
+            'saida' => 'Lista resumida com dados mascarados.',
+            'auditoria' => array(),
+            'efeitos' => array('nao_expor_telefone_completo'),
+        ),
+        'buscar_cotacao' => array(
+            'nome' => 'buscar_cotacao',
+            'titulo' => 'Buscar cotacao',
+            'modulo' => 'cotacao',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_cotacao_lookup',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('busca'),
+            'saida' => 'Itens encontrados por produto, EAN, categoria ou fornecedor.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'farmacia_popular_valor' => array(
+            'nome' => 'farmacia_popular_valor',
+            'titulo' => 'Farmacia Popular',
+            'modulo' => 'farmacia_popular',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_fp_tool_result',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('produto', 'uf'),
+            'saida' => 'Valor de referencia/reembolso com fonte quando disponivel.',
+            'auditoria' => array(),
+            'efeitos' => array('nao_substitui_conferencia_oficial'),
+        ),
+        'pesquisa_web_referencias' => array(
+            'nome' => 'pesquisa_web_referencias',
+            'titulo' => 'Pesquisa web controlada',
+            'modulo' => 'externo',
+            'nivel' => 'leitura',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_web_references_text',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('consulta', 'limite'),
+            'saida' => 'Referencias externas com titulo, trecho e link.',
+            'auditoria' => array(),
+            'efeitos' => array('citar_fontes', 'nao_transformar_snippet_em_verdade'),
+        ),
+        'noticias_medicamentos_oficiais' => array(
+            'nome' => 'noticias_medicamentos_oficiais',
+            'titulo' => 'Noticias oficiais de medicamentos',
+            'modulo' => 'externo',
+            'nivel' => 'leitura',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_web_official_medicine_news_text',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('limite'),
+            'saida' => 'Comunicados/noticias de fontes oficiais.',
+            'auditoria' => array(),
+            'efeitos' => array('sem_orientacao_clinica'),
+        ),
+        'mapa_sistema' => array(
+            'nome' => 'mapa_sistema',
+            'titulo' => 'Mapa do sistema',
+            'modulo' => 'sistema',
+            'nivel' => 'diagnostico',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_system_map_cached',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array(),
+            'saida' => 'Mapa de telas, rotas, arquivos, endpoints e acoes.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'alertas_operacionais' => array(
+            'nome' => 'alertas_operacionais',
+            'titulo' => 'Alertas operacionais',
+            'modulo' => 'sistema',
+            'nivel' => 'diagnostico',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_intelligence_diagnostic_text',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('modulo', 'forcar_varredura'),
+            'saida' => 'Alertas, riscos e pendencias detectados.',
+            'auditoria' => array('miauw_alertas', 'miauw_alerta_eventos'),
+            'efeitos' => array('pode_varrer_alertas'),
+        ),
+        'diagnostico_operacional' => array(
+            'nome' => 'diagnostico_operacional',
+            'titulo' => 'Diagnostico operacional',
+            'modulo' => 'sistema',
+            'nivel' => 'sugestao',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_intelligence_process_validation_reply',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('modulo'),
+            'saida' => 'Validacao de processo com proximos passos.',
+            'auditoria' => array('miauw_alertas', 'miauw_padroes'),
+            'efeitos' => array('nao_altera_dados_operacionais'),
+        ),
+        'memoria_operacional' => array(
+            'nome' => 'memoria_operacional',
+            'titulo' => 'Memoria operacional',
+            'modulo' => 'sistema',
+            'nivel' => 'leitura',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_memory_context_for_message',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array('consulta'),
+            'saida' => 'Memorias e padroes relevantes para a consulta.',
+            'auditoria' => array('miauw_memorias', 'miauw_padroes'),
+            'efeitos' => array('nao_expor_segredos'),
+        ),
+        'diagnostico_skills' => array(
+            'nome' => 'diagnostico_skills',
+            'titulo' => 'Diagnostico de skills',
+            'modulo' => 'miauby',
+            'nivel' => 'diagnostico',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_registry_diagnostics',
+            'openai_tool' => true,
+            'local_action' => false,
+            'entrada' => array(),
+            'saida' => 'Inventario seguro das skills registradas.',
+            'auditoria' => array(),
+            'efeitos' => array('nao_exibe_segredos'),
+        ),
+        'criar_tarefa' => array(
+            'nome' => 'criar_tarefa',
+            'titulo' => 'Criar tarefa',
+            'modulo' => 'tarefa',
+            'nivel' => 'escrita',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_create_tarefa',
+            'openai_tool' => false,
+            'local_action' => true,
+            'entrada' => array('titulo', 'descricao', 'prioridade'),
+            'saida' => 'Tarefa criada com status aberta.',
+            'auditoria' => array('wf_tarefas', 'wf_logs'),
+            'efeitos' => array('cria_registro'),
+        ),
+        'criar_encomenda_cotacao' => array(
+            'nome' => 'criar_encomenda_cotacao',
+            'titulo' => 'Criar encomenda na cotacao',
+            'modulo' => 'cotacao',
+            'nivel' => 'escrita',
+            'risco' => 'alto',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_create_cotacao_encomenda',
+            'openai_tool' => true,
+            'local_action' => true,
+            'entrada' => array('produto', 'responsavel', 'observacao'),
+            'saida' => 'Item de encomenda criado na Cotacao Geral.',
+            'auditoria' => array('cotacao_itens', 'cotacao_auditoria', 'wf_logs'),
+            'efeitos' => array('cria_item_cotacao'),
+        ),
+        'criar_cotacao_urgente' => array(
+            'nome' => 'criar_cotacao_urgente',
+            'titulo' => 'Criar urgente na cotacao',
+            'modulo' => 'cotacao',
+            'nivel' => 'escrita',
+            'risco' => 'alto',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_create_cotacao_urgente',
+            'openai_tool' => false,
+            'local_action' => true,
+            'entrada' => array('produto'),
+            'saida' => 'Item urgente criado na Cotacao Geral.',
+            'auditoria' => array('cotacao_itens', 'cotacao_auditoria', 'miauw_alertas', 'wf_logs'),
+            'efeitos' => array('cria_item_cotacao', 'cria_alerta'),
+        ),
+        'criar_cotacao_rapida' => array(
+            'nome' => 'criar_cotacao_rapida',
+            'titulo' => 'Criar cotacao rapida',
+            'modulo' => 'cotacao',
+            'nivel' => 'escrita',
+            'risco' => 'alto',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_create_cotacao_rapida',
+            'openai_tool' => false,
+            'local_action' => true,
+            'entrada' => array('fornecedor', 'itens'),
+            'saida' => 'Fornecedor e itens com preco criados/atualizados.',
+            'auditoria' => array('cotacao_fornecedores', 'cotacao_itens', 'cotacao_precos', 'cotacao_auditoria'),
+            'efeitos' => array('cria_fornecedor_quando_claro', 'cria_itens_precos'),
+        ),
+        'criar_planilha_cotacao' => array(
+            'nome' => 'criar_planilha_cotacao',
+            'titulo' => 'Criar planilha de cotacao',
+            'modulo' => 'cotacao',
+            'nivel' => 'escrita',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_create_cotacao_planilha',
+            'openai_tool' => false,
+            'local_action' => true,
+            'entrada' => array('nome'),
+            'saida' => 'Novo bloco de cotacao criado pelo modelo existente.',
+            'auditoria' => array('cotacao_blocos', 'cotacao_auditoria'),
+            'efeitos' => array('cria_bloco_cotacao'),
+        ),
+        'criar_lancamento_financeiro' => array(
+            'nome' => 'criar_lancamento_financeiro',
+            'titulo' => 'Criar lancamento financeiro',
+            'modulo' => 'financeiro',
+            'nivel' => 'escrita',
+            'risco' => 'alto',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_create_financeiro_lancamento',
+            'openai_tool' => true,
+            'local_action' => true,
+            'entrada' => array('categoria', 'valor', 'responsavel', 'observacao', 'data'),
+            'saida' => 'Lancamento financeiro criado com auditoria.',
+            'auditoria' => array('financeiro_lancamentos', 'financeiro_auditoria', 'miauw_padroes'),
+            'efeitos' => array('cria_lancamento_financeiro', 'aprende_padrao_comando'),
+        ),
+        'registrar_memoria' => array(
+            'nome' => 'registrar_memoria',
+            'titulo' => 'Registrar memoria',
+            'modulo' => 'miauby',
+            'nivel' => 'escrita',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_memory_store',
+            'openai_tool' => false,
+            'local_action' => true,
+            'entrada' => array('modulo', 'chave', 'valor'),
+            'saida' => 'Memoria operacional resumida.',
+            'auditoria' => array('miauw_memorias'),
+            'efeitos' => array('nao_memorizar_segredos'),
+        ),
+        'analisar_padroes' => array(
+            'nome' => 'analisar_padroes',
+            'titulo' => 'Analisar padroes',
+            'modulo' => 'miauby',
+            'nivel' => 'sugestao',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_intelligence_patterns_reply',
+            'openai_tool' => false,
+            'local_action' => true,
+            'entrada' => array('mensagem'),
+            'saida' => 'Padroes aprendidos e sugestoes de processo.',
+            'auditoria' => array('miauw_padroes'),
+            'efeitos' => array('nao_altera_modulos'),
+        ),
+        'validar_processo' => array(
+            'nome' => 'validar_processo',
+            'titulo' => 'Validar processo',
+            'modulo' => 'miauby',
+            'nivel' => 'sugestao',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_intelligence_process_validation_reply',
+            'openai_tool' => false,
+            'local_action' => true,
+            'entrada' => array('mensagem'),
+            'saida' => 'Checklist operacional e riscos.',
+            'auditoria' => array('miauw_alertas', 'miauw_padroes'),
+            'efeitos' => array('nao_altera_modulos'),
+        ),
+    );
+
+    return $registry;
+}
+
+function miauw_skill_registry_public(): array
+{
+    $items = array();
+
+    foreach (miauw_skill_registry() as $name => $skill) {
+        $executor = (string) ($skill['executor'] ?? '');
+        $items[$name] = array(
+            'nome' => (string) ($skill['nome'] ?? $name),
+            'titulo' => (string) ($skill['titulo'] ?? $name),
+            'modulo' => (string) ($skill['modulo'] ?? 'sistema'),
+            'nivel' => (string) ($skill['nivel'] ?? 'leitura'),
+            'risco' => (string) ($skill['risco'] ?? 'baixo'),
+            'permissao' => (string) ($skill['permissao'] ?? 'autenticado'),
+            'executor' => $executor,
+            'executor_disponivel' => $executor !== '' && function_exists($executor),
+            'openai_tool' => !empty($skill['openai_tool']),
+            'local_action' => !empty($skill['local_action']),
+            'entrada' => array_values((array) ($skill['entrada'] ?? array())),
+            'saida' => (string) ($skill['saida'] ?? ''),
+            'auditoria' => array_values((array) ($skill['auditoria'] ?? array())),
+            'efeitos' => array_values((array) ($skill['efeitos'] ?? array())),
+        );
+    }
+
+    return $items;
+}
+
+function miauw_skill_registry_summary(): array
+{
+    $summary = array(
+        'total' => 0,
+        'por_modulo' => array(),
+        'por_nivel' => array(),
+        'por_risco' => array(),
+        'openai_tools' => 0,
+        'acoes_locais' => 0,
+        'executores_indisponiveis' => array(),
+    );
+
+    foreach (miauw_skill_registry_public() as $name => $skill) {
+        $summary['total']++;
+        $module = (string) $skill['modulo'];
+        $level = (string) $skill['nivel'];
+        $risk = (string) $skill['risco'];
+        $summary['por_modulo'][$module] = ($summary['por_modulo'][$module] ?? 0) + 1;
+        $summary['por_nivel'][$level] = ($summary['por_nivel'][$level] ?? 0) + 1;
+        $summary['por_risco'][$risk] = ($summary['por_risco'][$risk] ?? 0) + 1;
+
+        if (!empty($skill['openai_tool'])) {
+            $summary['openai_tools']++;
+        }
+
+        if (!empty($skill['local_action'])) {
+            $summary['acoes_locais']++;
+        }
+
+        if (empty($skill['executor_disponivel'])) {
+            $summary['executores_indisponiveis'][] = $name;
+        }
+    }
+
+    ksort($summary['por_modulo']);
+    ksort($summary['por_nivel']);
+    ksort($summary['por_risco']);
+
+    return $summary;
+}
+
+function miauw_skill_registry_diagnostics(): string
+{
+    $summary = miauw_skill_registry_summary();
+    $lines = array(
+        'REGISTRY DE SKILLS DO MIAUBY',
+        'Total registrado: ' . (int) $summary['total'],
+        'OpenAI tools: ' . (int) $summary['openai_tools'] . ' | Acoes locais: ' . (int) $summary['acoes_locais'],
+        'Por nivel: ' . json_encode($summary['por_nivel'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        'Por modulo: ' . json_encode($summary['por_modulo'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        'Regra fixa: leitura pode resumir; sugestao pode orientar; escrita so pode alterar dados por executor controlado, validacao e auditoria.',
+        'Regra fixa: Miauby nao executa SQL do usuario, nao le segredos, nao edita arquivos e nao cria automacao fora das skills registradas.',
+    );
+
+    if (!empty($summary['executores_indisponiveis'])) {
+        $lines[] = 'Executores indisponiveis agora: ' . implode(', ', $summary['executores_indisponiveis']);
+    } else {
+        $lines[] = 'Executores: todos os registrados estao carregados neste bootstrap.';
+    }
+
+    $lines[] = 'Skills de escrita exigem dados claros. Se faltar produto, responsavel, valor, fornecedor ou categoria, perguntar antes.';
+
+    return implode("\n", $lines);
+}
+
 function miauw_skill_period_from_message(string $message): array
 {
     $lower = miauw_skill_lower($message);
@@ -1028,10 +1464,13 @@ function miauw_skill_create_cotacao_urgente(array $command): array
             'alta',
             'Urgente criado pelo Miauby',
             'Medicamento em falta registrado como urgente: ' . $product . '.',
-            'cotacao_itens',
-            $itemId,
-            array('produto' => $product, 'origem' => 'miauby'),
-            1
+            array(
+                'subject' => 'cotacao_urgente_comando_' . $itemId,
+                'table' => 'cotacao_itens',
+                'record_id' => $itemId,
+                'produto' => $product,
+                'origem' => 'miauby',
+            )
         );
     }
 
@@ -2514,16 +2953,7 @@ function miauw_skill_context_for_message(string $message): string
     }
 
     if (!$modules && miauw_skill_has_any($message, array('o que voce faz', 'o que você faz', 'consegue fazer', 'skills', 'agente', 'agentes', 'ferramentas'))) {
-        return "SKILLS CONTROLADAS DO MIAUBY\n"
-            . "- Consulta resumo financeiro por mes/ano: fechamentos, divergencias, total lancado, total sistema, sobra/falta e categorias de lancamento.\n"
-            . "- Consulta resumo de cashback/vendas por mes/ano: compras, valores, cashback gerado/resgatado e saldo ativo atual.\n"
-            . "- Consulta resumo de cotacao por mes/ano: itens movimentados, status, vencedores, urgentes/encomendas e blocos ativos.\n"
-            . "- Consulta tarefas abertas por prioridade, concluidas e canceladas no modulo /tarefa/.\n"
-            . "- Consulta Farmacia Popular para UF PR/Parana por produto, principio ativo ou apresentacao, retornando valor de referencia/reembolso e fonte.\n"
-            . "- Cria encomenda na Cotacao Geral quando houver produto e responsavel/cliente claros. Ex.: `encomenda losartana 50mg Isadora`.\n"
-            . "- Cria nova planilha/bloco de cotacao quando houver nome claro. Ex.: `criar planilha leite`. A nova planilha nasce com o mesmo modelo da Cotacao Geral.\n"
-            . "- Relatorio aqui e resposta em texto com dados do sistema. Nao gera PDF nem link no chat.\n"
-            . "- Limite: nao tem acesso livre ao banco, nao executa SQL do usuario, nao altera dados sem ferramenta propria e nao inventa dados reais.";
+        return miauw_skill_registry_diagnostics();
     }
 
     if (!$modules && !$lookupLines) {

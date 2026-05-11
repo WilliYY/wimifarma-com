@@ -136,6 +136,8 @@ foreach ($filters as $key => $value) {
         </div>
         <div class="sheet-heading-actions">
             <div class="sheet-count sheet-status-pill" data-save-status><?php echo e((string) count($items)); ?> linha(s) com dados</div>
+            <div class="presence-pill" data-presence-summary>1 pessoa usando</div>
+            <div class="presence-list" data-presence-list aria-live="polite"></div>
             <div class="user-pill">Usuario: <?php echo e((string) $user['username']); ?></div>
         </div>
     </section>
@@ -233,7 +235,7 @@ foreach ($filters as $key => $value) {
         </section>
 
         <div class="sheet-grid-wrap">
-            <table id="sheet-grid" class="sheet-grid" data-next-row="<?php echo e((string) $rowCount); ?>" data-block="<?php echo e((string) $block['slug']); ?>" data-sync-version="<?php echo e((string) ($syncState['versao'] ?? 1)); ?>" data-sync-data-version="<?php echo e((string) ($syncState['dados_versao'] ?? 1)); ?>" data-sync-filter-version="<?php echo e((string) ($syncState['filtro_versao'] ?? 1)); ?>" data-sync-structure-version="<?php echo e((string) ($syncState['estrutura_versao'] ?? 1)); ?>" data-sync-filter-color="<?php echo e((string) ($syncState['filtro_cor'] ?? '')); ?>" data-sync-filter-winner="<?php echo e((string) ($syncState['filtro_vencedor'] ?? '')); ?>">
+            <table id="sheet-grid" class="sheet-grid" data-next-row="<?php echo e((string) $rowCount); ?>" data-block="<?php echo e((string) $block['slug']); ?>" data-user-id="<?php echo e((string) ($user['id'] ?? 0)); ?>" data-user-name="<?php echo e((string) $user['username']); ?>" data-sync-version="<?php echo e((string) ($syncState['versao'] ?? 1)); ?>" data-sync-data-version="<?php echo e((string) ($syncState['dados_versao'] ?? 1)); ?>" data-sync-filter-version="<?php echo e((string) ($syncState['filtro_versao'] ?? 1)); ?>" data-sync-structure-version="<?php echo e((string) ($syncState['estrutura_versao'] ?? 1)); ?>" data-sync-filter-color="<?php echo e((string) ($syncState['filtro_cor'] ?? '')); ?>" data-sync-filter-winner="<?php echo e((string) ($syncState['filtro_vencedor'] ?? '')); ?>">
                 <colgroup>
                     <col class="row-number-col">
                     <col class="col-ean" data-col-index="0">

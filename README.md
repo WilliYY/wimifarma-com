@@ -31,6 +31,9 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - DNS GoDaddy e Nginx Proxy Manager estavam em configuracao para `wimifarma.com`.
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
 - A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
+- O card de Tarefas consulta `site/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
+- A Cotacao possui primeira camada de presenca ao vivo: usuarios ativos, celula/coluna em foco, edicao ativa e indicacao quando outro usuario esta fora do filtro atual.
+- Miauby possui `miauw_skill_registry()` para inventariar skills por modulo, risco, nivel, permissao, auditoria e executor antes de novas autonomias.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
@@ -230,5 +233,6 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 - `docs/16-testes.md`: validacoes atuais e evolucao de testes.
 - `docs/17-performance.md`: performance, cache e cuidados WordPress.
 - `docs/18-miauby-evolucao-generativa.md`: direcao para skills, padroes e autonomia segura do Miauby.
+- `docs/19-cotacao-tempo-real.md`: presenca ao vivo, sync atual e caminho para colaboracao estilo Sheets.
 
 Leia `AGENTS.md` antes de qualquer alteracao.

@@ -9,6 +9,7 @@ Este documento descreve os fluxos reais encontrados no sistema e os cuidados par
 Entrada publica:
 
 - `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
+- O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
 
 Rotas de login:
 
@@ -65,6 +66,7 @@ Tabelas principais:
 ## Fluxo Cotacao
 
 O modulo de Cotacao controla blocos, itens, fornecedores, categorias, precos e status. Ele ja tem tabelas preparadas para controle de versao/sync, mas a integracao Google Sheets ainda nao esta implementada.
+Tambem existe uma primeira camada de colaboracao ao vivo por polling: a tela envia `presence_ping`, mostra quantas pessoas estao usando, exibe chips dos usuarios ativos e marca a celula remota quando ela esta visivel no filtro atual.
 
 Arquivos principais:
 
@@ -83,6 +85,7 @@ Tabelas principais:
 - `cotacao_precos`
 - `cotacao_regras_formatacao`
 - `cotacao_sync_estado`
+- `cotacao_presencas`
 - `cotacao_auditoria`
 
 Regras a preservar:
@@ -94,6 +97,8 @@ Regras a preservar:
 - cores, estilos e formatacao;
 - auditoria;
 - status e prioridade.
+- presenca temporaria nao deve virar historico operacional permanente.
+- quando filtros estiverem ativos, indicar se outro usuario esta fora do filtro em vez de esconder silenciosamente.
 
 ## Fluxo Financeiro
 
@@ -183,6 +188,7 @@ Tabelas principais:
 Direcao de evolucao:
 
 - evoluir por skills controladas, nao por acesso livre ao banco;
+- usar `miauw_skill_registry()` como fonte de inventario das skills antes de novas tools;
 - registrar padroes e memorias com revisao e auditoria;
 - separar leitura, sugestao e escrita;
 - documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.

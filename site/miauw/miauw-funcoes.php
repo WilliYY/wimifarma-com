@@ -2030,6 +2030,16 @@ function miauw_openai_tools(): array
         ),
         array(
             'type' => 'function',
+            'name' => 'diagnostico_skills',
+            'description' => 'Lista o registry controlado de skills do Miauby, separando leitura, sugestao, escrita, risco, auditoria e executores disponiveis.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
             'name' => 'criar_lancamento_financeiro',
             'description' => 'Cria um lancamento financeiro controlado no dia informado ou hoje. Use quando houver categoria clara, valor e responsavel. Entenda frases fora de ordem: "500 pix cnpj isadora mercadoria" e "mercadoria 500 pix cnpj isadora" significam Pix CNPJ, valor 500, responsavel Isadora e obs mercadoria. Se houver hifen, antes do hifen e responsavel e depois e observacao: "pix 500 will - pagamento boleto", "sangria 33 isadora - pao de queijo". Pix sem maquininha vai em Pix CNPJ; maq pix/mpix/maqpix vai em Maquininha Pix. Dinheiro pego do caixa para compra pequena vai em Outros, salvo se disser Sangria.',
             'parameters' => array(
@@ -2167,6 +2177,12 @@ function miauw_openai_tool_result(string $name, array $args): string
             : '';
 
     return trim(($memory !== '' ? $memory : 'MEMORIA OPERACIONAL DO MIAUBY\nSem memoria relevante encontrada para essa consulta.') . "\n\n" . $patterns);
+    }
+
+    if ($name === 'diagnostico_skills') {
+        return function_exists('miauw_skill_registry_diagnostics')
+            ? miauw_skill_registry_diagnostics()
+            : 'Registry de skills indisponivel neste bootstrap.';
     }
 
     if ($name === 'criar_lancamento_financeiro') {
