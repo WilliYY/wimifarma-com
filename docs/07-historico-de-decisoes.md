@@ -265,3 +265,29 @@ Riscos/cuidados:
 - O VPS pode ter `advanced-cache.php`, `cache/` e `speedycache-config/` ignorados pelo Git; limpar ou mover esses arquivos runtime apos o deploy.
 - Reativar cache publico somente depois de validar que a home nao possui assets `http://wimifarma.com/...`.
 - Se houver necessidade de performance antes disso, medir primeiro e documentar a estrategia de cache.
+
+## 2026-05-11 - Tema da home tambem normaliza URLs publicas para HTTPS
+
+Decisao:
+
+- Adicionar helpers HTTPS no tema `wimifarma-cashback-theme`.
+- Gerar URLs de assets e links da home por helpers do tema.
+- Adicionar filtros de URL e buffer de saida no frontend publico para substituir `http://wimifarma.com`/`www` por `https://wimifarma.com`.
+
+Motivo:
+
+- A home publica continuou visualmente quebrada e o HTML ainda continha assets `http://wimifarma.com/...` mesmo sem o header de SpeedyCache. Como a tela afetada e a home do tema, a correcao precisa existir tambem dentro do tema carregado pela pagina, nao apenas no MU plugin.
+
+Impacto:
+
+- `site/wp-content/themes/wimifarma-cashback-theme/functions.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/header.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/front-page.php`
+- `docs/09-deploy-e-ambiente.md`
+- `docs/17-performance.md`
+
+Riscos/cuidados:
+
+- Manter a correcao restrita aos hosts publicos `wimifarma.com` e `www.wimifarma.com`.
+- Validar depois do deploy com `curl` que a home nao possui assets `http://wimifarma.com/...`.
+- Se o erro persistir apos o deploy, o proxy pode estar apontando para outra pasta/container ou o VPS pode nao ter recebido o commit correto.

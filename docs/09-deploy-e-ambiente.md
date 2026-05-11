@@ -28,6 +28,9 @@ VPS Ubuntu/Oracle:
 - `.env.example`
 - `site/wp-config.php`
 - `site/wp-content/mu-plugins/wimifarma-public-https.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/functions.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/header.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/front-page.php`
 - `site/wp-content/advanced-cache.php`
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
@@ -50,6 +53,7 @@ VPS Ubuntu/Oracle:
 - Manter `site/wp-config.php` reconhecendo HTTPS atras do proxy para evitar CSS/JS com `http://`.
 - Para hosts publicos `wimifarma.com` e `www.wimifarma.com`, manter `site/wp-config.php` forcando HTTPS e canonicalizando `WP_HOME`/`WP_SITEURL` para `https://wimifarma.com`.
 - Manter `site/wp-content/mu-plugins/wimifarma-public-https.php` ativo para normalizar URLs publicas de tema/plugins para `https://wimifarma.com`.
+- Manter a camada de normalizacao HTTPS no tema `wimifarma-cashback-theme`, porque a home depende do tema e pode continuar quebrada se algum arquivo runtime impedir o MU plugin de atuar.
 - Manter cache de pagina WordPress/SpeedyCache desligado por padrao durante a migracao.
 - Em hosts publicos, ativar page cache somente com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que o HTML publico nao contiver assets `http://wimifarma.com/...`.
 - Quando aparecer home sem CSS/JS por mixed content, limpar ou mover `advanced-cache.php`, `cache/` e `speedycache-config/` antes de culpar tema ou proxy.
@@ -70,6 +74,7 @@ VPS Ubuntu/Oracle:
 - O redirect HTTP -> HTTPS tambem fica protegido por `.htaccess` para cobrir casos em que o Force SSL do proxy nao aplicar como esperado.
 - O Apache do container habilita `AllowOverride All` em `/var/www/html` para permitir regras do WordPress e redirects do projeto.
 - `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
+- O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 
 ## Riscos ao alterar
 
@@ -82,6 +87,7 @@ VPS Ubuntu/Oracle:
 - Se `AllowOverride` ficar desativado, o `.htaccess` sera ignorado e `http://wimifarma.com` podera continuar respondendo 200.
 - Remover a canonicalizacao publica em `wp-config.php` pode fazer `www.wimifarma.com` ou assets do tema voltarem para `http://`.
 - Remover o MU plugin de HTTPS publico pode permitir que plugins antigos voltem a emitir assets inseguros.
+- Remover a normalizacao HTTPS do tema pode quebrar a home mesmo que outras rotas continuem funcionando.
 - `advanced-cache.php` do SpeedyCache roda antes dos MU plugins quando `WP_CACHE` esta ligado; ele pode servir uma home antiga com URLs `http://` mesmo que o resto do WordPress ja esteja corrigido.
 
 ## Pendencias

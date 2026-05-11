@@ -11,6 +11,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - Modulos internos responderam mais rapidamente nos testes de login/status.
 - Cache de pagina foi mantido desligado por padrao para evitar comportamento instavel durante a migracao.
 - A home publica mostrou HTML com assets `http://wimifarma.com/...` mesmo apos ajustes de HTTPS, indicando cache estatico antigo do SpeedyCache/`advanced-cache.php`.
+- Mesmo sem header de SpeedyCache, a home publica ainda podia gerar parte dos assets em `http://`; o tema ganhou uma segunda camada de normalizacao HTTPS.
 
 ## Arquivos, rotas e servicos envolvidos
 
@@ -22,6 +23,9 @@ Arquivos:
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
 - `site/wp-content/themes/wimifarma-cashback-theme/`
+- `site/wp-content/themes/wimifarma-cashback-theme/functions.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/header.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/front-page.php`
 - `docker/php/Dockerfile`
 - `docker-compose.yml`
 
@@ -40,6 +44,7 @@ Servicos:
 
 - Nao ativar cache agressivo antes de corrigir URL publica e SSL.
 - Nao ativar page cache publico sem validar que a home gera apenas assets `https://`.
+- Nao remover os helpers HTTPS do tema sem substituir por outra camada equivalente.
 - Nao remover plugins sem entender impacto no site.
 - Medir antes/depois de mudancas de performance.
 - Separar lentidao de Windows Docker da lentidao real no VPS Linux.
@@ -48,6 +53,7 @@ Servicos:
 
 - `WP_CACHE` fica `false` por padrao durante migracao.
 - Hosts publicos usam `WIMIFARMA_PUBLIC_PAGE_CACHE=false` por padrao e so aceitam page cache quando essa variavel for `true`.
+- O tema `wimifarma-cashback-theme` gera assets e links da home por helpers proprios e filtra a saida publica para trocar `http://wimifarma.com` por `https://wimifarma.com`.
 - `endurance-page-cache.php`, especifico de HostGator, foi removido/quarentenado fora do projeto.
 - Investigacao de performance deve comecar por plugins/cache/tema antes de reescrever codigo.
 
@@ -55,6 +61,7 @@ Servicos:
 
 - Cache pode esconder bugs de redirect/HTTPS.
 - `advanced-cache.php` pode servir HTML antigo antes de `wp-config.php` chegar nos filtros de tema/MU plugin se `WP_CACHE` estiver ligado.
+- Buffer de saida no tema pode mascarar fontes antigas de URL; se voltar a aparecer `http://`, procurar tambem plugins que imprimem HTML muito cedo.
 - Plugins premium ignorados pelo Git podem existir no ambiente e afetar comportamento.
 - Aumentar recursos sem medir pode mascarar problema de plugin.
 
