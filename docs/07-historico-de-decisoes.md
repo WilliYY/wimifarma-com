@@ -149,3 +149,23 @@ Impacto:
 Riscos/cuidados:
 
 - Docs desatualizados causam decisoes ruins. Atualizar junto com mudancas relevantes.
+
+## 2026-05-11 - WordPress reconhece HTTPS atras do Nginx Proxy Manager
+
+Decisao:
+
+- Configurar `site/wp-config.php` para marcar a requisicao como HTTPS quando o proxy enviar `X-Forwarded-Proto: https` ou `X-Forwarded-SSL: on`.
+
+Motivo:
+
+- O Apache recebe trafego HTTP interno do Nginx Proxy Manager. Sem esse ajuste, o WordPress pode gerar assets com `http://`, causando mixed content e tela sem CSS/JS no navegador.
+
+Impacto:
+
+- `site/wp-config.php`
+- `docs/09-deploy-e-ambiente.md`
+
+Riscos/cuidados:
+
+- Manter o Proxy Host do Nginx Proxy Manager enviando os headers padrao.
+- Validar o HTML publico com `curl` para confirmar links `https://` em CSS e JS.

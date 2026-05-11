@@ -25,6 +25,16 @@ $wimifarma_cache_host = $_SERVER['HTTP_HOST'] ?? '';
 $wimifarma_cache_default = in_array( $wimifarma_cache_host, array( '127.0.0.1:3002', 'localhost:3002' ), true ) ? 'false' : 'true';
 define('WP_CACHE', filter_var( wimifarma_env( 'WP_CACHE', $wimifarma_cache_default ), FILTER_VALIDATE_BOOLEAN )); // Added by SpeedyCache
 
+$wimifarma_forwarded_proto = strtolower( (string) ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) );
+$wimifarma_forwarded_ssl   = strtolower( (string) ( $_SERVER['HTTP_X_FORWARDED_SSL'] ?? '' ) );
+if (
+	in_array( 'https', array_map( 'trim', explode( ',', $wimifarma_forwarded_proto ) ), true )
+	|| $wimifarma_forwarded_ssl === 'on'
+) {
+	$_SERVER['HTTPS']      = 'on';
+	$_SERVER['SERVER_PORT'] = '443';
+}
+
 /**
  * The base configuration for WordPress
  *
