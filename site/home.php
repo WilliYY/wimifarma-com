@@ -578,6 +578,6 @@ $modules = array(
         }
     }());
 </script>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260511b')); ?>" defer></script>
 </body>
 </html>

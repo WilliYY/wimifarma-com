@@ -528,3 +528,29 @@ Riscos/cuidados:
 
 - O pre-filtro de conhecimento precisa ser revisado com exemplos reais para nao esconder informacoes antigas importantes.
 - Codigo, SQL e stack traces devem continuar fora das respostas operacionais do Miauby para usuarios finais.
+
+## 2026-05-11 - Miauby so alerta encomenda da Cotacao depois de mais de 1 dia
+
+Decisao:
+
+- Alterar o alerta `cotacao_encomenda_parada` para considerar somente encomendas com mais de 1 dia sem baixa/pedido.
+- Centralizar um comentario curto de balao para esse alerta e repassar o texto por `widget-status.php`, `widget-alerts.php` e `api.php`.
+- Atualizar o cache-buster do `widget.js` para garantir que os modulos carreguem a versao nova do balao.
+
+Motivo:
+
+- O usuario quer que Miauby comente encomendas apenas quando elas passaram tempo suficiente para exigir revisao operacional, evitando ruido em encomendas recentes.
+
+Impacto:
+
+- `site/miauw/miauw-intelligence.php`
+- `site/miauw/widget.js`
+- `site/miauw/widget-status.php`
+- `site/miauw/widget-alerts.php`
+- `site/miauw/api.php`
+- paginas que carregam `/miauw/widget.js`
+
+Riscos/cuidados:
+
+- Se a data da encomenda estiver ausente ou incorreta, o alerta pode atrasar ou aparecer indevidamente.
+- O balao deve continuar curto e sem codigo; detalhes completos ficam na aba de alertas.

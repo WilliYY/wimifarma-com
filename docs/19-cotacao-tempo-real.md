@@ -26,6 +26,8 @@ Em 2026-05-11, foi validado por simulacao com duas sessoes autenticadas que:
 
 Tambem em 2026-05-11, a digitacao de categoria passou a usar debounce curto em `site/cotacao/app.js` para lista de categorias, filtro da grade e opcoes relacionadas. O objetivo e evitar que cada tecla force varredura completa da planilha e cause travadas perceptiveis.
 
+Miauby acompanha alertas operacionais da Cotacao, mas encomenda so vira alerta/comentario de balao quando passa de 1 dia sem baixa/pedido. Antes disso, a encomenda deve continuar como fluxo normal da Cotacao para evitar ruido operacional.
+
 Na mesma auditoria local, o banco tinha 243 itens e 53 categorias, e a rota autenticada `/cotacao/` apareceu nos logs com cerca de 1,46 MB de HTML. Isso ainda funciona, mas indica que o proximo gargalo provavel sera peso inicial da tela/snapshot quando a planilha crescer.
 
 Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea forte ainda depende de conflito por campo, fila de eventos e canal de tempo real mais eficiente.
@@ -65,6 +67,7 @@ Tabelas:
 - Ordem, categoria, status, prioridade, observacao, vencedor e formatacao nao podem ser sobrescritos sem auditoria.
 - Precos por fornecedor devem continuar ligados a `item_id` e `fornecedor_id`.
 - Filtro ativo nao pode esconder conflito de dados; se outro usuario estiver em linha fora do filtro, a interface deve indicar isso.
+- Encomenda da Cotacao nao deve gerar alerta do Miauby antes de completar mais de 1 dia sem baixa/pedido.
 - Presenca e dado temporario; nao deve ser usada como historico permanente.
 - A tela deve continuar funcional quando houver apenas um usuario, quando outro usuario fechar o navegador ou quando o ping falhar temporariamente.
 

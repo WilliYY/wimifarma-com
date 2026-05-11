@@ -1747,7 +1747,7 @@ function miauw_skill_cotacao_improvement_suggestions(string $message): ?string
         "3. Confira linhas sem vencedor no fim do dia. Sem vencedor e item parado usando fantasia.",
         "4. Use cotacao rapida no chat: `Mauro - loratadina 5 reais, losartana 3,20` para jogar preco sem abrir ritual.",
         "5. Depois de filtrar por categoria, use o filtro de Quem ganhou para ver fornecedor dominante e negociar melhor.",
-        "6. Encomenda precisa de produto, responsavel e retorno. Se ficar parada, vira alerta operacional.",
+        "6. Encomenda precisa de produto, responsavel e retorno. Se passar de 1 dia parada, vira alerta operacional.",
         "7. Para compras maiores: compare preco, prazo, bonificacao, validade, giro e ruptura. Preco baixo sozinho e armadilha bonita.",
     ));
 }

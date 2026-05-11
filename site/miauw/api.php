@@ -98,8 +98,10 @@ try {
                     'title' => (string) ($alert['titulo'] ?? $alert['title'] ?? 'Alerta operacional'),
                     'severity' => (string) ($alert['severidade'] ?? $alert['severity'] ?? 'media'),
                     'module' => (string) ($alert['modulo'] ?? $alert['module'] ?? 'sistema'),
+                    'type' => (string) ($alert['tipo'] ?? $alert['type'] ?? ''),
                     'message' => (string) ($alert['mensagem'] ?? $alert['message'] ?? ''),
                     'action' => (string) ($alert['acao_sugerida'] ?? $alert['action'] ?? ''),
+                    'speech' => (string) ($alert['comentario_balao'] ?? $alert['speech'] ?? ''),
                     'risk_score' => (int) ($alert['risco_score'] ?? $alert['risk_score'] ?? 50),
                 );
             }, $guardianAlerts),

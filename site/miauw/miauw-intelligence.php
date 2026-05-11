@@ -285,7 +285,7 @@ function miauw_intelligence_alert_action(string $module, string $type, array $co
     }
 
     if ($type === 'cotacao_encomenda_parada') {
-        return 'Conferir produto, responsavel/cliente, data de registro e vencedor; depois marcar retirada, cancelada ou pedido.';
+        return 'Como passou de 1 dia, conferir produto, responsavel/cliente e vencedor; depois finalizar, marcar retirada, cancelar ou virar pedido.';
     }
 
     if ($type === 'cotacao_urgente_parada') {
@@ -307,6 +307,19 @@ function miauw_intelligence_alert_action(string $module, string $type, array $co
     return $module === 'financeiro'
         ? 'Validar dados, responsavel e comprovantes antes de seguir.'
         : 'Conferir origem, responsavel e proximo estado do processo.';
+}
+
+function miauw_intelligence_alert_speech(string $module, string $type, string $title, array $context = array()): string
+{
+    if ($type === 'cotacao_encomenda_parada') {
+        return 'Cotacao: encomenda com mais de 1 dia. Confere se ja da para finalizar, virar pedido, retirada ou cancelamento.';
+    }
+
+    if ($module === 'cotacao') {
+        return 'Cotacao tem alerta. Abre comigo e confere antes que vire retrabalho.';
+    }
+
+    return $title !== '' ? $title : 'Miauby tem alerta operacional para revisar.';
 }
 
 function miauw_intelligence_upsert_alert(
@@ -440,16 +453,20 @@ function miauw_intelligence_public_alert(array $alert): array
     $riskScore = isset($alert['risco_score'])
         ? (int) $alert['risco_score']
         : miauw_intelligence_alert_risk_score($severity, $context);
+    $module = (string) ($alert['modulo'] ?? 'geral');
+    $type = (string) ($alert['tipo'] ?? '');
+    $title = (string) ($alert['titulo'] ?? 'Alerta');
 
     return array(
         'id' => (int) ($alert['id'] ?? 0),
         'fingerprint' => (string) ($alert['fingerprint'] ?? ''),
-        'modulo' => (string) ($alert['modulo'] ?? 'geral'),
-        'tipo' => (string) ($alert['tipo'] ?? ''),
+        'modulo' => $module,
+        'tipo' => $type,
         'severidade' => $severity,
-        'titulo' => (string) ($alert['titulo'] ?? 'Alerta'),
+        'titulo' => $title,
         'mensagem' => (string) ($alert['mensagem'] ?? ''),
         'acao_sugerida' => $action,
+        'comentario_balao' => miauw_intelligence_alert_speech($module, $type, $title, $context),
         'risco_score' => $riskScore,
         'ocorrencias' => (int) ($alert['ocorrencias'] ?? 1),
         'created_at' => (string) ($alert['created_at'] ?? ''),
@@ -828,27 +845,29 @@ function miauw_guardian_scan_cotacao(array &$processedTypes): array
     $stmt = db()->prepare(
         "SELECT i.id, i.produto, i.ean, i.categoria, i.status, " . $orderDateExpr . " AS registrada_em,
                 DATEDIFF(CURDATE(), DATE(" . $orderDateExpr . ")) AS dias_parado,
+                TIMESTAMPDIFF(HOUR, " . $orderDateExpr . ", NOW()) AS horas_parada,
                 b.nome AS bloco_nome
          FROM cotacao_itens i
          LEFT JOIN cotacao_blocos b ON b.id = i.bloco_id
          WHERE i.status NOT IN ('cancelada', 'pedido')
            AND i.produto <> ''
            AND i.categoria LIKE '%encomenda%'
-           AND " . $orderDateExpr . " < DATE_SUB(NOW(), INTERVAL 2 DAY)
+           AND " . $orderDateExpr . " < DATE_SUB(NOW(), INTERVAL 1 DAY)
          ORDER BY registrada_em ASC
          LIMIT 12"
     );
     $stmt->execute();
     foreach ($stmt->fetchAll() ?: array() as $row) {
-        $days = (int) ($row['dias_parado'] ?? 0);
+        $hours = max(0, (int) ($row['horas_parada'] ?? 0));
+        $days = max(1, (int) floor($hours / 24));
         $registeredValue = trim((string) ($row['registrada_em'] ?? ''));
         $registeredDisplay = $registeredValue !== '' ? date('d/m/Y H:i', strtotime($registeredValue)) : 'data nao registrada';
         $fingerprints[] = miauw_intelligence_upsert_alert(
             'cotacao',
             'cotacao_encomenda_parada',
             $days >= 7 ? 'alta' : 'media',
-            'Encomenda parada ha ' . $days . ' dia(s)',
-            'Produto "' . (string) ($row['produto'] ?? '-') . '" esta em encomenda desde ' . $registeredDisplay . ' sem baixa/pedido. Confere cliente/responsavel antes que isso vire retrabalho.',
+            $days > 1 ? 'Encomenda parada ha ' . $days . ' dia(s)' : 'Encomenda ha mais de 1 dia',
+            'Produto "' . (string) ($row['produto'] ?? '-') . '" passou de 1 dia em encomenda desde ' . $registeredDisplay . ' sem baixa/pedido. Confere se ja da para finalizar, marcar retirada, cancelar ou virar pedido.',
             array(
                 'subject' => 'cotacao_encomenda_' . (int) $row['id'],
                 'id' => (int) $row['id'],
@@ -857,6 +876,8 @@ function miauw_guardian_scan_cotacao(array &$processedTypes): array
                 'bloco' => (string) ($row['bloco_nome'] ?? ''),
                 'registrada_em' => (string) ($row['registrada_em'] ?? ''),
                 'dias_parado' => $days,
+                'horas_parada' => $hours,
+                'limite_alerta_horas' => 24,
             )
         );
     }

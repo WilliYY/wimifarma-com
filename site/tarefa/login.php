@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="icon" type="image/svg+xml" href="/tarefa/favicon.svg">
     <link rel="stylesheet" href="/tarefa/styles.css?v=20260507b">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260506a">
-    <script src="/miauw/widget.js?v=20260506a" defer></script>
+    <script src="/miauw/widget.js?v=20260511b" defer></script>
 </head>
 <body class="task-login-body">
     <img class="login-screen-runner login-cat-runner" src="/tarefa/assets/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

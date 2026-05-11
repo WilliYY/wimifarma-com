@@ -409,8 +409,9 @@
 
     const topAlert = Array.isArray(alerts) && alerts.length ? alerts[0] : null;
     const prefix = total === 1 ? 'Miauby achou 1 alerta.' : `Miauby achou ${total} alertas.`;
+    const speech = topAlert && topAlert.speech ? topAlert.speech : '';
     queueOrShowNudge({
-      text: topAlert && topAlert.title ? `${prefix} ${topAlert.title}` : `${prefix} Abrir painel.`,
+      text: speech || (topAlert && topAlert.title ? `${prefix} ${topAlert.title}` : `${prefix} Abrir painel.`),
       prompt: '',
       view: 'alerts',
       alert: true,
@@ -524,7 +525,9 @@
         title: alert.titulo || alert.title || 'Alerta operacional',
         message: alert.mensagem || alert.message || '',
         action: alert.acao_sugerida || alert.action || '',
+        speech: alert.comentario_balao || alert.speech || '',
         module: alert.modulo || alert.module || 'sistema',
+        type: alert.tipo || alert.type || '',
         severity: alert.severidade || alert.severity || 'media',
         risk: Number(alert.risco_score || alert.risk_score || 0),
         occurrences: Number(alert.ocorrencias || alert.occurrences || 1),

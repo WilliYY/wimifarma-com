@@ -161,6 +161,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `site/miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava presente.
 - Miauby evita carregar 30 alertas completos apenas para contar badge; usar `miauw_intelligence_active_alert_count()` quando precisar de contador.
 - `miauw_knowledge_for()` filtra conhecimentos por termos relevantes antes do ranking para manter a memoria escalavel.
+- Miauby so cria/comenta alerta de encomenda da Cotacao quando a encomenda passou de 1 dia sem baixa/pedido; o comentario curto do alerta e repassado para os baloes do widget em todos os modulos.
 - `cashback/login.php`, `cotacao/login.php`, `financeiro/login.php`, `tarefa/login.php` e `miauw/login.php` responderam 200.
 - `cotacao/api.php` respondeu 401 sem sessao, esperado.
 - WordPress raiz e `wp-login.php` responderam 200, porem lentos no Docker Desktop Windows com plugins restaurados.

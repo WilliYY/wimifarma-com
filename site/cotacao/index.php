@@ -111,7 +111,7 @@ foreach ($filters as $key => $value) {
     <link rel="stylesheet" href="/cotacao/styles.css?v=<?php echo e(COTACAO_VERSION); ?>">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260506a">
     <script src="/cotacao/app.js?v=<?php echo e(COTACAO_VERSION); ?>" defer></script>
-    <script src="/miauw/widget.js?v=20260506a" defer></script>
+    <script src="/miauw/widget.js?v=20260511b" defer></script>
 </head>
 <body>
 <header class="cotacao-topbar">

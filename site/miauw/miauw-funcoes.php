@@ -34,7 +34,7 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260506a');
+    define('MIAUW_VERSION', '20260511b');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -454,7 +454,7 @@ function miauw_seed_knowledge(): void
         ),
         array(
             'Inteligencia operacional autonoma',
-            'Miauby possui uma camada de guardiao operacional que varre alertas de financeiro e cotacao, aprende padroes de comandos, detecta divergencia de caixa, dia financeiro antigo aberto, encomenda parada, urgente parado e cotacao antiga sem vencedor. A autonomia e segura: ele consulta, alerta, aprende e sugere; escrita no banco so acontece por ferramenta controlada, com validacao e auditoria.',
+            'Miauby possui uma camada de guardiao operacional que varre alertas de financeiro e cotacao, aprende padroes de comandos, detecta divergencia de caixa, dia financeiro antigo aberto, encomenda parada com mais de 1 dia, urgente parado e cotacao antiga sem vencedor. A autonomia e segura: ele consulta, alerta, aprende e sugere; escrita no banco so acontece por ferramenta controlada, com validacao e auditoria.',
             'inteligencia, guardiao, alertas, autonomia, padroes, auditoria'
         ),
         array(
@@ -2017,7 +2017,7 @@ function miauw_openai_tools(): array
         array(
             'type' => 'function',
             'name' => 'alertas_operacionais',
-            'description' => 'Consulta a inteligencia operacional autonoma do Miauby: alertas ativos, pendencias, divergencias, encomendas paradas e padroes aprendidos. Use antes de responder sobre riscos, pendencias ou validacao de processo.',
+            'description' => 'Consulta a inteligencia operacional autonoma do Miauby: alertas ativos, pendencias, divergencias, encomendas paradas com mais de 1 dia e padroes aprendidos. Use antes de responder sobre riscos, pendencias ou validacao de processo.',
             'parameters' => array(
                 'type' => 'object',
                 'properties' => array(

@@ -22,6 +22,7 @@ Miauby ja possui:
 - tool `diagnostico_skills` para o Miauby consultar o inventario de capacidades sem expor segredos.
 - contador de alertas por `miauw_intelligence_active_alert_count()`, evitando carregar listas completas apenas para badges/status.
 - busca de conhecimento em `miauw_knowledge_for()` com pre-filtro por termos relevantes antes do ranking, para manter o contexto generativo mais rapido conforme a memoria crescer.
+- alerta de encomenda da Cotacao limitado a itens com mais de 1 dia sem baixa/pedido, com comentario operacional curto enviado aos baloes do widget em todos os modulos.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -58,6 +59,7 @@ Integracoes:
 - Toda escrita importante deve passar por ferramenta controlada, validada e auditavel.
 - Memorias e padroes nao podem armazenar senhas, tokens, chaves, CPF/telefone sem necessidade ou dados sensiveis em texto solto.
 - Respostas generativas devem separar fato real, inferencia e proximo passo.
+- Balões do widget devem ser curtos, sem codigo, e usar o comentario do alerta quando existir. Para encomendas da Cotacao, comentar apenas quando passou de 1 dia.
 - A autonomia deve ser gradual: primeiro diagnosticar, depois sugerir, depois executar apenas acoes pequenas com trilha de auditoria.
 - Cotacao + Sheets precisa de IDs estaveis e controle de conflito antes de qualquer automacao generativa de sync.
 

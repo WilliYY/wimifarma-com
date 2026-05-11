@@ -85,6 +85,7 @@ function miauw_widget_alerts_payload(array $user): array
             'titulo' => (string) ($alert['titulo'] ?? 'Alerta operacional'),
             'mensagem' => (string) ($alert['mensagem'] ?? ''),
             'acao_sugerida' => (string) ($alert['acao_sugerida'] ?? ''),
+            'comentario_balao' => (string) ($alert['comentario_balao'] ?? ''),
             'risco_score' => (int) ($alert['risco_score'] ?? 50),
             'ocorrencias' => (int) ($alert['ocorrencias'] ?? 1),
             'last_seen_at' => (string) ($alert['last_seen_at'] ?? ''),

@@ -93,6 +93,7 @@ Estado:
 - Miauby ja possui OpenAI, tools controladas, memoria, alertas e padroes.
 - `miauw_skill_registry()` foi criado para inventariar skills por modulo, nivel, risco, permissao, executor e auditoria.
 - Contador de alertas e busca de conhecimentos foram otimizados em 2026-05-11 para reduzir carga repetida.
+- Alertas de encomenda da Cotacao foram ajustados para aparecerem so depois de mais de 1 dia, com comentario curto nos baloes do widget.
 - A evolucao generativa ainda precisa de logs estruturados de execucao, testes de intents e tela de revisao de memorias/padroes.
 
 Risco:
