@@ -34,6 +34,7 @@ VPS Ubuntu/Oracle:
 - `site/wp-content/themes/wimifarma-cashback-theme/header.php`
 - `site/wp-content/themes/wimifarma-cashback-theme/front-page.php`
 - `site/wp-content/advanced-cache.php`
+- `site/wp-content/endurance-page-cache/`
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
 - Nginx Proxy Manager externo a este repositorio
@@ -62,6 +63,8 @@ VPS Ubuntu/Oracle:
 - Manter `site/.htaccess` redirecionando HTTP publico para HTTPS sem afetar `127.0.0.1:3002`.
 - Manter `site/.htaccess` servindo `/` por `site/home.php` enquanto a home WordPress nao estiver validada em producao.
 - `site/home.php` deve responder com header `X-Served-By: wimifarma-static-home`; se esse header nao aparecer no VPS, o proxy/container provavelmente nao esta servindo esta versao.
+- `https://wimifarma.com/home.php` nao pode retornar 404 depois do deploy; se retornar, o commit com `site/home.php` nao chegou ao destino publico ou o proxy aponta para outra copia.
+- `site/wp-content/endurance-page-cache/` e cache legado de HostGator e nao deve ser versionado nem preservado como fonte da home.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter `.env` local em cada ambiente.
 - Antes de deploy, fazer commit e push da alteracao.
@@ -95,6 +98,7 @@ VPS Ubuntu/Oracle:
 - Remover a normalizacao HTTPS do tema pode quebrar a home mesmo que outras rotas continuem funcionando.
 - `advanced-cache.php` do SpeedyCache roda antes dos MU plugins quando `WP_CACHE` esta ligado; ele pode servir uma home antiga com URLs `http://` mesmo que o resto do WordPress ja esteja corrigido.
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, nao investigar CSS primeiro; validar `git log`, rebuild do container e destino do Nginx Proxy Manager.
+- Se a rota publica ainda mostrar `wfwc-home-launchpad`, validar tambem se `site/wp-content/endurance-page-cache/` foi removido/ignorado no deploy.
 
 ## Pendencias
 
@@ -103,6 +107,7 @@ VPS Ubuntu/Oracle:
 - Validar certificado Let's Encrypt para `wimifarma.com` e `www.wimifarma.com` apos cada mudanca de proxy.
 - Validar se o HTML publico gera assets com `https://`.
 - Validar no VPS que `/` responde por `site/home.php` antes de mexer novamente no tema WordPress.
+- Remover caches runtime antigos do VPS para uma pasta de quarentena depois de backup/validacao.
 - Limpar cache runtime do SpeedyCache no VPS apos o deploy da correcao de HTTPS/cache.
 - Criar rotina de rollback.
 

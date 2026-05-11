@@ -11,6 +11,7 @@
 # WordPress generated/runtime files.
 /site/wp-content/backuply/
 /site/wp-content/cache/
+/site/wp-content/endurance-page-cache/
 /site/wp-content/upgrade/
 /site/wp-content/uploads/
 /site/wp-content/speedycache-config/

@@ -68,6 +68,28 @@ docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 ```
 
+## VPS - diagnosticar home publica
+
+Use quando o dominio ainda mostrar a home antiga ou quando `https://wimifarma.com/home.php` retornar 404:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+git fetch origin
+git log -1 --oneline
+git rev-parse HEAD
+git rev-parse origin/main
+ls -la site/home.php site/.htaccess
+grep -n "wimifarma-static-home" site/home.php || true
+grep -n "Wimifarma stable home" site/.htaccess || true
+docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}"
+docker inspect wimifarma-com-web --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
+docker exec wimifarma-com-web sh -lc 'ls -la /var/www/html/home.php /var/www/html/.htaccess && grep -n "wimifarma-static-home" /var/www/html/home.php && grep -n "Wimifarma stable home" /var/www/html/.htaccess && apache2ctl -t'
+curl -I -H "Host: wimifarma.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:3002/
+docker exec nginx-proxy-manager-app-1 curl -I http://wimifarma-com-web/
+```
+
+O header esperado e `X-Served-By: wimifarma-static-home`. Se ele aparece no teste local do container mas nao aparece pelo dominio, revisar o Proxy Host do Nginx Proxy Manager.
+
 ## VPS - primeiro clone controlado
 
 Nao substituir a pasta atual sem preservar `.env`, `mysql/`, `site/miauw/config.local.php` e backups.

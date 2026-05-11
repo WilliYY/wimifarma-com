@@ -168,6 +168,7 @@ Nao versionar:
 - dumps `.sql`
 - arquivos `.zip`
 - cache WordPress
+- `site/wp-content/endurance-page-cache/`
 - plugins premium `*-pro`
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
@@ -191,6 +192,15 @@ docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 ```
+
+Depois do deploy, a home publica deve provar que esta na versao certa:
+
+```bash
+curl -I -H "Host: wimifarma.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:3002/
+curl -I https://wimifarma.com/home.php
+```
+
+O header esperado e `X-Served-By: wimifarma-static-home`. Se `home.php` der 404 no dominio publico, o VPS/proxy ainda esta servindo uma copia antiga ou outro container.
 
 Portas importantes:
 

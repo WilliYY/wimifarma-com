@@ -97,6 +97,7 @@ Nao versionar:
 - dumps `.sql`
 - arquivos `.zip`
 - cache WordPress
+- `site/wp-content/endurance-page-cache/`
 - plugins premium `*-pro`
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
@@ -164,6 +165,13 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `.dockerignore` limita o contexto de build a `docker/php/Dockerfile`, evitando envio de `.env`, `mysql/` e backups ao Docker.
 
 Se a lentidao do WordPress repetir no VPS Linux, investigar primeiro plugins/cache/tema antes de mudar DNS definitivo.
+
+Se o dominio publico continuar mostrando a home antiga com `wfwc-home-launchpad`, valide antes de refatorar:
+
+- `https://wimifarma.com/home.php` deve existir e responder com `X-Served-By: wimifarma-static-home`.
+- `/` deve responder com `X-Served-By: wimifarma-static-home`.
+- Se `/home.php` retornar 404 no publico, o VPS/proxy nao esta servindo o commit atual ou esta apontando para outra pasta/container.
+- Cache antigo de HostGator em `site/wp-content/endurance-page-cache/` nao deve ser versionado nem usado em producao.
 
 ## Deploy no VPS
 

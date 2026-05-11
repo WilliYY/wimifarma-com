@@ -23,6 +23,7 @@ Arquivos:
 - `site/home.php`
 - `site/wp-content/plugins/`
 - `site/wp-content/advanced-cache.php`
+- `site/wp-content/endurance-page-cache/`
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
 - `site/wp-content/themes/wimifarma-cashback-theme/`
@@ -49,6 +50,7 @@ Servicos:
 - Nao ativar page cache publico sem validar que a home gera apenas assets `https://`.
 - Nao remover os helpers HTTPS do tema sem substituir por outra camada equivalente.
 - Nao remover `site/home.php` ou a regra de raiz no `.htaccess` antes de validar a home WordPress com CSS/JS, HTTPS e cache limpos.
+- Nao versionar `site/wp-content/endurance-page-cache/`; ele contem HTML estatico legado do HostGator e pode ressuscitar a home antiga.
 - Nao remover plugins sem entender impacto no site.
 - Medir antes/depois de mudancas de performance.
 - Separar lentidao de Windows Docker da lentidao real no VPS Linux.
@@ -68,6 +70,7 @@ Servicos:
 - `advanced-cache.php` pode servir HTML antigo antes de `wp-config.php` chegar nos filtros de tema/MU plugin se `WP_CACHE` estiver ligado.
 - Buffer de saida no tema pode mascarar fontes antigas de URL; se voltar a aparecer `http://`, procurar tambem plugins que imprimem HTML muito cedo.
 - Como `/` nao carrega WordPress enquanto a regra de `home.php` estiver ativa, problemas visuais restantes na primeira tela tendem a ser deploy/proxy/cache do navegador ou edicao fora da pasta correta.
+- Se `https://wimifarma.com/home.php` retornar 404, o problema visual publico ainda nao esta no CSS; o arquivo de estabilizacao nao chegou ao servidor publico.
 - Plugins premium ignorados pelo Git podem existir no ambiente e afetar comportamento.
 - Aumentar recursos sem medir pode mascarar problema de plugin.
 
@@ -79,6 +82,7 @@ Servicos:
 - Decidir quando a home pode voltar para WordPress, se isso ainda for desejado.
 - Definir quando e como reativar cache publico com limpeza automatica e validacao de mixed content.
 - Criar metrica simples de tempo de resposta pos-deploy.
+- Confirmar que caches legados `endurance-page-cache/`, `advanced-cache.php`, `cache/` e `speedycache-config/` nao estao servindo a home antiga no VPS.
 
 ## Evolucao futura
 

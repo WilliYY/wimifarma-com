@@ -31,6 +31,8 @@ Estado:
 - No VPS/testes, WordPress ja mostrou redirects para porta de tunel em algumas condicoes.
 - A home publica tambem mostrou HTML antigo com assets `http://wimifarma.com/...`, compativel com cache estatico do SpeedyCache.
 - A rota `/` foi estabilizada por `site/home.php`, sem carregar WordPress, enquanto a origem exata do problema visual do tema/cache e investigada.
+- Em 2026-05-11, o dominio publico ainda respondeu a home WordPress antiga e `https://wimifarma.com/home.php` retornou 404, indicando deploy/proxy fora do commit atual.
+- Foi encontrado cache legado de HostGator versionado em `site/wp-content/endurance-page-cache/_index.html`; ele foi removido do Git e a pasta passou a ser ignorada.
 
 Risco:
 
@@ -42,6 +44,7 @@ Evolucao:
 - Depois do SSL, ajustar `home` e `siteurl` para `https://wimifarma.com` de forma controlada.
 - Manter page cache publico desligado ate limpar cache runtime e validar que o HTML nao contem assets `http://`.
 - Se voltar a usar a home WordPress na raiz, remover a regra de `site/home.php` somente apos validar visualmente e por `curl` no VPS.
+- No VPS, validar `git log -1`, existencia de `site/home.php`, conteudo de `site/.htaccess` e destino do Nginx Proxy Manager antes de editar layout novamente.
 
 ### Definir fluxo Git no VPS atual
 

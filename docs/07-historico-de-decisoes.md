@@ -321,3 +321,33 @@ Riscos/cuidados:
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, o VPS/proxy nao esta servindo esta versao.
 - A home WordPress original continua no tema, mas fica fora da rota publica raiz enquanto a regra estiver ativa.
 - Para voltar a home ao WordPress, remover a regra de `site/home.php` somente apos validar cache, HTTPS e layout em producao.
+
+## 2026-05-11 - Cache legado de HostGator nao deve ficar versionado
+
+Decisao:
+
+- Remover `site/wp-content/endurance-page-cache/_index.html` do Git.
+- Ignorar `site/wp-content/endurance-page-cache/`.
+- Tratar `https://wimifarma.com/home.php` retornando 404 como sinal de deploy/proxy desatualizado antes de novas refatoracoes visuais.
+
+Motivo:
+
+- O arquivo continha HTML estatico antigo da home WordPress quebrada, incluindo `wfwc-home-launchpad` e assets legados.
+- A home corrigida esta em `site/home.php`; se o arquivo nao existe no dominio publico, o VPS ainda nao esta servindo o commit atual ou o Nginx Proxy Manager aponta para outra copia.
+
+Impacto:
+
+- `.gitignore`
+- `site/wp-content/endurance-page-cache/_index.html`
+- `AGENTS.md`
+- `README.md`
+- `docs/05-comandos.md`
+- `docs/06-pendencias.md`
+- `docs/09-deploy-e-ambiente.md`
+- `docs/17-performance.md`
+
+Riscos/cuidados:
+
+- Nao apagar caches runtime do VPS sem preservar backup/quarentena quando houver duvida.
+- Depois do deploy, validar `X-Served-By: wimifarma-static-home` em `/` e `/home.php`.
+- Se o header aparecer no container mas nao no dominio, corrigir Nginx Proxy Manager em vez de mexer no tema.
