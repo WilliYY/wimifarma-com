@@ -30,6 +30,7 @@ Estado:
 - Localmente `WP_HOME/WP_SITEURL` sao ajustados para `127.0.0.1:3002` ou `localhost:3002`.
 - No VPS/testes, WordPress ja mostrou redirects para porta de tunel em algumas condicoes.
 - A home publica tambem mostrou HTML antigo com assets `http://wimifarma.com/...`, compativel com cache estatico do SpeedyCache.
+- A rota `/` foi estabilizada por `site/home.php`, sem carregar WordPress, enquanto a origem exata do problema visual do tema/cache e investigada.
 
 Risco:
 
@@ -40,6 +41,7 @@ Evolucao:
 
 - Depois do SSL, ajustar `home` e `siteurl` para `https://wimifarma.com` de forma controlada.
 - Manter page cache publico desligado ate limpar cache runtime e validar que o HTML nao contem assets `http://`.
+- Se voltar a usar a home WordPress na raiz, remover a regra de `site/home.php` somente apos validar visualmente e por `curl` no VPS.
 
 ### Definir fluxo Git no VPS atual
 

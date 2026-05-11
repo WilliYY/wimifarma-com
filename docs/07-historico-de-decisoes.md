@@ -291,3 +291,33 @@ Riscos/cuidados:
 - Manter a correcao restrita aos hosts publicos `wimifarma.com` e `www.wimifarma.com`.
 - Validar depois do deploy com `curl` que a home nao possui assets `http://wimifarma.com/...`.
 - Se o erro persistir apos o deploy, o proxy pode estar apontando para outra pasta/container ou o VPS pode nao ter recebido o commit correto.
+
+## 2026-05-11 - Raiz publica servida por home independente do WordPress
+
+Decisao:
+
+- Servir a rota `/` por `site/home.php` via `site/.htaccess`.
+- Manter WordPress para `/wp-admin`, `/wp-login.php`, paginas legadas e assets, mas tirar a primeira tela publica do bootstrap WordPress durante a estabilizacao da migracao.
+
+Motivo:
+
+- A home publica continuou visualmente quebrada mesmo com CSS/JS respondendo 200, HTTPS ajustado e cache de pagina opt-in.
+- Como apenas a primeira tela estava afetada, uma home independente com CSS embutido reduz a superficie de falha sem reescrever os modulos internos.
+
+Impacto:
+
+- `site/home.php`
+- `site/.htaccess`
+- `README.md`
+- `AGENTS.md`
+- `docs/01-arquitetura.md`
+- `docs/03-fluxos-do-sistema.md`
+- `docs/06-pendencias.md`
+- `docs/09-deploy-e-ambiente.md`
+- `docs/17-performance.md`
+
+Riscos/cuidados:
+
+- Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, o VPS/proxy nao esta servindo esta versao.
+- A home WordPress original continua no tema, mas fica fora da rota publica raiz enquanto a regra estiver ativa.
+- Para voltar a home ao WordPress, remover a regra de `site/home.php` somente apos validar cache, HTTPS e layout em producao.

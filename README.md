@@ -30,6 +30,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
 - DNS GoDaddy e Nginx Proxy Manager estavam em configuracao para `wimifarma.com`.
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
+- A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, para estabilizar a primeira tela durante a migracao.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
@@ -109,6 +110,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- docs/
 |-- mysql/                  # volume local ignorado pelo Git
 |-- site/
+|   |-- home.php              # home publica estavel, fora do bootstrap WordPress
 |   |-- cashback/
 |   |-- cotacao/
 |   |-- financeiro/

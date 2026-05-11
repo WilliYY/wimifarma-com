@@ -58,6 +58,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - WordPress na raiz `site/`.
+- Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao.
 - Modulos internos PHP puro:
   - `site/cashback`
   - `site/cotacao`
@@ -158,6 +159,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - WordPress raiz e `wp-login.php` responderam 200, porem lentos no Docker Desktop Windows com plugins restaurados.
 - WordPress local exigiu ajuste para `WP_HOME/WP_SITEURL` em `localhost:3002`.
 - Cache WordPress/SpeedyCache ficou opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
+- A home publica `/` ficou desacoplada do WordPress por `site/home.php` e regra em `site/.htaccess`, porque a primeira tela continuou quebrando visualmente mesmo com CSS/JS respondendo 200.
 - `endurance-page-cache.php`, mu-plugin especifico de HostGator, foi movido para quarentena fora do projeto.
 - `.dockerignore` limita o contexto de build a `docker/php/Dockerfile`, evitando envio de `.env`, `mysql/` e backups ao Docker.
 
@@ -210,6 +212,7 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 
 - Ler contexto e documentacao antes de agir.
 - Fazer uma auditoria curta antes de editar.
+- Para problemas visuais apenas na home publica, verificar primeiro `site/home.php` e `site/.htaccess`; WordPress continua responsavel por `/wp-admin`, posts e rotas legadas.
 - Alterar pouco por vez.
 - Rodar validacoes proporcionais ao risco.
 - Atualizar docs quando qualquer comportamento importante mudar.

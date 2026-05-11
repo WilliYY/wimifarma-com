@@ -10,6 +10,13 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 </IfModule>
 # END Wimifarma HTTPS proxy
 
+# BEGIN Wimifarma stable home
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^$ home.php [L]
+</IfModule>
+# END Wimifarma stable home
+
 # BEGIN WordPress
 <IfModule mod_rewrite.c>
 RewriteEngine On

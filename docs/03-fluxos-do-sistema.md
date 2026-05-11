@@ -6,6 +6,10 @@ Este documento descreve os fluxos reais encontrados no sistema e os cuidados par
 
 ## Fluxo de acesso
 
+Entrada publica:
+
+- `/`: home/portal independente em `site/home.php`.
+
 Rotas de login:
 
 - `/cashback/login.php`
@@ -182,6 +186,8 @@ WordPress fica na raiz `site/` e usa `site/wp-config.php`.
 
 Cuidados:
 
+- A rota `/` esta interceptada por `site/.htaccess` e servida por `site/home.php` durante a estabilizacao da migracao.
+- WordPress continua responsavel por `/wp-admin`, `/wp-login.php`, posts, paginas legadas e assets em `/wp-content`.
 - `WP_HOME` e `WP_SITEURL` sao ajustados para localhost em desenvolvimento.
 - Em producao, confirmar URLs finais depois do DNS/SSL.
 - Plugins vindos do HostGator podem afetar performance.
@@ -192,6 +198,7 @@ Cuidados:
 - Modulos internos ficam dentro da raiz publica ao lado do WordPress.
 - Modulos compartilham helpers de autenticacao e banco do Cashback.
 - Cotacao deve evoluir com sincronizacao estruturada, nao string solta.
+- Home publica temporariamente desacoplada do WordPress para reduzir risco de cache/plugin quebrar a primeira tela.
 
 ## Riscos ao alterar
 

@@ -20,6 +20,8 @@ Arquivos principais:
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
 - `docker/mysql/init/01-create-databases.sql`
+- `site/.htaccess`
+- `site/home.php`
 - `site/wp-config.php`
 - `site/cashback/config.php`
 - `.env.example`
@@ -56,12 +58,14 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - MySQL 8.0 foi usado para manter compatibilidade com dados importados.
 - `.dockerignore` reduz contexto de build para evitar enviar dados sensiveis e volume MySQL ao Docker.
 - Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
+- A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
 
 ## Riscos ao alterar
 
 - Trocar nomes dos containers quebra referencias de rede e Nginx Proxy Manager.
 - Alterar `site/wp-config.php` pode quebrar WordPress e redirects.
 - Reativar cache de pagina antes de limpar `advanced-cache.php` e caches antigos pode servir HTML velho com assets `http://`.
+- Remover a regra de `site/home.php` antes de validar a home WordPress pode trazer de volta a tela publica sem CSS/estrutura.
 - Recriar o volume `mysql/` sem backup perde dados importados.
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.
 
