@@ -39,6 +39,11 @@ if (
 ) {
 	$_SERVER['HTTPS']      = 'on';
 	$_SERVER['SERVER_PORT'] = '443';
+
+	if ( $wimifarma_is_public_host ) {
+		$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+		$_SERVER['HTTP_X_FORWARDED_SSL']   = 'on';
+	}
 }
 
 /**
@@ -134,6 +139,8 @@ define( 'WP_DEBUG', false );
 if ( $wimifarma_is_public_host ) {
 	define( 'WP_HOME', 'https://wimifarma.com' );
 	define( 'WP_SITEURL', 'https://wimifarma.com' );
+	define( 'WP_CONTENT_URL', 'https://wimifarma.com/wp-content' );
+	define( 'FORCE_SSL_ADMIN', true );
 } elseif ( in_array( $wimifarma_http_host, array( '127.0.0.1:3002', 'localhost:3002' ), true ) ) {
 	define( 'WP_HOME', 'http://' . $wimifarma_http_host );
 	define( 'WP_SITEURL', 'http://' . $wimifarma_http_host );

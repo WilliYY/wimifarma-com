@@ -1,6 +1,8 @@
 # BEGIN Wimifarma HTTPS proxy
 <IfModule mod_rewrite.c>
 RewriteEngine On
+RewriteCond %{HTTP_HOST} ^www\.wimifarma\.com$ [NC]
+RewriteRule ^ https://wimifarma.com%{REQUEST_URI} [L,R=301]
 RewriteCond %{HTTP_HOST} !^(127\.0\.0\.1|localhost)(:[0-9]+)?$ [NC]
 RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
 RewriteCond %{HTTPS} !=on

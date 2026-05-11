@@ -215,6 +215,9 @@ Riscos/cuidados:
 Decisao:
 
 - Configurar `site/wp-config.php` para tratar `wimifarma.com` e `www.wimifarma.com` como HTTPS e canonicalizar `WP_HOME`/`WP_SITEURL` para `https://wimifarma.com`.
+- Definir `WP_CONTENT_URL` e `FORCE_SSL_ADMIN` para os hosts publicos.
+- Adicionar um MU plugin para normalizar URLs publicas de tema/plugins para `https://wimifarma.com`.
+- Canonicalizar `www.wimifarma.com` para `https://wimifarma.com` tambem no `.htaccess`.
 
 Motivo:
 
@@ -222,10 +225,13 @@ Motivo:
 
 Impacto:
 
+- `site/.htaccess`
 - `site/wp-config.php`
+- `site/wp-content/mu-plugins/wimifarma-public-https.php`
 - `docs/09-deploy-e-ambiente.md`
 
 Riscos/cuidados:
 
 - Esta regra e especifica para os hosts publicos. Manter excecao local para `127.0.0.1:3002` e `localhost:3002`.
 - Se novos dominios publicos forem adicionados ao mesmo WordPress, incluir explicitamente na lista ou revisar a canonicalizacao.
+- O MU plugin faz substituicao exata apenas dos dominios publicos conhecidos; nao usar para corrigir outros dominios sem revisar.

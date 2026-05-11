@@ -27,6 +27,7 @@ VPS Ubuntu/Oracle:
 - `.env`
 - `.env.example`
 - `site/wp-config.php`
+- `site/wp-content/mu-plugins/wimifarma-public-https.php`
 - Nginx Proxy Manager externo a este repositorio
 - GoDaddy DNS externo a este repositorio
 
@@ -45,6 +46,7 @@ VPS Ubuntu/Oracle:
 - Manter o Nginx Proxy Manager enviando `X-Forwarded-Proto: https` para o Apache.
 - Manter `site/wp-config.php` reconhecendo HTTPS atras do proxy para evitar CSS/JS com `http://`.
 - Para hosts publicos `wimifarma.com` e `www.wimifarma.com`, manter `site/wp-config.php` forcando HTTPS e canonicalizando `WP_HOME`/`WP_SITEURL` para `https://wimifarma.com`.
+- Manter `site/wp-content/mu-plugins/wimifarma-public-https.php` ativo para normalizar URLs publicas de tema/plugins para `https://wimifarma.com`.
 - Manter `site/.htaccess` redirecionando HTTP publico para HTTPS sem afetar `127.0.0.1:3002`.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter `.env` local em cada ambiente.
@@ -58,7 +60,7 @@ VPS Ubuntu/Oracle:
 - Nginx Proxy Manager deve concentrar SSL e dominios.
 - O Compose atual publica web apenas em `127.0.0.1:3002`.
 - WordPress precisa tratar `X-Forwarded-Proto: https` como HTTPS real, porque o Apache recebe HTTP interno do proxy.
-- O WordPress tambem forca HTTPS para `wimifarma.com` e `www.wimifarma.com`, pois esses hosts sao publicos e devem sempre gerar assets seguros mesmo se um header do proxy faltar.
+- O WordPress tambem forca HTTPS para `wimifarma.com` e `www.wimifarma.com`, define `WP_CONTENT_URL` publico e usa um MU plugin para corrigir URLs que plugins/tema emitam como `http://`.
 - O redirect HTTP -> HTTPS tambem fica protegido por `.htaccess` para cobrir casos em que o Force SSL do proxy nao aplicar como esperado.
 - O Apache do container habilita `AllowOverride All` em `/var/www/html` para permitir regras do WordPress e redirects do projeto.
 
@@ -72,6 +74,7 @@ VPS Ubuntu/Oracle:
 - Uma regra de HTTPS sem considerar `X-Forwarded-Proto` pode criar loop infinito atras do proxy.
 - Se `AllowOverride` ficar desativado, o `.htaccess` sera ignorado e `http://wimifarma.com` podera continuar respondendo 200.
 - Remover a canonicalizacao publica em `wp-config.php` pode fazer `www.wimifarma.com` ou assets do tema voltarem para `http://`.
+- Remover o MU plugin de HTTPS publico pode permitir que plugins antigos voltem a emitir assets inseguros.
 
 ## Pendencias
 
