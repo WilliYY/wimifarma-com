@@ -710,3 +710,31 @@ Riscos/cuidados:
 - Se a equipe quiser destacar visualmente `urgente` ou `encomenda` de novo, criar uma regra explicita revisada e registrar a decisao antes de alterar o schema.
 - Linhas antigas com prioridade explicita `encomenda` continuam com significado operacional para Miauby; apenas texto de categoria nao deve disparar comportamento.
 - Testar categoria em duas abas sempre que mexer no fluxo de formatacao, filtro ou sync.
+
+## 2026-05-12 - Cotacao neutraliza geral e preserva ordem durante edicao
+
+Decisao:
+
+- Desativar automaticamente regras ativas de categoria com termo `geral`.
+- Deixar categoria vazia como vazia, sem preencher `geral` automaticamente durante save.
+- Parar de enviar `ordem` como campo alterado em saves comuns de linhas existentes.
+- Fazer eventos/snapshots remotos aguardarem a edicao local terminar antes de reaplicar filtro ou reordenar linhas.
+
+Motivo:
+
+- O usuario observou que escrever `geral` ou `urgente` ainda podia travar a tela, mover a linha para a primeira posicao e transformar categoria em `geral` sem acao explicita.
+- A auditoria encontrou uma regra ativa `categoria contains geral` e um contrato de save que marcava `ordem` como alterada em qualquer edicao.
+
+Impacto:
+
+- `site/cotacao/api.php`
+- `site/cotacao/app.js`
+- `site/cotacao/cotacao-funcoes.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/19-cotacao-tempo-real.md`
+
+Riscos/cuidados:
+
+- Se a equipe quiser usar `geral` como destaque visual, criar regra nova revisada e documentada, sabendo que ela nao pode virar gatilho escondido.
+- Mudancas futuras de reordenacao precisam enviar `ordem` de forma explicita para nao conflitar com a protecao contra salto de linha.

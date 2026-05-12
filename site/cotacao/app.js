@@ -1318,6 +1318,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return true;
         }
 
+        if (hasLocalSheetEdit()) {
+            setStatus('Sincronia remota aguardando sua edicao terminar', 'waiting');
+            return false;
+        }
+
         isApplyingRemoteSync = true;
         try {
             applied = events.every(applySyncEvent);
@@ -1371,6 +1376,15 @@ document.addEventListener('DOMContentLoaded', function () {
             window.setTimeout(function () {
                 window.location.reload();
             }, 350);
+            return;
+        }
+
+        if (hasLocalSheetEdit() && (dataChanged || filterChanged)) {
+            queuePendingSyncSnapshot(snapshot, false, {
+                dataChanged: dataChanged,
+                filterChanged: filterChanged
+            });
+            setStatus('Sincronia remota aguardando sua edicao terminar', 'waiting');
             return;
         }
 
@@ -1874,7 +1888,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var persistEmpty = row.dataset.persistEmpty === '1' || itemId > 0;
 
         payload.linha_vazia = hasContent ? '0' : '1';
-        payload.campos = appendCsvTokens(payload.campos, ['ordem', 'linha_vazia']);
+        payload.campos = appendCsvTokens(payload.campos, itemId > 0 ? ['linha_vazia'] : ['ordem', 'linha_vazia']);
 
         if (!hasContent) {
             if (!persistEmpty) {
@@ -5333,6 +5347,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (wasSheetEditing || event.target.matches('.supplier-name-input')) {
             schedulePresencePing(160);
+            window.setTimeout(flushPendingSyncSnapshot, 0);
         }
     });
 

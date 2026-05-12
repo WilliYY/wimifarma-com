@@ -104,9 +104,10 @@ try {
             $hasPatchMeta = true;
         } else {
             $row['linha_vazia'] = '0';
+            $systemFields = $rowId > 0 ? array('linha_vazia') : array('ordem', 'linha_vazia');
             $row['campos'] = trim($row['campos']) === ''
-                ? 'ordem,linha_vazia'
-                : $row['campos'] . ',ordem,linha_vazia';
+                ? implode(',', $systemFields)
+                : $row['campos'] . ',' . implode(',', $systemFields);
         }
 
         if ($hasContent && trim($row['produto']) === '' && ($rowId <= 0 || !$hasPatchMeta)) {

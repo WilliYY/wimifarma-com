@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 define('COTACAO_APP_NAME', 'Wimifarma Cotacao');
-define('COTACAO_VERSION', '20260512a');
+define('COTACAO_VERSION', '20260512b');
 
 function cotacao_align_icon(string $align): string
 {
@@ -226,6 +226,7 @@ function cotacao_ensure_schema(): void
     cotacao_ensure_item_visual_columns();
     cotacao_ensure_sync_rows();
     cotacao_disable_legacy_category_trigger_rules();
+    cotacao_disable_default_category_trigger_rules();
     cotacao_sync_categories_from_items();
     $done = true;
 }
@@ -283,6 +284,72 @@ function cotacao_disable_legacy_category_trigger_rules(): void
             array(
                 'rules' => cotacao_conditional_rules((int) $blockId),
                 'legacy_disabled_rule_ids' => array_map(static function (array $rule): int {
+                    return (int) $rule['id'];
+                }, $disabledRules),
+            ),
+            null,
+            null,
+            null,
+            $disabledRules,
+            cotacao_conditional_rules((int) $blockId),
+            $state
+        );
+    }
+}
+
+function cotacao_disable_default_category_trigger_rules(): void
+{
+    $stmt = db()->prepare(
+        "SELECT id, bloco_id, coluna_chave, coluna_indice, operador, termo, cor_fundo, cor_texto, ativo, ordem
+         FROM cotacao_regras_formatacao
+         WHERE ativo = 1
+           AND coluna_chave = 'categoria'
+           AND operador IN ('contains', 'equals', 'starts_with', 'ends_with')
+           AND LOWER(TRIM(termo)) = 'geral'
+         ORDER BY bloco_id ASC, id ASC"
+    );
+    $stmt->execute();
+    $rules = $stmt->fetchAll() ?: array();
+
+    if (!$rules) {
+        return;
+    }
+
+    $ids = array_values(array_unique(array_map(static function (array $rule): int {
+        return (int) $rule['id'];
+    }, $rules)));
+
+    if (!$ids) {
+        return;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $params = array_merge(array($_SESSION['user_id'] ?? null), $ids);
+    $update = db()->prepare(
+        "UPDATE cotacao_regras_formatacao
+         SET ativo = 0, updated_by = ?, updated_at = NOW()
+         WHERE id IN ($placeholders)"
+    );
+    $update->execute($params);
+
+    $rulesByBlock = array();
+    foreach ($rules as $rule) {
+        $blockId = (int) ($rule['bloco_id'] ?? 0);
+        if ($blockId <= 0) {
+            continue;
+        }
+        $rulesByBlock[$blockId][] = $rule;
+    }
+
+    foreach ($rulesByBlock as $blockId => $disabledRules) {
+        $state = cotacao_sync_touch((int) $blockId, 'dados');
+        cotacao_record_event(
+            (int) $blockId,
+            'regras_atualizadas',
+            'dados',
+            array(
+                'rules' => cotacao_conditional_rules((int) $blockId),
+                'default_disabled_rule_ids' => array_map(static function (array $rule): int {
                     return (int) $rule['id'];
                 }, $disabledRules),
             ),
@@ -2061,7 +2128,11 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
     $lineEmpty = in_array((string) ($data['linha_vazia'] ?? $data['keep_empty'] ?? '0'), array('1', 'true', 'sim'), true);
     $rawCategory = trim((string) ($data['categoria'] ?? ''));
     $rawQuantity = trim((string) ($data['quantidade'] ?? ''));
-    $orderValue = max(1, (int) ($data['ordem'] ?? ($before['ordem'] ?? 0)));
+    $requestedOrder = (int) ($data['ordem'] ?? 0);
+    if ($before && $requestedOrder <= 0) {
+        $requestedOrder = (int) ($before['ordem'] ?? 0);
+    }
+    $orderValue = max(1, $requestedOrder ?: (int) ($before['ordem'] ?? 0));
 
     if ($produto === '' && !$before && !$lineEmpty) {
         throw new InvalidArgumentException('Informe o produto.');
@@ -2072,7 +2143,7 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
         'produto' => $produto,
         'quantidade' => $lineEmpty && $rawQuantity === '' ? 1.00 : max(0.01, money_to_decimal($data['quantidade'] ?? '1')),
         'unidade' => trim((string) ($data['unidade'] ?? 'un')) ?: 'un',
-        'categoria' => $lineEmpty ? $rawCategory : ($rawCategory ?: 'geral'),
+        'categoria' => $lineEmpty ? $rawCategory : $rawCategory,
         'cor' => cotacao_color_value((string) ($data['cor'] ?? '')),
         'cores' => cotacao_cell_colors_json($data['cores'] ?? ''),
         'estilos' => cotacao_cell_styles_json($data['estilos'] ?? ''),
@@ -2161,7 +2232,9 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
 
         $requestedOrder = (int) ($payload['ordem'] ?? 0);
         $beforeOrder = $before ? (int) ($before['ordem'] ?? 0) : 0;
-        if (!$before || $beforeOrder <= 0 || $requestedOrder !== $beforeOrder) {
+        if ($before && $requestedOrder <= 0 && $beforeOrder > 0) {
+            $payload['ordem'] = $beforeOrder;
+        } elseif (!$before || $beforeOrder <= 0 || $requestedOrder !== $beforeOrder) {
             $payload['ordem'] = cotacao_claim_item_order($blockId, $requestedOrder, $id);
         } else {
             $payload['ordem'] = $beforeOrder;
