@@ -11,7 +11,7 @@ RUN apt-get update \
         zip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" gd mysqli pdo_mysql zip \
-    && a2enmod rewrite headers expires \
+    && a2enmod rewrite headers expires proxy proxy_http proxy_wstunnel \
     && echo 'ServerName localhost' > /etc/apache2/conf-available/wimifarma-servername.conf \
     && { \
         echo '<Directory /var/www/html>'; \
@@ -22,6 +22,17 @@ RUN apt-get update \
     && a2enconf wimifarma-servername \
     && a2enconf wimifarma-override \
     && rm -rf /var/lib/apt/lists/*
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
+        echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
+        echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \
+        echo 'ProxyPassReverse "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \
+        echo 'ProxyPass "/cotacao" "http://wimifarma-cotacao-app:3000/cotacao"'; \
+        echo 'ProxyPassReverse "/cotacao" "http://wimifarma-cotacao-app:3000/cotacao"'; \
+    } > /etc/apache2/conf-available/wimifarma-cotacao-proxy.conf \
+    && a2enconf wimifarma-cotacao-proxy
 
 RUN { \
         echo 'upload_max_filesize=64M'; \

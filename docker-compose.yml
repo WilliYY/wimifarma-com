@@ -23,6 +23,7 @@ services:
     restart: unless-stopped
     depends_on:
       - wimifarma-com-db
+      - wimifarma-cotacao-app
     environment:
       WIMIFARMA_DB_HOST: wimifarma-com-db
       WIMIFARMA_DB_USER: wimifarma_user
@@ -37,6 +38,63 @@ services:
       - "127.0.0.1:3002:80"
     volumes:
       - ./site:/var/www/html
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-cotacao-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-cotacao-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_cotacao
+      POSTGRES_USER: wimifarma_cotacao
+      POSTGRES_PASSWORD: ${COTACAO_POSTGRES_PASSWORD:-wimifarma_cotacao_dev_pass}
+    volumes:
+      - ./cotacao-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-cotacao-redis:
+    image: redis:7-alpine
+    container_name: wimifarma-cotacao-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - ./cotacao-data/redis:/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-cotacao-app:
+    build:
+      context: ./apps/cotacao
+      dockerfile: Dockerfile
+    container_name: wimifarma-cotacao-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-cotacao-db
+      - wimifarma-cotacao-redis
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BASE_PATH: /cotacao
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      POSTGRES_HOST: wimifarma-cotacao-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_cotacao
+      POSTGRES_USER: wimifarma_cotacao
+      POSTGRES_PASSWORD: ${COTACAO_POSTGRES_PASSWORD:-wimifarma_cotacao_dev_pass}
+      REDIS_URL: redis://wimifarma-cotacao-redis:6379
+      SESSION_SECRET: ${COTACAO_SESSION_SECRET:-wimifarma_cotacao_dev_secret_change_me}
+    volumes:
+      - ./site/cotacao/assets:/app/public/assets:ro
+      - ./site/cotacao/logo-wimifarma.svg:/app/public/logo-wimifarma.svg:ro
+      - ./site/cotacao/favicon.svg:/app/public/favicon.svg:ro
+      - ./site/cotacao/favicon.png:/app/public/favicon.png:ro
     networks:
       - wimifarma-com-network
 

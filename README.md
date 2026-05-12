@@ -1,6 +1,6 @@
-# Wimifarma
+﻿# Wimifarma
 
-Projeto interno da Wimifarma migrado do HostGator para VPS Ubuntu/Oracle, com WordPress e modulos internos em PHP rodando via Docker.
+Projeto interno da Wimifarma migrado do HostGator para VPS Ubuntu/Oracle, com WordPress, modulos internos em PHP e Cotacao V2 em Node.js rodando via Docker.
 
 Estado base desta documentacao: 2026-05-10.
 
@@ -21,10 +21,12 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 
 - Projeto local em `C:\Projetos\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web` e `wimifarma-com-db`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db` e `wimifarma-cotacao-redis`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
+- A Cotacao V2 fica em `apps/cotacao`, usa Node.js/Express/Socket.IO, Postgres e Redis, e e publicada por proxy interno do Apache em `/cotacao/`.
+- O login da Cotacao continua usando usuarios da tabela MySQL `wf_users`; os dados novos da planilha ficam em Postgres no volume ignorado `cotacao-data/`.
 - Rotas de login dos modulos responderam HTTP 200 na auditoria local.
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
 - WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
@@ -32,11 +34,8 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
 - A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `site/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
-- A Cotacao possui primeira camada de presenca ao vivo: usuarios ativos, celula/coluna em foco, edicao ativa e indicacao quando outro usuario esta fora do filtro local atual. Em 2026-05-11, foi validado por duas sessoes que edicoes por campo preservam produto/categoria sem sobrescrita.
-- A Cotacao agora tenta `sync_events_pull` com eventos incrementais em `cotacao_eventos` antes de usar snapshot completo por `sync_pull`; saves locais enviam `client_id` para evitar self-replay.
-- A edicao de categoria na Cotacao usa atualizacao visual com debounce, evita reconstruir opcoes quando o popover esta fechado e nao reaplica filtro ativo no meio da digitacao da celula.
-- Filtros de categoria/cor/vencedor da Cotacao ficam local-first por padrao; o backend sanitiza filtros compartilhados antigos e o frontend nao aplica filtro remoto automaticamente enquanto `data-shared-filter-sync` nao for habilitado de forma explicita.
-- As cores de categorias comuns sao responsabilidade da formatacao condicional (`cotacao_regras_formatacao`), nao de classes fixas no CSS/JS nem de filtro de cor por palavra-chave. Regras legadas por texto para `geral`, `urgente`, `encomenda` e `cotacao/cotação` sao desativadas automaticamente; categoria tambem nao deve mudar `prioridade`, registrar encomenda automaticamente, preencher `geral` sozinha ou alterar a ordem da linha durante digitacao comum, mesmo se um payload antigo enviar `ordem=1`.
+- A Cotacao V2 substitui a interface antiga em `/cotacao/` para eliminar bugs de palavra-gatilho, salto de linha e travamento em categoria. Palavras como `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; cor so vem de regra condicional criada explicitamente na tela.
+- A Cotacao V2 usa linha com UUID estavel, save por celula, presenca ao vivo via Socket.IO/Redis, filtros locais por tela e eventos em Postgres. A primeira validacao confirmou login, bootstrap, save dessas palavras criticas e criacao/remocao de regra condicional explicita.
 - Miauby possui `miauw_skill_registry()` para inventariar skills por modulo, risco, nivel, permissao, auditoria e executor antes de novas autonomias. Consultas de alertas e conhecimentos foram aliviadas para reduzir trabalho repetido.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
@@ -51,6 +50,9 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Docker Compose
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
+- Node.js 22 + Express + Socket.IO para Cotacao V2
+- PostgreSQL 17 para dados da Cotacao V2
+- Redis 7 para sessoes e presenca da Cotacao V2
 
 ## Instalar localmente
 
@@ -102,8 +104,10 @@ Rotas internas principais:
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-com-db
+docker compose logs --tail=80 wimifarma-cotacao-app
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
+curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
 Mais comandos ficam em `docs/05-comandos.md`.
@@ -112,6 +116,9 @@ Mais comandos ficam em `docs/05-comandos.md`.
 
 ```text
 .
+|-- apps/
+|   `-- cotacao/             # Cotacao V2 Node.js/Socket.IO
+|-- cotacao-data/            # volumes Postgres/Redis ignorados pelo Git
 |-- docker/
 |   |-- php/Dockerfile
 |   `-- mysql/init/
@@ -160,6 +167,8 @@ WIMIFARMA_PUBLIC_PAGE_CACHE
 MIAUW_OPENAI_API_KEY
 MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
+COTACAO_POSTGRES_PASSWORD
+COTACAO_SESSION_SECRET
 ```
 
 Nao colocar valores reais no README, em commits ou em issues publicas.
@@ -199,7 +208,10 @@ git pull origin main
 docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
+docker compose logs --tail=80 wimifarma-cotacao-app
 ```
+
+Antes do primeiro deploy da Cotacao V2 no VPS, adicionar valores reais no `.env` para `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET`.
 
 Depois do deploy, a home publica deve provar que esta na versao certa:
 
@@ -239,5 +251,6 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 - `docs/17-performance.md`: performance, cache e cuidados WordPress.
 - `docs/18-miauby-evolucao-generativa.md`: direcao para skills, padroes e autonomia segura do Miauby.
 - `docs/19-cotacao-tempo-real.md`: presenca ao vivo, sync atual e caminho para colaboracao estilo Sheets.
+- `docs/20-cotacao-v2.md`: arquitetura nova da Cotacao em Node.js, Postgres, Redis e WebSocket.
 
 Leia `AGENTS.md` antes de qualquer alteracao.

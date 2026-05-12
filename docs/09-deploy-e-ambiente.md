@@ -24,6 +24,7 @@ VPS Ubuntu/Oracle:
 
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
+- `apps/cotacao/`
 - `.env`
 - `.env.example`
 - `site/wp-config.php`
@@ -37,12 +38,14 @@ VPS Ubuntu/Oracle:
 - `site/wp-content/endurance-page-cache/`
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
+- `cotacao-data/`
 - Nginx Proxy Manager externo a este repositorio
 - GoDaddy DNS externo a este repositorio
 
 ## Portas
 
 - `wimifarma-com-web:80`: porta interna correta para o proxy Docker.
+- `wimifarma-cotacao-app:3000`: servico interno da Cotacao V2, acessado pelo Apache por proxy reverso em `/cotacao`.
 - `127.0.0.1:3002`: porta local publicada pelo Compose.
 - `127.0.0.1:13002`: tunel PuTTY usado em testes.
 - `80/443`: publico via Nginx Proxy Manager.
@@ -66,9 +69,11 @@ VPS Ubuntu/Oracle:
 - `https://wimifarma.com/home.php` nao pode retornar 404 depois do deploy; se retornar, o commit com `site/home.php` nao chegou ao destino publico ou o proxy aponta para outra copia.
 - `site/wp-content/endurance-page-cache/` e cache legado de HostGator e nao deve ser versionado nem preservado como fonte da home.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
+- Manter o proxy Apache de `/cotacao/` para `wimifarma-cotacao-app:3000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter `.env` local em cada ambiente.
+- Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
 - Antes de deploy, fazer commit e push da alteracao.
-- Depois de deploy, rodar `docker compose ps` e logs.
+- Depois de deploy, rodar `docker compose ps`, `docker compose logs --tail=80 wimifarma-cotacao-app` e validar `http://127.0.0.1:3002/cotacao/health`.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -83,11 +88,13 @@ VPS Ubuntu/Oracle:
 - O Apache do container habilita `AllowOverride All` em `/var/www/html` para permitir regras do WordPress e redirects do projeto.
 - `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
+- A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
 
 ## Riscos ao alterar
 
 - Fazer `git clone` por cima da pasta atual pode apagar volume/dados locais.
 - Trocar nomes de container quebra proxy.
+- Remover o proxy Apache de `/cotacao/` faz o dominio publico voltar para a Cotacao legada em PHP ou retornar 404.
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
 - Se o WordPress nao reconhecer HTTPS atras do proxy, ele gera assets `http://` e o navegador bloqueia CSS/JS por mixed content.
@@ -99,6 +106,7 @@ VPS Ubuntu/Oracle:
 - `advanced-cache.php` do SpeedyCache roda antes dos MU plugins quando `WP_CACHE` esta ligado; ele pode servir uma home antiga com URLs `http://` mesmo que o resto do WordPress ja esteja corrigido.
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, nao investigar CSS primeiro; validar `git log`, rebuild do container e destino do Nginx Proxy Manager.
 - Se a rota publica ainda mostrar `wfwc-home-launchpad`, validar tambem se `site/wp-content/endurance-page-cache/` foi removido/ignorado no deploy.
+- Apagar `cotacao-data/` remove dados da Cotacao V2. Fazer backup antes de qualquer limpeza ou troca de volume.
 
 ## Pendencias
 
@@ -110,6 +118,7 @@ VPS Ubuntu/Oracle:
 - Remover caches runtime antigos do VPS para uma pasta de quarentena depois de backup/validacao.
 - Limpar cache runtime do SpeedyCache no VPS apos o deploy da correcao de HTTPS/cache.
 - Criar rotina de rollback.
+- Criar backup explicito de `cotacao-data/postgres` antes de colocar dados reais na Cotacao V2.
 
 ## Evolucao futura
 

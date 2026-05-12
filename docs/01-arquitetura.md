@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress e modulos PHP internos; o container de banco guarda WordPress e dados dos apps internos.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para a Cotacao V2; os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2 e Redis de sessoes/presenca.
 
 ## Componentes envolvidos
 
@@ -12,26 +12,35 @@ Usuario/Navegador
   -> VPS Oracle/Ubuntu
   -> Nginx Proxy Manager (80/443)
   -> wimifarma-com-web:80 (Apache/PHP)
+      -> WordPress e modulos PHP
+      -> proxy /cotacao/ para wimifarma-cotacao-app:3000
   -> wimifarma-com-db:3306 (MySQL)
+  -> wimifarma-cotacao-db:5432 (Postgres)
+  -> wimifarma-cotacao-redis:6379 (Redis)
 ```
 
 Arquivos principais:
 
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
+- `apps/cotacao/src/server.js`
+- `apps/cotacao/public/app.js`
+- `apps/cotacao/public/styles.css`
 - `docker/mysql/init/01-create-databases.sql`
 - `site/.htaccess`
 - `site/home.php`
 - `site/wp-config.php`
 - `site/cashback/config.php`
-- `site/cotacao/api.php`
-- `site/cotacao/app.js`
+- `site/cotacao/` (legado/ativos antigos; nao e mais o motor principal)
 - `.env.example`
 
 Containers:
 
 - `wimifarma-com-web`: PHP 8.3 + Apache, monta `./site:/var/www/html`.
 - `wimifarma-com-db`: MySQL 8.0, monta `./mysql:/var/lib/mysql`.
+- `wimifarma-cotacao-app`: Node.js 22 + Express + Socket.IO para `/cotacao/`.
+- `wimifarma-cotacao-db`: Postgres 17, monta `./cotacao-data/postgres:/var/lib/postgresql/data`.
+- `wimifarma-cotacao-redis`: Redis 7, monta `./cotacao-data/redis:/data`.
 
 Rede Docker:
 
@@ -44,8 +53,9 @@ Rede Docker:
 - Tunel PuTTY usado no Windows: `127.0.0.1:13002`
 - Publico: `80/443` pelo Nginx Proxy Manager
 - Nginx Proxy Manager admin observado no VPS: porta `81`
+- Interno Cotacao V2: `wimifarma-cotacao-app:3000`
 
-O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
+O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cotacao-app`; o Apache ja publica `/cotacao/` e `/cotacao/socket.io/`.
 
 ## Regras que precisam ser preservadas
 
@@ -53,6 +63,8 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - Nao mudar a porta `3002` sem atualizar docs, proxy local e comandos de auditoria.
 - Nao configurar Nginx Proxy Manager apontando para `127.0.0.1:13002`; essa porta e apenas tunel local.
 - Manter `mysql/` como volume persistente e ignorado pelo Git.
+- Manter `cotacao-data/` como volume persistente e ignorado pelo Git.
+- Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -61,8 +73,8 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - `.dockerignore` reduz contexto de build para evitar enviar dados sensiveis e volume MySQL ao Docker.
 - Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
-- A Cotacao mantem colaboracao via polling HTTP (`sync_events_pull`, `sync_pull` e `presence_ping`) antes de adotar WebSocket/SSE. Eventos incrementais em `cotacao_eventos` sao tentados antes de snapshot completo.
-- Palavras de categoria como `urgente` e `encomenda` nao devem aplicar cor, prioridade nem data operacional automaticamente; cor vem de `cotacao_regras_formatacao`, e alertas do Miauby usam prioridade explicita salva por usuario/ferramenta controlada.
+- A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
+- Palavras de categoria como `geral`, `urgente`, `encomenda` e `cotacao` nao devem aplicar cor, prioridade, ordem, filtro nem data operacional automaticamente; cor vem apenas de regra condicional explicita em `cotacao_v2_rules`.
 
 ## Riscos ao alterar
 
@@ -71,8 +83,10 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - Reativar cache de pagina antes de limpar `advanced-cache.php` e caches antigos pode servir HTML velho com assets `http://`.
 - Remover a regra de `site/home.php` antes de validar a home WordPress pode trazer de volta a tela publica sem CSS/estrutura.
 - Recriar o volume `mysql/` sem backup perde dados importados.
+- Recriar `cotacao-data/` sem backup perde dados da Cotacao V2.
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.
 - Recriar atalhos automaticos por nome de categoria na Cotacao pode conflitar com a formatacao condicional e causar saltos de linha/sync pesado.
+- Alterar o proxy de `/cotacao/socket.io/` sem validar pode quebrar presenca e edicao ao vivo.
 
 ## Pendencias
 
@@ -85,5 +99,6 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - Criar um arquivo de deploy separado para producao se as necessidades do VPS divergirem do local.
 - Adicionar healthchecks no Compose.
 - Criar rotinas de backup automatico do MySQL.
+- Criar rotinas de backup automatico do Postgres da Cotacao V2.
 - Separar jobs/cron em container proprio quando Miauby e sincronizacao crescerem.
-- Avaliar um servico dedicado de tempo real para Cotacao se o uso simultaneo crescer alem do polling incremental atual.
+- Evoluir a Cotacao V2 com conflito por campo, diagnostico de sync e import/export Google Sheets.

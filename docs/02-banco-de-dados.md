@@ -2,13 +2,17 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress e dos modulos internos. A migracao trouxe dados do HostGator para MySQL local em Docker.
+O banco guarda dados do WordPress, dos modulos internos e da Cotacao V2. A migracao trouxe dados do HostGator para MySQL local em Docker; a Cotacao V2 usa Postgres separado para a nova planilha em tempo real.
 
 ## Servicos e arquivos envolvidos
 
 - Container: `wimifarma-com-db`
 - Imagem: `mysql:8.0`
 - Volume local: `mysql/`
+- Container Cotacao V2: `wimifarma-cotacao-db`
+- Imagem Cotacao V2: `postgres:17-alpine`
+- Volume Cotacao V2: `cotacao-data/postgres/`
+- Redis Cotacao V2: `wimifarma-cotacao-redis`, volume `cotacao-data/redis/`
 - Init SQL: `docker/mysql/init/01-create-databases.sql`
 - Config web: `docker-compose.yml`
 - Config app: `site/cashback/config.php`
@@ -18,6 +22,19 @@ O banco guarda dados do WordPress e dos modulos internos. A migracao trouxe dado
 
 - `wimifarma_wp`: WordPress, prefixo `wptl_`.
 - `wimifarma_app`: modulos internos.
+- `wimifarma_cotacao`: Cotacao V2 em Postgres.
+
+## Tabelas da Cotacao V2 em Postgres
+
+Criadas por `apps/cotacao/src/server.js`:
+
+- `cotacao_v2_quotes`: cotacoes/planilhas ativas.
+- `cotacao_v2_columns`: colunas configuraveis da grade.
+- `cotacao_v2_rows`: linhas da planilha, com UUID estavel, posicao, valores JSONB e versao.
+- `cotacao_v2_events`: eventos de edicao/importacao/regras para sincronizacao em tempo real.
+- `cotacao_v2_rules`: regras de formatacao condicional explicitas.
+
+A Cotacao V2 autentica no MySQL `wf_users`, mas os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
 
 ## Tabelas em `wimifarma_app`
 
@@ -105,6 +122,10 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_cashback_creditos` depende de cliente/compra e controla saldo restante.
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `cotacao_precos` depende de item e fornecedor.
+- As tabelas antigas `cotacao_*` em MySQL ficam como legado historico da Cotacao PHP e nao devem receber nova logica de planilha.
+- `cotacao_v2_rows.id` e o ID estavel de linha da Cotacao V2.
+- `cotacao_v2_rows.values` guarda os campos da linha como JSONB; saves devem alterar apenas a celula enviada.
+- `cotacao_v2_rules` e a unica origem de cor automatica da Cotacao V2.
 - `cotacao_sync_estado` e chave para futura sincronizacao com planilhas.
 - `cotacao_sync_estado.filtro_categoria` nao deve ser tratado como fonte de verdade visual enquanto filtros local-first estiverem ativos; termos legados sao sanitizados pelo schema.
 - `cotacao_itens.versoes` e `cotacao_precos.versao` guardam versoes por campo/preco e devem ser preservados para evoluir conflito por campo.
@@ -113,6 +134,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_itens.categoria` deve ter default vazio. Categoria vazia nao deve virar `geral` automaticamente.
 - Saves comuns de linhas existentes devem preservar `cotacao_itens.ordem`; reordenacao precisa ser acao explicita, nao efeito colateral de editar categoria.
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
+- Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `wptl_options` guarda URLs do WordPress e pode causar redirects errados se alterado sem cuidado.
@@ -120,7 +142,9 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 ## Decisoes tecnicas ja tomadas
 
 - Dois bancos separados: WordPress em `wimifarma_wp`; apps internos em `wimifarma_app`.
+- A Cotacao V2 adiciona Postgres separado (`wimifarma_cotacao`) para reduzir risco de remendos no MySQL/PHP antigo e permitir um motor mais proximo de planilha colaborativa.
 - O volume `mysql/` fica fora do Git.
+- O volume `cotacao-data/` fica fora do Git.
 - Dumps antigos ficam fora da raiz do projeto.
 - A senha real do banco vem de `.env`.
 - A Cotacao preserva regras antigas de formatacao no banco como historico, mas `cotacao_disable_legacy_category_trigger_rules()` desativa regras ativas por texto de categoria para `geral`/`urgente`/`encomenda`/`cotacao` durante `cotacao_ensure_schema()`.
@@ -134,6 +158,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Alterar `cotacao_presencas` sem compatibilidade pode quebrar a indicacao de usuarios ativos e selecao remota na tela.
 - Alterar `cotacao_eventos` sem compatibilidade pode forcar fallback frequente para snapshot completo e reintroduzir travadas na Cotacao.
 - Reativar gatilhos de categoria para `geral`/`urgente`/`encomenda`/`cotacao` pode voltar a causar mudanca invisivel de estado e lag na planilha.
+- Apagar `cotacao-data/` perde dados da Cotacao V2.
+- Criar regras automáticas fora de `cotacao_v2_rules` reabre o bug de palavra-gatilho.
 
 ## Pendencias
 
@@ -142,7 +168,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Criar backup automatizado antes de deploy.
 - Ajustar URLs definitivas do WordPress apos DNS/SSL.
 - Definir IDs estaveis e fonte de verdade para Cotacao + Google Sheets.
-- Definir motor robusto de conflito por campo para edicao simultanea forte na Cotacao.
+- Definir motor robusto de conflito por campo para edicao simultanea forte na Cotacao V2.
+- Criar backup/restore do Postgres da Cotacao V2.
 
 ## Evolucao futura
 

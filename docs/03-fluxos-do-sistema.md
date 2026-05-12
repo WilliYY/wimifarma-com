@@ -14,13 +14,13 @@ Entrada publica:
 Rotas de login:
 
 - `/cashback/login.php`
-- `/cotacao/login.php`
+- `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando em `wf_users`)
 - `/financeiro/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos internos reaproveitam funcoes comuns do Cashback, especialmente sessao, usuario atual, CSRF, escape HTML e conexao PDO.
+Os modulos PHP reaproveitam funcoes comuns do Cashback, especialmente sessao, usuario atual, CSRF, escape HTML e conexao PDO. A Cotacao V2 usa sessao propria em Redis, mas valida usuario/senha contra a mesma tabela `wf_users`.
 
 Arquivos envolvidos:
 
@@ -65,43 +65,38 @@ Tabelas principais:
 
 ## Fluxo Cotacao
 
-O modulo de Cotacao controla blocos, itens, fornecedores, categorias, precos e status. Ele ja tem tabelas preparadas para controle de versao/sync, mas a integracao Google Sheets ainda nao esta implementada.
-Tambem existe uma primeira camada de colaboracao ao vivo por polling: a tela envia `presence_ping`, mostra quantas pessoas estao usando, exibe chips dos usuarios ativos e marca a celula remota quando ela esta visivel no filtro atual.
-A sincronizacao entre telas tenta primeiro `sync_events_pull`, aplicando eventos incrementais de `cotacao_eventos`. Quando ha mudanca estrutural, atraso grande ou conflito local, a tela cai para `sync_pull` com snapshot completo.
+O modulo de Cotacao V2 controla uma planilha interna de farmacia com EAN, produto, quantidade, categoria, fornecedores, observacao e status. A rota `/cotacao/` agora e servida por Node.js/Express/Socket.IO via proxy do Apache, com dados em Postgres e presenca/sessao em Redis.
+
+A colaboracao ao vivo acontece por WebSocket: a tela mostra usuarios ativos, foco remoto de celula e atualizacoes por celula. Filtros de busca/categoria ficam locais por tela para evitar que um computador mova a visao do outro.
 
 Arquivos principais:
 
-- `site/cotacao/index.php`
-- `site/cotacao/api.php`
-- `site/cotacao/cotacao-funcoes.php`
-- `site/cotacao/app.js`
-- `site/cotacao/styles.css`
+- `apps/cotacao/src/server.js`
+- `apps/cotacao/public/app.js`
+- `apps/cotacao/public/styles.css`
+- `site/cotacao/` (legado/ativos antigos, nao deve receber nova logica de planilha)
 
 Tabelas principais:
 
-- `cotacao_blocos`
-- `cotacao_itens`
-- `cotacao_fornecedores`
-- `cotacao_categorias`
-- `cotacao_precos`
-- `cotacao_regras_formatacao`
-- `cotacao_sync_estado`
-- `cotacao_eventos`
-- `cotacao_presencas`
-- `cotacao_auditoria`
+- Postgres `cotacao_v2_quotes`
+- Postgres `cotacao_v2_columns`
+- Postgres `cotacao_v2_rows`
+- Postgres `cotacao_v2_events`
+- Postgres `cotacao_v2_rules`
+- MySQL `wf_users` para login
 
 Regras a preservar:
 
-- ordem dos itens;
-- bloco/categoria/fornecedor;
-- vencedor e preco vencedor;
+- ordem/posicao das linhas;
+- categoria/fornecedor;
 - observacoes;
 - cores, estilos e formatacao;
 - auditoria;
-- status e prioridade.
+- status.
 - presenca temporaria nao deve virar historico operacional permanente.
-- quando filtros estiverem ativos, indicar se outro usuario esta fora do filtro em vez de esconder silenciosamente.
-- durante digitacao em categoria, nao reaplicar filtro ativo a cada tecla; o filtro so deve recalcular ao terminar a edicao para evitar salto de linha.
+- filtros nao devem ser sincronizados automaticamente entre computadores.
+- durante digitacao em categoria, texto nao pode virar comando escondido nem alterar ordem.
+- `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; destaque visual so por regra condicional explicita.
 
 ## Fluxo Financeiro
 
@@ -213,7 +208,7 @@ Cuidados:
 
 - Modulos internos ficam dentro da raiz publica ao lado do WordPress.
 - Modulos compartilham helpers de autenticacao e banco do Cashback.
-- Cotacao deve evoluir com sincronizacao estruturada, nao string solta.
+- Cotacao V2 deve evoluir com sincronizacao estruturada, nao string solta.
 - Home publica temporariamente desacoplada do WordPress para reduzir risco de cache/plugin quebrar a primeira tela.
 
 ## Riscos ao alterar

@@ -54,20 +54,22 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web` e `wimifarma-com-db`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db` e `wimifarma-cotacao-redis`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
+- Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro e GIFs decorativos com o mesmo padrao de movimento dos logins.
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - Modulos internos PHP puro:
   - `site/cashback`
-  - `site/cotacao`
   - `site/financeiro`
   - `site/tarefa`
   - `site/miauw`
+- A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; `site/cotacao` fica como legado/ativos antigos e nao deve receber nova logica de planilha.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
+- Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 
 ## Portas e proxy
 
@@ -77,6 +79,7 @@ Nao misturar portas:
 - `127.0.0.1:3002`: porta local do Compose no VPS/local.
 - `127.0.0.1:13002`: tunel local do PuTTY usado em testes no Windows.
 - `80/443`: portas publicas do Nginx Proxy Manager.
+- `wimifarma-cotacao-app:3000`: destino interno do Apache para `/cotacao/`; nao publicar diretamente no Nginx Proxy Manager.
 
 O Proxy Host de `wimifarma.com` e `www.wimifarma.com` deve apontar para:
 
@@ -102,6 +105,7 @@ Nao versionar:
 - plugins premium `*-pro`
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
+- `cotacao-data/`
 
 Cache de pagina WordPress/SpeedyCache deve ficar opt-in durante a migracao:
 
@@ -129,6 +133,7 @@ Rotas internas:
 
 - `/cashback/login.php`
 - `/cotacao/login.php`
+- `/cotacao/health`
 - `/financeiro/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
@@ -145,9 +150,21 @@ docker exec wimifarma-com-web php -l /var/www/html/cashback/config.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cashback/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/widget-status.php
 docker compose logs --tail=80 wimifarma-com-web
+docker compose logs --tail=80 wimifarma-cotacao-app
 ```
 
 Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualmente.
+
+## Estado validado em 2026-05-12
+
+- A Cotacao V2 foi reestruturada diretamente em `/cotacao/` com `apps/cotacao` usando Node.js/Express/Socket.IO.
+- O Apache do container `wimifarma-com-web` faz proxy de `/cotacao/` e `/cotacao/socket.io/` para `wimifarma-cotacao-app:3000`.
+- Os dados novos da planilha ficam em Postgres `wimifarma_cotacao`; sessoes e presenca usam Redis.
+- O login da Cotacao V2 continua validando usuario/senha contra `wf_users` no MySQL `wimifarma_app`.
+- Palavras historicas `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum na categoria. Nao existe gatilho escondido por palavra para cor, prioridade, ordem, filtro ou alerta.
+- Formatacao condicional da Cotacao V2 e explicita, criada/removida pela propria tela em `cotacao_v2_rules`.
+- Validacoes locais passaram para: health da Cotacao, login `adm`, bootstrap, save por celula dessas quatro palavras criticas, criacao/remocao de regra condicional explicita, importacao temporaria de linhas e limpeza dos dados de smoke.
+- O proximo passo de Cotacao deve ser evoluir a V2 com conflito visual por campo, auditoria de eventos, import/export Sheets e diagnostico operacional, nao continuar remendando a planilha PHP antiga.
 
 ## Estado validado em 2026-05-11
 
@@ -220,10 +237,11 @@ Objetivo do usuario: transformar a cotacao em uma ferramenta forte, espelhada co
 
 Estado atual:
 
-- A Cotacao ja possui polling de `sync_pull`, `sync_events_pull`, filtros local-first por padrao e presenca ao vivo por `presence_ping`.
-- A presenca mostra total de pessoas usando, chips dos outros usuarios e marca celulas remotas visiveis mesmo quando o outro usuario esta filtrado em outra categoria.
-- Para travadas na troca/digitacao de categoria, investigar primeiro recalculo visual no `site/cotacao/app.js`, reaplicacao indevida de eventos/snapshot na propria aba, carga de `sync_pull` e tamanho da snapshot antes de trocar linguagem ou banco.
-- Isso ainda nao substitui um motor robusto estilo Google Sheets. Para edicao simultanea forte, evoluir com conflito por campo visivel e WebSocket/SSE usando a fila de eventos.
+- A Cotacao V2 ja usa Node.js, Socket.IO, Postgres e Redis em `/cotacao/`.
+- A presenca mostra usuarios ativos e celula em foco por WebSocket.
+- Filtros sao locais por tela e nao devem ser sincronizados automaticamente entre computadores.
+- Categoria e texto comum; nao recriar gatilhos escondidos para `geral`, `urgente`, `encomenda` ou `cotacao`.
+- Isso ainda nao substitui um motor completo estilo Google Sheets. Para edicao simultanea forte, evoluir com conflito por campo visivel, auditoria de eventos, import/export Sheets e diagnostico operacional.
 
 Antes de implementar:
 

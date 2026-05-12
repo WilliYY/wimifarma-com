@@ -64,10 +64,16 @@ Evolucao:
 
 ## Media prioridade
 
-### Cotacao + Google Sheets
+### Cotacao V2 + Google Sheets
 
 Estado:
 
+- Em 2026-05-12, a Cotacao foi reestruturada como V2 em `apps/cotacao`, usando Node.js/Express/Socket.IO, Postgres e Redis.
+- A rota `/cotacao/` passa pelo Apache em `wimifarma-com-web` e e encaminhada para `wimifarma-cotacao-app:3000`.
+- O login segue usando a tabela MySQL `wf_users`, preservando o acesso existente.
+- A primeira fatia da V2 foi validada com health check, login, bootstrap, save por celula, criacao/remocao de regra condicional explicita e teste das palavras `geral`, `urgente`, `encomenda` e `cotacao`.
+- Os dados oficiais ainda estao no Google Sheets; a V2 inicia como base nova e precisa de import/export controlado.
+- As linhas antigas abaixo descrevem a Cotacao PHP legada e ficam como historico de diagnostico ate a V2 absorver tudo.
 - Existem tabelas `cotacao_*` e `cotacao_sync_estado`.
 - Existe primeira camada de presenca ao vivo em `cotacao_presencas`, com `presence_ping`, total de usuarios, chips de usuarios ativos e marca visual de celula remota.
 - Em 2026-05-11, simulacao com duas sessoes validou `sync_pull`, preservacao de campos separados e presenca com 2 usuarios.
@@ -81,21 +87,21 @@ Estado:
 - Em 2026-05-12, a protecao foi reforcada para `geral`, `urgente`, `encomenda` e `cotacao`: categoria default ficou vazia, saves comuns de linhas existentes nao podem alterar `ordem` e um teste dirigido confirmou que payload legado com `ordem=1` preserva a ordem original.
 - Em 2026-05-12, o filtro de categoria/cor/vencedor passou a ser local-first por padrao; `sync_filter` ficou como compatibilidade/diagnostico e filtros compartilhados antigos sao sanitizados para nao reativar `geral`, `urgente`, `encomenda` ou `cotacao`.
 - Nao ha integracao Google Sheets implementada.
-- Ainda nao ha interface de conflito por campo nem canal WebSocket/SSE.
+- Ainda nao ha interface de conflito por campo visivel nem diagnostico operacional completo da V2.
 
 Risco:
 
 - Sincronizacao mal desenhada pode duplicar linhas, perder formatacao ou sobrescrever campos importantes.
+- Recriar gatilhos escondidos por palavra de categoria reabre o bug que motivou a V2.
 
 Evolucao:
 
-- Definir ID estavel por item, fonte de verdade por campo, tratamento de conflito, auditoria e job de sync.
-- Definir se a proxima etapa sera polling reforcado, Server-Sent Events ou WebSocket.
-- Criar diagnostico visual de eventos atrasados, snapshot fallback e conflitos por campo.
+- Definir fonte de verdade por campo, tratamento de conflito, auditoria e job de sync com Google Sheets.
+- Criar diagnostico visual de eventos atrasados, fila WebSocket e conflitos por campo.
 - Criar diagnostico de sync/presenca para operador.
-- Medir performance com muitos itens/categorias em navegador real depois da fila incremental antes de trocar linguagem ou banco. A proxima evolucao mais parecida com Sheets tende a ser SSE/WebSocket usando os eventos ja registrados.
-- Criar teste automatizado para confirmar que digitar `geral`/`urgente`/`encomenda`/`cotacao` em categoria nao altera ordem, prioridade, data de encomenda ou filtro durante a edicao.
-- Criar teste automatizado para duas telas confirmando que uma troca de filtro em uma delas nao muda a outra enquanto `data-shared-filter-sync` estiver desligado.
+- Criar teste automatizado com duas telas confirmando edicao simultanea e filtros locais.
+- Criar import/export Sheets ou CSV antes de migrar dados reais.
+- Criar backup/restore do Postgres `wimifarma_cotacao`.
 
 ### Miauby generativo com skills controladas
 

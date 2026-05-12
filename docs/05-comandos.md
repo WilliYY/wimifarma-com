@@ -17,6 +17,9 @@ docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-com-db
+docker compose logs --tail=80 wimifarma-cotacao-app
+docker compose logs --tail=80 wimifarma-cotacao-db
+docker compose logs --tail=80 wimifarma-cotacao-redis
 ```
 
 ## Local - lint PHP
@@ -49,14 +52,18 @@ curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 ```powershell
 curl.exe -I -H "Host: wimifarma.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:3002/
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
+curl.exe -sS http://127.0.0.1:3002/cotacao/health
+curl.exe -I -sS http://127.0.0.1:3002/cotacao/login.php
+curl.exe -I -sS http://127.0.0.1:3002/cotacao/socket.io/socket.io.js
 ```
 
-O endpoint `cotacao/api.php?action=presence_ping` exige sessao e CSRF da Cotacao. Valide pela interface logada quando mexer em presenca ao vivo.
+A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por celula sem navegador, primeiro autentique em `/cotacao/login.php`, extraia o CSRF da pagina `/cotacao/` e chame `PATCH /cotacao/api/cells`.
 
 ## Banco - inventario
 
 ```powershell
 docker exec wimifarma-com-db sh -c "mysql -u`$MYSQL_USER -p`$MYSQL_PASSWORD -N -B -e 'SHOW TABLES FROM wimifarma_app; SHOW TABLES FROM wimifarma_wp;'"
+docker exec wimifarma-cotacao-db psql -U wimifarma_cotacao -d wimifarma_cotacao -c "\dt"
 ```
 
 ## Git local
@@ -76,6 +83,7 @@ git pull origin main
 docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
+docker compose logs --tail=80 wimifarma-cotacao-app
 ```
 
 ## VPS - diagnosticar home publica

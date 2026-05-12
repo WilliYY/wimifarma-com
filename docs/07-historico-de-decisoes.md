@@ -798,3 +798,42 @@ Riscos/cuidados:
 
 - Se filtro compartilhado voltar a ser necessario, habilitar de forma explicita e testar com duas telas antes de producao.
 - Nao reintroduzir gatilho por texto de categoria; cor deve vir de regra condicional revisada e filtro deve ser acao local do usuario.
+
+## 2026-05-12 - Cotacao V2 substitui a planilha PHP antiga
+
+Decisao:
+
+- Reestruturar diretamente `/cotacao/` como um servico Node.js/Express/Socket.IO em `apps/cotacao`.
+- Usar Postgres `wimifarma_cotacao` para linhas, colunas, eventos e regras condicionais.
+- Usar Redis para sessoes e presenca temporaria.
+- Manter o login usando `wf_users` no MySQL para preservar os usuarios existentes.
+- Publicar a V2 por proxy interno do Apache em `wimifarma-com-web`, mantendo o Nginx Proxy Manager apontando para `wimifarma-com-web:80`.
+
+Motivo:
+
+- A Cotacao PHP antiga acumulou regras historicas de categoria que ainda causavam salto para primeira linha, travamento e comportamento escondido para `geral`, `urgente`, `encomenda` e `cotacao`.
+- Como os dados oficiais estavam no Google Sheets, o usuario autorizou trocar o motor da Cotacao diretamente e validar passo a passo.
+
+Impacto:
+
+- `apps/cotacao/`
+- `docker-compose.yml`
+- `docker/php/Dockerfile`
+- `.env.example`
+- `.gitignore`
+- `README.md`
+- `AGENTS.md`
+- `docs/01-arquitetura.md`
+- `docs/02-banco-de-dados.md`
+- `docs/03-fluxos-do-sistema.md`
+- `docs/05-comandos.md`
+- `docs/06-pendencias.md`
+- `docs/19-cotacao-tempo-real.md`
+- `docs/20-cotacao-v2.md`
+
+Riscos/cuidados:
+
+- Nao apagar `cotacao-data/` sem backup.
+- Nao recriar gatilhos escondidos por palavra de categoria.
+- Adicionar `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` do VPS antes do deploy.
+- O proximo passo deve ser conflito por campo, diagnostico de sync e import/export Sheets, nao novos remendos na planilha PHP antiga.

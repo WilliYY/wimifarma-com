@@ -11,6 +11,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `site/cashback/functions.php` envia headers de seguranca em modulos internos.
 - CSRF e escape HTML existem nos helpers internos.
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
+- A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
 
@@ -19,11 +20,13 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `.gitignore`
 - `.dockerignore`
 - `.env.example`
+- `apps/cotacao/src/server.js`
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/wp-config.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/config.local.example.php`
+- `cotacao-data/`
 
 ## Regras que precisam ser preservadas
 
@@ -33,6 +36,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Usar prepared statements.
 - Proteger jobs por token quando forem chamados externamente.
 - Revisar permissao antes de expor qualquer endpoint novo.
+- Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
+- Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -40,6 +45,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Repositorio tratado como publico.
 - SSL via Nginx Proxy Manager, nao diretamente no Apache do container.
 - `WP_CACHE` e cache publico ficam desligados por padrao durante migracao para evitar HTML antigo, mixed content e comportamento inesperado.
+- A Cotacao V2 reutiliza usuarios de `wf_users`, mas guarda a sessao no Redis do modulo e os dados da planilha no Postgres isolado.
+- A Cotacao V2 rejeita API sem sessao e sem CSRF; Socket.IO tambem exige sessao autenticada.
 
 ## Riscos ao alterar
 
@@ -48,6 +55,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Arquivos de upload/cache podem executar codigo se configurados incorretamente.
 - Jobs cron sem token forte podem ser abusados.
 - Logs podem conter dados internos.
+- Um `COTACAO_SESSION_SECRET` fraco permite falsificacao de sessao; usar valor longo e exclusivo por ambiente.
+- Expor Postgres ou Redis publicamente permitiria leitura/alteracao de dados internos; eles devem ficar apenas na rede Docker.
 
 ## Pendencias
 
@@ -57,6 +66,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Revisar permissao de arquivos no VPS.
 - Desabilitar ou proteger `xmlrpc.php` se nao for necessario.
 - Criar rotina de varredura de segredos antes de push.
+- Criar testes de permissao especificos da Cotacao V2 para API HTTP e Socket.IO.
 
 ## Evolucao futura
 

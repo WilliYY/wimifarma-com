@@ -4,6 +4,22 @@
 
 Este documento registra a camada atual de sincronizacao e presenca ao vivo da Cotacao e o caminho para evoluir a ferramenta para um comportamento mais proximo do Google Sheets. A prioridade e evitar perda de dados, conflito silencioso e divergencia entre computadores.
 
+## Estado atual em 2026-05-12
+
+A Cotacao foi reestruturada como V2 em `apps/cotacao`, servida em `/cotacao/` por proxy interno do Apache para `wimifarma-cotacao-app:3000`.
+
+A V2 usa:
+
+- Node.js/Express para rotas e API;
+- Socket.IO para presenca e eventos ao vivo;
+- Postgres `wimifarma_cotacao` para linhas, colunas, eventos e regras;
+- Redis para sessao e presenca temporaria;
+- MySQL `wf_users` apenas para preservar o login existente.
+
+As notas abaixo sobre polling PHP/MySQL ficam como historico da Cotacao legada. O documento principal da nova arquitetura e `docs/20-cotacao-v2.md`.
+
+Na V2, `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum em categoria. Nao existe gatilho escondido por palavra para cor, prioridade, ordem, filtro ou alerta; destaque visual so pode vir de regra condicional explicita.
+
 ## Estado real atual
 
 A Cotacao ja possui:
