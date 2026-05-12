@@ -928,8 +928,8 @@ function miauw_skill_cotacao_summary(array $period): array
             COALESCE(SUM(i.status = 'cotada'), 0) AS cotadas,
             COALESCE(SUM(i.status = 'pedido'), 0) AS pedidos,
             COALESCE(SUM(i.status = 'cancelada'), 0) AS canceladas,
-            COALESCE(SUM(i.categoria LIKE '%urgente%'), 0) AS urgentes,
-            COALESCE(SUM(i.categoria LIKE '%encomenda%'), 0) AS encomendas,
+            COALESCE(SUM(i.prioridade = 'urgente'), 0) AS urgentes,
+            COALESCE(SUM(i.prioridade = 'encomenda'), 0) AS encomendas,
             COALESCE(SUM(i.vencedor_fornecedor_id IS NOT NULL), 0) AS com_vencedor
          FROM cotacao_itens i
          WHERE COALESCE(i.updated_at, i.created_at) >= ? AND COALESCE(i.updated_at, i.created_at) < ?"
@@ -942,7 +942,7 @@ function miauw_skill_cotacao_summary(array $period): array
         'Itens movimentados no periodo: ' . (int) ($row['total'] ?? 0),
         'Abertas: ' . (int) ($row['abertas'] ?? 0) . ', cotadas: ' . (int) ($row['cotadas'] ?? 0) . ', pedidos: ' . (int) ($row['pedidos'] ?? 0) . ', canceladas: ' . (int) ($row['canceladas'] ?? 0),
         'Com vencedor definido: ' . (int) ($row['com_vencedor'] ?? 0),
-        'Categorias com urgente: ' . (int) ($row['urgentes'] ?? 0) . ', categorias com encomenda: ' . (int) ($row['encomendas'] ?? 0),
+        'Prioridade urgente: ' . (int) ($row['urgentes'] ?? 0) . ', prioridade encomenda: ' . (int) ($row['encomendas'] ?? 0),
     );
 
     $stmt = db()->query(
@@ -1087,7 +1087,7 @@ function miauw_skill_cotacao_lookup(string $message): array
         ? ', i.encomenda_registrada_em'
         : ", NULL AS encomenda_registrada_em";
     $stmt = db()->prepare(
-        'SELECT i.id, i.ean, i.produto, i.quantidade, i.categoria, i.status, i.vencedor_preco
+        'SELECT i.id, i.ean, i.produto, i.quantidade, i.categoria, i.prioridade, i.status, i.vencedor_preco
                 ' . $orderDateSelect . ',
                 b.nome AS bloco_nome, f.nome AS vencedor_nome
          FROM cotacao_itens i
@@ -1115,7 +1115,7 @@ function miauw_skill_cotacao_lookup(string $message): array
             . ' | categoria: ' . (string) ($item['categoria'] ?? '-')
             . ' | status: ' . (string) ($item['status'] ?? '-')
             . ' | vencedor: ' . $winner;
-        if (miauw_skill_has_any((string) ($item['categoria'] ?? ''), array('encomenda')) && !empty($item['encomenda_registrada_em'])) {
+        if ((string) ($item['prioridade'] ?? '') === 'encomenda' && !empty($item['encomenda_registrada_em'])) {
             $line .= ' | registrada: ' . date('d/m/Y H:i', strtotime((string) $item['encomenda_registrada_em']));
         }
         $lines[] = $line;

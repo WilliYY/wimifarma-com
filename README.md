@@ -33,10 +33,11 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `site/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
 - A Cotacao possui primeira camada de presenca ao vivo: usuarios ativos, celula/coluna em foco, edicao ativa e indicacao quando outro usuario esta fora do filtro atual. Em 2026-05-11, foi validado por duas sessoes que edicoes por campo preservam produto/categoria sem sobrescrita.
-- A edicao de categoria na Cotacao usa atualizacao visual com debounce, evita reconstruir opcoes quando o popover esta fechado e atualiza a versao de sync logo apos saves locais para nao reaplicar snapshot completo na propria tela.
-- As cores de categorias como `urgente` e `encomenda` sao responsabilidade da formatacao condicional (`cotacao_regras_formatacao`), nao de classes fixas no CSS/JS.
+- A Cotacao agora tenta `sync_events_pull` com eventos incrementais em `cotacao_eventos` antes de usar snapshot completo por `sync_pull`; saves locais enviam `client_id` para evitar self-replay.
+- A edicao de categoria na Cotacao usa atualizacao visual com debounce, evita reconstruir opcoes quando o popover esta fechado e nao reaplica filtro ativo no meio da digitacao da celula.
+- As cores de categorias como `urgente` e `encomenda` sao responsabilidade da formatacao condicional (`cotacao_regras_formatacao`), nao de classes fixas no CSS/JS nem de filtro de cor por palavra-chave. Categoria tambem nao deve mudar `prioridade` nem registrar encomenda automaticamente.
 - Miauby possui `miauw_skill_registry()` para inventariar skills por modulo, risco, nivel, permissao, auditoria e executor antes de novas autonomias. Consultas de alertas e conhecimentos foram aliviadas para reduzir trabalho repetido.
-- Miauby so alerta encomendas da Cotacao quando passaram de 1 dia sem baixa/pedido, e o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
+- Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 

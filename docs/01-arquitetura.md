@@ -61,7 +61,8 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - `.dockerignore` reduz contexto de build para evitar enviar dados sensiveis e volume MySQL ao Docker.
 - Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
-- A Cotacao mantem a primeira camada de colaboracao via polling HTTP (`sync_pull` e `presence_ping`) antes de adotar WebSocket/SSE.
+- A Cotacao mantem colaboracao via polling HTTP (`sync_events_pull`, `sync_pull` e `presence_ping`) antes de adotar WebSocket/SSE. Eventos incrementais em `cotacao_eventos` sao tentados antes de snapshot completo.
+- Palavras de categoria como `urgente` e `encomenda` nao devem aplicar cor, prioridade nem data operacional automaticamente; cor vem de `cotacao_regras_formatacao`, e alertas do Miauby usam prioridade explicita salva por usuario/ferramenta controlada.
 
 ## Riscos ao alterar
 
@@ -71,6 +72,7 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - Remover a regra de `site/home.php` antes de validar a home WordPress pode trazer de volta a tela publica sem CSS/estrutura.
 - Recriar o volume `mysql/` sem backup perde dados importados.
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.
+- Recriar atalhos automaticos por nome de categoria na Cotacao pode conflitar com a formatacao condicional e causar saltos de linha/sync pesado.
 
 ## Pendencias
 
@@ -84,4 +86,4 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`.
 - Adicionar healthchecks no Compose.
 - Criar rotinas de backup automatico do MySQL.
 - Separar jobs/cron em container proprio quando Miauby e sincronizacao crescerem.
-- Avaliar um servico dedicado de tempo real para Cotacao se o uso simultaneo crescer alem do polling atual.
+- Avaliar um servico dedicado de tempo real para Cotacao se o uso simultaneo crescer alem do polling incremental atual.

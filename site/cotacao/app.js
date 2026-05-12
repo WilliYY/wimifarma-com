@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var syncKnownDataVersion = 0;
     var syncKnownFilterVersion = 0;
     var syncKnownStructureVersion = 0;
+    var syncKnownEventId = 0;
     var syncClientId = '';
     var syncPulling = false;
     var syncFilterTimer = null;
@@ -87,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function () {
     syncKnownDataVersion = Number(grid.dataset.syncDataVersion || 0);
     syncKnownFilterVersion = Number(grid.dataset.syncFilterVersion || 0);
     syncKnownStructureVersion = Number(grid.dataset.syncStructureVersion || 0);
+    syncKnownEventId = Number(grid.dataset.syncEventId || 0);
     syncClientId = (function () {
         try {
             var key = 'wimifarma:cotacao:sync-client';
@@ -648,7 +650,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     throw new Error(json.message || 'Nao foi possivel salvar.');
                 }
                 var skipImmediateSyncStateActions = {
-                    presence_ping: true
+                    presence_ping: true,
+                    sync_events_pull: true
                 };
 
                 if (action !== 'sync_pull' && !skipImmediateSyncStateActions[action]) {
@@ -683,10 +686,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!options.skipStructure) {
             syncKnownStructureVersion = Math.max(syncKnownStructureVersion, Number(state.estrutura_versao || 0));
         }
+        syncKnownEventId = Math.max(syncKnownEventId, Number(state.evento_id || 0));
         grid.dataset.syncVersion = String(syncKnownVersion || 0);
         grid.dataset.syncDataVersion = String(syncKnownDataVersion || 0);
         grid.dataset.syncFilterVersion = String(syncKnownFilterVersion || 0);
         grid.dataset.syncStructureVersion = String(syncKnownStructureVersion || 0);
+        grid.dataset.syncEventId = String(syncKnownEventId || 0);
     }
 
     function syncFilterStateFromServer(state) {
@@ -1052,7 +1057,20 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         items.forEach(function (item, index) {
-            var row = rowsById[String(item.id || '')] || rows[index];
+            var existingRow = rowsById[String(item.id || '')] || null;
+            var row = existingRow;
+
+            if (existingRow && rowHasLocalSyncLock(existingRow)) {
+                skipped = true;
+                return;
+            }
+
+            if (!row && pendingLocalRowForRemoteItem(item)) {
+                skipped = true;
+                return;
+            }
+
+            row = row || rows[index];
             if (row && (usedRows.has(row) || rowHasLocalSyncLock(row))) {
                 row = rows.find(function (candidate) {
                     return !usedRows.has(candidate) && !rowHasLocalSyncLock(candidate);
@@ -1065,6 +1083,10 @@ document.addEventListener('DOMContentLoaded', function () {
             applyRemoteRow(row, item);
             usedRows.add(row);
             orderedRows.push(row);
+        });
+
+        orderedRows.forEach(function (row) {
+            mergeDuplicateItemRows(row, row ? row.dataset.itemId : 0, false);
         });
 
         rows.forEach(function (row) {
@@ -1090,6 +1112,229 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         return { skipped: skipped };
+    }
+
+    function rowsByItemId(itemId) {
+        itemId = Number(itemId || 0);
+        if (itemId <= 0) {
+            return [];
+        }
+
+        return Array.prototype.filter.call(grid.querySelectorAll('tbody tr[data-item-id]'), function (row) {
+            return Number(row.dataset.itemId || 0) === itemId;
+        });
+    }
+
+    function rowByItemId(itemId) {
+        var rows = rowsByItemId(itemId);
+        if (!rows.length) {
+            return null;
+        }
+
+        return rows.find(function (row) {
+            return rowHasLocalSyncLock(row);
+        }) || rows[0];
+    }
+
+    function syncCompareValue(value) {
+        return normalizeText(String(value || '').trim());
+    }
+
+    function pendingLocalRowForRemoteItem(item) {
+        item = item || {};
+        var itemId = Number(item.id || 0);
+        var itemOrder = Number(item.ordem || 0);
+        var itemProduct = syncCompareValue(item.produto || '');
+        var itemCategory = syncCompareValue(item.categoria || '');
+
+        if (itemId <= 0 || (!itemOrder && !itemProduct)) {
+            return null;
+        }
+
+        return Array.prototype.slice.call(grid.querySelectorAll('tbody tr[data-item-id]')).find(function (row) {
+            if (Number(row.dataset.itemId || 0) > 0 || !rowHasLocalSyncLock(row)) {
+                return false;
+            }
+
+            if (itemOrder > 0 && numericRowOrder(row) === itemOrder) {
+                return true;
+            }
+
+            if (!itemProduct) {
+                return false;
+            }
+
+            var rowProduct = syncCompareValue(valueOf(row, '[name$="[produto]"]'));
+            var rowCategory = syncCompareValue(valueOf(row, '[name$="[categoria]"]'));
+
+            if (rowProduct !== itemProduct) {
+                return false;
+            }
+
+            return !itemCategory || rowCategory === itemCategory;
+        }) || null;
+    }
+
+    function mergeDuplicateItemRows(keeper, itemId, shouldRenumber) {
+        var rows = rowsByItemId(itemId);
+        var removed = false;
+
+        if (rows.length < 2) {
+            return false;
+        }
+
+        rows.forEach(function (row) {
+            if (row === keeper || rowHasLocalSyncLock(row)) {
+                return;
+            }
+
+            row.remove();
+            removed = true;
+        });
+
+        if (removed && shouldRenumber !== false) {
+            renumberVisibleRows();
+        }
+
+        return removed;
+    }
+
+    function firstReusableRemoteRow() {
+        return Array.prototype.slice.call(grid.querySelectorAll('tbody tr')).find(function (row) {
+            return !row.dataset.itemId && !rowHasLocalSyncLock(row);
+        }) || null;
+    }
+
+    function sortRowsByOrder() {
+        var tbody = grid.querySelector('tbody');
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+        var persisted = rows.filter(function (row) {
+            return row.dataset.itemId && !rowHasLocalSyncLock(row);
+        }).sort(function (a, b) {
+            var orderA = numericRowOrder(a);
+            var orderB = numericRowOrder(b);
+            if (orderA !== orderB) {
+                return orderA - orderB;
+            }
+            return Number(a.dataset.itemId || 0) - Number(b.dataset.itemId || 0);
+        });
+        var anchor = rows.find(function (row) {
+            return !row.dataset.itemId && !rowHasLocalSyncLock(row);
+        }) || null;
+
+        persisted.forEach(function (row) {
+            tbody.insertBefore(row, anchor);
+        });
+        renumberVisibleRows();
+    }
+
+    function applyRemoteItemEvent(item) {
+        item = item || {};
+        var itemId = Number(item.id || 0);
+        if (itemId <= 0) {
+            return true;
+        }
+
+        var row = rowByItemId(itemId);
+        if (row && rowHasLocalSyncLock(row)) {
+            return false;
+        }
+        if (!row) {
+            if (pendingLocalRowForRemoteItem(item)) {
+                return false;
+            }
+            row = firstReusableRemoteRow();
+        }
+        if (!row || rowHasLocalSyncLock(row)) {
+            return false;
+        }
+
+        applyRemoteRow(row, item);
+        mergeDuplicateItemRows(row, itemId, false);
+        sortRowsByOrder();
+        return true;
+    }
+
+    function applyRemoteCanceledItem(itemId) {
+        var row = rowByItemId(itemId);
+        if (!row) {
+            return true;
+        }
+        if (rowHasLocalSyncLock(row)) {
+            return false;
+        }
+
+        clearRow(row);
+        markRowClean(row);
+        sortRowsByOrder();
+        return true;
+    }
+
+    function applySyncEvent(event) {
+        event = event || {};
+        var payload = event.payload || {};
+
+        if (event.client_id && event.client_id === syncClientId) {
+            return true;
+        }
+
+        if (event.escopo === 'estrutura') {
+            return false;
+        }
+
+        if (event.tipo === 'filtro_atualizado') {
+            applyRemoteFilterState(payload.filter || {});
+            return true;
+        }
+
+        if (event.tipo === 'item_criado' || event.tipo === 'item_atualizado') {
+            return applyRemoteItemEvent(payload.item || {});
+        }
+
+        if (event.tipo === 'item_cancelado') {
+            return applyRemoteCanceledItem(payload.item_id || event.item_id);
+        }
+
+        if (event.tipo === 'linhas_criadas') {
+            return (payload.items || []).every(function (item) {
+                return applyRemoteItemEvent(item);
+            });
+        }
+
+        if (event.tipo === 'regras_atualizadas') {
+            applyRemoteRules(payload.rules || []);
+            return true;
+        }
+
+        return false;
+    }
+
+    function applySyncEvents(result) {
+        var events = Array.isArray(result && result.events) ? result.events : [];
+        var applied = true;
+
+        if (!events.length && !result.filter_changed && !result.data_changed && !result.structure_changed) {
+            rememberSyncState(result.state);
+            return true;
+        }
+
+        isApplyingRemoteSync = true;
+        try {
+            applied = events.every(applySyncEvent);
+            if (!applied) {
+                return false;
+            }
+            updateProductColorOptions();
+            updateWinnerOptions();
+            applyGridFilters({ status: false });
+            renderPresence(presenceLast);
+        } finally {
+            isApplyingRemoteSync = false;
+        }
+
+        rememberSyncState(result.state);
+        setStatus(result.filter_changed && !result.data_changed ? 'Filtro sincronizado ao vivo' : 'Cotacao sincronizada por eventos', 'saved');
+        return true;
     }
 
     function applyRemoteRules(rules) {
@@ -1195,23 +1440,44 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         syncPulling = true;
-        api('sync_pull', {
+        var payload = {
             known_version: syncKnownVersion,
             known_data_version: syncKnownDataVersion,
             known_filter_version: syncKnownFilterVersion,
             known_structure_version: syncKnownStructureVersion,
+            known_event_id: syncKnownEventId,
             client_id: syncClientId
-        }).then(function (result) {
+        };
+        var fallbackSnapshot = function () {
+            return api('sync_pull', payload).then(function (result) {
+                if (result.changed && result.snapshot) {
+                    applySyncSnapshot(result.snapshot, Boolean(result.structure_changed), {
+                        dataChanged: result.data_changed !== false,
+                        filterChanged: result.filter_changed !== false
+                    });
+                } else {
+                    rememberSyncState(result.state);
+                    flushPendingSyncSnapshot();
+                }
+            });
+        };
+        var request = syncKnownEventId > 0
+            ? api('sync_events_pull', payload).then(function (result) {
+                if (!result.changed) {
+                    rememberSyncState(result.state);
+                    flushPendingSyncSnapshot();
+                    return;
+                }
+                if (!result.requires_snapshot && applySyncEvents(result)) {
+                    flushPendingSyncSnapshot();
+                    return;
+                }
+                return fallbackSnapshot();
+            })
+            : fallbackSnapshot();
+
+        request.then(function () {
             syncErrorCount = 0;
-            if (result.changed && result.snapshot) {
-                applySyncSnapshot(result.snapshot, Boolean(result.structure_changed), {
-                    dataChanged: result.data_changed !== false,
-                    filterChanged: result.filter_changed !== false
-                });
-            } else {
-                rememberSyncState(result.state);
-                flushPendingSyncSnapshot();
-            }
         }).catch(function (error) {
             syncErrorCount += 1;
             if (syncErrorCount >= 4) {
@@ -1560,7 +1826,8 @@ document.addEventListener('DOMContentLoaded', function () {
             linha_vazia: row.dataset.lineEmpty || '0',
             campos: row.dataset.syncDirtyFields || '',
             precos_alterados: row.dataset.syncDirtyPrices || '',
-            precos: prices
+            precos: prices,
+            client_id: syncClientId
         };
     }
 
@@ -1637,8 +1904,10 @@ document.addEventListener('DOMContentLoaded', function () {
         row.dataset.syncSaving = '1';
         row.dataset.syncSavingAt = String(sentDirtyAt);
         api('save_row', payload).then(function (result) {
+            var savedItemId = Number(result.item_id || 0);
+
             if (result.item_id) {
-                enableDelete(row, result.item_id);
+                enableDelete(row, savedItemId);
             }
             if (result.ordem) {
                 setRowOrder(row, result.ordem);
@@ -1667,6 +1936,9 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 delete row.dataset.syncSaving;
                 delete row.dataset.syncSavingAt;
+            }
+            if (savedItemId > 0) {
+                mergeDuplicateItemRows(row, savedItemId);
             }
             flushPendingSyncSnapshot();
         }).catch(function (error) {
@@ -1913,7 +2185,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         setStatus('Excluindo linha...', 'saving');
-        api('delete_row', { id: itemId }).then(function (result) {
+        api('delete_row', { id: itemId, client_id: syncClientId }).then(function (result) {
             if (result && Array.isArray(result.categories)) {
                 renderCategoryOptions(result.categories, true);
             }
@@ -2028,7 +2300,7 @@ document.addEventListener('DOMContentLoaded', function () {
         replaceKnownCategories(categories);
     }
 
-    function updateCategoryConditional(row, allowClientStamp) {
+    function updateCategoryConditional(row) {
         if (!row) {
             return;
         }
@@ -2040,11 +2312,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         cell.classList.remove('is-category-urgent', 'is-category-order');
-        updateOrderRegisteredInfo(row, '', '', Boolean(allowClientStamp));
-    }
-
-    function categoryIsOrder(value) {
-        return normalizeText(value).indexOf('encomenda') !== -1;
     }
 
     function formatOrderRegisteredAt(value) {
@@ -2068,17 +2335,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }).replace(',', '');
     }
 
-    function nowMysqlDateTime() {
-        var date = new Date();
-        var pad = function (value) {
-            return String(value).padStart(2, '0');
-        };
-
-        return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
-            + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
-    }
-
-    function updateOrderRegisteredInfo(row, serverValue, serverLabel, allowClientStamp) {
+    function updateOrderRegisteredInfo(row, serverValue, serverLabel) {
         if (!row) {
             return;
         }
@@ -2089,19 +2346,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        if (!categoryIsOrder(input.value)) {
+        var registeredAt = String(serverValue || '').trim();
+        if (!registeredAt) {
             delete cell.dataset.orderRegisteredAt;
             delete cell.dataset.orderRegisteredLabel;
             cell.removeAttribute('title');
-            return;
-        }
-
-        var registeredAt = String(serverValue || cell.dataset.orderRegisteredAt || '').trim();
-        if (!registeredAt && allowClientStamp) {
-            registeredAt = nowMysqlDateTime();
-        }
-
-        if (!registeredAt) {
             return;
         }
 
@@ -3271,7 +3520,8 @@ document.addEventListener('DOMContentLoaded', function () {
             coluna_chave: column,
             operador: operator,
             termo: term,
-            cor_fundo: color
+            cor_fundo: color,
+            client_id: syncClientId
         }).then(function (result) {
             conditionalRules = Array.isArray(result.rules) ? result.rules.map(sanitizeConditionalRule).filter(function (rule) {
                 return rule.id > 0 && rule.column_key && rule.background;
@@ -3291,7 +3541,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         setStatus('Apagando condicao...', 'saving');
-        api('delete_conditional_rule', { id: id }).then(function (result) {
+        api('delete_conditional_rule', { id: id, client_id: syncClientId }).then(function (result) {
             conditionalRules = Array.isArray(result.rules) ? result.rules.map(sanitizeConditionalRule).filter(function (rule) {
                 return rule.id > 0 && rule.column_key && rule.background;
             }) : [];
@@ -5119,9 +5369,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (target.classList.contains('category-input')) {
             updateCategoryConditional(target.closest('tr'), true);
             scheduleCategoryOptionsRefresh([], false, 180);
-            if (hasActiveGridFilter()) {
-                scheduleGridFilterRefresh(180, { status: false });
-            }
         }
 
         autoGrow(target);
@@ -5325,9 +5572,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (target.classList.contains('category-input')) {
             updateCategoryConditional(row, true);
             scheduleCategoryOptionsRefresh([], false, 180);
-            if (hasActiveGridFilter()) {
-                scheduleGridFilterRefresh(180, { status: false });
-            }
         }
 
         applyConditionalFormatting(row);
@@ -6018,7 +6262,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return Promise.resolve(null);
             }
 
-            return api('delete_row', { id: itemId }).then(function (result) {
+            return api('delete_row', { id: itemId, client_id: syncClientId }).then(function (result) {
                 clearRow(row);
                 markRowClean(row);
                 return result;

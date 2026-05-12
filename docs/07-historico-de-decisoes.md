@@ -583,3 +583,96 @@ Riscos/cuidados:
 - Se o usuario quiser mudar a cor de `urgente` ou `encomenda`, deve editar a regra condicional, nao recriar CSS fixo.
 - A Cotacao ainda usa polling e snapshot; para comportamento realmente proximo do Google Sheets, o proximo salto e evento incremental com SSE/WebSocket e conflito por campo.
 - Testes de schema devem ser sequenciais para evitar lock temporario no MySQL.
+
+## 2026-05-11 - Cotacao inicia sync incremental por eventos
+
+Decisao:
+
+- Criar `cotacao_eventos` como fila incremental de alteracoes da Cotacao.
+- Criar `sync_events_pull` para a tela buscar eventos antes de recorrer a `sync_pull` com snapshot completo.
+- Registrar `client_id` nas mutacoes locais para a propria aba ignorar eventos que ela acabou de gerar.
+- Adicionar versoes por item/campo e preco em `cotacao_itens.versoes` e `cotacao_precos.versao`.
+- Impedir que filtro ativo de categoria seja reaplicado a cada tecla dentro da celula; o filtro recalcula no fim da edicao.
+
+Motivo:
+
+- Aproximar a Cotacao do comportamento do Google Sheets sem trocar stack antes de medir gargalos reais.
+- Reduzir travadas e saltos de linha ao editar categorias como `encomenda`.
+- Preparar a base para conflito por campo e futuro SSE/WebSocket.
+
+Impacto:
+
+- `site/cotacao/cotacao-funcoes.php`
+- `site/cotacao/api.php`
+- `site/cotacao/index.php`
+- `site/cotacao/app.js`
+- `docs/19-cotacao-tempo-real.md`
+- `docs/02-banco-de-dados.md`
+- `docs/03-fluxos-do-sistema.md`
+- `docs/06-pendencias.md`
+
+Riscos/cuidados:
+
+- Eventos incrementais ainda usam polling; o delay minimo segue limitado pelo intervalo atual.
+- Mudanca estrutural ou atraso grande ainda deve cair para snapshot completo.
+- O proximo passo para ficar mais perto do Sheets e exibir conflito por campo e trocar o transporte para SSE/WebSocket, nao trocar banco/linguagem sem medicao.
+
+## 2026-05-11 - Cotacao desacopla palavras-gatilho de prioridade e filtro de cor
+
+Decisao:
+
+- Remover o ajuste automatico de `prioridade=encomenda` quando a categoria contem `encomenda`.
+- Remover `urgente`/`encomenda` como atalhos escondidos no filtro de cor.
+- Manter `encomenda_registrada_em` apenas como dado operacional para alerta do Miauby apos 1 dia.
+- Evitar recalculo de grade no `sync_events_pull` quando nao chegou evento nem filtro alterado.
+
+Motivo:
+
+- O usuario observou que escrever `encomenda` ou `urgente` ainda fazia a tela saltar/travar.
+- Havia comportamento antigo criado antes da formatacao condicional, competindo com a regra configuravel atual.
+
+Impacto:
+
+- `site/cotacao/cotacao-funcoes.php`
+- `site/cotacao/app.js`
+- `docs/19-cotacao-tempo-real.md`
+- `docs/01-arquitetura.md`
+- `docs/06-pendencias.md`
+
+Riscos/cuidados:
+
+- Se a equipe quiser prioridade ou cor automatica, isso deve virar regra explicita, visivel e auditavel, nao gatilho escondido por texto.
+- Linhas antigas que ja estavam com `prioridade=encomenda` nao foram alteradas automaticamente para evitar mudanca silenciosa de dados.
+
+## 2026-05-11 - Cotacao remove ultimo gatilho operacional por texto de categoria
+
+Decisao:
+
+- Remover o registro automatico de `encomenda_registrada_em` quando a categoria contem `encomenda`.
+- Fazer alertas e resumo do Miauby considerarem `prioridade = 'encomenda'` ou `prioridade = 'urgente'`, nao busca textual em `categoria`.
+- Manter a categoria como texto livre e entrada para formatacao condicional configuravel.
+
+Motivo:
+
+- O usuario identificou que escrever `encomenda` e `urgente` ainda podia acionar comportamento antigo e travar/saltar a linha.
+- A Cotacao precisa se comportar como planilha: texto digitado nao deve virar comando escondido.
+
+Impacto:
+
+- `site/cotacao/cotacao-funcoes.php`
+- `site/cotacao/app.js`
+- `site/cotacao/index.php`
+- `site/miauw/miauw-intelligence.php`
+- `site/miauw/miauw-skills.php`
+- `site/miauw/miauw-funcoes.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/01-arquitetura.md`
+- `docs/06-pendencias.md`
+- `docs/19-cotacao-tempo-real.md`
+
+Riscos/cuidados:
+
+- Encomendas criadas corretamente pelo Miauby continuam usando prioridade explicita `encomenda`.
+- Linhas antigas com apenas categoria textual `encomenda` e prioridade `normal` deixam de alimentar alerta operacional, por decisao de evitar gatilho invisivel.
+- Se for necessario converter historico antigo, criar rotina auditada e revisada pelo usuario antes de alterar dados.

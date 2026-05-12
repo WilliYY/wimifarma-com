@@ -851,7 +851,7 @@ function miauw_guardian_scan_cotacao(array &$processedTypes): array
          LEFT JOIN cotacao_blocos b ON b.id = i.bloco_id
          WHERE i.status NOT IN ('cancelada', 'pedido')
            AND i.produto <> ''
-           AND i.categoria LIKE '%encomenda%'
+           AND i.prioridade = 'encomenda'
            AND " . $orderDateExpr . " < DATE_SUB(NOW(), INTERVAL 1 DAY)
          ORDER BY registrada_em ASC
          LIMIT 12"
@@ -888,7 +888,7 @@ function miauw_guardian_scan_cotacao(array &$processedTypes): array
          FROM cotacao_itens i
          WHERE i.status NOT IN ('cancelada', 'pedido')
            AND i.produto <> ''
-           AND i.categoria LIKE '%urgente%'
+           AND i.prioridade = 'urgente'
            AND COALESCE(i.updated_at, i.created_at) < DATE_SUB(NOW(), INTERVAL 1 DAY)
          ORDER BY movimentado_em ASC
          LIMIT 10"

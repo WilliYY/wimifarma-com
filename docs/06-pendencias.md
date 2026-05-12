@@ -73,9 +73,13 @@ Estado:
 - Em 2026-05-11, simulacao com duas sessoes validou `sync_pull`, preservacao de campos separados e presenca com 2 usuarios.
 - A digitacao em categoria passou a usar debounce no frontend para reduzir travadas ao recalcular filtro/opcoes.
 - Uma auditoria posterior removeu duplicidade entre cores fixas antigas de `urgente`/`encomenda` e a formatacao condicional, e tambem impediu que a propria aba reaplicasse via snapshot completo a mudanca que acabou de salvar.
+- Em 2026-05-11, foi criada a primeira fila incremental `cotacao_eventos`, com `sync_events_pull`, `client_id` por aba e versoes por item/preco para reduzir snapshot completo e preparar conflito por campo.
+- O filtro ativo de categoria deixou de recalcular durante a digitacao da celula; ele recalcula ao finalizar a edicao, evitando que `encomenda` ou outra categoria mova/esconda a linha no meio da escrita.
 - As regras de cor da categoria agora devem ser mantidas em `cotacao_regras_formatacao`.
+- `urgente`/`encomenda` nao devem mais atuar como atalhos escondidos de cor/filtro, e `encomenda` nao deve mudar prioridade nem registrar data operacional automaticamente quando for apenas texto de categoria.
+- Em validacao com Browser, escrever `encomenda`/`urgente` em linha nova foi ajustado para nao duplicar a linha visualmente: a tela agora reconhece o save local pendente e mantem uma unica linha por `item_id`.
 - Nao ha integracao Google Sheets implementada.
-- Ainda nao ha motor de conflito por campo nem canal WebSocket/SSE.
+- Ainda nao ha interface de conflito por campo nem canal WebSocket/SSE.
 
 Risco:
 
@@ -85,8 +89,9 @@ Evolucao:
 
 - Definir ID estavel por item, fonte de verdade por campo, tratamento de conflito, auditoria e job de sync.
 - Definir se a proxima etapa sera polling reforcado, Server-Sent Events ou WebSocket.
+- Criar diagnostico visual de eventos atrasados, snapshot fallback e conflitos por campo.
 - Criar diagnostico de sync/presenca para operador.
-- Medir performance com muitos itens/categorias em navegador real depois da correcao de snapshot local antes de trocar linguagem ou banco. A proxima evolucao mais parecida com Sheets tende a ser canal de eventos em tempo real e snapshot incremental.
+- Medir performance com muitos itens/categorias em navegador real depois da fila incremental antes de trocar linguagem ou banco. A proxima evolucao mais parecida com Sheets tende a ser SSE/WebSocket usando os eventos ja registrados.
 
 ### Miauby generativo com skills controladas
 

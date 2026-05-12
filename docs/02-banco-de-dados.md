@@ -42,6 +42,7 @@ Inventario real observado em 2026-05-10:
 - `cotacao_auditoria`: auditoria da cotacao.
 - `cotacao_regras_formatacao`: regras visuais/formatacao.
 - `cotacao_sync_estado`: estado de versao/filtros/sync.
+- `cotacao_eventos`: fila incremental de eventos da Cotacao, usada por `sync_events_pull` para evitar snapshot completo a cada alteracao.
 - `cotacao_presencas`: presenca temporaria de usuarios na Cotacao, com client id, usuario, filtro atual, item/linha/coluna em foco e estado de edicao.
 - `financeiro_fechamentos`: fechamento diario.
 - `financeiro_sangrias`: sangrias por fechamento.
@@ -105,6 +106,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `cotacao_precos` depende de item e fornecedor.
 - `cotacao_sync_estado` e chave para futura sincronizacao com planilhas.
+- `cotacao_itens.versoes` e `cotacao_precos.versao` guardam versoes por campo/preco e devem ser preservados para evoluir conflito por campo.
+- `cotacao_eventos` nao substitui auditoria completa; ele e o caminho operacional para sincronizacao incremental entre abas/computadores.
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
@@ -124,6 +127,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Alterar `wptl_options.home` e `wptl_options.siteurl` sem planejar pode redirecionar para tunel ou dominio errado.
 - Mudar colunas de cotacao sem preservar ordem/formatacao prejudica futura sincronizacao com Google Sheets.
 - Alterar `cotacao_presencas` sem compatibilidade pode quebrar a indicacao de usuarios ativos e selecao remota na tela.
+- Alterar `cotacao_eventos` sem compatibilidade pode forcar fallback frequente para snapshot completo e reintroduzir travadas na Cotacao.
 
 ## Pendencias
 

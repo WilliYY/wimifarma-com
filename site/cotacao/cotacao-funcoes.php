@@ -175,6 +175,30 @@ function cotacao_schema_statements(): array
             PRIMARY KEY (bloco_id),
             KEY idx_cotacao_sync_updated (updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS cotacao_eventos (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            bloco_id INT UNSIGNED NOT NULL,
+            tipo VARCHAR(60) NOT NULL DEFAULT 'dados',
+            escopo ENUM('dados', 'filtro', 'estrutura') NOT NULL DEFAULT 'dados',
+            item_id INT UNSIGNED NULL,
+            fornecedor_id INT UNSIGNED NULL,
+            campo VARCHAR(80) NULL,
+            valor_anterior LONGTEXT NULL,
+            valor_novo LONGTEXT NULL,
+            versao BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            dados_versao BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            filtro_versao BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            estrutura_versao BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            client_id VARCHAR(80) NOT NULL DEFAULT '',
+            usuario_id INT UNSIGNED NULL,
+            payload_json LONGTEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_cotacao_eventos_bloco_id (bloco_id, id),
+            KEY idx_cotacao_eventos_escopo (bloco_id, escopo, id),
+            KEY idx_cotacao_eventos_item (item_id),
+            KEY idx_cotacao_eventos_usuario (usuario_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         "INSERT INTO cotacao_blocos (nome, slug, descricao, origem, ordem) VALUES
             ('Cotacao Geral', 'cotacao-geral', 'Medicamentos, produtos e pedidos gerais.', 'sistema', 10),
             ('Medicamentos', 'medicamentos', 'Cotacoes por EAN, produto, laboratorio e distribuidora.', 'sistema', 20),
@@ -217,6 +241,14 @@ function cotacao_ensure_item_visual_columns(): void
 
     if (function_exists('schema_column_exists') && !schema_column_exists('cotacao_itens', 'estilos')) {
         db()->exec("ALTER TABLE cotacao_itens ADD COLUMN estilos LONGTEXT NULL AFTER cores");
+    }
+
+    if (function_exists('schema_column_exists') && !schema_column_exists('cotacao_itens', 'versoes')) {
+        db()->exec("ALTER TABLE cotacao_itens ADD COLUMN versoes LONGTEXT NULL AFTER estilos");
+    }
+
+    if (function_exists('schema_column_exists') && !schema_column_exists('cotacao_precos', 'versao')) {
+        db()->exec("ALTER TABLE cotacao_precos ADD COLUMN versao BIGINT UNSIGNED NOT NULL DEFAULT 1 AFTER observacao");
     }
 
     if (function_exists('schema_column_exists') && !schema_column_exists('cotacao_itens', 'encomenda_registrada_em')) {
@@ -597,7 +629,10 @@ function cotacao_save_conditional_rule(int $blockId, array $data): array
     $stmt->execute(array($id, $blockId));
     $saved = $stmt->fetch() ?: array();
     cotacao_audit($before ? 'atualizar_regra_condicional' : 'criar_regra_condicional', 'cotacao_regras_formatacao', $id, $before, $saved);
-    cotacao_sync_touch($blockId, 'dados');
+    $state = cotacao_sync_touch($blockId, 'dados');
+    cotacao_record_event($blockId, 'regras_atualizadas', 'dados', array(
+        'rules' => cotacao_conditional_rules($blockId),
+    ), null, null, null, $before, $saved, $state);
 
     return cotacao_conditional_rule_public($blockId, $saved);
 }
@@ -619,7 +654,10 @@ function cotacao_delete_conditional_rule(int $blockId, int $id): void
     );
     $stmt->execute(array($_SESSION['user_id'] ?? null, $id, $blockId));
     cotacao_audit('desativar_regra_condicional', 'cotacao_regras_formatacao', $id, $before, array('ativo' => 0));
-    cotacao_sync_touch($blockId, 'dados');
+    $state = cotacao_sync_touch($blockId, 'dados');
+    cotacao_record_event($blockId, 'regras_atualizadas', 'dados', array(
+        'rules' => cotacao_conditional_rules($blockId),
+    ), null, null, null, $before, array('ativo' => 0), $state);
 }
 
 function cotacao_color_value(string $color): string
@@ -757,11 +795,6 @@ function cotacao_category_condition_class(string $category): string
     return '';
 }
 
-function cotacao_category_is_order(string $category): bool
-{
-    return strpos(cotacao_filter_text($category), 'encomenda') !== false;
-}
-
 function cotacao_order_registered_label(?string $registeredAt): string
 {
     $registeredAt = trim((string) $registeredAt);
@@ -779,10 +812,6 @@ function cotacao_order_registered_label(?string $registeredAt): string
 
 function cotacao_order_registered_attrs(string $category, ?string $registeredAt): string
 {
-    if (!cotacao_category_is_order($category)) {
-        return '';
-    }
-
     $registeredAt = trim((string) $registeredAt);
     $label = cotacao_order_registered_label($registeredAt);
 
@@ -927,6 +956,197 @@ function cotacao_sync_filter_payload(array $payload): array
     );
 }
 
+function cotacao_sync_last_event_id(int $blockId): int
+{
+    try {
+        $stmt = db()->prepare('SELECT COALESCE(MAX(id), 0) FROM cotacao_eventos WHERE bloco_id = ?');
+        $stmt->execute(array($blockId));
+
+        return (int) $stmt->fetchColumn();
+    } catch (Throwable $error) {
+        return 0;
+    }
+}
+
+function cotacao_event_client_id(): string
+{
+    $clientId = (string) ($_POST['client_id'] ?? ($_SERVER['HTTP_X_COTACAO_CLIENT_ID'] ?? ''));
+    $clientId = preg_replace('/[^a-zA-Z0-9:_-]/', '', trim($clientId)) ?: '';
+
+    return substr($clientId, 0, 80);
+}
+
+function cotacao_event_json($payload): string
+{
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    return is_string($json) ? $json : '{}';
+}
+
+function cotacao_event_decode(?string $json): array
+{
+    if (!$json) {
+        return array();
+    }
+
+    $payload = json_decode($json, true);
+
+    return is_array($payload) ? $payload : array();
+}
+
+function cotacao_record_event(
+    int $blockId,
+    string $type,
+    string $scope,
+    array $payload,
+    ?int $itemId = null,
+    ?int $supplierId = null,
+    ?string $field = null,
+    $before = null,
+    $after = null,
+    ?array $state = null
+): int {
+    $scope = in_array($scope, array('dados', 'filtro', 'estrutura'), true) ? $scope : 'dados';
+    $type = substr(preg_replace('/[^a-zA-Z0-9:_-]/', '', $type) ?: 'dados', 0, 60);
+    $state = $state ?: cotacao_sync_state($blockId);
+
+    $stmt = db()->prepare(
+        'INSERT INTO cotacao_eventos
+            (bloco_id, tipo, escopo, item_id, fornecedor_id, campo, valor_anterior, valor_novo,
+             versao, dados_versao, filtro_versao, estrutura_versao, client_id, usuario_id, payload_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute(array(
+        $blockId,
+        $type,
+        $scope,
+        $itemId && $itemId > 0 ? $itemId : null,
+        $supplierId && $supplierId > 0 ? $supplierId : null,
+        $field !== null ? substr($field, 0, 80) : null,
+        $before === null ? null : cotacao_event_json($before),
+        $after === null ? null : cotacao_event_json($after),
+        (int) ($state['versao'] ?? 1),
+        (int) ($state['dados_versao'] ?? 1),
+        (int) ($state['filtro_versao'] ?? 1),
+        (int) ($state['estrutura_versao'] ?? 1),
+        cotacao_event_client_id(),
+        $_SESSION['user_id'] ?? null,
+        cotacao_event_json($payload),
+    ));
+
+    return (int) db()->lastInsertId();
+}
+
+function cotacao_event_public(array $event): array
+{
+    return array(
+        'id' => (int) ($event['id'] ?? 0),
+        'tipo' => (string) ($event['tipo'] ?? ''),
+        'escopo' => (string) ($event['escopo'] ?? 'dados'),
+        'item_id' => (int) ($event['item_id'] ?? 0),
+        'fornecedor_id' => (int) ($event['fornecedor_id'] ?? 0),
+        'campo' => (string) ($event['campo'] ?? ''),
+        'versao' => (int) ($event['versao'] ?? 0),
+        'dados_versao' => (int) ($event['dados_versao'] ?? 0),
+        'filtro_versao' => (int) ($event['filtro_versao'] ?? 0),
+        'estrutura_versao' => (int) ($event['estrutura_versao'] ?? 0),
+        'client_id' => (string) ($event['client_id'] ?? ''),
+        'usuario_id' => (int) ($event['usuario_id'] ?? 0),
+        'payload' => cotacao_event_decode($event['payload_json'] ?? null),
+        'created_at' => $event['created_at'] ?? null,
+    );
+}
+
+function cotacao_sync_events_since(int $blockId, int $sinceEventId, int $limit = 200): array
+{
+    $limit = max(1, min(500, $limit));
+    $stmt = db()->prepare(
+        'SELECT *
+         FROM cotacao_eventos
+         WHERE bloco_id = ?
+           AND id > ?
+         ORDER BY id ASC
+         LIMIT ' . $limit
+    );
+    $stmt->execute(array($blockId, max(0, $sinceEventId)));
+
+    return array_map('cotacao_event_public', $stmt->fetchAll());
+}
+
+function cotacao_sync_events_response(int $blockId, array $input): array
+{
+    $knownVersion = max(0, (int) ($input['known_version'] ?? 0));
+    $knownDataVersion = array_key_exists('known_data_version', $input)
+        ? max(0, (int) ($input['known_data_version'] ?? 0))
+        : $knownVersion;
+    $knownFilterVersion = array_key_exists('known_filter_version', $input)
+        ? max(0, (int) ($input['known_filter_version'] ?? 0))
+        : $knownVersion;
+    $knownStructureVersion = max(0, (int) ($input['known_structure_version'] ?? 0));
+    $sinceEventId = max(0, (int) ($input['known_event_id'] ?? $input['since_event_id'] ?? 0));
+    $state = cotacao_sync_state($blockId);
+    $dataChanged = $knownDataVersion <= 0 || $knownDataVersion < (int) $state['dados_versao'];
+    $filterChanged = $knownFilterVersion <= 0 || $knownFilterVersion < (int) $state['filtro_versao'];
+    $structureChanged = $knownStructureVersion <= 0 || $knownStructureVersion < (int) $state['estrutura_versao'];
+
+    if (!$dataChanged && !$filterChanged && !$structureChanged) {
+        return array(
+            'ok' => true,
+            'changed' => false,
+            'state' => $state,
+            'events' => array(),
+            'message' => 'Sem alteracao.',
+        );
+    }
+
+    if ($structureChanged || $sinceEventId <= 0) {
+        return array(
+            'ok' => true,
+            'changed' => true,
+            'requires_snapshot' => true,
+            'data_changed' => $dataChanged,
+            'filter_changed' => $filterChanged,
+            'structure_changed' => $structureChanged,
+            'state' => $state,
+            'events' => array(),
+            'message' => 'Snapshot necessario.',
+        );
+    }
+
+    $events = cotacao_sync_events_since($blockId, $sinceEventId, 250);
+    $lastEvent = $events ? $events[count($events) - 1] : null;
+    $lastEventId = $lastEvent ? (int) ($lastEvent['id'] ?? 0) : $sinceEventId;
+    $hasStructureEvent = array_filter($events, static function (array $event): bool {
+        return ($event['escopo'] ?? '') === 'estrutura';
+    });
+
+    if (!$events || $hasStructureEvent || ($lastEventId < (int) ($state['evento_id'] ?? 0) && count($events) >= 250)) {
+        return array(
+            'ok' => true,
+            'changed' => true,
+            'requires_snapshot' => true,
+            'data_changed' => $dataChanged,
+            'filter_changed' => $filterChanged,
+            'structure_changed' => $structureChanged || (bool) $hasStructureEvent,
+            'state' => $state,
+            'events' => $events,
+            'message' => 'Snapshot necessario.',
+        );
+    }
+
+    return array(
+        'ok' => true,
+        'changed' => true,
+        'requires_snapshot' => false,
+        'data_changed' => $dataChanged,
+        'filter_changed' => $filterChanged,
+        'structure_changed' => false,
+        'state' => $state,
+        'events' => $events,
+        'message' => 'Eventos incrementais sincronizados.',
+    );
+}
+
 function cotacao_sync_state(int $blockId): array
 {
     cotacao_ensure_sync_rows($blockId);
@@ -940,6 +1160,7 @@ function cotacao_sync_state(int $blockId): array
             'dados_versao' => 1,
             'filtro_versao' => 1,
             'estrutura_versao' => 1,
+            'evento_id' => cotacao_sync_last_event_id($blockId),
             'filtro_categoria' => '',
             'filtro_cor' => '',
             'filtro_vencedor' => '',
@@ -952,6 +1173,7 @@ function cotacao_sync_state(int $blockId): array
         'dados_versao' => (int) ($state['dados_versao'] ?? 1),
         'filtro_versao' => (int) ($state['filtro_versao'] ?? 1),
         'estrutura_versao' => (int) ($state['estrutura_versao'] ?? 1),
+        'evento_id' => cotacao_sync_last_event_id($blockId),
         'filtro_categoria' => (string) ($state['filtro_categoria'] ?? ''),
         'filtro_cor' => (string) ($state['filtro_cor'] ?? ''),
         'filtro_vencedor' => (string) ($state['filtro_vencedor'] ?? ''),
@@ -1007,6 +1229,8 @@ function cotacao_sync_update_filter(int $blockId, array $payload): array
     ));
 
     cotacao_audit('sincronizar_filtro', 'cotacao_sync_estado', $blockId, null, $filter);
+    $state = cotacao_sync_state($blockId);
+    cotacao_record_event($blockId, 'filtro_atualizado', 'filtro', array('filter' => $filter), null, null, null, null, $filter, $state);
 
     return cotacao_sync_state($blockId);
 }
@@ -1022,6 +1246,49 @@ function cotacao_sync_suppliers_payload(int $blockId): array
     }, cotacao_suppliers($blockId, true));
 }
 
+function cotacao_sync_item_payload(array $item, array $pricesByItem = array()): array
+{
+    $itemId = (int) ($item['id'] ?? 0);
+    $itemPrices = array();
+
+    foreach (($pricesByItem[$itemId] ?? array()) as $supplierId => $price) {
+        $itemPrices[(string) $supplierId] = cotacao_price_format($price);
+    }
+
+    if (!empty($item['linha_vazia'])) {
+        $itemPrices = array();
+    }
+
+    return array(
+        'id' => $itemId,
+        'ordem' => (int) ($item['ordem'] ?? 0),
+        'linha_vazia' => (int) ($item['linha_vazia'] ?? 0),
+        'ean' => !empty($item['linha_vazia']) ? '' : (string) ($item['ean'] ?? ''),
+        'produto' => !empty($item['linha_vazia']) ? '' : (string) ($item['produto'] ?? ''),
+        'quantidade' => !empty($item['linha_vazia']) ? '' : cotacao_price_format($item['quantidade'] ?? ''),
+        'categoria' => !empty($item['linha_vazia']) ? '' : (string) ($item['categoria'] ?? ''),
+        'cor' => cotacao_color_value((string) ($item['cor'] ?? '')),
+        'cores' => cotacao_cell_colors_array($item['cores'] ?? ''),
+        'estilos' => cotacao_cell_styles_array($item['estilos'] ?? ''),
+        'precos' => $itemPrices,
+        'winner' => cotacao_winner_text($item),
+        'winner_supplier_id' => (int) ($item['vencedor_fornecedor_id'] ?? 0),
+        'encomenda_registrada_em' => (string) ($item['encomenda_registrada_em'] ?? ''),
+        'encomenda_registrada_label' => cotacao_order_registered_label($item['encomenda_registrada_em'] ?? null),
+    );
+}
+
+function cotacao_sync_item_payload_by_id(int $blockId, int $itemId): ?array
+{
+    $item = cotacao_item($blockId, $itemId);
+
+    if (!$item || (string) ($item['status'] ?? '') === 'cancelada') {
+        return null;
+    }
+
+    return cotacao_sync_item_payload($item, cotacao_item_prices(array($item)));
+}
+
 function cotacao_sync_items_payload(int $blockId): array
 {
     $items = cotacao_sheet_items($blockId, array());
@@ -1029,34 +1296,7 @@ function cotacao_sync_items_payload(int $blockId): array
     $payload = array();
 
     foreach ($items as $item) {
-        $itemId = (int) ($item['id'] ?? 0);
-        $itemPrices = array();
-
-        foreach (($prices[$itemId] ?? array()) as $supplierId => $price) {
-            $itemPrices[(string) $supplierId] = cotacao_price_format($price);
-        }
-
-        if (!empty($item['linha_vazia'])) {
-            $itemPrices = array();
-        }
-
-        $payload[] = array(
-            'id' => $itemId,
-            'ordem' => (int) ($item['ordem'] ?? 0),
-            'linha_vazia' => (int) ($item['linha_vazia'] ?? 0),
-            'ean' => !empty($item['linha_vazia']) ? '' : (string) ($item['ean'] ?? ''),
-            'produto' => !empty($item['linha_vazia']) ? '' : (string) ($item['produto'] ?? ''),
-            'quantidade' => !empty($item['linha_vazia']) ? '' : cotacao_price_format($item['quantidade'] ?? ''),
-            'categoria' => !empty($item['linha_vazia']) ? '' : (string) ($item['categoria'] ?? ''),
-            'cor' => cotacao_color_value((string) ($item['cor'] ?? '')),
-            'cores' => cotacao_cell_colors_array($item['cores'] ?? ''),
-            'estilos' => cotacao_cell_styles_array($item['estilos'] ?? ''),
-            'precos' => $itemPrices,
-            'winner' => cotacao_winner_text($item),
-            'winner_supplier_id' => (int) ($item['vencedor_fornecedor_id'] ?? 0),
-            'encomenda_registrada_em' => (string) ($item['encomenda_registrada_em'] ?? ''),
-            'encomenda_registrada_label' => cotacao_order_registered_label($item['encomenda_registrada_em'] ?? null),
-        );
+        $payload[] = cotacao_sync_item_payload($item, $prices);
     }
 
     return $payload;
@@ -1652,6 +1892,57 @@ function cotacao_save_item_patch_prices(array $data): array
     return $prices;
 }
 
+function cotacao_item_sync_field_names(): array
+{
+    return array(
+        'ean',
+        'produto',
+        'quantidade',
+        'categoria',
+        'cor',
+        'cores',
+        'estilos',
+        'ordem',
+        'linha_vazia',
+        'unidade',
+        'prioridade',
+        'status',
+        'observacao',
+    );
+}
+
+function cotacao_update_item_versions(int $itemId, array $changedFields, array $changedPrices, array $state): void
+{
+    if ($itemId <= 0) {
+        return;
+    }
+
+    $version = max(1, (int) ($state['dados_versao'] ?? $state['versao'] ?? 1));
+    $stmt = db()->prepare('SELECT versoes FROM cotacao_itens WHERE id = ? LIMIT 1');
+    $stmt->execute(array($itemId));
+    $versions = cotacao_event_decode((string) $stmt->fetchColumn());
+
+    foreach ($changedFields as $field) {
+        $field = (string) $field;
+        if ($field !== '') {
+            $versions[$field] = $version;
+        }
+    }
+
+    $update = db()->prepare('UPDATE cotacao_itens SET versoes = ? WHERE id = ?');
+    $update->execute(array(cotacao_event_json($versions), $itemId));
+
+    if ($changedPrices) {
+        $priceVersion = db()->prepare('UPDATE cotacao_precos SET versao = ? WHERE item_id = ? AND fornecedor_id = ?');
+        foreach (array_keys($changedPrices) as $supplierId) {
+            $supplierId = (int) $supplierId;
+            if ($supplierId > 0) {
+                $priceVersion->execute(array($version, $itemId, $supplierId));
+            }
+        }
+    }
+}
+
 function cotacao_claim_item_order(int $blockId, int $requestedOrder, int $currentItemId = 0): int
 {
     $requestedOrder = max(1, $requestedOrder);
@@ -1824,12 +2115,8 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
             $payload['observacao'] = '';
             $payload['encomenda_registrada_em'] = null;
         } else {
-            $isOrder = cotacao_category_is_order($payload['categoria']);
-            $wasOrder = $before ? cotacao_category_is_order((string) ($before['categoria'] ?? '')) : false;
-            if ($isOrder) {
-                $payload['prioridade'] = 'encomenda';
-            }
-
+            $isOrder = (string) ($payload['prioridade'] ?? 'normal') === 'encomenda';
+            $wasOrder = $before ? (string) ($before['prioridade'] ?? 'normal') === 'encomenda' : false;
             $payload['encomenda_registrada_em'] = $isOrder
                 ? ($wasOrder ? (trim((string) ($before['encomenda_registrada_em'] ?? '')) ?: date('Y-m-d H:i:s')) : date('Y-m-d H:i:s'))
                 : null;
@@ -1922,7 +2209,16 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
     }
 
     cotacao_audit($before ? 'atualizar_item' : 'criar_item', 'cotacao_itens', $id, $before, $payload);
-    cotacao_sync_touch($blockId, 'dados');
+    $state = cotacao_sync_touch($blockId, 'dados');
+    $changedFields = ($before && $hasPatchMeta) ? array_keys($patchFields) : cotacao_item_sync_field_names();
+    $changedPrices = ($before && $hasPatchMeta) ? $patchPrices : array_fill_keys(array_map('intval', array_keys($prices)), true);
+    cotacao_update_item_versions($id, $changedFields, $changedPrices, $state);
+    $savedItem = cotacao_sync_item_payload_by_id($blockId, $id);
+    cotacao_record_event($blockId, $before ? 'item_atualizado' : 'item_criado', 'dados', array(
+        'item' => $savedItem,
+        'changed_fields' => array_values($changedFields),
+        'changed_prices' => array_values(array_map('intval', array_keys($changedPrices))),
+    ), $id, null, null, $before, $savedItem, $state);
 
     return $id;
 }
@@ -1970,7 +2266,7 @@ function cotacao_add_empty_rows(int $blockId, int $amount): array
             $insertedOrders[] = $order;
         }
 
-        cotacao_sync_touch($blockId, 'dados');
+        $state = cotacao_sync_touch($blockId, 'dados');
         db()->commit();
     } catch (Throwable $error) {
         if (db()->inTransaction()) {
@@ -1985,6 +2281,18 @@ function cotacao_add_empty_rows(int $blockId, int $amount): array
         'ids' => $insertedIds,
         'ordens' => $insertedOrders,
     ));
+
+    $items = array();
+    foreach ($insertedIds as $insertedId) {
+        $item = cotacao_sync_item_payload_by_id($blockId, (int) $insertedId);
+        if ($item) {
+            $items[] = $item;
+        }
+    }
+    cotacao_record_event($blockId, 'linhas_criadas', 'dados', array(
+        'amount' => $amount,
+        'items' => $items,
+    ), null, null, null, null, array('ids' => $insertedIds), $state ?? null);
 
     return array(
         'amount' => $amount,
@@ -2082,7 +2390,12 @@ function cotacao_cancel_item(int $blockId, int $id): void
     $stmt = db()->prepare("UPDATE cotacao_itens SET status = 'cancelada', updated_at = NOW() WHERE id = ? AND bloco_id = ?");
     $stmt->execute(array($id, $blockId));
     cotacao_audit('cancelar_item', 'cotacao_itens', $id, $before, array('status' => 'cancelada'));
-    cotacao_sync_touch($blockId, 'dados');
+    $state = cotacao_sync_touch($blockId, 'dados');
+    cotacao_update_item_versions($id, array('status'), array(), $state);
+    cotacao_record_event($blockId, 'item_cancelado', 'dados', array(
+        'item_id' => $id,
+        'ordem' => (int) ($before['ordem'] ?? 0),
+    ), $id, null, 'status', $before, array('status' => 'cancelada'), $state);
 }
 
 function cotacao_item_prices(array $items): array
@@ -2131,18 +2444,10 @@ function cotacao_sheet_items(int $blockId, array $filters): array
 
     $cor = cotacao_color_filter_value((string) ($filters['cor'] ?? ''));
     if ($cor === 'sem') {
-        $where[] = "(i.cor IS NULL OR i.cor = '') AND (i.cores IS NULL OR i.cores = '' OR i.cores = '{}') AND LOWER(i.categoria) NOT LIKE '%urgente%' AND LOWER(i.categoria) NOT LIKE '%urgencia%' AND LOWER(i.categoria) NOT LIKE '%urgência%' AND LOWER(i.categoria) NOT LIKE '%encomenda%'";
+        $where[] = "(i.cor IS NULL OR i.cor = '') AND (i.cores IS NULL OR i.cores = '' OR i.cores = '{}')";
     } elseif ($cor !== '') {
         $colorWhere = array('i.cor = ?', 'i.cores LIKE ?');
         array_push($params, $cor, '%' . $cor . '%');
-
-        if ($cor === '#d2e3fc') {
-            $colorWhere[] = "(LOWER(i.categoria) LIKE '%urgente%' OR LOWER(i.categoria) LIKE '%urgencia%' OR LOWER(i.categoria) LIKE '%urgência%')";
-        }
-
-        if ($cor === '#fce8e6') {
-            $colorWhere[] = "LOWER(i.categoria) LIKE '%encomenda%'";
-        }
 
         $where[] = '(' . implode(' OR ', $colorWhere) . ')';
     }
@@ -2243,18 +2548,10 @@ function cotacao_items(int $blockId, array $filters): array
 
     $cor = cotacao_color_filter_value((string) ($filters['cor'] ?? ''));
     if ($cor === 'sem') {
-        $where[] = "(i.cor IS NULL OR i.cor = '') AND (i.cores IS NULL OR i.cores = '' OR i.cores = '{}') AND LOWER(i.categoria) NOT LIKE '%urgente%' AND LOWER(i.categoria) NOT LIKE '%urgencia%' AND LOWER(i.categoria) NOT LIKE '%urgência%' AND LOWER(i.categoria) NOT LIKE '%encomenda%'";
+        $where[] = "(i.cor IS NULL OR i.cor = '') AND (i.cores IS NULL OR i.cores = '' OR i.cores = '{}')";
     } elseif ($cor !== '') {
         $colorWhere = array('i.cor = ?', 'i.cores LIKE ?');
         array_push($params, $cor, '%' . $cor . '%');
-
-        if ($cor === '#d2e3fc') {
-            $colorWhere[] = "(LOWER(i.categoria) LIKE '%urgente%' OR LOWER(i.categoria) LIKE '%urgencia%' OR LOWER(i.categoria) LIKE '%urgência%')";
-        }
-
-        if ($cor === '#fce8e6') {
-            $colorWhere[] = "LOWER(i.categoria) LIKE '%encomenda%'";
-        }
 
         $where[] = '(' . implode(' OR ', $colorWhere) . ')';
     }

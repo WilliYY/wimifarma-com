@@ -67,6 +67,7 @@ Tabelas principais:
 
 O modulo de Cotacao controla blocos, itens, fornecedores, categorias, precos e status. Ele ja tem tabelas preparadas para controle de versao/sync, mas a integracao Google Sheets ainda nao esta implementada.
 Tambem existe uma primeira camada de colaboracao ao vivo por polling: a tela envia `presence_ping`, mostra quantas pessoas estao usando, exibe chips dos usuarios ativos e marca a celula remota quando ela esta visivel no filtro atual.
+A sincronizacao entre telas tenta primeiro `sync_events_pull`, aplicando eventos incrementais de `cotacao_eventos`. Quando ha mudanca estrutural, atraso grande ou conflito local, a tela cai para `sync_pull` com snapshot completo.
 
 Arquivos principais:
 
@@ -85,6 +86,7 @@ Tabelas principais:
 - `cotacao_precos`
 - `cotacao_regras_formatacao`
 - `cotacao_sync_estado`
+- `cotacao_eventos`
 - `cotacao_presencas`
 - `cotacao_auditoria`
 
@@ -99,6 +101,7 @@ Regras a preservar:
 - status e prioridade.
 - presenca temporaria nao deve virar historico operacional permanente.
 - quando filtros estiverem ativos, indicar se outro usuario esta fora do filtro em vez de esconder silenciosamente.
+- durante digitacao em categoria, nao reaplicar filtro ativo a cada tecla; o filtro so deve recalcular ao terminar a edicao para evitar salto de linha.
 
 ## Fluxo Financeiro
 

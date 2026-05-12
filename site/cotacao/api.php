@@ -248,6 +248,10 @@ try {
         ));
     }
 
+    if ($action === 'sync_events_pull') {
+        cotacao_json(cotacao_sync_events_response((int) $block['id'], $_POST));
+    }
+
     if ($action === 'sync_pull') {
         $knownVersion = max(0, (int) ($_POST['known_version'] ?? 0));
         $knownDataVersion = array_key_exists('known_data_version', $_POST)
