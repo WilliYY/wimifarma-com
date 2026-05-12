@@ -76,7 +76,7 @@ Estado:
 - Em 2026-05-11, foi criada a primeira fila incremental `cotacao_eventos`, com `sync_events_pull`, `client_id` por aba e versoes por item/preco para reduzir snapshot completo e preparar conflito por campo.
 - O filtro ativo de categoria deixou de recalcular durante a digitacao da celula; ele recalcula ao finalizar a edicao, evitando que `encomenda` ou outra categoria mova/esconda a linha no meio da escrita.
 - As regras de cor da categoria agora devem ser mantidas em `cotacao_regras_formatacao`.
-- `urgente`/`encomenda` nao devem mais atuar como atalhos escondidos de cor/filtro, e `encomenda` nao deve mudar prioridade nem registrar data operacional automaticamente quando for apenas texto de categoria.
+- `urgente`/`encomenda` nao devem mais atuar como atalhos escondidos de cor/filtro, e `encomenda` nao deve mudar prioridade nem registrar data operacional automaticamente quando for apenas texto de categoria. Em 2026-05-12, regras legadas ativas para esses termos foram desativadas automaticamente pelo schema da Cotacao.
 - Em validacao com Browser, escrever `encomenda`/`urgente` em linha nova foi ajustado para nao duplicar a linha visualmente: a tela agora reconhece o save local pendente e mantem uma unica linha por `item_id`.
 - Nao ha integracao Google Sheets implementada.
 - Ainda nao ha interface de conflito por campo nem canal WebSocket/SSE.

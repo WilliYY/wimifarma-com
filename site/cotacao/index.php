@@ -297,7 +297,7 @@ foreach ($filters as $key => $value) {
                         $cellColors = cotacao_cell_colors_array($item['cores'] ?? '');
                         $cellStyles = cotacao_cell_styles_array($item['estilos'] ?? '');
                         $itemCategory = $isEmptyPersistedRow ? '' : (string) ($item['categoria'] ?? '');
-                        $orderRegisteredAttrs = cotacao_order_registered_attrs($itemCategory, $item['encomenda_registrada_em'] ?? null);
+                        $orderRegisteredAttrs = cotacao_order_registered_attrs($item['encomenda_registrada_em'] ?? null);
                         ?>
                         <tr class="sheet-row" data-item-id="<?php echo e((string) $itemId); ?>" data-row-index="<?php echo e((string) $rowIndex); ?>" data-row-order="<?php echo e((string) $rowOrder); ?>" data-line-empty="<?php echo $isEmptyPersistedRow ? '1' : '0'; ?>" data-color="<?php echo e($rowColor); ?>">
                             <td class="row-number" role="button" tabindex="0" title="Selecionar linha para edicao em massa"><?php echo e((string) ($rowIndex + 1)); ?></td>
@@ -310,7 +310,7 @@ foreach ($filters as $key => $value) {
                             </td>
                             <td class="sheet-cell" data-col="1" data-col-key="produto" data-color="<?php echo e(cotacao_cell_color($cellColors, 'produto')); ?>"<?php echo cotacao_cell_style_attrs($cellStyles, 'produto'); ?>><textarea class="sheet-input sheet-textarea product-input" rows="1" data-col="1" name="rows[<?php echo e((string) $rowIndex); ?>][produto]" readonly><?php echo e($isEmptyPersistedRow ? '' : (string) ($item['produto'] ?? '')); ?></textarea></td>
                             <td class="sheet-cell" data-col="2" data-col-key="quantidade" data-color="<?php echo e(cotacao_cell_color($cellColors, 'quantidade')); ?>"<?php echo cotacao_cell_style_attrs($cellStyles, 'quantidade'); ?>><input class="sheet-input qty-input" data-col="2" name="rows[<?php echo e((string) $rowIndex); ?>][quantidade]" value="<?php echo e($itemId > 0 && !$isEmptyPersistedRow ? cotacao_price_format($item['quantidade']) : ''); ?>" inputmode="decimal" readonly></td>
-                            <td class="sheet-cell category-cell<?php echo cotacao_category_condition_class($itemCategory); ?>" data-col="3" data-col-key="categoria" data-color="<?php echo e(cotacao_cell_color($cellColors, 'categoria')); ?>"<?php echo cotacao_cell_style_attrs($cellStyles, 'categoria'); ?><?php echo $orderRegisteredAttrs; ?>><textarea class="sheet-input sheet-textarea category-input" rows="1" data-col="3" name="rows[<?php echo e((string) $rowIndex); ?>][categoria]" readonly><?php echo e($itemCategory); ?></textarea></td>
+                            <td class="sheet-cell category-cell" data-col="3" data-col-key="categoria" data-color="<?php echo e(cotacao_cell_color($cellColors, 'categoria')); ?>"<?php echo cotacao_cell_style_attrs($cellStyles, 'categoria'); ?><?php echo $orderRegisteredAttrs; ?>><textarea class="sheet-input sheet-textarea category-input" rows="1" data-col="3" name="rows[<?php echo e((string) $rowIndex); ?>][categoria]" readonly><?php echo e($itemCategory); ?></textarea></td>
                             <?php foreach ($suppliers as $supplierIndex => $supplier) : ?>
                                 <?php
                                 $supplierId = (int) $supplier['id'];

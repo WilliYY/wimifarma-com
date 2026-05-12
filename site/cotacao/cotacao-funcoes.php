@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 define('COTACAO_APP_NAME', 'Wimifarma Cotacao');
-define('COTACAO_VERSION', '20260508b');
+define('COTACAO_VERSION', '20260512a');
 
 function cotacao_align_icon(string $align): string
 {
@@ -225,8 +225,75 @@ function cotacao_ensure_schema(): void
     cotacao_seed_default_suppliers();
     cotacao_ensure_item_visual_columns();
     cotacao_ensure_sync_rows();
+    cotacao_disable_legacy_category_trigger_rules();
     cotacao_sync_categories_from_items();
     $done = true;
+}
+
+function cotacao_disable_legacy_category_trigger_rules(): void
+{
+    $stmt = db()->prepare(
+        "SELECT id, bloco_id, coluna_chave, coluna_indice, operador, termo, cor_fundo, cor_texto, ativo, ordem
+         FROM cotacao_regras_formatacao
+         WHERE ativo = 1
+           AND coluna_chave = 'categoria'
+           AND operador IN ('contains', 'equals', 'starts_with', 'ends_with')
+           AND LOWER(TRIM(termo)) IN ('urgente', 'urgencia', 'urgência', 'encomenda')
+         ORDER BY bloco_id ASC, id ASC"
+    );
+    $stmt->execute();
+    $rules = $stmt->fetchAll() ?: array();
+
+    if (!$rules) {
+        return;
+    }
+
+    $ids = array_values(array_unique(array_map(static function (array $rule): int {
+        return (int) $rule['id'];
+    }, $rules)));
+
+    if (!$ids) {
+        return;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $params = array_merge(array($_SESSION['user_id'] ?? null), $ids);
+    $update = db()->prepare(
+        "UPDATE cotacao_regras_formatacao
+         SET ativo = 0, updated_by = ?, updated_at = NOW()
+         WHERE id IN ($placeholders)"
+    );
+    $update->execute($params);
+
+    $rulesByBlock = array();
+    foreach ($rules as $rule) {
+        $blockId = (int) ($rule['bloco_id'] ?? 0);
+        if ($blockId <= 0) {
+            continue;
+        }
+        $rulesByBlock[$blockId][] = $rule;
+    }
+
+    foreach ($rulesByBlock as $blockId => $disabledRules) {
+        $state = cotacao_sync_touch((int) $blockId, 'dados');
+        cotacao_record_event(
+            (int) $blockId,
+            'regras_atualizadas',
+            'dados',
+            array(
+                'rules' => cotacao_conditional_rules((int) $blockId),
+                'legacy_disabled_rule_ids' => array_map(static function (array $rule): int {
+                    return (int) $rule['id'];
+                }, $disabledRules),
+            ),
+            null,
+            null,
+            null,
+            $disabledRules,
+            cotacao_conditional_rules((int) $blockId),
+            $state
+        );
+    }
 }
 
 function cotacao_ensure_item_visual_columns(): void
@@ -325,7 +392,7 @@ function cotacao_seed_default_suppliers(): void
 function cotacao_seed_default_categories(): void
 {
     $blocks = db()->query('SELECT id FROM cotacao_blocos WHERE ativo = 1')->fetchAll();
-    $categories = array('geral', 'medicamentos', 'encomenda', 'urgente');
+    $categories = array('geral', 'medicamentos');
     $stmt = db()->prepare(
         'INSERT INTO cotacao_categorias (bloco_id, nome, ordem)
          VALUES (?, ?, ?)
@@ -790,11 +857,6 @@ function cotacao_cell_style_attrs(array $styles, string $key): string
     return $attrs;
 }
 
-function cotacao_category_condition_class(string $category): string
-{
-    return '';
-}
-
 function cotacao_order_registered_label(?string $registeredAt): string
 {
     $registeredAt = trim((string) $registeredAt);
@@ -810,7 +872,7 @@ function cotacao_order_registered_label(?string $registeredAt): string
     return date('d/m/Y H:i', $timestamp);
 }
 
-function cotacao_order_registered_attrs(string $category, ?string $registeredAt): string
+function cotacao_order_registered_attrs(?string $registeredAt): string
 {
     $registeredAt = trim((string) $registeredAt);
     $label = cotacao_order_registered_label($registeredAt);

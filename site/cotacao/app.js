@@ -2029,7 +2029,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 delete cell.dataset.orderRegisteredLabel;
                 cell.removeAttribute('title');
                 setCellStyle(cell, {}, false, false);
-                cell.classList.remove('is-cell-selected', 'is-active-cell', 'is-category-urgent', 'is-category-order', 'winner-price');
+                cell.classList.remove('is-cell-selected', 'is-active-cell', 'winner-price');
                 clearConditionalFormattingForCell(cell);
             });
             clone.querySelectorAll('.winner-price').forEach(function (cell) {
@@ -2301,17 +2301,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updateCategoryConditional(row) {
-        if (!row) {
-            return;
-        }
-
-        var input = row.querySelector('.category-input');
-        var cell = input ? input.closest('.category-cell') : null;
-        if (!cell) {
-            return;
-        }
-
-        cell.classList.remove('is-category-urgent', 'is-category-order');
+        // Categoria nao aplica mais classes escondidas por palavras como urgente/encomenda.
+        void row;
     }
 
     function formatOrderRegisteredAt(value) {
@@ -4503,7 +4494,7 @@ document.addEventListener('DOMContentLoaded', function () {
             delete cell.dataset.orderRegisteredLabel;
             cell.removeAttribute('title');
             setCellStyle(cell, {}, false, false);
-            cell.classList.remove('is-cell-selected', 'is-active-cell', 'is-category-urgent', 'is-category-order', 'winner-price');
+            cell.classList.remove('is-cell-selected', 'is-active-cell', 'winner-price');
             clearConditionalFormattingForCell(cell);
         });
 

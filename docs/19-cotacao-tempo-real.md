@@ -44,6 +44,8 @@ Tambem foi corrigido o fluxo de digitacao de categoria: enquanto o usuario esta 
 
 Na validacao com Browser em 2026-05-11, foi encontrado outro caso de self-replay: uma linha nova ainda sem `item_id` podia salvar no banco e, antes de receber a resposta do proprio `save_row`, o snapshot/evento remoto podia reaparecer como outra linha vazia preenchida. O frontend agora identifica linha local pendente por ordem/produto/categoria, adia o sync remoto nesses casos e remove duplicatas visuais por `item_id` apos o save.
 
+Em 2026-05-12, a categoria recebeu um reset mais duro para as palavras historicas `urgente` e `encomenda`. Regras ativas em `cotacao_regras_formatacao` que pintavam categoria por esses termos foram desativadas automaticamente por `cotacao_disable_legacy_category_trigger_rules()`, os defaults de novas categorias deixaram de incluir esses termos e as copias legadas na raiz (`site/app.js`, `site/api.php`, `site/cotacao-funcoes.php`) viraram shims para a implementacao real de `/cotacao/`. Em teste controlado no backend, salvar categoria `encomenda` e `urgente` manteve `prioridade=normal` e `encomenda_registrada_em` vazia.
+
 Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea forte ainda depende de conflito por campo visivel ao usuario e canal de tempo real mais eficiente, como SSE ou WebSocket.
 
 ## Arquivos, rotas e tabelas envolvidos
@@ -83,6 +85,7 @@ Tabelas:
 - Ordem, categoria, status, prioridade, observacao, vencedor e formatacao nao podem ser sobrescritos sem auditoria.
 - Alteracao de categoria nao pode apagar produto, fornecedor, preco, observacao, vencedor nem formatacao de outra celula.
 - Cores automaticas por categoria devem ser configuradas por regra condicional, nao por comportamento fixo escondido no codigo.
+- `urgente` e `encomenda` nao devem ser recriados como gatilho automatico de categoria, nem por regra condicional legada, nem por CSS/JS. Se a equipe quiser destacar esses fluxos novamente, criar campo/regra explicita revisada e documentada.
 - Categoria nao deve alterar `prioridade` nem registrar encomenda automaticamente; prioridade so deve mudar quando o usuario ou uma funcao explicita salvar esse campo.
 - Filtro de cor deve considerar cores salvas em `cor`/`cores`, nao palavras no texto da categoria.
 - Precos por fornecedor devem continuar ligados a `item_id` e `fornecedor_id`.
@@ -106,8 +109,10 @@ Tabelas:
 - Linha nova local que ainda esta salvando nao deve ser reaplicada em outra linha pelo snapshot/evento remoto. Se o item remoto corresponder a uma linha local pendente, o sync deve aguardar a resposta do save; se ainda assim surgir duplicata visual, o DOM deve manter uma unica linha por `item_id`.
 - `cotacao_add_category()` aceita `touchSync=false` quando chamada dentro de `cotacao_save_item()`, evitando dois toques de sync para um unico save de linha.
 - As classes legadas `is-category-urgent` e `is-category-order` nao devem ser usadas para cor automatica; a origem correta e `cotacao_regras_formatacao`.
-- As palavras `urgente` e `encomenda` tambem nao devem entrar como atalho escondido no filtro de cor. Se o usuario quiser cor automatica, a regra deve estar cadastrada em formatacao condicional.
+- As palavras `urgente` e `encomenda` tambem nao devem entrar como atalho escondido no filtro de cor. Regras legadas ativas para esses termos sao desativadas automaticamente; se a equipe quiser destacar esses fluxos novamente, isso deve ser redesenhado como regra explicita revisada.
 - `encomenda` so tem significado operacional para idade da encomenda/Miauby quando salvo como prioridade explicita; como texto de categoria, e apenas categoria/formatacao condicional.
+- Regras ativas de categoria com termo exato `urgente`, `urgencia`, `urgência` ou `encomenda` sao desativadas na inicializacao do schema para remover o comportamento antigo que fazia a tela saltar/travar.
+- As copias antigas `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php` nao devem receber logica nova; elas existem apenas como compatibilidade e redirecionam para `/cotacao/`.
 - A troca imediata de linguagem/banco nao foi adotada como primeiro passo para a travada de categoria. O gargalo observado era compatível com recalculo de UI/filtros, entao a correcao inicial fica no frontend e no contrato de sync atual.
 - Para chegar mais perto do Sheets, o proximo salto tecnico recomendado e um canal de eventos em tempo real, preferencialmente SSE ou WebSocket, com fila de eventos por celula/linha. Banco novo so deve entrar depois de medir gargalos reais de MySQL/PHP.
 
@@ -119,6 +124,7 @@ Tabelas:
 - Sincronizar com Google Sheets sem IDs estaveis pode duplicar linhas ou sobrescrever valores.
 - Tratar filtro como fonte de verdade pode causar divergencia entre computadores.
 - Reintroduzir cor fixa por nome de categoria pode duplicar comportamento e gerar resultado diferente da regra condicional configurada pelo usuario.
+- Reativar regras antigas de `urgente`/`encomenda` em categoria pode reabrir o bug de salto/travamento; tratar esses termos como dados comuns ou criar regra nova com decisao registrada.
 - Reintroduzir prioridade automatica por categoria pode fazer a linha saltar de posicao depois do save/sync.
 - Rodar verificacoes paralelas que inicializam schema pode gerar lock/deadlock temporario no MySQL; preferir auditoria sequencial.
 
@@ -133,6 +139,7 @@ Tabelas:
 - Criar tela de diagnostico de sync/presenca.
 - Definir contrato Google Sheets: ID estavel, fonte de verdade por campo, sentido do sync e resolucao de conflito.
 - Transformar o teste manual de duas sessoes em smoke test automatizado.
+- Criar teste automatizado especifico para confirmar que digitar `urgente`/`encomenda` em categoria nao altera prioridade, nao registra encomenda e nao muda filtro no meio da edicao.
 
 ## Como pode evoluir
 

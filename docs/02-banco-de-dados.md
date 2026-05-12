@@ -108,6 +108,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_sync_estado` e chave para futura sincronizacao com planilhas.
 - `cotacao_itens.versoes` e `cotacao_precos.versao` guardam versoes por campo/preco e devem ser preservados para evoluir conflito por campo.
 - `cotacao_eventos` nao substitui auditoria completa; ele e o caminho operacional para sincronizacao incremental entre abas/computadores.
+- Regras de `cotacao_regras_formatacao` baseadas em categoria para os termos historicos `urgente`, `urgencia`, `urgência` e `encomenda` ficam inativas por seguranca; esses termos nao devem acionar cor/prioridade automaticamente.
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
@@ -119,6 +120,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - O volume `mysql/` fica fora do Git.
 - Dumps antigos ficam fora da raiz do projeto.
 - A senha real do banco vem de `.env`.
+- A Cotacao preserva regras antigas de formatacao no banco como historico, mas `cotacao_disable_legacy_category_trigger_rules()` desativa regras ativas por texto de categoria para `urgente`/`encomenda` durante `cotacao_ensure_schema()`.
 
 ## Riscos ao alterar
 
@@ -128,6 +130,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Mudar colunas de cotacao sem preservar ordem/formatacao prejudica futura sincronizacao com Google Sheets.
 - Alterar `cotacao_presencas` sem compatibilidade pode quebrar a indicacao de usuarios ativos e selecao remota na tela.
 - Alterar `cotacao_eventos` sem compatibilidade pode forcar fallback frequente para snapshot completo e reintroduzir travadas na Cotacao.
+- Reativar gatilhos de categoria para `urgente`/`encomenda` pode voltar a causar mudanca invisivel de estado e lag na planilha.
 
 ## Pendencias
 

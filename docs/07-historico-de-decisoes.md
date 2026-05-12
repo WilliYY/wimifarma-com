@@ -676,3 +676,37 @@ Riscos/cuidados:
 - Encomendas criadas corretamente pelo Miauby continuam usando prioridade explicita `encomenda`.
 - Linhas antigas com apenas categoria textual `encomenda` e prioridade `normal` deixam de alimentar alerta operacional, por decisao de evitar gatilho invisivel.
 - Se for necessario converter historico antigo, criar rotina auditada e revisada pelo usuario antes de alterar dados.
+
+## 2026-05-12 - Cotacao reseta regras legadas de urgente/encomenda
+
+Decisao:
+
+- Desativar automaticamente regras ativas de `cotacao_regras_formatacao` que usam a coluna `categoria` com termos historicos `urgente`, `urgencia`, `urgência` ou `encomenda`.
+- Remover esses termos das categorias padrao semeadas pelo schema.
+- Manter `urgente` e `encomenda` como texto comum quando digitados na categoria, sem cor, prioridade, alerta ou data operacional escondida.
+- Transformar as copias antigas `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php` em shims de compatibilidade para a implementacao real em `site/cotacao/`.
+
+Motivo:
+
+- O usuario confirmou que escrever `urgente` ou `encomenda` ainda travava/saltava a Cotacao.
+- O projeto tinha passado por duas fases conflitantes: primeiro essas palavras ganharam comportamento automatico, depois a cor foi movida para formatacao condicional. O reset remove a ambiguidade e evita que regra velha continue competindo com o fluxo novo.
+
+Impacto:
+
+- `site/cotacao/cotacao-funcoes.php`
+- `site/cotacao/index.php`
+- `site/cotacao/app.js`
+- `site/app.js`
+- `site/api.php`
+- `site/cotacao-funcoes.php`
+- `AGENTS.md`
+- `README.md`
+- `docs/02-banco-de-dados.md`
+- `docs/06-pendencias.md`
+- `docs/19-cotacao-tempo-real.md`
+
+Riscos/cuidados:
+
+- Se a equipe quiser destacar visualmente `urgente` ou `encomenda` de novo, criar uma regra explicita revisada e registrar a decisao antes de alterar o schema.
+- Linhas antigas com prioridade explicita `encomenda` continuam com significado operacional para Miauby; apenas texto de categoria nao deve disparar comportamento.
+- Testar categoria em duas abas sempre que mexer no fluxo de formatacao, filtro ou sync.
