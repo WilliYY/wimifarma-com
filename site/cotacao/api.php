@@ -110,6 +110,14 @@ try {
                 : $row['campos'] . ',' . implode(',', $systemFields);
         }
 
+        if ($rowId > 0) {
+            $fields = array_filter(array_map('trim', explode(',', $row['campos'])), static function (string $field): bool {
+                return $field !== '' && $field !== 'ordem';
+            });
+            $row['campos'] = implode(',', array_values(array_unique($fields)));
+            $row['ordem'] = 0;
+        }
+
         if ($hasContent && trim($row['produto']) === '' && ($rowId <= 0 || !$hasPatchMeta)) {
             cotacao_json(array('ok' => true, 'waiting' => true, 'message' => 'Aguardando produto.'));
         }

@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var supplierTimers = {};
     var categoryOptionsTimer = null;
     var gridFilterRefreshTimer = null;
+    var pendingGridFilterRefresh = null;
+    var pendingRowSort = false;
     var winnerOptionsTimer = null;
     var undoStack = [];
     var redoStack = [];
@@ -845,6 +847,29 @@ document.addEventListener('DOMContentLoaded', function () {
         return Boolean(editor && row && row.contains(editor));
     }
 
+    function deferGridFilterRefresh(options) {
+        pendingGridFilterRefresh = Object.assign({ status: false }, options || {});
+    }
+
+    function flushDeferredGridWork() {
+        if (hasLocalSheetEdit()) {
+            return;
+        }
+
+        if (pendingGridFilterRefresh) {
+            var filterOptions = pendingGridFilterRefresh;
+            pendingGridFilterRefresh = null;
+            applyGridFilters(filterOptions);
+        }
+
+        if (pendingRowSort) {
+            pendingRowSort = false;
+            sortRowsByOrder({ force: true });
+        }
+
+        flushPendingSyncSnapshot();
+    }
+
     function syncSnapshotVersion(snapshot) {
         return Number(snapshot && snapshot.state ? snapshot.state.versao || 0 : 0);
     }
@@ -1205,7 +1230,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }) || null;
     }
 
-    function sortRowsByOrder() {
+    function sortRowsByOrder(options) {
+        options = options || {};
+        if (!options.force && hasLocalSheetEdit()) {
+            pendingRowSort = true;
+            return;
+        }
+
         var tbody = grid.querySelector('tbody');
         var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
         var persisted = rows.filter(function (row) {
@@ -1228,8 +1259,16 @@ document.addEventListener('DOMContentLoaded', function () {
         renumberVisibleRows();
     }
 
-    function applyRemoteItemEvent(item) {
+    function eventChangedFields(payload) {
+        var fields = payload && Array.isArray(payload.changed_fields) ? payload.changed_fields : [];
+        return fields.map(function (field) {
+            return String(field || '').trim();
+        }).filter(Boolean);
+    }
+
+    function applyRemoteItemEvent(item, changedFields, eventType) {
         item = item || {};
+        changedFields = Array.isArray(changedFields) ? changedFields : [];
         var itemId = Number(item.id || 0);
         if (itemId <= 0) {
             return true;
@@ -1251,7 +1290,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         applyRemoteRow(row, item);
         mergeDuplicateItemRows(row, itemId, false);
-        sortRowsByOrder();
+        if (eventType === 'item_criado' || changedFields.indexOf('ordem') !== -1 || changedFields.indexOf('linha_vazia') !== -1) {
+            sortRowsByOrder();
+        }
         return true;
     }
 
@@ -1288,7 +1329,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (event.tipo === 'item_criado' || event.tipo === 'item_atualizado') {
-            return applyRemoteItemEvent(payload.item || {});
+            return applyRemoteItemEvent(payload.item || {}, eventChangedFields(payload), event.tipo);
         }
 
         if (event.tipo === 'item_cancelado') {
@@ -1297,7 +1338,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (event.tipo === 'linhas_criadas') {
             return (payload.items || []).every(function (item) {
-                return applyRemoteItemEvent(item);
+                return applyRemoteItemEvent(item, ['ordem', 'linha_vazia'], 'item_criado');
             });
         }
 
@@ -1823,6 +1864,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function rowPayload(row) {
         var prices = {};
+        var itemId = Number(row.dataset.itemId || 0);
+        var order = numericRowOrder(row);
+
+        if (itemId <= 0 && order <= 0) {
+            order = setRowOrder(row, computeRowOrder(row));
+        }
+
         row.querySelectorAll('.price-input').forEach(function (input) {
             prices[input.dataset.supplierId] = input.value;
         });
@@ -1836,7 +1884,7 @@ document.addEventListener('DOMContentLoaded', function () {
             cor: row.dataset.color || valueOf(row, '.row-color-input'),
             cores: valueOf(row, '.row-colors-input'),
             estilos: valueOf(row, '.row-styles-input'),
-            ordem: setRowOrder(row, computeRowOrder(row)),
+            ordem: order > 0 ? order : '',
             linha_vazia: row.dataset.lineEmpty || '0',
             campos: row.dataset.syncDirtyFields || '',
             precos_alterados: row.dataset.syncDirtyPrices || '',
@@ -1872,6 +1920,25 @@ document.addEventListener('DOMContentLoaded', function () {
         return Object.keys(map).join(',');
     }
 
+    function withoutCsvTokens(current, tokens) {
+        var remove = {};
+        (tokens || []).forEach(function (token) {
+            token = String(token || '').trim();
+            if (token) {
+                remove[token] = true;
+            }
+        });
+
+        return String(current || '').split(',')
+            .map(function (token) {
+                return token.trim();
+            })
+            .filter(function (token, index, list) {
+                return token && !remove[token] && list.indexOf(token) === index;
+            })
+            .join(',');
+    }
+
     function enableDelete(row, itemId) {
         row.dataset.itemId = String(itemId);
         var idInput = row.querySelector('.row-id-input');
@@ -1900,12 +1967,18 @@ document.addEventListener('DOMContentLoaded', function () {
             payload.produto = '';
             payload.quantidade = '';
             payload.categoria = '';
-            payload.campos = 'ean,produto,quantidade,categoria,cor,cores,estilos,ordem,linha_vazia,prioridade,status,observacao';
+            payload.campos = itemId > 0
+                ? 'ean,produto,quantidade,categoria,cor,cores,estilos,linha_vazia,prioridade,status,observacao'
+                : 'ean,produto,quantidade,categoria,cor,cores,estilos,ordem,linha_vazia,prioridade,status,observacao';
             payload.precos_alterados = allSupplierIds().join(',');
         }
 
         if (hasContent && row.dataset.lineEmpty === '1') {
             payload.campos = appendCsvTokens(payload.campos, ['ean', 'produto', 'quantidade', 'categoria']);
+        }
+
+        if (itemId > 0) {
+            payload.campos = withoutCsvTokens(payload.campos, ['ordem']);
         }
 
         if (!hasContent && itemId <= 0 && row.dataset.persistEmpty !== '1') {
@@ -1954,7 +2027,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (savedItemId > 0) {
                 mergeDuplicateItemRows(row, savedItemId);
             }
-            flushPendingSyncSnapshot();
+            flushDeferredGridWork();
         }).catch(function (error) {
             delete row.dataset.syncSaving;
             delete row.dataset.syncSavingAt;
@@ -4967,7 +5040,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var colorOk = color === '' || productColor === color;
             var winnerOk = winnerMatchesFilter(row, winner);
             var visible = !hasFilter || (categoryOk && colorOk && winnerOk);
-            var protectedByEdit = !visible && row === editorRow;
+            var protectedByEdit = !visible && preserveEditing && (row === editorRow || rowHasLocalSyncLock(row));
 
             if (protectedByEdit) {
                 visible = true;
@@ -5018,7 +5091,12 @@ document.addEventListener('DOMContentLoaded', function () {
     function scheduleGridFilterRefresh(delay, options) {
         clearTimeout(gridFilterRefreshTimer);
         gridFilterRefreshTimer = setTimeout(function () {
-            applyGridFilters(options || { status: false });
+            var nextOptions = options || { status: false };
+            if (hasLocalSheetEdit()) {
+                deferGridFilterRefresh(nextOptions);
+                return;
+            }
+            applyGridFilters(nextOptions);
         }, delay || 180);
     }
 
@@ -5340,14 +5418,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (wasCategoryEditing && hasActiveGridFilter()) {
-            window.setTimeout(function () {
-                applyGridFilters({ status: false, preserveEditing: false });
-            }, 0);
+            deferGridFilterRefresh({ status: false, preserveEditing: false });
         }
 
         if (wasSheetEditing || event.target.matches('.supplier-name-input')) {
             schedulePresencePing(160);
-            window.setTimeout(flushPendingSyncSnapshot, 0);
+            window.setTimeout(flushDeferredGridWork, 0);
         }
     });
 

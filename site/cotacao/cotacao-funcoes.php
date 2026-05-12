@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 define('COTACAO_APP_NAME', 'Wimifarma Cotacao');
-define('COTACAO_VERSION', '20260512b');
+define('COTACAO_VERSION', '20260512c');
 
 function cotacao_align_icon(string $align): string
 {
@@ -67,7 +67,7 @@ function cotacao_schema_statements(): array
             produto VARCHAR(220) NOT NULL,
             quantidade DECIMAL(10,2) NOT NULL DEFAULT 1.00,
             unidade VARCHAR(20) NOT NULL DEFAULT 'un',
-            categoria VARCHAR(80) NOT NULL DEFAULT 'geral',
+            categoria VARCHAR(80) NOT NULL DEFAULT '',
             cor VARCHAR(20) NOT NULL DEFAULT '',
             cores LONGTEXT NULL,
             estilos LONGTEXT NULL,
@@ -239,7 +239,7 @@ function cotacao_disable_legacy_category_trigger_rules(): void
          WHERE ativo = 1
            AND coluna_chave = 'categoria'
            AND operador IN ('contains', 'equals', 'starts_with', 'ends_with')
-           AND LOWER(TRIM(termo)) IN ('urgente', 'urgencia', 'urgência', 'encomenda')
+           AND LOWER(TRIM(termo)) IN ('geral', 'urgente', 'urgencia', 'urgência', 'encomenda', 'cotacao', 'cotação')
          ORDER BY bloco_id ASC, id ASC"
     );
     $stmt->execute();
@@ -395,6 +395,21 @@ function cotacao_ensure_item_visual_columns(): void
 
     if (function_exists('schema_column_exists') && !schema_column_exists('cotacao_itens', 'linha_vazia')) {
         db()->exec("ALTER TABLE cotacao_itens ADD COLUMN linha_vazia TINYINT(1) NOT NULL DEFAULT 0 AFTER ordem");
+    }
+
+    if (function_exists('schema_column_exists') && schema_column_exists('cotacao_itens', 'categoria')) {
+        $defaultStmt = db()->query(
+            "SELECT COLUMN_DEFAULT
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'cotacao_itens'
+               AND COLUMN_NAME = 'categoria'
+             LIMIT 1"
+        );
+        $categoryDefault = $defaultStmt ? $defaultStmt->fetchColumn() : null;
+        if ((string) $categoryDefault === 'geral') {
+            db()->exec("ALTER TABLE cotacao_itens MODIFY categoria VARCHAR(80) NOT NULL DEFAULT ''");
+        }
     }
 
     if (function_exists('schema_column_exists') && schema_column_exists('cotacao_itens', 'ordem')) {
@@ -2120,6 +2135,51 @@ function cotacao_claim_item_order(int $blockId, int $requestedOrder, int $curren
     return $maxOrder + 1000;
 }
 
+function cotacao_next_item_order(int $blockId): int
+{
+    $stmt = db()->prepare(
+        "SELECT ordem
+         FROM cotacao_itens
+         WHERE bloco_id = ?
+           AND status <> 'cancelada'
+         ORDER BY ordem DESC, id DESC
+         LIMIT 1
+         FOR UPDATE"
+    );
+    $stmt->execute(array($blockId));
+
+    return max(1000, (int) $stmt->fetchColumn() + 1000);
+}
+
+function cotacao_item_field_changed(array $before, array $after, string $field): bool
+{
+    if (!array_key_exists($field, $after)) {
+        return true;
+    }
+
+    if (in_array($field, array('ordem', 'linha_vazia'), true)) {
+        return (int) ($before[$field] ?? 0) !== (int) ($after[$field] ?? 0);
+    }
+
+    if ($field === 'quantidade') {
+        return abs((float) ($before[$field] ?? 0) - (float) ($after[$field] ?? 0)) > 0.0001;
+    }
+
+    return (string) ($before[$field] ?? '') !== (string) ($after[$field] ?? '');
+}
+
+function cotacao_changed_item_fields(?array $before, ?array $after, array $candidateFields): array
+{
+    $fields = array_values(array_unique(array_map('strval', $candidateFields)));
+    if (!$before || !$after) {
+        return $fields;
+    }
+
+    return array_values(array_filter($fields, static function (string $field) use ($before, $after): bool {
+        return cotacao_item_field_changed($before, $after, $field);
+    }));
+}
+
 function cotacao_save_item(int $blockId, array $data, array $prices): int
 {
     $id = max(0, (int) ($data['id'] ?? 0));
@@ -2232,12 +2292,10 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
 
         $requestedOrder = (int) ($payload['ordem'] ?? 0);
         $beforeOrder = $before ? (int) ($before['ordem'] ?? 0) : 0;
-        if ($before && $requestedOrder <= 0 && $beforeOrder > 0) {
-            $payload['ordem'] = $beforeOrder;
-        } elseif (!$before || $beforeOrder <= 0 || $requestedOrder !== $beforeOrder) {
-            $payload['ordem'] = cotacao_claim_item_order($blockId, $requestedOrder, $id);
+        if ($before) {
+            $payload['ordem'] = $beforeOrder > 0 ? $beforeOrder : cotacao_next_item_order($blockId);
         } else {
-            $payload['ordem'] = $beforeOrder;
+            $payload['ordem'] = cotacao_claim_item_order($blockId, $requestedOrder > 1 ? $requestedOrder : cotacao_next_item_order($blockId), 0);
         }
 
         if (!empty($payload['linha_vazia'])) {
@@ -2347,8 +2405,9 @@ function cotacao_save_item(int $blockId, array $data, array $prices): int
     $state = cotacao_sync_touch($blockId, 'dados');
     $changedFields = ($before && $hasPatchMeta) ? array_keys($patchFields) : cotacao_item_sync_field_names();
     $changedPrices = ($before && $hasPatchMeta) ? $patchPrices : array_fill_keys(array_map('intval', array_keys($prices)), true);
-    cotacao_update_item_versions($id, $changedFields, $changedPrices, $state);
     $savedItem = cotacao_sync_item_payload_by_id($blockId, $id);
+    $changedFields = cotacao_changed_item_fields($before, $savedItem, $changedFields);
+    cotacao_update_item_versions($id, $changedFields, $changedPrices, $state);
     cotacao_record_event($blockId, $before ? 'item_atualizado' : 'item_criado', 'dados', array(
         'item' => $savedItem,
         'changed_fields' => array_values($changedFields),

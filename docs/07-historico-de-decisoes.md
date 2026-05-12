@@ -738,3 +738,34 @@ Riscos/cuidados:
 
 - Se a equipe quiser usar `geral` como destaque visual, criar regra nova revisada e documentada, sabendo que ela nao pode virar gatilho escondido.
 - Mudancas futuras de reordenacao precisam enviar `ordem` de forma explicita para nao conflitar com a protecao contra salto de linha.
+
+## 2026-05-12 - Cotacao endurece contrato de ordem e categoria
+
+Decisao:
+
+- Categoria de novos itens passa a ter default vazio no banco, nao `geral`.
+- Regras legadas ativas para categoria tambem cobrem `cotacao/cotação`, alem de `geral`, `urgente` e `encomenda`.
+- Saves comuns de linhas existentes deixam de enviar `ordem` no frontend, removem `ordem` no `api.php` e preservam a ordem anterior no backend mesmo quando um payload legado tenta salvar `ordem=1`.
+- Eventos de item atualizado removem `ordem` de `changed_fields` quando a ordem real nao mudou.
+
+Motivo:
+
+- O usuario confirmou que palavras de categoria ainda podiam fazer a linha subir para a primeira posicao e travar.
+- A auditoria encontrou que um payload antigo podia enviar `ordem=1` durante uma edicao comum de categoria, criando evento de ordem sem reordenacao explicita.
+
+Impacto:
+
+- `site/cotacao/app.js`
+- `site/cotacao/api.php`
+- `site/cotacao/cotacao-funcoes.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/02-banco-de-dados.md`
+- `docs/06-pendencias.md`
+- `docs/19-cotacao-tempo-real.md`
+
+Riscos/cuidados:
+
+- Reordenacao manual futura precisa ter contrato explicito proprio para alterar `ordem`.
+- Nao recriar regra escondida por texto de categoria; se quiser cor automatica, usar regra condicional revisada.
+- Teste dirigido confirmou que `urgente`, `encomenda`, `geral` e `cotacao` preservam a ordem original mesmo com payload legado `ordem=1`.

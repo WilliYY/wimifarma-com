@@ -48,6 +48,8 @@ Em 2026-05-12, a categoria recebeu um reset mais duro para as palavras historica
 
 Em 2026-05-12, o reset foi ampliado para `geral`, porque havia uma regra ativa de formatacao condicional em `cotacao_regras_formatacao` para `categoria contains geral`. A Cotacao tambem deixou de preencher categoria vazia com `geral` automaticamente e passou a preservar `ordem` de linhas existentes quando o save vem de uma edicao comum de celula. Snapshots/eventos remotos agora aguardam a edicao local terminar antes de reaplicar filtro ou reordenar DOM, evitando que uma linha suba para o topo enquanto o usuario digita.
 
+Na correcao seguinte de 2026-05-12, a protecao foi reforcada no contrato entre frontend e backend. `site/cotacao/app.js` deixou de enviar `ordem` como campo alterado para linhas existentes, `site/cotacao/api.php` remove `ordem` de payloads legados de save comum e `site/cotacao/cotacao-funcoes.php` preserva a ordem anterior mesmo quando recebe `ordem=1`. O default de `cotacao_itens.categoria` tambem passou para vazio. Em teste dirigido no backend, salvar `urgente`, `encomenda`, `geral` e `cotacao` com payload legado manteve a ordem original e gerou eventos apenas com `changed_fields=categoria`.
+
 Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea forte ainda depende de conflito por campo visivel ao usuario e canal de tempo real mais eficiente, como SSE ou WebSocket.
 
 ## Arquivos, rotas e tabelas envolvidos
@@ -89,7 +91,8 @@ Tabelas:
 - Cores automaticas por categoria devem ser configuradas por regra condicional, nao por comportamento fixo escondido no codigo.
 - `geral` nao deve ser preenchido automaticamente em categoria vazia durante edicao de celula.
 - Edicao comum de categoria nao deve alterar `ordem` da linha.
-- `urgente` e `encomenda` nao devem ser recriados como gatilho automatico de categoria, nem por regra condicional legada, nem por CSS/JS. Se a equipe quiser destacar esses fluxos novamente, criar campo/regra explicita revisada e documentada.
+- `geral`, `urgente`, `encomenda` e `cotacao/cotação` nao devem ser recriados como gatilho automatico de categoria, nem por regra condicional legada, nem por CSS/JS. Se a equipe quiser destacar esses fluxos novamente, criar campo/regra explicita revisada e documentada.
+- Payload legado de save comum nao pode mudar `ordem`; reordenacao precisa ser fluxo explicito e documentado.
 - Categoria nao deve alterar `prioridade` nem registrar encomenda automaticamente; prioridade so deve mudar quando o usuario ou uma funcao explicita salvar esse campo.
 - Filtro de cor deve considerar cores salvas em `cor`/`cores`, nao palavras no texto da categoria.
 - Precos por fornecedor devem continuar ligados a `item_id` e `fornecedor_id`.
@@ -118,6 +121,8 @@ Tabelas:
 - Regras ativas de categoria com termo exato `urgente`, `urgencia`, `urgência` ou `encomenda` sao desativadas na inicializacao do schema para remover o comportamento antigo que fazia a tela saltar/travar.
 - Regras ativas de categoria com termo `geral` tambem sao desativadas por `cotacao_disable_default_category_trigger_rules()`, porque `geral` e default historico e nao deve funcionar como gatilho visual escondido.
 - Saves de linhas existentes nao enviam mais `ordem` como campo alterado por padrao; o backend preserva a ordem anterior quando receber `ordem` vazia/zero em edicao existente.
+- Saves de linhas existentes tambem preservam `ordem` quando recebem payload legado com `ordem=1`; `changed_fields` remove `ordem` quando a ordem real nao mudou.
+- Novas colunas/tabelas devem manter categoria default vazia, nao `geral`.
 - Enquanto existe edicao local ativa ou save pendente, `sync_events_pull`/`sync_pull` nao reordenam a grade nem reaplicam filtro remoto; o snapshot fica pendente ate o fim da edicao.
 - As copias antigas `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php` nao devem receber logica nova; elas existem apenas como compatibilidade e redirecionam para `/cotacao/`.
 - A troca imediata de linguagem/banco nao foi adotada como primeiro passo para a travada de categoria. O gargalo observado era compatível com recalculo de UI/filtros, entao a correcao inicial fica no frontend e no contrato de sync atual.
@@ -131,7 +136,7 @@ Tabelas:
 - Sincronizar com Google Sheets sem IDs estaveis pode duplicar linhas ou sobrescrever valores.
 - Tratar filtro como fonte de verdade pode causar divergencia entre computadores.
 - Reintroduzir cor fixa por nome de categoria pode duplicar comportamento e gerar resultado diferente da regra condicional configurada pelo usuario.
-- Reativar regras antigas de `urgente`/`encomenda` em categoria pode reabrir o bug de salto/travamento; tratar esses termos como dados comuns ou criar regra nova com decisao registrada.
+- Reativar regras antigas de `geral`/`urgente`/`encomenda`/`cotacao` em categoria pode reabrir o bug de salto/travamento; tratar esses termos como dados comuns ou criar regra nova com decisao registrada.
 - Reintroduzir prioridade automatica por categoria pode fazer a linha saltar de posicao depois do save/sync.
 - Rodar verificacoes paralelas que inicializam schema pode gerar lock/deadlock temporario no MySQL; preferir auditoria sequencial.
 
