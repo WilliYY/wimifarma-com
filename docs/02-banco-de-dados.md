@@ -41,7 +41,7 @@ Inventario real observado em 2026-05-10:
 - `cotacao_precos`: precos por item e fornecedor.
 - `cotacao_auditoria`: auditoria da cotacao.
 - `cotacao_regras_formatacao`: regras visuais/formatacao.
-- `cotacao_sync_estado`: estado de versao/filtros/sync.
+- `cotacao_sync_estado`: estado de versao/sync e filtros legados/diagnosticos; filtros da tela ficam local-first por padrao.
 - `cotacao_eventos`: fila incremental de eventos da Cotacao, usada por `sync_events_pull` para evitar snapshot completo a cada alteracao.
 - `cotacao_presencas`: presenca temporaria de usuarios na Cotacao, com client id, usuario, filtro atual, item/linha/coluna em foco e estado de edicao.
 - `financeiro_fechamentos`: fechamento diario.
@@ -106,6 +106,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `cotacao_precos` depende de item e fornecedor.
 - `cotacao_sync_estado` e chave para futura sincronizacao com planilhas.
+- `cotacao_sync_estado.filtro_categoria` nao deve ser tratado como fonte de verdade visual enquanto filtros local-first estiverem ativos; termos legados sao sanitizados pelo schema.
 - `cotacao_itens.versoes` e `cotacao_precos.versao` guardam versoes por campo/preco e devem ser preservados para evoluir conflito por campo.
 - `cotacao_eventos` nao substitui auditoria completa; ele e o caminho operacional para sincronizacao incremental entre abas/computadores.
 - Regras de `cotacao_regras_formatacao` baseadas em categoria para os termos historicos `geral`, `urgente`, `urgencia`, `urgência`, `encomenda` e `cotacao/cotação` ficam inativas por seguranca; esses termos nao devem acionar cor/prioridade automaticamente.

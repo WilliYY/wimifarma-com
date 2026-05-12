@@ -79,6 +79,7 @@ Estado:
 - `urgente`/`encomenda` nao devem mais atuar como atalhos escondidos de cor/filtro, e `encomenda` nao deve mudar prioridade nem registrar data operacional automaticamente quando for apenas texto de categoria. Em 2026-05-12, regras legadas ativas para esses termos foram desativadas automaticamente pelo schema da Cotacao.
 - Em validacao com Browser, escrever `encomenda`/`urgente` em linha nova foi ajustado para nao duplicar a linha visualmente: a tela agora reconhece o save local pendente e mantem uma unica linha por `item_id`.
 - Em 2026-05-12, a protecao foi reforcada para `geral`, `urgente`, `encomenda` e `cotacao`: categoria default ficou vazia, saves comuns de linhas existentes nao podem alterar `ordem` e um teste dirigido confirmou que payload legado com `ordem=1` preserva a ordem original.
+- Em 2026-05-12, o filtro de categoria/cor/vencedor passou a ser local-first por padrao; `sync_filter` ficou como compatibilidade/diagnostico e filtros compartilhados antigos sao sanitizados para nao reativar `geral`, `urgente`, `encomenda` ou `cotacao`.
 - Nao ha integracao Google Sheets implementada.
 - Ainda nao ha interface de conflito por campo nem canal WebSocket/SSE.
 
@@ -94,6 +95,7 @@ Evolucao:
 - Criar diagnostico de sync/presenca para operador.
 - Medir performance com muitos itens/categorias em navegador real depois da fila incremental antes de trocar linguagem ou banco. A proxima evolucao mais parecida com Sheets tende a ser SSE/WebSocket usando os eventos ja registrados.
 - Criar teste automatizado para confirmar que digitar `geral`/`urgente`/`encomenda`/`cotacao` em categoria nao altera ordem, prioridade, data de encomenda ou filtro durante a edicao.
+- Criar teste automatizado para duas telas confirmando que uma troca de filtro em uma delas nao muda a outra enquanto `data-shared-filter-sync` estiver desligado.
 
 ### Miauby generativo com skills controladas
 

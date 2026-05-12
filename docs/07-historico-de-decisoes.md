@@ -769,3 +769,32 @@ Riscos/cuidados:
 - Reordenacao manual futura precisa ter contrato explicito proprio para alterar `ordem`.
 - Nao recriar regra escondida por texto de categoria; se quiser cor automatica, usar regra condicional revisada.
 - Teste dirigido confirmou que `urgente`, `encomenda`, `geral` e `cotacao` preservam a ordem original mesmo com payload legado `ordem=1`.
+
+## 2026-05-12 - Cotacao deixa filtros local-first por padrao
+
+Decisao:
+
+- Refazer a logica de filtro da Cotacao para que categoria/cor/vencedor sejam locais por tela por padrao.
+- Manter `sync_filter` apenas como compatibilidade/diagnostico enquanto `data-shared-filter-sync` nao estiver explicitamente habilitado.
+- Sanitizar filtros compartilhados antigos em `cotacao_sync_estado`, removendo `geral`, `urgente`, `encomenda` e `cotacao/cotação`.
+- Continuar sincronizando dados, eventos, presenca e celula focada entre usuarios.
+
+Motivo:
+
+- O usuario ainda via a linha subir/travar ao digitar palavras de categoria historicamente usadas como gatilho.
+- Filtro compartilhado por palavra podia interferir na visao de outra tela e parecia transformar texto comum em comando escondido.
+
+Impacto:
+
+- `site/cotacao/app.js`
+- `site/cotacao/cotacao-funcoes.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/02-banco-de-dados.md`
+- `docs/06-pendencias.md`
+- `docs/19-cotacao-tempo-real.md`
+
+Riscos/cuidados:
+
+- Se filtro compartilhado voltar a ser necessario, habilitar de forma explicita e testar com duas telas antes de producao.
+- Nao reintroduzir gatilho por texto de categoria; cor deve vir de regra condicional revisada e filtro deve ser acao local do usuario.

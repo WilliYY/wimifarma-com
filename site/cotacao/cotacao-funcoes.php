@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 define('COTACAO_APP_NAME', 'Wimifarma Cotacao');
-define('COTACAO_VERSION', '20260512c');
+define('COTACAO_VERSION', '20260512d');
 
 function cotacao_align_icon(string $align): string
 {
@@ -225,10 +225,84 @@ function cotacao_ensure_schema(): void
     cotacao_seed_default_suppliers();
     cotacao_ensure_item_visual_columns();
     cotacao_ensure_sync_rows();
+    cotacao_clear_legacy_shared_filters();
     cotacao_disable_legacy_category_trigger_rules();
     cotacao_disable_default_category_trigger_rules();
     cotacao_sync_categories_from_items();
     $done = true;
+}
+
+function cotacao_legacy_category_filter_terms(): array
+{
+    return array(
+        'geral' => true,
+        'urgente' => true,
+        'urgencia' => true,
+        'encomenda' => true,
+        'cotacao' => true,
+    );
+}
+
+function cotacao_is_legacy_category_filter_term(string $value): bool
+{
+    $key = cotacao_filter_text($value);
+
+    return $key !== '' && isset(cotacao_legacy_category_filter_terms()[$key]);
+}
+
+function cotacao_sanitize_shared_category_filter($value): string
+{
+    $raw = is_array($value) ? implode(',', array_map('strval', $value)) : (string) $value;
+    $raw = str_replace(array('+', ';', '|'), ',', $raw);
+    $parts = preg_split('/\s*,\s*/', $raw) ?: array();
+    $kept = array();
+    $seen = array();
+
+    foreach ($parts as $part) {
+        $part = trim((string) $part);
+        $key = cotacao_filter_text($part);
+        if ($part === '' || $key === '' || cotacao_is_legacy_category_filter_term($part) || isset($seen[$key])) {
+            continue;
+        }
+
+        $seen[$key] = true;
+        $kept[] = $part;
+    }
+
+    return substr(implode(',', $kept), 0, 255);
+}
+
+function cotacao_clear_legacy_shared_filters(?int $blockId = null): void
+{
+    $sql = 'SELECT bloco_id, filtro_categoria FROM cotacao_sync_estado';
+    $params = array();
+    if ($blockId !== null && $blockId > 0) {
+        $sql .= ' WHERE bloco_id = ?';
+        $params[] = $blockId;
+    }
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll() ?: array();
+    $update = db()->prepare(
+        'UPDATE cotacao_sync_estado
+         SET versao = versao + 1,
+             filtro_versao = filtro_versao + 1,
+             filtro_categoria = ?,
+             updated_by = ?,
+             updated_at = NOW()
+         WHERE bloco_id = ?'
+    );
+
+    foreach ($rows as $row) {
+        $current = (string) ($row['filtro_categoria'] ?? '');
+        $clean = cotacao_sanitize_shared_category_filter($current);
+        if ($current === $clean) {
+            continue;
+        }
+
+        $update->execute(array($clean, $_SESSION['user_id'] ?? null, (int) $row['bloco_id']));
+    }
 }
 
 function cotacao_disable_legacy_category_trigger_rules(): void
@@ -244,6 +318,31 @@ function cotacao_disable_legacy_category_trigger_rules(): void
     );
     $stmt->execute();
     $rules = $stmt->fetchAll() ?: array();
+    $rules = array_values(array_filter($rules, static function (array $rule): bool {
+        return cotacao_is_legacy_category_filter_term((string) ($rule['termo'] ?? ''));
+    }));
+
+    $rulesById = array();
+    foreach ($rules as $rule) {
+        $rulesById[(int) $rule['id']] = $rule;
+    }
+
+    $fallback = db()->prepare(
+        "SELECT id, bloco_id, coluna_chave, coluna_indice, operador, termo, cor_fundo, cor_texto, ativo, ordem
+         FROM cotacao_regras_formatacao
+         WHERE ativo = 1
+           AND coluna_chave = 'categoria'
+           AND operador IN ('contains', 'equals', 'starts_with', 'ends_with')
+         ORDER BY bloco_id ASC, id ASC"
+    );
+    $fallback->execute();
+    foreach (($fallback->fetchAll() ?: array()) as $rule) {
+        if (cotacao_is_legacy_category_filter_term((string) ($rule['termo'] ?? ''))) {
+            $rulesById[(int) $rule['id']] = $rule;
+        }
+    }
+
+    $rules = array_values($rulesById);
 
     if (!$rules) {
         return;
@@ -474,7 +573,7 @@ function cotacao_seed_default_suppliers(): void
 function cotacao_seed_default_categories(): void
 {
     $blocks = db()->query('SELECT id FROM cotacao_blocos WHERE ativo = 1')->fetchAll();
-    $categories = array('geral', 'medicamentos');
+    $categories = array('medicamentos');
     $stmt = db()->prepare(
         'INSERT INTO cotacao_categorias (bloco_id, nome, ordem)
          VALUES (?, ?, ?)
@@ -1081,10 +1180,10 @@ function cotacao_public_error(Throwable $error): string
     return 'Nao consegui concluir na cotacao agora. Registrei alerta interno. Acione o Codex se repetir.';
 }
 
-function cotacao_sync_filter_payload(array $payload): array
+function cotacao_sync_filter_payload(array $payload, bool $sanitizeSharedCategory = false): array
 {
     $category = trim((string) ($payload['categoria'] ?? $payload['category'] ?? ''));
-    $category = substr($category, 0, 255);
+    $category = $sanitizeSharedCategory ? cotacao_sanitize_shared_category_filter($category) : substr($category, 0, 255);
 
     $color = cotacao_color_value((string) ($payload['cor'] ?? $payload['productColor'] ?? $payload['product_color'] ?? ''));
 
@@ -1352,7 +1451,7 @@ function cotacao_sync_touch(int $blockId, string $scope = 'dados'): array
 function cotacao_sync_update_filter(int $blockId, array $payload): array
 {
     cotacao_ensure_sync_rows($blockId);
-    $filter = cotacao_sync_filter_payload($payload);
+    $filter = cotacao_sync_filter_payload($payload, true);
     $stmt = db()->prepare(
         'UPDATE cotacao_sync_estado
          SET versao = versao + 1,

@@ -154,11 +154,12 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Containers sobem com Docker Compose.
 - Banco local importado do HostGator para `mysql/`.
 - `wimifarma_app` possui tabelas `wf_*`, `cotacao_*`, `financeiro_*` e `miauw_*`.
-- Cotacao usa `cotacao_presencas` para a primeira camada de colaboracao ao vivo: usuarios ativos, filtro atual, celula/coluna em foco e estado de edicao.
+- Cotacao usa `cotacao_presencas` para a primeira camada de colaboracao ao vivo: usuarios ativos, filtro local atual, celula/coluna em foco e estado de edicao.
 - Cotacao usa `cotacao_eventos` e `sync_events_pull` como primeira camada de sync incremental antes de cair para snapshot completo por `sync_pull`.
 - Em 2026-05-11, a Cotacao foi testada com duas sessoes autenticadas: uma sessao criou item, a segunda recebeu por `sync_pull`, edicoes separadas em `produto` e `categoria` foram preservadas por patch de campo, `presence_ping` retornou 2 usuarios e a linha temporaria foi removida.
 - A digitacao em `categoria` na Cotacao nao deve recalcular filtro ativo a cada tecla; `site/cotacao/app.js` atualiza formatacao/opcoes com debounce e reaplica filtro da grade somente ao finalizar a edicao.
 - Cores de categorias comuns devem vir de `cotacao_regras_formatacao`; nao recriar classes fixas no CSS/JS nem filtro de cor por palavra-chave. As palavras historicas `geral`, `urgente`, `encomenda` e `cotacao/cotação` nao devem ter gatilho automatico por texto na categoria: regras legadas ativas para esses termos sao desativadas por `cotacao_disable_legacy_category_trigger_rules()` e `cotacao_disable_default_category_trigger_rules()`.
+- Filtros de categoria/cor/vencedor ficam local-first por padrao. `sync_filter` existe apenas como compatibilidade/estado diagnostico enquanto `data-shared-filter-sync` nao estiver explicitamente habilitado; uma tela nao deve aplicar automaticamente o filtro de outra.
 - Categoria vazia nao deve virar `geral` automaticamente durante edicao nem por default de banco. Em linhas existentes, saves de categoria tambem nao devem alterar `ordem`; o frontend remove `ordem` de saves comuns e o backend preserva a ordem anterior mesmo se receber payload legado com `ordem=1`.
 - Categoria nao deve alterar `prioridade` nem registrar `encomenda_registrada_em` automaticamente. Alertas de encomenda devem depender de prioridade explicita `encomenda`, criada por usuario/ferramenta controlada, nao de palavra digitada na categoria.
 - Apos mutacoes locais da Cotacao, como `save_row`, `delete_row`, `add_empty_rows`, `sync_filter` e regras condicionais, o frontend deve enviar `client_id` e atualizar a versao/evento conhecido para evitar reaplicar na propria tela o que acabou de salvar.
@@ -219,7 +220,7 @@ Objetivo do usuario: transformar a cotacao em uma ferramenta forte, espelhada co
 
 Estado atual:
 
-- A Cotacao ja possui polling de `sync_pull`, `sync_events_pull`, sincronizacao de filtro compartilhado e presenca ao vivo por `presence_ping`.
+- A Cotacao ja possui polling de `sync_pull`, `sync_events_pull`, filtros local-first por padrao e presenca ao vivo por `presence_ping`.
 - A presenca mostra total de pessoas usando, chips dos outros usuarios e marca celulas remotas visiveis mesmo quando o outro usuario esta filtrado em outra categoria.
 - Para travadas na troca/digitacao de categoria, investigar primeiro recalculo visual no `site/cotacao/app.js`, reaplicacao indevida de eventos/snapshot na propria aba, carga de `sync_pull` e tamanho da snapshot antes de trocar linguagem ou banco.
 - Isso ainda nao substitui um motor robusto estilo Google Sheets. Para edicao simultanea forte, evoluir com conflito por campo visivel e WebSocket/SSE usando a fila de eventos.

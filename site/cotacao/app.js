@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var syncClientId = '';
     var syncPulling = false;
     var syncFilterTimer = null;
+    var sharedFilterSyncEnabled = false;
     var syncPendingSnapshot = null;
     var syncReloading = false;
     var syncErrorCount = 0;
@@ -71,6 +72,13 @@ document.addEventListener('DOMContentLoaded', function () {
     var defaultFontSize = 20;
     var conditionalRules = readConditionalRules();
     var conditionalDefaultColor = '#fef7e0';
+    var legacyCategoryFilterTerms = {
+        geral: true,
+        urgente: true,
+        urgencia: true,
+        encomenda: true,
+        cotacao: true
+    };
 
     function removeCotacaoMarioRunner() {
         document.querySelectorAll('[data-cotacao-runner], .cotacao-screen-runner').forEach(function (runner) {
@@ -84,8 +92,16 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
+    sharedFilterSyncEnabled = String(grid.dataset.sharedFilterSync || '') === '1';
     productColorFilterValue = String(grid.dataset.syncFilterColor || '');
     winnerFilterValue = String(grid.dataset.syncFilterWinner || '');
+    if (!sharedFilterSyncEnabled) {
+        if (categoryFilterValue) {
+            categoryFilterValue.value = '';
+        }
+        productColorFilterValue = '';
+        winnerFilterValue = '';
+    }
     syncKnownVersion = Number(grid.dataset.syncVersion || 0);
     syncKnownDataVersion = Number(grid.dataset.syncDataVersion || 0);
     syncKnownFilterVersion = Number(grid.dataset.syncFilterVersion || 0);
@@ -526,6 +542,28 @@ document.addEventListener('DOMContentLoaded', function () {
             && String(a.winner || '') === String(b.winner || '');
     }
 
+    function isLegacyCategoryFilterTerm(value) {
+        var term = normalizeText(String(value || '').trim());
+        return term !== '' && Object.prototype.hasOwnProperty.call(legacyCategoryFilterTerms, term);
+    }
+
+    function sanitizeSharedCategoryFilter(value) {
+        var seen = {};
+        var output = [];
+
+        String(value || '').split(/[,+;|]/).forEach(function (part) {
+            var raw = String(part || '').trim();
+            var key = normalizeText(raw);
+            if (!raw || isLegacyCategoryFilterTerm(raw) || seen[key]) {
+                return;
+            }
+            seen[key] = true;
+            output.push(raw);
+        });
+
+        return output.join(',');
+    }
+
     function recordFilterChange(before) {
         if (isApplyingFilterHistory) {
             return;
@@ -699,7 +737,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function syncFilterStateFromServer(state) {
         state = state || {};
         return {
-            category: String(state.filtro_categoria || ''),
+            category: sanitizeSharedCategoryFilter(state.filtro_categoria || ''),
             productColor: String(state.filtro_cor || ''),
             winner: String(state.filtro_vencedor || '')
         };
@@ -912,6 +950,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function queueSharedFilterSync(state) {
+        if (!sharedFilterSyncEnabled) {
+            return;
+        }
+
         if (isApplyingRemoteSync || !grid || syncReloading) {
             return;
         }
@@ -931,6 +973,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function applyRemoteFilterState(state) {
+        if (!sharedFilterSyncEnabled || hasLocalSheetEdit()) {
+            return false;
+        }
+
         var next = syncFilterStateFromServer(state);
         var before = readFilterState();
 
@@ -1353,6 +1399,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function applySyncEvents(result) {
         var events = Array.isArray(result && result.events) ? result.events : [];
         var applied = true;
+        var onlyFilterChanged = Boolean(result && result.filter_changed && !result.data_changed && !result.structure_changed);
 
         if (!events.length && !result.filter_changed && !result.data_changed && !result.structure_changed) {
             rememberSyncState(result.state);
@@ -1379,7 +1426,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         rememberSyncState(result.state);
-        setStatus(result.filter_changed && !result.data_changed ? 'Filtro sincronizado ao vivo' : 'Cotacao sincronizada por eventos', 'saved');
+        if (onlyFilterChanged) {
+            setStatus(sharedFilterSyncEnabled ? 'Filtro sincronizado ao vivo' : 'Filtro de outra tela registrado; sua visao ficou local', 'saved');
+        } else {
+            setStatus('Cotacao sincronizada por eventos', 'saved');
+        }
         return true;
     }
 
@@ -1401,7 +1452,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         options = options || {};
         var dataChanged = options.dataChanged !== false;
-        var filterChanged = options.filterChanged !== false;
+        var incomingFilterChanged = options.filterChanged !== false;
+        var filterChanged = sharedFilterSyncEnabled && incomingFilterChanged;
+        var remoteFilterIgnored = incomingFilterChanged && !sharedFilterSyncEnabled;
 
         if (structureChanged) {
             if (hasLocalSheetEdit()) {
@@ -1465,7 +1518,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        setStatus(filterChanged && !dataChanged ? 'Filtro sincronizado ao vivo' : 'Cotacao sincronizada ao vivo', 'saved');
+        if (remoteFilterIgnored && !dataChanged) {
+            setStatus('Filtro de outra tela registrado; sua visao ficou local', 'saved');
+        } else {
+            setStatus(filterChanged && !dataChanged ? 'Filtro sincronizado ao vivo' : 'Cotacao sincronizada ao vivo', 'saved');
+        }
     }
 
     function flushPendingSyncSnapshot() {
@@ -1477,7 +1534,7 @@ document.addEventListener('DOMContentLoaded', function () {
         syncPendingSnapshot = null;
         var needsStructure = pending.structureChanged && syncSnapshotStructureVersion(pending.snapshot) > syncKnownStructureVersion;
         var needsData = pending.dataChanged !== false && syncSnapshotDataVersion(pending.snapshot) > syncKnownDataVersion;
-        var needsFilter = pending.filterChanged !== false && syncSnapshotFilterVersion(pending.snapshot) > syncKnownFilterVersion;
+        var needsFilter = sharedFilterSyncEnabled && pending.filterChanged !== false && syncSnapshotFilterVersion(pending.snapshot) > syncKnownFilterVersion;
 
         if (!needsStructure && !needsData && !needsFilter) {
             return;

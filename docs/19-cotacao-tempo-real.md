@@ -10,14 +10,14 @@ A Cotacao ja possui:
 
 - polling de sincronizacao por `sync_pull`;
 - polling incremental por `sync_events_pull`, usando eventos em `cotacao_eventos` antes de recorrer a snapshot completo;
-- compartilhamento de filtro por `sync_filter`;
+- filtros local-first por padrao, com `sync_filter` mantido apenas como compatibilidade/diagnostico enquanto `data-shared-filter-sync` nao for habilitado explicitamente;
 - controle de versoes em `cotacao_sync_estado`;
 - versao por item/campo em `cotacao_itens.versoes` e por preco em `cotacao_precos.versao`, base para conflito por campo;
 - presenca ao vivo por `presence_ping`;
 - indicador "1 pessoa usando" / "N pessoas usando";
 - chips com usuarios ativos e local aproximado de trabalho;
 - marca visual na celula onde outro usuario esta focado/editando quando a linha esta visivel;
-- aviso textual quando outro usuario esta fora do filtro atual.
+- aviso textual quando outro usuario esta fora do filtro local atual.
 
 Em 2026-05-11, foi validado por simulacao com duas sessoes autenticadas que:
 
@@ -50,6 +50,8 @@ Em 2026-05-12, o reset foi ampliado para `geral`, porque havia uma regra ativa d
 
 Na correcao seguinte de 2026-05-12, a protecao foi reforcada no contrato entre frontend e backend. `site/cotacao/app.js` deixou de enviar `ordem` como campo alterado para linhas existentes, `site/cotacao/api.php` remove `ordem` de payloads legados de save comum e `site/cotacao/cotacao-funcoes.php` preserva a ordem anterior mesmo quando recebe `ordem=1`. O default de `cotacao_itens.categoria` tambem passou para vazio. Em teste dirigido no backend, salvar `urgente`, `encomenda`, `geral` e `cotacao` com payload legado manteve a ordem original e gerou eventos apenas com `changed_fields=categoria`.
 
+Em 2026-05-12, a logica de filtro foi refeita para impedir que palavras de categoria virem comando remoto. O filtro de categoria/cor/vencedor passou a ser local-first por padrao: a tela continua sincronizando dados, presenca e edicoes, mas nao aplica automaticamente o filtro escolhido em outro computador. `sync_filter` permanece como compatibilidade e diagnostico, e `cotacao_sync_estado.filtro_categoria` e sanitizado para remover filtros legados `geral`, `urgente`, `encomenda` e `cotacao/cotação`.
+
 Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea forte ainda depende de conflito por campo visivel ao usuario e canal de tempo real mais eficiente, como SSE ou WebSocket.
 
 ## Arquivos, rotas e tabelas envolvidos
@@ -67,7 +69,7 @@ Rotas/acoes:
 - `/cotacao/`
 - `POST /cotacao/api.php` com `action=sync_pull`
 - `POST /cotacao/api.php` com `action=sync_events_pull`
-- `POST /cotacao/api.php` com `action=sync_filter`
+- `POST /cotacao/api.php` com `action=sync_filter` (compatibilidade/diagnostico; nao aplica filtro remoto por padrao)
 - `POST /cotacao/api.php` com `action=presence_ping`
 
 Tabelas:
@@ -97,6 +99,7 @@ Tabelas:
 - Filtro de cor deve considerar cores salvas em `cor`/`cores`, nao palavras no texto da categoria.
 - Precos por fornecedor devem continuar ligados a `item_id` e `fornecedor_id`.
 - Filtro ativo nao pode esconder conflito de dados; se outro usuario estiver em linha fora do filtro, a interface deve indicar isso.
+- Filtro de uma tela nao pode ser aplicado automaticamente em outra enquanto o modo local-first estiver ativo.
 - Encomenda da Cotacao nao deve gerar alerta do Miauby antes de completar mais de 1 dia sem baixa/pedido e deve depender de prioridade explicita `encomenda`, nao de texto livre da categoria.
 - Presenca e dado temporario; nao deve ser usada como historico permanente.
 - A tela deve continuar funcional quando houver apenas um usuario, quando outro usuario fechar o navegador ou quando o ping falhar temporariamente.
@@ -124,6 +127,7 @@ Tabelas:
 - Saves de linhas existentes tambem preservam `ordem` quando recebem payload legado com `ordem=1`; `changed_fields` remove `ordem` quando a ordem real nao mudou.
 - Novas colunas/tabelas devem manter categoria default vazia, nao `geral`.
 - Enquanto existe edicao local ativa ou save pendente, `sync_events_pull`/`sync_pull` nao reordenam a grade nem reaplicam filtro remoto; o snapshot fica pendente ate o fim da edicao.
+- Filtros compartilhados ficam desabilitados por padrao no frontend. Para reativar em um fluxo futuro, `data-shared-filter-sync="1"` deve ser habilitado explicitamente e testado com duas telas antes de deploy.
 - As copias antigas `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php` nao devem receber logica nova; elas existem apenas como compatibilidade e redirecionam para `/cotacao/`.
 - A troca imediata de linguagem/banco nao foi adotada como primeiro passo para a travada de categoria. O gargalo observado era compatível com recalculo de UI/filtros, entao a correcao inicial fica no frontend e no contrato de sync atual.
 - Para chegar mais perto do Sheets, o proximo salto tecnico recomendado e um canal de eventos em tempo real, preferencialmente SSE ou WebSocket, com fila de eventos por celula/linha. Banco novo so deve entrar depois de medir gargalos reais de MySQL/PHP.
@@ -134,7 +138,7 @@ Tabelas:
 - Achar que presenca resolve conflito de escrita seria perigoso: ela so mostra onde pessoas estao trabalhando.
 - Alterar seletor de celula/linha sem atualizar `app.js` pode quebrar marca remota.
 - Sincronizar com Google Sheets sem IDs estaveis pode duplicar linhas ou sobrescrever valores.
-- Tratar filtro como fonte de verdade pode causar divergencia entre computadores.
+- Tratar filtro como fonte de verdade pode causar divergencia entre computadores ou salto de linha; por isso filtros sao local-first por padrao.
 - Reintroduzir cor fixa por nome de categoria pode duplicar comportamento e gerar resultado diferente da regra condicional configurada pelo usuario.
 - Reativar regras antigas de `geral`/`urgente`/`encomenda`/`cotacao` em categoria pode reabrir o bug de salto/travamento; tratar esses termos como dados comuns ou criar regra nova com decisao registrada.
 - Reintroduzir prioridade automatica por categoria pode fazer a linha saltar de posicao depois do save/sync.
@@ -153,10 +157,11 @@ Tabelas:
 - Transformar o teste manual de duas sessoes em smoke test automatizado.
 - Criar teste automatizado especifico para confirmar que digitar `urgente`/`encomenda` em categoria nao altera prioridade, nao registra encomenda e nao muda filtro no meio da edicao.
 - Criar teste automatizado especifico para confirmar que digitar `geral` em categoria nao ativa regra antiga, nao preenche categoria sozinho e nao move a linha para o topo.
+- Criar teste automatizado especifico para confirmar que um filtro aplicado em uma tela nao altera a visao de outra enquanto `data-shared-filter-sync` estiver desligado.
 
 ## Como pode evoluir
 
-1. Presenca visual e filtros compartilhados por polling.
+1. Presenca visual e filtros local-first por polling.
 2. Conflito por campo com aviso antes de sobrescrever.
 3. Fila de eventos de edicao com auditoria.
 4. Canal tempo real dedicado, se necessario.
