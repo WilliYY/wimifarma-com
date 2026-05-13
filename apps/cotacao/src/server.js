@@ -79,7 +79,19 @@ app.set('trust proxy', true);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: '2mb' }));
 app.use(sessionMiddleware);
-app.use(BASE_PATH, express.static(path.join(rootDir, 'public'), { index: false, maxAge: '1h' }));
+app.use(BASE_PATH, express.static(path.join(rootDir, 'public'), {
+  index: false,
+  maxAge: 0,
+  setHeaders(res, filePath) {
+    if (/\.(?:css|js)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      return;
+    }
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+  }
+}));
 
 io.engine.use(sessionMiddleware);
 io.use((socket, next) => {
@@ -1290,6 +1302,7 @@ function renderApp(req) {
   <title>Cotacao Wimifarma</title>
   <link rel="icon" href="${BASE_PATH}/favicon.svg">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260511b">
 </head>
 <body class="app-page">
   <header class="app-header">
@@ -1301,7 +1314,6 @@ function renderApp(req) {
     </div>
     <nav class="app-actions" aria-label="Acoes da cotacao">
       <a href="/">Home</a>
-      <button type="button" id="diagnosticsButton">Diagnostico</button>
       <button type="button" id="exportCsvButton">Baixar</button>
       <a href="${BASE_PATH}/logout.php">Sair</a>
     </nav>
@@ -1310,10 +1322,10 @@ function renderApp(req) {
     <section class="sheet-topline">
       <div>
         <span class="kicker">Wimifarma Cotacao</span>
-        <p>Planilha ao vivo para cotacao de farmacia.</p>
       </div>
       <div class="sheet-stats">
         <span id="rowCountBadge">0 linha(s) com dados</span>
+        <div class="presence-inline presence-top" id="presenceList"></div>
         <strong id="presenceCount">1 pessoa usando</strong>
         <span id="saveStatus" class="save-status">Sincronizado</span>
       </div>
@@ -1322,24 +1334,39 @@ function renderApp(req) {
     <section class="toolbar" aria-label="Ferramentas da cotacao">
       <button type="button" class="icon-button" id="undoButton" title="Desfazer" aria-label="Desfazer">&#8630;</button>
       <button type="button" class="icon-button" id="redoButton" title="Refazer" aria-label="Refazer">&#8631;</button>
-      <button type="button" id="rulesButton">Formatacao condicional</button>
+      <button type="button" class="icon-button" id="rulesButton" title="Formatacao condicional" aria-label="Formatacao condicional">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M7 12h10M10 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 5l3 5 3-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <div class="paint-tools" aria-label="Cores rapidas">
-        <span>Cor</span>
-        <button type="button" class="paint-swatch" data-color="#dbeafe" style="--swatch:#dbeafe" title="Azul"></button>
-        <button type="button" class="paint-swatch" data-color="#dcfce7" style="--swatch:#dcfce7" title="Verde"></button>
-        <button type="button" class="paint-swatch" data-color="#fef3c7" style="--swatch:#fef3c7" title="Amarelo"></button>
-        <button type="button" class="paint-swatch" data-color="#ffe4e6" style="--swatch:#ffe4e6" title="Rosa"></button>
-        <button type="button" class="paint-swatch" data-color="#ede9fe" style="--swatch:#ede9fe" title="Roxo"></button>
+        <button type="button" class="icon-button" id="paletteToggleButton" title="Cores" aria-label="Cores">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 0 0 0 16h1.4a1.8 1.8 0 0 0 1.2-3.1 1.4 1.4 0 0 1 .9-2.5H17a3 3 0 0 0 3-3A7.4 7.4 0 0 0 12 4Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8.6" cy="10" r="1" fill="currentColor"/><circle cx="11.6" cy="8" r="1" fill="currentColor"/><circle cx="14.8" cy="9.5" r="1" fill="currentColor"/></svg>
+        </button>
+        <div class="paint-palette" id="paintPalette" hidden>
+          <button type="button" class="paint-swatch" data-color="#bfdbfe" style="--swatch:#bfdbfe" title="Azul forte"></button>
+          <button type="button" class="paint-swatch" data-color="#dbeafe" style="--swatch:#dbeafe" title="Azul claro"></button>
+          <button type="button" class="paint-swatch" data-color="#bbf7d0" style="--swatch:#bbf7d0" title="Verde forte"></button>
+          <button type="button" class="paint-swatch" data-color="#dcfce7" style="--swatch:#dcfce7" title="Verde claro"></button>
+          <button type="button" class="paint-swatch" data-color="#fde68a" style="--swatch:#fde68a" title="Amarelo forte"></button>
+          <button type="button" class="paint-swatch" data-color="#fef3c7" style="--swatch:#fef3c7" title="Amarelo claro"></button>
+          <button type="button" class="paint-swatch" data-color="#fecdd3" style="--swatch:#fecdd3" title="Rosa forte"></button>
+          <button type="button" class="paint-swatch" data-color="#ffe4e6" style="--swatch:#ffe4e6" title="Rosa claro"></button>
+          <button type="button" class="paint-swatch" data-color="#ddd6fe" style="--swatch:#ddd6fe" title="Roxo forte"></button>
+          <button type="button" class="paint-swatch" data-color="#ede9fe" style="--swatch:#ede9fe" title="Roxo claro"></button>
+          <button type="button" class="paint-swatch" data-color="#e2e8f0" style="--swatch:#e2e8f0" title="Cinza forte"></button>
+          <button type="button" class="paint-swatch" data-color="#f8fafc" style="--swatch:#f8fafc" title="Cinza claro"></button>
+        </div>
         <button type="button" class="icon-button" id="eraserButton" title="Borracha" aria-label="Borracha">&#9003;</button>
       </div>
-      <div class="presence-inline" id="presenceList"></div>
       <label class="toolbar-field">Busca
         <input id="searchInput" type="search" placeholder="EAN, produto, categoria...">
       </label>
     </section>
 
-    <section class="sheet-wrap" aria-label="Planilha de cotacao">
+    <section class="sheet-wrap" id="sheetWrap" aria-label="Planilha de cotacao">
       <table class="sheet-table" id="sheetTable"></table>
+      <div class="sheet-footer">
+        <button type="button" id="addRowsFooterButton">Adicionar 20 linhas</button>
+      </div>
     </section>
   </main>
 
@@ -1374,14 +1401,11 @@ function renderApp(req) {
             <option value="starts">Comeca com</option>
           </select>
         </label>
-        <label>Texto
+        <label>Valor
           <input id="ruleValue" type="text">
         </label>
         <label>Fundo
           <input id="ruleBg" type="color" value="#fff7ed">
-        </label>
-        <label>Texto
-          <input id="ruleColor" type="color" value="#7c2d12">
         </label>
         <button type="button" id="addRuleButton">Criar regra</button>
       </div>
@@ -1415,6 +1439,7 @@ function renderApp(req) {
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
   <script src="${BASE_PATH}/app.js"></script>
+  <script src="/miauw/widget.js?v=20260511b" defer></script>
 </body>
 </html>`;
 }
@@ -1624,6 +1649,81 @@ app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRou
   });
   io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
   res.json({ ok: true, columnKey, eventId: Number(event.id) });
+}));
+
+app.post(`${BASE_PATH}/api/columns/:key/restore`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const columnKey = String(req.params.key || '');
+  const current = await pgPool.query(
+    `SELECT *
+     FROM cotacao_v2_columns
+     WHERE quote_id = $1
+       AND key = $2
+     LIMIT 1`,
+    [sheet.quote.id, columnKey]
+  );
+  const column = current.rows[0];
+  if (!isDistributorColumn(column)) {
+    return res.status(422).json({ ok: false, error: 'Somente distribuidoras podem ser restauradas.' });
+  }
+  const restored = await pgPool.query(
+    `UPDATE cotacao_v2_columns
+     SET options = jsonb_set(COALESCE(options, '{}'::jsonb), '{hidden}', 'false'::jsonb, true),
+         updated_at = now()
+     WHERE quote_id = $1
+       AND key = $2
+     RETURNING *`,
+    [sheet.quote.id, columnKey]
+  );
+  await logColumnAudit({
+    quoteId: sheet.quote.id,
+    columnKey,
+    action: 'restore',
+    before: column,
+    after: restored.rows[0],
+    user: req.session.user,
+    clientId: String(req.body?.clientId || '')
+  });
+  await normalizeColumnOrder(sheet.quote.id);
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'column_restored',
+    columnKey,
+    payload: { columnKey },
+    user: req.session.user,
+    clientId: String(req.body?.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  res.json({ ok: true, column: restored.rows[0], eventId: Number(event.id) });
+}));
+
+app.post(`${BASE_PATH}/api/columns/:key/width`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const columnKey = String(req.params.key || '');
+  const column = sheet.columns.find((item) => item.key === columnKey);
+  if (!column) {
+    return res.status(404).json({ ok: false, error: 'Coluna nao encontrada.' });
+  }
+  const width = Math.max(84, Math.min(620, Number.parseInt(req.body?.width, 10) || 160));
+  const updated = await pgPool.query(
+    `UPDATE cotacao_v2_columns
+     SET width = $3,
+         updated_at = now()
+     WHERE quote_id = $1
+       AND key = $2
+     RETURNING *`,
+    [sheet.quote.id, columnKey, width]
+  );
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'column_resized',
+    columnKey,
+    payload: { columnKey, width },
+    user: req.session.user,
+    clientId: String(req.body?.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  res.json({ ok: true, column: updated.rows[0], eventId: Number(event.id) });
 }));
 
 app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -1917,7 +2017,7 @@ app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async 
       String(req.body.operator || 'contains'),
       value,
       String(req.body.background || '#fff7ed'),
-      String(req.body.color || '#7c2d12')
+      '#111827'
     ]
   );
   const event = await appendEvent({

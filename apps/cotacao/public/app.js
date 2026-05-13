@@ -4,6 +4,7 @@
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
   const table = document.getElementById('sheetTable');
+  const sheetWrap = document.getElementById('sheetWrap');
   const searchInput = document.getElementById('searchInput');
   const rowCountBadge = document.getElementById('rowCountBadge');
   const presenceCount = document.getElementById('presenceCount');
@@ -16,12 +17,14 @@
   const redoButton = document.getElementById('redoButton');
   const eraserButton = document.getElementById('eraserButton');
   const rulesButton = document.getElementById('rulesButton');
+  const paletteToggleButton = document.getElementById('paletteToggleButton');
+  const paintPalette = document.getElementById('paintPalette');
+  const addRowsFooterButton = document.getElementById('addRowsFooterButton');
   const rulesDialog = document.getElementById('rulesDialog');
   const ruleColumn = document.getElementById('ruleColumn');
   const ruleOperator = document.getElementById('ruleOperator');
   const ruleValue = document.getElementById('ruleValue');
   const ruleBg = document.getElementById('ruleBg');
-  const ruleColor = document.getElementById('ruleColor');
   const addRuleButton = document.getElementById('addRuleButton');
   const rulesList = document.getElementById('rulesList');
   const diagnosticsButton = document.getElementById('diagnosticsButton');
@@ -59,8 +62,16 @@
     activeCell: null,
     anchorCell: null,
     selectedRange: null,
+    selectionScope: null,
     editing: null,
+    pendingCommit: null,
     dragging: false,
+    resizing: null,
+    connectedOnce: false,
+    heartbeatTimer: null,
+    refreshTimer: null,
+    pinnedRows: new Set(),
+    searchBeforeFocus: '',
     context: null,
     paintColor: null,
     eraser: false,
@@ -162,6 +173,12 @@
     return `${rowId}:${columnKey}`;
   }
 
+  function clampColumnWidth(width) {
+    const number = Number(width);
+    if (!Number.isFinite(number)) return 160;
+    return Math.max(84, Math.min(620, Math.round(number)));
+  }
+
   function isTextEntryTarget(target) {
     const node = target instanceof Element ? target : null;
     if (!node) return false;
@@ -170,12 +187,40 @@
     return Boolean(node.closest('input, textarea, select, [contenteditable="true"]'));
   }
 
+  function pushHistory(action) {
+    state.history.push(action);
+    state.future = [];
+    updateUndoButtons();
+  }
+
+  function cloneFilter(filter) {
+    return filter ? Array.from(filter) : null;
+  }
+
+  function restoreFilter(values) {
+    return Array.isArray(values) ? new Set(values) : null;
+  }
+
+  function clearPinnedRows() {
+    state.pinnedRows.clear();
+  }
+
   function valueOf(row, column) {
     if (!row || !column) return '';
     if (column.key === WINNER_KEY || column.options?.computed === true) {
       return computeWinner(row).label;
     }
     return String(row.values?.[column.key] ?? '');
+  }
+
+  function columnLabel(columnKey) {
+    return colByKey(columnKey)?.label || columnKey;
+  }
+
+  function operatorLabel(operator) {
+    if (operator === 'equals') return 'igual a';
+    if (operator === 'starts') return 'comeca com';
+    return 'contem';
   }
 
   function parsePrice(value) {
@@ -206,25 +251,86 @@
     return { label: winners[0].label, keys: [winners[0].key] };
   }
 
-  function getVisibleRows() {
+  function rowMatchesView(row) {
     const term = state.search.trim().toLowerCase();
+    if (term) {
+      const haystack = [
+        ...state.columns.map((column) => valueOf(row, column)),
+        computeWinner(row).label
+      ].join(' ').toLowerCase();
+      if (!haystack.includes(term)) return false;
+    }
+    for (const key of FILTERABLE_KEYS) {
+      const filter = state.filters[key];
+      if (!filter) continue;
+      const column = colByKey(key);
+      const value = key === WINNER_KEY ? computeWinner(row).label : valueOf(row, column);
+      if (!filter.has(value)) return false;
+    }
+    return true;
+  }
+
+  function getVisibleRows() {
     return state.rows.filter((row) => {
-      if (term) {
-        const haystack = [
-          ...state.columns.map((column) => valueOf(row, column)),
-          computeWinner(row).label
-        ].join(' ').toLowerCase();
-        if (!haystack.includes(term)) return false;
-      }
-      for (const key of FILTERABLE_KEYS) {
-        const filter = state.filters[key];
-        if (!filter) continue;
-        const column = colByKey(key);
-        const value = key === WINNER_KEY ? computeWinner(row).label : valueOf(row, column);
-        if (!filter.has(value)) return false;
-      }
-      return true;
+      if (state.pinnedRows.has(row.id)) return true;
+      return rowMatchesView(row);
     });
+  }
+
+  function rememberEditedRowInFilteredView(row) {
+    if (!row || !hasActiveViewFilter()) return;
+    if (!rowMatchesView(row)) {
+      state.pinnedRows.add(row.id);
+    }
+  }
+
+  function normalizePastedValue(column, value) {
+    const text = String(value ?? '').replace(/\u00a0/g, ' ').trim();
+    if (!text) return '';
+    if (isDistributorColumn(column)) {
+      const number = parsePrice(text);
+      if (number !== null) {
+        return number.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+      }
+    }
+    return text;
+  }
+
+  function selectedMatrixTsv() {
+    if (!state.activeCell) return '';
+    const rows = gridRows();
+    const anchor = coordsFor((state.anchorCell || state.activeCell).rowId, (state.anchorCell || state.activeCell).columnKey, rows);
+    const active = coordsFor(state.activeCell.rowId, state.activeCell.columnKey, rows);
+    if (anchor.row < 0 || active.row < 0 || anchor.col < 0 || active.col < 0) return '';
+    const startRow = Math.min(anchor.row, active.row);
+    const endRow = Math.max(anchor.row, active.row);
+    const startCol = Math.min(anchor.col, active.col);
+    const endCol = Math.max(anchor.col, active.col);
+    const lines = [];
+    for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
+      const row = rows[rowIndex];
+      const values = [];
+      for (let colIndex = startCol; colIndex <= endCol; colIndex += 1) {
+        values.push(valueOf(row, state.columns[colIndex]).replace(/\r?\n/g, ' '));
+      }
+      lines.push(values.join('\t'));
+    }
+    return lines.join('\n');
+  }
+
+  function applySearchValue(value) {
+    state.search = String(value || '');
+    searchInput.value = state.search;
+    clearPinnedRows();
+    renderTable();
+    updatePresence(false);
+  }
+
+  function applyFilterValue(columnKey, values) {
+    state.filters[columnKey] = restoreFilter(values);
+    clearPinnedRows();
+    renderTable();
+    updatePresence(false);
   }
 
   function nonEmptyRowCount(rows = getVisibleRows()) {
@@ -260,7 +366,7 @@
           ? current.startsWith(expected)
           : current.includes(expected);
       if (matched) {
-        return { background: rule.background, color: rule.color };
+        return { background: rule.background };
       }
     }
     return {};
@@ -276,9 +382,17 @@
       const style = map.get(key);
       if (!style) return;
       if (style.background) merged.background = style.background;
-      if (style.color) merged.color = style.color;
     });
     return merged;
+  }
+
+  function clearEditingVisuals() {
+    table.querySelectorAll('.sheet-input.is-editing').forEach((input) => {
+      input.classList.remove('is-editing');
+      input.readOnly = true;
+      autosizeInput(input);
+      input.blur();
+    });
   }
 
   function coordsFor(rowId, columnKey, rows = state.rows) {
@@ -294,8 +408,9 @@
     return row && column ? { rowId: row.id, columnKey: column.key } : null;
   }
 
-  function selectedCells() {
+  function selectedCells(options = {}) {
     if (!state.activeCell) return [];
+    const includeComputed = options.includeComputed === true;
     const rows = gridRows();
     const anchorCell = state.anchorCell || state.activeCell;
     const anchor = coordsFor(anchorCell.rowId, anchorCell.columnKey, rows);
@@ -309,7 +424,7 @@
     for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
       for (let colIndex = startCol; colIndex <= endCol; colIndex += 1) {
         const cell = cellAt(rowIndex, colIndex, rows);
-        if (cell && colByKey(cell.columnKey)?.options?.computed !== true) {
+        if (cell && (includeComputed || colByKey(cell.columnKey)?.options?.computed !== true)) {
           cells.push(cell);
         }
       }
@@ -319,6 +434,7 @@
 
   function setSelection(rowId, columnKey, extend = false) {
     const target = { rowId, columnKey };
+    state.selectionScope = null;
     if (!extend || !state.anchorCell) {
       state.anchorCell = target;
     }
@@ -336,15 +452,57 @@
     updatePresence(false);
   }
 
+  function selectColumn(columnKey) {
+    const rows = gridRows();
+    const colIndex = state.columns.findIndex((column) => column.key === columnKey);
+    if (colIndex < 0 || !rows.length) return;
+    state.selectionScope = { type: 'column', columnKey };
+    state.anchorCell = { rowId: rows[0].id, columnKey };
+    state.activeCell = { rowId: rows[rows.length - 1].id, columnKey };
+    state.selectedRange = {
+      startRow: 0,
+      endRow: rows.length - 1,
+      startCol: colIndex,
+      endCol: colIndex
+    };
+    updateSelectionClasses();
+    updatePresence(false);
+  }
+
+  function selectRow(rowId) {
+    const rows = gridRows();
+    const rowIndex = rows.findIndex((row) => row.id === rowId);
+    if (rowIndex < 0 || !state.columns.length) return;
+    state.selectionScope = { type: 'row', rowId };
+    state.anchorCell = { rowId, columnKey: state.columns[0].key };
+    state.activeCell = { rowId, columnKey: state.columns[state.columns.length - 1].key };
+    state.selectedRange = {
+      startRow: rowIndex,
+      endRow: rowIndex,
+      startCol: 0,
+      endCol: state.columns.length - 1
+    };
+    updateSelectionClasses();
+    updatePresence(false);
+  }
+
   function updateSelectionClasses() {
-    table.querySelectorAll('.is-selected, .is-active-cell').forEach((node) => {
-      node.classList.remove('is-selected', 'is-active-cell');
+    table.querySelectorAll('.is-selected, .is-active-cell, .is-selected-header, .is-selected-row').forEach((node) => {
+      node.classList.remove('is-selected', 'is-active-cell', 'is-selected-header', 'is-selected-row');
     });
     table.querySelectorAll('.fill-handle').forEach((node) => node.remove());
-    selectedCells().forEach((cell) => {
+    selectedCells({ includeComputed: true }).forEach((cell) => {
       const td = table.querySelector(`[data-row-id="${cell.rowId}"][data-column-key="${cell.columnKey}"]`);
       if (td) td.classList.add('is-selected');
     });
+    if (state.selectionScope?.type === 'column') {
+      const header = table.querySelector(`th[data-column-key="${state.selectionScope.columnKey}"]`);
+      if (header) header.classList.add('is-selected-header');
+    }
+    if (state.selectionScope?.type === 'row') {
+      const rowHeader = table.querySelector(`.row-index[data-row-id="${state.selectionScope.rowId}"]`);
+      if (rowHeader) rowHeader.classList.add('is-selected-row');
+    }
     if (state.activeCell) {
       const active = table.querySelector(`[data-row-id="${state.activeCell.rowId}"][data-column-key="${state.activeCell.columnKey}"]`);
       if (active) {
@@ -363,7 +521,10 @@
 
   function updateRenderedCell(rowId, columnKey, value) {
     const input = table.querySelector(`[data-row-id="${rowId}"][data-column-key="${columnKey}"] .sheet-input`);
-    if (input && !input.classList.contains('is-editing')) input.value = value;
+    if (input && !input.classList.contains('is-editing')) {
+      input.value = value;
+      autosizeInput(input);
+    }
   }
 
   function headerFilterButton(column) {
@@ -375,9 +536,17 @@
   function renderTable() {
     const visibleRows = getVisibleRows();
     const styles = styleMap();
+    const colgroup = [
+      '<col style="width:52px;min-width:52px;max-width:52px">',
+      ...state.columns.map((column) => {
+        const width = clampColumnWidth(column.width || 160);
+        return `<col data-column-key="${esc(column.key)}" style="width:${width}px;min-width:${width}px;max-width:${width}px">`;
+      })
+    ].join('');
     const head = state.columns.map((column) => (
-      `<th data-column-key="${esc(column.key)}" style="width:${Number(column.width || 160)}px">
-        <span>${esc(column.label)}</span>${headerFilterButton(column)}
+      `<th data-column-key="${esc(column.key)}" style="width:${clampColumnWidth(column.width || 160)}px">
+        <span class="column-title">${esc(column.label)}</span>${headerFilterButton(column)}
+        <button type="button" class="resize-handle" data-resize-column="${esc(column.key)}" aria-label="Redimensionar ${esc(column.label)}" title="Arraste para ajustar"></button>
       </th>`
     )).join('');
     const body = visibleRows.map((row) => {
@@ -398,10 +567,13 @@
         ].filter(Boolean).join(' ');
         const styleText = [
           style.background ? `background:${style.background}` : '',
-          style.color ? `color:${style.color}` : ''
+          style.color ? `color:${style.color}` : '',
+          `width:${clampColumnWidth(column.width || 160)}px`,
+          `min-width:${clampColumnWidth(column.width || 160)}px`,
+          `max-width:${clampColumnWidth(column.width || 160)}px`
         ].filter(Boolean).join(';');
         return `<td class="${classes}" data-row-id="${esc(row.id)}" data-column-key="${esc(column.key)}" style="${styleText}">
-          <input class="sheet-input" value="${esc(value)}" readonly ${isComputed ? 'tabindex="-1"' : ''}>
+          <textarea class="sheet-input" readonly rows="1" wrap="soft" ${isComputed ? 'tabindex="-1"' : ''}>${esc(value)}</textarea>
         </td>`;
       }).join('');
       return `<tr data-row-id="${esc(row.id)}">
@@ -409,10 +581,21 @@
         ${cells}
       </tr>`;
     }).join('');
-    table.innerHTML = `<thead><tr><th class="corner">#</th>${head}</tr></thead><tbody>${body}</tbody>`;
+    table.innerHTML = `<colgroup>${colgroup}</colgroup><thead><tr><th class="corner">#</th>${head}</tr></thead><tbody>${body}</tbody>`;
     rowCountBadge.textContent = `${nonEmptyRowCount(visibleRows)} linha(s) com dados`;
+    autosizeSheetInputs();
     updateSelectionClasses();
     bindCellHover();
+  }
+
+  function autosizeInput(input) {
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.max(42, input.scrollHeight)}px`;
+  }
+
+  function autosizeSheetInputs() {
+    table.querySelectorAll('.sheet-input').forEach(autosizeInput);
   }
 
   function bindCellHover() {
@@ -437,8 +620,8 @@
       .map((column) => `<option value="${esc(column.key)}">${esc(column.label)}</option>`)
       .join('');
     rulesList.innerHTML = state.rules.length
-      ? state.rules.map((rule) => `<div class="rule-item">
-          <span>${esc(rule.column_key || rule.columnKey)} ${esc(rule.operator)} "${esc(rule.value)}"</span>
+      ? state.rules.map((rule) => `<div class="rule-row">
+          <span><strong>${esc(columnLabel(rule.column_key || rule.columnKey))}</strong> ${esc(operatorLabel(rule.operator))} "${esc(rule.value)}"</span>
           <button type="button" data-rule-delete="${esc(rule.id)}">Apagar</button>
         </div>`).join('')
       : '<p class="empty-note">Nenhuma regra criada.</p>';
@@ -471,6 +654,27 @@
     socket.on('connect', () => {
       socket.emit('join', { quoteId: state.quote.id, clientId });
       updatePresence(false);
+      status('Sincronizado');
+      if (state.connectedOnce && !state.editing) {
+        reloadSheet().catch(console.error);
+      }
+      state.connectedOnce = true;
+      if (!state.heartbeatTimer) {
+        state.heartbeatTimer = window.setInterval(() => updatePresence(), 10000);
+      }
+      if (!state.refreshTimer) {
+        state.refreshTimer = window.setInterval(() => {
+          if (!state.editing && document.visibilityState === 'visible') {
+            reloadSheet().catch(console.error);
+          }
+        }, 60000);
+      }
+    });
+    socket.on('disconnect', () => {
+      status('Reconectando...', 'busy');
+    });
+    socket.on('connect_error', () => {
+      status('Reconectando...', 'busy');
     });
     socket.on('presence:update', (presence) => {
       state.presence = Array.isArray(presence) ? presence : [];
@@ -605,10 +809,9 @@
       row.version = data.version;
       row.updatedAt = data.updatedAt;
       state.conflicts.delete(cellKey(rowId, columnKey));
+      rememberEditedRowInFilteredView(row);
       if (options.history !== false) {
-        state.history.push({ rowId, columnKey, before, after });
-        state.future = [];
-        updateUndoButtons();
+        pushHistory({ type: 'cell', rowId, columnKey, before, after });
       }
       status('Sincronizado');
       renderTable();
@@ -663,9 +866,10 @@
         row.version = cell.version;
         row.updatedAt = cell.updatedAt;
         state.conflicts.delete(cellKey(cell.rowId, cell.columnKey));
+        rememberEditedRowInFilteredView(row);
       });
       if (options.history !== false && data.cells?.length) {
-        state.history.push({
+        pushHistory({
           type: 'batch',
           changes: data.cells.map((cell) => ({
             rowId: cell.rowId,
@@ -674,8 +878,6 @@
             after: cell.value
           }))
         });
-        state.future = [];
-        updateUndoButtons();
       }
       status('Sincronizado');
       renderTable();
@@ -692,7 +894,12 @@
     }
   }
 
-  function beginEdit(rowId, columnKey, initialText = null) {
+  async function beginEdit(rowId, columnKey, initialText = null) {
+    if (state.editing && (state.editing.rowId !== rowId || state.editing.columnKey !== columnKey)) {
+      await commitEdit();
+    } else if (state.pendingCommit) {
+      await state.pendingCommit;
+    }
     const column = colByKey(columnKey);
     const row = rowById(rowId);
     if (!row || !column || column.options?.computed === true) return;
@@ -705,13 +912,17 @@
     input.readOnly = false;
     input.classList.add('is-editing');
     input.value = initialText === null ? originalValue : String(initialText);
+    autosizeInput(input);
     input.focus();
     if (initialText === null) input.select();
     updatePresence(true);
   }
 
   async function commitEdit(move = null) {
-    if (!state.editing) return;
+    if (!state.editing) {
+      if (state.pendingCommit) await state.pendingCommit;
+      return;
+    }
     const editing = state.editing;
     state.editing = null;
     const input = editing.input;
@@ -719,10 +930,24 @@
     if (input) {
       input.readOnly = true;
       input.classList.remove('is-editing');
+      autosizeInput(input);
+      input.blur();
     }
-    await setCellValue(editing.rowId, editing.columnKey, value);
-    updatePresence(false);
-    if (move) moveActive(move.row, move.col, false);
+    let commitPromise = null;
+    commitPromise = (async () => {
+      try {
+        await setCellValue(editing.rowId, editing.columnKey, value);
+        if (!state.editing) {
+          clearEditingVisuals();
+          updatePresence(false);
+          if (move) moveActive(move.row, move.col, false);
+        }
+      } finally {
+        if (state.pendingCommit === commitPromise) state.pendingCommit = null;
+      }
+    })();
+    state.pendingCommit = commitPromise;
+    await commitPromise;
   }
 
   function cancelEdit() {
@@ -733,6 +958,7 @@
       editing.input.value = editing.originalValue;
       editing.input.readOnly = true;
       editing.input.classList.remove('is-editing');
+      editing.input.blur();
     }
     updatePresence(false);
     renderTable();
@@ -755,6 +981,12 @@
         columnKey: change.columnKey,
         value: change.before
       })), { history: false });
+    } else if (action.type === 'column-delete') {
+      await restoreDeletedColumn(action.columnKey);
+    } else if (action.type === 'filter') {
+      applyFilterValue(action.columnKey, action.before);
+    } else if (action.type === 'search') {
+      applySearchValue(action.before);
     } else {
       await setCellValue(action.rowId, action.columnKey, action.before, { history: false });
     }
@@ -771,6 +1003,12 @@
         columnKey: change.columnKey,
         value: change.after
       })), { history: false });
+    } else if (action.type === 'column-delete') {
+      await deleteColumn(action.columnKey, { history: false });
+    } else if (action.type === 'filter') {
+      applyFilterValue(action.columnKey, action.after);
+    } else if (action.type === 'search') {
+      applySearchValue(action.after);
     } else {
       await setCellValue(action.rowId, action.columnKey, action.after, { history: false });
     }
@@ -830,7 +1068,11 @@
         if (!cell) continue;
         const column = colByKey(cell.columnKey);
         if (!column || column.options?.computed === true) continue;
-        changes.push({ rowId: cell.rowId, columnKey: cell.columnKey, value: matrix[rowOffset][colOffset] });
+        changes.push({
+          rowId: cell.rowId,
+          columnKey: cell.columnKey,
+          value: normalizePastedValue(column, matrix[rowOffset][colOffset])
+        });
       }
     }
     await saveCellsBatch(changes);
@@ -853,6 +1095,14 @@
   }
 
   async function applyColorToSelection(color) {
+    if (state.selectionScope?.type === 'column') {
+      await colorColumn(state.selectionScope.columnKey, color);
+      return;
+    }
+    if (state.selectionScope?.type === 'row') {
+      await colorRow(state.selectionScope.rowId, color);
+      return;
+    }
     const cells = selectedCells();
     for (const cell of cells) {
       await setStyle({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey }, color);
@@ -861,6 +1111,14 @@
   }
 
   async function eraseSelection() {
+    if (state.selectionScope?.type === 'column') {
+      await eraseColumn(state.selectionScope.columnKey);
+      return;
+    }
+    if (state.selectionScope?.type === 'row') {
+      await eraseRow(state.selectionScope.rowId);
+      return;
+    }
     const cells = selectedCells();
     for (const cell of cells) {
       await deleteStyle({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey });
@@ -886,6 +1144,110 @@
   async function eraseRow(rowId) {
     await deleteStyle({ scope: 'row', rowId });
     renderTable();
+  }
+
+  async function restoreDeletedColumn(columnKey) {
+    const data = await api(`/api/columns/${encodeURIComponent(columnKey)}/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ clientId })
+    });
+    await reloadSheet();
+    return data;
+  }
+
+  async function deleteColumn(columnKey, options = {}) {
+    const column = colByKey(columnKey);
+    if (!isDistributorColumn(column)) return null;
+    const data = await api(`/api/columns/${encodeURIComponent(columnKey)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ clientId })
+    });
+    if (options.history !== false) {
+      pushHistory({ type: 'column-delete', columnKey, label: column.label });
+    }
+    await reloadSheet();
+    return data;
+  }
+
+  async function beginColumnRename(columnKey) {
+    const column = colByKey(columnKey);
+    if (!isDistributorColumn(column)) return;
+    const header = table.querySelector(`th[data-column-key="${columnKey}"]`);
+    const label = header?.querySelector('.column-title');
+    if (!header || !label || header.querySelector('.column-title-editor')) return;
+    const editor = document.createElement('input');
+    editor.className = 'column-title-editor';
+    editor.value = column.label;
+    editor.setAttribute('aria-label', `Renomear ${column.label}`);
+    label.replaceWith(editor);
+    editor.focus();
+    editor.select();
+
+    let finished = false;
+    const finish = async (save) => {
+      if (finished) return;
+      finished = true;
+      const nextLabel = editor.value.trim();
+      if (save && nextLabel && nextLabel !== column.label) {
+        status('Renomeando...', 'busy');
+        const data = await api(`/api/columns/${encodeURIComponent(columnKey)}/rename`, {
+          method: 'POST',
+          body: JSON.stringify({ label: nextLabel, clientId })
+        });
+        column.label = data.column?.label || nextLabel;
+        status('Sincronizado');
+      }
+      renderTable();
+    };
+
+    editor.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finish(true).catch(console.error);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        finish(false).catch(console.error);
+      }
+    });
+    editor.addEventListener('blur', () => finish(true).catch(console.error));
+  }
+
+  function applyColumnWidth(columnKey, width) {
+    const nextWidth = clampColumnWidth(width);
+    const column = colByKey(columnKey);
+    if (column) column.width = nextWidth;
+    table.querySelectorAll(`[data-column-key="${columnKey}"]`).forEach((node) => {
+      node.style.width = `${nextWidth}px`;
+      node.style.minWidth = `${nextWidth}px`;
+      node.style.maxWidth = `${nextWidth}px`;
+    });
+    const col = table.querySelector(`col[data-column-key="${columnKey}"]`);
+    if (col) {
+      col.style.width = `${nextWidth}px`;
+      col.style.minWidth = `${nextWidth}px`;
+      col.style.maxWidth = `${nextWidth}px`;
+    }
+    autosizeSheetInputs();
+  }
+
+  function startColumnResize(event, columnKey) {
+    const column = colByKey(columnKey);
+    if (!column) return;
+    event.preventDefault();
+    event.stopPropagation();
+    state.resizing = {
+      columnKey,
+      startX: event.clientX,
+      startWidth: clampColumnWidth(column.width || event.target.closest('th')?.offsetWidth || 160)
+    };
+    document.body.classList.add('is-resizing-column');
+  }
+
+  async function saveColumnWidth(columnKey, width) {
+    await api(`/api/columns/${encodeURIComponent(columnKey)}/width`, {
+      method: 'POST',
+      body: JSON.stringify({ width: clampColumnWidth(width), clientId })
+    });
   }
 
   function openContextMenu(event, rowId, columnKey) {
@@ -924,22 +1286,16 @@
     }
     if (!isDistributorColumn(column)) return null;
     if (action === 'column-before' || action === 'column-after') {
-      const label = prompt('Nome da distribuidora:', 'Nova distribuidora');
-      if (label === null) return null;
-      await api('/api/columns', {
+      const data = await api('/api/columns', {
         method: 'POST',
-        body: JSON.stringify({ anchorKey: columnKey, placement: action === 'column-before' ? 'before' : 'after', label, clientId })
+        body: JSON.stringify({ anchorKey: columnKey, placement: action === 'column-before' ? 'before' : 'after', clientId })
       });
-      return reloadSheet();
+      await reloadSheet();
+      if (data.column?.key) await beginColumnRename(data.column.key);
+      return null;
     }
     if (action === 'column-rename') {
-      const label = prompt('Novo nome da distribuidora:', column.label);
-      if (label === null) return null;
-      await api(`/api/columns/${encodeURIComponent(columnKey)}/rename`, {
-        method: 'POST',
-        body: JSON.stringify({ label, clientId })
-      });
-      return reloadSheet();
+      return beginColumnRename(columnKey);
     }
     if (action === 'column-left' || action === 'column-right') {
       await api(`/api/columns/${encodeURIComponent(columnKey)}/move`, {
@@ -950,11 +1306,7 @@
     }
     if (action === 'column-delete') {
       if (!confirm(`Apagar a distribuidora "${column.label}"?`)) return null;
-      await api(`/api/columns/${encodeURIComponent(columnKey)}`, {
-        method: 'DELETE',
-        body: JSON.stringify({ clientId })
-      });
-      return reloadSheet();
+      return deleteColumn(columnKey);
     }
     return null;
   }
@@ -978,9 +1330,13 @@
         <button type="button" data-filter-clear="${esc(columnKey)}">Limpar</button>
       </div>`;
     const rect = anchor.getBoundingClientRect();
-    filterMenu.style.left = `${rect.left}px`;
-    filterMenu.style.top = `${rect.bottom + 6}px`;
     filterMenu.hidden = false;
+    const width = filterMenu.offsetWidth;
+    const height = filterMenu.offsetHeight;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    const top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - height - 8));
+    filterMenu.style.left = `${left}px`;
+    filterMenu.style.top = `${top}px`;
   }
 
   function exportCsv() {
@@ -1022,7 +1378,19 @@
         openFilter(filterButton.dataset.filterColumn, filterButton);
         return;
       }
+      const resizeHandle = event.target.closest('.resize-handle');
+      if (resizeHandle) {
+        startColumnResize(event, resizeHandle.dataset.resizeColumn);
+        return;
+      }
+      if (event.target.closest('.column-title-editor')) return;
       const header = event.target.closest('th[data-column-key]');
+      if (header && event.button === 0 && !(state.paintColor || state.eraser)) {
+        event.preventDefault();
+        if (state.editing) commitEdit().catch(console.error);
+        selectColumn(header.dataset.columnKey);
+        return;
+      }
       if (header && (state.paintColor || state.eraser)) {
         event.preventDefault();
         const columnKey = header.dataset.columnKey;
@@ -1031,6 +1399,12 @@
         return;
       }
       const rowHeader = event.target.closest('.row-index');
+      if (rowHeader && event.button === 0 && !(state.paintColor || state.eraser)) {
+        event.preventDefault();
+        if (state.editing) commitEdit().catch(console.error);
+        selectRow(rowHeader.dataset.rowId);
+        return;
+      }
       if (rowHeader && (state.paintColor || state.eraser)) {
         event.preventDefault();
         const rowId = rowHeader.dataset.rowId;
@@ -1053,8 +1427,18 @@
     });
 
     table.addEventListener('dblclick', (event) => {
+      const header = event.target.closest('th[data-column-key]');
+      if (header) {
+        event.preventDefault();
+        beginColumnRename(header.dataset.columnKey).catch(console.error);
+        return;
+      }
       const cell = event.target.closest('td.sheet-cell');
-      if (cell) beginEdit(cell.dataset.rowId, cell.dataset.columnKey);
+      if (cell) beginEdit(cell.dataset.rowId, cell.dataset.columnKey).catch(console.error);
+    });
+
+    table.addEventListener('input', (event) => {
+      if (event.target.classList?.contains('sheet-input')) autosizeInput(event.target);
     });
 
     table.addEventListener('contextmenu', (event) => {
@@ -1079,7 +1463,20 @@
       }
     }, true);
 
+    document.addEventListener('mousemove', (event) => {
+      if (!state.resizing) return;
+      const width = state.resizing.startWidth + event.clientX - state.resizing.startX;
+      applyColumnWidth(state.resizing.columnKey, width);
+    });
+
     document.addEventListener('mouseup', () => {
+      if (state.resizing) {
+        const { columnKey } = state.resizing;
+        const width = colByKey(columnKey)?.width || 160;
+        state.resizing = null;
+        document.body.classList.remove('is-resizing-column');
+        saveColumnWidth(columnKey, width).catch(console.error);
+      }
       state.dragging = false;
     });
 
@@ -1111,13 +1508,13 @@
         moveActive(0, 1, event.shiftKey);
       } else if (event.key === 'Enter' || event.key === 'F2') {
         event.preventDefault();
-        beginEdit(state.activeCell.rowId, state.activeCell.columnKey);
+        beginEdit(state.activeCell.rowId, state.activeCell.columnKey).catch(console.error);
       } else if (event.key === 'Backspace' || event.key === 'Delete') {
         event.preventDefault();
         deleteSelectedValues().catch(console.error);
       } else if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
         event.preventDefault();
-        beginEdit(state.activeCell.rowId, state.activeCell.columnKey, event.key);
+        beginEdit(state.activeCell.rowId, state.activeCell.columnKey, event.key).catch(console.error);
       }
     });
 
@@ -1130,9 +1527,26 @@
       pasteMatrix(text).catch(console.error);
     });
 
+    document.addEventListener('copy', (event) => {
+      if (isTextEntryTarget(event.target) || state.editing || !state.activeCell) return;
+      const text = selectedMatrixTsv();
+      if (!text) return;
+      event.preventDefault();
+      event.clipboardData?.setData('text/plain', text);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (state.socket && !state.socket.connected) state.socket.connect();
+        updatePresence();
+        if (!state.editing) reloadSheet().catch(console.error);
+      }
+    });
+
     document.addEventListener('click', (event) => {
-      if (!event.target.closest('#contextMenu') && !event.target.closest('.filter-button') && !event.target.closest('#filterMenu')) {
+      if (!event.target.closest('#contextMenu') && !event.target.closest('.filter-button') && !event.target.closest('#filterMenu') && !event.target.closest('.paint-tools')) {
         closeMenus();
+        if (paintPalette) paintPalette.hidden = true;
       }
     });
 
@@ -1153,25 +1567,63 @@
       const apply = event.target.closest('[data-filter-apply]');
       if (apply) {
         const values = Array.from(filterMenu.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
-        state.filters[apply.dataset.filterApply] = new Set(values);
+        const columnKey = apply.dataset.filterApply;
+        const before = cloneFilter(state.filters[columnKey]);
+        state.filters[columnKey] = new Set(values);
         filterMenu.hidden = true;
+        clearPinnedRows();
+        pushHistory({ type: 'filter', columnKey, before, after: cloneFilter(state.filters[columnKey]) });
         renderTable();
         updatePresence(false);
         return;
       }
       const clear = event.target.closest('[data-filter-clear]');
       if (clear) {
-        state.filters[clear.dataset.filterClear] = null;
+        const columnKey = clear.dataset.filterClear;
+        const before = cloneFilter(state.filters[columnKey]);
+        state.filters[columnKey] = null;
         filterMenu.hidden = true;
+        clearPinnedRows();
+        pushHistory({ type: 'filter', columnKey, before, after: null });
         renderTable();
         updatePresence(false);
       }
     });
 
+    searchInput.addEventListener('focus', () => {
+      state.searchBeforeFocus = state.search;
+    });
+
     searchInput.addEventListener('input', () => {
       state.search = searchInput.value;
+      clearPinnedRows();
       renderTable();
       updatePresence(false);
+    });
+
+    searchInput.addEventListener('change', () => {
+      if (state.searchBeforeFocus !== state.search) {
+        pushHistory({ type: 'search', before: state.searchBeforeFocus, after: state.search });
+        state.searchBeforeFocus = state.search;
+      }
+    });
+
+    searchInput.addEventListener('blur', () => {
+      if (state.searchBeforeFocus !== state.search) {
+        pushHistory({ type: 'search', before: state.searchBeforeFocus, after: state.search });
+        state.searchBeforeFocus = state.search;
+      }
+    });
+
+    paletteToggleButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      paintPalette.hidden = !paintPalette.hidden;
+    });
+
+    addRowsFooterButton.addEventListener('click', async () => {
+      await appendRows(20);
+      status('Sincronizado');
+      sheetWrap.scrollTo({ top: sheetWrap.scrollHeight, behavior: 'smooth' });
     });
 
     document.querySelectorAll('.paint-swatch').forEach((button) => {
@@ -1208,7 +1660,7 @@
           operator: ruleOperator.value,
           value: ruleValue.value,
           background: ruleBg.value,
-          color: ruleColor.value,
+          color: '#111827',
           clientId
         })
       });
@@ -1229,36 +1681,46 @@
       renderTable();
     });
 
-    diagnosticsButton.addEventListener('click', async () => {
-      diagnosticsDialog.showModal();
-      await loadDiagnostics();
-    });
-    refreshDiagnosticsButton.addEventListener('click', () => loadDiagnostics().catch(console.error));
-    googleExportButton.addEventListener('click', async () => {
-      const data = await api('/api/google-sheets/export', { method: 'POST', body: JSON.stringify({ clientId }) });
-      diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
-    });
-    googleImportButton.addEventListener('click', async () => {
-      if (!confirm('Importar do Google Sheets vai substituir as linhas atuais da Cotacao V2. Continuar?')) return;
-      const data = await api('/api/google-sheets/import', { method: 'POST', body: JSON.stringify({ clientId }) });
-      diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
-      await reloadSheet();
-    });
-    createBackupButton.addEventListener('click', async () => {
-      const data = await api('/api/backups', { method: 'POST', body: JSON.stringify({ clientId }) });
-      diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
-      await loadDiagnostics();
-    });
-    restoreBackupButton.addEventListener('click', async () => {
-      const name = backupSelect.value;
-      if (!name || !confirm(`Restaurar ${name}? As linhas atuais serao substituidas.`)) return;
-      const data = await api(`/api/backups/${encodeURIComponent(name)}/restore`, {
-        method: 'POST',
-        body: JSON.stringify({ clientId })
+    if (diagnosticsButton) {
+      diagnosticsButton.addEventListener('click', async () => {
+        diagnosticsDialog.showModal();
+        await loadDiagnostics();
       });
-      diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
-      await reloadSheet();
-    });
+    }
+    if (refreshDiagnosticsButton) refreshDiagnosticsButton.addEventListener('click', () => loadDiagnostics().catch(console.error));
+    if (googleExportButton) {
+      googleExportButton.addEventListener('click', async () => {
+        const data = await api('/api/google-sheets/export', { method: 'POST', body: JSON.stringify({ clientId }) });
+        diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
+      });
+    }
+    if (googleImportButton) {
+      googleImportButton.addEventListener('click', async () => {
+        if (!confirm('Importar do Google Sheets vai substituir as linhas atuais da Cotacao V2. Continuar?')) return;
+        const data = await api('/api/google-sheets/import', { method: 'POST', body: JSON.stringify({ clientId }) });
+        diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
+        await reloadSheet();
+      });
+    }
+    if (createBackupButton) {
+      createBackupButton.addEventListener('click', async () => {
+        const data = await api('/api/backups', { method: 'POST', body: JSON.stringify({ clientId }) });
+        diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
+        await loadDiagnostics();
+      });
+    }
+    if (restoreBackupButton) {
+      restoreBackupButton.addEventListener('click', async () => {
+        const name = backupSelect.value;
+        if (!name || !confirm(`Restaurar ${name}? As linhas atuais serao substituidas.`)) return;
+        const data = await api(`/api/backups/${encodeURIComponent(name)}/restore`, {
+          method: 'POST',
+          body: JSON.stringify({ clientId })
+        });
+        diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
+        await reloadSheet();
+      });
+    }
   }
 
   updateUndoButtons();

@@ -40,6 +40,8 @@ Rotas:
 - `POST /cotacao/api/columns/:key/rename`
 - `POST /cotacao/api/columns/:key/move`
 - `DELETE /cotacao/api/columns/:key`
+- `POST /cotacao/api/columns/:key/restore`
+- `POST /cotacao/api/columns/:key/width`
 - `POST /cotacao/api/rules`
 - `DELETE /cotacao/api/rules/:id`
 - `PUT /cotacao/api/styles`
@@ -83,14 +85,20 @@ MySQL `wimifarma_app`:
 - Categoria e texto comum.
 - `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem, filtro nem alerta por gatilho escondido.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`.
+- Formatacao condicional explicita deve pintar somente o fundo; o texto da grade permanece preto/padrao para manter legibilidade.
 - Filtros de busca, categoria e ganhador sao locais por tela e nao devem mover a visao de outro usuario.
 - Filtros de `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local.
+- Ao editar uma linha que nao combina mais com filtro/busca ativos, a tela deve manter a linha visivel ate o usuario alterar o filtro ou a busca, evitando que a linha desapareca no meio da edicao.
+- Texto longo deve quebrar linha dentro da celula e aumentar a altura da linha em vez de vazar ou ficar cortado.
+- Clicar no cabecalho seleciona a coluna inteira; clicar no numero seleciona a linha inteira.
+- Distribuidoras podem ser renomeadas com duplo clique no cabecalho e ter largura ajustada arrastando a borda do titulo.
+- Apagar distribuidora e um fluxo normal da equipe: a coluna fica oculta e pode ser restaurada por desfazer/`Ctrl+Z` na mesma sessao.
 - Presenca e temporaria; nao deve virar historico permanente.
 - Nomes de presenca aparecem como animais aleatorios/deterministicos por aba para diferenciar usuarios sem expor o nome real na area principal.
 - Login deve continuar aceitando os usuarios internos existentes de `wf_users`.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.
 - Import/export Google Sheets deve preservar `cotacao_row_id` para manter linha estavel e evitar duplicacao silenciosa.
-- Acoes de import, restore, apagar coluna e mudanca estrutural precisam de permissao clara antes de uso amplo.
+- Acoes de import e restore precisam de permissao clara antes de uso amplo; apagar distribuidora permanece no fluxo normal com desfazer na mesma sessao.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -109,8 +117,15 @@ MySQL `wimifarma_app`:
 - A coluna `Ganhador` e a celula de menor preco recebem destaque visual automatico, sem depender de palavra em categoria.
 - A insercao de linhas saiu dos botoes visiveis e ficou no menu de contexto. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
 - A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis.
-- O topo da Cotacao V2 deve permanecer compacto: `Wimifarma Cotacao`, `Home`, `Diagnostico`, `Baixar` e `Sair`.
-- O diagnostico operacional fica em modal e consulta health, presenca, eventos, Google Sheets e backups.
+- `Ctrl+Z` tambem desfaz filtro e busca local; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
+- A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo.
+- O fim da rolagem da grade exibe `Adicionar 20 linhas` para continuar a cotacao sem voltar ao topo.
+- `app.js` e `styles.css` sao servidos sem cache forte para que alteracoes de deploy aparecam imediatamente ao recarregar a Cotacao.
+- O topo da Cotacao V2 deve permanecer compacto: `Wimifarma Cotacao`, `Home`, `Baixar` e `Sair`; o diagnostico saiu do menu principal da equipe.
+- O diagnostico operacional continua disponivel por API interna e pode consultar health, presenca, eventos, Google Sheets e backups quando necessario.
+- A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
+- O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao.
+- A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
 - Backups da Cotacao V2 ficam no volume ignorado `cotacao-data/backups`, montado em `/app/backups`.
 
 ## Validacoes realizadas
@@ -134,6 +149,7 @@ Em 2026-05-12 foram validados localmente:
 - Em seguida, a interface foi ajustada visualmente e `node --check` passou em `apps/cotacao/src/server.js` e `apps/cotacao/public/app.js`.
 - Teste automatizado com navegador validou duas abas com presenca, nomes de animais, menu de contexto, filtros, paleta, fonte 20px centralizada e destaque de menor preco em `Ganhador`.
 - Em 2026-05-13, a tela foi evoluida com filtros por icone, remocao dos botoes `Adicionar linhas` e `Colar do Sheets`, colagem via `Ctrl+V`, desfazer/refazer, selecao multipla, menu de contexto ampliado, diagnostico, Google Sheets import/export e backup/restore.
+- Em 2026-05-13, nova rodada corrigiu a operacao diaria: `Ctrl+C`, `Ctrl+Z` para busca/filtros, menu de filtro com posicionamento visivel, limpeza de estado de edicao ao trocar de celula, regra condicional apenas por fundo, Miauby na Cotacao, login compacto e heartbeat/reload leve apos inatividade.
 
 ## Riscos ao alterar
 
@@ -146,13 +162,14 @@ Em 2026-05-12 foram validados localmente:
 - Cores manuais devem continuar independentes de regras de negocio; nao usar cor como estado operacional sem schema explicito.
 - Importar do Google Sheets sem revisar range/credencial pode substituir a cotacao ativa; usar backup antes de importar dados reais.
 - Restore de backup sobrescreve linhas/colunas/regras/estilos da cotacao atual. Deve ser restrito e auditado antes de liberar para toda a equipe.
+- Resize de coluna e renomeio rapido sao recursos operacionais frequentes; evitar adicionar confirmacoes ou modais nesse caminho.
 
 ## Pendencias
 
 - Validar conflito por campo visivel com dois usuarios reais e transformar em teste automatizado permanente.
 - Evoluir diagnostico para medir latencia cliente-servidor em tempo real e listar eventos atrasados por usuario.
 - Configurar credenciais reais do Google Sheets no VPS e validar import/export end-to-end com uma planilha controlada.
-- Restringir por perfil as acoes de importar, restaurar backup, apagar coluna e mover/renomear distribuidoras.
+- Usar backup/revisao operacional antes de importar ou restaurar backup em dados reais.
 - Criar testes automatizados permanentes com duas telas no pipeline.
 - Evoluir a alca visual de preenchimento para drag-fill real, caso a equipe queira copiar padroes como no Sheets.
 - Criar rotina agendada de backup/retencao fora do container, alem do backup manual da tela.

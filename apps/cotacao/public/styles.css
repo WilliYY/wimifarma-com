@@ -67,24 +67,24 @@ button:hover,
   position: relative;
   display: grid;
   width: min(100%, 1160px);
-  min-height: 100vh;
-  padding: 40px 20px;
+  min-height: 100svh;
+  padding: 22px 20px;
   place-items: center;
 }
 
 .login-card {
-  width: min(100%, 520px);
-  padding: 56px 48px;
-  border: 1px solid rgba(159, 18, 57, 0.22);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 24px 70px rgba(86, 24, 46, 0.16);
+  width: min(100%, 440px);
+  padding: 30px 34px 34px;
+  border: 1px solid rgba(159, 18, 57, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 48px rgba(86, 24, 46, 0.13);
 }
 
 .login-logo {
   display: block;
-  width: 210px;
-  margin: 0 auto 44px;
+  width: 154px;
+  margin: 0 auto 24px;
 }
 
 .login-kicker,
@@ -103,10 +103,10 @@ button:hover,
 }
 
 .login-card h1 {
-  margin: 22px 0 12px;
+  margin: 18px 0 10px;
   color: var(--brand);
-  font-size: clamp(2.4rem, 6vw, 4rem);
-  line-height: 1;
+  font-size: clamp(2.15rem, 4.5vw, 3.05rem);
+  line-height: 1.03;
 }
 
 .login-card p {
@@ -171,9 +171,9 @@ textarea {
 }
 
 .login-runner-cat {
-  left: 16%;
-  bottom: 16%;
-  width: 96px;
+  left: 21%;
+  bottom: 9%;
+  width: 76px;
   filter: drop-shadow(0 18px 26px rgba(47, 16, 29, 0.18));
 }
 
@@ -718,8 +718,8 @@ tr.is-filtered {
   position: fixed;
   z-index: 210;
   display: grid;
-  min-width: 260px;
-  max-width: min(360px, calc(100vw - 24px));
+  width: min(420px, calc(100vw - 16px));
+  max-height: min(520px, calc(100vh - 20px));
   gap: 10px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -733,7 +733,9 @@ tr.is-filtered {
 }
 
 .filter-menu strong {
+  color: #111827;
   font-size: 0.88rem;
+  overflow-wrap: anywhere;
 }
 
 .filter-actions {
@@ -750,18 +752,22 @@ tr.is-filtered {
 
 .filter-options {
   display: grid;
-  max-height: 260px;
+  max-height: 330px;
   overflow: auto;
   gap: 6px;
   padding: 2px;
 }
 
 .filter-options label {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
   gap: 8px;
+  color: #111827;
   font-size: 0.86rem;
   font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .filter-options input {
@@ -785,6 +791,7 @@ dialog::backdrop {
   display: grid;
   gap: 14px;
   padding: 22px;
+  color: #111827;
 }
 
 .dialog-card h2 {
@@ -793,7 +800,7 @@ dialog::backdrop {
 
 .dialog-card p {
   margin: 0;
-  color: var(--muted);
+  color: #374151;
 }
 
 .dialog-actions {
@@ -851,7 +858,7 @@ dialog::backdrop {
 
 .rules-form {
   display: grid;
-  grid-template-columns: repeat(5, minmax(100px, 1fr)) auto;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(140px, 0.8fr) minmax(180px, 1.2fr) 86px auto;
   gap: 10px;
   align-items: end;
 }
@@ -866,9 +873,13 @@ dialog::backdrop {
   grid-template-columns: 1fr auto;
   gap: 10px;
   align-items: center;
-  padding: 10px;
-  border: 1px solid var(--line);
+  padding: 10px 12px;
+  border: 1px solid #dbe4f0;
   border-radius: 8px;
+  background: #f8fafc;
+  color: #111827;
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .rule-row button {
@@ -876,6 +887,300 @@ dialog::backdrop {
   border-color: #fecdd3;
   background: #fff1f2;
   color: var(--danger);
+}
+
+/* Cotacao V2 operational polish */
+:root {
+  --surface: #ffffff;
+  --surface-soft: #f7f9fd;
+  --surface-rail: #eef3fa;
+  --grid-line: #b9c5d8;
+  --grid-line-soft: #d7dfeb;
+  --text-strong: #111827;
+  --accent: #2563eb;
+  --accent-soft: #dbeafe;
+  --amber: #f59e0b;
+}
+
+body {
+  background: var(--surface-rail);
+}
+
+button,
+.app-header nav a {
+  min-height: 32px;
+  border-radius: 6px;
+  border-color: #c7d2e3;
+  background: linear-gradient(#fff, #f8fafc);
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
+  font-size: 0.82rem;
+}
+
+button svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.app-header {
+  min-height: 56px;
+  padding: 8px 18px;
+  border-bottom-color: #d9e1ee;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+}
+
+.app-brandline {
+  gap: 18px;
+}
+
+.brand img {
+  width: 92px;
+}
+
+.app-brandline strong {
+  color: #9f1239;
+  font-size: 1.05rem;
+}
+
+.sheet-shell {
+  height: calc(100vh - 56px);
+}
+
+.sheet-topline {
+  min-height: 48px;
+  padding: 6px 10px;
+  background: #f7f9fd;
+}
+
+.kicker {
+  min-height: 24px;
+  padding: 2px 8px;
+  border-color: #fecdd3;
+  background: #fff;
+  font-size: 0.66rem;
+  letter-spacing: 0.07em;
+}
+
+.sheet-topline p {
+  display: none;
+}
+
+.sheet-stats {
+  gap: 8px;
+}
+
+.sheet-stats span,
+.sheet-stats strong,
+.save-status {
+  min-height: 28px;
+  padding: 0 10px;
+  border-color: #e2e8f0;
+  font-size: 0.78rem;
+}
+
+.presence-top {
+  gap: 5px;
+}
+
+.presence-pill {
+  border: 1px solid #dbe4ff;
+  background: #eef4ff;
+  color: #1e3a8a;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+.toolbar {
+  min-height: 48px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 0;
+  background: #fbfcff;
+}
+
+.toolbar-field {
+  min-width: 185px;
+}
+
+.toolbar-field input {
+  min-height: 31px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+.paint-tools {
+  position: relative;
+  min-width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.paint-palette {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 220;
+  display: grid;
+  grid-template-columns: repeat(6, 24px);
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+}
+
+.paint-palette[hidden] {
+  display: none;
+}
+
+.paint-swatch {
+  width: 24px;
+  height: 24px;
+  min-width: 24px !important;
+  border-radius: 6px;
+}
+
+.icon-button {
+  width: 32px;
+  min-width: 32px !important;
+  min-height: 32px;
+}
+
+.sheet-table {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.sheet-table th,
+.sheet-table td {
+  border-right-color: var(--grid-line);
+  border-bottom-color: var(--grid-line);
+}
+
+.sheet-table th {
+  height: 36px;
+  background: #f4f7fb;
+  color: #111827;
+  font-size: 0.78rem;
+  letter-spacing: 0;
+}
+
+.sheet-table th span.column-title {
+  max-width: calc(100% - 28px);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+}
+
+.column-title-editor {
+  width: calc(100% - 28px);
+  min-height: 28px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 6px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 900;
+  outline: none;
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  z-index: 12;
+  width: 8px;
+  min-width: 8px !important;
+  height: 100%;
+  min-height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: col-resize;
+}
+
+.resize-handle:hover,
+body.is-resizing-column .resize-handle {
+  background: rgba(37, 99, 235, 0.14);
+}
+
+body.is-resizing-column {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.sheet-table td {
+  height: auto;
+  min-height: 42px;
+  vertical-align: top;
+  background: #fff;
+}
+
+.sheet-input {
+  display: block;
+  min-height: 42px;
+  height: auto;
+  overflow: hidden;
+  resize: none;
+  padding: 7px 9px;
+  line-height: 1.22;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.is-computed .sheet-input {
+  font-size: 17px;
+  line-height: 1.22;
+}
+
+.sheet-cell.is-selected::before {
+  border-color: rgba(37, 99, 235, 0.5);
+  background: rgba(37, 99, 235, 0.07);
+}
+
+.sheet-cell.is-active-cell::before {
+  border-color: var(--amber);
+}
+
+.sheet-table th.is-selected-header,
+.row-index.is-selected-row {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.filter-button {
+  width: 20px;
+  min-width: 20px !important;
+  height: 20px;
+  min-height: 20px;
+}
+
+.filter-button::before {
+  width: 12px;
+  height: 12px;
+}
+
+.sheet-footer {
+  min-width: 100%;
+  padding: 14px 12px 28px;
+  border-top: 1px solid var(--grid-line-soft);
+  background: #fbfcff;
+}
+
+.sheet-footer button {
+  min-width: 210px;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 @media (max-width: 860px) {
@@ -906,6 +1211,10 @@ dialog::backdrop {
   }
 
   .diagnostics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rules-form {
     grid-template-columns: 1fr;
   }
 

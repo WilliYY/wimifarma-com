@@ -20,6 +20,8 @@ As notas abaixo sobre polling PHP/MySQL ficam como historico da Cotacao legada. 
 
 Na V2, `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum em categoria. Nao existe gatilho escondido por palavra para cor, prioridade, ordem, filtro ou alerta; destaque visual so pode vir de regra condicional explicita.
 
+Em 2026-05-13, a V2 passou a manter heartbeat de presenca a cada poucos segundos, recarregamento leve quando a aba volta/reconecta e protecao para nao deixar uma linha sumir no meio da edicao quando ha filtro ou busca ativa. `Ctrl+Z` tambem desfaz busca/filtro local, sem sincronizar essa visao para outros usuarios.
+
 ## Estado real atual
 
 A Cotacao ja possui:
@@ -132,6 +134,8 @@ Tabelas:
 - `sync_events_pull` deve ser tentado antes de `sync_pull` quando a aba ja conhece um `evento_id`. Se o servidor pedir `requires_snapshot`, o frontend volta para snapshot completo.
 - `presence_ping` continua sem avancar versao de sync local, porque presenca e temporaria e nao representa mudanca de dados.
 - Filtro de categoria nao deve ser reaplicado a cada tecla dentro de uma celula de categoria. O filtro ativo so deve recalcular depois que a edicao termina.
+- Na V2, quando a edicao faz a linha deixar de combinar com filtro/busca ativos, a linha editada permanece fixada visualmente ate o filtro ou a busca mudar. Isso evita a sensacao de perda de dados durante cotacao rapida.
+- A aba deve renovar presenca por heartbeat e recarregar dados de forma leve apos reconexao/retorno de visibilidade, sem depender de `Ctrl+F5`.
 - Linha nova local que ainda esta salvando nao deve ser reaplicada em outra linha pelo snapshot/evento remoto. Se o item remoto corresponder a uma linha local pendente, o sync deve aguardar a resposta do save; se ainda assim surgir duplicata visual, o DOM deve manter uma unica linha por `item_id`.
 - `cotacao_add_category()` aceita `touchSync=false` quando chamada dentro de `cotacao_save_item()`, evitando dois toques de sync para um unico save de linha.
 - As classes legadas `is-category-urgent` e `is-category-order` nao devem ser usadas para cor automatica; a origem correta e `cotacao_regras_formatacao`.

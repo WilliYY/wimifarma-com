@@ -77,6 +77,8 @@ Estado:
 - As colunas `EAN`, `PRODUTO`, `QUANTIDADE` e `CATEGORIA` sao fixas; somente distribuidoras podem ser adicionadas/removidas pela interface.
 - `Ganhador` e calculado pelo menor preco numerico entre distribuidoras visiveis e nao deve receber escrita manual.
 - Em 2026-05-13, foram adicionados selecao multipla, `Ctrl+V`, `Ctrl+Z`/`Ctrl+Y`, menu de contexto para linhas/colunas, filtros por icone em `CATEGORIA` e `Ganhador`, diagnostico operacional, backup/restore do Postgres, import/export Google Sheets com `cotacao_row_id` e auditoria de renomear/reordenar distribuidoras.
+- Em uma rodada posterior de 2026-05-13, a Cotacao ganhou `Ctrl+C` de matriz, `Ctrl+Z` tambem para busca/filtros, menu de filtro reposicionado para nao cortar no canto da tela, limpeza do estado de edicao ao clicar em outra celula, heartbeat/reload leve apos inatividade, widget Miauby na tela e login mais compacto.
+- A formatacao condicional da V2 deve continuar explicita e pintar somente o fundo; o texto da grade permanece preto/padrao. Se uma edicao deixar de combinar com filtro/busca ativos, a linha deve permanecer visivel ate o filtro ou a busca mudar.
 - Os dados oficiais ainda estao no Google Sheets; a V2 ja tem import/export controlado, mas precisa de credenciais reais e validacao com uma planilha de producao controlada antes de substituir o fluxo da equipe.
 - As linhas antigas abaixo descrevem a Cotacao PHP legada e ficam como historico de diagnostico ate a V2 absorver tudo.
 - Existem tabelas `cotacao_*` e `cotacao_sync_estado`.
@@ -91,9 +93,9 @@ Estado:
 - Em validacao com Browser, escrever `encomenda`/`urgente` em linha nova foi ajustado para nao duplicar a linha visualmente: a tela agora reconhece o save local pendente e mantem uma unica linha por `item_id`.
 - Em 2026-05-12, a protecao foi reforcada para `geral`, `urgente`, `encomenda` e `cotacao`: categoria default ficou vazia, saves comuns de linhas existentes nao podem alterar `ordem` e um teste dirigido confirmou que payload legado com `ordem=1` preserva a ordem original.
 - Em 2026-05-12, o filtro de categoria/cor/vencedor passou a ser local-first por padrao; `sync_filter` ficou como compatibilidade/diagnostico e filtros compartilhados antigos sao sanitizados para nao reativar `geral`, `urgente`, `encomenda` ou `cotacao`.
-- Ainda falta endurecer permissoes para acoes destrutivas/estruturais da V2, como import, restore, apagar coluna e reordenar distribuidoras.
+- Import e restore continuam sendo acoes fortes e devem ser usados com backup/revisao operacional. Apagar distribuidora ficou liberado para o fluxo diario porque a coluna e ocultada e pode ser restaurada com desfazer na mesma sessao.
 - Ainda falta transformar os testes de duas telas, conflito por campo e import/export em testes permanentes de pipeline.
-- Cuidados atuais para continuidade: Google Sheets precisa de credenciais reais no `.env` do VPS antes de uso em producao; restore/import/delete de coluna sao acoes fortes e devem ganhar permissao por perfil antes de liberar geral; o `fill handle` da selecao e visual, mas arrastar para preencher como no Sheets ainda pode evoluir.
+- Cuidados atuais para continuidade: Google Sheets precisa de credenciais reais no `.env` do VPS antes de uso em producao; restore/import sao acoes fortes e devem ser usadas com backup/revisao; o `fill handle` da selecao e visual, mas arrastar para preencher como no Sheets ainda pode evoluir.
 
 Risco:
 
@@ -106,7 +108,7 @@ Evolucao:
 - Evoluir o diagnostico visual para mostrar latencia real por cliente, eventos atrasados e conflitos ativos.
 - Criar teste automatizado com duas telas confirmando edicao simultanea, filtros locais, conflito visual e paste em lote.
 - Configurar credenciais Google Sheets no VPS e validar import/export com backup antes de migrar dados reais.
-- Criar permissao por perfil para renomear/reordenar/apagar distribuidoras, importar e restaurar backup.
+- Criar rotina operacional segura para importar e restaurar backup, preferencialmente com backup automatico antes da acao.
 - Criar backup agendado e politica de retencao para o Postgres `wimifarma_cotacao`.
 - Evoluir a alca visual da selecao para drag-fill real se a equipe precisar copiar padroes como no Sheets.
 
