@@ -73,6 +73,9 @@ Estado:
 - O login segue usando a tabela MySQL `wf_users`, preservando o acesso existente.
 - A primeira fatia da V2 foi validada com health check, login, bootstrap, save por celula, criacao/remocao de regra condicional explicita e teste das palavras `geral`, `urgente`, `encomenda` e `cotacao`.
 - A interface da V2 ja foi aproximada do visual de planilha operacional, com colunas de fornecedores, presenca no topo, contador de linhas com dados e exportacao CSV rapida no navegador.
+- A V2 agora ocupa a tela como planilha, usa celulas centralizadas com fonte 20px, mostra usuarios ativos como animais aleatorios/deterministicos por aba, possui menu de contexto para linhas e colunas de distribuidoras, paleta de cores manual e coluna calculada `Ganhador`.
+- As colunas `EAN`, `PRODUTO`, `QUANTIDADE` e `CATEGORIA` sao fixas; somente distribuidoras podem ser adicionadas/removidas pela interface.
+- `Ganhador` e calculado pelo menor preco numerico entre distribuidoras visiveis e nao deve receber escrita manual.
 - Os dados oficiais ainda estao no Google Sheets; a V2 inicia como base nova e precisa de import/export controlado.
 - As linhas antigas abaixo descrevem a Cotacao PHP legada e ficam como historico de diagnostico ate a V2 absorver tudo.
 - Existem tabelas `cotacao_*` e `cotacao_sync_estado`.
@@ -102,6 +105,8 @@ Evolucao:
 - Criar diagnostico de sync/presenca para operador.
 - Criar teste automatizado com duas telas confirmando edicao simultanea e filtros locais.
 - Criar import/export Google Sheets com IDs estaveis antes de migrar dados reais; o CSV atual e apenas uma saida rapida da tela.
+- Criar renomeacao/reordenacao auditada de distribuidoras.
+- Criar borracha/remocao de estilos manuais na paleta.
 - Criar backup/restore do Postgres `wimifarma_cotacao`.
 
 ### Miauby generativo com skills controladas

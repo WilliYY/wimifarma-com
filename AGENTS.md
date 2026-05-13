@@ -163,7 +163,11 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - O login da Cotacao V2 continua validando usuario/senha contra `wf_users` no MySQL `wimifarma_app`.
 - Palavras historicas `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum na categoria. Nao existe gatilho escondido por palavra para cor, prioridade, ordem, filtro ou alerta.
 - Formatacao condicional da Cotacao V2 e explicita, criada/removida pela propria tela em `cotacao_v2_rules`.
-- A tela principal da Cotacao V2 usa visual denso de planilha operacional, com cabecalho compacto, abas locais, contador de linhas com dados, presenca no topo, exportacao CSV no navegador e colunas iniciais `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, `Anb`, `Profarma`, `mauro`, `arthur`, `Santa`, `tom`, `cimed` e `QUEM GANHOU`.
+- A tela principal da Cotacao V2 usa visual denso de planilha operacional, com cabecalho compacto, abas locais, contador de linhas com dados, presenca no topo, exportacao CSV no navegador e colunas iniciais `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, `Anb`, `Profarma`, `mauro`, `arthur`, `Santa`, `tom`, `cimed` e `Ganhador`.
+- A presenca da Cotacao V2 mostra usuarios com nomes aleatorios/deterministicos de animais por aba, no estilo Google Sheets; o usuario real fica apenas como contexto interno/tooltip.
+- A grade da Cotacao V2 permite menu de contexto para inserir/apagar linhas e inserir/apagar somente colunas de distribuidoras. As quatro primeiras colunas e `Ganhador` nao devem ser renomeadas nem apagadas pela interface.
+- `Ganhador` e coluna calculada no frontend pelo menor preco numerico entre distribuidoras visiveis; ela nao deve aceitar escrita manual por API ou tela.
+- A paleta da Cotacao V2 grava estilos manuais em `cotacao_v2_styles` para linha, coluna ou celula. Cores manuais nao podem virar gatilhos escondidos por texto.
 - Validacoes locais passaram para: health da Cotacao, login `adm`, bootstrap, save por celula dessas quatro palavras criticas, criacao/remocao de regra condicional explicita, importacao temporaria de linhas e limpeza dos dados de smoke.
 - O proximo passo de Cotacao deve ser evoluir a V2 com conflito visual por campo, auditoria de eventos, import/export Sheets e diagnostico operacional, nao continuar remendando a planilha PHP antiga.
 

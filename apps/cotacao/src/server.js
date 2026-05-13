@@ -217,6 +217,7 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS cotacao_v2_rows_quote_position_idx
     ON cotacao_v2_rows (quote_id, position, id)
   `);
+  await pgPool.query('ALTER TABLE cotacao_v2_rows ADD COLUMN IF NOT EXISTS deleted_at timestamptz NULL');
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS cotacao_v2_events (
       id bigserial PRIMARY KEY,
@@ -252,6 +253,24 @@ async function ensureSchema() {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS cotacao_v2_styles (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      quote_id uuid NOT NULL REFERENCES cotacao_v2_quotes(id) ON DELETE CASCADE,
+      style_key text NOT NULL,
+      scope text NOT NULL,
+      row_id uuid NULL,
+      column_key text NULL,
+      background text NOT NULL DEFAULT '',
+      color text NOT NULL DEFAULT '',
+      updated_by text NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pgPool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cotacao_v2_styles_quote_key_idx
+    ON cotacao_v2_styles (quote_id, style_key)
+  `);
 
   const quote = await getOrCreateDefaultQuote();
   await seedColumns(quote.id);
@@ -274,18 +293,18 @@ async function getOrCreateDefaultQuote() {
 
 async function seedColumns(quoteId) {
   const columns = [
-    ['ean', 'EAN', 'text', 1, 130, true, {}],
-    ['produto', 'PRODUTO', 'text', 2, 270, false, {}],
-    ['quantidade', 'QUANTIDADE', 'number', 3, 120, false, {}],
-    ['categoria', 'CATEGORIA', 'text', 4, 210, false, {}],
-    ['fornecedor_1', 'Anb', 'currency', 5, 150, false, { tone: 'supplier-yellow' }],
-    ['fornecedor_2', 'Profarma', 'currency', 6, 150, false, { tone: 'supplier-blue' }],
-    ['fornecedor_3', 'mauro', 'currency', 7, 150, false, { tone: 'supplier-green' }],
-    ['fornecedor_4', 'arthur', 'currency', 8, 150, false, { tone: 'supplier-rose' }],
-    ['fornecedor_5', 'Santa', 'currency', 9, 150, false, { tone: 'supplier-purple' }],
-    ['fornecedor_6', 'tom', 'currency', 10, 150, false, { tone: 'supplier-orange' }],
-    ['fornecedor_7', 'cimed', 'currency', 11, 150, false, { tone: 'supplier-yellow' }],
-    ['quem_ganhou', 'QUEM GANHOU', 'text', 12, 190, false, { fallback: 'Sem vencedor', tone: 'winner' }]
+    ['ean', 'EAN', 'text', 1, 130, true, { fixed: true }],
+    ['produto', 'PRODUTO', 'text', 2, 280, true, { fixed: true }],
+    ['quantidade', 'QUANTIDADE', 'number', 3, 130, true, { fixed: true }],
+    ['categoria', 'CATEGORIA', 'text', 4, 210, true, { fixed: true }],
+    ['fornecedor_1', 'Anb', 'currency', 5, 150, false, { kind: 'distributor', tone: 'supplier-yellow' }],
+    ['fornecedor_2', 'Profarma', 'currency', 6, 150, false, { kind: 'distributor', tone: 'supplier-blue' }],
+    ['fornecedor_3', 'mauro', 'currency', 7, 150, false, { kind: 'distributor', tone: 'supplier-green' }],
+    ['fornecedor_4', 'arthur', 'currency', 8, 150, false, { kind: 'distributor', tone: 'supplier-rose' }],
+    ['fornecedor_5', 'Santa', 'currency', 9, 150, false, { kind: 'distributor', tone: 'supplier-purple' }],
+    ['fornecedor_6', 'tom', 'currency', 10, 150, false, { kind: 'distributor', tone: 'supplier-orange' }],
+    ['fornecedor_7', 'cimed', 'currency', 11, 150, false, { kind: 'distributor', tone: 'supplier-yellow' }],
+    ['quem_ganhou', 'Ganhador', 'text', 12, 190, true, { fixed: true, computed: true, fallback: 'Sem vencedor', tone: 'winner' }]
   ];
   for (const column of columns) {
     await pgPool.query(
@@ -324,7 +343,7 @@ async function seedRows(quoteId) {
 
 async function loadSheet() {
   const quote = await getOrCreateDefaultQuote();
-  const [columns, rows, rules, lastEvent] = await Promise.all([
+  const [columns, rows, rules, styles, lastEvent] = await Promise.all([
     pgPool.query(
       `SELECT * FROM cotacao_v2_columns
        WHERE quote_id = $1
@@ -332,8 +351,29 @@ async function loadSheet() {
        ORDER BY position ASC, label ASC`,
       [quote.id]
     ),
-    pgPool.query('SELECT * FROM cotacao_v2_rows WHERE quote_id = $1 ORDER BY position ASC, id ASC', [quote.id]),
+    pgPool.query(
+      `SELECT * FROM cotacao_v2_rows
+       WHERE quote_id = $1
+         AND deleted_at IS NULL
+       ORDER BY position ASC, id ASC`,
+      [quote.id]
+    ),
     pgPool.query('SELECT * FROM cotacao_v2_rules WHERE quote_id = $1 ORDER BY priority ASC, created_at ASC', [quote.id]),
+    pgPool.query(
+      `SELECT id,
+              style_key AS "styleKey",
+              scope,
+              row_id AS "rowId",
+              column_key AS "columnKey",
+              background,
+              color,
+              updated_by AS "updatedBy",
+              updated_at AS "updatedAt"
+       FROM cotacao_v2_styles
+       WHERE quote_id = $1
+       ORDER BY updated_at ASC`,
+      [quote.id]
+    ),
     pgPool.query('SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1', [quote.id])
   ]);
   return {
@@ -347,13 +387,14 @@ async function loadSheet() {
       updatedAt: row.updated_at
     })),
     rules: rules.rows,
+    styles: styles.rows,
     lastEventId: Number(lastEvent.rows[0].id)
   };
 }
 
 async function addRows(quoteId, count, valuesList) {
   const maxPosition = await pgPool.query(
-    'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1',
+    'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
     [quoteId]
   );
   const rows = [];
@@ -375,6 +416,158 @@ async function addRows(quoteId, count, valuesList) {
     });
   }
   return rows;
+}
+
+async function insertRowsAt(quoteId, anchorRowId, placement = 'below', count = 1) {
+  const total = Math.max(1, Math.min(Number(count || 1), 50));
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT id
+       FROM cotacao_v2_rows
+       WHERE quote_id = $1
+         AND deleted_at IS NULL
+       ORDER BY position ASC, id ASC
+       FOR UPDATE`,
+      [quoteId]
+    );
+    const ids = current.rows.map((row) => row.id);
+    const anchorIndex = ids.indexOf(anchorRowId);
+    const insertIndex = anchorIndex === -1
+      ? ids.length
+      : anchorIndex + (placement === 'above' ? 0 : 1);
+    const inserted = [];
+    for (let index = 0; index < total; index += 1) {
+      const row = await client.query(
+        `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+         VALUES ($1, $2, '{}'::jsonb)
+         RETURNING id, position, values, version, updated_at`,
+        [quoteId, ids.length + index + 1]
+      );
+      inserted.push({
+        id: row.rows[0].id,
+        position: row.rows[0].position,
+        values: row.rows[0].values || {},
+        version: Number(row.rows[0].version),
+        updatedAt: row.rows[0].updated_at
+      });
+    }
+    const ordered = [
+      ...ids.slice(0, insertIndex),
+      ...inserted.map((row) => row.id),
+      ...ids.slice(insertIndex)
+    ];
+    for (let index = 0; index < ordered.length; index += 1) {
+      await client.query('UPDATE cotacao_v2_rows SET position = $2, updated_at = now() WHERE id = $1', [
+        ordered[index],
+        index + 1
+      ]);
+    }
+    inserted.forEach((row) => {
+      row.position = ordered.indexOf(row.id) + 1;
+    });
+    await client.query('COMMIT');
+    return inserted;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function isDistributorColumn(column) {
+  return column
+    && column.locked !== true
+    && (column.options?.kind === 'distributor'
+      || String(column.key || '').startsWith('fornecedor_')
+      || String(column.key || '').startsWith('distribuidora_'));
+}
+
+function sanitizeColumnLabel(value, fallback) {
+  const label = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 36);
+  return label || fallback;
+}
+
+async function addDistributorColumn(quoteId, anchorKey, placement, label) {
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT *
+       FROM cotacao_v2_columns
+       WHERE quote_id = $1
+         AND COALESCE((options->>'hidden')::boolean, false) = false
+       ORDER BY position ASC, label ASC
+       FOR UPDATE`,
+      [quoteId]
+    );
+    const columns = current.rows;
+    const distributorCount = columns.filter(isDistributorColumn).length;
+    const winnerIndex = Math.max(0, columns.findIndex((column) => column.key === 'quem_ganhou'));
+    const anchorIndex = columns.findIndex((column) => column.key === anchorKey && isDistributorColumn(column));
+    const insertIndex = anchorIndex === -1
+      ? winnerIndex
+      : anchorIndex + (placement === 'before' ? 0 : 1);
+    const key = `distribuidora_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
+    const finalLabel = sanitizeColumnLabel(label, `Distribuidora ${distributorCount + 1}`);
+    const inserted = await client.query(
+      `INSERT INTO cotacao_v2_columns (quote_id, key, label, type, position, width, locked, options)
+       VALUES ($1, $2, $3, 'currency', $4, 150, false, $5::jsonb)
+       RETURNING *`,
+      [quoteId, key, finalLabel, columns.length + 1, JSON.stringify({ kind: 'distributor', tone: 'supplier-custom' })]
+    );
+    const ordered = [
+      ...columns.slice(0, insertIndex).map((column) => column.key),
+      key,
+      ...columns.slice(insertIndex).map((column) => column.key)
+    ];
+    for (let index = 0; index < ordered.length; index += 1) {
+      await client.query(
+        'UPDATE cotacao_v2_columns SET position = $3, updated_at = now() WHERE quote_id = $1 AND key = $2',
+        [quoteId, ordered[index], index + 1]
+      );
+    }
+    await client.query('COMMIT');
+    return inserted.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function normalizeStylePayload(body) {
+  const scope = String(body.scope || '');
+  const rowId = body.rowId ? String(body.rowId) : null;
+  const columnKey = body.columnKey ? String(body.columnKey) : null;
+  const background = String(body.background || '').trim();
+  const color = String(body.color || '').trim();
+  if (!['row', 'column', 'cell'].includes(scope)) {
+    return null;
+  }
+  if (scope === 'row' && !rowId) {
+    return null;
+  }
+  if (scope === 'column' && !columnKey) {
+    return null;
+  }
+  if (scope === 'cell' && (!rowId || !columnKey)) {
+    return null;
+  }
+  if (!/^#[0-9a-f]{6}$/i.test(background)) {
+    return null;
+  }
+  return {
+    scope,
+    rowId,
+    columnKey,
+    background,
+    color: /^#[0-9a-f]{6}$/i.test(color) ? color : '',
+    styleKey: `${scope}:${rowId || ''}:${columnKey || ''}`
+  };
 }
 
 async function appendEvent({ quoteId, type, rowId = null, columnKey = null, payload = {}, user, clientId = null }) {
@@ -485,9 +678,18 @@ function renderApp(req) {
     </section>
 
     <section class="toolbar" aria-label="Ferramentas da cotacao">
-      <button type="button" id="addRowsButton">Adicionar linhas</button>
+      <button type="button" id="addRowsButton">Adicionar 20 linhas</button>
       <button type="button" id="importButton">Colar do Sheets</button>
       <button type="button" id="rulesButton">Formatacao condicional</button>
+      <div class="paint-tools" aria-label="Cores rapidas">
+        <span>Cor</span>
+        <button type="button" class="paint-swatch" data-color="#dbeafe" style="--swatch:#dbeafe" title="Azul"></button>
+        <button type="button" class="paint-swatch" data-color="#dcfce7" style="--swatch:#dcfce7" title="Verde"></button>
+        <button type="button" class="paint-swatch" data-color="#fef3c7" style="--swatch:#fef3c7" title="Amarelo"></button>
+        <button type="button" class="paint-swatch" data-color="#ffe4e6" style="--swatch:#ffe4e6" title="Rosa"></button>
+        <button type="button" class="paint-swatch" data-color="#ede9fe" style="--swatch:#ede9fe" title="Roxo"></button>
+        <button type="button" class="paint-swatch" data-color="#ffffff" style="--swatch:#ffffff" title="Limpar cor"></button>
+      </div>
       <div class="presence-inline" id="presenceList"></div>
       <label class="toolbar-field">Busca
         <input id="searchInput" type="search" placeholder="EAN, produto, categoria...">
@@ -497,13 +699,31 @@ function renderApp(req) {
           <option value="">Todas</option>
         </select>
       </label>
+      <label class="toolbar-field toolbar-field-small">Ganhador
+        <select id="winnerFilter">
+          <option value="">Todos</option>
+        </select>
+      </label>
       <span id="saveStatus" class="save-status">Sincronizado</span>
     </section>
 
     <section class="sheet-wrap" aria-label="Planilha de cotacao">
       <table class="sheet-table" id="sheetTable"></table>
     </section>
+    <footer class="sheet-footer">
+      <button type="button" id="addTwentyRowsButton">Adicionar 20 linhas</button>
+    </footer>
   </main>
+
+  <div id="contextMenu" class="context-menu" hidden>
+    <button type="button" data-action="row-above">Adicionar linha acima</button>
+    <button type="button" data-action="row-below">Adicionar linha abaixo</button>
+    <button type="button" data-action="row-delete">Apagar linha</button>
+    <span class="context-divider"></span>
+    <button type="button" data-action="column-before">Adicionar distribuidora antes</button>
+    <button type="button" data-action="column-after">Adicionar distribuidora depois</button>
+    <button type="button" data-action="column-delete">Apagar distribuidora</button>
+  </div>
 
   <dialog id="importDialog">
     <form method="dialog" class="dialog-card">
@@ -615,13 +835,166 @@ app.post(`${BASE_PATH}/api/rows`, requireApiAuth, verifyCsrf, asyncRoute(async (
   res.json({ ok: true, rows, eventId: Number(event.id) });
 }));
 
+app.post(`${BASE_PATH}/api/rows/insert`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const clientId = String(req.body.clientId || '');
+  const rows = await insertRowsAt(
+    sheet.quote.id,
+    String(req.body.anchorRowId || ''),
+    String(req.body.placement || 'below') === 'above' ? 'above' : 'below',
+    req.body.count || 1
+  );
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'rows_inserted',
+    payload: { rows },
+    user: req.session.user,
+    clientId
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId });
+  res.json({ ok: true, rows, eventId: Number(event.id) });
+}));
+
+app.delete(`${BASE_PATH}/api/rows/:id`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const rowId = String(req.params.id || '');
+  const clientId = String(req.body?.clientId || '');
+  const deleted = await pgPool.query(
+    `UPDATE cotacao_v2_rows
+     SET deleted_at = now(), updated_at = now()
+     WHERE id = $1
+       AND quote_id = $2
+       AND deleted_at IS NULL
+     RETURNING id`,
+    [rowId, sheet.quote.id]
+  );
+  if (!deleted.rows[0]) {
+    return res.status(404).json({ ok: false, error: 'Linha nao encontrada.' });
+  }
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'row_deleted',
+    rowId,
+    payload: { rowId },
+    user: req.session.user,
+    clientId
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('row:deleted', { rowId, eventId: Number(event.id), clientId });
+  res.json({ ok: true, rowId, eventId: Number(event.id) });
+}));
+
+app.post(`${BASE_PATH}/api/columns`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const clientId = String(req.body.clientId || '');
+  const column = await addDistributorColumn(
+    sheet.quote.id,
+    String(req.body.anchorKey || ''),
+    String(req.body.placement || 'after') === 'before' ? 'before' : 'after',
+    req.body.label
+  );
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'column_created',
+    columnKey: column.key,
+    payload: { column },
+    user: req.session.user,
+    clientId
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
+  res.json({ ok: true, column, eventId: Number(event.id) });
+}));
+
+app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const columnKey = String(req.params.key || '');
+  const column = sheet.columns.find((item) => item.key === columnKey);
+  if (!isDistributorColumn(column)) {
+    return res.status(422).json({ ok: false, error: 'Somente colunas de distribuidoras podem ser apagadas.' });
+  }
+  await pgPool.query(
+    `UPDATE cotacao_v2_columns
+     SET options = jsonb_set(COALESCE(options, '{}'::jsonb), '{hidden}', 'true'::jsonb, true),
+         updated_at = now()
+     WHERE quote_id = $1
+       AND key = $2`,
+    [sheet.quote.id, columnKey]
+  );
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'column_deleted',
+    columnKey,
+    payload: { columnKey },
+    user: req.session.user,
+    clientId: String(req.body?.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  res.json({ ok: true, columnKey, eventId: Number(event.id) });
+}));
+
+app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const style = normalizeStylePayload(req.body || {});
+  if (!style) {
+    return res.status(422).json({ ok: false, error: 'Estilo invalido.' });
+  }
+  const allowed = new Set(sheet.columns.map((column) => column.key));
+  const rowAllowed = new Set(sheet.rows.map((row) => row.id));
+  if (style.columnKey && !allowed.has(style.columnKey)) {
+    return res.status(422).json({ ok: false, error: 'Coluna invalida.' });
+  }
+  if (style.rowId && !rowAllowed.has(style.rowId)) {
+    return res.status(422).json({ ok: false, error: 'Linha invalida.' });
+  }
+  const result = await pgPool.query(
+    `INSERT INTO cotacao_v2_styles (quote_id, style_key, scope, row_id, column_key, background, color, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (quote_id, style_key)
+     DO UPDATE SET background = EXCLUDED.background,
+                   color = EXCLUDED.color,
+                   updated_by = EXCLUDED.updated_by,
+                   updated_at = now()
+     RETURNING id,
+               style_key AS "styleKey",
+               scope,
+               row_id AS "rowId",
+               column_key AS "columnKey",
+               background,
+               color,
+               updated_by AS "updatedBy",
+               updated_at AS "updatedAt"`,
+    [
+      sheet.quote.id,
+      style.styleKey,
+      style.scope,
+      style.rowId,
+      style.columnKey,
+      style.background,
+      style.color,
+      req.session.user?.username || null
+    ]
+  );
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'style_updated',
+    payload: { style: result.rows[0] },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('style:update', {
+    style: result.rows[0],
+    eventId: Number(event.id),
+    clientId: String(req.body.clientId || '')
+  });
+  res.json({ ok: true, style: result.rows[0], eventId: Number(event.id) });
+}));
+
 app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
   const rowId = String(req.body.rowId || '');
   const columnKey = String(req.body.columnKey || '');
   const value = String(req.body.value ?? '');
   const clientId = String(req.body.clientId || '');
-  const allowed = new Set(sheet.columns.map((column) => column.key));
+  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
   if (!rowId || !allowed.has(columnKey)) {
     return res.status(422).json({ ok: false, error: 'Celula invalida.' });
   }

@@ -867,3 +867,38 @@ Riscos/cuidados:
 - As abas `Farmacia Popular` e `Bebe` sao filtros locais por categoria, nao motores separados de cotacao.
 - A exportacao CSV atual e um recurso rapido da tela; import/export oficial com Google Sheets ainda precisa de IDs estaveis, auditoria e tratamento de conflito.
 - Nao reintroduzir gatilhos escondidos por texto para `geral`, `urgente`, `encomenda` ou `cotacao`.
+
+## 2026-05-12 - Cotacao V2 ganha comportamento de planilha viva
+
+Decisao:
+
+- Fazer a grade da Cotacao V2 ocupar a tela como uma planilha, sem card envolvendo a tabela.
+- Manter `EAN`, `PRODUTO`, `QUANTIDADE` e `CATEGORIA` como colunas fixas que nao podem trocar de nome pela interface.
+- Tratar colunas de distribuidoras como o unico grupo editavel pelo menu de contexto para adicionar/remover colunas.
+- Trocar `QUEM GANHOU` por `Ganhador`, calculado no frontend pelo menor preco numerico entre distribuidoras visiveis.
+- Padronizar celulas com fonte 20px, texto centralizado e comportamento mais proximo de planilha.
+- Adicionar nomes de animais aleatorios/deterministicos para presenca por aba, no estilo Google Sheets.
+- Adicionar menu de contexto para inserir/apagar linhas e inserir/apagar distribuidoras.
+- Adicionar paleta de cores manual para linha, coluna e celula, persistida em `cotacao_v2_styles`.
+
+Motivo:
+
+- O usuario pediu uma experiencia mais proxima do Google Sheets, com colaboracao clara, pintura manual, filtros por categoria/ganhador e destaque automatico da distribuidora vencedora.
+- A Cotacao precisa continuar livre de gatilhos escondidos por palavras como `urgente`, `encomenda`, `geral` e `cotacao`.
+
+Impacto:
+
+- `apps/cotacao/src/server.js`
+- `apps/cotacao/public/app.js`
+- `apps/cotacao/public/styles.css`
+- `README.md`
+- `AGENTS.md`
+- `docs/06-pendencias.md`
+- `docs/20-cotacao-v2.md`
+
+Riscos/cuidados:
+
+- Nao permitir que `Ganhador` seja editado manualmente; ele deve ser derivado dos precos.
+- Nao permitir apagar/renomear colunas fixas pela interface.
+- Testar `/cotacao/socket.io/` sempre que mexer em proxy, presenca ou eventos.
+- Cores manuais nao podem virar regra operacional escondida; se uma cor passar a ter significado de negocio, criar schema e documentar.
