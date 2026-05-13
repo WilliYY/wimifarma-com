@@ -55,9 +55,12 @@ curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 curl.exe -I -sS http://127.0.0.1:3002/cotacao/login.php
 curl.exe -I -sS http://127.0.0.1:3002/cotacao/socket.io/socket.io.js
+curl.exe -sS http://127.0.0.1:3002/cotacao/api/diagnostics
+curl.exe -sS http://127.0.0.1:3002/cotacao/api/google-sheets/status
+curl.exe -sS http://127.0.0.1:3002/cotacao/api/backups
 ```
 
-A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por celula sem navegador, primeiro autentique em `/cotacao/login.php`, extraia o CSRF da pagina `/cotacao/` e chame `PATCH /cotacao/api/cells`.
+A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por celula sem navegador, primeiro autentique em `/cotacao/login.php`, extraia o CSRF da pagina `/cotacao/` e chame `PATCH /cotacao/api/cells` ou `PATCH /cotacao/api/cells/batch`.
 
 ## Banco - inventario
 

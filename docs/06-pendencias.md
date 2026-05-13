@@ -76,7 +76,8 @@ Estado:
 - A V2 agora ocupa a tela como planilha, usa celulas centralizadas com fonte 20px, mostra usuarios ativos como animais aleatorios/deterministicos por aba, possui menu de contexto para linhas e colunas de distribuidoras, paleta de cores manual e coluna calculada `Ganhador`.
 - As colunas `EAN`, `PRODUTO`, `QUANTIDADE` e `CATEGORIA` sao fixas; somente distribuidoras podem ser adicionadas/removidas pela interface.
 - `Ganhador` e calculado pelo menor preco numerico entre distribuidoras visiveis e nao deve receber escrita manual.
-- Os dados oficiais ainda estao no Google Sheets; a V2 inicia como base nova e precisa de import/export controlado.
+- Em 2026-05-13, foram adicionados selecao multipla, `Ctrl+V`, `Ctrl+Z`/`Ctrl+Y`, menu de contexto para linhas/colunas, filtros por icone em `CATEGORIA` e `Ganhador`, diagnostico operacional, backup/restore do Postgres, import/export Google Sheets com `cotacao_row_id` e auditoria de renomear/reordenar distribuidoras.
+- Os dados oficiais ainda estao no Google Sheets; a V2 ja tem import/export controlado, mas precisa de credenciais reais e validacao com uma planilha de producao controlada antes de substituir o fluxo da equipe.
 - As linhas antigas abaixo descrevem a Cotacao PHP legada e ficam como historico de diagnostico ate a V2 absorver tudo.
 - Existem tabelas `cotacao_*` e `cotacao_sync_estado`.
 - Existe primeira camada de presenca ao vivo em `cotacao_presencas`, com `presence_ping`, total de usuarios, chips de usuarios ativos e marca visual de celula remota.
@@ -90,8 +91,8 @@ Estado:
 - Em validacao com Browser, escrever `encomenda`/`urgente` em linha nova foi ajustado para nao duplicar a linha visualmente: a tela agora reconhece o save local pendente e mantem uma unica linha por `item_id`.
 - Em 2026-05-12, a protecao foi reforcada para `geral`, `urgente`, `encomenda` e `cotacao`: categoria default ficou vazia, saves comuns de linhas existentes nao podem alterar `ordem` e um teste dirigido confirmou que payload legado com `ordem=1` preserva a ordem original.
 - Em 2026-05-12, o filtro de categoria/cor/vencedor passou a ser local-first por padrao; `sync_filter` ficou como compatibilidade/diagnostico e filtros compartilhados antigos sao sanitizados para nao reativar `geral`, `urgente`, `encomenda` ou `cotacao`.
-- Nao ha integracao Google Sheets implementada.
-- Ainda nao ha interface de conflito por campo visivel nem diagnostico operacional completo da V2.
+- Ainda falta endurecer permissoes para acoes destrutivas/estruturais da V2, como import, restore, apagar coluna e reordenar distribuidoras.
+- Ainda falta transformar os testes de duas telas, conflito por campo e import/export em testes permanentes de pipeline.
 
 Risco:
 
@@ -101,13 +102,12 @@ Risco:
 Evolucao:
 
 - Definir fonte de verdade por campo, tratamento de conflito, auditoria e job de sync com Google Sheets.
-- Criar diagnostico visual de eventos atrasados, fila WebSocket e conflitos por campo.
-- Criar diagnostico de sync/presenca para operador.
-- Criar teste automatizado com duas telas confirmando edicao simultanea e filtros locais.
-- Criar import/export Google Sheets com IDs estaveis antes de migrar dados reais; o CSV atual e apenas uma saida rapida da tela.
-- Criar renomeacao/reordenacao auditada de distribuidoras.
-- Criar borracha/remocao de estilos manuais na paleta.
-- Criar backup/restore do Postgres `wimifarma_cotacao`.
+- Evoluir o diagnostico visual para mostrar latencia real por cliente, eventos atrasados e conflitos ativos.
+- Criar teste automatizado com duas telas confirmando edicao simultanea, filtros locais, conflito visual e paste em lote.
+- Configurar credenciais Google Sheets no VPS e validar import/export com backup antes de migrar dados reais.
+- Criar permissao por perfil para renomear/reordenar/apagar distribuidoras, importar e restaurar backup.
+- Criar backup agendado e politica de retencao para o Postgres `wimifarma_cotacao`.
+- Evoluir a alca visual da selecao para drag-fill real se a equipe precisar copiar padroes como no Sheets.
 
 ### Miauby generativo com skills controladas
 

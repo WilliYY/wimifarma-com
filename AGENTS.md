@@ -106,6 +106,7 @@ Nao versionar:
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
 - `cotacao-data/`
+- `node_modules/`
 
 Cache de pagina WordPress/SpeedyCache deve ficar opt-in durante a migracao:
 
@@ -170,6 +171,19 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A paleta da Cotacao V2 grava estilos manuais em `cotacao_v2_styles` para linha, coluna ou celula. Cores manuais nao podem virar gatilhos escondidos por texto.
 - Validacoes locais passaram para: health da Cotacao, login `adm`, bootstrap, save por celula dessas quatro palavras criticas, criacao/remocao de regra condicional explicita, importacao temporaria de linhas e limpeza dos dados de smoke.
 - O proximo passo de Cotacao deve ser evoluir a V2 com conflito visual por campo, auditoria de eventos, import/export Sheets e diagnostico operacional, nao continuar remendando a planilha PHP antiga.
+
+## Estado validado em 2026-05-13
+
+- A Cotacao V2 ganhou fluxo mais proximo do Google Sheets: selecao multipla, celula ativa, setas de navegacao, digitacao direta ao selecionar celula, `Ctrl+V` para colar matriz, `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer.
+- Os botoes visiveis `Adicionar linhas` e `Colar do Sheets` foram removidos; inserir/apagar linhas e inserir/apagar colunas de distribuidoras fica no menu de contexto.
+- O topo da Cotacao V2 ficou mais compacto, com apenas `Wimifarma Cotacao`, `Home`, `Diagnostico`, `Baixar` e `Sair`; as abas temporarias `Farmacia Popular` e `Bebe` foram removidas.
+- Filtros de `CATEGORIA` e `Ganhador` ficam nos icones do cabecalho da grade, com selecionar tudo, limpar tudo e aplicar selecao local por tela.
+- A API recebeu `PATCH /cotacao/api/cells/batch` para colagens em lote, endpoints de diagnostico, backup/restore do Postgres, import/export Google Sheets e renomear/reordenar distribuidoras com auditoria.
+- Import/export Google Sheets usa ID estavel de linha (`cotacao_row_id`) para reduzir risco de duplicar ou sobrescrever linhas durante sincronizacao.
+- Backup/restore da Cotacao V2 grava em `cotacao-data/backups` no host e `/app/backups` no container; `cotacao-data/` continua fora do Git.
+- Conflito visual por campo existe para edicao remota enquanto uma celula local esta em edicao; ainda precisa ser validado com usuarios reais e virar teste automatizado permanente.
+- Falta configurar credenciais reais do Google Sheets no `.env` do VPS antes de usar import/export em producao.
+- Acoes destrutivas/estruturais da Cotacao V2, como restore, import e apagar coluna, ainda precisam de permissao por perfil antes de uso amplo pela equipe.
 
 ## Estado validado em 2026-05-11
 

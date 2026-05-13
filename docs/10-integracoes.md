@@ -75,12 +75,19 @@ Objetivo:
 
 Arquivos/tabelas candidatos:
 
-- `site/cotacao/cotacao-funcoes.php`
-- `site/cotacao/api.php`
-- `cotacao_itens`
-- `cotacao_precos`
-- `cotacao_sync_estado`
-- `cotacao_auditoria`
+- `apps/cotacao/src/server.js`
+- `cotacao_v2_rows`
+- `cotacao_v2_columns`
+- `cotacao_v2_rules`
+- `cotacao_v2_styles`
+- `cotacao_v2_events`
+
+Estado atual:
+
+- A Cotacao V2 possui endpoints de status, export e import Google Sheets.
+- A integracao depende de `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial de service account no `.env`.
+- O export inclui `cotacao_row_id` para preservar o ID estavel da linha.
+- O import usa `cotacao_row_id` quando presente; sem IDs, trata o range como substituicao controlada da cotacao ativa.
 
 ### Miauby skills generativas
 
@@ -116,7 +123,8 @@ Documento especifico:
 ## Decisoes tecnicas ja tomadas
 
 - Miauby pode ler chave OpenAI do `.env` ou de `config.local.php`.
-- Cotacao ainda nao deve receber sincronizacao improvisada.
+- Cotacao nao deve receber sincronizacao improvisada fora dos endpoints estruturados da V2.
+- Google Sheets deve preservar `cotacao_row_id` para reduzir duplicacao e perda de linha.
 - DNS e proxy ficam fora do repositorio, mas suas decisoes devem ser documentadas.
 
 ## Riscos ao alterar
@@ -128,9 +136,10 @@ Documento especifico:
 
 ## Pendencias
 
-- Definir credencial/conector Google Sheets.
-- Definir modelo de conflito para Cotacao.
-- Criar tela de diagnostico de integracoes.
+- Configurar credencial real Google Sheets no VPS.
+- Validar import/export em planilha controlada antes de usar dados reais.
+- Definir modelo final de conflito para import simultaneo enquanto usuarios editam.
+- Evoluir tela de diagnostico de integracoes com ultimos erros e latencia.
 - Criar logs de execucao para jobs.
 
 ## Evolucao futura

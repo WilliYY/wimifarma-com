@@ -221,6 +221,10 @@ textarea {
   gap: 8px;
 }
 
+.app-actions button {
+  min-height: 34px;
+}
+
 .app-header a {
   color: var(--ink);
   font-weight: 900;
@@ -370,6 +374,29 @@ textarea {
   box-shadow: 0 0 0 2px #f59e0b;
 }
 
+.icon-button {
+  width: 34px;
+  min-width: 34px !important;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.icon-button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.icon-button.is-active {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
 .save-status {
   margin-left: auto;
   border-color: transparent;
@@ -423,6 +450,49 @@ textarea {
   text-align: center;
 }
 
+.sheet-table th span {
+  display: inline-flex;
+  max-width: calc(100% - 22px);
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.filter-button {
+  width: 22px;
+  min-width: 22px !important;
+  height: 22px;
+  min-height: 22px;
+  margin-left: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  vertical-align: middle;
+}
+
+.filter-button::before {
+  content: "";
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin: 4px auto;
+  background: #64748b;
+  clip-path: polygon(10% 15%, 90% 15%, 58% 52%, 58% 90%, 42% 90%, 42% 52%);
+}
+
+.filter-button:hover,
+.filter-button.is-active {
+  background: #e0e7ff;
+}
+
+.filter-button.is-active::before {
+  background: var(--brand);
+}
+
 .sheet-table th:first-child,
 .row-index {
   position: sticky;
@@ -445,6 +515,38 @@ textarea {
   position: relative;
   height: 44px;
   background: #fff;
+}
+
+.sheet-cell.is-selected::before,
+.sheet-cell.is-active-cell::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.sheet-cell.is-selected::before {
+  border: 2px solid rgba(37, 99, 235, 0.48);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.sheet-cell.is-active-cell::before {
+  border: 2px solid #f59e0b;
+  background: transparent;
+}
+
+.fill-handle {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  z-index: 6;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  background: #f59e0b;
+  pointer-events: none;
 }
 
 .sheet-input {
@@ -496,6 +598,25 @@ textarea {
   pointer-events: none;
 }
 
+.has-conflict {
+  box-shadow: inset 0 0 0 3px #ef4444 !important;
+}
+
+.has-conflict::after {
+  content: "conflito";
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 7;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 1px 6px;
+  font-size: 0.65rem;
+  font-weight: 900;
+  pointer-events: none;
+}
+
 .col-fornecedor-1,
 .col-fornecedor-7 {
   background: #fff6cf !important;
@@ -525,9 +646,15 @@ textarea {
   background: #f9fbff !important;
 }
 
-.is-winning-price {
+.is-winning-price,
+.is-best-price {
   background: #dbeafe !important;
   box-shadow: inset 0 0 0 2px #3b82f6;
+}
+
+.is-computed .sheet-input {
+  color: #0f172a;
+  font-weight: 950;
 }
 
 tr.is-filtered {
@@ -587,6 +714,61 @@ tr.is-filtered {
   background: #e2e8f0;
 }
 
+.filter-menu {
+  position: fixed;
+  z-index: 210;
+  display: grid;
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 24px));
+  gap: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
+}
+
+.filter-menu[hidden] {
+  display: none;
+}
+
+.filter-menu strong {
+  font-size: 0.88rem;
+}
+
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.filter-options {
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+  gap: 6px;
+  padding: 2px;
+}
+
+.filter-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.filter-options input {
+  width: 16px;
+  height: 16px;
+}
+
 dialog {
   width: min(760px, calc(100vw - 24px));
   border: 0;
@@ -618,6 +800,53 @@ dialog::backdrop {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.diagnostics-grid section {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.diagnostics-grid h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.diagnostics-grid select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 6px 8px;
+}
+
+.diagnostics-output {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.dialog-danger {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: var(--danger);
 }
 
 .rules-form {
@@ -674,6 +903,10 @@ dialog::backdrop {
 
   .save-status {
     margin-left: 0;
+  }
+
+  .diagnostics-grid {
+    grid-template-columns: 1fr;
   }
 
   .login-card {

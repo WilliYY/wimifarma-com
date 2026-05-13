@@ -38,6 +38,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - A Cotacao V2 usa linha com UUID estavel, save por celula, presenca ao vivo via Socket.IO/Redis, filtros locais por tela e eventos em Postgres. A primeira validacao confirmou login, bootstrap, save dessas palavras criticas e criacao/remocao de regra condicional explicita.
 - A interface da Cotacao V2 foi aproximada do visual de planilha operacional: cabecalho compacto, abas locais, estatisticas no topo, CSV rapido e colunas fixas iniciais `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, fornecedores e `Ganhador`.
 - A Cotacao V2 agora preenche a largura da tela como planilha, usa fonte 20px centralizada nas celulas, mostra usuarios ativos com nomes de animais por aba, permite menu de contexto para inserir/apagar linhas e inserir/apagar somente colunas de distribuidoras, possui paleta de cores para linhas/colunas/celulas e calcula o `Ganhador` pelo menor preco das distribuidoras.
+- A Cotacao V2 removeu os botoes visiveis de adicionar linhas e colar planilha: inserir/remover linhas fica no menu de contexto e colagem do Sheets usa `Ctrl+V`. A tela tambem possui desfazer/refazer, selecao multipla, filtros por icone em `CATEGORIA` e `Ganhador`, diagnostico operacional, backup/restore do Postgres e import/export Google Sheets controlado por variaveis de ambiente.
 - Miauby possui `miauw_skill_registry()` para inventariar skills por modulo, risco, nivel, permissao, auditoria e executor antes de novas autonomias. Consultas de alertas e conhecimentos foram aliviadas para reduzir trabalho repetido.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
@@ -110,6 +111,8 @@ docker compose logs --tail=80 wimifarma-cotacao-app
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
+curl.exe -sS http://127.0.0.1:3002/cotacao/api/diagnostics
+curl.exe -sS http://127.0.0.1:3002/cotacao/api/google-sheets/status
 ```
 
 Mais comandos ficam em `docs/05-comandos.md`.
@@ -171,6 +174,11 @@ MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
 COTACAO_POSTGRES_PASSWORD
 COTACAO_SESSION_SECRET
+COTACAO_BACKUP_DIR
+GOOGLE_SHEETS_SPREADSHEET_ID
+GOOGLE_SHEETS_RANGE
+GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON
+GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE
 ```
 
 Nao colocar valores reais no README, em commits ou em issues publicas.
@@ -191,6 +199,7 @@ Nao versionar:
 - plugins premium `*-pro`
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
+- `node_modules/`
 
 ## Deploy no VPS
 
@@ -214,6 +223,8 @@ docker compose logs --tail=80 wimifarma-cotacao-app
 ```
 
 Antes do primeiro deploy da Cotacao V2 no VPS, adicionar valores reais no `.env` para `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET`.
+
+Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 
 Depois do deploy, a home publica deve provar que esta na versao certa:
 

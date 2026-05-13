@@ -902,3 +902,38 @@ Riscos/cuidados:
 - Nao permitir apagar/renomear colunas fixas pela interface.
 - Testar `/cotacao/socket.io/` sempre que mexer em proxy, presenca ou eventos.
 - Cores manuais nao podem virar regra operacional escondida; se uma cor passar a ter significado de negocio, criar schema e documentar.
+
+## 2026-05-13 - Cotacao V2 aproxima fluxo do Google Sheets
+
+Decisao:
+
+- Remover botoes visiveis de adicionar linhas e colar do Sheets.
+- Fazer insercao/remocao de linhas e colunas de distribuidoras pelo menu de contexto.
+- Usar `Ctrl+V` para colar matrizes na grade e `PATCH /cotacao/api/cells/batch` para salvar em lote.
+- Adicionar selecao multipla, celula ativa, navegacao por setas, `Ctrl+Z`/`Ctrl+Y`, botoes de desfazer/refazer e alca visual de preenchimento.
+- Mover filtros de `CATEGORIA` e `Ganhador` para icones no cabecalho, com selecionar tudo, limpar tudo e aplicar local por tela.
+- Adicionar diagnostico operacional, import/export Google Sheets com `cotacao_row_id`, backup/restore do Postgres, renomear/reordenar distribuidoras com auditoria e borracha de cor manual.
+
+Motivo:
+
+- O usuario quer que a Cotacao chegue o mais perto possivel do Google Sheets, mas sem reintroduzir gatilhos escondidos por palavras como `geral`, `urgente`, `encomenda` ou `cotacao`.
+- A operacao precisa de colagem rapida, filtros locais confiaveis, presenca clara, backup antes de importacoes e ferramentas para evoluir distribuidoras sem mexer nas colunas fixas da farmacia.
+
+Impacto:
+
+- `apps/cotacao/src/server.js`
+- `apps/cotacao/public/app.js`
+- `apps/cotacao/public/styles.css`
+- `docker-compose.yml`
+- `.env.example`
+- `README.md`
+- `AGENTS.md`
+- `docs/06-pendencias.md`
+- `docs/20-cotacao-v2.md`
+
+Riscos/cuidados:
+
+- Google Sheets so deve ser usado em producao depois de configurar credencial real e testar com planilha controlada.
+- Import e restore podem substituir dados ativos; exigir backup e permissao por perfil antes de liberar amplamente.
+- A alca de preenchimento ainda e visual; drag-fill real deve ser implementado separadamente se virar necessidade operacional.
+- Manter `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA` e `Ganhador` protegidos contra renomeacao/remocao manual.

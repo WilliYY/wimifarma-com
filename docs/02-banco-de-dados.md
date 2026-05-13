@@ -33,6 +33,8 @@ Criadas por `apps/cotacao/src/server.js`:
 - `cotacao_v2_rows`: linhas da planilha, com UUID estavel, posicao, valores JSONB e versao.
 - `cotacao_v2_events`: eventos de edicao/importacao/regras para sincronizacao em tempo real.
 - `cotacao_v2_rules`: regras de formatacao condicional explicitas.
+- `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula.
+- `cotacao_v2_column_audit`: historico de renomeacao/reordenacao de distribuidoras.
 
 A Cotacao V2 autentica no MySQL `wf_users`, mas os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
 
@@ -126,6 +128,9 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_v2_rows.id` e o ID estavel de linha da Cotacao V2.
 - `cotacao_v2_rows.values` guarda os campos da linha como JSONB; saves devem alterar apenas a celula enviada.
 - `cotacao_v2_rules` e a unica origem de cor automatica da Cotacao V2.
+- `cotacao_v2_styles` guarda cor manual e nao deve virar regra de negocio escondida.
+- `cotacao_v2_column_audit` registra mudancas estruturais de distribuidoras; nao usar para colunas fixas.
+- Import/export Google Sheets usa a coluna logica `cotacao_row_id` para preservar IDs estaveis no Postgres.
 - `cotacao_sync_estado` e chave para futura sincronizacao com planilhas.
 - `cotacao_sync_estado.filtro_categoria` nao deve ser tratado como fonte de verdade visual enquanto filtros local-first estiverem ativos; termos legados sao sanitizados pelo schema.
 - `cotacao_itens.versoes` e `cotacao_precos.versao` guardam versoes por campo/preco e devem ser preservados para evoluir conflito por campo.

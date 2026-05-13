@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +23,11 @@ const BASE_PATH = env.BASE_PATH || '/cotacao';
 const PORT = Number(env.PORT || 3000);
 const SESSION_SECRET = env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const DEFAULT_QUOTE_NAME = 'Cotacao atual';
+const BACKUP_DIR = env.COTACAO_BACKUP_DIR || path.join(rootDir, 'backups');
+const GOOGLE_SHEETS_SPREADSHEET_ID = env.GOOGLE_SHEETS_SPREADSHEET_ID || '';
+const GOOGLE_SHEETS_RANGE = env.GOOGLE_SHEETS_RANGE || 'Cotacao!A1:Z500';
+const GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || '';
+const GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE || '';
 
 const app = express();
 const server = http.createServer(app);
@@ -271,6 +277,24 @@ async function ensureSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS cotacao_v2_styles_quote_key_idx
     ON cotacao_v2_styles (quote_id, style_key)
   `);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS cotacao_v2_column_audit (
+      id bigserial PRIMARY KEY,
+      quote_id uuid NOT NULL REFERENCES cotacao_v2_quotes(id) ON DELETE CASCADE,
+      column_key text NOT NULL,
+      action text NOT NULL,
+      before jsonb NOT NULL DEFAULT '{}'::jsonb,
+      after jsonb NOT NULL DEFAULT '{}'::jsonb,
+      user_id integer NULL,
+      username text NULL,
+      client_id text NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS cotacao_v2_column_audit_quote_idx
+    ON cotacao_v2_column_audit (quote_id, created_at DESC)
+  `);
 
   const quote = await getOrCreateDefaultQuote();
   await seedColumns(quote.id);
@@ -311,12 +335,32 @@ async function seedColumns(quoteId) {
       `INSERT INTO cotacao_v2_columns (quote_id, key, label, type, position, width, locked, options)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
        ON CONFLICT (quote_id, key)
-       DO UPDATE SET label = EXCLUDED.label,
+       DO UPDATE SET label = CASE
+                               WHEN EXCLUDED.locked
+                                 OR COALESCE((EXCLUDED.options->>'fixed')::boolean, false)
+                               THEN EXCLUDED.label
+                               ELSE cotacao_v2_columns.label
+                             END,
                      type = EXCLUDED.type,
-                     position = EXCLUDED.position,
-                     width = EXCLUDED.width,
+                     position = CASE
+                                  WHEN EXCLUDED.locked
+                                    OR COALESCE((EXCLUDED.options->>'fixed')::boolean, false)
+                                  THEN EXCLUDED.position
+                                  ELSE cotacao_v2_columns.position
+                                END,
+                     width = CASE
+                               WHEN EXCLUDED.locked
+                                 OR COALESCE((EXCLUDED.options->>'fixed')::boolean, false)
+                               THEN EXCLUDED.width
+                               ELSE cotacao_v2_columns.width
+                             END,
                      locked = EXCLUDED.locked,
-                     options = EXCLUDED.options,
+                     options = CASE
+                                 WHEN EXCLUDED.locked
+                                   OR COALESCE((EXCLUDED.options->>'fixed')::boolean, false)
+                                 THEN EXCLUDED.options
+                                 ELSE cotacao_v2_columns.options
+                               END,
                      updated_at = now()`,
       [quoteId, ...column.slice(0, 6), JSON.stringify(column[6] || {})]
     );
@@ -331,6 +375,38 @@ async function seedColumns(quoteId) {
        AND key = ANY($2::text[])`,
     [quoteId, ['observacao', 'status']]
   );
+
+  await normalizeColumnOrder(quoteId);
+}
+
+async function normalizeColumnOrder(quoteId) {
+  const current = await pgPool.query(
+    `SELECT *
+     FROM cotacao_v2_columns
+     WHERE quote_id = $1
+       AND COALESCE((options->>'hidden')::boolean, false) = false
+     ORDER BY position ASC, created_at ASC, label ASC`,
+    [quoteId]
+  );
+  const byKey = new Map(current.rows.map((column) => [column.key, column]));
+  const fixedKeys = ['ean', 'produto', 'quantidade', 'categoria'];
+  const ordered = [];
+  fixedKeys.forEach((key) => {
+    const column = byKey.get(key);
+    if (column) ordered.push(column);
+  });
+  current.rows
+    .filter((column) => isDistributorColumn(column) && !fixedKeys.includes(column.key))
+    .forEach((column) => ordered.push(column));
+  const winner = byKey.get('quem_ganhou');
+  if (winner) ordered.push(winner);
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    await pgPool.query(
+      'UPDATE cotacao_v2_columns SET position = $3, updated_at = now() WHERE quote_id = $1 AND key = $2',
+      [quoteId, ordered[index].key, index + 1]
+    );
+  }
 }
 
 async function seedRows(quoteId) {
@@ -539,6 +615,133 @@ async function addDistributorColumn(quoteId, anchorKey, placement, label) {
   }
 }
 
+async function logColumnAudit({ quoteId, columnKey, action, before = {}, after = {}, user, clientId = null }) {
+  await pgPool.query(
+    `INSERT INTO cotacao_v2_column_audit (quote_id, column_key, action, before, after, user_id, username, client_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)`,
+    [
+      quoteId,
+      columnKey,
+      action,
+      JSON.stringify(before || {}),
+      JSON.stringify(after || {}),
+      user?.id || null,
+      user?.username || null,
+      clientId
+    ]
+  );
+}
+
+async function renameDistributorColumn(quoteId, columnKey, label, user, clientId) {
+  const current = await pgPool.query(
+    `SELECT *
+     FROM cotacao_v2_columns
+     WHERE quote_id = $1
+       AND key = $2
+       AND COALESCE((options->>'hidden')::boolean, false) = false
+     LIMIT 1`,
+    [quoteId, columnKey]
+  );
+  const column = current.rows[0];
+  if (!isDistributorColumn(column)) {
+    const error = new Error('Somente distribuidoras podem ser renomeadas.');
+    error.status = 422;
+    throw error;
+  }
+  const nextLabel = sanitizeColumnLabel(label, column.label);
+  const updated = await pgPool.query(
+    `UPDATE cotacao_v2_columns
+     SET label = $3, updated_at = now()
+     WHERE quote_id = $1 AND key = $2
+     RETURNING *`,
+    [quoteId, columnKey, nextLabel]
+  );
+  await logColumnAudit({
+    quoteId,
+    columnKey,
+    action: 'rename',
+    before: { label: column.label },
+    after: { label: updated.rows[0].label },
+    user,
+    clientId
+  });
+  return updated.rows[0];
+}
+
+async function moveDistributorColumn(quoteId, columnKey, direction, user, clientId) {
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT *
+       FROM cotacao_v2_columns
+       WHERE quote_id = $1
+         AND COALESCE((options->>'hidden')::boolean, false) = false
+       ORDER BY position ASC, label ASC
+       FOR UPDATE`,
+      [quoteId]
+    );
+    const columns = current.rows;
+    const column = columns.find((item) => item.key === columnKey);
+    if (!isDistributorColumn(column)) {
+      const error = new Error('Somente distribuidoras podem ser reordenadas.');
+      error.status = 422;
+      throw error;
+    }
+    const distributors = columns.filter(isDistributorColumn);
+    const fromIndex = distributors.findIndex((item) => item.key === columnKey);
+    const delta = direction === 'left' ? -1 : 1;
+    const toIndex = fromIndex + delta;
+    if (toIndex < 0 || toIndex >= distributors.length) {
+      await client.query('COMMIT');
+      return column;
+    }
+    const reordered = distributors.slice();
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    let distributorIndex = 0;
+    const ordered = columns.map((item) => (isDistributorColumn(item) ? reordered[distributorIndex++] : item));
+    for (let index = 0; index < ordered.length; index += 1) {
+      await client.query(
+        'UPDATE cotacao_v2_columns SET position = $3, updated_at = now() WHERE quote_id = $1 AND key = $2',
+        [quoteId, ordered[index].key, index + 1]
+      );
+    }
+    await client.query('COMMIT');
+    await logColumnAudit({
+      quoteId,
+      columnKey,
+      action: 'move',
+      before: { position: column.position },
+      after: { direction, fromIndex, toIndex },
+      user,
+      clientId
+    });
+    return { ...column, position: toIndex + 1 };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function normalizeStyleTarget(body) {
+  const scope = String(body.scope || '');
+  const rowId = body.rowId ? String(body.rowId) : null;
+  const columnKey = body.columnKey ? String(body.columnKey) : null;
+  if (!['row', 'column', 'cell'].includes(scope)) return null;
+  if (scope === 'row' && !rowId) return null;
+  if (scope === 'column' && !columnKey) return null;
+  if (scope === 'cell' && (!rowId || !columnKey)) return null;
+  return {
+    scope,
+    rowId,
+    columnKey,
+    styleKey: `${scope}:${rowId || ''}:${columnKey || ''}`
+  };
+}
+
 function normalizeStylePayload(body) {
   const scope = String(body.scope || '');
   const rowId = body.rowId ? String(body.rowId) : null;
@@ -568,6 +771,446 @@ function normalizeStylePayload(body) {
     color: /^#[0-9a-f]{6}$/i.test(color) ? color : '',
     styleKey: `${scope}:${rowId || ''}:${columnKey || ''}`
   };
+}
+
+function parsePriceForWinner(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^\d,.-]/g, '');
+  if (!cleaned || cleaned === '-' || cleaned === ',' || cleaned === '.') return null;
+  const normalized = cleaned.includes(',')
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned;
+  const number = Number(normalized);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function computeWinnerForRow(row, columns) {
+  const distributors = columns.filter(isDistributorColumn);
+  let best = null;
+  let winners = [];
+  distributors.forEach((column) => {
+    const price = parsePriceForWinner(row.values?.[column.key]);
+    if (price === null) return;
+    if (best === null || price < best) {
+      best = price;
+      winners = [column];
+      return;
+    }
+    if (price === best) winners.push(column);
+  });
+  if (!winners.length) return 'Sem vencedor';
+  if (winners.length > 1) return `Empate: ${winners.map((column) => column.label).join(', ')}`;
+  return winners[0].label;
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+function matrixFromSheet(sheet) {
+  const columns = sheet.columns;
+  const headers = [...columns.map((column) => column.label), 'cotacao_row_id'];
+  const values = sheet.rows.map((row) => columns.map((column) => {
+    if (column.key === 'quem_ganhou' || column.options?.computed === true) {
+      return computeWinnerForRow(row, columns);
+    }
+    return String(row.values?.[column.key] ?? '');
+  }).concat(row.id));
+  return [headers, ...values];
+}
+
+function rowsFromMatrix(matrix, columns) {
+  const rows = Array.isArray(matrix) ? matrix : [];
+  if (!rows.length) return [];
+  const headers = rows[0].map((value) => String(value || '').trim().toLowerCase());
+  const idIndex = ['cotacao_row_id', '_cotacao_row_id', 'row_id', 'id'].map((name) => headers.indexOf(name)).find((index) => index !== -1);
+  const editableColumns = columns.filter((column) => column.options?.computed !== true);
+  const indexByColumn = new Map();
+  editableColumns.forEach((column, fallbackIndex) => {
+    const labelIndex = headers.indexOf(String(column.label || '').trim().toLowerCase());
+    const keyIndex = headers.indexOf(String(column.key || '').trim().toLowerCase());
+    indexByColumn.set(column.key, labelIndex !== -1 ? labelIndex : (keyIndex !== -1 ? keyIndex : fallbackIndex));
+  });
+  return rows.slice(1)
+    .filter((row) => Array.isArray(row) && row.some((value) => String(value ?? '').trim() !== ''))
+    .map((row) => {
+      const values = {};
+      editableColumns.forEach((column) => {
+        values[column.key] = String(row[indexByColumn.get(column.key)] ?? '');
+      });
+      const id = idIndex >= 0 && isUuid(row[idIndex]) ? String(row[idIndex]) : null;
+      return { id, values };
+    });
+}
+
+async function replaceRowsFromImport(quoteId, rows) {
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const incomingIds = rows.map((row) => row.id).filter(Boolean);
+    if (incomingIds.length) {
+      await client.query(
+        `UPDATE cotacao_v2_rows
+         SET deleted_at = now(), updated_at = now()
+         WHERE quote_id = $1
+           AND deleted_at IS NULL
+           AND id <> ALL($2::uuid[])`,
+        [quoteId, incomingIds]
+      );
+    } else {
+      await client.query('UPDATE cotacao_v2_rows SET deleted_at = now(), updated_at = now() WHERE quote_id = $1 AND deleted_at IS NULL', [quoteId]);
+    }
+    const inserted = [];
+    for (let index = 0; index < rows.length; index += 1) {
+      const rowId = rows[index].id;
+      const values = rows[index].values || {};
+      const result = rowId
+        ? await client.query(
+          `INSERT INTO cotacao_v2_rows (id, quote_id, position, values, deleted_at)
+           VALUES ($1, $2, $3, $4::jsonb, NULL)
+           ON CONFLICT (id)
+           DO UPDATE SET position = EXCLUDED.position,
+                         values = EXCLUDED.values,
+                         version = cotacao_v2_rows.version + 1,
+                         deleted_at = NULL,
+                         updated_at = now()
+           RETURNING id, position, values, version, updated_at`,
+          [rowId, quoteId, index + 1, JSON.stringify(values)]
+        )
+        : await client.query(
+          `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+           VALUES ($1, $2, $3::jsonb)
+           RETURNING id, position, values, version, updated_at`,
+          [quoteId, index + 1, JSON.stringify(values)]
+        );
+      inserted.push({
+        id: result.rows[0].id,
+        position: result.rows[0].position,
+        values: result.rows[0].values || {},
+        version: Number(result.rows[0].version),
+        updatedAt: result.rows[0].updated_at
+      });
+    }
+    if (!inserted.length) {
+      const empty = await client.query(
+        `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+         VALUES ($1, 1, '{}'::jsonb)
+         RETURNING id, position, values, version, updated_at`,
+        [quoteId]
+      );
+      inserted.push({
+        id: empty.rows[0].id,
+        position: empty.rows[0].position,
+        values: empty.rows[0].values || {},
+        version: Number(empty.rows[0].version),
+        updatedAt: empty.rows[0].updated_at
+      });
+    }
+    await client.query('COMMIT');
+    return inserted;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function base64url(input) {
+  return Buffer.from(input).toString('base64').replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');
+}
+
+async function googleCredentials() {
+  if (GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON) {
+    return JSON.parse(GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON);
+  }
+  if (GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE) {
+    return JSON.parse(await fs.readFile(GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE, 'utf8'));
+  }
+  return null;
+}
+
+async function googleAccessToken() {
+  const credentials = await googleCredentials();
+  if (!credentials?.client_email || !credentials?.private_key) {
+    const error = new Error('Google Sheets nao configurado.');
+    error.status = 422;
+    throw error;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const claim = {
+    iss: credentials.client_email,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now
+  };
+  const unsigned = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claim))}`;
+  const privateKey = String(credentials.private_key).replace(/\\n/g, '\n');
+  const signature = crypto.sign('RSA-SHA256', Buffer.from(unsigned), privateKey);
+  const assertion = `${unsigned}.${base64url(signature)}`;
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error_description || data.error || 'Falha no token Google.');
+    error.status = 502;
+    throw error;
+  }
+  return data.access_token;
+}
+
+async function googleSheetsRequest(method, range, body = null) {
+  if (!GOOGLE_SHEETS_SPREADSHEET_ID) {
+    const error = new Error('GOOGLE_SHEETS_SPREADSHEET_ID nao configurado.');
+    error.status = 422;
+    throw error;
+  }
+  const token = await googleAccessToken();
+  const rangePath = encodeURIComponent(range);
+  const suffix = method === 'PUT' ? '?valueInputOption=USER_ENTERED' : '';
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEETS_SPREADSHEET_ID}/values/${rangePath}${suffix}`,
+    {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error?.message || 'Falha na API do Google Sheets.');
+    error.status = 502;
+    throw error;
+  }
+  return data;
+}
+
+async function createBackup(quoteId, username) {
+  await fs.mkdir(BACKUP_DIR, { recursive: true });
+  const sheet = await loadSheet();
+  const audit = await pgPool.query(
+    `SELECT id, column_key, action, before, after, username, client_id, created_at
+     FROM cotacao_v2_column_audit
+     WHERE quote_id = $1
+     ORDER BY id ASC`,
+    [quoteId]
+  );
+  const payload = {
+    kind: 'wimifarma-cotacao-v2-backup',
+    createdAt: new Date().toISOString(),
+    createdBy: username || null,
+    sheet,
+    columnAudit: audit.rows
+  };
+  const name = `cotacao-v2-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  const file = path.join(BACKUP_DIR, name);
+  await fs.writeFile(file, JSON.stringify(payload, null, 2), 'utf8');
+  return { name, file, bytes: Buffer.byteLength(JSON.stringify(payload)) };
+}
+
+async function listBackups() {
+  await fs.mkdir(BACKUP_DIR, { recursive: true });
+  const files = await fs.readdir(BACKUP_DIR);
+  const backups = [];
+  for (const file of files.filter((item) => /^cotacao-v2-.+\.json$/.test(item))) {
+    const stat = await fs.stat(path.join(BACKUP_DIR, file));
+    backups.push({ name: file, bytes: stat.size, updatedAt: stat.mtime.toISOString() });
+  }
+  return backups.sort((a, b) => b.name.localeCompare(a.name));
+}
+
+async function restoreBackup(backupName, quoteId) {
+  if (!/^cotacao-v2-[\w.-]+\.json$/.test(backupName)) {
+    const error = new Error('Backup invalido.');
+    error.status = 422;
+    throw error;
+  }
+  const file = path.join(BACKUP_DIR, backupName);
+  const payload = JSON.parse(await fs.readFile(file, 'utf8'));
+  if (payload.kind !== 'wimifarma-cotacao-v2-backup') {
+    const error = new Error('Arquivo de backup nao reconhecido.');
+    error.status = 422;
+    throw error;
+  }
+  const sheet = payload.sheet || {};
+  const columns = Array.isArray(sheet.columns) ? sheet.columns : [];
+  const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+  const rules = Array.isArray(sheet.rules) ? sheet.rules : [];
+  const styles = Array.isArray(sheet.styles) ? sheet.styles : [];
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM cotacao_v2_styles WHERE quote_id = $1', [quoteId]);
+    await client.query('DELETE FROM cotacao_v2_rules WHERE quote_id = $1', [quoteId]);
+    await client.query('DELETE FROM cotacao_v2_rows WHERE quote_id = $1', [quoteId]);
+    const backupColumnKeys = columns.map((column) => String(column?.key || '')).filter(Boolean);
+    if (backupColumnKeys.length) {
+      await client.query(
+        `UPDATE cotacao_v2_columns
+         SET options = jsonb_set(COALESCE(options, '{}'::jsonb), '{hidden}', 'true'::jsonb, true),
+             updated_at = now()
+         WHERE quote_id = $1
+           AND locked = false
+           AND key <> ALL($2::text[])`,
+        [quoteId, backupColumnKeys]
+      );
+    }
+
+    for (const column of columns) {
+      if (!column?.key) continue;
+      await client.query(
+        `INSERT INTO cotacao_v2_columns (quote_id, key, label, type, position, width, locked, options)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+         ON CONFLICT (quote_id, key)
+         DO UPDATE SET label = EXCLUDED.label,
+                       type = EXCLUDED.type,
+                       position = EXCLUDED.position,
+                       width = EXCLUDED.width,
+                       locked = EXCLUDED.locked,
+                       options = EXCLUDED.options,
+                       updated_at = now()`,
+        [
+          quoteId,
+          String(column.key),
+          String(column.label || column.key),
+          String(column.type || 'text'),
+          Number(column.position || 0),
+          Number(column.width || 160),
+          Boolean(column.locked),
+          JSON.stringify(column.options || {})
+        ]
+      );
+    }
+
+    const insertedRows = [];
+    const rowIdMap = new Map();
+    for (let index = 0; index < rows.length; index += 1) {
+      const sourceRow = rows[index] || {};
+      const backupId = isUuid(sourceRow.id) ? String(sourceRow.id) : null;
+      const result = backupId
+        ? await client.query(
+          `INSERT INTO cotacao_v2_rows (id, quote_id, position, values, version, meta)
+           VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb)
+           RETURNING id, position, values, version, updated_at`,
+          [
+            backupId,
+            quoteId,
+            Number(sourceRow.position || index + 1),
+            JSON.stringify(sourceRow.values || {}),
+            Number(sourceRow.version || 1),
+            JSON.stringify(sourceRow.meta || {})
+          ]
+        )
+        : await client.query(
+          `INSERT INTO cotacao_v2_rows (quote_id, position, values, version, meta)
+           VALUES ($1, $2, $3::jsonb, $4, $5::jsonb)
+           RETURNING id, position, values, version, updated_at`,
+          [
+            quoteId,
+            Number(sourceRow.position || index + 1),
+            JSON.stringify(sourceRow.values || {}),
+            Number(sourceRow.version || 1),
+            JSON.stringify(sourceRow.meta || {})
+          ]
+        );
+      if (sourceRow.id) rowIdMap.set(String(sourceRow.id), result.rows[0].id);
+      insertedRows.push({
+        id: result.rows[0].id,
+        position: result.rows[0].position,
+        values: result.rows[0].values || {},
+        version: Number(result.rows[0].version),
+        updatedAt: result.rows[0].updated_at
+      });
+    }
+    if (!insertedRows.length) {
+      const result = await client.query(
+        `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+         VALUES ($1, 1, '{}'::jsonb)
+         RETURNING id, position, values, version, updated_at`,
+        [quoteId]
+      );
+      insertedRows.push({
+        id: result.rows[0].id,
+        position: result.rows[0].position,
+        values: result.rows[0].values || {},
+        version: Number(result.rows[0].version),
+        updatedAt: result.rows[0].updated_at
+      });
+    }
+
+    for (const rule of rules) {
+      await client.query(
+        `INSERT INTO cotacao_v2_rules (quote_id, name, target, column_key, operator, value, background, color, enabled, priority)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          quoteId,
+          String(rule.name || 'Regra restaurada'),
+          String(rule.target || 'row'),
+          String(rule.column_key || rule.columnKey || 'categoria'),
+          String(rule.operator || 'contains'),
+          String(rule.value || ''),
+          String(rule.background || '#fff7ed'),
+          String(rule.color || '#7c2d12'),
+          rule.enabled !== false,
+          Number(rule.priority || 100)
+        ]
+      );
+    }
+
+    for (const style of styles) {
+      const styleKey = style.styleKey || style.style_key;
+      if (!styleKey || !style.scope) continue;
+      const restoredRowId = style.rowId || style.row_id || null;
+      const rowId = restoredRowId ? (rowIdMap.get(String(restoredRowId)) || restoredRowId) : null;
+      if ((style.scope === 'row' || style.scope === 'cell') && !rowId) continue;
+      const styleColumnKey = style.columnKey || style.column_key || null;
+      let safeStyleKey = String(styleKey);
+      if (rowId && style.scope === 'row') {
+        safeStyleKey = `row:${rowId}:`;
+      } else if (rowId && style.scope === 'cell') {
+        safeStyleKey = `cell:${rowId}:${styleColumnKey || ''}`;
+      }
+      await client.query(
+        `INSERT INTO cotacao_v2_styles (quote_id, style_key, scope, row_id, column_key, background, color, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (quote_id, style_key)
+         DO UPDATE SET background = EXCLUDED.background,
+                       color = EXCLUDED.color,
+                       updated_by = EXCLUDED.updated_by,
+                       updated_at = now()`,
+        [
+          quoteId,
+          safeStyleKey,
+          String(style.scope),
+          rowId,
+          styleColumnKey,
+          String(style.background || ''),
+          String(style.color || ''),
+          String(style.updatedBy || style.updated_by || 'restore')
+        ]
+      );
+    }
+    await client.query('COMMIT');
+    await normalizeColumnOrder(quoteId);
+    return insertedRows;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function appendEvent({ quoteId, type, rowId = null, columnKey = null, payload = {}, user, clientId = null }) {
@@ -651,16 +1294,15 @@ function renderApp(req) {
 <body class="app-page">
   <header class="app-header">
     <div class="app-brandline">
-    <a class="brand" href="/">
-      <img src="${BASE_PATH}/logo-wimifarma.svg" alt="Wimifarma">
-    </a>
-      <strong>Cotacao</strong>
+      <a class="brand" href="/">
+        <img src="${BASE_PATH}/logo-wimifarma.svg" alt="Wimifarma">
+      </a>
+      <strong>Wimifarma Cotacao</strong>
     </div>
-    <nav class="view-tabs" aria-label="Atalhos da cotacao">
-      <button type="button" class="view-tab is-active" data-view-category="">Cotacao Geral</button>
-      <button type="button" class="view-tab" data-view-category="Farmacia Popular">Farmacia Popular</button>
-      <button type="button" class="view-tab" data-view-category="Bebe">Bebe</button>
-      <button type="button" class="view-tab" id="exportCsvButton">Baixar .csv</button>
+    <nav class="app-actions" aria-label="Acoes da cotacao">
+      <a href="/">Home</a>
+      <button type="button" id="diagnosticsButton">Diagnostico</button>
+      <button type="button" id="exportCsvButton">Baixar</button>
       <a href="${BASE_PATH}/logout.php">Sair</a>
     </nav>
   </header>
@@ -668,18 +1310,18 @@ function renderApp(req) {
     <section class="sheet-topline">
       <div>
         <span class="kicker">Wimifarma Cotacao</span>
-        <h1 id="viewTitle">Cotacao Geral</h1>
+        <p>Planilha ao vivo para cotacao de farmacia.</p>
       </div>
       <div class="sheet-stats">
         <span id="rowCountBadge">0 linha(s) com dados</span>
         <strong id="presenceCount">1 pessoa usando</strong>
-        <span id="userBadge">Usuario: ${e(user.username)}</span>
+        <span id="saveStatus" class="save-status">Sincronizado</span>
       </div>
     </section>
 
     <section class="toolbar" aria-label="Ferramentas da cotacao">
-      <button type="button" id="addRowsButton">Adicionar 20 linhas</button>
-      <button type="button" id="importButton">Colar do Sheets</button>
+      <button type="button" class="icon-button" id="undoButton" title="Desfazer" aria-label="Desfazer">&#8630;</button>
+      <button type="button" class="icon-button" id="redoButton" title="Refazer" aria-label="Refazer">&#8631;</button>
       <button type="button" id="rulesButton">Formatacao condicional</button>
       <div class="paint-tools" aria-label="Cores rapidas">
         <span>Cor</span>
@@ -688,54 +1330,34 @@ function renderApp(req) {
         <button type="button" class="paint-swatch" data-color="#fef3c7" style="--swatch:#fef3c7" title="Amarelo"></button>
         <button type="button" class="paint-swatch" data-color="#ffe4e6" style="--swatch:#ffe4e6" title="Rosa"></button>
         <button type="button" class="paint-swatch" data-color="#ede9fe" style="--swatch:#ede9fe" title="Roxo"></button>
-        <button type="button" class="paint-swatch" data-color="#ffffff" style="--swatch:#ffffff" title="Limpar cor"></button>
+        <button type="button" class="icon-button" id="eraserButton" title="Borracha" aria-label="Borracha">&#9003;</button>
       </div>
       <div class="presence-inline" id="presenceList"></div>
       <label class="toolbar-field">Busca
         <input id="searchInput" type="search" placeholder="EAN, produto, categoria...">
       </label>
-      <label class="toolbar-field">Categoria
-        <select id="categoryFilter">
-          <option value="">Todas</option>
-        </select>
-      </label>
-      <label class="toolbar-field toolbar-field-small">Ganhador
-        <select id="winnerFilter">
-          <option value="">Todos</option>
-        </select>
-      </label>
-      <span id="saveStatus" class="save-status">Sincronizado</span>
     </section>
 
     <section class="sheet-wrap" aria-label="Planilha de cotacao">
       <table class="sheet-table" id="sheetTable"></table>
     </section>
-    <footer class="sheet-footer">
-      <button type="button" id="addTwentyRowsButton">Adicionar 20 linhas</button>
-    </footer>
   </main>
 
   <div id="contextMenu" class="context-menu" hidden>
     <button type="button" data-action="row-above">Adicionar linha acima</button>
     <button type="button" data-action="row-below">Adicionar linha abaixo</button>
+    <button type="button" data-action="row-20-below">Adicionar 20 linhas abaixo</button>
     <button type="button" data-action="row-delete">Apagar linha</button>
     <span class="context-divider"></span>
     <button type="button" data-action="column-before">Adicionar distribuidora antes</button>
     <button type="button" data-action="column-after">Adicionar distribuidora depois</button>
+    <button type="button" data-action="column-rename">Renomear distribuidora</button>
+    <button type="button" data-action="column-left">Mover distribuidora para esquerda</button>
+    <button type="button" data-action="column-right">Mover distribuidora para direita</button>
     <button type="button" data-action="column-delete">Apagar distribuidora</button>
   </div>
 
-  <dialog id="importDialog">
-    <form method="dialog" class="dialog-card">
-      <h2>Colar linhas</h2>
-      <p>Cole linhas copiadas do Sheets. A ordem das colunas segue a tabela atual.</p>
-      <textarea id="importText" rows="10"></textarea>
-      <div class="dialog-actions">
-        <button type="button" id="confirmImport">Importar</button>
-        <button type="submit">Cancelar</button>
-      </div>
-    </form>
-  </dialog>
+  <div id="filterMenu" class="filter-menu" hidden></div>
 
   <dialog id="rulesDialog">
     <form method="dialog" class="dialog-card">
@@ -764,6 +1386,24 @@ function renderApp(req) {
         <button type="button" id="addRuleButton">Criar regra</button>
       </div>
       <div id="rulesList" class="rules-list"></div>
+      <div class="dialog-actions">
+        <button type="submit">Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="diagnosticsDialog">
+    <form method="dialog" class="dialog-card dialog-card-wide">
+      <h2>Diagnostico da Cotacao</h2>
+      <div class="diagnostics-grid">
+        <button type="button" id="refreshDiagnosticsButton">Atualizar diagnostico</button>
+        <button type="button" id="googleExportButton">Exportar Google Sheets</button>
+        <button type="button" id="googleImportButton">Importar Google Sheets</button>
+        <button type="button" id="createBackupButton">Criar backup</button>
+        <select id="backupSelect" aria-label="Backups disponiveis"></select>
+        <button type="button" id="restoreBackupButton">Restaurar backup</button>
+      </div>
+      <pre id="diagnosticsOutput" class="diagnostics-output"></pre>
       <div class="dialog-actions">
         <button type="submit">Fechar</button>
       </div>
@@ -904,6 +1544,51 @@ app.post(`${BASE_PATH}/api/columns`, requireApiAuth, verifyCsrf, asyncRoute(asyn
   res.json({ ok: true, column, eventId: Number(event.id) });
 }));
 
+app.post(`${BASE_PATH}/api/columns/:key/rename`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const clientId = String(req.body.clientId || '');
+  const column = await renameDistributorColumn(
+    sheet.quote.id,
+    String(req.params.key || ''),
+    req.body.label,
+    req.session.user,
+    clientId
+  );
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'column_renamed',
+    columnKey: column.key,
+    payload: { column },
+    user: req.session.user,
+    clientId
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
+  res.json({ ok: true, column, eventId: Number(event.id) });
+}));
+
+app.post(`${BASE_PATH}/api/columns/:key/move`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const clientId = String(req.body.clientId || '');
+  const column = await moveDistributorColumn(
+    sheet.quote.id,
+    String(req.params.key || ''),
+    String(req.body.direction || 'right') === 'left' ? 'left' : 'right',
+    req.session.user,
+    clientId
+  );
+  await normalizeColumnOrder(sheet.quote.id);
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'column_moved',
+    columnKey: column.key,
+    payload: { column },
+    user: req.session.user,
+    clientId
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
+  res.json({ ok: true, column, eventId: Number(event.id) });
+}));
+
 app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
   const columnKey = String(req.params.key || '');
@@ -919,6 +1604,16 @@ app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRou
        AND key = $2`,
     [sheet.quote.id, columnKey]
   );
+  await logColumnAudit({
+    quoteId: sheet.quote.id,
+    columnKey,
+    action: 'delete',
+    before: column,
+    after: { hidden: true },
+    user: req.session.user,
+    clientId: String(req.body?.clientId || '')
+  });
+  await normalizeColumnOrder(sheet.quote.id);
   const event = await appendEvent({
     quoteId: sheet.quote.id,
     type: 'column_deleted',
@@ -988,33 +1683,101 @@ app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async 
   res.json({ ok: true, style: result.rows[0], eventId: Number(event.id) });
 }));
 
+app.delete(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const target = normalizeStyleTarget(req.body || {});
+  if (!target) {
+    return res.status(422).json({ ok: false, error: 'Alvo de estilo invalido.' });
+  }
+  await pgPool.query(
+    'DELETE FROM cotacao_v2_styles WHERE quote_id = $1 AND style_key = $2',
+    [sheet.quote.id, target.styleKey]
+  );
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'style_deleted',
+    payload: { styleKey: target.styleKey },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('style:delete', {
+    styleKey: target.styleKey,
+    eventId: Number(event.id),
+    clientId: String(req.body.clientId || '')
+  });
+  res.json({ ok: true, styleKey: target.styleKey, eventId: Number(event.id) });
+}));
+
 app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
   const rowId = String(req.body.rowId || '');
   const columnKey = String(req.body.columnKey || '');
   const value = String(req.body.value ?? '');
   const clientId = String(req.body.clientId || '');
+  const hasExpectedValue = Object.hasOwn(req.body || {}, 'expectedValue');
+  const expectedValue = String(req.body.expectedValue ?? '');
   const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
   if (!rowId || !allowed.has(columnKey)) {
     return res.status(422).json({ ok: false, error: 'Celula invalida.' });
   }
-  const updated = await pgPool.query(
-    `UPDATE cotacao_v2_rows
-     SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
-         version = version + 1,
-         updated_at = now()
-     WHERE id = $1 AND quote_id = $4
-     RETURNING id, position, values, version, updated_at`,
-    [rowId, columnKey, value, sheet.quote.id]
-  );
-  const row = updated.rows[0];
-  if (!row) {
-    return res.status(404).json({ ok: false, error: 'Linha nao encontrada.' });
+  const client = await pgPool.connect();
+  let row;
+  let previousValue = '';
+  try {
+    await client.query('BEGIN');
+    const current = await client.query(
+      `SELECT id, position, values, version, updated_at
+       FROM cotacao_v2_rows
+       WHERE id = $1
+         AND quote_id = $2
+         AND deleted_at IS NULL
+       FOR UPDATE`,
+      [rowId, sheet.quote.id]
+    );
+    const currentRow = current.rows[0];
+    if (!currentRow) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, error: 'Linha nao encontrada.' });
+    }
+    previousValue = String(currentRow.values?.[columnKey] ?? '');
+    if (hasExpectedValue && previousValue !== expectedValue) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        ok: false,
+        error: 'Conflito de edicao nesta celula.',
+        conflict: {
+          rowId,
+          columnKey,
+          expectedValue,
+          currentValue: previousValue,
+          attemptedValue: value,
+          version: Number(currentRow.version),
+          updatedAt: currentRow.updated_at
+        }
+      });
+    }
+    const updated = await client.query(
+      `UPDATE cotacao_v2_rows
+       SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
+           version = version + 1,
+           updated_at = now()
+       WHERE id = $1 AND quote_id = $4
+       RETURNING id, position, values, version, updated_at`,
+      [rowId, columnKey, value, sheet.quote.id]
+    );
+    row = updated.rows[0];
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
   const payload = {
     rowId: row.id,
     columnKey,
     value,
+    previousValue,
     version: Number(row.version),
     updatedAt: row.updated_at
   };
@@ -1034,6 +1797,102 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
     clientId
   });
   return res.json({ ok: true, ...payload, eventId: Number(event.id) });
+}));
+
+app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const clientId = String(req.body.clientId || '');
+  const changes = Array.isArray(req.body.changes) ? req.body.changes.slice(0, 1000) : [];
+  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
+  if (!changes.length) {
+    return res.status(422).json({ ok: false, error: 'Nenhuma celula informada.' });
+  }
+  if (changes.some((change) => !change?.rowId || !allowed.has(String(change.columnKey || '')))) {
+    return res.status(422).json({ ok: false, error: 'Lote contem celula invalida.' });
+  }
+
+  const client = await pgPool.connect();
+  const updatedCells = [];
+  try {
+    await client.query('BEGIN');
+    for (const raw of changes) {
+      const rowId = String(raw.rowId || '');
+      const columnKey = String(raw.columnKey || '');
+      const value = String(raw.value ?? '');
+      const hasExpectedValue = Object.hasOwn(raw || {}, 'expectedValue');
+      const expectedValue = String(raw.expectedValue ?? '');
+      const current = await client.query(
+        `SELECT id, position, values, version, updated_at
+         FROM cotacao_v2_rows
+         WHERE id = $1
+           AND quote_id = $2
+           AND deleted_at IS NULL
+         FOR UPDATE`,
+        [rowId, sheet.quote.id]
+      );
+      const currentRow = current.rows[0];
+      if (!currentRow) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ ok: false, error: 'Linha nao encontrada.', rowId });
+      }
+      const previousValue = String(currentRow.values?.[columnKey] ?? '');
+      if (hasExpectedValue && previousValue !== expectedValue) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          ok: false,
+          error: 'Conflito de edicao no lote.',
+          conflict: {
+            rowId,
+            columnKey,
+            expectedValue,
+            currentValue: previousValue,
+            attemptedValue: value,
+            version: Number(currentRow.version),
+            updatedAt: currentRow.updated_at
+          }
+        });
+      }
+      if (previousValue === value) continue;
+      const updated = await client.query(
+        `UPDATE cotacao_v2_rows
+         SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
+             version = version + 1,
+             updated_at = now()
+         WHERE id = $1 AND quote_id = $4
+         RETURNING id, position, values, version, updated_at`,
+        [rowId, columnKey, value, sheet.quote.id]
+      );
+      updatedCells.push({
+        rowId: updated.rows[0].id,
+        columnKey,
+        value,
+        previousValue,
+        version: Number(updated.rows[0].version),
+        updatedAt: updated.rows[0].updated_at
+      });
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'cells_batch_updated',
+    payload: { cells: updatedCells },
+    user: req.session.user,
+    clientId
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('cells:update', {
+    cells: updatedCells,
+    eventId: Number(event.id),
+    user: userPublic(req.session.user),
+    clientId
+  });
+  return res.json({ ok: true, cells: updatedCells, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -1085,6 +1944,117 @@ app.delete(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(
   });
   io.to(`quote:${sheet.quote.id}`).emit('rules:update', { id, mode: 'deleted', eventId: Number(event.id) });
   res.json({ ok: true, id, eventId: Number(event.id) });
+}));
+
+app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, res) => {
+  const startedAt = Date.now();
+  const sheet = await loadSheet();
+  const [eventCount, lastEvents, auditCount, redisPing] = await Promise.all([
+    pgPool.query('SELECT COUNT(*)::int AS total FROM cotacao_v2_events WHERE quote_id = $1', [sheet.quote.id]),
+    pgPool.query(
+      `SELECT id, type, row_id AS "rowId", column_key AS "columnKey", username, client_id AS "clientId", created_at AS "createdAt"
+       FROM cotacao_v2_events
+       WHERE quote_id = $1
+       ORDER BY id DESC
+       LIMIT 12`,
+      [sheet.quote.id]
+    ),
+    pgPool.query('SELECT COUNT(*)::int AS total FROM cotacao_v2_column_audit WHERE quote_id = $1', [sheet.quote.id]),
+    redis.ping()
+  ]);
+  const presence = await activePresence(sheet.quote.id);
+  res.json({
+    ok: true,
+    service: 'cotacao-v2',
+    quoteId: sheet.quote.id,
+    rows: sheet.rows.length,
+    columns: sheet.columns.length,
+    rules: sheet.rules.length,
+    styles: sheet.styles.length,
+    events: eventCount.rows[0].total,
+    lastEventId: sheet.lastEventId,
+    lastEvents: lastEvents.rows,
+    columnAudit: auditCount.rows[0].total,
+    presence,
+    googleSheetsConfigured: Boolean(GOOGLE_SHEETS_SPREADSHEET_ID && (GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE)),
+    backupDir: BACKUP_DIR,
+    redis: redisPing,
+    latencyMs: Date.now() - startedAt
+  });
+}));
+
+app.get(`${BASE_PATH}/api/google-sheets/status`, requireApiAuth, asyncRoute(async (_req, res) => {
+  res.json({
+    ok: true,
+    configured: Boolean(GOOGLE_SHEETS_SPREADSHEET_ID && (GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE)),
+    spreadsheetId: GOOGLE_SHEETS_SPREADSHEET_ID ? 'configured' : '',
+    range: GOOGLE_SHEETS_RANGE
+  });
+}));
+
+app.post(`${BASE_PATH}/api/google-sheets/export`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const range = String(req.body.range || GOOGLE_SHEETS_RANGE);
+  const values = matrixFromSheet(sheet);
+  const result = await googleSheetsRequest('PUT', range, { majorDimension: 'ROWS', values });
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'google_sheets_exported',
+    payload: { range, updatedCells: result.updatedCells || 0 },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  res.json({ ok: true, range, result, eventId: Number(event.id) });
+}));
+
+app.post(`${BASE_PATH}/api/google-sheets/import`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const range = String(req.body.range || GOOGLE_SHEETS_RANGE);
+  const data = await googleSheetsRequest('GET', range);
+  const rows = rowsFromMatrix(data.values || [], sheet.columns);
+  const backup = await createBackup(sheet.quote.id, req.session.user?.username);
+  const inserted = await replaceRowsFromImport(sheet.quote.id, rows);
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'google_sheets_imported',
+    payload: { range, rows: inserted.length, backup: backup.name },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
+  res.json({ ok: true, range, rows: inserted.length, backup: backup.name, eventId: Number(event.id) });
+}));
+
+app.get(`${BASE_PATH}/api/backups`, requireApiAuth, asyncRoute(async (_req, res) => {
+  const backups = await listBackups();
+  res.json({ ok: true, backups });
+}));
+
+app.post(`${BASE_PATH}/api/backups`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const backup = await createBackup(sheet.quote.id, req.session.user?.username);
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'backup_created',
+    payload: { name: backup.name, bytes: backup.bytes },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  res.json({ ok: true, backup: { name: backup.name, bytes: backup.bytes }, eventId: Number(event.id) });
+}));
+
+app.post(`${BASE_PATH}/api/backups/:name/restore`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const rows = await restoreBackup(String(req.params.name || ''), sheet.quote.id);
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'backup_restored',
+    payload: { name: String(req.params.name || ''), rows: rows.length },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
+  res.json({ ok: true, rows: rows.length, eventId: Number(event.id) });
 }));
 
 io.on('connection', (socket) => {

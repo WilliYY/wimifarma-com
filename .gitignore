@@ -1,6 +1,8 @@
 /backups/
 /mysql/
 /cotacao-data/
+node_modules/
+**/node_modules/
 .env
 /site/miauw/config.local.php
 **/config.local.php
