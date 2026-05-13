@@ -85,7 +85,7 @@ MySQL `wimifarma_app`:
 - Categoria e texto comum.
 - `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem, filtro nem alerta por gatilho escondido.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`.
-- Formatacao condicional explicita deve pintar somente o fundo; o texto da grade permanece preto/padrao para manter legibilidade.
+- Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
 - Filtros de busca, categoria e ganhador sao locais por tela e nao devem mover a visao de outro usuario.
 - Filtros de `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local.
 - Ao editar uma linha que nao combina mais com filtro/busca ativos, a tela deve manter a linha visivel ate o usuario alterar o filtro ou a busca, evitando que a linha desapareca no meio da edicao.
@@ -113,7 +113,7 @@ MySQL `wimifarma_app`:
 - A interface deve ocupar a largura da tela como planilha, sem card envolvendo a grade; barra de rolagem aparece quando houver mais linhas/colunas do que o viewport comporta.
 - As celulas usam fonte 20px e alinhamento central por padrao.
 - O menu de contexto permite inserir/apagar linhas e inserir/apagar apenas colunas de distribuidoras.
-- A paleta de cores grava estilo manual por linha, coluna ou celula em `cotacao_v2_styles`.
+- A paleta de cores grava estilo manual por linha, coluna ou celula em `cotacao_v2_styles` e pode ser aberta pelo botao do topo ou pelo menu de contexto.
 - A coluna `Ganhador` e a celula de menor preco recebem destaque visual automatico, sem depender de palavra em categoria.
 - A insercao de linhas saiu dos botoes visiveis e ficou no menu de contexto. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
 - A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis.
@@ -150,6 +150,7 @@ Em 2026-05-12 foram validados localmente:
 - Teste automatizado com navegador validou duas abas com presenca, nomes de animais, menu de contexto, filtros, paleta, fonte 20px centralizada e destaque de menor preco em `Ganhador`.
 - Em 2026-05-13, a tela foi evoluida com filtros por icone, remocao dos botoes `Adicionar linhas` e `Colar do Sheets`, colagem via `Ctrl+V`, desfazer/refazer, selecao multipla, menu de contexto ampliado, diagnostico, Google Sheets import/export e backup/restore.
 - Em 2026-05-13, nova rodada corrigiu a operacao diaria: `Ctrl+C`, `Ctrl+Z` para busca/filtros, menu de filtro com posicionamento visivel, limpeza de estado de edicao ao trocar de celula, regra condicional apenas por fundo, Miauby na Cotacao, login compacto e heartbeat/reload leve apos inatividade.
+- Em 2026-05-13, a formatacao condicional foi ajustada para pintar apenas a celula da coluna-alvo da regra, e a paleta de cores passou a flutuar acima da grade e abrir tambem pelo menu de contexto.
 
 ## Riscos ao alterar
 

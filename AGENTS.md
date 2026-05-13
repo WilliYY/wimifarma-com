@@ -186,7 +186,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Apagar distribuidora fica liberado no fluxo normal da equipe; a coluna e ocultada e pode voltar por `Ctrl+Z`/desfazer na mesma sessao.
 - `Ctrl+C` copia a selecao como matriz TSV e `Ctrl+V` cola matriz normalizando texto e numeros/precos para o padrao da Cotacao.
 - `Ctrl+Z`/desfazer tambem cobre filtro e busca local, alem de edicoes de celula, colagens, estilos e colunas.
-- A formatacao condicional explicita pinta somente o fundo; o texto da grade permanece preto/padrao para preservar legibilidade.
+- A formatacao condicional explicita pinta somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para preservar legibilidade.
+- A paleta de cores abre por botao no topo ou por `Cores` no menu de contexto, sempre flutuando acima da grade para nao ficar escondida atras das celulas.
 - Quando uma edicao faria a linha sair do filtro/busca atual, a tela mantem a linha visivel ate o filtro ou a busca mudar, evitando a sensacao de que a linha sumiu durante a digitacao.
 - A Cotacao V2 mantem heartbeat de presenca e recarregamento leve apos inatividade/reconexao da aba para continuar sincronizando sem depender de recarregar manualmente.
 - O widget do Miauby voltou a ser carregado na Cotacao V2, e a tela de login da Cotacao foi compactada para ocupar menos viewport.

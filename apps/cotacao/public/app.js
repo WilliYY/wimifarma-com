@@ -352,10 +352,10 @@
     return map;
   }
 
-  function ruleStyle(row) {
+  function ruleStyle(row, column) {
     for (const rule of state.rules.filter((item) => item.enabled !== false)) {
-      const column = colByKey(rule.column_key || rule.columnKey);
-      if (!column) continue;
+      const ruleColumnKey = rule.column_key || rule.columnKey;
+      if (ruleColumnKey !== column.key) continue;
       const current = valueOf(row, column).toLowerCase();
       const expected = String(rule.value || '').toLowerCase();
       if (!expected) continue;
@@ -373,7 +373,7 @@
   }
 
   function mergedStyle(row, column, map) {
-    const merged = { ...ruleStyle(row) };
+    const merged = { ...ruleStyle(row, column) };
     [
       `column::${column.key}`,
       `row:${row.id}:`,
@@ -430,6 +430,17 @@
       }
     }
     return cells;
+  }
+
+  function selectionContains(rowId, columnKey) {
+    if (!rowId || !columnKey || !state.selectedRange) return false;
+    const rows = gridRows();
+    const coords = coordsFor(rowId, columnKey, rows);
+    if (coords.row < 0 || coords.col < 0) return false;
+    return coords.row >= state.selectedRange.startRow
+      && coords.row <= state.selectedRange.endRow
+      && coords.col >= state.selectedRange.startCol
+      && coords.col <= state.selectedRange.endCol;
   }
 
   function setSelection(rowId, columnKey, extend = false) {
@@ -1250,17 +1261,34 @@
     });
   }
 
+  function positionFloatingMenu(menu, x, y) {
+    menu.hidden = false;
+    const left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8));
+    const top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
+  function openPalette(source) {
+    if (!paintPalette) return;
+    contextMenu.hidden = true;
+    filterMenu.hidden = true;
+    const rect = source?.getBoundingClientRect?.();
+    const x = rect ? rect.left : Number(source?.x || 8);
+    const y = rect ? rect.bottom + 8 : Number(source?.y || 8);
+    positionFloatingMenu(paintPalette, x, y);
+  }
+
   function openContextMenu(event, rowId, columnKey) {
     event.preventDefault();
     const column = colByKey(columnKey);
     state.context = { rowId, columnKey };
-    if (rowId && columnKey) setSelection(rowId, columnKey);
+    if (paintPalette) paintPalette.hidden = true;
+    if (rowId && columnKey && !selectionContains(rowId, columnKey)) setSelection(rowId, columnKey);
     contextMenu.querySelectorAll('[data-action^="column"]').forEach((button) => {
       button.disabled = !isDistributorColumn(column);
     });
-    contextMenu.style.left = `${event.clientX}px`;
-    contextMenu.style.top = `${event.clientY}px`;
-    contextMenu.hidden = false;
+    positionFloatingMenu(contextMenu, event.clientX, event.clientY);
   }
 
   function closeMenus() {
@@ -1544,7 +1572,7 @@
     });
 
     document.addEventListener('click', (event) => {
-      if (!event.target.closest('#contextMenu') && !event.target.closest('.filter-button') && !event.target.closest('#filterMenu') && !event.target.closest('.paint-tools')) {
+      if (!event.target.closest('#contextMenu') && !event.target.closest('.filter-button') && !event.target.closest('#filterMenu') && !event.target.closest('#paintPalette') && !event.target.closest('.paint-tools')) {
         closeMenus();
         if (paintPalette) paintPalette.hidden = true;
       }
@@ -1552,7 +1580,18 @@
 
     contextMenu.addEventListener('click', (event) => {
       const button = event.target.closest('[data-action]');
-      if (button) handleContextAction(button.dataset.action).catch(console.error);
+      if (!button) return;
+      if (button.dataset.action === 'open-palette') {
+        const rect = contextMenu.getBoundingClientRect();
+        openPalette({ x: rect.right + 8, y: rect.top });
+        return;
+      }
+      if (button.dataset.action === 'erase-color') {
+        contextMenu.hidden = true;
+        eraseSelection().catch(console.error);
+        return;
+      }
+      handleContextAction(button.dataset.action).catch(console.error);
     });
 
     filterMenu.addEventListener('click', (event) => {
@@ -1617,7 +1656,8 @@
 
     paletteToggleButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      paintPalette.hidden = !paintPalette.hidden;
+      if (paintPalette.hidden) openPalette(paletteToggleButton);
+      else paintPalette.hidden = true;
     });
 
     addRowsFooterButton.addEventListener('click', async () => {
@@ -1632,7 +1672,11 @@
         state.eraser = false;
         eraserButton.classList.remove('is-active');
         document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.toggle('is-active', item === button));
-        if (selectedCells().length) applyColorToSelection(state.paintColor).catch(console.error);
+        if (selectedCells().length) {
+          applyColorToSelection(state.paintColor)
+            .then(() => { paintPalette.hidden = true; })
+            .catch(console.error);
+        }
       });
     });
 

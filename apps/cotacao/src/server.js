@@ -1376,6 +1376,9 @@ function renderApp(req) {
     <button type="button" data-action="row-20-below">Adicionar 20 linhas abaixo</button>
     <button type="button" data-action="row-delete">Apagar linha</button>
     <span class="context-divider"></span>
+    <button type="button" data-action="open-palette">Cores</button>
+    <button type="button" data-action="erase-color">Limpar cor</button>
+    <span class="context-divider"></span>
     <button type="button" data-action="column-before">Adicionar distribuidora antes</button>
     <button type="button" data-action="column-after">Adicionar distribuidora depois</button>
     <button type="button" data-action="column-rename">Renomear distribuidora</button>
