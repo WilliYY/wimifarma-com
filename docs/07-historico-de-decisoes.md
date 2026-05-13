@@ -837,3 +837,33 @@ Riscos/cuidados:
 - Nao recriar gatilhos escondidos por palavra de categoria.
 - Adicionar `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` do VPS antes do deploy.
 - O proximo passo deve ser conflito por campo, diagnostico de sync e import/export Sheets, nao novos remendos na planilha PHP antiga.
+
+## 2026-05-12 - Cotacao V2 adota visual denso de planilha operacional
+
+Decisao:
+
+- Aproximar a tela principal da Cotacao V2 do visual operacional da planilha antiga, com cabecalho compacto, abas locais, estatisticas no topo e grade densa.
+- Padronizar as colunas iniciais visiveis como `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, `Anb`, `Profarma`, `mauro`, `arthur`, `Santa`, `tom`, `cimed` e `QUEM GANHOU`.
+- Ocultar colunas legadas `observacao` e `status` por `options.hidden`, sem apagar dados.
+- Adicionar exportacao CSV rapida no navegador para a visao filtrada atual.
+
+Motivo:
+
+- O usuario validou que a sincronizacao ao vivo esta funcionando e pediu que a aparencia voltasse a se aproximar da planilha anterior.
+- A interface antiga era mais eficiente para a rotina de comparacao de fornecedores; a mudanca visual nao deve desfazer o backend novo em tempo real.
+
+Impacto:
+
+- `apps/cotacao/src/server.js`
+- `apps/cotacao/public/app.js`
+- `apps/cotacao/public/styles.css`
+- `README.md`
+- `AGENTS.md`
+- `docs/06-pendencias.md`
+- `docs/20-cotacao-v2.md`
+
+Riscos/cuidados:
+
+- As abas `Farmacia Popular` e `Bebe` sao filtros locais por categoria, nao motores separados de cotacao.
+- A exportacao CSV atual e um recurso rapido da tela; import/export oficial com Google Sheets ainda precisa de IDs estaveis, auditoria e tratamento de conflito.
+- Nao reintroduzir gatilhos escondidos por texto para `geral`, `urgente`, `encomenda` ou `cotacao`.

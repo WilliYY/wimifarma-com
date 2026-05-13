@@ -274,25 +274,44 @@ async function getOrCreateDefaultQuote() {
 
 async function seedColumns(quoteId) {
   const columns = [
-    ['ean', 'EAN', 'text', 1, 150, true],
-    ['produto', 'Produto', 'text', 2, 260, false],
-    ['quantidade', 'Qtd', 'number', 3, 90, false],
-    ['categoria', 'Categoria', 'text', 4, 160, false],
-    ['fornecedor_1', 'Fornecedor 1', 'currency', 5, 150, false],
-    ['fornecedor_2', 'Fornecedor 2', 'currency', 6, 150, false],
-    ['fornecedor_3', 'Fornecedor 3', 'currency', 7, 150, false],
-    ['observacao', 'Observacao', 'text', 8, 240, false],
-    ['status', 'Status', 'text', 9, 140, false]
+    ['ean', 'EAN', 'text', 1, 130, true, {}],
+    ['produto', 'PRODUTO', 'text', 2, 270, false, {}],
+    ['quantidade', 'QUANTIDADE', 'number', 3, 120, false, {}],
+    ['categoria', 'CATEGORIA', 'text', 4, 210, false, {}],
+    ['fornecedor_1', 'Anb', 'currency', 5, 150, false, { tone: 'supplier-yellow' }],
+    ['fornecedor_2', 'Profarma', 'currency', 6, 150, false, { tone: 'supplier-blue' }],
+    ['fornecedor_3', 'mauro', 'currency', 7, 150, false, { tone: 'supplier-green' }],
+    ['fornecedor_4', 'arthur', 'currency', 8, 150, false, { tone: 'supplier-rose' }],
+    ['fornecedor_5', 'Santa', 'currency', 9, 150, false, { tone: 'supplier-purple' }],
+    ['fornecedor_6', 'tom', 'currency', 10, 150, false, { tone: 'supplier-orange' }],
+    ['fornecedor_7', 'cimed', 'currency', 11, 150, false, { tone: 'supplier-yellow' }],
+    ['quem_ganhou', 'QUEM GANHOU', 'text', 12, 190, false, { fallback: 'Sem vencedor', tone: 'winner' }]
   ];
   for (const column of columns) {
     await pgPool.query(
-      `INSERT INTO cotacao_v2_columns (quote_id, key, label, type, position, width, locked)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO cotacao_v2_columns (quote_id, key, label, type, position, width, locked, options)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
        ON CONFLICT (quote_id, key)
-       DO UPDATE SET label = EXCLUDED.label, position = EXCLUDED.position, width = EXCLUDED.width, updated_at = now()`,
-      [quoteId, ...column]
+       DO UPDATE SET label = EXCLUDED.label,
+                     type = EXCLUDED.type,
+                     position = EXCLUDED.position,
+                     width = EXCLUDED.width,
+                     locked = EXCLUDED.locked,
+                     options = EXCLUDED.options,
+                     updated_at = now()`,
+      [quoteId, ...column.slice(0, 6), JSON.stringify(column[6] || {})]
     );
   }
+
+  await pgPool.query(
+    `UPDATE cotacao_v2_columns
+     SET options = jsonb_set(COALESCE(options, '{}'::jsonb), '{hidden}', 'true'::jsonb, true),
+         position = 999,
+         updated_at = now()
+     WHERE quote_id = $1
+       AND key = ANY($2::text[])`,
+    [quoteId, ['observacao', 'status']]
+  );
 }
 
 async function seedRows(quoteId) {
@@ -306,7 +325,13 @@ async function seedRows(quoteId) {
 async function loadSheet() {
   const quote = await getOrCreateDefaultQuote();
   const [columns, rows, rules, lastEvent] = await Promise.all([
-    pgPool.query('SELECT * FROM cotacao_v2_columns WHERE quote_id = $1 ORDER BY position ASC, label ASC', [quote.id]),
+    pgPool.query(
+      `SELECT * FROM cotacao_v2_columns
+       WHERE quote_id = $1
+         AND COALESCE((options->>'hidden')::boolean, false) = false
+       ORDER BY position ASC, label ASC`,
+      [quote.id]
+    ),
     pgPool.query('SELECT * FROM cotacao_v2_rows WHERE quote_id = $1 ORDER BY position ASC, id ASC', [quote.id]),
     pgPool.query('SELECT * FROM cotacao_v2_rules WHERE quote_id = $1 ORDER BY priority ASC, created_at ASC', [quote.id]),
     pgPool.query('SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1', [quote.id])
@@ -432,24 +457,30 @@ function renderApp(req) {
 </head>
 <body class="app-page">
   <header class="app-header">
+    <div class="app-brandline">
     <a class="brand" href="/">
       <img src="${BASE_PATH}/logo-wimifarma.svg" alt="Wimifarma">
     </a>
-    <nav>
-      <a href="/">Home</a>
+      <strong>Cotacao</strong>
+    </div>
+    <nav class="view-tabs" aria-label="Atalhos da cotacao">
+      <button type="button" class="view-tab is-active" data-view-category="">Cotacao Geral</button>
+      <button type="button" class="view-tab" data-view-category="Farmacia Popular">Farmacia Popular</button>
+      <button type="button" class="view-tab" data-view-category="Bebe">Bebe</button>
+      <button type="button" class="view-tab" id="exportCsvButton">Baixar .csv</button>
       <a href="${BASE_PATH}/logout.php">Sair</a>
     </nav>
   </header>
   <main class="sheet-shell" data-user-id="${e(user.id)}" data-username="${e(user.username)}">
     <section class="sheet-topline">
       <div>
-        <span class="kicker">Cotacao V2</span>
-        <h1>Cotacao farmacia</h1>
-        <p>Edicao ao vivo por celula, presenca de usuarios e regras condicionais explicitas.</p>
+        <span class="kicker">Wimifarma Cotacao</span>
+        <h1 id="viewTitle">Cotacao Geral</h1>
       </div>
-      <div class="presence-card">
+      <div class="sheet-stats">
+        <span id="rowCountBadge">0 linha(s) com dados</span>
         <strong id="presenceCount">1 pessoa usando</strong>
-        <div id="presenceList"></div>
+        <span id="userBadge">Usuario: ${e(user.username)}</span>
       </div>
     </section>
 
@@ -457,6 +488,7 @@ function renderApp(req) {
       <button type="button" id="addRowsButton">Adicionar linhas</button>
       <button type="button" id="importButton">Colar do Sheets</button>
       <button type="button" id="rulesButton">Formatacao condicional</button>
+      <div class="presence-inline" id="presenceList"></div>
       <label class="toolbar-field">Busca
         <input id="searchInput" type="search" placeholder="EAN, produto, categoria...">
       </label>

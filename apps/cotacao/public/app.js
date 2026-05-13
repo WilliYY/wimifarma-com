@@ -8,6 +8,10 @@
   const categoryFilter = document.querySelector('#categoryFilter');
   const presenceCount = document.querySelector('#presenceCount');
   const presenceList = document.querySelector('#presenceList');
+  const rowCountBadge = document.querySelector('#rowCountBadge');
+  const viewTitle = document.querySelector('#viewTitle');
+  const exportCsvButton = document.querySelector('#exportCsvButton');
+  const viewTabs = [...document.querySelectorAll('.view-tab[data-view-category]')];
   const importDialog = document.querySelector('#importDialog');
   const importText = document.querySelector('#importText');
   const rulesDialog = document.querySelector('#rulesDialog');
@@ -25,6 +29,7 @@
     rules: [],
     presence: [],
     editing: null,
+    activeViewCategory: '',
     saveTimers: new Map()
   };
 
@@ -79,6 +84,7 @@
   function render() {
     renderRuleColumnOptions();
     renderCategoryFilter();
+    renderStats();
     renderPresence();
     renderTable();
     renderRules();
@@ -88,9 +94,9 @@
     table.innerHTML = '';
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    headerRow.appendChild(createHeaderCell('#', 58));
+    headerRow.appendChild(createHeaderCell({ label: '#', width: 58, key: 'row_index' }));
     state.columns.forEach((column) => {
-      headerRow.appendChild(createHeaderCell(column.label, column.width));
+      headerRow.appendChild(createHeaderCell(column));
     });
     thead.appendChild(headerRow);
 
@@ -107,6 +113,7 @@
 
       state.columns.forEach((column) => {
         const td = document.createElement('td');
+        td.className = columnClass(column);
         td.style.width = `${column.width}px`;
         td.style.minWidth = `${column.width}px`;
         td.dataset.rowId = row.id;
@@ -116,6 +123,7 @@
         input.value = row.values?.[column.key] ?? '';
         input.dataset.rowId = row.id;
         input.dataset.columnKey = column.key;
+        input.placeholder = columnPlaceholder(column);
         input.autocomplete = 'off';
         input.spellcheck = false;
         input.addEventListener('focus', () => {
@@ -139,18 +147,34 @@
     markRemoteCells();
   }
 
-  function createHeaderCell(label, width) {
+  function createHeaderCell(column) {
     const th = document.createElement('th');
-    th.textContent = label;
-    th.style.width = `${width}px`;
-    th.style.minWidth = `${width}px`;
+    th.textContent = column.label;
+    th.className = columnClass(column);
+    th.style.width = `${column.width}px`;
+    th.style.minWidth = `${column.width}px`;
     return th;
+  }
+
+  function columnClass(column) {
+    const key = column.key || '';
+    if (key === 'row_index') return 'col-index';
+    if (key === 'quem_ganhou') return 'col-winner';
+    if (key.startsWith('fornecedor_')) return `col-supplier col-${key.replaceAll('_', '-')}`;
+    return `col-${key.replaceAll('_', '-')}`;
+  }
+
+  function columnPlaceholder(column) {
+    return column.options?.fallback || '';
   }
 
   function rowMatchesFilters(row) {
     const search = searchInput.value.trim().toLowerCase();
-    const category = categoryFilter.value.trim().toLowerCase();
+    const category = (state.activeViewCategory || categoryFilter.value).trim().toLowerCase();
     const values = row.values || {};
+    if (state.editing && state.editing.startsWith(`${row.id}:`)) {
+      return true;
+    }
     if (category && String(values.categoria || '').trim().toLowerCase() !== category) {
       return false;
     }
@@ -174,6 +198,18 @@
       categoryFilter.appendChild(option);
     });
     categoryFilter.value = categories.includes(current) ? current : '';
+  }
+
+  function renderStats() {
+    const withData = state.rows.filter((row) => {
+      const values = row.values || {};
+      return state.columns.some((column) => String(values[column.key] || '').trim() !== '');
+    }).length;
+    rowCountBadge.textContent = `${withData} linha(s) com dados`;
+    viewTitle.textContent = state.activeViewCategory || 'Cotacao Geral';
+    viewTabs.forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.viewCategory === state.activeViewCategory);
+    });
   }
 
   function scheduleSave(input) {
@@ -205,6 +241,7 @@
       if (columnKey === 'categoria') {
         renderCategoryFilter();
       }
+      renderStats();
       applyRowUpdate(rowId);
       setStatus('Sincronizado');
     } catch (error) {
@@ -299,6 +336,7 @@
         body: JSON.stringify({ count, rows, clientId })
       });
       mergeRows(data.rows);
+      renderStats();
       renderTable();
       setStatus('Sincronizado');
     } catch (error) {
@@ -329,6 +367,33 @@
         });
         return values;
       });
+  }
+
+  function visibleRows() {
+    return state.rows.filter((row) => rowMatchesFilters(row));
+  }
+
+  function downloadCsv() {
+    const headers = state.columns.map((column) => column.label);
+    const lines = [headers.map(csvValue).join(';')];
+    visibleRows().forEach((row) => {
+      const values = state.columns.map((column) => row.values?.[column.key] || '');
+      lines.push(values.map(csvValue).join(';'));
+    });
+    const blob = new Blob([`\ufeff${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cotacao-wimifarma-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function csvValue(value) {
+    const text = String(value ?? '');
+    return /[;"\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
   }
 
   function renderRuleColumnOptions() {
@@ -422,6 +487,16 @@
   document.querySelector('#addRowsButton').addEventListener('click', () => addRows(10));
   document.querySelector('#importButton').addEventListener('click', () => importDialog.showModal());
   document.querySelector('#rulesButton').addEventListener('click', () => rulesDialog.showModal());
+  exportCsvButton.addEventListener('click', downloadCsv);
+  viewTabs.forEach((button) => {
+    button.addEventListener('click', () => {
+      state.activeViewCategory = button.dataset.viewCategory || '';
+      categoryFilter.value = '';
+      renderStats();
+      renderTable();
+      emitPresence();
+    });
+  });
   document.querySelector('#confirmImport').addEventListener('click', () => {
     const rows = parseImport(importText.value);
     importDialog.close();
@@ -434,6 +509,8 @@
     emitPresence();
   });
   categoryFilter.addEventListener('change', () => {
+    state.activeViewCategory = categoryFilter.value;
+    renderStats();
     renderTable();
     emitPresence();
   });
@@ -450,6 +527,7 @@
   socket.on('rows:added', (event) => {
     if (event.clientId === clientId) return;
     mergeRows(event.rows || []);
+    renderStats();
     renderTable();
   });
   socket.on('cell:update', (event) => {
@@ -467,6 +545,7 @@
     if (event.columnKey === 'categoria') {
       renderCategoryFilter();
     }
+    renderStats();
     applyRowUpdate(event.rowId);
   });
   socket.on('rules:update', (event) => {

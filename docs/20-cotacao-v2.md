@@ -42,7 +42,7 @@ Rotas:
 Postgres `wimifarma_cotacao`:
 
 - `cotacao_v2_quotes`: cotacoes ativas.
-- `cotacao_v2_columns`: colunas da grade.
+- `cotacao_v2_columns`: colunas da grade, incluindo metadados `options` para detalhes visuais como colunas ocultas, tons de fornecedores e fallback de exibicao.
 - `cotacao_v2_rows`: linhas com UUID, posicao, valores JSONB e versao.
 - `cotacao_v2_events`: eventos gerados por edicoes, linhas e regras.
 - `cotacao_v2_rules`: regras condicionais explicitas.
@@ -75,7 +75,9 @@ MySQL `wimifarma_app`:
 - Postgres foi escolhido para linhas JSONB, eventos e evolucao para conflito por campo.
 - Redis foi escolhido para sessoes e presenca efemera.
 - O Nginx Proxy Manager continua apontando para `wimifarma-com-web:80`; o Apache faz proxy interno para a Cotacao V2.
-- A primeira fatia mantem campos simples e editaveis: EAN, produto, quantidade, categoria, fornecedores, observacao e status.
+- A tela principal segue um visual denso de planilha operacional, parecido com a experiencia anterior aprovada pelo usuario, com topo compacto, abas locais, contador de linhas com dados, presenca ao vivo e exportacao CSV no navegador.
+- A grade inicial usa colunas fixas de farmacia: `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, `Anb`, `Profarma`, `mauro`, `arthur`, `Santa`, `tom`, `cimed` e `QUEM GANHOU`.
+- As colunas legadas `observacao` e `status` podem existir em bancos ja criados, mas ficam ocultas por `options.hidden=true` para nao poluir o layout validado.
 
 ## Validacoes realizadas
 
@@ -92,6 +94,7 @@ Em 2026-05-12 foram validados localmente:
 - `POST /cotacao/api/rules` e `DELETE /cotacao/api/rules/:id` para regra condicional explicita;
 - `POST /cotacao/api/rows` com linhas temporarias de smoke, depois removidas do Postgres;
 - `GET /cotacao/socket.io/socket.io.js`.
+- Em seguida, a interface foi ajustada visualmente e `node --check` passou em `apps/cotacao/src/server.js` e `apps/cotacao/public/app.js`.
 
 ## Riscos ao alterar
 
@@ -105,7 +108,7 @@ Em 2026-05-12 foram validados localmente:
 
 - Criar conflito por campo visivel ao usuario.
 - Criar tela de diagnostico da fila de eventos, presenca e latencia.
-- Criar import/export CSV ou Google Sheets.
+- Criar import/export Google Sheets com IDs estaveis. Exportacao CSV rapida ja existe no navegador, limitada aos dados carregados/filtrados da tela.
 - Criar colunas dinamicas de fornecedores.
 - Criar testes automatizados com duas telas.
 - Criar backup/restore do Postgres.

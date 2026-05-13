@@ -72,6 +72,7 @@ Estado:
 - A rota `/cotacao/` passa pelo Apache em `wimifarma-com-web` e e encaminhada para `wimifarma-cotacao-app:3000`.
 - O login segue usando a tabela MySQL `wf_users`, preservando o acesso existente.
 - A primeira fatia da V2 foi validada com health check, login, bootstrap, save por celula, criacao/remocao de regra condicional explicita e teste das palavras `geral`, `urgente`, `encomenda` e `cotacao`.
+- A interface da V2 ja foi aproximada do visual de planilha operacional, com colunas de fornecedores, presenca no topo, contador de linhas com dados e exportacao CSV rapida no navegador.
 - Os dados oficiais ainda estao no Google Sheets; a V2 inicia como base nova e precisa de import/export controlado.
 - As linhas antigas abaixo descrevem a Cotacao PHP legada e ficam como historico de diagnostico ate a V2 absorver tudo.
 - Existem tabelas `cotacao_*` e `cotacao_sync_estado`.
@@ -100,7 +101,7 @@ Evolucao:
 - Criar diagnostico visual de eventos atrasados, fila WebSocket e conflitos por campo.
 - Criar diagnostico de sync/presenca para operador.
 - Criar teste automatizado com duas telas confirmando edicao simultanea e filtros locais.
-- Criar import/export Sheets ou CSV antes de migrar dados reais.
+- Criar import/export Google Sheets com IDs estaveis antes de migrar dados reais; o CSV atual e apenas uma saida rapida da tela.
 - Criar backup/restore do Postgres `wimifarma_cotacao`.
 
 ### Miauby generativo com skills controladas

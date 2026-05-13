@@ -163,6 +163,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - O login da Cotacao V2 continua validando usuario/senha contra `wf_users` no MySQL `wimifarma_app`.
 - Palavras historicas `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum na categoria. Nao existe gatilho escondido por palavra para cor, prioridade, ordem, filtro ou alerta.
 - Formatacao condicional da Cotacao V2 e explicita, criada/removida pela propria tela em `cotacao_v2_rules`.
+- A tela principal da Cotacao V2 usa visual denso de planilha operacional, com cabecalho compacto, abas locais, contador de linhas com dados, presenca no topo, exportacao CSV no navegador e colunas iniciais `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, `Anb`, `Profarma`, `mauro`, `arthur`, `Santa`, `tom`, `cimed` e `QUEM GANHOU`.
 - Validacoes locais passaram para: health da Cotacao, login `adm`, bootstrap, save por celula dessas quatro palavras criticas, criacao/remocao de regra condicional explicita, importacao temporaria de linhas e limpeza dos dados de smoke.
 - O proximo passo de Cotacao deve ser evoluir a V2 com conflito visual por campo, auditoria de eventos, import/export Sheets e diagnostico operacional, nao continuar remendando a planilha PHP antiga.
 
