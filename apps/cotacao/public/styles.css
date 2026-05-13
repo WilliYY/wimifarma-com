@@ -17,6 +17,17 @@
   box-sizing: border-box;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 html,
 body {
   margin: 0;
@@ -528,7 +539,7 @@ textarea {
 
 .sheet-cell.is-selected::before {
   border: 2px solid rgba(37, 99, 235, 0.48);
-  background: rgba(37, 99, 235, 0.06);
+  background: transparent;
 }
 
 .sheet-cell.is-active-cell::before {
@@ -872,9 +883,9 @@ dialog::backdrop {
 
 .rule-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(118px, 0.75fr) minmax(150px, 1.1fr) 78px auto;
   gap: 10px;
-  align-items: center;
+  align-items: end;
   padding: 10px 12px;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
@@ -884,8 +895,47 @@ dialog::backdrop {
   line-height: 1.35;
 }
 
+.rule-row label {
+  display: grid;
+  gap: 5px;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.rule-row input,
+.rule-row select {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #c9d3e3;
+  border-radius: 7px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.82rem;
+}
+
+.rule-row input[type="color"] {
+  padding: 3px;
+}
+
+.rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .rule-row button {
   min-height: 34px;
+}
+
+.rule-row .rule-save {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.rule-row .rule-delete {
   border-color: #fecdd3;
   background: #fff1f2;
   color: var(--danger);
@@ -1025,9 +1075,11 @@ button svg {
   left: 0;
   z-index: 260;
   display: grid;
-  grid-template-columns: repeat(6, 24px);
+  grid-template-columns: repeat(5, 24px);
   gap: 6px;
   max-width: calc(100vw - 16px);
+  max-height: min(360px, calc(100vh - 16px));
+  overflow: auto;
   padding: 10px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -1147,7 +1199,7 @@ body.is-resizing-column {
 
 .sheet-cell.is-selected::before {
   border-color: rgba(37, 99, 235, 0.5);
-  background: rgba(37, 99, 235, 0.07);
+  background: transparent;
 }
 
 .sheet-cell.is-active-cell::before {
@@ -1218,6 +1270,10 @@ body.is-resizing-column {
   }
 
   .rules-form {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-row {
     grid-template-columns: 1fr;
   }
 

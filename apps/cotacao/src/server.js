@@ -28,6 +28,17 @@ const GOOGLE_SHEETS_SPREADSHEET_ID = env.GOOGLE_SHEETS_SPREADSHEET_ID || '';
 const GOOGLE_SHEETS_RANGE = env.GOOGLE_SHEETS_RANGE || 'Cotacao!A1:Z500';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || '';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE || '';
+const PAINT_SWATCHES = [
+  ['Vermelho forte', '#b91c1c'], ['Vermelho', '#ef4444'], ['Vermelho medio', '#f87171'], ['Vermelho claro', '#fecaca'], ['Vermelho suave', '#fee2e2'],
+  ['Marrom forte', '#78350f'], ['Marrom', '#92400e'], ['Marrom medio', '#b45309'], ['Marrom claro', '#fed7aa'], ['Marrom suave', '#ffedd5'],
+  ['Amarelo forte', '#ca8a04'], ['Amarelo', '#eab308'], ['Amarelo medio', '#fde047'], ['Amarelo claro', '#fef08a'], ['Amarelo suave', '#fef9c3'],
+  ['Verde forte', '#15803d'], ['Verde', '#22c55e'], ['Verde medio', '#86efac'], ['Verde claro', '#bbf7d0'], ['Verde suave', '#dcfce7'],
+  ['Ciano forte', '#0891b2'], ['Ciano', '#06b6d4'], ['Ciano medio', '#67e8f9'], ['Ciano claro', '#a5f3fc'], ['Ciano suave', '#cffafe'],
+  ['Azul forte', '#1d4ed8'], ['Azul', '#3b82f6'], ['Azul medio', '#93c5fd'], ['Azul claro', '#bfdbfe'], ['Azul suave', '#dbeafe'],
+  ['Roxo forte', '#7e22ce'], ['Roxo', '#a855f7'], ['Roxo medio', '#c084fc'], ['Roxo claro', '#ddd6fe'], ['Roxo suave', '#ede9fe'],
+  ['Rosa forte', '#be185d'], ['Rosa', '#ec4899'], ['Rosa medio', '#f9a8d4'], ['Rosa claro', '#fbcfe8'], ['Rosa suave', '#fce7f3'],
+  ['Cinza forte', '#334155'], ['Cinza', '#64748b'], ['Cinza medio', '#94a3b8'], ['Cinza claro', '#cbd5e1'], ['Cinza suave', '#f1f5f9']
+];
 
 const app = express();
 const server = http.createServer(app);
@@ -162,6 +173,22 @@ function e(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function renderPaintSwatches() {
+  return PAINT_SWATCHES
+    .map(([name, color]) => `<button type="button" class="paint-swatch" data-color="${e(color)}" style="--swatch:${e(color)}" title="${e(name)}"></button>`)
+    .join('');
+}
+
+function normalizeRuleOperator(value) {
+  const operator = String(value || 'contains');
+  return ['contains', 'equals', 'starts'].includes(operator) ? operator : 'contains';
+}
+
+function normalizeHexColor(value, fallback = '#fff7ed') {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
 }
 
 function userPublic(user) {
@@ -1302,7 +1329,7 @@ function renderApp(req) {
   <title>Cotacao Wimifarma</title>
   <link rel="icon" href="${BASE_PATH}/favicon.svg">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260511b">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260513c">
 </head>
 <body class="app-page">
   <header class="app-header">
@@ -1342,23 +1369,13 @@ function renderApp(req) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 0 0 0 16h1.4a1.8 1.8 0 0 0 1.2-3.1 1.4 1.4 0 0 1 .9-2.5H17a3 3 0 0 0 3-3A7.4 7.4 0 0 0 12 4Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8.6" cy="10" r="1" fill="currentColor"/><circle cx="11.6" cy="8" r="1" fill="currentColor"/><circle cx="14.8" cy="9.5" r="1" fill="currentColor"/></svg>
         </button>
         <div class="paint-palette" id="paintPalette" hidden>
-          <button type="button" class="paint-swatch" data-color="#bfdbfe" style="--swatch:#bfdbfe" title="Azul forte"></button>
-          <button type="button" class="paint-swatch" data-color="#dbeafe" style="--swatch:#dbeafe" title="Azul claro"></button>
-          <button type="button" class="paint-swatch" data-color="#bbf7d0" style="--swatch:#bbf7d0" title="Verde forte"></button>
-          <button type="button" class="paint-swatch" data-color="#dcfce7" style="--swatch:#dcfce7" title="Verde claro"></button>
-          <button type="button" class="paint-swatch" data-color="#fde68a" style="--swatch:#fde68a" title="Amarelo forte"></button>
-          <button type="button" class="paint-swatch" data-color="#fef3c7" style="--swatch:#fef3c7" title="Amarelo claro"></button>
-          <button type="button" class="paint-swatch" data-color="#fecdd3" style="--swatch:#fecdd3" title="Rosa forte"></button>
-          <button type="button" class="paint-swatch" data-color="#ffe4e6" style="--swatch:#ffe4e6" title="Rosa claro"></button>
-          <button type="button" class="paint-swatch" data-color="#ddd6fe" style="--swatch:#ddd6fe" title="Roxo forte"></button>
-          <button type="button" class="paint-swatch" data-color="#ede9fe" style="--swatch:#ede9fe" title="Roxo claro"></button>
-          <button type="button" class="paint-swatch" data-color="#e2e8f0" style="--swatch:#e2e8f0" title="Cinza forte"></button>
-          <button type="button" class="paint-swatch" data-color="#f8fafc" style="--swatch:#f8fafc" title="Cinza claro"></button>
+          ${renderPaintSwatches()}
         </div>
         <button type="button" class="icon-button" id="eraserButton" title="Borracha" aria-label="Borracha">&#9003;</button>
       </div>
-      <label class="toolbar-field">Busca
-        <input id="searchInput" type="search" placeholder="EAN, produto, categoria...">
+      <label class="toolbar-field toolbar-search">
+        <span class="sr-only">Busca</span>
+        <input id="searchInput" type="search" placeholder="EAN, produto, categoria..." aria-label="Busca">
       </label>
     </section>
 
@@ -1442,7 +1459,7 @@ function renderApp(req) {
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
   <script src="${BASE_PATH}/app.js"></script>
-  <script src="/miauw/widget.js?v=20260511b" defer></script>
+  <script src="/miauw/widget.js?v=20260513c" defer></script>
 </body>
 </html>`;
 }
@@ -2001,7 +2018,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
 app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
   const columnKey = String(req.body.columnKey || 'categoria');
-  const allowed = new Set(sheet.columns.map((column) => column.key));
+  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
   if (!allowed.has(columnKey)) {
     return res.status(422).json({ ok: false, error: 'Coluna invalida.' });
   }
@@ -2017,9 +2034,9 @@ app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async 
       sheet.quote.id,
       `Regra ${value}`,
       columnKey,
-      String(req.body.operator || 'contains'),
+      normalizeRuleOperator(req.body.operator),
       value,
-      String(req.body.background || '#fff7ed'),
+      normalizeHexColor(req.body.background),
       '#111827'
     ]
   );
@@ -2031,6 +2048,55 @@ app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async 
     clientId: String(req.body.clientId || '')
   });
   io.to(`quote:${sheet.quote.id}`).emit('rules:update', { rules: [result.rows[0]], mode: 'created', eventId: Number(event.id) });
+  res.json({ ok: true, rule: result.rows[0], eventId: Number(event.id) });
+}));
+
+app.patch(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const sheet = await loadSheet();
+  const id = String(req.params.id || '');
+  const columnKey = String(req.body.columnKey || 'categoria');
+  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
+  if (!allowed.has(columnKey)) {
+    return res.status(422).json({ ok: false, error: 'Coluna invalida.' });
+  }
+  const value = String(req.body.value || '').trim();
+  if (!value) {
+    return res.status(422).json({ ok: false, error: 'Informe o texto da regra.' });
+  }
+  const result = await pgPool.query(
+    `UPDATE cotacao_v2_rules
+     SET name = $3,
+         target = 'row',
+         column_key = $4,
+         operator = $5,
+         value = $6,
+         background = $7,
+         color = $8,
+         enabled = true
+     WHERE id = $1 AND quote_id = $2
+     RETURNING *`,
+    [
+      id,
+      sheet.quote.id,
+      `Regra ${value}`,
+      columnKey,
+      normalizeRuleOperator(req.body.operator),
+      value,
+      normalizeHexColor(req.body.background),
+      '#111827'
+    ]
+  );
+  if (!result.rows[0]) {
+    return res.status(404).json({ ok: false, error: 'Regra nao encontrada.' });
+  }
+  const event = await appendEvent({
+    quoteId: sheet.quote.id,
+    type: 'rule_updated',
+    payload: { rule: result.rows[0] },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('rules:update', { rules: [result.rows[0]], mode: 'updated', eventId: Number(event.id) });
   res.json({ ok: true, rule: result.rows[0], eventId: Number(event.id) });
 }));
 

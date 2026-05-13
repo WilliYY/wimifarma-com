@@ -23,6 +23,7 @@ Miauby ja possui:
 - contador de alertas por `miauw_intelligence_active_alert_count()`, evitando carregar listas completas apenas para badges/status.
 - busca de conhecimento em `miauw_knowledge_for()` com pre-filtro por termos relevantes antes do ranking, para manter o contexto generativo mais rapido conforme a memoria crescer.
 - alerta de encomenda da Cotacao limitado a itens com mais de 1 dia sem baixa/pedido, com comentario operacional curto enviado aos baloes do widget em todos os modulos.
+- widget com chamadas `Accept: application/json` e parser tolerante para recuperar payload JSON quando a resposta vier com aviso/ruido externo antes ou depois do objeto.
 
 ## Arquivos, tabelas e servicos envolvidos
 

@@ -40,6 +40,11 @@
   const FIXED_KEYS = ['ean', 'produto', 'quantidade', 'categoria'];
   const WINNER_KEY = 'quem_ganhou';
   const FILTERABLE_KEYS = ['categoria', WINNER_KEY];
+  const RULE_OPERATORS = [
+    ['contains', 'Contem'],
+    ['equals', 'Igual'],
+    ['starts', 'Comeca com']
+  ];
   const ANIMALS = [
     'Capivara', 'Tatu', 'Arara', 'Lhama', 'Onca', 'Tamandua', 'Coruja',
     'Raposa', 'Baleia', 'Panda', 'Lontra', 'Falcao', 'Pinguim', 'Gato'
@@ -75,6 +80,7 @@
     context: null,
     paintColor: null,
     eraser: false,
+    headerSelectTimer: null,
     history: [],
     future: [],
     conflicts: new Map()
@@ -221,6 +227,51 @@
     if (operator === 'equals') return 'igual a';
     if (operator === 'starts') return 'comeca com';
     return 'contem';
+  }
+
+  function ruleColumnOptions(selectedKey = 'categoria') {
+    return editableColumns()
+      .map((column) => `<option value="${esc(column.key)}" ${column.key === selectedKey ? 'selected' : ''}>${esc(column.label)}</option>`)
+      .join('');
+  }
+
+  function ruleOperatorOptions(selectedOperator = 'contains') {
+    return RULE_OPERATORS
+      .map(([value, label]) => `<option value="${esc(value)}" ${value === selectedOperator ? 'selected' : ''}>${esc(label)}</option>`)
+      .join('');
+  }
+
+  function readRuleRow(row) {
+    return {
+      columnKey: row.querySelector('[data-rule-field="columnKey"]')?.value || 'categoria',
+      operator: row.querySelector('[data-rule-field="operator"]')?.value || 'contains',
+      value: row.querySelector('[data-rule-field="value"]')?.value || '',
+      background: row.querySelector('[data-rule-field="background"]')?.value || '#fff7ed',
+      color: '#111827',
+      clientId
+    };
+  }
+
+  function winnerFilterOptions() {
+    const counts = new Map();
+    state.rows.forEach((row) => {
+      const label = computeWinner(row).label;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+    return Array.from(counts, ([value, count]) => ({ value, count }))
+      .sort((a, b) => a.value.localeCompare(b.value));
+  }
+
+  function filterOptions(columnKey) {
+    if (columnKey === WINNER_KEY) return winnerFilterOptions();
+    const column = colByKey(columnKey);
+    const counts = new Map();
+    state.rows.forEach((row) => {
+      const value = valueOf(row, column);
+      counts.set(value, (counts.get(value) || 0) + 1);
+    });
+    return Array.from(counts, ([value, count]) => ({ value, count }))
+      .sort((a, b) => String(a.value).localeCompare(String(b.value)));
   }
 
   function parsePrice(value) {
@@ -627,14 +678,32 @@
   }
 
   function renderRules() {
-    ruleColumn.innerHTML = editableColumns()
-      .map((column) => `<option value="${esc(column.key)}">${esc(column.label)}</option>`)
-      .join('');
+    ruleColumn.innerHTML = ruleColumnOptions(ruleColumn.value || 'categoria');
+    ruleOperator.innerHTML = ruleOperatorOptions(ruleOperator.value || 'contains');
     rulesList.innerHTML = state.rules.length
-      ? state.rules.map((rule) => `<div class="rule-row">
-          <span><strong>${esc(columnLabel(rule.column_key || rule.columnKey))}</strong> ${esc(operatorLabel(rule.operator))} "${esc(rule.value)}"</span>
-          <button type="button" data-rule-delete="${esc(rule.id)}">Apagar</button>
-        </div>`).join('')
+      ? state.rules.map((rule) => {
+        const columnKey = rule.column_key || rule.columnKey || 'categoria';
+        const operator = rule.operator || 'contains';
+        const background = rule.background || '#fff7ed';
+        return `<div class="rule-row" data-rule-id="${esc(rule.id)}">
+          <label>Coluna
+            <select data-rule-field="columnKey">${ruleColumnOptions(columnKey)}</select>
+          </label>
+          <label>Operador
+            <select data-rule-field="operator">${ruleOperatorOptions(operator)}</select>
+          </label>
+          <label>Valor
+            <input data-rule-field="value" type="text" value="${esc(rule.value || '')}">
+          </label>
+          <label>Fundo
+            <input data-rule-field="background" type="color" value="${esc(background)}">
+          </label>
+          <div class="rule-actions">
+            <button type="button" class="rule-save" data-rule-save="${esc(rule.id)}">Salvar</button>
+            <button type="button" class="rule-delete" data-rule-delete="${esc(rule.id)}">Apagar</button>
+          </div>
+        </div>`;
+      }).join('')
       : '<p class="empty-note">Nenhuma regra criada.</p>';
   }
 
@@ -1181,6 +1250,7 @@
   }
 
   async function beginColumnRename(columnKey) {
+    clearHeaderSelectTimer();
     const column = colByKey(columnKey);
     if (!isDistributorColumn(column)) return;
     const header = table.querySelector(`th[data-column-key="${columnKey}"]`);
@@ -1191,6 +1261,9 @@
     editor.value = column.label;
     editor.setAttribute('aria-label', `Renomear ${column.label}`);
     label.replaceWith(editor);
+    ['mousedown', 'click', 'dblclick'].forEach((name) => {
+      editor.addEventListener(name, (event) => event.stopPropagation());
+    });
     editor.focus();
     editor.select();
 
@@ -1296,6 +1369,28 @@
     filterMenu.hidden = true;
   }
 
+  function clearPaintMode() {
+    state.paintColor = null;
+    state.eraser = false;
+    eraserButton.classList.remove('is-active');
+    document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.remove('is-active'));
+  }
+
+  function clearHeaderSelectTimer() {
+    if (!state.headerSelectTimer) return;
+    window.clearTimeout(state.headerSelectTimer);
+    state.headerSelectTimer = null;
+  }
+
+  function scheduleColumnSelection(columnKey) {
+    clearHeaderSelectTimer();
+    state.headerSelectTimer = window.setTimeout(() => {
+      state.headerSelectTimer = null;
+      if (state.editing) commitEdit().catch(console.error);
+      selectColumn(columnKey);
+    }, 260);
+  }
+
   async function handleContextAction(action) {
     const context = state.context || {};
     const rowId = context.rowId || state.activeCell?.rowId;
@@ -1340,9 +1435,8 @@
   }
 
   function openFilter(columnKey, anchor) {
-    const values = Array.from(new Set(state.rows.map((row) => (
-      columnKey === WINNER_KEY ? computeWinner(row).label : valueOf(row, colByKey(columnKey))
-    )))).sort((a, b) => String(a).localeCompare(String(b)));
+    const options = filterOptions(columnKey);
+    const values = options.map((option) => option.value);
     const current = state.filters[columnKey] || new Set(values);
     filterMenu.innerHTML = `
       <strong>Filtro: ${esc(colByKey(columnKey)?.label || columnKey)}</strong>
@@ -1351,7 +1445,11 @@
         <button type="button" data-filter-select="none">Selecionar nada</button>
       </div>
       <div class="filter-options">
-        ${values.map((value) => `<label><input type="checkbox" value="${esc(value)}" ${current.has(value) ? 'checked' : ''}> ${esc(value || '(vazio)')}</label>`).join('')}
+        ${options.map((option) => {
+          const label = option.value || '(vazio)';
+          const text = columnKey === WINNER_KEY ? `${label} (${option.count})` : label;
+          return `<label><input type="checkbox" value="${esc(option.value)}" ${current.has(option.value) ? 'checked' : ''}> ${esc(text)}</label>`;
+        }).join('')}
       </div>
       <div class="filter-actions">
         <button type="button" data-filter-apply="${esc(columnKey)}">Aplicar</button>
@@ -1415,15 +1513,17 @@
       const header = event.target.closest('th[data-column-key]');
       if (header && event.button === 0 && !(state.paintColor || state.eraser)) {
         event.preventDefault();
-        if (state.editing) commitEdit().catch(console.error);
-        selectColumn(header.dataset.columnKey);
+        scheduleColumnSelection(header.dataset.columnKey);
         return;
       }
       if (header && (state.paintColor || state.eraser)) {
         event.preventDefault();
         const columnKey = header.dataset.columnKey;
-        if (state.eraser) await eraseColumn(columnKey);
-        else await colorColumn(columnKey, state.paintColor);
+        const erase = state.eraser;
+        const color = state.paintColor;
+        clearPaintMode();
+        if (erase) await eraseColumn(columnKey);
+        else await colorColumn(columnKey, color);
         return;
       }
       const rowHeader = event.target.closest('.row-index');
@@ -1436,8 +1536,11 @@
       if (rowHeader && (state.paintColor || state.eraser)) {
         event.preventDefault();
         const rowId = rowHeader.dataset.rowId;
-        if (state.eraser) await eraseRow(rowId);
-        else await colorRow(rowId, state.paintColor);
+        const erase = state.eraser;
+        const color = state.paintColor;
+        clearPaintMode();
+        if (erase) await eraseRow(rowId);
+        else await colorRow(rowId, color);
         return;
       }
       const cell = event.target.closest('td.sheet-cell');
@@ -1445,8 +1548,11 @@
       event.preventDefault();
       if (state.paintColor || state.eraser) {
         setSelection(cell.dataset.rowId, cell.dataset.columnKey, event.shiftKey);
-        if (state.eraser) await eraseSelection();
-        else await applyColorToSelection(state.paintColor);
+        const erase = state.eraser;
+        const color = state.paintColor;
+        clearPaintMode();
+        if (erase) await eraseSelection();
+        else await applyColorToSelection(color);
         return;
       }
       if (state.editing) commitEdit().catch(console.error);
@@ -1458,6 +1564,8 @@
       const header = event.target.closest('th[data-column-key]');
       if (header) {
         event.preventDefault();
+        event.stopPropagation();
+        clearHeaderSelectTimer();
         beginColumnRename(header.dataset.columnKey).catch(console.error);
         return;
       }
@@ -1673,19 +1781,29 @@
         eraserButton.classList.remove('is-active');
         document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.toggle('is-active', item === button));
         if (selectedCells().length) {
-          applyColorToSelection(state.paintColor)
-            .then(() => { paintPalette.hidden = true; })
+          const color = state.paintColor;
+          clearPaintMode();
+          applyColorToSelection(color)
+            .then(() => {
+              paintPalette.hidden = true;
+            })
             .catch(console.error);
+        } else {
+          clearPaintMode();
         }
       });
     });
 
     eraserButton.addEventListener('click', () => {
-      state.eraser = !state.eraser;
-      if (state.eraser) state.paintColor = null;
-      eraserButton.classList.toggle('is-active', state.eraser);
+      state.eraser = true;
+      state.paintColor = null;
+      eraserButton.classList.add('is-active');
       document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.remove('is-active'));
-      if (state.eraser && selectedCells().length) eraseSelection().catch(console.error);
+      if (selectedCells().length) {
+        clearPaintMode();
+        eraseSelection()
+          .catch(console.error);
+      }
     });
 
     undoButton.addEventListener('click', () => undo().catch(console.error));
@@ -1714,13 +1832,25 @@
       renderTable();
     });
     rulesList.addEventListener('click', async (event) => {
-      const button = event.target.closest('[data-rule-delete]');
-      if (!button) return;
-      await api(`/api/rules/${encodeURIComponent(button.dataset.ruleDelete)}`, {
+      const saveButton = event.target.closest('[data-rule-save]');
+      if (saveButton) {
+        const row = saveButton.closest('.rule-row');
+        const data = await api(`/api/rules/${encodeURIComponent(saveButton.dataset.ruleSave)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(readRuleRow(row))
+        });
+        state.rules = state.rules.map((rule) => (String(rule.id) === String(data.rule.id) ? data.rule : rule));
+        renderRules();
+        renderTable();
+        return;
+      }
+      const deleteButton = event.target.closest('[data-rule-delete]');
+      if (!deleteButton) return;
+      await api(`/api/rules/${encodeURIComponent(deleteButton.dataset.ruleDelete)}`, {
         method: 'DELETE',
         body: JSON.stringify({ clientId })
       });
-      state.rules = state.rules.filter((rule) => rule.id !== button.dataset.ruleDelete);
+      state.rules = state.rules.filter((rule) => String(rule.id) !== String(deleteButton.dataset.ruleDelete));
       renderRules();
       renderTable();
     });

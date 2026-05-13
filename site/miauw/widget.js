@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260506a';
+    link.href = '/miauw/widget.css?v=20260513c';
     document.head.appendChild(link);
   }
 
@@ -592,6 +592,7 @@
       const response = await fetch('/miauw/widget-alerts.php', {
         credentials: 'same-origin',
         cache: 'no-store',
+        headers: { Accept: 'application/json' },
       });
       const data = await readJsonResponse(response);
       state.csrf = data.csrf || state.csrf;
@@ -631,7 +632,7 @@
         body,
         credentials: 'same-origin',
         cache: 'no-store',
-        headers: { 'X-CSRF-Token': state.csrf },
+        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf },
       });
       const data = await readJsonResponse(response);
       state.csrf = data.csrf || state.csrf;
@@ -702,12 +703,35 @@
   };
 
   const readJsonResponse = async (response) => {
-    try {
-      return await response.json();
-    } catch (error) {
+    const raw = await response.text();
+    if (!raw.trim()) {
       return {
         ok: false,
-        message: 'Miauby recebeu uma resposta fora do formato. Atualize a pagina e tente de novo.',
+        status: response.status,
+        message: 'Miauby recebeu uma resposta vazia. Atualize a pagina e tente de novo.',
+      };
+    }
+
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
+      if (start >= 0 && end > start) {
+        try {
+          return JSON.parse(raw.slice(start, end + 1));
+        } catch (innerError) {
+          // Continua para a mensagem padrao abaixo.
+        }
+      }
+
+      return {
+        ok: false,
+        status: response.status,
+        auth: response.status === 401 ? false : undefined,
+        message: response.status >= 500
+          ? 'Miauby recebeu erro do servidor. Atualize a pagina e tente de novo.'
+          : 'Miauby recebeu uma resposta fora do formato. Atualize a pagina e tente de novo.',
       };
     }
   };
@@ -716,6 +740,7 @@
     const response = await fetch('/miauw/widget-status.php', {
       credentials: 'same-origin',
       cache: 'no-store',
+      headers: { Accept: 'application/json' },
     });
     const data = await readJsonResponse(response);
     state.csrf = data.csrf || state.csrf;
@@ -767,7 +792,7 @@
       body,
       credentials: 'same-origin',
       cache: 'no-store',
-      headers: { 'X-CSRF-Token': state.csrf },
+      headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf },
     });
     const data = await readJsonResponse(response);
     state.csrf = data.csrf || state.csrf;
@@ -842,7 +867,7 @@
         method: 'POST',
         body,
         credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': state.csrf },
+        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf },
       });
       const data = await readJsonResponse(response);
       await typingDelay;

@@ -187,10 +187,13 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `Ctrl+C` copia a selecao como matriz TSV e `Ctrl+V` cola matriz normalizando texto e numeros/precos para o padrao da Cotacao.
 - `Ctrl+Z`/desfazer tambem cobre filtro e busca local, alem de edicoes de celula, colagens, estilos e colunas.
 - A formatacao condicional explicita pinta somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para preservar legibilidade.
-- A paleta de cores abre por botao no topo ou por `Cores` no menu de contexto, sempre flutuando acima da grade para nao ficar escondida atras das celulas.
+- Regras de formatacao condicional podem ser editadas e apagadas no modal da propria Cotacao V2.
+- A paleta de cores abre por botao no topo ou por `Cores` no menu de contexto, sempre flutuando acima da grade para nao ficar escondida atras das celulas, com tons do mais forte ao mais claro.
+- Aplicar cor ou borracha e uma acao unica: apos salvar o estilo da selecao atual, a tela desarma o modo para evitar pintar a proxima celula sem querer.
+- O filtro de `Ganhador` mostra contagem por resultado, como `Anb (4)`.
 - Quando uma edicao faria a linha sair do filtro/busca atual, a tela mantem a linha visivel ate o filtro ou a busca mudar, evitando a sensacao de que a linha sumiu durante a digitacao.
 - A Cotacao V2 mantem heartbeat de presenca e recarregamento leve apos inatividade/reconexao da aba para continuar sincronizando sem depender de recarregar manualmente.
-- O widget do Miauby voltou a ser carregado na Cotacao V2, e a tela de login da Cotacao foi compactada para ocupar menos viewport.
+- O widget do Miauby voltou a ser carregado na Cotacao V2, tolera respostas JSON com ruido externo e a tela de login da Cotacao foi compactada para ocupar menos viewport.
 - Falta configurar credenciais reais do Google Sheets no `.env` do VPS antes de usar import/export em producao.
 - Acoes destrutivas amplas da Cotacao V2, como restore e import, ainda precisam de cuidado operacional antes de uso amplo pela equipe.
 - O `fill handle` da selecao e apenas visual por enquanto; arrastar para preencher como no Google Sheets ainda precisa ser implementado se virar necessidade operacional.
