@@ -93,6 +93,7 @@ Estado:
 - Em 2026-05-12, o filtro de categoria/cor/vencedor passou a ser local-first por padrao; `sync_filter` ficou como compatibilidade/diagnostico e filtros compartilhados antigos sao sanitizados para nao reativar `geral`, `urgente`, `encomenda` ou `cotacao`.
 - Ainda falta endurecer permissoes para acoes destrutivas/estruturais da V2, como import, restore, apagar coluna e reordenar distribuidoras.
 - Ainda falta transformar os testes de duas telas, conflito por campo e import/export em testes permanentes de pipeline.
+- Cuidados atuais para continuidade: Google Sheets precisa de credenciais reais no `.env` do VPS antes de uso em producao; restore/import/delete de coluna sao acoes fortes e devem ganhar permissao por perfil antes de liberar geral; o `fill handle` da selecao e visual, mas arrastar para preencher como no Sheets ainda pode evoluir.
 
 Risco:
 

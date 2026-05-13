@@ -184,6 +184,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Conflito visual por campo existe para edicao remota enquanto uma celula local esta em edicao; ainda precisa ser validado com usuarios reais e virar teste automatizado permanente.
 - Falta configurar credenciais reais do Google Sheets no `.env` do VPS antes de usar import/export em producao.
 - Acoes destrutivas/estruturais da Cotacao V2, como restore, import e apagar coluna, ainda precisam de permissao por perfil antes de uso amplo pela equipe.
+- O `fill handle` da selecao e apenas visual por enquanto; arrastar para preencher como no Google Sheets ainda precisa ser implementado se virar necessidade operacional.
+- Pendencias/cuidados atuais para futuros chats: Google Sheets precisa de credenciais reais no `.env` do VPS; restore/import/delete de coluna sao acoes fortes e devem ganhar permissao por perfil antes de liberar geral; o `fill handle` existe visualmente, mas o drag-fill real ainda pode evoluir.
 
 ## Estado validado em 2026-05-11
 
