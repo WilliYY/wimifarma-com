@@ -14,11 +14,19 @@ Local Windows:
 
 VPS Ubuntu/Oracle:
 
-- Pasta observada: `/home/ubuntu/projetos/wimifarma-com`
+- Pasta oficial do projeto: `/home/ubuntu/projetos/wimifarma-com`
 - Acesso por terminal: PuTTY
 - Arquivos: WinSCP
 - Proxy: Nginx Proxy Manager
 - IP publico usado no DNS: `146.181.58.208`
+
+Higiene de pastas no VPS:
+
+- A pasta oficial e unica para deploy deve ser `/home/ubuntu/projetos/wimifarma-com`.
+- Copias criadas durante migracao, como `wimifarma-com-git`, `wimifarma-com-code-*` ou `wimifarma-com-runti*`, devem ser tratadas como temporarias ate auditoria.
+- Antes de mover qualquer pasta, conferir se ela nao e a origem montada nos containers atuais, se nao guarda `.env`, `mysql/`, `cotacao-data/`, backups ou `config.local.php` unicos.
+- Pastas paradas devem ser movidas para uma quarentena de arquivo, como `/home/ubuntu/projetos/_arquivados-wimifarma/AAAA-MM-DD/`, e nao apagadas diretamente.
+- Depois da organizacao, o WinSCP deve mostrar a operacao ativa concentrada em `wimifarma-com`, com copias antigas guardadas dentro de `_arquivados-wimifarma`.
 
 ## Arquivos e servicos envolvidos
 
@@ -71,6 +79,7 @@ VPS Ubuntu/Oracle:
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter o proxy Apache de `/cotacao/` para `wimifarma-cotacao-app:3000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter `.env` local em cada ambiente.
+- Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
 - Para backup/restore da Cotacao V2, manter `COTACAO_BACKUP_DIR=/app/backups` e o volume `./cotacao-data/backups:/app/backups`.
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
@@ -96,6 +105,8 @@ VPS Ubuntu/Oracle:
 ## Riscos ao alterar
 
 - Fazer `git clone` por cima da pasta atual pode apagar volume/dados locais.
+- Mover ou apagar uma pasta que ainda esteja montada por container ativo pode tirar o site do ar. Conferir mounts com `docker inspect` antes de arquivar.
+- Arquivar uma pasta sem preservar `.env`, `mysql/`, `cotacao-data/` ou `config.local.php` pode perder configuracao ou dados locais unicos.
 - Trocar nomes de container quebra proxy.
 - Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
 - Trocar DNS antes do app estar saudavel derruba o site.
@@ -114,7 +125,7 @@ VPS Ubuntu/Oracle:
 
 ## Pendencias
 
-- Decidir e executar migracao segura da pasta do VPS para Git.
+- Consolidar o VPS para operar somente em `/home/ubuntu/projetos/wimifarma-com` e arquivar copias antigas depois de auditoria de mounts/dados.
 - Confirmar propagacao DNS definitiva nos principais resolvedores.
 - Validar certificado Let's Encrypt para `wimifarma.com` e `www.wimifarma.com` apos cada mudanca de proxy.
 - Validar se o HTML publico gera assets com `https://`.

@@ -971,3 +971,29 @@ Riscos/cuidados:
 - `/cotacao/` nao tem mais fallback PHP; se falhar, investigar V2, proxy Apache, Postgres, Redis ou login MySQL.
 - Nao recriar shims da Cotacao antiga na raiz do `site/`.
 - Nao apagar `cotacao-data/`, pois ali ficam os dados vivos da Cotacao V2.
+
+## 2026-05-14 - Pasta oficial unica no VPS
+
+Decisao:
+
+- Consolidar a operacao do VPS em `/home/ubuntu/projetos/wimifarma-com`.
+- Tratar pastas parecidas, como `wimifarma-com-git`, `wimifarma-com-code-*` e `wimifarma-com-runti*`, como copias temporarias ate auditoria.
+- Arquivar copias paradas em `/home/ubuntu/projetos/_arquivados-wimifarma/AAAA-MM-DD/`, sem apagar direto.
+
+Motivo:
+
+- O WinSCP estava mostrando varias pastas `wimifarma-com*` na raiz de `/home/ubuntu/projetos`, criando risco de editar/deployar a copia errada.
+- A operacao diaria precisa de uma pasta clara e previsivel.
+
+Impacto:
+
+- `AGENTS.md`
+- `README.md`
+- `docs/05-comandos.md`
+- `docs/09-deploy-e-ambiente.md`
+
+Riscos/cuidados:
+
+- Antes de mover uma pasta, confirmar com `docker inspect` se ela nao esta montada por containers ativos.
+- Preservar `.env`, `mysql/`, `cotacao-data/`, backups e `config.local.php` unicos.
+- A quarentena serve para reduzir poluicao visual, nao como autorizacao para apagar dados sem revisao.

@@ -219,6 +219,8 @@ Pasta observada no VPS:
 /home/ubuntu/projetos/wimifarma-com
 ```
 
+Essa deve ser a pasta oficial unica de deploy. Copias temporarias criadas durante a migracao, como `wimifarma-com-git`, `wimifarma-com-code-*` ou `wimifarma-com-runti*`, devem ser auditadas pelos mounts dos containers e arquivadas em `_arquivados-wimifarma/` antes de qualquer exclusao.
+
 Quando o VPS estiver usando Git para este projeto, o fluxo padrao sera:
 
 ```bash

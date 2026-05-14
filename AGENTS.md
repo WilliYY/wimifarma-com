@@ -48,7 +48,8 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - O usuario acessa o VPS por PuTTY e os arquivos por WinSCP.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
 - O projeto local fica em `C:\Projetos\wimifarma-com`.
-- No VPS, a pasta observada e `/home/ubuntu/projetos/wimifarma-com`.
+- No VPS, a pasta oficial do projeto e `/home/ubuntu/projetos/wimifarma-com`.
+- Pastas auxiliares antigas no VPS, como clones temporarios `wimifarma-com-git`, copias `wimifarma-com-code-*` ou runtimes `wimifarma-com-runti*`, nao devem ficar misturadas na raiz de `/home/ubuntu/projetos`. Depois de confirmar que nao estao servindo containers nem guardam dados unicos, mover para uma pasta de arquivo/quarentena, por exemplo `/home/ubuntu/projetos/_arquivados-wimifarma/AAAA-MM-DD/`, preservando os dados em vez de apagar direto.
 - Backups/dumps antigos foram movidos para fora do projeto local em `C:\Projetos\wimifarma-com-backups-local-20260510`.
 - Trate o repositorio como publico enquanto nao houver decisao diferente; nao exponha segredos em commits.
 

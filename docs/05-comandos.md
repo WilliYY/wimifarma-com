@@ -88,6 +88,33 @@ docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-cotacao-app
 ```
 
+## VPS - auditar e organizar pastas do projeto
+
+Use quando o WinSCP mostrar varias pastas parecidas com `wimifarma-com`. A auditoria primeiro identifica qual pasta esta ativa nos containers; depois move copias paradas para quarentena, sem apagar dados.
+
+```bash
+cd /home/ubuntu/projetos
+pwd
+find . -maxdepth 1 -type d -name 'wimifarma-com*' -printf '%f\n' | sort
+du -sh wimifarma-com* 2>/dev/null || true
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+docker inspect wimifarma-com-web --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
+docker inspect wimifarma-cotacao-app --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
+```
+
+Se os mounts mostrarem que a pasta ativa correta ja e `/home/ubuntu/projetos/wimifarma-com`, arquive as copias antigas com cuidado:
+
+```bash
+cd /home/ubuntu/projetos
+mkdir -p _arquivados-wimifarma/$(date +%F)
+mv -n wimifarma-com-git _arquivados-wimifarma/$(date +%F)/ 2>/dev/null || true
+mv -n wimifarma-com-code-* _arquivados-wimifarma/$(date +%F)/ 2>/dev/null || true
+mv -n wimifarma-com-runti* _arquivados-wimifarma/$(date +%F)/ 2>/dev/null || true
+find . -maxdepth 2 -type d -name 'wimifarma-com*' -printf '%p\n' | sort
+```
+
+Nao mover `wimifarma-com` se algum `docker inspect` apontar para ela. Nao apagar a quarentena sem backup e confirmacao.
+
 ## VPS - diagnosticar home publica
 
 Use quando o dominio ainda mostrar a home antiga ou quando `https://wimifarma.com/home.php` retornar 404:
