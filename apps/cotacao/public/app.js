@@ -80,6 +80,8 @@
     dragging: false,
     resizing: null,
     fillDragging: null,
+    fillPreviewRange: null,
+    fillPreviewCell: null,
     headerDragging: null,
     renamingColumn: null,
     connectedOnce: false,
@@ -652,8 +654,8 @@
   }
 
   function updateSelectionClasses() {
-    table.querySelectorAll('.is-selected, .is-active-cell, .is-selected-header, .is-selected-row').forEach((node) => {
-      node.classList.remove('is-selected', 'is-active-cell', 'is-selected-header', 'is-selected-row');
+    table.querySelectorAll('.is-selected, .is-active-cell, .is-selected-header, .is-selected-row, .is-fill-preview').forEach((node) => {
+      node.classList.remove('is-selected', 'is-active-cell', 'is-selected-header', 'is-selected-row', 'is-fill-preview');
     });
     table.querySelectorAll('.fill-handle').forEach((node) => node.remove());
     selectedCells({ includeComputed: true }).forEach((cell) => {
@@ -688,6 +690,44 @@
         active.appendChild(handle);
       }
     }
+    updateFillPreviewClasses();
+  }
+
+  function clearFillPreview() {
+    state.fillPreviewRange = null;
+    state.fillPreviewCell = null;
+    table.querySelectorAll('.is-fill-preview').forEach((node) => node.classList.remove('is-fill-preview'));
+  }
+
+  function updateFillPreviewClasses() {
+    table.querySelectorAll('.is-fill-preview').forEach((node) => node.classList.remove('is-fill-preview'));
+    const range = state.fillPreviewRange;
+    if (!range) return;
+    const rows = gridRows();
+    for (let rowIndex = range.startRow; rowIndex <= range.endRow; rowIndex += 1) {
+      const row = rows[rowIndex];
+      if (!row) continue;
+      for (let colIndex = range.startCol; colIndex <= range.endCol; colIndex += 1) {
+        const column = state.columns[colIndex];
+        if (!column) continue;
+        const td = table.querySelector(`[data-row-id="${row.id}"][data-column-key="${column.key}"]`);
+        if (td) td.classList.add('is-fill-preview');
+      }
+    }
+  }
+
+  function updateFillPreview(targetCell) {
+    const nextRange = fillTargetRange(targetCell);
+    const previous = state.fillPreviewRange;
+    state.fillPreviewCell = nextRange ? targetCell : null;
+    const sameRange = previous && nextRange
+      && previous.startRow === nextRange.startRow
+      && previous.endRow === nextRange.endRow
+      && previous.startCol === nextRange.startCol
+      && previous.endCol === nextRange.endCol;
+    if (sameRange) return;
+    state.fillPreviewRange = nextRange;
+    updateFillPreviewClasses();
   }
 
   function markConflictCell(rowId, columnKey) {
@@ -1763,6 +1803,7 @@
         event.stopPropagation();
         if (state.editing) await commitEdit();
         state.fillDragging = true;
+        clearFillPreview();
         document.body.classList.add('is-fill-dragging');
         return;
       }
@@ -1882,6 +1923,11 @@
     }, true);
 
     document.addEventListener('mousemove', (event) => {
+      if (state.fillDragging) {
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('td.sheet-cell');
+        updateFillPreview(target ? { rowId: target.dataset.rowId, columnKey: target.dataset.columnKey } : null);
+        return;
+      }
       if (!state.resizing) return;
       const width = state.resizing.startWidth + event.clientX - state.resizing.startX;
       applyColumnWidth(state.resizing.columnKey, width);
@@ -1899,9 +1945,11 @@
         state.fillDragging = null;
         document.body.classList.remove('is-fill-dragging');
         const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('td.sheet-cell');
-        if (target) {
-          applyFillHandle({ rowId: target.dataset.rowId, columnKey: target.dataset.columnKey }).catch(console.error);
-        }
+        const targetCell = target
+          ? { rowId: target.dataset.rowId, columnKey: target.dataset.columnKey }
+          : state.fillPreviewCell;
+        clearFillPreview();
+        if (targetCell) applyFillHandle(targetCell).catch(console.error);
       }
       state.dragging = false;
       state.headerDragging = null;
