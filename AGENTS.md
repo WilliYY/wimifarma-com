@@ -219,7 +219,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `docker-compose.yml` nao monta mais arquivos de `site/cotacao` no container `wimifarma-cotacao-app`; a V2 e publicada a partir de `apps/cotacao` como fonte oficial unica de `/cotacao/`.
 - A partir desta limpeza, `/cotacao/` nao tem fallback PHP legado. Se a rota falhar, diagnosticar o proxy Apache/Node, `wimifarma-cotacao-app`, Postgres e Redis.
 - A Etapa 1 de seguranca/performance da Cotacao V2 adicionou apenas indices aditivos no Postgres para o snapshot atual e ampliou `/cotacao/api/diagnostics` com blocos `safety` e `performance`.
-- `/cotacao/api/bootstrap` continua sendo o fallback completo e confiavel enquanto qualquer sync incremental/delta futuro nao estiver ativo e validado.
+- `/cotacao/api/bootstrap` continua sendo o fallback completo e confiavel durante a evolucao do sync incremental/delta.
+- A Etapa 2 adicionou `GET /cotacao/api/events?after=<eventId>` e passou o refresh automatico da Cotacao para eventos incrementais. O bootstrap continua sendo fallback quando o delta pede `requiresSnapshot`, como em import, restore, mudanca estrutural de coluna, cursor invalido ou excesso de eventos.
 
 ## Estado validado em 2026-05-11
 

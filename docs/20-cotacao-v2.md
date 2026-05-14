@@ -35,6 +35,7 @@ Rotas:
 - `POST /cotacao/login.php`
 - `GET /cotacao/`
 - `GET /cotacao/api/bootstrap`
+- `GET /cotacao/api/events?after=<eventId>`
 - `POST /cotacao/api/rows`
 - `POST /cotacao/api/rows/insert`
 - `DELETE /cotacao/api/rows/:id`
@@ -137,6 +138,7 @@ MySQL `wimifarma_app`:
 - O topo da Cotacao V2 deve permanecer compacto: `Wimifarma Cotacao`, `Home`, `Baixar` e `Sair`; o diagnostico saiu do menu principal da equipe.
 - O diagnostico operacional continua disponivel por API interna e pode consultar health, presenca, eventos, Google Sheets e backups quando necessario.
 - Desde a Etapa 1 de performance, o diagnostico tambem retorna `safety` e `performance`, incluindo fallback por bootstrap, status de sync incremental, tamanho estimado do snapshot, tempo de `loadSheet()` e existencia dos indices esperados.
+- Desde a Etapa 2, o frontend usa `GET /cotacao/api/events?after=<eventId>` para refresh automatico, reconnect e retorno de aba visivel; eventos estruturais continuam caindo para `/cotacao/api/bootstrap`.
 - A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
 - O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
 - A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
@@ -174,6 +176,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a Cotacao PHP antiga foi removida e os ativos usados pela V2 foram migrados para `apps/cotacao/public`; `docker-compose.yml` deixou de depender de `site/cotacao`.
 - Em 2026-05-14, o redimensionamento de coluna ganhou linha guia e etiqueta de largura para o usuario enxergar a largura atual e a diferenca enquanto arrasta.
 - Em 2026-05-14, a Etapa 1 de seguranca/performance adicionou indices aditivos para o snapshot atual e ampliou `/cotacao/api/diagnostics` com blocos `safety` e `performance`, mantendo `/cotacao/api/bootstrap` como fallback completo.
+- Em 2026-05-14, a Etapa 2 criou `GET /cotacao/api/events?after=<eventId>` e passou o refresh automatico para delta incremental, aplicando eventos simples no frontend e usando bootstrap completo quando houver import, restore, mudanca de coluna ou cursor invalido.
 
 ## Riscos ao alterar
 
@@ -200,7 +203,7 @@ Em 2026-05-12 foram validados localmente:
 - Refinar o drag-fill com series automaticas no futuro, caso a equipe precise incrementar numeros/datas em vez de apenas copiar o padrao selecionado.
 - Criar rotina agendada de backup/retencao fora do container, alem do backup manual da tela.
 - Definir regra de historico: o usuario indicou que historico completo nao e prioridade porque os dados oficiais podem ser refeitos pelo sistema da farmacia/Sheets.
-- Criar endpoint incremental de eventos/delta depois de confirmar, no VPS, que os indices da Etapa 1 existem e que o diagnostico continua leve.
+- Medir o endpoint delta no VPS com dados reais e confirmar que refresh automatico deixa de pressionar `/cotacao/api/bootstrap`.
 
 ## Como pode evoluir
 

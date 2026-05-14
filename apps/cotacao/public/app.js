@@ -62,6 +62,8 @@
     styles: [],
     presence: [],
     lastEventId: 0,
+    deltaInFlight: false,
+    lastDeltaAt: null,
     search: '',
     filters: {
       produto: null,
@@ -140,6 +142,13 @@
   function status(text, mode = 'ok') {
     saveStatus.textContent = text;
     saveStatus.dataset.mode = mode;
+  }
+
+  function rememberEventId(value) {
+    const eventId = Number(value || 0);
+    if (Number.isFinite(eventId) && eventId > state.lastEventId) {
+      state.lastEventId = eventId;
+    }
   }
 
   async function api(path, options = {}) {
@@ -888,6 +897,122 @@
     socketConnect();
   }
 
+  function applyRemoteCellUpdate(payload) {
+    const row = rowById(payload.rowId);
+    if (!row) return false;
+    const key = cellKey(payload.rowId, payload.columnKey);
+    if (state.editing && state.editing.rowId === payload.rowId && state.editing.columnKey === payload.columnKey) {
+      state.conflicts.set(key, {
+        currentValue: payload.value,
+        attemptedValue: state.editing.input?.value || '',
+        updatedAt: payload.updatedAt
+      });
+      status('Conflito visual nesta celula', 'warn');
+      markConflictCell(payload.rowId, payload.columnKey);
+      return false;
+    }
+    row.values = { ...(row.values || {}), [payload.columnKey]: payload.value };
+    row.version = payload.version;
+    state.conflicts.delete(key);
+    if (state.editing) {
+      updateRenderedCell(payload.rowId, payload.columnKey, payload.value);
+      return false;
+    }
+    return true;
+  }
+
+  function applyRemoteCellsUpdate(cells) {
+    let needsRender = false;
+    (cells || []).forEach((cell) => {
+      if (applyRemoteCellUpdate(cell)) needsRender = true;
+    });
+    return needsRender;
+  }
+
+  function applyRemoteRowsAdded(rows) {
+    if (!Array.isArray(rows) || !rows.length) return false;
+    rows.forEach((row) => {
+      if (!state.rows.some((item) => item.id === row.id)) state.rows.push(row);
+    });
+    state.rows.sort((a, b) => Number(a.position) - Number(b.position));
+    return true;
+  }
+
+  function applyRemoteRowDeleted(rowId) {
+    if (!rowId) return false;
+    const before = state.rows.length;
+    state.rows = state.rows.filter((row) => row.id !== rowId);
+    if (state.activeCell?.rowId === rowId) {
+      state.activeCell = null;
+      state.anchorCell = null;
+      state.selectedRange = null;
+    }
+    return state.rows.length !== before;
+  }
+
+  function applyRemoteStyleUpdated(style) {
+    if (!style?.styleKey) return false;
+    state.styles = state.styles.filter((item) => item.styleKey !== style.styleKey);
+    state.styles.push(style);
+    return true;
+  }
+
+  function applyRemoteStyleDeleted(styleKey) {
+    if (!styleKey) return false;
+    const before = state.styles.length;
+    state.styles = state.styles.filter((item) => item.styleKey !== styleKey);
+    return state.styles.length !== before;
+  }
+
+  function applyRemoteRuleChange(payload) {
+    const mode = payload.mode || '';
+    const rule = Array.isArray(payload.rules) ? payload.rules[0] : payload.rule;
+    if ((mode === 'created' || mode === 'updated') && rule?.id) {
+      state.rules = state.rules.filter((item) => String(item.id) !== String(rule.id));
+      state.rules.push(rule);
+      renderRules();
+      return true;
+    }
+    if (mode === 'deleted' && payload.id) {
+      state.rules = state.rules.filter((item) => String(item.id) !== String(payload.id));
+      renderRules();
+      return true;
+    }
+    return false;
+  }
+
+  function applyDeltaEvents(events) {
+    let needsRender = false;
+    for (const event of events || []) {
+      rememberEventId(event.id);
+      if (event.clientId === clientId) continue;
+      const payload = event.payload || {};
+      if (event.type === 'cell_updated') {
+        if (applyRemoteCellUpdate({ ...payload, eventId: event.id, clientId: event.clientId })) needsRender = true;
+      } else if (event.type === 'cells_batch_updated') {
+        if (applyRemoteCellsUpdate(payload.cells || [])) needsRender = true;
+      } else if (event.type === 'rows_added' || event.type === 'rows_inserted') {
+        if (applyRemoteRowsAdded(payload.rows || [])) needsRender = true;
+      } else if (event.type === 'row_deleted') {
+        if (applyRemoteRowDeleted(payload.rowId || event.rowId)) needsRender = true;
+      } else if (event.type === 'style_updated') {
+        if (applyRemoteStyleUpdated(payload.style)) needsRender = true;
+      } else if (event.type === 'style_deleted') {
+        if (applyRemoteStyleDeleted(payload.styleKey)) needsRender = true;
+      } else if (event.type === 'rule_created' || event.type === 'rule_updated') {
+        if (applyRemoteRuleChange({ mode: event.type === 'rule_created' ? 'created' : 'updated', rules: [payload.rule] })) needsRender = true;
+      } else if (event.type === 'rule_deleted') {
+        if (applyRemoteRuleChange({ mode: 'deleted', id: payload.id })) needsRender = true;
+      } else if (event.type === 'backup_created' || event.type === 'google_sheets_exported') {
+        continue;
+      } else {
+        return false;
+      }
+    }
+    if (needsRender && !state.editing) renderTable();
+    return true;
+  }
+
   function socketConnect() {
     if (state.socket || !window.io || !state.quote?.id) return;
     const socket = window.io({ path: `${basePath}/socket.io` });
@@ -897,7 +1022,7 @@
       updatePresence(false);
       status('Sincronizado');
       if (state.connectedOnce && !state.editing) {
-        reloadSheet().catch(console.error);
+        syncEvents().catch(console.error);
       }
       state.connectedOnce = true;
       if (!state.heartbeatTimer) {
@@ -906,7 +1031,7 @@
       if (!state.refreshTimer) {
         state.refreshTimer = window.setInterval(() => {
           if (!state.editing && document.visibilityState === 'visible') {
-            reloadSheet().catch(console.error);
+            syncEvents().catch(console.error);
           }
         }, 60000);
       }
@@ -922,86 +1047,48 @@
       renderPresence();
     });
     socket.on('cell:update', (payload) => {
+      rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      const row = rowById(payload.rowId);
-      if (!row) return;
-      const key = cellKey(payload.rowId, payload.columnKey);
-      if (state.editing && state.editing.rowId === payload.rowId && state.editing.columnKey === payload.columnKey) {
-        state.conflicts.set(key, {
-          currentValue: payload.value,
-          attemptedValue: state.editing.input?.value || '',
-          updatedAt: payload.updatedAt
-        });
-        status('Conflito visual nesta celula', 'warn');
-        markConflictCell(payload.rowId, payload.columnKey);
-        return;
-      }
-      row.values = { ...(row.values || {}), [payload.columnKey]: payload.value };
-      row.version = payload.version;
-      state.lastEventId = Math.max(state.lastEventId, Number(payload.eventId || 0));
-      state.conflicts.delete(key);
-      if (state.editing) {
-        updateRenderedCell(payload.rowId, payload.columnKey, payload.value);
-        return;
-      }
-      renderTable();
+      if (applyRemoteCellUpdate(payload) && !state.editing) renderTable();
     });
     socket.on('cells:update', (payload) => {
+      rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      let needsRender = false;
-      (payload.cells || []).forEach((cell) => {
-        const row = rowById(cell.rowId);
-        if (!row) return;
-        const key = cellKey(cell.rowId, cell.columnKey);
-        if (state.editing && state.editing.rowId === cell.rowId && state.editing.columnKey === cell.columnKey) {
-          state.conflicts.set(key, {
-            currentValue: cell.value,
-            attemptedValue: state.editing.input?.value || '',
-            updatedAt: cell.updatedAt
-          });
-          markConflictCell(cell.rowId, cell.columnKey);
-          return;
-        }
-        row.values = { ...(row.values || {}), [cell.columnKey]: cell.value };
-        row.version = cell.version;
-        state.conflicts.delete(key);
-        if (state.editing) updateRenderedCell(cell.rowId, cell.columnKey, cell.value);
-        else needsRender = true;
-      });
-      state.lastEventId = Math.max(state.lastEventId, Number(payload.eventId || 0));
+      const needsRender = applyRemoteCellsUpdate(payload.cells || []);
       if (needsRender && !state.editing) renderTable();
     });
     socket.on('rows:added', (payload) => {
-      if (Array.isArray(payload.rows)) {
-        payload.rows.forEach((row) => {
-          if (!state.rows.some((item) => item.id === row.id)) state.rows.push(row);
-        });
-        state.rows.sort((a, b) => Number(a.position) - Number(b.position));
+      rememberEventId(payload.eventId);
+      if (applyRemoteRowsAdded(payload.rows)) {
         renderTable();
       }
     });
     socket.on('row:deleted', (payload) => {
-      state.rows = state.rows.filter((row) => row.id !== payload.rowId);
-      if (state.activeCell?.rowId === payload.rowId) {
-        state.activeCell = null;
-        state.anchorCell = null;
-        state.selectedRange = null;
-      }
-      renderTable();
+      rememberEventId(payload.eventId);
+      if (applyRemoteRowDeleted(payload.rowId)) renderTable();
     });
-    socket.on('columns:changed', () => reloadSheet());
-    socket.on('rules:update', () => reloadSheet());
-    socket.on('sheet:reload', () => reloadSheet());
+    socket.on('columns:changed', (payload = {}) => {
+      rememberEventId(payload.eventId);
+      reloadSheet();
+    });
+    socket.on('rules:update', (payload = {}) => {
+      rememberEventId(payload.eventId);
+      if (!applyRemoteRuleChange(payload)) reloadSheet();
+      else renderTable();
+    });
+    socket.on('sheet:reload', (payload = {}) => {
+      rememberEventId(payload.eventId);
+      reloadSheet();
+    });
     socket.on('style:update', (payload) => {
-      const style = payload.style;
-      if (!style?.styleKey) return;
-      state.styles = state.styles.filter((item) => item.styleKey !== style.styleKey);
-      state.styles.push(style);
-      renderTable();
+      rememberEventId(payload.eventId);
+      if (payload.clientId === clientId) return;
+      if (applyRemoteStyleUpdated(payload.style)) renderTable();
     });
     socket.on('style:delete', (payload) => {
-      state.styles = state.styles.filter((item) => item.styleKey !== payload.styleKey);
-      renderTable();
+      rememberEventId(payload.eventId);
+      if (payload.clientId === clientId) return;
+      if (applyRemoteStyleDeleted(payload.styleKey)) renderTable();
     });
   }
 
@@ -1016,6 +1103,37 @@
     renderPresence();
     renderRules();
     renderTable();
+  }
+
+  async function syncEvents(options = {}) {
+    const fallback = options.fallback !== false;
+    if (!state.quote?.id || state.deltaInFlight) return false;
+    if (!state.lastEventId) {
+      if (fallback) await reloadSheet();
+      return false;
+    }
+    state.deltaInFlight = true;
+    try {
+      const data = await api(`/api/events?after=${encodeURIComponent(state.lastEventId)}`);
+      if (data.requiresSnapshot) {
+        if (fallback) await reloadSheet();
+        return true;
+      }
+      const applied = applyDeltaEvents(data.events || []);
+      if (!applied) {
+        if (fallback) await reloadSheet();
+        return true;
+      }
+      rememberEventId(data.latestEventId);
+      state.lastDeltaAt = new Date().toISOString();
+      return true;
+    } catch (error) {
+      console.warn('[cotacao] delta sync failed', error);
+      if (fallback) await reloadSheet();
+      return false;
+    } finally {
+      state.deltaInFlight = false;
+    }
   }
 
   function updatePresence(editing = Boolean(state.editing)) {
@@ -2069,7 +2187,7 @@
       if (document.visibilityState === 'visible') {
         if (state.socket && !state.socket.connected) state.socket.connect();
         updatePresence();
-        if (!state.editing) reloadSheet().catch(console.error);
+        if (!state.editing) syncEvents().catch(console.error);
       }
     });
 

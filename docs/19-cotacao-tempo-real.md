@@ -24,6 +24,8 @@ Em 2026-05-13, a V2 passou a manter heartbeat de presenca a cada poucos segundos
 
 Em 2026-05-14, a Cotacao PHP antiga foi removida do repositorio. As notas sobre polling PHP/MySQL abaixo permanecem como historico de migracao, mas a rota oficial `/cotacao/` depende somente da V2 em `apps/cotacao`.
 
+Ainda em 2026-05-14, a Etapa 2 adicionou `GET /cotacao/api/events?after=<eventId>` na V2. O frontend usa essa rota para refresh automatico, reconnect e retorno de aba visivel, aplicando eventos simples de celula, lote, linha, estilo e regra sem baixar o snapshot inteiro. Eventos estruturais, cursor invalido ou excesso de eventos pedem snapshot completo por `/cotacao/api/bootstrap`, preservando recuperacao segura.
+
 ## Historico da Cotacao PHP legada
 
 Antes da V2, a Cotacao PHP possuia:
@@ -88,6 +90,7 @@ Rotas/acoes:
 - `/cotacao/`
 - `/cotacao/socket.io/`
 - `GET /cotacao/api/bootstrap`
+- `GET /cotacao/api/events?after=<eventId>`
 - `PATCH /cotacao/api/cells`
 - `PATCH /cotacao/api/cells/batch`
 - `POST /cotacao/api/rows`
@@ -133,6 +136,7 @@ Tabelas:
 - Mutacoes locais, como `save_row`, `add_empty_rows`, `delete_row`, `sync_filter` e regras condicionais, devem chamar `rememberSyncState()` com o estado retornado pela API. Isso evita que a propria aba processe a mesma mudanca de novo via snapshot completo.
 - Mutacoes locais tambem devem enviar `client_id`; eventos com o mesmo `client_id` devem ser ignorados pela propria aba.
 - `sync_events_pull` deve ser tentado antes de `sync_pull` quando a aba ja conhece um `evento_id`. Se o servidor pedir `requires_snapshot`, o frontend volta para snapshot completo.
+- Na V2, `GET /cotacao/api/events?after=<eventId>` cumpre esse papel incremental: quando a resposta vem com `requiresSnapshot`, o frontend chama `/cotacao/api/bootstrap`.
 - `presence_ping` continua sem avancar versao de sync local, porque presenca e temporaria e nao representa mudanca de dados.
 - Filtro de categoria nao deve ser reaplicado a cada tecla dentro de uma celula de categoria. O filtro ativo so deve recalcular depois que a edicao termina.
 - Na V2, quando a edicao faz a linha deixar de combinar com filtro/busca ativos, a linha editada permanece fixada visualmente ate o filtro ou a busca mudar. Isso evita a sensacao de perda de dados durante cotacao rapida.

@@ -79,6 +79,19 @@ A Etapa 1 preparou a base sem mudar o comportamento da planilha para a equipe:
 
 Essa etapa e propositalmente conservadora: ela prepara observabilidade e indices para crescer a planilha, mas ainda nao troca o fluxo de sincronizacao. A proxima etapa tecnica pode criar `GET /cotacao/api/events?after=` ou rota equivalente, mantendo bootstrap completo como recuperacao quando o delta atrasar, falhar ou encontrar divergencia.
 
+## Cotacao V2 - Etapa 2 de delta em 2026-05-14
+
+A Etapa 2 iniciou a troca segura de snapshot completo por eventos incrementais:
+
+- Foi criada a rota autenticada `GET /cotacao/api/events?after=<eventId>`.
+- A rota usa cursor por `id` do evento, apoiada no indice existente `cotacao_v2_events_quote_id_idx`.
+- O frontend passou a usar delta no refresh automatico de 60 segundos, no retorno da aba para visivel e no reconnect do Socket.IO.
+- `/cotacao/api/bootstrap` continua como fallback: se o cursor for invalido, houver eventos demais, ou aparecer evento estrutural como import/restore/coluna, a tela recarrega o snapshot completo.
+- O delta aplica diretamente eventos simples de celulas, lotes de celulas, linhas, estilos e regras condicionais.
+- Eventos estruturais seguem conservadores e forcam snapshot completo para nao arriscar divergencia de colunas, ordem ou restore.
+
+Esse e um passo real na direcao de uma experiencia estilo Google Sheets: a tela deixa de depender de recarregar tudo para perceber mudancas pequenas, mas ainda conserva uma recuperacao segura quando o evento exige contexto completo.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos:
@@ -108,6 +121,7 @@ Rotas:
 - rotas dos modulos internos
 - `/cotacao/`
 - `/cotacao/api/bootstrap`
+- `/cotacao/api/events`
 - `/cotacao/api/diagnostics`
 - `/cotacao/socket.io/`
 
@@ -132,6 +146,7 @@ Servicos:
 - Manter `/cotacao/api/bootstrap` como fallback confiavel enquanto sync incremental/delta for introduzido.
 - Nao otimizar a Cotacao apagando eventos, linhas, estilos ou historico de auditoria.
 - Durante a transicao para delta, `/cotacao/api/diagnostics.performance.expectedIndexes` deve mostrar todos os indices esperados com `exists: true` antes de considerar a etapa saudavel.
+- Delta incremental nao deve tentar adivinhar mudanca estrutural; quando houver evento de coluna, import ou restore, usar snapshot completo.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -143,6 +158,7 @@ Servicos:
 - Investigacao de performance deve comecar por plugins/cache/tema antes de reescrever codigo.
 - Na Cotacao V2, a primeira otimizacao estrutural deve ser incremental: medir, criar endpoint de eventos/delta, usar delta no reload periodico e so depois reduzir renderizacao completa da grade.
 - Antes de criar o endpoint delta, a Etapa 1 adicionou indices aditivos e diagnostico de seguranca/performance, mantendo o contrato de snapshot intacto.
+- A Etapa 2 criou `GET /cotacao/api/events?after=` e passou o refresh automatico do frontend para esse caminho incremental, preservando bootstrap como fallback.
 
 ## Riscos ao alterar
 
@@ -165,10 +181,10 @@ Servicos:
 - Criar metrica simples de tempo de resposta pos-deploy.
 - Confirmar que caches legados `endurance-page-cache/`, `advanced-cache.php`, `cache/` e `speedycache-config/` nao estao servindo a home antiga no VPS.
 - Medir no VPS real a Cotacao V2 com dados reais da equipe: `/cotacao/api/bootstrap`, `/cotacao/api/diagnostics`, `/miauw/widget-status.php`, tamanho do payload e consumo dos containers.
-- Criar endpoint incremental `GET /cotacao/api/events?after=` para trocar reloads completos por deltas.
 - Remover `loadSheet()` de mutacoes simples da Cotacao, como salvar celula, largura de coluna, estilo e regra, preservando fallback por bootstrap completo.
 - Avaliar separar o carregamento do widget do Miauby da renderizacao inicial da grade se `widget-status.php` continuar com picos acima de 500 ms no VPS.
 - Confirmar no VPS que `/cotacao/api/diagnostics.performance.expectedIndexes` lista todos os indices da Etapa 1 como existentes.
+- Medir no VPS a diferenca entre `/cotacao/api/events?after=` sem eventos novos e `/cotacao/api/bootstrap` com dados reais.
 
 ## Evolucao futura
 

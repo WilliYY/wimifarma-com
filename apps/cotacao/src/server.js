@@ -42,6 +42,11 @@ const PAINT_SWATCHES = [
 
 const PERFORMANCE_INDEXES = [
   {
+    name: 'cotacao_v2_events_quote_id_idx',
+    table: 'cotacao_v2_events',
+    purpose: 'eventos incrementais por cotacao e cursor'
+  },
+  {
     name: 'cotacao_v2_quotes_status_created_idx',
     table: 'cotacao_v2_quotes',
     purpose: 'cotacao ativa por status e data'
@@ -82,6 +87,17 @@ const PERFORMANCE_INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS cotacao_v2_styles_quote_updated_idx
    ON cotacao_v2_styles (quote_id, updated_at, id)`
 ];
+const DELTA_EVENT_LIMIT = Math.max(20, Math.min(1000, Number.parseInt(env.COTACAO_DELTA_EVENT_LIMIT || '250', 10) || 250));
+const SNAPSHOT_EVENT_TYPES = new Set([
+  'column_created',
+  'column_renamed',
+  'column_moved',
+  'column_deleted',
+  'column_restored',
+  'column_resized',
+  'google_sheets_imported',
+  'backup_restored'
+]);
 
 const app = express();
 const server = http.createServer(app);
@@ -418,6 +434,83 @@ function jsonByteLength(value) {
   } catch (_error) {
     return null;
   }
+}
+
+function parseEventCursor(value) {
+  const cursor = Number.parseInt(String(value ?? '0'), 10);
+  return Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : null;
+}
+
+async function loadEventDelta(quoteId, after) {
+  const latest = await pgPool.query(
+    'SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1',
+    [quoteId]
+  );
+  const latestEventId = Number(latest.rows[0]?.id || 0);
+  if (after >= latestEventId) {
+    return {
+      events: [],
+      latestEventId,
+      pendingEvents: 0,
+      requiresSnapshot: false,
+      reason: ''
+    };
+  }
+
+  const count = await pgPool.query(
+    'SELECT COUNT(*)::int AS total FROM cotacao_v2_events WHERE quote_id = $1 AND id > $2',
+    [quoteId, after]
+  );
+  const pendingEvents = Number(count.rows[0]?.total || 0);
+  if (pendingEvents > DELTA_EVENT_LIMIT) {
+    return {
+      events: [],
+      latestEventId,
+      pendingEvents,
+      requiresSnapshot: true,
+      reason: 'event_limit'
+    };
+  }
+
+  const result = await pgPool.query(
+    `SELECT id,
+            type,
+            row_id AS "rowId",
+            column_key AS "columnKey",
+            payload,
+            user_id AS "userId",
+            username,
+            client_id AS "clientId",
+            created_at AS "createdAt"
+     FROM cotacao_v2_events
+     WHERE quote_id = $1
+       AND id > $2
+     ORDER BY id ASC
+     LIMIT $3`,
+    [quoteId, after, DELTA_EVENT_LIMIT]
+  );
+  const snapshotEvent = result.rows.find((event) => SNAPSHOT_EVENT_TYPES.has(event.type));
+  if (snapshotEvent) {
+    return {
+      events: [],
+      latestEventId,
+      pendingEvents,
+      requiresSnapshot: true,
+      reason: 'snapshot_event',
+      snapshotEvent: {
+        id: Number(snapshotEvent.id),
+        type: snapshotEvent.type
+      }
+    };
+  }
+
+  return {
+    events: result.rows.map((event) => ({ ...event, id: Number(event.id) })),
+    latestEventId,
+    pendingEvents,
+    requiresSnapshot: false,
+    reason: ''
+  };
 }
 
 async function getOrCreateDefaultQuote() {
@@ -1579,6 +1672,33 @@ app.get(`${BASE_PATH}/api/bootstrap`, requireApiAuth, asyncRoute(async (req, res
   res.json({ ok: true, ...sheet, presence, user: userPublic(req.session.user) });
 }));
 
+app.get(`${BASE_PATH}/api/events`, requireApiAuth, asyncRoute(async (req, res) => {
+  const quote = await getOrCreateDefaultQuote();
+  const after = parseEventCursor(req.query.after);
+  if (after === null) {
+    const latest = await pgPool.query(
+      'SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1',
+      [quote.id]
+    );
+    return res.json({
+      ok: true,
+      events: [],
+      latestEventId: Number(latest.rows[0]?.id || 0),
+      pendingEvents: 0,
+      requiresSnapshot: true,
+      reason: 'invalid_cursor'
+    });
+  }
+  const delta = await loadEventDelta(quote.id, after);
+  return res.json({
+    ok: true,
+    quoteId: quote.id,
+    after,
+    limit: DELTA_EVENT_LIMIT,
+    ...delta
+  });
+}));
+
 app.post(`${BASE_PATH}/api/rows`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
   const clientId = String(req.body.clientId || '');
@@ -2239,9 +2359,11 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
     backupDir: BACKUP_DIR,
     redis: redisPing,
     safety: {
-      stage: 'etapa-1',
+      stage: 'etapa-2',
       bootstrapFallback: true,
-      incrementalDeltaEnabled: false,
+      incrementalDeltaEnabled: true,
+      deltaEndpoint: `${BASE_PATH}/api/events?after=:eventId`,
+      deltaEventLimit: DELTA_EVENT_LIMIT,
       destructiveChanges: false,
       oldCotacaoPhpFallback: false,
       backupBeforeImportRestore: true
