@@ -80,6 +80,7 @@
     dragging: false,
     resizing: null,
     headerDragging: null,
+    renamingColumn: null,
     connectedOnce: false,
     heartbeatTimer: null,
     refreshTimer: null,
@@ -1387,6 +1388,9 @@
 
   async function beginColumnRename(columnKey) {
     clearHeaderSelectTimer();
+    if (state.renamingColumn) {
+      await state.renamingColumn.finish(true);
+    }
     const column = colByKey(columnKey);
     if (!isDistributorColumn(column)) return;
     const header = table.querySelector(`th[data-column-key="${columnKey}"]`);
@@ -1408,17 +1412,24 @@
       if (finished) return;
       finished = true;
       const nextLabel = editor.value.trim();
-      if (save && nextLabel && nextLabel !== column.label) {
-        status('Renomeando...', 'busy');
-        const data = await api(`/api/columns/${encodeURIComponent(columnKey)}/rename`, {
-          method: 'POST',
-          body: JSON.stringify({ label: nextLabel, clientId })
-        });
-        column.label = data.column?.label || nextLabel;
-        status('Sincronizado');
+      try {
+        if (save && nextLabel && nextLabel !== column.label) {
+          status('Renomeando...', 'busy');
+          const data = await api(`/api/columns/${encodeURIComponent(columnKey)}/rename`, {
+            method: 'POST',
+            body: JSON.stringify({ label: nextLabel, clientId })
+          });
+          column.label = data.column?.label || nextLabel;
+          status('Sincronizado');
+        }
+      } finally {
+        if (state.renamingColumn?.editor === editor) {
+          state.renamingColumn = null;
+        }
+        renderTable();
       }
-      renderTable();
     };
+    state.renamingColumn = { columnKey, editor, finish };
 
     editor.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -1430,6 +1441,11 @@
       }
     });
     editor.addEventListener('blur', () => finish(true).catch(console.error));
+  }
+
+  async function commitColumnRename(save = true) {
+    if (!state.renamingColumn) return;
+    await state.renamingColumn.finish(save);
   }
 
   function applyColumnWidth(columnKey, width) {
@@ -1650,6 +1666,10 @@
 
   function bindEvents() {
     table.addEventListener('mousedown', async (event) => {
+      if (event.target.closest('.column-title-editor')) return;
+      if (state.renamingColumn) {
+        await commitColumnRename(true);
+      }
       const filterButton = event.target.closest('.filter-button');
       if (filterButton) {
         event.preventDefault();
@@ -1661,7 +1681,6 @@
         startColumnResize(event, resizeHandle.dataset.resizeColumn);
         return;
       }
-      if (event.target.closest('.column-title-editor')) return;
       const header = event.target.closest('th[data-column-key]');
       if (header && event.button === 0 && !(state.paintColor || state.eraser)) {
         event.preventDefault();
