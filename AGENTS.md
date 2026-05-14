@@ -173,7 +173,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `Ganhador` e coluna calculada no frontend pelo menor preco numerico entre distribuidoras visiveis; ela nao deve aceitar escrita manual por API ou tela.
 - A paleta da Cotacao V2 grava estilos manuais em `cotacao_v2_styles` para linha, coluna ou celula. Cores manuais nao podem virar gatilhos escondidos por texto.
 - Validacoes locais passaram para: health da Cotacao, login `adm`, bootstrap, save por celula dessas quatro palavras criticas, criacao/remocao de regra condicional explicita, importacao temporaria de linhas e limpeza dos dados de smoke.
-- O proximo passo de Cotacao deve ser evoluir a V2 com conflito visual por campo, auditoria de eventos, import/export Sheets e diagnostico operacional, nao continuar remendando a planilha PHP antiga.
+- O proximo passo de Cotacao deve ser evoluir a V2 com presenca visual forte, auditoria/historico de eventos, import/export Sheets e diagnostico operacional, nao continuar remendando a planilha PHP antiga.
 
 ## Estado validado em 2026-05-13
 
@@ -184,7 +184,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A API recebeu `PATCH /cotacao/api/cells/batch` para colagens em lote, endpoints de diagnostico, backup/restore do Postgres, import/export Google Sheets e renomear/reordenar distribuidoras com auditoria.
 - Import/export Google Sheets usa ID estavel de linha (`cotacao_row_id`) para reduzir risco de duplicar ou sobrescrever linhas durante sincronizacao.
 - Backup/restore da Cotacao V2 grava em `cotacao-data/backups` no host e `/app/backups` no container; `cotacao-data/` continua fora do Git.
-- Conflito visual por campo existe para edicao remota enquanto uma celula local esta em edicao; ainda precisa ser validado com usuarios reais e virar teste automatizado permanente.
+- A presenca visual por campo existe para edicao remota enquanto uma celula local esta em edicao; ainda precisa ser validada com usuarios reais e virar teste automatizado permanente.
 - A grade da Cotacao V2 agora permite texto quebrar linha e aumentar a altura da celula, redimensionar largura de colunas pelos titulos, selecionar coluna pelo cabecalho, selecionar linha pelo numero, renomear distribuidora com duplo clique no cabecalho e adicionar 20 linhas no fim da rolagem.
 - Apagar distribuidora fica liberado no fluxo normal da equipe; a coluna e ocultada e pode voltar por `Ctrl+Z`/desfazer na mesma sessao.
 - `Ctrl+C` copia a selecao como matriz TSV e `Ctrl+V` cola matriz normalizando texto e numeros/precos para o padrao da Cotacao.
@@ -224,10 +224,11 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A Etapa 3 reduziu trabalho de mutacoes simples da Cotacao V2: salvar celula, colagem em lote, estilos, regras, linhas e colunas agora validam quote/linha/coluna com consultas leves em vez de chamar `loadSheet()` e puxar o snapshot completo. `loadSheet()` permanece para bootstrap, diagnostico e operacoes fortes como backup/import/export/restore.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `target='cell'` na inicializacao da Cotacao V2; regra condicional deve pintar somente a celula da coluna-alvo, nunca a linha inteira.
 - A digitacao em celulas da Cotacao V2 agenda o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout a cada tecla sem alterar save/sync.
-- A Etapa 4 tornou o save de celula otimista no frontend: ao trocar de celula, a grade atualiza a linha imediatamente e salva em segundo plano; confirmacao/conflito volta pela API sem redesenhar a tabela inteira para cada celula simples.
+- A Etapa 4 tornou o save de celula otimista no frontend: ao trocar de celula, a grade atualiza a linha imediatamente e salva em segundo plano; confirmacao/erro volta pela API sem redesenhar a tabela inteira para cada celula simples.
 - A presenca da Cotacao V2 tambem marca a celula visivel onde outro usuario esta selecionando/editando, com contorno colorido, etiqueta do animal e tooltip com coluna/linha; isso e informativo e nao bloqueia edicao.
 - Apagar conteudo com `Delete`/`Backspace` na selecao tambem usa lote otimista no frontend: a grade limpa primeiro, salva em segundo plano e atualiza somente as linhas afetadas quando a selecao e pequena.
-- Filtros da Cotacao V2 continuam locais por tela; filtrar em um computador nao muda a visao de outro. Duas pessoas na mesma celula nao usam "ultimo salva ganha" silencioso: saves enviam `expectedValue`, e a API retorna conflito 409 quando o valor base ja mudou.
+- Filtros da Cotacao V2 continuam locais por tela; filtrar em um computador nao muda a visao de outro. Duas pessoas na mesma celula seguem o comportamento pedido estilo Sheets: o ultimo salvamento vence, enquanto a presenca visual mostra quem esta na celula e o log de eventos permite recuperar valor anterior.
+- O topo da Cotacao V2 possui botao `Historico` ao lado do contador de linhas com dados; ele abre o historico da celula selecionada e permite restaurar o valor anterior por um save normal/auditado.
 
 ## Estado validado em 2026-05-11
 
@@ -304,7 +305,7 @@ Estado atual:
 - A presenca mostra usuarios ativos e celula em foco por WebSocket.
 - Filtros sao locais por tela e nao devem ser sincronizados automaticamente entre computadores.
 - Categoria e texto comum; nao recriar gatilhos escondidos para `geral`, `urgente`, `encomenda` ou `cotacao`.
-- Isso ainda nao substitui um motor completo estilo Google Sheets. Para edicao simultanea forte, evoluir com conflito por campo visivel, auditoria de eventos, import/export Sheets e diagnostico operacional.
+- Isso ainda nao substitui um motor completo estilo Google Sheets. Para edicao simultanea forte, evoluir com presenca visual, historico/auditoria de eventos, import/export Sheets e diagnostico operacional.
 
 Antes de implementar:
 
@@ -312,7 +313,7 @@ Antes de implementar:
 - Definir ID estavel para cada item/linha.
 - Definir fonte de verdade por campo.
 - Criar auditoria de sync.
-- Criar tratamento de conflito.
+- Manter regra de ultima gravacao vencendo para mesma celula e evoluir recuperacao/auditoria pelo historico.
 - Preservar formatacao importante da planilha.
 - Criar job/cron de sincronizacao.
 - Criar tela de diagnostico do sync.

@@ -28,11 +28,13 @@ Ainda em 2026-05-14, a Etapa 2 adicionou `GET /cotacao/api/events?after=<eventId
 
 Na Etapa 3 do mesmo dia, as mutacoes simples tambem ficaram mais leves: salvar celula, colagem em lote, estilos, regras, linhas e colunas deixam de carregar o snapshot completo via `loadSheet()` e passam a validar apenas quote/linha/coluna necessarios. Isso preserva o mesmo canal de eventos e reduz o custo das acoes frequentes enquanto a tela caminha para comportamento mais proximo do Sheets.
 
-Ainda em 2026-05-14, a Etapa 4 deixou o commit de celula otimista no frontend. Ao trocar de celula, a linha afetada atualiza imediatamente e o save segue em segundo plano com `expectedValue`; se houver conflito ou erro, a celula e revertida ou marcada sem recarregar a planilha inteira. Isso reduz a espera percebida entre clicar em outra celula e continuar digitando.
+Ainda em 2026-05-14, a Etapa 4 deixou o commit de celula otimista no frontend. Ao trocar de celula, a linha afetada atualiza imediatamente e o save segue em segundo plano; se houver erro real, a celula e revertida ou marcada sem recarregar a planilha inteira. Isso reduz a espera percebida entre clicar em outra celula e continuar digitando.
 
-Na etapa seguinte de colaboracao visual, a presenca passou a ser desenhada na propria grade: quando outro usuario seleciona ou edita uma celula visivel, a celula recebe contorno colorido, etiqueta com o animal daquela aba e tooltip com coluna/linha. Esse indicador e apenas informativo; conflito real continua dependendo do save com `expectedValue` e resposta 409 da API.
+Na etapa seguinte de colaboracao visual, a presenca passou a ser desenhada na propria grade: quando outro usuario seleciona ou edita uma celula visivel, a celula recebe contorno colorido, etiqueta com o animal daquela aba e tooltip com coluna/linha. Esse indicador e apenas informativo; a regra operacional atual para a mesma celula e ultimo salvamento vence, com recuperacao pelo historico.
 
-Depois disso, `Delete`/`Backspace` na selecao da V2 tambem passou a seguir o mesmo caminho otimista: a tela limpa as celulas imediatamente, envia lote com `expectedValue` e reverte/marca conflito se a API detectar que alguem alterou a mesma celula antes.
+Depois disso, `Delete`/`Backspace` na selecao da V2 tambem passou a seguir o mesmo caminho otimista: a tela limpa as celulas imediatamente e envia lote em segundo plano.
+
+O botao `Historico` da Cotacao V2 fica no topo, ao lado do contador de linhas com dados. Ele consulta `cotacao_v2_events` para a celula selecionada e permite restaurar um valor anterior por uma nova gravacao normal, mantendo auditoria.
 
 ## Historico da Cotacao PHP legada
 
@@ -82,7 +84,7 @@ Na correcao seguinte de 2026-05-12, a protecao foi reforcada no contrato entre f
 
 Em 2026-05-12, a logica de filtro foi refeita para impedir que palavras de categoria virem comando remoto. O filtro de categoria/cor/vencedor passou a ser local-first por padrao: a tela continua sincronizando dados, presenca e edicoes, mas nao aplica automaticamente o filtro escolhido em outro computador. `sync_filter` permanece como compatibilidade e diagnostico, e `cotacao_sync_estado.filtro_categoria` e sanitizado para remover filtros legados `geral`, `urgente`, `encomenda` e `cotacao/cotação`.
 
-Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea forte ainda depende de conflito por campo visivel ao usuario e canal de tempo real mais eficiente, como SSE ou WebSocket.
+Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea forte agora depende de presenca visual clara, ultimo salvamento vencendo, historico de recuperacao e canal de tempo real eficiente.
 
 ## Arquivos, rotas e tabelas envolvidos
 
@@ -146,10 +148,10 @@ Tabelas:
 - `sync_events_pull` deve ser tentado antes de `sync_pull` quando a aba ja conhece um `evento_id`. Se o servidor pedir `requires_snapshot`, o frontend volta para snapshot completo.
 - Na V2, `GET /cotacao/api/events?after=<eventId>` cumpre esse papel incremental: quando a resposta vem com `requiresSnapshot`, o frontend chama `/cotacao/api/bootstrap`.
 - Mutacoes simples da V2 devem evitar `loadSheet()`; use consultas pontuais para validar coluna visivel/editavel e linha ativa, deixando snapshot completo apenas para bootstrap, diagnostico e operacoes fortes.
-- Commits simples de celula na V2 devem ser otimistas no frontend, atualizando a linha localmente e salvando em segundo plano com `expectedValue`; conflito/erro nao deve exigir renderizacao completa da tabela.
+- Commits simples de celula na V2 devem ser otimistas no frontend, atualizando a linha localmente e salvando em segundo plano; erro real nao deve exigir renderizacao completa da tabela.
 - A presenca visual na grade deve ser efemera e informativa: mostrar celula/linha/coluna de outros usuarios sem bloquear a edicao nem virar historico permanente.
-- Presenca e filtro nao sao bloqueios. Filtros continuam locais por tela e duas pessoas podem trabalhar em linhas/celulas diferentes sem conflito; conflito real so ocorre quando a mesma celula e salva sobre um valor base que ja mudou.
-- Apagamentos por `Delete`/`Backspace` devem preservar o mesmo controle de conflito por `expectedValue`, sem virar sobrescrita silenciosa.
+- Presenca e filtro nao sao bloqueios. Filtros continuam locais por tela e duas pessoas podem trabalhar em linhas/celulas diferentes sem conflito; se duas pessoas salvarem a mesma celula, o ultimo salvamento vence e o historico da celula serve para recuperar o valor anterior.
+- Apagamentos por `Delete`/`Backspace` seguem o mesmo modelo de ultima gravacao vencendo, com auditoria em evento.
 - `presence_ping` continua sem avancar versao de sync local, porque presenca e temporaria e nao representa mudanca de dados.
 - Filtro de categoria nao deve ser reaplicado a cada tecla dentro de uma celula de categoria. O filtro ativo so deve recalcular depois que a edicao termina.
 - Na V2, quando a edicao faz a linha deixar de combinar com filtro/busca ativos, a linha editada permanece fixada visualmente ate o filtro ou a busca mudar. Isso evita a sensacao de perda de dados durante cotacao rapida.
@@ -173,7 +175,7 @@ Tabelas:
 ## Riscos ao alterar
 
 - Reduzir demais o intervalo de polling pode aumentar carga no VPS.
-- Achar que presenca resolve conflito de escrita seria perigoso: ela so mostra onde pessoas estao trabalhando.
+- Achar que presenca impede sobrescrita seria perigoso: ela so mostra onde pessoas estao trabalhando. A recuperacao deve vir do historico/auditoria.
 - Alterar seletor de celula/linha sem atualizar `app.js` pode quebrar marca remota.
 - Sincronizar com Google Sheets sem IDs estaveis pode duplicar linhas ou sobrescrever valores.
 - Tratar filtro como fonte de verdade pode causar divergencia entre computadores ou salto de linha; por isso filtros sao local-first por padrao.
@@ -184,8 +186,8 @@ Tabelas:
 
 ## Pendencias
 
-- Criar conflito por campo com versao anterior/atual.
-- Expandir o log `cotacao_eventos` para conflito por campo visivel ao usuario e diagnostico operacional.
+- Validar com dois usuarios reais a regra de ultima gravacao vencendo e a recuperacao pelo historico.
+- Expandir o log `cotacao_eventos` para diagnostico operacional e politicas de retencao.
 - Avaliar Server-Sent Events ou WebSocket para reduzir delay.
 - Medir em navegador real a digitacao de categoria com muitos itens/categorias apos o debounce e apos a correcao de reaplicacao de snapshot local.
 - Reduzir peso inicial da tela autenticada quando a quantidade de itens crescer, com paginacao virtual ou carregamento incremental.
@@ -200,7 +202,7 @@ Tabelas:
 ## Como pode evoluir
 
 1. Presenca visual e filtros local-first por polling.
-2. Conflito por campo com aviso antes de sobrescrever.
+2. Ultima gravacao vencendo com historico de recuperacao por celula.
 3. Fila de eventos de edicao com auditoria.
 4. Canal tempo real dedicado, se necessario.
 5. Integracao Google Sheets estruturada.

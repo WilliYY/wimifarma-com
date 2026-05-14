@@ -7,6 +7,7 @@
   const sheetWrap = document.getElementById('sheetWrap');
   const searchInput = document.getElementById('searchInput');
   const rowCountBadge = document.getElementById('rowCountBadge');
+  const historyButton = document.getElementById('historyButton');
   const presenceCount = document.getElementById('presenceCount');
   const presenceList = document.getElementById('presenceList');
   const saveStatus = document.getElementById('saveStatus');
@@ -21,6 +22,9 @@
   const paintPalette = document.getElementById('paintPalette');
   const addRowsFooterButton = document.getElementById('addRowsFooterButton');
   const rulesDialog = document.getElementById('rulesDialog');
+  const historyDialog = document.getElementById('historyDialog');
+  const historyHint = document.getElementById('historyHint');
+  const historyList = document.getElementById('historyList');
   const ruleColumn = document.getElementById('ruleColumn');
   const ruleOperator = document.getElementById('ruleOperator');
   const ruleValue = document.getElementById('ruleValue');
@@ -99,6 +103,8 @@
     eraser: false,
     headerSelectTimer: null,
     pendingCellSaves: new Map(),
+    cellHistory: [],
+    cellHistoryTarget: null,
     history: [],
     future: [],
     conflicts: new Map()
@@ -1031,6 +1037,89 @@
       : '<p class="empty-note">Nenhuma regra criada.</p>';
   }
 
+  function formatDateTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short'
+    }).format(date);
+  }
+
+  function selectedHistoryTarget() {
+    if (!state.activeCell) return null;
+    const row = rowById(state.activeCell.rowId);
+    const column = colByKey(state.activeCell.columnKey);
+    if (!row || !column) return null;
+    return { row, column };
+  }
+
+  function renderHistoryItems(data) {
+    const history = Array.isArray(data.history) ? data.history : [];
+    state.cellHistory = history;
+    state.cellHistoryTarget = {
+      rowId: data.rowId,
+      columnKey: data.columnKey,
+      canRestore: data.canRestore === true
+    };
+    if (!history.length) {
+      historyList.innerHTML = '<p class="empty-note">Nenhuma alteracao registrada para esta celula.</p>';
+      return;
+    }
+    historyList.innerHTML = history.map((item, index) => {
+      const previous = item.previousValue === '' ? '(vazio)' : item.previousValue;
+      const current = item.value === '' ? '(vazio)' : item.value;
+      const restoreButton = data.canRestore
+        ? `<button type="button" data-history-restore="${index}">Restaurar anterior</button>`
+        : '';
+      const overwrite = item.overwroteRemote ? '<span class="history-flag">ultimo salvamento venceu</span>' : '';
+      return `<article class="history-row">
+        <div class="history-meta">
+          <strong>${esc(item.username || 'Sistema')}</strong>
+          <span>${esc(formatDateTime(item.createdAt))}</span>
+          ${overwrite}
+        </div>
+        <div class="history-values">
+          <span><b>Antes</b>${esc(previous)}</span>
+          <span><b>Depois</b>${esc(current)}</span>
+        </div>
+        <div class="history-actions">${restoreButton}</div>
+      </article>`;
+    }).join('');
+  }
+
+  async function openCellHistory() {
+    const target = selectedHistoryTarget();
+    if (!historyDialog || !historyHint || !historyList) return;
+    state.cellHistory = [];
+    state.cellHistoryTarget = null;
+    if (!target) {
+      historyHint.textContent = 'Selecione uma celula da grade para consultar o historico.';
+      historyList.innerHTML = '<p class="empty-note">Nenhuma celula selecionada.</p>';
+      historyDialog.showModal();
+      return;
+    }
+    const rowNumberText = rowNumber(target.row.id) || target.row.position || '?';
+    historyHint.textContent = `${target.column.label} - linha ${rowNumberText}`;
+    historyList.innerHTML = '<p class="empty-note">Carregando historico...</p>';
+    historyDialog.showModal();
+    try {
+      const data = await api(`/api/cells/${encodeURIComponent(target.row.id)}/${encodeURIComponent(target.column.key)}/history`);
+      renderHistoryItems(data);
+    } catch (error) {
+      historyList.innerHTML = `<p class="empty-note">${esc(error.message || 'Nao foi possivel carregar o historico.')}</p>`;
+    }
+  }
+
+  async function restoreHistoryItem(index) {
+    const item = state.cellHistory[Number(index)];
+    const target = state.cellHistoryTarget;
+    if (!item || !target?.canRestore) return;
+    await setCellValue(target.rowId, target.columnKey, item.previousValue);
+    historyDialog?.close();
+  }
+
   async function bootstrap() {
     status('Carregando...', 'busy');
     const data = await api('/api/bootstrap');
@@ -1056,12 +1145,15 @@
     if (!row) return false;
     const key = cellKey(payload.rowId, payload.columnKey);
     if (state.editing && state.editing.rowId === payload.rowId && state.editing.columnKey === payload.columnKey) {
+      row.values = { ...(row.values || {}), [payload.columnKey]: payload.value };
+      row.version = payload.version;
+      row.updatedAt = payload.updatedAt;
       state.conflicts.set(key, {
         currentValue: payload.value,
         attemptedValue: state.editing.input?.value || '',
         updatedAt: payload.updatedAt
       });
-      status('Conflito visual nesta celula', 'warn');
+      status('Outra pessoa editou esta celula', 'warn');
       markConflictCell(payload.rowId, payload.columnKey);
       return false;
     }
@@ -2570,6 +2662,16 @@
     undoButton.addEventListener('click', () => undo().catch(console.error));
     redoButton.addEventListener('click', () => redo().catch(console.error));
     exportCsvButton.addEventListener('click', exportCsv);
+    if (historyButton) {
+      historyButton.addEventListener('click', () => openCellHistory().catch(console.error));
+    }
+    if (historyList) {
+      historyList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-history-restore]');
+        if (!button) return;
+        restoreHistoryItem(button.dataset.historyRestore).catch(console.error);
+      });
+    }
 
     rulesButton.addEventListener('click', () => {
       renderRules();

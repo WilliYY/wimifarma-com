@@ -1594,6 +1594,7 @@ function renderApp(req) {
       </div>
       <div class="sheet-stats">
         <span id="rowCountBadge">0 linha(s) com dados</span>
+        <button type="button" id="historyButton" class="top-history-button">Historico</button>
         <div class="presence-inline presence-top" id="presenceList"></div>
         <strong id="presenceCount">1 pessoa usando</strong>
         <span id="saveStatus" class="save-status">Sincronizado</span>
@@ -1666,6 +1667,17 @@ function renderApp(req) {
         <button type="button" id="addRuleButton">Criar regra</button>
       </div>
       <div id="rulesList" class="rules-list"></div>
+      <div class="dialog-actions">
+        <button type="submit">Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="historyDialog">
+    <form method="dialog" class="dialog-card dialog-card-wide">
+      <h2>Historico da celula</h2>
+      <p id="historyHint">Selecione uma celula da grade para consultar o historico.</p>
+      <div id="historyList" class="cell-history-list"></div>
       <div class="dialog-actions">
         <button type="submit">Fechar</button>
       </div>
@@ -1764,6 +1776,76 @@ app.get(`${BASE_PATH}/api/events`, requireApiAuth, asyncRoute(async (req, res) =
     after,
     limit: DELTA_EVENT_LIMIT,
     ...delta
+  });
+}));
+
+app.get(`${BASE_PATH}/api/cells/:rowId/:columnKey/history`, requireApiAuth, asyncRoute(async (req, res) => {
+  const quote = await getOrCreateDefaultQuote();
+  const rowId = String(req.params.rowId || '');
+  const columnKey = String(req.params.columnKey || '');
+  const column = await findColumnByKey(quote.id, columnKey, { visibleOnly: true });
+  if (!isUuid(rowId) || !column) {
+    return res.status(422).json({ ok: false, error: 'Celula invalida.' });
+  }
+  const rowInfo = await pgPool.query(
+    `SELECT id, position
+     FROM cotacao_v2_rows
+     WHERE quote_id = $1
+       AND id = $2
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [quote.id, rowId]
+  );
+  const row = rowInfo.rows[0];
+  if (!row) {
+    return res.status(404).json({ ok: false, error: 'Linha nao encontrada.' });
+  }
+  const events = await pgPool.query(
+    `SELECT id, type, payload, username, created_at
+     FROM cotacao_v2_events
+     WHERE quote_id = $1
+       AND (
+         (type = 'cell_updated' AND row_id = $2 AND column_key = $3)
+         OR (
+           type = 'cells_batch_updated'
+           AND jsonb_typeof(payload->'cells') = 'array'
+           AND EXISTS (
+             SELECT 1
+             FROM jsonb_array_elements(payload->'cells') AS cell
+             WHERE cell->>'rowId' = $4
+               AND cell->>'columnKey' = $3
+           )
+         )
+       )
+     ORDER BY id DESC
+     LIMIT 50`,
+    [quote.id, rowId, columnKey, rowId]
+  );
+  const history = events.rows.map((event) => {
+    const payload = event.payload || {};
+    const cell = event.type === 'cells_batch_updated'
+      ? (Array.isArray(payload.cells) ? payload.cells.find((item) => item?.rowId === rowId && item?.columnKey === columnKey) : null)
+      : payload;
+    if (!cell) return null;
+    return {
+      eventId: Number(event.id),
+      type: event.type,
+      username: event.username || '',
+      createdAt: event.created_at,
+      previousValue: String(cell.previousValue ?? ''),
+      value: String(cell.value ?? ''),
+      expectedValue: Object.hasOwn(cell, 'expectedValue') ? String(cell.expectedValue ?? '') : null,
+      overwroteRemote: cell.overwroteRemote === true
+    };
+  }).filter(Boolean);
+  return res.json({
+    ok: true,
+    rowId,
+    rowNumber: Number(row.position),
+    columnKey,
+    columnLabel: column.label,
+    canRestore: !isComputedColumn(column),
+    history
   });
 }));
 
@@ -2120,22 +2202,6 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
       return res.status(404).json({ ok: false, error: 'Linha nao encontrada.' });
     }
     previousValue = String(currentRow.values?.[columnKey] ?? '');
-    if (hasExpectedValue && previousValue !== expectedValue) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        ok: false,
-        error: 'Conflito de edicao nesta celula.',
-        conflict: {
-          rowId,
-          columnKey,
-          expectedValue,
-          currentValue: previousValue,
-          attemptedValue: value,
-          version: Number(currentRow.version),
-          updatedAt: currentRow.updated_at
-        }
-      });
-    }
     const updated = await client.query(
       `UPDATE cotacao_v2_rows
        SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
@@ -2158,6 +2224,8 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
     columnKey,
     value,
     previousValue,
+    expectedValue: hasExpectedValue ? expectedValue : null,
+    overwroteRemote: hasExpectedValue && previousValue !== expectedValue,
     version: Number(row.version),
     updatedAt: row.updated_at
   };
@@ -2216,22 +2284,6 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
         return res.status(404).json({ ok: false, error: 'Linha nao encontrada.', rowId });
       }
       const previousValue = String(currentRow.values?.[columnKey] ?? '');
-      if (hasExpectedValue && previousValue !== expectedValue) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({
-          ok: false,
-          error: 'Conflito de edicao no lote.',
-          conflict: {
-            rowId,
-            columnKey,
-            expectedValue,
-            currentValue: previousValue,
-            attemptedValue: value,
-            version: Number(currentRow.version),
-            updatedAt: currentRow.updated_at
-          }
-        });
-      }
       if (previousValue === value) continue;
       const updated = await client.query(
         `UPDATE cotacao_v2_rows
@@ -2247,6 +2299,8 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
         columnKey,
         value,
         previousValue,
+        expectedValue: hasExpectedValue ? expectedValue : null,
+        overwroteRemote: hasExpectedValue && previousValue !== expectedValue,
         version: Number(updated.rows[0].version),
         updatedAt: updated.rows[0].updated_at
       });

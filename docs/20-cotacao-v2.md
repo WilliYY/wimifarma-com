@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A Cotacao V2 substitui a planilha PHP antiga em `/cotacao/` por um servico dedicado para edicao colaborativa de cotacao de farmacia. A meta e chegar perto do comportamento do Google Sheets: linhas estaveis, save por celula, presenca ao vivo, filtros locais, regras condicionais explicitas e evolucao segura para conflito por campo.
+A Cotacao V2 substitui a planilha PHP antiga em `/cotacao/` por um servico dedicado para edicao colaborativa de cotacao de farmacia. A meta e chegar perto do comportamento do Google Sheets: linhas estaveis, save por celula, presenca ao vivo, filtros locais, regras condicionais explicitas, ultima gravacao vencendo e historico para recuperacao.
 
 ## Arquivos, rotas e servicos envolvidos
 
@@ -95,7 +95,7 @@ MySQL `wimifarma_app`:
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.
 - Filtros de produto, categoria, ganhador e cor sao locais por tela e nao devem mover a visao de outro usuario.
 - Filtrar a planilha em uma tela nao causa conflito por si so: o filtro muda apenas a lista visivel daquela aba, enquanto os dados continuam sincronizados por evento/celula.
-- Edicoes simultaneas em celulas diferentes devem conviver normalmente. Na mesma celula, o save deve enviar `expectedValue` e a API deve devolver 409 quando o valor base mudou, evitando "ultimo salva ganha" silencioso.
+- Edicoes simultaneas em celulas diferentes devem conviver normalmente. Na mesma celula, a regra operacional atual e estilo Sheets: o ultimo salvamento vence. A tela compensa isso com presenca visual forte e historico de celula para recuperar o valor anterior.
 - Filtros de `PRODUTO`, `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local. O filtro de `Ganhador` mostra a contagem de linhas por resultado no formato `Nome (quantidade)` e lista primeiro vencedores individuais, depois empates e por ultimo `Sem vencedor`.
 - Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
 - Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
@@ -106,7 +106,8 @@ MySQL `wimifarma_app`:
 - Apagar distribuidora e um fluxo normal da equipe: a coluna fica oculta e pode ser restaurada por desfazer/`Ctrl+Z` na mesma sessao.
 - Presenca e temporaria; nao deve virar historico permanente.
 - Nomes de presenca aparecem como animais aleatorios/deterministicos por aba para diferenciar usuarios sem expor o nome real na area principal.
-- Quando outro usuario esta em uma celula visivel, a grade deve mostrar contorno colorido, etiqueta do animal e tooltip com coluna/linha; esse indicador nao bloqueia escrita e nao substitui o controle de conflito por save.
+- Quando outro usuario esta em uma celula visivel, a grade deve mostrar contorno colorido, etiqueta do animal e tooltip com coluna/linha; esse indicador nao bloqueia escrita.
+- O botao `Historico`, ao lado do contador de linhas com dados, abre as alteracoes da celula selecionada a partir de `cotacao_v2_events` e permite restaurar o valor anterior por um save normal.
 - Login deve continuar aceitando os usuarios internos existentes de `wf_users`.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.
 - Import/export Google Sheets deve preservar `cotacao_row_id` para manter linha estavel e evitar duplicacao silenciosa.
@@ -117,7 +118,7 @@ MySQL `wimifarma_app`:
 - A planilha PHP antiga deixou de ser o motor principal porque as tentativas de corrigir categorias historicas ainda deixavam risco de salto/travamento.
 - Em 2026-05-14, a planilha PHP antiga foi removida do repositorio junto com os shims `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php`; a Cotacao V2 passou a carregar seus proprios ativos diretamente de `apps/cotacao/public`.
 - A Cotacao V2 usa Node.js + Socket.IO para suportar tempo real sem polling pesado.
-- Postgres foi escolhido para linhas JSONB, eventos e evolucao para conflito por campo.
+- Postgres foi escolhido para linhas JSONB, eventos, historico por celula e evolucao segura do sync.
 - Redis foi escolhido para sessoes e presenca efemera.
 - O Nginx Proxy Manager continua apontando para `wimifarma-com-web:80`; o Apache faz proxy interno para a Cotacao V2.
 - A tela principal segue um visual denso de planilha operacional, parecido com a experiencia anterior aprovada pelo usuario, com topo compacto, abas locais, contador de linhas com dados, presenca ao vivo e exportacao CSV no navegador.
@@ -146,7 +147,7 @@ MySQL `wimifarma_app`:
 - Desde a Etapa 1 de performance, o diagnostico tambem retorna `safety` e `performance`, incluindo fallback por bootstrap, status de sync incremental, tamanho estimado do snapshot, tempo de `loadSheet()` e existencia dos indices esperados.
 - Desde a Etapa 2, o frontend usa `GET /cotacao/api/events?after=<eventId>` para refresh automatico, reconnect e retorno de aba visivel; eventos estruturais continuam caindo para `/cotacao/api/bootstrap`.
 - Desde a Etapa 3, mutacoes simples nao devem chamar `loadSheet()` para validar tudo. Salvar celula, colagem em lote, estilos, regras, linhas e colunas usam consultas pontuais para quote/linha/coluna, mantendo snapshot completo apenas para bootstrap, diagnostico, backup, import/export Google Sheets e restore.
-- Desde a Etapa 4, salvar uma celula simples deve ser otimista no frontend: a linha afetada atualiza imediatamente, o save segue em segundo plano com `expectedValue`, e erro/conflito reverte ou marca a celula sem redesenhar a tabela inteira.
+- Desde a Etapa 4, salvar uma celula simples deve ser otimista no frontend: a linha afetada atualiza imediatamente, o save segue em segundo plano e erro real reverte ou marca a celula sem redesenhar a tabela inteira. O `expectedValue` pode seguir no payload como auditoria, mas nao bloqueia o ultimo salvamento.
 - A presenca recebida por Socket.IO passa a atualizar a grade em tempo real, marcando celulas de outros usuarios com cor deterministica por aba e tooltip de localizacao.
 - A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
 - O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
@@ -189,9 +190,10 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a Etapa 3 trocou `loadSheet()` em mutacoes simples por consultas leves de validacao, mantendo o mesmo retorno de API e o mesmo fluxo de eventos em tempo real.
 - Em 2026-05-14, a Cotacao passou a normalizar regras condicionais antigas/restauradas para `target='cell'`, reforcando que uma regra de categoria pinta apenas a propria celula de categoria e nao a linha inteira.
 - Em 2026-05-14, a digitacao em celulas passou a agendar o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout enquanto o usuario digita.
-- Em 2026-05-14, a Etapa 4 tornou a troca de celula mais fluida: commits simples de celula atualizam localmente, redesenham somente a linha afetada e salvam em segundo plano mantendo conflito por `expectedValue`.
+- Em 2026-05-14, a Etapa 4 tornou a troca de celula mais fluida: commits simples de celula atualizam localmente, redesenham somente a linha afetada e salvam em segundo plano.
 - Em 2026-05-14, a presenca visual estilo Sheets foi adicionada: celulas visiveis selecionadas/editadas por outras abas recebem contorno colorido, etiqueta do animal e tooltip com coluna/linha.
-- Em 2026-05-14, `Delete`/`Backspace` sobre a selecao passou a usar limpeza otimista em lote, preservando `expectedValue` e evitando render completo em apagamentos simples.
+- Em 2026-05-14, `Delete`/`Backspace` sobre a selecao passou a usar limpeza otimista em lote e evita render completo em apagamentos simples.
+- Em 2026-05-14, foi adotado o comportamento pedido de ultima gravacao vencendo na mesma celula, com botao `Historico` no topo para consultar eventos da celula selecionada e restaurar valor anterior.
 
 ## Riscos ao alterar
 
@@ -210,21 +212,21 @@ Em 2026-05-12 foram validados localmente:
 
 ## Pendencias
 
-- Validar conflito por campo visivel com dois usuarios reais e transformar em teste automatizado permanente.
+- Validar com dois usuarios reais o fluxo completo de presenca visual, ultimo salvamento vencendo e restauracao pelo historico; transformar em teste automatizado permanente.
 - Evoluir diagnostico para medir latencia cliente-servidor em tempo real e listar eventos atrasados por usuario.
 - Configurar credenciais reais do Google Sheets no VPS e validar import/export end-to-end com uma planilha controlada.
 - Usar backup/revisao operacional antes de importar ou restaurar backup em dados reais.
 - Criar testes automatizados permanentes com duas telas no pipeline.
 - Refinar o drag-fill com series automaticas no futuro, caso a equipe precise incrementar numeros/datas em vez de apenas copiar o padrao selecionado.
 - Criar rotina agendada de backup/retencao fora do container, alem do backup manual da tela.
-- Definir regra de historico: o usuario indicou que historico completo nao e prioridade porque os dados oficiais podem ser refeitos pelo sistema da farmacia/Sheets.
+- Definir politica de retencao do historico de celula em `cotacao_v2_events` conforme o volume real de uso.
 - Medir o endpoint delta no VPS com dados reais e confirmar que refresh automatico deixa de pressionar `/cotacao/api/bootstrap`.
 - Medir no VPS a latencia percebida apos a Etapa 4, especialmente trocar de celula e digitar em sequencia com dados reais da equipe.
 
 ## Como pode evoluir
 
 1. Consolidar a V2 com os campos atuais e testes de duas telas.
-2. Adicionar conflito por campo e indicador de edicao simultanea.
+2. Consolidar presenca visual, historico de celula e testes de edicao simultanea.
 3. Adicionar import/export Sheets com IDs estaveis.
 4. Adicionar renomeacao/reordenacao auditada de distribuidoras, tipos de celula e validacao de dados.
 5. Usar Miauby apenas como diagnostico/sugestao operacional, sem expor codigo e sem escrever dados ambiguos.

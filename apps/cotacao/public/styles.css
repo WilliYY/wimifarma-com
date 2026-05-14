@@ -883,6 +883,83 @@ dialog::backdrop {
   gap: 10px;
 }
 
+.cell-history-list {
+  display: grid;
+  max-height: min(54vh, 460px);
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.history-row {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.history-meta strong {
+  color: #111827;
+}
+
+.history-flag {
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  padding: 2px 8px;
+  font-size: 0.74rem;
+}
+
+.history-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.history-values span {
+  display: grid;
+  min-height: 56px;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  color: #111827;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.history-values b {
+  color: #64748b;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.history-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.history-actions button {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .diagnostics-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1108,6 +1185,25 @@ button svg {
   padding: 0 10px;
   border-color: #e2e8f0;
   font-size: 0.78rem;
+}
+
+.top-history-button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid #d9b8c4;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand);
+  padding: 0 11px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.top-history-button:hover {
+  border-color: #9f1239;
+  background: #fff1f2;
 }
 
 .presence-top {
