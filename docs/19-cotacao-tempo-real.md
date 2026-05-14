@@ -30,6 +30,8 @@ Na Etapa 3 do mesmo dia, as mutacoes simples tambem ficaram mais leves: salvar c
 
 Ainda em 2026-05-14, a Etapa 4 deixou o commit de celula otimista no frontend. Ao trocar de celula, a linha afetada atualiza imediatamente e o save segue em segundo plano com `expectedValue`; se houver conflito ou erro, a celula e revertida ou marcada sem recarregar a planilha inteira. Isso reduz a espera percebida entre clicar em outra celula e continuar digitando.
 
+Na etapa seguinte de colaboracao visual, a presenca passou a ser desenhada na propria grade: quando outro usuario seleciona ou edita uma celula visivel, a celula recebe contorno colorido, etiqueta com o animal daquela aba e tooltip com coluna/linha. Esse indicador e apenas informativo; conflito real continua dependendo do save com `expectedValue` e resposta 409 da API.
+
 ## Historico da Cotacao PHP legada
 
 Antes da V2, a Cotacao PHP possuia:
@@ -143,6 +145,7 @@ Tabelas:
 - Na V2, `GET /cotacao/api/events?after=<eventId>` cumpre esse papel incremental: quando a resposta vem com `requiresSnapshot`, o frontend chama `/cotacao/api/bootstrap`.
 - Mutacoes simples da V2 devem evitar `loadSheet()`; use consultas pontuais para validar coluna visivel/editavel e linha ativa, deixando snapshot completo apenas para bootstrap, diagnostico e operacoes fortes.
 - Commits simples de celula na V2 devem ser otimistas no frontend, atualizando a linha localmente e salvando em segundo plano com `expectedValue`; conflito/erro nao deve exigir renderizacao completa da tabela.
+- A presenca visual na grade deve ser efemera e informativa: mostrar celula/linha/coluna de outros usuarios sem bloquear a edicao nem virar historico permanente.
 - `presence_ping` continua sem avancar versao de sync local, porque presenca e temporaria e nao representa mudanca de dados.
 - Filtro de categoria nao deve ser reaplicado a cada tecla dentro de uma celula de categoria. O filtro ativo so deve recalcular depois que a edicao termina.
 - Na V2, quando a edicao faz a linha deixar de combinar com filtro/busca ativos, a linha editada permanece fixada visualmente ate o filtro ou a busca mudar. Isso evita a sensacao de perda de dados durante cotacao rapida.

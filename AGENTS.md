@@ -225,6 +225,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `target='cell'` na inicializacao da Cotacao V2; regra condicional deve pintar somente a celula da coluna-alvo, nunca a linha inteira.
 - A digitacao em celulas da Cotacao V2 agenda o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout a cada tecla sem alterar save/sync.
 - A Etapa 4 tornou o save de celula otimista no frontend: ao trocar de celula, a grade atualiza a linha imediatamente e salva em segundo plano; confirmacao/conflito volta pela API sem redesenhar a tabela inteira para cada celula simples.
+- A presenca da Cotacao V2 tambem marca a celula visivel onde outro usuario esta selecionando/editando, com contorno colorido, etiqueta do animal e tooltip com coluna/linha; isso e informativo e nao bloqueia edicao.
 
 ## Estado validado em 2026-05-11
 

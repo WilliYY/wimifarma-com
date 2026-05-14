@@ -51,6 +51,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - A Etapa 3 reduziu o custo das mutacoes simples da Cotacao V2: salvar celula, lote de celulas, estilos, regras, linhas e colunas usam consultas pontuais de validacao em vez de carregar o snapshot inteiro por `loadSheet()`.
 - A digitacao em celulas agenda o auto-ajuste de altura por frame do navegador para reduzir recalculo de layout e suavizar a escrita em planilhas maiores.
 - A Etapa 4 deixou a troca de celula mais fluida: saves de celula passam a ser otimistas no frontend, redesenhando somente a linha afetada enquanto a API confirma em segundo plano.
+- A presenca ao vivo agora tambem aparece dentro da grade: quando outra pessoa seleciona ou edita uma celula visivel, a celula ganha contorno colorido, etiqueta do animal e tooltip com coluna/linha.
 - O widget do Miauby voltou a carregar dentro da Cotacao V2, a tela de login foi compactada para ocupar menos a tela e os endpoints JSON limpam saida acidental antes de responder, evitando HTML misturado no login/chat.
 - Pendencias/cuidados atuais da Cotacao V2: Google Sheets ainda precisa de credenciais reais no `.env` do VPS; restore/import sao acoes fortes e devem ser usados com backup/revisao; o `fill handle` ja copia padroes, mas series automaticas mais inteligentes ainda podem evoluir.
 - Miauby possui `miauw_skill_registry()` para inventariar skills por modulo, risco, nivel, permissao, auditoria e executor antes de novas autonomias. Consultas de alertas e conhecimentos foram aliviadas para reduzir trabalho repetido.

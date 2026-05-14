@@ -612,22 +612,34 @@ body.is-fill-dragging * {
   color: #0f172a;
 }
 
-.cell-remote {
-  box-shadow: inset 0 0 0 2px #f59e0b;
+.sheet-cell.has-remote-presence {
+  outline: 3px solid var(--remote-color, #2563eb);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
 }
 
-.cell-remote::after {
-  content: attr(data-remote-user);
+.sheet-cell.has-remote-presence.is-remote-editing {
+  outline-width: 4px;
+}
+
+.remote-presence-badge {
   position: absolute;
-  top: 2px;
-  right: 4px;
-  z-index: 3;
-  border-radius: 5px;
-  background: #fff7ed;
-  color: #9a3412;
-  padding: 1px 4px;
-  font-size: 0.68rem;
+  top: -15px;
+  left: 7px;
+  z-index: 8;
+  max-width: min(180px, calc(100% - 12px));
+  border: 1px solid color-mix(in srgb, var(--remote-color, #2563eb) 70%, #ffffff);
+  border-radius: 999px;
+  background: var(--remote-color, #2563eb);
+  color: #fff;
+  padding: 2px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.65rem;
   font-weight: 900;
+  line-height: 1.2;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
   pointer-events: none;
 }
 
@@ -1103,11 +1115,30 @@ button svg {
 }
 
 .presence-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid #dbe4ff;
   background: #eef4ff;
   color: #1e3a8a;
   padding: 4px 8px;
   font-size: 0.75rem;
+}
+
+.presence-pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--presence-color, #2563eb);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.presence-pill.is-you {
+  border-color: #fbcfe8;
+  background: #fff1f2;
+  color: var(--brand);
 }
 
 .toolbar {

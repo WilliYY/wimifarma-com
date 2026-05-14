@@ -104,6 +104,7 @@ MySQL `wimifarma_app`:
 - Apagar distribuidora e um fluxo normal da equipe: a coluna fica oculta e pode ser restaurada por desfazer/`Ctrl+Z` na mesma sessao.
 - Presenca e temporaria; nao deve virar historico permanente.
 - Nomes de presenca aparecem como animais aleatorios/deterministicos por aba para diferenciar usuarios sem expor o nome real na area principal.
+- Quando outro usuario esta em uma celula visivel, a grade deve mostrar contorno colorido, etiqueta do animal e tooltip com coluna/linha; esse indicador nao bloqueia escrita e nao substitui o controle de conflito por save.
 - Login deve continuar aceitando os usuarios internos existentes de `wf_users`.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.
 - Import/export Google Sheets deve preservar `cotacao_row_id` para manter linha estavel e evitar duplicacao silenciosa.
@@ -143,6 +144,7 @@ MySQL `wimifarma_app`:
 - Desde a Etapa 2, o frontend usa `GET /cotacao/api/events?after=<eventId>` para refresh automatico, reconnect e retorno de aba visivel; eventos estruturais continuam caindo para `/cotacao/api/bootstrap`.
 - Desde a Etapa 3, mutacoes simples nao devem chamar `loadSheet()` para validar tudo. Salvar celula, colagem em lote, estilos, regras, linhas e colunas usam consultas pontuais para quote/linha/coluna, mantendo snapshot completo apenas para bootstrap, diagnostico, backup, import/export Google Sheets e restore.
 - Desde a Etapa 4, salvar uma celula simples deve ser otimista no frontend: a linha afetada atualiza imediatamente, o save segue em segundo plano com `expectedValue`, e erro/conflito reverte ou marca a celula sem redesenhar a tabela inteira.
+- A presenca recebida por Socket.IO passa a atualizar a grade em tempo real, marcando celulas de outros usuarios com cor deterministica por aba e tooltip de localizacao.
 - A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
 - O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
 - A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
@@ -185,6 +187,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a Cotacao passou a normalizar regras condicionais antigas/restauradas para `target='cell'`, reforcando que uma regra de categoria pinta apenas a propria celula de categoria e nao a linha inteira.
 - Em 2026-05-14, a digitacao em celulas passou a agendar o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout enquanto o usuario digita.
 - Em 2026-05-14, a Etapa 4 tornou a troca de celula mais fluida: commits simples de celula atualizam localmente, redesenham somente a linha afetada e salvam em segundo plano mantendo conflito por `expectedValue`.
+- Em 2026-05-14, a presenca visual estilo Sheets foi adicionada: celulas visiveis selecionadas/editadas por outras abas recebem contorno colorido, etiqueta do animal e tooltip com coluna/linha.
 
 ## Riscos ao alterar
 

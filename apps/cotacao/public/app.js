@@ -53,6 +53,7 @@
     'Raposa', 'Baleia', 'Panda', 'Lontra', 'Falcao', 'Pinguim', 'Gato'
   ];
   const COLORS = ['Azul', 'Verde', 'Rosa', 'Roxo', 'Dourado', 'Prata', 'Vermelho', 'Preto'];
+  const REMOTE_COLORS = ['#2563eb', '#16a34a', '#db2777', '#7c3aed', '#ea580c', '#0891b2', '#dc2626', '#4f46e5'];
 
   const state = {
     quote: null,
@@ -131,6 +132,15 @@
     return `${animal} ${color}${item.clientId === clientId ? ' (voce)' : ''}`;
   }
 
+  function presenceColor(item) {
+    const seed = hashString(item?.clientId || item?.username || item?.userId);
+    return REMOTE_COLORS[seed % REMOTE_COLORS.length];
+  }
+
+  function presenceAnimal(item) {
+    return animalName(item).replace(' (voce)', '');
+  }
+
   function esc(value) {
     return String(value ?? '')
       .replaceAll('&', '&amp;')
@@ -201,6 +211,44 @@
 
   function cellKey(rowId, columnKey) {
     return `${rowId}:${columnKey}`;
+  }
+
+  function rowNumber(rowId) {
+    const index = state.rows.findIndex((row) => row.id === rowId);
+    return index >= 0 ? index + 1 : null;
+  }
+
+  function presenceLocation(item) {
+    const column = colByKey(item?.columnKey);
+    const row = rowNumber(item?.rowId);
+    if (!column || !row) return 'online';
+    const visible = getVisibleRows().some((visibleRow) => visibleRow.id === item.rowId);
+    return `${column.label} linha ${row}${visible ? '' : ' fora do filtro atual'}`;
+  }
+
+  function presenceTooltip(item) {
+    const name = presenceAnimal(item);
+    const location = presenceLocation(item);
+    if (location === 'online') return `${name} online`;
+    return `${name} ${item.editing ? 'editando' : 'selecionou'} ${location}`;
+  }
+
+  function remotePresenceItems() {
+    return state.presence
+      .filter((item) => item?.clientId && item.clientId !== clientId && item.rowId && item.columnKey)
+      .filter((item) => rowById(item.rowId) && colByKey(item.columnKey))
+      .sort((a, b) => presenceAnimal(a).localeCompare(presenceAnimal(b)));
+  }
+
+  function remoteCellLabel(items) {
+    if (!items.length) return '';
+    const first = items.find((item) => item.editing) || items[0];
+    const suffix = items.length > 1 ? ` +${items.length - 1}` : '';
+    return `${presenceAnimal(first)}${suffix}${items.some((item) => item.editing) ? ' editando' : ''}`;
+  }
+
+  function remoteCellTitle(items) {
+    return items.map(presenceTooltip).join('\n');
   }
 
   function clampColumnWidth(width) {
@@ -703,6 +751,7 @@
       }
     }
     updateFillPreviewClasses();
+    updateRemotePresenceClasses();
   }
 
   function clearFillPreview() {
@@ -747,6 +796,45 @@
     if (td) td.classList.add('has-conflict');
   }
 
+  function updateRemotePresenceClasses() {
+    table.querySelectorAll('.remote-presence-badge').forEach((node) => node.remove());
+    table.querySelectorAll('.has-remote-presence, .is-remote-editing').forEach((td) => {
+      td.classList.remove('has-remote-presence', 'is-remote-editing');
+      td.style.removeProperty('--remote-color');
+      td.removeAttribute('data-remote-user');
+      const baseTitle = td.dataset.baseTitle || '';
+      if (baseTitle) {
+        td.setAttribute('title', baseTitle);
+      } else {
+        td.removeAttribute('title');
+      }
+    });
+
+    const grouped = new Map();
+    remotePresenceItems().forEach((item) => {
+      const key = cellKey(item.rowId, item.columnKey);
+      grouped.set(key, [...(grouped.get(key) || []), item]);
+    });
+
+    grouped.forEach((items) => {
+      const first = items.find((item) => item.editing) || items[0];
+      const td = table.querySelector(`[data-row-id="${first.rowId}"][data-column-key="${first.columnKey}"]`);
+      if (!td) return;
+      const label = remoteCellLabel(items);
+      const remoteTitle = remoteCellTitle(items);
+      const baseTitle = td.dataset.baseTitle || '';
+      td.classList.add('has-remote-presence');
+      if (items.some((item) => item.editing)) td.classList.add('is-remote-editing');
+      td.style.setProperty('--remote-color', presenceColor(first));
+      td.dataset.remoteUser = label;
+      td.setAttribute('title', [baseTitle, remoteTitle].filter(Boolean).join('\n'));
+      const badge = document.createElement('span');
+      badge.className = 'remote-presence-badge';
+      badge.textContent = label;
+      td.appendChild(badge);
+    });
+  }
+
   function updateRenderedCell(rowId, columnKey, value) {
     const input = table.querySelector(`[data-row-id="${rowId}"][data-column-key="${columnKey}"] .sheet-input`);
     if (input && !input.classList.contains('is-editing')) {
@@ -781,8 +869,9 @@
       `min-width:${clampColumnWidth(column.width || 160)}px`,
       `max-width:${clampColumnWidth(column.width || 160)}px`
     ].filter(Boolean).join(';');
-    const title = style.title ? ` title="${esc(style.title)}"` : '';
-    return `<td class="${classes}" data-row-id="${esc(row.id)}" data-column-key="${esc(column.key)}" style="${styleText}"${title}>
+    const baseTitle = style.title || '';
+    const title = baseTitle ? ` title="${esc(baseTitle)}"` : '';
+    return `<td class="${classes}" data-row-id="${esc(row.id)}" data-column-key="${esc(column.key)}" data-base-title="${esc(baseTitle)}" style="${styleText}"${title}>
       <textarea class="sheet-input" readonly rows="1" wrap="soft" ${isComputed ? 'tabindex="-1"' : ''}>${esc(value)}</textarea>
     </td>`;
   }
@@ -890,8 +979,13 @@
     const count = state.presence.length || 1;
     presenceCount.textContent = `${count} pessoa${count === 1 ? '' : 's'} usando`;
     presenceList.innerHTML = state.presence
-      .map((item) => `<span class="presence-pill" title="${esc(item.username || '')}">${esc(animalName(item))}</span>`)
+      .map((item) => {
+        const you = item.clientId === clientId ? ' is-you' : '';
+        const title = `${presenceTooltip(item)}${item.username ? ` - ${item.username}` : ''}`;
+        return `<span class="presence-pill${you}" style="--presence-color:${esc(presenceColor(item))}" title="${esc(title)}">${esc(animalName(item))}</span>`;
+      })
       .join('');
+    updateRemotePresenceClasses();
   }
 
   function renderRules() {
