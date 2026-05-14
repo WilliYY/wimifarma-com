@@ -3,8 +3,8 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --ink: #101827;
   --muted: #58657a;
-  --line: #cfd8e8;
-  --line-strong: #aebbd0;
+  --line: #aab4c4;
+  --line-strong: #6b7280;
   --soft: #f5f7fb;
   --brand: #a40f3a;
   --brand-dark: #7f1030;
@@ -630,36 +630,36 @@ textarea {
 
 .col-fornecedor-1,
 .col-fornecedor-7 {
-  background: #fff6cf !important;
+  background: #fff6cf;
 }
 
 .col-fornecedor-2 {
-  background: #eaf4ff !important;
+  background: #eaf4ff;
 }
 
 .col-fornecedor-3 {
-  background: #edf9f0 !important;
+  background: #edf9f0;
 }
 
 .col-fornecedor-4 {
-  background: #fff0f6 !important;
+  background: #fff0f6;
 }
 
 .col-fornecedor-5 {
-  background: #f3eeff !important;
+  background: #f3eeff;
 }
 
 .col-fornecedor-6 {
-  background: #fff1dc !important;
+  background: #fff1dc;
 }
 
 .col-winner {
-  background: #f9fbff !important;
+  background: #f9fbff;
 }
 
 .is-winning-price,
 .is-best-price {
-  background: #dbeafe !important;
+  background: #dbeafe;
   box-shadow: inset 0 0 0 2px #3b82f6;
 }
 
@@ -788,6 +788,33 @@ tr.is-filtered {
   height: 16px;
 }
 
+.filter-section-title {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.filter-color-options label {
+  grid-template-columns: 18px 18px minmax(0, 1fr);
+  align-items: center;
+}
+
+.filter-color-swatch {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #64748b;
+  border-radius: 4px;
+  background: var(--filter-color);
+}
+
+.filter-color-swatch.is-empty {
+  background:
+    linear-gradient(135deg, transparent 45%, #ef4444 46%, #ef4444 54%, transparent 55%),
+    #fff;
+}
+
 dialog {
   width: min(760px, calc(100vw - 24px));
   border: 0;
@@ -871,7 +898,7 @@ dialog::backdrop {
 
 .rules-form {
   display: grid;
-  grid-template-columns: minmax(160px, 1.1fr) minmax(140px, 0.8fr) minmax(180px, 1.2fr) 86px auto;
+  grid-template-columns: minmax(150px, 1fr) minmax(122px, 0.8fr) minmax(170px, 1fr) 76px 100px auto;
   gap: 10px;
   align-items: end;
 }
@@ -883,7 +910,7 @@ dialog::backdrop {
 
 .rule-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(118px, 0.75fr) minmax(150px, 1.1fr) 78px auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(118px, 0.75fr) minmax(150px, 1.1fr) 74px 100px auto;
   gap: 10px;
   align-items: end;
   padding: 10px 12px;
@@ -919,6 +946,25 @@ dialog::backdrop {
   padding: 3px;
 }
 
+.rules-form .rule-check,
+.rule-row .rule-check {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid #c9d3e3;
+  border-radius: 7px;
+  background: #fff;
+  color: #111827;
+}
+
+.rules-form .rule-check input,
+.rule-row .rule-check input {
+  width: 15px;
+  min-height: 15px;
+}
+
 .rule-actions {
   display: flex;
   flex-wrap: wrap;
@@ -946,8 +992,8 @@ dialog::backdrop {
   --surface: #ffffff;
   --surface-soft: #f7f9fd;
   --surface-rail: #eef3fa;
-  --grid-line: #b9c5d8;
-  --grid-line-soft: #d7dfeb;
+  --grid-line: #6b7280;
+  --grid-line-soft: #9ca3af;
   --text-strong: #111827;
   --accent: #2563eb;
   --accent-soft: #dbeafe;
@@ -1075,7 +1121,7 @@ button svg {
   left: 0;
   z-index: 260;
   display: grid;
-  grid-template-columns: repeat(5, 24px);
+  grid-template-columns: repeat(7, 24px);
   gap: 6px;
   max-width: calc(100vw - 16px);
   max-height: min(360px, calc(100vh - 16px));

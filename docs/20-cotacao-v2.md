@@ -43,6 +43,7 @@ Rotas:
 - `POST /cotacao/api/columns/:key/restore`
 - `POST /cotacao/api/columns/:key/width`
 - `POST /cotacao/api/rules`
+- `PATCH /cotacao/api/rules/:id`
 - `DELETE /cotacao/api/rules/:id`
 - `PUT /cotacao/api/styles`
 - `GET /cotacao/api/diagnostics`
@@ -62,7 +63,7 @@ Postgres `wimifarma_cotacao`:
 - `cotacao_v2_columns`: colunas da grade, incluindo metadados `options` para detalhes visuais como colunas ocultas, tons de fornecedores e fallback de exibicao.
 - `cotacao_v2_rows`: linhas com UUID, posicao, valores JSONB, versao e `deleted_at` para exclusao logica.
 - `cotacao_v2_events`: eventos gerados por edicoes, linhas e regras.
-- `cotacao_v2_rules`: regras condicionais explicitas.
+- `cotacao_v2_rules`: regras condicionais explicitas, incluindo `show_timestamp` para exibir no hover a data/hora de criacao da regra quando habilitado.
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula, usados pela paleta de cores da tela.
 - `cotacao_v2_column_audit`: auditoria de renomeacao e reordenacao de colunas de distribuidoras.
 
@@ -86,11 +87,12 @@ MySQL `wimifarma_app`:
 - `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem, filtro nem alerta por gatilho escondido.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`; regras criadas pela tela podem ser editadas ou apagadas no proprio modal.
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
-- Filtros de busca, categoria e ganhador sao locais por tela e nao devem mover a visao de outro usuario.
-- Filtros de `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local. O filtro de `Ganhador` mostra a contagem de linhas por resultado no formato `Nome (quantidade)`.
-- Ao editar uma linha que nao combina mais com filtro/busca ativos, a tela deve manter a linha visivel ate o usuario alterar o filtro ou a busca, evitando que a linha desapareca no meio da edicao.
+- Filtros de produto, categoria, ganhador e cor sao locais por tela e nao devem mover a visao de outro usuario.
+- Filtros de `PRODUTO`, `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local. O filtro de `Ganhador` mostra a contagem de linhas por resultado no formato `Nome (quantidade)` e lista primeiro vencedores individuais, depois empates e por ultimo `Sem vencedor`.
+- Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
+- Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
 - Texto longo deve quebrar linha dentro da celula e aumentar a altura da linha em vez de vazar ou ficar cortado.
-- Clicar no cabecalho seleciona a coluna inteira; clicar no numero seleciona a linha inteira.
+- Clicar no cabecalho seleciona a coluna inteira; clicar no numero seleciona a linha inteira. Arrastar pelos cabecalhos deve ampliar a selecao para varias colunas ou varias linhas.
 - Distribuidoras podem ser renomeadas com duplo clique no cabecalho e ter largura ajustada arrastando a borda do titulo.
 - Apagar distribuidora e um fluxo normal da equipe: a coluna fica oculta e pode ser restaurada por desfazer/`Ctrl+Z` na mesma sessao.
 - Presenca e temporaria; nao deve virar historico permanente.
@@ -114,18 +116,21 @@ MySQL `wimifarma_app`:
 - As celulas usam fonte 20px e alinhamento central por padrao.
 - O menu de contexto permite inserir/apagar linhas e inserir/apagar apenas colunas de distribuidoras.
 - A paleta de cores grava estilo manual por linha, coluna ou celula em `cotacao_v2_styles`, pode ser aberta pelo botao do topo ou pelo menu de contexto e oferece faixas de tons do mais forte ao mais claro.
+- Cor manual aplicada por linha/coluna/celula tem prioridade visual sobre destaque automatico de menor preco e tons padrao de distribuidora.
+- Entre estilos manuais sobrepostos, o `updated_at` mais recente vence; assim, pintar uma coluna agora cobre cores antigas de celulas daquela coluna, mas uma cor de celula aplicada depois ainda pode se destacar.
 - Aplicar cor ou borracha pela paleta e uma acao unica; apos salvar o estilo da selecao atual, o modo de pintura e desarmado para evitar colorir a proxima celula por acidente.
 - A coluna `Ganhador` e a celula de menor preco recebem destaque visual automatico, sem depender de palavra em categoria.
 - A insercao de linhas saiu dos botoes visiveis e ficou no menu de contexto. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
 - A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis.
-- `Ctrl+Z` tambem desfaz filtro e busca local; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
-- A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo, sem rotulo visual de busca acima do campo.
+- `Ctrl+Z` tambem desfaz filtros locais; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
+- A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo e o campo de busca livre foi removido para reduzir ruido operacional.
+- Regras condicionais podem marcar a opcao `Data/hora`; quando uma celula bater nessa regra, o hover mostra a data/hora de criacao da regra.
 - O fim da rolagem da grade exibe `Adicionar 20 linhas` para continuar a cotacao sem voltar ao topo.
 - `app.js` e `styles.css` sao servidos sem cache forte para que alteracoes de deploy aparecam imediatamente ao recarregar a Cotacao.
 - O topo da Cotacao V2 deve permanecer compacto: `Wimifarma Cotacao`, `Home`, `Baixar` e `Sair`; o diagnostico saiu do menu principal da equipe.
 - O diagnostico operacional continua disponivel por API interna e pode consultar health, presenca, eventos, Google Sheets e backups quando necessario.
 - A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
-- O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e tenta recuperar payload JSON mesmo quando a resposta vem com ruido externo.
+- O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
 - A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
 - Backups da Cotacao V2 ficam no volume ignorado `cotacao-data/backups`, montado em `/app/backups`.
 
@@ -152,7 +157,8 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-13, a tela foi evoluida com filtros por icone, remocao dos botoes `Adicionar linhas` e `Colar do Sheets`, colagem via `Ctrl+V`, desfazer/refazer, selecao multipla, menu de contexto ampliado, diagnostico, Google Sheets import/export e backup/restore.
 - Em 2026-05-13, nova rodada corrigiu a operacao diaria: `Ctrl+C`, `Ctrl+Z` para busca/filtros, menu de filtro com posicionamento visivel, limpeza de estado de edicao ao trocar de celula, regra condicional apenas por fundo, Miauby na Cotacao, login compacto e heartbeat/reload leve apos inatividade.
 - Em 2026-05-13, a formatacao condicional foi ajustada para pintar apenas a celula da coluna-alvo da regra, e a paleta de cores passou a flutuar acima da grade e abrir tambem pelo menu de contexto.
-- Em 2026-05-13, regras condicionais passaram a ser editaveis pela tela, a paleta foi ampliada para 45 tons e desarma apos aplicar cor/borracha, o duplo clique de distribuidora prioriza renomeacao, o filtro de `Ganhador` exibe contagens e o widget do Miauby ganhou leitura JSON mais tolerante.
+- Em 2026-05-13, regras condicionais passaram a ser editaveis pela tela, a paleta foi ampliada para 63 tons e desarma apos aplicar cor/borracha, o duplo clique de distribuidora prioriza renomeacao, o filtro de `Ganhador` exibe contagens e o widget do Miauby ganhou leitura JSON mais tolerante.
+- Em 2026-05-13, os filtros passaram a cobrir `PRODUTO`, valor e cor; o filtro de `Ganhador` passou a ordenar vencedores individuais antes de empates e `Sem vencedor`; selecao de cabecalhos passou a arrastar por multiplas colunas/linhas; regra condicional ganhou opcao de hover com data/hora; cores manuais passaram a vencer destaques automaticos; o campo de busca livre e a borracha do topo foram removidos.
 
 ## Riscos ao alterar
 

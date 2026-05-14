@@ -25,6 +25,7 @@
   const ruleOperator = document.getElementById('ruleOperator');
   const ruleValue = document.getElementById('ruleValue');
   const ruleBg = document.getElementById('ruleBg');
+  const ruleTimestamp = document.getElementById('ruleTimestamp');
   const addRuleButton = document.getElementById('addRuleButton');
   const rulesList = document.getElementById('rulesList');
   const diagnosticsButton = document.getElementById('diagnosticsButton');
@@ -39,7 +40,7 @@
 
   const FIXED_KEYS = ['ean', 'produto', 'quantidade', 'categoria'];
   const WINNER_KEY = 'quem_ganhou';
-  const FILTERABLE_KEYS = ['categoria', WINNER_KEY];
+  const FILTERABLE_KEYS = ['produto', 'categoria', WINNER_KEY];
   const RULE_OPERATORS = [
     ['contains', 'Contem'],
     ['equals', 'Igual'],
@@ -61,6 +62,12 @@
     lastEventId: 0,
     search: '',
     filters: {
+      produto: null,
+      categoria: null,
+      [WINNER_KEY]: null
+    },
+    colorFilters: {
+      produto: null,
       categoria: null,
       [WINNER_KEY]: null
     },
@@ -72,6 +79,7 @@
     pendingCommit: null,
     dragging: false,
     resizing: null,
+    headerDragging: null,
     connectedOnce: false,
     heartbeatTimer: null,
     refreshTimer: null,
@@ -247,9 +255,17 @@
       operator: row.querySelector('[data-rule-field="operator"]')?.value || 'contains',
       value: row.querySelector('[data-rule-field="value"]')?.value || '',
       background: row.querySelector('[data-rule-field="background"]')?.value || '#fff7ed',
+      showTimestamp: row.querySelector('[data-rule-field="showTimestamp"]')?.checked === true,
       color: '#111827',
       clientId
     };
+  }
+
+  function winnerOptionRank(value) {
+    const text = String(value || '');
+    if (text === 'Sem vencedor') return 2;
+    if (text.startsWith('Empate:')) return 1;
+    return 0;
   }
 
   function winnerFilterOptions() {
@@ -259,7 +275,7 @@
       counts.set(label, (counts.get(label) || 0) + 1);
     });
     return Array.from(counts, ([value, count]) => ({ value, count }))
-      .sort((a, b) => a.value.localeCompare(b.value));
+      .sort((a, b) => winnerOptionRank(a.value) - winnerOptionRank(b.value) || a.value.localeCompare(b.value));
   }
 
   function filterOptions(columnKey) {
@@ -272,6 +288,25 @@
     });
     return Array.from(counts, ([value, count]) => ({ value, count }))
       .sort((a, b) => String(a.value).localeCompare(String(b.value)));
+  }
+
+  function normalizeColorValue(value) {
+    const color = String(value || '').trim().toLowerCase();
+    return /^#[0-9a-f]{6}$/i.test(color) ? color : '';
+  }
+
+  function colorFilterOptions(columnKey) {
+    const column = colByKey(columnKey);
+    if (!column) return [];
+    const styles = styleMap();
+    const counts = new Map();
+    state.rows.forEach((row) => {
+      const background = normalizeColorValue(mergedStyle(row, column, styles).background);
+      const value = background || '__none__';
+      counts.set(value, (counts.get(value) || 0) + 1);
+    });
+    return Array.from(counts, ([value, count]) => ({ value, count }))
+      .sort((a, b) => (a.value === '__none__' ? 1 : b.value === '__none__' ? -1 : a.value.localeCompare(b.value)));
   }
 
   function parsePrice(value) {
@@ -316,6 +351,15 @@
       if (!filter) continue;
       const column = colByKey(key);
       const value = key === WINNER_KEY ? computeWinner(row).label : valueOf(row, column);
+      if (!filter.has(value)) return false;
+    }
+    const styles = styleMap();
+    for (const key of FILTERABLE_KEYS) {
+      const filter = state.colorFilters[key];
+      if (!filter) continue;
+      const column = colByKey(key);
+      if (!column) continue;
+      const value = normalizeColorValue(mergedStyle(row, column, styles).background) || '__none__';
       if (!filter.has(value)) return false;
     }
     return true;
@@ -371,14 +415,15 @@
 
   function applySearchValue(value) {
     state.search = String(value || '');
-    searchInput.value = state.search;
+    if (searchInput) searchInput.value = state.search;
     clearPinnedRows();
     renderTable();
     updatePresence(false);
   }
 
-  function applyFilterValue(columnKey, values) {
+  function applyFilterValue(columnKey, values, colorValues = null) {
     state.filters[columnKey] = restoreFilter(values);
+    state.colorFilters[columnKey] = restoreFilter(colorValues);
     clearPinnedRows();
     renderTable();
     updatePresence(false);
@@ -390,7 +435,7 @@
 
   function hasActiveViewFilter() {
     if (String(state.search || '').trim()) return true;
-    return FILTERABLE_KEYS.some((key) => state.filters[key]);
+    return FILTERABLE_KEYS.some((key) => state.filters[key] || state.colorFilters[key]);
   }
 
   function gridRows() {
@@ -417,21 +462,44 @@
           ? current.startsWith(expected)
           : current.includes(expected);
       if (matched) {
-        return { background: rule.background };
+        const showTimestamp = rule.show_timestamp === true || rule.showTimestamp === true;
+        return {
+          background: rule.background,
+          title: showTimestamp ? formatRuleTimestamp(rule) : ''
+        };
       }
     }
     return {};
   }
 
+  function formatRuleTimestamp(rule) {
+    const raw = rule.created_at || rule.createdAt;
+    if (!raw) return '';
+    const date = new Date(raw);
+    const formatted = Number.isNaN(date.getTime())
+      ? String(raw)
+      : new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+      }).format(date);
+    return `Data/hora: ${formatted}`;
+  }
+
   function mergedStyle(row, column, map) {
     const merged = { ...ruleStyle(row, column) };
-    [
+    const candidates = [
       `column::${column.key}`,
       `row:${row.id}:`,
       `cell:${row.id}:${column.key}`
-    ].forEach((key) => {
-      const style = map.get(key);
-      if (!style) return;
+    ]
+      .map((key, index) => ({ style: map.get(key), index }))
+      .filter((item) => item.style)
+      .sort((a, b) => {
+        const left = Date.parse(a.style.updatedAt || a.style.updated_at || '') || 0;
+        const right = Date.parse(b.style.updatedAt || b.style.updated_at || '') || 0;
+        return left - right || a.index - b.index;
+      });
+    candidates.forEach(({ style }) => {
       if (style.background) merged.background = style.background;
     });
     return merged;
@@ -515,32 +583,50 @@
   }
 
   function selectColumn(columnKey) {
+    selectColumnRange(columnKey, columnKey);
+  }
+
+  function selectColumnRange(anchorColumnKey, targetColumnKey) {
     const rows = gridRows();
-    const colIndex = state.columns.findIndex((column) => column.key === columnKey);
-    if (colIndex < 0 || !rows.length) return;
-    state.selectionScope = { type: 'column', columnKey };
-    state.anchorCell = { rowId: rows[0].id, columnKey };
-    state.activeCell = { rowId: rows[rows.length - 1].id, columnKey };
+    const anchorIndex = state.columns.findIndex((column) => column.key === anchorColumnKey);
+    const targetIndex = state.columns.findIndex((column) => column.key === targetColumnKey);
+    if (anchorIndex < 0 || targetIndex < 0 || !rows.length) return;
+    const startCol = Math.min(anchorIndex, targetIndex);
+    const endCol = Math.max(anchorIndex, targetIndex);
+    state.selectionScope = startCol === endCol
+      ? { type: 'column', columnKey: state.columns[startCol].key }
+      : { type: 'column-range', startCol, endCol };
+    state.anchorCell = { rowId: rows[0].id, columnKey: state.columns[anchorIndex].key };
+    state.activeCell = { rowId: rows[rows.length - 1].id, columnKey: state.columns[targetIndex].key };
     state.selectedRange = {
       startRow: 0,
       endRow: rows.length - 1,
-      startCol: colIndex,
-      endCol: colIndex
+      startCol,
+      endCol
     };
     updateSelectionClasses();
     updatePresence(false);
   }
 
   function selectRow(rowId) {
+    selectRowRange(rowId, rowId);
+  }
+
+  function selectRowRange(anchorRowId, targetRowId) {
     const rows = gridRows();
-    const rowIndex = rows.findIndex((row) => row.id === rowId);
-    if (rowIndex < 0 || !state.columns.length) return;
-    state.selectionScope = { type: 'row', rowId };
-    state.anchorCell = { rowId, columnKey: state.columns[0].key };
-    state.activeCell = { rowId, columnKey: state.columns[state.columns.length - 1].key };
+    const anchorIndex = rows.findIndex((row) => row.id === anchorRowId);
+    const targetIndex = rows.findIndex((row) => row.id === targetRowId);
+    if (anchorIndex < 0 || targetIndex < 0 || !state.columns.length) return;
+    const startRow = Math.min(anchorIndex, targetIndex);
+    const endRow = Math.max(anchorIndex, targetIndex);
+    state.selectionScope = startRow === endRow
+      ? { type: 'row', rowId: rows[startRow].id }
+      : { type: 'row-range', startRow, endRow };
+    state.anchorCell = { rowId: rows[anchorIndex].id, columnKey: state.columns[0].key };
+    state.activeCell = { rowId: rows[targetIndex].id, columnKey: state.columns[state.columns.length - 1].key };
     state.selectedRange = {
-      startRow: rowIndex,
-      endRow: rowIndex,
+      startRow,
+      endRow,
       startCol: 0,
       endCol: state.columns.length - 1
     };
@@ -560,10 +646,21 @@
     if (state.selectionScope?.type === 'column') {
       const header = table.querySelector(`th[data-column-key="${state.selectionScope.columnKey}"]`);
       if (header) header.classList.add('is-selected-header');
+    } else if (state.selectionScope?.type === 'column-range') {
+      for (let index = state.selectionScope.startCol; index <= state.selectionScope.endCol; index += 1) {
+        const header = table.querySelector(`th[data-column-key="${state.columns[index]?.key}"]`);
+        if (header) header.classList.add('is-selected-header');
+      }
     }
     if (state.selectionScope?.type === 'row') {
       const rowHeader = table.querySelector(`.row-index[data-row-id="${state.selectionScope.rowId}"]`);
       if (rowHeader) rowHeader.classList.add('is-selected-row');
+    } else if (state.selectionScope?.type === 'row-range') {
+      const rows = gridRows();
+      for (let index = state.selectionScope.startRow; index <= state.selectionScope.endRow; index += 1) {
+        const rowHeader = table.querySelector(`.row-index[data-row-id="${rows[index]?.id}"]`);
+        if (rowHeader) rowHeader.classList.add('is-selected-row');
+      }
     }
     if (state.activeCell) {
       const active = table.querySelector(`[data-row-id="${state.activeCell.rowId}"][data-column-key="${state.activeCell.columnKey}"]`);
@@ -591,7 +688,7 @@
 
   function headerFilterButton(column) {
     if (!FILTERABLE_KEYS.includes(column.key)) return '';
-    const active = state.filters[column.key] ? ' is-active' : '';
+    const active = state.filters[column.key] || state.colorFilters[column.key] ? ' is-active' : '';
     return `<button type="button" class="filter-button${active}" data-filter-column="${esc(column.key)}" title="Filtro" aria-label="Filtrar ${esc(column.label)}"></button>`;
   }
 
@@ -634,7 +731,8 @@
           `min-width:${clampColumnWidth(column.width || 160)}px`,
           `max-width:${clampColumnWidth(column.width || 160)}px`
         ].filter(Boolean).join(';');
-        return `<td class="${classes}" data-row-id="${esc(row.id)}" data-column-key="${esc(column.key)}" style="${styleText}">
+        const title = style.title ? ` title="${esc(style.title)}"` : '';
+        return `<td class="${classes}" data-row-id="${esc(row.id)}" data-column-key="${esc(column.key)}" style="${styleText}"${title}>
           <textarea class="sheet-input" readonly rows="1" wrap="soft" ${isComputed ? 'tabindex="-1"' : ''}>${esc(value)}</textarea>
         </td>`;
       }).join('');
@@ -697,6 +795,10 @@
           </label>
           <label>Fundo
             <input data-rule-field="background" type="color" value="${esc(background)}">
+          </label>
+          <label class="rule-check">
+            <input data-rule-field="showTimestamp" type="checkbox" ${(rule.show_timestamp === true || rule.showTimestamp === true) ? 'checked' : ''}>
+            <span>Data/hora</span>
           </label>
           <div class="rule-actions">
             <button type="button" class="rule-save" data-rule-save="${esc(rule.id)}">Salvar</button>
@@ -864,8 +966,10 @@
       columnKey: state.activeCell?.columnKey || null,
       filter: {
         search: state.search,
+        produto: state.filters.produto ? Array.from(state.filters.produto) : null,
         categoria: state.filters.categoria ? Array.from(state.filters.categoria) : null,
-        ganhador: state.filters[WINNER_KEY] ? Array.from(state.filters[WINNER_KEY]) : null
+        ganhador: state.filters[WINNER_KEY] ? Array.from(state.filters[WINNER_KEY]) : null,
+        colors: Object.fromEntries(FILTERABLE_KEYS.map((key) => [key, state.colorFilters[key] ? Array.from(state.colorFilters[key]) : null]))
       },
       editing
     });
@@ -1064,7 +1168,7 @@
     } else if (action.type === 'column-delete') {
       await restoreDeletedColumn(action.columnKey);
     } else if (action.type === 'filter') {
-      applyFilterValue(action.columnKey, action.before);
+      applyFilterValue(action.columnKey, action.before, action.beforeColor);
     } else if (action.type === 'search') {
       applySearchValue(action.before);
     } else {
@@ -1086,7 +1190,7 @@
     } else if (action.type === 'column-delete') {
       await deleteColumn(action.columnKey, { history: false });
     } else if (action.type === 'filter') {
-      applyFilterValue(action.columnKey, action.after);
+      applyFilterValue(action.columnKey, action.after, action.afterColor);
     } else if (action.type === 'search') {
       applySearchValue(action.after);
     } else {
@@ -1179,8 +1283,24 @@
       await colorColumn(state.selectionScope.columnKey, color);
       return;
     }
+    if (state.selectionScope?.type === 'column-range') {
+      const targets = state.columns.slice(state.selectionScope.startCol, state.selectionScope.endCol + 1);
+      for (const column of targets) {
+        if (column) await setStyle({ scope: 'column', columnKey: column.key }, color);
+      }
+      renderTable();
+      return;
+    }
     if (state.selectionScope?.type === 'row') {
       await colorRow(state.selectionScope.rowId, color);
+      return;
+    }
+    if (state.selectionScope?.type === 'row-range') {
+      const rows = gridRows().slice(state.selectionScope.startRow, state.selectionScope.endRow + 1);
+      for (const row of rows) {
+        if (row) await setStyle({ scope: 'row', rowId: row.id }, color);
+      }
+      renderTable();
       return;
     }
     const cells = selectedCells();
@@ -1195,8 +1315,24 @@
       await eraseColumn(state.selectionScope.columnKey);
       return;
     }
+    if (state.selectionScope?.type === 'column-range') {
+      const targets = state.columns.slice(state.selectionScope.startCol, state.selectionScope.endCol + 1);
+      for (const column of targets) {
+        if (column) await deleteStyle({ scope: 'column', columnKey: column.key });
+      }
+      renderTable();
+      return;
+    }
     if (state.selectionScope?.type === 'row') {
       await eraseRow(state.selectionScope.rowId);
+      return;
+    }
+    if (state.selectionScope?.type === 'row-range') {
+      const rows = gridRows().slice(state.selectionScope.startRow, state.selectionScope.endRow + 1);
+      for (const row of rows) {
+        if (row) await deleteStyle({ scope: 'row', rowId: row.id });
+      }
+      renderTable();
       return;
     }
     const cells = selectedCells();
@@ -1372,7 +1508,7 @@
   function clearPaintMode() {
     state.paintColor = null;
     state.eraser = false;
-    eraserButton.classList.remove('is-active');
+    if (eraserButton) eraserButton.classList.remove('is-active');
     document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.remove('is-active'));
   }
 
@@ -1384,11 +1520,8 @@
 
   function scheduleColumnSelection(columnKey) {
     clearHeaderSelectTimer();
-    state.headerSelectTimer = window.setTimeout(() => {
-      state.headerSelectTimer = null;
-      if (state.editing) commitEdit().catch(console.error);
-      selectColumn(columnKey);
-    }, 260);
+    if (state.editing) commitEdit().catch(console.error);
+    selectColumn(columnKey);
   }
 
   async function handleContextAction(action) {
@@ -1438,17 +1571,36 @@
     const options = filterOptions(columnKey);
     const values = options.map((option) => option.value);
     const current = state.filters[columnKey] || new Set(values);
+    const colorOptions = colorFilterOptions(columnKey);
+    const colorValues = colorOptions.map((option) => option.value);
+    const currentColors = state.colorFilters[columnKey] || new Set(colorValues);
     filterMenu.innerHTML = `
       <strong>Filtro: ${esc(colByKey(columnKey)?.label || columnKey)}</strong>
+      <span class="filter-section-title">Valores</span>
       <div class="filter-actions">
-        <button type="button" data-filter-select="all">Selecionar tudo</button>
-        <button type="button" data-filter-select="none">Selecionar nada</button>
+        <button type="button" data-filter-select="value-all">Selecionar tudo</button>
+        <button type="button" data-filter-select="value-none">Selecionar nada</button>
       </div>
       <div class="filter-options">
         ${options.map((option) => {
           const label = option.value || '(vazio)';
           const text = columnKey === WINNER_KEY ? `${label} (${option.count})` : label;
-          return `<label><input type="checkbox" value="${esc(option.value)}" ${current.has(option.value) ? 'checked' : ''}> ${esc(text)}</label>`;
+          return `<label><input type="checkbox" data-filter-kind="value" value="${esc(option.value)}" ${current.has(option.value) ? 'checked' : ''}> ${esc(text)}</label>`;
+        }).join('')}
+      </div>
+      <span class="filter-section-title">Cor</span>
+      <div class="filter-actions">
+        <button type="button" data-filter-select="color-all">Selecionar tudo</button>
+        <button type="button" data-filter-select="color-none">Selecionar nada</button>
+      </div>
+      <div class="filter-options filter-color-options">
+        ${colorOptions.map((option) => {
+          const noColor = option.value === '__none__';
+          const label = noColor ? `Sem cor (${option.count})` : `${option.value.toUpperCase()} (${option.count})`;
+          const swatch = noColor
+            ? '<span class="filter-color-swatch is-empty"></span>'
+            : `<span class="filter-color-swatch" style="--filter-color:${esc(option.value)}"></span>`;
+          return `<label><input type="checkbox" data-filter-kind="color" value="${esc(option.value)}" ${currentColors.has(option.value) ? 'checked' : ''}> ${swatch}<span>${esc(label)}</span></label>`;
         }).join('')}
       </div>
       <div class="filter-actions">
@@ -1513,6 +1665,7 @@
       const header = event.target.closest('th[data-column-key]');
       if (header && event.button === 0 && !(state.paintColor || state.eraser)) {
         event.preventDefault();
+        state.headerDragging = { type: 'column', anchorKey: header.dataset.columnKey };
         scheduleColumnSelection(header.dataset.columnKey);
         return;
       }
@@ -1530,6 +1683,7 @@
       if (rowHeader && event.button === 0 && !(state.paintColor || state.eraser)) {
         event.preventDefault();
         if (state.editing) commitEdit().catch(console.error);
+        state.headerDragging = { type: 'row', anchorRowId: rowHeader.dataset.rowId };
         selectRow(rowHeader.dataset.rowId);
         return;
       }
@@ -1558,6 +1712,19 @@
       if (state.editing) commitEdit().catch(console.error);
       state.dragging = true;
       setSelection(cell.dataset.rowId, cell.dataset.columnKey, event.shiftKey);
+    });
+
+    table.addEventListener('mouseover', (event) => {
+      if (!state.headerDragging) return;
+      const header = event.target.closest('th[data-column-key]');
+      if (state.headerDragging.type === 'column' && header) {
+        selectColumnRange(state.headerDragging.anchorKey, header.dataset.columnKey);
+        return;
+      }
+      const rowHeader = event.target.closest('.row-index');
+      if (state.headerDragging.type === 'row' && rowHeader) {
+        selectRowRange(state.headerDragging.anchorRowId, rowHeader.dataset.rowId);
+      }
     });
 
     table.addEventListener('dblclick', (event) => {
@@ -1614,6 +1781,7 @@
         saveColumnWidth(columnKey, width).catch(console.error);
       }
       state.dragging = false;
+      state.headerDragging = null;
     });
 
     document.addEventListener('keydown', (event) => {
@@ -1705,21 +1873,32 @@
     filterMenu.addEventListener('click', (event) => {
       const select = event.target.closest('[data-filter-select]');
       if (select) {
-        const checked = select.dataset.filterSelect === 'all';
-        filterMenu.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+        const [kind, stateName] = String(select.dataset.filterSelect || '').split('-');
+        const checked = stateName === 'all';
+        filterMenu.querySelectorAll(`input[data-filter-kind="${kind}"]`).forEach((input) => {
           input.checked = checked;
         });
         return;
       }
       const apply = event.target.closest('[data-filter-apply]');
       if (apply) {
-        const values = Array.from(filterMenu.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
+        const values = Array.from(filterMenu.querySelectorAll('input[data-filter-kind="value"]:checked')).map((input) => input.value);
+        const colorValues = Array.from(filterMenu.querySelectorAll('input[data-filter-kind="color"]:checked')).map((input) => input.value);
         const columnKey = apply.dataset.filterApply;
         const before = cloneFilter(state.filters[columnKey]);
+        const beforeColor = cloneFilter(state.colorFilters[columnKey]);
         state.filters[columnKey] = new Set(values);
+        state.colorFilters[columnKey] = new Set(colorValues);
         filterMenu.hidden = true;
         clearPinnedRows();
-        pushHistory({ type: 'filter', columnKey, before, after: cloneFilter(state.filters[columnKey]) });
+        pushHistory({
+          type: 'filter',
+          columnKey,
+          before,
+          after: cloneFilter(state.filters[columnKey]),
+          beforeColor,
+          afterColor: cloneFilter(state.colorFilters[columnKey])
+        });
         renderTable();
         updatePresence(false);
         return;
@@ -1728,39 +1907,43 @@
       if (clear) {
         const columnKey = clear.dataset.filterClear;
         const before = cloneFilter(state.filters[columnKey]);
+        const beforeColor = cloneFilter(state.colorFilters[columnKey]);
         state.filters[columnKey] = null;
+        state.colorFilters[columnKey] = null;
         filterMenu.hidden = true;
         clearPinnedRows();
-        pushHistory({ type: 'filter', columnKey, before, after: null });
+        pushHistory({ type: 'filter', columnKey, before, after: null, beforeColor, afterColor: null });
         renderTable();
         updatePresence(false);
       }
     });
 
-    searchInput.addEventListener('focus', () => {
-      state.searchBeforeFocus = state.search;
-    });
-
-    searchInput.addEventListener('input', () => {
-      state.search = searchInput.value;
-      clearPinnedRows();
-      renderTable();
-      updatePresence(false);
-    });
-
-    searchInput.addEventListener('change', () => {
-      if (state.searchBeforeFocus !== state.search) {
-        pushHistory({ type: 'search', before: state.searchBeforeFocus, after: state.search });
+    if (searchInput) {
+      searchInput.addEventListener('focus', () => {
         state.searchBeforeFocus = state.search;
-      }
-    });
+      });
 
-    searchInput.addEventListener('blur', () => {
-      if (state.searchBeforeFocus !== state.search) {
-        pushHistory({ type: 'search', before: state.searchBeforeFocus, after: state.search });
-        state.searchBeforeFocus = state.search;
-      }
-    });
+      searchInput.addEventListener('input', () => {
+        state.search = searchInput.value;
+        clearPinnedRows();
+        renderTable();
+        updatePresence(false);
+      });
+
+      searchInput.addEventListener('change', () => {
+        if (state.searchBeforeFocus !== state.search) {
+          pushHistory({ type: 'search', before: state.searchBeforeFocus, after: state.search });
+          state.searchBeforeFocus = state.search;
+        }
+      });
+
+      searchInput.addEventListener('blur', () => {
+        if (state.searchBeforeFocus !== state.search) {
+          pushHistory({ type: 'search', before: state.searchBeforeFocus, after: state.search });
+          state.searchBeforeFocus = state.search;
+        }
+      });
+    }
 
     paletteToggleButton.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -1778,7 +1961,7 @@
       button.addEventListener('click', () => {
         state.paintColor = button.dataset.color;
         state.eraser = false;
-        eraserButton.classList.remove('is-active');
+        if (eraserButton) eraserButton.classList.remove('is-active');
         document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.toggle('is-active', item === button));
         if (selectedCells().length) {
           const color = state.paintColor;
@@ -1794,17 +1977,19 @@
       });
     });
 
-    eraserButton.addEventListener('click', () => {
-      state.eraser = true;
-      state.paintColor = null;
-      eraserButton.classList.add('is-active');
-      document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.remove('is-active'));
-      if (selectedCells().length) {
-        clearPaintMode();
-        eraseSelection()
-          .catch(console.error);
-      }
-    });
+    if (eraserButton) {
+      eraserButton.addEventListener('click', () => {
+        state.eraser = true;
+        state.paintColor = null;
+        eraserButton.classList.add('is-active');
+        document.querySelectorAll('.paint-swatch').forEach((item) => item.classList.remove('is-active'));
+        if (selectedCells().length) {
+          clearPaintMode();
+          eraseSelection()
+            .catch(console.error);
+        }
+      });
+    }
 
     undoButton.addEventListener('click', () => undo().catch(console.error));
     redoButton.addEventListener('click', () => redo().catch(console.error));
@@ -1822,12 +2007,14 @@
           operator: ruleOperator.value,
           value: ruleValue.value,
           background: ruleBg.value,
+          showTimestamp: ruleTimestamp?.checked === true,
           color: '#111827',
           clientId
         })
       });
       state.rules.push(data.rule);
       ruleValue.value = '';
+      if (ruleTimestamp) ruleTimestamp.checked = false;
       renderRules();
       renderTable();
     });

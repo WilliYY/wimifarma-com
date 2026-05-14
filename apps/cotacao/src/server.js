@@ -29,15 +29,15 @@ const GOOGLE_SHEETS_RANGE = env.GOOGLE_SHEETS_RANGE || 'Cotacao!A1:Z500';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || '';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE || '';
 const PAINT_SWATCHES = [
-  ['Vermelho forte', '#b91c1c'], ['Vermelho', '#ef4444'], ['Vermelho medio', '#f87171'], ['Vermelho claro', '#fecaca'], ['Vermelho suave', '#fee2e2'],
-  ['Marrom forte', '#78350f'], ['Marrom', '#92400e'], ['Marrom medio', '#b45309'], ['Marrom claro', '#fed7aa'], ['Marrom suave', '#ffedd5'],
-  ['Amarelo forte', '#ca8a04'], ['Amarelo', '#eab308'], ['Amarelo medio', '#fde047'], ['Amarelo claro', '#fef08a'], ['Amarelo suave', '#fef9c3'],
-  ['Verde forte', '#15803d'], ['Verde', '#22c55e'], ['Verde medio', '#86efac'], ['Verde claro', '#bbf7d0'], ['Verde suave', '#dcfce7'],
-  ['Ciano forte', '#0891b2'], ['Ciano', '#06b6d4'], ['Ciano medio', '#67e8f9'], ['Ciano claro', '#a5f3fc'], ['Ciano suave', '#cffafe'],
-  ['Azul forte', '#1d4ed8'], ['Azul', '#3b82f6'], ['Azul medio', '#93c5fd'], ['Azul claro', '#bfdbfe'], ['Azul suave', '#dbeafe'],
-  ['Roxo forte', '#7e22ce'], ['Roxo', '#a855f7'], ['Roxo medio', '#c084fc'], ['Roxo claro', '#ddd6fe'], ['Roxo suave', '#ede9fe'],
-  ['Rosa forte', '#be185d'], ['Rosa', '#ec4899'], ['Rosa medio', '#f9a8d4'], ['Rosa claro', '#fbcfe8'], ['Rosa suave', '#fce7f3'],
-  ['Cinza forte', '#334155'], ['Cinza', '#64748b'], ['Cinza medio', '#94a3b8'], ['Cinza claro', '#cbd5e1'], ['Cinza suave', '#f1f5f9']
+  ['Vermelho escuro', '#7f1d1d'], ['Vermelho forte', '#b91c1c'], ['Vermelho', '#ef4444'], ['Vermelho medio', '#f87171'], ['Vermelho claro', '#fca5a5'], ['Vermelho pastel', '#fecaca'], ['Vermelho suave', '#fee2e2'],
+  ['Marrom escuro', '#451a03'], ['Marrom forte', '#78350f'], ['Marrom', '#92400e'], ['Marrom medio', '#b45309'], ['Marrom claro', '#fdba74'], ['Marrom pastel', '#fed7aa'], ['Marrom suave', '#ffedd5'],
+  ['Amarelo escuro', '#713f12'], ['Amarelo forte', '#ca8a04'], ['Amarelo', '#eab308'], ['Amarelo medio', '#fde047'], ['Amarelo claro', '#fef08a'], ['Amarelo pastel', '#fef3c7'], ['Amarelo suave', '#fef9c3'],
+  ['Verde escuro', '#14532d'], ['Verde forte', '#15803d'], ['Verde', '#22c55e'], ['Verde medio', '#86efac'], ['Verde claro', '#bbf7d0'], ['Verde pastel', '#d1fae5'], ['Verde suave', '#dcfce7'],
+  ['Ciano escuro', '#164e63'], ['Ciano forte', '#0891b2'], ['Ciano', '#06b6d4'], ['Ciano medio', '#67e8f9'], ['Ciano claro', '#a5f3fc'], ['Ciano pastel', '#bae6fd'], ['Ciano suave', '#cffafe'],
+  ['Azul escuro', '#1e3a8a'], ['Azul forte', '#1d4ed8'], ['Azul', '#3b82f6'], ['Azul medio', '#93c5fd'], ['Azul claro', '#bfdbfe'], ['Azul pastel', '#dbeafe'], ['Azul suave', '#eff6ff'],
+  ['Roxo escuro', '#581c87'], ['Roxo forte', '#7e22ce'], ['Roxo', '#a855f7'], ['Roxo medio', '#c084fc'], ['Roxo claro', '#ddd6fe'], ['Roxo pastel', '#ede9fe'], ['Roxo suave', '#f5f3ff'],
+  ['Rosa escuro', '#831843'], ['Rosa forte', '#be185d'], ['Rosa', '#ec4899'], ['Rosa medio', '#f9a8d4'], ['Rosa claro', '#fbcfe8'], ['Rosa pastel', '#fce7f3'], ['Rosa suave', '#fdf2f8'],
+  ['Cinza escuro', '#0f172a'], ['Cinza forte', '#334155'], ['Cinza', '#64748b'], ['Cinza medio', '#94a3b8'], ['Cinza claro', '#cbd5e1'], ['Cinza pastel', '#e2e8f0'], ['Cinza suave', '#f1f5f9']
 ];
 
 const app = express();
@@ -191,6 +191,10 @@ function normalizeHexColor(value, fallback = '#fff7ed') {
   return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
 }
 
+function normalizeBoolean(value) {
+  return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
+}
+
 function userPublic(user) {
   return {
     id: user.id,
@@ -292,12 +296,14 @@ async function ensureSchema() {
       value text NOT NULL DEFAULT '',
       background text NOT NULL DEFAULT '#fff7ed',
       color text NOT NULL DEFAULT '#7c2d12',
+      show_timestamp boolean NOT NULL DEFAULT false,
       enabled boolean NOT NULL DEFAULT true,
       priority integer NOT NULL DEFAULT 100,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await pgPool.query('ALTER TABLE cotacao_v2_rules ADD COLUMN IF NOT EXISTS show_timestamp boolean NOT NULL DEFAULT false');
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS cotacao_v2_styles (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1191,8 +1197,8 @@ async function restoreBackup(backupName, quoteId) {
 
     for (const rule of rules) {
       await client.query(
-        `INSERT INTO cotacao_v2_rules (quote_id, name, target, column_key, operator, value, background, color, enabled, priority)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT INTO cotacao_v2_rules (quote_id, name, target, column_key, operator, value, background, color, show_timestamp, enabled, priority)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           quoteId,
           String(rule.name || 'Regra restaurada'),
@@ -1202,6 +1208,7 @@ async function restoreBackup(backupName, quoteId) {
           String(rule.value || ''),
           String(rule.background || '#fff7ed'),
           String(rule.color || '#7c2d12'),
+          normalizeBoolean(rule.show_timestamp ?? rule.showTimestamp),
           rule.enabled !== false,
           Number(rule.priority || 100)
         ]
@@ -1329,7 +1336,7 @@ function renderApp(req) {
   <title>Cotacao Wimifarma</title>
   <link rel="icon" href="${BASE_PATH}/favicon.svg">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260513c">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260513d">
 </head>
 <body class="app-page">
   <header class="app-header">
@@ -1371,12 +1378,7 @@ function renderApp(req) {
         <div class="paint-palette" id="paintPalette" hidden>
           ${renderPaintSwatches()}
         </div>
-        <button type="button" class="icon-button" id="eraserButton" title="Borracha" aria-label="Borracha">&#9003;</button>
       </div>
-      <label class="toolbar-field toolbar-search">
-        <span class="sr-only">Busca</span>
-        <input id="searchInput" type="search" placeholder="EAN, produto, categoria..." aria-label="Busca">
-      </label>
     </section>
 
     <section class="sheet-wrap" id="sheetWrap" aria-label="Planilha de cotacao">
@@ -1427,6 +1429,10 @@ function renderApp(req) {
         <label>Fundo
           <input id="ruleBg" type="color" value="#fff7ed">
         </label>
+        <label class="rule-check">
+          <input id="ruleTimestamp" type="checkbox">
+          <span>Data/hora</span>
+        </label>
         <button type="button" id="addRuleButton">Criar regra</button>
       </div>
       <div id="rulesList" class="rules-list"></div>
@@ -1459,7 +1465,7 @@ function renderApp(req) {
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
   <script src="${BASE_PATH}/app.js"></script>
-  <script src="/miauw/widget.js?v=20260513c" defer></script>
+  <script src="/miauw/widget.js?v=20260513d" defer></script>
 </body>
 </html>`;
 }
@@ -2027,8 +2033,8 @@ app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async 
     return res.status(422).json({ ok: false, error: 'Informe o texto da regra.' });
   }
   const result = await pgPool.query(
-    `INSERT INTO cotacao_v2_rules (quote_id, name, target, column_key, operator, value, background, color, priority)
-     VALUES ($1, $2, 'row', $3, $4, $5, $6, $7, 100)
+    `INSERT INTO cotacao_v2_rules (quote_id, name, target, column_key, operator, value, background, color, show_timestamp, priority)
+     VALUES ($1, $2, 'cell', $3, $4, $5, $6, $7, $8, 100)
      RETURNING *`,
     [
       sheet.quote.id,
@@ -2037,7 +2043,8 @@ app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async 
       normalizeRuleOperator(req.body.operator),
       value,
       normalizeHexColor(req.body.background),
-      '#111827'
+      '#111827',
+      normalizeBoolean(req.body.showTimestamp)
     ]
   );
   const event = await appendEvent({
@@ -2066,13 +2073,15 @@ app.patch(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
   const result = await pgPool.query(
     `UPDATE cotacao_v2_rules
      SET name = $3,
-         target = 'row',
+         target = 'cell',
          column_key = $4,
          operator = $5,
          value = $6,
          background = $7,
          color = $8,
-         enabled = true
+         show_timestamp = $9,
+         enabled = true,
+         updated_at = now()
      WHERE id = $1 AND quote_id = $2
      RETURNING *`,
     [
@@ -2083,7 +2092,8 @@ app.patch(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
       normalizeRuleOperator(req.body.operator),
       value,
       normalizeHexColor(req.body.background),
-      '#111827'
+      '#111827',
+      normalizeBoolean(req.body.showTimestamp)
     ]
   );
   if (!result.rows[0]) {

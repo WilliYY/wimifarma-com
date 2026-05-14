@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260513c';
+    link.href = '/miauw/widget.css?v=20260513d';
     document.head.appendChild(link);
   }
 
@@ -592,7 +592,7 @@
       const response = await fetch('/miauw/widget-alerts.php', {
         credentials: 'same-origin',
         cache: 'no-store',
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       });
       const data = await readJsonResponse(response);
       state.csrf = data.csrf || state.csrf;
@@ -632,7 +632,7 @@
         body,
         credentials: 'same-origin',
         cache: 'no-store',
-        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf },
+        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf, 'X-Requested-With': 'XMLHttpRequest' },
       });
       const data = await readJsonResponse(response);
       state.csrf = data.csrf || state.csrf;
@@ -740,7 +740,7 @@
     const response = await fetch('/miauw/widget-status.php', {
       credentials: 'same-origin',
       cache: 'no-store',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await readJsonResponse(response);
     state.csrf = data.csrf || state.csrf;
@@ -792,7 +792,7 @@
       body,
       credentials: 'same-origin',
       cache: 'no-store',
-      headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf },
+      headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf, 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await readJsonResponse(response);
     state.csrf = data.csrf || state.csrf;
@@ -826,6 +826,8 @@
       const data = result.data;
 
       if (!data.ok) {
+        state.authenticated = false;
+        showAuthState();
         addMessage('assistant', data.message || 'Login falhou. O bigode nao aprovou.');
         return;
       }
@@ -867,7 +869,7 @@
         method: 'POST',
         body,
         credentials: 'same-origin',
-        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf },
+        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf, 'X-Requested-With': 'XMLHttpRequest' },
       });
       const data = await readJsonResponse(response);
       await typingDelay;

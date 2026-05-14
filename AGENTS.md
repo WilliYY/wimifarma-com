@@ -185,15 +185,20 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A grade da Cotacao V2 agora permite texto quebrar linha e aumentar a altura da celula, redimensionar largura de colunas pelos titulos, selecionar coluna pelo cabecalho, selecionar linha pelo numero, renomear distribuidora com duplo clique no cabecalho e adicionar 20 linhas no fim da rolagem.
 - Apagar distribuidora fica liberado no fluxo normal da equipe; a coluna e ocultada e pode voltar por `Ctrl+Z`/desfazer na mesma sessao.
 - `Ctrl+C` copia a selecao como matriz TSV e `Ctrl+V` cola matriz normalizando texto e numeros/precos para o padrao da Cotacao.
-- `Ctrl+Z`/desfazer tambem cobre filtro e busca local, alem de edicoes de celula, colagens, estilos e colunas.
+- `Ctrl+Z`/desfazer tambem cobre filtros locais, alem de edicoes de celula, colagens, estilos e colunas.
 - A formatacao condicional explicita pinta somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para preservar legibilidade.
 - Regras de formatacao condicional podem ser editadas e apagadas no modal da propria Cotacao V2.
 - A paleta de cores abre por botao no topo ou por `Cores` no menu de contexto, sempre flutuando acima da grade para nao ficar escondida atras das celulas, com tons do mais forte ao mais claro.
+- Cores manuais aplicadas por celula, linha ou coluna devem vencer visualmente tons padrao de distribuidora e destaque automatico de menor preco.
 - Aplicar cor ou borracha e uma acao unica: apos salvar o estilo da selecao atual, a tela desarma o modo para evitar pintar a proxima celula sem querer.
-- O filtro de `Ganhador` mostra contagem por resultado, como `Anb (4)`.
-- Quando uma edicao faria a linha sair do filtro/busca atual, a tela mantem a linha visivel ate o filtro ou a busca mudar, evitando a sensacao de que a linha sumiu durante a digitacao.
+- O filtro de `Ganhador` mostra contagem por resultado, como `Anb (4)`, ordenando vencedores individuais antes de empates e `Sem vencedor`.
+- `PRODUTO` tambem possui filtro por icone; colunas filtraveis possuem filtro de cor no mesmo menu.
+- Arrastar pelos cabecalhos de coluna ou numeros de linha amplia a selecao para varias colunas/linhas.
+- Regras condicionais podem marcar `Data/hora`; quando habilitado, o hover da celula que bateu na regra mostra a data/hora de criacao da regra.
+- O campo de busca livre e a borracha fixa do topo foram removidos da Cotacao V2 para reduzir ruido; limpeza de cor permanece no menu de contexto.
+- Quando uma edicao faria a linha sair do filtro atual, a tela mantem a linha visivel ate o filtro mudar, evitando a sensacao de que a linha sumiu durante a digitacao.
 - A Cotacao V2 mantem heartbeat de presenca e recarregamento leve apos inatividade/reconexao da aba para continuar sincronizando sem depender de recarregar manualmente.
-- O widget do Miauby voltou a ser carregado na Cotacao V2, tolera respostas JSON com ruido externo e a tela de login da Cotacao foi compactada para ocupar menos viewport.
+- O widget do Miauby voltou a ser carregado na Cotacao V2, tolera respostas JSON com ruido externo, seus endpoints limpam buffer antes de responder JSON e a tela de login da Cotacao foi compactada para ocupar menos viewport.
 - Falta configurar credenciais reais do Google Sheets no `.env` do VPS antes de usar import/export em producao.
 - Acoes destrutivas amplas da Cotacao V2, como restore e import, ainda precisam de cuidado operacional antes de uso amplo pela equipe.
 - O `fill handle` da selecao e apenas visual por enquanto; arrastar para preencher como no Google Sheets ainda precisa ser implementado se virar necessidade operacional.

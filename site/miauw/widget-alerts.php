@@ -1,10 +1,15 @@
 <?php
 declare(strict_types=1);
 
+ob_start();
+
 require_once __DIR__ . '/bootstrap.php';
 
 function miauw_widget_alerts_json(array $payload, int $status = 200): void
 {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     $json = json_encode(
