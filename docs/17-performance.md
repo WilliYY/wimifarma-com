@@ -106,6 +106,16 @@ A Etapa 3 reduziu trabalho repetido no backend sem mudar a experiencia da planil
 
 Esse passo nao e uma virtualizacao da grade ainda, mas tira um gargalo importante: acoes frequentes deixam de escalar com todas as linhas/regras/estilos existentes quando so precisam validar uma celula ou coluna.
 
+## Cotacao V2 - ajuste de digitacao em 2026-05-14
+
+Apos validacao publica do deploy das Etapas 1, 2 e 3, a digitacao em celulas recebeu um ajuste conservador no frontend:
+
+- o auto-ajuste de altura da celula continua existindo para textos longos;
+- durante `input`, esse ajuste passou a ser agendado por `requestAnimationFrame`;
+- isso evita recalcular layout imediatamente a cada tecla, reduzindo a sensacao de lag ao digitar sem alterar save, sync, filtros, regras ou renderizacao apos commit.
+
+Esse ajuste nao substitui uma virtualizacao completa da grade. Se a Cotacao crescer para muitas centenas ou milhares de linhas visiveis, o proximo ganho relevante continua sendo virtualizar linhas/colunas ou reduzir `renderTable()` completo em acoes de commit.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos:

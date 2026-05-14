@@ -98,6 +98,7 @@ MySQL `wimifarma_app`:
 - Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
 - Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
 - Texto longo deve quebrar linha dentro da celula e aumentar a altura da linha em vez de vazar ou ficar cortado.
+- O auto-ajuste de altura durante a digitacao deve ser agendado por frame do navegador, para evitar recalcular layout da grade a cada tecla.
 - Clicar no cabecalho seleciona a coluna inteira; clicar no numero seleciona a linha inteira. Arrastar pelos cabecalhos deve ampliar a selecao para varias colunas ou varias linhas.
 - Distribuidoras podem ser renomeadas com duplo clique no cabecalho e ter largura ajustada arrastando a borda do titulo. Durante o ajuste de largura, a tela deve mostrar uma linha guia e uma etiqueta com a largura atual em pixels e a variacao desde o inicio do arraste. Ao clicar fora do titulo em edicao, o editor de renomeacao deve salvar/fechar antes de selecionar a nova celula.
 - Apagar distribuidora e um fluxo normal da equipe: a coluna fica oculta e pode ser restaurada por desfazer/`Ctrl+Z` na mesma sessao.
@@ -181,6 +182,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a Etapa 2 criou `GET /cotacao/api/events?after=<eventId>` e passou o refresh automatico para delta incremental, aplicando eventos simples no frontend e usando bootstrap completo quando houver import, restore, mudanca de coluna ou cursor invalido.
 - Em 2026-05-14, a Etapa 3 trocou `loadSheet()` em mutacoes simples por consultas leves de validacao, mantendo o mesmo retorno de API e o mesmo fluxo de eventos em tempo real.
 - Em 2026-05-14, a Cotacao passou a normalizar regras condicionais antigas/restauradas para `target='cell'`, reforcando que uma regra de categoria pinta apenas a propria celula de categoria e nao a linha inteira.
+- Em 2026-05-14, a digitacao em celulas passou a agendar o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout enquanto o usuario digita.
 
 ## Riscos ao alterar
 

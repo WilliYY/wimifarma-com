@@ -817,9 +817,18 @@
   }
 
   function autosizeInput(input) {
-    if (!input) return;
+    if (!input || !input.isConnected) return;
     input.style.height = 'auto';
     input.style.height = `${Math.max(42, input.scrollHeight)}px`;
+  }
+
+  function scheduleAutosizeInput(input) {
+    if (!input || input.dataset.autosizeQueued === '1') return;
+    input.dataset.autosizeQueued = '1';
+    window.requestAnimationFrame(() => {
+      input.dataset.autosizeQueued = '';
+      autosizeInput(input);
+    });
   }
 
   function autosizeSheetInputs() {
@@ -2065,7 +2074,7 @@
     });
 
     table.addEventListener('input', (event) => {
-      if (event.target.classList?.contains('sheet-input')) autosizeInput(event.target);
+      if (event.target.classList?.contains('sheet-input')) scheduleAutosizeInput(event.target);
     });
 
     table.addEventListener('contextmenu', (event) => {
