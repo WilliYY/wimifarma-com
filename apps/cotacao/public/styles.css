@@ -1007,40 +1007,49 @@ dialog::backdrop {
   color: var(--danger);
 }
 
-.rules-form {
-  display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(122px, 0.8fr) minmax(170px, 1fr) 76px 100px auto;
-  gap: 10px;
-  align-items: end;
+#rulesDialog {
+  width: min(980px, calc(100vw - 28px));
 }
 
-.rules-list {
-  display: grid;
-  gap: 8px;
+.rules-dialog-card {
+  gap: 16px;
+  padding: 24px;
 }
 
-.rule-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(118px, 0.75fr) minmax(150px, 1.1fr) 74px 100px auto;
-  gap: 10px;
-  align-items: end;
-  padding: 10px 12px;
-  border: 1px solid #dbe4f0;
-  border-radius: 8px;
-  background: #f8fafc;
+.rules-dialog-card h2 {
   color: #111827;
-  font-size: 0.9rem;
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.rules-dialog-card > p {
+  max-width: 680px;
+  color: #475569;
   line-height: 1.35;
 }
 
+.rules-form {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.9fr) minmax(120px, 0.82fr) minmax(164px, 1.08fr) 76px minmax(112px, 0.7fr) 112px;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.rules-form label,
 .rule-row label {
   display: grid;
   gap: 5px;
   color: #475569;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 950;
 }
 
+.rules-form input,
+.rules-form select,
 .rule-row input,
 .rule-row select {
   width: 100%;
@@ -1053,8 +1062,37 @@ dialog::backdrop {
   font-size: 0.82rem;
 }
 
+.rules-form input[type="color"],
 .rule-row input[type="color"] {
   padding: 3px;
+}
+
+#addRuleButton {
+  min-height: 34px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.rules-list {
+  display: grid;
+  max-height: min(44vh, 340px);
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.rule-row {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.9fr) minmax(120px, 0.82fr) minmax(164px, 1.08fr) 76px minmax(112px, 0.7fr) minmax(146px, 0.9fr);
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .rules-form .rule-check,
@@ -1077,13 +1115,14 @@ dialog::backdrop {
 }
 
 .rule-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .rule-row button {
   min-height: 34px;
+  padding: 0 10px;
 }
 
 .rule-row .rule-save {
@@ -1495,6 +1534,10 @@ body.is-resizing-column {
   }
 
   .rule-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-actions {
     grid-template-columns: 1fr;
   }
 

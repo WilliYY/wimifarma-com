@@ -1640,7 +1640,7 @@ function renderApp(req) {
   <div id="filterMenu" class="filter-menu" hidden></div>
 
   <dialog id="rulesDialog">
-    <form method="dialog" class="dialog-card">
+    <form method="dialog" class="dialog-card rules-dialog-card">
       <h2>Formatacao condicional</h2>
       <p>Regras so valem quando criadas aqui. Palavras como urgente ou encomenda nao tem gatilho escondido.</p>
       <div class="rules-form">

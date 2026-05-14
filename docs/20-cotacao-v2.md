@@ -108,6 +108,7 @@ MySQL `wimifarma_app`:
 - Nomes de presenca aparecem como animais aleatorios/deterministicos por aba para diferenciar usuarios sem expor o nome real na area principal.
 - Quando outro usuario esta em uma celula visivel, a grade deve mostrar contorno colorido, etiqueta do animal e tooltip com coluna/linha; esse indicador nao bloqueia escrita.
 - O botao `Historico`, ao lado do contador de linhas com dados, abre as alteracoes da celula selecionada a partir de `cotacao_v2_events` e permite restaurar o valor anterior por um save normal.
+- O modal de formatacao condicional deve manter leitura operacional: criacao de regra em uma faixa compacta, lista de regras em linhas alinhadas e acoes visiveis sem quebrar o layout.
 - Login deve continuar aceitando os usuarios internos existentes de `wf_users`.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.
 - Import/export Google Sheets deve preservar `cotacao_row_id` para manter linha estavel e evitar duplicacao silenciosa.
@@ -194,6 +195,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a presenca visual estilo Sheets foi adicionada: celulas visiveis selecionadas/editadas por outras abas recebem contorno colorido, etiqueta do animal e tooltip com coluna/linha.
 - Em 2026-05-14, `Delete`/`Backspace` sobre a selecao passou a usar limpeza otimista em lote e evita render completo em apagamentos simples.
 - Em 2026-05-14, foi adotado o comportamento pedido de ultima gravacao vencendo na mesma celula, com botao `Historico` no topo para consultar eventos da celula selecionada e restaurar valor anterior.
+- Em 2026-05-14, o modal de formatacao condicional foi reorganizado visualmente para reduzir a sensacao de cards baguncados e alinhar campos/acoes em linhas compactas.
 
 ## Riscos ao alterar
 

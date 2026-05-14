@@ -229,6 +229,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Apagar conteudo com `Delete`/`Backspace` na selecao tambem usa lote otimista no frontend: a grade limpa primeiro, salva em segundo plano e atualiza somente as linhas afetadas quando a selecao e pequena.
 - Filtros da Cotacao V2 continuam locais por tela; filtrar em um computador nao muda a visao de outro. Duas pessoas na mesma celula seguem o comportamento pedido estilo Sheets: o ultimo salvamento vence, enquanto a presenca visual mostra quem esta na celula e o log de eventos permite recuperar valor anterior.
 - O topo da Cotacao V2 possui botao `Historico` ao lado do contador de linhas com dados; ele abre o historico da celula selecionada e permite restaurar o valor anterior por um save normal/auditado.
+- O modal de formatacao condicional usa layout largo e compacto: criacao de regra em faixa unica, regras existentes em linhas alinhadas e acoes `Salvar`/`Apagar` lado a lado no desktop.
 
 ## Estado validado em 2026-05-11
 
