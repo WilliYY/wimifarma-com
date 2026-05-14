@@ -94,6 +94,8 @@ MySQL `wimifarma_app`:
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.
 - Filtros de produto, categoria, ganhador e cor sao locais por tela e nao devem mover a visao de outro usuario.
+- Filtrar a planilha em uma tela nao causa conflito por si so: o filtro muda apenas a lista visivel daquela aba, enquanto os dados continuam sincronizados por evento/celula.
+- Edicoes simultaneas em celulas diferentes devem conviver normalmente. Na mesma celula, o save deve enviar `expectedValue` e a API deve devolver 409 quando o valor base mudou, evitando "ultimo salva ganha" silencioso.
 - Filtros de `PRODUTO`, `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local. O filtro de `Ganhador` mostra a contagem de linhas por resultado no formato `Nome (quantidade)` e lista primeiro vencedores individuais, depois empates e por ultimo `Sem vencedor`.
 - Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
 - Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
@@ -132,6 +134,7 @@ MySQL `wimifarma_app`:
 - A insercao simples de linhas saiu dos botoes visiveis e ficou no menu de contexto; adicionar 20 linhas fica no rodape da grade. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
 - A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis; `Enter` desce para a celula abaixo por padrao, e `F2` abre edicao da celula selecionada.
 - `Ctrl+Z` tambem desfaz filtros locais; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
+- `Delete`/`Backspace` sobre a selecao usa batch otimista no frontend: limpa a grade imediatamente, salva em segundo plano e refresca somente as linhas afetadas quando a selecao e pequena.
 - A alca de preenchimento no canto da selecao pode ser arrastada para copiar o padrao de valores e cores visiveis da selecao para as celulas adjacentes, ignorando colunas calculadas, e mostra uma previa forte das celulas de destino durante o arrasto.
 - A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo e o campo de busca livre foi removido para reduzir ruido operacional.
 - O redimensionamento de coluna mostra feedback visual imediato com linha guia e etiqueta `px (+/-px)` para deixar claro quanto a coluna esta aumentando ou diminuindo.
@@ -188,6 +191,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a digitacao em celulas passou a agendar o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout enquanto o usuario digita.
 - Em 2026-05-14, a Etapa 4 tornou a troca de celula mais fluida: commits simples de celula atualizam localmente, redesenham somente a linha afetada e salvam em segundo plano mantendo conflito por `expectedValue`.
 - Em 2026-05-14, a presenca visual estilo Sheets foi adicionada: celulas visiveis selecionadas/editadas por outras abas recebem contorno colorido, etiqueta do animal e tooltip com coluna/linha.
+- Em 2026-05-14, `Delete`/`Backspace` sobre a selecao passou a usar limpeza otimista em lote, preservando `expectedValue` e evitando render completo em apagamentos simples.
 
 ## Riscos ao alterar
 

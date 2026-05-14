@@ -921,6 +921,15 @@
     updateSelectionClasses();
   }
 
+  function refreshRenderedRows(rowIds) {
+    const ids = Array.from(rowIds);
+    if (ids.length > 30) {
+      renderTable();
+      return;
+    }
+    ids.forEach((rowId) => refreshRenderedRow(rowId));
+  }
+
   function renderTable() {
     const visibleRows = getVisibleRows();
     const styles = styleMap();
@@ -1406,6 +1415,15 @@
       };
     }).filter(Boolean);
     if (!prepared.length) return;
+    const affectedRowIds = new Set(prepared.map((change) => change.rowId));
+    const optimistic = options.optimistic === true;
+    if (optimistic) {
+      prepared.forEach((change) => {
+        const row = rowById(change.rowId);
+        if (row) applyLocalCellValue(row, change.columnKey, change.after, { render: false });
+      });
+      refreshRenderedRows(affectedRowIds);
+    }
     status('Salvando lote...', 'busy');
     try {
       const data = await api('/api/cells/batch', {
@@ -1436,14 +1454,34 @@
         });
       }
       status('Sincronizado');
-      renderTable();
+      if (optimistic || options.render === 'rows') refreshRenderedRows(affectedRowIds);
+      else renderTable();
     } catch (error) {
       if (error.status === 409 && error.data?.conflict) {
         const conflict = error.data.conflict;
+        if (optimistic) {
+          prepared.forEach((change) => {
+            const row = rowById(change.rowId);
+            if (row) applyLocalCellValue(row, change.columnKey, change.before, { render: false });
+          });
+          const conflictRow = rowById(conflict.rowId);
+          if (conflictRow) {
+            applyLocalCellValue(conflictRow, conflict.columnKey, conflict.currentValue ?? '', { render: false });
+          }
+          refreshRenderedRows(affectedRowIds);
+        }
         state.conflicts.set(cellKey(conflict.rowId, conflict.columnKey), conflict);
         status('Conflito visual nesta celula', 'warn');
-        await reloadSheet();
+        if (optimistic) markConflictCell(conflict.rowId, conflict.columnKey);
+        else await reloadSheet();
         return;
+      }
+      if (optimistic) {
+        prepared.forEach((change) => {
+          const row = rowById(change.rowId);
+          if (row) applyLocalCellValue(row, change.columnKey, change.before, { render: false });
+        });
+        refreshRenderedRows(affectedRowIds);
       }
       status(error.message || 'Erro ao salvar lote', 'error');
       throw error;
@@ -1631,7 +1669,10 @@
   }
 
   async function deleteSelectedValues() {
-    await saveCellsBatch(selectedCells().map((cell) => ({ ...cell, value: '' })));
+    await saveCellsBatch(
+      selectedCells().map((cell) => ({ ...cell, value: '' })),
+      { optimistic: true, render: 'rows' }
+    );
   }
 
   async function setStyle(target, background) {

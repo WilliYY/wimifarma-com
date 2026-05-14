@@ -32,6 +32,8 @@ Ainda em 2026-05-14, a Etapa 4 deixou o commit de celula otimista no frontend. A
 
 Na etapa seguinte de colaboracao visual, a presenca passou a ser desenhada na propria grade: quando outro usuario seleciona ou edita uma celula visivel, a celula recebe contorno colorido, etiqueta com o animal daquela aba e tooltip com coluna/linha. Esse indicador e apenas informativo; conflito real continua dependendo do save com `expectedValue` e resposta 409 da API.
 
+Depois disso, `Delete`/`Backspace` na selecao da V2 tambem passou a seguir o mesmo caminho otimista: a tela limpa as celulas imediatamente, envia lote com `expectedValue` e reverte/marca conflito se a API detectar que alguem alterou a mesma celula antes.
+
 ## Historico da Cotacao PHP legada
 
 Antes da V2, a Cotacao PHP possuia:
@@ -146,6 +148,8 @@ Tabelas:
 - Mutacoes simples da V2 devem evitar `loadSheet()`; use consultas pontuais para validar coluna visivel/editavel e linha ativa, deixando snapshot completo apenas para bootstrap, diagnostico e operacoes fortes.
 - Commits simples de celula na V2 devem ser otimistas no frontend, atualizando a linha localmente e salvando em segundo plano com `expectedValue`; conflito/erro nao deve exigir renderizacao completa da tabela.
 - A presenca visual na grade deve ser efemera e informativa: mostrar celula/linha/coluna de outros usuarios sem bloquear a edicao nem virar historico permanente.
+- Presenca e filtro nao sao bloqueios. Filtros continuam locais por tela e duas pessoas podem trabalhar em linhas/celulas diferentes sem conflito; conflito real so ocorre quando a mesma celula e salva sobre um valor base que ja mudou.
+- Apagamentos por `Delete`/`Backspace` devem preservar o mesmo controle de conflito por `expectedValue`, sem virar sobrescrita silenciosa.
 - `presence_ping` continua sem avancar versao de sync local, porque presenca e temporaria e nao representa mudanca de dados.
 - Filtro de categoria nao deve ser reaplicado a cada tecla dentro de uma celula de categoria. O filtro ativo so deve recalcular depois que a edicao termina.
 - Na V2, quando a edicao faz a linha deixar de combinar com filtro/busca ativos, a linha editada permanece fixada visualmente ate o filtro ou a busca mudar. Isso evita a sensacao de perda de dados durante cotacao rapida.

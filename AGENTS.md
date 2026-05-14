@@ -226,6 +226,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A digitacao em celulas da Cotacao V2 agenda o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout a cada tecla sem alterar save/sync.
 - A Etapa 4 tornou o save de celula otimista no frontend: ao trocar de celula, a grade atualiza a linha imediatamente e salva em segundo plano; confirmacao/conflito volta pela API sem redesenhar a tabela inteira para cada celula simples.
 - A presenca da Cotacao V2 tambem marca a celula visivel onde outro usuario esta selecionando/editando, com contorno colorido, etiqueta do animal e tooltip com coluna/linha; isso e informativo e nao bloqueia edicao.
+- Apagar conteudo com `Delete`/`Backspace` na selecao tambem usa lote otimista no frontend: a grade limpa primeiro, salva em segundo plano e atualiza somente as linhas afetadas quando a selecao e pequena.
+- Filtros da Cotacao V2 continuam locais por tela; filtrar em um computador nao muda a visao de outro. Duas pessoas na mesma celula nao usam "ultimo salva ganha" silencioso: saves enviam `expectedValue`, e a API retorna conflito 409 quando o valor base ja mudou.
 
 ## Estado validado em 2026-05-11
 
