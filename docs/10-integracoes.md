@@ -23,6 +23,13 @@ Variaveis/configuracoes:
 - `MIAUW_GUARDIAN_TOKEN`
 - constantes opcionais em `site/miauw/config.local.php`
 
+Status operacional:
+
+- `site/miauw/widget-status.php` informa se a chave esta configurada, mas nao faz chamada online automaticamente.
+- `api_ready=true` significa apenas que a credencial nao esta vazia nem parece placeholder.
+- `api_status.validated=false` e esperado no status simples; a validacao real acontece quando `api.php?action=send` chama a Responses API.
+- Erros da camada online devem ficar em diagnostico/log interno e aparecer para o operador como falha curta de configuracao, cota, modelo ou rede, sem expor chave ou payload.
+
 Tabelas:
 
 - `miauw_conversas`
@@ -123,6 +130,7 @@ Documento especifico:
 ## Decisoes tecnicas ja tomadas
 
 - Miauby pode ler chave OpenAI do `.env` ou de `config.local.php`.
+- Presenca de chave nao prova que a Responses API aceitou a credencial; diagnosticar falhas pelo log/alerta interno quando o chat cair no fallback.
 - Cotacao nao deve receber sincronizacao improvisada fora dos endpoints estruturados da V2.
 - Google Sheets deve preservar `cotacao_row_id` para reduzir duplicacao e perda de linha.
 - DNS e proxy ficam fora do repositorio, mas suas decisoes devem ser documentadas.

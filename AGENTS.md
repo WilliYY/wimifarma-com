@@ -250,6 +250,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Evite diagnosticos paralelos que chamem `cotacao_ensure_schema()` varias vezes ao mesmo tempo; durante auditoria, rode esse tipo de verificacao em sequencia para reduzir risco de lock/deadlock no MySQL.
 - `wimifarma_wp` possui tabelas WordPress `wptl_*`.
 - `site/miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava presente.
+- No widget do Miauby, `api_ready` significa chave preenchida, nao validacao online. Se o chat cair no fallback, conferir logs/alertas internos para autenticacao, cota, modelo ou rede; a resposta ao operador nao deve expor chave, payload nem stack trace.
 - Miauby evita carregar 30 alertas completos apenas para contar badge; usar `miauw_intelligence_active_alert_count()` quando precisar de contador.
 - `miauw_knowledge_for()` filtra conhecimentos por termos relevantes antes do ranking para manter a memoria escalavel.
 - Miauby so cria/comenta alerta de encomenda da Cotacao quando a linha tem prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto do alerta e repassado para os baloes do widget em todos os modulos.

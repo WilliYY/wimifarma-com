@@ -227,6 +227,46 @@ function miauw_constant_int(string $name, int $default): int
     return defined($name) ? (int) constant($name) : $default;
 }
 
+function miauw_openai_key_configured(): bool
+{
+    $key = trim(miauw_constant_string('MIAUW_OPENAI_API_KEY'));
+
+    if ($key === '') {
+        return false;
+    }
+
+    $placeholderTerms = array('cole_sua_chave_aqui', 'troque', 'placeholder', 'changeme');
+    foreach ($placeholderTerms as $term) {
+        if (stripos($key, $term) !== false) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function miauw_openai_public_status(): array
+{
+    $configured = miauw_openai_key_configured();
+
+    return array(
+        'configured' => $configured,
+        'validated' => false,
+        'status' => $configured ? 'configured_not_validated' : 'missing',
+        'message' => $configured
+            ? 'Chave configurada, validacao online feita somente quando o Miauby responde.'
+            : 'Chave OpenAI ausente ou placeholder.',
+    );
+}
+
+function miauw_redact_secret_fragments(string $text): string
+{
+    $text = preg_replace('/sk-[a-z0-9_\-\*]{8,}/i', 'sk-***', $text) ?? $text;
+    $text = preg_replace('/\b(Bearer|Authorization)\s+[a-z0-9_\-\.\*]+/i', '$1 ***', $text) ?? $text;
+
+    return $text;
+}
+
 function miauw_normalize_for_memory(string $text): string
 {
     if (function_exists('miauw_skill_normalized')) {
@@ -2283,7 +2323,7 @@ function miauw_openai_request(array $payload): array
         $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
 
         if (is_array($decoded) && isset($decoded['error']['message']) && is_string($decoded['error']['message'])) {
-            $apiMessage = $decoded['error']['message'];
+            $apiMessage = miauw_redact_secret_fragments($decoded['error']['message']);
         }
 
         $detail = $error !== '' ? $error : 'HTTP ' . $status;
@@ -2515,9 +2555,50 @@ function miauw_message_has_insult(string $message): bool
     return false;
 }
 
+function miauw_openai_failure_kind(string $reason): string
+{
+    $lower = strtolower($reason);
+
+    if (strpos($lower, 'incorrect api key') !== false || strpos($lower, 'invalid api key') !== false || strpos($lower, 'unauthorized') !== false || strpos($lower, 'http 401') !== false) {
+        return 'auth';
+    }
+
+    if (strpos($lower, 'billing') !== false || strpos($lower, 'quota') !== false || strpos($lower, 'insufficient_quota') !== false || strpos($lower, 'exceeded') !== false || strpos($lower, 'http 429') !== false) {
+        return 'quota';
+    }
+
+    if (strpos($lower, 'model') !== false && (strpos($lower, 'not found') !== false || strpos($lower, 'does not exist') !== false || strpos($lower, 'not have access') !== false || strpos($lower, 'unsupported') !== false)) {
+        return 'model';
+    }
+
+    if (strpos($lower, 'timed out') !== false || strpos($lower, 'timeout') !== false || strpos($lower, 'could not resolve') !== false || strpos($lower, 'connection') !== false) {
+        return 'network';
+    }
+
+    return 'generic';
+}
+
 function miauw_api_failure_hint(string $reason): string
 {
-    return 'nao consegui completar essa resposta agora. O aviso interno ficou registrado para revisao.';
+    $kind = miauw_openai_failure_kind($reason);
+
+    if ($kind === 'auth') {
+        return 'A camada online recusou a credencial configurada. Isso e ajuste interno do Miauby, nao erro seu.';
+    }
+
+    if ($kind === 'quota') {
+        return 'A camada online bateu em limite ou cobranca. Isso precisa de revisao administrativa antes de voltar ao normal.';
+    }
+
+    if ($kind === 'model') {
+        return 'O modelo configurado nao esta disponivel para esta chave. Precisa revisar o modelo do Miauby no ambiente.';
+    }
+
+    if ($kind === 'network') {
+        return 'A camada online nao respondeu a tempo. Pode ser rede, DNS ou instabilidade temporaria.';
+    }
+
+    return 'Nao consegui completar essa resposta online agora. O aviso interno ficou registrado para revisao.';
 }
 
 function miauw_fallback_reply(string $message, string $reason = ''): string
@@ -2527,14 +2608,13 @@ function miauw_fallback_reply(string $message, string $reason = ''): string
 
     if ($reason !== '') {
         $hint = miauw_api_failure_hint($reason);
-        $openers = array(
-            'Meu modo esperto engasgou. Triste, porem auditavel.',
-            'Meu bigode bateu numa parede tecnica.',
-            'Nao consegui usar a camada online agora.',
-            'A resposta completa nao veio desta vez.',
-        );
+        $kind = miauw_openai_failure_kind($reason);
 
-        return $openers[array_rand($openers)] . "\n" . $hint . "\nEnquanto isso: mande tela, erro, data, valor e responsavel. Sem dado, sem milagre.";
+        if ($kind === 'auth' || $kind === 'quota' || $kind === 'model') {
+            return "Meu modo online esta indisponivel agora.\n" . $hint . "\nSe era um teste, pode ignorar. Se era uma bronca real da tela, mande print, horario e o que tentou fazer.";
+        }
+
+        return "Nao consegui usar a camada online agora.\n" . $hint . "\nEnquanto isso, mande tela, erro, data, valor e responsavel. Sem dado, sem milagre.";
     }
 
     if (miauw_message_has_insult($lower)) {
@@ -2605,6 +2685,12 @@ function miauw_generate_reply(int $conversationId, string $message, bool $widget
         );
     } catch (Throwable $error) {
         error_log('Miauby OpenAI fallback: ' . $error->getMessage());
+        if (function_exists('miauw_register_internal_error_alert')) {
+            miauw_register_internal_error_alert('miauby', 'Falha na camada online do Miauby', $error, array(
+                'origem' => 'miauw_generate_reply',
+                'failure_kind' => function_exists('miauw_openai_failure_kind') ? miauw_openai_failure_kind($error->getMessage()) : 'generic',
+            ));
+        }
         $fallbackText = miauw_fallback_reply($message, $error->getMessage());
 
         return array(

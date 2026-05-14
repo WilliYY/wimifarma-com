@@ -27,6 +27,8 @@ Miauby ja possui:
 - endpoints JSON do widget (`widget-status.php`, `widget-auth.php`, `widget-alerts.php` e `api.php`) limpam buffer de saida antes de responder para evitar HTML/avisos misturados com JSON dentro da Cotacao V2.
 - apos login pelo widget, o frontend confirma `widget-status.php` imediatamente para validar que o cookie de sessao foi preservado; se voltar anonimo, mostra erro claro de sessao/cookie.
 - `config.local.php` so e carregado quando existe e esta legivel pelo PHP; se o arquivo local existir sem permissao de leitura, o Miauby deve continuar subindo usando variaveis do `.env` em vez de quebrar com erro fatal.
+- `widget-status.php` diferencia chave configurada de chamada online validada: `api_ready` significa apenas chave preenchida e `api_status.validated=false` indica que a validacao real acontece quando o Miauby tenta responder.
+- falhas da camada online do Miauby classificam autenticacao, cota, modelo e rede; o widget mostra uma mensagem curta para o operador e registra diagnostico interno sem expor chave, payload ou stack trace.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -78,6 +80,7 @@ Integracoes:
 - Criar avaliacao simples de skills: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
 - Criar tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
+- Quando a tela de diagnostico existir, ela deve usar o status publico (`configured`, `validated`, `status`) e permitir um teste online explicito, para nao chamar a OpenAI a cada abertura do widget.
 - Preferir respostas operacionais e sem codigo para usuarios finais. Codigo, SQL, stack trace e comandos devem aparecer apenas em contexto tecnico autorizado.
 - Medir latencia do widget e da API antes de aumentar contexto, modelos ou autonomia. Primeiro otimizar consultas, cache e tools controladas.
 
