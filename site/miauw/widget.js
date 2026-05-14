@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260513d';
+    link.href = '/miauw/widget.css?v=20260514a';
     document.head.appendChild(link);
   }
 
@@ -832,11 +832,24 @@
         return;
       }
 
+      const loginMessage = data.message || 'Entrei. Agora manda a bagunca operacional. Curto e com dado, por favor.';
       state.csrf = data.csrf || state.csrf;
       state.authenticated = true;
+
+      const statusData = await refreshStatusToken();
       showAuthState();
       feed.innerHTML = '';
-        addMessage('assistant', data.message || 'Entrei. Agora manda a bagunca operacional. Curto e com dado, por favor.');
+
+      if (!state.authenticated) {
+        addMessage('assistant', 'Login recebido, mas o navegador nao guardou minha sessao. Atualize a pagina e tente de novo; se persistir, o cookie do Miauby esta sendo bloqueado.');
+        return;
+      }
+
+      if (Array.isArray(statusData.messages) && statusData.messages.length) {
+        renderMessages(statusData.messages);
+      } else {
+        addMessage('assistant', loginMessage);
+      }
       input.focus();
     } catch (error) {
       addMessage('assistant', 'Login falhou. Tragico, mas possivelmente digitavel de novo.');

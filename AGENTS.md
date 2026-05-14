@@ -200,6 +200,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Quando uma edicao faria a linha sair do filtro atual, a tela mantem a linha visivel ate o filtro mudar, evitando a sensacao de que a linha sumiu durante a digitacao.
 - A Cotacao V2 mantem heartbeat de presenca e recarregamento leve apos inatividade/reconexao da aba para continuar sincronizando sem depender de recarregar manualmente.
 - O widget do Miauby voltou a ser carregado na Cotacao V2, tolera respostas JSON com ruido externo, seus endpoints limpam buffer antes de responder JSON e a tela de login da Cotacao foi compactada para ocupar menos viewport.
+- O login do widget do Miauby confirma imediatamente `widget-status.php` apos autenticar; se o navegador nao guardar o cookie de sessao, o widget deve avisar claramente em vez de continuar parecendo anonimo.
 - Falta configurar credenciais reais do Google Sheets no `.env` do VPS antes de usar import/export em producao.
 - Acoes destrutivas amplas da Cotacao V2, como restore e import, ainda precisam de cuidado operacional antes de uso amplo pela equipe.
 - O `fill handle` da selecao e apenas visual por enquanto; arrastar para preencher como no Google Sheets ainda precisa ser implementado se virar necessidade operacional.
