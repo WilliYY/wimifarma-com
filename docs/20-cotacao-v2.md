@@ -68,7 +68,7 @@ Postgres `wimifarma_cotacao`:
 - `cotacao_v2_columns`: colunas da grade, incluindo metadados `options` para detalhes visuais como colunas ocultas, tons de fornecedores e fallback de exibicao.
 - `cotacao_v2_rows`: linhas com UUID, posicao, valores JSONB, versao e `deleted_at` para exclusao logica.
 - `cotacao_v2_events`: eventos gerados por edicoes, linhas e regras.
-- `cotacao_v2_rules`: regras condicionais explicitas, incluindo `show_timestamp` para exibir no hover a data/hora de criacao da regra quando habilitado.
+- `cotacao_v2_rules`: regras condicionais explicitas sempre com `target='cell'`, incluindo `show_timestamp` para exibir no hover a data/hora de criacao da regra quando habilitado.
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula, usados pela paleta de cores da tela.
 - `cotacao_v2_column_audit`: auditoria de renomeacao e reordenacao de colunas de distribuidoras.
 
@@ -92,6 +92,7 @@ MySQL `wimifarma_app`:
 - `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem, filtro nem alerta por gatilho escondido.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`; regras criadas pela tela podem ser editadas ou apagadas no proprio modal.
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
+- Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.
 - Filtros de produto, categoria, ganhador e cor sao locais por tela e nao devem mover a visao de outro usuario.
 - Filtros de `PRODUTO`, `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local. O filtro de `Ganhador` mostra a contagem de linhas por resultado no formato `Nome (quantidade)` e lista primeiro vencedores individuais, depois empates e por ultimo `Sem vencedor`.
 - Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
@@ -179,6 +180,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a Etapa 1 de seguranca/performance adicionou indices aditivos para o snapshot atual e ampliou `/cotacao/api/diagnostics` com blocos `safety` e `performance`, mantendo `/cotacao/api/bootstrap` como fallback completo.
 - Em 2026-05-14, a Etapa 2 criou `GET /cotacao/api/events?after=<eventId>` e passou o refresh automatico para delta incremental, aplicando eventos simples no frontend e usando bootstrap completo quando houver import, restore, mudanca de coluna ou cursor invalido.
 - Em 2026-05-14, a Etapa 3 trocou `loadSheet()` em mutacoes simples por consultas leves de validacao, mantendo o mesmo retorno de API e o mesmo fluxo de eventos em tempo real.
+- Em 2026-05-14, a Cotacao passou a normalizar regras condicionais antigas/restauradas para `target='cell'`, reforcando que uma regra de categoria pinta apenas a propria celula de categoria e nao a linha inteira.
 
 ## Riscos ao alterar
 

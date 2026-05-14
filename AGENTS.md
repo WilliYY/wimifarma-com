@@ -222,6 +222,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `/cotacao/api/bootstrap` continua sendo o fallback completo e confiavel durante a evolucao do sync incremental/delta.
 - A Etapa 2 adicionou `GET /cotacao/api/events?after=<eventId>` e passou o refresh automatico da Cotacao para eventos incrementais. O bootstrap continua sendo fallback quando o delta pede `requiresSnapshot`, como em import, restore, mudanca estrutural de coluna, cursor invalido ou excesso de eventos.
 - A Etapa 3 reduziu trabalho de mutacoes simples da Cotacao V2: salvar celula, colagem em lote, estilos, regras, linhas e colunas agora validam quote/linha/coluna com consultas leves em vez de chamar `loadSheet()` e puxar o snapshot completo. `loadSheet()` permanece para bootstrap, diagnostico e operacoes fortes como backup/import/export/restore.
+- Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `target='cell'` na inicializacao da Cotacao V2; regra condicional deve pintar somente a celula da coluna-alvo, nunca a linha inteira.
 
 ## Estado validado em 2026-05-11
 

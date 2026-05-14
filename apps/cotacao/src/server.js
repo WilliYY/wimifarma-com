@@ -349,7 +349,7 @@ async function ensureSchema() {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       quote_id uuid NOT NULL REFERENCES cotacao_v2_quotes(id) ON DELETE CASCADE,
       name text NOT NULL,
-      target text NOT NULL DEFAULT 'row',
+      target text NOT NULL DEFAULT 'cell',
       column_key text NOT NULL DEFAULT 'categoria',
       operator text NOT NULL DEFAULT 'contains',
       value text NOT NULL DEFAULT '',
@@ -363,6 +363,13 @@ async function ensureSchema() {
     )
   `);
   await pgPool.query('ALTER TABLE cotacao_v2_rules ADD COLUMN IF NOT EXISTS show_timestamp boolean NOT NULL DEFAULT false');
+  await pgPool.query("ALTER TABLE cotacao_v2_rules ALTER COLUMN target SET DEFAULT 'cell'");
+  await pgPool.query(`
+    UPDATE cotacao_v2_rules
+    SET target = 'cell',
+        updated_at = now()
+    WHERE target IS DISTINCT FROM 'cell'
+  `);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS cotacao_v2_styles (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1430,7 +1437,7 @@ async function restoreBackup(backupName, quoteId) {
         [
           quoteId,
           String(rule.name || 'Regra restaurada'),
-          String(rule.target || 'row'),
+          'cell',
           String(rule.column_key || rule.columnKey || 'categoria'),
           String(rule.operator || 'contains'),
           String(rule.value || ''),
