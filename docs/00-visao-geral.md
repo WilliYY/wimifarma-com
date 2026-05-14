@@ -20,7 +20,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Entrada web: `site/`
 - WordPress: `site/wp-admin`, `site/wp-content`, `site/wp-includes`, `site/wp-config.php`
 - Cashback: `site/cashback/`
-- Cotacao: `site/cotacao/` e `site/cotacao-funcoes.php`
+- Cotacao V2: `apps/cotacao/`, publicada em `/cotacao/` por proxy interno do Apache
 - Financeiro: `site/financeiro/`
 - Tarefas: `site/tarefa/`
 - Miauby: `site/miauw/`
@@ -54,6 +54,7 @@ Rotas principais:
 - Segredos ficam fora do Git em `.env` e `config.local.php`.
 - O repositorio deve ser tratado como publico ate decisao contraria.
 - O Nginx Proxy Manager deve encaminhar o dominio publico para `wimifarma-com-web:80`, nao para a porta de tunel.
+- A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
 
 ## Riscos ao alterar
 

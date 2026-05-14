@@ -96,10 +96,6 @@ services:
       GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON:-}
       GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE: ${GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE:-}
     volumes:
-      - ./site/cotacao/assets:/app/public/assets:ro
-      - ./site/cotacao/logo-wimifarma.svg:/app/public/logo-wimifarma.svg:ro
-      - ./site/cotacao/favicon.svg:/app/public/favicon.svg:ro
-      - ./site/cotacao/favicon.png:/app/public/favicon.png:ro
       - ./cotacao-data/backups:/app/backups
     networks:
       - wimifarma-com-network

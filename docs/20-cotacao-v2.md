@@ -11,6 +11,10 @@ Arquivos principais:
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
+- `apps/cotacao/public/assets/`
+- `apps/cotacao/public/logo-wimifarma.svg`
+- `apps/cotacao/public/favicon.svg`
+- `apps/cotacao/public/favicon.png`
 - `apps/cotacao/package.json`
 - `apps/cotacao/Dockerfile`
 - `docker-compose.yml`
@@ -105,6 +109,7 @@ MySQL `wimifarma_app`:
 ## Decisoes tecnicas ja tomadas
 
 - A planilha PHP antiga deixou de ser o motor principal porque as tentativas de corrigir categorias historicas ainda deixavam risco de salto/travamento.
+- Em 2026-05-14, a planilha PHP antiga foi removida do repositorio junto com os shims `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php`; a Cotacao V2 passou a carregar seus proprios ativos diretamente de `apps/cotacao/public`.
 - A Cotacao V2 usa Node.js + Socket.IO para suportar tempo real sem polling pesado.
 - Postgres foi escolhido para linhas JSONB, eventos e evolucao para conflito por campo.
 - Redis foi escolhido para sessoes e presenca efemera.
@@ -134,6 +139,7 @@ MySQL `wimifarma_app`:
 - O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
 - A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
 - Backups da Cotacao V2 ficam no volume ignorado `cotacao-data/backups`, montado em `/app/backups`.
+- `docker-compose.yml` nao deve montar arquivos de `site/cotacao` em `wimifarma-cotacao-app`; qualquer ativo da Cotacao oficial precisa ficar em `apps/cotacao/public`.
 
 ## Validacoes realizadas
 
@@ -163,6 +169,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a alca de preenchimento ficou maior e passou a copiar valores e cores da selecao para cima, baixo, esquerda ou direita, mantendo `Ganhador` e outras colunas calculadas sem escrita manual.
 - Em 2026-05-14, o menu de contexto foi reduzido para retirar opcoes irrelevantes ou perigosas: `Adicionar 20 linhas abaixo`, `Apagar linha`, `Renomear distribuidora` e mover distribuidora para esquerda/direita.
 - Em 2026-05-14, `Enter` passou a mover a selecao para a celula de baixo por padrao; quando a celula esta em edicao, `Enter` salva e desce.
+- Em 2026-05-14, a Cotacao PHP antiga foi removida e os ativos usados pela V2 foram migrados para `apps/cotacao/public`; `docker-compose.yml` deixou de depender de `site/cotacao`.
 
 ## Riscos ao alterar
 
@@ -176,6 +183,7 @@ Em 2026-05-12 foram validados localmente:
 - Importar do Google Sheets sem revisar range/credencial pode substituir a cotacao ativa; usar backup antes de importar dados reais.
 - Restore de backup sobrescreve linhas/colunas/regras/estilos da cotacao atual. Deve ser restrito e auditado antes de liberar para toda a equipe.
 - Resize de coluna e renomeio rapido sao recursos operacionais frequentes; evitar adicionar confirmacoes ou modais nesse caminho.
+- Como nao ha fallback PHP legado, falhas em `/cotacao/` devem ser investigadas no app Node, no proxy Apache ou nos servicos Postgres/Redis/MySQL de login.
 
 ## Pendencias
 

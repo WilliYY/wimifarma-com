@@ -27,6 +27,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
 - A Cotacao V2 fica em `apps/cotacao`, usa Node.js/Express/Socket.IO, Postgres e Redis, e e publicada por proxy interno do Apache em `/cotacao/`.
 - O login da Cotacao continua usando usuarios da tabela MySQL `wf_users`; os dados novos da planilha ficam em Postgres no volume ignorado `cotacao-data/`.
+- A Cotacao PHP antiga foi removida; `site/cotacao` nao existe mais e os ativos da tela oficial ficam em `apps/cotacao/public`.
 - Rotas de login dos modulos responderam HTTP 200 na auditoria local.
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
 - WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
@@ -140,7 +141,6 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- site/
 |   |-- home.php              # home publica estavel, fora do bootstrap WordPress
 |   |-- cashback/
-|   |-- cotacao/
 |   |-- financeiro/
 |   |-- miauw/
 |   |-- tarefa/

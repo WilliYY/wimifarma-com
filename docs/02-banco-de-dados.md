@@ -112,7 +112,7 @@ Inventario real observado em 2026-05-10:
 Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 
 - Cashback: `site/cashback/functions.php`
-- Cotacao: `site/cotacao/cotacao-funcoes.php`
+- Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `site/financeiro/financeiro-funcoes.php`
 - Tarefas: `site/tarefa/tarefa-funcoes.php`
 - Miauby: `site/miauw/miauw-funcoes.php` e `site/miauw/miauw-intelligence.php`
@@ -149,6 +149,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 
 - Dois bancos separados: WordPress em `wimifarma_wp`; apps internos em `wimifarma_app`.
 - A Cotacao V2 adiciona Postgres separado (`wimifarma_cotacao`) para reduzir risco de remendos no MySQL/PHP antigo e permitir um motor mais proximo de planilha colaborativa.
+- A Cotacao PHP antiga foi removida do repositorio em 2026-05-14; as tabelas `cotacao_*` em MySQL ficam apenas como legado historico/dados antigos, enquanto a planilha oficial usa `cotacao_v2_*` no Postgres.
 - O volume `mysql/` fica fora do Git.
 - O volume `cotacao-data/` fica fora do Git.
 - Dumps antigos ficam fora da raiz do projeto.

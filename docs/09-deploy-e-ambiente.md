@@ -97,7 +97,7 @@ VPS Ubuntu/Oracle:
 
 - Fazer `git clone` por cima da pasta atual pode apagar volume/dados locais.
 - Trocar nomes de container quebra proxy.
-- Remover o proxy Apache de `/cotacao/` faz o dominio publico voltar para a Cotacao legada em PHP ou retornar 404.
+- Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
 - Se o WordPress nao reconhecer HTTPS atras do proxy, ele gera assets `http://` e o navegador bloqueia CSS/JS por mixed content.

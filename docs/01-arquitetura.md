@@ -26,12 +26,14 @@ Arquivos principais:
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
+- `apps/cotacao/public/assets/`
+- `apps/cotacao/public/logo-wimifarma.svg`
+- `apps/cotacao/public/favicon.svg`
 - `docker/mysql/init/01-create-databases.sql`
 - `site/.htaccess`
 - `site/home.php`
 - `site/wp-config.php`
 - `site/cashback/config.php`
-- `site/cotacao/` (legado/ativos antigos; nao e mais o motor principal)
 - `.env.example`
 
 Containers:
@@ -75,6 +77,7 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar 
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
 - A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
 - Palavras de categoria como `geral`, `urgente`, `encomenda` e `cotacao` nao devem aplicar cor, prioridade, ordem, filtro nem data operacional automaticamente; cor vem apenas de regra condicional explicita em `cotacao_v2_rules`.
+- Em 2026-05-14, a Cotacao PHP antiga em `site/cotacao` e os shims de compatibilidade da raiz foram removidos. Os ativos usados por `/cotacao/` ficam versionados em `apps/cotacao/public`, e o Compose nao monta mais nada de `site/cotacao` no container Node.
 
 ## Riscos ao alterar
 
@@ -87,6 +90,7 @@ O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar 
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.
 - Recriar atalhos automaticos por nome de categoria na Cotacao pode conflitar com a formatacao condicional e causar saltos de linha/sync pesado.
 - Alterar o proxy de `/cotacao/socket.io/` sem validar pode quebrar presenca e edicao ao vivo.
+- Como nao existe mais fallback PHP legado para Cotacao, qualquer falha em `/cotacao/` deve ser tratada no proxy Apache/Node/Postgres/Redis da V2.
 
 ## Pendencias
 

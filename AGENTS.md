@@ -66,7 +66,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
   - `site/financeiro`
   - `site/tarefa`
   - `site/miauw`
-- A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; `site/cotacao` fica como legado/ativos antigos e nao deve receber nova logica de planilha.
+- A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
@@ -207,7 +207,14 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Falta configurar credenciais reais do Google Sheets no `.env` do VPS antes de usar import/export em producao.
 - Acoes destrutivas amplas da Cotacao V2, como restore e import, ainda precisam de cuidado operacional antes de uso amplo pela equipe.
 - O `fill handle` da selecao ja copia o padrao de valores e cores para celulas adjacentes; series automaticas mais inteligentes, como incrementar numeros/datas, ainda podem evoluir se virar necessidade operacional.
-- Pendencias/cuidados atuais para futuros chats: Google Sheets precisa de credenciais reais no `.env` do VPS; restore/import sao acoes fortes e devem ser usadas com backup/revisao; o `fill handle` existe visualmente, mas o drag-fill real ainda pode evoluir.
+- Pendencias/cuidados atuais para futuros chats: Google Sheets precisa de credenciais reais no `.env` do VPS; restore/import sao acoes fortes e devem ser usadas com backup/revisao; o `fill handle` ja copia valores e cores, mas series automaticas mais inteligentes ainda podem evoluir.
+
+## Estado validado em 2026-05-14
+
+- A Cotacao PHP antiga foi eliminada do repositorio: `site/cotacao`, `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php` foram removidos.
+- Os ativos ainda usados pela Cotacao V2, como logo, favicon e GIFs de login, passaram para `apps/cotacao/public`.
+- `docker-compose.yml` nao monta mais arquivos de `site/cotacao` no container `wimifarma-cotacao-app`; a V2 e publicada a partir de `apps/cotacao` como fonte oficial unica de `/cotacao/`.
+- A partir desta limpeza, `/cotacao/` nao tem fallback PHP legado. Se a rota falhar, diagnosticar o proxy Apache/Node, `wimifarma-cotacao-app`, Postgres e Redis.
 
 ## Estado validado em 2026-05-11
 
@@ -217,7 +224,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Cotacao usa `cotacao_presencas` para a primeira camada de colaboracao ao vivo: usuarios ativos, filtro local atual, celula/coluna em foco e estado de edicao.
 - Cotacao usa `cotacao_eventos` e `sync_events_pull` como primeira camada de sync incremental antes de cair para snapshot completo por `sync_pull`.
 - Em 2026-05-11, a Cotacao foi testada com duas sessoes autenticadas: uma sessao criou item, a segunda recebeu por `sync_pull`, edicoes separadas em `produto` e `categoria` foram preservadas por patch de campo, `presence_ping` retornou 2 usuarios e a linha temporaria foi removida.
-- A digitacao em `categoria` na Cotacao nao deve recalcular filtro ativo a cada tecla; `site/cotacao/app.js` atualiza formatacao/opcoes com debounce e reaplica filtro da grade somente ao finalizar a edicao.
+- Historicamente, a digitacao em `categoria` na Cotacao legada nao deveria recalcular filtro ativo a cada tecla. Na V2, esse comportamento fica em `apps/cotacao/public/app.js`, mantendo filtro local e evitando salto de linha durante edicao.
 - Cores de categorias comuns devem vir de `cotacao_regras_formatacao`; nao recriar classes fixas no CSS/JS nem filtro de cor por palavra-chave. As palavras historicas `geral`, `urgente`, `encomenda` e `cotacao/cotação` nao devem ter gatilho automatico por texto na categoria: regras legadas ativas para esses termos sao desativadas por `cotacao_disable_legacy_category_trigger_rules()` e `cotacao_disable_default_category_trigger_rules()`.
 - Filtros de categoria/cor/vencedor ficam local-first por padrao. `sync_filter` existe apenas como compatibilidade/estado diagnostico enquanto `data-shared-filter-sync` nao estiver explicitamente habilitado; uma tela nao deve aplicar automaticamente o filtro de outra.
 - Categoria vazia nao deve virar `geral` automaticamente durante edicao nem por default de banco. Em linhas existentes, saves de categoria tambem nao devem alterar `ordem`; o frontend remove `ordem` de saves comuns e o backend preserva a ordem anterior mesmo se receber payload legado com `ordem=1`.
@@ -232,7 +239,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `miauw_knowledge_for()` filtra conhecimentos por termos relevantes antes do ranking para manter a memoria escalavel.
 - Miauby so cria/comenta alerta de encomenda da Cotacao quando a linha tem prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto do alerta e repassado para os baloes do widget em todos os modulos.
 - `cashback/login.php`, `cotacao/login.php`, `financeiro/login.php`, `tarefa/login.php` e `miauw/login.php` responderam 200.
-- `cotacao/api.php` respondeu 401 sem sessao, esperado.
+- A API legada `cotacao/api.php` respondeu 401 sem sessao durante a migracao; depois da limpeza de 2026-05-14, a API oficial passou a ser `/cotacao/api/...` no servico Node.
 - WordPress raiz e `wp-login.php` responderam 200, porem lentos no Docker Desktop Windows com plugins restaurados.
 - WordPress local exigiu ajuste para `WP_HOME/WP_SITEURL` em `localhost:3002`.
 - Cache WordPress/SpeedyCache ficou opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.

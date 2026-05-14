@@ -65,7 +65,7 @@ Tabelas principais:
 
 ## Fluxo Cotacao
 
-O modulo de Cotacao V2 controla uma planilha interna de farmacia com EAN, produto, quantidade, categoria, fornecedores, observacao e status. A rota `/cotacao/` agora e servida por Node.js/Express/Socket.IO via proxy do Apache, com dados em Postgres e presenca/sessao em Redis.
+O modulo de Cotacao V2 controla uma planilha interna de farmacia com EAN, produto, quantidade, categoria, distribuidoras e ganhador calculado. A rota `/cotacao/` e servida por Node.js/Express/Socket.IO via proxy do Apache, com dados em Postgres e presenca/sessao em Redis.
 
 A colaboracao ao vivo acontece por WebSocket: a tela mostra usuarios ativos, foco remoto de celula e atualizacoes por celula. Filtros de busca/categoria ficam locais por tela para evitar que um computador mova a visao do outro.
 
@@ -74,7 +74,7 @@ Arquivos principais:
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
-- `site/cotacao/` (legado/ativos antigos, nao deve receber nova logica de planilha)
+- `apps/cotacao/public/assets/`
 
 Tabelas principais:
 
@@ -97,6 +97,7 @@ Regras a preservar:
 - filtros nao devem ser sincronizados automaticamente entre computadores.
 - durante digitacao em categoria, texto nao pode virar comando escondido nem alterar ordem.
 - `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; destaque visual so por regra condicional explicita.
+- A Cotacao PHP antiga foi removida; nao existe fluxo paralelo em `site/cotacao`.
 
 ## Fluxo Financeiro
 

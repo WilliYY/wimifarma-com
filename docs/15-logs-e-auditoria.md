@@ -10,6 +10,7 @@ Logs de container:
 
 - `docker compose logs wimifarma-com-web`
 - `docker compose logs wimifarma-com-db`
+- `docker compose logs wimifarma-cotacao-app`
 
 Tabelas de auditoria/log:
 
@@ -25,7 +26,7 @@ Tabelas de auditoria/log:
 Arquivos:
 
 - `site/cashback/functions.php`
-- `site/cotacao/cotacao-funcoes.php`
+- `apps/cotacao/src/server.js`
 - `site/financeiro/financeiro-funcoes.php`
 - `site/miauw/miauw-intelligence.php`
 - `site/miauw/miauw-funcoes.php`

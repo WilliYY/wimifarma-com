@@ -20,8 +20,8 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
-- `site/cotacao/bootstrap.php`
-- `site/cotacao/cotacao-funcoes.php`
+- `apps/cotacao/src/server.js`
+- `apps/cotacao/public/app.js`
 - `site/financeiro/bootstrap.php`
 - `site/financeiro/financeiro-funcoes.php`
 - `site/tarefa/bootstrap.php`

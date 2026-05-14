@@ -22,9 +22,11 @@ Na V2, `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum em categoria.
 
 Em 2026-05-13, a V2 passou a manter heartbeat de presenca a cada poucos segundos, recarregamento leve quando a aba volta/reconecta e protecao para nao deixar uma linha sumir no meio da edicao quando ha filtro ou busca ativa. `Ctrl+Z` tambem desfaz busca/filtro local, sem sincronizar essa visao para outros usuarios.
 
-## Estado real atual
+Em 2026-05-14, a Cotacao PHP antiga foi removida do repositorio. As notas sobre polling PHP/MySQL abaixo permanecem como historico de migracao, mas a rota oficial `/cotacao/` depende somente da V2 em `apps/cotacao`.
 
-A Cotacao ja possui:
+## Historico da Cotacao PHP legada
+
+Antes da V2, a Cotacao PHP possuia:
 
 - polling de sincronizacao por `sync_pull`;
 - polling incremental por `sync_events_pull`, usando eventos em `cotacao_eventos` antes de recorrer a snapshot completo;
@@ -76,32 +78,31 @@ Isso ainda nao e um motor completo estilo Google Sheets. A edicao simultanea for
 
 Arquivos:
 
-- `site/cotacao/index.php`
-- `site/cotacao/app.js`
-- `site/cotacao/api.php`
-- `site/cotacao/cotacao-funcoes.php`
-- `site/cotacao/styles.css`
+- `apps/cotacao/src/server.js`
+- `apps/cotacao/public/app.js`
+- `apps/cotacao/public/styles.css`
+- `apps/cotacao/public/assets/`
 
 Rotas/acoes:
 
 - `/cotacao/`
-- `POST /cotacao/api.php` com `action=sync_pull`
-- `POST /cotacao/api.php` com `action=sync_events_pull`
-- `POST /cotacao/api.php` com `action=sync_filter` (compatibilidade/diagnostico; nao aplica filtro remoto por padrao)
-- `POST /cotacao/api.php` com `action=presence_ping`
+- `/cotacao/socket.io/`
+- `GET /cotacao/api/bootstrap`
+- `PATCH /cotacao/api/cells`
+- `PATCH /cotacao/api/cells/batch`
+- `POST /cotacao/api/rows`
+- `POST /cotacao/api/columns`
 
 Tabelas:
 
-- `cotacao_blocos`
-- `cotacao_itens`
-- `cotacao_fornecedores`
-- `cotacao_precos`
-- `cotacao_categorias`
-- `cotacao_regras_formatacao`
-- `cotacao_sync_estado`
-- `cotacao_eventos`
-- `cotacao_presencas`
-- `cotacao_auditoria`
+- Postgres `cotacao_v2_quotes`
+- Postgres `cotacao_v2_columns`
+- Postgres `cotacao_v2_rows`
+- Postgres `cotacao_v2_events`
+- Postgres `cotacao_v2_rules`
+- Postgres `cotacao_v2_styles`
+- Redis para sessoes e presenca temporaria
+- MySQL `wf_users` para login
 
 ## Regras de negocio que precisam ser preservadas
 
@@ -148,7 +149,7 @@ Tabelas:
 - Novas colunas/tabelas devem manter categoria default vazia, nao `geral`.
 - Enquanto existe edicao local ativa ou save pendente, `sync_events_pull`/`sync_pull` nao reordenam a grade nem reaplicam filtro remoto; o snapshot fica pendente ate o fim da edicao.
 - Filtros compartilhados ficam desabilitados por padrao no frontend. Para reativar em um fluxo futuro, `data-shared-filter-sync="1"` deve ser habilitado explicitamente e testado com duas telas antes de deploy.
-- As copias antigas `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php` nao devem receber logica nova; elas existem apenas como compatibilidade e redirecionam para `/cotacao/`.
+- As copias antigas `site/app.js`, `site/api.php`, `site/cotacao-funcoes.php` e a pasta `site/cotacao` foram removidas em 2026-05-14. Nao recriar esses shims; a manutencao deve ocorrer em `apps/cotacao`.
 - A troca imediata de linguagem/banco nao foi adotada como primeiro passo para a travada de categoria. O gargalo observado era compatível com recalculo de UI/filtros, entao a correcao inicial fica no frontend e no contrato de sync atual.
 - Para chegar mais perto do Sheets, o proximo salto tecnico recomendado e um canal de eventos em tempo real, preferencialmente SSE ou WebSocket, com fila de eventos por celula/linha. Banco novo so deve entrar depois de medir gargalos reais de MySQL/PHP.
 

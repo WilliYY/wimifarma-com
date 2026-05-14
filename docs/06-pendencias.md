@@ -195,7 +195,7 @@ Evolucao:
 
 Estado:
 
-- Existem APIs em `site/cotacao/api.php`, `site/miauw/api.php`, `site/cashback/api-clientes.php` e outras.
+- Existem APIs em `apps/cotacao/src/server.js`, `site/miauw/api.php`, `site/cashback/api-clientes.php` e outras.
 
 Evolucao:
 

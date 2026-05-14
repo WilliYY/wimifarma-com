@@ -26,7 +26,8 @@ Rotas de smoke test:
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
-- `/cotacao/api.php` deve retornar 401 sem sessao
+- `/cotacao/health` deve responder JSON 200 pela Cotacao V2
+- `/cotacao/api/bootstrap` deve exigir sessao e redirecionar/recusar quando nao autenticado
 
 Comandos estao em `docs/05-comandos.md`.
 

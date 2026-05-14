@@ -937,3 +937,37 @@ Riscos/cuidados:
 - Import e restore podem substituir dados ativos; exigir backup e permissao por perfil antes de liberar amplamente.
 - A alca de preenchimento ainda e visual; drag-fill real deve ser implementado separadamente se virar necessidade operacional.
 - Manter `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA` e `Ganhador` protegidos contra renomeacao/remocao manual.
+
+## 2026-05-14 - Cotacao PHP antiga removida
+
+Decisao:
+
+- Eliminar a Cotacao PHP antiga do repositorio, incluindo `site/cotacao`, `site/app.js`, `site/api.php` e `site/cotacao-funcoes.php`.
+- Mover os ativos ainda usados pela Cotacao oficial, como logo, favicon e GIFs de login, para `apps/cotacao/public`.
+- Remover do `docker-compose.yml` os mounts que ligavam `wimifarma-cotacao-app` a `site/cotacao`.
+
+Motivo:
+
+- A Cotacao V2 ja substituiu a rota `/cotacao/` e a pasta antiga passou a ocupar espaco e criar ambiguidade.
+- Manter um fallback PHP escondido aumentava risco de editar o lugar errado ou diagnosticar bug na base errada.
+
+Impacto:
+
+- `apps/cotacao/public/assets/`
+- `apps/cotacao/public/logo-wimifarma.svg`
+- `apps/cotacao/public/favicon.svg`
+- `apps/cotacao/public/favicon.png`
+- `docker-compose.yml`
+- `site/cotacao/`
+- `site/app.js`
+- `site/api.php`
+- `site/cotacao-funcoes.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- `/cotacao/` nao tem mais fallback PHP; se falhar, investigar V2, proxy Apache, Postgres, Redis ou login MySQL.
+- Nao recriar shims da Cotacao antiga na raiz do `site/`.
+- Nao apagar `cotacao-data/`, pois ali ficam os dados vivos da Cotacao V2.
