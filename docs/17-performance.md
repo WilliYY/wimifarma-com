@@ -62,6 +62,23 @@ Conclusao da Etapa 0:
 - A proxima etapa segura deve adicionar sync por eventos/delta mantendo `/api/bootstrap` como fallback, e depois substituir recarregamentos periodicos por busca incremental.
 - Antes de otimizar visualmente, remover `loadSheet()` de mutacoes simples e medir as rotas no VPS real.
 
+## Cotacao V2 - Etapa 1 de seguranca em 2026-05-14
+
+A Etapa 1 preparou a base sem mudar o comportamento da planilha para a equipe:
+
+- `/cotacao/api/bootstrap` continua sendo o fallback oficial e confiavel para recarregar o snapshot completo.
+- Nenhuma tabela, linha, coluna, estilo, regra ou evento foi removido.
+- O schema ganhou apenas indices aditivos para as consultas atuais de snapshot:
+  - `cotacao_v2_quotes_status_created_idx`;
+  - `cotacao_v2_columns_visible_quote_position_idx`;
+  - `cotacao_v2_rows_active_quote_position_idx`;
+  - `cotacao_v2_rules_quote_priority_idx`;
+  - `cotacao_v2_styles_quote_updated_idx`.
+- `/cotacao/api/diagnostics` passou a devolver um bloco `safety`, confirmando a etapa atual, que o fallback por bootstrap segue ativo e que sync incremental ainda nao foi ativado.
+- `/cotacao/api/diagnostics` tambem passou a devolver um bloco `performance`, com tempo de `loadSheet()`, tamanho estimado do snapshot e status dos indices esperados.
+
+Essa etapa e propositalmente conservadora: ela prepara observabilidade e indices para crescer a planilha, mas ainda nao troca o fluxo de sincronizacao. A proxima etapa tecnica pode criar `GET /cotacao/api/events?after=` ou rota equivalente, mantendo bootstrap completo como recuperacao quando o delta atrasar, falhar ou encontrar divergencia.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos:
@@ -114,6 +131,7 @@ Servicos:
 - Separar lentidao de Windows Docker da lentidao real no VPS Linux.
 - Manter `/cotacao/api/bootstrap` como fallback confiavel enquanto sync incremental/delta for introduzido.
 - Nao otimizar a Cotacao apagando eventos, linhas, estilos ou historico de auditoria.
+- Durante a transicao para delta, `/cotacao/api/diagnostics.performance.expectedIndexes` deve mostrar todos os indices esperados com `exists: true` antes de considerar a etapa saudavel.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -124,6 +142,7 @@ Servicos:
 - `endurance-page-cache.php`, especifico de HostGator, foi removido/quarentenado fora do projeto.
 - Investigacao de performance deve comecar por plugins/cache/tema antes de reescrever codigo.
 - Na Cotacao V2, a primeira otimizacao estrutural deve ser incremental: medir, criar endpoint de eventos/delta, usar delta no reload periodico e so depois reduzir renderizacao completa da grade.
+- Antes de criar o endpoint delta, a Etapa 1 adicionou indices aditivos e diagnostico de seguranca/performance, mantendo o contrato de snapshot intacto.
 
 ## Riscos ao alterar
 
@@ -149,6 +168,7 @@ Servicos:
 - Criar endpoint incremental `GET /cotacao/api/events?after=` para trocar reloads completos por deltas.
 - Remover `loadSheet()` de mutacoes simples da Cotacao, como salvar celula, largura de coluna, estilo e regra, preservando fallback por bootstrap completo.
 - Avaliar separar o carregamento do widget do Miauby da renderizacao inicial da grade se `widget-status.php` continuar com picos acima de 500 ms no VPS.
+- Confirmar no VPS que `/cotacao/api/diagnostics.performance.expectedIndexes` lista todos os indices da Etapa 1 como existentes.
 
 ## Evolucao futura
 

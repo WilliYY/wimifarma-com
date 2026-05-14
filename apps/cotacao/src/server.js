@@ -40,6 +40,49 @@ const PAINT_SWATCHES = [
   ['Cinza escuro', '#0f172a'], ['Cinza forte', '#334155'], ['Cinza', '#64748b'], ['Cinza medio', '#94a3b8'], ['Cinza claro', '#cbd5e1'], ['Cinza pastel', '#e2e8f0'], ['Cinza suave', '#f1f5f9']
 ];
 
+const PERFORMANCE_INDEXES = [
+  {
+    name: 'cotacao_v2_quotes_status_created_idx',
+    table: 'cotacao_v2_quotes',
+    purpose: 'cotacao ativa por status e data'
+  },
+  {
+    name: 'cotacao_v2_columns_visible_quote_position_idx',
+    table: 'cotacao_v2_columns',
+    purpose: 'colunas visiveis do snapshot em ordem'
+  },
+  {
+    name: 'cotacao_v2_rows_active_quote_position_idx',
+    table: 'cotacao_v2_rows',
+    purpose: 'linhas ativas do snapshot em ordem'
+  },
+  {
+    name: 'cotacao_v2_rules_quote_priority_idx',
+    table: 'cotacao_v2_rules',
+    purpose: 'regras condicionais em ordem de prioridade'
+  },
+  {
+    name: 'cotacao_v2_styles_quote_updated_idx',
+    table: 'cotacao_v2_styles',
+    purpose: 'estilos manuais em ordem de atualizacao'
+  }
+];
+
+const PERFORMANCE_INDEX_STATEMENTS = [
+  `CREATE INDEX IF NOT EXISTS cotacao_v2_quotes_status_created_idx
+   ON cotacao_v2_quotes (status, created_at, id)`,
+  `CREATE INDEX IF NOT EXISTS cotacao_v2_columns_visible_quote_position_idx
+   ON cotacao_v2_columns (quote_id, position, label, key)
+   WHERE COALESCE((options->>'hidden')::boolean, false) = false`,
+  `CREATE INDEX IF NOT EXISTS cotacao_v2_rows_active_quote_position_idx
+   ON cotacao_v2_rows (quote_id, position, id)
+   WHERE deleted_at IS NULL`,
+  `CREATE INDEX IF NOT EXISTS cotacao_v2_rules_quote_priority_idx
+   ON cotacao_v2_rules (quote_id, priority, created_at, id)`,
+  `CREATE INDEX IF NOT EXISTS cotacao_v2_styles_quote_updated_idx
+   ON cotacao_v2_styles (quote_id, updated_at, id)`
+];
+
 const app = express();
 const server = http.createServer(app);
 const redis = createClient({ url: env.REDIS_URL || 'redis://127.0.0.1:6379' });
@@ -340,10 +383,41 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS cotacao_v2_column_audit_quote_idx
     ON cotacao_v2_column_audit (quote_id, created_at DESC)
   `);
+  await ensurePerformanceIndexes();
 
   const quote = await getOrCreateDefaultQuote();
   await seedColumns(quote.id);
   await seedRows(quote.id);
+}
+
+async function ensurePerformanceIndexes() {
+  for (const statement of PERFORMANCE_INDEX_STATEMENTS) {
+    await pgPool.query(statement);
+  }
+}
+
+async function listExpectedPerformanceIndexes() {
+  const names = PERFORMANCE_INDEXES.map((index) => index.name);
+  const result = await pgPool.query(
+    `SELECT indexname
+     FROM pg_indexes
+     WHERE schemaname = 'public'
+       AND indexname = ANY($1::text[])`,
+    [names]
+  );
+  const found = new Set(result.rows.map((row) => row.indexname));
+  return PERFORMANCE_INDEXES.map((index) => ({
+    ...index,
+    exists: found.has(index.name)
+  }));
+}
+
+function jsonByteLength(value) {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8');
+  } catch (_error) {
+    return null;
+  }
 }
 
 async function getOrCreateDefaultQuote() {
@@ -2122,8 +2196,18 @@ app.delete(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(
 
 app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, res) => {
   const startedAt = Date.now();
+  const sheetStartedAt = Date.now();
   const sheet = await loadSheet();
-  const [eventCount, lastEvents, auditCount, redisPing] = await Promise.all([
+  const loadSheetMs = Date.now() - sheetStartedAt;
+  const snapshotBytes = jsonByteLength({
+    quote: sheet.quote,
+    columns: sheet.columns,
+    rows: sheet.rows,
+    rules: sheet.rules,
+    styles: sheet.styles,
+    lastEventId: sheet.lastEventId
+  });
+  const [eventCount, lastEvents, auditCount, redisPing, performanceIndexes] = await Promise.all([
     pgPool.query('SELECT COUNT(*)::int AS total FROM cotacao_v2_events WHERE quote_id = $1', [sheet.quote.id]),
     pgPool.query(
       `SELECT id, type, row_id AS "rowId", column_key AS "columnKey", username, client_id AS "clientId", created_at AS "createdAt"
@@ -2134,7 +2218,8 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
       [sheet.quote.id]
     ),
     pgPool.query('SELECT COUNT(*)::int AS total FROM cotacao_v2_column_audit WHERE quote_id = $1', [sheet.quote.id]),
-    redis.ping()
+    redis.ping(),
+    listExpectedPerformanceIndexes()
   ]);
   const presence = await activePresence(sheet.quote.id);
   res.json({
@@ -2153,6 +2238,23 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
     googleSheetsConfigured: Boolean(GOOGLE_SHEETS_SPREADSHEET_ID && (GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE)),
     backupDir: BACKUP_DIR,
     redis: redisPing,
+    safety: {
+      stage: 'etapa-1',
+      bootstrapFallback: true,
+      incrementalDeltaEnabled: false,
+      destructiveChanges: false,
+      oldCotacaoPhpFallback: false,
+      backupBeforeImportRestore: true
+    },
+    performance: {
+      loadSheetMs,
+      snapshotBytes,
+      snapshotRows: sheet.rows.length,
+      snapshotColumns: sheet.columns.length,
+      snapshotRules: sheet.rules.length,
+      snapshotStyles: sheet.styles.length,
+      expectedIndexes: performanceIndexes
+    },
     latencyMs: Date.now() - startedAt
   });
 }));
