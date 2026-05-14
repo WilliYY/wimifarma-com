@@ -37,6 +37,8 @@
   const createBackupButton = document.getElementById('createBackupButton');
   const backupSelect = document.getElementById('backupSelect');
   const restoreBackupButton = document.getElementById('restoreBackupButton');
+  let resizeGuide = null;
+  let resizeBadge = null;
 
   const FIXED_KEYS = ['ean', 'produto', 'quantidade', 'categoria'];
   const WINNER_KEY = 'quem_ganhou';
@@ -1609,6 +1611,52 @@
       col.style.maxWidth = `${nextWidth}px`;
     }
     autosizeSheetInputs();
+    return nextWidth;
+  }
+
+  function ensureResizeFeedback() {
+    if (!resizeGuide) {
+      resizeGuide = document.createElement('div');
+      resizeGuide.className = 'column-resize-guide';
+      document.body.appendChild(resizeGuide);
+    }
+    if (!resizeBadge) {
+      resizeBadge = document.createElement('div');
+      resizeBadge.className = 'column-resize-badge';
+      resizeBadge.setAttribute('role', 'status');
+      resizeBadge.setAttribute('aria-live', 'polite');
+      document.body.appendChild(resizeBadge);
+    }
+    resizeGuide.hidden = false;
+    resizeBadge.hidden = false;
+  }
+
+  function hideResizeFeedback() {
+    if (resizeGuide) resizeGuide.hidden = true;
+    if (resizeBadge) resizeBadge.hidden = true;
+  }
+
+  function updateResizeFeedback(columnKey, width, clientX) {
+    if (!state.resizing) return;
+    ensureResizeFeedback();
+    const nextWidth = clampColumnWidth(width);
+    state.resizing.currentWidth = nextWidth;
+    const delta = nextWidth - state.resizing.startWidth;
+    const header = table.querySelector(`th[data-column-key="${columnKey}"]`);
+    const headerRect = header?.getBoundingClientRect();
+    const wrapRect = sheetWrap?.getBoundingClientRect();
+    const guideX = Math.round(headerRect?.right || clientX || state.resizing.startX);
+    const guideTop = Math.max(0, Math.round(wrapRect?.top || headerRect?.top || 0));
+    const guideBottom = Math.min(window.innerHeight, Math.round(wrapRect?.bottom || window.innerHeight));
+    resizeGuide.style.left = `${guideX}px`;
+    resizeGuide.style.top = `${guideTop}px`;
+    resizeGuide.style.height = `${Math.max(48, guideBottom - guideTop)}px`;
+    const badgeWidth = 132;
+    const badgeLeft = Math.max(8, Math.min(guideX + 10, window.innerWidth - badgeWidth - 8));
+    const badgeTopBase = headerRect?.top || wrapRect?.top || 8;
+    resizeBadge.style.left = `${badgeLeft}px`;
+    resizeBadge.style.top = `${Math.max(8, Math.round(badgeTopBase - 38))}px`;
+    resizeBadge.textContent = `${nextWidth}px (${delta >= 0 ? '+' : ''}${delta}px)`;
   }
 
   function startColumnResize(event, columnKey) {
@@ -1619,9 +1667,11 @@
     state.resizing = {
       columnKey,
       startX: event.clientX,
-      startWidth: clampColumnWidth(column.width || event.target.closest('th')?.offsetWidth || 160)
+      startWidth: clampColumnWidth(column.width || event.target.closest('th')?.offsetWidth || 160),
+      currentWidth: clampColumnWidth(column.width || event.target.closest('th')?.offsetWidth || 160)
     };
     document.body.classList.add('is-resizing-column');
+    updateResizeFeedback(columnKey, state.resizing.currentWidth, event.clientX);
   }
 
   async function saveColumnWidth(columnKey, width) {
@@ -1930,15 +1980,17 @@
       }
       if (!state.resizing) return;
       const width = state.resizing.startWidth + event.clientX - state.resizing.startX;
-      applyColumnWidth(state.resizing.columnKey, width);
+      const nextWidth = applyColumnWidth(state.resizing.columnKey, width);
+      updateResizeFeedback(state.resizing.columnKey, nextWidth, event.clientX);
     });
 
     document.addEventListener('mouseup', (event) => {
       if (state.resizing) {
-        const { columnKey } = state.resizing;
-        const width = colByKey(columnKey)?.width || 160;
+        const { columnKey, currentWidth } = state.resizing;
+        const width = currentWidth || colByKey(columnKey)?.width || 160;
         state.resizing = null;
         document.body.classList.remove('is-resizing-column');
+        hideResizeFeedback();
         saveColumnWidth(columnKey, width).catch(console.error);
       }
       if (state.fillDragging) {

@@ -97,7 +97,7 @@ MySQL `wimifarma_app`:
 - Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
 - Texto longo deve quebrar linha dentro da celula e aumentar a altura da linha em vez de vazar ou ficar cortado.
 - Clicar no cabecalho seleciona a coluna inteira; clicar no numero seleciona a linha inteira. Arrastar pelos cabecalhos deve ampliar a selecao para varias colunas ou varias linhas.
-- Distribuidoras podem ser renomeadas com duplo clique no cabecalho e ter largura ajustada arrastando a borda do titulo. Ao clicar fora do titulo em edicao, o editor de renomeacao deve salvar/fechar antes de selecionar a nova celula.
+- Distribuidoras podem ser renomeadas com duplo clique no cabecalho e ter largura ajustada arrastando a borda do titulo. Durante o ajuste de largura, a tela deve mostrar uma linha guia e uma etiqueta com a largura atual em pixels e a variacao desde o inicio do arraste. Ao clicar fora do titulo em edicao, o editor de renomeacao deve salvar/fechar antes de selecionar a nova celula.
 - Apagar distribuidora e um fluxo normal da equipe: a coluna fica oculta e pode ser restaurada por desfazer/`Ctrl+Z` na mesma sessao.
 - Presenca e temporaria; nao deve virar historico permanente.
 - Nomes de presenca aparecem como animais aleatorios/deterministicos por aba para diferenciar usuarios sem expor o nome real na area principal.
@@ -130,6 +130,7 @@ MySQL `wimifarma_app`:
 - `Ctrl+Z` tambem desfaz filtros locais; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
 - A alca de preenchimento no canto da selecao pode ser arrastada para copiar o padrao de valores e cores visiveis da selecao para as celulas adjacentes, ignorando colunas calculadas, e mostra uma previa forte das celulas de destino durante o arrasto.
 - A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo e o campo de busca livre foi removido para reduzir ruido operacional.
+- O redimensionamento de coluna mostra feedback visual imediato com linha guia e etiqueta `px (+/-px)` para deixar claro quanto a coluna esta aumentando ou diminuindo.
 - Regras condicionais podem marcar a opcao `Data/hora`; quando uma celula bater nessa regra, o hover mostra a data/hora de criacao da regra.
 - O fim da rolagem da grade exibe `Adicionar 20 linhas` para continuar a cotacao sem voltar ao topo.
 - `app.js` e `styles.css` sao servidos sem cache forte para que alteracoes de deploy aparecam imediatamente ao recarregar a Cotacao.
@@ -170,6 +171,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, o menu de contexto foi reduzido para retirar opcoes irrelevantes ou perigosas: `Adicionar 20 linhas abaixo`, `Apagar linha`, `Renomear distribuidora` e mover distribuidora para esquerda/direita.
 - Em 2026-05-14, `Enter` passou a mover a selecao para a celula de baixo por padrao; quando a celula esta em edicao, `Enter` salva e desce.
 - Em 2026-05-14, a Cotacao PHP antiga foi removida e os ativos usados pela V2 foram migrados para `apps/cotacao/public`; `docker-compose.yml` deixou de depender de `site/cotacao`.
+- Em 2026-05-14, o redimensionamento de coluna ganhou linha guia e etiqueta de largura para o usuario enxergar a largura atual e a diferenca enquanto arrasta.
 
 ## Riscos ao alterar
 

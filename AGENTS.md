@@ -200,6 +200,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Ao renomear distribuidora por duplo clique no cabecalho, clicar fora do titulo salva/fecha o editor antes de selecionar a nova celula, deixando apenas a celula clicada ativa.
 - A alca de preenchimento no canto da selecao foi ampliada e pode ser arrastada para copiar valores e cores visiveis da selecao para celulas adjacentes, sem escrever em colunas calculadas como `Ganhador`.
 - Durante o arrasto da alca de preenchimento, a grade mostra uma previa visual forte das celulas de destino que receberao a copia.
+- Durante o redimensionamento de coluna pelo cabecalho, a grade mostra linha guia e etiqueta com largura atual em pixels e variacao desde o inicio do arraste.
 - Regras condicionais podem marcar `Data/hora`; quando habilitado, o hover da celula que bateu na regra mostra a data/hora de criacao da regra.
 - O campo de busca livre e a borracha fixa do topo foram removidos da Cotacao V2 para reduzir ruido; limpeza de cor permanece no menu de contexto.
 - Quando uma edicao faria a linha sair do filtro atual, a tela mantem a linha visivel ate o filtro mudar, evitando a sensacao de que a linha sumiu durante a digitacao.

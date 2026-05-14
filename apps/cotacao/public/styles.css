@@ -1238,6 +1238,31 @@ body.is-resizing-column {
   user-select: none;
 }
 
+.column-resize-guide {
+  position: fixed;
+  z-index: 80;
+  width: 0;
+  border-left: 3px solid #ea580c;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgba(124, 45, 18, 0.45));
+}
+
+.column-resize-badge {
+  position: fixed;
+  z-index: 81;
+  min-width: 124px;
+  padding: 7px 10px;
+  border: 1px solid rgba(124, 45, 18, 0.28);
+  border-radius: 7px;
+  background: #fff7ed;
+  color: #7c2d12;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-align: center;
+  pointer-events: none;
+}
+
 .sheet-table td {
   height: auto;
   min-height: 42px;
