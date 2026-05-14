@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 $miauwLocalConfig = __DIR__ . '/config.local.php';
-if (is_file($miauwLocalConfig)) {
+if (is_file($miauwLocalConfig) && is_readable($miauwLocalConfig)) {
     require $miauwLocalConfig;
 }
 

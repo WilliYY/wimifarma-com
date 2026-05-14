@@ -26,6 +26,7 @@ Miauby ja possui:
 - widget com chamadas `Accept: application/json`, `X-Requested-With: XMLHttpRequest` e parser tolerante para recuperar payload JSON quando a resposta vier com aviso/ruido externo antes ou depois do objeto.
 - endpoints JSON do widget (`widget-status.php`, `widget-auth.php`, `widget-alerts.php` e `api.php`) limpam buffer de saida antes de responder para evitar HTML/avisos misturados com JSON dentro da Cotacao V2.
 - apos login pelo widget, o frontend confirma `widget-status.php` imediatamente para validar que o cookie de sessao foi preservado; se voltar anonimo, mostra erro claro de sessao/cookie.
+- `config.local.php` so e carregado quando existe e esta legivel pelo PHP; se o arquivo local existir sem permissao de leitura, o Miauby deve continuar subindo usando variaveis do `.env` em vez de quebrar com erro fatal.
 
 ## Arquivos, tabelas e servicos envolvidos
 

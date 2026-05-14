@@ -119,6 +119,8 @@ O Miauby pode carregar a chave por:
 - `site/miauw/config.local.php`, ou
 - `MIAUW_OPENAI_API_KEY` no `.env`.
 
+`site/miauw/config.local.php` so deve ser carregado quando estiver legivel pelo PHP; se existir com permissao errada no VPS, o Miauby deve continuar usando `.env` sem fatal error.
+
 ## Como rodar local
 
 ```powershell
