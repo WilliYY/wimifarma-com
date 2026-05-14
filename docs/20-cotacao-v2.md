@@ -116,7 +116,7 @@ MySQL `wimifarma_app`:
 - As celulas usam fonte 20px e alinhamento central por padrao.
 - O menu de contexto permite inserir/apagar linhas e inserir/apagar apenas colunas de distribuidoras.
 - A paleta de cores grava estilo manual por linha, coluna ou celula em `cotacao_v2_styles`, pode ser aberta pelo botao do topo ou pelo menu de contexto e oferece faixas de tons do mais forte ao mais claro.
-- Cor manual aplicada por linha/coluna/celula tem prioridade visual sobre destaque automatico de menor preco e tons padrao de distribuidora.
+- Cor manual aplicada por linha/coluna/celula tem prioridade visual sobre tons padrao de distribuidora. O destaque automatico azul do menor preco fica por cima enquanto a celula estiver vencendo; quando deixar de vencer, a cor manual reaparece.
 - Entre estilos manuais sobrepostos, o `updated_at` mais recente vence; assim, pintar uma coluna agora cobre cores antigas de celulas daquela coluna, mas uma cor de celula aplicada depois ainda pode se destacar.
 - Aplicar cor ou borracha pela paleta e uma acao unica; apos salvar o estilo da selecao atual, o modo de pintura e desarmado para evitar colorir a proxima celula por acidente.
 - A coluna `Ganhador` e a celula de menor preco recebem destaque visual automatico, sem depender de palavra em categoria.
@@ -158,7 +158,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-13, nova rodada corrigiu a operacao diaria: `Ctrl+C`, `Ctrl+Z` para busca/filtros, menu de filtro com posicionamento visivel, limpeza de estado de edicao ao trocar de celula, regra condicional apenas por fundo, Miauby na Cotacao, login compacto e heartbeat/reload leve apos inatividade.
 - Em 2026-05-13, a formatacao condicional foi ajustada para pintar apenas a celula da coluna-alvo da regra, e a paleta de cores passou a flutuar acima da grade e abrir tambem pelo menu de contexto.
 - Em 2026-05-13, regras condicionais passaram a ser editaveis pela tela, a paleta foi ampliada para 63 tons e desarma apos aplicar cor/borracha, o duplo clique de distribuidora prioriza renomeacao, o filtro de `Ganhador` exibe contagens e o widget do Miauby ganhou leitura JSON mais tolerante.
-- Em 2026-05-13, os filtros passaram a cobrir `PRODUTO`, valor e cor; o filtro de `Ganhador` passou a ordenar vencedores individuais antes de empates e `Sem vencedor`; selecao de cabecalhos passou a arrastar por multiplas colunas/linhas; regra condicional ganhou opcao de hover com data/hora; cores manuais passaram a vencer destaques automaticos; o campo de busca livre e a borracha do topo foram removidos.
+- Em 2026-05-13, os filtros passaram a cobrir `PRODUTO`, valor e cor; o filtro de `Ganhador` passou a ordenar vencedores individuais antes de empates e `Sem vencedor`; selecao de cabecalhos passou a arrastar por multiplas colunas/linhas; regra condicional ganhou opcao de hover com data/hora; cores manuais passaram a vencer tons padrao de distribuidora, enquanto o destaque azul automatico continua vencendo quando a celula e menor preco; o campo de busca livre e a borracha do topo foram removidos.
 
 ## Riscos ao alterar
 

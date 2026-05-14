@@ -659,7 +659,7 @@ textarea {
 
 .is-winning-price,
 .is-best-price {
-  background: #dbeafe;
+  background: #dbeafe !important;
   box-shadow: inset 0 0 0 2px #3b82f6;
 }
 

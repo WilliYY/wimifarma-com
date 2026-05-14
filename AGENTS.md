@@ -189,7 +189,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A formatacao condicional explicita pinta somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para preservar legibilidade.
 - Regras de formatacao condicional podem ser editadas e apagadas no modal da propria Cotacao V2.
 - A paleta de cores abre por botao no topo ou por `Cores` no menu de contexto, sempre flutuando acima da grade para nao ficar escondida atras das celulas, com tons do mais forte ao mais claro.
-- Cores manuais aplicadas por celula, linha ou coluna devem vencer visualmente tons padrao de distribuidora e destaque automatico de menor preco.
+- Cores manuais aplicadas por celula, linha ou coluna devem vencer visualmente tons padrao de distribuidora. O destaque automatico azul do menor preco deve ficar por cima enquanto a celula estiver vencendo; quando deixar de vencer, a cor manual reaparece.
 - Aplicar cor ou borracha e uma acao unica: apos salvar o estilo da selecao atual, a tela desarma o modo para evitar pintar a proxima celula sem querer.
 - O filtro de `Ganhador` mostra contagem por resultado, como `Anb (4)`, ordenando vencedores individuais antes de empates e `Sem vencedor`.
 - `PRODUTO` tambem possui filtro por icone; colunas filtraveis possuem filtro de cor no mesmo menu.
