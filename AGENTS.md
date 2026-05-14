@@ -230,6 +230,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Filtros da Cotacao V2 continuam locais por tela; filtrar em um computador nao muda a visao de outro. Duas pessoas na mesma celula seguem o comportamento pedido estilo Sheets: o ultimo salvamento vence, enquanto a presenca visual mostra quem esta na celula e o log de eventos permite recuperar valor anterior.
 - O topo da Cotacao V2 possui botao `Historico` ao lado do contador de linhas com dados; ele abre o historico da celula selecionada e permite restaurar o valor anterior por um save normal/auditado.
 - O modal de formatacao condicional usa layout largo e compacto: criacao de regra em faixa unica, regras existentes em linhas alinhadas e acoes `Salvar`/`Apagar` lado a lado no desktop.
+- O botao `Sair` da Cotacao V2 encerra a sessao da Cotacao e redireciona para a home inicial `/`, nao para a tela de login.
 
 ## Estado validado em 2026-05-11
 

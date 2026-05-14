@@ -1741,7 +1741,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   return res.redirect(`${BASE_PATH}/`);
 }));
 app.get(`${BASE_PATH}/logout.php`, (req, res) => {
-  req.session.destroy(() => res.redirect(`${BASE_PATH}/login.php`));
+  req.session.destroy(() => res.redirect('/'));
 });
 app.get(`${BASE_PATH}/index.php`, requireAuth, (_req, res) => res.redirect(`${BASE_PATH}/`));
 app.get(`${BASE_PATH}/`, requireAuth, (req, res) => res.type('html').send(renderApp(req)));
