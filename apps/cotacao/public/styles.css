@@ -550,15 +550,23 @@ textarea {
 
 .fill-handle {
   position: absolute;
-  right: -4px;
-  bottom: -4px;
+  right: -7px;
+  bottom: -7px;
   z-index: 6;
-  width: 9px;
-  height: 9px;
-  border: 1px solid #fff;
-  border-radius: 2px;
+  width: 15px;
+  height: 15px;
+  border: 2px solid #fff;
+  border-radius: 3px;
   background: #f59e0b;
-  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.28);
+  cursor: crosshair;
+  pointer-events: auto;
+}
+
+body.is-fill-dragging,
+body.is-fill-dragging * {
+  cursor: crosshair !important;
+  user-select: none;
 }
 
 .sheet-input {

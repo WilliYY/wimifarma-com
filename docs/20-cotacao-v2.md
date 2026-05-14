@@ -123,6 +123,7 @@ MySQL `wimifarma_app`:
 - A insercao de linhas saiu dos botoes visiveis e ficou no menu de contexto. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
 - A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis.
 - `Ctrl+Z` tambem desfaz filtros locais; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
+- A alca de preenchimento no canto da selecao pode ser arrastada para copiar o padrao de valores e cores visiveis da selecao para as celulas adjacentes, ignorando colunas calculadas.
 - A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo e o campo de busca livre foi removido para reduzir ruido operacional.
 - Regras condicionais podem marcar a opcao `Data/hora`; quando uma celula bater nessa regra, o hover mostra a data/hora de criacao da regra.
 - O fim da rolagem da grade exibe `Adicionar 20 linhas` para continuar a cotacao sem voltar ao topo.
@@ -159,6 +160,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-13, a formatacao condicional foi ajustada para pintar apenas a celula da coluna-alvo da regra, e a paleta de cores passou a flutuar acima da grade e abrir tambem pelo menu de contexto.
 - Em 2026-05-13, regras condicionais passaram a ser editaveis pela tela, a paleta foi ampliada para 63 tons e desarma apos aplicar cor/borracha, o duplo clique de distribuidora prioriza renomeacao, o filtro de `Ganhador` exibe contagens e o widget do Miauby ganhou leitura JSON mais tolerante.
 - Em 2026-05-13, os filtros passaram a cobrir `PRODUTO`, valor e cor; o filtro de `Ganhador` passou a ordenar vencedores individuais antes de empates e `Sem vencedor`; selecao de cabecalhos passou a arrastar por multiplas colunas/linhas; regra condicional ganhou opcao de hover com data/hora; cores manuais passaram a vencer tons padrao de distribuidora, enquanto o destaque azul automatico continua vencendo quando a celula e menor preco; o campo de busca livre e a borracha do topo foram removidos.
+- Em 2026-05-14, a alca de preenchimento ficou maior e passou a copiar valores e cores da selecao para cima, baixo, esquerda ou direita, mantendo `Ganhador` e outras colunas calculadas sem escrita manual.
 
 ## Riscos ao alterar
 
@@ -180,7 +182,7 @@ Em 2026-05-12 foram validados localmente:
 - Configurar credenciais reais do Google Sheets no VPS e validar import/export end-to-end com uma planilha controlada.
 - Usar backup/revisao operacional antes de importar ou restaurar backup em dados reais.
 - Criar testes automatizados permanentes com duas telas no pipeline.
-- Evoluir a alca visual de preenchimento para drag-fill real, caso a equipe queira copiar padroes como no Sheets.
+- Refinar o drag-fill com series automaticas no futuro, caso a equipe precise incrementar numeros/datas em vez de apenas copiar o padrao selecionado.
 - Criar rotina agendada de backup/retencao fora do container, alem do backup manual da tela.
 - Definir regra de historico: o usuario indicou que historico completo nao e prioridade porque os dados oficiais podem ser refeitos pelo sistema da farmacia/Sheets.
 

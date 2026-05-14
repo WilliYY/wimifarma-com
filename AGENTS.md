@@ -195,6 +195,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `PRODUTO` tambem possui filtro por icone; colunas filtraveis possuem filtro de cor no mesmo menu.
 - Arrastar pelos cabecalhos de coluna ou numeros de linha amplia a selecao para varias colunas/linhas.
 - Ao renomear distribuidora por duplo clique no cabecalho, clicar fora do titulo salva/fecha o editor antes de selecionar a nova celula, deixando apenas a celula clicada ativa.
+- A alca de preenchimento no canto da selecao foi ampliada e pode ser arrastada para copiar valores e cores visiveis da selecao para celulas adjacentes, sem escrever em colunas calculadas como `Ganhador`.
 - Regras condicionais podem marcar `Data/hora`; quando habilitado, o hover da celula que bateu na regra mostra a data/hora de criacao da regra.
 - O campo de busca livre e a borracha fixa do topo foram removidos da Cotacao V2 para reduzir ruido; limpeza de cor permanece no menu de contexto.
 - Quando uma edicao faria a linha sair do filtro atual, a tela mantem a linha visivel ate o filtro mudar, evitando a sensacao de que a linha sumiu durante a digitacao.
@@ -203,7 +204,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - O login do widget do Miauby confirma imediatamente `widget-status.php` apos autenticar; se o navegador nao guardar o cookie de sessao, o widget deve avisar claramente em vez de continuar parecendo anonimo.
 - Falta configurar credenciais reais do Google Sheets no `.env` do VPS antes de usar import/export em producao.
 - Acoes destrutivas amplas da Cotacao V2, como restore e import, ainda precisam de cuidado operacional antes de uso amplo pela equipe.
-- O `fill handle` da selecao e apenas visual por enquanto; arrastar para preencher como no Google Sheets ainda precisa ser implementado se virar necessidade operacional.
+- O `fill handle` da selecao ja copia o padrao de valores e cores para celulas adjacentes; series automaticas mais inteligentes, como incrementar numeros/datas, ainda podem evoluir se virar necessidade operacional.
 - Pendencias/cuidados atuais para futuros chats: Google Sheets precisa de credenciais reais no `.env` do VPS; restore/import sao acoes fortes e devem ser usadas com backup/revisao; o `fill handle` existe visualmente, mas o drag-fill real ainda pode evoluir.
 
 ## Estado validado em 2026-05-11

@@ -79,6 +79,7 @@
     pendingCommit: null,
     dragging: false,
     resizing: null,
+    fillDragging: null,
     headerDragging: null,
     renamingColumn: null,
     connectedOnce: false,
@@ -550,6 +551,21 @@
       }
     }
     return cells;
+  }
+
+  function selectedCellMatrix(rows = gridRows()) {
+    if (!state.selectedRange) return [];
+    const matrix = [];
+    for (let rowIndex = state.selectedRange.startRow; rowIndex <= state.selectedRange.endRow; rowIndex += 1) {
+      const line = [];
+      for (let colIndex = state.selectedRange.startCol; colIndex <= state.selectedRange.endCol; colIndex += 1) {
+        const row = rows[rowIndex];
+        const column = state.columns[colIndex];
+        line.push(row && column ? { row, column, rowIndex, colIndex } : null);
+      }
+      matrix.push(line);
+    }
+    return matrix;
   }
 
   function selectionContains(rowId, columnKey) {
@@ -1363,6 +1379,95 @@
     renderTable();
   }
 
+  function fillTargetRange(targetCell) {
+    if (!targetCell || !state.selectedRange) return null;
+    const rows = gridRows();
+    const target = coordsFor(targetCell.rowId, targetCell.columnKey, rows);
+    const range = state.selectedRange;
+    if (target.row < 0 || target.col < 0) return null;
+    if (target.row > range.endRow) {
+      return {
+        startRow: range.endRow + 1,
+        endRow: target.row,
+        startCol: range.startCol,
+        endCol: range.endCol
+      };
+    }
+    if (target.row < range.startRow) {
+      return {
+        startRow: target.row,
+        endRow: range.startRow - 1,
+        startCol: range.startCol,
+        endCol: range.endCol
+      };
+    }
+    if (target.col > range.endCol) {
+      return {
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startCol: range.endCol + 1,
+        endCol: target.col
+      };
+    }
+    if (target.col < range.startCol) {
+      return {
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startCol: target.col,
+        endCol: range.startCol - 1
+      };
+    }
+    return null;
+  }
+
+  function fillSourceFor(targetRowIndex, targetColIndex, sourceMatrix) {
+    const sourceRowCount = sourceMatrix.length;
+    const sourceColCount = sourceMatrix[0]?.length || 0;
+    if (!sourceRowCount || !sourceColCount || !state.selectedRange) return null;
+    const rowOffset = Math.abs(targetRowIndex - state.selectedRange.startRow) % sourceRowCount;
+    const colOffset = Math.abs(targetColIndex - state.selectedRange.startCol) % sourceColCount;
+    return sourceMatrix[rowOffset]?.[colOffset] || null;
+  }
+
+  async function applyFillHandle(targetCell) {
+    const targetRange = fillTargetRange(targetCell);
+    if (!targetRange) return;
+    const rows = gridRows();
+    const sourceMatrix = selectedCellMatrix(rows);
+    const styles = styleMap();
+    const changes = [];
+    const styleTargets = [];
+
+    for (let rowIndex = targetRange.startRow; rowIndex <= targetRange.endRow; rowIndex += 1) {
+      const targetRow = rows[rowIndex];
+      if (!targetRow) continue;
+      for (let colIndex = targetRange.startCol; colIndex <= targetRange.endCol; colIndex += 1) {
+        const targetColumn = state.columns[colIndex];
+        if (!targetColumn || targetColumn.options?.computed === true) continue;
+        const source = fillSourceFor(rowIndex, colIndex, sourceMatrix);
+        if (!source || source.column.options?.computed === true) continue;
+        changes.push({
+          rowId: targetRow.id,
+          columnKey: targetColumn.key,
+          value: normalizePastedValue(targetColumn, valueOf(source.row, source.column))
+        });
+        const background = normalizeColorValue(mergedStyle(source.row, source.column, styles).background);
+        if (background) {
+          styleTargets.push({ rowId: targetRow.id, columnKey: targetColumn.key, background });
+        }
+      }
+    }
+
+    if (!changes.length && !styleTargets.length) return;
+    status('Preenchendo selecao...', 'busy');
+    if (changes.length) await saveCellsBatch(changes);
+    for (const target of styleTargets) {
+      await setStyle({ scope: 'cell', rowId: target.rowId, columnKey: target.columnKey }, target.background);
+    }
+    status('Sincronizado');
+    renderTable();
+  }
+
   async function restoreDeletedColumn(columnKey) {
     const data = await api(`/api/columns/${encodeURIComponent(columnKey)}/restore`, {
       method: 'POST',
@@ -1670,6 +1775,15 @@
       if (state.renamingColumn) {
         await commitColumnRename(true);
       }
+      const fillHandle = event.target.closest('.fill-handle');
+      if (fillHandle && event.button === 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (state.editing) await commitEdit();
+        state.fillDragging = true;
+        document.body.classList.add('is-fill-dragging');
+        return;
+      }
       const filterButton = event.target.closest('.filter-button');
       if (filterButton) {
         event.preventDefault();
@@ -1791,13 +1905,21 @@
       applyColumnWidth(state.resizing.columnKey, width);
     });
 
-    document.addEventListener('mouseup', () => {
+    document.addEventListener('mouseup', (event) => {
       if (state.resizing) {
         const { columnKey } = state.resizing;
         const width = colByKey(columnKey)?.width || 160;
         state.resizing = null;
         document.body.classList.remove('is-resizing-column');
         saveColumnWidth(columnKey, width).catch(console.error);
+      }
+      if (state.fillDragging) {
+        state.fillDragging = null;
+        document.body.classList.remove('is-fill-dragging');
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('td.sheet-cell');
+        if (target) {
+          applyFillHandle({ rowId: target.dataset.rowId, columnKey: target.dataset.columnKey }).catch(console.error);
+        }
       }
       state.dragging = false;
       state.headerDragging = null;
