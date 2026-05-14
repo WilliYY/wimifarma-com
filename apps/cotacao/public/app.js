@@ -97,6 +97,7 @@
     paintColor: null,
     eraser: false,
     headerSelectTimer: null,
+    pendingCellSaves: new Map(),
     history: [],
     future: [],
     conflicts: new Map()
@@ -760,6 +761,77 @@
     return `<button type="button" class="filter-button${active}" data-filter-column="${esc(column.key)}" title="Filtro" aria-label="Filtrar ${esc(column.label)}"></button>`;
   }
 
+  function renderCellHtml(row, column, styles, winner = computeWinner(row)) {
+    const value = valueOf(row, column);
+    const style = mergedStyle(row, column, styles);
+    const isWinnerPrice = winner.keys.includes(column.key);
+    const isComputed = column.options?.computed === true;
+    const conflict = state.conflicts.has(cellKey(row.id, column.key));
+    const classes = [
+      'sheet-cell',
+      column.options?.tone || '',
+      isWinnerPrice ? 'is-best-price' : '',
+      isComputed ? 'is-computed' : '',
+      conflict ? 'has-conflict' : ''
+    ].filter(Boolean).join(' ');
+    const styleText = [
+      style.background ? `background:${style.background}` : '',
+      style.color ? `color:${style.color}` : '',
+      `width:${clampColumnWidth(column.width || 160)}px`,
+      `min-width:${clampColumnWidth(column.width || 160)}px`,
+      `max-width:${clampColumnWidth(column.width || 160)}px`
+    ].filter(Boolean).join(';');
+    const title = style.title ? ` title="${esc(style.title)}"` : '';
+    return `<td class="${classes}" data-row-id="${esc(row.id)}" data-column-key="${esc(column.key)}" style="${styleText}"${title}>
+      <textarea class="sheet-input" readonly rows="1" wrap="soft" ${isComputed ? 'tabindex="-1"' : ''}>${esc(value)}</textarea>
+    </td>`;
+  }
+
+  function renderRowHtml(row, sourceIndex, styles = styleMap()) {
+    const winner = computeWinner(row);
+    const cells = state.columns
+      .map((column) => renderCellHtml(row, column, styles, winner))
+      .join('');
+    return `<tr data-row-id="${esc(row.id)}">
+      <th class="row-index" data-row-id="${esc(row.id)}">${sourceIndex}</th>
+      ${cells}
+    </tr>`;
+  }
+
+  function updateRowCountBadge(rows = getVisibleRows()) {
+    rowCountBadge.textContent = `${nonEmptyRowCount(rows)} linha(s) com dados`;
+  }
+
+  function refreshRenderedRow(rowId) {
+    const row = rowById(rowId);
+    const existing = table.querySelector(`tr[data-row-id="${rowId}"]`);
+    if (!row) {
+      if (existing) existing.remove();
+      updateRowCountBadge();
+      updateSelectionClasses();
+      return;
+    }
+    const visibleRows = getVisibleRows();
+    const isVisible = visibleRows.some((item) => item.id === rowId);
+    if (!isVisible) {
+      if (existing) existing.remove();
+      updateRowCountBadge(visibleRows);
+      updateSelectionClasses();
+      return;
+    }
+    const sourceIndex = state.rows.findIndex((item) => item.id === rowId) + 1;
+    if (!existing) {
+      renderTable();
+      return;
+    }
+    existing.outerHTML = renderRowHtml(row, sourceIndex);
+    const rendered = table.querySelector(`tr[data-row-id="${rowId}"]`);
+    if (rendered) bindCellHover(rendered);
+    updateRowCountBadge(visibleRows);
+    autosizeSheetInputs(rendered || table);
+    updateSelectionClasses();
+  }
+
   function renderTable() {
     const visibleRows = getVisibleRows();
     const styles = styleMap();
@@ -776,41 +848,11 @@
         <button type="button" class="resize-handle" data-resize-column="${esc(column.key)}" aria-label="Redimensionar ${esc(column.label)}" title="Arraste para ajustar"></button>
       </th>`
     )).join('');
-    const body = visibleRows.map((row) => {
-      const sourceIndex = state.rows.findIndex((item) => item.id === row.id) + 1;
-      const winner = computeWinner(row);
-      const cells = state.columns.map((column) => {
-        const value = valueOf(row, column);
-        const style = mergedStyle(row, column, styles);
-        const isWinnerPrice = winner.keys.includes(column.key);
-        const isComputed = column.options?.computed === true;
-        const conflict = state.conflicts.has(cellKey(row.id, column.key));
-        const classes = [
-          'sheet-cell',
-          column.options?.tone || '',
-          isWinnerPrice ? 'is-best-price' : '',
-          isComputed ? 'is-computed' : '',
-          conflict ? 'has-conflict' : ''
-        ].filter(Boolean).join(' ');
-        const styleText = [
-          style.background ? `background:${style.background}` : '',
-          style.color ? `color:${style.color}` : '',
-          `width:${clampColumnWidth(column.width || 160)}px`,
-          `min-width:${clampColumnWidth(column.width || 160)}px`,
-          `max-width:${clampColumnWidth(column.width || 160)}px`
-        ].filter(Boolean).join(';');
-        const title = style.title ? ` title="${esc(style.title)}"` : '';
-        return `<td class="${classes}" data-row-id="${esc(row.id)}" data-column-key="${esc(column.key)}" style="${styleText}"${title}>
-          <textarea class="sheet-input" readonly rows="1" wrap="soft" ${isComputed ? 'tabindex="-1"' : ''}>${esc(value)}</textarea>
-        </td>`;
-      }).join('');
-      return `<tr data-row-id="${esc(row.id)}">
-        <th class="row-index" data-row-id="${esc(row.id)}">${sourceIndex}</th>
-        ${cells}
-      </tr>`;
-    }).join('');
+    const body = visibleRows
+      .map((row) => renderRowHtml(row, state.rows.findIndex((item) => item.id === row.id) + 1, styles))
+      .join('');
     table.innerHTML = `<colgroup>${colgroup}</colgroup><thead><tr><th class="corner">#</th>${head}</tr></thead><tbody>${body}</tbody>`;
-    rowCountBadge.textContent = `${nonEmptyRowCount(visibleRows)} linha(s) com dados`;
+    updateRowCountBadge(visibleRows);
     autosizeSheetInputs();
     updateSelectionClasses();
     bindCellHover();
@@ -831,12 +873,12 @@
     });
   }
 
-  function autosizeSheetInputs() {
-    table.querySelectorAll('.sheet-input').forEach(autosizeInput);
+  function autosizeSheetInputs(root = table) {
+    root.querySelectorAll('.sheet-input').forEach(autosizeInput);
   }
 
-  function bindCellHover() {
-    table.querySelectorAll('td.sheet-cell').forEach((td) => {
+  function bindCellHover(root = table) {
+    root.querySelectorAll('td.sheet-cell').forEach((td) => {
       td.addEventListener('mouseenter', () => {
         if (!state.dragging || !state.anchorCell) return;
         setSelection(td.dataset.rowId, td.dataset.columnKey, true);
@@ -1161,39 +1203,89 @@
     });
   }
 
+  function updatePendingSaveStatus() {
+    const pending = state.pendingCellSaves.size;
+    if (pending > 0) {
+      status(pending === 1 ? 'Salvando...' : `Salvando ${pending} celulas...`, 'busy');
+      return;
+    }
+    if (saveStatus.dataset.mode !== 'error' && saveStatus.dataset.mode !== 'warn') {
+      status('Sincronizado');
+    }
+  }
+
+  function applyLocalCellValue(row, columnKey, value, options = {}) {
+    row.values = { ...(row.values || {}), [columnKey]: value };
+    state.conflicts.delete(cellKey(row.id, columnKey));
+    rememberEditedRowInFilteredView(row);
+    if (options.render !== false) refreshRenderedRow(row.id);
+  }
+
   async function setCellValue(rowId, columnKey, value, options = {}) {
     const column = colByKey(columnKey);
     if (!column || column.options?.computed === true) return;
-    const row = rowById(rowId);
+    let row = rowById(rowId);
     if (!row) return;
+    const key = cellKey(rowId, columnKey);
+    const pendingSameCell = state.pendingCellSaves.get(key);
+    if (pendingSameCell) {
+      await pendingSameCell.catch(() => {});
+      row = rowById(rowId);
+      if (!row) return;
+    }
     const before = String(row.values?.[columnKey] ?? '');
     const after = String(value ?? '');
     if (before === after) return;
+    const previousVersion = row.version;
+    const previousUpdatedAt = row.updatedAt;
+    applyLocalCellValue(row, columnKey, after, { render: options.render !== false });
     status('Salvando...', 'busy');
-    try {
+    const saveTask = (async () => {
       const data = await api('/api/cells', {
         method: 'PATCH',
         body: JSON.stringify({ rowId, columnKey, value: after, expectedValue: before, clientId })
       });
-      row.values = { ...(row.values || {}), [columnKey]: after };
-      row.version = data.version;
-      row.updatedAt = data.updatedAt;
-      state.conflicts.delete(cellKey(rowId, columnKey));
-      rememberEditedRowInFilteredView(row);
+      const currentRow = rowById(rowId);
+      if (currentRow) {
+        currentRow.version = data.version;
+        currentRow.updatedAt = data.updatedAt;
+        state.conflicts.delete(key);
+      }
+      rememberEventId(data.eventId);
       if (options.history !== false) {
         pushHistory({ type: 'cell', rowId, columnKey, before, after });
       }
+      return data;
+    })();
+    state.pendingCellSaves.set(key, saveTask);
+    state.pendingCommit = saveTask;
+    updatePendingSaveStatus();
+    try {
+      await saveTask;
       status('Sincronizado');
-      renderTable();
     } catch (error) {
+      const currentRow = rowById(rowId);
+      if (currentRow) {
+        currentRow.version = previousVersion;
+        currentRow.updatedAt = previousUpdatedAt;
+        applyLocalCellValue(currentRow, columnKey, before, { render: true });
+      }
       if (error.status === 409 && error.data?.conflict) {
         state.conflicts.set(cellKey(rowId, columnKey), error.data.conflict);
         status('Conflito visual nesta celula', 'warn');
-        await reloadSheet();
+        markConflictCell(rowId, columnKey);
         return;
       }
       status(error.message || 'Erro ao salvar', 'error');
       throw error;
+    } finally {
+      if (state.pendingCellSaves.get(key) === saveTask) {
+        state.pendingCellSaves.delete(key);
+      }
+      if (state.pendingCommit === saveTask) {
+        state.pendingCommit = null;
+      }
+      updatePendingSaveStatus();
     }
   }
 
@@ -1266,9 +1358,10 @@
 
   async function beginEdit(rowId, columnKey, initialText = null) {
     if (state.editing && (state.editing.rowId !== rowId || state.editing.columnKey !== columnKey)) {
-      await commitEdit();
-    } else if (state.pendingCommit) {
-      await state.pendingCommit;
+      commitEdit();
+    } else {
+      const pendingSameCell = state.pendingCellSaves.get(cellKey(rowId, columnKey));
+      if (pendingSameCell) await pendingSameCell.catch(() => {});
     }
     const column = colByKey(columnKey);
     const row = rowById(rowId);
@@ -1288,10 +1381,10 @@
     updatePresence(true);
   }
 
-  async function commitEdit(move = null) {
+  function commitEdit(move = null, options = {}) {
     if (!state.editing) {
-      if (state.pendingCommit) await state.pendingCommit;
-      return;
+      if (options.waitForSave && state.pendingCommit) return state.pendingCommit;
+      return Promise.resolve();
     }
     const editing = state.editing;
     state.editing = null;
@@ -1303,21 +1396,16 @@
       autosizeInput(input);
       input.blur();
     }
-    let commitPromise = null;
-    commitPromise = (async () => {
-      try {
-        await setCellValue(editing.rowId, editing.columnKey, value);
-        if (!state.editing) {
-          clearEditingVisuals();
-          updatePresence(false);
-          if (move) moveActive(move.row, move.col, false);
-        }
-      } finally {
-        if (state.pendingCommit === commitPromise) state.pendingCommit = null;
-      }
-    })();
-    state.pendingCommit = commitPromise;
-    await commitPromise;
+    const commitPromise = setCellValue(editing.rowId, editing.columnKey, value)
+      .catch((error) => {
+        console.error(error);
+      });
+    if (!state.editing) {
+      clearEditingVisuals();
+      updatePresence(false);
+      if (move) moveActive(move.row, move.col, false);
+    }
+    return options.waitForSave ? commitPromise : Promise.resolve();
   }
 
   function cancelEdit() {

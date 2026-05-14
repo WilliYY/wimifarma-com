@@ -142,6 +142,7 @@ MySQL `wimifarma_app`:
 - Desde a Etapa 1 de performance, o diagnostico tambem retorna `safety` e `performance`, incluindo fallback por bootstrap, status de sync incremental, tamanho estimado do snapshot, tempo de `loadSheet()` e existencia dos indices esperados.
 - Desde a Etapa 2, o frontend usa `GET /cotacao/api/events?after=<eventId>` para refresh automatico, reconnect e retorno de aba visivel; eventos estruturais continuam caindo para `/cotacao/api/bootstrap`.
 - Desde a Etapa 3, mutacoes simples nao devem chamar `loadSheet()` para validar tudo. Salvar celula, colagem em lote, estilos, regras, linhas e colunas usam consultas pontuais para quote/linha/coluna, mantendo snapshot completo apenas para bootstrap, diagnostico, backup, import/export Google Sheets e restore.
+- Desde a Etapa 4, salvar uma celula simples deve ser otimista no frontend: a linha afetada atualiza imediatamente, o save segue em segundo plano com `expectedValue`, e erro/conflito reverte ou marca a celula sem redesenhar a tabela inteira.
 - A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
 - O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
 - A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
@@ -183,6 +184,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, a Etapa 3 trocou `loadSheet()` em mutacoes simples por consultas leves de validacao, mantendo o mesmo retorno de API e o mesmo fluxo de eventos em tempo real.
 - Em 2026-05-14, a Cotacao passou a normalizar regras condicionais antigas/restauradas para `target='cell'`, reforcando que uma regra de categoria pinta apenas a propria celula de categoria e nao a linha inteira.
 - Em 2026-05-14, a digitacao em celulas passou a agendar o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout enquanto o usuario digita.
+- Em 2026-05-14, a Etapa 4 tornou a troca de celula mais fluida: commits simples de celula atualizam localmente, redesenham somente a linha afetada e salvam em segundo plano mantendo conflito por `expectedValue`.
 
 ## Riscos ao alterar
 
@@ -210,7 +212,7 @@ Em 2026-05-12 foram validados localmente:
 - Criar rotina agendada de backup/retencao fora do container, alem do backup manual da tela.
 - Definir regra de historico: o usuario indicou que historico completo nao e prioridade porque os dados oficiais podem ser refeitos pelo sistema da farmacia/Sheets.
 - Medir o endpoint delta no VPS com dados reais e confirmar que refresh automatico deixa de pressionar `/cotacao/api/bootstrap`.
-- Medir no VPS a latencia das mutacoes simples apos a Etapa 3 e comparar com o baseline antes de atacar renderizacao/virtualizacao da grade.
+- Medir no VPS a latencia percebida apos a Etapa 4, especialmente trocar de celula e digitar em sequencia com dados reais da equipe.
 
 ## Como pode evoluir
 

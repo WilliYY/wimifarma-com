@@ -116,6 +116,18 @@ Apos validacao publica do deploy das Etapas 1, 2 e 3, a digitacao em celulas rec
 
 Esse ajuste nao substitui uma virtualizacao completa da grade. Se a Cotacao crescer para muitas centenas ou milhares de linhas visiveis, o proximo ganho relevante continua sendo virtualizar linhas/colunas ou reduzir `renderTable()` completo em acoes de commit.
 
+## Cotacao V2 - Etapa 4 de troca de celula em 2026-05-14
+
+A Etapa 4 atacou o lag percebido ao sair de uma celula e ja digitar em outra:
+
+- o commit de uma celula passou a aplicar o novo valor localmente antes da resposta HTTP;
+- a API continua recebendo `expectedValue` para preservar deteccao de conflito;
+- a tela nao espera o save da celula anterior para permitir selecao/edicao de outra celula;
+- ao salvar uma celula simples, o frontend redesenha apenas a linha afetada, mantendo o calculo de `Ganhador`, destaque de menor preco e regra condicional daquela linha;
+- se a API responder erro ou conflito, o valor local e revertido ou marcado visualmente sem descartar a tela inteira.
+
+Essa etapa ainda nao virtualiza a grade inteira. Ela reduz o caminho mais frequente da operacao diaria: digitar, clicar em outra celula e continuar trabalhando sem esperar rede/render completo a cada commit simples.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos:
@@ -184,6 +196,7 @@ Servicos:
 - Antes de criar o endpoint delta, a Etapa 1 adicionou indices aditivos e diagnostico de seguranca/performance, mantendo o contrato de snapshot intacto.
 - A Etapa 2 criou `GET /cotacao/api/events?after=` e passou o refresh automatico do frontend para esse caminho incremental, preservando bootstrap como fallback.
 - A Etapa 3 removeu `loadSheet()` de mutacoes simples e manteve snapshots completos apenas para leitura inicial, diagnostico e operacoes fortes.
+- A Etapa 4 passou save de celula para fluxo otimista no frontend e reduziu `renderTable()` em commits simples, atualizando somente a linha afetada.
 
 ## Riscos ao alterar
 

@@ -224,6 +224,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A Etapa 3 reduziu trabalho de mutacoes simples da Cotacao V2: salvar celula, colagem em lote, estilos, regras, linhas e colunas agora validam quote/linha/coluna com consultas leves em vez de chamar `loadSheet()` e puxar o snapshot completo. `loadSheet()` permanece para bootstrap, diagnostico e operacoes fortes como backup/import/export/restore.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `target='cell'` na inicializacao da Cotacao V2; regra condicional deve pintar somente a celula da coluna-alvo, nunca a linha inteira.
 - A digitacao em celulas da Cotacao V2 agenda o auto-ajuste de altura por `requestAnimationFrame`, reduzindo recalculo de layout a cada tecla sem alterar save/sync.
+- A Etapa 4 tornou o save de celula otimista no frontend: ao trocar de celula, a grade atualiza a linha imediatamente e salva em segundo plano; confirmacao/conflito volta pela API sem redesenhar a tabela inteira para cada celula simples.
 
 ## Estado validado em 2026-05-11
 
