@@ -26,6 +26,8 @@ Em 2026-05-14, a Cotacao PHP antiga foi removida do repositorio. As notas sobre 
 
 Ainda em 2026-05-14, a Etapa 2 adicionou `GET /cotacao/api/events?after=<eventId>` na V2. O frontend usa essa rota para refresh automatico, reconnect e retorno de aba visivel, aplicando eventos simples de celula, lote, linha, estilo e regra sem baixar o snapshot inteiro. Eventos estruturais, cursor invalido ou excesso de eventos pedem snapshot completo por `/cotacao/api/bootstrap`, preservando recuperacao segura.
 
+Na Etapa 3 do mesmo dia, as mutacoes simples tambem ficaram mais leves: salvar celula, colagem em lote, estilos, regras, linhas e colunas deixam de carregar o snapshot completo via `loadSheet()` e passam a validar apenas quote/linha/coluna necessarios. Isso preserva o mesmo canal de eventos e reduz o custo das acoes frequentes enquanto a tela caminha para comportamento mais proximo do Sheets.
+
 ## Historico da Cotacao PHP legada
 
 Antes da V2, a Cotacao PHP possuia:
@@ -137,6 +139,7 @@ Tabelas:
 - Mutacoes locais tambem devem enviar `client_id`; eventos com o mesmo `client_id` devem ser ignorados pela propria aba.
 - `sync_events_pull` deve ser tentado antes de `sync_pull` quando a aba ja conhece um `evento_id`. Se o servidor pedir `requires_snapshot`, o frontend volta para snapshot completo.
 - Na V2, `GET /cotacao/api/events?after=<eventId>` cumpre esse papel incremental: quando a resposta vem com `requiresSnapshot`, o frontend chama `/cotacao/api/bootstrap`.
+- Mutacoes simples da V2 devem evitar `loadSheet()`; use consultas pontuais para validar coluna visivel/editavel e linha ativa, deixando snapshot completo apenas para bootstrap, diagnostico e operacoes fortes.
 - `presence_ping` continua sem avancar versao de sync local, porque presenca e temporaria e nao representa mudanca de dados.
 - Filtro de categoria nao deve ser reaplicado a cada tecla dentro de uma celula de categoria. O filtro ativo so deve recalcular depois que a edicao termina.
 - Na V2, quando a edicao faz a linha deixar de combinar com filtro/busca ativos, a linha editada permanece fixada visualmente ate o filtro ou a busca mudar. Isso evita a sensacao de perda de dados durante cotacao rapida.

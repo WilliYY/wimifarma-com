@@ -92,6 +92,20 @@ A Etapa 2 iniciou a troca segura de snapshot completo por eventos incrementais:
 
 Esse e um passo real na direcao de uma experiencia estilo Google Sheets: a tela deixa de depender de recarregar tudo para perceber mudancas pequenas, mas ainda conserva uma recuperacao segura quando o evento exige contexto completo.
 
+## Cotacao V2 - Etapa 3 de mutacoes leves em 2026-05-14
+
+A Etapa 3 reduziu trabalho repetido no backend sem mudar a experiencia da planilha:
+
+- Mutacoes simples passaram a usar `getOrCreateDefaultQuote()` e consultas pontuais de validacao em vez de chamar `loadSheet()`.
+- Foram cobertos salvar celula, colagem em lote, estilos manuais, regras condicionais, inserir/apagar/restaurar/redimensionar colunas e inserir/apagar linhas.
+- A validacao de coluna agora consulta apenas a coluna-alvo e confirma se ela esta visivel e, quando necessario, se nao e calculada.
+- A validacao de linha para estilos consulta apenas a linha ativa alvo.
+- `/cotacao/api/bootstrap` continua sendo o fallback completo de recuperacao da tela.
+- `loadSheet()` permanece de proposito em rotas que realmente precisam do snapshot inteiro: bootstrap, diagnostico, backup, import/export Google Sheets e restore.
+- `/cotacao/api/diagnostics.safety.stage` passou para `etapa-3` e indica `simpleMutationSnapshotAvoidance: true`.
+
+Esse passo nao e uma virtualizacao da grade ainda, mas tira um gargalo importante: acoes frequentes deixam de escalar com todas as linhas/regras/estilos existentes quando so precisam validar uma celula ou coluna.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos:
@@ -159,6 +173,7 @@ Servicos:
 - Na Cotacao V2, a primeira otimizacao estrutural deve ser incremental: medir, criar endpoint de eventos/delta, usar delta no reload periodico e so depois reduzir renderizacao completa da grade.
 - Antes de criar o endpoint delta, a Etapa 1 adicionou indices aditivos e diagnostico de seguranca/performance, mantendo o contrato de snapshot intacto.
 - A Etapa 2 criou `GET /cotacao/api/events?after=` e passou o refresh automatico do frontend para esse caminho incremental, preservando bootstrap como fallback.
+- A Etapa 3 removeu `loadSheet()` de mutacoes simples e manteve snapshots completos apenas para leitura inicial, diagnostico e operacoes fortes.
 
 ## Riscos ao alterar
 
@@ -181,7 +196,7 @@ Servicos:
 - Criar metrica simples de tempo de resposta pos-deploy.
 - Confirmar que caches legados `endurance-page-cache/`, `advanced-cache.php`, `cache/` e `speedycache-config/` nao estao servindo a home antiga no VPS.
 - Medir no VPS real a Cotacao V2 com dados reais da equipe: `/cotacao/api/bootstrap`, `/cotacao/api/diagnostics`, `/miauw/widget-status.php`, tamanho do payload e consumo dos containers.
-- Remover `loadSheet()` de mutacoes simples da Cotacao, como salvar celula, largura de coluna, estilo e regra, preservando fallback por bootstrap completo.
+- Medir no VPS a diferenca de latencia das mutacoes simples da Cotacao apos a Etapa 3, especialmente salvar celula, colagem em lote, aplicar cor e editar regra condicional.
 - Avaliar separar o carregamento do widget do Miauby da renderizacao inicial da grade se `widget-status.php` continuar com picos acima de 500 ms no VPS.
 - Confirmar no VPS que `/cotacao/api/diagnostics.performance.expectedIndexes` lista todos os indices da Etapa 1 como existentes.
 - Medir no VPS a diferenca entre `/cotacao/api/events?after=` sem eventos novos e `/cotacao/api/bootstrap` com dados reais.

@@ -221,6 +221,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A Etapa 1 de seguranca/performance da Cotacao V2 adicionou apenas indices aditivos no Postgres para o snapshot atual e ampliou `/cotacao/api/diagnostics` com blocos `safety` e `performance`.
 - `/cotacao/api/bootstrap` continua sendo o fallback completo e confiavel durante a evolucao do sync incremental/delta.
 - A Etapa 2 adicionou `GET /cotacao/api/events?after=<eventId>` e passou o refresh automatico da Cotacao para eventos incrementais. O bootstrap continua sendo fallback quando o delta pede `requiresSnapshot`, como em import, restore, mudanca estrutural de coluna, cursor invalido ou excesso de eventos.
+- A Etapa 3 reduziu trabalho de mutacoes simples da Cotacao V2: salvar celula, colagem em lote, estilos, regras, linhas e colunas agora validam quote/linha/coluna com consultas leves em vez de chamar `loadSheet()` e puxar o snapshot completo. `loadSheet()` permanece para bootstrap, diagnostico e operacoes fortes como backup/import/export/restore.
 
 ## Estado validado em 2026-05-11
 

@@ -680,6 +680,67 @@ async function loadSheet() {
   };
 }
 
+function columnOption(column, key) {
+  const value = column?.options?.[key];
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+function isHiddenColumn(column) {
+  return columnOption(column, 'hidden');
+}
+
+function isComputedColumn(column) {
+  return columnOption(column, 'computed');
+}
+
+async function findColumnByKey(quoteId, columnKey, { visibleOnly = false, editableOnly = false } = {}) {
+  const key = String(columnKey || '');
+  if (!key) return null;
+  const result = await pgPool.query(
+    `SELECT *
+     FROM cotacao_v2_columns
+     WHERE quote_id = $1
+       AND key = $2
+     LIMIT 1`,
+    [quoteId, key]
+  );
+  const column = result.rows[0] || null;
+  if (!column) return null;
+  if (visibleOnly && isHiddenColumn(column)) return null;
+  if (editableOnly && isComputedColumn(column)) return null;
+  return column;
+}
+
+async function editableColumnKeySet(quoteId, columnKeys) {
+  const keys = [...new Set((columnKeys || []).map((key) => String(key || '')).filter(Boolean))];
+  if (!keys.length) return new Set();
+  const result = await pgPool.query(
+    `SELECT key
+     FROM cotacao_v2_columns
+     WHERE quote_id = $1
+       AND key = ANY($2::text[])
+       AND COALESCE((options->>'hidden')::boolean, false) = false
+       AND COALESCE((options->>'computed')::boolean, false) = false`,
+    [quoteId, keys]
+  );
+  return new Set(result.rows.map((row) => row.key));
+}
+
+async function activeRowExists(quoteId, rowId) {
+  const id = String(rowId || '');
+  if (!id) return false;
+  const result = await pgPool.query(
+    `SELECT 1
+     FROM cotacao_v2_rows
+     WHERE quote_id = $1
+       AND id = $2
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [quoteId, id]
+  );
+  return Boolean(result.rows[0]);
+}
+
 async function addRows(quoteId, count, valuesList) {
   const maxPosition = await pgPool.query(
     'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
@@ -1700,43 +1761,43 @@ app.get(`${BASE_PATH}/api/events`, requireApiAuth, asyncRoute(async (req, res) =
 }));
 
 app.post(`${BASE_PATH}/api/rows`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const valuesList = Array.isArray(req.body.rows) ? req.body.rows : [];
-  const rows = await addRows(sheet.quote.id, req.body.count || valuesList.length || 1, valuesList);
+  const rows = await addRows(quote.id, req.body.count || valuesList.length || 1, valuesList);
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'rows_added',
     payload: { rows },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId });
   res.json({ ok: true, rows, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/rows/insert`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const rows = await insertRowsAt(
-    sheet.quote.id,
+    quote.id,
     String(req.body.anchorRowId || ''),
     String(req.body.placement || 'below') === 'above' ? 'above' : 'below',
     req.body.count || 1
   );
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'rows_inserted',
     payload: { rows },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId });
   res.json({ ok: true, rows, eventId: Number(event.id) });
 }));
 
 app.delete(`${BASE_PATH}/api/rows/:id`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const rowId = String(req.params.id || '');
   const clientId = String(req.body?.clientId || '');
   const deleted = await pgPool.query(
@@ -1746,93 +1807,93 @@ app.delete(`${BASE_PATH}/api/rows/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
        AND quote_id = $2
        AND deleted_at IS NULL
      RETURNING id`,
-    [rowId, sheet.quote.id]
+    [rowId, quote.id]
   );
   if (!deleted.rows[0]) {
     return res.status(404).json({ ok: false, error: 'Linha nao encontrada.' });
   }
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'row_deleted',
     rowId,
     payload: { rowId },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('row:deleted', { rowId, eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('row:deleted', { rowId, eventId: Number(event.id), clientId });
   res.json({ ok: true, rowId, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const column = await addDistributorColumn(
-    sheet.quote.id,
+    quote.id,
     String(req.body.anchorKey || ''),
     String(req.body.placement || 'after') === 'before' ? 'before' : 'after',
     req.body.label
   );
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'column_created',
     columnKey: column.key,
     payload: { column },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
   res.json({ ok: true, column, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/rename`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const column = await renameDistributorColumn(
-    sheet.quote.id,
+    quote.id,
     String(req.params.key || ''),
     req.body.label,
     req.session.user,
     clientId
   );
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'column_renamed',
     columnKey: column.key,
     payload: { column },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
   res.json({ ok: true, column, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/move`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const column = await moveDistributorColumn(
-    sheet.quote.id,
+    quote.id,
     String(req.params.key || ''),
     String(req.body.direction || 'right') === 'left' ? 'left' : 'right',
     req.session.user,
     clientId
   );
-  await normalizeColumnOrder(sheet.quote.id);
+  await normalizeColumnOrder(quote.id);
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'column_moved',
     columnKey: column.key,
     payload: { column },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
   res.json({ ok: true, column, eventId: Number(event.id) });
 }));
 
 app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const columnKey = String(req.params.key || '');
-  const column = sheet.columns.find((item) => item.key === columnKey);
+  const column = await findColumnByKey(quote.id, columnKey, { visibleOnly: true });
   if (!isDistributorColumn(column)) {
     return res.status(422).json({ ok: false, error: 'Somente colunas de distribuidoras podem ser apagadas.' });
   }
@@ -1842,10 +1903,10 @@ app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRou
          updated_at = now()
      WHERE quote_id = $1
        AND key = $2`,
-    [sheet.quote.id, columnKey]
+    [quote.id, columnKey]
   );
   await logColumnAudit({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     columnKey,
     action: 'delete',
     before: column,
@@ -1853,21 +1914,21 @@ app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRou
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  await normalizeColumnOrder(sheet.quote.id);
+  await normalizeColumnOrder(quote.id);
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'column_deleted',
     columnKey,
     payload: { columnKey },
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
   res.json({ ok: true, columnKey, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/restore`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const columnKey = String(req.params.key || '');
   const current = await pgPool.query(
     `SELECT *
@@ -1875,7 +1936,7 @@ app.post(`${BASE_PATH}/api/columns/:key/restore`, requireApiAuth, verifyCsrf, as
      WHERE quote_id = $1
        AND key = $2
      LIMIT 1`,
-    [sheet.quote.id, columnKey]
+    [quote.id, columnKey]
   );
   const column = current.rows[0];
   if (!isDistributorColumn(column)) {
@@ -1888,10 +1949,10 @@ app.post(`${BASE_PATH}/api/columns/:key/restore`, requireApiAuth, verifyCsrf, as
      WHERE quote_id = $1
        AND key = $2
      RETURNING *`,
-    [sheet.quote.id, columnKey]
+    [quote.id, columnKey]
   );
   await logColumnAudit({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     columnKey,
     action: 'restore',
     before: column,
@@ -1899,23 +1960,23 @@ app.post(`${BASE_PATH}/api/columns/:key/restore`, requireApiAuth, verifyCsrf, as
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  await normalizeColumnOrder(sheet.quote.id);
+  await normalizeColumnOrder(quote.id);
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'column_restored',
     columnKey,
     payload: { columnKey },
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
   res.json({ ok: true, column: restored.rows[0], eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/width`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const columnKey = String(req.params.key || '');
-  const column = sheet.columns.find((item) => item.key === columnKey);
+  const column = await findColumnByKey(quote.id, columnKey, { visibleOnly: true });
   if (!column) {
     return res.status(404).json({ ok: false, error: 'Coluna nao encontrada.' });
   }
@@ -1927,32 +1988,30 @@ app.post(`${BASE_PATH}/api/columns/:key/width`, requireApiAuth, verifyCsrf, asyn
      WHERE quote_id = $1
        AND key = $2
      RETURNING *`,
-    [sheet.quote.id, columnKey, width]
+    [quote.id, columnKey, width]
   );
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'column_resized',
     columnKey,
     payload: { columnKey, width },
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
   res.json({ ok: true, column: updated.rows[0], eventId: Number(event.id) });
 }));
 
 app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const style = normalizeStylePayload(req.body || {});
   if (!style) {
     return res.status(422).json({ ok: false, error: 'Estilo invalido.' });
   }
-  const allowed = new Set(sheet.columns.map((column) => column.key));
-  const rowAllowed = new Set(sheet.rows.map((row) => row.id));
-  if (style.columnKey && !allowed.has(style.columnKey)) {
+  if (style.columnKey && !(await findColumnByKey(quote.id, style.columnKey, { visibleOnly: true }))) {
     return res.status(422).json({ ok: false, error: 'Coluna invalida.' });
   }
-  if (style.rowId && !rowAllowed.has(style.rowId)) {
+  if (style.rowId && !(await activeRowExists(quote.id, style.rowId))) {
     return res.status(422).json({ ok: false, error: 'Linha invalida.' });
   }
   const result = await pgPool.query(
@@ -1973,7 +2032,7 @@ app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async 
                updated_by AS "updatedBy",
                updated_at AS "updatedAt"`,
     [
-      sheet.quote.id,
+      quote.id,
       style.styleKey,
       style.scope,
       style.rowId,
@@ -1984,13 +2043,13 @@ app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async 
     ]
   );
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'style_updated',
     payload: { style: result.rows[0] },
     user: req.session.user,
     clientId: String(req.body.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('style:update', {
+  io.to(`quote:${quote.id}`).emit('style:update', {
     style: result.rows[0],
     eventId: Number(event.id),
     clientId: String(req.body.clientId || '')
@@ -1999,23 +2058,23 @@ app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async 
 }));
 
 app.delete(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const target = normalizeStyleTarget(req.body || {});
   if (!target) {
     return res.status(422).json({ ok: false, error: 'Alvo de estilo invalido.' });
   }
   await pgPool.query(
     'DELETE FROM cotacao_v2_styles WHERE quote_id = $1 AND style_key = $2',
-    [sheet.quote.id, target.styleKey]
+    [quote.id, target.styleKey]
   );
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'style_deleted',
     payload: { styleKey: target.styleKey },
     user: req.session.user,
     clientId: String(req.body.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('style:delete', {
+  io.to(`quote:${quote.id}`).emit('style:delete', {
     styleKey: target.styleKey,
     eventId: Number(event.id),
     clientId: String(req.body.clientId || '')
@@ -2024,15 +2083,14 @@ app.delete(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(asy
 }));
 
 app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const rowId = String(req.body.rowId || '');
   const columnKey = String(req.body.columnKey || '');
   const value = String(req.body.value ?? '');
   const clientId = String(req.body.clientId || '');
   const hasExpectedValue = Object.hasOwn(req.body || {}, 'expectedValue');
   const expectedValue = String(req.body.expectedValue ?? '');
-  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
-  if (!rowId || !allowed.has(columnKey)) {
+  if (!rowId || !(await findColumnByKey(quote.id, columnKey, { visibleOnly: true, editableOnly: true }))) {
     return res.status(422).json({ ok: false, error: 'Celula invalida.' });
   }
   const client = await pgPool.connect();
@@ -2047,7 +2105,7 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
          AND quote_id = $2
          AND deleted_at IS NULL
        FOR UPDATE`,
-      [rowId, sheet.quote.id]
+      [rowId, quote.id]
     );
     const currentRow = current.rows[0];
     if (!currentRow) {
@@ -2078,7 +2136,7 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
            updated_at = now()
        WHERE id = $1 AND quote_id = $4
        RETURNING id, position, values, version, updated_at`,
-      [rowId, columnKey, value, sheet.quote.id]
+      [rowId, columnKey, value, quote.id]
     );
     row = updated.rows[0];
     await client.query('COMMIT');
@@ -2097,7 +2155,7 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
     updatedAt: row.updated_at
   };
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'cell_updated',
     rowId: row.id,
     columnKey,
@@ -2105,7 +2163,7 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('cell:update', {
+  io.to(`quote:${quote.id}`).emit('cell:update', {
     ...payload,
     eventId: Number(event.id),
     user: userPublic(req.session.user),
@@ -2115,13 +2173,13 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
 }));
 
 app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const changes = Array.isArray(req.body.changes) ? req.body.changes.slice(0, 1000) : [];
-  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
   if (!changes.length) {
     return res.status(422).json({ ok: false, error: 'Nenhuma celula informada.' });
   }
+  const allowed = await editableColumnKeySet(quote.id, changes.map((change) => change?.columnKey));
   if (changes.some((change) => !change?.rowId || !allowed.has(String(change.columnKey || '')))) {
     return res.status(422).json({ ok: false, error: 'Lote contem celula invalida.' });
   }
@@ -2143,7 +2201,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
            AND quote_id = $2
            AND deleted_at IS NULL
          FOR UPDATE`,
-        [rowId, sheet.quote.id]
+        [rowId, quote.id]
       );
       const currentRow = current.rows[0];
       if (!currentRow) {
@@ -2175,7 +2233,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
              updated_at = now()
          WHERE id = $1 AND quote_id = $4
          RETURNING id, position, values, version, updated_at`,
-        [rowId, columnKey, value, sheet.quote.id]
+        [rowId, columnKey, value, quote.id]
       );
       updatedCells.push({
         rowId: updated.rows[0].id,
@@ -2195,13 +2253,13 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
   }
 
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'cells_batch_updated',
     payload: { cells: updatedCells },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${sheet.quote.id}`).emit('cells:update', {
+  io.to(`quote:${quote.id}`).emit('cells:update', {
     cells: updatedCells,
     eventId: Number(event.id),
     user: userPublic(req.session.user),
@@ -2211,10 +2269,9 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
 }));
 
 app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const columnKey = String(req.body.columnKey || 'categoria');
-  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
-  if (!allowed.has(columnKey)) {
+  if (!(await findColumnByKey(quote.id, columnKey, { visibleOnly: true, editableOnly: true }))) {
     return res.status(422).json({ ok: false, error: 'Coluna invalida.' });
   }
   const value = String(req.body.value || '').trim();
@@ -2226,7 +2283,7 @@ app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async 
      VALUES ($1, $2, 'cell', $3, $4, $5, $6, $7, $8, 100)
      RETURNING *`,
     [
-      sheet.quote.id,
+      quote.id,
       `Regra ${value}`,
       columnKey,
       normalizeRuleOperator(req.body.operator),
@@ -2237,22 +2294,21 @@ app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async 
     ]
   );
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'rule_created',
     payload: { rule: result.rows[0] },
     user: req.session.user,
     clientId: String(req.body.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('rules:update', { rules: [result.rows[0]], mode: 'created', eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('rules:update', { rules: [result.rows[0]], mode: 'created', eventId: Number(event.id) });
   res.json({ ok: true, rule: result.rows[0], eventId: Number(event.id) });
 }));
 
 app.patch(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const id = String(req.params.id || '');
   const columnKey = String(req.body.columnKey || 'categoria');
-  const allowed = new Set(sheet.columns.filter((column) => column.options?.computed !== true).map((column) => column.key));
-  if (!allowed.has(columnKey)) {
+  if (!(await findColumnByKey(quote.id, columnKey, { visibleOnly: true, editableOnly: true }))) {
     return res.status(422).json({ ok: false, error: 'Coluna invalida.' });
   }
   const value = String(req.body.value || '').trim();
@@ -2275,7 +2331,7 @@ app.patch(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
      RETURNING *`,
     [
       id,
-      sheet.quote.id,
+      quote.id,
       `Regra ${value}`,
       columnKey,
       normalizeRuleOperator(req.body.operator),
@@ -2289,28 +2345,28 @@ app.patch(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
     return res.status(404).json({ ok: false, error: 'Regra nao encontrada.' });
   }
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'rule_updated',
     payload: { rule: result.rows[0] },
     user: req.session.user,
     clientId: String(req.body.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('rules:update', { rules: [result.rows[0]], mode: 'updated', eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('rules:update', { rules: [result.rows[0]], mode: 'updated', eventId: Number(event.id) });
   res.json({ ok: true, rule: result.rows[0], eventId: Number(event.id) });
 }));
 
 app.delete(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
-  const sheet = await loadSheet();
+  const quote = await getOrCreateDefaultQuote();
   const id = String(req.params.id || '');
-  await pgPool.query('DELETE FROM cotacao_v2_rules WHERE id = $1 AND quote_id = $2', [id, sheet.quote.id]);
+  await pgPool.query('DELETE FROM cotacao_v2_rules WHERE id = $1 AND quote_id = $2', [id, quote.id]);
   const event = await appendEvent({
-    quoteId: sheet.quote.id,
+    quoteId: quote.id,
     type: 'rule_deleted',
     payload: { id },
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${sheet.quote.id}`).emit('rules:update', { id, mode: 'deleted', eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('rules:update', { id, mode: 'deleted', eventId: Number(event.id) });
   res.json({ ok: true, id, eventId: Number(event.id) });
 }));
 
@@ -2359,9 +2415,10 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
     backupDir: BACKUP_DIR,
     redis: redisPing,
     safety: {
-      stage: 'etapa-2',
+      stage: 'etapa-3',
       bootstrapFallback: true,
       incrementalDeltaEnabled: true,
+      simpleMutationSnapshotAvoidance: true,
       deltaEndpoint: `${BASE_PATH}/api/events?after=:eventId`,
       deltaEventLimit: DELTA_EVENT_LIMIT,
       destructiveChanges: false,
