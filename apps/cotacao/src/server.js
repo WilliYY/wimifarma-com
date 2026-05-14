@@ -1392,17 +1392,12 @@ function renderApp(req) {
   <div id="contextMenu" class="context-menu" hidden>
     <button type="button" data-action="row-above">Adicionar linha acima</button>
     <button type="button" data-action="row-below">Adicionar linha abaixo</button>
-    <button type="button" data-action="row-20-below">Adicionar 20 linhas abaixo</button>
-    <button type="button" data-action="row-delete">Apagar linha</button>
     <span class="context-divider"></span>
     <button type="button" data-action="open-palette">Cores</button>
     <button type="button" data-action="erase-color">Limpar cor</button>
     <span class="context-divider"></span>
     <button type="button" data-action="column-before">Adicionar distribuidora antes</button>
     <button type="button" data-action="column-after">Adicionar distribuidora depois</button>
-    <button type="button" data-action="column-rename">Renomear distribuidora</button>
-    <button type="button" data-action="column-left">Mover distribuidora para esquerda</button>
-    <button type="button" data-action="column-right">Mover distribuidora para direita</button>
     <button type="button" data-action="column-delete">Apagar distribuidora</button>
   </div>
 

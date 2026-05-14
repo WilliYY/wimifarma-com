@@ -168,7 +168,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Formatacao condicional da Cotacao V2 e explicita, criada/removida pela propria tela em `cotacao_v2_rules`.
 - A tela principal da Cotacao V2 usa visual denso de planilha operacional, com cabecalho compacto, abas locais, contador de linhas com dados, presenca no topo, exportacao CSV no navegador e colunas iniciais `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, `Anb`, `Profarma`, `mauro`, `arthur`, `Santa`, `tom`, `cimed` e `Ganhador`.
 - A presenca da Cotacao V2 mostra usuarios com nomes aleatorios/deterministicos de animais por aba, no estilo Google Sheets; o usuario real fica apenas como contexto interno/tooltip.
-- A grade da Cotacao V2 permite menu de contexto para inserir/apagar linhas e inserir/apagar somente colunas de distribuidoras. As quatro primeiras colunas e `Ganhador` nao devem ser renomeadas nem apagadas pela interface.
+- A grade da Cotacao V2 permite menu de contexto enxuto para inserir linhas, colorir/limpar cor e inserir/apagar somente colunas de distribuidoras. Apagar linha saiu do menu por seguranca; as quatro primeiras colunas e `Ganhador` nao devem ser renomeadas nem apagadas pela interface.
 - `Ganhador` e coluna calculada no frontend pelo menor preco numerico entre distribuidoras visiveis; ela nao deve aceitar escrita manual por API ou tela.
 - A paleta da Cotacao V2 grava estilos manuais em `cotacao_v2_styles` para linha, coluna ou celula. Cores manuais nao podem virar gatilhos escondidos por texto.
 - Validacoes locais passaram para: health da Cotacao, login `adm`, bootstrap, save por celula dessas quatro palavras criticas, criacao/remocao de regra condicional explicita, importacao temporaria de linhas e limpeza dos dados de smoke.
@@ -177,7 +177,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 ## Estado validado em 2026-05-13
 
 - A Cotacao V2 ganhou fluxo mais proximo do Google Sheets: selecao multipla, celula ativa, setas de navegacao, digitacao direta ao selecionar celula, `Ctrl+V` para colar matriz, `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer.
-- Os botoes visiveis `Adicionar linhas` e `Colar do Sheets` foram removidos; inserir/apagar linhas e inserir/apagar colunas de distribuidoras fica no menu de contexto.
+- Os botoes visiveis `Adicionar linhas` e `Colar do Sheets` foram removidos; inserir linhas fica no menu de contexto e adicionar mais linhas em lote fica no rodape da grade.
 - O topo da Cotacao V2 ficou mais compacto, com apenas `Wimifarma Cotacao`, `Home`, `Baixar` e `Sair`; as abas temporarias `Farmacia Popular` e `Bebe` foram removidas, e o diagnostico saiu do menu principal.
 - Filtros de `CATEGORIA` e `Ganhador` ficam nos icones do cabecalho da grade, com selecionar tudo, limpar tudo e aplicar selecao local por tela.
 - A API recebeu `PATCH /cotacao/api/cells/batch` para colagens em lote, endpoints de diagnostico, backup/restore do Postgres, import/export Google Sheets e renomear/reordenar distribuidoras com auditoria.

@@ -1653,14 +1653,6 @@
     closeMenus();
     if (action === 'row-above') return addRows(rowId, 'above', 1);
     if (action === 'row-below') return addRows(rowId, 'below', 1);
-    if (action === 'row-20-below') return addRows(rowId, 'below', 20);
-    if (action === 'row-delete') {
-      if (!rowId || !confirm('Apagar esta linha?')) return null;
-      await api(`/api/rows/${encodeURIComponent(rowId)}`, { method: 'DELETE', body: JSON.stringify({ clientId }) });
-      state.rows = state.rows.filter((row) => row.id !== rowId);
-      renderTable();
-      return null;
-    }
     if (!isDistributorColumn(column)) return null;
     if (action === 'column-before' || action === 'column-after') {
       const data = await api('/api/columns', {
@@ -1670,16 +1662,6 @@
       await reloadSheet();
       if (data.column?.key) await beginColumnRename(data.column.key);
       return null;
-    }
-    if (action === 'column-rename') {
-      return beginColumnRename(columnKey);
-    }
-    if (action === 'column-left' || action === 'column-right') {
-      await api(`/api/columns/${encodeURIComponent(columnKey)}/move`, {
-        method: 'POST',
-        body: JSON.stringify({ direction: action === 'column-left' ? 'left' : 'right', clientId })
-      });
-      return reloadSheet();
     }
     if (action === 'column-delete') {
       if (!confirm(`Apagar a distribuidora "${column.label}"?`)) return null;

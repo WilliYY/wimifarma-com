@@ -114,13 +114,13 @@ MySQL `wimifarma_app`:
 - As colunas legadas `observacao` e `status` podem existir em bancos ja criados, mas ficam ocultas por `options.hidden=true` para nao poluir o layout validado.
 - A interface deve ocupar a largura da tela como planilha, sem card envolvendo a grade; barra de rolagem aparece quando houver mais linhas/colunas do que o viewport comporta.
 - As celulas usam fonte 20px e alinhamento central por padrao.
-- O menu de contexto permite inserir/apagar linhas e inserir/apagar apenas colunas de distribuidoras.
+- O menu de contexto fica enxuto para operacao rapida: inserir linha acima/abaixo, abrir cores, limpar cor e inserir/apagar apenas colunas de distribuidoras. Apagar linha, adicionar 20 linhas, renomear distribuidora e mover distribuidora nao aparecem no menu.
 - A paleta de cores grava estilo manual por linha, coluna ou celula em `cotacao_v2_styles`, pode ser aberta pelo botao do topo ou pelo menu de contexto e oferece faixas de tons do mais forte ao mais claro.
 - Cor manual aplicada por linha/coluna/celula tem prioridade visual sobre tons padrao de distribuidora. O destaque automatico azul do menor preco fica por cima enquanto a celula estiver vencendo; quando deixar de vencer, a cor manual reaparece.
 - Entre estilos manuais sobrepostos, o `updated_at` mais recente vence; assim, pintar uma coluna agora cobre cores antigas de celulas daquela coluna, mas uma cor de celula aplicada depois ainda pode se destacar.
 - Aplicar cor ou borracha pela paleta e uma acao unica; apos salvar o estilo da selecao atual, o modo de pintura e desarmado para evitar colorir a proxima celula por acidente.
 - A coluna `Ganhador` e a celula de menor preco recebem destaque visual automatico, sem depender de palavra em categoria.
-- A insercao de linhas saiu dos botoes visiveis e ficou no menu de contexto. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
+- A insercao simples de linhas saiu dos botoes visiveis e ficou no menu de contexto; adicionar 20 linhas fica no rodape da grade. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
 - A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis.
 - `Ctrl+Z` tambem desfaz filtros locais; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
 - A alca de preenchimento no canto da selecao pode ser arrastada para copiar o padrao de valores e cores visiveis da selecao para as celulas adjacentes, ignorando colunas calculadas.
@@ -161,6 +161,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-13, regras condicionais passaram a ser editaveis pela tela, a paleta foi ampliada para 63 tons e desarma apos aplicar cor/borracha, o duplo clique de distribuidora prioriza renomeacao, o filtro de `Ganhador` exibe contagens e o widget do Miauby ganhou leitura JSON mais tolerante.
 - Em 2026-05-13, os filtros passaram a cobrir `PRODUTO`, valor e cor; o filtro de `Ganhador` passou a ordenar vencedores individuais antes de empates e `Sem vencedor`; selecao de cabecalhos passou a arrastar por multiplas colunas/linhas; regra condicional ganhou opcao de hover com data/hora; cores manuais passaram a vencer tons padrao de distribuidora, enquanto o destaque azul automatico continua vencendo quando a celula e menor preco; o campo de busca livre e a borracha do topo foram removidos.
 - Em 2026-05-14, a alca de preenchimento ficou maior e passou a copiar valores e cores da selecao para cima, baixo, esquerda ou direita, mantendo `Ganhador` e outras colunas calculadas sem escrita manual.
+- Em 2026-05-14, o menu de contexto foi reduzido para retirar opcoes irrelevantes ou perigosas: `Adicionar 20 linhas abaixo`, `Apagar linha`, `Renomear distribuidora` e mover distribuidora para esquerda/direita.
 
 ## Riscos ao alterar
 
