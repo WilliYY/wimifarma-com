@@ -1933,7 +1933,10 @@
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
         moveActive(0, 1, event.shiftKey);
-      } else if (event.key === 'Enter' || event.key === 'F2') {
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        moveActive(event.shiftKey ? -1 : 1, 0, false);
+      } else if (event.key === 'F2') {
         event.preventDefault();
         beginEdit(state.activeCell.rowId, state.activeCell.columnKey).catch(console.error);
       } else if (event.key === 'Backspace' || event.key === 'Delete') {

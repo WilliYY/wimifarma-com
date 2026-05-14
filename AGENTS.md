@@ -176,7 +176,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 
 ## Estado validado em 2026-05-13
 
-- A Cotacao V2 ganhou fluxo mais proximo do Google Sheets: selecao multipla, celula ativa, setas de navegacao, digitacao direta ao selecionar celula, `Ctrl+V` para colar matriz, `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer.
+- A Cotacao V2 ganhou fluxo mais proximo do Google Sheets: selecao multipla, celula ativa, setas de navegacao, `Enter` descendo para a celula abaixo, digitacao direta ao selecionar celula, `Ctrl+V` para colar matriz, `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer.
 - Os botoes visiveis `Adicionar linhas` e `Colar do Sheets` foram removidos; inserir linhas fica no menu de contexto e adicionar mais linhas em lote fica no rodape da grade.
 - O topo da Cotacao V2 ficou mais compacto, com apenas `Wimifarma Cotacao`, `Home`, `Baixar` e `Sair`; as abas temporarias `Farmacia Popular` e `Bebe` foram removidas, e o diagnostico saiu do menu principal.
 - Filtros de `CATEGORIA` e `Ganhador` ficam nos icones do cabecalho da grade, com selecionar tudo, limpar tudo e aplicar selecao local por tela.

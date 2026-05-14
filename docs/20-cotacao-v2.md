@@ -121,7 +121,7 @@ MySQL `wimifarma_app`:
 - Aplicar cor ou borracha pela paleta e uma acao unica; apos salvar o estilo da selecao atual, o modo de pintura e desarmado para evitar colorir a proxima celula por acidente.
 - A coluna `Ganhador` e a celula de menor preco recebem destaque visual automatico, sem depender de palavra em categoria.
 - A insercao simples de linhas saiu dos botoes visiveis e ficou no menu de contexto; adicionar 20 linhas fica no rodape da grade. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
-- A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis.
+- A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis; `Enter` desce para a celula abaixo por padrao, e `F2` abre edicao da celula selecionada.
 - `Ctrl+Z` tambem desfaz filtros locais; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
 - A alca de preenchimento no canto da selecao pode ser arrastada para copiar o padrao de valores e cores visiveis da selecao para as celulas adjacentes, ignorando colunas calculadas.
 - A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo e o campo de busca livre foi removido para reduzir ruido operacional.
@@ -162,6 +162,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-13, os filtros passaram a cobrir `PRODUTO`, valor e cor; o filtro de `Ganhador` passou a ordenar vencedores individuais antes de empates e `Sem vencedor`; selecao de cabecalhos passou a arrastar por multiplas colunas/linhas; regra condicional ganhou opcao de hover com data/hora; cores manuais passaram a vencer tons padrao de distribuidora, enquanto o destaque azul automatico continua vencendo quando a celula e menor preco; o campo de busca livre e a borracha do topo foram removidos.
 - Em 2026-05-14, a alca de preenchimento ficou maior e passou a copiar valores e cores da selecao para cima, baixo, esquerda ou direita, mantendo `Ganhador` e outras colunas calculadas sem escrita manual.
 - Em 2026-05-14, o menu de contexto foi reduzido para retirar opcoes irrelevantes ou perigosas: `Adicionar 20 linhas abaixo`, `Apagar linha`, `Renomear distribuidora` e mover distribuidora para esquerda/direita.
+- Em 2026-05-14, `Enter` passou a mover a selecao para a celula de baixo por padrao; quando a celula esta em edicao, `Enter` salva e desce.
 
 ## Riscos ao alterar
 
