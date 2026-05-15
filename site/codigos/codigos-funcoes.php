@@ -241,6 +241,71 @@ function codigos_find(int $id): ?array
     return $item ?: null;
 }
 
+function codigos_group_ids(string $group): array
+{
+    $ids = array();
+
+    foreach (codigos_list() as $item) {
+        if (codigos_group_key((string) ($item['ean'] ?? '')) === $group) {
+            $ids[] = (int) ($item['id'] ?? 0);
+        }
+    }
+
+    return array_values(array_filter($ids, static function (int $id): bool {
+        return $id > 0;
+    }));
+}
+
+function codigos_reorder_group(string $group, array $orderedIds): void
+{
+    codigos_ensure_schema();
+
+    if (!in_array($group, array('20', '40', 'outros'), true)) {
+        throw new InvalidArgumentException('Grupo invalido.');
+    }
+
+    $currentIds = codigos_group_ids($group);
+    if (empty($currentIds)) {
+        return;
+    }
+
+    $currentSet = array_fill_keys($currentIds, true);
+    $seen = array();
+    $finalIds = array();
+
+    foreach ($orderedIds as $id) {
+        $id = (int) $id;
+        if ($id > 0 && isset($currentSet[$id]) && !isset($seen[$id])) {
+            $seen[$id] = true;
+            $finalIds[] = $id;
+        }
+    }
+
+    foreach ($currentIds as $id) {
+        if (!isset($seen[$id])) {
+            $finalIds[] = $id;
+        }
+    }
+
+    $pdo = db();
+    $stmt = $pdo->prepare('UPDATE wf_codigos_comissao SET ordem = ? WHERE id = ? AND ativo = 1');
+
+    $pdo->beginTransaction();
+    try {
+        foreach ($finalIds as $index => $id) {
+            $stmt->execute(array(($index + 1) * 10, $id));
+        }
+        $pdo->commit();
+    } catch (Throwable $error) {
+        $pdo->rollBack();
+        throw $error;
+    }
+
+    if (function_exists('log_action')) {
+        log_action('codigo_comissao_reordenado', 'codigo', null, 'Grupo ' . $group . ' reordenado.');
+    }
+}
+
 function codigos_create(string $codigo, string $ean, $preco, ?int $userId): int
 {
     codigos_ensure_schema();

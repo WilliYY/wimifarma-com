@@ -69,7 +69,7 @@ Tabelas principais:
 
 O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A tela principal funciona como planilha simples, com campos sempre editaveis para `Código`, `EAN` e `Preço`, salvando automaticamente as mudancas.
 
-Para evitar confusao operacional, a tela separa os itens em duas tabelas lado a lado por prefixo de EAN: `EAN 20` e `EAN 40`. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente.
+Para evitar confusao operacional, a tela separa os itens em duas tabelas lado a lado por prefixo de EAN: `EAN 20` e `EAN 40`. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa largura ampla para aproveitar melhor as laterais do monitor.
 
 Arquivos principais:
 
@@ -87,6 +87,8 @@ Regras a preservar:
 
 - codigo, EAN e preco devem ser editaveis sem fluxo complexo;
 - edicoes devem salvar automaticamente por `/codigos/api.php`, mantendo sessao e CSRF;
+- editar uma linha nao deve mover sua posicao, salvo quando o EAN mudar para outro prefixo visual;
+- reordenar deve ser feito arrastando o numero da linha dentro do mesmo grupo, persistindo `ordem`;
 - novos itens entram no fim do grupo visual de EAN correspondente;
 - EANs com prefixos `20` e `40` devem ficar em tabelas separadas na tela;
 - apagar pela tela deve fazer exclusao logica (`ativo=0`) para reduzir risco de perda acidental;

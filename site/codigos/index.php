@@ -72,9 +72,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260515a">
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260515b">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260514a">
-    <script src="/codigos/app.js?v=20260515a" defer></script>
+    <script src="/codigos/app.js?v=20260515b" defer></script>
     <script src="/miauw/widget.js?v=20260511b" defer></script>
 </head>
 <body class="codes-app-body">
@@ -143,7 +143,7 @@ try {
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="update">
                                     <input type="hidden" name="id" value="<?php echo e((string) ($item['id'] ?? 0)); ?>">
-                                    <span class="codes-row-number"><?php echo e((string) ($index + 1)); ?></span>
+                                    <span class="codes-row-number codes-row-drag-handle" data-drag-handle title="Arraste para mudar a ordem"><?php echo e((string) ($index + 1)); ?></span>
                                     <label>
                                         <span>Código</span>
                                         <input type="text" name="codigo" value="<?php echo e((string) ($item['codigo'] ?? '')); ?>" maxlength="180" required>
@@ -211,7 +211,7 @@ try {
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="update">
                                     <input type="hidden" name="id" value="<?php echo e((string) ($item['id'] ?? 0)); ?>">
-                                    <span class="codes-row-number"><?php echo e((string) ($index + 1)); ?></span>
+                                    <span class="codes-row-number codes-row-drag-handle" data-drag-handle title="Arraste para mudar a ordem"><?php echo e((string) ($index + 1)); ?></span>
                                     <label>
                                         <span>Código</span>
                                         <input type="text" name="codigo" value="<?php echo e((string) ($item['codigo'] ?? '')); ?>" maxlength="180" required>

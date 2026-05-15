@@ -1,6 +1,8 @@
 (function () {
     var SAVE_DELAY_MS = 650;
     var apiUrl = '/codigos/api.php';
+    var draggedRow = null;
+    var pointerDrag = null;
 
     function normalizePrice(value) {
         var text = String(value || '').replace(/[^\d,.-]/g, '').trim();
@@ -84,13 +86,18 @@
         return data;
     }
 
-    function request(row, action) {
+    function csrfToken() {
+        var input = document.querySelector('input[name="csrf_token"]');
+        return input ? input.value : '';
+    }
+
+    function postFormData(data) {
         return window.fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: buildFormData(row, action)
+            body: data
         }).then(function (response) {
             return response.json().catch(function () {
                 return { ok: false, message: 'Resposta invalida do servidor.' };
@@ -102,6 +109,10 @@
                 return payload;
             });
         });
+    }
+
+    function request(row, action) {
+        return postFormData(buildFormData(row, action));
     }
 
     function ensureDeleteButton(row) {
@@ -142,6 +153,9 @@
         }
         if (number) {
             number.textContent = '+';
+            number.classList.remove('codes-row-drag-handle');
+            number.removeAttribute('data-drag-handle');
+            number.removeAttribute('title');
         }
 
         ['codigo', 'ean', 'preco'].forEach(function (name) {
@@ -187,7 +201,15 @@
             field(row, 'preco').value = item.preco || '';
         }
 
+        var number = row.querySelector('.codes-row-number');
+        if (number) {
+            number.classList.add('codes-row-drag-handle');
+            number.setAttribute('data-drag-handle', '');
+            number.setAttribute('title', 'Arraste para mudar a ordem');
+        }
+
         ensureDeleteButton(row);
+        initDrag(row);
         setStatus(row, 'Salvo', 'saved');
         row.dataset.lastPayload = rowPayload(row);
     }
@@ -205,6 +227,88 @@
         }
 
         sheet.insertBefore(row, newRow || null);
+    }
+
+    function clearDropMarkers() {
+        document.querySelectorAll('.is-drop-before, .is-drop-after').forEach(function (row) {
+            row.classList.remove('is-drop-before', 'is-drop-after');
+        });
+    }
+
+    function shouldDropBefore(row, clientY) {
+        if (isNewRow(row)) {
+            return true;
+        }
+
+        var rect = row.getBoundingClientRect();
+        return clientY < rect.top + (rect.height / 2);
+    }
+
+    function targetRowFromPoint(clientX, clientY) {
+        var element = document.elementFromPoint(clientX, clientY);
+        return element ? element.closest('[data-code-row]') : null;
+    }
+
+    function finishPointerDrag() {
+        if (!pointerDrag) {
+            return;
+        }
+
+        var state = pointerDrag;
+        pointerDrag = null;
+
+        document.removeEventListener('pointermove', handlePointerMove);
+        document.removeEventListener('pointerup', handlePointerUp);
+        document.removeEventListener('pointercancel', cancelPointerDrag);
+
+        if (state.row) {
+            state.row.classList.remove('is-dragging');
+        }
+        draggedRow = null;
+        clearDropMarkers();
+    }
+
+    function cancelPointerDrag() {
+        finishPointerDrag();
+    }
+
+    function handlePointerMove(event) {
+        if (!pointerDrag) {
+            return;
+        }
+
+        var target = targetRowFromPoint(event.clientX, event.clientY);
+        var fromPanel = pointerDrag.panel;
+        var toPanel = target ? target.closest('[data-code-group-panel]') : null;
+
+        clearDropMarkers();
+        pointerDrag.target = null;
+
+        if (!target || target === pointerDrag.row || !fromPanel || fromPanel !== toPanel) {
+            return;
+        }
+
+        pointerDrag.target = target;
+        pointerDrag.before = shouldDropBefore(target, event.clientY);
+        target.classList.add(pointerDrag.before ? 'is-drop-before' : 'is-drop-after');
+    }
+
+    function handlePointerUp() {
+        if (!pointerDrag) {
+            return;
+        }
+
+        var state = pointerDrag;
+        var target = state.target;
+        var panel = state.panel;
+
+        if (target && panel) {
+            target.parentElement.insertBefore(state.row, state.before ? target : target.nextSibling);
+            renumberPanel(panel);
+            persistPanelOrder(panel);
+        }
+
+        finishPointerDrag();
     }
 
     function renumberPanel(panel) {
@@ -277,13 +381,140 @@
             }
 
             makeSavedRow(row, payload.item);
-            moveRowToGroup(row, payload.item.group);
+            if (payload.item.group !== originalGroup) {
+                moveRowToGroup(row, payload.item.group);
+            }
             updateCounts(payload.total);
         }).catch(function (error) {
             row.classList.remove('is-saving', 'is-saved');
             row.classList.add('is-error');
             setStatus(row, 'Erro', 'error');
             row.title = error.message;
+        });
+    }
+
+    function persistPanelOrder(panel) {
+        var ids = [];
+        panel.querySelectorAll('[data-code-row]:not([data-new-row])').forEach(function (row) {
+            var id = field(row, 'id');
+            if (id && id.value.trim() !== '') {
+                ids.push(id.value.trim());
+            }
+        });
+
+        if (ids.length < 1) {
+            return;
+        }
+
+        var data = new FormData();
+        data.set('action', 'reorder');
+        data.set('csrf_token', csrfToken());
+        data.set('group', panel.getAttribute('data-code-group-panel') || '');
+        data.set('ids', JSON.stringify(ids));
+
+        panel.classList.add('is-reordering');
+        postFormData(data).then(function () {
+            panel.classList.remove('is-reordering', 'is-reorder-error');
+        }).catch(function () {
+            panel.classList.remove('is-reordering');
+            panel.classList.add('is-reorder-error');
+        });
+    }
+
+    function initDrag(row) {
+        var handle = row.querySelector('[data-drag-handle]');
+        if (!handle || isNewRow(row) || row.dataset.dragReady === '1') {
+            return;
+        }
+
+        row.dataset.dragReady = '1';
+        row.draggable = true;
+
+        handle.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0 || isNewRow(row)) {
+                return;
+            }
+
+            pointerDrag = {
+                row: row,
+                panel: row.closest('[data-code-group-panel]'),
+                target: null,
+                before: true
+            };
+            draggedRow = row;
+            row.classList.add('is-dragging');
+
+            document.addEventListener('pointermove', handlePointerMove);
+            document.addEventListener('pointerup', handlePointerUp);
+            document.addEventListener('pointercancel', cancelPointerDrag);
+            event.preventDefault();
+        });
+
+        row.addEventListener('dragstart', function (event) {
+            if (isNewRow(row) || !event.target.closest('[data-drag-handle]')) {
+                event.preventDefault();
+                return;
+            }
+
+            draggedRow = row;
+            row.classList.add('is-dragging');
+            if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', field(row, 'id') ? field(row, 'id').value : '');
+            }
+        });
+
+        row.addEventListener('dragend', function () {
+            row.classList.remove('is-dragging');
+            draggedRow = null;
+            clearDropMarkers();
+        });
+    }
+
+    function initDropTarget(row) {
+        row.addEventListener('dragover', function (event) {
+            if (!draggedRow || draggedRow === row) {
+                return;
+            }
+
+            var fromPanel = draggedRow.closest('[data-code-group-panel]');
+            var toPanel = row.closest('[data-code-group-panel]');
+            if (!fromPanel || !toPanel || fromPanel !== toPanel) {
+                return;
+            }
+
+            event.preventDefault();
+            clearDropMarkers();
+
+            var rect = row.getBoundingClientRect();
+            var before = event.clientY < rect.top + (rect.height / 2);
+            row.classList.add(before ? 'is-drop-before' : 'is-drop-after');
+        });
+
+        row.addEventListener('dragleave', function () {
+            row.classList.remove('is-drop-before', 'is-drop-after');
+        });
+
+        row.addEventListener('drop', function (event) {
+            if (!draggedRow || draggedRow === row) {
+                return;
+            }
+
+            var fromPanel = draggedRow.closest('[data-code-group-panel]');
+            var toPanel = row.closest('[data-code-group-panel]');
+            if (!fromPanel || !toPanel || fromPanel !== toPanel) {
+                return;
+            }
+
+            event.preventDefault();
+
+            var sheet = row.parentElement;
+            var rect = row.getBoundingClientRect();
+            var before = isNewRow(row) || event.clientY < rect.top + (rect.height / 2);
+            sheet.insertBefore(draggedRow, before ? row : row.nextSibling);
+            clearDropMarkers();
+            renumberPanel(toPanel);
+            persistPanelOrder(toPanel);
         });
     }
 
@@ -327,6 +558,8 @@
 
     function initRow(row) {
         row.dataset.lastPayload = rowPayload(row);
+        initDrag(row);
+        initDropTarget(row);
 
         row.querySelectorAll('[data-price-input]').forEach(function (input) {
             input.addEventListener('blur', function () {
