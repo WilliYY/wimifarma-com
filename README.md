@@ -228,7 +228,7 @@ Nao versionar:
 
 ## Deploy no VPS
 
-O VPS atual usa Ubuntu/Oracle, PuTTY para terminal e WinSCP para arquivos.
+O VPS atual usa Ubuntu/Oracle, PuTTY para terminal e WinSCP para arquivos. O Codex tambem pode executar deploy diretamente por SSH/plink com a chave local autorizada, entao nao e necessario enviar comando PuTTY equivalente ao usuario ao final.
 
 Pasta observada no VPS:
 
@@ -238,7 +238,7 @@ Pasta observada no VPS:
 
 Essa deve ser a pasta oficial unica de deploy. Copias temporarias criadas durante a migracao, como `wimifarma-com-git`, `wimifarma-com-code-*` ou `wimifarma-com-runti*`, devem ser auditadas pelos mounts dos containers e arquivadas em `_arquivados-wimifarma/` antes de qualquer exclusao.
 
-Quando o VPS estiver usando Git para este projeto, o fluxo padrao sera:
+Quando o VPS estiver usando Git para este projeto, o fluxo padrao executado pelo Codex/operador sera:
 
 ```bash
 cd /home/ubuntu/projetos/wimifarma-com

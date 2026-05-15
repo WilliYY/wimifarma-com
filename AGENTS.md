@@ -46,6 +46,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 - Projeto interno da Wimifarma migrado do HostGator para VPS Ubuntu/Oracle.
 - O usuario acessa o VPS por PuTTY e os arquivos por WinSCP.
+- O Codex tambem pode acessar o VPS diretamente por SSH/plink com a chave local autorizada; quando fizer deploy, deve executar os comandos no servidor e relatar o resultado, sem precisar enviar comando PuTTY equivalente ao usuario.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
 - O projeto local fica em `C:\Projetos\wimifarma-com`.
 - No VPS, a pasta oficial do projeto e `/home/ubuntu/projetos/wimifarma-com`.
@@ -348,7 +349,7 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 - Alterar pouco por vez.
 - Rodar validacoes proporcionais ao risco.
 - Atualizar docs quando qualquer comportamento importante mudar.
-- Ao final, se houve alteracao de arquivo, preparar commit e orientar o comando de PuTTY para atualizar o VPS.
+- Ao final, se houve alteracao de arquivo, preparar commit/push e, quando houver deploy aplicavel, executar diretamente no VPS e relatar os comandos/validacoes realizados.
 
 ## Relatorio final obrigatorio
 
@@ -359,5 +360,4 @@ Ao finalizar, responder em portugues com:
 - comandos executados;
 - testes/build/lint realizados;
 - pendencias abertas;
-- riscos/cuidados encontrados;
-- comando sugerido para o PuTTY quando houver deploy.
+- riscos/cuidados encontrados.

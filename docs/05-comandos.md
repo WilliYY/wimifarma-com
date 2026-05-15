@@ -79,6 +79,8 @@ git push origin main
 
 ## VPS - deploy quando a pasta ja usar Git
 
+O Codex pode executar estes comandos diretamente no VPS por SSH/plink com a chave local autorizada. Ao finalizar, basta relatar o que foi executado e validado; nao e necessario enviar um comando PuTTY equivalente ao usuario.
+
 ```bash
 cd /home/ubuntu/projetos/wimifarma-com
 git pull origin main

@@ -16,6 +16,7 @@ VPS Ubuntu/Oracle:
 
 - Pasta oficial do projeto: `/home/ubuntu/projetos/wimifarma-com`
 - Acesso por terminal: PuTTY
+- Acesso automatizado do Codex: SSH/plink com chave local autorizada, para executar deploy diretamente e relatar o resultado sem mandar comando PuTTY equivalente ao usuario.
 - Arquivos: WinSCP
 - Proxy: Nginx Proxy Manager
 - IP publico usado no DNS: `146.181.58.208`
@@ -85,6 +86,7 @@ Higiene de pastas no VPS:
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
 - Antes de deploy, fazer commit e push da alteracao.
 - Depois de deploy, rodar `docker compose ps`, `docker compose logs --tail=80 wimifarma-cotacao-app` e validar `http://127.0.0.1:3002/cotacao/health`.
+- Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
 
 ## Decisoes tecnicas ja tomadas
 
