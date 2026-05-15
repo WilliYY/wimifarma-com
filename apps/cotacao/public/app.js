@@ -2629,15 +2629,29 @@
 
     table.addEventListener('keydown', (event) => {
       if (!state.editing) return;
+      if (event.isComposing) return;
       if (event.key === 'Enter') {
         event.preventDefault();
+        event.stopPropagation();
         commitEdit({ row: 1, col: 0 }).catch(console.error);
       } else if (event.key === 'Tab') {
         event.preventDefault();
+        event.stopPropagation();
         commitEdit({ row: 0, col: event.shiftKey ? -1 : 1 }).catch(console.error);
       } else if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         cancelEdit();
+      } else if (!event.ctrlKey && !event.metaKey && !event.altKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const moves = {
+          ArrowUp: { row: -1, col: 0 },
+          ArrowDown: { row: 1, col: 0 },
+          ArrowLeft: { row: 0, col: -1 },
+          ArrowRight: { row: 0, col: 1 }
+        };
+        commitEdit(moves[event.key]).catch(console.error);
       }
     }, true);
 

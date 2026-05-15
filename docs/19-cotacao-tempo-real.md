@@ -38,6 +38,8 @@ O botao `Historico` da Cotacao V2 fica no topo, ao lado do contador de linhas co
 
 Em 2026-05-15, a mesma logica otimista foi aplicada aos lotes visiveis da planilha: colagem, desfazer/refazer de lote e alca de preenchimento atualizam a grade localmente, salvam por `/cotacao/api/cells/batch` e redesenham apenas as linhas afetadas. Eventos remotos de celula/lote tambem evitam renderizacao completa quando nao ha mudanca estrutural. Cores copiadas pelo fill handle ou aplicadas/apagadas em selecoes grandes usam endpoints de estilo em lote para reduzir chamadas pequenas.
 
+Tambem em 2026-05-15, a navegacao de teclado durante edicao foi ajustada para uso operacional rapido: `Enter` salva a celula editada e desce exatamente uma linha, enquanto as setas salvam a edicao atual e movem para a celula adjacente na direcao pressionada.
+
 ## Historico da Cotacao PHP legada
 
 Antes da V2, a Cotacao PHP possuia:

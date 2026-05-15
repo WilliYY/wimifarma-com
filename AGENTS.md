@@ -248,6 +248,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Em Códigos, tabelas inteiras de blocos numericos nao padrao podem ser excluidas por um botao no cabecalho do EAN, com card de confirmacao e senha operacional `wimifarma`; `EAN 20`, `EAN 40` e `Outros` sao protegidos.
 - Na Cotacao V2, colagem de matriz, desfazer/refazer de lotes e a alca de preenchimento usam save em lote otimista com atualizacao apenas das linhas afetadas; outras telas tambem aplicam eventos de celula por linha, sem redesenhar a grade inteira quando o evento nao e estrutural.
 - A Cotacao V2 ganhou `PUT/DELETE /cotacao/api/styles/batch` para aplicar ou apagar estilos em lote, reduzindo varias chamadas pequenas quando cores sao copiadas pelo fill handle ou aplicadas em selecoes grandes.
+- Na Cotacao V2, durante a edicao de uma celula, `Enter` salva e desce exatamente uma linha; as setas salvam a edicao atual e movem para a celula adjacente na direcao pressionada.
 
 ## Estado validado em 2026-05-11
 
