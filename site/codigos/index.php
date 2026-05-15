@@ -55,10 +55,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $flash = get_flash();
 $search = trim((string) ($_GET['q'] ?? ''));
 $items = array();
+$groups = array('20' => array(), '40' => array(), 'outros' => array());
 $total = 0;
 
 try {
     $items = codigos_list($search);
+    $groups = codigos_group_items($items);
     $total = codigos_count_active();
 } catch (Throwable $listError) {
     $flash = array('type' => 'error', 'message' => 'Nao consegui carregar os codigos agora.');
@@ -70,9 +72,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260514a">
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260515a">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260514a">
-    <script src="/codigos/app.js?v=20260514a" defer></script>
+    <script src="/codigos/app.js?v=20260515a" defer></script>
     <script src="/miauw/widget.js?v=20260511b" defer></script>
 </head>
 <body class="codes-app-body">
@@ -93,7 +95,7 @@ try {
                 <h1>Códigos</h1>
             </div>
             <div class="codes-stats" aria-label="Resumo">
-                <span><strong><?php echo e((string) $total); ?></strong> ativo(s)</span>
+                <span><strong data-total-count><?php echo e((string) $total); ?></strong> ativo(s)</span>
                 <?php if ($search !== '') : ?>
                     <span><strong><?php echo e((string) count($items)); ?></strong> filtrado(s)</span>
                 <?php endif; ?>
@@ -117,66 +119,121 @@ try {
             </form>
         </section>
 
-        <section class="codes-sheet-panel" aria-label="Tabela de codigos">
-            <div class="codes-sheet-scroll">
-                <div class="codes-sheet" role="table" aria-label="Codigos de comissao">
-                    <div class="codes-sheet-head" role="row">
-                        <span>#</span>
-                        <span>CÓDIGO</span>
-                        <span>EAN</span>
-                        <span>PREÇO</span>
-                        <span>AÇÕES</span>
+        <section class="codes-sheet-board" aria-label="Tabelas de codigos por EAN">
+            <?php foreach (array('20', '40') as $groupKey) : ?>
+                <?php $groupItems = $groups[$groupKey] ?? array(); ?>
+                <section class="codes-sheet-panel" aria-label="<?php echo e(codigos_group_label($groupKey)); ?>" data-code-group-panel="<?php echo e($groupKey); ?>">
+                    <div class="codes-sheet-title">
+                        <h2><?php echo e(codigos_group_label($groupKey)); ?></h2>
+                        <span data-code-group-count="<?php echo e($groupKey); ?>"><?php echo e((string) count($groupItems)); ?> item(ns)</span>
                     </div>
 
-                    <?php foreach ($items as $index => $item) : ?>
-                        <form method="post" class="codes-row" role="row" data-code-row>
-                            <?php echo csrf_field(); ?>
-                            <input type="hidden" name="id" value="<?php echo e((string) ($item['id'] ?? 0)); ?>">
-                            <span class="codes-row-number"><?php echo e((string) ($index + 1)); ?></span>
-                            <label>
-                                <span>Código</span>
-                                <input type="text" name="codigo" value="<?php echo e((string) ($item['codigo'] ?? '')); ?>" maxlength="180" required>
-                            </label>
-                            <label>
+                    <div class="codes-sheet-scroll">
+                        <div class="codes-sheet" role="table" aria-label="<?php echo e(codigos_group_label($groupKey)); ?>">
+                            <div class="codes-sheet-head" role="row">
+                                <span>#</span>
+                                <span>CÓDIGO</span>
                                 <span>EAN</span>
-                                <input type="text" name="ean" value="<?php echo e((string) ($item['ean'] ?? '')); ?>" maxlength="80" required>
-                            </label>
-                            <label>
-                                <span>Preço</span>
-                                <input type="text" name="preco" value="<?php echo e(codigos_price_input($item['preco'] ?? 0)); ?>" inputmode="decimal" data-price-input required>
-                            </label>
-                            <div class="codes-row-actions">
-                                <button type="submit" name="action" value="update" class="codes-btn codes-btn-save">Salvar</button>
-                                <button type="submit" name="action" value="delete" class="codes-btn codes-btn-danger" data-confirm-delete formnovalidate>Apagar</button>
+                                <span>PREÇO</span>
+                                <span>STATUS</span>
                             </div>
-                        </form>
-                    <?php endforeach; ?>
 
-                    <?php if (empty($items)) : ?>
-                        <div class="codes-empty">Nenhum codigo encontrado.</div>
-                    <?php endif; ?>
+                            <?php foreach ($groupItems as $index => $item) : ?>
+                                <form method="post" class="codes-row" role="row" data-code-row data-code-group="<?php echo e($groupKey); ?>">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="update">
+                                    <input type="hidden" name="id" value="<?php echo e((string) ($item['id'] ?? 0)); ?>">
+                                    <span class="codes-row-number"><?php echo e((string) ($index + 1)); ?></span>
+                                    <label>
+                                        <span>Código</span>
+                                        <input type="text" name="codigo" value="<?php echo e((string) ($item['codigo'] ?? '')); ?>" maxlength="180" required>
+                                    </label>
+                                    <label>
+                                        <span>EAN</span>
+                                        <input type="text" name="ean" value="<?php echo e((string) ($item['ean'] ?? '')); ?>" maxlength="80" required>
+                                    </label>
+                                    <label>
+                                        <span>Preço</span>
+                                        <input type="text" name="preco" value="<?php echo e(codigos_price_input($item['preco'] ?? 0)); ?>" inputmode="decimal" data-price-input required>
+                                    </label>
+                                    <div class="codes-row-actions">
+                                        <span class="codes-save-status" data-save-status>Salvo</span>
+                                        <button type="submit" name="action" value="delete" class="codes-btn codes-btn-danger" data-confirm-delete formnovalidate>Apagar</button>
+                                    </div>
+                                </form>
+                            <?php endforeach; ?>
 
-                    <form method="post" class="codes-row codes-row-new" role="row" data-code-row>
-                        <?php echo csrf_field(); ?>
-                        <span class="codes-row-number">+</span>
-                        <label>
-                            <span>Código</span>
-                            <input type="text" name="codigo" maxlength="180" placeholder="Novo codigo" required>
-                        </label>
-                        <label>
-                            <span>EAN</span>
-                            <input type="text" name="ean" maxlength="80" placeholder="20 000" required>
-                        </label>
-                        <label>
-                            <span>Preço</span>
-                            <input type="text" name="preco" inputmode="decimal" data-price-input placeholder="0,00" required>
-                        </label>
-                        <div class="codes-row-actions">
-                            <button type="submit" name="action" value="create" class="codes-btn codes-btn-primary">Adicionar</button>
+                            <form method="post" class="codes-row codes-row-new" role="row" data-code-row data-new-row data-code-group="<?php echo e($groupKey); ?>">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="create">
+                                <input type="hidden" name="id" value="">
+                                <span class="codes-row-number">+</span>
+                                <label>
+                                    <span>Código</span>
+                                    <input type="text" name="codigo" maxlength="180" placeholder="Novo codigo" required>
+                                </label>
+                                <label>
+                                    <span>EAN</span>
+                                    <input type="text" name="ean" maxlength="80" placeholder="<?php echo e(codigos_default_ean_placeholder($groupKey)); ?>" required>
+                                </label>
+                                <label>
+                                    <span>Preço</span>
+                                    <input type="text" name="preco" inputmode="decimal" data-price-input placeholder="0,00" required>
+                                </label>
+                                <div class="codes-row-actions">
+                                    <span class="codes-save-status is-muted" data-save-status>Novo</span>
+                                </div>
+                            </form>
                         </div>
-                    </form>
-                </div>
-            </div>
+                    </div>
+                </section>
+            <?php endforeach; ?>
+
+            <?php if (!empty($groups['outros'])) : ?>
+                <section class="codes-sheet-panel codes-sheet-panel-other" aria-label="Outros EANs" data-code-group-panel="outros">
+                    <div class="codes-sheet-title">
+                        <h2>Outros</h2>
+                        <span data-code-group-count="outros"><?php echo e((string) count($groups['outros'])); ?> item(ns)</span>
+                    </div>
+
+                    <div class="codes-sheet-scroll">
+                        <div class="codes-sheet" role="table" aria-label="Outros EANs">
+                            <div class="codes-sheet-head" role="row">
+                                <span>#</span>
+                                <span>CÓDIGO</span>
+                                <span>EAN</span>
+                                <span>PREÇO</span>
+                                <span>STATUS</span>
+                            </div>
+
+                            <?php foreach ($groups['outros'] as $index => $item) : ?>
+                                <form method="post" class="codes-row" role="row" data-code-row data-code-group="outros">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="update">
+                                    <input type="hidden" name="id" value="<?php echo e((string) ($item['id'] ?? 0)); ?>">
+                                    <span class="codes-row-number"><?php echo e((string) ($index + 1)); ?></span>
+                                    <label>
+                                        <span>Código</span>
+                                        <input type="text" name="codigo" value="<?php echo e((string) ($item['codigo'] ?? '')); ?>" maxlength="180" required>
+                                    </label>
+                                    <label>
+                                        <span>EAN</span>
+                                        <input type="text" name="ean" value="<?php echo e((string) ($item['ean'] ?? '')); ?>" maxlength="80" required>
+                                    </label>
+                                    <label>
+                                        <span>Preço</span>
+                                        <input type="text" name="preco" value="<?php echo e(codigos_price_input($item['preco'] ?? 0)); ?>" inputmode="decimal" data-price-input required>
+                                    </label>
+                                    <div class="codes-row-actions">
+                                        <span class="codes-save-status" data-save-status>Salvo</span>
+                                        <button type="submit" name="action" value="delete" class="codes-btn codes-btn-danger" data-confirm-delete formnovalidate>Apagar</button>
+                                    </div>
+                                </form>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </section>
+            <?php endif; ?>
         </section>
     </main>
 </body>

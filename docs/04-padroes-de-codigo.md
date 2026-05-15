@@ -21,6 +21,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/codigos/bootstrap.php`
+- `site/codigos/api.php`
 - `site/codigos/codigos-funcoes.php`
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
@@ -53,6 +54,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Usar PDO/prepared statements para SQL.
 - Evitar SQL montado com interpolacao de entrada do usuario.
 - Validar entrada de `$_GET`, `$_POST` e JSON antes de usar.
+- Endpoints JSON internos, como `/codigos/api.php`, devem reutilizar sessao, CSRF e prepared statements dos helpers existentes.
 - Manter CSS/JS do modulo dentro da propria pasta.
 - Atualizar docs no mesmo commit da mudanca.
 - Criar novas abstracoes apenas quando reduzirem complexidade real.

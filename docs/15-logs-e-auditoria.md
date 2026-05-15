@@ -26,6 +26,7 @@ Tabelas de auditoria/log:
 Arquivos:
 
 - `site/cashback/functions.php`
+- `site/codigos/codigos-funcoes.php`
 - `apps/cotacao/src/server.js`
 - `site/financeiro/financeiro-funcoes.php`
 - `site/miauw/miauw-intelligence.php`
@@ -35,6 +36,7 @@ Arquivos:
 
 - Acoes financeiras e de cotacao devem manter auditoria.
 - Logs nao devem gravar senhas, tokens ou chaves.
+- Códigos registra criacao, edicao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 

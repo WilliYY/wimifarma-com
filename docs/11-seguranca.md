@@ -12,6 +12,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - CSRF e escape HTML existem nos helpers internos.
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
+- `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar, editar ou apagar codigos.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
 
@@ -23,6 +24,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `apps/cotacao/src/server.js`
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
+- `site/codigos/api.php`
 - `site/wp-config.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/config.local.example.php`

@@ -124,7 +124,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 
 - `wf_cashback_creditos` depende de cliente/compra e controla saldo restante.
 - `wf_resgate_itens` liga resgates a creditos consumidos.
-- `wf_codigos_comissao` deve manter `codigo`, `ean` e `preco` editaveis; apagar pela tela marca `ativo=0` e `apagado_em`, preservando o registro para auditoria basica.
+- `wf_codigos_comissao` deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em `EAN 20` e `EAN 40` vem do prefixo do campo `ean`, sem tabela paralela. Apagar pela tela marca `ativo=0` e `apagado_em`, preservando o registro para auditoria basica.
 - `cotacao_precos` depende de item e fornecedor.
 - As tabelas antigas `cotacao_*` em MySQL ficam como legado historico da Cotacao PHP e nao devem receber nova logica de planilha.
 - `cotacao_v2_rows.id` e o ID estavel de linha da Cotacao V2.

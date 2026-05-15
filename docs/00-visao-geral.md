@@ -9,7 +9,7 @@ Este documento e a visao geral do projeto Wimifarma. Ele deve ajudar humanos e a
 O projeto combina o site WordPress da Wimifarma com ferramentas internas para operacao:
 
 - Cashback: clientes, compras, creditos, resgates, atendentes, configuracoes e mensagens.
-- Codigos: atalhos de itens com comissao diferente, com codigo, EAN e preco editaveis.
+- Codigos: atalhos de itens com comissao diferente, com codigo, EAN e preco editaveis em autosave.
 - Cotacao: itens, fornecedores, categorias, precos, status, formatacao e auditoria.
 - Financeiro: fechamentos, sangrias, PIX, maquininhas, lancamentos e auditoria.
 - Tarefas: tarefas simples internas.
@@ -45,7 +45,7 @@ Rotas principais:
 ## Regras de negocio que precisam ser preservadas
 
 - O Cashback depende de clientes, compras, creditos e resgates coerentes entre si.
-- Codigos de comissao devem preservar codigo, EAN, preco e historico basico por logs; exclusao na tela deve esconder o item sem apagar o registro fisico imediatamente.
+- Codigos de comissao devem preservar codigo, EAN, preco e historico basico por logs; a tela separa EANs `20` e `40` em tabelas diferentes e a exclusao deve esconder o item sem apagar o registro fisico imediatamente.
 - Cotacao deve preservar ordem, categorias, fornecedores, precos, observacoes, cores/formatacao e status.
 - Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.

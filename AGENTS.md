@@ -236,6 +236,12 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A home publica ganhou o card `Códigos` como sexto card, abaixo do Cashback no grid desktop de no maximo cinco cards por linha; os cards foram posicionados mais acima para acomodar a segunda linha.
 - O modulo `site/codigos` controla atalhos de itens com comissao diferente em tabela simples editavel com `Código`, `EAN` e `Preço`; cria a tabela MySQL `wf_codigos_comissao`, permite adicionar, editar e apagar por exclusao logica.
 
+## Estado validado em 2026-05-15
+
+- O modulo `site/codigos` passou a salvar automaticamente edicoes de `Código`, `EAN` e `Preço` por `/codigos/api.php`, com sessao e CSRF; o botao Salvar saiu do fluxo normal.
+- A tela de Códigos foi dividida em duas tabelas lado a lado por prefixo de EAN, `EAN 20` e `EAN 40`, cada uma com linha nova no rodape para adicionar itens sem misturar os grupos.
+- Apagar codigo continua sendo acao explicita com confirmacao e exclusao logica em `wf_codigos_comissao`.
+
 ## Estado validado em 2026-05-11
 
 - Containers sobem com Docker Compose.

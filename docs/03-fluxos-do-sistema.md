@@ -67,11 +67,14 @@ Tabelas principais:
 
 ## Fluxo Codigos
 
-O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A tela principal funciona como uma tabela simples inspirada em planilha, com campos sempre editaveis para `Código`, `EAN` e `Preço`.
+O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A tela principal funciona como planilha simples, com campos sempre editaveis para `Código`, `EAN` e `Preço`, salvando automaticamente as mudancas.
+
+Para evitar confusao operacional, a tela separa os itens em duas tabelas lado a lado por prefixo de EAN: `EAN 20` e `EAN 40`. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente.
 
 Arquivos principais:
 
 - `site/codigos/index.php`
+- `site/codigos/api.php`
 - `site/codigos/codigos-funcoes.php`
 - `site/codigos/styles.css`
 - `site/codigos/app.js`
@@ -83,7 +86,9 @@ Tabela principal:
 Regras a preservar:
 
 - codigo, EAN e preco devem ser editaveis sem fluxo complexo;
-- novos itens entram no fim da lista;
+- edicoes devem salvar automaticamente por `/codigos/api.php`, mantendo sessao e CSRF;
+- novos itens entram no fim do grupo visual de EAN correspondente;
+- EANs com prefixos `20` e `40` devem ficar em tabelas separadas na tela;
 - apagar pela tela deve fazer exclusao logica (`ativo=0`) para reduzir risco de perda acidental;
 - acoes de criar, editar e apagar registram `wf_logs`.
 

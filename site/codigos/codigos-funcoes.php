@@ -123,6 +123,58 @@ function codigos_price_input($value): string
     return number_format((float) $value, 2, ',', '.');
 }
 
+function codigos_ean_prefix(string $ean): string
+{
+    $digits = preg_replace('/\D+/', '', $ean) ?? '';
+
+    return substr($digits, 0, 2);
+}
+
+function codigos_group_key(string $ean): string
+{
+    $prefix = codigos_ean_prefix($ean);
+
+    if ($prefix === '20' || $prefix === '40') {
+        return $prefix;
+    }
+
+    return 'outros';
+}
+
+function codigos_group_label(string $group): string
+{
+    if ($group === '20' || $group === '40') {
+        return 'EAN ' . $group;
+    }
+
+    return 'Outros';
+}
+
+function codigos_default_ean_placeholder(string $group): string
+{
+    if ($group === '20' || $group === '40') {
+        return $group . ' 000';
+    }
+
+    return 'EAN';
+}
+
+function codigos_group_items(array $items): array
+{
+    $groups = array(
+        '20' => array(),
+        '40' => array(),
+        'outros' => array(),
+    );
+
+    foreach ($items as $item) {
+        $group = codigos_group_key((string) ($item['ean'] ?? ''));
+        $groups[$group][] = $item;
+    }
+
+    return $groups;
+}
+
 function codigos_validate_payload(string $codigo, string $ean, $preco): array
 {
     $codigo = codigos_clean_text($codigo, 180);
@@ -172,6 +224,21 @@ function codigos_count_active(): int
     codigos_ensure_schema();
 
     return (int) db()->query('SELECT COUNT(*) FROM wf_codigos_comissao WHERE ativo = 1')->fetchColumn();
+}
+
+function codigos_find(int $id): ?array
+{
+    codigos_ensure_schema();
+
+    if ($id <= 0) {
+        return null;
+    }
+
+    $stmt = db()->prepare('SELECT * FROM wf_codigos_comissao WHERE id = ? AND ativo = 1 LIMIT 1');
+    $stmt->execute(array($id));
+    $item = $stmt->fetch();
+
+    return $item ?: null;
 }
 
 function codigos_create(string $codigo, string $ean, $preco, ?int $userId): int
