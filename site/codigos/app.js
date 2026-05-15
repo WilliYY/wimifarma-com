@@ -93,6 +93,33 @@
         return digits.length >= 2 ? digits.slice(0, 2) : '';
     }
 
+    function nextAvailableGroup() {
+        var used = {};
+
+        document.querySelectorAll('[data-code-group-panel]').forEach(function (panel) {
+            var group = panel.getAttribute('data-code-group-panel') || '';
+            if (/^\d{2}$/.test(group)) {
+                used[group] = true;
+            }
+        });
+
+        for (var decade = 50; decade <= 90; decade += 10) {
+            var key = String(decade);
+            if (!used[key]) {
+                return key;
+            }
+        }
+
+        for (var number = 10; number <= 99; number += 1) {
+            var fallback = String(number).padStart(2, '0');
+            if (!used[fallback]) {
+                return fallback;
+            }
+        }
+
+        return '';
+    }
+
     function escapeHtml(value) {
         return String(value || '').replace(/[&<>"']/g, function (char) {
             return {
@@ -307,7 +334,12 @@
             return;
         }
 
-        var group = normalizeGroupInput(input.value);
+        var rawValue = input.value.trim();
+        var group = normalizeGroupInput(rawValue);
+        if (!group && rawValue === '') {
+            group = nextAvailableGroup();
+        }
+
         if (!group) {
             input.focus();
             input.classList.add('is-error');
@@ -315,13 +347,29 @@
         }
 
         input.classList.remove('is-error');
-        input.value = '';
+        input.disabled = true;
 
-        var panel = createPanel(group);
-        if (panel) {
-            panel.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
-            focusNewRow(panel);
-        }
+        var data = new FormData();
+        data.set('action', 'create_group');
+        data.set('csrf_token', csrfToken());
+        data.set('group', group);
+
+        postFormData(data).then(function (payload) {
+            var groupKey = payload.group && payload.group.key ? payload.group.key : group;
+            input.value = '';
+
+            var panel = createPanel(groupKey);
+            if (panel) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+                focusNewRow(panel);
+            }
+        }).catch(function (error) {
+            input.classList.add('is-error');
+            input.title = error.message;
+            input.focus();
+        }).finally(function () {
+            input.disabled = false;
+        });
     }
 
     function moveRowToGroup(row, group) {

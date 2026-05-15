@@ -96,6 +96,15 @@ try {
         ));
     }
 
+    if ($action === 'create_group') {
+        $group = codigos_create_group((string) ($_POST['group'] ?? ''), (int) $user['id']);
+        codigos_json(array(
+            'ok' => true,
+            'group' => codigos_group_payload($group),
+            'total' => codigos_count_active(),
+        ));
+    }
+
     codigos_json(array('ok' => false, 'message' => 'Acao invalida.'), 400);
 } catch (InvalidArgumentException $error) {
     codigos_json(array('ok' => false, 'message' => $error->getMessage()), 422);

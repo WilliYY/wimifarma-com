@@ -74,9 +74,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260515e">
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260515f">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260514a">
-    <script src="/codigos/app.js?v=20260515e" defer></script>
+    <script src="/codigos/app.js?v=20260515f" defer></script>
     <script src="/miauw/widget.js?v=20260511b" defer></script>
 </head>
 <body class="codes-app-body">
@@ -240,7 +240,7 @@ try {
                     </div>
                 </section>
             <?php endif; ?>
-            <button type="button" class="codes-sheet-panel codes-add-panel" data-focus-group-adder aria-label="Criar novo bloco de EAN" title="Criar novo bloco de EAN">
+            <button type="button" class="codes-sheet-panel codes-add-panel" data-add-code-group aria-label="Criar novo bloco de EAN" title="Criar novo bloco de EAN">
                 <span>+</span>
             </button>
         </section>

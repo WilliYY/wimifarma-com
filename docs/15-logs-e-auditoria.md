@@ -36,7 +36,7 @@ Arquivos:
 
 - Acoes financeiras e de cotacao devem manter auditoria.
 - Logs nao devem gravar senhas, tokens ou chaves.
-- Códigos registra criacao, edicao, reordenacao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
+- Códigos registra criacao de blocos, criacao de itens, edicao, reordenacao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 

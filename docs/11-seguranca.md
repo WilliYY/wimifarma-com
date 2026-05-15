@@ -12,7 +12,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - CSRF e escape HTML existem nos helpers internos.
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
-- `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar, editar ou apagar codigos.
+- `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
 

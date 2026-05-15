@@ -53,6 +53,7 @@ Inventario real observado em 2026-05-10:
 - `wf_logs`: logs/auditoria geral.
 - `wf_whatsapp_mensagens`: mensagens e campanhas.
 - `wf_codigos_comissao`: atalhos de itens com comissao diferente, com codigo, EAN, preco, ordem e exclusao logica.
+- `wf_codigos_blocos`: blocos visuais do modulo Codigos por prefixo de EAN, permitindo manter blocos vazios ate o primeiro item ser cadastrado.
 - `wf_tarefas`: tarefas internas.
 - `cotacao_blocos`: blocos de cotacao.
 - `cotacao_fornecedores`: fornecedores por bloco.
@@ -124,7 +125,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 
 - `wf_cashback_creditos` depende de cliente/compra e controla saldo restante.
 - `wf_resgate_itens` liga resgates a creditos consumidos.
-- `wf_codigos_comissao` deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`, sem tabela paralela. `EAN 20` e `EAN 40` aparecem por padrao, e outros blocos podem ser criados na tela pelo botao `+`. A reordenacao por arrastar usa a coluna `ordem` dentro do grupo visual. Apagar pela tela marca `ativo=0` e `apagado_em`, preservando o registro para auditoria basica.
+- `wf_codigos_comissao` deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `wf_codigos_blocos` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa a coluna `ordem` dos itens dentro do grupo visual. Apagar pela tela marca `ativo=0` e `apagado_em`, preservando o registro para auditoria basica.
 - `cotacao_precos` depende de item e fornecedor.
 - As tabelas antigas `cotacao_*` em MySQL ficam como legado historico da Cotacao PHP e nao devem receber nova logica de planilha.
 - `cotacao_v2_rows.id` e o ID estavel de linha da Cotacao V2.

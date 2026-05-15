@@ -28,7 +28,25 @@ function codigos_ensure_schema(): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
+    db()->exec(
+        "CREATE TABLE IF NOT EXISTS wf_codigos_blocos (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            group_key VARCHAR(16) NOT NULL,
+            label VARCHAR(80) NOT NULL,
+            ordem INT UNSIGNED NOT NULL DEFAULT 0,
+            ativo TINYINT(1) NOT NULL DEFAULT 1,
+            criado_por INT UNSIGNED NULL,
+            criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_codigos_blocos_group_key (group_key),
+            KEY idx_codigos_blocos_ativo_ordem (ativo, ordem, group_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
     codigos_seed_defaults();
+    codigos_seed_default_groups();
+    codigos_sync_groups_from_items();
     $done = true;
 }
 
@@ -72,6 +90,42 @@ function codigos_seed_defaults(): void
 
     foreach ($defaults as $index => $row) {
         $stmt->execute(array($row[0], $row[1], $row[2], ($index + 1) * 10));
+    }
+}
+
+function codigos_seed_default_groups(): void
+{
+    $stmt = db()->prepare(
+        "INSERT INTO wf_codigos_blocos (group_key, label, ordem, criado_por)
+         VALUES (?, ?, ?, NULL)
+         ON DUPLICATE KEY UPDATE label = VALUES(label), ativo = 1"
+    );
+
+    foreach (array(array('20', 10), array('40', 20)) as $defaultGroup) {
+        [$group, $order] = $defaultGroup;
+        $stmt->execute(array($group, codigos_group_label($group), $order));
+    }
+}
+
+function codigos_sync_groups_from_items(): void
+{
+    $stmt = db()->prepare(
+        "INSERT INTO wf_codigos_blocos (group_key, label, ordem, criado_por)
+         VALUES (?, ?, ?, NULL)
+         ON DUPLICATE KEY UPDATE ativo = 1"
+    );
+    $existingOrder = (int) db()->query('SELECT COALESCE(MAX(ordem), 20) FROM wf_codigos_blocos')->fetchColumn();
+    $seen = array();
+
+    foreach (db()->query('SELECT ean FROM wf_codigos_comissao WHERE ativo = 1') as $row) {
+        $group = codigos_group_key((string) ($row['ean'] ?? ''));
+        if ($group === 'outros' || isset($seen[$group])) {
+            continue;
+        }
+
+        $seen[$group] = true;
+        $existingOrder += 10;
+        $stmt->execute(array($group, codigos_group_label($group), $existingOrder));
     }
 }
 
@@ -130,6 +184,13 @@ function codigos_ean_prefix(string $ean): string
     return substr($digits, 0, 2);
 }
 
+function codigos_normalize_group_key(string $value): string
+{
+    $digits = preg_replace('/\D+/', '', $value) ?? '';
+
+    return strlen($digits) >= 2 ? substr($digits, 0, 2) : '';
+}
+
 function codigos_group_key(string $ean): string
 {
     $prefix = codigos_ean_prefix($ean);
@@ -164,12 +225,89 @@ function codigos_default_ean_placeholder(string $group): string
     return 'EAN';
 }
 
+function codigos_group_payload(string $group): array
+{
+    return array(
+        'key' => $group,
+        'label' => codigos_group_label($group),
+        'placeholder' => codigos_default_ean_placeholder($group),
+    );
+}
+
+function codigos_saved_group_keys(): array
+{
+    codigos_ensure_schema();
+
+    $keys = array();
+    $stmt = db()->query(
+        "SELECT group_key FROM wf_codigos_blocos
+         WHERE ativo = 1
+         ORDER BY ordem ASC, group_key ASC"
+    );
+
+    foreach ($stmt as $row) {
+        $group = (string) ($row['group_key'] ?? '');
+        if (preg_match('/^\d{2}$/', $group) === 1) {
+            $keys[] = $group;
+        }
+    }
+
+    return $keys;
+}
+
+function codigos_save_group(string $group, ?int $userId, bool $log): string
+{
+    codigos_ensure_schema();
+    $group = codigos_normalize_group_key($group);
+
+    if (preg_match('/^\d{2}$/', $group) !== 1) {
+        throw new InvalidArgumentException('Informe um EAN com 2 digitos.');
+    }
+
+    $exists = db()->prepare('SELECT id FROM wf_codigos_blocos WHERE group_key = ? LIMIT 1');
+    $exists->execute(array($group));
+    $id = (int) $exists->fetchColumn();
+
+    if ($id > 0) {
+        $stmt = db()->prepare('UPDATE wf_codigos_blocos SET label = ?, ativo = 1 WHERE id = ?');
+        $stmt->execute(array(codigos_group_label($group), $id));
+        return $group;
+    }
+
+    $nextOrder = (int) db()->query('SELECT COALESCE(MAX(ordem), 20) + 10 FROM wf_codigos_blocos')->fetchColumn();
+    $stmt = db()->prepare(
+        'INSERT INTO wf_codigos_blocos (group_key, label, ordem, criado_por) VALUES (?, ?, ?, ?)'
+    );
+    $stmt->execute(array($group, codigos_group_label($group), $nextOrder, $userId));
+
+    if ($log && function_exists('log_action')) {
+        log_action('codigo_bloco_criado', 'codigo', null, 'Bloco ' . codigos_group_label($group) . ' criado.');
+    }
+
+    return $group;
+}
+
+function codigos_create_group(string $group, ?int $userId): string
+{
+    return codigos_save_group($group, $userId, true);
+}
+
+function codigos_ensure_group_for_ean(string $ean, ?int $userId): void
+{
+    $group = codigos_group_key($ean);
+
+    if ($group !== 'outros') {
+        codigos_save_group($group, $userId, false);
+    }
+}
+
 function codigos_group_items(array $items): array
 {
-    $groups = array(
-        '20' => array(),
-        '40' => array(),
-    );
+    $groups = array();
+
+    foreach (codigos_saved_group_keys() as $group) {
+        $groups[$group] = array();
+    }
 
     foreach ($items as $item) {
         $group = codigos_group_key((string) ($item['ean'] ?? ''));
@@ -184,7 +322,7 @@ function codigos_group_items(array $items): array
 
 function codigos_ordered_group_keys(array $groups): array
 {
-    $keys = array_unique(array_merge(array('20', '40'), array_keys($groups)));
+    $keys = array_unique(array_merge(codigos_saved_group_keys(), array_keys($groups)));
     $numeric = array();
 
     foreach ($keys as $key) {
@@ -353,6 +491,7 @@ function codigos_create(string $codigo, string $ean, $preco, ?int $userId): int
 {
     codigos_ensure_schema();
     [$codigo, $ean, $preco] = codigos_validate_payload($codigo, $ean, $preco);
+    codigos_ensure_group_for_ean($ean, $userId);
     $nextOrder = (int) db()->query('SELECT COALESCE(MAX(ordem), 0) + 10 FROM wf_codigos_comissao')->fetchColumn();
 
     $stmt = db()->prepare(
@@ -377,6 +516,7 @@ function codigos_update(int $id, string $codigo, string $ean, $preco): void
     }
 
     [$codigo, $ean, $preco] = codigos_validate_payload($codigo, $ean, $preco);
+    codigos_ensure_group_for_ean($ean, null);
 
     $exists = db()->prepare('SELECT id FROM wf_codigos_comissao WHERE id = ? AND ativo = 1 LIMIT 1');
     $exists->execute(array($id));

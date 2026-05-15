@@ -45,7 +45,7 @@ Rotas principais:
 ## Regras de negocio que precisam ser preservadas
 
 - O Cashback depende de clientes, compras, creditos e resgates coerentes entre si.
-- Codigos de comissao devem preservar codigo, EAN, preco e historico basico por logs; a tela separa os EANs em blocos por prefixo de dois digitos, com `20` e `40` como padrao e botao `+` para criar outros blocos, e a exclusao deve esconder o item sem apagar o registro fisico imediatamente.
+- Codigos de comissao devem preservar codigo, EAN, preco e historico basico por logs; a tela separa os EANs em blocos por prefixo de dois digitos, com `20` e `40` como padrao e botao `+` para criar outros blocos persistidos no backend, e a exclusao deve esconder o item sem apagar o registro fisico imediatamente.
 - Cotacao deve preservar ordem, categorias, fornecedores, precos, observacoes, cores/formatacao e status.
 - Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.

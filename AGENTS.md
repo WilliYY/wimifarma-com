@@ -239,7 +239,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 ## Estado validado em 2026-05-15
 
 - O modulo `site/codigos` passou a salvar automaticamente edicoes de `Código`, `EAN` e `Preço` por `/codigos/api.php`, com sessao e CSRF; o botao Salvar saiu do fluxo normal.
-- A tela de Códigos foi dividida em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao e permitindo criar novos blocos pelo botao `+`; cada bloco tem linha nova no rodape para adicionar itens sem misturar os grupos, e o layout usa largura ampla para aproveitar melhor as laterais da tela.
+- A tela de Códigos foi dividida em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao e permitindo criar novos blocos pelo botao `+`; os blocos sao persistidos no MySQL em `wf_codigos_blocos`, cada bloco tem linha nova no rodape para adicionar itens sem misturar os grupos, e o layout usa largura ampla para aproveitar melhor as laterais da tela.
 - Em Códigos, editar uma linha preserva a posicao atual quando o prefixo do EAN nao muda; reordenacao e feita arrastando o numero da linha dentro do mesmo grupo e persiste em `wf_codigos_comissao.ordem`.
 - Apagar codigo continua sendo acao explicita com confirmacao e exclusao logica em `wf_codigos_comissao`.
 
