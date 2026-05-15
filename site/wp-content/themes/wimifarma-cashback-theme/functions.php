@@ -129,9 +129,9 @@ add_action(
 
         wp_enqueue_style('wfwc-theme-style', wfwc_theme_asset_url('style.css'), array(), $style_version);
         wp_enqueue_style('wfwc-theme-extra', $theme_uri . '/assets/css/theme.css', array('wfwc-theme-style'), $extra_version);
-        wp_enqueue_style('wfwc-miauw-widget', wfwc_home_url('/miauw/widget.css'), array(), '20260506a');
+        wp_enqueue_style('wfwc-miauw-widget', wfwc_home_url('/miauw/widget.css'), array(), '20260515f');
         wp_enqueue_script('wfwc-theme-script', $theme_uri . '/assets/js/theme.js', array(), $script_version, true);
-        wp_enqueue_script('wfwc-miauw-widget', wfwc_home_url('/miauw/widget.js'), array(), '20260511b', true);
+        wp_enqueue_script('wfwc-miauw-widget', wfwc_home_url('/miauw/widget.js'), array(), '20260515f', true);
         wp_add_inline_script('wfwc-theme-script', 'console.log("Wimifarma enqueue confirmou theme.js");', 'before');
 
         wp_localize_script(

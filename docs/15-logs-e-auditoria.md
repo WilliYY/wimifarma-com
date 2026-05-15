@@ -20,6 +20,7 @@ Tabelas de auditoria/log:
 - `miauw_alertas`
 - `miauw_alerta_eventos`
 - `miauw_padroes`
+- `miauw_tool_traces`
 - `miauw_farmacia_popular_atualizacoes`
 - `wptl_loginizer_logs`
 
@@ -43,6 +44,8 @@ Arquivos:
 - O painel `/miauw/diagnostico.php` mostra diagnosticos internos recentes em forma resumida e sanitizada, sem payload bruto nem stack trace.
 - Revisar memoria/padrao no painel do Miauby registra `wf_logs` com `miauw_revisao_memoria` ou `miauw_revisao_padrao`, sem apagar o registro revisado.
 - A Fase 4 do Miauby registra tools core por registry; criar encomenda na Cotacao V2 gera evento em `cotacao_v2_events` e tambem registra `wf_logs` quando chamado pelo PHP do Miauby.
+- A Fase 5 do Miauby registra execucao em `miauw_tool_traces`, vinculando `trace_id`, conversa, usuario, ferramenta, status, risco, resumo sanitizado, duracao e se houve confirmacao. Payloads devem ser sanitizados e nunca guardar chaves, tokens, SQL cru ou stack trace completo.
+- Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 
 ## Decisoes tecnicas ja tomadas
@@ -66,7 +69,7 @@ Arquivos:
 
 ## Evolucao futura
 
-- Adicionar IDs de correlacao por request.
+- Expandir IDs de correlacao por request para outros modulos alem do Miauby.
 - Criar painel de saude do sistema.
 - Integrar Miauby para resumir erros recorrentes.
 - Exportar auditoria para CSV quando necessario.

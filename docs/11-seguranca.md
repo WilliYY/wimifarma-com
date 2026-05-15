@@ -17,6 +17,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
 - `/miauw/diagnostico.php` e restrito a `admin`, `gerente` ou `adm`, usa CSRF nas acoes e sanitiza textos de memorias, padroes e diagnosticos antes de exibir.
+- A Fase 5 do Miauby exige confirmacao humana para acoes fortes antes de gravar dados e registra traces sanitizados em `miauw_tool_traces`.
 
 ## Arquivos envolvidos
 
@@ -41,6 +42,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Proteger jobs por token quando forem chamados externamente.
 - Revisar permissao antes de expor qualquer endpoint novo.
 - Diagnosticos internos do Miauby nao devem exibir stack trace, payload bruto, caminho completo, chave, token, CPF, telefone ou email no painel operacional.
+- Traces do Miauby nao devem persistir segredo, chave, token, senha, payload bruto externo, SQL cru ou stack trace completo.
+- Acoes fortes por Miauby devem permanecer pendentes ate confirmacao explicita do operador; cancelar deve limpar a acao pendente sem executar escrita.
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.

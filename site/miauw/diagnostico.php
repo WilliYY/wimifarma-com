@@ -44,6 +44,7 @@ $models = $summary['models'] ?? array();
 $memCounts = $summary['memorias'] ?? array();
 $patternCounts = $summary['padroes'] ?? array();
 $messageStats = $summary['mensagens_24h'] ?? array();
+$traceStats = $summary['traces_24h'] ?? array();
 $avatar = miauw_avatar_src();
 
 function miauw_diag_api_status_label(array $api): string
@@ -116,9 +117,9 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 3</span>
+                    <span class="diag-kicker">Fase 5</span>
                     <h1>Diagnostico do Miauby</h1>
-                    <p>Saude, skills, alertas, memorias e padroes em revisao.</p>
+                    <p>Saude, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>
             </div>
             <div class="diag-version">
@@ -153,6 +154,11 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <span>Mensagens 24h</span>
                 <strong><?php echo e((string) ($messageStats['total'] ?? 0)); ?></strong>
                 <p><?php echo e((string) ($messageStats['fallback'] ?? 0)); ?> fallback(s) registrado(s).</p>
+            </article>
+            <article class="diag-card">
+                <span>Traces 24h</span>
+                <strong><?php echo e((string) ($traceStats['total'] ?? 0)); ?></strong>
+                <p><?php echo e((string) ($traceStats['confirmacoes'] ?? 0)); ?> confirmacao(oes), <?php echo e((string) ($traceStats['erros'] ?? 0)); ?> erro(s).</p>
             </article>
         </section>
 
@@ -246,6 +252,23 @@ function miauw_diag_review_buttons(string $kind, int $id): string
         </section>
 
         <section class="diag-two">
+            <article class="diag-panel">
+                <div class="diag-panel-head">
+                    <div>
+                        <span>Rastreabilidade</span>
+                        <h2>Tools recentes</h2>
+                    </div>
+                </div>
+                <div class="diag-list">
+                    <?php foreach ((array) ($data['traces'] ?? array()) as $trace) : ?>
+                        <p><strong><?php echo e((string) $trace['ferramenta']); ?> | <?php echo e((string) $trace['status']); ?></strong><span><?php echo e((string) $trace['modulo']); ?> | <?php echo e((string) $trace['risco']); ?><?php echo !empty($trace['confirmacao']) ? ' | confirmacao' : ''; ?> | <?php echo e(miauw_diag_date_label((string) $trace['created_at'])); ?><?php echo (int) ($trace['duracao_ms'] ?? 0) > 0 ? ' | ' . e((string) $trace['duracao_ms']) . 'ms' : ''; ?><br><?php echo e((string) $trace['resumo']); ?></span></p>
+                    <?php endforeach; ?>
+                    <?php if (empty($data['traces'])) : ?>
+                        <p><strong>Sem trace recente</strong><span>Nenhuma tool registrada ainda nas ultimas operacoes.</span></p>
+                    <?php endif; ?>
+                </div>
+            </article>
+
             <article class="diag-panel">
                 <div class="diag-panel-head">
                     <div>

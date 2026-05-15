@@ -59,6 +59,12 @@ Miauby ja possui:
   - consulta de Cotacao usa a Cotacao V2 por `GET /cotacao/api/internal/search`;
   - criacao de encomenda usa a Cotacao V2 por `POST /cotacao/api/internal/encomendas`;
   - endpoints internos da Cotacao exigem token por `X-Miauw-Internal-Token` e ficam desativados sem token de ambiente.
+- Fase 5 do agente operacional v2 iniciada:
+  - `miauw_tool_traces` registra trace por conversa/request/tool, com status, risco, resumo sanitizado, duracao e confirmacao;
+  - `/miauw/diagnostico.php` mostra estatisticas de traces das ultimas 24h e tools recentes;
+  - `api.php?action=send` gera `trace_id` por mensagem e associa user/assistant/tool quando possivel;
+  - acoes fortes locais e tools de escrita de alto risco ficam pendentes ate confirmacao humana;
+  - o widget e a tela principal mostram resposta digitando visualmente e renderizam card de confirmacao com `Confirmar`/`Cancelar`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -85,6 +91,7 @@ Tabelas:
 - `miauw_alerta_eventos`
 - `miauw_padroes`
 - `miauw_configuracoes`
+- `miauw_tool_traces`
 
 Integracoes:
 
@@ -130,10 +137,9 @@ Integracoes:
 ## Pendencias
 
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
-- Criar logs estruturados para execucao de skill.
-- Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria, confirmacao de acoes fortes e ferramentas OpenAI registradas.
+- Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
-- Implementar Fase 5: streaming no widget, trace por conversa, log estruturado de tool usada, erro claro e botao de confirmacao para acoes fortes.
+- Evoluir a Fase 5 de streaming visual para streaming online real em um servico dedicado quando houver separacao Node/TypeScript/Agents SDK.
 - Implementar Fase 6: ampliar evals para nao citar bastidores, sangria exigir valor, nao inventar dados, Cotacao pedir produto quando faltar e acoes destrutivas exigirem confirmacao.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 
@@ -143,5 +149,5 @@ Integracoes:
 - Fase 2: adicionar testes de intents e respostas proibidas. Em andamento com runner CLI local.
 - Fase 3: criar painel de diagnostico e revisao de memoria/padroes. Em andamento com painel restrito e revisao por status.
 - Fase 4: migrar tools importantes para registry e executores controlados. Em andamento com sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
-- Fase 5: adicionar streaming e rastreabilidade por conversa, incluindo log de tool usada e confirmacao para acoes fortes.
+- Fase 5: adicionar streaming e rastreabilidade por conversa, incluindo log de tool usada e confirmacao para acoes fortes. Em andamento com streaming visual, traces estruturados e card de confirmacao.
 - Fase 6: ampliar evals operacionais para regras proibidas, dados faltantes e confirmacao de acoes destrutivas.

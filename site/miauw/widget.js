@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260514a';
+    link.href = '/miauw/widget.css?v=20260515f';
     document.head.appendChild(link);
   }
 
@@ -94,6 +94,7 @@
   const alertCountPill = root.querySelector('[data-miauw-tools-alert-count]');
   const alertRefresh = root.querySelector('[data-miauw-alerts-refresh]');
   let typingMessage = null;
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let lastUserActivityAt = 0;
   let lastGuideAt = 0;
   let lastAmbientNudgeAt = 0;
@@ -310,6 +311,31 @@
     return null;
   };
 
+  const renderConfirmation = (container, confirmation) => {
+    if (!container || !confirmation || !confirmation.id) return;
+
+    const card = document.createElement('div');
+    card.className = 'miauw-widget-confirmation';
+    card.innerHTML = `
+      <strong>Confirmar acao</strong>
+      <span>${escapeHtml(confirmation.summary || 'Acao operacional pendente.')}</span>
+      <nav>
+        <button type="button" data-miauw-confirm-action="confirmar">Confirmar</button>
+        <button type="button" data-miauw-confirm-action="cancelar">Cancelar</button>
+      </nav>
+    `;
+
+    card.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const action = button.dataset.miauwConfirmAction || 'cancelar';
+        card.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+        send(`${action} ${confirmation.id}`);
+      });
+    });
+
+    container.appendChild(card);
+  };
+
   const addMessage = (role, text, options = {}) => {
     const item = document.createElement('article');
     item.className = `miauw-widget-msg ${role}`;
@@ -329,8 +355,34 @@
         <time>${escapeHtml(time + fallback)}</time>
       </div>
     `;
+    if (role === 'assistant' && options.confirmation) {
+      renderConfirmation(item.querySelector('div'), options.confirmation);
+    }
     feed.appendChild(item);
     scrollBottom();
+    return item;
+  };
+
+  const streamAssistantMessage = async (text, options = {}) => {
+    const source = String(text || '');
+    if (!source || reducedMotion || source.length < 28) {
+      addMessage('assistant', source, options);
+      return;
+    }
+
+    const item = addMessage('assistant', '', options);
+    const paragraph = item.querySelector('p');
+    if (!paragraph) return;
+
+    const pieces = source.match(/.{1,18}(?:\s|$)/g) || [source];
+    let current = '';
+
+    for (const piece of pieces) {
+      current += piece;
+      paragraph.innerHTML = formatMessage(current);
+      scrollBottom();
+      await new Promise((resolve) => setTimeout(resolve, 18));
+    }
   };
 
   const addAssistantParts = async (parts, options = {}) => {
@@ -340,7 +392,10 @@
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 260));
       }
-      addMessage('assistant', safeParts[index], options);
+      await streamAssistantMessage(safeParts[index], {
+        ...options,
+        confirmation: index === safeParts.length - 1 ? options.confirmation : null,
+      });
       maybeGuideFromReply(safeParts[index]);
     }
   };
@@ -903,6 +958,7 @@
       await addAssistantParts(data.reply_parts || [data.reply || 'Nao consegui montar a resposta agora. Tente de novo.'], {
         time: data.time,
         fallback: data.fallback,
+        confirmation: data.confirmation || null,
         fallbackText: data.reply || 'Nao consegui montar a resposta agora. Tente de novo.',
       });
     } catch (error) {

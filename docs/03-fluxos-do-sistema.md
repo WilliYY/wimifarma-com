@@ -235,6 +235,7 @@ Direcao de evolucao:
 - usar `miauw_skill_registry()` como fonte de inventario das skills antes de novas tools;
 - manter a Fase 4 registrada no registry: sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos;
 - usar a ponte interna da Cotacao V2 para consultas/encomendas, protegida por token de ambiente;
+- manter a Fase 5 com trace por conversa/tool em `miauw_tool_traces`, status no diagnostico, streaming visual no widget/chat e confirmacao humana para acoes fortes antes da escrita;
 - registrar padroes e memorias com revisao e auditoria;
 - revisar memorias e padroes pelo painel restrito `/miauw/diagnostico.php`, marcando status sem apagar dados;
 - separar leitura, sugestao e escrita;

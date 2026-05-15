@@ -10,6 +10,7 @@
   const shortcutButtons = document.querySelectorAll('[data-prompt]');
   const guardianCard = document.querySelector('.guardian-card');
   let typingMessage = null;
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const scrollToBottom = () => {
     if (feed) feed.scrollTop = feed.scrollHeight;
@@ -42,6 +43,31 @@
     .replace(/(https?:\/\/[^\s<]+|\/miauw\/relatorios\/[^\s<]+)/g, (url) => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`)
     .replaceAll('\n', '<br>');
 
+  const renderConfirmation = (bubble, confirmation) => {
+    if (!bubble || !confirmation || !confirmation.id) return;
+
+    const card = document.createElement('div');
+    card.className = 'miauw-confirmation-card';
+    card.innerHTML = `
+      <strong>Confirmar acao</strong>
+      <span>${escapeHtml(confirmation.summary || 'Acao operacional pendente.')}</span>
+      <nav>
+        <button type="button" data-confirm-action="confirmar">Confirmar</button>
+        <button type="button" data-confirm-action="cancelar">Cancelar</button>
+      </nav>
+    `;
+
+    card.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const action = button.dataset.confirmAction || 'cancelar';
+        card.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+        sendMessage(`${action} ${confirmation.id}`);
+      });
+    });
+
+    bubble.appendChild(card);
+  };
+
   const addMessage = (role, text, options = {}) => {
     if (!feed) return;
 
@@ -68,9 +94,35 @@
     const suffix = '';
 
     bubble.innerHTML = `<p>${formatMessage(text)}</p><time>${escapeHtml(stamp + suffix)}</time>`;
+    if (role === 'assistant' && options.confirmation) {
+      renderConfirmation(bubble, options.confirmation);
+    }
     article.appendChild(bubble);
     feed.appendChild(article);
     scrollToBottom();
+    return article;
+  };
+
+  const streamAssistantMessage = async (text, options = {}) => {
+    const source = String(text || '');
+    if (!source || reducedMotion || source.length < 28) {
+      addMessage('assistant', source, options);
+      return;
+    }
+
+    const article = addMessage('assistant', '', options);
+    const paragraph = article ? article.querySelector('.bubble p') : null;
+    if (!paragraph) return;
+
+    const pieces = source.match(/.{1,18}(?:\s|$)/g) || [source];
+    let current = '';
+
+    for (const piece of pieces) {
+      current += piece;
+      paragraph.innerHTML = formatMessage(current);
+      scrollToBottom();
+      await new Promise((resolve) => setTimeout(resolve, 18));
+    }
   };
 
   const addAssistantParts = async (parts, options = {}) => {
@@ -80,7 +132,10 @@
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 260));
       }
-      addMessage('assistant', safeParts[index], options);
+      await streamAssistantMessage(safeParts[index], {
+        ...options,
+        confirmation: index === safeParts.length - 1 ? options.confirmation : null,
+      });
     }
   };
 
@@ -152,6 +207,7 @@
       await addAssistantParts(data.reply_parts || [data.reply], {
         fallback: data.fallback,
         time: data.time,
+        confirmation: data.confirmation || null,
         fallbackText: data.reply,
       });
     } catch (error) {

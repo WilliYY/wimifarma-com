@@ -616,6 +616,57 @@
     color: rgba(255, 255, 255, .78);
 }
 
+.miauw-widget-confirmation {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+    border: 1px solid rgba(13, 148, 136, .35);
+    border-radius: 13px;
+    padding: 10px;
+    background: #f5fffc;
+}
+
+.miauw-widget-confirmation strong {
+    color: #0f766e;
+    font-size: 12px;
+}
+
+.miauw-widget-confirmation span {
+    color: var(--miauw-text);
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.32;
+}
+
+.miauw-widget-confirmation nav {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.miauw-widget-confirmation button {
+    min-height: 31px;
+    border: 1px solid #99f6e4;
+    border-radius: 999px;
+    padding: 0 11px;
+    background: #0f766e;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 950;
+    cursor: pointer;
+}
+
+.miauw-widget-confirmation button:last-child {
+    border-color: var(--miauw-line);
+    background: #fff;
+    color: var(--miauw-wine);
+}
+
+.miauw-widget-confirmation button:disabled {
+    opacity: .62;
+    cursor: wait;
+}
+
 .miauw-widget-msg.typing div {
     min-height: 42px;
     display: flex;

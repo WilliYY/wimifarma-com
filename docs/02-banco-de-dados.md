@@ -80,6 +80,7 @@ Inventario real observado em 2026-05-10:
 - `miauw_alertas`: alertas inteligentes.
 - `miauw_alerta_eventos`: eventos de alertas.
 - `miauw_padroes`: padroes detectados.
+- `miauw_tool_traces`: rastreabilidade do Miauby por conversa/request/tool, incluindo status, risco, confirmacao e resumo sanitizado.
 - `miauw_farmacia_popular_valores`: valores de referencia.
 - `miauw_farmacia_popular_atualizacoes`: historico de atualizacao.
 
@@ -148,6 +149,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.
+- `miauw_tool_traces.payload_json` deve guardar somente contexto sanitizado e limitado; nao colocar chave, token, senha, SQL cru, payload bruto externo ou stack trace completo.
+- `miauw_tool_traces.requer_confirmacao` marca acoes fortes que precisaram de confirmacao humana antes da escrita real.
 - `wptl_options` guarda URLs do WordPress e pode causar redirects errados se alterado sem cuidado.
 
 ## Decisoes tecnicas ja tomadas

@@ -34,15 +34,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260515e');
+    define('MIAUW_VERSION', '20260515f');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase4');
+    define('MIAUW_AGENT_VERSION', '2.0-fase5');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-tools-core');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-rastreavel');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -216,6 +216,29 @@ function miauw_schema_statements(): array
             finished_at DATETIME NULL,
             PRIMARY KEY (id),
             KEY idx_miauw_fp_update_started (started_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS miauw_tool_traces (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            trace_id CHAR(32) NOT NULL,
+            conversa_id BIGINT UNSIGNED NULL,
+            mensagem_id BIGINT UNSIGNED NULL,
+            usuario_id INT UNSIGNED NULL,
+            ferramenta VARCHAR(120) NOT NULL,
+            modulo VARCHAR(60) NOT NULL DEFAULT 'miauby',
+            tipo VARCHAR(40) NOT NULL DEFAULT 'tool',
+            status VARCHAR(30) NOT NULL DEFAULT 'ok',
+            risco VARCHAR(20) NOT NULL DEFAULT 'baixo',
+            requer_confirmacao TINYINT(1) NOT NULL DEFAULT 0,
+            resumo VARCHAR(255) NOT NULL DEFAULT '',
+            payload_json MEDIUMTEXT NULL,
+            erro TEXT NULL,
+            duracao_ms INT UNSIGNED NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_miauw_tool_traces_trace (trace_id, id),
+            KEY idx_miauw_tool_traces_conversa (conversa_id, id),
+            KEY idx_miauw_tool_traces_usuario (usuario_id, created_at),
+            KEY idx_miauw_tool_traces_ferramenta (ferramenta, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 }
@@ -295,8 +318,426 @@ function miauw_agent_public_status(): array
             'evals_intents_guardrails',
             'painel_diagnostico_revisao',
             'tools_operacionais_migradas',
+            'rastreabilidade_por_conversa',
+            'confirmacao_acoes_fortes',
+            'streaming_visual_widget',
         ),
     );
+}
+
+function miauw_trace_new_id(): string
+{
+    try {
+        return bin2hex(random_bytes(16));
+    } catch (Throwable $error) {
+        return substr(hash('sha256', uniqid('miauw-trace-', true)), 0, 32);
+    }
+}
+
+function miauw_trace_set_context(?string $traceId, ?int $conversationId = null, ?int $userId = null, ?int $messageId = null): void
+{
+    $GLOBALS['miauw_trace_context'] = array(
+        'trace_id' => $traceId !== null && $traceId !== '' ? $traceId : miauw_trace_new_id(),
+        'conversa_id' => $conversationId,
+        'usuario_id' => $userId,
+        'mensagem_id' => $messageId,
+    );
+}
+
+function miauw_trace_context(): array
+{
+    $context = $GLOBALS['miauw_trace_context'] ?? array();
+    if (!is_array($context)) {
+        $context = array();
+    }
+
+    if (empty($context['trace_id'])) {
+        $context['trace_id'] = miauw_trace_new_id();
+    }
+
+    return $context;
+}
+
+function miauw_tool_public_meta(string $tool): array
+{
+    $registry = function_exists('miauw_skill_registry_public') ? miauw_skill_registry_public() : array();
+    $meta = is_array($registry[$tool] ?? null) ? $registry[$tool] : array();
+
+    return array(
+        'modulo' => (string) ($meta['modulo'] ?? 'miauby'),
+        'risco' => (string) ($meta['risco'] ?? 'baixo'),
+        'nivel' => (string) ($meta['nivel'] ?? 'tool'),
+        'titulo' => (string) ($meta['titulo'] ?? $tool),
+    );
+}
+
+function miauw_trace_payload_json(array $payload): ?string
+{
+    $clean = function_exists('miauw_diagnostic_sanitize') ? miauw_diagnostic_sanitize($payload) : $payload;
+    $json = json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+    if (!is_string($json) || $json === '') {
+        return null;
+    }
+
+    if (strlen($json) > 12000) {
+        $json = substr($json, 0, 12000) . '...';
+    }
+
+    return $json;
+}
+
+function miauw_trace_record(string $tool, string $status = 'ok', array $context = array()): void
+{
+    try {
+        $tool = preg_replace('/[^a-z0-9_\-]+/i', '_', trim($tool)) ?: 'miauby';
+        $trace = miauw_trace_context();
+        $meta = miauw_tool_public_meta($tool);
+        $payload = is_array($context['payload'] ?? null) ? $context['payload'] : array();
+        $error = isset($context['error']) ? miauw_diagnostic_redact_string((string) $context['error']) : null;
+        $summary = miauw_substr(trim((string) ($context['summary'] ?? '')), 0, 255);
+
+        $stmt = db()->prepare(
+            'INSERT INTO miauw_tool_traces
+                (trace_id, conversa_id, mensagem_id, usuario_id, ferramenta, modulo, tipo, status, risco, requer_confirmacao, resumo, payload_json, erro, duracao_ms)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute(array(
+            (string) ($context['trace_id'] ?? $trace['trace_id']),
+            isset($context['conversa_id']) ? (int) $context['conversa_id'] : ($trace['conversa_id'] ?? null),
+            isset($context['mensagem_id']) ? (int) $context['mensagem_id'] : ($trace['mensagem_id'] ?? null),
+            isset($context['usuario_id']) ? (int) $context['usuario_id'] : ($trace['usuario_id'] ?? null),
+            $tool,
+            miauw_substr((string) ($context['modulo'] ?? $meta['modulo']), 0, 60),
+            miauw_substr((string) ($context['type'] ?? 'tool'), 0, 40),
+            miauw_substr($status, 0, 30),
+            miauw_substr((string) ($context['risk'] ?? $meta['risco']), 0, 20),
+            !empty($context['requires_confirmation']) ? 1 : 0,
+            $summary,
+            miauw_trace_payload_json($payload),
+            $error,
+            isset($context['duration_ms']) ? max(0, (int) $context['duration_ms']) : null,
+        ));
+    } catch (Throwable $error) {
+        error_log('Miauby trace record failed: ' . $error->getMessage());
+    }
+}
+
+function miauw_tools_requiring_confirmation(): array
+{
+    return array(
+        'registrar_sangria',
+        'criar_lancamento_financeiro',
+        'registrar_faturamento_diario',
+        'criar_encomenda_cotacao',
+        'criar_cotacao_urgente',
+        'criar_cotacao_rapida',
+        'criar_planilha_cotacao',
+    );
+}
+
+function miauw_tool_requires_confirmation(string $tool): bool
+{
+    $tool = trim($tool);
+    if (in_array($tool, miauw_tools_requiring_confirmation(), true)) {
+        return true;
+    }
+
+    $registry = function_exists('miauw_skill_registry_public') ? miauw_skill_registry_public() : array();
+    $meta = is_array($registry[$tool] ?? null) ? $registry[$tool] : array();
+
+    return (string) ($meta['nivel'] ?? '') === 'escrita' && (string) ($meta['risco'] ?? '') === 'alto';
+}
+
+function miauw_confirmation_summary(string $tool, array $command): string
+{
+    $money = static function ($value): string {
+        return function_exists('miauw_skill_money') ? miauw_skill_money((float) $value) : ('R$ ' . number_format((float) $value, 2, ',', '.'));
+    };
+
+    if ($tool === 'registrar_sangria') {
+        return 'Registrar sangria de ' . $money($command['valor'] ?? 0)
+            . ' para ' . trim((string) ($command['responsavel'] ?? 'responsavel nao informado'))
+            . '.';
+    }
+
+    if ($tool === 'criar_lancamento_financeiro') {
+        return 'Criar lancamento financeiro: '
+            . trim((string) ($command['categoria'] ?? 'categoria')) . ', '
+            . $money($command['valor'] ?? 0)
+            . ', responsavel ' . trim((string) ($command['responsavel'] ?? 'nao informado')) . '.';
+    }
+
+    if ($tool === 'registrar_faturamento_diario') {
+        $entries = is_array($command['entries'] ?? null) ? $command['entries'] : array();
+        $parts = array();
+        foreach (array_slice($entries, 0, 3) as $entry) {
+            $parts[] = date('d/m/Y', strtotime((string) ($entry['data'] ?? 'now'))) . ' ' . $money($entry['valor'] ?? 0);
+        }
+
+        return 'Registrar faturamento diario: ' . ($parts ? implode(', ', $parts) : 'valores informados') . '.';
+    }
+
+    if ($tool === 'criar_encomenda_cotacao') {
+        return 'Criar encomenda na Cotacao: '
+            . trim((string) ($command['produto'] ?? 'produto nao informado'))
+            . ' para ' . trim((string) ($command['responsavel'] ?? 'responsavel nao informado')) . '.';
+    }
+
+    if ($tool === 'criar_cotacao_urgente') {
+        return 'Criar item urgente na Cotacao: ' . trim((string) ($command['produto'] ?? 'produto nao informado')) . '.';
+    }
+
+    if ($tool === 'criar_planilha_cotacao') {
+        return 'Criar nova planilha/bloco de Cotacao: ' . trim((string) ($command['nome'] ?? 'sem nome')) . '.';
+    }
+
+    if ($tool === 'criar_cotacao_rapida') {
+        return 'Criar cotacao rapida para fornecedor '
+            . trim((string) ($command['fornecedor'] ?? 'nao informado')) . '.';
+    }
+
+    $meta = miauw_tool_public_meta($tool);
+    return 'Executar acao: ' . (string) ($meta['titulo'] ?? $tool) . '.';
+}
+
+function miauw_queue_confirmation(string $tool, array $command, ?string $summary = null, ?int $userId = null): array
+{
+    $id = substr(miauw_trace_new_id(), 0, 8);
+    $meta = miauw_tool_public_meta($tool);
+    $summary = $summary !== null && trim($summary) !== '' ? trim($summary) : miauw_confirmation_summary($tool, $command);
+    $confirmation = array(
+        'id' => $id,
+        'tool' => $tool,
+        'summary' => miauw_substr($summary, 0, 220),
+        'risk' => (string) ($meta['risco'] ?? 'alto'),
+    );
+
+    $_SESSION['miauw_pending_confirm_action'] = array(
+        'id' => $id,
+        'tool' => $tool,
+        'command' => $command,
+        'summary' => $confirmation['summary'],
+        'user_id' => $userId,
+        'created_at' => time(),
+    );
+    $GLOBALS['miauw_pending_confirmation_response'] = $confirmation;
+
+    miauw_trace_record($tool, 'pending_confirmation', array(
+        'type' => 'confirmacao',
+        'requires_confirmation' => true,
+        'summary' => (string) $confirmation['summary'],
+        'payload' => array('command' => $command, 'confirmation_id' => $id),
+    ));
+
+    return $confirmation;
+}
+
+function miauw_current_confirmation_response(): ?array
+{
+    $confirmation = $GLOBALS['miauw_pending_confirmation_response'] ?? null;
+
+    return is_array($confirmation) ? $confirmation : null;
+}
+
+function miauw_confirmation_request_reply(string $tool, array $command, ?int $userId = null, ?string $summary = null): array
+{
+    $confirmation = miauw_queue_confirmation($tool, $command, $summary, $userId);
+
+    return array(
+        'text' => "Antes de gravar, confirma essa acao?\n" . $confirmation['summary'] . "\nAperte Confirmar ou Cancelar. Sem confirmacao, eu nao mexo no dado.",
+        'fallback' => false,
+        'model' => 'miauw-confirmacao',
+        'confirmation' => $confirmation,
+    );
+}
+
+function miauw_execute_confirmed_action(array $pending, int $userId): string
+{
+    $tool = (string) ($pending['tool'] ?? '');
+    $command = is_array($pending['command'] ?? null) ? $pending['command'] : array();
+
+    if ($tool === 'criar_encomenda_cotacao') {
+        $command['usuario_id'] = $userId;
+        $sessionUser = function_exists('current_user') ? current_user() : null;
+        if (is_array($sessionUser) && trim((string) ($sessionUser['username'] ?? '')) !== '') {
+            $command['username'] = (string) $sessionUser['username'];
+        }
+
+        $result = miauw_skill_create_cotacao_encomenda($command);
+        return miauw_skill_cotacao_encomenda_action_reply($result);
+    }
+
+    if ($tool === 'criar_cotacao_urgente') {
+        $result = miauw_skill_create_cotacao_urgente($command);
+        return miauw_skill_cotacao_urgente_action_reply($result);
+    }
+
+    if ($tool === 'criar_planilha_cotacao') {
+        $result = miauw_skill_create_cotacao_planilha($command);
+        return miauw_skill_cotacao_planilha_action_reply($result);
+    }
+
+    if ($tool === 'criar_cotacao_rapida') {
+        $result = miauw_skill_create_cotacao_rapida($command);
+        return miauw_skill_cotacao_rapida_action_reply($result);
+    }
+
+    if ($tool === 'registrar_faturamento_diario') {
+        $result = miauw_skill_create_financeiro_faturamentos($command, $userId);
+        return miauw_skill_financeiro_faturamento_action_reply($result);
+    }
+
+    if ($tool === 'registrar_sangria') {
+        $result = function_exists('miauw_skill_create_sangria')
+            ? miauw_skill_create_sangria(
+                (float) ($command['valor'] ?? 0),
+                (string) ($command['responsavel'] ?? ''),
+                (string) ($command['observacao'] ?? ''),
+                isset($command['data']) ? (string) $command['data'] : null
+            )
+            : miauw_skill_create_financeiro_lancamento(
+                'Sangria',
+                (float) ($command['valor'] ?? 0),
+                (string) ($command['observacao'] ?? ''),
+                isset($command['data']) ? (string) $command['data'] : null,
+                (string) ($command['responsavel'] ?? '')
+            );
+
+        return "Sangria registrada.\n"
+            . 'Valor: ' . miauw_skill_money((float) ($result['valor'] ?? $command['valor'] ?? 0)) . "\n"
+            . 'Responsavel: ' . (string) ($result['responsavel'] ?? $command['responsavel'] ?? '');
+    }
+
+    if ($tool === 'criar_lancamento_financeiro') {
+        if (function_exists('miauw_intelligence_learn_financeiro_command')) {
+            miauw_intelligence_learn_financeiro_command((string) ($command['raw_message'] ?? 'confirmacao_financeiro'), $command);
+        }
+
+        $result = miauw_skill_create_financeiro_lancamento(
+            (string) ($command['categoria'] ?? ''),
+            (float) ($command['valor'] ?? 0),
+            (string) ($command['observacao'] ?? ''),
+            isset($command['data']) ? (string) $command['data'] : null,
+            (string) ($command['responsavel'] ?? '')
+        );
+
+        return miauw_skill_financeiro_action_reply($result);
+    }
+
+    throw new RuntimeException('Acao pendente desconhecida para confirmacao.');
+}
+
+function miauw_try_confirmation_reply(string $message, int $userId): ?array
+{
+    $pending = $_SESSION['miauw_pending_confirm_action'] ?? null;
+    if (!is_array($pending)) {
+        return null;
+    }
+
+    $createdAt = (int) ($pending['created_at'] ?? 0);
+    if ($createdAt > 0 && (time() - $createdAt) > 900) {
+        unset($_SESSION['miauw_pending_confirm_action']);
+        miauw_trace_record((string) ($pending['tool'] ?? 'miauby'), 'expired', array(
+            'type' => 'confirmacao',
+            'summary' => 'Confirmacao expirada.',
+            'requires_confirmation' => true,
+        ));
+
+        return null;
+    }
+
+    $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
+    $id = strtolower((string) ($pending['id'] ?? ''));
+    $wantsCancel = preg_match('/\b(cancela|cancelar|nao|n|deixa|esquece)\b/u', $normalized) === 1;
+    $wantsConfirm = preg_match('/\b(confirmar|confirmo|confirma|sim|s|pode|ok|feito)\b/u', $normalized) === 1
+        || ($id !== '' && strpos($normalized, $id) !== false);
+
+    if (!$wantsCancel && !$wantsConfirm) {
+        $tool = (string) ($pending['tool'] ?? '');
+        $meta = miauw_tool_public_meta($tool);
+
+        return array(
+            'text' => "Tem uma acao pendente esperando confirmacao.\n" . (string) ($pending['summary'] ?? 'Acao operacional pendente.') . "\nConfirma ou cancela primeiro; depois eu volto para a proxima bagunca.",
+            'fallback' => false,
+            'model' => 'miauw-confirmacao',
+            'confirmation' => array(
+                'id' => (string) ($pending['id'] ?? ''),
+                'tool' => $tool,
+                'summary' => (string) ($pending['summary'] ?? ''),
+                'risk' => (string) ($meta['risco'] ?? 'alto'),
+            ),
+        );
+    }
+
+    if ($id !== '' && preg_match('/\b[0-9a-f]{8}\b/i', $message, $match) && strtolower((string) $match[0]) !== $id) {
+        return array(
+            'text' => 'Esse codigo de confirmacao nao bate. A acao ficou parada; aperte Confirmar no card certo ou cancele.',
+            'fallback' => false,
+            'model' => 'miauw-confirmacao',
+            'confirmation' => array(
+                'id' => (string) ($pending['id'] ?? ''),
+                'tool' => (string) ($pending['tool'] ?? ''),
+                'summary' => (string) ($pending['summary'] ?? ''),
+                'risk' => miauw_tool_public_meta((string) ($pending['tool'] ?? ''))['risco'],
+            ),
+        );
+    }
+
+    if ($wantsCancel) {
+        unset($_SESSION['miauw_pending_confirm_action']);
+        miauw_trace_record((string) ($pending['tool'] ?? 'miauby'), 'cancelled', array(
+            'type' => 'confirmacao',
+            'summary' => 'Acao cancelada pelo operador.',
+            'requires_confirmation' => true,
+            'payload' => array('confirmation_id' => (string) ($pending['id'] ?? '')),
+        ));
+
+        return array(
+            'text' => 'Cancelado. Dado intacto, caos contido.',
+            'fallback' => false,
+            'model' => 'miauw-confirmacao',
+        );
+    }
+
+    unset($_SESSION['miauw_pending_confirm_action']);
+    $tool = (string) ($pending['tool'] ?? 'miauby');
+    $started = microtime(true);
+
+    try {
+        miauw_trace_record($tool, 'confirmed', array(
+            'type' => 'confirmacao',
+            'summary' => (string) ($pending['summary'] ?? 'Acao confirmada.'),
+            'requires_confirmation' => true,
+            'payload' => array('confirmation_id' => (string) ($pending['id'] ?? '')),
+        ));
+        $text = miauw_execute_confirmed_action($pending, $userId);
+        miauw_trace_record($tool, 'ok', array(
+            'type' => 'acao',
+            'summary' => (string) ($pending['summary'] ?? 'Acao executada.'),
+            'requires_confirmation' => true,
+            'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+        ));
+
+        return array(
+            'text' => $text,
+            'fallback' => false,
+            'model' => 'miauw-action-confirmed',
+        );
+    } catch (Throwable $error) {
+        miauw_trace_record($tool, 'error', array(
+            'type' => 'acao',
+            'summary' => (string) ($pending['summary'] ?? 'Falha em acao confirmada.'),
+            'requires_confirmation' => true,
+            'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+            'error' => $error->getMessage(),
+        ));
+
+        return array(
+            'text' => miauw_action_error_reply($error),
+            'fallback' => false,
+            'model' => 'miauw-action',
+        );
+    }
 }
 
 function miauw_redact_secret_fragments(string $text): string
@@ -1386,8 +1827,18 @@ function miauw_widget_vague_reply(string $message, string $pageContext = ''): ?s
         . "\nBaixo impacto operacional. Proxima bagunca, por favor.";
 }
 
-function miauw_try_controlled_action(string $message, int $userId, string $pageContext = '', bool $widgetMode = false): ?array
+function miauw_try_controlled_action(string $message, int $userId, string $pageContext = '', bool $widgetMode = false, ?int $conversationId = null, ?string $traceId = null): ?array
 {
+    if ($traceId !== null || $conversationId !== null) {
+        $trace = miauw_trace_context();
+        miauw_trace_set_context($traceId ?: (string) ($trace['trace_id'] ?? ''), $conversationId, $userId, isset($trace['mensagem_id']) ? (int) $trace['mensagem_id'] : null);
+    }
+
+    $confirmationReply = miauw_try_confirmation_reply($message, $userId);
+    if ($confirmationReply !== null) {
+        return $confirmationReply;
+    }
+
     $pendingKey = 'miauw_pending_financeiro_lancamento';
     $pending = $_SESSION[$pendingKey] ?? null;
 
@@ -1405,42 +1856,22 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
 
         $responsible = miauw_responsible_from_pending_answer($message);
         if ($responsible !== '') {
-            try {
-                if (function_exists('miauw_intelligence_learn_financeiro_command')) {
-                    $learnedPending = $pending;
-                    $learnedPending['responsavel'] = $responsible;
-                    miauw_intelligence_learn_financeiro_command((string) ($pending['raw_message'] ?? $message), $learnedPending);
-                }
+            $userObservation = (string) ($pending['observacao_usuario'] ?? '');
+            $baseMessage = $userObservation !== '' ? 'obs: ' . $userObservation : '';
+            $observation = function_exists('miauw_skill_financeiro_obs_from_message')
+                ? miauw_skill_financeiro_obs_from_message($baseMessage, (string) $pending['categoria'], $responsible)
+                : 'Miauby criou este lancamento. Responsavel informado: ' . $responsible . '.';
+            $command = $pending;
+            $command['responsavel'] = $responsible;
+            $command['observacao'] = $observation;
+            $command['raw_message'] = (string) ($pending['raw_message'] ?? $message);
+            unset($_SESSION[$pendingKey]);
 
-                $userObservation = (string) ($pending['observacao_usuario'] ?? '');
-                $baseMessage = $userObservation !== '' ? 'obs: ' . $userObservation : '';
-                $observation = function_exists('miauw_skill_financeiro_obs_from_message')
-                    ? miauw_skill_financeiro_obs_from_message($baseMessage, (string) $pending['categoria'], $responsible)
-                    : 'Miauby criou este lancamento. Responsavel informado: ' . $responsible . '.';
+            $toolName = strcasecmp((string) ($command['categoria'] ?? ''), 'Sangria') === 0
+                ? 'registrar_sangria'
+                : 'criar_lancamento_financeiro';
 
-                $result = miauw_skill_create_financeiro_lancamento(
-                    (string) $pending['categoria'],
-                    (float) $pending['valor'],
-                    $observation,
-                    (string) $pending['data'],
-                    $responsible
-                );
-                unset($_SESSION[$pendingKey]);
-
-                return array(
-                    'text' => miauw_skill_financeiro_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            } catch (Throwable $error) {
-                unset($_SESSION[$pendingKey]);
-
-                return array(
-                    'text' => miauw_action_error_reply($error),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            }
+            return miauw_confirmation_request_reply($toolName, $command, $userId);
         }
 
         return array(
@@ -1471,29 +1902,9 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             : null;
 
         if (is_array($command) && trim((string) ($command['produto'] ?? '')) !== '' && trim((string) ($command['responsavel'] ?? '')) !== '') {
-            try {
-                $command['usuario_id'] = $userId;
-                $sessionUser = function_exists('current_user') ? current_user() : null;
-                if (is_array($sessionUser) && trim((string) ($sessionUser['username'] ?? '')) !== '') {
-                    $command['username'] = (string) $sessionUser['username'];
-                }
-                $result = miauw_skill_create_cotacao_encomenda($command);
-                unset($_SESSION[$pendingOrderKey]);
+            unset($_SESSION[$pendingOrderKey]);
 
-                return array(
-                    'text' => miauw_skill_cotacao_encomenda_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            } catch (Throwable $error) {
-                unset($_SESSION[$pendingOrderKey]);
-
-                return array(
-                    'text' => miauw_action_error_reply($error),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            }
+            return miauw_confirmation_request_reply('criar_encomenda_cotacao', $command, $userId);
         }
 
         $_SESSION[$pendingOrderKey] = is_array($command) ? $command : $pendingOrder;
@@ -1538,6 +1949,15 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
 
             try {
                 $result = miauw_skill_create_tarefa($command, $userId);
+                miauw_trace_record('criar_tarefa', 'ok', array(
+                    'type' => 'acao',
+                    'summary' => 'Tarefa criada pelo Miauby.',
+                    'payload' => array(
+                        'titulo' => (string) ($command['titulo'] ?? ''),
+                        'prioridade' => (string) ($command['prioridade'] ?? 'normal'),
+                        'id' => (int) ($result['id'] ?? 0),
+                    ),
+                ));
 
                 return array(
                     'text' => miauw_skill_tarefa_action_reply($result),
@@ -1545,6 +1965,12 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
                     'model' => 'miauw-tarefa-action',
                 );
             } catch (Throwable $error) {
+                miauw_trace_record('criar_tarefa', 'error', array(
+                    'type' => 'acao',
+                    'summary' => 'Falha ao criar tarefa pelo Miauby.',
+                    'error' => $error->getMessage(),
+                ));
+
                 return array(
                     'text' => miauw_action_error_reply($error),
                     'fallback' => false,
@@ -1567,89 +1993,28 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
                 );
             }
 
-            try {
-                $command['usuario_id'] = $userId;
-                $sessionUser = function_exists('current_user') ? current_user() : null;
-                if (is_array($sessionUser) && trim((string) ($sessionUser['username'] ?? '')) !== '') {
-                    $command['username'] = (string) $sessionUser['username'];
-                }
-                $result = miauw_skill_create_cotacao_encomenda($command);
-
-                return array(
-                    'text' => miauw_skill_cotacao_encomenda_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            } catch (Throwable $error) {
-                return array(
-                    'text' => miauw_action_error_reply($error),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            }
+            return miauw_confirmation_request_reply('criar_encomenda_cotacao', $command, $userId);
         }
     }
 
     if (function_exists('miauw_skill_cotacao_urgente_command_from_message')) {
         $command = miauw_skill_cotacao_urgente_command_from_message($message);
         if (is_array($command)) {
-            try {
-                $result = miauw_skill_create_cotacao_urgente($command);
-
-                return array(
-                    'text' => miauw_skill_cotacao_urgente_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            } catch (Throwable $error) {
-                return array(
-                    'text' => miauw_action_error_reply($error),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            }
+            return miauw_confirmation_request_reply('criar_cotacao_urgente', $command, $userId);
         }
     }
 
     if (function_exists('miauw_skill_cotacao_planilha_command_from_message')) {
         $command = miauw_skill_cotacao_planilha_command_from_message($message);
         if (is_array($command)) {
-            try {
-                $result = miauw_skill_create_cotacao_planilha($command);
-
-                return array(
-                    'text' => miauw_skill_cotacao_planilha_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            } catch (Throwable $error) {
-                return array(
-                    'text' => miauw_action_error_reply($error),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            }
+            return miauw_confirmation_request_reply('criar_planilha_cotacao', $command, $userId);
         }
     }
 
     if (function_exists('miauw_skill_cotacao_rapida_command_from_message')) {
         $command = miauw_skill_cotacao_rapida_command_from_message($message);
         if (is_array($command)) {
-            try {
-                $result = miauw_skill_create_cotacao_rapida($command);
-
-                return array(
-                    'text' => miauw_skill_cotacao_rapida_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            } catch (Throwable $error) {
-                return array(
-                    'text' => miauw_action_error_reply($error),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            }
+            return miauw_confirmation_request_reply('criar_cotacao_rapida', $command, $userId);
         }
     }
 
@@ -1729,21 +2094,7 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     if (function_exists('miauw_skill_financeiro_daily_revenue_command_from_message')) {
         $dailyRevenue = miauw_skill_financeiro_daily_revenue_command_from_message($message);
         if (is_array($dailyRevenue)) {
-            try {
-                $result = miauw_skill_create_financeiro_faturamentos($dailyRevenue, $userId);
-
-                return array(
-                    'text' => miauw_skill_financeiro_faturamento_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-financeiro-faturamento',
-                );
-            } catch (Throwable $error) {
-                return array(
-                    'text' => miauw_action_error_reply($error),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
-            }
+            return miauw_confirmation_request_reply('registrar_faturamento_diario', $dailyRevenue, $userId);
         }
     }
 
@@ -1764,10 +2115,6 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
                 ? miauw_skill_financeiro_command_from_message($message)
                 : null;
 
-            if (is_array($command) && function_exists('miauw_intelligence_learn_financeiro_command')) {
-                miauw_intelligence_learn_financeiro_command($message, $command);
-            }
-
             if (is_array($command) && trim((string) ($command['responsavel'] ?? '')) === '') {
                 $command['raw_message'] = $message;
                 $_SESSION[$pendingKey] = $command;
@@ -1780,19 +2127,12 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             }
 
             if (is_array($command)) {
-                $result = miauw_skill_create_financeiro_lancamento(
-                    (string) $command['categoria'],
-                    (float) $command['valor'],
-                    (string) $command['observacao'],
-                    (string) $command['data'],
-                    (string) $command['responsavel']
-                );
+                $command['raw_message'] = $message;
+                $toolName = strcasecmp((string) ($command['categoria'] ?? ''), 'Sangria') === 0
+                    ? 'registrar_sangria'
+                    : 'criar_lancamento_financeiro';
 
-                return array(
-                    'text' => miauw_skill_financeiro_action_reply($result),
-                    'fallback' => false,
-                    'model' => 'miauw-action',
-                );
+                return miauw_confirmation_request_reply($toolName, $command, $userId);
             }
         } catch (Throwable $error) {
             return array(
@@ -2302,6 +2642,30 @@ function miauw_openai_tools(): array
 
 function miauw_openai_tool_result(string $name, array $args): string
 {
+    if (miauw_tool_requires_confirmation($name)) {
+        $command = $args;
+        if ($name === 'criar_encomenda_cotacao') {
+            $command['observacao_usuario'] = (string) ($args['observacao'] ?? $args['observacao_usuario'] ?? '');
+            $command['raw_message'] = 'tool_call_criar_encomenda_cotacao';
+        }
+        if ($name === 'criar_lancamento_financeiro') {
+            $command['raw_message'] = 'tool_call_criar_lancamento_financeiro';
+        }
+
+        $user = function_exists('current_user') ? current_user() : null;
+        $confirmation = miauw_queue_confirmation(
+            $name,
+            $command,
+            miauw_confirmation_summary($name, $command),
+            is_array($user) ? (int) ($user['id'] ?? 0) : null
+        );
+
+        return "CONFIRMACAO_NECESSARIA\n"
+            . "Resumo: " . (string) $confirmation['summary'] . "\n"
+            . "Codigo: " . (string) $confirmation['id'] . "\n"
+            . "Responda ao operador que a acao so sera gravada depois da confirmacao.";
+    }
+
     if ($name === 'resumo_financeiro') {
         return miauw_skill_context_for_message(sprintf('resumo financeiro %02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))));
     }
@@ -2651,10 +3015,34 @@ function miauw_openai_function_outputs(array $data): array
             $args = is_array($decoded) ? $decoded : array();
         }
 
+        $name = (string) ($item['name'] ?? '');
+        $started = microtime(true);
+
+        try {
+            $output = miauw_openai_tool_result($name, $args);
+            miauw_trace_record($name, 'ok', array(
+                'type' => 'tool',
+                'summary' => 'Tool usada pela camada online.',
+                'payload' => array('args' => $args),
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                'requires_confirmation' => miauw_tool_requires_confirmation($name),
+            ));
+        } catch (Throwable $error) {
+            miauw_trace_record($name, 'error', array(
+                'type' => 'tool',
+                'summary' => 'Falha ao usar tool pela camada online.',
+                'payload' => array('args' => $args),
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                'error' => $error->getMessage(),
+                'requires_confirmation' => miauw_tool_requires_confirmation($name),
+            ));
+            throw $error;
+        }
+
         $outputs[] = array(
             'type' => 'function_call_output',
             'call_id' => (string) ($item['call_id'] ?? ''),
-            'output' => miauw_openai_tool_result((string) ($item['name'] ?? ''), $args),
+            'output' => $output,
         );
     }
 

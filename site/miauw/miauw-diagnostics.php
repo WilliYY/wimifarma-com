@@ -246,6 +246,68 @@ function miauw_diagnostics_message_stats(): array
     );
 }
 
+function miauw_diagnostics_recent_tool_traces(int $limit = 10): array
+{
+    miauw_ensure_schema();
+    $limit = max(1, min(30, $limit));
+
+    try {
+        $stmt = db()->query(
+            'SELECT trace_id, ferramenta, modulo, tipo, status, risco, requer_confirmacao, resumo, duracao_ms, created_at
+             FROM miauw_tool_traces
+             ORDER BY id DESC
+             LIMIT ' . $limit
+        );
+        $rows = $stmt ? $stmt->fetchAll() : array();
+    } catch (Throwable $error) {
+        error_log('Miauby diagnostics tool trace failed: ' . $error->getMessage());
+        return array();
+    }
+
+    return array_map(static function (array $row): array {
+        return array(
+            'trace_id' => miauw_diagnostics_safe_text((string) ($row['trace_id'] ?? ''), 32),
+            'ferramenta' => miauw_diagnostics_safe_text((string) ($row['ferramenta'] ?? ''), 120),
+            'modulo' => miauw_diagnostics_safe_text((string) ($row['modulo'] ?? ''), 60),
+            'tipo' => miauw_diagnostics_safe_text((string) ($row['tipo'] ?? ''), 40),
+            'status' => miauw_diagnostics_safe_text((string) ($row['status'] ?? ''), 30),
+            'risco' => miauw_diagnostics_safe_text((string) ($row['risco'] ?? ''), 20),
+            'confirmacao' => !empty($row['requer_confirmacao']),
+            'resumo' => miauw_diagnostics_safe_text((string) ($row['resumo'] ?? ''), 220),
+            'duracao_ms' => isset($row['duracao_ms']) ? (int) $row['duracao_ms'] : null,
+            'created_at' => (string) ($row['created_at'] ?? ''),
+        );
+    }, $rows ?: array());
+}
+
+function miauw_diagnostics_trace_stats(): array
+{
+    miauw_ensure_schema();
+
+    try {
+        $stmt = db()->query(
+            "SELECT
+                COUNT(*) AS total,
+                SUM(status = 'error') AS erros,
+                SUM(requer_confirmacao = 1) AS confirmacoes,
+                SUM(status = 'pending_confirmation') AS pendentes
+             FROM miauw_tool_traces
+             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+        );
+        $row = $stmt ? ($stmt->fetch() ?: array()) : array();
+    } catch (Throwable $error) {
+        error_log('Miauby diagnostics trace stats failed: ' . $error->getMessage());
+        $row = array();
+    }
+
+    return array(
+        'total' => (int) ($row['total'] ?? 0),
+        'erros' => (int) ($row['erros'] ?? 0),
+        'confirmacoes' => (int) ($row['confirmacoes'] ?? 0),
+        'pendentes' => (int) ($row['pendentes'] ?? 0),
+    );
+}
+
 function miauw_diagnostics_summary(bool $runScan = true): array
 {
     miauw_diagnostics_ensure_review_columns();
@@ -276,6 +338,7 @@ function miauw_diagnostics_summary(bool $runScan = true): array
         'memorias' => $memoryCounts,
         'padroes' => $patternCounts,
         'mensagens_24h' => miauw_diagnostics_message_stats(),
+        'traces_24h' => miauw_diagnostics_trace_stats(),
         'diagnosticos_recentes' => count(miauw_diagnostics_recent_internal_events(20)),
     );
 }
@@ -288,6 +351,7 @@ function miauw_diagnostics_panel_data(bool $runScan = true): array
         'patterns' => miauw_diagnostics_recent_patterns(12, 'pendente'),
         'alerts' => function_exists('miauw_intelligence_public_alerts') ? miauw_intelligence_public_alerts(8) : array(),
         'events' => miauw_diagnostics_recent_internal_events(8),
+        'traces' => miauw_diagnostics_recent_tool_traces(10),
     );
 }
 

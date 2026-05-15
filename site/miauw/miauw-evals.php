@@ -73,7 +73,7 @@ function miauw_eval_assert_no_forbidden(string $text, string $message): void
     }
 }
 
-miauw_eval_add('agent_status_fase4', static function (): void {
+miauw_eval_add('agent_status_fase5', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
@@ -83,6 +83,9 @@ miauw_eval_add('agent_status_fase4', static function (): void {
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
     miauw_eval_assert(in_array('painel_diagnostico_revisao', (array) ($status['features'] ?? array()), true), 'Fase 3 precisa anunciar painel de diagnostico no status.');
     miauw_eval_assert(in_array('tools_operacionais_migradas', (array) ($status['features'] ?? array()), true), 'Fase 4 precisa anunciar tools operacionais migradas no status.');
+    miauw_eval_assert(in_array('rastreabilidade_por_conversa', (array) ($status['features'] ?? array()), true), 'Fase 5 precisa anunciar rastreabilidade.');
+    miauw_eval_assert(in_array('confirmacao_acoes_fortes', (array) ($status['features'] ?? array()), true), 'Fase 5 precisa anunciar confirmacao.');
+    miauw_eval_assert(in_array('streaming_visual_widget', (array) ($status['features'] ?? array()), true), 'Fase 5 precisa anunciar streaming visual.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {
@@ -223,6 +226,53 @@ miauw_eval_add('tool_codigos_contrato', static function (): void {
     $registry = miauw_skill_registry_public();
     miauw_eval_assert(!empty($registry['buscar_codigo_comissao']['openai_tool']), 'Buscar codigo deve estar disponivel como tool.');
     miauw_eval_assert(!empty($registry['resumo_codigos']['openai_tool']), 'Resumo de codigos deve estar disponivel como tool.');
+});
+
+miauw_eval_add('fase5_confirmacao_acao_forte', static function (): void {
+    miauw_ensure_schema();
+    $_SESSION['miauw_pending_confirm_action'] = null;
+    unset($_SESSION['miauw_pending_confirm_action']);
+    miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
+
+    $reply = miauw_confirmation_request_reply('registrar_sangria', array(
+        'categoria' => 'Sangria',
+        'valor' => 30.0,
+        'responsavel' => 'Maria',
+        'observacao' => 'eval sem escrita real',
+        'data' => date('Y-m-d'),
+    ), 1);
+
+    miauw_eval_assert(is_array($reply['confirmation'] ?? null), 'Confirmacao nao retornou payload para o widget.');
+    miauw_eval_assert_contains('confirma', (string) ($reply['text'] ?? ''), 'Resposta de acao forte precisa pedir confirmacao.');
+    miauw_eval_assert(is_array($_SESSION['miauw_pending_confirm_action'] ?? null), 'Acao forte nao ficou pendente na sessao.');
+
+    $cancel = miauw_try_controlled_action('cancelar ' . (string) $reply['confirmation']['id'], 1);
+    miauw_eval_assert(is_array($cancel), 'Cancelamento da confirmacao nao gerou resposta.');
+    miauw_eval_assert_contains('Cancelado', (string) ($cancel['text'] ?? ''), 'Cancelamento deve ser claro.');
+    miauw_eval_assert(!isset($_SESSION['miauw_pending_confirm_action']), 'Cancelamento deve limpar a acao pendente.');
+
+    miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
+    $parsed = miauw_try_controlled_action('sangria 30 Maria', 1, '', true);
+    miauw_eval_assert(is_array($parsed), 'Intent real de sangria deveria ser capturada localmente.');
+    miauw_eval_assert(is_array($parsed['confirmation'] ?? null), 'Intent real de sangria precisa virar confirmacao, nao escrita direta.');
+    $parsedCancel = miauw_try_controlled_action('cancelar ' . (string) $parsed['confirmation']['id'], 1);
+    miauw_eval_assert(is_array($parsedCancel), 'Cancelamento da intent real nao respondeu.');
+    miauw_eval_assert(!isset($_SESSION['miauw_pending_confirm_action']), 'Cancelamento da intent real deve limpar pendencia.');
+});
+
+miauw_eval_add('fase5_traces_diagnostico', static function (): void {
+    miauw_ensure_schema();
+    miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
+    miauw_trace_record('eval_trace', 'ok', array(
+        'type' => 'eval',
+        'summary' => 'Trace de avaliacao sem dado sensivel.',
+        'payload' => array('ok' => true),
+    ));
+
+    $traces = miauw_diagnostics_recent_tool_traces(5);
+    miauw_eval_assert(is_array($traces), 'Diagnostico de traces deve retornar lista.');
+    miauw_eval_assert(count($traces) > 0, 'Trace de avaliacao nao apareceu no diagnostico.');
+    miauw_eval_assert(isset($traces[0]['ferramenta'], $traces[0]['status']), 'Trace recente veio incompleto.');
 });
 
 $passed = 0;

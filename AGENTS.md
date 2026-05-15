@@ -259,6 +259,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A consulta/escrita de encomenda da Cotacao pelo Miauby agora usa a Cotacao V2 por ponte interna tokenizada no Node: `GET /cotacao/api/internal/search` e `POST /cotacao/api/internal/encomendas`. Esses endpoints exigem `X-Miauw-Internal-Token` e ficam desabilitados se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
 - O PHP do Miauby usa `COTACAO_INTERNAL_BASE_URL` para falar com `wimifarma-cotacao-app:3000/cotacao`, e usa `COTACAO_INTERNAL_TOKEN` com fallback para `MIAUW_GUARDIAN_TOKEN`; valores reais continuam somente no `.env`/ambiente.
 - `site/miauw/miauw-evals.php` cobre a Fase 4 com registry das tools core, sangria sem valor proibida e contrato das tools de Codigos, sem chamar OpenAI nem executar escritas reais.
+- O Miauby iniciou a Fase 5 com `MIAUW_AGENT_VERSION=2.0-fase5`, tabela `miauw_tool_traces`, trace por conversa/request/tool, status de traces no painel `/miauw/diagnostico.php`, streaming visual no chat/widget e card de confirmacao para acoes fortes antes de gravar dados.
+- Acoes fortes do Miauby, como sangria/lancamento financeiro, faturamento diario, encomenda/urgente/cotacao rapida e nova planilha de cotacao, devem pedir confirmacao humana e so executar apos confirmar. A resposta e os traces devem continuar sem expor chave, payload bruto, SQL, stack trace ou bastidor tecnico.
 
 ## Estado validado em 2026-05-11
 

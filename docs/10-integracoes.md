@@ -36,6 +36,7 @@ Status operacional:
 - A Fase 2 do Miauby v2 adiciona `site/miauw/miauw-evals.php` para validar localmente intents, rotas de modelo, registry de skills e respostas proibidas sem chamar OpenAI nem executar escritas reais.
 - Os guardrails finais tambem removem fragmentos de chaves `sk-...` de respostas ao operador, substituindo por credencial interna.
 - A Fase 4 registra as tools core no registry e conecta o PHP do Miauby com a Cotacao V2 por endpoint interno tokenizado para consulta e criacao de encomenda.
+- A Fase 5 registra traces estruturados de request/tool em `miauw_tool_traces`, mostra tools recentes no diagnostico, bloqueia escrita forte ate confirmacao humana e usa streaming visual no widget/chat. Streaming online real fica para uma futura separacao do Miauby em servico Node/TypeScript/Agents SDK.
 
 Tabelas:
 
@@ -124,6 +125,7 @@ Direcao:
 - revisar memorias e padroes antes de transformar em automacao.
 - preservar isolamento operacional do Miauby v2 ao adicionar novas tools.
 - manter `miauw-evals.php` atualizado sempre que novas intents/tools forem adicionadas.
+- novas tools de escrita forte devem declarar risco no registry e passar pelo fluxo de confirmacao/traces antes da execucao.
 - para Cotacao, usar somente a ponte interna da V2 (`COTACAO_INTERNAL_BASE_URL` + token), evitando qualquer escrita direta nas tabelas antigas removidas.
 
 Documento especifico:

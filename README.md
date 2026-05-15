@@ -72,6 +72,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - `miauw_memorias` e `miauw_padroes` agora possuem status de revisao (`pendente`, `aprovado`, `ignorado`); o painel marca revisao sem apagar dados.
 - Miauby iniciou a Fase 4 do agente operacional v2: as tools core ficam registradas e cobrem sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
 - A consulta e criacao de encomenda na Cotacao pelo Miauby usam uma ponte interna com o servico Node da Cotacao V2, protegida por token, em vez de depender da Cotacao PHP antiga.
+- Miauby iniciou a Fase 5 do agente operacional v2: `miauw_tool_traces` registra trace por conversa/request/tool, o painel `/miauw/diagnostico.php` mostra tools recentes e estatisticas de traces, o widget/chat exibe resposta digitando visualmente e acoes fortes exigem card de confirmacao antes de gravar.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.

@@ -49,6 +49,7 @@ Ele valida:
 - Fase 4 das tools core: sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
 - sangria sem valor nao vira escrita;
 - contrato das tools de Codigos (`resumo_codigos` e `buscar_codigo_comissao`).
+- Fase 5 do Miauby: status publico anuncia rastreabilidade/confirmacao/streaming visual, acao forte pede confirmacao antes de escrita e traces aparecem no diagnostico.
 
 Rodar pelo container:
 
@@ -86,7 +87,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Adicionar testes de API autenticada.
 - Adicionar testes de integridade para Cotacao e Financeiro.
 - Adicionar teste de seguranca basico para segredos em Git.
-- Ampliar evals do Miauby para cotacao rapida, alertas, memoria, confirmacao de acoes fortes e ferramentas OpenAI registradas.
+- Ampliar evals do Miauby para cotacao rapida, alertas, memoria, ferramentas OpenAI registradas e casos destrutivos futuros.
 
 ## Evolucao futura
 

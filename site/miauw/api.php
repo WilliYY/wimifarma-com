@@ -70,8 +70,24 @@ try {
             $messageForAi .= "\n\nModo de resposta: widget compacto. Seja curto, operacional e com voz Miauby. Se estiver vago, peca so o essencial.";
         }
 
-        miauw_add_message($conversationId, (int) $user['id'], 'user', $message);
-        $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode);
+        $traceId = function_exists('miauw_trace_new_id') ? miauw_trace_new_id() : bin2hex(random_bytes(8));
+        $userMessageId = miauw_add_message($conversationId, (int) $user['id'], 'user', $message);
+        if (function_exists('miauw_trace_set_context')) {
+            miauw_trace_set_context($traceId, $conversationId, (int) $user['id'], $userMessageId);
+        }
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('api_send', 'received', array(
+                'type' => 'request',
+                'summary' => 'Mensagem recebida pelo Miauby.',
+                'payload' => array(
+                    'widget' => $widgetMode,
+                    'page_context' => $pageContext !== '',
+                    'message_size' => miauw_strlen($message),
+                ),
+            ));
+        }
+
+        $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
         if ($reply === null) {
             $reply = miauw_generate_reply($conversationId, $messageForAi, $widgetMode);
         }
@@ -81,7 +97,22 @@ try {
         if ($widgetMode && function_exists('miauw_widget_compact_reply')) {
             $reply['text'] = miauw_widget_compact_reply((string) ($reply['text'] ?? ''), $message);
         }
-        miauw_add_message($conversationId, null, 'assistant', $reply['text'], $reply['model'], (bool) $reply['fallback']);
+        $assistantMessageId = miauw_add_message($conversationId, null, 'assistant', $reply['text'], $reply['model'], (bool) $reply['fallback']);
+        $confirmation = is_array($reply['confirmation'] ?? null)
+            ? $reply['confirmation']
+            : (function_exists('miauw_current_confirmation_response') ? miauw_current_confirmation_response() : null);
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('api_send', 'ok', array(
+                'type' => 'request',
+                'summary' => 'Resposta entregue pelo Miauby.',
+                'mensagem_id' => $assistantMessageId,
+                'payload' => array(
+                    'model' => (string) ($reply['model'] ?? ''),
+                    'fallback' => (bool) ($reply['fallback'] ?? false),
+                    'requires_confirmation' => is_array($confirmation),
+                ),
+            ));
+        }
         $guardianCount = function_exists('miauw_intelligence_active_alert_count')
             ? miauw_intelligence_active_alert_count()
             : (function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : 0);
@@ -95,6 +126,8 @@ try {
             'reply_parts' => function_exists('miauw_reply_parts') ? miauw_reply_parts($reply['text'], $widgetMode ? 2 : 5) : array($reply['text']),
             'fallback' => (bool) $reply['fallback'],
             'model' => $reply['model'],
+            'trace_id' => $traceId,
+            'confirmation' => $confirmation,
             'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
                 'name' => 'Miauby',
                 'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
