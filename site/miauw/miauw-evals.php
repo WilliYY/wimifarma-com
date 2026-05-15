@@ -73,7 +73,7 @@ function miauw_eval_assert_no_forbidden(string $text, string $message): void
     }
 }
 
-miauw_eval_add('agent_status_fase2', static function (): void {
+miauw_eval_add('agent_status_fase3', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
@@ -81,6 +81,7 @@ miauw_eval_add('agent_status_fase2', static function (): void {
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
+    miauw_eval_assert(in_array('painel_diagnostico_revisao', (array) ($status['features'] ?? array()), true), 'Fase 3 precisa anunciar painel de diagnostico no status.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {
@@ -129,6 +130,17 @@ miauw_eval_add('registry_skills_essenciais', static function (): void {
 
     $summary = miauw_skill_registry_summary();
     miauw_eval_assert((int) ($summary['total'] ?? 0) >= count($required), 'Resumo do registry esta incompleto.');
+});
+
+miauw_eval_add('diagnostico_fase3_payload', static function (): void {
+    miauw_diagnostics_ensure_review_columns();
+    $data = miauw_diagnostics_panel_data(false);
+
+    miauw_eval_assert(isset($data['summary'], $data['memories'], $data['patterns'], $data['alerts'], $data['events']), 'Payload do diagnostico incompleto.');
+    miauw_eval_assert(is_array($data['summary']['memorias'] ?? null), 'Resumo de memorias ausente.');
+    miauw_eval_assert(is_array($data['summary']['padroes'] ?? null), 'Resumo de padroes ausente.');
+    miauw_eval_assert(is_array($data['summary']['skills'] ?? null), 'Resumo de skills ausente no diagnostico.');
+    miauw_eval_assert_no_forbidden(json_encode($data['summary'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '', 'Resumo do diagnostico expos termo proibido.');
 });
 
 miauw_eval_add('modelo_rota_fast_smart_boss', static function (): void {

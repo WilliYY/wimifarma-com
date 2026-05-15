@@ -44,12 +44,20 @@ Miauby ja possui:
   - valida rotas `fast`, `smart` e `boss`;
   - valida intents de lancamento financeiro, tarefa, encomenda e urgente de Cotacao;
   - nao chama OpenAI e nao executa escritas reais nos modulos.
+- Fase 3 do agente operacional v2 iniciada com `/miauw/diagnostico.php`:
+  - painel restrito a `admin`, `gerente` ou usuario `adm`;
+  - mostra status publico do agente/API, modelos, registry de skills, alertas e diagnosticos internos recentes;
+  - lista memorias e padroes pendentes para revisao;
+  - aprovar/ignorar memoria ou padrao apenas marca `revisao_status` e registra `wf_logs`, sem apagar dados;
+  - sanitiza textos do painel para reduzir risco de expor segredo, CPF, telefone, email ou bastidor tecnico.
 
 ## Arquivos, tabelas e servicos envolvidos
 
 Arquivos:
 
 - `site/miauw/api.php`
+- `site/miauw/diagnostico.php`
+- `site/miauw/miauw-diagnostics.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/miauw-evals.php`
 - `site/miauw/miauw-skills.php`
@@ -80,6 +88,7 @@ Integracoes:
 - Miauby nao deve ter acesso livre para executar SQL arbitrario.
 - Toda escrita importante deve passar por ferramenta controlada, validada e auditavel.
 - Memorias e padroes nao podem armazenar senhas, tokens, chaves, CPF/telefone sem necessidade ou dados sensiveis em texto solto.
+- Revisao de memorias e padroes deve marcar status e manter historico; nao apagar dado automaticamente por clique operacional.
 - Respostas generativas devem separar fato real, inferencia e proximo passo.
 - Balões do widget devem ser curtos, sem codigo, e usar o comentario do alerta quando existir. Para encomendas da Cotacao, comentar apenas quando passou de 1 dia.
 - A autonomia deve ser gradual: primeiro diagnosticar, depois sugerir, depois executar apenas acoes pequenas com trilha de auditoria.
@@ -95,8 +104,8 @@ Integracoes:
 - Usar `miauw_skill_registry()` antes de adicionar novas tools soltas.
 - Manter avaliacoes simples de skills em `site/miauw/miauw-evals.php`: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
-- Criar tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
-- Quando a tela de diagnostico existir, ela deve usar o status publico (`configured`, `validated`, `status`) e permitir um teste online explicito, para nao chamar a OpenAI a cada abertura do widget.
+- Manter a tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
+- A tela de diagnostico usa o status publico (`configured`, `validated`, `status`) e nao chama a OpenAI automaticamente. Um teste online explicito ainda pode ser adicionado depois.
 - Preferir respostas operacionais e sem codigo para usuarios finais. Codigo, SQL, stack trace e comandos devem aparecer apenas em contexto tecnico autorizado.
 - Medir latencia do widget e da API antes de aumentar contexto, modelos ou autonomia. Primeiro otimizar consultas, cache e tools controladas.
 
@@ -114,7 +123,7 @@ Integracoes:
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Criar logs estruturados para execucao de skill.
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
-- Definir tela administrativa para revisar memorias e padroes aprendidos.
+- Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
 - Definir quando Miauby pode executar escrita automaticamente e quando precisa pedir confirmacao.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 
@@ -122,6 +131,6 @@ Integracoes:
 
 - Fase 1: documentar tools atuais, criar registry e aplicar isolamento operacional/persona v2 sem trocar arquitetura. Em andamento/concluido parcialmente.
 - Fase 2: adicionar testes de intents e respostas proibidas. Em andamento com runner CLI local.
-- Fase 3: criar painel de diagnostico e revisao de memoria/padroes.
+- Fase 3: criar painel de diagnostico e revisao de memoria/padroes. Em andamento com painel restrito e revisao por status.
 - Fase 4: transformar padroes recorrentes em sugestoes de melhoria de processo.
 - Fase 5: integrar Cotacao + Google Sheets com auditoria e usar Miauby para resumir divergencias.

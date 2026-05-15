@@ -68,6 +68,8 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 1 do agente operacional v2: `MIAUW_AGENT_VERSION`, prompt/politica versionados, isolamento de bastidores tecnicos, guardrails finais contra mencoes a agente de desenvolvimento/fornecedor/chaves/prompts e status de versao no widget.
 - Miauby iniciou a Fase 2 do agente operacional v2 com evals locais em `site/miauw/miauw-evals.php`, cobrindo guardrails, intents de Financeiro/Tarefas/Cotacao, rotas de modelo e registry de skills sem chamada online nem escrita real.
 - Os guardrails finais tambem redigem fragmentos de chaves `sk-...` como credencial interna antes de mostrar texto ao operador.
+- Miauby iniciou a Fase 3 com o painel restrito `/miauw/diagnostico.php`, reunindo status do agente/API, modelos, registry de skills, alertas, diagnosticos internos recentes e revisao segura de memorias/padroes.
+- `miauw_memorias` e `miauw_padroes` agora possuem status de revisao (`pendente`, `aprovado`, `ignorado`); o painel marca revisao sem apagar dados.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -128,6 +130,7 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/financeiro/login.php`
 - `http://127.0.0.1:3002/tarefa/login.php`
 - `http://127.0.0.1:3002/miauw/login.php`
+- `http://127.0.0.1:3002/miauw/diagnostico.php`
 - `http://127.0.0.1:3002/miauw/widget-status.php`
 
 ## Comandos principais

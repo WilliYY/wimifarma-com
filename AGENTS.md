@@ -253,6 +253,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - O Miauby iniciou a Fase 1 do agente operacional v2 no backend PHP atual: possui `MIAUW_AGENT_VERSION`, `MIAUW_AGENT_POLICY_VERSION`, status publico de agente no widget/API, prompt com isolamento operacional e guardrail final que substitui mencoes a bastidores tecnicos por suporte tecnico interno sem expor agente de desenvolvimento, fornecedor, chave, prompt ou stack trace ao operador.
 - O Miauby iniciou a Fase 2 do agente operacional v2 com `site/miauw/miauw-evals.php`, runner CLI que testa intents de Financeiro, Tarefas e Cotacao, rotas de modelo, registry de skills e respostas proibidas sem chamar a OpenAI nem executar escritas reais. Rodar com `docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php`.
 - Os guardrails finais do Miauby tambem substituem fragmentos de chaves `sk-...` por `credencial interna` antes de qualquer resposta ao operador.
+- O Miauby iniciou a Fase 3 com `/miauw/diagnostico.php`, painel restrito a `admin`, `gerente` ou usuario `adm`, mostrando status do agente/API, modelos, registry de skills, alertas, diagnosticos internos recentes e revisao de `miauw_memorias`/`miauw_padroes`.
+- `miauw_memorias` e `miauw_padroes` possuem colunas aditivas `revisao_status`, `reviewed_by` e `reviewed_at`; aprovar/ignorar no painel apenas marca revisao e registra `wf_logs`, sem apagar dados.
 
 ## Estado validado em 2026-05-11
 

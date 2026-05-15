@@ -23,6 +23,7 @@ Rotas:
 - `/financeiro/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
+- `/miauw/diagnostico.php`
 - `/wp-login.php`
 
 Tabelas:
@@ -40,6 +41,7 @@ Tabelas:
 - Perfis/roles em `wf_users.role` devem ser respeitados quando a rota exigir permissao.
 - WordPress nao deve ser confundido com login dos modulos internos.
 - A exclusao de tabelas inteiras em `/codigos/` exige sessao interna ativa, CSRF e senha operacional `wimifarma`; essa senha pode ser alterada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
+- O painel `/miauw/diagnostico.php` exige usuario interno autenticado e fica restrito a role `admin`, role `gerente` ou username `adm`; acoes de revisao usam CSRF.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -61,6 +63,7 @@ Tabelas:
 - Remover ou substituir fallbacks legados de login.
 - Revisar fluxo de desbloqueio de areas sensiveis.
 - Criar tela/rotina segura para administracao de usuarios internos.
+- Mapear formalmente quais usuarios alem de `admin`/`gerente` devem acessar diagnosticos do Miauby.
 - Documentar politica de senha e recuperacao de acesso.
 
 ## Evolucao futura

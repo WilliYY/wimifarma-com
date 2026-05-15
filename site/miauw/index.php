@@ -11,6 +11,7 @@ $avatar = miauw_avatar_src();
 $guardianAlerts = array();
 $guardianAlertCount = 0;
 $guardianPatterns = array();
+$canOpenDiagnostics = function_exists('miauw_diagnostics_can_review') && miauw_diagnostics_can_review($user);
 
 try {
     if (function_exists('miauw_guardian_scan')) {
@@ -54,6 +55,9 @@ try {
             <a href="/cashback/">Cashback</a>
             <a href="/cotacao/">Cotacao</a>
             <a href="/financeiro/">Financeiro</a>
+            <?php if ($canOpenDiagnostics) : ?>
+                <a href="/miauw/diagnostico.php">Diagnostico</a>
+            <?php endif; ?>
             <a class="soft" href="/miauw/logout.php">Sair</a>
         </nav>
     </header>

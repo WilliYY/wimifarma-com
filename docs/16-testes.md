@@ -26,6 +26,7 @@ Rotas de smoke test:
 - `/financeiro/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
+- `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
 - `/miauw/widget-status.php`
 - `/cotacao/health` deve responder JSON 200 pela Cotacao V2
 - `/cotacao/api/bootstrap` deve exigir sessao e redirecionar/recusar quando nao autenticado
@@ -61,11 +62,13 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em banco, testar pelo menos login/status e logs.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
+- Se mexer no painel de diagnostico do Miauby, validar login local e acesso a `/miauw/diagnostico.php`.
 
 ## Decisoes tecnicas ja tomadas
 
 - A fase atual prioriza smoke tests por causa da migracao.
 - O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
+- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3.
 
 ## Riscos ao alterar
 

@@ -146,6 +146,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
+- `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
+- Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.
 - `wptl_options` guarda URLs do WordPress e pode causar redirects errados se alterado sem cuidado.
 
 ## Decisoes tecnicas ja tomadas

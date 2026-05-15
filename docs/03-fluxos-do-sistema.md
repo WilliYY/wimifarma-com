@@ -203,11 +203,13 @@ Miauby e o assistente interno. Ele guarda conversas, memorias, conhecimentos, al
 Arquivos principais:
 
 - `site/miauw/index.php`
+- `site/miauw/diagnostico.php`
 - `site/miauw/api.php`
 - `site/miauw/widget-status.php`
 - `site/miauw/widget-auth.php`
 - `site/miauw/widget-alerts.php`
 - `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-diagnostics.php`
 - `site/miauw/miauw-skills.php`
 - `site/miauw/miauw-intelligence.php`
 - `site/miauw/miauw-farmacia-popular.php`
@@ -231,6 +233,7 @@ Direcao de evolucao:
 - evoluir por skills controladas, nao por acesso livre ao banco;
 - usar `miauw_skill_registry()` como fonte de inventario das skills antes de novas tools;
 - registrar padroes e memorias com revisao e auditoria;
+- revisar memorias e padroes pelo painel restrito `/miauw/diagnostico.php`, marcando status sem apagar dados;
 - separar leitura, sugestao e escrita;
 - documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.
 

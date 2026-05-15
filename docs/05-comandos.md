@@ -30,6 +30,8 @@ docker exec wimifarma-com-web php -l /var/www/html/cashback/config.php
 docker exec wimifarma-com-web php -l /var/www/html/cashback/functions.php
 docker exec wimifarma-com-web php -l /var/www/html/financeiro/financeiro-funcoes.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-funcoes.php
+docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-diagnostics.php
+docker exec wimifarma-com-web php -l /var/www/html/miauw/diagnostico.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-evals.php
 ```
 

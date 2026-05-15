@@ -34,15 +34,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260511b');
+    define('MIAUW_VERSION', '20260515d');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase2');
+    define('MIAUW_AGENT_VERSION', '2.0-fase3');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-evals');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-diagnostico');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -280,6 +280,7 @@ function miauw_agent_public_status(): array
             'skills_controladas',
             'diagnostico_interno',
             'evals_intents_guardrails',
+            'painel_diagnostico_revisao',
         ),
     );
 }

@@ -15,6 +15,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
+- `/miauw/diagnostico.php` e restrito a `admin`, `gerente` ou `adm`, usa CSRF nas acoes e sanitiza textos de memorias, padroes e diagnosticos antes de exibir.
 
 ## Arquivos envolvidos
 
@@ -38,6 +39,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Usar prepared statements.
 - Proteger jobs por token quando forem chamados externamente.
 - Revisar permissao antes de expor qualquer endpoint novo.
+- Diagnosticos internos do Miauby nao devem exibir stack trace, payload bruto, caminho completo, chave, token, CPF, telefone ou email no painel operacional.
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
 
@@ -57,6 +59,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Arquivos de upload/cache podem executar codigo se configurados incorretamente.
 - Jobs cron sem token forte podem ser abusados.
 - Logs podem conter dados internos.
+- O painel de diagnostico reduz dados sensiveis, mas ainda e uma tela sensivel e deve permanecer restrito.
 - Um `COTACAO_SESSION_SECRET` fraco permite falsificacao de sessao; usar valor longo e exclusivo por ambiente.
 - Expor Postgres ou Redis publicamente permitiria leitura/alteracao de dados internos; eles devem ficar apenas na rede Docker.
 

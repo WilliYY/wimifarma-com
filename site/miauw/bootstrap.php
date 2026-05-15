@@ -39,3 +39,4 @@ require_once __DIR__ . '/miauw-intelligence.php';
 require_once __DIR__ . '/miauw-farmacia-popular.php';
 require_once __DIR__ . '/miauw-web-research.php';
 require_once __DIR__ . '/miauw-funcoes.php';
+require_once __DIR__ . '/miauw-diagnostics.php';
