@@ -128,6 +128,18 @@ A Etapa 4 atacou o lag percebido ao sair de uma celula e ja digitar em outra:
 
 Essa etapa ainda nao virtualiza a grade inteira. Ela reduz o caminho mais frequente da operacao diaria: digitar, clicar em outra celula e continuar trabalhando sem esperar rede/render completo a cada commit simples.
 
+## Cotacao V2 - Etapa 5 de lotes visiveis em 2026-05-15
+
+A Etapa 5 levou a mesma ideia de fluidez para operacoes que mexem em varias celulas:
+
+- colagem de matriz, `Ctrl+Z`/`Ctrl+Y` de lotes e alca de preenchimento aplicam valores localmente antes da resposta HTTP;
+- o frontend aguarda saves pendentes da mesma celula antes de montar um lote, reduzindo corrida entre edicao simples e preenchimento;
+- a confirmacao de lote usa `PATCH /cotacao/api/cells/batch` e atualiza apenas as linhas afetadas, evitando `renderTable()` completo quando nao ha mudanca estrutural;
+- outras abas que recebem eventos `cell_updated` ou `cells_batch_updated` tambem redesenham apenas as linhas afetadas;
+- estilos copiados pelo fill handle ou aplicados/apagados em selecoes grandes usam `PUT/DELETE /cotacao/api/styles/batch`, reduzindo varias requisicoes pequenas e eventos soltos.
+
+Essa etapa ainda mantem `/cotacao/api/bootstrap` como fallback completo para coluna, import, restore e outros eventos estruturais. O proximo gargalo provavel continua sendo virtualizacao se o volume real crescer para muitas centenas de linhas visiveis.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos:

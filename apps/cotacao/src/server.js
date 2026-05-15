@@ -733,6 +733,35 @@ async function editableColumnKeySet(quoteId, columnKeys) {
   return new Set(result.rows.map((row) => row.key));
 }
 
+async function visibleColumnKeySet(quoteId, columnKeys) {
+  const keys = [...new Set((columnKeys || []).map((key) => String(key || '')).filter(Boolean))];
+  if (!keys.length) return new Set();
+  const result = await pgPool.query(
+    `SELECT key
+     FROM cotacao_v2_columns
+     WHERE quote_id = $1
+       AND key = ANY($2::text[])
+       AND COALESCE((options->>'hidden')::boolean, false) = false`,
+    [quoteId, keys]
+  );
+  return new Set(result.rows.map((row) => row.key));
+}
+
+async function activeRowIdSet(quoteId, rowIds) {
+  const ids = [...new Set((rowIds || []).map((id) => String(id || '')).filter(Boolean))];
+  if (!ids.length) return new Set();
+  if (ids.some((id) => !isUuid(id))) return new Set();
+  const result = await pgPool.query(
+    `SELECT id::text AS id
+     FROM cotacao_v2_rows
+     WHERE quote_id = $1
+       AND id = ANY($2::uuid[])
+       AND deleted_at IS NULL`,
+    [quoteId, ids]
+  );
+  return new Set(result.rows.map((row) => row.id));
+}
+
 async function activeRowExists(quoteId, rowId) {
   const id = String(rowId || '');
   if (!id) return false;
@@ -2146,6 +2175,85 @@ app.put(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async 
   res.json({ ok: true, style: result.rows[0], eventId: Number(event.id) });
 }));
 
+app.put(`${BASE_PATH}/api/styles/batch`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const quote = await getOrCreateDefaultQuote();
+  const rawStyles = Array.isArray(req.body.styles) ? req.body.styles.slice(0, 1000) : [];
+  const stylesByKey = new Map();
+  for (const rawStyle of rawStyles) {
+    const style = normalizeStylePayload(rawStyle || {});
+    if (!style) {
+      return res.status(422).json({ ok: false, error: 'Lote contem estilo invalido.' });
+    }
+    stylesByKey.set(style.styleKey, style);
+  }
+  const styles = Array.from(stylesByKey.values());
+  if (!styles.length) {
+    return res.status(422).json({ ok: false, error: 'Nenhum estilo informado.' });
+  }
+  const allowedColumns = await visibleColumnKeySet(quote.id, styles.map((style) => style.columnKey).filter(Boolean));
+  const allowedRows = await activeRowIdSet(quote.id, styles.map((style) => style.rowId).filter(Boolean));
+  if (styles.some((style) => (style.columnKey && !allowedColumns.has(style.columnKey)) || (style.rowId && !allowedRows.has(style.rowId)))) {
+    return res.status(422).json({ ok: false, error: 'Lote contem alvo invalido.' });
+  }
+
+  const client = await pgPool.connect();
+  const updatedStyles = [];
+  try {
+    await client.query('BEGIN');
+    for (const style of styles) {
+      const result = await client.query(
+        `INSERT INTO cotacao_v2_styles (quote_id, style_key, scope, row_id, column_key, background, color, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (quote_id, style_key)
+         DO UPDATE SET background = EXCLUDED.background,
+                       color = EXCLUDED.color,
+                       updated_by = EXCLUDED.updated_by,
+                       updated_at = now()
+         RETURNING id,
+                   style_key AS "styleKey",
+                   scope,
+                   row_id AS "rowId",
+                   column_key AS "columnKey",
+                   background,
+                   color,
+                   updated_by AS "updatedBy",
+                   updated_at AS "updatedAt"`,
+        [
+          quote.id,
+          style.styleKey,
+          style.scope,
+          style.rowId,
+          style.columnKey,
+          style.background,
+          style.color,
+          req.session.user?.username || null
+        ]
+      );
+      updatedStyles.push(result.rows[0]);
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const event = await appendEvent({
+    quoteId: quote.id,
+    type: 'styles_batch_updated',
+    payload: { styles: updatedStyles },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  io.to(`quote:${quote.id}`).emit('styles:update', {
+    styles: updatedStyles,
+    eventId: Number(event.id),
+    clientId: String(req.body.clientId || '')
+  });
+  res.json({ ok: true, styles: updatedStyles, eventId: Number(event.id) });
+}));
+
 app.delete(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const quote = await getOrCreateDefaultQuote();
   const target = normalizeStyleTarget(req.body || {});
@@ -2169,6 +2277,46 @@ app.delete(`${BASE_PATH}/api/styles`, requireApiAuth, verifyCsrf, asyncRoute(asy
     clientId: String(req.body.clientId || '')
   });
   res.json({ ok: true, styleKey: target.styleKey, eventId: Number(event.id) });
+}));
+
+app.delete(`${BASE_PATH}/api/styles/batch`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  const quote = await getOrCreateDefaultQuote();
+  const rawTargets = Array.isArray(req.body.targets) ? req.body.targets.slice(0, 1000) : [];
+  const targetsByKey = new Map();
+  for (const rawTarget of rawTargets) {
+    const target = normalizeStyleTarget(rawTarget || {});
+    if (!target) {
+      return res.status(422).json({ ok: false, error: 'Lote contem alvo de estilo invalido.' });
+    }
+    targetsByKey.set(target.styleKey, target);
+  }
+  const targets = Array.from(targetsByKey.values());
+  if (!targets.length) {
+    return res.status(422).json({ ok: false, error: 'Nenhum alvo informado.' });
+  }
+  const allowedColumns = await visibleColumnKeySet(quote.id, targets.map((target) => target.columnKey).filter(Boolean));
+  const allowedRows = await activeRowIdSet(quote.id, targets.map((target) => target.rowId).filter(Boolean));
+  if (targets.some((target) => (target.columnKey && !allowedColumns.has(target.columnKey)) || (target.rowId && !allowedRows.has(target.rowId)))) {
+    return res.status(422).json({ ok: false, error: 'Lote contem alvo invalido.' });
+  }
+  const styleKeys = targets.map((target) => target.styleKey);
+  await pgPool.query(
+    'DELETE FROM cotacao_v2_styles WHERE quote_id = $1 AND style_key = ANY($2::text[])',
+    [quote.id, styleKeys]
+  );
+  const event = await appendEvent({
+    quoteId: quote.id,
+    type: 'styles_batch_deleted',
+    payload: { styleKeys },
+    user: req.session.user,
+    clientId: String(req.body.clientId || '')
+  });
+  io.to(`quote:${quote.id}`).emit('styles:delete', {
+    styleKeys,
+    eventId: Number(event.id),
+    clientId: String(req.body.clientId || '')
+  });
+  res.json({ ok: true, styleKeys, eventId: Number(event.id) });
 }));
 
 app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -2476,10 +2624,12 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
     backupDir: BACKUP_DIR,
     redis: redisPing,
     safety: {
-      stage: 'etapa-3',
+      stage: 'etapa-5',
       bootstrapFallback: true,
       incrementalDeltaEnabled: true,
       simpleMutationSnapshotAvoidance: true,
+      optimisticBatchFills: true,
+      styleBatchMutations: true,
       deltaEndpoint: `${BASE_PATH}/api/events?after=:eventId`,
       deltaEventLimit: DELTA_EVENT_LIMIT,
       destructiveChanges: false,

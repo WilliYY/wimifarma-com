@@ -103,6 +103,7 @@
     eraser: false,
     headerSelectTimer: null,
     pendingCellSaves: new Map(),
+    pendingBatchSaves: 0,
     cellHistory: [],
     cellHistoryTarget: null,
     history: [],
@@ -897,21 +898,26 @@
     rowCountBadge.textContent = `${nonEmptyRowCount(rows)} linha(s) com dados`;
   }
 
-  function refreshRenderedRow(rowId) {
+  function refreshRenderedRow(rowId, context = {}) {
     const row = rowById(rowId);
     const existing = table.querySelector(`tr[data-row-id="${rowId}"]`);
+    const visibleRows = context.visibleRows || getVisibleRows();
+    const styles = context.styles || styleMap();
     if (!row) {
       if (existing) existing.remove();
-      updateRowCountBadge();
-      updateSelectionClasses();
+      if (!context.deferFinalUpdates) {
+        updateRowCountBadge(visibleRows);
+        updateSelectionClasses();
+      }
       return;
     }
-    const visibleRows = getVisibleRows();
     const isVisible = visibleRows.some((item) => item.id === rowId);
     if (!isVisible) {
       if (existing) existing.remove();
-      updateRowCountBadge(visibleRows);
-      updateSelectionClasses();
+      if (!context.deferFinalUpdates) {
+        updateRowCountBadge(visibleRows);
+        updateSelectionClasses();
+      }
       return;
     }
     const sourceIndex = state.rows.findIndex((item) => item.id === rowId) + 1;
@@ -919,21 +925,38 @@
       renderTable();
       return;
     }
-    existing.outerHTML = renderRowHtml(row, sourceIndex);
+    existing.outerHTML = renderRowHtml(row, sourceIndex, styles);
     const rendered = table.querySelector(`tr[data-row-id="${rowId}"]`);
     if (rendered) bindCellHover(rendered);
-    updateRowCountBadge(visibleRows);
     autosizeSheetInputs(rendered || table);
-    updateSelectionClasses();
+    if (!context.deferFinalUpdates) {
+      updateRowCountBadge(visibleRows);
+      updateSelectionClasses();
+    }
   }
 
   function refreshRenderedRows(rowIds) {
     const ids = Array.from(rowIds);
-    if (ids.length > 30) {
+    if (!ids.length) return;
+    const visibleRows = getVisibleRows();
+    const styles = styleMap();
+    let needsFullRender = false;
+    ids.forEach((rowId) => {
+      const row = rowById(rowId);
+      const existing = table.querySelector(`tr[data-row-id="${rowId}"]`);
+      const isVisible = row && visibleRows.some((item) => item.id === rowId);
+      if (isVisible && !existing) {
+        needsFullRender = true;
+        return;
+      }
+      refreshRenderedRow(rowId, { visibleRows, styles, deferFinalUpdates: true });
+    });
+    if (needsFullRender) {
       renderTable();
       return;
     }
-    ids.forEach((rowId) => refreshRenderedRow(rowId));
+    updateRowCountBadge(visibleRows);
+    updateSelectionClasses();
   }
 
   function renderTable() {
@@ -1169,9 +1192,14 @@
 
   function applyRemoteCellsUpdate(cells) {
     let needsRender = false;
+    const rowIds = new Set();
     (cells || []).forEach((cell) => {
-      if (applyRemoteCellUpdate(cell)) needsRender = true;
+      if (applyRemoteCellUpdate(cell)) {
+        needsRender = true;
+        rowIds.add(cell.rowId);
+      }
     });
+    applyRemoteCellsUpdate.rowIds = rowIds;
     return needsRender;
   }
 
@@ -1203,11 +1231,48 @@
     return true;
   }
 
+  function applyRemoteStylesUpdated(styles) {
+    let changed = false;
+    (styles || []).forEach((style) => {
+      if (applyRemoteStyleUpdated(style)) changed = true;
+    });
+    return changed;
+  }
+
   function applyRemoteStyleDeleted(styleKey) {
     if (!styleKey) return false;
     const before = state.styles.length;
     state.styles = state.styles.filter((item) => item.styleKey !== styleKey);
     return state.styles.length !== before;
+  }
+
+  function applyRemoteStylesDeleted(styleKeys) {
+    const keys = new Set((styleKeys || []).filter(Boolean));
+    if (!keys.size) return false;
+    const before = state.styles.length;
+    state.styles = state.styles.filter((item) => !keys.has(item.styleKey));
+    return state.styles.length !== before;
+  }
+
+  function rowsForStyleChanges(styles = [], styleKeys = []) {
+    const rowIds = new Set();
+    let needsFullRender = false;
+    styles.forEach((style) => {
+      if (style?.scope === 'cell' || style?.scope === 'row') {
+        if (style.rowId) rowIds.add(style.rowId);
+        return;
+      }
+      needsFullRender = true;
+    });
+    styleKeys.forEach((styleKey) => {
+      const [scope, rowId] = String(styleKey || '').split(':');
+      if (scope === 'cell' || scope === 'row') {
+        if (rowId) rowIds.add(rowId);
+        return;
+      }
+      needsFullRender = true;
+    });
+    return { rowIds, needsFullRender };
   }
 
   function applyRemoteRuleChange(payload) {
@@ -1229,33 +1294,69 @@
 
   function applyDeltaEvents(events) {
     let needsRender = false;
+    let needsFullRender = false;
+    const changedRowIds = new Set();
     for (const event of events || []) {
       rememberEventId(event.id);
       if (event.clientId === clientId) continue;
       const payload = event.payload || {};
       if (event.type === 'cell_updated') {
-        if (applyRemoteCellUpdate({ ...payload, eventId: event.id, clientId: event.clientId })) needsRender = true;
+        if (applyRemoteCellUpdate({ ...payload, eventId: event.id, clientId: event.clientId })) {
+          needsRender = true;
+          changedRowIds.add(payload.rowId);
+        }
       } else if (event.type === 'cells_batch_updated') {
-        if (applyRemoteCellsUpdate(payload.cells || [])) needsRender = true;
+        if (applyRemoteCellsUpdate(payload.cells || [])) {
+          needsRender = true;
+          (applyRemoteCellsUpdate.rowIds || new Set()).forEach((rowId) => changedRowIds.add(rowId));
+        }
       } else if (event.type === 'rows_added' || event.type === 'rows_inserted') {
-        if (applyRemoteRowsAdded(payload.rows || [])) needsRender = true;
+        if (applyRemoteRowsAdded(payload.rows || [])) needsFullRender = true;
       } else if (event.type === 'row_deleted') {
-        if (applyRemoteRowDeleted(payload.rowId || event.rowId)) needsRender = true;
+        if (applyRemoteRowDeleted(payload.rowId || event.rowId)) needsFullRender = true;
       } else if (event.type === 'style_updated') {
-        if (applyRemoteStyleUpdated(payload.style)) needsRender = true;
+        if (applyRemoteStyleUpdated(payload.style)) {
+          const styleRows = rowsForStyleChanges([payload.style]);
+          if (styleRows.needsFullRender) needsFullRender = true;
+          styleRows.rowIds.forEach((rowId) => changedRowIds.add(rowId));
+          needsRender = true;
+        }
+      } else if (event.type === 'styles_batch_updated') {
+        if (applyRemoteStylesUpdated(payload.styles || [])) {
+          const styleRows = rowsForStyleChanges(payload.styles || []);
+          if (styleRows.needsFullRender) needsFullRender = true;
+          styleRows.rowIds.forEach((rowId) => changedRowIds.add(rowId));
+          needsRender = true;
+        }
       } else if (event.type === 'style_deleted') {
-        if (applyRemoteStyleDeleted(payload.styleKey)) needsRender = true;
+        if (applyRemoteStyleDeleted(payload.styleKey)) {
+          const styleRows = rowsForStyleChanges([], [payload.styleKey]);
+          if (styleRows.needsFullRender) needsFullRender = true;
+          styleRows.rowIds.forEach((rowId) => changedRowIds.add(rowId));
+          needsRender = true;
+        }
+      } else if (event.type === 'styles_batch_deleted') {
+        if (applyRemoteStylesDeleted(payload.styleKeys || [])) {
+          const styleRows = rowsForStyleChanges([], payload.styleKeys || []);
+          if (styleRows.needsFullRender) needsFullRender = true;
+          styleRows.rowIds.forEach((rowId) => changedRowIds.add(rowId));
+          needsRender = true;
+        }
       } else if (event.type === 'rule_created' || event.type === 'rule_updated') {
-        if (applyRemoteRuleChange({ mode: event.type === 'rule_created' ? 'created' : 'updated', rules: [payload.rule] })) needsRender = true;
+        if (applyRemoteRuleChange({ mode: event.type === 'rule_created' ? 'created' : 'updated', rules: [payload.rule] })) needsFullRender = true;
       } else if (event.type === 'rule_deleted') {
-        if (applyRemoteRuleChange({ mode: 'deleted', id: payload.id })) needsRender = true;
+        if (applyRemoteRuleChange({ mode: 'deleted', id: payload.id })) needsFullRender = true;
       } else if (event.type === 'backup_created' || event.type === 'google_sheets_exported') {
         continue;
       } else {
         return false;
       }
     }
-    if (needsRender && !state.editing) renderTable();
+    needsRender = needsRender || needsFullRender;
+    if (needsRender && !state.editing) {
+      if (needsFullRender) renderTable();
+      else refreshRenderedRows(changedRowIds);
+    }
     return true;
   }
 
@@ -1267,7 +1368,7 @@
       socket.emit('join', { quoteId: state.quote.id, clientId });
       updatePresence(false);
       status('Sincronizado');
-      if (state.connectedOnce && !state.editing) {
+      if (state.connectedOnce && !state.editing && !hasPendingSaves()) {
         syncEvents().catch(console.error);
       }
       state.connectedOnce = true;
@@ -1276,7 +1377,7 @@
       }
       if (!state.refreshTimer) {
         state.refreshTimer = window.setInterval(() => {
-          if (!state.editing && document.visibilityState === 'visible') {
+          if (!state.editing && !hasPendingSaves() && document.visibilityState === 'visible') {
             syncEvents().catch(console.error);
           }
         }, 60000);
@@ -1295,13 +1396,13 @@
     socket.on('cell:update', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      if (applyRemoteCellUpdate(payload) && !state.editing) renderTable();
+      if (applyRemoteCellUpdate(payload) && !state.editing) refreshRenderedRows(new Set([payload.rowId]));
     });
     socket.on('cells:update', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
       const needsRender = applyRemoteCellsUpdate(payload.cells || []);
-      if (needsRender && !state.editing) renderTable();
+      if (needsRender && !state.editing) refreshRenderedRows(applyRemoteCellsUpdate.rowIds || new Set());
     });
     socket.on('rows:added', (payload) => {
       rememberEventId(payload.eventId);
@@ -1329,12 +1430,38 @@
     socket.on('style:update', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      if (applyRemoteStyleUpdated(payload.style)) renderTable();
+      if (applyRemoteStyleUpdated(payload.style)) {
+        const affected = rowsForStyleChanges([payload.style]);
+        if (affected.needsFullRender) renderTable();
+        else refreshRenderedRows(affected.rowIds);
+      }
+    });
+    socket.on('styles:update', (payload) => {
+      rememberEventId(payload.eventId);
+      if (payload.clientId === clientId) return;
+      if (applyRemoteStylesUpdated(payload.styles || [])) {
+        const affected = rowsForStyleChanges(payload.styles || []);
+        if (affected.needsFullRender) renderTable();
+        else refreshRenderedRows(affected.rowIds);
+      }
     });
     socket.on('style:delete', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      if (applyRemoteStyleDeleted(payload.styleKey)) renderTable();
+      if (applyRemoteStyleDeleted(payload.styleKey)) {
+        const affected = rowsForStyleChanges([], [payload.styleKey]);
+        if (affected.needsFullRender) renderTable();
+        else refreshRenderedRows(affected.rowIds);
+      }
+    });
+    socket.on('styles:delete', (payload) => {
+      rememberEventId(payload.eventId);
+      if (payload.clientId === clientId) return;
+      if (applyRemoteStylesDeleted(payload.styleKeys || [])) {
+        const affected = rowsForStyleChanges([], payload.styleKeys || []);
+        if (affected.needsFullRender) renderTable();
+        else refreshRenderedRows(affected.rowIds);
+      }
     });
   }
 
@@ -1399,14 +1526,18 @@
   }
 
   function updatePendingSaveStatus() {
-    const pending = state.pendingCellSaves.size;
+    const pending = state.pendingCellSaves.size + state.pendingBatchSaves;
     if (pending > 0) {
-      status(pending === 1 ? 'Salvando...' : `Salvando ${pending} celulas...`, 'busy');
+      status(pending === 1 ? 'Salvando...' : 'Salvando alteracoes...', 'busy');
       return;
     }
     if (saveStatus.dataset.mode !== 'error' && saveStatus.dataset.mode !== 'warn') {
       status('Sincronizado');
     }
+  }
+
+  function hasPendingSaves() {
+    return state.pendingCellSaves.size > 0 || state.pendingBatchSaves > 0;
   }
 
   function applyLocalCellValue(row, columnKey, value, options = {}) {
@@ -1490,6 +1621,12 @@
       if (!change?.rowId || !change?.columnKey) return;
       unique.set(cellKey(change.rowId, change.columnKey), change);
     });
+    const pendingSameCells = Array.from(unique.keys())
+      .map((key) => state.pendingCellSaves.get(key))
+      .filter(Boolean);
+    if (pendingSameCells.length) {
+      await Promise.allSettled(pendingSameCells);
+    }
     const prepared = Array.from(unique.values()).map((change) => {
       const column = colByKey(change.columnKey);
       const row = rowById(change.rowId);
@@ -1516,6 +1653,8 @@
       });
       refreshRenderedRows(affectedRowIds);
     }
+    state.pendingBatchSaves += 1;
+    updatePendingSaveStatus();
     status('Salvando lote...', 'busy');
     try {
       const data = await api('/api/cells/batch', {
@@ -1577,6 +1716,9 @@
       }
       status(error.message || 'Erro ao salvar lote', 'error');
       throw error;
+    } finally {
+      state.pendingBatchSaves = Math.max(0, state.pendingBatchSaves - 1);
+      updatePendingSaveStatus();
     }
   }
 
@@ -1662,7 +1804,7 @@
         rowId: change.rowId,
         columnKey: change.columnKey,
         value: change.before
-      })), { history: false });
+      })), { history: false, optimistic: true, render: 'rows' });
     } else if (action.type === 'column-delete') {
       await restoreDeletedColumn(action.columnKey);
     } else if (action.type === 'filter') {
@@ -1684,7 +1826,7 @@
         rowId: change.rowId,
         columnKey: change.columnKey,
         value: change.after
-      })), { history: false });
+      })), { history: false, optimistic: true, render: 'rows' });
     } else if (action.type === 'column-delete') {
       await deleteColumn(action.columnKey, { history: false });
     } else if (action.type === 'filter') {
@@ -1757,7 +1899,7 @@
         });
       }
     }
-    await saveCellsBatch(changes);
+    await saveCellsBatch(changes, { optimistic: true, render: 'rows' });
   }
 
   async function deleteSelectedValues() {
@@ -1772,11 +1914,87 @@
     const data = await api('/api/styles', { method: 'PUT', body: JSON.stringify(body) });
     state.styles = state.styles.filter((item) => item.styleKey !== data.style.styleKey);
     state.styles.push(data.style);
+    rememberEventId(data.eventId);
   }
 
   async function deleteStyle(target) {
     const data = await api('/api/styles', { method: 'DELETE', body: JSON.stringify({ ...target, clientId }) });
     state.styles = state.styles.filter((item) => item.styleKey !== data.styleKey);
+    rememberEventId(data.eventId);
+  }
+
+  function styleKeyForTarget(target) {
+    return `${target.scope}:${target.rowId || ''}:${target.columnKey || ''}`;
+  }
+
+  function normalizeStyleRequest(target, background = '') {
+    if (!target?.scope) return null;
+    const style = {
+      scope: target.scope,
+      rowId: target.rowId || null,
+      columnKey: target.columnKey || null,
+      background
+    };
+    if (style.scope === 'row' && !style.rowId) return null;
+    if (style.scope === 'column' && !style.columnKey) return null;
+    if (style.scope === 'cell' && (!style.rowId || !style.columnKey)) return null;
+    return style;
+  }
+
+  async function setStylesBatch(targets, background) {
+    const unique = new Map();
+    (targets || []).forEach((target) => {
+      const style = normalizeStyleRequest(target, background);
+      if (!style) return;
+      unique.set(styleKeyForTarget(style), style);
+    });
+    const styles = Array.from(unique.values());
+    if (!styles.length) return [];
+    state.pendingBatchSaves += 1;
+    updatePendingSaveStatus();
+    try {
+      const data = await api('/api/styles/batch', {
+        method: 'PUT',
+        body: JSON.stringify({ styles, clientId })
+      });
+      applyRemoteStylesUpdated(data.styles || []);
+      rememberEventId(data.eventId);
+      return data.styles || [];
+    } catch (error) {
+      status(error.message || 'Erro ao salvar cores', 'error');
+      throw error;
+    } finally {
+      state.pendingBatchSaves = Math.max(0, state.pendingBatchSaves - 1);
+      updatePendingSaveStatus();
+    }
+  }
+
+  async function deleteStylesBatch(targets) {
+    const unique = new Map();
+    (targets || []).forEach((target) => {
+      const normalized = normalizeStyleRequest(target);
+      if (!normalized) return;
+      unique.set(styleKeyForTarget(normalized), normalized);
+    });
+    const normalizedTargets = Array.from(unique.values());
+    if (!normalizedTargets.length) return [];
+    state.pendingBatchSaves += 1;
+    updatePendingSaveStatus();
+    try {
+      const data = await api('/api/styles/batch', {
+        method: 'DELETE',
+        body: JSON.stringify({ targets: normalizedTargets, clientId })
+      });
+      applyRemoteStylesDeleted(data.styleKeys || []);
+      rememberEventId(data.eventId);
+      return data.styleKeys || [];
+    } catch (error) {
+      status(error.message || 'Erro ao apagar cores', 'error');
+      throw error;
+    } finally {
+      state.pendingBatchSaves = Math.max(0, state.pendingBatchSaves - 1);
+      updatePendingSaveStatus();
+    }
   }
 
   async function applyColorToSelection(color) {
@@ -1785,10 +2003,11 @@
       return;
     }
     if (state.selectionScope?.type === 'column-range') {
-      const targets = state.columns.slice(state.selectionScope.startCol, state.selectionScope.endCol + 1);
-      for (const column of targets) {
-        if (column) await setStyle({ scope: 'column', columnKey: column.key }, color);
-      }
+      const targets = state.columns
+        .slice(state.selectionScope.startCol, state.selectionScope.endCol + 1)
+        .filter(Boolean)
+        .map((column) => ({ scope: 'column', columnKey: column.key }));
+      await setStylesBatch(targets, color);
       renderTable();
       return;
     }
@@ -1797,18 +2016,17 @@
       return;
     }
     if (state.selectionScope?.type === 'row-range') {
-      const rows = gridRows().slice(state.selectionScope.startRow, state.selectionScope.endRow + 1);
-      for (const row of rows) {
-        if (row) await setStyle({ scope: 'row', rowId: row.id }, color);
-      }
+      const rows = gridRows()
+        .slice(state.selectionScope.startRow, state.selectionScope.endRow + 1)
+        .filter(Boolean)
+        .map((row) => ({ scope: 'row', rowId: row.id }));
+      await setStylesBatch(rows, color);
       renderTable();
       return;
     }
     const cells = selectedCells();
-    for (const cell of cells) {
-      await setStyle({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey }, color);
-    }
-    renderTable();
+    await setStylesBatch(cells.map((cell) => ({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey })), color);
+    refreshRenderedRows(new Set(cells.map((cell) => cell.rowId)));
   }
 
   async function eraseSelection() {
@@ -1817,10 +2035,11 @@
       return;
     }
     if (state.selectionScope?.type === 'column-range') {
-      const targets = state.columns.slice(state.selectionScope.startCol, state.selectionScope.endCol + 1);
-      for (const column of targets) {
-        if (column) await deleteStyle({ scope: 'column', columnKey: column.key });
-      }
+      const targets = state.columns
+        .slice(state.selectionScope.startCol, state.selectionScope.endCol + 1)
+        .filter(Boolean)
+        .map((column) => ({ scope: 'column', columnKey: column.key }));
+      await deleteStylesBatch(targets);
       renderTable();
       return;
     }
@@ -1829,18 +2048,16 @@
       return;
     }
     if (state.selectionScope?.type === 'row-range') {
-      const rows = gridRows().slice(state.selectionScope.startRow, state.selectionScope.endRow + 1);
-      for (const row of rows) {
-        if (row) await deleteStyle({ scope: 'row', rowId: row.id });
-      }
-      renderTable();
+      const rows = gridRows()
+        .slice(state.selectionScope.startRow, state.selectionScope.endRow + 1)
+        .filter(Boolean);
+      await deleteStylesBatch(rows.map((row) => ({ scope: 'row', rowId: row.id })));
+      refreshRenderedRows(new Set(rows.map((row) => row.id)));
       return;
     }
     const cells = selectedCells();
-    for (const cell of cells) {
-      await deleteStyle({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey });
-    }
-    renderTable();
+    await deleteStylesBatch(cells.map((cell) => ({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey })));
+    refreshRenderedRows(new Set(cells.map((cell) => cell.rowId)));
   }
 
   async function colorColumn(columnKey, color) {
@@ -1920,7 +2137,7 @@
     const sourceMatrix = selectedCellMatrix(rows);
     const styles = styleMap();
     const changes = [];
-    const styleTargets = [];
+    const styleTargets = new Map();
 
     for (let rowIndex = targetRange.startRow; rowIndex <= targetRange.endRow; rowIndex += 1) {
       const targetRow = rows[rowIndex];
@@ -1937,19 +2154,29 @@
         });
         const background = normalizeColorValue(mergedStyle(source.row, source.column, styles).background);
         if (background) {
-          styleTargets.push({ rowId: targetRow.id, columnKey: targetColumn.key, background });
+          styleTargets.set(cellKey(targetRow.id, targetColumn.key), { rowId: targetRow.id, columnKey: targetColumn.key, background });
         }
       }
     }
 
-    if (!changes.length && !styleTargets.length) return;
+    const stylesToApply = Array.from(styleTargets.values());
+    if (!changes.length && !stylesToApply.length) return;
     status('Preenchendo selecao...', 'busy');
-    if (changes.length) await saveCellsBatch(changes);
-    for (const target of styleTargets) {
-      await setStyle({ scope: 'cell', rowId: target.rowId, columnKey: target.columnKey }, target.background);
+    if (changes.length) await saveCellsBatch(changes, { optimistic: true, render: 'rows' });
+    if (stylesToApply.length) {
+      const affectedRows = new Set(stylesToApply.map((target) => target.rowId));
+      const stylesByColor = new Map();
+      stylesToApply.forEach((target) => {
+        const targets = stylesByColor.get(target.background) || [];
+        targets.push({ scope: 'cell', rowId: target.rowId, columnKey: target.columnKey });
+        stylesByColor.set(target.background, targets);
+      });
+      for (const [background, targets] of stylesByColor.entries()) {
+        await setStylesBatch(targets, background);
+      }
+      refreshRenderedRows(affectedRows);
     }
     status('Sincronizado');
-    renderTable();
   }
 
   async function restoreDeletedColumn(columnKey) {
@@ -2511,7 +2738,7 @@
       if (document.visibilityState === 'visible') {
         if (state.socket && !state.socket.connected) state.socket.connect();
         updatePresence();
-        if (!state.editing) syncEvents().catch(console.error);
+        if (!state.editing && !hasPendingSaves()) syncEvents().catch(console.error);
       }
     });
 

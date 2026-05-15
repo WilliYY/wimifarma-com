@@ -129,6 +129,7 @@ Regras a preservar:
 - filtros nao devem ser sincronizados automaticamente entre computadores.
 - durante digitacao em categoria, texto nao pode virar comando escondido nem alterar ordem.
 - `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; destaque visual so por regra condicional explicita.
+- colagem, alca de preenchimento e desfazer/refazer de lotes devem usar batch otimista e atualizar apenas linhas afetadas quando nao houver mudanca estrutural.
 - A Cotacao PHP antiga foi removida; nao existe fluxo paralelo em `site/cotacao`.
 
 ## Fluxo Financeiro

@@ -36,6 +36,8 @@ Depois disso, `Delete`/`Backspace` na selecao da V2 tambem passou a seguir o mes
 
 O botao `Historico` da Cotacao V2 fica no topo, ao lado do contador de linhas com dados. Ele consulta `cotacao_v2_events` para a celula selecionada e permite restaurar um valor anterior por uma nova gravacao normal, mantendo auditoria.
 
+Em 2026-05-15, a mesma logica otimista foi aplicada aos lotes visiveis da planilha: colagem, desfazer/refazer de lote e alca de preenchimento atualizam a grade localmente, salvam por `/cotacao/api/cells/batch` e redesenham apenas as linhas afetadas. Eventos remotos de celula/lote tambem evitam renderizacao completa quando nao ha mudanca estrutural. Cores copiadas pelo fill handle ou aplicadas/apagadas em selecoes grandes usam endpoints de estilo em lote para reduzir chamadas pequenas.
+
 ## Historico da Cotacao PHP legada
 
 Antes da V2, a Cotacao PHP possuia:
@@ -103,6 +105,8 @@ Rotas/acoes:
 - `GET /cotacao/api/events?after=<eventId>`
 - `PATCH /cotacao/api/cells`
 - `PATCH /cotacao/api/cells/batch`
+- `PUT /cotacao/api/styles/batch`
+- `DELETE /cotacao/api/styles/batch`
 - `POST /cotacao/api/rows`
 - `POST /cotacao/api/columns`
 
@@ -149,6 +153,7 @@ Tabelas:
 - Na V2, `GET /cotacao/api/events?after=<eventId>` cumpre esse papel incremental: quando a resposta vem com `requiresSnapshot`, o frontend chama `/cotacao/api/bootstrap`.
 - Mutacoes simples da V2 devem evitar `loadSheet()`; use consultas pontuais para validar coluna visivel/editavel e linha ativa, deixando snapshot completo apenas para bootstrap, diagnostico e operacoes fortes.
 - Commits simples de celula na V2 devem ser otimistas no frontend, atualizando a linha localmente e salvando em segundo plano; erro real nao deve exigir renderizacao completa da tabela.
+- Operacoes em lote que so alteram celulas visiveis devem seguir o mesmo caminho otimista e atualizar apenas linhas afetadas. Render completo fica reservado para mudanca estrutural, fallback de snapshot, regras/estilos amplos ou recuperacao.
 - A presenca visual na grade deve ser efemera e informativa: mostrar celula/linha/coluna de outros usuarios sem bloquear a edicao nem virar historico permanente.
 - Presenca e filtro nao sao bloqueios. Filtros continuam locais por tela e duas pessoas podem trabalhar em linhas/celulas diferentes sem conflito; se duas pessoas salvarem a mesma celula, o ultimo salvamento vence e o historico da celula serve para recuperar o valor anterior.
 - Apagamentos por `Delete`/`Backspace` seguem o mesmo modelo de ultima gravacao vencendo, com auditoria em evento.

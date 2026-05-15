@@ -41,6 +41,8 @@ Rotas:
 - `DELETE /cotacao/api/rows/:id`
 - `PATCH /cotacao/api/cells`
 - `PATCH /cotacao/api/cells/batch`
+- `PUT /cotacao/api/styles/batch`
+- `DELETE /cotacao/api/styles/batch`
 - `POST /cotacao/api/columns`
 - `POST /cotacao/api/columns/:key/rename`
 - `POST /cotacao/api/columns/:key/move`
@@ -150,6 +152,8 @@ MySQL `wimifarma_app`:
 - Desde a Etapa 2, o frontend usa `GET /cotacao/api/events?after=<eventId>` para refresh automatico, reconnect e retorno de aba visivel; eventos estruturais continuam caindo para `/cotacao/api/bootstrap`.
 - Desde a Etapa 3, mutacoes simples nao devem chamar `loadSheet()` para validar tudo. Salvar celula, colagem em lote, estilos, regras, linhas e colunas usam consultas pontuais para quote/linha/coluna, mantendo snapshot completo apenas para bootstrap, diagnostico, backup, import/export Google Sheets e restore.
 - Desde a Etapa 4, salvar uma celula simples deve ser otimista no frontend: a linha afetada atualiza imediatamente, o save segue em segundo plano e erro real reverte ou marca a celula sem redesenhar a tabela inteira. O `expectedValue` pode seguir no payload como auditoria, mas nao bloqueia o ultimo salvamento.
+- Desde a Etapa 5, colagem, desfazer/refazer de lote e alca de preenchimento tambem usam lote otimista: a tela aplica os valores, salva por `PATCH /cotacao/api/cells/batch` e redesenha apenas as linhas afetadas. Outras abas aplicam eventos de celula/lote por linha quando nao ha mudanca estrutural.
+- Estilos em lote usam `PUT/DELETE /cotacao/api/styles/batch`, mantendo `style_updated` singular para acoes simples e reduzindo varias requisicoes quando cores sao copiadas pelo fill handle ou aplicadas em selecoes grandes.
 - A presenca recebida por Socket.IO passa a atualizar a grade em tempo real, marcando celulas de outros usuarios com cor deterministica por aba e tooltip de localizacao.
 - A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
 - O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
