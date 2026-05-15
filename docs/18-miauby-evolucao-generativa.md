@@ -50,6 +50,15 @@ Miauby ja possui:
   - lista memorias e padroes pendentes para revisao;
   - aprovar/ignorar memoria ou padrao apenas marca `revisao_status` e registra `wf_logs`, sem apagar dados;
   - sanitiza textos do painel para reduzir risco de expor segredo, CPF, telefone, email ou bastidor tecnico.
+- Fase 4 do agente operacional v2 iniciada:
+  - `miauw_skill_core_tool_names()` define as tools core migradas;
+  - registry cobre sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos;
+  - `resumo_codigos` e `buscar_codigo_comissao` consultam `wf_codigos_comissao`;
+  - `registrar_sangria` encapsula lancamento financeiro como categoria `Sangria`;
+  - `criar_tarefa` tambem virou OpenAI tool controlada, alem da acao local ja existente;
+  - consulta de Cotacao usa a Cotacao V2 por `GET /cotacao/api/internal/search`;
+  - criacao de encomenda usa a Cotacao V2 por `POST /cotacao/api/internal/encomendas`;
+  - endpoints internos da Cotacao exigem token por `X-Miauw-Internal-Token` e ficam desativados sem token de ambiente.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -122,9 +131,10 @@ Integracoes:
 
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Criar logs estruturados para execucao de skill.
-- Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
+- Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria, confirmacao de acoes fortes e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
-- Definir quando Miauby pode executar escrita automaticamente e quando precisa pedir confirmacao.
+- Implementar Fase 5: streaming no widget, trace por conversa, log estruturado de tool usada, erro claro e botao de confirmacao para acoes fortes.
+- Implementar Fase 6: ampliar evals para nao citar bastidores, sangria exigir valor, nao inventar dados, Cotacao pedir produto quando faltar e acoes destrutivas exigirem confirmacao.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 
 ## Como pode evoluir
@@ -132,5 +142,6 @@ Integracoes:
 - Fase 1: documentar tools atuais, criar registry e aplicar isolamento operacional/persona v2 sem trocar arquitetura. Em andamento/concluido parcialmente.
 - Fase 2: adicionar testes de intents e respostas proibidas. Em andamento com runner CLI local.
 - Fase 3: criar painel de diagnostico e revisao de memoria/padroes. Em andamento com painel restrito e revisao por status.
-- Fase 4: transformar padroes recorrentes em sugestoes de melhoria de processo.
-- Fase 5: integrar Cotacao + Google Sheets com auditoria e usar Miauby para resumir divergencias.
+- Fase 4: migrar tools importantes para registry e executores controlados. Em andamento com sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
+- Fase 5: adicionar streaming e rastreabilidade por conversa, incluindo log de tool usada e confirmacao para acoes fortes.
+- Fase 6: ampliar evals operacionais para regras proibidas, dados faltantes e confirmacao de acoes destrutivas.

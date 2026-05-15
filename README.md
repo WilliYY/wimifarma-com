@@ -70,6 +70,8 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Os guardrails finais tambem redigem fragmentos de chaves `sk-...` como credencial interna antes de mostrar texto ao operador.
 - Miauby iniciou a Fase 3 com o painel restrito `/miauw/diagnostico.php`, reunindo status do agente/API, modelos, registry de skills, alertas, diagnosticos internos recentes e revisao segura de memorias/padroes.
 - `miauw_memorias` e `miauw_padroes` agora possuem status de revisao (`pendente`, `aprovado`, `ignorado`); o painel marca revisao sem apagar dados.
+- Miauby iniciou a Fase 4 do agente operacional v2: as tools core ficam registradas e cobrem sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
+- A consulta e criacao de encomenda na Cotacao pelo Miauby usam uma ponte interna com o servico Node da Cotacao V2, protegida por token, em vez de depender da Cotacao PHP antiga.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -206,6 +208,8 @@ CODIGOS_GROUP_DELETE_PASSWORD
 MIAUW_OPENAI_API_KEY
 MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
+COTACAO_INTERNAL_TOKEN
+COTACAO_INTERNAL_BASE_URL
 COTACAO_POSTGRES_PASSWORD
 COTACAO_SESSION_SECRET
 COTACAO_BACKUP_DIR
@@ -259,6 +263,8 @@ docker compose logs --tail=80 wimifarma-cotacao-app
 ```
 
 Antes do primeiro deploy da Cotacao V2 no VPS, adicionar valores reais no `.env` para `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET`.
+
+Para o Miauby criar/consultar encomendas diretamente na Cotacao V2, manter `MIAUW_GUARDIAN_TOKEN` preenchido ou definir `COTACAO_INTERNAL_TOKEN` com token equivalente no `.env`; o Compose entrega esse segredo ao web/PHP e ao app Node sem versionar o valor.
 
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 

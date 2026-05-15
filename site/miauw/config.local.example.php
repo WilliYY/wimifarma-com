@@ -28,3 +28,11 @@ define('MIAUW_FARMACIA_POPULAR_UF', 'PR');
  * Se usar cron por CLI no cPanel, nao precisa preencher.
  */
 define('MIAUW_GUARDIAN_TOKEN', 'troque_por_um_token_grande');
+
+/*
+ * Opcional: ponte interna Miauby -> Cotacao V2. Se ficar vazio, o Miauby
+ * usa MIAUW_GUARDIAN_TOKEN como token interno quando o ambiente tambem passar
+ * esse valor para o container da Cotacao.
+ */
+define('COTACAO_INTERNAL_TOKEN', '');
+define('COTACAO_INTERNAL_BASE_URL', 'http://wimifarma-cotacao-app:3000/cotacao');

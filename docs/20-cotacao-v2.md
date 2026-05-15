@@ -31,6 +31,8 @@ Servicos:
 Rotas:
 
 - `GET /cotacao/health`
+- `GET /cotacao/api/internal/search` para consulta interna do Miauby por token
+- `POST /cotacao/api/internal/encomendas` para criar encomenda interna do Miauby por token
 - `GET /cotacao/login.php`
 - `POST /cotacao/login.php`
 - `GET /cotacao/`
@@ -157,6 +159,7 @@ MySQL `wimifarma_app`:
 - A presenca recebida por Socket.IO passa a atualizar a grade em tempo real, marcando celulas de outros usuarios com cor deterministica por aba e tooltip de localizacao.
 - A Cotacao mantem heartbeat de presenca e recarregamento leve apos reconexao/retorno da aba para reduzir perda de sincronizacao depois de inatividade.
 - O widget do Miauby e carregado dentro da Cotacao V2 para manter o assistente acessivel na operacao; o frontend pede JSON explicitamente e os endpoints do widget limpam saidas acidentais antes de responder JSON.
+- A Fase 4 do Miauby usa endpoints internos tokenizados da Cotacao V2 para consultar linhas e criar encomendas sem depender da Cotacao PHP antiga.
 - A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
 - Backups da Cotacao V2 ficam no volume ignorado `cotacao-data/backups`, montado em `/app/backups`.
 - `docker-compose.yml` nao deve montar arquivos de `site/cotacao` em `wimifarma-cotacao-app`; qualquer ativo da Cotacao oficial precisa ficar em `apps/cotacao/public`.

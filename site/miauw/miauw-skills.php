@@ -113,6 +113,9 @@ function miauw_skill_registry(): array
             'executor' => 'miauw_skill_financeiro_summary',
             'openai_tool' => true,
             'local_action' => false,
+            'fase' => 4,
+            'card' => 'Financeiro',
+            'aliases' => array('caixa', 'fechamento', 'resumo financeiro'),
             'entrada' => array('mes', 'ano'),
             'saida' => 'Resumo textual de fechamentos, divergencias e lancamentos.',
             'auditoria' => array(),
@@ -128,8 +131,29 @@ function miauw_skill_registry(): array
             'executor' => 'miauw_skill_cashback_summary',
             'openai_tool' => true,
             'local_action' => false,
+            'fase' => 4,
+            'card' => 'Cashback',
+            'aliases' => array('cashback', 'clientes', 'resgates'),
             'entrada' => array('mes', 'ano'),
             'saida' => 'Resumo textual de compras, creditos, resgates e saldo ativo.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'resumo_codigos' => array(
+            'nome' => 'resumo_codigos',
+            'titulo' => 'Resumo codigos',
+            'modulo' => 'codigos',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_codigos_summary',
+            'openai_tool' => true,
+            'local_action' => false,
+            'fase' => 4,
+            'card' => 'Codigos',
+            'aliases' => array('codigos', 'comissao', 'ean'),
+            'entrada' => array('mes', 'ano'),
+            'saida' => 'Resumo textual dos atalhos de comissao por grupo de EAN.',
             'auditoria' => array(),
             'efeitos' => array(),
         ),
@@ -158,6 +182,9 @@ function miauw_skill_registry(): array
             'executor' => 'miauw_skill_client_lookup',
             'openai_tool' => true,
             'local_action' => false,
+            'fase' => 4,
+            'card' => 'Cashback',
+            'aliases' => array('cliente', 'telefone', 'saldo'),
             'entrada' => array('busca'),
             'saida' => 'Lista resumida com dados mascarados.',
             'auditoria' => array(),
@@ -173,8 +200,29 @@ function miauw_skill_registry(): array
             'executor' => 'miauw_skill_cotacao_lookup',
             'openai_tool' => true,
             'local_action' => false,
+            'fase' => 4,
+            'card' => 'Cotacao',
+            'aliases' => array('cotacao', 'produto', 'ean', 'fornecedor'),
             'entrada' => array('busca'),
             'saida' => 'Itens encontrados por produto, EAN, categoria ou fornecedor.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'buscar_codigo_comissao' => array(
+            'nome' => 'buscar_codigo_comissao',
+            'titulo' => 'Buscar codigo de comissao',
+            'modulo' => 'codigos',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_codigos_lookup',
+            'openai_tool' => true,
+            'local_action' => false,
+            'fase' => 4,
+            'card' => 'Codigos',
+            'aliases' => array('codigo', 'codigos', 'ean', 'comissao', 'preco'),
+            'entrada' => array('busca'),
+            'saida' => 'Atalhos encontrados por codigo, EAN ou produto, com preco.',
             'auditoria' => array(),
             'efeitos' => array(),
         ),
@@ -306,8 +354,12 @@ function miauw_skill_registry(): array
             'risco' => 'medio',
             'permissao' => 'autenticado',
             'executor' => 'miauw_skill_create_tarefa',
-            'openai_tool' => false,
+            'openai_tool' => true,
             'local_action' => true,
+            'fase' => 4,
+            'card' => 'Tarefas',
+            'aliases' => array('tarefa', 'pendencia', 'prioridade'),
+            'parametros_obrigatorios' => array('titulo'),
             'entrada' => array('titulo', 'descricao', 'prioridade'),
             'saida' => 'Tarefa criada com status aberta.',
             'auditoria' => array('wf_tarefas', 'wf_logs'),
@@ -323,10 +375,14 @@ function miauw_skill_registry(): array
             'executor' => 'miauw_skill_create_cotacao_encomenda',
             'openai_tool' => true,
             'local_action' => true,
+            'fase' => 4,
+            'card' => 'Cotacao',
+            'aliases' => array('encomenda', 'produto', 'cliente'),
+            'parametros_obrigatorios' => array('produto', 'responsavel'),
             'entrada' => array('produto', 'responsavel', 'observacao'),
             'saida' => 'Item de encomenda criado na Cotacao Geral.',
-            'auditoria' => array('cotacao_itens', 'cotacao_auditoria', 'wf_logs'),
-            'efeitos' => array('cria_item_cotacao'),
+            'auditoria' => array('cotacao_v2_events', 'wf_logs'),
+            'efeitos' => array('cria_item_cotacao_v2'),
         ),
         'criar_cotacao_urgente' => array(
             'nome' => 'criar_cotacao_urgente',
@@ -383,10 +439,33 @@ function miauw_skill_registry(): array
             'executor' => 'miauw_skill_create_financeiro_lancamento',
             'openai_tool' => true,
             'local_action' => true,
+            'fase' => 4,
+            'card' => 'Financeiro',
+            'aliases' => array('lancamento', 'pix', 'maquininha', 'caixa'),
+            'parametros_obrigatorios' => array('categoria', 'valor', 'responsavel'),
             'entrada' => array('categoria', 'valor', 'responsavel', 'observacao', 'data'),
             'saida' => 'Lancamento financeiro criado com auditoria.',
             'auditoria' => array('financeiro_lancamentos', 'financeiro_auditoria', 'miauw_padroes'),
             'efeitos' => array('cria_lancamento_financeiro', 'aprende_padrao_comando'),
+        ),
+        'registrar_sangria' => array(
+            'nome' => 'registrar_sangria',
+            'titulo' => 'Registrar sangria',
+            'modulo' => 'financeiro',
+            'nivel' => 'escrita',
+            'risco' => 'alto',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_create_sangria',
+            'openai_tool' => true,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Financeiro',
+            'aliases' => array('sangria', 'retirada do caixa'),
+            'parametros_obrigatorios' => array('valor', 'responsavel'),
+            'entrada' => array('valor', 'responsavel', 'observacao', 'data'),
+            'saida' => 'Sangria registrada no financeiro com auditoria.',
+            'auditoria' => array('financeiro_lancamentos', 'financeiro_auditoria', 'wf_logs'),
+            'efeitos' => array('cria_lancamento_financeiro_sangria'),
         ),
         'registrar_memoria' => array(
             'nome' => 'registrar_memoria',
@@ -455,6 +534,10 @@ function miauw_skill_registry_public(): array
             'executor_disponivel' => $executor !== '' && function_exists($executor),
             'openai_tool' => !empty($skill['openai_tool']),
             'local_action' => !empty($skill['local_action']),
+            'fase' => isset($skill['fase']) ? (int) $skill['fase'] : null,
+            'card' => (string) ($skill['card'] ?? ''),
+            'aliases' => array_values((array) ($skill['aliases'] ?? array())),
+            'parametros_obrigatorios' => array_values((array) ($skill['parametros_obrigatorios'] ?? array())),
             'entrada' => array_values((array) ($skill['entrada'] ?? array())),
             'saida' => (string) ($skill['saida'] ?? ''),
             'auditoria' => array_values((array) ($skill['auditoria'] ?? array())),
@@ -475,6 +558,7 @@ function miauw_skill_registry_summary(): array
         'openai_tools' => 0,
         'acoes_locais' => 0,
         'executores_indisponiveis' => array(),
+        'core_tools_fase4' => array(),
     );
 
     foreach (miauw_skill_registry_public() as $name => $skill) {
@@ -502,19 +586,79 @@ function miauw_skill_registry_summary(): array
     ksort($summary['por_modulo']);
     ksort($summary['por_nivel']);
     ksort($summary['por_risco']);
+    $summary['core_tools_fase4'] = miauw_skill_core_migration_status();
 
     return $summary;
+}
+
+function miauw_skill_core_tool_names(): array
+{
+    return array(
+        'registrar_sangria',
+        'criar_tarefa',
+        'criar_encomenda_cotacao',
+        'resumo_financeiro',
+        'buscar_cotacao',
+        'resumo_cashback',
+        'buscar_cliente',
+        'resumo_codigos',
+        'buscar_codigo_comissao',
+    );
+}
+
+function miauw_skill_core_migration_status(): array
+{
+    $registry = miauw_skill_registry_public();
+    $tools = array();
+    $missing = array();
+    $unavailable = array();
+
+    foreach (miauw_skill_core_tool_names() as $name) {
+        $skill = $registry[$name] ?? null;
+        if (!is_array($skill)) {
+            $missing[] = $name;
+            $tools[$name] = array('registrada' => false, 'executor_disponivel' => false, 'openai_tool' => false);
+            continue;
+        }
+
+        $available = !empty($skill['executor_disponivel']);
+        if (!$available) {
+            $unavailable[] = $name;
+        }
+
+        $tools[$name] = array(
+            'registrada' => true,
+            'executor_disponivel' => $available,
+            'openai_tool' => !empty($skill['openai_tool']),
+            'local_action' => !empty($skill['local_action']),
+            'modulo' => (string) ($skill['modulo'] ?? ''),
+            'risco' => (string) ($skill['risco'] ?? ''),
+            'fase' => $skill['fase'] ?? null,
+        );
+    }
+
+    return array(
+        'fase' => 4,
+        'total' => count(miauw_skill_core_tool_names()),
+        'registradas' => count(miauw_skill_core_tool_names()) - count($missing),
+        'missing' => $missing,
+        'executores_indisponiveis' => $unavailable,
+        'cotacao_v2_internal_configurado' => function_exists('miauw_skill_cotacao_v2_internal_configured') ? miauw_skill_cotacao_v2_internal_configured() : false,
+        'tools' => $tools,
+    );
 }
 
 function miauw_skill_registry_diagnostics(): string
 {
     $summary = miauw_skill_registry_summary();
+    $core = $summary['core_tools_fase4'] ?? array();
     $lines = array(
         'REGISTRY DE SKILLS DO MIAUBY',
         'Total registrado: ' . (int) $summary['total'],
         'OpenAI tools: ' . (int) $summary['openai_tools'] . ' | Acoes locais: ' . (int) $summary['acoes_locais'],
         'Por nivel: ' . json_encode($summary['por_nivel'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         'Por modulo: ' . json_encode($summary['por_modulo'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        'Fase 4 tools core: ' . (int) ($core['registradas'] ?? 0) . '/' . (int) ($core['total'] ?? 0) . ' registradas.',
         'Regra fixa: leitura pode resumir; sugestao pode orientar; escrita so pode alterar dados por executor controlado, validacao e auditoria.',
         'Regra fixa: Miauby nao executa SQL do usuario, nao le segredos, nao edita arquivos e nao cria automacao fora das skills registradas.',
     );
@@ -524,6 +668,16 @@ function miauw_skill_registry_diagnostics(): string
     } else {
         $lines[] = 'Executores: todos os registrados estao carregados neste bootstrap.';
     }
+
+    if (!empty($core['missing'])) {
+        $lines[] = 'Fase 4 pendente no registry: ' . implode(', ', (array) $core['missing']);
+    }
+
+    if (!empty($core['executores_indisponiveis'])) {
+        $lines[] = 'Fase 4 com executor indisponivel: ' . implode(', ', (array) $core['executores_indisponiveis']);
+    }
+
+    $lines[] = 'Cotacao V2 interna para o Miauby: ' . (!empty($core['cotacao_v2_internal_configurado']) ? 'configurada por token interno.' : 'aguardando token interno no ambiente.');
 
     $lines[] = 'Skills de escrita exigem dados claros. Se faltar produto, responsavel, valor, fornecedor ou categoria, perguntar antes.';
 
@@ -691,6 +845,120 @@ function miauw_skill_cashback_summary(array $period): array
         );
         $credito = $stmt->fetch() ?: array();
         $lines[] = 'Saldo ativo atual de cashback: ' . miauw_skill_money($credito['saldo_ativo'] ?? 0) . ' em ' . (int) ($credito['creditos_ativos'] ?? 0) . ' credito(s).';
+    }
+
+    return $lines;
+}
+
+function miauw_skill_codigos_summary(array $period): array
+{
+    unset($period);
+
+    if (!miauw_skill_table_exists('wf_codigos_comissao')) {
+        return array();
+    }
+
+    $total = (int) db()->query('SELECT COUNT(*) FROM wf_codigos_comissao WHERE ativo = 1')->fetchColumn();
+    $lines = array(
+        'CODIGOS',
+        'Ativos: ' . $total,
+    );
+
+    $stmt = db()->query(
+        "SELECT
+            CASE
+                WHEN ean REGEXP '^[0-9][0-9]' THEN LEFT(ean, 2)
+                ELSE 'outros'
+            END AS grupo,
+            COUNT(*) AS total
+         FROM wf_codigos_comissao
+         WHERE ativo = 1
+         GROUP BY grupo
+         ORDER BY CASE WHEN grupo = '20' THEN 1 WHEN grupo = '40' THEN 2 WHEN grupo = 'outros' THEN 99 ELSE 10 END, grupo ASC"
+    );
+    $groups = $stmt ? $stmt->fetchAll() : array();
+    if ($groups) {
+        $parts = array();
+        foreach ($groups as $group) {
+            $label = (string) ($group['grupo'] ?? 'outros');
+            $parts[] = ($label === 'outros' ? 'Outros' : 'EAN ' . $label) . ': ' . (int) ($group['total'] ?? 0);
+        }
+        $lines[] = 'Blocos: ' . implode('; ', $parts);
+    }
+
+    $stmt = db()->query(
+        'SELECT codigo, ean, preco
+         FROM wf_codigos_comissao
+         WHERE ativo = 1
+         ORDER BY atualizado_em DESC, id DESC
+         LIMIT 5'
+    );
+    $recent = $stmt ? $stmt->fetchAll() : array();
+    if ($recent) {
+        $lines[] = 'Ultimos atualizados:';
+        foreach ($recent as $item) {
+            $lines[] = '- ' . (string) ($item['codigo'] ?? '-')
+                . ' | EAN: ' . (string) ($item['ean'] ?? '-')
+                . ' | preco: ' . miauw_skill_money($item['preco'] ?? 0);
+        }
+    }
+
+    return $lines;
+}
+
+function miauw_skill_codigos_lookup(string $message): array
+{
+    if (!miauw_skill_table_exists('wf_codigos_comissao')) {
+        return array();
+    }
+
+    $terms = array_values(array_filter(miauw_skill_search_terms($message), static function ($term): bool {
+        return !in_array((string) $term, array('codigo', 'codigos', 'comissao', 'preco', 'precos'), true);
+    }));
+
+    if (preg_match_all('/\b[0-9]{2,14}\b/', $message, $matches)) {
+        foreach ($matches[0] as $digits) {
+            $terms[] = (string) $digits;
+        }
+    }
+
+    $terms = array_values(array_unique(array_slice($terms, 0, 5)));
+    if (!$terms) {
+        return array('CODIGOS: informe codigo, EAN ou nome do item para eu procurar.');
+    }
+
+    $where = array();
+    $params = array();
+    foreach ($terms as $term) {
+        $where[] = '(codigo LIKE ? OR ean LIKE ?)';
+        $params[] = '%' . $term . '%';
+        $params[] = '%' . $term . '%';
+    }
+
+    $stmt = db()->prepare(
+        'SELECT id, codigo, ean, preco
+         FROM wf_codigos_comissao
+         WHERE ativo = 1
+           AND (' . implode(' OR ', $where) . ')
+         ORDER BY ordem ASC, id ASC
+         LIMIT 8'
+    );
+    $stmt->execute($params);
+    $items = $stmt->fetchAll();
+
+    if (!$items) {
+        return array('CODIGOS: nenhum atalho encontrado para "' . implode(', ', $terms) . '".');
+    }
+
+    $lines = array('CODIGOS ENCONTRADOS');
+    foreach ($items as $item) {
+        $ean = (string) ($item['ean'] ?? '');
+        $group = preg_match('/^[0-9]{2}/', $ean, $match) ? (string) $match[0] : 'outros';
+        $lines[] = '#' . (int) ($item['id'] ?? 0)
+            . ' | bloco: ' . ($group === 'outros' ? 'Outros' : 'EAN ' . $group)
+            . ' | codigo: ' . (string) ($item['codigo'] ?? '-')
+            . ' | EAN: ' . ($ean !== '' ? $ean : '-')
+            . ' | preco: ' . miauw_skill_money($item['preco'] ?? 0);
     }
 
     return $lines;
@@ -1063,10 +1331,163 @@ function miauw_skill_client_lookup(string $message): array
     return $lines;
 }
 
+function miauw_skill_env_value(array $names): string
+{
+    if (function_exists('miauw_env_string')) {
+        return miauw_env_string($names);
+    }
+
+    foreach ($names as $name) {
+        $key = (string) $name;
+        $value = getenv($key);
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    return '';
+}
+
+function miauw_skill_cotacao_v2_internal_token(): string
+{
+    if (defined('COTACAO_INTERNAL_TOKEN') && trim((string) COTACAO_INTERNAL_TOKEN) !== '') {
+        return trim((string) COTACAO_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('COTACAO_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN'));
+}
+
+function miauw_skill_cotacao_v2_internal_base_url(): string
+{
+    $url = defined('COTACAO_INTERNAL_BASE_URL') ? trim((string) COTACAO_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('COTACAO_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-cotacao-app:3000/cotacao', '/');
+}
+
+function miauw_skill_cotacao_v2_internal_configured(): bool
+{
+    return miauw_skill_cotacao_v2_internal_token() !== '';
+}
+
+function miauw_skill_cotacao_v2_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    $token = miauw_skill_cotacao_v2_internal_token();
+    if ($token === '') {
+        return null;
+    }
+
+    $url = miauw_skill_cotacao_v2_internal_base_url() . '/' . ltrim($path, '/');
+    if ($query) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    $method = strtoupper($method);
+    $headers = array(
+        'Accept: application/json',
+        'X-Miauw-Internal-Token: ' . $token,
+    );
+    $options = array(
+        'method' => $method,
+        'header' => implode("\r\n", $headers),
+        'timeout' => 5,
+        'ignore_errors' => true,
+    );
+
+    if ($method !== 'GET') {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $options['header'] .= "\r\nContent-Type: application/json";
+        $options['content'] = is_string($json) ? $json : '{}';
+    }
+
+    $context = stream_context_create(array('http' => $options));
+    $raw = @file_get_contents($url, false, $context);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+
+    $status = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d+)/', (string) $header, $match)) {
+                $status = (int) $match[1];
+                break;
+            }
+        }
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        return null;
+    }
+
+    if ($status >= 400) {
+        $message = isset($data['error']) ? (string) $data['error'] : 'Falha na Cotacao V2 interna.';
+        throw new RuntimeException($message);
+    }
+
+    return $data;
+}
+
+function miauw_skill_cotacao_v2_lookup(string $message): ?array
+{
+    $terms = miauw_skill_search_terms($message);
+    if (!$terms) {
+        return array('COTACAO: informe EAN, produto ou categoria para eu achar a linha certa.');
+    }
+
+    try {
+        $response = miauw_skill_cotacao_v2_internal_request('GET', '/api/internal/search', array(), array(
+            'q' => implode(' ', $terms),
+            'limit' => 8,
+        ));
+    } catch (Throwable $error) {
+        error_log('Miauby Cotacao V2 lookup failed: ' . $error->getMessage());
+        return null;
+    }
+
+    if (!is_array($response) || empty($response['ok'])) {
+        return null;
+    }
+
+    $items = is_array($response['items'] ?? null) ? $response['items'] : array();
+    if (!$items) {
+        return array('COTACAO V2: nenhum item encontrado para "' . implode(', ', $terms) . '".');
+    }
+
+    $lines = array('ITENS DE COTACAO V2 ENCONTRADOS');
+    foreach ($items as $item) {
+        $lines[] = 'linha ' . (int) ($item['position'] ?? 0)
+            . ' | EAN: ' . (string) ($item['ean'] ?? '-')
+            . ' | produto: ' . (string) ($item['produto'] ?? '-')
+            . ' | qtd: ' . (string) ($item['quantidade'] ?? '-')
+            . ' | categoria: ' . (string) ($item['categoria'] ?? '-')
+            . ' | ganhador: ' . (string) ($item['ganhador'] ?? 'Sem vencedor');
+    }
+
+    return $lines;
+}
+
 function miauw_skill_cotacao_lookup(string $message): array
 {
+    $v2Lines = miauw_skill_cotacao_v2_lookup($message);
+    if (is_array($v2Lines)) {
+        return $v2Lines;
+    }
+
     if (!miauw_skill_table_exists('cotacao_itens') || !miauw_skill_table_exists('cotacao_blocos') || !miauw_skill_table_exists('cotacao_fornecedores')) {
-        return array();
+        $terms = miauw_skill_search_terms($message);
+        if (!$terms) {
+            return array('COTACAO: informe EAN, produto ou categoria para eu achar a linha certa.');
+        }
+
+        return array('COTACAO: consulta interna da V2 indisponivel agora. Confira /cotacao/ e tente novamente.');
     }
 
     $terms = miauw_skill_search_terms($message);
@@ -1266,6 +1687,51 @@ function miauw_skill_cotacao_encomenda_command_from_message(string $message): ?a
     );
 }
 
+function miauw_skill_create_cotacao_encomenda_v2(array $command, string $product, string $responsible, string $note, string $categoryExtra): ?array
+{
+    if (!miauw_skill_cotacao_v2_internal_configured()) {
+        return null;
+    }
+
+    $payload = array(
+        'produto' => $product,
+        'responsavel' => $responsible,
+        'observacao' => $note,
+        'categoria_extra' => $categoryExtra,
+    );
+
+    if (isset($command['usuario_id'])) {
+        $payload['usuario_id'] = (int) $command['usuario_id'];
+    }
+
+    if (isset($command['username'])) {
+        $payload['username'] = (string) $command['username'];
+    }
+
+    try {
+        $response = miauw_skill_cotacao_v2_internal_request('POST', '/api/internal/encomendas', $payload);
+    } catch (Throwable $error) {
+        error_log('Miauby Cotacao V2 create encomenda failed: ' . $error->getMessage());
+        throw $error;
+    }
+
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['item'] ?? null)) {
+        return null;
+    }
+
+    $item = $response['item'];
+
+    return array(
+        'id' => (string) ($item['rowId'] ?? $item['id'] ?? ''),
+        'produto' => $product,
+        'responsavel' => $responsible,
+        'categoria' => (string) ($item['categoria'] ?? ('encomenda ' . $responsible)),
+        'status' => (string) ($item['status'] ?? 'aberta'),
+        'registrada_em' => (string) ($item['registrada_em'] ?? ''),
+        'observacao' => (string) ($item['observacao'] ?? $note),
+    );
+}
+
 function miauw_skill_create_cotacao_encomenda(array $command): array
 {
     $product = miauw_skill_clean_encomenda_part((string) ($command['produto'] ?? ''), 220);
@@ -1279,9 +1745,27 @@ function miauw_skill_create_cotacao_encomenda(array $command): array
         throw new RuntimeException('Informe o responsavel ou cliente da encomenda.');
     }
 
-    $blockId = miauw_skill_cotacao_default_block_id();
     $note = miauw_skill_clean_encomenda_part((string) ($command['observacao_usuario'] ?? ''), 160);
     $categoryExtra = miauw_skill_clean_encomenda_part((string) ($command['categoria_extra'] ?? ''), 80);
+    $v2Result = miauw_skill_create_cotacao_encomenda_v2($command, $product, $responsible, $note, $categoryExtra);
+    if (is_array($v2Result)) {
+        if (function_exists('log_action')) {
+            log_action(
+                'miauw_cotacao_v2_encomenda_criada',
+                'cotacao_v2_rows',
+                null,
+                json_encode(array(
+                    'produto' => $product,
+                    'responsavel' => $responsible,
+                    'row_id' => $v2Result['id'] ?? '',
+                ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Encomenda criada pelo Miauby na Cotacao V2.'
+            );
+        }
+
+        return $v2Result;
+    }
+
+    $blockId = miauw_skill_cotacao_default_block_id();
     $category = miauw_substr(trim('encomenda ' . $responsible . ($categoryExtra !== '' ? ' ' . $categoryExtra : '')), 0, 80);
     $observation = 'Encomenda criada pelo Miauby. Responsavel/cliente: ' . $responsible . '.';
     if ($note !== '') {
@@ -1762,6 +2246,10 @@ function miauw_skill_detect_modules(string $message): array
 
     if (miauw_skill_has_any($message, array('cashback', 'cliente', 'clientes', 'resgate', 'credito', 'creditos', 'crédito', 'créditos', 'venda', 'vendas', 'vendeu', 'compras'))) {
         $modules[] = 'cashback';
+    }
+
+    if (miauw_skill_has_any($message, array('codigos', 'codigo de comissao', 'códigos', 'código de comissão', 'comissao diferente', 'comissão diferente'))) {
+        $modules[] = 'codigos';
     }
 
     if (miauw_skill_has_any($message, array('cotacao', 'cotação', 'ean', 'produto', 'distribuidora', 'fornecedor', 'fornecedores', 'urgente', 'encomenda', 'cotacao rapida', 'em falta', 'sem estoque', 'tabela rapida'))) {
@@ -2712,6 +3200,22 @@ function miauw_skill_create_financeiro_lancamento(string $category, float $value
     );
 }
 
+function miauw_skill_create_sangria(float $value, string $responsible, string $observation = '', ?string $date = null): array
+{
+    $responsible = trim($responsible);
+    if ($value <= 0) {
+        throw new RuntimeException('Informe o valor da sangria antes de gravar.');
+    }
+
+    if ($responsible === '') {
+        throw new RuntimeException('Informe quem fez ou quem e o responsavel pela sangria.');
+    }
+
+    $obs = miauw_skill_financeiro_obs_from_parts('Sangria', $responsible, $observation);
+
+    return miauw_skill_create_financeiro_lancamento('Sangria', $value, $obs, $date, $responsible);
+}
+
 function miauw_skill_create_financeiro_lancamento_from_message(string $message): ?array
 {
     $command = miauw_skill_financeiro_command_from_message($message);
@@ -2914,6 +3418,7 @@ function miauw_skill_context_for_message(string $message): string
     $period = miauw_skill_period_from_message($message);
     $modules = miauw_skill_detect_modules($message);
     $wantsReport = miauw_skill_wants_report($message);
+    $wantsSummary = miauw_skill_has_any($message, array('resumo', 'status', 'relatorio', 'relatório'));
     $lookupLines = array();
 
     $layers = miauw_skill_context_layers_for_message($message);
@@ -2932,6 +3437,10 @@ function miauw_skill_context_for_message(string $message): string
         $lookupLines = array_merge($lookupLines, miauw_skill_client_lookup($message));
     }
 
+    if (!$wantsSummary && miauw_skill_has_any($message, array('codigos', 'codigo', 'códigos', 'código', 'comissao diferente', 'comissão diferente'))) {
+        $lookupLines = array_merge($lookupLines, miauw_skill_codigos_lookup($message));
+    }
+
     if (miauw_skill_has_any($message, array('que cotacao', 'qual cotacao', 'cotacao', 'cotação', 'ean', 'produto', 'fornecedor', 'distribuidora'))) {
         $lookupLines = array_merge($lookupLines, miauw_skill_cotacao_lookup($message));
     }
@@ -2941,7 +3450,7 @@ function miauw_skill_context_for_message(string $message): string
     }
 
     if (!$modules && $wantsReport) {
-        $modules = array('financeiro', 'cashback', 'cotacao', 'tarefa');
+        $modules = array('financeiro', 'cashback', 'codigos', 'cotacao', 'tarefa');
     }
 
     if ($lookupLines && !$modules && !$wantsReport) {
@@ -2966,6 +3475,8 @@ function miauw_skill_context_for_message(string $message): string
             $lines = array_merge($lines, miauw_skill_financeiro_summary($period));
         } elseif ($module === 'cashback') {
             $lines = array_merge($lines, miauw_skill_cashback_summary($period));
+        } elseif ($module === 'codigos') {
+            $lines = array_merge($lines, miauw_skill_codigos_summary($period));
         } elseif ($module === 'cotacao') {
             $lines = array_merge($lines, miauw_skill_cotacao_summary($period));
         } elseif ($module === 'tarefa') {

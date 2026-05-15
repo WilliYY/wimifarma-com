@@ -22,6 +22,8 @@ const env = process.env;
 const BASE_PATH = env.BASE_PATH || '/cotacao';
 const PORT = Number(env.PORT || 3000);
 const SESSION_SECRET = env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const INTERNAL_TOKEN = String(env.COTACAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
+const INTERNAL_CLIENT_ID = 'miauby-internal';
 const DEFAULT_QUOTE_NAME = 'Cotacao atual';
 const BACKUP_DIR = env.COTACAO_BACKUP_DIR || path.join(rootDir, 'backups');
 const GOOGLE_SHEETS_SPREADSHEET_ID = env.GOOGLE_SHEETS_SPREADSHEET_ID || '';
@@ -219,6 +221,45 @@ function requireApiAuth(req, res, next) {
     return res.status(401).json({ ok: false, error: 'Login necessario.' });
   }
   return next();
+}
+
+function safeTokenEquals(received, expected) {
+  const left = String(received || '').trim();
+  const right = String(expected || '').trim();
+  if (!left || !right) return false;
+  const leftHash = crypto.createHash('sha256').update(left).digest();
+  const rightHash = crypto.createHash('sha256').update(right).digest();
+  return crypto.timingSafeEqual(leftHash, rightHash);
+}
+
+function requireInternalToken(req, res, next) {
+  if (!INTERNAL_TOKEN) {
+    return res.status(404).json({ ok: false, error: 'Endpoint interno indisponivel.' });
+  }
+  const received = req.get('x-miauw-internal-token') || req.get('x-internal-token');
+  if (!safeTokenEquals(received, INTERNAL_TOKEN)) {
+    return res.status(403).json({ ok: false, error: 'Token interno invalido.' });
+  }
+  return next();
+}
+
+function normalizeInternalText(value, maxLength = 180) {
+  return String(value || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[<>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeInternalSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizeHash(hash) {
@@ -1774,6 +1815,114 @@ app.get(`${BASE_PATH}/logout.php`, (req, res) => {
 });
 app.get(`${BASE_PATH}/index.php`, requireAuth, (_req, res) => res.redirect(`${BASE_PATH}/`));
 app.get(`${BASE_PATH}/`, requireAuth, (req, res) => res.type('html').send(renderApp(req)));
+
+app.get(`${BASE_PATH}/api/internal/search`, requireInternalToken, asyncRoute(async (req, res) => {
+  const query = normalizeInternalText(req.query.q, 140);
+  const terms = normalizeInternalSearch(query)
+    .split(' ')
+    .filter((term) => term.length >= 2)
+    .slice(0, 5);
+  const digitTerms = (query.match(/\d{4,14}/g) || []).slice(0, 3);
+  const allTerms = [...new Set([...terms, ...digitTerms])];
+  if (!allTerms.length) {
+    return res.json({
+      ok: true,
+      items: [],
+      message: 'Informe produto, EAN ou categoria para consultar a Cotacao.'
+    });
+  }
+
+  const limit = Math.max(1, Math.min(Number.parseInt(String(req.query.limit || '8'), 10) || 8, 20));
+  const sheet = await loadSheet();
+  const items = [];
+  for (const row of sheet.rows) {
+    const fragments = [];
+    for (const column of sheet.columns) {
+      const value = String(row.values?.[column.key] ?? '').trim();
+      if (value !== '') fragments.push(column.label, value);
+    }
+    fragments.push(String(row.position || ''));
+    const haystack = normalizeInternalSearch(fragments.join(' '));
+    const digits = fragments.join(' ').replace(/\D+/g, '');
+    const matches = allTerms.every((term) => {
+      const normalized = normalizeInternalSearch(term);
+      if (/^\d+$/.test(term)) {
+        return digits.includes(term.replace(/\D+/g, '')) || haystack.includes(normalized);
+      }
+      return normalized !== '' && haystack.includes(normalized);
+    });
+    if (!matches) continue;
+
+    items.push({
+      rowId: row.id,
+      position: row.position,
+      ean: String(row.values?.ean ?? ''),
+      produto: String(row.values?.produto ?? ''),
+      quantidade: String(row.values?.quantidade ?? ''),
+      categoria: String(row.values?.categoria ?? ''),
+      ganhador: computeWinnerForRow(row, sheet.columns),
+      updatedAt: row.updatedAt
+    });
+    if (items.length >= limit) break;
+  }
+
+  return res.json({ ok: true, query, items, total: items.length, quoteId: sheet.quote.id });
+}));
+
+app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute(async (req, res) => {
+  const produto = normalizeInternalText(req.body?.produto, 220);
+  const responsavel = normalizeInternalText(req.body?.responsavel, 70);
+  const observacao = normalizeInternalText(req.body?.observacao, 180);
+  const categoriaExtra = normalizeInternalText(req.body?.categoria_extra, 80);
+  if (!produto) {
+    return res.status(422).json({ ok: false, error: 'Informe o produto da encomenda.' });
+  }
+  if (!responsavel) {
+    return res.status(422).json({ ok: false, error: 'Informe o responsavel ou cliente da encomenda.' });
+  }
+
+  const quote = await getOrCreateDefaultQuote();
+  const categoria = normalizeInternalText(`encomenda ${responsavel}${categoriaExtra ? ` ${categoriaExtra}` : ''}`, 120);
+  const rowValues = {
+    produto,
+    quantidade: '1',
+    categoria
+  };
+  const rows = await addRows(quote.id, 1, [rowValues]);
+  const username = normalizeInternalText(req.body?.username, 80) || 'Miauby';
+  const userId = Number.parseInt(String(req.body?.usuario_id || ''), 10);
+  const event = await appendEvent({
+    quoteId: quote.id,
+    type: 'rows_added',
+    payload: {
+      rows,
+      source: 'miauby_encomenda',
+      produto,
+      responsavel,
+      observacao
+    },
+    user: { id: Number.isSafeInteger(userId) && userId > 0 ? userId : null, username },
+    clientId: INTERNAL_CLIENT_ID
+  });
+  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId: INTERNAL_CLIENT_ID });
+
+  return res.json({
+    ok: true,
+    item: {
+      id: rows[0]?.id || '',
+      rowId: rows[0]?.id || '',
+      position: rows[0]?.position || 0,
+      produto,
+      responsavel,
+      categoria,
+      status: 'aberta',
+      registrada_em: event.created_at,
+      observacao
+    },
+    rows,
+    eventId: Number(event.id)
+  });
+}));
 
 app.get(`${BASE_PATH}/api/bootstrap`, requireApiAuth, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();

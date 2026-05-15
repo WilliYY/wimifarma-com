@@ -46,6 +46,9 @@ Ele valida:
 - registry essencial de skills;
 - rotas de modelo `fast`, `smart` e `boss`;
 - intents de lancamento financeiro, tarefa, encomenda e urgente de Cotacao.
+- Fase 4 das tools core: sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
+- sangria sem valor nao vira escrita;
+- contrato das tools de Codigos (`resumo_codigos` e `buscar_codigo_comissao`).
 
 Rodar pelo container:
 
@@ -68,7 +71,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 
 - A fase atual prioriza smoke tests por causa da migracao.
 - O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
-- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3.
+- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3 e o registry das tools operacionais da Fase 4.
 
 ## Riscos ao alterar
 
@@ -83,7 +86,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Adicionar testes de API autenticada.
 - Adicionar testes de integridade para Cotacao e Financeiro.
 - Adicionar teste de seguranca basico para segredos em Git.
-- Ampliar evals do Miauby para cotacao rapida, alertas, memoria e tools OpenAI registradas.
+- Ampliar evals do Miauby para cotacao rapida, alertas, memoria, confirmacao de acoes fortes e ferramentas OpenAI registradas.
 
 ## Evolucao futura
 

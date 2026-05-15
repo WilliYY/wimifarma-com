@@ -12,6 +12,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - CSRF e escape HTML existem nos helpers internos.
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
+- A ponte interna do Miauby para a Cotacao V2 exige `X-Miauw-Internal-Token` e fica indisponivel se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
 - `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
@@ -41,6 +42,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Revisar permissao antes de expor qualquer endpoint novo.
 - Diagnosticos internos do Miauby nao devem exibir stack trace, payload bruto, caminho completo, chave, token, CPF, telefone ou email no painel operacional.
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
+- Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
 
 ## Decisoes tecnicas ja tomadas

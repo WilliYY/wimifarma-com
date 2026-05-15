@@ -134,6 +134,7 @@ Regras a preservar:
 - `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; destaque visual so por regra condicional explicita.
 - colagem, alca de preenchimento e desfazer/refazer de lotes devem usar batch otimista e atualizar apenas linhas afetadas quando nao houver mudanca estrutural.
 - A Cotacao PHP antiga foi removida; nao existe fluxo paralelo em `site/cotacao`.
+- O Miauby deve consultar e criar encomendas na Cotacao pela ponte interna tokenizada da V2 (`/cotacao/api/internal/search` e `/cotacao/api/internal/encomendas`), nao por tabelas legadas da Cotacao PHP.
 
 ## Fluxo Financeiro
 
@@ -232,6 +233,8 @@ Direcao de evolucao:
 
 - evoluir por skills controladas, nao por acesso livre ao banco;
 - usar `miauw_skill_registry()` como fonte de inventario das skills antes de novas tools;
+- manter a Fase 4 registrada no registry: sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos;
+- usar a ponte interna da Cotacao V2 para consultas/encomendas, protegida por token de ambiente;
 - registrar padroes e memorias com revisao e auditoria;
 - revisar memorias e padroes pelo painel restrito `/miauw/diagnostico.php`, marcando status sem apagar dados;
 - separar leitura, sugestao e escrita;

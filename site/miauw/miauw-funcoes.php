@@ -34,15 +34,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260515d');
+    define('MIAUW_VERSION', '20260515e');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase3');
+    define('MIAUW_AGENT_VERSION', '2.0-fase4');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-diagnostico');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-tools-core');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -108,6 +108,19 @@ if (!defined('MIAUW_REASONING_BOSS')) {
 
 if (!defined('MIAUW_OPENAI_TOOLS')) {
     define('MIAUW_OPENAI_TOOLS', true);
+}
+
+if (!defined('MIAUW_GUARDIAN_TOKEN')) {
+    define('MIAUW_GUARDIAN_TOKEN', miauw_env_string(array('MIAUW_GUARDIAN_TOKEN')));
+}
+
+if (!defined('COTACAO_INTERNAL_TOKEN')) {
+    define('COTACAO_INTERNAL_TOKEN', miauw_env_string(array('COTACAO_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN')));
+}
+
+if (!defined('COTACAO_INTERNAL_BASE_URL')) {
+    $cotacaoInternalBaseUrl = miauw_env_string(array('COTACAO_INTERNAL_BASE_URL'));
+    define('COTACAO_INTERNAL_BASE_URL', $cotacaoInternalBaseUrl !== '' ? $cotacaoInternalBaseUrl : 'http://wimifarma-cotacao-app:3000/cotacao');
 }
 
 function miauw_schema_statements(): array
@@ -281,6 +294,7 @@ function miauw_agent_public_status(): array
             'diagnostico_interno',
             'evals_intents_guardrails',
             'painel_diagnostico_revisao',
+            'tools_operacionais_migradas',
         ),
     );
 }
@@ -1458,6 +1472,11 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
 
         if (is_array($command) && trim((string) ($command['produto'] ?? '')) !== '' && trim((string) ($command['responsavel'] ?? '')) !== '') {
             try {
+                $command['usuario_id'] = $userId;
+                $sessionUser = function_exists('current_user') ? current_user() : null;
+                if (is_array($sessionUser) && trim((string) ($sessionUser['username'] ?? '')) !== '') {
+                    $command['username'] = (string) $sessionUser['username'];
+                }
                 $result = miauw_skill_create_cotacao_encomenda($command);
                 unset($_SESSION[$pendingOrderKey]);
 
@@ -1549,6 +1568,11 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             }
 
             try {
+                $command['usuario_id'] = $userId;
+                $sessionUser = function_exists('current_user') ? current_user() : null;
+                if (is_array($sessionUser) && trim((string) ($sessionUser['username'] ?? '')) !== '') {
+                    $command['username'] = (string) $sessionUser['username'];
+                }
                 $result = miauw_skill_create_cotacao_encomenda($command);
 
                 return array(
@@ -2054,12 +2078,38 @@ function miauw_openai_tools(): array
         ),
         array(
             'type' => 'function',
+            'name' => 'resumo_codigos',
+            'description' => 'Consulta resumo dos atalhos de codigos de comissao, separados por blocos de EAN.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'mes' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 12),
+                    'ano' => array('type' => 'integer', 'minimum' => 2020, 'maximum' => 2035),
+                ),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
             'name' => 'buscar_cliente',
             'description' => 'Busca cliente por nome ou telefone parcial no cashback, sem expor telefone completo.',
             'parameters' => array(
                 'type' => 'object',
                 'properties' => array(
                     'busca' => array('type' => 'string', 'minLength' => 3, 'maxLength' => 80),
+                ),
+                'required' => array('busca'),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
+            'name' => 'buscar_codigo_comissao',
+            'description' => 'Busca atalho em Codigos por codigo, EAN ou nome do item, retornando preco de comissao.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'busca' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 120),
                 ),
                 'required' => array('busca'),
                 'additionalProperties' => false,
@@ -2120,6 +2170,21 @@ function miauw_openai_tools(): array
         ),
         array(
             'type' => 'function',
+            'name' => 'criar_tarefa',
+            'description' => 'Cria tarefa interna quando houver titulo claro. Use prioridade alta, normal ou baixa; se faltar titulo, pergunte antes.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'titulo' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 180),
+                    'descricao' => array('type' => 'string', 'maxLength' => 900),
+                    'prioridade' => array('type' => 'string', 'enum' => array('alta', 'normal', 'baixa')),
+                ),
+                'required' => array('titulo'),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
             'name' => 'criar_encomenda_cotacao',
             'description' => 'Cria encomenda controlada na Cotacao Geral quando houver produto e responsavel/cliente. Exemplo: "encomenda losartana 50mg Isadora". Nao use para consulta; use buscar_cotacao para procurar.',
             'parameters' => array(
@@ -2130,6 +2195,22 @@ function miauw_openai_tools(): array
                     'observacao' => array('type' => 'string', 'maxLength' => 160),
                 ),
                 'required' => array('produto', 'responsavel'),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
+            'name' => 'registrar_sangria',
+            'description' => 'Registra sangria no financeiro quando houver valor e responsavel. Se faltar valor ou responsavel, pergunte antes de gravar.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'valor' => array('type' => 'number', 'minimum' => 0.01),
+                    'responsavel' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 70),
+                    'observacao' => array('type' => 'string', 'maxLength' => 220),
+                    'data' => array('type' => 'string', 'description' => 'Data em YYYY-MM-DD. Se nao houver data clara, use a data de hoje.'),
+                ),
+                'required' => array('valor', 'responsavel'),
                 'additionalProperties' => false,
             ),
         ),
@@ -2229,8 +2310,19 @@ function miauw_openai_tool_result(string $name, array $args): string
         return miauw_skill_context_for_message(sprintf('resumo cashback %02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))));
     }
 
+    if ($name === 'resumo_codigos') {
+        $period = function_exists('miauw_skill_period_from_message')
+            ? miauw_skill_period_from_message(sprintf('%02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))))
+            : array();
+        return implode("\n", miauw_skill_codigos_summary($period));
+    }
+
     if ($name === 'buscar_cliente') {
         return implode("\n", miauw_skill_client_lookup((string) ($args['busca'] ?? '')));
+    }
+
+    if ($name === 'buscar_codigo_comissao') {
+        return implode("\n", miauw_skill_codigos_lookup((string) ($args['busca'] ?? '')));
     }
 
     if ($name === 'buscar_cotacao') {
@@ -2274,6 +2366,31 @@ function miauw_openai_tool_result(string $name, array $args): string
         }
     }
 
+    if ($name === 'criar_tarefa') {
+        if (!function_exists('miauw_skill_create_tarefa')) {
+            return 'Ferramenta de tarefa indisponivel.';
+        }
+
+        try {
+            $user = function_exists('current_user') ? current_user() : null;
+            $result = miauw_skill_create_tarefa(array(
+                'titulo' => (string) ($args['titulo'] ?? ''),
+                'descricao' => (string) ($args['descricao'] ?? ''),
+                'prioridade' => (string) ($args['prioridade'] ?? 'normal'),
+            ), is_array($user) ? (int) ($user['id'] ?? 0) : null);
+        } catch (Throwable $error) {
+            error_log('Miauby OpenAI tool criar_tarefa failed: ' . $error->getMessage());
+            miauw_register_internal_error_alert('miauby', 'Falha ao criar tarefa por ferramenta', $error, array('origem' => 'criar_tarefa'));
+
+            return 'Nao consegui criar a tarefa agora. Registrei diagnostico interno para revisao.';
+        }
+
+        return "TAREFA CRIADA\n"
+            . "ID: " . (int) $result['id'] . "\n"
+            . "Prioridade: " . (string) $result['prioridade'] . "\n"
+            . "Titulo: " . (string) $result['titulo'];
+    }
+
     if ($name === 'criar_encomenda_cotacao') {
         if (!function_exists('miauw_skill_create_cotacao_encomenda')) {
             return 'Ferramenta de encomenda indisponivel.';
@@ -2294,7 +2411,7 @@ function miauw_openai_tool_result(string $name, array $args): string
         }
 
         return "ENCOMENDA CRIADA\n"
-            . "ID: " . (int) $result['id'] . "\n"
+            . "ID: " . (string) $result['id'] . "\n"
             . "Produto: " . (string) $result['produto'] . "\n"
             . "Responsavel/cliente: " . (string) $result['responsavel'] . "\n"
             . "Registro: " . (string) ($result['registrada_em'] ?? '') . "\n"
@@ -2344,6 +2461,32 @@ function miauw_openai_tool_result(string $name, array $args): string
         return function_exists('miauw_skill_registry_diagnostics')
             ? miauw_skill_registry_diagnostics()
             : 'Registry de skills indisponivel neste bootstrap.';
+    }
+
+    if ($name === 'registrar_sangria') {
+        if (!function_exists('miauw_skill_create_sangria')) {
+            return 'Ferramenta de sangria indisponivel.';
+        }
+
+        try {
+            $result = miauw_skill_create_sangria(
+                (float) ($args['valor'] ?? 0),
+                (string) ($args['responsavel'] ?? ''),
+                (string) ($args['observacao'] ?? ''),
+                isset($args['data']) ? (string) $args['data'] : null
+            );
+        } catch (Throwable $error) {
+            error_log('Miauby OpenAI tool registrar_sangria failed: ' . $error->getMessage());
+            miauw_register_internal_error_alert('miauby', 'Falha ao registrar sangria por ferramenta', $error, array('origem' => 'registrar_sangria'));
+
+            return 'Nao consegui registrar a sangria agora. Registrei diagnostico interno para revisao.';
+        }
+
+        return "SANGRIA REGISTRADA\n"
+            . "ID: " . (int) $result['id'] . "\n"
+            . "Data: " . (string) $result['data'] . "\n"
+            . "Valor: " . miauw_skill_money((float) $result['valor']) . "\n"
+            . "Responsavel: " . (string) $result['responsavel'];
     }
 
     if ($name === 'criar_lancamento_financeiro') {

@@ -255,6 +255,10 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Os guardrails finais do Miauby tambem substituem fragmentos de chaves `sk-...` por `credencial interna` antes de qualquer resposta ao operador.
 - O Miauby iniciou a Fase 3 com `/miauw/diagnostico.php`, painel restrito a `admin`, `gerente` ou usuario `adm`, mostrando status do agente/API, modelos, registry de skills, alertas, diagnosticos internos recentes e revisao de `miauw_memorias`/`miauw_padroes`.
 - `miauw_memorias` e `miauw_padroes` possuem colunas aditivas `revisao_status`, `reviewed_by` e `reviewed_at`; aprovar/ignorar no painel apenas marca revisao e registra `wf_logs`, sem apagar dados.
+- O Miauby iniciou a Fase 4 do agente operacional v2: as tools core foram migradas para o registry e cobrem sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
+- A consulta/escrita de encomenda da Cotacao pelo Miauby agora usa a Cotacao V2 por ponte interna tokenizada no Node: `GET /cotacao/api/internal/search` e `POST /cotacao/api/internal/encomendas`. Esses endpoints exigem `X-Miauw-Internal-Token` e ficam desabilitados se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
+- O PHP do Miauby usa `COTACAO_INTERNAL_BASE_URL` para falar com `wimifarma-cotacao-app:3000/cotacao`, e usa `COTACAO_INTERNAL_TOKEN` com fallback para `MIAUW_GUARDIAN_TOKEN`; valores reais continuam somente no `.env`/ambiente.
+- `site/miauw/miauw-evals.php` cobre a Fase 4 com registry das tools core, sangria sem valor proibida e contrato das tools de Codigos, sem chamar OpenAI nem executar escritas reais.
 
 ## Estado validado em 2026-05-11
 

@@ -73,7 +73,7 @@ function miauw_eval_assert_no_forbidden(string $text, string $message): void
     }
 }
 
-miauw_eval_add('agent_status_fase3', static function (): void {
+miauw_eval_add('agent_status_fase4', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
@@ -82,6 +82,7 @@ miauw_eval_add('agent_status_fase3', static function (): void {
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
     miauw_eval_assert(in_array('painel_diagnostico_revisao', (array) ($status['features'] ?? array()), true), 'Fase 3 precisa anunciar painel de diagnostico no status.');
+    miauw_eval_assert(in_array('tools_operacionais_migradas', (array) ($status['features'] ?? array()), true), 'Fase 4 precisa anunciar tools operacionais migradas no status.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {
@@ -117,6 +118,13 @@ miauw_eval_add('registry_skills_essenciais', static function (): void {
     $registry = miauw_skill_registry_public();
     $required = array(
         'diagnostico_skills',
+        'resumo_financeiro',
+        'resumo_cashback',
+        'resumo_codigos',
+        'buscar_cliente',
+        'buscar_cotacao',
+        'buscar_codigo_comissao',
+        'registrar_sangria',
         'criar_lancamento_financeiro',
         'criar_tarefa',
         'criar_encomenda_cotacao',
@@ -130,6 +138,19 @@ miauw_eval_add('registry_skills_essenciais', static function (): void {
 
     $summary = miauw_skill_registry_summary();
     miauw_eval_assert((int) ($summary['total'] ?? 0) >= count($required), 'Resumo do registry esta incompleto.');
+});
+
+miauw_eval_add('registry_core_tools_fase4', static function (): void {
+    $status = miauw_skill_core_migration_status();
+
+    miauw_eval_assert_same(4, (int) ($status['fase'] ?? 0), 'Status de migracao core deve apontar Fase 4.');
+    miauw_eval_assert_same(array(), (array) ($status['missing'] ?? array()), 'Fase 4 tem tool ausente no registry.');
+    miauw_eval_assert_same(array(), (array) ($status['executores_indisponiveis'] ?? array()), 'Fase 4 tem executor indisponivel.');
+
+    $tools = (array) ($status['tools'] ?? array());
+    foreach (miauw_skill_core_tool_names() as $name) {
+        miauw_eval_assert(!empty($tools[$name]['registrada']), 'Tool core nao registrada: ' . $name);
+    }
 });
 
 miauw_eval_add('diagnostico_fase3_payload', static function (): void {
@@ -158,6 +179,16 @@ miauw_eval_add('intent_financeiro_lancamento', static function (): void {
     miauw_eval_assert_contains('Maria', (string) ($command['responsavel'] ?? ''), 'Responsavel financeiro nao detectado.');
 });
 
+miauw_eval_add('intent_sangria_precisa_valor', static function (): void {
+    $missingValue = miauw_skill_financeiro_command_from_message('lancar sangria responsavel Maria');
+    miauw_eval_assert($missingValue === null, 'Sangria sem valor nao pode virar escrita.');
+
+    $command = miauw_skill_financeiro_command_from_message('sangria 30 Maria');
+    miauw_eval_assert(is_array($command), 'Sangria com valor nao foi detectada.');
+    miauw_eval_assert_same('Sangria', (string) ($command['categoria'] ?? ''), 'Categoria de sangria incorreta.');
+    miauw_eval_assert(abs((float) ($command['valor'] ?? 0) - 30.0) < 0.001, 'Valor de sangria incorreto.');
+});
+
 miauw_eval_add('intent_tarefa_criacao', static function (): void {
     $command = miauw_skill_tarefa_command_from_message('criar tarefa alta conferir fechamento - revisar divergencia de pix');
 
@@ -183,6 +214,15 @@ miauw_eval_add('intent_cotacao_urgente', static function (): void {
     miauw_eval_assert(is_array($command), 'Comando de urgente nao foi detectado.');
     miauw_eval_assert_same('dipirona gotas', (string) ($command['produto'] ?? ''), 'Produto urgente incorreto.');
     miauw_eval_assert(miauw_skill_cotacao_urgente_command_from_message('como vejo produto urgente?') === null, 'Pergunta sobre urgente nao deve virar escrita.');
+});
+
+miauw_eval_add('tool_codigos_contrato', static function (): void {
+    miauw_eval_assert(function_exists('miauw_skill_codigos_lookup'), 'Lookup de codigos nao existe.');
+    miauw_eval_assert(function_exists('miauw_skill_codigos_summary'), 'Resumo de codigos nao existe.');
+
+    $registry = miauw_skill_registry_public();
+    miauw_eval_assert(!empty($registry['buscar_codigo_comissao']['openai_tool']), 'Buscar codigo deve estar disponivel como tool.');
+    miauw_eval_assert(!empty($registry['resumo_codigos']['openai_tool']), 'Resumo de codigos deve estar disponivel como tool.');
 });
 
 $passed = 0;

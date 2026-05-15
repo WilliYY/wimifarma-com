@@ -21,6 +21,8 @@ Variaveis/configuracoes:
 - `MIAUW_OPENAI_API_KEY`
 - `MIAUW_OPENAI_MODEL`
 - `MIAUW_GUARDIAN_TOKEN`
+- `COTACAO_INTERNAL_TOKEN`
+- `COTACAO_INTERNAL_BASE_URL`
 - constantes opcionais em `site/miauw/config.local.php`
 
 Status operacional:
@@ -33,6 +35,7 @@ Status operacional:
 - A Fase 1 do Miauby v2 aplica guardrails para que respostas ao operador nao citem bastidores de desenvolvimento, fornecedor, chave, prompt ou stack trace; assuntos tecnicos devem virar suporte tecnico interno com tela, horario, acao feita e print.
 - A Fase 2 do Miauby v2 adiciona `site/miauw/miauw-evals.php` para validar localmente intents, rotas de modelo, registry de skills e respostas proibidas sem chamar OpenAI nem executar escritas reais.
 - Os guardrails finais tambem removem fragmentos de chaves `sk-...` de respostas ao operador, substituindo por credencial interna.
+- A Fase 4 registra as tools core no registry e conecta o PHP do Miauby com a Cotacao V2 por endpoint interno tokenizado para consulta e criacao de encomenda.
 
 Tabelas:
 
@@ -121,6 +124,7 @@ Direcao:
 - revisar memorias e padroes antes de transformar em automacao.
 - preservar isolamento operacional do Miauby v2 ao adicionar novas tools.
 - manter `miauw-evals.php` atualizado sempre que novas intents/tools forem adicionadas.
+- para Cotacao, usar somente a ponte interna da V2 (`COTACAO_INTERNAL_BASE_URL` + token), evitando qualquer escrita direta nas tabelas antigas removidas.
 
 Documento especifico:
 
