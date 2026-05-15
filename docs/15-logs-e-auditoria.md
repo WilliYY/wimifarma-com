@@ -11,6 +11,7 @@ Logs de container:
 - `docker compose logs wimifarma-com-web`
 - `docker compose logs wimifarma-com-db`
 - `docker compose logs wimifarma-cotacao-app`
+- `docker compose logs wimifarma-miauw-agent`
 
 Tabelas de auditoria/log:
 
@@ -29,6 +30,7 @@ Arquivos:
 - `site/cashback/functions.php`
 - `site/codigos/codigos-funcoes.php`
 - `apps/cotacao/src/server.js`
+- `apps/miauw-agent/src/server.ts`
 - `site/financeiro/financeiro-funcoes.php`
 - `site/miauw/miauw-intelligence.php`
 - `site/miauw/miauw-funcoes.php`
@@ -45,6 +47,7 @@ Arquivos:
 - Revisar memoria/padrao no painel do Miauby registra `wf_logs` com `miauw_revisao_memoria` ou `miauw_revisao_padrao`, sem apagar o registro revisado.
 - A Fase 4 do Miauby registra tools core por registry; criar encomenda na Cotacao V2 gera evento em `cotacao_v2_events` e tambem registra `wf_logs` quando chamado pelo PHP do Miauby.
 - A Fase 5 do Miauby registra execucao em `miauw_tool_traces`, vinculando `trace_id`, conversa, usuario, ferramenta, status, risco, resumo sanitizado, duracao e se houve confirmacao. Payloads devem ser sanitizados e nunca guardar chaves, tokens, SQL cru ou stack trace completo.
+- A Fase 7 do Miauby agente ainda nao grava na tabela `miauw_tool_traces` diretamente; ela emite `trace_id` proprio nos endpoints sombra e deve ser ligada a essa trilha pelo adaptador PHP antes de ativacao real.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 

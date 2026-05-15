@@ -308,6 +308,66 @@ function miauw_diagnostics_trace_stats(): array
     );
 }
 
+function miauw_diagnostics_agent_service_status(): array
+{
+    $baseUrl = defined('MIAUW_AGENT_INTERNAL_BASE_URL') ? (string) MIAUW_AGENT_INTERNAL_BASE_URL : '';
+    $status = array(
+        'configured' => $baseUrl !== '',
+        'reachable' => false,
+        'status' => 'not_checked',
+        'mode' => 'shadow',
+        'http_status' => 0,
+        'agent_version' => '',
+        'phase' => '',
+        'runtime' => '',
+        'api_configured' => false,
+        'internal_access_configured' => defined('MIAUW_AGENT_INTERNAL_TOKEN') && trim((string) MIAUW_AGENT_INTERNAL_TOKEN) !== '',
+        'writes_enabled' => false,
+    );
+
+    if ($baseUrl === '' || !function_exists('curl_init')) {
+        $status['status'] = 'unavailable';
+        return $status;
+    }
+
+    $url = rtrim($baseUrl, '/') . '/health';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, array(
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT_MS => 350,
+        CURLOPT_TIMEOUT_MS => 900,
+        CURLOPT_HTTPHEADER => array('Accept: application/json'),
+    ));
+
+    $raw = curl_exec($ch);
+    $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    $status['http_status'] = $httpStatus;
+
+    if (!is_string($raw) || $raw === '' || $httpStatus < 200 || $httpStatus >= 300) {
+        $status['status'] = $error !== '' ? 'offline' : 'http_' . $httpStatus;
+        return $status;
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        $status['status'] = 'invalid_json';
+        return $status;
+    }
+
+    $status['reachable'] = true;
+    $status['status'] = !empty($decoded['ok']) ? 'ok' : 'degraded';
+    $status['agent_version'] = miauw_diagnostics_safe_text((string) ($decoded['agent_version'] ?? ''), 40);
+    $status['phase'] = miauw_diagnostics_safe_text((string) ($decoded['phase'] ?? ''), 40);
+    $status['runtime'] = miauw_diagnostics_safe_text((string) ($decoded['runtime'] ?? ''), 40);
+    $status['api_configured'] = !empty($decoded['api_configured']);
+    $status['writes_enabled'] = !empty($decoded['writes_enabled']);
+
+    return $status;
+}
+
 function miauw_diagnostics_summary(bool $runScan = true): array
 {
     miauw_diagnostics_ensure_review_columns();
@@ -328,6 +388,7 @@ function miauw_diagnostics_summary(bool $runScan = true): array
     return array(
         'agent' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(),
         'next_phase' => function_exists('miauw_agent_next_phase_contract') ? miauw_agent_next_phase_contract() : array(),
+        'agent_service' => miauw_diagnostics_agent_service_status(),
         'api' => function_exists('miauw_openai_public_status') ? miauw_openai_public_status() : array(),
         'models' => array(
             'fast' => defined('MIAUW_MODEL_FAST') ? MIAUW_MODEL_FAST : '',

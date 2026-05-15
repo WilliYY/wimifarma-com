@@ -20,6 +20,7 @@ docker compose logs --tail=80 wimifarma-com-db
 docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-cotacao-db
 docker compose logs --tail=80 wimifarma-cotacao-redis
+docker compose logs --tail=80 wimifarma-miauw-agent
 ```
 
 ## Local - lint PHP
@@ -34,6 +35,20 @@ docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-diagnostics.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/diagnostico.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-evals.php
 ```
+
+## Local - Miauby agente Node
+
+```powershell
+cd C:\Projetos\wimifarma-com\apps\miauw-agent
+npm run check
+npm run build
+cd C:\Projetos\wimifarma-com
+docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
+curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
+curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent/run -H "Content-Type: application/json" -d "{\"message\":\"teste\"}"
+```
+
+O `POST /miauw/agent/run` sem token deve recusar com 401 ou 503, dependendo da configuracao local do token. Nao colocar o token real em comandos versionados.
 
 ## Local - Miauby evals
 
@@ -55,6 +70,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/login.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
+curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health
 ```
 
 ## Local - home e Cotacao tempo real
@@ -99,6 +115,17 @@ docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-cotacao-app
+```
+
+Para mudancas no servico Miauby agente em modo sombra, usar rebuild direcionado:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+git pull origin main
+docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
+docker compose ps
+curl -I https://wimifarma.com/miauw/agent/health
+docker compose logs --tail=80 wimifarma-miauw-agent
 ```
 
 ## VPS - auditar e organizar pastas do projeto

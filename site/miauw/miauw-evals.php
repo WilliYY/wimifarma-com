@@ -83,11 +83,11 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase6', static function (): void {
+miauw_eval_add('agent_status_fase7', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0') === 0, 'Versao do agente deve estar na familia 2.0.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase7') === 0, 'Versao do agente deve apontar Fase 7.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
@@ -98,18 +98,23 @@ miauw_eval_add('agent_status_fase6', static function (): void {
     miauw_eval_assert(in_array('streaming_visual_widget', (array) ($status['features'] ?? array()), true), 'Fase 5 precisa anunciar streaming visual.');
     miauw_eval_assert(in_array('evals_operacionais_fase6', (array) ($status['features'] ?? array()), true), 'Fase 6 precisa anunciar evals operacionais.');
     miauw_eval_assert(in_array('contrato_agents_sdk_preparado', (array) ($status['features'] ?? array()), true), 'Fase 6 precisa anunciar contrato da proxima camada.');
+    miauw_eval_assert(in_array('servico_agents_sdk_sombra', (array) ($status['features'] ?? array()), true), 'Fase 7 precisa anunciar servico sombra.');
+    miauw_eval_assert(in_array('streaming_real_sombra', (array) ($status['features'] ?? array()), true), 'Fase 7 precisa anunciar streaming real em sombra.');
 });
 
-miauw_eval_add('fase6_contrato_proxima_camada', static function (): void {
+miauw_eval_add('fase7_contrato_servico_sombra', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase6', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 6.');
+    miauw_eval_assert_same('fase7', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 7.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
     miauw_eval_assert_same('/miauw/agent', (string) ($contract['endpoint_interno'] ?? ''), 'Endpoint interno futuro mudou.');
+    miauw_eval_assert_same('sombra', (string) ($contract['modo'] ?? ''), 'Fase 7 deve continuar em modo sombra.');
     miauw_eval_assert(!empty($contract['pronto_agora']['registry_skills']), 'Registry precisa estar pronto antes do servico agente.');
     miauw_eval_assert(!empty($contract['pronto_agora']['evals_locais']), 'Evals locais precisam existir antes do servico agente.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['scaffold_servico_sombra']), 'Scaffold do servico sombra precisa estar marcado.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['proxy_interno']), 'Proxy interno do servico sombra precisa estar marcado.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {
@@ -228,6 +233,7 @@ miauw_eval_add('diagnostico_fase3_payload', static function (): void {
     miauw_eval_assert(is_array($data['summary']['memorias'] ?? null), 'Resumo de memorias ausente.');
     miauw_eval_assert(is_array($data['summary']['padroes'] ?? null), 'Resumo de padroes ausente.');
     miauw_eval_assert(is_array($data['summary']['skills'] ?? null), 'Resumo de skills ausente no diagnostico.');
+    miauw_eval_assert(is_array($data['summary']['agent_service'] ?? null), 'Resumo do servico agente ausente no diagnostico.');
     miauw_eval_assert_no_forbidden(json_encode($data['summary'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '', 'Resumo do diagnostico expos termo proibido.');
 });
 

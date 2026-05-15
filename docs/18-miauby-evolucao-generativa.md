@@ -70,6 +70,14 @@ Miauby ja possui:
   - `miauw-evals.php` cobre contrato da proxima camada, schemas das tools, divergencia entre registry e tools online, dados incompletos sem escrita, Cotacao pedindo termo quando falta produto/EAN/categoria, prompt de nao inventar dados e confirmacao obrigatoria para escrita forte por risco;
   - `/miauw/diagnostico.php` mostra um contrato seguro da proxima camada, com Node.js 22 + TypeScript, Agents SDK, endpoint interno `/miauw/agent` e pontos que nao devem mudar agora;
   - `miauw_agent_next_phase_contract()` registra a ponte planejada para migrar o motor do Miauby sem quebrar PHP, sessoes, widget, registry, traces, confirmacoes e evals atuais.
+- Fase 7 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase7`;
+  - `apps/miauw-agent` cria o servico dedicado em Node.js 22 + TypeScript com `@openai/agents`;
+  - o Apache publica `/miauw/agent/` por proxy interno para `wimifarma-miauw-agent:3100`;
+  - `GET /miauw/agent/health` e `GET /miauw/agent/status` retornam estado seguro, sem segredo;
+  - `POST /miauw/agent/run` e `POST /miauw/agent/stream` exigem token interno e rodam em modo sombra;
+  - o servico possui uma tool de diagnostico segura e nao executa escrita real;
+  - o PHP continua dono de login, sessoes, widget, registry, confirmacoes, tools auditadas e historico ate existir adaptador validado por evals.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -85,6 +93,9 @@ Arquivos:
 - `site/miauw/miauw-system-map.php`
 - `site/miauw/guardian-cron.php`
 - `site/miauw/widget-status.php`
+- `apps/miauw-agent/package.json`
+- `apps/miauw-agent/src/server.ts`
+- `apps/miauw-agent/Dockerfile`
 
 Tabelas:
 
@@ -101,6 +112,7 @@ Tabelas:
 Integracoes:
 
 - OpenAI Responses API;
+- Agents SDK no servico sombra `wimifarma-miauw-agent`;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.
 
@@ -144,8 +156,9 @@ Integracoes:
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
-- Evoluir a Fase 5 de streaming visual para streaming online real em um servico dedicado quando houver separacao Node/TypeScript/Agents SDK.
-- Ampliar a Fase 6 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback e erros comuns de usuarios.
+- Ligar o adaptador PHP ao servico sombra sem perder sessoes, confirmacoes, traces e fallback.
+- Exportar schemas das tools do registry PHP para o servico Node sem duplicar regra de negocio.
+- Ampliar a Fase 6/7 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback e erros comuns de usuarios.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 
 ## Como pode evoluir
@@ -156,4 +169,5 @@ Integracoes:
 - Fase 4: migrar tools importantes para registry e executores controlados. Em andamento com sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
 - Fase 5: adicionar streaming e rastreabilidade por conversa, incluindo log de tool usada e confirmacao para acoes fortes. Em andamento com streaming visual, traces estruturados e card de confirmacao.
 - Fase 6: ampliar evals operacionais para regras proibidas, dados faltantes, nao inventar dados, schema/registry de tools e confirmacao de acoes destrutivas. Em andamento com runner local ampliado.
-- Fase 7: criar o servico dedicado do Miauby em Node.js 22 + TypeScript com Agents SDK, preservando compatibilidade com o PHP atual ate os evals aprovarem a troca.
+- Fase 7: criar o servico dedicado do Miauby em Node.js 22 + TypeScript com Agents SDK, preservando compatibilidade com o PHP atual ate os evals aprovarem a troca. Iniciada com servico sombra e health/status.
+- Fase 8: criar adaptador PHP -> servico sombra, comparar respostas e traces em paralelo, e so depois planejar corte controlado do motor principal.

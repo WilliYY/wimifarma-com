@@ -34,15 +34,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260515g');
+    define('MIAUW_VERSION', '20260515h');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase6');
+    define('MIAUW_AGENT_VERSION', '2.0-fase7');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-evals');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-servico-sombra');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -112,6 +112,15 @@ if (!defined('MIAUW_OPENAI_TOOLS')) {
 
 if (!defined('MIAUW_GUARDIAN_TOKEN')) {
     define('MIAUW_GUARDIAN_TOKEN', miauw_env_string(array('MIAUW_GUARDIAN_TOKEN')));
+}
+
+if (!defined('MIAUW_AGENT_INTERNAL_TOKEN')) {
+    define('MIAUW_AGENT_INTERNAL_TOKEN', miauw_env_string(array('MIAUW_AGENT_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN')));
+}
+
+if (!defined('MIAUW_AGENT_INTERNAL_BASE_URL')) {
+    $miauwAgentInternalBaseUrl = miauw_env_string(array('MIAUW_AGENT_INTERNAL_BASE_URL'));
+    define('MIAUW_AGENT_INTERNAL_BASE_URL', $miauwAgentInternalBaseUrl !== '' ? $miauwAgentInternalBaseUrl : 'http://wimifarma-miauw-agent:3100/miauw/agent');
 }
 
 if (!defined('COTACAO_INTERNAL_TOKEN')) {
@@ -299,7 +308,7 @@ function miauw_openai_public_status(): array
         'status' => $configured ? 'configured_not_validated' : 'missing',
         'message' => $configured
             ? 'Chave configurada, validacao online feita somente quando o Miauby responde.'
-            : 'Chave OpenAI ausente ou placeholder.',
+            : 'Chave da camada online ausente ou placeholder.',
     );
 }
 
@@ -323,6 +332,8 @@ function miauw_agent_public_status(): array
             'streaming_visual_widget',
             'evals_operacionais_fase6',
             'contrato_agents_sdk_preparado',
+            'servico_agents_sdk_sombra',
+            'streaming_real_sombra',
         ),
     );
 }
@@ -330,24 +341,26 @@ function miauw_agent_public_status(): array
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase6',
-        'proxima_fase' => 'servico_miauw_agent',
+        'fase_atual' => 'fase7',
+        'proxima_fase' => 'adaptador_php_servico_agente',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget e auditoria enquanto o servico novo assume orquestracao do agente por tras do api.php.',
+        'modo' => 'sombra',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria enquanto o servico novo roda em paralelo para validacao controlada.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
             'traces_por_conversa' => true,
             'confirmacao_acoes_fortes' => true,
             'evals_locais' => is_file(__DIR__ . '/miauw-evals.php'),
+            'scaffold_servico_sombra' => true,
+            'proxy_interno' => true,
         ),
         'pendencias' => array(
-            'Criar scaffold apps/miauw-agent com Node.js 22 e TypeScript.',
             'Exportar schemas das tools a partir do registry atual.',
-            'Adicionar adaptador PHP -> servico agente sem quebrar o widget atual.',
-            'Trocar streaming visual por streaming real quando o servico estiver estavel.',
+            'Adicionar adaptador PHP -> servico agente com comparacao sombra antes de ativar.',
+            'Registrar traces do servico novo na mesma trilha operacional do Miauby.',
             'Rodar os mesmos evals contra o servico novo antes de ativar em producao.',
         ),
         'nao_mudar_agora' => array(

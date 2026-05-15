@@ -48,6 +48,7 @@ Tabelas:
 - Sessao dos modulos internos e configurada em `site/cashback/config.php`.
 - Funcoes comuns ficam em `site/cashback/functions.php`.
 - Modulos como Cotacao, Financeiro, Tarefas e Miauby reaproveitam o contexto do Cashback.
+- O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 
 ## Riscos ao alterar
@@ -64,6 +65,7 @@ Tabelas:
 - Revisar fluxo de desbloqueio de areas sensiveis.
 - Criar tela/rotina segura para administracao de usuarios internos.
 - Mapear formalmente quais usuarios alem de `admin`/`gerente` devem acessar diagnosticos do Miauby.
+- Definir politica de corte para o adaptador PHP do Miauby agente, mantendo confirmacao humana antes de qualquer escrita forte.
 - Documentar politica de senha e recuperacao de acesso.
 
 ## Evolucao futura

@@ -55,6 +55,7 @@ Higiene de pastas no VPS:
 
 - `wimifarma-com-web:80`: porta interna correta para o proxy Docker.
 - `wimifarma-cotacao-app:3000`: servico interno da Cotacao V2, acessado pelo Apache por proxy reverso em `/cotacao`.
+- `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra, acessado pelo Apache por proxy reverso em `/miauw/agent`.
 - `127.0.0.1:3002`: porta local publicada pelo Compose.
 - `127.0.0.1:13002`: tunel PuTTY usado em testes.
 - `80/443`: publico via Nginx Proxy Manager.
@@ -79,12 +80,14 @@ Higiene de pastas no VPS:
 - `site/wp-content/endurance-page-cache/` e cache legado de HostGator e nao deve ser versionado nem preservado como fonte da home.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter o proxy Apache de `/cotacao/` para `wimifarma-cotacao-app:3000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
+- Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter `.env` local em cada ambiente.
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
 - Para backup/restore da Cotacao V2, manter `COTACAO_BACKUP_DIR=/app/backups` e o volume `./cotacao-data/backups:/app/backups`.
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
 - A senha operacional para excluir tabelas inteiras em Codigos e `wimifarma` por padrao e pode ser trocada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env` de cada ambiente.
+- Para o Miauby agente sombra, definir `MIAUW_AGENT_INTERNAL_TOKEN` ou manter `MIAUW_GUARDIAN_TOKEN` como fallback; o endpoint publico de health nao exige token, mas `run` e `stream` internos exigem.
 - Antes de deploy, fazer commit e push da alteracao.
 - Depois de deploy, rodar `docker compose ps`, `docker compose logs --tail=80 wimifarma-cotacao-app` e validar `http://127.0.0.1:3002/cotacao/health`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
@@ -104,6 +107,7 @@ Higiene de pastas no VPS:
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
+- A Fase 7 do Miauby adiciona `wimifarma-miauw-agent`, servico Node.js 22 + TypeScript em modo sombra. O deploy de mudancas nele deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`, porque o web carrega o proxy Apache.
 
 ## Riscos ao alterar
 
@@ -112,6 +116,7 @@ Higiene de pastas no VPS:
 - Arquivar uma pasta sem preservar `.env`, `mysql/`, `cotacao-data/` ou `config.local.php` pode perder configuracao ou dados locais unicos.
 - Trocar nomes de container quebra proxy.
 - Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
+- Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual, mas impede validar a Fase 7 do Miauby.
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
 - Se o WordPress nao reconhecer HTTPS atras do proxy, ele gera assets `http://` e o navegador bloqueia CSS/JS por mixed content.
@@ -137,6 +142,7 @@ Higiene de pastas no VPS:
 - Limpar cache runtime do SpeedyCache no VPS apos o deploy da correcao de HTTPS/cache.
 - Criar rotina de rollback.
 - Criar rotina agendada e externa de backup para `cotacao-data/postgres` e `cotacao-data/backups` antes de colocar dados reais na Cotacao V2.
+- Criar checklist de corte para trocar o Miauby PHP pelo servico agente depois dos evals.
 
 ## Evolucao futura
 

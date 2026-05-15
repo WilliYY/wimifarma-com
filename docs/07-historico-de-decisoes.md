@@ -2,6 +2,38 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-15 - Miauby inicia servico agente dedicado em modo sombra
+
+Decisao:
+
+- Criar `apps/miauw-agent` como servico Node.js 22 + TypeScript com `@openai/agents`.
+- Publicar `/miauw/agent/` pelo Apache para `wimifarma-miauw-agent:3100`.
+- Manter `site/miauw/api.php` como motor oficial do chat enquanto o servico novo roda em modo sombra.
+- Exigir token interno nos endpoints `run` e `stream`; `health` e `status` nao devem expor segredos.
+
+Motivo:
+
+- Evoluir o Miauby para uma arquitetura de agente operacional moderna sem quebrar login, widget, confirmacoes, registry, traces e tools PHP ja auditadas.
+
+Impacto:
+
+- `apps/miauw-agent/`
+- `docker-compose.yml`
+- `docker/php/Dockerfile`
+- `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-diagnostics.php`
+- `site/miauw/miauw-evals.php`
+- `.env.example`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- Nao trocar o chat para o servico novo sem adaptador PHP e evals comparando respostas/traces.
+- Nao duplicar regra de negocio de escrita fora das tools PHP auditadas.
+- Manter `MIAUW_AGENT_INTERNAL_TOKEN` e `MIAUW_GUARDIAN_TOKEN` fora do Git.
+
 ## 2026-05-10 - Migrar projeto do HostGator para VPS com Docker
 
 Decisao:

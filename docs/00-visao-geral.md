@@ -13,7 +13,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Cotacao: itens, fornecedores, categorias, precos, status, formatacao e auditoria.
 - Financeiro: fechamentos, sangrias, PIX, maquininhas, lancamentos e auditoria.
 - Tarefas: tarefas simples internas.
-- Miauby: assistente interno com memoria, alertas, diagnostico, OpenAI e rotinas de Farmacia Popular.
+- Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; a Fase 7 tambem possui servico agente em modo sombra.
 - WordPress: site principal e conteudo publico.
 
 ## Arquivos, rotas e componentes envolvidos
@@ -26,6 +26,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Financeiro: `site/financeiro/`
 - Tarefas: `site/tarefa/`
 - Miauby: `site/miauw/`
+- Miauby agente sombra: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
 - Docker: `docker-compose.yml`, `docker/php/Dockerfile`
 - Banco: volume local `mysql/` ignorado pelo Git
 - Documentacao: `README.md`, `AGENTS.md`, `docs/`
@@ -41,6 +42,7 @@ Rotas principais:
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
+- `/miauw/agent/health`
 
 ## Regras de negocio que precisam ser preservadas
 
@@ -49,6 +51,7 @@ Rotas principais:
 - Cotacao deve preservar ordem, categorias, fornecedores, precos, observacoes, cores/formatacao e status.
 - Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.
+- O servico Miauby agente sombra nao deve executar escrita real ate passar por adaptador PHP, traces e evals de corte.
 - WordPress deve continuar servindo o site principal enquanto os modulos internos ficam acessiveis por suas rotas.
 
 ## Decisoes tecnicas ja tomadas
@@ -59,6 +62,7 @@ Rotas principais:
 - O repositorio deve ser tratado como publico ate decisao contraria.
 - O Nginx Proxy Manager deve encaminhar o dominio publico para `wimifarma-com-web:80`, nao para a porta de tunel.
 - A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
+- O Miauby agente dedicado foi iniciado em modo sombra em `apps/miauw-agent`; `site/miauw/api.php` continua sendo o motor oficial do chat.
 
 ## Riscos ao alterar
 

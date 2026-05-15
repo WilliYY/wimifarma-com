@@ -19,6 +19,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/miauw/diagnostico.php` e restrito a `admin`, `gerente` ou `adm`, usa CSRF nas acoes e sanitiza textos de memorias, padroes e diagnosticos antes de exibir.
 - A Fase 5 do Miauby exige confirmacao humana para acoes fortes antes de gravar dados e registra traces sanitizados em `miauw_tool_traces`.
 - A Fase 6 do Miauby adiciona evals para manter dados incompletos fora de escrita, exigir confirmacao para escrita forte por risco e preservar a regra de nao inventar dados.
+- A Fase 7 do Miauby expõe apenas health/status sem segredo em `/miauw/agent/`; `run` e `stream` do servico sombra exigem `X-Miauw-Agent-Token` ou `X-Miauw-Internal-Token` com `MIAUW_AGENT_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN`.
 
 ## Arquivos envolvidos
 
@@ -26,6 +27,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `.dockerignore`
 - `.env.example`
 - `apps/cotacao/src/server.js`
+- `apps/miauw-agent/src/server.ts`
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/codigos/api.php`
@@ -48,6 +50,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Toda nova tool de escrita forte deve entrar no registry com risco correto e ganhar eval antes de ser liberada para uso generativo.
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
+- Nao versionar `MIAUW_AGENT_INTERNAL_TOKEN`; se vazar, trocar no `.env` do VPS e reiniciar web/Miauby agente.
+- O servico Miauby agente sombra nao deve executar escrita real nem expor payload bruto antes do adaptador PHP, traces e evals ficarem aprovados.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
 
 ## Decisoes tecnicas ja tomadas

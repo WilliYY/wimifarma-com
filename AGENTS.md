@@ -56,7 +56,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db` e `wimifarma-cotacao-redis`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis` e `wimifarma-miauw-agent`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
@@ -70,6 +70,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
   - `site/tarefa`
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
+- A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela fica em modo sombra e nao substitui `site/miauw/api.php` sem evals e corte controlado.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
@@ -145,6 +146,7 @@ Rotas internas:
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
+- `/miauw/agent/health`
 
 ## Auditoria antes de encerrar alteracoes
 
@@ -263,6 +265,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Acoes fortes do Miauby, como sangria/lancamento financeiro, faturamento diario, encomenda/urgente/cotacao rapida e nova planilha de cotacao, devem pedir confirmacao humana e so executar apos confirmar. A resposta e os traces devem continuar sem expor chave, payload bruto, SQL, stack trace ou bastidor tecnico.
 - O Miauby iniciou a Fase 6 com `MIAUW_AGENT_VERSION=2.0-fase6`: os evals locais agora cobrem contrato da proxima camada, schema das tools, alinhamento registry/OpenAI tools, dados incompletos sem escrita, Cotacao pedindo termo quando falta produto/EAN/categoria, regra de nao inventar dados e confirmacao obrigatoria para escrita forte por risco.
 - A proxima camada do Miauby esta preparada por contrato em `miauw_agent_next_phase_contract()`: Node.js 22 + TypeScript, Agents SDK e endpoint interno `/miauw/agent`. Ainda nao trocar o motor do Miauby sem manter compatibilidade com PHP, sessao, widget, registry, traces, confirmacoes e evals atuais.
+- O Miauby iniciou a Fase 7 com `MIAUW_AGENT_VERSION=2.0-fase7`: `apps/miauw-agent` cria um servico Node.js 22 + TypeScript com `@openai/agents`, health/status publicos e endpoints internos `run`/`stream` protegidos por `MIAUW_AGENT_INTERNAL_TOKEN` ou fallback `MIAUW_GUARDIAN_TOKEN`. O servico esta em modo sombra, sem escrita real; o PHP continua dono de login, widget, confirmacoes, registry e auditoria.
 
 ## Estado validado em 2026-05-11
 
@@ -315,6 +318,16 @@ git pull origin main
 docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
+```
+
+Para mudancas no servico do Miauby agente, incluir o servico novo no rebuild:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+git pull origin main
+docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
+docker compose ps
+curl -I https://wimifarma.com/miauw/agent/health
 ```
 
 Se for primeiro clone em uma pasta nova:

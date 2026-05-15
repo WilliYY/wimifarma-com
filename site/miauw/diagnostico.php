@@ -39,6 +39,7 @@ $data = miauw_diagnostics_panel_data(true);
 $summary = $data['summary'];
 $agent = $summary['agent'] ?? array();
 $nextPhase = $summary['next_phase'] ?? array();
+$agentService = $summary['agent_service'] ?? array();
 $api = $summary['api'] ?? array();
 $skills = $summary['skills'] ?? array();
 $models = $summary['models'] ?? array();
@@ -61,6 +62,24 @@ function miauw_diag_api_status_label(array $api): string
     }
 
     return $status !== '' ? $status : 'Indefinido';
+}
+
+function miauw_diag_agent_service_label(array $service): string
+{
+    $status = (string) ($service['status'] ?? '');
+    if (!empty($service['reachable']) && $status === 'ok') {
+        return 'Sombra ativa';
+    }
+
+    if ($status === 'not_checked') {
+        return 'Nao checado';
+    }
+
+    if ($status === 'unavailable') {
+        return 'Indisponivel';
+    }
+
+    return $status !== '' ? $status : 'Offline';
 }
 
 function miauw_diag_date_label(string $date): string
@@ -118,7 +137,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 6</span>
+                    <span class="diag-kicker">Fase 7</span>
                     <h1>Diagnostico do Miauby</h1>
                     <p>Saude, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>
@@ -161,6 +180,11 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <strong><?php echo e((string) ($traceStats['total'] ?? 0)); ?></strong>
                 <p><?php echo e((string) ($traceStats['confirmacoes'] ?? 0)); ?> confirmacao(oes), <?php echo e((string) ($traceStats['erros'] ?? 0)); ?> erro(s).</p>
             </article>
+            <article class="diag-card">
+                <span>Servico agente</span>
+                <strong><?php echo e(miauw_diag_agent_service_label(is_array($agentService) ? $agentService : array())); ?></strong>
+                <p><?php echo e((string) ($agentService['phase'] ?? 'modo sombra')); ?> | escrita <?php echo !empty($agentService['writes_enabled']) ? 'ativa' : 'bloqueada'; ?></p>
+            </article>
         </section>
 
         <section class="diag-two">
@@ -199,13 +223,14 @@ function miauw_diag_review_buttons(string $kind, int $id): string
         <section class="diag-panel">
             <div class="diag-panel-head">
                 <div>
-                    <span>Proxima fase</span>
+                    <span>Fase 7</span>
                     <h2>Contrato do servico agente</h2>
                 </div>
                 <p><?php echo e((string) ($nextPhase['runtime'] ?? '')); ?></p>
             </div>
             <div class="diag-list compact">
                 <p><strong>Destino</strong><span><?php echo e((string) ($nextPhase['sdk'] ?? '')); ?> | <?php echo e((string) ($nextPhase['endpoint_interno'] ?? '')); ?></span></p>
+                <p><strong>Modo</strong><span><?php echo e((string) ($nextPhase['modo'] ?? '')); ?> | servico <?php echo e(miauw_diag_agent_service_label(is_array($agentService) ? $agentService : array())); ?></span></p>
                 <p><strong>Compatibilidade</strong><span><?php echo e((string) ($nextPhase['compatibilidade'] ?? '')); ?></span></p>
             </div>
             <div class="diag-tags">

@@ -28,6 +28,8 @@ Rotas de smoke test:
 - `/miauw/login.php`
 - `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
 - `/miauw/widget-status.php`
+- `/miauw/agent/health` deve responder JSON 200 sem segredo quando o servico sombra estiver ativo
+- `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
 - `/cotacao/health` deve responder JSON 200 pela Cotacao V2
 - `/cotacao/api/bootstrap` deve exigir sessao e redirecionar/recusar quando nao autenticado
 
@@ -51,6 +53,7 @@ Ele valida:
 - contrato das tools de Codigos (`resumo_codigos` e `buscar_codigo_comissao`).
 - Fase 5 do Miauby: status publico anuncia rastreabilidade/confirmacao/streaming visual, acao forte pede confirmacao antes de escrita e traces aparecem no diagnostico.
 - Fase 6 do Miauby: contrato da proxima camada, schemas das tools, alinhamento registry/tools online, dados incompletos sem escrita, Cotacao pedindo termo quando falta produto/EAN/categoria, prompt de nao inventar dados e confirmacao obrigatoria para escrita forte por risco.
+- Fase 7 do Miauby: status publico anuncia servico sombra, contrato aponta `fase7`, diagnostico inclui status do servico agente e o endpoint `/miauw/agent/health` valida o container Node/TypeScript.
 
 Rodar pelo container:
 
@@ -67,13 +70,14 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em banco, testar pelo menos login/status e logs.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
+- Se mexer em `apps/miauw-agent`, rodar `npm run check`, build do servico e validar `/miauw/agent/health`.
 - Se mexer no painel de diagnostico do Miauby, validar login local e acesso a `/miauw/diagnostico.php`.
 
 ## Decisoes tecnicas ja tomadas
 
 - A fase atual prioriza smoke tests por causa da migracao.
 - O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
-- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5 e as regras operacionais ampliadas da Fase 6.
+- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5, as regras operacionais ampliadas da Fase 6 e o contrato/status da Fase 7.
 
 ## Riscos ao alterar
 
@@ -89,6 +93,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Adicionar testes de integridade para Cotacao e Financeiro.
 - Adicionar teste de seguranca basico para segredos em Git.
 - Ampliar evals do Miauby para alertas, memoria, Farmacia Popular, cashback, erros comuns reais de operador e cenarios do futuro servico Node/TypeScript.
+- Criar evals que chamem o servico `wimifarma-miauw-agent` em modo sombra e comparem a resposta com o PHP antes de qualquer corte.
 
 ## Evolucao futura
 

@@ -3,6 +3,7 @@
 /cotacao-data/
 node_modules/
 **/node_modules/
+apps/miauw-agent/dist/
 .env
 /site/miauw/config.local.php
 **/config.local.php

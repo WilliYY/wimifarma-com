@@ -25,6 +25,15 @@ RUN apt-get update \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/miauw/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
+        echo 'ProxyPassReverse "/miauw/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
+        echo 'ProxyPass "/miauw/agent" "http://wimifarma-miauw-agent:3100/miauw/agent"'; \
+        echo 'ProxyPassReverse "/miauw/agent" "http://wimifarma-miauw-agent:3100/miauw/agent"'; \
+    } > /etc/apache2/conf-available/wimifarma-miauw-agent-proxy.conf \
+    && a2enconf wimifarma-miauw-agent-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

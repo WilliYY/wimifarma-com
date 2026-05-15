@@ -24,6 +24,7 @@ services:
     depends_on:
       - wimifarma-com-db
       - wimifarma-cotacao-app
+      - wimifarma-miauw-agent
     environment:
       WIMIFARMA_DB_HOST: wimifarma-com-db
       WIMIFARMA_DB_USER: wimifarma_user
@@ -34,6 +35,8 @@ services:
       MIAUW_OPENAI_API_KEY: ${MIAUW_OPENAI_API_KEY:-}
       MIAUW_OPENAI_MODEL: ${MIAUW_OPENAI_MODEL:-gpt-5.4-mini}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
+      MIAUW_AGENT_INTERNAL_BASE_URL: ${MIAUW_AGENT_INTERNAL_BASE_URL:-http://wimifarma-miauw-agent:3100/miauw/agent}
       COTACAO_INTERNAL_TOKEN: ${COTACAO_INTERNAL_TOKEN:-}
       COTACAO_INTERNAL_BASE_URL: ${COTACAO_INTERNAL_BASE_URL:-http://wimifarma-cotacao-app:3000/cotacao}
     ports:
@@ -101,6 +104,24 @@ services:
       GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE: ${GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE:-}
     volumes:
       - ./cotacao-data/backups:/app/backups
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-miauw-agent:
+    build:
+      context: ./apps/miauw-agent
+      dockerfile: Dockerfile
+    container_name: wimifarma-miauw-agent
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3100
+      MIAUW_AGENT_BASE_PATH: /miauw/agent
+      MIAUW_OPENAI_API_KEY: ${MIAUW_OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${MIAUW_OPENAI_API_KEY:-}
+      MIAUW_OPENAI_MODEL: ${MIAUW_OPENAI_MODEL:-gpt-5.4-mini}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
     networks:
       - wimifarma-com-network
 
