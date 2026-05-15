@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $data = miauw_diagnostics_panel_data(true);
 $summary = $data['summary'];
 $agent = $summary['agent'] ?? array();
+$nextPhase = $summary['next_phase'] ?? array();
 $api = $summary['api'] ?? array();
 $skills = $summary['skills'] ?? array();
 $models = $summary['models'] ?? array();
@@ -117,9 +118,9 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 5</span>
+                    <span class="diag-kicker">Fase 6</span>
                     <h1>Diagnostico do Miauby</h1>
-                    <p>Saude, skills, traces, alertas, memorias e padroes em revisao.</p>
+                    <p>Saude, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>
             </div>
             <div class="diag-version">
@@ -193,6 +194,25 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                     <?php endif; ?>
                 </div>
             </article>
+        </section>
+
+        <section class="diag-panel">
+            <div class="diag-panel-head">
+                <div>
+                    <span>Proxima fase</span>
+                    <h2>Contrato do servico agente</h2>
+                </div>
+                <p><?php echo e((string) ($nextPhase['runtime'] ?? '')); ?></p>
+            </div>
+            <div class="diag-list compact">
+                <p><strong>Destino</strong><span><?php echo e((string) ($nextPhase['sdk'] ?? '')); ?> | <?php echo e((string) ($nextPhase['endpoint_interno'] ?? '')); ?></span></p>
+                <p><strong>Compatibilidade</strong><span><?php echo e((string) ($nextPhase['compatibilidade'] ?? '')); ?></span></p>
+            </div>
+            <div class="diag-tags">
+                <?php foreach ((array) ($nextPhase['pronto_agora'] ?? array()) as $name => $ready) : ?>
+                    <span><?php echo e((string) $name); ?>: <?php echo !empty($ready) ? 'pronto' : 'pendente'; ?></span>
+                <?php endforeach; ?>
+            </div>
         </section>
 
         <section class="diag-panel" id="memorias">

@@ -50,6 +50,7 @@ Ele valida:
 - sangria sem valor nao vira escrita;
 - contrato das tools de Codigos (`resumo_codigos` e `buscar_codigo_comissao`).
 - Fase 5 do Miauby: status publico anuncia rastreabilidade/confirmacao/streaming visual, acao forte pede confirmacao antes de escrita e traces aparecem no diagnostico.
+- Fase 6 do Miauby: contrato da proxima camada, schemas das tools, alinhamento registry/tools online, dados incompletos sem escrita, Cotacao pedindo termo quando falta produto/EAN/categoria, prompt de nao inventar dados e confirmacao obrigatoria para escrita forte por risco.
 
 Rodar pelo container:
 
@@ -72,7 +73,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 
 - A fase atual prioriza smoke tests por causa da migracao.
 - O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
-- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3 e o registry das tools operacionais da Fase 4.
+- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5 e as regras operacionais ampliadas da Fase 6.
 
 ## Riscos ao alterar
 
@@ -87,7 +88,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Adicionar testes de API autenticada.
 - Adicionar testes de integridade para Cotacao e Financeiro.
 - Adicionar teste de seguranca basico para segredos em Git.
-- Ampliar evals do Miauby para cotacao rapida, alertas, memoria, ferramentas OpenAI registradas e casos destrutivos futuros.
+- Ampliar evals do Miauby para alertas, memoria, Farmacia Popular, cashback, erros comuns reais de operador e cenarios do futuro servico Node/TypeScript.
 
 ## Evolucao futura
 

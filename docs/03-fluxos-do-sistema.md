@@ -236,6 +236,8 @@ Direcao de evolucao:
 - manter a Fase 4 registrada no registry: sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos;
 - usar a ponte interna da Cotacao V2 para consultas/encomendas, protegida por token de ambiente;
 - manter a Fase 5 com trace por conversa/tool em `miauw_tool_traces`, status no diagnostico, streaming visual no widget/chat e confirmacao humana para acoes fortes antes da escrita;
+- manter a Fase 6 com evals locais para dados obrigatorios, schemas de tools, nao inventar dados e confirmacao de escrita forte;
+- preparar a proxima camada por contrato em `miauw_agent_next_phase_contract()`, sem trocar o fluxo PHP/widget ate os testes aprovarem;
 - registrar padroes e memorias com revisao e auditoria;
 - revisar memorias e padroes pelo painel restrito `/miauw/diagnostico.php`, marcando status sem apagar dados;
 - separar leitura, sugestao e escrita;

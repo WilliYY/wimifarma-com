@@ -34,15 +34,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260515f');
+    define('MIAUW_VERSION', '20260515g');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase5');
+    define('MIAUW_AGENT_VERSION', '2.0-fase6');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-rastreavel');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-evals');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -321,6 +321,40 @@ function miauw_agent_public_status(): array
             'rastreabilidade_por_conversa',
             'confirmacao_acoes_fortes',
             'streaming_visual_widget',
+            'evals_operacionais_fase6',
+            'contrato_agents_sdk_preparado',
+        ),
+    );
+}
+
+function miauw_agent_next_phase_contract(): array
+{
+    return array(
+        'fase_atual' => 'fase6',
+        'proxima_fase' => 'servico_miauw_agent',
+        'runtime' => 'Node.js 22 + TypeScript',
+        'sdk' => 'Agents SDK',
+        'endpoint_interno' => '/miauw/agent',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget e auditoria enquanto o servico novo assume orquestracao do agente por tras do api.php.',
+        'pronto_agora' => array(
+            'registry_skills' => function_exists('miauw_skill_registry_public'),
+            'guardrails_operacionais' => true,
+            'traces_por_conversa' => true,
+            'confirmacao_acoes_fortes' => true,
+            'evals_locais' => is_file(__DIR__ . '/miauw-evals.php'),
+        ),
+        'pendencias' => array(
+            'Criar scaffold apps/miauw-agent com Node.js 22 e TypeScript.',
+            'Exportar schemas das tools a partir do registry atual.',
+            'Adicionar adaptador PHP -> servico agente sem quebrar o widget atual.',
+            'Trocar streaming visual por streaming real quando o servico estiver estavel.',
+            'Rodar os mesmos evals contra o servico novo antes de ativar em producao.',
+        ),
+        'nao_mudar_agora' => array(
+            'Banco MySQL dos modulos internos.',
+            'Postgres/Redis da Cotacao V2.',
+            'Login e sessoes atuais.',
+            'Tools PHP existentes que ja gravam com auditoria.',
         ),
     );
 }

@@ -73,7 +73,17 @@ function miauw_eval_assert_no_forbidden(string $text, string $message): void
     }
 }
 
-miauw_eval_add('agent_status_fase5', static function (): void {
+function miauw_eval_reset_action_state(): void
+{
+    unset(
+        $_SESSION['miauw_pending_confirm_action'],
+        $_SESSION['miauw_pending_financeiro_lancamento'],
+        $_SESSION['miauw_pending_cotacao_encomenda']
+    );
+    unset($GLOBALS['miauw_pending_confirmation_response']);
+}
+
+miauw_eval_add('agent_status_fase6', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
@@ -86,6 +96,20 @@ miauw_eval_add('agent_status_fase5', static function (): void {
     miauw_eval_assert(in_array('rastreabilidade_por_conversa', (array) ($status['features'] ?? array()), true), 'Fase 5 precisa anunciar rastreabilidade.');
     miauw_eval_assert(in_array('confirmacao_acoes_fortes', (array) ($status['features'] ?? array()), true), 'Fase 5 precisa anunciar confirmacao.');
     miauw_eval_assert(in_array('streaming_visual_widget', (array) ($status['features'] ?? array()), true), 'Fase 5 precisa anunciar streaming visual.');
+    miauw_eval_assert(in_array('evals_operacionais_fase6', (array) ($status['features'] ?? array()), true), 'Fase 6 precisa anunciar evals operacionais.');
+    miauw_eval_assert(in_array('contrato_agents_sdk_preparado', (array) ($status['features'] ?? array()), true), 'Fase 6 precisa anunciar contrato da proxima camada.');
+});
+
+miauw_eval_add('fase6_contrato_proxima_camada', static function (): void {
+    $contract = miauw_agent_next_phase_contract();
+
+    miauw_eval_assert_same('fase6', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 6.');
+    miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
+    miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
+    miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
+    miauw_eval_assert_same('/miauw/agent', (string) ($contract['endpoint_interno'] ?? ''), 'Endpoint interno futuro mudou.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['registry_skills']), 'Registry precisa estar pronto antes do servico agente.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['evals_locais']), 'Evals locais precisam existir antes do servico agente.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {
@@ -156,6 +180,46 @@ miauw_eval_add('registry_core_tools_fase4', static function (): void {
     }
 });
 
+miauw_eval_add('fase6_openai_tools_batem_registry', static function (): void {
+    $registry = miauw_skill_registry_public();
+    $tools = miauw_openai_tools();
+    $toolNames = array();
+
+    foreach ($tools as $tool) {
+        $name = (string) ($tool['name'] ?? '');
+        if ($name !== '') {
+            $toolNames[] = $name;
+        }
+
+        $params = is_array($tool['parameters'] ?? null) ? $tool['parameters'] : array();
+        miauw_eval_assert(($params['type'] ?? '') === 'object', 'Tool sem schema object: ' . $name);
+        miauw_eval_assert(array_key_exists('additionalProperties', $params), 'Tool sem additionalProperties explicito: ' . $name);
+        miauw_eval_assert($params['additionalProperties'] === false, 'Tool permite parametro solto: ' . $name);
+    }
+
+    foreach ($registry as $name => $meta) {
+        if (!empty($meta['openai_tool'])) {
+            miauw_eval_assert(in_array((string) $name, $toolNames, true), 'Registry marcou OpenAI tool ausente em miauw_openai_tools: ' . (string) $name);
+        }
+
+        $required = (array) ($meta['parametros_obrigatorios'] ?? array());
+        if ($required && in_array((string) $name, $toolNames, true)) {
+            $tool = null;
+            foreach ($tools as $candidate) {
+                if ((string) ($candidate['name'] ?? '') === (string) $name) {
+                    $tool = $candidate;
+                    break;
+                }
+            }
+
+            $schemaRequired = is_array($tool['parameters']['required'] ?? null) ? $tool['parameters']['required'] : array();
+            foreach ($required as $field) {
+                miauw_eval_assert(in_array((string) $field, $schemaRequired, true), 'Parametro obrigatorio fora do schema da tool ' . (string) $name . ': ' . (string) $field);
+            }
+        }
+    }
+});
+
 miauw_eval_add('diagnostico_fase3_payload', static function (): void {
     miauw_diagnostics_ensure_review_columns();
     $data = miauw_diagnostics_panel_data(false);
@@ -190,6 +254,50 @@ miauw_eval_add('intent_sangria_precisa_valor', static function (): void {
     miauw_eval_assert(is_array($command), 'Sangria com valor nao foi detectada.');
     miauw_eval_assert_same('Sangria', (string) ($command['categoria'] ?? ''), 'Categoria de sangria incorreta.');
     miauw_eval_assert(abs((float) ($command['valor'] ?? 0) - 30.0) < 0.001, 'Valor de sangria incorreto.');
+});
+
+miauw_eval_add('fase6_dados_incompletos_pedem_contexto', static function (): void {
+    miauw_eval_reset_action_state();
+    miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
+
+    $missingResponsible = miauw_try_controlled_action('sangria 30', 1, '', true);
+    miauw_eval_assert(is_array($missingResponsible), 'Sangria sem responsavel precisa gerar pergunta, nao cair solta.');
+    miauw_eval_assert(!isset($missingResponsible['confirmation']), 'Sangria sem responsavel nao pode pedir confirmacao nem gravar.');
+    miauw_eval_assert_contains('responsavel', (string) ($missingResponsible['text'] ?? ''), 'Sangria sem responsavel precisa pedir responsavel.');
+
+    miauw_eval_reset_action_state();
+    $missingProduct = miauw_try_controlled_action('encomenda para Joao', 1, '', true);
+    miauw_eval_assert(is_array($missingProduct), 'Encomenda sem produto precisa gerar pergunta.');
+    miauw_eval_assert(!isset($missingProduct['confirmation']), 'Encomenda sem produto nao pode pedir confirmacao nem gravar.');
+    miauw_eval_assert_contains('produto', (string) ($missingProduct['text'] ?? ''), 'Encomenda sem produto precisa pedir produto.');
+
+    $emptyQuoteLookup = implode("\n", miauw_skill_cotacao_lookup(''));
+    miauw_eval_assert_contains('informe EAN, produto ou categoria', $emptyQuoteLookup, 'Busca de Cotacao sem produto precisa pedir termo de busca.');
+
+    miauw_eval_reset_action_state();
+});
+
+miauw_eval_add('fase6_acoes_fortes_exigem_confirmacao_por_risco', static function (): void {
+    $registry = miauw_skill_registry_public();
+
+    foreach ($registry as $name => $meta) {
+        $isHighRiskWrite = (string) ($meta['nivel'] ?? '') === 'escrita'
+            && (string) ($meta['risco'] ?? '') === 'alto'
+            && !empty($meta['local_action']);
+
+        if ($isHighRiskWrite) {
+            miauw_eval_assert(miauw_tool_requires_confirmation((string) $name), 'Acao forte sem confirmacao obrigatoria: ' . (string) $name);
+        }
+    }
+});
+
+miauw_eval_add('fase6_prompt_nao_inventa_dados', static function (): void {
+    $prompt = miauw_system_prompt('');
+
+    miauw_eval_assert_contains('NAO INVENTAR DADOS', $prompt, 'Prompt perdeu a regra de nao inventar dados.');
+    miauw_eval_assert_contains('Nunca invente vendas reais', $prompt, 'Prompt precisa proibir inventar numeros reais.');
+    miauw_eval_assert_contains('Miauby nao recebeu esse dado', $prompt, 'Prompt precisa ter resposta segura para dado ausente.');
+    miauw_eval_assert_contains('Acoes fortes', $prompt, 'Prompt precisa lembrar confirmacao para acoes fortes.');
 });
 
 miauw_eval_add('intent_tarefa_criacao', static function (): void {
@@ -230,8 +338,7 @@ miauw_eval_add('tool_codigos_contrato', static function (): void {
 
 miauw_eval_add('fase5_confirmacao_acao_forte', static function (): void {
     miauw_ensure_schema();
-    $_SESSION['miauw_pending_confirm_action'] = null;
-    unset($_SESSION['miauw_pending_confirm_action']);
+    miauw_eval_reset_action_state();
     miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
 
     $reply = miauw_confirmation_request_reply('registrar_sangria', array(
@@ -258,6 +365,7 @@ miauw_eval_add('fase5_confirmacao_acao_forte', static function (): void {
     $parsedCancel = miauw_try_controlled_action('cancelar ' . (string) $parsed['confirmation']['id'], 1);
     miauw_eval_assert(is_array($parsedCancel), 'Cancelamento da intent real nao respondeu.');
     miauw_eval_assert(!isset($_SESSION['miauw_pending_confirm_action']), 'Cancelamento da intent real deve limpar pendencia.');
+    miauw_eval_reset_action_state();
 });
 
 miauw_eval_add('fase5_traces_diagnostico', static function (): void {

@@ -261,6 +261,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - `site/miauw/miauw-evals.php` cobre a Fase 4 com registry das tools core, sangria sem valor proibida e contrato das tools de Codigos, sem chamar OpenAI nem executar escritas reais.
 - O Miauby iniciou a Fase 5 com `MIAUW_AGENT_VERSION=2.0-fase5`, tabela `miauw_tool_traces`, trace por conversa/request/tool, status de traces no painel `/miauw/diagnostico.php`, streaming visual no chat/widget e card de confirmacao para acoes fortes antes de gravar dados.
 - Acoes fortes do Miauby, como sangria/lancamento financeiro, faturamento diario, encomenda/urgente/cotacao rapida e nova planilha de cotacao, devem pedir confirmacao humana e so executar apos confirmar. A resposta e os traces devem continuar sem expor chave, payload bruto, SQL, stack trace ou bastidor tecnico.
+- O Miauby iniciou a Fase 6 com `MIAUW_AGENT_VERSION=2.0-fase6`: os evals locais agora cobrem contrato da proxima camada, schema das tools, alinhamento registry/OpenAI tools, dados incompletos sem escrita, Cotacao pedindo termo quando falta produto/EAN/categoria, regra de nao inventar dados e confirmacao obrigatoria para escrita forte por risco.
+- A proxima camada do Miauby esta preparada por contrato em `miauw_agent_next_phase_contract()`: Node.js 22 + TypeScript, Agents SDK e endpoint interno `/miauw/agent`. Ainda nao trocar o motor do Miauby sem manter compatibilidade com PHP, sessao, widget, registry, traces, confirmacoes e evals atuais.
 
 ## Estado validado em 2026-05-11
 
