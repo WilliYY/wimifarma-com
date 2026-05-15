@@ -162,7 +162,13 @@ Regras a preservar:
 - totais conferidos;
 - divergencias/sobra/falta;
 - justificativas;
-- auditoria.
+- auditoria interna.
+
+Interface:
+
+- o topo do Financeiro mostra apenas `Caixa`, `Relatorio` e `Sair`;
+- a view dedicada de Auditoria nao fica disponivel na navegacao operacional;
+- os registros em `financeiro_auditoria` continuam sendo gravados para suporte e rastreabilidade.
 
 ## Fluxo Tarefas
 

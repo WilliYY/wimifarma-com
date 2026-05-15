@@ -249,6 +249,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Na Cotacao V2, colagem de matriz, desfazer/refazer de lotes e a alca de preenchimento usam save em lote otimista com atualizacao apenas das linhas afetadas; outras telas tambem aplicam eventos de celula por linha, sem redesenhar a grade inteira quando o evento nao e estrutural.
 - A Cotacao V2 ganhou `PUT/DELETE /cotacao/api/styles/batch` para aplicar ou apagar estilos em lote, reduzindo varias chamadas pequenas quando cores sao copiadas pelo fill handle ou aplicadas em selecoes grandes.
 - Na Cotacao V2, durante a edicao de uma celula, `Enter` salva e desce exatamente uma linha; as setas salvam a edicao atual e movem para a celula adjacente na direcao pressionada.
+- O Financeiro nao exibe mais o botao/view `Auditoria` na navegacao principal; URLs com `?view=auditoria` voltam para a tela `Caixa`, enquanto os registros em `financeiro_auditoria` continuam sendo gravados internamente.
 
 ## Estado validado em 2026-05-11
 

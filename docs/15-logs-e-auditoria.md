@@ -35,6 +35,7 @@ Arquivos:
 ## Regras que precisam ser preservadas
 
 - Acoes financeiras e de cotacao devem manter auditoria.
+- O Financeiro nao exibe mais a aba/tela operacional de Auditoria no topo, mas deve continuar gravando `financeiro_auditoria`.
 - Logs nao devem gravar senhas, tokens ou chaves.
 - Códigos registra criacao de blocos, criacao de itens, edicao, reordenacao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.

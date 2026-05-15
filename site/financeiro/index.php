@@ -234,7 +234,7 @@ function fin_selected_view(): string
 {
     $view = (string) ($_GET['view'] ?? '');
 
-    if (in_array($view, array('relatorio', 'auditoria'), true)) {
+    if ($view === 'relatorio') {
         return $view;
     }
 
@@ -1170,7 +1170,6 @@ $pageTitle = $view === 'auditoria' ? 'Auditoria Financeira' : ($view === 'relato
     <nav class="finance-nav" aria-label="Navegacao financeira">
         <a class="<?php echo $view === 'caixa' ? 'active' : ''; ?>" href="/financeiro/">Caixa</a>
         <a class="<?php echo $view === 'relatorio' ? 'active' : ''; ?>" href="<?php echo e(fin_url(array('view' => 'relatorio', 'rel_ano' => $reportYear, 'rel_mes' => $reportMonth))); ?>">Relatorio</a>
-        <a class="<?php echo $view === 'auditoria' ? 'active' : ''; ?>" href="<?php echo e(fin_url(array('view' => 'auditoria'))); ?>">Auditoria</a>
         <a href="/financeiro/logout.php">Sair</a>
     </nav>
 </header>

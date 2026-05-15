@@ -12,7 +12,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Cashback para clientes, compras, creditos e resgates;
 - Codigos para atalhos de itens com comissao diferente, com codigo, EAN e preco editaveis;
 - Cotacao para controle de itens, fornecedores, precos e status de compras;
-- Financeiro para fechamento, sangrias, PIX, maquininhas e auditoria;
+- Financeiro para fechamento, sangrias, PIX, maquininhas e rastreabilidade interna;
 - Tarefas internas;
 - Miauby, assistente interno com integracao OpenAI e recursos de diagnostico.
 
@@ -40,6 +40,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - A home publica mostra no maximo cinco cards por linha no desktop; `Códigos` fica como sexto card, abaixo do Cashback, e os cards foram elevados para abrir espaco visual para a segunda linha.
 - O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com blocos por prefixo de EAN persistidos em `wf_codigos_blocos`, autosave de `Codigo`, `EAN` e `Preco`, botao `+` com prefixo manual para criar o bloco desejado, tabelas em faixa horizontal, reordenacao por arrastar o numero da linha, criacao de novas linhas no rodape de cada grupo, exclusao logica de itens apagados e exclusao protegida de tabelas nao padrao por senha de confirmacao.
 - O login de Codigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, preservando a autenticacao em `wf_users`.
+- O Financeiro mostra no topo apenas `Caixa`, `Relatorio` e `Sair`; a tela dedicada de Auditoria saiu da navegacao da equipe, mas a tabela `financeiro_auditoria` continua registrando alteracoes internas.
 - A Cotacao V2 substitui a interface antiga em `/cotacao/` para eliminar bugs de palavra-gatilho, salto de linha e travamento em categoria. Palavras como `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; cor so vem de regra condicional criada explicitamente na tela.
 - A Cotacao V2 usa linha com UUID estavel, save por celula, presenca ao vivo via Socket.IO/Redis, filtros locais por tela e eventos em Postgres. A primeira validacao confirmou login, bootstrap, save dessas palavras criticas e criacao/remocao de regra condicional explicita.
 - A interface da Cotacao V2 foi aproximada do visual de planilha operacional: cabecalho compacto, abas locais, estatisticas no topo, CSV rapido e colunas fixas iniciais `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, fornecedores e `Ganhador`.
