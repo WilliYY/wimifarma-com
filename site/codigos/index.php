@@ -74,9 +74,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260515f">
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260515i">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260514a">
-    <script src="/codigos/app.js?v=20260515f" defer></script>
+    <script src="/codigos/app.js?v=20260515i" defer></script>
     <script src="/miauw/widget.js?v=20260511b" defer></script>
 </head>
 <body class="codes-app-body">
@@ -131,7 +131,12 @@ try {
                 <section class="codes-sheet-panel" aria-label="<?php echo e(codigos_group_label($groupKey)); ?>" data-code-group-panel="<?php echo e($groupKey); ?>">
                     <div class="codes-sheet-title">
                         <h2><?php echo e(codigos_group_label($groupKey)); ?></h2>
-                        <span data-code-group-count="<?php echo e($groupKey); ?>"><?php echo e((string) count($groupItems)); ?> item(ns)</span>
+                        <div class="codes-sheet-title-actions">
+                            <span data-code-group-count="<?php echo e($groupKey); ?>"><?php echo e((string) count($groupItems)); ?> item(ns)</span>
+                            <?php if (codigos_can_delete_group($groupKey)) : ?>
+                                <button type="button" class="codes-btn codes-btn-table-delete" data-delete-code-group="<?php echo e($groupKey); ?>" data-delete-code-group-label="<?php echo e(codigos_group_label($groupKey)); ?>">Excluir tabela</button>
+                            <?php endif; ?>
+                        </div>
                     </div>
 
                     <div class="codes-sheet-scroll">
@@ -199,7 +204,9 @@ try {
                 <section class="codes-sheet-panel codes-sheet-panel-other" aria-label="Outros EANs" data-code-group-panel="outros">
                     <div class="codes-sheet-title">
                         <h2>Outros</h2>
-                        <span data-code-group-count="outros"><?php echo e((string) count($groups['outros'])); ?> item(ns)</span>
+                        <div class="codes-sheet-title-actions">
+                            <span data-code-group-count="outros"><?php echo e((string) count($groups['outros'])); ?> item(ns)</span>
+                        </div>
                     </div>
 
                     <div class="codes-sheet-scroll">
@@ -240,10 +247,28 @@ try {
                     </div>
                 </section>
             <?php endif; ?>
-            <button type="button" class="codes-sheet-panel codes-add-panel" data-add-code-group aria-label="Criar novo bloco de EAN" title="Criar novo bloco de EAN">
+            <button type="button" class="codes-sheet-panel codes-add-panel" data-focus-group-adder aria-label="Ir para criacao de bloco de EAN" title="Ir para criacao de bloco de EAN">
                 <span>+</span>
             </button>
         </section>
     </main>
+
+    <div class="codes-dialog" hidden data-group-delete-dialog role="dialog" aria-modal="true" aria-labelledby="codes-delete-title">
+        <div class="codes-dialog-card">
+            <span class="codes-dialog-kicker">Acao forte</span>
+            <h2 id="codes-delete-title">Excluir tabela</h2>
+            <p>Essa acao apaga a tabela inteira e todos os codigos ativos dentro dela.</p>
+            <strong data-group-delete-label>EAN</strong>
+            <label>
+                <span>Senha para excluir</span>
+                <input type="password" data-group-delete-password autocomplete="off" placeholder="Digite a senha">
+            </label>
+            <div class="codes-dialog-error" hidden data-group-delete-error></div>
+            <div class="codes-dialog-actions">
+                <button type="button" class="codes-btn" data-cancel-group-delete>Cancelar</button>
+                <button type="button" class="codes-btn codes-btn-danger-solid" data-confirm-group-delete>Excluir tabela</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

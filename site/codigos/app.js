@@ -88,36 +88,13 @@
         return 'Outros';
     }
 
-    function normalizeGroupInput(value) {
-        var digits = String(value || '').replace(/\D+/g, '');
-        return digits.length >= 2 ? digits.slice(0, 2) : '';
+    function canDeleteGroup(group) {
+        return /^\d{2}$/.test(group) && group !== '20' && group !== '40';
     }
 
-    function nextAvailableGroup() {
-        var used = {};
-
-        document.querySelectorAll('[data-code-group-panel]').forEach(function (panel) {
-            var group = panel.getAttribute('data-code-group-panel') || '';
-            if (/^\d{2}$/.test(group)) {
-                used[group] = true;
-            }
-        });
-
-        for (var decade = 50; decade <= 90; decade += 10) {
-            var key = String(decade);
-            if (!used[key]) {
-                return key;
-            }
-        }
-
-        for (var number = 10; number <= 99; number += 1) {
-            var fallback = String(number).padStart(2, '0');
-            if (!used[fallback]) {
-                return fallback;
-            }
-        }
-
-        return '';
+    function normalizeGroupInput(value) {
+        var digits = String(value || '').replace(/\D+/g, '');
+        return digits.slice(0, 2);
     }
 
     function escapeHtml(value) {
@@ -130,6 +107,19 @@
                 "'": '&#039;'
             }[char];
         });
+    }
+
+    function groupTitleHtml(group, label, countText) {
+        var actions = '<div class="codes-sheet-title-actions">'
+            + '<span data-code-group-count="' + escapeHtml(group) + '">' + escapeHtml(countText || '0 item(ns)') + '</span>';
+
+        if (canDeleteGroup(group)) {
+            actions += '<button type="button" class="codes-btn codes-btn-table-delete" data-delete-code-group="' + escapeHtml(group) + '" data-delete-code-group-label="' + escapeHtml(label) + '">Excluir tabela</button>';
+        }
+
+        actions += '</div>';
+
+        return '<div class="codes-sheet-title"><h2>' + escapeHtml(label) + '</h2>' + actions + '</div>';
     }
 
     function buildFormData(row, action) {
@@ -284,10 +274,7 @@
         panel.setAttribute('data-code-group-panel', group);
 
         panel.innerHTML = ''
-            + '<div class="codes-sheet-title">'
-            + '<h2>' + escapeHtml(label) + '</h2>'
-            + '<span data-code-group-count="' + escapeHtml(group) + '">0 item(ns)</span>'
-            + '</div>'
+            + groupTitleHtml(group, label, '0 item(ns)')
             + '<div class="codes-sheet-scroll">'
             + '<div class="codes-sheet" role="table" aria-label="' + escapeHtml(label) + '">'
             + '<div class="codes-sheet-head" role="row">'
@@ -336,17 +323,16 @@
 
         var rawValue = input.value.trim();
         var group = normalizeGroupInput(rawValue);
-        if (!group && rawValue === '') {
-            group = nextAvailableGroup();
-        }
 
-        if (!group) {
+        if (group.length !== 2 || rawValue === '') {
             input.focus();
             input.classList.add('is-error');
+            input.title = 'Digite dois numeros para criar o bloco. Exemplo: 50.';
             return;
         }
 
         input.classList.remove('is-error');
+        input.title = '';
         input.disabled = true;
 
         var data = new FormData();
@@ -714,6 +700,131 @@
         });
     }
 
+    function deleteDialog() {
+        return document.querySelector('[data-group-delete-dialog]');
+    }
+
+    function setDeleteError(message) {
+        var dialog = deleteDialog();
+        var error = dialog ? dialog.querySelector('[data-group-delete-error]') : null;
+        if (!error) {
+            return;
+        }
+
+        if (!message) {
+            error.hidden = true;
+            error.textContent = '';
+            return;
+        }
+
+        error.hidden = false;
+        error.textContent = message;
+    }
+
+    function closeDeleteDialog() {
+        var dialog = deleteDialog();
+        if (!dialog) {
+            return;
+        }
+
+        dialog.hidden = true;
+        dialog.dataset.group = '';
+        dialog.dataset.groupLabel = '';
+        var password = dialog.querySelector('[data-group-delete-password]');
+        if (password) {
+            password.value = '';
+        }
+        setDeleteError('');
+    }
+
+    function openDeleteDialog(button) {
+        var group = button.getAttribute('data-delete-code-group') || '';
+        if (!canDeleteGroup(group)) {
+            return;
+        }
+
+        var dialog = deleteDialog();
+        if (!dialog) {
+            return;
+        }
+
+        var label = button.getAttribute('data-delete-code-group-label') || labelForGroup(group);
+        dialog.dataset.group = group;
+        dialog.dataset.groupLabel = label;
+
+        var labelNode = dialog.querySelector('[data-group-delete-label]');
+        if (labelNode) {
+            labelNode.textContent = label;
+        }
+
+        var password = dialog.querySelector('[data-group-delete-password]');
+        if (password) {
+            password.value = '';
+        }
+
+        setDeleteError('');
+        dialog.hidden = false;
+        if (password) {
+            password.focus();
+        }
+    }
+
+    function confirmDeleteGroup() {
+        var dialog = deleteDialog();
+        if (!dialog || dialog.hidden) {
+            return;
+        }
+
+        var group = dialog.dataset.group || '';
+        var password = dialog.querySelector('[data-group-delete-password]');
+        var confirmButton = dialog.querySelector('[data-confirm-group-delete]');
+        var panel = document.querySelector('[data-code-group-panel="' + group + '"]');
+
+        if (!canDeleteGroup(group)) {
+            setDeleteError('Este bloco nao pode ser apagado.');
+            return;
+        }
+
+        if (!password || password.value.trim() === '') {
+            setDeleteError('Digite a senha para confirmar.');
+            if (password) {
+                password.focus();
+            }
+            return;
+        }
+
+        var data = new FormData();
+        data.set('action', 'delete_group');
+        data.set('csrf_token', csrfToken());
+        data.set('group', group);
+        data.set('password', password.value);
+
+        if (confirmButton) {
+            confirmButton.disabled = true;
+            confirmButton.textContent = 'Excluindo...';
+        }
+        setDeleteError('');
+
+        postFormData(data).then(function (payload) {
+            if (panel) {
+                panel.remove();
+            }
+            updateCounts(payload.total);
+            closeDeleteDialog();
+        }).catch(function (error) {
+            setDeleteError(error.message || 'Nao consegui excluir a tabela.');
+            if (password) {
+                password.focus();
+                password.select();
+            }
+        }).finally(function () {
+            if (confirmButton) {
+                confirmButton.disabled = false;
+                confirmButton.textContent = 'Excluir tabela';
+            }
+        });
+    }
+
     function initRow(row) {
         row.dataset.lastPayload = rowPayload(row);
         initDrag(row);
@@ -784,9 +895,49 @@
         });
     }
 
+    function initDeleteGroupDialog() {
+        document.addEventListener('click', function (event) {
+            var deleteButton = event.target.closest('[data-delete-code-group]');
+            if (deleteButton) {
+                event.preventDefault();
+                openDeleteDialog(deleteButton);
+                return;
+            }
+
+            if (event.target.closest('[data-cancel-group-delete]')) {
+                event.preventDefault();
+                closeDeleteDialog();
+                return;
+            }
+
+            if (event.target.closest('[data-confirm-group-delete]')) {
+                event.preventDefault();
+                confirmDeleteGroup();
+            }
+        });
+
+        document.addEventListener('keydown', function (event) {
+            var dialog = deleteDialog();
+            if (!dialog || dialog.hidden) {
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeDeleteDialog();
+            }
+
+            if (event.key === 'Enter' && event.target && typeof event.target.matches === 'function' && event.target.matches('[data-group-delete-password]')) {
+                event.preventDefault();
+                confirmDeleteGroup();
+            }
+        });
+    }
+
     function init() {
         document.querySelectorAll('[data-code-row]').forEach(initRow);
         initAddGroupButton();
+        initDeleteGroupDialog();
         updateCounts();
     }
 

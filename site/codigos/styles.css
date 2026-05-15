@@ -136,8 +136,8 @@ a {
 }
 
 .codes-page {
-    width: min(1840px, calc(100% - 40px));
-    margin: 0 auto;
+    width: calc(100vw - 20px);
+    margin: 0 12px 0 8px;
     padding: 22px 0 46px;
 }
 
@@ -261,7 +261,7 @@ a {
 }
 
 .codes-group-adder input {
-    width: 76px;
+    width: 86px;
     min-height: 40px;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -284,13 +284,18 @@ a {
 }
 
 .codes-sheet-board {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+    display: flex;
     align-items: start;
-    gap: 16px;
+    gap: 12px;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding: 0 0 16px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 118, 110, 0.35) transparent;
 }
 
 .codes-sheet-panel {
+    flex: 0 0 560px;
     min-width: 0;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -300,11 +305,12 @@ a {
 }
 
 .codes-sheet-panel-other {
-    grid-column: 1 / -1;
-    width: min(680px, 100%);
+    flex-basis: 560px;
+    width: auto;
 }
 
 .codes-add-panel {
+    flex: 0 0 360px;
     min-height: 132px;
     display: grid;
     place-items: center;
@@ -346,10 +352,19 @@ a {
 }
 
 .codes-sheet-title h2 {
+    flex: 1 1 auto;
     margin: 0;
     color: var(--teal-dark);
     font-size: 1.05rem;
     font-weight: 950;
+}
+
+.codes-sheet-title-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
 }
 
 .codes-sheet-title span {
@@ -358,12 +373,21 @@ a {
     font-weight: 900;
 }
 
+.codes-btn-table-delete {
+    min-height: 30px;
+    padding: 5px 8px;
+    border-color: rgba(185, 28, 28, 0.22);
+    color: var(--danger);
+    background: #fff5f5;
+    font-size: 0.72rem;
+}
+
 .codes-sheet-scroll {
     overflow: auto;
 }
 
 .codes-sheet {
-    min-width: 540px;
+    min-width: 560px;
 }
 
 .codes-sheet-head,
@@ -548,6 +572,108 @@ a {
     font-weight: 900;
 }
 
+.codes-dialog[hidden] {
+    display: none !important;
+}
+
+.codes-dialog {
+    position: fixed;
+    z-index: 2000;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(15, 23, 42, 0.28);
+    backdrop-filter: blur(4px);
+}
+
+.codes-dialog-card {
+    width: min(430px, 100%);
+    display: grid;
+    gap: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 22px;
+    background: #fff;
+    box-shadow: 0 30px 90px rgba(15, 23, 42, 0.22);
+}
+
+.codes-dialog-kicker {
+    color: var(--danger);
+    font-size: 0.74rem;
+    font-weight: 950;
+    text-transform: uppercase;
+}
+
+.codes-dialog-card h2,
+.codes-dialog-card p {
+    margin: 0;
+}
+
+.codes-dialog-card h2 {
+    color: var(--ink);
+    font-size: 1.35rem;
+}
+
+.codes-dialog-card p {
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+.codes-dialog-card strong {
+    width: fit-content;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: var(--soft);
+    color: var(--teal-dark);
+    font-weight: 950;
+}
+
+.codes-dialog-card label {
+    display: grid;
+    gap: 6px;
+    color: var(--ink);
+    font-weight: 900;
+}
+
+.codes-dialog-card input {
+    min-height: 42px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: var(--ink);
+    background: #fff;
+    outline: none;
+}
+
+.codes-dialog-card input:focus {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.12);
+}
+
+.codes-dialog-error {
+    border: 1px solid rgba(185, 28, 28, 0.24);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--danger);
+    background: #fff5f5;
+    font-weight: 900;
+}
+
+.codes-dialog-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.codes-btn-danger-solid {
+    border-color: var(--danger);
+    color: #fff;
+    background: var(--danger);
+}
+
 .codes-login-body {
     position: relative;
     isolation: isolate;
@@ -690,12 +816,8 @@ a {
 }
 
 @media (max-width: 1180px) {
-    .codes-sheet-board {
-        grid-template-columns: 1fr;
-    }
-
     .codes-sheet-panel-other {
-        width: 100%;
+        width: auto;
     }
 }
 
@@ -707,8 +829,22 @@ a {
     }
 
     .codes-page {
-        width: min(100% - 22px, 1260px);
+        width: calc(100vw - 16px);
+        margin: 0 8px;
         padding-top: 22px;
+    }
+
+    .codes-sheet-panel {
+        flex-basis: calc(100vw - 22px);
+    }
+
+    .codes-add-panel {
+        flex-basis: calc(100vw - 22px);
+    }
+
+    .codes-dialog-actions {
+        display: grid;
+        grid-template-columns: 1fr;
     }
 
     .codes-hero h1 {

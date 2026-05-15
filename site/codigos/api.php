@@ -105,6 +105,19 @@ try {
         ));
     }
 
+    if ($action === 'delete_group') {
+        $deletedItems = codigos_delete_group(
+            (string) ($_POST['group'] ?? ''),
+            (string) ($_POST['password'] ?? '')
+        );
+
+        codigos_json(array(
+            'ok' => true,
+            'deleted_items' => $deletedItems,
+            'total' => codigos_count_active(),
+        ));
+    }
+
     codigos_json(array('ok' => false, 'message' => 'Acao invalida.'), 400);
 } catch (InvalidArgumentException $error) {
     codigos_json(array('ok' => false, 'message' => $error->getMessage()), 422);

@@ -39,12 +39,14 @@ Tabelas:
 - Saida HTML deve usar escape.
 - Perfis/roles em `wf_users.role` devem ser respeitados quando a rota exigir permissao.
 - WordPress nao deve ser confundido com login dos modulos internos.
+- A exclusao de tabelas inteiras em `/codigos/` exige sessao interna ativa, CSRF e senha operacional `wimifarma`; essa senha pode ser alterada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
 
 ## Decisoes tecnicas ja tomadas
 
 - Sessao dos modulos internos e configurada em `site/cashback/config.php`.
 - Funcoes comuns ficam em `site/cashback/functions.php`.
 - Modulos como Cotacao, Financeiro, Tarefas e Miauby reaproveitam o contexto do Cashback.
+- Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 
 ## Riscos ao alterar
 

@@ -231,7 +231,23 @@ function codigos_group_payload(string $group): array
         'key' => $group,
         'label' => codigos_group_label($group),
         'placeholder' => codigos_default_ean_placeholder($group),
+        'can_delete' => codigos_can_delete_group($group),
     );
+}
+
+function codigos_group_delete_password(): string
+{
+    return wf_env_string('CODIGOS_GROUP_DELETE_PASSWORD', 'wimifarma');
+}
+
+function codigos_is_protected_group(string $group): bool
+{
+    return in_array($group, array('20', '40', 'outros'), true);
+}
+
+function codigos_can_delete_group(string $group): bool
+{
+    return preg_match('/^\d{2}$/', $group) === 1 && !codigos_is_protected_group($group);
 }
 
 function codigos_saved_group_keys(): array
@@ -554,4 +570,61 @@ function codigos_delete(int $id): void
     if (function_exists('log_action')) {
         log_action('codigo_comissao_apagado', 'codigo', $id, 'Codigo apagado da lista operacional.');
     }
+}
+
+function codigos_delete_group(string $group, string $password): int
+{
+    codigos_ensure_schema();
+    $group = codigos_normalize_group_key($group);
+
+    if (!codigos_can_delete_group($group)) {
+        throw new InvalidArgumentException('Este bloco nao pode ser apagado.');
+    }
+
+    if (!hash_equals(codigos_group_delete_password(), $password)) {
+        throw new InvalidArgumentException('Senha incorreta para excluir a tabela.');
+    }
+
+    $ids = codigos_group_ids($group);
+    $pdo = db();
+    $block = $pdo->prepare('SELECT id FROM wf_codigos_blocos WHERE group_key = ? AND ativo = 1 LIMIT 1');
+    $block->execute(array($group));
+    $blockId = (int) $block->fetchColumn();
+
+    if ($blockId <= 0 && empty($ids)) {
+        throw new InvalidArgumentException('Bloco nao encontrado.');
+    }
+
+    $deletedItems = 0;
+    $pdo->beginTransaction();
+
+    try {
+        $deactivateBlock = $pdo->prepare('UPDATE wf_codigos_blocos SET ativo = 0 WHERE group_key = ? AND ativo = 1');
+        $deactivateBlock->execute(array($group));
+
+        if (!empty($ids)) {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $deleteItems = $pdo->prepare(
+                'UPDATE wf_codigos_comissao SET ativo = 0, apagado_em = NOW() WHERE ativo = 1 AND id IN (' . $placeholders . ')'
+            );
+            $deleteItems->execute($ids);
+            $deletedItems = $deleteItems->rowCount();
+        }
+
+        $pdo->commit();
+    } catch (Throwable $error) {
+        $pdo->rollBack();
+        throw $error;
+    }
+
+    if (function_exists('log_action')) {
+        log_action(
+            'codigo_bloco_apagado',
+            'codigo',
+            $blockId > 0 ? $blockId : null,
+            'Bloco ' . codigos_group_label($group) . ' apagado com ' . $deletedItems . ' codigo(s).'
+        );
+    }
+
+    return $deletedItems;
 }
