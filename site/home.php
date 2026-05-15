@@ -69,6 +69,13 @@ $modules = array(
         'href' => '/miauw/',
         'accent' => 'violet',
     ),
+    array(
+        'name' => 'Códigos',
+        'label' => 'Comissoes especiais',
+        'description' => 'Codigo, EAN e preco em lista rapida.',
+        'href' => '/codigos/',
+        'accent' => 'teal',
+    ),
 );
 ?>
 <!doctype html>
@@ -174,7 +181,7 @@ $modules = array(
             z-index: 2;
             display: flex;
             align-items: flex-end;
-            padding: 28px 0 clamp(176px, 19vh, 244px);
+            padding: 20px 0 clamp(188px, 20vh, 260px);
         }
 
         .wf-visually-hidden {
@@ -272,6 +279,10 @@ $modules = array(
 
         .wf-card[data-accent="violet"] .wf-card-mark {
             background: #7c3aed;
+        }
+
+        .wf-card[data-accent="teal"] .wf-card-mark {
+            background: #0f766e;
         }
 
         .wf-card h2 {

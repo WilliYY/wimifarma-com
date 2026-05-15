@@ -10,6 +10,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 
 - site WordPress principal em `site/`;
 - Cashback para clientes, compras, creditos e resgates;
+- Codigos para atalhos de itens com comissao diferente, com codigo, EAN e preco editaveis;
 - Cotacao para controle de itens, fornecedores, precos e status de compras;
 - Financeiro para fechamento, sangrias, PIX, maquininhas e auditoria;
 - Tarefas internas;
@@ -36,6 +37,8 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
 - A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `site/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
+- A home publica mostra no maximo cinco cards por linha no desktop; `Códigos` fica como sexto card, abaixo do Cashback, e os cards foram elevados para abrir espaco visual para a segunda linha.
+- O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com tabela editavel de `Código`, `EAN` e `Preço`, criacao de novas linhas e exclusao logica de itens apagados.
 - A Cotacao V2 substitui a interface antiga em `/cotacao/` para eliminar bugs de palavra-gatilho, salto de linha e travamento em categoria. Palavras como `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; cor so vem de regra condicional criada explicitamente na tela.
 - A Cotacao V2 usa linha com UUID estavel, save por celula, presenca ao vivo via Socket.IO/Redis, filtros locais por tela e eventos em Postgres. A primeira validacao confirmou login, bootstrap, save dessas palavras criticas e criacao/remocao de regra condicional explicita.
 - A interface da Cotacao V2 foi aproximada do visual de planilha operacional: cabecalho compacto, abas locais, estatisticas no topo, CSV rapido e colunas fixas iniciais `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, fornecedores e `Ganhador`.
@@ -114,6 +117,7 @@ URL local principal:
 Rotas internas principais:
 
 - `http://127.0.0.1:3002/cashback/login.php`
+- `http://127.0.0.1:3002/codigos/login.php`
 - `http://127.0.0.1:3002/cotacao/login.php`
 - `http://127.0.0.1:3002/financeiro/login.php`
 - `http://127.0.0.1:3002/tarefa/login.php`
@@ -151,6 +155,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- site/
 |   |-- home.php              # home publica estavel, fora do bootstrap WordPress
 |   |-- cashback/
+|   |-- codigos/
 |   |-- financeiro/
 |   |-- miauw/
 |   |-- tarefa/

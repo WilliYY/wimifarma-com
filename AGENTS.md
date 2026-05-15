@@ -64,6 +64,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - Modulos internos PHP puro:
   - `site/cashback`
+  - `site/codigos`
   - `site/financeiro`
   - `site/tarefa`
   - `site/miauw`
@@ -136,6 +137,7 @@ URL local principal:
 Rotas internas:
 
 - `/cashback/login.php`
+- `/codigos/login.php`
 - `/cotacao/login.php`
 - `/cotacao/health`
 - `/financeiro/login.php`
@@ -231,6 +233,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - O topo da Cotacao V2 possui botao `Historico` ao lado do contador de linhas com dados; ele abre o historico da celula selecionada e permite restaurar o valor anterior por um save normal/auditado.
 - O modal de formatacao condicional usa layout largo e compacto: criacao de regra em faixa unica, regras existentes em linhas alinhadas e acoes `Salvar`/`Apagar` lado a lado no desktop.
 - O botao `Sair` da Cotacao V2 encerra a sessao da Cotacao e redireciona para a home inicial `/`, nao para a tela de login.
+- A home publica ganhou o card `Códigos` como sexto card, abaixo do Cashback no grid desktop de no maximo cinco cards por linha; os cards foram posicionados mais acima para acomodar a segunda linha.
+- O modulo `site/codigos` controla atalhos de itens com comissao diferente em tabela simples editavel com `Código`, `EAN` e `Preço`; cria a tabela MySQL `wf_codigos_comissao`, permite adicionar, editar e apagar por exclusao logica.
 
 ## Estado validado em 2026-05-11
 

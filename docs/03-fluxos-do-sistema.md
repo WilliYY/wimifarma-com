@@ -10,10 +10,12 @@ Entrada publica:
 
 - `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
+- A home usa no maximo cinco cards por linha no desktop; `Códigos` entra como sexto card abaixo do Cashback.
 
 Rotas de login:
 
 - `/cashback/login.php`
+- `/codigos/login.php`
 - `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando em `wf_users`)
 - `/financeiro/login.php`
 - `/tarefa/login.php`
@@ -62,6 +64,28 @@ Tabelas principais:
 - `wf_resgate_itens`
 - `wf_settings`
 - `wf_logs`
+
+## Fluxo Codigos
+
+O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A tela principal funciona como uma tabela simples inspirada em planilha, com campos sempre editaveis para `Código`, `EAN` e `Preço`.
+
+Arquivos principais:
+
+- `site/codigos/index.php`
+- `site/codigos/codigos-funcoes.php`
+- `site/codigos/styles.css`
+- `site/codigos/app.js`
+
+Tabela principal:
+
+- `wf_codigos_comissao`
+
+Regras a preservar:
+
+- codigo, EAN e preco devem ser editaveis sem fluxo complexo;
+- novos itens entram no fim da lista;
+- apagar pela tela deve fazer exclusao logica (`ativo=0`) para reduzir risco de perda acidental;
+- acoes de criar, editar e apagar registram `wf_logs`.
 
 ## Fluxo Cotacao
 

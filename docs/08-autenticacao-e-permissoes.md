@@ -18,6 +18,7 @@ Arquivos:
 Rotas:
 
 - `/cashback/login.php`
+- `/codigos/login.php`
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/tarefa/login.php`
