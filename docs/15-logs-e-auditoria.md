@@ -39,6 +39,7 @@ Arquivos:
 - Logs nao devem gravar senhas, tokens ou chaves.
 - Códigos registra criacao de blocos, criacao de itens, edicao, reordenacao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
+- Guardrails do Miauby v2 que reescrevem resposta por vazamento de bastidor devem registrar diagnostico invisivel com termos detectados, origem, versao do agente e versao da politica, sem salvar a resposta completa nem segredo.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 
 ## Decisoes tecnicas ja tomadas

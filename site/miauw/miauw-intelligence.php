@@ -147,7 +147,7 @@ function miauw_intelligence_report_system_error(string $module, string $title, s
             'erro_interno_detectado',
             'alta',
             $title !== '' ? $title : 'Erro interno detectado',
-            'Falha interna registrada. Revise o modulo e acione o Codex se repetir.',
+            'Falha interna registrada. Revise o modulo e chame o suporte tecnico interno se repetir.',
             $context
         );
     } catch (Throwable $error) {

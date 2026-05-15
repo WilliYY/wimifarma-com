@@ -37,6 +37,14 @@ if (!defined('MIAUW_VERSION')) {
     define('MIAUW_VERSION', '20260511b');
 }
 
+if (!defined('MIAUW_AGENT_VERSION')) {
+    define('MIAUW_AGENT_VERSION', '2.0-fase1');
+}
+
+if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2');
+}
+
 if (!defined('MIAUW_OPENAI_API_KEY')) {
     define('MIAUW_OPENAI_API_KEY', miauw_env_string(array('MIAUW_OPENAI_API_KEY', 'OPENAI_API_KEY')));
 }
@@ -256,6 +264,22 @@ function miauw_openai_public_status(): array
         'message' => $configured
             ? 'Chave configurada, validacao online feita somente quando o Miauby responde.'
             : 'Chave OpenAI ausente ou placeholder.',
+    );
+}
+
+function miauw_agent_public_status(): array
+{
+    return array(
+        'name' => 'Miauby',
+        'version' => miauw_constant_string('MIAUW_AGENT_VERSION', '1.0'),
+        'policy_version' => miauw_constant_string('MIAUW_AGENT_POLICY_VERSION', ''),
+        'mode' => 'operacional',
+        'features' => array(
+            'persona_operacional',
+            'guardrails_bastidor',
+            'skills_controladas',
+            'diagnostico_interno',
+        ),
     );
 }
 
@@ -916,13 +940,13 @@ function miauw_public_action_error(Throwable $error): string
     foreach ($technical as $needle) {
         if (strpos($lower, $needle) !== false) {
             miauw_register_internal_error_alert('miauby', 'Erro interno em acao controlada', $error, array('origem' => 'miauw_public_action_error'));
-            return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Acione o Codex se repetir.';
+            return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Se repetir, chame o suporte tecnico interno com tela, horario e acao feita.';
         }
     }
 
     if ($message === '') {
         miauw_register_internal_error_alert('miauby', 'Erro interno sem mensagem', $error, array('origem' => 'miauw_public_action_error'));
-        return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Acione o Codex se repetir.';
+        return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Se repetir, chame o suporte tecnico interno com tela, horario e acao feita.';
     }
 
     if (preg_match('/\b(informe|faltou|valor invalido|categoria vazia|dia esta fechado|reabra|responsavel|cliente|produto|nenhum produto valido|senha)\b/iu', $message)) {
@@ -931,7 +955,7 @@ function miauw_public_action_error(Throwable $error): string
 
     miauw_register_internal_error_alert('miauby', 'Erro em acao controlada', $error, array('origem' => 'miauw_public_action_error'));
 
-    return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Acione o Codex se repetir.';
+    return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Se repetir, chame o suporte tecnico interno com tela, horario e acao feita.';
 }
 
 function miauw_action_error_reply(Throwable $error): string
@@ -1037,9 +1061,9 @@ function miauw_try_technical_redirect(string $message): ?string
         return null;
     }
 
-    return 'Parede tecnica detectada. Isso e assunto para o Codex, nao para o Miauby gastar resposta virando pedreiro de codigo.'
+    return 'Parede tecnica detectada. Isso e assunto de suporte tecnico interno, nao do chat operacional do Miauby.'
         . "\nAqui eu fico no operacional: caixa, financeiro, cotacao, cashback, encomenda, alerta e processo."
-        . "\nMe mande o que aconteceu na tela e o que voce queria fazer. Se for bug tecnico, chama o Codex com o modulo e o print.";
+        . "\nMe mande o que aconteceu na tela e o que voce queria fazer. Se for bug tecnico, registre com modulo, horario e print.";
 }
 
 function miauw_operator_voice_polish(string $text): string
@@ -1058,6 +1082,63 @@ function miauw_operator_voice_polish(string $text): string
     return trim($text);
 }
 
+function miauw_operator_guardrail_find_terms(string $text): array
+{
+    $patterns = array(
+        'codex' => '/\bcodex\b/iu',
+        'chatgpt' => '/\bchatgpt\b/iu',
+        'openai' => '/\bopenai\b/iu',
+        'api_key' => '/\b(api\s*key|apikey|chave\s+da\s+api)\b/iu',
+        'prompt' => '/\b(prompt\s+do\s+sistema|prompt\s+interno|system\s+prompt)\b/iu',
+        'stack_trace' => '/\b(stack\s*trace|traceback)\b/iu',
+        'token' => '/\b(bearer|authorization|token\s+secreto)\b/iu',
+    );
+
+    $found = array();
+    foreach ($patterns as $label => $pattern) {
+        if (preg_match($pattern, $text)) {
+            $found[] = $label;
+        }
+    }
+
+    return $found;
+}
+
+function miauw_apply_operator_guardrails(string $text, string $source = 'reply'): string
+{
+    $original = $text;
+    $found = miauw_operator_guardrail_find_terms($text);
+
+    if (!$found) {
+        return $text;
+    }
+
+    $text = preg_replace('/\bcodex\b/iu', 'suporte tecnico interno', $text) ?? $text;
+    $text = preg_replace('/\bchatgpt\b/iu', 'assistente generico', $text) ?? $text;
+    $text = preg_replace('/\bopenai\b/iu', 'camada online', $text) ?? $text;
+    $text = preg_replace('/\b(api\s*key|apikey|chave\s+da\s+api)\b/iu', 'credencial interna', $text) ?? $text;
+    $text = preg_replace('/\b(prompt\s+do\s+sistema|prompt\s+interno|system\s+prompt)\b/iu', 'regra interna', $text) ?? $text;
+    $text = preg_replace('/\b(stack\s*trace|traceback)\b/iu', 'diagnostico tecnico interno', $text) ?? $text;
+    $text = preg_replace('/\b(bearer|authorization|token\s+secreto)\b/iu', 'credencial interna', $text) ?? $text;
+
+    $shouldLog = !in_array($source, array('history_input', 'widget_history'), true);
+    if ($shouldLog && $text !== $original && function_exists('miauw_write_invisible_diagnostic')) {
+        miauw_write_invisible_diagnostic(
+            'guardrail_rewrite',
+            'miauby',
+            'Resposta ajustada por guardrails operacionais do Miauby v2',
+            array(
+                'source' => miauw_substr($source, 0, 80),
+                'terms' => $found,
+                'agent_version' => miauw_constant_string('MIAUW_AGENT_VERSION', ''),
+                'policy_version' => miauw_constant_string('MIAUW_AGENT_POLICY_VERSION', ''),
+            )
+        );
+    }
+
+    return trim($text);
+}
+
 function miauw_sanitize_operator_reply(string $text): string
 {
     $original = $text;
@@ -1065,7 +1146,7 @@ function miauw_sanitize_operator_reply(string $text): string
     $codeBlocks = 0;
     $text = preg_replace(
         '/```.*?```/s',
-        'Parte tecnica omitida. Se precisar mexer em codigo, acione o Codex.',
+        'Parte tecnica omitida. Se precisar mexer em codigo, registre um chamado tecnico interno.',
         $text,
         -1,
         $codeBlocks
@@ -1093,14 +1174,15 @@ function miauw_sanitize_operator_reply(string $text): string
     $text = preg_replace('/\n{3,}/', "\n\n", $text) ?? $text;
 
     if ($omitted > 0) {
-        $text = trim($text . "\nParte tecnica cortada para nao expor bastidor. Isso e chamado do Codex.");
+        $text = trim($text . "\nParte tecnica cortada para nao expor bastidor. Isso e chamado tecnico interno.");
     }
 
     if ($text === '') {
-        $text = 'Cortei a parte tecnica para nao expor bastidor. Me diga a tela, o erro e o objetivo; se for codigo, acione o Codex.';
+        $text = 'Cortei a parte tecnica para nao expor bastidor. Me diga a tela, o erro e o objetivo; se for codigo, registre um chamado tecnico interno.';
     }
 
     $text = miauw_operator_voice_polish($text);
+    $text = miauw_apply_operator_guardrails($text, 'sanitize_operator_reply');
 
     if (miauw_strlen($text) > 1600) {
         $text = miauw_substr($text, 0, 1550) . "\nResumo cortado. Peca o detalhe por partes.";
@@ -1111,7 +1193,7 @@ function miauw_sanitize_operator_reply(string $text): string
     }
 
     if ($omitted > 0 || $codeBlocks > 0 || trim($original) !== '') {
-        return 'Nao vou despejar bastidor tecnico aqui. Registrei diagnostico interno; se repetir, acione o Codex com tela, horario e acao feita.';
+        return 'Nao vou despejar bastidor tecnico aqui. Registrei diagnostico interno; se repetir, chame o suporte tecnico interno com tela, horario e acao feita.';
     }
 
     return 'Nao consegui montar uma resposta limpa agora. Tente de novo com tela, dado e objetivo.';
@@ -1817,6 +1899,9 @@ function miauw_history_input(int $conversationId): array
         $content = trim((string) $message['conteudo']);
 
         if ($content !== '') {
+            if ($role === 'assistant' && function_exists('miauw_apply_operator_guardrails')) {
+                $content = miauw_apply_operator_guardrails($content, 'history_input');
+            }
             $input[] = array('role' => $role, 'content' => miauw_substr($content, 0, 1400));
         }
     }

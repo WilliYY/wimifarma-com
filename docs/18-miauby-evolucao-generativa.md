@@ -29,6 +29,12 @@ Miauby ja possui:
 - `config.local.php` so e carregado quando existe e esta legivel pelo PHP; se o arquivo local existir sem permissao de leitura, o Miauby deve continuar subindo usando variaveis do `.env` em vez de quebrar com erro fatal.
 - `widget-status.php` diferencia chave configurada de chamada online validada: `api_ready` significa apenas chave preenchida e `api_status.validated=false` indica que a validacao real acontece quando o Miauby tenta responder.
 - falhas da camada online do Miauby classificam autenticacao, cota, modelo e rede; o widget mostra uma mensagem curta para o operador e registra diagnostico interno sem expor chave, payload ou stack trace.
+- Fase 1 do agente operacional v2 iniciada no backend PHP atual:
+  - `MIAUW_AGENT_VERSION` e `MIAUW_AGENT_POLICY_VERSION`;
+  - `miauw_agent_public_status()` exposto em `widget-status.php` e `api.php`;
+  - prompt com isolamento operacional v2;
+  - guardrail final para remover mencoes a agente de desenvolvimento, fornecedor de IA, chave, prompt e stack trace das respostas/historico exibidos ao operador;
+  - assuntos tecnicos sao encaminhados como suporte tecnico interno, sem citar bastidores de desenvolvimento.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -104,7 +110,7 @@ Integracoes:
 
 ## Como pode evoluir
 
-- Fase 1: documentar tools atuais e criar registry sem mudar comportamento. Em andamento/concluido parcialmente.
+- Fase 1: documentar tools atuais, criar registry e aplicar isolamento operacional/persona v2 sem trocar arquitetura. Em andamento/concluido parcialmente.
 - Fase 2: adicionar testes de intents e respostas proibidas.
 - Fase 3: criar painel de diagnostico e revisao de memoria/padroes.
 - Fase 4: transformar padroes recorrentes em sugestoes de melhoria de processo.

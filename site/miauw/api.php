@@ -95,6 +95,10 @@ try {
             'reply_parts' => function_exists('miauw_reply_parts') ? miauw_reply_parts($reply['text'], $widgetMode ? 2 : 5) : array($reply['text']),
             'fallback' => (bool) $reply['fallback'],
             'model' => $reply['model'],
+            'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
+                'name' => 'Miauby',
+                'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
+            ),
             'time' => date('d/m/y H:i'),
             'guardian_alert_count' => $guardianCount,
             'guardian_alerts' => array_map(static function (array $alert): array {
@@ -150,5 +154,5 @@ try {
     if (function_exists('miauw_register_internal_error_alert')) {
         miauw_register_internal_error_alert('miauby', 'Erro na API do Miauby', $error, array('endpoint' => 'api.php'));
     }
-    miauw_json(array('ok' => false, 'message' => 'Miauby nao conseguiu concluir agora. Registrei diagnostico interno. Acione o Codex se repetir.'), 500);
+    miauw_json(array('ok' => false, 'message' => 'Miauby nao conseguiu concluir agora. Registrei diagnostico interno. Se repetir, chame o suporte tecnico interno com tela, horario e acao feita.'), 500);
 }

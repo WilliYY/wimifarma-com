@@ -35,6 +35,10 @@ try {
             'status' => 'unknown',
             'message' => 'Status online indisponivel neste bootstrap.',
         ),
+        'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
+            'name' => 'Miauby',
+            'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
+        ),
     );
 
     if ($user) {
@@ -51,9 +55,14 @@ try {
             $conversationId = miauw_current_conversation_id((int) $user['id']);
 
             foreach (miauw_messages($conversationId, 14) as $message) {
+                $text = (string) $message['conteudo'];
+                if (($message['papel'] ?? '') === 'assistant' && function_exists('miauw_apply_operator_guardrails')) {
+                    $text = miauw_apply_operator_guardrails($text, 'widget_history');
+                }
+
                 $payload['messages'][] = array(
                     'role' => $message['papel'],
-                    'text' => $message['conteudo'],
+                    'text' => $text,
                     'time' => miauw_message_time((string) $message['created_at']),
                     'fallback' => !empty($message['fallback']),
                 );
@@ -124,6 +133,10 @@ try {
             'validated' => false,
             'status' => 'unknown',
             'message' => 'Status online indisponivel neste bootstrap.',
+        ),
+        'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
+            'name' => 'Miauby',
+            'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
         ),
         'message' => 'Miauby ainda nao carregou. Tente novamente em instantes.',
         'fallback' => true,

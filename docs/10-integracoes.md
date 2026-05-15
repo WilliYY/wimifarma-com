@@ -29,6 +29,8 @@ Status operacional:
 - `api_ready=true` significa apenas que a credencial nao esta vazia nem parece placeholder.
 - `api_status.validated=false` e esperado no status simples; a validacao real acontece quando `api.php?action=send` chama a Responses API.
 - Erros da camada online devem ficar em diagnostico/log interno e aparecer para o operador como falha curta de configuracao, cota, modelo ou rede, sem expor chave ou payload.
+- O status do widget/API tambem pode expor `agent_status`, com versao do Miauby e versao de politica operacional. Esse dado e informativo e nao valida a chamada online.
+- A Fase 1 do Miauby v2 aplica guardrails para que respostas ao operador nao citem bastidores de desenvolvimento, fornecedor, chave, prompt ou stack trace; assuntos tecnicos devem virar suporte tecnico interno com tela, horario, acao feita e print.
 
 Tabelas:
 
@@ -115,6 +117,7 @@ Direcao:
 - separar skills de leitura, sugestao e escrita;
 - validar permissao, schema e auditoria por skill;
 - revisar memorias e padroes antes de transformar em automacao.
+- preservar isolamento operacional do Miauby v2 ao adicionar novas tools.
 
 Documento especifico:
 
