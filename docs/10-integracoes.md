@@ -31,6 +31,8 @@ Status operacional:
 - Erros da camada online devem ficar em diagnostico/log interno e aparecer para o operador como falha curta de configuracao, cota, modelo ou rede, sem expor chave ou payload.
 - O status do widget/API tambem pode expor `agent_status`, com versao do Miauby e versao de politica operacional. Esse dado e informativo e nao valida a chamada online.
 - A Fase 1 do Miauby v2 aplica guardrails para que respostas ao operador nao citem bastidores de desenvolvimento, fornecedor, chave, prompt ou stack trace; assuntos tecnicos devem virar suporte tecnico interno com tela, horario, acao feita e print.
+- A Fase 2 do Miauby v2 adiciona `site/miauw/miauw-evals.php` para validar localmente intents, rotas de modelo, registry de skills e respostas proibidas sem chamar OpenAI nem executar escritas reais.
+- Os guardrails finais tambem removem fragmentos de chaves `sk-...` de respostas ao operador, substituindo por credencial interna.
 
 Tabelas:
 
@@ -118,6 +120,7 @@ Direcao:
 - validar permissao, schema e auditoria por skill;
 - revisar memorias e padroes antes de transformar em automacao.
 - preservar isolamento operacional do Miauby v2 ao adicionar novas tools.
+- manter `miauw-evals.php` atualizado sempre que novas intents/tools forem adicionadas.
 
 Documento especifico:
 

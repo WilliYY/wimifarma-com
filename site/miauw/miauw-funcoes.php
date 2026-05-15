@@ -38,11 +38,11 @@ if (!defined('MIAUW_VERSION')) {
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase1');
+    define('MIAUW_AGENT_VERSION', '2.0-fase2');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-evals');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -279,6 +279,7 @@ function miauw_agent_public_status(): array
             'guardrails_bastidor',
             'skills_controladas',
             'diagnostico_interno',
+            'evals_intents_guardrails',
         ),
     );
 }
@@ -1089,6 +1090,7 @@ function miauw_operator_guardrail_find_terms(string $text): array
         'chatgpt' => '/\bchatgpt\b/iu',
         'openai' => '/\bopenai\b/iu',
         'api_key' => '/\b(api\s*key|apikey|chave\s+da\s+api)\b/iu',
+        'secret_key' => '/\bsk-[a-z0-9_\-\*]{8,}\b/iu',
         'prompt' => '/\b(prompt\s+do\s+sistema|prompt\s+interno|system\s+prompt)\b/iu',
         'stack_trace' => '/\b(stack\s*trace|traceback)\b/iu',
         'token' => '/\b(bearer|authorization|token\s+secreto)\b/iu',
@@ -1117,6 +1119,7 @@ function miauw_apply_operator_guardrails(string $text, string $source = 'reply')
     $text = preg_replace('/\bchatgpt\b/iu', 'assistente generico', $text) ?? $text;
     $text = preg_replace('/\bopenai\b/iu', 'camada online', $text) ?? $text;
     $text = preg_replace('/\b(api\s*key|apikey|chave\s+da\s+api)\b/iu', 'credencial interna', $text) ?? $text;
+    $text = preg_replace('/\bsk-[a-z0-9_\-\*]{8,}\b/iu', 'credencial interna', $text) ?? $text;
     $text = preg_replace('/\b(prompt\s+do\s+sistema|prompt\s+interno|system\s+prompt)\b/iu', 'regra interna', $text) ?? $text;
     $text = preg_replace('/\b(stack\s*trace|traceback)\b/iu', 'diagnostico tecnico interno', $text) ?? $text;
     $text = preg_replace('/\b(bearer|authorization|token\s+secreto)\b/iu', 'credencial interna', $text) ?? $text;

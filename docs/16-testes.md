@@ -10,6 +10,7 @@ Hoje a validacao e feita com:
 
 - `docker compose ps`
 - `php -l` em arquivos PHP importantes
+- `site/miauw/miauw-evals.php` para intents, guardrails e registry do Miauby
 - `curl` em rotas principais
 - leitura de logs do container web
 - teste visual manual quando ha mudanca de tela
@@ -31,18 +32,40 @@ Rotas de smoke test:
 
 Comandos estao em `docs/05-comandos.md`.
 
+## Miauby - evals locais
+
+O Miauby possui um runner CLI de avaliacoes locais em `site/miauw/miauw-evals.php`.
+
+Ele valida:
+
+- status e versao publica do agente;
+- guardrails contra bastidores tecnicos, prompt, stack trace, fornecedor e chaves `sk-...`;
+- sanitizacao de codigo/caminhos internos;
+- redirect de assuntos tecnicos para suporte tecnico interno;
+- registry essencial de skills;
+- rotas de modelo `fast`, `smart` e `boss`;
+- intents de lancamento financeiro, tarefa, encomenda e urgente de Cotacao.
+
+Rodar pelo container:
+
+```powershell
+docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
+```
+
+O runner nao chama OpenAI e nao executa escritas reais nos modulos.
+
 ## Regras que precisam ser preservadas
 
 - Rodar validacoes proporcionais ao risco.
 - Se mexer em helper comum, testar todos os modulos.
 - Se mexer em banco, testar pelo menos login/status e logs.
 - Se mexer em front-end, validar visualmente.
-- Se mexer em Miauby, validar `widget-status.php`.
+- Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
 
 ## Decisoes tecnicas ja tomadas
 
 - A fase atual prioriza smoke tests por causa da migracao.
-- Testes automatizados ainda nao foram estruturados.
+- O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
 
 ## Riscos ao alterar
 
@@ -57,6 +80,7 @@ Comandos estao em `docs/05-comandos.md`.
 - Adicionar testes de API autenticada.
 - Adicionar testes de integridade para Cotacao e Financeiro.
 - Adicionar teste de seguranca basico para segredos em Git.
+- Ampliar evals do Miauby para cotacao rapida, alertas, memoria e tools OpenAI registradas.
 
 ## Evolucao futura
 

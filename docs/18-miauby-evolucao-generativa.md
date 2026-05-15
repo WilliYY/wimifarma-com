@@ -35,6 +35,15 @@ Miauby ja possui:
   - prompt com isolamento operacional v2;
   - guardrail final para remover mencoes a agente de desenvolvimento, fornecedor de IA, chave, prompt e stack trace das respostas/historico exibidos ao operador;
   - assuntos tecnicos sao encaminhados como suporte tecnico interno, sem citar bastidores de desenvolvimento.
+- Fase 2 do agente operacional v2 iniciada com `site/miauw/miauw-evals.php`, runner CLI de avaliacoes locais:
+  - valida status/versao publica do agente;
+  - valida guardrails contra bastidor tecnico e chaves `sk-...`;
+  - valida sanitizacao de codigo/caminhos internos;
+  - valida redirect de assuntos tecnicos para suporte tecnico interno;
+  - valida registry essencial de skills;
+  - valida rotas `fast`, `smart` e `boss`;
+  - valida intents de lancamento financeiro, tarefa, encomenda e urgente de Cotacao;
+  - nao chama OpenAI e nao executa escritas reais nos modulos.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -42,6 +51,7 @@ Arquivos:
 
 - `site/miauw/api.php`
 - `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-evals.php`
 - `site/miauw/miauw-skills.php`
 - `site/miauw/miauw-intelligence.php`
 - `site/miauw/miauw-system-map.php`
@@ -83,7 +93,7 @@ Integracoes:
   - sugestao: detecta padroes e propoe proximo passo;
   - escrita: altera dados somente com validacao e auditoria.
 - Usar `miauw_skill_registry()` antes de adicionar novas tools soltas.
-- Criar avaliacao simples de skills: exemplos de entrada, saida esperada e casos proibidos.
+- Manter avaliacoes simples de skills em `site/miauw/miauw-evals.php`: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
 - Criar tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
 - Quando a tela de diagnostico existir, ela deve usar o status publico (`configured`, `validated`, `status`) e permitir um teste online explicito, para nao chamar a OpenAI a cada abertura do widget.
@@ -103,7 +113,7 @@ Integracoes:
 
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Criar logs estruturados para execucao de skill.
-- Criar testes de exemplos para intents de financeiro, cotacao, tarefa e alertas.
+- Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Definir tela administrativa para revisar memorias e padroes aprendidos.
 - Definir quando Miauby pode executar escrita automaticamente e quando precisa pedir confirmacao.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
@@ -111,7 +121,7 @@ Integracoes:
 ## Como pode evoluir
 
 - Fase 1: documentar tools atuais, criar registry e aplicar isolamento operacional/persona v2 sem trocar arquitetura. Em andamento/concluido parcialmente.
-- Fase 2: adicionar testes de intents e respostas proibidas.
+- Fase 2: adicionar testes de intents e respostas proibidas. Em andamento com runner CLI local.
 - Fase 3: criar painel de diagnostico e revisao de memoria/padroes.
 - Fase 4: transformar padroes recorrentes em sugestoes de melhoria de processo.
 - Fase 5: integrar Cotacao + Google Sheets com auditoria e usar Miauby para resumir divergencias.

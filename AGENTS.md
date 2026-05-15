@@ -251,6 +251,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Na Cotacao V2, durante a edicao de uma celula, `Enter` salva e desce exatamente uma linha; as setas salvam a edicao atual e movem para a celula adjacente na direcao pressionada.
 - O Financeiro nao exibe mais o botao/view `Auditoria` na navegacao principal; URLs com `?view=auditoria` voltam para a tela `Caixa`, enquanto os registros em `financeiro_auditoria` continuam sendo gravados internamente.
 - O Miauby iniciou a Fase 1 do agente operacional v2 no backend PHP atual: possui `MIAUW_AGENT_VERSION`, `MIAUW_AGENT_POLICY_VERSION`, status publico de agente no widget/API, prompt com isolamento operacional e guardrail final que substitui mencoes a bastidores tecnicos por suporte tecnico interno sem expor agente de desenvolvimento, fornecedor, chave, prompt ou stack trace ao operador.
+- O Miauby iniciou a Fase 2 do agente operacional v2 com `site/miauw/miauw-evals.php`, runner CLI que testa intents de Financeiro, Tarefas e Cotacao, rotas de modelo, registry de skills e respostas proibidas sem chamar a OpenAI nem executar escritas reais. Rodar com `docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php`.
+- Os guardrails finais do Miauby tambem substituem fragmentos de chaves `sk-...` por `credencial interna` antes de qualquer resposta ao operador.
 
 ## Estado validado em 2026-05-11
 
