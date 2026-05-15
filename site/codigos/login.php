@@ -57,8 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260514a">
-    <script src="/codigos/login-runner.js?v=20260514a" defer></script>
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260515b">
+    <script src="/codigos/login-runner.js?v=20260515b" defer></script>
 </head>
 <body class="codes-login-body">
     <img class="login-screen-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

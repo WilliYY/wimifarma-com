@@ -242,6 +242,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A tela de Códigos foi dividida em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao e permitindo criar novos blocos pelo botao `+`; os blocos sao persistidos no MySQL em `wf_codigos_blocos`, cada bloco tem linha nova no rodape para adicionar itens sem misturar os grupos, e o layout usa largura ampla para aproveitar melhor as laterais da tela.
 - Em Códigos, editar uma linha preserva a posicao atual quando o prefixo do EAN nao muda; reordenacao e feita arrastando o numero da linha dentro do mesmo grupo e persiste em `wf_codigos_comissao.ordem`.
 - Apagar codigo continua sendo acao explicita com confirmacao e exclusao logica em `wf_codigos_comissao`.
+- O login de Códigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, sem alterar sessao, CSRF ou autenticacao em `wf_users`.
 - Na Cotacao V2, colagem de matriz, desfazer/refazer de lotes e a alca de preenchimento usam save em lote otimista com atualizacao apenas das linhas afetadas; outras telas tambem aplicam eventos de celula por linha, sem redesenhar a grade inteira quando o evento nao e estrutural.
 - A Cotacao V2 ganhou `PUT/DELETE /cotacao/api/styles/batch` para aplicar ou apagar estilos em lote, reduzindo varias chamadas pequenas quando cores sao copiadas pelo fill handle ou aplicadas em selecoes grandes.
 

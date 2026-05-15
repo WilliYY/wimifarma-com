@@ -71,6 +71,8 @@ O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. 
 
 Para evitar confusao operacional, a tela separa os itens em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao. O botao `+` cria um novo bloco pelo backend em `wf_codigos_blocos`, permitindo que o bloco continue existindo mesmo antes do primeiro item. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa largura ampla para aproveitar melhor as laterais do monitor.
 
+O login de Codigos segue o padrao visual vinho/rosa dos outros logins internos, mas preserva o fluxo proprio de sessao, CSRF e autenticacao em `wf_users`.
+
 Arquivos principais:
 
 - `site/codigos/index.php`
