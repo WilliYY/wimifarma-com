@@ -134,16 +134,21 @@ function codigos_group_key(string $ean): string
 {
     $prefix = codigos_ean_prefix($ean);
 
-    if ($prefix === '20' || $prefix === '40') {
+    if (preg_match('/^\d{2}$/', $prefix) === 1) {
         return $prefix;
     }
 
     return 'outros';
 }
 
+function codigos_is_valid_group_key(string $group): bool
+{
+    return $group === 'outros' || preg_match('/^\d{2}$/', $group) === 1;
+}
+
 function codigos_group_label(string $group): string
 {
-    if ($group === '20' || $group === '40') {
+    if (preg_match('/^\d{2}$/', $group) === 1) {
         return 'EAN ' . $group;
     }
 
@@ -152,7 +157,7 @@ function codigos_group_label(string $group): string
 
 function codigos_default_ean_placeholder(string $group): string
 {
-    if ($group === '20' || $group === '40') {
+    if (preg_match('/^\d{2}$/', $group) === 1) {
         return $group . ' 000';
     }
 
@@ -164,15 +169,53 @@ function codigos_group_items(array $items): array
     $groups = array(
         '20' => array(),
         '40' => array(),
-        'outros' => array(),
     );
 
     foreach ($items as $item) {
         $group = codigos_group_key((string) ($item['ean'] ?? ''));
+        if (!isset($groups[$group])) {
+            $groups[$group] = array();
+        }
         $groups[$group][] = $item;
     }
 
     return $groups;
+}
+
+function codigos_ordered_group_keys(array $groups): array
+{
+    $keys = array_unique(array_merge(array('20', '40'), array_keys($groups)));
+    $numeric = array();
+
+    foreach ($keys as $key) {
+        $key = (string) $key;
+        if ($key === 'outros') {
+            continue;
+        }
+
+        if (preg_match('/^\d{2}$/', $key) === 1) {
+            $numeric[] = $key;
+        }
+    }
+
+    usort($numeric, static function (string $left, string $right): int {
+        if ($left === '20') {
+            return $right === '20' ? 0 : -1;
+        }
+        if ($right === '20') {
+            return 1;
+        }
+        if ($left === '40') {
+            return $right === '40' ? 0 : -1;
+        }
+        if ($right === '40') {
+            return 1;
+        }
+
+        return (int) $left <=> (int) $right;
+    });
+
+    return $numeric;
 }
 
 function codigos_validate_payload(string $codigo, string $ean, $preco): array
@@ -260,7 +303,7 @@ function codigos_reorder_group(string $group, array $orderedIds): void
 {
     codigos_ensure_schema();
 
-    if (!in_array($group, array('20', '40', 'outros'), true)) {
+    if (!codigos_is_valid_group_key($group)) {
         throw new InvalidArgumentException('Grupo invalido.');
     }
 

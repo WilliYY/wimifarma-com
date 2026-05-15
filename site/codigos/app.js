@@ -65,7 +65,7 @@
         var digits = String(ean || '').replace(/\D+/g, '');
         var prefix = digits.slice(0, 2);
 
-        if (prefix === '20' || prefix === '40') {
+        if (/^\d{2}$/.test(prefix)) {
             return prefix;
         }
 
@@ -73,11 +73,36 @@
     }
 
     function placeholderForGroup(group) {
-        if (group === '20' || group === '40') {
+        if (/^\d{2}$/.test(group)) {
             return group + ' 000';
         }
 
         return 'EAN';
+    }
+
+    function labelForGroup(group) {
+        if (/^\d{2}$/.test(group)) {
+            return 'EAN ' + group;
+        }
+
+        return 'Outros';
+    }
+
+    function normalizeGroupInput(value) {
+        var digits = String(value || '').replace(/\D+/g, '');
+        return digits.length >= 2 ? digits.slice(0, 2) : '';
+    }
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, function (char) {
+            return {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            }[char];
+        });
     }
 
     function buildFormData(row, action) {
@@ -214,8 +239,93 @@
         row.dataset.lastPayload = rowPayload(row);
     }
 
+    function createPanel(group) {
+        var existing = document.querySelector('[data-code-group-panel="' + group + '"]');
+        if (existing) {
+            return existing;
+        }
+
+        var board = document.querySelector('.codes-sheet-board');
+        if (!board) {
+            return null;
+        }
+
+        var label = labelForGroup(group);
+        var panel = document.createElement('section');
+        panel.className = 'codes-sheet-panel';
+        panel.setAttribute('aria-label', label);
+        panel.setAttribute('data-code-group-panel', group);
+
+        panel.innerHTML = ''
+            + '<div class="codes-sheet-title">'
+            + '<h2>' + escapeHtml(label) + '</h2>'
+            + '<span data-code-group-count="' + escapeHtml(group) + '">0 item(ns)</span>'
+            + '</div>'
+            + '<div class="codes-sheet-scroll">'
+            + '<div class="codes-sheet" role="table" aria-label="' + escapeHtml(label) + '">'
+            + '<div class="codes-sheet-head" role="row">'
+            + '<span>#</span><span>CODIGO</span><span>EAN</span><span>PRECO</span><span>STATUS</span>'
+            + '</div>'
+            + '<form method="post" class="codes-row codes-row-new" role="row" data-code-row data-new-row data-code-group="' + escapeHtml(group) + '">'
+            + '<input type="hidden" name="csrf_token" value="' + escapeHtml(csrfToken()) + '">'
+            + '<input type="hidden" name="action" value="create">'
+            + '<input type="hidden" name="id" value="">'
+            + '<span class="codes-row-number">+</span>'
+            + '<label><span>Codigo</span><input type="text" name="codigo" maxlength="180" placeholder="Novo codigo" required></label>'
+            + '<label><span>EAN</span><input type="text" name="ean" maxlength="80" placeholder="' + escapeHtml(placeholderForGroup(group)) + '" required></label>'
+            + '<label><span>Preco</span><input type="text" name="preco" inputmode="decimal" data-price-input placeholder="0,00" required></label>'
+            + '<div class="codes-row-actions"><span class="codes-save-status is-muted" data-save-status>Novo</span></div>'
+            + '</form>'
+            + '</div>'
+            + '</div>';
+
+        var addButton = board.querySelector('[data-focus-group-adder]');
+        board.insertBefore(panel, addButton || null);
+
+        var newRow = panel.querySelector('[data-code-row]');
+        if (newRow) {
+            initRow(newRow);
+        }
+        updateCounts();
+
+        return panel;
+    }
+
+    function focusNewRow(panel) {
+        var input = panel ? panel.querySelector('[data-new-row] [name="codigo"]') : null;
+        if (input) {
+            input.focus();
+        }
+    }
+
+    function groupAdderInput() {
+        return document.querySelector('[data-new-group-input]');
+    }
+
+    function createGroupFromInput(input) {
+        if (!input) {
+            return;
+        }
+
+        var group = normalizeGroupInput(input.value);
+        if (!group) {
+            input.focus();
+            input.classList.add('is-error');
+            return;
+        }
+
+        input.classList.remove('is-error');
+        input.value = '';
+
+        var panel = createPanel(group);
+        if (panel) {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+            focusNewRow(panel);
+        }
+    }
+
     function moveRowToGroup(row, group) {
-        var panel = document.querySelector('[data-code-group-panel="' + group + '"]');
+        var panel = document.querySelector('[data-code-group-panel="' + group + '"]') || createPanel(group);
         if (!panel) {
             return;
         }
@@ -594,8 +704,41 @@
         });
     }
 
+    function initAddGroupButton() {
+        document.querySelectorAll('[data-add-code-group]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var localInput = button.closest('[data-group-adder]');
+                createGroupFromInput(localInput ? localInput.querySelector('[data-new-group-input]') : groupAdderInput());
+            });
+        });
+
+        document.querySelectorAll('[data-new-group-input]').forEach(function (input) {
+            input.addEventListener('input', function () {
+                input.value = normalizeGroupInput(input.value);
+                input.classList.remove('is-error');
+            });
+
+            input.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    createGroupFromInput(input);
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-focus-group-adder]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var input = groupAdderInput();
+                if (input) {
+                    input.focus();
+                }
+            });
+        });
+    }
+
     function init() {
         document.querySelectorAll('[data-code-row]').forEach(initRow);
+        initAddGroupButton();
         updateCounts();
     }
 

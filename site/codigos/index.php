@@ -56,11 +56,13 @@ $flash = get_flash();
 $search = trim((string) ($_GET['q'] ?? ''));
 $items = array();
 $groups = array('20' => array(), '40' => array(), 'outros' => array());
+$groupKeys = array('20', '40');
 $total = 0;
 
 try {
     $items = codigos_list($search);
     $groups = codigos_group_items($items);
+    $groupKeys = codigos_ordered_group_keys($groups);
     $total = codigos_count_active();
 } catch (Throwable $listError) {
     $flash = array('type' => 'error', 'message' => 'Nao consegui carregar os codigos agora.');
@@ -72,9 +74,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260515b">
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260515e">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260514a">
-    <script src="/codigos/app.js?v=20260515b" defer></script>
+    <script src="/codigos/app.js?v=20260515e" defer></script>
     <script src="/miauw/widget.js?v=20260511b" defer></script>
 </head>
 <body class="codes-app-body">
@@ -117,10 +119,14 @@ try {
                     <a class="codes-btn codes-btn-soft" href="/codigos/">Limpar</a>
                 <?php endif; ?>
             </form>
+            <div class="codes-group-adder" data-group-adder>
+                <input type="text" inputmode="numeric" maxlength="2" data-new-group-input aria-label="Prefixo do novo bloco de EAN" placeholder="EAN">
+                <button type="button" class="codes-btn codes-btn-icon" data-add-code-group aria-label="Criar novo bloco de EAN" title="Criar novo bloco de EAN">+</button>
+            </div>
         </section>
 
         <section class="codes-sheet-board" aria-label="Tabelas de codigos por EAN">
-            <?php foreach (array('20', '40') as $groupKey) : ?>
+            <?php foreach ($groupKeys as $groupKey) : ?>
                 <?php $groupItems = $groups[$groupKey] ?? array(); ?>
                 <section class="codes-sheet-panel" aria-label="<?php echo e(codigos_group_label($groupKey)); ?>" data-code-group-panel="<?php echo e($groupKey); ?>">
                     <div class="codes-sheet-title">
@@ -234,6 +240,9 @@ try {
                     </div>
                 </section>
             <?php endif; ?>
+            <button type="button" class="codes-sheet-panel codes-add-panel" data-focus-group-adder aria-label="Criar novo bloco de EAN" title="Criar novo bloco de EAN">
+                <span>+</span>
+            </button>
         </section>
     </main>
 </body>

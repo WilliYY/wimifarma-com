@@ -117,6 +117,17 @@ a {
     background: var(--soft);
 }
 
+.codes-btn-icon {
+    width: 42px;
+    min-width: 42px;
+    padding: 0;
+    color: #fff;
+    background: var(--teal);
+    border-color: var(--teal);
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
 .codes-page {
     width: min(1840px, calc(100% - 40px));
     margin: 0 auto;
@@ -197,7 +208,9 @@ a {
 
 .codes-toolbar {
     display: flex;
+    align-items: end;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 12px;
 }
@@ -234,14 +247,44 @@ a {
     box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
 }
 
+.codes-group-adder {
+    display: inline-flex;
+    align-items: end;
+    gap: 8px;
+}
+
+.codes-group-adder input {
+    width: 76px;
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--ink);
+    background: #fff;
+    font-weight: 900;
+    text-align: center;
+    outline: none;
+}
+
+.codes-group-adder input:focus {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.codes-group-adder input.is-error {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.12);
+}
+
 .codes-sheet-board {
     display: grid;
-    grid-template-columns: minmax(760px, 1.35fr) minmax(560px, 0.95fr);
+    grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
     align-items: start;
     gap: 16px;
 }
 
 .codes-sheet-panel {
+    min-width: 0;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.9);
@@ -252,6 +295,36 @@ a {
 .codes-sheet-panel-other {
     grid-column: 1 / -1;
     width: min(680px, 100%);
+}
+
+.codes-add-panel {
+    min-height: 132px;
+    display: grid;
+    place-items: center;
+    border-style: dashed;
+    padding: 0;
+    color: var(--teal-dark);
+    cursor: pointer;
+}
+
+.codes-add-panel span {
+    width: 54px;
+    height: 54px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(15, 118, 110, 0.28);
+    border-radius: 50%;
+    background: #fff;
+    font-size: 2rem;
+    font-weight: 950;
+    line-height: 1;
+}
+
+.codes-add-panel:hover,
+.codes-add-panel:focus-visible {
+    border-color: var(--teal);
+    background: rgba(238, 247, 246, 0.86);
+    outline: 0;
 }
 
 .codes-sheet-title {
@@ -548,7 +621,7 @@ a {
     will-change: transform;
 }
 
-@media (max-width: 1440px) {
+@media (max-width: 1180px) {
     .codes-sheet-board {
         grid-template-columns: 1fr;
     }
