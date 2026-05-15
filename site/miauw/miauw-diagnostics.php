@@ -389,6 +389,7 @@ function miauw_diagnostics_summary(bool $runScan = true): array
         'agent' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(),
         'next_phase' => function_exists('miauw_agent_next_phase_contract') ? miauw_agent_next_phase_contract() : array(),
         'agent_service' => miauw_diagnostics_agent_service_status(),
+        'agent_shadow' => function_exists('miauw_agent_shadow_status') ? miauw_agent_shadow_status() : array(),
         'api' => function_exists('miauw_openai_public_status') ? miauw_openai_public_status() : array(),
         'models' => array(
             'fast' => defined('MIAUW_MODEL_FAST') ? MIAUW_MODEL_FAST : '',

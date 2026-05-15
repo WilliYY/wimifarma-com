@@ -50,6 +50,8 @@ curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent/run -H "Content-Type: appl
 
 O `POST /miauw/agent/run` sem token deve recusar com 401 ou 503, dependendo da configuracao local do token. Nao colocar o token real em comandos versionados.
 
+O adaptador PHP da Fase 8 compara respostas somente quando `MIAUW_AGENT_SHADOW_ON_SEND=true`; mantenha `false` em validacoes comuns para evitar chamada online e latencia no chat.
+
 ## Local - Miauby evals
 
 ```powershell

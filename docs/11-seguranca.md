@@ -20,6 +20,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Fase 5 do Miauby exige confirmacao humana para acoes fortes antes de gravar dados e registra traces sanitizados em `miauw_tool_traces`.
 - A Fase 6 do Miauby adiciona evals para manter dados incompletos fora de escrita, exigir confirmacao para escrita forte por risco e preservar a regra de nao inventar dados.
 - A Fase 7 do Miauby expõe apenas health/status sem segredo em `/miauw/agent/`; `run` e `stream` do servico sombra exigem `X-Miauw-Agent-Token` ou `X-Miauw-Internal-Token` com `MIAUW_AGENT_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN`.
+- A Fase 8 chama o servico sombra somente pelo PHP/adaptador com token interno. A comparacao automatica fica desligada por padrao (`MIAUW_AGENT_SHADOW_ON_SEND=false`) e os traces gravam apenas dados sanitizados de comparacao.
 
 ## Arquivos envolvidos
 
@@ -51,7 +52,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
 - Nao versionar `MIAUW_AGENT_INTERNAL_TOKEN`; se vazar, trocar no `.env` do VPS e reiniciar web/Miauby agente.
-- O servico Miauby agente sombra nao deve executar escrita real nem expor payload bruto antes do adaptador PHP, traces e evals ficarem aprovados.
+- O servico Miauby agente sombra nao deve executar escrita real nem expor payload bruto. Mesmo com adaptador PHP, a resposta oficial segue no PHP ate comparacoes/evals aprovarem corte controlado.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
 
 ## Decisoes tecnicas ja tomadas

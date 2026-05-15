@@ -30,7 +30,7 @@ Impacto:
 
 Riscos/cuidados:
 
-- Nao trocar o chat para o servico novo sem adaptador PHP e evals comparando respostas/traces.
+- Nao trocar o chat para o servico novo sem volume suficiente de traces do adaptador PHP e evals comparando respostas.
 - Nao duplicar regra de negocio de escrita fora das tools PHP auditadas.
 - Manter `MIAUW_AGENT_INTERNAL_TOKEN` e `MIAUW_GUARDIAN_TOKEN` fora do Git.
 

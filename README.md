@@ -75,6 +75,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 5 do agente operacional v2: `miauw_tool_traces` registra trace por conversa/request/tool, o painel `/miauw/diagnostico.php` mostra tools recentes e estatisticas de traces, o widget/chat exibe resposta digitando visualmente e acoes fortes exigem card de confirmacao antes de gravar.
 - Miauby iniciou a Fase 6 do agente operacional v2: os evals locais foram ampliados para validar contrato da proxima camada, schemas das tools, dados obrigatorios antes de escrita, regra de nao inventar dados e confirmacao obrigatoria para escrita forte. O diagnostico tambem mostra um contrato seguro para a futura camada Node.js 22 + TypeScript com Agents SDK, sem trocar o motor atual ainda.
 - Miauby iniciou a Fase 7 do agente operacional v2: `apps/miauw-agent` adiciona um servico Node.js 22 + TypeScript com `@openai/agents`, publicado internamente em `/miauw/agent/`, com health/status e endpoints internos `run`/`stream` protegidos por token. Ele roda em modo sombra, sem escrita real, enquanto o PHP segue dono do chat, sessoes, widget, confirmacoes e auditoria.
+- Miauby iniciou a Fase 8 do agente operacional v2: o PHP ganhou adaptador para chamar o servico Node em sombra, comparar resposta oficial com resposta sombra e registrar trace seguro em `miauw_tool_traces`. A comparacao automatica por envio fica desligada por padrao (`MIAUW_AGENT_SHADOW_ON_SEND=false`) para nao impactar a operacao.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -89,7 +90,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra
+- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra com adaptador PHP
 - PostgreSQL 17 para dados da Cotacao V2
 - Redis 7 para sessoes e presenca da Cotacao V2
 
@@ -218,6 +219,8 @@ MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
 MIAUW_AGENT_INTERNAL_TOKEN
 MIAUW_AGENT_INTERNAL_BASE_URL
+MIAUW_AGENT_SHADOW_ON_SEND
+MIAUW_AGENT_SHADOW_TIMEOUT_MS
 COTACAO_INTERNAL_TOKEN
 COTACAO_INTERNAL_BASE_URL
 COTACAO_POSTGRES_PASSWORD
@@ -277,6 +280,8 @@ Antes do primeiro deploy da Cotacao V2 no VPS, adicionar valores reais no `.env`
 Para o Miauby criar/consultar encomendas diretamente na Cotacao V2, manter `MIAUW_GUARDIAN_TOKEN` preenchido ou definir `COTACAO_INTERNAL_TOKEN` com token equivalente no `.env`; o Compose entrega esse segredo ao web/PHP e ao app Node sem versionar o valor.
 
 Para testar o servico Miauby agente em modo sombra, manter `MIAUW_AGENT_INTERNAL_TOKEN` preenchido ou usar o fallback de `MIAUW_GUARDIAN_TOKEN`; `MIAUW_AGENT_INTERNAL_BASE_URL` aponta internamente para `http://wimifarma-miauw-agent:3100/miauw/agent`.
+
+Para comparar respostas do PHP com o servico sombra em envios reais, ligar `MIAUW_AGENT_SHADOW_ON_SEND=true` e manter `MIAUW_AGENT_SHADOW_TIMEOUT_MS` com limite baixo o suficiente para nao atrapalhar a equipe. O padrao documentado fica `false`.
 
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 

@@ -5,9 +5,9 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.1.0';
-const AGENT_VERSION = '2.0-fase7';
-const PHASE = 'fase7-shadow';
+const SERVICE_VERSION = '0.2.0';
+const AGENT_VERSION = '2.0-fase8';
+const PHASE = 'fase8-shadow';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 
 function envString(names: string[], fallback = ''): string {

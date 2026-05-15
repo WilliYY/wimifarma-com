@@ -83,11 +83,11 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase7', static function (): void {
+miauw_eval_add('agent_status_fase8', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase7') === 0, 'Versao do agente deve apontar Fase 7.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase8') === 0, 'Versao do agente deve apontar Fase 8.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
@@ -100,21 +100,25 @@ miauw_eval_add('agent_status_fase7', static function (): void {
     miauw_eval_assert(in_array('contrato_agents_sdk_preparado', (array) ($status['features'] ?? array()), true), 'Fase 6 precisa anunciar contrato da proxima camada.');
     miauw_eval_assert(in_array('servico_agents_sdk_sombra', (array) ($status['features'] ?? array()), true), 'Fase 7 precisa anunciar servico sombra.');
     miauw_eval_assert(in_array('streaming_real_sombra', (array) ($status['features'] ?? array()), true), 'Fase 7 precisa anunciar streaming real em sombra.');
+    miauw_eval_assert(in_array('adaptador_php_sombra', (array) ($status['features'] ?? array()), true), 'Fase 8 precisa anunciar adaptador PHP sombra.');
+    miauw_eval_assert(in_array('comparacao_respostas_sombra', (array) ($status['features'] ?? array()), true), 'Fase 8 precisa anunciar comparacao de respostas.');
 });
 
-miauw_eval_add('fase7_contrato_servico_sombra', static function (): void {
+miauw_eval_add('fase8_contrato_adaptador_sombra', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase7', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 7.');
+    miauw_eval_assert_same('fase8', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 8.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
     miauw_eval_assert_same('/miauw/agent', (string) ($contract['endpoint_interno'] ?? ''), 'Endpoint interno futuro mudou.');
-    miauw_eval_assert_same('sombra', (string) ($contract['modo'] ?? ''), 'Fase 7 deve continuar em modo sombra.');
+    miauw_eval_assert_same('sombra', (string) ($contract['modo'] ?? ''), 'Fase 8 deve continuar em modo sombra.');
     miauw_eval_assert(!empty($contract['pronto_agora']['registry_skills']), 'Registry precisa estar pronto antes do servico agente.');
     miauw_eval_assert(!empty($contract['pronto_agora']['evals_locais']), 'Evals locais precisam existir antes do servico agente.');
     miauw_eval_assert(!empty($contract['pronto_agora']['scaffold_servico_sombra']), 'Scaffold do servico sombra precisa estar marcado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['proxy_interno']), 'Proxy interno do servico sombra precisa estar marcado.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['adaptador_php_sombra']), 'Adaptador PHP sombra precisa estar marcado.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['trace_comparacao_sombra']), 'Trace de comparacao sombra precisa estar marcado.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {
@@ -387,6 +391,42 @@ miauw_eval_add('fase5_traces_diagnostico', static function (): void {
     miauw_eval_assert(is_array($traces), 'Diagnostico de traces deve retornar lista.');
     miauw_eval_assert(count($traces) > 0, 'Trace de avaliacao nao apareceu no diagnostico.');
     miauw_eval_assert(isset($traces[0]['ferramenta'], $traces[0]['status']), 'Trace recente veio incompleto.');
+});
+
+miauw_eval_add('fase8_shadow_status_seguro', static function (): void {
+    $status = miauw_agent_shadow_status();
+    $json = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    miauw_eval_assert(is_array($status), 'Status do adaptador sombra deve ser array.');
+    miauw_eval_assert(isset($status['configured'], $status['token_configured'], $status['on_send'], $status['timeout_ms']), 'Status sombra veio incompleto.');
+    miauw_eval_assert(!isset($status['base_url'], $status['token']), 'Status sombra nao pode expor URL interna bruta nem token.');
+    miauw_eval_assert(strpos((string) $json, 'http://') === false, 'Status sombra nao deve publicar URL interna.');
+    miauw_eval_assert_no_forbidden((string) $json, 'Status sombra expos termo proibido.');
+});
+
+miauw_eval_add('fase8_shadow_skip_controlado', static function (): void {
+    $result = miauw_agent_shadow_compare(
+        0,
+        'teste local sem chamada online',
+        'resposta oficial php',
+        'php-eval',
+        true,
+        array('enabled_override' => false)
+    );
+
+    miauw_eval_assert_same('skipped', (string) ($result['status'] ?? ''), 'Comparacao sombra desativada deve ser ignorada sem chamada online.');
+    miauw_eval_assert_same('on_send_disabled', (string) ($result['reason'] ?? ''), 'Motivo do skip sombra deve ser claro.');
+});
+
+miauw_eval_add('fase8_shadow_similarity_basica', static function (): void {
+    $similar = miauw_agent_shadow_text_similarity(
+        'Preciso de produto, valor e responsavel para registrar a sangria.',
+        'Para registrar a sangria, informe valor, produto/contexto e responsavel.'
+    );
+    $different = miauw_agent_shadow_text_similarity('cashback cliente compra', 'cotacao fornecedor preco');
+
+    miauw_eval_assert($similar > $different, 'Similaridade sombra deveria diferenciar respostas parecidas de respostas distantes.');
+    miauw_eval_assert($similar >= 0 && $similar <= 1, 'Similaridade sombra precisa ficar entre 0 e 1.');
 });
 
 $passed = 0;

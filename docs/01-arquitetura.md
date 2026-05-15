@@ -73,7 +73,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Manter `mysql/` como volume persistente e ignorado pelo Git.
 - Manter `cotacao-data/` como volume persistente e ignorado pelo Git.
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
-- Manter o Miauby agente em modo sombra ate os evals e o adaptador PHP aprovarem a troca do motor atual.
+- Manter o Miauby agente em modo sombra ate os evals, traces de comparacao e criterio de rollback aprovarem a troca do motor atual.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -83,7 +83,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
 - A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
-- A Fase 7 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK em paralelo ao PHP atual. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria ate corte controlado.
+- A Fase 7/8 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK e um adaptador PHP de comparacao sombra. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria ate corte controlado.
 - Palavras de categoria como `geral`, `urgente`, `encomenda` e `cotacao` nao devem aplicar cor, prioridade, ordem, filtro nem data operacional automaticamente; cor vem apenas de regra condicional explicita em `cotacao_v2_rules`.
 - Em 2026-05-14, a Cotacao PHP antiga em `site/cotacao` e os shims de compatibilidade da raiz foram removidos. Os ativos usados por `/cotacao/` ficam versionados em `apps/cotacao/public`, e o Compose nao monta mais nada de `site/cotacao` no container Node.
 
@@ -99,7 +99,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Recriar atalhos automaticos por nome de categoria na Cotacao pode conflitar com a formatacao condicional e causar saltos de linha/sync pesado.
 - Alterar o proxy de `/cotacao/socket.io/` sem validar pode quebrar presenca e edicao ao vivo.
 - Como nao existe mais fallback PHP legado para Cotacao, qualquer falha em `/cotacao/` deve ser tratada no proxy Apache/Node/Postgres/Redis da V2.
-- Trocar o chat do Miauby para o servico sombra sem evals pode perder confirmacoes, traces ou permissoes atuais.
+- Trocar o chat do Miauby para o servico sombra sem evals/comparacoes pode perder confirmacoes, traces ou permissoes atuais.
 
 ## Pendencias
 

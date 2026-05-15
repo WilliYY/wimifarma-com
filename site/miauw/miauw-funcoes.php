@@ -29,20 +29,41 @@ if (!function_exists('miauw_env_string')) {
     }
 }
 
+if (!function_exists('miauw_env_bool')) {
+    function miauw_env_bool(array $names, bool $default = false): bool
+    {
+        $value = miauw_env_string($names);
+        if ($value === '') {
+            return $default;
+        }
+
+        $normalized = strtolower(trim($value));
+        if (in_array($normalized, array('1', 'true', 'on', 'yes', 'sim'), true)) {
+            return true;
+        }
+
+        if (in_array($normalized, array('0', 'false', 'off', 'no', 'nao'), true)) {
+            return false;
+        }
+
+        return $default;
+    }
+}
+
 if (!defined('MIAUW_APP_NAME')) {
     define('MIAUW_APP_NAME', 'Miauby');
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260515h');
+    define('MIAUW_VERSION', '20260515i');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase7');
+    define('MIAUW_AGENT_VERSION', '2.0-fase8');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-servico-sombra');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-adaptador-sombra');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -115,7 +136,14 @@ if (!defined('MIAUW_GUARDIAN_TOKEN')) {
 }
 
 if (!defined('MIAUW_AGENT_INTERNAL_TOKEN')) {
-    define('MIAUW_AGENT_INTERNAL_TOKEN', miauw_env_string(array('MIAUW_AGENT_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN')));
+    $miauwAgentInternalToken = miauw_env_string(array('MIAUW_AGENT_INTERNAL_TOKEN'));
+    if ($miauwAgentInternalToken === '' && defined('MIAUW_GUARDIAN_TOKEN')) {
+        $miauwAgentInternalToken = trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+    if ($miauwAgentInternalToken === '') {
+        $miauwAgentInternalToken = miauw_env_string(array('MIAUW_GUARDIAN_TOKEN'));
+    }
+    define('MIAUW_AGENT_INTERNAL_TOKEN', $miauwAgentInternalToken);
 }
 
 if (!defined('MIAUW_AGENT_INTERNAL_BASE_URL')) {
@@ -123,8 +151,27 @@ if (!defined('MIAUW_AGENT_INTERNAL_BASE_URL')) {
     define('MIAUW_AGENT_INTERNAL_BASE_URL', $miauwAgentInternalBaseUrl !== '' ? $miauwAgentInternalBaseUrl : 'http://wimifarma-miauw-agent:3100/miauw/agent');
 }
 
+if (!defined('MIAUW_AGENT_SHADOW_ON_SEND')) {
+    define('MIAUW_AGENT_SHADOW_ON_SEND', miauw_env_bool(array('MIAUW_AGENT_SHADOW_ON_SEND'), false));
+}
+
+if (!defined('MIAUW_AGENT_SHADOW_TIMEOUT_MS')) {
+    $miauwAgentShadowTimeout = (int) miauw_env_string(array('MIAUW_AGENT_SHADOW_TIMEOUT_MS'));
+    if ($miauwAgentShadowTimeout <= 0) {
+        $miauwAgentShadowTimeout = 12000;
+    }
+    define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', max(1000, min(30000, $miauwAgentShadowTimeout)));
+}
+
 if (!defined('COTACAO_INTERNAL_TOKEN')) {
-    define('COTACAO_INTERNAL_TOKEN', miauw_env_string(array('COTACAO_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN')));
+    $cotacaoInternalToken = miauw_env_string(array('COTACAO_INTERNAL_TOKEN'));
+    if ($cotacaoInternalToken === '' && defined('MIAUW_GUARDIAN_TOKEN')) {
+        $cotacaoInternalToken = trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+    if ($cotacaoInternalToken === '') {
+        $cotacaoInternalToken = miauw_env_string(array('MIAUW_GUARDIAN_TOKEN'));
+    }
+    define('COTACAO_INTERNAL_TOKEN', $cotacaoInternalToken);
 }
 
 if (!defined('COTACAO_INTERNAL_BASE_URL')) {
@@ -334,6 +381,8 @@ function miauw_agent_public_status(): array
             'contrato_agents_sdk_preparado',
             'servico_agents_sdk_sombra',
             'streaming_real_sombra',
+            'adaptador_php_sombra',
+            'comparacao_respostas_sombra',
         ),
     );
 }
@@ -341,13 +390,13 @@ function miauw_agent_public_status(): array
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase7',
-        'proxima_fase' => 'adaptador_php_servico_agente',
+        'fase_atual' => 'fase8',
+        'proxima_fase' => 'evals_servico_sombra_e_corte_controlado',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => 'sombra',
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria enquanto o servico novo roda em paralelo para validacao controlada.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O servico Node roda em paralelo por adaptador sombra para comparar respostas e traces antes de qualquer corte.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
@@ -356,12 +405,14 @@ function miauw_agent_next_phase_contract(): array
             'evals_locais' => is_file(__DIR__ . '/miauw-evals.php'),
             'scaffold_servico_sombra' => true,
             'proxy_interno' => true,
+            'adaptador_php_sombra' => true,
+            'trace_comparacao_sombra' => true,
         ),
         'pendencias' => array(
             'Exportar schemas das tools a partir do registry atual.',
-            'Adicionar adaptador PHP -> servico agente com comparacao sombra antes de ativar.',
-            'Registrar traces do servico novo na mesma trilha operacional do Miauby.',
             'Rodar os mesmos evals contra o servico novo antes de ativar em producao.',
+            'Coletar comparacoes sombra suficientes antes de qualquer troca do motor principal.',
+            'Definir criterio de corte e rollback do motor principal.',
         ),
         'nao_mudar_agora' => array(
             'Banco MySQL dos modulos internos.',
@@ -467,6 +518,245 @@ function miauw_trace_record(string $tool, string $status = 'ok', array $context 
     } catch (Throwable $error) {
         error_log('Miauby trace record failed: ' . $error->getMessage());
     }
+}
+
+function miauw_agent_shadow_status(): array
+{
+    $baseUrl = miauw_constant_string('MIAUW_AGENT_INTERNAL_BASE_URL');
+    $token = miauw_constant_string('MIAUW_AGENT_INTERNAL_TOKEN');
+    $curl = function_exists('curl_init');
+    $onSend = defined('MIAUW_AGENT_SHADOW_ON_SEND') ? (bool) MIAUW_AGENT_SHADOW_ON_SEND : false;
+    $timeoutMs = miauw_constant_int('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
+    $configured = $baseUrl !== '' && $token !== '' && $curl;
+
+    return array(
+        'mode' => 'shadow',
+        'configured' => $configured,
+        'base_url_configured' => $baseUrl !== '',
+        'token_configured' => $token !== '',
+        'curl_enabled' => $curl,
+        'on_send' => $onSend,
+        'timeout_ms' => $timeoutMs,
+        'writes_enabled' => false,
+        'status' => $configured ? ($onSend ? 'compare_on_send' : 'manual_ready') : 'not_configured',
+    );
+}
+
+function miauw_agent_shadow_request(string $message, string $traceId, int $timeoutMs): array
+{
+    $baseUrl = miauw_constant_string('MIAUW_AGENT_INTERNAL_BASE_URL');
+    $token = miauw_constant_string('MIAUW_AGENT_INTERNAL_TOKEN');
+
+    if ($baseUrl === '' || $token === '') {
+        throw new RuntimeException('Servico agente sombra sem configuracao interna.');
+    }
+
+    if (!function_exists('curl_init')) {
+        throw new RuntimeException('cURL nao esta habilitado no PHP.');
+    }
+
+    $url = rtrim($baseUrl, '/') . '/run';
+    $payload = array(
+        'trace_id' => miauw_substr($traceId, 0, 80),
+        'message' => miauw_substr($message, 0, 4000),
+    );
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, array(
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => array(
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'X-Miauw-Agent-Token: ' . $token,
+        ),
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT_MS => min(1200, max(300, $timeoutMs)),
+        CURLOPT_TIMEOUT_MS => $timeoutMs,
+    ));
+
+    $raw = curl_exec($ch);
+    $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+    if (!is_string($raw) || $raw === '' || $httpStatus < 200 || $httpStatus >= 300 || !is_array($decoded)) {
+        $messageFromService = is_array($decoded) && isset($decoded['message'])
+            ? miauw_diagnostic_redact_string((string) $decoded['message'])
+            : '';
+        $detail = $error !== '' ? miauw_diagnostic_redact_string($error) : ('HTTP ' . $httpStatus);
+        if ($messageFromService !== '') {
+            $detail .= ' - ' . $messageFromService;
+        }
+
+        throw new RuntimeException('Falha no servico agente sombra: ' . $detail);
+    }
+
+    if (empty($decoded['ok'])) {
+        $serviceMessage = miauw_diagnostic_redact_string((string) ($decoded['message'] ?? 'execucao recusada'));
+        throw new RuntimeException('Servico agente sombra recusou a execucao: ' . $serviceMessage);
+    }
+
+    return $decoded;
+}
+
+function miauw_agent_shadow_text_similarity(string $a, string $b): float
+{
+    $normalize = static function (string $text): array {
+        $text = function_exists('mb_strtolower') ? mb_strtolower($text) : strtolower($text);
+        $text = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $text) ?? $text;
+        $parts = preg_split('/\s+/u', trim($text)) ?: array();
+        $words = array();
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if ($part !== '' && miauw_strlen($part) > 2) {
+                $words[$part] = true;
+            }
+        }
+
+        return array_keys($words);
+    };
+
+    $left = $normalize($a);
+    $right = $normalize($b);
+    if (!$left && !$right) {
+        return 1.0;
+    }
+
+    if (!$left || !$right) {
+        return 0.0;
+    }
+
+    $intersection = count(array_intersect($left, $right));
+    $union = count(array_unique(array_merge($left, $right)));
+
+    return $union > 0 ? round($intersection / $union, 4) : 0.0;
+}
+
+function miauw_agent_shadow_compare(
+    int $conversationId,
+    string $message,
+    string $phpReply,
+    string $phpModel,
+    bool $widgetMode = false,
+    array $options = array()
+): array {
+    $enabled = array_key_exists('enabled_override', $options)
+        ? (bool) $options['enabled_override']
+        : (defined('MIAUW_AGENT_SHADOW_ON_SEND') ? (bool) MIAUW_AGENT_SHADOW_ON_SEND : false);
+    $force = !empty($options['force']);
+
+    if (!$enabled && !$force) {
+        return array(
+            'ok' => true,
+            'status' => 'skipped',
+            'reason' => 'on_send_disabled',
+        );
+    }
+
+    $status = miauw_agent_shadow_status();
+    if (empty($status['configured'])) {
+        miauw_trace_record('miauw_agent_shadow_compare', 'skipped', array(
+            'conversa_id' => $conversationId,
+            'mensagem_id' => isset($options['mensagem_id']) ? (int) $options['mensagem_id'] : null,
+            'type' => 'agent_shadow',
+            'summary' => 'Comparacao sombra ignorada por configuracao incompleta.',
+            'payload' => array(
+                'status' => $status,
+                'widget' => $widgetMode,
+            ),
+        ));
+
+        return array(
+            'ok' => false,
+            'status' => 'skipped',
+            'reason' => 'not_configured',
+        );
+    }
+
+    $trace = miauw_trace_context();
+    $traceId = (string) ($trace['trace_id'] ?? miauw_trace_new_id());
+    $timeoutMs = miauw_constant_int('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
+    $started = microtime(true);
+
+    try {
+        $data = miauw_agent_shadow_request($message, $traceId, $timeoutMs);
+        $shadowText = (string) ($data['text'] ?? '');
+        $shadowText = function_exists('miauw_sanitize_operator_reply') ? miauw_sanitize_operator_reply($shadowText) : $shadowText;
+        $shadowModel = (string) ($data['model'] ?? '');
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        $similarity = miauw_agent_shadow_text_similarity($phpReply, $shadowText);
+        $sameText = trim($phpReply) !== '' && trim($phpReply) === trim($shadowText);
+
+        miauw_trace_record('miauw_agent_shadow_compare', 'ok', array(
+            'conversa_id' => $conversationId,
+            'mensagem_id' => isset($options['mensagem_id']) ? (int) $options['mensagem_id'] : null,
+            'type' => 'agent_shadow',
+            'summary' => 'Resposta PHP comparada com servico agente sombra.',
+            'duration_ms' => $durationMs,
+            'payload' => array(
+                'widget' => $widgetMode,
+                'php_model' => $phpModel,
+                'shadow_model' => $shadowModel,
+                'shadow_trace_id' => (string) ($data['trace_id'] ?? $traceId),
+                'php_chars' => miauw_strlen($phpReply),
+                'shadow_chars' => miauw_strlen($shadowText),
+                'same_text' => $sameText,
+                'similarity' => $similarity,
+                'php_preview' => miauw_diagnostic_redact_string(miauw_substr($phpReply, 0, 180)),
+                'shadow_preview' => miauw_diagnostic_redact_string(miauw_substr($shadowText, 0, 180)),
+            ),
+        ));
+
+        return array(
+            'ok' => true,
+            'status' => 'ok',
+            'same_text' => $sameText,
+            'similarity' => $similarity,
+            'model' => $shadowModel,
+            'duration_ms' => $durationMs,
+        );
+    } catch (Throwable $error) {
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        miauw_trace_record('miauw_agent_shadow_compare', 'error', array(
+            'conversa_id' => $conversationId,
+            'mensagem_id' => isset($options['mensagem_id']) ? (int) $options['mensagem_id'] : null,
+            'type' => 'agent_shadow',
+            'summary' => 'Falha ao comparar com servico agente sombra.',
+            'duration_ms' => $durationMs,
+            'error' => $error->getMessage(),
+            'payload' => array(
+                'widget' => $widgetMode,
+                'php_model' => $phpModel,
+            ),
+        ));
+
+        return array(
+            'ok' => false,
+            'status' => 'error',
+            'reason' => miauw_diagnostic_redact_string($error->getMessage()),
+            'duration_ms' => $durationMs,
+        );
+    }
+}
+
+function miauw_agent_shadow_maybe(
+    int $conversationId,
+    string $message,
+    string $phpReply,
+    string $phpModel,
+    bool $widgetMode,
+    int $assistantMessageId
+): ?array {
+    if (!defined('MIAUW_AGENT_SHADOW_ON_SEND') || !(bool) MIAUW_AGENT_SHADOW_ON_SEND) {
+        return null;
+    }
+
+    return miauw_agent_shadow_compare($conversationId, $message, $phpReply, $phpModel, $widgetMode, array(
+        'force' => true,
+        'mensagem_id' => $assistantMessageId,
+    ));
 }
 
 function miauw_tools_requiring_confirmation(): array

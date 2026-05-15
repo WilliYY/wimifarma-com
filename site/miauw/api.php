@@ -98,6 +98,16 @@ try {
             $reply['text'] = miauw_widget_compact_reply((string) ($reply['text'] ?? ''), $message);
         }
         $assistantMessageId = miauw_add_message($conversationId, null, 'assistant', $reply['text'], $reply['model'], (bool) $reply['fallback']);
+        $shadowCompare = function_exists('miauw_agent_shadow_maybe')
+            ? miauw_agent_shadow_maybe(
+                $conversationId,
+                $messageForAi,
+                (string) ($reply['text'] ?? ''),
+                (string) ($reply['model'] ?? ''),
+                $widgetMode,
+                $assistantMessageId
+            )
+            : null;
         $confirmation = is_array($reply['confirmation'] ?? null)
             ? $reply['confirmation']
             : (function_exists('miauw_current_confirmation_response') ? miauw_current_confirmation_response() : null);
@@ -110,6 +120,11 @@ try {
                     'model' => (string) ($reply['model'] ?? ''),
                     'fallback' => (bool) ($reply['fallback'] ?? false),
                     'requires_confirmation' => is_array($confirmation),
+                    'agent_shadow' => is_array($shadowCompare) ? array(
+                        'status' => (string) ($shadowCompare['status'] ?? ''),
+                        'similarity' => isset($shadowCompare['similarity']) ? (float) $shadowCompare['similarity'] : null,
+                        'duration_ms' => isset($shadowCompare['duration_ms']) ? (int) $shadowCompare['duration_ms'] : null,
+                    ) : null,
                 ),
             ));
         }

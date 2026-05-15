@@ -88,6 +88,7 @@ Higiene de pastas no VPS:
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
 - A senha operacional para excluir tabelas inteiras em Codigos e `wimifarma` por padrao e pode ser trocada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env` de cada ambiente.
 - Para o Miauby agente sombra, definir `MIAUW_AGENT_INTERNAL_TOKEN` ou manter `MIAUW_GUARDIAN_TOKEN` como fallback; o endpoint publico de health nao exige token, mas `run` e `stream` internos exigem.
+- Para comparar o PHP com o Miauby agente sombra em envios reais, ligar `MIAUW_AGENT_SHADOW_ON_SEND=true`; manter `false` por padrao para nao adicionar latencia no chat operacional.
 - Antes de deploy, fazer commit e push da alteracao.
 - Depois de deploy, rodar `docker compose ps`, `docker compose logs --tail=80 wimifarma-cotacao-app` e validar `http://127.0.0.1:3002/cotacao/health`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
@@ -107,7 +108,7 @@ Higiene de pastas no VPS:
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
-- A Fase 7 do Miauby adiciona `wimifarma-miauw-agent`, servico Node.js 22 + TypeScript em modo sombra. O deploy de mudancas nele deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`, porque o web carrega o proxy Apache.
+- A Fase 7/8 do Miauby adiciona `wimifarma-miauw-agent` e o adaptador PHP sombra. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
 
 ## Riscos ao alterar
 
@@ -116,7 +117,7 @@ Higiene de pastas no VPS:
 - Arquivar uma pasta sem preservar `.env`, `mysql/`, `cotacao-data/` ou `config.local.php` pode perder configuracao ou dados locais unicos.
 - Trocar nomes de container quebra proxy.
 - Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
-- Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual, mas impede validar a Fase 7 do Miauby.
+- Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual, mas impede validar a Fase 7/8 do Miauby.
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
 - Se o WordPress nao reconhecer HTTPS atras do proxy, ele gera assets `http://` e o navegador bloqueia CSS/JS por mixed content.

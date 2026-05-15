@@ -120,7 +120,7 @@ Estado:
 - `miauw_skill_registry()` foi criado para inventariar skills por modulo, nivel, risco, permissao, executor e auditoria.
 - Contador de alertas e busca de conhecimentos foram otimizados em 2026-05-11 para reduzir carga repetida.
 - Alertas de encomenda da Cotacao foram ajustados para aparecerem so depois de mais de 1 dia, com comentario curto nos baloes do widget.
-- A evolucao generativa ja possui painel de revisao, evals locais ampliados da Fase 6, registry de tools, traces estruturados, confirmacao para acoes fortes e servico sombra Node/TypeScript/Agents SDK da Fase 7. Ainda falta criar o adaptador PHP para comparar respostas/traces, ampliar cenarios com casos reais da operacao e definir corte controlado do motor principal.
+- A evolucao generativa ja possui painel de revisao, evals locais ampliados, registry de tools, traces estruturados, confirmacao para acoes fortes, servico sombra Node/TypeScript/Agents SDK e adaptador PHP de comparacao sombra da Fase 8. Ainda falta ampliar cenarios com casos reais da operacao, rodar comparacoes online suficientes e definir corte controlado do motor principal.
 
 Risco:
 

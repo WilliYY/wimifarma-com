@@ -30,9 +30,18 @@ define('MIAUW_FARMACIA_POPULAR_UF', 'PR');
 define('MIAUW_GUARDIAN_TOKEN', 'troque_por_um_token_grande');
 
 /*
+ * Opcional: servico Miauby agente em Node/Agents SDK rodando em modo sombra.
+ * Deixe MIAUW_AGENT_SHADOW_ON_SEND false para nao impactar o chat operacional.
+ */
+// define('MIAUW_AGENT_INTERNAL_TOKEN', ''); // se vazio/omitido, use MIAUW_GUARDIAN_TOKEN ou .env
+define('MIAUW_AGENT_INTERNAL_BASE_URL', 'http://wimifarma-miauw-agent:3100/miauw/agent');
+define('MIAUW_AGENT_SHADOW_ON_SEND', false);
+define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
+
+/*
  * Opcional: ponte interna Miauby -> Cotacao V2. Se ficar vazio, o Miauby
  * usa MIAUW_GUARDIAN_TOKEN como token interno quando o ambiente tambem passar
  * esse valor para o container da Cotacao.
  */
-define('COTACAO_INTERNAL_TOKEN', '');
+// define('COTACAO_INTERNAL_TOKEN', ''); // se vazio/omitido, use MIAUW_GUARDIAN_TOKEN ou .env
 define('COTACAO_INTERNAL_BASE_URL', 'http://wimifarma-cotacao-app:3000/cotacao');

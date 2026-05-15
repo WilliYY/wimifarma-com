@@ -24,6 +24,8 @@ Variaveis/configuracoes:
 - `MIAUW_GUARDIAN_TOKEN`
 - `MIAUW_AGENT_INTERNAL_TOKEN`
 - `MIAUW_AGENT_INTERNAL_BASE_URL`
+- `MIAUW_AGENT_SHADOW_ON_SEND`
+- `MIAUW_AGENT_SHADOW_TIMEOUT_MS`
 - `COTACAO_INTERNAL_TOKEN`
 - `COTACAO_INTERNAL_BASE_URL`
 - constantes opcionais em `site/miauw/config.local.php`
@@ -42,6 +44,7 @@ Status operacional:
 - A Fase 5 registra traces estruturados de request/tool em `miauw_tool_traces`, mostra tools recentes no diagnostico, bloqueia escrita forte ate confirmacao humana e usa streaming visual no widget/chat. Streaming online real fica para uma futura separacao do Miauby em servico Node/TypeScript/Agents SDK.
 - A Fase 6 amplia os evals locais para proteger a futura separacao: schemas de tools, divergencia registry/tools, dados obrigatorios, nao inventar dados, Cotacao sem produto/EAN/categoria e confirmacao de escrita forte por risco. O contrato da proxima camada fica em `miauw_agent_next_phase_contract()` e no diagnostico, sem mudar ainda o motor PHP atual.
 - A Fase 7 cria `wimifarma-miauw-agent`, servico Node.js 22 + TypeScript com Agents SDK em `/miauw/agent/`. Ele possui health/status e endpoints internos `run` e `stream` protegidos por token, mas roda em modo sombra sem escrita real; o chat PHP atual continua sendo o caminho oficial.
+- A Fase 8 adiciona o adaptador PHP para o servico sombra: quando `MIAUW_AGENT_SHADOW_ON_SEND=true`, `api.php?action=send` chama `POST /miauw/agent/run`, compara com a resposta oficial PHP e registra trace seguro. O padrao segue `false`, sem impacto no operador.
 
 Tabelas:
 
@@ -133,7 +136,8 @@ Direcao:
 - novas tools de escrita forte devem declarar risco no registry e passar pelo fluxo de confirmacao/traces antes da execucao.
 - para Cotacao, usar somente a ponte interna da V2 (`COTACAO_INTERNAL_BASE_URL` + token), evitando qualquer escrita direta nas tabelas antigas removidas.
 - antes de migrar para um servico Node/TypeScript/Agents SDK, rodar os mesmos evals contra o servico novo e manter fallback pelo `api.php` atual.
-- enquanto o servico Node estiver em sombra, manter `api.php` como fallback e nao duplicar escrita fora das tools PHP auditadas.
+- enquanto o servico Node estiver em sombra, manter `api.php` como resposta oficial e nao duplicar escrita fora das tools PHP auditadas.
+- usar traces `miauw_agent_shadow_compare` para medir divergencia antes de qualquer corte.
 
 Documento especifico:
 

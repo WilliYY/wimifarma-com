@@ -65,7 +65,7 @@ Tabelas:
 - Revisar fluxo de desbloqueio de areas sensiveis.
 - Criar tela/rotina segura para administracao de usuarios internos.
 - Mapear formalmente quais usuarios alem de `admin`/`gerente` devem acessar diagnosticos do Miauby.
-- Definir politica de corte para o adaptador PHP do Miauby agente, mantendo confirmacao humana antes de qualquer escrita forte.
+- Definir politica de corte para o Miauby agente, usando traces do adaptador PHP e mantendo confirmacao humana antes de qualquer escrita forte.
 - Documentar politica de senha e recuperacao de acesso.
 
 ## Evolucao futura

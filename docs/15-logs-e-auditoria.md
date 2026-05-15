@@ -47,7 +47,7 @@ Arquivos:
 - Revisar memoria/padrao no painel do Miauby registra `wf_logs` com `miauw_revisao_memoria` ou `miauw_revisao_padrao`, sem apagar o registro revisado.
 - A Fase 4 do Miauby registra tools core por registry; criar encomenda na Cotacao V2 gera evento em `cotacao_v2_events` e tambem registra `wf_logs` quando chamado pelo PHP do Miauby.
 - A Fase 5 do Miauby registra execucao em `miauw_tool_traces`, vinculando `trace_id`, conversa, usuario, ferramenta, status, risco, resumo sanitizado, duracao e se houve confirmacao. Payloads devem ser sanitizados e nunca guardar chaves, tokens, SQL cru ou stack trace completo.
-- A Fase 7 do Miauby agente ainda nao grava na tabela `miauw_tool_traces` diretamente; ela emite `trace_id` proprio nos endpoints sombra e deve ser ligada a essa trilha pelo adaptador PHP antes de ativacao real.
+- A Fase 8 liga o servico sombra do Miauby a `miauw_tool_traces` pelo PHP: `miauw_agent_shadow_compare` registra status, duracao, modelo, similaridade e previews sanitizados, sem guardar token, payload bruto, SQL ou stack trace.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 
