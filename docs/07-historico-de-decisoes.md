@@ -2,6 +2,33 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-16 - Cotacao V2 restaurada de volume preservado
+
+Decisao:
+
+- Restaurar somente as tabelas `cotacao_v2_*` no Postgres ativo da Cotacao V2 do VPS.
+- Usar como fonte a base preservada em `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/cotacao-data/postgres`.
+- Manter o `quote_id` antigo `c3f0cb73-435e-48f3-bc6f-42f2eb7d2b16`, com 178 linhas ativas, 11 linhas com dados, 15 colunas, 35 estilos, 2 regras e 672 eventos.
+- Guardar dumps SQL manuais em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/manual-backups/`.
+
+Motivo:
+
+- A Cotacao publica apareceu sem dados porque o volume ativo `/home/ubuntu/projetos/wimifarma-com/cotacao-data/postgres` estava inicializado como Postgres novo/vazio, com 20 linhas em branco e zero eventos.
+- A base antiga preservada continha os dados reais ate 2026-05-15 21:13 UTC e podia ser restaurada sem tocar em WordPress, MySQL, Miauby, Financeiro, Codigos ou arquivos do site.
+
+Impacto:
+
+- Banco Postgres `wimifarma_cotacao` no VPS.
+- Tabelas `cotacao_v2_quotes`, `cotacao_v2_columns`, `cotacao_v2_rows`, `cotacao_v2_events`, `cotacao_v2_rules`, `cotacao_v2_styles` e `cotacao_v2_column_audit`.
+- `AGENTS.md`
+- `docs/20-cotacao-v2.md`
+
+Riscos/cuidados:
+
+- Nao remover a base preservada nem os dumps manuais sem confirmacao clara.
+- Antes de trocar, arquivar ou recriar `cotacao-data/`, sempre confirmar os mounts com `docker inspect` e fazer dump das tabelas `cotacao_v2_*`.
+- Criar rotina agendada de backup fora do container para reduzir dependencia de recuperacao manual.
+
 ## 2026-05-16 - Miauby exporta contratos de tools para o Node
 
 Decisao:

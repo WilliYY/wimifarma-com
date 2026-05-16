@@ -138,7 +138,7 @@ MySQL `wimifarma_app`:
 - Aplicar cor ou borracha pela paleta e uma acao unica; apos salvar o estilo da selecao atual, o modo de pintura e desarmado para evitar colorir a proxima celula por acidente.
 - A coluna `Ganhador` e a celula de menor preco recebem destaque visual automatico, sem depender de palavra em categoria.
 - A insercao simples de linhas saiu dos botoes visiveis e ficou no menu de contexto; adicionar 20 linhas fica no rodape da grade. Colagem de planilha usa `Ctrl+V` e `PATCH /cotacao/api/cells/batch`.
-- A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis; `Enter` desce para a celula abaixo por padrao, e `F2` abre edicao da celula selecionada.
+- A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis; `Enter` desce para a celula abaixo por padrao, e `F2` abre edicao da celula selecionada sem selecionar todo o texto.
 - `Ctrl+Z` tambem desfaz filtros locais; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
 - `Delete`/`Backspace` sobre a selecao usa batch otimista no frontend: limpa a grade imediatamente, salva em segundo plano e refresca somente as linhas afetadas quando a selecao e pequena.
 - A alca de preenchimento no canto da selecao pode ser arrastada para copiar o padrao de valores e cores visiveis da selecao para as celulas adjacentes, ignorando colunas calculadas, e mostra uma previa forte das celulas de destino durante o arrasto.
@@ -204,6 +204,8 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-14, `Delete`/`Backspace` sobre a selecao passou a usar limpeza otimista em lote e evita render completo em apagamentos simples.
 - Em 2026-05-14, foi adotado o comportamento pedido de ultima gravacao vencendo na mesma celula, com botao `Historico` no topo para consultar eventos da celula selecionada e restaurar valor anterior.
 - Em 2026-05-14, o modal de formatacao condicional foi reorganizado visualmente para reduzir a sensacao de cards baguncados e alinhar campos/acoes em linhas compactas.
+- Em 2026-05-16, a Cotacao V2 do VPS foi restaurada apenas nas tabelas `cotacao_v2_*` a partir do Postgres preservado em `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/cotacao-data/postgres`, depois que o volume ativo apareceu vazio. O estado restaurado usa o `quote_id` `c3f0cb73-435e-48f3-bc6f-42f2eb7d2b16`, com 178 linhas ativas, 11 linhas com dados, 15 colunas, 35 estilos, 2 regras e 672 eventos ate 2026-05-15 21:13 UTC. Os dumps SQL manuais da operacao ficaram em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/manual-backups/`.
+- Em 2026-05-16, o editor de celula foi ajustado para duplo clique/`F2` nao selecionar todo o conteudo existente: o usuario consegue posicionar cursor, selecionar trechos e usar setas dentro do texto sem apagar a celula inteira ao digitar. O botao `Adicionar 20 linhas` tambem passou a adicionar as linhas novas no DOM de forma incremental, sem redesenhar a grade inteira.
 
 ## Riscos ao alterar
 

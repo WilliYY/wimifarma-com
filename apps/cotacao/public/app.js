@@ -959,6 +959,31 @@
     updateSelectionClasses();
   }
 
+  function appendRenderedRows(rows) {
+    const addedRows = (rows || []).filter((row) => rowById(row.id));
+    if (!addedRows.length) return;
+    const tbody = table.tBodies?.[0];
+    if (!tbody || hasActiveViewFilter()) {
+      updateRowCountBadge();
+      updateSelectionClasses();
+      return;
+    }
+    const styles = styleMap();
+    const html = addedRows
+      .map((row) => renderRowHtml(row, state.rows.findIndex((item) => item.id === row.id) + 1, styles))
+      .join('');
+    tbody.insertAdjacentHTML('beforeend', html);
+    const appendedIds = new Set(addedRows.map((row) => row.id));
+    tbody.querySelectorAll('tr[data-row-id]').forEach((rowElement) => {
+      if (appendedIds.has(rowElement.dataset.rowId)) {
+        bindCellHover(rowElement);
+        autosizeSheetInputs(rowElement);
+      }
+    });
+    updateRowCountBadge();
+    updateSelectionClasses();
+  }
+
   function renderTable() {
     const visibleRows = getVisibleRows();
     const styles = styleMap();
@@ -1205,9 +1230,15 @@
 
   function applyRemoteRowsAdded(rows) {
     if (!Array.isArray(rows) || !rows.length) return false;
+    const addedRows = [];
     rows.forEach((row) => {
-      if (!state.rows.some((item) => item.id === row.id)) state.rows.push(row);
+      if (!state.rows.some((item) => item.id === row.id)) {
+        state.rows.push(row);
+        addedRows.push(row);
+      }
     });
+    applyRemoteRowsAdded.addedRows = addedRows;
+    if (!addedRows.length) return false;
     state.rows.sort((a, b) => Number(a.position) - Number(b.position));
     return true;
   }
@@ -1406,8 +1437,9 @@
     });
     socket.on('rows:added', (payload) => {
       rememberEventId(payload.eventId);
+      if (payload.clientId === clientId) return;
       if (applyRemoteRowsAdded(payload.rows)) {
-        renderTable();
+        appendRenderedRows(applyRemoteRowsAdded.addedRows || payload.rows);
       }
     });
     socket.on('row:deleted', (payload) => {
@@ -1722,7 +1754,29 @@
     }
   }
 
-  async function beginEdit(rowId, columnKey, initialText = null) {
+  function applyEditSelection(input, mode = 'all', range = {}) {
+    if (!input) return;
+    const length = input.value.length;
+    if (mode === 'all') {
+      input.select();
+      return;
+    }
+    if (mode === 'end') {
+      input.setSelectionRange(length, length);
+      return;
+    }
+    if (mode === 'start') {
+      input.setSelectionRange(0, 0);
+      return;
+    }
+    const rawStart = Number.isInteger(range.start) ? range.start : length;
+    const rawEnd = Number.isInteger(range.end) ? range.end : rawStart;
+    const start = Math.max(0, Math.min(rawStart, length));
+    const end = Math.max(0, Math.min(rawEnd, length));
+    input.setSelectionRange(start, end);
+  }
+
+  async function beginEdit(rowId, columnKey, initialText = null, options = {}) {
     if (state.editing && (state.editing.rowId !== rowId || state.editing.columnKey !== columnKey)) {
       commitEdit();
     } else {
@@ -1743,7 +1797,8 @@
     input.value = initialText === null ? originalValue : String(initialText);
     autosizeInput(input);
     input.focus();
-    if (initialText === null) input.select();
+    const selectionMode = initialText === null ? (options.selectionMode || 'all') : 'end';
+    applyEditSelection(input, selectionMode, options.selectionRange || {});
     updatePresence(true);
   }
 
@@ -1860,12 +1915,21 @@
   }
 
   async function appendRows(count) {
+    status('Adicionando linhas...', 'busy');
     const data = await api('/api/rows', {
       method: 'POST',
       body: JSON.stringify({ count, clientId })
     });
-    data.rows.forEach((row) => state.rows.push(row));
-    renderTable();
+    const added = [];
+    data.rows.forEach((row) => {
+      if (!state.rows.some((item) => item.id === row.id)) {
+        state.rows.push(row);
+        added.push(row);
+      }
+    });
+    state.rows.sort((a, b) => Number(a.position) - Number(b.position));
+    rememberEventId(data.eventId);
+    appendRenderedRows(added);
     return data.rows;
   }
 
@@ -2574,6 +2638,12 @@
       }
       const cell = event.target.closest('td.sheet-cell');
       if (!cell || event.button !== 0) return;
+      if (event.target.closest('.sheet-input')) {
+        const sameEditingCell = state.editing
+          && state.editing.rowId === cell.dataset.rowId
+          && state.editing.columnKey === cell.dataset.columnKey;
+        if (sameEditingCell || event.detail >= 2) return;
+      }
       event.preventDefault();
       if (state.paintColor || state.eraser) {
         setSelection(cell.dataset.rowId, cell.dataset.columnKey, event.shiftKey);
@@ -2612,7 +2682,24 @@
         return;
       }
       const cell = event.target.closest('td.sheet-cell');
-      if (cell) beginEdit(cell.dataset.rowId, cell.dataset.columnKey).catch(console.error);
+      if (cell) {
+        if (state.editing
+          && state.editing.rowId === cell.dataset.rowId
+          && state.editing.columnKey === cell.dataset.columnKey) {
+          return;
+        }
+        event.preventDefault();
+        const input = cell.querySelector('.sheet-input');
+        const valueLength = input?.value?.length || 0;
+        const selectionStart = Number.isInteger(input?.selectionStart) ? input.selectionStart : valueLength;
+        const selectionEnd = Number.isInteger(input?.selectionEnd) ? input.selectionEnd : selectionStart;
+        const fullSelection = valueLength > 0 && selectionStart === 0 && selectionEnd === valueLength;
+        const noPreservedCaret = valueLength > 0 && selectionStart === 0 && selectionEnd === 0;
+        beginEdit(cell.dataset.rowId, cell.dataset.columnKey, null, {
+          selectionMode: (fullSelection || noPreservedCaret) ? 'end' : 'range',
+          selectionRange: { start: selectionStart, end: selectionEnd }
+        }).catch(console.error);
+      }
     });
 
     table.addEventListener('input', (event) => {
@@ -2642,16 +2729,6 @@
         event.preventDefault();
         event.stopPropagation();
         cancelEdit();
-      } else if (!event.ctrlKey && !event.metaKey && !event.altKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-        event.preventDefault();
-        event.stopPropagation();
-        const moves = {
-          ArrowUp: { row: -1, col: 0 },
-          ArrowDown: { row: 1, col: 0 },
-          ArrowLeft: { row: 0, col: -1 },
-          ArrowRight: { row: 0, col: 1 }
-        };
-        commitEdit(moves[event.key]).catch(console.error);
       }
     }, true);
 
@@ -2721,7 +2798,7 @@
         moveActive(event.shiftKey ? -1 : 1, 0, false);
       } else if (event.key === 'F2') {
         event.preventDefault();
-        beginEdit(state.activeCell.rowId, state.activeCell.columnKey).catch(console.error);
+        beginEdit(state.activeCell.rowId, state.activeCell.columnKey, null, { selectionMode: 'end' }).catch(console.error);
       } else if (event.key === 'Backspace' || event.key === 'Delete') {
         event.preventDefault();
         deleteSelectedValues().catch(console.error);
