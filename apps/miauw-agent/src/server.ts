@@ -429,6 +429,98 @@ async function callPhpReadTool(toolName: string, args: Record<string, unknown>, 
   }
 }
 
+function normalizeIntentText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function extractSearchTerm(message: string, fallback = ''): string {
+  const quoted = message.match(/["'“”]([^"'“”]{2,120})["'“”]/u);
+  if (quoted?.[1]) {
+    return safeText(quoted[1], 120);
+  }
+
+  const digits = message.match(/\b[0-9]{2,14}\b/u);
+  if (digits?.[0]) {
+    return safeText(digits[0], 120);
+  }
+
+  const cleaned = message
+    .replace(/\b(buscar_codigo_comissao|buscar_cotacao|buscar|procure|procurar|consulta|consultar|codigo|codigos|comissao|cotacao|produto|ean|fornecedor|categoria|preco|sistema|tool|ferramenta)\b/giu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return safeText(cleaned || fallback || message, 120);
+}
+
+function periodArgsFromMessage(message: string): Record<string, unknown> {
+  const match = message.match(/\b([0-9]{1,2})[/-]([0-9]{4})\b/u);
+  if (!match) {
+    return {};
+  }
+
+  const mes = Number.parseInt(match[1] || '', 10);
+  const ano = Number.parseInt(match[2] || '', 10);
+
+  if (mes < 1 || mes > 12 || ano < 2020 || ano > 2100) {
+    return {};
+  }
+
+  return { mes, ano };
+}
+
+function inferReadBridgeRequest(message: string): { tool: string; args: Record<string, unknown> } | null {
+  const text = normalizeIntentText(message);
+  const wantsLookup = /\b(busca|buscar|procura|procurar|consulta|consultar|ache|achar|pesquisa|pesquisar)\b/u.test(text);
+  const wantsSummary = /\b(resumo|relatorio|status|situacao|visao|geral)\b/u.test(text);
+
+  if (text.includes('buscar_codigo_comissao')) {
+    return { tool: 'buscar_codigo_comissao', args: { busca: extractSearchTerm(message, 'codigo') } };
+  }
+
+  if (text.includes('buscar_cotacao')) {
+    return { tool: 'buscar_cotacao', args: { busca: extractSearchTerm(message, 'cotacao') } };
+  }
+
+  if (text.includes('resumo_financeiro') || (text.includes('financeiro') && wantsSummary)) {
+    return { tool: 'resumo_financeiro', args: periodArgsFromMessage(message) };
+  }
+
+  if (text.includes('resumo_cashback') || (text.includes('cashback') && wantsSummary)) {
+    return { tool: 'resumo_cashback', args: periodArgsFromMessage(message) };
+  }
+
+  if (text.includes('resumo_codigos') || ((text.includes('codigos') || text.includes('comissao')) && wantsSummary)) {
+    return { tool: 'resumo_codigos', args: periodArgsFromMessage(message) };
+  }
+
+  if ((text.includes('cotacao') || text.includes('produto') || text.includes('fornecedor')) && wantsLookup) {
+    return { tool: 'buscar_cotacao', args: { busca: extractSearchTerm(message, 'cotacao') } };
+  }
+
+  if ((text.includes('codigo') || text.includes('codigos') || text.includes('comissao') || text.includes('ean')) && wantsLookup) {
+    return { tool: 'buscar_codigo_comissao', args: { busca: extractSearchTerm(message, 'codigo') } };
+  }
+
+  return null;
+}
+
+async function prefetchReadBridgeContext(message: string, traceId: string): Promise<string> {
+  if (internalToken === '' || phpToolBridgeUrl === '') {
+    return '';
+  }
+
+  const request = inferReadBridgeRequest(message);
+  if (!request || !NODE_READ_BRIDGE_TOOLS.includes(request.tool)) {
+    return '';
+  }
+
+  const result = await callPhpReadTool(request.tool, request.args, traceId);
+  return `leitura_node_preexecutada: ${result}`;
+}
+
 function compareToken(received: string, expected: string): boolean {
   if (received === '' || expected === '') {
     return false;
@@ -578,13 +670,18 @@ async function executeAgent(message: string, traceId: string, toolContracts: Saf
     throw new Error('api_key_missing');
   }
 
-  const input = [
+  const prefetchContext = await prefetchReadBridgeContext(message, traceId);
+  const inputParts = [
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
     `personalidade: ${PERSONALITY_VERSION}`,
     toolContractsForPrompt(toolContracts),
-    `mensagem_operador: ${message}`,
-  ].join('\n');
+  ];
+  if (prefetchContext !== '') {
+    inputParts.push(prefetchContext);
+  }
+  inputParts.push(`mensagem_operador: ${message}`);
+  const input = inputParts.join('\n');
 
   const result = await run(buildMiaubyAgent(toolContracts, traceId), input, {
     maxTurns: 5,
@@ -606,13 +703,18 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
     return;
   }
 
-  const input = [
+  const prefetchContext = await prefetchReadBridgeContext(message, traceId);
+  const inputParts = [
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
     `personalidade: ${PERSONALITY_VERSION}`,
     toolContractsForPrompt(toolContracts),
-    `mensagem_operador: ${message}`,
-  ].join('\n');
+  ];
+  if (prefetchContext !== '') {
+    inputParts.push(prefetchContext);
+  }
+  inputParts.push(`mensagem_operador: ${message}`);
+  const input = inputParts.join('\n');
 
   const stream = await run(buildMiaubyAgent(toolContracts, traceId), input, {
     maxTurns: 5,
