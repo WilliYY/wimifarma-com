@@ -2294,7 +2294,7 @@ app.post(`${BASE_PATH}/api/columns/:key/width`, requireApiAuth, verifyCsrf, asyn
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${quote.id}`).emit('columns:changed', { type: 'column_resized', column: updated.rows[0], columnKey, width, eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  io.to(`quote:${quote.id}`).emit('column:resized', { type: 'column_resized', column: updated.rows[0], columnKey, width, eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
   res.json({ ok: true, column: updated.rows[0], eventId: Number(event.id) });
 }));
 

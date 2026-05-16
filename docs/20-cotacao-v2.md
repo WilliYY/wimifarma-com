@@ -158,7 +158,7 @@ MySQL `wimifarma_app`:
 - Eventos remotos de celula/lote recebidos enquanto a aba esta editando outra celula sao aplicados ao estado e ficam pendentes para redesenho ao fim da edicao, preservando fluidez sem deixar `Ganhador`, contadores ou celulas dependentes visualmente atrasados. Lotes sem alteracao real nao criam evento vazio em `cotacao_v2_events`.
 - Eventos estruturais leves de coluna e linha tambem devem evitar snapshot completo: inserir linha, criar, renomear, mover, apagar, restaurar e redimensionar distribuidora enviam payload incremental suficiente para atualizar a grade localmente. Import e restore continuam pedindo snapshot completo.
 - As respostas de `/cotacao/api/*` sao `no-store` e o helper `api()` do frontend tambem usa `cache: 'no-store'`; `/cotacao/api/events` nao deve voltar `304`, porque isso mascara o delta como erro e empurra a tela para snapshot completo.
-- Durante redimensionamento de coluna, a largura visual e aplicada em tempo real, mas o auto-ajuste de altura de todas as celulas fica agendado para depois do mouseup, evitando travamento a cada pixel arrastado.
+- Durante redimensionamento de coluna, a largura visual e aplicada em tempo real, mas o auto-ajuste de altura fica limitado a coluna alterada e e processado em pequenos lotes apos o mouseup, evitando travamento ao soltar o mouse. O Socket.IO usa `column:resized` para resize, nao `columns:changed`, para nao acionar bootstrap completo em abas antigas.
 - O numero da linha da celula ativa recebe destaque visual verde forte no frontend, apenas localmente, para facilitar leitura no estilo Google Sheets sem gravar estado nem sincronizar esse destaque com outras abas.
 - Estilos em lote usam `PUT/DELETE /cotacao/api/styles/batch`, mantendo `style_updated` singular para acoes simples e reduzindo varias requisicoes quando cores sao copiadas pelo fill handle ou aplicadas em selecoes grandes.
 - A presenca recebida por Socket.IO passa a atualizar a grade em tempo real, marcando celulas de outros usuarios com cor deterministica por aba e tooltip de localizacao.
@@ -214,6 +214,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-16, a sincronizacao de apagamentos em lote foi revisada: `Delete`/`Backspace` continua usando `/cotacao/api/cells/batch`, eventos remotos recebidos durante edicao local sao redesenhados ao sair da edicao, e lotes sem celula realmente alterada retornam `noop` sem criar evento incremental vazio.
 - Em 2026-05-16, a sincronizacao de distribuidoras foi revisada para reduzir travamentos: eventos `column_*` sairam do grupo de snapshot obrigatorio, passaram a enviar coluna/ordem visivel no payload, e o frontend deixou de chamar `reloadSheet()` para resize, rename, criar/apagar/restaurar distribuidora quando o payload incremental e suficiente. A API da Cotacao tambem deixou de emitir ETag/cache condicional para evitar `304` em eventos incrementais.
 - Em 2026-05-16, a linha ativa ganhou indicador local: o numero da linha onde esta a celula ativa fica verde forte, sem persistencia no banco e sem evento de sincronizacao.
+- Em 2026-05-16, o resize foi refinado novamente: soltar a borda da coluna nao agenda mais autosize da planilha inteira e o servidor nao emite mais `columns:changed` para `column_resized`, usando `column:resized` para impedir recarregamento pesado em clientes antigos.
 
 ## Riscos ao alterar
 

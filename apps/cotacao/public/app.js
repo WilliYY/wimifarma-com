@@ -102,6 +102,7 @@
     paintColor: null,
     eraser: false,
     headerSelectTimer: null,
+    columnAutosizeJobs: new Map(),
     pendingCellSaves: new Map(),
     pendingBatchSaves: 0,
     deferredRemoteRowIds: new Set(),
@@ -1113,6 +1114,37 @@
     root.querySelectorAll('.sheet-input').forEach(autosizeInput);
   }
 
+  function scheduleColumnAutosize(columnKey) {
+    if (!columnKey) {
+      scheduleSheetAutosize();
+      return;
+    }
+    const previousJob = state.columnAutosizeJobs.get(columnKey);
+    if (previousJob) previousJob.cancelled = true;
+    const job = { cancelled: false };
+    state.columnAutosizeJobs.set(columnKey, job);
+    window.requestAnimationFrame(() => {
+      const inputs = Array.from(table.querySelectorAll(`td.sheet-cell[data-column-key="${columnKey}"] .sheet-input`));
+      const run = (index = 0) => {
+        if (job.cancelled) return;
+        const until = performance.now() + 7;
+        let nextIndex = index;
+        while (nextIndex < inputs.length && performance.now() < until) {
+          autosizeInput(inputs[nextIndex]);
+          nextIndex += 1;
+        }
+        if (nextIndex < inputs.length) {
+          window.requestAnimationFrame(() => run(nextIndex));
+          return;
+        }
+        if (state.columnAutosizeJobs.get(columnKey) === job) {
+          state.columnAutosizeJobs.delete(columnKey);
+        }
+      };
+      run();
+    });
+  }
+
   function scheduleSheetAutosize(root = table) {
     if (scheduleSheetAutosize.queued) return;
     scheduleSheetAutosize.queued = true;
@@ -1555,6 +1587,11 @@
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
       if (!applyRemoteColumnChange(payload)) reloadSheet();
+    });
+    socket.on('column:resized', (payload = {}) => {
+      rememberEventId(payload.eventId);
+      if (payload.clientId === clientId) return;
+      applyRemoteColumnChange({ ...payload, type: 'column_resized' });
     });
     socket.on('rules:update', (payload = {}) => {
       rememberEventId(payload.eventId);
@@ -2491,7 +2528,8 @@
       col.style.minWidth = `${nextWidth}px`;
       col.style.maxWidth = `${nextWidth}px`;
     }
-    if (options.autosize !== false) scheduleSheetAutosize();
+    if (options.autosize === 'sheet') scheduleSheetAutosize();
+    else if (options.autosize !== false) scheduleColumnAutosize(columnKey);
     return nextWidth;
   }
 
@@ -2906,7 +2944,7 @@
         state.resizing = null;
         document.body.classList.remove('is-resizing-column');
         hideResizeFeedback();
-        scheduleSheetAutosize();
+        scheduleColumnAutosize(columnKey);
         saveColumnWidth(columnKey, width).catch(console.error);
       }
       if (state.fillDragging) {

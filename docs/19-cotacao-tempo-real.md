@@ -42,6 +42,8 @@ Em 2026-05-16, a aplicacao de eventos remotos durante edicao local foi reforcada
 
 Tambem em 2026-05-16, eventos estruturais leves deixaram de cair automaticamente em snapshot completo. Inserir linha, criar, renomear, mover, apagar, restaurar ou redimensionar distribuidora passam a carregar payload suficiente para a outra aba atualizar colunas localmente. O resize de coluna tambem deixou de recalcular a altura de todas as celulas a cada movimento do mouse; o auto-ajuste roda uma vez apos o fim do arrasto. As chamadas de `/cotacao/api/*`, incluindo `/cotacao/api/events`, tambem passaram a responder e ser buscadas com `no-store`, evitando `304` de cache que fazia o frontend cair em fallback pesado de snapshot.
 
+Na revisao seguinte do mesmo dia, o resize de coluna deixou de usar o canal generico `columns:changed` e passou a emitir `column:resized`. Isso evita que abas ainda com JavaScript antigo recebam o evento generico e facam `/cotacao/api/bootstrap` completo ao soltar o mouse. O auto-ajuste apos o mouseup tambem ficou limitado aos inputs da coluna redimensionada, processado em pequenos lotes por frame.
+
 Tambem em 2026-05-15, a navegacao de teclado durante edicao foi ajustada para uso operacional rapido: `Enter` salva a celula editada e desce exatamente uma linha. Em 2026-05-16, o editor voltou a priorizar edicao interna do texto: duplo clique e `F2` abrem a celula sem selecionar todo o conteudo, cliques dentro do editor posicionam o cursor e as setas movem o cursor dentro do texto.
 
 ## Historico da Cotacao PHP legada
