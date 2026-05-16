@@ -159,7 +159,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 12</span>
+                    <span class="diag-kicker">Fase 13</span>
                     <h1>Diagnostico do Miauby</h1>
                     <p>Saude, persona, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>
@@ -227,7 +227,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <span>Contratos tools</span>
                 <?php $toolContractSummary = is_array($toolContracts['summary'] ?? null) ? $toolContracts['summary'] : array(); ?>
                 <strong><?php echo e((string) ($toolContractSummary['schemas_exported'] ?? 0)); ?></strong>
-                <p><?php echo e((string) ($toolContracts['phase'] ?? 'fase12')); ?> | escrita Node bloqueada.</p>
+                <p><?php echo e((string) ($toolContracts['phase'] ?? 'fase13')); ?> | <?php echo e((string) ($toolContractSummary['node_read_bridge_tools'] ?? 0)); ?> leitura(s) Node | escrita bloqueada.</p>
             </article>
         </section>
 
@@ -267,7 +267,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
         <section class="diag-panel">
             <div class="diag-panel-head">
                 <div>
-                    <span>Fase 12</span>
+                    <span>Fase 13</span>
                     <h2>Contrato do servico agente</h2>
                 </div>
                 <p><?php echo e((string) ($nextPhase['runtime'] ?? '')); ?></p>

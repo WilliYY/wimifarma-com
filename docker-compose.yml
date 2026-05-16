@@ -129,6 +129,7 @@ services:
       MIAUW_OPENAI_MODEL: ${MIAUW_OPENAI_MODEL:-gpt-5.4-mini}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
       MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
+      MIAUW_PHP_TOOL_BRIDGE_URL: ${MIAUW_PHP_TOOL_BRIDGE_URL:-http://wimifarma-com-web/miauw/agent-tools.php}
     networks:
       - wimifarma-com-network
 

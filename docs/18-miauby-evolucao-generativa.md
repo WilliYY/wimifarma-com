@@ -116,12 +116,20 @@ Miauby ja possui:
   - `consultar_contrato_tool_miauby` executa no Node apenas leitura segura dos contratos enviados pelo PHP, com filtro por nome, modulo ou risco;
   - a resposta do Node informa `read_tools_enabled`, `node_executable_tools` e `tool_contract_version` para trace resumido no PHP;
   - `writes_enabled=false` continua obrigatorio: nenhuma escrita de modulo, confirmacao, sessao ou auditoria saiu do PHP.
+- Fase 13 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase13`;
+  - o servico Node passou para `SERVICE_VERSION=0.7.0` e `PHASE=fase13-php-read-tool-bridge`;
+  - `site/miauw/agent-tools.php` adiciona uma ponte interna tokenizada para tools reais de leitura baixa, chamada pelo Node com `X-Miauw-Agent-Token`;
+  - as primeiras tools migradas para execucao Node via ponte PHP sao `resumo_financeiro`, `resumo_cashback`, `resumo_codigos`, `buscar_codigo_comissao` e `buscar_cotacao`;
+  - `buscar_cliente` fica fora da primeira leva por privacidade, mesmo sendo leitura, e toda escrita forte continua no PHP com confirmacao humana;
+  - a ponte registra `miauw_agent_node_read_tool` em `miauw_tool_traces` com tool, chaves de argumentos, duracao e `writes_enabled=false`, sem payload bruto externo ou token.
 
 ## Arquivos, tabelas e servicos envolvidos
 
 Arquivos:
 
 - `site/miauw/api.php`
+- `site/miauw/agent-tools.php`
 - `site/miauw/diagnostico.php`
 - `site/miauw/miauw-diagnostics.php`
 - `site/miauw/miauw-funcoes.php`
@@ -153,7 +161,7 @@ Tabelas:
 Integracoes:
 
 - OpenAI Responses API;
-- Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE`;
+- Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.
 
@@ -198,10 +206,10 @@ Integracoes:
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
-- Validar a tool Node de leitura segura com traces reais do `adm` e de funcionarios liberados.
-- Ampliar a Fase 6/7/8/9/10/11/12 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
+- Validar a ponte PHP de leitura da Fase 13 com traces reais do `adm` e de funcionarios liberados.
+- Ampliar a Fase 6/7/8/9/10/11/12/13 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
-- Migrar tools de leitura real uma por vez para o Node por ponte controlada, preservando auditoria no PHP.
+- Avaliar `buscar_cliente` com revisao de privacidade antes de migrar para o Node.
 - Migrar execucao real das tools de alto valor para o Node somente depois da ponte de leitura, preservando confirmacao e auditoria no PHP enquanto a escrita nao estiver duplicada com seguranca.
 
 ## Como pode evoluir
@@ -218,3 +226,4 @@ Integracoes:
 - Fase 10: preservar a personalidade do Miauby como contrato versionado no PHP/Node, com eval local para impedir resposta generica durante o corte para agente.
 - Fase 11: exportar schemas de tools para o Node a partir do registry PHP e usar esse contrato no agente sem liberar escrita direta. Iniciada.
 - Fase 12: executar no Node a primeira tool real de leitura segura sobre contratos auditados, mantendo escrita, confirmacao e rollback no PHP. Iniciada.
+- Fase 13: migrar tools reais de leitura baixa para o Node por ponte PHP interna, mantendo banco, confirmacao, auditoria e escrita forte sob controle do PHP. Iniciada.

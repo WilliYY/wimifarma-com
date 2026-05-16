@@ -55,15 +55,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260516d');
+    define('MIAUW_VERSION', '20260516e');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase12');
+    define('MIAUW_AGENT_VERSION', '2.0-fase13');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-node-read-tools');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-node-read-bridge');
 }
 
 if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
@@ -519,9 +519,105 @@ function miauw_agent_public_status(): array
             'contrato_tools_exportado',
             'schemas_tools_no_node',
             'execucao_node_leitura_segura',
+            'ponte_php_tools_leitura_node',
+            'tools_leitura_real_node',
             'escrita_node_bloqueada',
         ),
     );
+}
+
+function miauw_agent_node_read_tool_names(): array
+{
+    return array(
+        'resumo_financeiro',
+        'resumo_cashback',
+        'resumo_codigos',
+        'buscar_codigo_comissao',
+        'buscar_cotacao',
+    );
+}
+
+function miauw_agent_node_read_tool_allowed(string $name): bool
+{
+    $name = trim($name);
+    if ($name === '' || !in_array($name, miauw_agent_node_read_tool_names(), true)) {
+        return false;
+    }
+
+    $registry = function_exists('miauw_skill_registry_public') ? miauw_skill_registry_public() : array();
+    $meta = is_array($registry[$name] ?? null) ? $registry[$name] : array();
+
+    if (!$meta) {
+        return false;
+    }
+
+    return (string) ($meta['nivel'] ?? '') === 'leitura'
+        && (string) ($meta['risco'] ?? '') === 'baixo'
+        && empty($meta['local_action'])
+        && !miauw_tool_requires_confirmation($name);
+}
+
+function miauw_agent_node_read_tool_result(string $name, array $args, string $traceId = ''): array
+{
+    $name = trim($name);
+    if (!miauw_agent_node_read_tool_allowed($name)) {
+        throw new RuntimeException('Tool nao liberada para ponte de leitura do agente.');
+    }
+
+    if ($traceId !== '') {
+        miauw_trace_set_context(miauw_substr($traceId, 0, 80));
+    }
+
+    $started = microtime(true);
+    $argKeys = array_values(array_map('strval', array_keys($args)));
+    sort($argKeys);
+
+    try {
+        $text = miauw_openai_tool_result($name, $args);
+        $text = function_exists('miauw_diagnostic_redact_string')
+            ? miauw_diagnostic_redact_string($text)
+            : $text;
+        $text = miauw_substr($text, 0, 4000);
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+
+        miauw_trace_record('miauw_agent_node_read_tool', 'ok', array(
+            'trace_id' => $traceId !== '' ? miauw_substr($traceId, 0, 80) : null,
+            'type' => 'agent_read_bridge',
+            'summary' => 'Tool de leitura executada pelo PHP para o agente Node.',
+            'duration_ms' => $durationMs,
+            'payload' => array(
+                'tool' => $name,
+                'args_keys' => $argKeys,
+                'text_chars' => miauw_strlen($text),
+                'writes_enabled' => false,
+            ),
+        ));
+
+        return array(
+            'ok' => true,
+            'tool' => $name,
+            'source' => 'php_read_bridge',
+            'text' => $text,
+            'duration_ms' => $durationMs,
+            'writes_enabled' => false,
+        );
+    } catch (Throwable $error) {
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        miauw_trace_record('miauw_agent_node_read_tool', 'error', array(
+            'trace_id' => $traceId !== '' ? miauw_substr($traceId, 0, 80) : null,
+            'type' => 'agent_read_bridge',
+            'summary' => 'Falha em tool de leitura chamada pelo agente Node.',
+            'duration_ms' => $durationMs,
+            'error' => $error->getMessage(),
+            'payload' => array(
+                'tool' => $name,
+                'args_keys' => $argKeys,
+                'writes_enabled' => false,
+            ),
+        ));
+
+        throw $error;
+    }
 }
 
 function miauw_agent_personality_contract(): array
@@ -559,13 +655,13 @@ function miauw_agent_personality_contract(): array
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase12',
-        'proxima_fase' => 'migracao_controlada_de_tools_com_callback_php',
+        'fase_atual' => 'fase13',
+        'proxima_fase' => 'migracao_controlada_de_tools_de_escrita_confirmada',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => miauw_agent_engine(),
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente, preservando a persona versionada do Miauby, recebendo contratos de tools exportados pelo registry PHP e executando no Node somente consulta segura de leitura desses contratos.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, executa consulta segura desses contratos e pode chamar tools reais de leitura baixa por ponte PHP interna tokenizada, sem credenciais de banco e com writes_enabled=false.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
@@ -582,12 +678,14 @@ function miauw_agent_next_phase_contract(): array
             'engine_switch' => true,
             'manutencao_adm' => true,
             'execucao_leitura_node' => true,
+            'ponte_php_leitura_node' => function_exists('miauw_agent_node_read_tool_result'),
+            'tools_leitura_real_node' => function_exists('miauw_agent_node_read_tool_names') && count(miauw_agent_node_read_tool_names()) >= 5,
             'writes_node_bloqueado' => true,
         ),
         'pendencias' => array(
-            'Validar a consulta segura de contratos em traces reais do adm e funcionarios liberados.',
-            'Criar ponte controlada para tools de leitura real com auditoria PHP antes de qualquer escrita.',
-            'Migrar execucao real das tools para o servico Node uma por vez, com confirmacao antes de escrita.',
+            'Validar a ponte de leitura PHP em traces reais do adm e funcionarios liberados.',
+            'Avaliar migracao de buscar_cliente com revisao de privacidade antes de liberar no Node.',
+            'Migrar tools de escrita apenas uma por vez, mantendo confirmacao e auditoria no PHP ate existir contrato especifico.',
             'Rodar os mesmos evals contra o servico Node em modo primario.',
             'Definir corte progressivo por skill quando o Node estiver gravando com auditoria completa.',
             'Adicionar mais exemplos reais da voz do Miauby aos evals de persona.',
@@ -884,6 +982,8 @@ function miauw_agent_shadow_compare(
                 'tool_contract_version' => (string) ($data['tool_contract_version'] ?? ''),
                 'node_read_tools_enabled' => !empty($data['read_tools_enabled']),
                 'node_executable_tools' => array_values(array_slice((array) ($data['node_executable_tools'] ?? array()), 0, 8)),
+                'php_read_bridge_enabled' => !empty($data['php_read_bridge_enabled']),
+                'migrated_read_tools' => array_values(array_slice((array) ($data['migrated_read_tools'] ?? array()), 0, 8)),
                 'php_chars' => miauw_strlen($phpReply),
                 'shadow_chars' => miauw_strlen($shadowText),
                 'same_text' => $sameText,
@@ -979,6 +1079,8 @@ function miauw_agent_node_reply(int $conversationId, string $message, bool $widg
             'tool_contract_version' => (string) ($data['tool_contract_version'] ?? ''),
             'node_read_tools_enabled' => !empty($data['read_tools_enabled']),
             'node_executable_tools' => array_values(array_slice((array) ($data['node_executable_tools'] ?? array()), 0, 8)),
+            'php_read_bridge_enabled' => !empty($data['php_read_bridge_enabled']),
+            'migrated_read_tools' => array_values(array_slice((array) ($data['migrated_read_tools'] ?? array()), 0, 8)),
             'response_chars' => miauw_strlen($text),
         ),
     ));
@@ -3236,6 +3338,7 @@ function miauw_agent_tool_contract_export(): array
 {
     $registry = function_exists('miauw_skill_registry_public') ? miauw_skill_registry_public() : array();
     $toolsByName = miauw_openai_tools_by_name();
+    $nodeReadBridgeTools = function_exists('miauw_agent_node_read_tool_names') ? miauw_agent_node_read_tool_names() : array();
     $contracts = array();
     $registryOpenAiNames = array();
     $missingSchemas = array();
@@ -3276,6 +3379,9 @@ function miauw_agent_tool_contract_export(): array
             'local_action' => !empty($meta['local_action']),
             'requires_confirmation' => miauw_tool_requires_confirmation((string) $name),
             'writes_enabled_in_node' => false,
+            'node_read_bridge_enabled' => in_array((string) $name, $nodeReadBridgeTools, true)
+                && function_exists('miauw_agent_node_read_tool_allowed')
+                && miauw_agent_node_read_tool_allowed((string) $name),
             'execution_owner' => 'php',
             'description' => (string) ($tool['description'] ?? ($meta['saida'] ?? '')),
             'parameters' => $params,
@@ -3301,12 +3407,13 @@ function miauw_agent_tool_contract_export(): array
     return array(
         'version' => 'miauw-tool-contracts-2026-05-16',
         'agent_version' => miauw_constant_string('MIAUW_AGENT_VERSION', ''),
-        'phase' => 'fase12-node-read-tool-contracts',
+        'phase' => 'fase13-php-read-tool-bridge',
         'source' => 'php_skill_registry',
         'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
         'writes_enabled_in_node' => false,
         'execution_owner' => 'php',
         'confirmation_owner' => 'php',
+        'node_read_bridge_tools' => array_values($nodeReadBridgeTools),
         'checksum' => $checksum,
         'summary' => array(
             'registry_total' => count($registry),
@@ -3315,6 +3422,7 @@ function miauw_agent_tool_contract_export(): array
             'missing_schemas' => count($missingSchemas),
             'schemas_without_registry' => count($withoutRegistry),
             'high_risk_writes' => $highRiskWrites,
+            'node_read_bridge_tools' => count($nodeReadBridgeTools),
         ),
         'missing_schemas' => $missingSchemas,
         'schemas_without_registry' => $withoutRegistry,

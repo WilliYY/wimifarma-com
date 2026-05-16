@@ -5,12 +5,23 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.6.0';
-const AGENT_VERSION = '2.0-fase12';
-const PHASE = 'fase12-read-tool-execution';
+const SERVICE_VERSION = '0.7.0';
+const AGENT_VERSION = '2.0-fase13';
+const PHASE = 'fase13-php-read-tool-bridge';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
-const NODE_EXECUTABLE_TOOLS = ['diagnostico_miauby_agente', 'consultar_contrato_tool_miauby'];
+const NODE_READ_BRIDGE_TOOLS = [
+  'resumo_financeiro',
+  'resumo_cashback',
+  'resumo_codigos',
+  'buscar_codigo_comissao',
+  'buscar_cotacao',
+];
+const NODE_EXECUTABLE_TOOLS = [
+  'diagnostico_miauby_agente',
+  'consultar_contrato_tool_miauby',
+  ...NODE_READ_BRIDGE_TOOLS,
+];
 
 const MIAUBY_PERSONALITY_SUMMARY = [
   'Fiscal interno da Wimifarma, com humor curto e utilidade primeiro.',
@@ -33,7 +44,9 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Assuntos tecnicos devem virar suporte tecnico interno: peca modulo/tela, horario, acao feita e print. Nao cite bastidor de desenvolvimento.',
   'Nunca cite Codex, ChatGPT, fornecedor de IA, chave, token, prompt interno, stack trace, endpoint interno, arquivo ou caminho de servidor.',
   'Nao escreva codigo, SQL ou comandos para operador comum. Oriente processo, tela e dado necessario.',
-  'Se usar ferramenta, use apenas diagnostico seguro ou consulta de contrato de tool; explique o resultado em linguagem operacional.',
+  'Voce pode usar tools de leitura real migradas para consultar financeiro, cashback, codigos e cotacao quando o operador pedir dado desses modulos.',
+  'Essas leituras passam pela ponte PHP interna auditada; nunca cite endpoint, token, payload ou bastidor tecnico ao operador.',
+  'Se precisar de cliente/telefone ou escrita forte, peca o dado minimo e deixe o fluxo PHP confirmar/executar.',
   'Feche com proximo passo curto quando couber. Humor e tempero; resolver e a refeicao.',
 ];
 
@@ -53,6 +66,7 @@ const basePath = normalizeBasePath(envString(['MIAUW_AGENT_BASE_PATH'], '/miauw/
 const model = envString(['MIAUW_OPENAI_MODEL', 'OPENAI_MODEL'], DEFAULT_MODEL);
 const apiKey = envString(['MIAUW_OPENAI_API_KEY', 'OPENAI_API_KEY']);
 const internalToken = envString(['MIAUW_AGENT_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN']);
+const phpToolBridgeUrl = envString(['MIAUW_PHP_TOOL_BRIDGE_URL'], 'http://wimifarma-com-web/miauw/agent-tools.php');
 
 if (apiKey !== '' && !process.env.OPENAI_API_KEY) {
   process.env.OPENAI_API_KEY = apiKey;
@@ -75,7 +89,9 @@ function publicStatus() {
     mode: 'node-primary-safe-read-tools',
     tool_contracts: 'accepted_via_php_payload',
     node_executable_tools: NODE_EXECUTABLE_TOOLS,
+    migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
     read_tools_enabled: true,
+    php_read_bridge: internalToken !== '' && phpToolBridgeUrl !== '' ? 'configured' : 'not_configured',
     runtime: 'node22-typescript',
     sdk: 'agents-sdk',
     base_path: basePath,
@@ -96,6 +112,7 @@ type SafeToolContract = {
   localAction: boolean;
   requiresConfirmation: boolean;
   writesEnabledInNode: boolean;
+  nodeReadBridgeEnabled: boolean;
 };
 
 type SafeToolContractBundle = {
@@ -109,6 +126,7 @@ type SafeToolContractBundle = {
     openaiTools: number;
     schemasExported: number;
     highRiskWrites: number;
+    nodeReadBridgeTools: number;
   };
   tools: SafeToolContract[];
 };
@@ -166,6 +184,7 @@ function safeToolContracts(value: unknown): SafeToolContractBundle | null {
       localAction: rawTool.local_action === true,
       requiresConfirmation: rawTool.requires_confirmation === true,
       writesEnabledInNode: false,
+      nodeReadBridgeEnabled: rawTool.node_read_bridge_enabled === true,
     });
   }
 
@@ -180,6 +199,10 @@ function safeToolContracts(value: unknown): SafeToolContractBundle | null {
       openaiTools: typeof summary.openai_tools === 'number' && Number.isFinite(summary.openai_tools) ? summary.openai_tools : tools.length,
       schemasExported: typeof summary.schemas_exported === 'number' && Number.isFinite(summary.schemas_exported) ? summary.schemas_exported : tools.length,
       highRiskWrites: typeof summary.high_risk_writes === 'number' && Number.isFinite(summary.high_risk_writes) ? summary.high_risk_writes : 0,
+      nodeReadBridgeTools:
+        typeof summary.node_read_bridge_tools === 'number' && Number.isFinite(summary.node_read_bridge_tools)
+          ? summary.node_read_bridge_tools
+          : tools.filter((item) => item.nodeReadBridgeEnabled).length,
     },
     tools,
   };
@@ -196,14 +219,16 @@ function toolContractsForPrompt(contracts: SafeToolContractBundle | null): strin
   const lines = [
     `contrato_tools_php: ${contracts.version || 'sem-versao'} (${contracts.phase || 'sem-fase'})`,
     `dono_execucao: ${contracts.executionOwner}; dono_confirmacao: ${contracts.confirmationOwner}; escrita_node: bloqueada`,
-    `schemas_recebidos: ${contracts.summary.schemasExported}/${contracts.summary.openaiTools}; escritas_alto_risco: ${contracts.summary.highRiskWrites}`,
-    'Use este contrato apenas para saber capacidades auditadas. Se precisar executar, explique que o PHP/fluxo operacional deve confirmar e executar.',
+    `schemas_recebidos: ${contracts.summary.schemasExported}/${contracts.summary.openaiTools}; escritas_alto_risco: ${contracts.summary.highRiskWrites}; ponte_leitura_node: ${contracts.summary.nodeReadBridgeTools}`,
+    `tools_leitura_migradas_node: ${NODE_READ_BRIDGE_TOOLS.join(', ')}`,
+    'Use tools migradas de leitura quando o pedido envolver financeiro, cashback, codigos ou cotacao. Escritas continuam confirmadas/executadas pelo PHP.',
   ];
 
   for (const item of contracts.tools.slice(0, 16)) {
     const required = item.required.length > 0 ? ` obrigatorios=${item.required.join(',')}` : '';
     const confirmation = item.requiresConfirmation ? ' confirmacao=sim' : ' confirmacao=nao';
-    lines.push(`tool:${item.name} modulo=${item.module} nivel=${item.level} risco=${item.risk}${required}${confirmation}`);
+    const bridge = item.nodeReadBridgeEnabled ? ' node_read_bridge=sim' : '';
+    lines.push(`tool:${item.name} modulo=${item.module} nivel=${item.level} risco=${item.risk}${required}${confirmation}${bridge}`);
   }
 
   return lines.join('\n');
@@ -219,6 +244,7 @@ function toolContractResponseSummary(contracts: SafeToolContractBundle | null) {
     schemas_exported: contracts.summary.schemasExported,
     openai_tools: contracts.summary.openaiTools,
     high_risk_writes: contracts.summary.highRiskWrites,
+    node_read_bridge_tools: contracts.summary.nodeReadBridgeTools,
     writes_enabled_in_node: false,
   };
 }
@@ -267,6 +293,7 @@ function querySafeToolContracts(contracts: SafeToolContractBundle | null, query:
       required: item.required,
       local_action: item.localAction,
       requires_confirmation: item.requiresConfirmation,
+      node_read_bridge_enabled: item.nodeReadBridgeEnabled,
       writes_enabled_in_node: false,
     }));
 
@@ -325,6 +352,81 @@ function safeError(error: unknown): string {
   }
 
   return 'Nao consegui concluir a execucao do agente agora.';
+}
+
+async function callPhpReadTool(toolName: string, args: Record<string, unknown>, traceId: string): Promise<string> {
+  const startedAt = Date.now();
+
+  if (internalToken === '' || phpToolBridgeUrl === '') {
+    return JSON.stringify({
+      ok: false,
+      source: 'php_read_bridge',
+      tool: toolName,
+      message: 'Ponte PHP de leitura nao configurada.',
+      writes_enabled: false,
+    });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const response = await fetch(phpToolBridgeUrl, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Miauw-Agent-Token': internalToken,
+      },
+      body: JSON.stringify({
+        trace_id: traceId,
+        tool: toolName,
+        args,
+      }),
+      signal: controller.signal,
+    });
+
+    const rawText = await response.text();
+    let data: unknown = null;
+    try {
+      data = rawText !== '' ? JSON.parse(rawText) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok || !isRecord(data) || data.ok !== true) {
+      const message = isRecord(data) ? safeText(data.message, 240) : '';
+      return JSON.stringify({
+        ok: false,
+        source: 'php_read_bridge',
+        tool: toolName,
+        message: message || 'A ponte PHP recusou a leitura agora.',
+        http_status: response.status,
+        duration_ms: Date.now() - startedAt,
+        writes_enabled: false,
+      });
+    }
+
+    return JSON.stringify({
+      ok: true,
+      source: 'php_read_bridge',
+      tool: toolName,
+      text: safeText(data.text, 3500),
+      duration_ms: Date.now() - startedAt,
+      writes_enabled: false,
+    });
+  } catch (error) {
+    return JSON.stringify({
+      ok: false,
+      source: 'php_read_bridge',
+      tool: toolName,
+      message: safeError(error),
+      duration_ms: Date.now() - startedAt,
+      writes_enabled: false,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function compareToken(received: string, expected: string): boolean {
@@ -408,12 +510,66 @@ function buildContratoTool(toolContracts: SafeToolContractBundle | null) {
   });
 }
 
-function buildMiaubyAgent(toolContracts: SafeToolContractBundle | null) {
+function buildReadBridgeTools(traceId: string) {
+  const periodSchema = {
+    mes: z.number().int().min(1).max(12).optional(),
+    ano: z.number().int().min(2020).max(2100).optional(),
+  };
+
+  return [
+    tool({
+      name: 'resumo_financeiro',
+      description: 'Consulta um resumo real de leitura do Financeiro por periodo, via ponte PHP auditada.',
+      parameters: z.object(periodSchema),
+      async execute({ mes, ano }) {
+        return callPhpReadTool('resumo_financeiro', { mes, ano }, traceId);
+      },
+    }),
+    tool({
+      name: 'resumo_cashback',
+      description: 'Consulta um resumo real de leitura do Cashback por periodo, via ponte PHP auditada.',
+      parameters: z.object(periodSchema),
+      async execute({ mes, ano }) {
+        return callPhpReadTool('resumo_cashback', { mes, ano }, traceId);
+      },
+    }),
+    tool({
+      name: 'resumo_codigos',
+      description: 'Consulta um resumo real dos codigos de comissao por grupo de EAN, via ponte PHP auditada.',
+      parameters: z.object(periodSchema),
+      async execute({ mes, ano }) {
+        return callPhpReadTool('resumo_codigos', { mes, ano }, traceId);
+      },
+    }),
+    tool({
+      name: 'buscar_codigo_comissao',
+      description: 'Busca codigo, EAN ou preco de comissao no modulo Codigos, somente leitura.',
+      parameters: z.object({
+        busca: z.string().max(120),
+      }),
+      async execute({ busca }) {
+        return callPhpReadTool('buscar_codigo_comissao', { busca: safeText(busca, 120) }, traceId);
+      },
+    }),
+    tool({
+      name: 'buscar_cotacao',
+      description: 'Busca item, produto, EAN, categoria ou fornecedor na Cotacao V2, somente leitura.',
+      parameters: z.object({
+        busca: z.string().max(120),
+      }),
+      async execute({ busca }) {
+        return callPhpReadTool('buscar_cotacao', { busca: safeText(busca, 120) }, traceId);
+      },
+    }),
+  ];
+}
+
+function buildMiaubyAgent(toolContracts: SafeToolContractBundle | null, traceId: string) {
   return new Agent({
     name: 'Miauby Operacional',
     model,
     instructions: MIAUBY_AGENT_INSTRUCTIONS.join('\n'),
-    tools: [diagnosticoAgenteTool, buildContratoTool(toolContracts)],
+    tools: [diagnosticoAgenteTool, buildContratoTool(toolContracts), ...buildReadBridgeTools(traceId)],
   });
 }
 
@@ -430,8 +586,8 @@ async function executeAgent(message: string, traceId: string, toolContracts: Saf
     `mensagem_operador: ${message}`,
   ].join('\n');
 
-  const result = await run(buildMiaubyAgent(toolContracts), input, {
-    maxTurns: 3,
+  const result = await run(buildMiaubyAgent(toolContracts, traceId), input, {
+    maxTurns: 5,
   });
 
   return safeText((result as { finalOutput?: unknown }).finalOutput, 4000);
@@ -458,8 +614,8 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
     `mensagem_operador: ${message}`,
   ].join('\n');
 
-  const stream = await run(buildMiaubyAgent(toolContracts), input, {
-    maxTurns: 3,
+  const stream = await run(buildMiaubyAgent(toolContracts, traceId), input, {
+    maxTurns: 5,
     stream: true,
   });
 
@@ -484,7 +640,9 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
     mode: 'agent_controlado',
     trace_id: traceId,
     node_executable_tools: NODE_EXECUTABLE_TOOLS,
+    migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
     read_tools_enabled: true,
+    php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
     tool_contract_version: toolContracts?.version || '',
     text: safeText(chunks.join(''), 4000),
   });
@@ -537,7 +695,9 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
       trace_id: traceId,
       model,
       node_executable_tools: NODE_EXECUTABLE_TOOLS,
+      migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
       read_tools_enabled: true,
+      php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
       tool_contract_version: toolContracts?.version || '',
       tool_contract_summary: toolContractResponseSummary(toolContracts),
       text,
@@ -583,7 +743,9 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
       trace_id: traceId,
       model,
       node_executable_tools: NODE_EXECUTABLE_TOOLS,
+      migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
       read_tools_enabled: true,
+      php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
       tool_contract_version: toolContracts?.version || '',
     });
     await streamAgent(message, traceId, res, toolContracts);

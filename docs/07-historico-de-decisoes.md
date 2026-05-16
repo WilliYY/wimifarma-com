@@ -2,6 +2,38 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-16 - Miauby migra leituras reais para ponte PHP do Node
+
+Decisao:
+
+- Criar a Fase 13 do Miauby com `MIAUW_AGENT_VERSION=2.0-fase13`.
+- Subir `apps/miauw-agent` para `SERVICE_VERSION=0.7.0` e `PHASE=fase13-php-read-tool-bridge`.
+- Adicionar `/miauw/agent-tools.php` como ponte interna tokenizada para tools reais de leitura baixa.
+- Liberar no Node apenas `resumo_financeiro`, `resumo_cashback`, `resumo_codigos`, `buscar_codigo_comissao` e `buscar_cotacao`.
+- Manter `buscar_cliente` fora da primeira leva por privacidade e manter toda escrita forte no PHP com confirmacao/auditoria.
+
+Motivo:
+
+- Avancar o Miauby como agente sem dar credencial direta de banco ao Node e sem mover regras criticas de escrita antes de a ponte de leitura estar validada.
+
+Impacto:
+
+- `apps/miauw-agent/`
+- `site/miauw/agent-tools.php`
+- `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-evals.php`
+- `site/miauw/diagnostico.php`
+- `docker-compose.yml`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- A ponte aceita somente token interno e lista fechada de tools; nao liberar rota publica sem token.
+- Traces devem guardar apenas tool, chaves de argumentos, duracao e status; nao guardar token, payload bruto, SQL ou stack trace.
+- Escritas como sangria, tarefa e encomenda seguem no PHP ate existir contrato separado de confirmacao e rollback.
+
 ## 2026-05-16 - Miauby executa primeira tool Node de leitura segura
 
 Decisao:

@@ -86,6 +86,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 10 do agente operacional v2: a personalidade do Miauby agora tem contrato versionado (`miauby-persona-2026-05-16`) no PHP, no diagnostico e no servico Node. O agente Node preserva tom de fiscal interno, humor curto, bordoes controlados e pedido minimo de contexto, e `apps/miauw-agent` possui `npm run check:persona` para evitar regressao para resposta generica.
 - Miauby iniciou a Fase 11 do agente operacional v2: o PHP exporta contratos versionados das tools OpenAI a partir do registry e envia esse contexto ao servico Node em `run`/`stream`; o Node usa isso para responder com nocao das capacidades auditadas, mas continua sem escrita direta, com confirmacoes e execucao real ainda no PHP.
 - Miauby iniciou a Fase 12 do agente operacional v2: o servico Node executa uma primeira tool real de leitura segura (`consultar_contrato_tool_miauby`) sobre os contratos enviados pelo PHP. Ela apenas consulta capacidades auditadas; escrita, confirmacao, sessao e auditoria de dados continuam no PHP.
+- Miauby iniciou a Fase 13 do agente operacional v2: o servico Node executa tools reais de leitura baixa por uma ponte PHP interna tokenizada (`/miauw/agent-tools.php`) para Financeiro, Cashback, Codigos e Cotacao. O Node continua sem credencial de banco e com `writes_enabled=false`; sangria, tarefas, encomendas e qualquer escrita forte seguem no fluxo PHP com confirmacao/auditoria.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -100,7 +101,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP e tools Node de leitura segura
+- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP e tools Node de leitura segura por ponte PHP interna
 - PostgreSQL 17 para dados da Cotacao V2
 - Redis 7 para sessoes e presenca da Cotacao V2
 
@@ -230,6 +231,7 @@ MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
 MIAUW_AGENT_INTERNAL_TOKEN
 MIAUW_AGENT_INTERNAL_BASE_URL
+MIAUW_PHP_TOOL_BRIDGE_URL
 MIAUW_AGENT_SHADOW_ON_SEND
 MIAUW_AGENT_SHADOW_TIMEOUT_MS
 MIAUW_ENGINE
@@ -295,7 +297,7 @@ Antes do primeiro deploy da Cotacao V2 no VPS, adicionar valores reais no `.env`
 
 Para o Miauby criar/consultar encomendas diretamente na Cotacao V2, manter `MIAUW_GUARDIAN_TOKEN` preenchido ou definir `COTACAO_INTERNAL_TOKEN` com token equivalente no `.env`; o Compose entrega esse segredo ao web/PHP e ao app Node sem versionar o valor.
 
-Para testar o servico Miauby agente, manter `MIAUW_AGENT_INTERNAL_TOKEN` preenchido ou usar o fallback de `MIAUW_GUARDIAN_TOKEN`; `MIAUW_AGENT_INTERNAL_BASE_URL` aponta internamente para `http://wimifarma-miauw-agent:3100/miauw/agent`.
+Para testar o servico Miauby agente, manter `MIAUW_AGENT_INTERNAL_TOKEN` preenchido ou usar o fallback de `MIAUW_GUARDIAN_TOKEN`; `MIAUW_AGENT_INTERNAL_BASE_URL` aponta internamente para `http://wimifarma-miauw-agent:3100/miauw/agent` e `MIAUW_PHP_TOOL_BRIDGE_URL` aponta para `http://wimifarma-com-web/miauw/agent-tools.php`.
 
 Para comparar respostas do PHP com o servico sombra em envios reais, ligar `MIAUW_AGENT_SHADOW_ON_SEND=true` e manter `MIAUW_AGENT_SHADOW_TIMEOUT_MS` com limite baixo o suficiente para nao atrapalhar a equipe. O padrao documentado fica `false`.
 

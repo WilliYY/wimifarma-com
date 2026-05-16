@@ -52,6 +52,7 @@ Arquivos:
 - A Fase 10 adiciona versao de personalidade ao status/health do Miauby; regressao de voz deve ser tratada por eval (`npm run check:persona`) e por exemplos revisados, nao por trace com texto bruto sensivel.
 - A Fase 11 inclui `tool_contract_version` nos retornos/traces do Node quando o PHP envia contratos de tools. Traces devem registrar somente versao, checksum/resumo e contagens, nunca o contrato bruto com payload externo.
 - A Fase 12 inclui `read_tools_enabled` e `node_executable_tools` nos retornos/traces resumidos do Node. Guardar somente a lista curta de tools seguras e versoes; nao persistir payload bruto de contratos nem argumentos completos do operador.
+- A Fase 13 registra chamadas da ponte PHP de leitura como `miauw_agent_node_read_tool` em `miauw_tool_traces`, com nome da tool, chaves dos argumentos, duracao e tamanho da resposta. Nao gravar token, payload bruto externo, SQL, stack trace ou dados completos do operador nesse trace.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 

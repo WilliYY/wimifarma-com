@@ -83,11 +83,11 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase12', static function (): void {
+miauw_eval_add('agent_status_fase13', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase12') === 0, 'Versao do agente deve apontar Fase 12.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase13') === 0, 'Versao do agente deve apontar Fase 13.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert_same('miauby-persona-2026-05-16', (string) ($status['personality_version'] ?? ''), 'Versao da persona publica mudou.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
@@ -112,14 +112,16 @@ miauw_eval_add('agent_status_fase12', static function (): void {
     miauw_eval_assert(in_array('contrato_tools_exportado', (array) ($status['features'] ?? array()), true), 'Fase 11 precisa anunciar contrato exportado de tools.');
     miauw_eval_assert(in_array('schemas_tools_no_node', (array) ($status['features'] ?? array()), true), 'Fase 11 precisa anunciar schemas enviados ao Node.');
     miauw_eval_assert(in_array('execucao_node_leitura_segura', (array) ($status['features'] ?? array()), true), 'Fase 12 precisa anunciar execucao Node de leitura segura.');
+    miauw_eval_assert(in_array('ponte_php_tools_leitura_node', (array) ($status['features'] ?? array()), true), 'Fase 13 precisa anunciar ponte PHP de leitura.');
+    miauw_eval_assert(in_array('tools_leitura_real_node', (array) ($status['features'] ?? array()), true), 'Fase 13 precisa anunciar tools reais de leitura no Node.');
     miauw_eval_assert(in_array('escrita_node_bloqueada', (array) ($status['features'] ?? array()), true), 'Fase 12 precisa anunciar escrita Node bloqueada.');
     miauw_eval_assert(in_array((string) ($status['engine'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Engine publica precisa ser valida.');
 });
 
-miauw_eval_add('fase12_contrato_tools_node', static function (): void {
+miauw_eval_add('fase13_contrato_tools_node', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase12', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 12.');
+    miauw_eval_assert_same('fase13', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 13.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
@@ -137,6 +139,8 @@ miauw_eval_add('fase12_contrato_tools_node', static function (): void {
     miauw_eval_assert(!empty($contract['pronto_agora']['eval_persona_node']), 'Fase 10 precisa marcar eval de persona Node pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['tool_contract_export']), 'Fase 11 precisa marcar export de contratos de tools pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['execucao_leitura_node']), 'Fase 12 precisa marcar execucao de leitura Node pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['ponte_php_leitura_node']), 'Fase 13 precisa marcar ponte PHP de leitura pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['tools_leitura_real_node']), 'Fase 13 precisa marcar tools reais de leitura prontas.');
     miauw_eval_assert(!empty($contract['pronto_agora']['writes_node_bloqueado']), 'Fase 12 precisa manter escrita Node bloqueada.');
 });
 
@@ -263,25 +267,49 @@ miauw_eval_add('fase6_openai_tools_batem_registry', static function (): void {
     }
 });
 
-miauw_eval_add('fase12_tool_contract_export_seguro', static function (): void {
+miauw_eval_add('fase13_tool_contract_export_seguro', static function (): void {
     $contracts = miauw_agent_tool_contract_export();
     $summary = (array) ($contracts['summary'] ?? array());
     $tools = (array) ($contracts['tools'] ?? array());
 
     miauw_eval_assert_same('miauw-tool-contracts-2026-05-16', (string) ($contracts['version'] ?? ''), 'Versao do contrato de tools mudou.');
-    miauw_eval_assert_same('fase12-node-read-tool-contracts', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 12.');
+    miauw_eval_assert_same('fase13-php-read-tool-bridge', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 13.');
     miauw_eval_assert_same('php_skill_registry', (string) ($contracts['source'] ?? ''), 'Contrato de tools deve vir do registry PHP.');
     miauw_eval_assert(empty($contracts['writes_enabled_in_node']), 'Node nao pode receber escrita liberada no contrato.');
     miauw_eval_assert_same('php', (string) ($contracts['execution_owner'] ?? ''), 'Execucao ainda deve pertencer ao PHP.');
     miauw_eval_assert_same('php', (string) ($contracts['confirmation_owner'] ?? ''), 'Confirmacao ainda deve pertencer ao PHP.');
+    miauw_eval_assert((int) ($summary['node_read_bridge_tools'] ?? 0) >= 5, 'Ponte de leitura precisa exportar tools migradas.');
     miauw_eval_assert((int) ($summary['schemas_exported'] ?? 0) >= 10, 'Poucos schemas exportados para o Node.');
     miauw_eval_assert_same(0, (int) ($summary['missing_schemas'] ?? -1), 'Existe OpenAI tool no registry sem schema exportado.');
     miauw_eval_assert_same(0, (int) ($summary['schemas_without_registry'] ?? -1), 'Existe schema de tool sem registro no registry.');
     miauw_eval_assert(isset($tools['registrar_sangria'], $tools['criar_lancamento_financeiro']), 'Tools financeiras essenciais precisam estar no contrato.');
     miauw_eval_assert(!empty($tools['registrar_sangria']['requires_confirmation']), 'Sangria precisa continuar exigindo confirmacao.');
     miauw_eval_assert(empty($tools['registrar_sangria']['writes_enabled_in_node']), 'Contrato nao pode liberar escrita Node para sangria.');
+    miauw_eval_assert(empty($tools['registrar_sangria']['node_read_bridge_enabled']), 'Sangria nao pode entrar na ponte de leitura.');
+    miauw_eval_assert(!empty($tools['buscar_codigo_comissao']['node_read_bridge_enabled']), 'Busca de codigos precisa estar liberada na ponte de leitura.');
+    miauw_eval_assert(!empty($tools['buscar_cotacao']['node_read_bridge_enabled']), 'Busca de Cotacao precisa estar liberada na ponte de leitura.');
     miauw_eval_assert(is_array($tools['registrar_sangria']['parameters'] ?? null), 'Sangria precisa exportar schema.');
     miauw_eval_assert_no_forbidden(json_encode($contracts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '', 'Contrato de tools expos termo proibido.');
+});
+
+miauw_eval_add('fase13_ponte_php_leitura_segura', static function (): void {
+    $tools = miauw_agent_node_read_tool_names();
+    $expected = array('resumo_financeiro', 'resumo_cashback', 'resumo_codigos', 'buscar_codigo_comissao', 'buscar_cotacao');
+
+    foreach ($expected as $name) {
+        miauw_eval_assert(in_array($name, $tools, true), 'Tool de leitura ausente na ponte Node: ' . $name);
+        miauw_eval_assert(miauw_agent_node_read_tool_allowed($name), 'Tool deveria estar liberada na ponte de leitura: ' . $name);
+    }
+
+    miauw_eval_assert(!in_array('registrar_sangria', $tools, true), 'Sangria nao pode entrar na ponte de leitura.');
+    miauw_eval_assert(!in_array('criar_lancamento_financeiro', $tools, true), 'Lancamento financeiro nao pode entrar na ponte de leitura.');
+    miauw_eval_assert(!in_array('buscar_cliente', $tools, true), 'Busca de cliente fica fora da primeira ponte por privacidade.');
+    miauw_eval_assert(!miauw_agent_node_read_tool_allowed('registrar_sangria'), 'Sangria jamais pode ser liberada como leitura Node.');
+
+    $result = miauw_agent_node_read_tool_result('resumo_codigos', array(), miauw_trace_new_id());
+    miauw_eval_assert(!empty($result['ok']), 'Ponte PHP de leitura precisa retornar ok para resumo_codigos.');
+    miauw_eval_assert_same(false, (bool) ($result['writes_enabled'] ?? true), 'Ponte de leitura nao pode liberar escrita.');
+    miauw_eval_assert_same('php_read_bridge', (string) ($result['source'] ?? ''), 'Ponte deve declarar origem PHP.');
 });
 
 miauw_eval_add('diagnostico_fase3_payload', static function (): void {
