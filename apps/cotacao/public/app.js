@@ -1945,6 +1945,20 @@
     input.setSelectionRange(start, end);
   }
 
+  function arrowMoveForKey(key) {
+    if (key === 'ArrowUp') return { row: -1, col: 0 };
+    if (key === 'ArrowDown') return { row: 1, col: 0 };
+    if (key === 'ArrowLeft') return { row: 0, col: -1 };
+    if (key === 'ArrowRight') return { row: 0, col: 1 };
+    return null;
+  }
+
+  function shouldCommitEditWithArrow(event) {
+    if (!state.editing || state.editing.navigationMode !== 'grid') return false;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+    return Boolean(arrowMoveForKey(event.key));
+  }
+
   async function beginEdit(rowId, columnKey, initialText = null, options = {}) {
     if (state.editing && (state.editing.rowId !== rowId || state.editing.columnKey !== columnKey)) {
       commitEdit();
@@ -1960,7 +1974,8 @@
     const input = td?.querySelector('.sheet-input');
     if (!input) return;
     const originalValue = String(row.values?.[columnKey] ?? '');
-    state.editing = { rowId, columnKey, originalValue, input };
+    const navigationMode = options.navigationMode || (initialText === null ? 'text' : 'grid');
+    state.editing = { rowId, columnKey, originalValue, input, navigationMode };
     input.readOnly = false;
     input.classList.add('is-editing');
     input.value = initialText === null ? originalValue : String(initialText);
@@ -2910,7 +2925,12 @@
     table.addEventListener('keydown', (event) => {
       if (!state.editing) return;
       if (event.isComposing) return;
-      if (event.key === 'Enter') {
+      const arrowMove = arrowMoveForKey(event.key);
+      if (arrowMove && shouldCommitEditWithArrow(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        commitEdit(arrowMove).catch(console.error);
+      } else if (event.key === 'Enter') {
         event.preventDefault();
         event.stopPropagation();
         commitEdit({ row: 1, col: 0 }).catch(console.error);

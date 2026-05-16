@@ -44,7 +44,7 @@ Tambem em 2026-05-16, eventos estruturais leves deixaram de cair automaticamente
 
 Na revisao seguinte do mesmo dia, o resize de coluna deixou de usar o canal generico `columns:changed` e passou a emitir `column:resized`. Isso evita que abas ainda com JavaScript antigo recebam o evento generico e facam `/cotacao/api/bootstrap` completo ao soltar o mouse. O auto-ajuste apos o mouseup tambem ficou limitado aos inputs da coluna redimensionada, processado em pequenos lotes por frame.
 
-Tambem em 2026-05-15, a navegacao de teclado durante edicao foi ajustada para uso operacional rapido: `Enter` salva a celula editada e desce exatamente uma linha. Em 2026-05-16, o editor voltou a priorizar edicao interna do texto: duplo clique e `F2` abrem a celula sem selecionar todo o conteudo, cliques dentro do editor posicionam o cursor e as setas movem o cursor dentro do texto.
+Tambem em 2026-05-15, a navegacao de teclado durante edicao foi ajustada para uso operacional rapido: `Enter` salva a celula editada e desce exatamente uma linha. Em 2026-05-16, o editor voltou a priorizar edicao interna do texto: duplo clique e `F2` abrem a celula sem selecionar todo o conteudo, cliques dentro do editor posicionam o cursor e as setas movem o cursor dentro do texto. Na digitacao direta a partir de uma celula selecionada, as setas confirmam o valor e movem a selecao para a celula vizinha, sem alterar o comportamento de duplo clique/`F2`.
 
 ## Historico da Cotacao PHP legada
 
