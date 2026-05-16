@@ -10,6 +10,7 @@ Decisao:
 - Usar como fonte a base preservada em `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/cotacao-data/postgres`.
 - Manter o `quote_id` antigo `c3f0cb73-435e-48f3-bc6f-42f2eb7d2b16`, com 178 linhas ativas, 11 linhas com dados, 15 colunas, 35 estilos, 2 regras e 672 eventos.
 - Guardar dumps SQL manuais em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/manual-backups/`.
+- Enquanto os containers de banco do VPS ainda estiverem com label Compose antiga `wimifarma-com-git`, fazer deploy pontual da Cotacao com `docker compose up -d --no-deps --build wimifarma-cotacao-app`, sem recriar dependencias.
 
 Motivo:
 
@@ -27,6 +28,7 @@ Riscos/cuidados:
 
 - Nao remover a base preservada nem os dumps manuais sem confirmacao clara.
 - Antes de trocar, arquivar ou recriar `cotacao-data/`, sempre confirmar os mounts com `docker inspect` e fazer dump das tabelas `cotacao_v2_*`.
+- Nao normalizar/recriar containers de banco apenas para limpar labels Compose sem janela, backup e plano de rollback.
 - Criar rotina agendada de backup fora do container para reduzir dependencia de recuperacao manual.
 
 ## 2026-05-16 - Miauby exporta contratos de tools para o Node
