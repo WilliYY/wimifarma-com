@@ -13,7 +13,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Cotacao: itens, fornecedores, categorias, precos, status, formatacao e auditoria.
 - Financeiro: fechamentos, sangrias, PIX, maquininhas, lancamentos e auditoria.
 - Tarefas: tarefas simples internas.
-- Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; a Fase 11 possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada e contratos de tools enviados do PHP para o Node sem liberar escrita direta.
+- Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; a Fase 12 possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada, contratos de tools enviados do PHP para o Node e primeira tool Node de leitura segura sem liberar escrita direta.
 - WordPress: site principal e conteudo publico.
 
 ## Arquivos, rotas e componentes envolvidos

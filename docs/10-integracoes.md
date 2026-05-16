@@ -53,6 +53,7 @@ Status operacional:
 - A Fase 9 adiciona corte controlado por `MIAUW_ENGINE`: `php` mantem o motor antigo, `node_shadow` compara Node para usuarios liberados e `node` usa Node como resposta oficial para esses usuarios, com fallback automatico para PHP se o servico falhar. Durante implantacao acelerada, `MIAUW_MAINTENANCE_MODE=true` bloqueia usuarios comuns e libera `adm`.
 - A Fase 10 adiciona contrato versionado da personalidade do Miauby (`miauby-persona-2026-05-16`) no PHP e no Node. O servico `/miauw/agent/health` informa `personality_version`, e `npm run check:persona` valida o prompt Node sem chamar a camada online.
 - A Fase 11 adiciona contratos de tools exportados pelo PHP: `miauw_agent_tool_contract_export()` consolida registry, schemas, riscos e confirmacoes, e o adaptador envia `tool_contracts` ao servico Node. O Node usa isso como contexto, mas segue sem escrita direta e sem executar tools reais.
+- A Fase 12 libera a primeira tool real executada no Node, `consultar_contrato_tool_miauby`, apenas para leitura dos contratos seguros enviados pelo PHP. O Node pode consultar nome/modulo/risco de tools auditadas, mas `writes_enabled=false` permanece e qualquer escrita/confirmacao/auditoria continua no PHP.
 
 Tabelas:
 
@@ -143,11 +144,11 @@ Direcao:
 - manter `miauw-evals.php` atualizado sempre que novas intents/tools forem adicionadas.
 - novas tools de escrita forte devem declarar risco no registry e passar pelo fluxo de confirmacao/traces antes da execucao.
 - para Cotacao, usar somente a ponte interna da V2 (`COTACAO_INTERNAL_BASE_URL` + token), evitando qualquer escrita direta nas tabelas antigas removidas.
-- antes de migrar tools reais para o servico Node/TypeScript/Agents SDK, rodar os mesmos evals contra o servico novo e manter fallback pelo `api.php` atual.
-- enquanto o servico Node nao executar tools auditadas, manter PHP como dono de login, sessao, confirmacoes e escrita forte.
+- antes de migrar tools reais de leitura para o servico Node/TypeScript/Agents SDK, rodar os mesmos evals contra o servico novo e manter fallback pelo `api.php` atual.
+- enquanto o servico Node nao executar escritas auditadas, manter PHP como dono de login, sessao, confirmacoes e escrita forte.
 - usar traces `miauw_agent_shadow_compare` e `miauw_agent_node_reply` para medir divergencia, latencia e falhas durante o corte por `adm`.
 - preservar a personalidade versionada do Miauby ao migrar tools para Node; respostas genericas, secas ou burocraticas devem virar caso de eval antes de liberar mais usuarios.
-- consumir contratos exportados pelo PHP antes de migrar qualquer tool real para o Node, mantendo o PHP como dono de confirmacao e auditoria enquanto `writes_enabled=false`.
+- consumir contratos exportados pelo PHP antes de migrar qualquer tool de escrita para o Node, mantendo o PHP como dono de confirmacao e auditoria enquanto `writes_enabled=false`.
 
 Documento especifico:
 

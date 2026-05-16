@@ -84,6 +84,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 9 do agente operacional v2: existe `MIAUW_ENGINE=php|node_shadow|node` para cortar o motor com rollback por `.env`, `MIAUW_MAINTENANCE_MODE` bloqueia usuarios comuns durante testes e `adm` fica liberado por padrao para usar o Node como resposta oficial quando configurado.
 - Miauby iniciou a Fase 10 do agente operacional v2: a personalidade do Miauby agora tem contrato versionado (`miauby-persona-2026-05-16`) no PHP, no diagnostico e no servico Node. O agente Node preserva tom de fiscal interno, humor curto, bordoes controlados e pedido minimo de contexto, e `apps/miauw-agent` possui `npm run check:persona` para evitar regressao para resposta generica.
 - Miauby iniciou a Fase 11 do agente operacional v2: o PHP exporta contratos versionados das tools OpenAI a partir do registry e envia esse contexto ao servico Node em `run`/`stream`; o Node usa isso para responder com nocao das capacidades auditadas, mas continua sem escrita direta, com confirmacoes e execucao real ainda no PHP.
+- Miauby iniciou a Fase 12 do agente operacional v2: o servico Node executa uma primeira tool real de leitura segura (`consultar_contrato_tool_miauby`) sobre os contratos enviados pelo PHP. Ela apenas consulta capacidades auditadas; escrita, confirmacao, sessao e auditoria de dados continuam no PHP.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -98,7 +99,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP
+- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP e tools Node de leitura segura
 - PostgreSQL 17 para dados da Cotacao V2
 - Redis 7 para sessoes e presenca da Cotacao V2
 

@@ -8,8 +8,8 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.0-fase11',
-  'fase11-tool-contracts',
+  '2.0-fase12',
+  'fase12-read-tool-execution',
   'PERSONALITY_VERSION',
   'miauby-persona-2026-05-16',
   'personalidade forte + solucao pratica',
@@ -18,6 +18,7 @@ const required = [
   'suporte tecnico interno',
   'Nao invente dado real',
   'toolContractsForPrompt',
+  'consultar_contrato_tool_miauby',
   'escrita_node: bloqueada',
 ];
 

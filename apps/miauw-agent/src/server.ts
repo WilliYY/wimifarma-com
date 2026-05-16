@@ -5,11 +5,12 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.5.0';
-const AGENT_VERSION = '2.0-fase11';
-const PHASE = 'fase11-tool-contracts';
+const SERVICE_VERSION = '0.6.0';
+const AGENT_VERSION = '2.0-fase12';
+const PHASE = 'fase12-read-tool-execution';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
+const NODE_EXECUTABLE_TOOLS = ['diagnostico_miauby_agente', 'consultar_contrato_tool_miauby'];
 
 const MIAUBY_PERSONALITY_SUMMARY = [
   'Fiscal interno da Wimifarma, com humor curto e utilidade primeiro.',
@@ -32,7 +33,7 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Assuntos tecnicos devem virar suporte tecnico interno: peca modulo/tela, horario, acao feita e print. Nao cite bastidor de desenvolvimento.',
   'Nunca cite Codex, ChatGPT, fornecedor de IA, chave, token, prompt interno, stack trace, endpoint interno, arquivo ou caminho de servidor.',
   'Nao escreva codigo, SQL ou comandos para operador comum. Oriente processo, tela e dado necessario.',
-  'Se usar ferramenta, use apenas diagnostico seguro e explique o resultado em linguagem operacional.',
+  'Se usar ferramenta, use apenas diagnostico seguro ou consulta de contrato de tool; explique o resultado em linguagem operacional.',
   'Feche com proximo passo curto quando couber. Humor e tempero; resolver e a refeicao.',
 ];
 
@@ -71,8 +72,10 @@ function publicStatus() {
     phase: PHASE,
     personality_version: PERSONALITY_VERSION,
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
-    mode: 'cutover-ready-tool-contracts',
+    mode: 'node-primary-safe-read-tools',
     tool_contracts: 'accepted_via_php_payload',
+    node_executable_tools: NODE_EXECUTABLE_TOOLS,
+    read_tools_enabled: true,
     runtime: 'node22-typescript',
     sdk: 'agents-sdk',
     base_path: basePath,
@@ -108,6 +111,12 @@ type SafeToolContractBundle = {
     highRiskWrites: number;
   };
   tools: SafeToolContract[];
+};
+
+type ToolContractQuery = {
+  nome?: string;
+  modulo?: string;
+  risco?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -211,6 +220,67 @@ function toolContractResponseSummary(contracts: SafeToolContractBundle | null) {
     openai_tools: contracts.summary.openaiTools,
     high_risk_writes: contracts.summary.highRiskWrites,
     writes_enabled_in_node: false,
+  };
+}
+
+function normalizeSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function querySafeToolContracts(contracts: SafeToolContractBundle | null, query: ToolContractQuery) {
+  if (!contracts) {
+    return {
+      ok: false,
+      source: 'php_tool_contracts',
+      message: 'Contrato de tools nao recebido neste pedido.',
+      writes_enabled_in_node: false,
+      matches: [],
+    };
+  }
+
+  const nameFilter = normalizeSearch(query.nome || '');
+  const moduleFilter = normalizeSearch(query.modulo || '');
+  const riskFilter = normalizeSearch(query.risco || '');
+  const matches = contracts.tools
+    .filter((item) => {
+      const nameText = normalizeSearch(`${item.name} ${item.title}`);
+      const moduleText = normalizeSearch(item.module);
+      const riskText = normalizeSearch(item.risk);
+
+      return (
+        (nameFilter === '' || nameText.includes(nameFilter)) &&
+        (moduleFilter === '' || moduleText.includes(moduleFilter)) &&
+        (riskFilter === '' || riskText.includes(riskFilter))
+      );
+    })
+    .slice(0, 8)
+    .map((item) => ({
+      name: item.name,
+      title: item.title,
+      module: item.module,
+      level: item.level,
+      risk: item.risk,
+      required: item.required,
+      local_action: item.localAction,
+      requires_confirmation: item.requiresConfirmation,
+      writes_enabled_in_node: false,
+    }));
+
+  return {
+    ok: true,
+    source: 'php_tool_contracts',
+    version: contracts.version,
+    phase: contracts.phase,
+    execution_owner: contracts.executionOwner,
+    confirmation_owner: contracts.confirmationOwner,
+    writes_enabled_in_node: false,
+    total_tools: contracts.tools.length,
+    matches,
+    note: 'Consulta segura de contrato. Execucao real, confirmacao e auditoria continuam sob controle do PHP.',
   };
 }
 
@@ -319,12 +389,33 @@ const diagnosticoAgenteTool = tool({
   },
 });
 
-const miaubyAgent = new Agent({
-  name: 'Miauby Operacional',
-  model,
-  instructions: MIAUBY_AGENT_INSTRUCTIONS.join('\n'),
-  tools: [diagnosticoAgenteTool],
-});
+function buildContratoTool(toolContracts: SafeToolContractBundle | null) {
+  return tool({
+    name: 'consultar_contrato_tool_miauby',
+    description: 'Consulta com seguranca os contratos de tools auditadas enviados pelo PHP, sem executar escrita.',
+    parameters: z.object({
+      nome: z.string().max(80).optional(),
+      modulo: z.string().max(40).optional(),
+      risco: z.string().max(40).optional(),
+    }),
+    async execute({ nome, modulo, risco }) {
+      return JSON.stringify(querySafeToolContracts(toolContracts, {
+        nome: safeShort(nome, 80),
+        modulo: safeShort(modulo, 40),
+        risco: safeShort(risco, 40),
+      }));
+    },
+  });
+}
+
+function buildMiaubyAgent(toolContracts: SafeToolContractBundle | null) {
+  return new Agent({
+    name: 'Miauby Operacional',
+    model,
+    instructions: MIAUBY_AGENT_INSTRUCTIONS.join('\n'),
+    tools: [diagnosticoAgenteTool, buildContratoTool(toolContracts)],
+  });
+}
 
 async function executeAgent(message: string, traceId: string, toolContracts: SafeToolContractBundle | null): Promise<string> {
   if (apiKey === '') {
@@ -339,7 +430,7 @@ async function executeAgent(message: string, traceId: string, toolContracts: Saf
     `mensagem_operador: ${message}`,
   ].join('\n');
 
-  const result = await run(miaubyAgent, input, {
+  const result = await run(buildMiaubyAgent(toolContracts), input, {
     maxTurns: 3,
   });
 
@@ -367,7 +458,7 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
     `mensagem_operador: ${message}`,
   ].join('\n');
 
-  const stream = await run(miaubyAgent, input, {
+  const stream = await run(buildMiaubyAgent(toolContracts), input, {
     maxTurns: 3,
     stream: true,
   });
@@ -392,6 +483,9 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
     ok: true,
     mode: 'agent_controlado',
     trace_id: traceId,
+    node_executable_tools: NODE_EXECUTABLE_TOOLS,
+    read_tools_enabled: true,
+    tool_contract_version: toolContracts?.version || '',
     text: safeText(chunks.join(''), 4000),
   });
 }
@@ -442,6 +536,8 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
       mode: 'agent_controlado',
       trace_id: traceId,
       model,
+      node_executable_tools: NODE_EXECUTABLE_TOOLS,
+      read_tools_enabled: true,
       tool_contract_version: toolContracts?.version || '',
       tool_contract_summary: toolContractResponseSummary(toolContracts),
       text,
@@ -486,6 +582,8 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
       mode: 'agent_controlado',
       trace_id: traceId,
       model,
+      node_executable_tools: NODE_EXECUTABLE_TOOLS,
+      read_tools_enabled: true,
       tool_contract_version: toolContracts?.version || '',
     });
     await streamAgent(message, traceId, res, toolContracts);

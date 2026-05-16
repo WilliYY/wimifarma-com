@@ -109,6 +109,13 @@ Miauby ja possui:
   - o servico Node aceita esses contratos como contexto operacional e informa `tool_contract_version`, mas continua com `writes_enabled=false`;
   - `/miauw/diagnostico.php` mostra resumo/checksum dos contratos de tools;
   - `site/miauw/miauw-evals.php` valida que os schemas batem com o registry, que nao existe schema solto e que a escrita Node segue bloqueada.
+- Fase 12 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase12`;
+  - o servico Node passou para `SERVICE_VERSION=0.6.0` e `PHASE=fase12-read-tool-execution`;
+  - o Node registra no health/status `node_executable_tools` com `diagnostico_miauby_agente` e `consultar_contrato_tool_miauby`;
+  - `consultar_contrato_tool_miauby` executa no Node apenas leitura segura dos contratos enviados pelo PHP, com filtro por nome, modulo ou risco;
+  - a resposta do Node informa `read_tools_enabled`, `node_executable_tools` e `tool_contract_version` para trace resumido no PHP;
+  - `writes_enabled=false` continua obrigatorio: nenhuma escrita de modulo, confirmacao, sessao ou auditoria saiu do PHP.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -191,10 +198,11 @@ Integracoes:
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
-- Validar o uso dos contratos de tools do Node com traces reais do `adm` antes de migrar qualquer execucao real.
-- Ampliar a Fase 6/7/8/9/10/11 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
+- Validar a tool Node de leitura segura com traces reais do `adm` e de funcionarios liberados.
+- Ampliar a Fase 6/7/8/9/10/11/12 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
-- Migrar execucao real das tools de alto valor para o Node, preservando confirmacao e auditoria no PHP enquanto a escrita nao estiver duplicada com seguranca.
+- Migrar tools de leitura real uma por vez para o Node por ponte controlada, preservando auditoria no PHP.
+- Migrar execucao real das tools de alto valor para o Node somente depois da ponte de leitura, preservando confirmacao e auditoria no PHP enquanto a escrita nao estiver duplicada com seguranca.
 
 ## Como pode evoluir
 
@@ -209,4 +217,4 @@ Integracoes:
 - Fase 9: ligar manutencao para usuarios comuns, usar `MIAUW_ENGINE=node_shadow|node` apenas para `adm`, validar traces e manter rollback por `.env`.
 - Fase 10: preservar a personalidade do Miauby como contrato versionado no PHP/Node, com eval local para impedir resposta generica durante o corte para agente.
 - Fase 11: exportar schemas de tools para o Node a partir do registry PHP e usar esse contrato no agente sem liberar escrita direta. Iniciada.
-- Fase 12: migrar uma tool por vez para execucao real auditada no Node, mantendo confirmacao para acoes fortes e rollback pelo PHP.
+- Fase 12: executar no Node a primeira tool real de leitura segura sobre contratos auditados, mantendo escrita, confirmacao e rollback no PHP. Iniciada.

@@ -83,11 +83,11 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase11', static function (): void {
+miauw_eval_add('agent_status_fase12', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase11') === 0, 'Versao do agente deve apontar Fase 11.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase12') === 0, 'Versao do agente deve apontar Fase 12.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert_same('miauby-persona-2026-05-16', (string) ($status['personality_version'] ?? ''), 'Versao da persona publica mudou.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
@@ -111,13 +111,15 @@ miauw_eval_add('agent_status_fase11', static function (): void {
     miauw_eval_assert(in_array('eval_personalidade_node', (array) ($status['features'] ?? array()), true), 'Fase 10 precisa anunciar eval de personalidade Node.');
     miauw_eval_assert(in_array('contrato_tools_exportado', (array) ($status['features'] ?? array()), true), 'Fase 11 precisa anunciar contrato exportado de tools.');
     miauw_eval_assert(in_array('schemas_tools_no_node', (array) ($status['features'] ?? array()), true), 'Fase 11 precisa anunciar schemas enviados ao Node.');
+    miauw_eval_assert(in_array('execucao_node_leitura_segura', (array) ($status['features'] ?? array()), true), 'Fase 12 precisa anunciar execucao Node de leitura segura.');
+    miauw_eval_assert(in_array('escrita_node_bloqueada', (array) ($status['features'] ?? array()), true), 'Fase 12 precisa anunciar escrita Node bloqueada.');
     miauw_eval_assert(in_array((string) ($status['engine'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Engine publica precisa ser valida.');
 });
 
-miauw_eval_add('fase11_contrato_tools_node', static function (): void {
+miauw_eval_add('fase12_contrato_tools_node', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase11', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 11.');
+    miauw_eval_assert_same('fase12', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 12.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
@@ -134,6 +136,8 @@ miauw_eval_add('fase11_contrato_tools_node', static function (): void {
     miauw_eval_assert(!empty($contract['pronto_agora']['persona_versionada']), 'Fase 10 precisa marcar persona versionada pronta.');
     miauw_eval_assert(!empty($contract['pronto_agora']['eval_persona_node']), 'Fase 10 precisa marcar eval de persona Node pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['tool_contract_export']), 'Fase 11 precisa marcar export de contratos de tools pronto.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['execucao_leitura_node']), 'Fase 12 precisa marcar execucao de leitura Node pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['writes_node_bloqueado']), 'Fase 12 precisa manter escrita Node bloqueada.');
 });
 
 miauw_eval_add('fase10_persona_contract_preservado', static function (): void {
@@ -259,13 +263,13 @@ miauw_eval_add('fase6_openai_tools_batem_registry', static function (): void {
     }
 });
 
-miauw_eval_add('fase11_tool_contract_export_seguro', static function (): void {
+miauw_eval_add('fase12_tool_contract_export_seguro', static function (): void {
     $contracts = miauw_agent_tool_contract_export();
     $summary = (array) ($contracts['summary'] ?? array());
     $tools = (array) ($contracts['tools'] ?? array());
 
     miauw_eval_assert_same('miauw-tool-contracts-2026-05-16', (string) ($contracts['version'] ?? ''), 'Versao do contrato de tools mudou.');
-    miauw_eval_assert_same('fase11-tool-contract-export', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 11.');
+    miauw_eval_assert_same('fase12-node-read-tool-contracts', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 12.');
     miauw_eval_assert_same('php_skill_registry', (string) ($contracts['source'] ?? ''), 'Contrato de tools deve vir do registry PHP.');
     miauw_eval_assert(empty($contracts['writes_enabled_in_node']), 'Node nao pode receber escrita liberada no contrato.');
     miauw_eval_assert_same('php', (string) ($contracts['execution_owner'] ?? ''), 'Execucao ainda deve pertencer ao PHP.');

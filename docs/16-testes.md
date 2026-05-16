@@ -58,6 +58,7 @@ Ele valida:
 - Fase 9 do Miauby: status publico anuncia manutencao/engine switch, diagnostico inclui `agent_runtime`, evals validam engine em lista fechada e `adm` liberado para manutencao/corte.
 - Fase 10 do Miauby: persona preservada, diagnostico inclui contrato da voz e `apps/miauw-agent` valida `npm run check:persona` sem chamada online.
 - Fase 11 do Miauby: status publico anuncia contratos de tools exportados, contrato aponta `fase11`, diagnostico inclui resumo/checksum dos contratos e o Node aceita `tool_contracts` sem liberar escrita direta.
+- Fase 12 do Miauby: status publico anuncia execucao Node de leitura segura, contrato aponta `fase12`, o export de contracts aponta `fase12-node-read-tool-contracts` e o Node lista `consultar_contrato_tool_miauby` em `node_executable_tools`.
 
 Rodar pelo container:
 
@@ -81,7 +82,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 
 - A fase atual prioriza smoke tests por causa da migracao.
 - O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
-- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5, as regras operacionais ampliadas da Fase 6, o contrato/status da Fase 7/8/9, o contrato de personalidade da Fase 10 e os contratos de tools da Fase 11.
+- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5, as regras operacionais ampliadas da Fase 6, o contrato/status da Fase 7/8/9, o contrato de personalidade da Fase 10, os contratos de tools da Fase 11 e a tool Node de leitura segura da Fase 12.
 
 ## Riscos ao alterar
 
@@ -97,7 +98,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Adicionar testes de integridade para Cotacao e Financeiro.
 - Adicionar teste de seguranca basico para segredos em Git.
 - Ampliar evals do Miauby para alertas, memoria, Farmacia Popular, cashback, erros comuns reais de operador e cenarios do futuro servico Node/TypeScript.
-- Ampliar evals do Miauby para usar o contrato de tools em chamadas controladas ao Node sem executar escrita real.
+- Ampliar evals do Miauby para usar o contrato de tools em chamadas controladas ao Node e verificar chamadas da `consultar_contrato_tool_miauby` sem executar escrita real.
 - Criar evals online opcionais que chamem o servico `wimifarma-miauw-agent` em modo sombra/primario controlado e comparem a resposta com o PHP antes de liberar usuarios alem de `adm`.
 
 ## Evolucao futura

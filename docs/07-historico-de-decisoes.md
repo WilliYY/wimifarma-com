@@ -2,6 +2,35 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-16 - Miauby executa primeira tool Node de leitura segura
+
+Decisao:
+
+- Criar a Fase 12 do Miauby com `MIAUW_AGENT_VERSION=2.0-fase12`.
+- Subir `apps/miauw-agent` para `SERVICE_VERSION=0.6.0` e `PHASE=fase12-read-tool-execution`.
+- Adicionar a tool Node `consultar_contrato_tool_miauby`, que consulta somente os contratos de tools enviados pelo PHP.
+- Expor `node_executable_tools` e `read_tools_enabled` em health/status/respostas do servico Node.
+- Manter `writes_enabled=false`: login, sessao, confirmacao, auditoria e qualquer escrita real continuam no PHP.
+
+Motivo:
+
+- Avancar o corte do Miauby para o motor Node com uma execucao real de baixo risco, sem duplicar regras de negocio nem liberar gravacao direta antes de existir ponte auditada para cada tool.
+
+Impacto:
+
+- `apps/miauw-agent/`
+- `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-evals.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- A tool Node da Fase 12 consulta apenas contratos seguros; nao deve consultar banco, executar SQL, gravar modulo ou confirmar acao.
+- Antes de migrar uma tool de leitura real, criar ponte controlada com auditoria PHP e evals equivalentes.
+- Acoes fortes continuam exigindo confirmacao humana e rollback por `MIAUW_ENGINE=php`.
+
 ## 2026-05-16 - Cotacao V2 restaurada de volume preservado
 
 Decisao:

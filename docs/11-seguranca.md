@@ -25,6 +25,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 
 - A Fase 10 preserva a personalidade do Miauby no Node sem relaxar guardrails: humor e bordoes nao autorizam inventar dado, expor bastidor ou executar acao forte sem confirmacao.
 - A Fase 11 envia contratos de tools do PHP para o Node como contexto seguro. Esses contratos nao carregam segredos, nao liberam escrita direta no Node e mantem `execution_owner`/`confirmation_owner` no PHP.
+- A Fase 12 permite ao Node executar somente `consultar_contrato_tool_miauby`, uma tool de leitura segura sobre contratos ja sanitizados. Ela nao consulta banco, nao grava dados e nao muda `writes_enabled=false`.
 
 ## Arquivos envolvidos
 
