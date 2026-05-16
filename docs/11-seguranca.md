@@ -24,6 +24,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Fase 9 permite usar o Node como motor oficial apenas por `MIAUW_ENGINE=node` e somente para usuarios em `MIAUW_AGENT_ENGINE_ALLOWED_USERS`; `MIAUW_MAINTENANCE_MODE=true` bloqueia envio de usuarios comuns durante o corte acelerado.
 
 - A Fase 10 preserva a personalidade do Miauby no Node sem relaxar guardrails: humor e bordoes nao autorizam inventar dado, expor bastidor ou executar acao forte sem confirmacao.
+- A Fase 11 envia contratos de tools do PHP para o Node como contexto seguro. Esses contratos nao carregam segredos, nao liberam escrita direta no Node e mantem `execution_owner`/`confirmation_owner` no PHP.
 
 ## Arquivos envolvidos
 
@@ -56,6 +57,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
 - Nao versionar `MIAUW_AGENT_INTERNAL_TOKEN`; se vazar, trocar no `.env` do VPS e reiniciar web/Miauby agente.
 - O servico Miauby agente nao deve executar escrita real nem expor payload bruto. Mesmo com `MIAUW_ENGINE=node`, confirmacoes, sessoes e escritas fortes continuam controladas pelo PHP ate cada tool ser migrada e auditada separadamente.
+- Contratos de tools enviados ao Node devem permanecer sanitizados: sem token, chave, SQL bruto, payload externo ou stack trace; schemas podem descrever parametros operacionais, mas nao segredo de ambiente.
 - Rollback de seguranca do Miauby: voltar `MIAUW_ENGINE=php`, desligar `MIAUW_MAINTENANCE_MODE` se a equipe ja puder usar e reiniciar `wimifarma-com-web`.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
 

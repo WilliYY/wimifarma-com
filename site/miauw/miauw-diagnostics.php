@@ -385,6 +385,7 @@ function miauw_diagnostics_summary(bool $runScan = true): array
     $memoryCounts = miauw_diagnostics_review_counts('miauw_memorias');
     $patternCounts = miauw_diagnostics_review_counts('miauw_padroes');
     $skillSummary = function_exists('miauw_skill_registry_summary') ? miauw_skill_registry_summary() : array();
+    $toolContracts = function_exists('miauw_agent_tool_contract_export') ? miauw_agent_tool_contract_export() : array();
     $activeAlerts = function_exists('miauw_intelligence_active_alert_count') ? miauw_intelligence_active_alert_count() : 0;
 
     return array(
@@ -394,6 +395,12 @@ function miauw_diagnostics_summary(bool $runScan = true): array
         'agent_service' => miauw_diagnostics_agent_service_status(),
         'agent_shadow' => function_exists('miauw_agent_shadow_status') ? miauw_agent_shadow_status() : array(),
         'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status(function_exists('current_user') ? current_user() : null) : array(),
+        'tool_contracts' => array(
+            'version' => (string) ($toolContracts['version'] ?? ''),
+            'phase' => (string) ($toolContracts['phase'] ?? ''),
+            'checksum' => (string) ($toolContracts['checksum'] ?? ''),
+            'summary' => is_array($toolContracts['summary'] ?? null) ? $toolContracts['summary'] : array(),
+        ),
         'api' => function_exists('miauw_openai_public_status') ? miauw_openai_public_status() : array(),
         'models' => array(
             'fast' => defined('MIAUW_MODEL_FAST') ? MIAUW_MODEL_FAST : '',

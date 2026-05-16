@@ -8,8 +8,8 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.0-fase10',
-  'fase10-persona-evolutiva',
+  '2.0-fase11',
+  'fase11-tool-contracts',
   'PERSONALITY_VERSION',
   'miauby-persona-2026-05-16',
   'personalidade forte + solucao pratica',
@@ -17,6 +17,8 @@ const required = [
   'fiscal interno',
   'suporte tecnico interno',
   'Nao invente dado real',
+  'toolContractsForPrompt',
+  'escrita_node: bloqueada',
 ];
 
 const forbiddenInInstructions = [

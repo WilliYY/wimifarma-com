@@ -102,6 +102,13 @@ Miauby ja possui:
   - `GET /miauw/agent/health` expoe `personality_version` e `personality_features` sem segredo;
   - `npm run check:persona` valida localmente o contrato da voz do Miauby sem chamar API online;
   - `/miauw/diagnostico.php` mostra o contrato da personalidade para orientar revisoes futuras.
+- Fase 11 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase11`;
+  - `miauw_agent_tool_contract_export()` exporta contratos versionados das tools OpenAI a partir do registry PHP, incluindo modulo, nivel, risco, confirmacao, dono da execucao, schema e resumo seguro;
+  - o adaptador PHP envia `tool_contracts` em `POST /miauw/agent/run` e `POST /miauw/agent/stream`;
+  - o servico Node aceita esses contratos como contexto operacional e informa `tool_contract_version`, mas continua com `writes_enabled=false`;
+  - `/miauw/diagnostico.php` mostra resumo/checksum dos contratos de tools;
+  - `site/miauw/miauw-evals.php` valida que os schemas batem com o registry, que nao existe schema solto e que a escrita Node segue bloqueada.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -162,6 +169,7 @@ Integracoes:
   - sugestao: detecta padroes e propoe proximo passo;
   - escrita: altera dados somente com validacao e auditoria.
 - Usar `miauw_skill_registry()` antes de adicionar novas tools soltas.
+- Usar `miauw_agent_tool_contract_export()` como ponte de schema para o Node; nao duplicar manualmente parametros, riscos ou confirmacoes no servico agente.
 - Manter avaliacoes simples de skills em `site/miauw/miauw-evals.php`: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
 - Manter a tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
@@ -183,8 +191,8 @@ Integracoes:
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
-- Exportar schemas das tools do registry PHP para o servico Node sem duplicar regra de negocio.
-- Ampliar a Fase 6/7/8/9/10 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
+- Validar o uso dos contratos de tools do Node com traces reais do `adm` antes de migrar qualquer execucao real.
+- Ampliar a Fase 6/7/8/9/10/11 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 - Migrar execucao real das tools de alto valor para o Node, preservando confirmacao e auditoria no PHP enquanto a escrita nao estiver duplicada com seguranca.
 
@@ -200,4 +208,5 @@ Integracoes:
 - Fase 8: criar adaptador PHP -> servico sombra, comparar respostas e traces em paralelo, e so depois planejar corte controlado do motor principal. Iniciada com adaptador desligado por padrao e traces de comparacao.
 - Fase 9: ligar manutencao para usuarios comuns, usar `MIAUW_ENGINE=node_shadow|node` apenas para `adm`, validar traces e manter rollback por `.env`.
 - Fase 10: preservar a personalidade do Miauby como contrato versionado no PHP/Node, com eval local para impedir resposta generica durante o corte para agente.
-- Fase 11: exportar schemas de tools para o Node e migrar uma tool por vez para execucao real auditada, mantendo confirmacao para acoes fortes.
+- Fase 11: exportar schemas de tools para o Node a partir do registry PHP e usar esse contrato no agente sem liberar escrita direta. Iniciada.
+- Fase 12: migrar uma tool por vez para execucao real auditada no Node, mantendo confirmacao para acoes fortes e rollback pelo PHP.

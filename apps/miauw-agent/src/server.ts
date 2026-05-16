@@ -5,9 +5,9 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.4.0';
-const AGENT_VERSION = '2.0-fase10';
-const PHASE = 'fase10-persona-evolutiva';
+const SERVICE_VERSION = '0.5.0';
+const AGENT_VERSION = '2.0-fase11';
+const PHASE = 'fase11-tool-contracts';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 
@@ -71,7 +71,8 @@ function publicStatus() {
     phase: PHASE,
     personality_version: PERSONALITY_VERSION,
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
-    mode: 'cutover-ready-persona',
+    mode: 'cutover-ready-tool-contracts',
+    tool_contracts: 'accepted_via_php_payload',
     runtime: 'node22-typescript',
     sdk: 'agents-sdk',
     base_path: basePath,
@@ -79,6 +80,137 @@ function publicStatus() {
     api_configured: apiKey !== '',
     internal_token_configured: internalToken !== '',
     writes_enabled: false,
+  };
+}
+
+type SafeToolContract = {
+  name: string;
+  title: string;
+  module: string;
+  level: string;
+  risk: string;
+  required: string[];
+  localAction: boolean;
+  requiresConfirmation: boolean;
+  writesEnabledInNode: boolean;
+};
+
+type SafeToolContractBundle = {
+  version: string;
+  phase: string;
+  checksum: string;
+  writesEnabledInNode: boolean;
+  executionOwner: string;
+  confirmationOwner: string;
+  summary: {
+    openaiTools: number;
+    schemasExported: number;
+    highRiskWrites: number;
+  };
+  tools: SafeToolContract[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function safeShort(value: unknown, limit = 80): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return redactSecrets(value).replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function safeStringArray(value: unknown, limit = 12): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => safeShort(item, 50))
+    .filter((item) => item !== '')
+    .slice(0, limit);
+}
+
+function safeToolContracts(value: unknown): SafeToolContractBundle | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const rawTools = isRecord(value.tools) ? value.tools : {};
+  const summary = isRecord(value.summary) ? value.summary : {};
+  const tools: SafeToolContract[] = [];
+
+  for (const [name, rawTool] of Object.entries(rawTools).slice(0, 40)) {
+    if (!isRecord(rawTool)) {
+      continue;
+    }
+
+    tools.push({
+      name: safeShort(rawTool.name, 80) || safeShort(name, 80),
+      title: safeShort(rawTool.title, 120) || safeShort(name, 80),
+      module: safeShort(rawTool.module, 40) || 'sistema',
+      level: safeShort(rawTool.level, 40) || 'leitura',
+      risk: safeShort(rawTool.risk, 40) || 'baixo',
+      required: safeStringArray(rawTool.required, 12),
+      localAction: rawTool.local_action === true,
+      requiresConfirmation: rawTool.requires_confirmation === true,
+      writesEnabledInNode: false,
+    });
+  }
+
+  return {
+    version: safeShort(value.version, 80),
+    phase: safeShort(value.phase, 80),
+    checksum: safeShort(value.checksum, 80),
+    writesEnabledInNode: false,
+    executionOwner: safeShort(value.execution_owner, 40) || 'php',
+    confirmationOwner: safeShort(value.confirmation_owner, 40) || 'php',
+    summary: {
+      openaiTools: typeof summary.openai_tools === 'number' && Number.isFinite(summary.openai_tools) ? summary.openai_tools : tools.length,
+      schemasExported: typeof summary.schemas_exported === 'number' && Number.isFinite(summary.schemas_exported) ? summary.schemas_exported : tools.length,
+      highRiskWrites: typeof summary.high_risk_writes === 'number' && Number.isFinite(summary.high_risk_writes) ? summary.high_risk_writes : 0,
+    },
+    tools,
+  };
+}
+
+function toolContractsForPrompt(contracts: SafeToolContractBundle | null): string {
+  if (!contracts) {
+    return [
+      'contrato_tools_php: nao recebido neste pedido.',
+      'Regra: mesmo assim, nao afirme que executou tool. Escrita real continua bloqueada neste servico.',
+    ].join('\n');
+  }
+
+  const lines = [
+    `contrato_tools_php: ${contracts.version || 'sem-versao'} (${contracts.phase || 'sem-fase'})`,
+    `dono_execucao: ${contracts.executionOwner}; dono_confirmacao: ${contracts.confirmationOwner}; escrita_node: bloqueada`,
+    `schemas_recebidos: ${contracts.summary.schemasExported}/${contracts.summary.openaiTools}; escritas_alto_risco: ${contracts.summary.highRiskWrites}`,
+    'Use este contrato apenas para saber capacidades auditadas. Se precisar executar, explique que o PHP/fluxo operacional deve confirmar e executar.',
+  ];
+
+  for (const item of contracts.tools.slice(0, 16)) {
+    const required = item.required.length > 0 ? ` obrigatorios=${item.required.join(',')}` : '';
+    const confirmation = item.requiresConfirmation ? ' confirmacao=sim' : ' confirmacao=nao';
+    lines.push(`tool:${item.name} modulo=${item.module} nivel=${item.level} risco=${item.risk}${required}${confirmation}`);
+  }
+
+  return lines.join('\n');
+}
+
+function toolContractResponseSummary(contracts: SafeToolContractBundle | null) {
+  if (!contracts) {
+    return null;
+  }
+
+  return {
+    phase: contracts.phase,
+    schemas_exported: contracts.summary.schemasExported,
+    openai_tools: contracts.summary.openaiTools,
+    high_risk_writes: contracts.summary.highRiskWrites,
+    writes_enabled_in_node: false,
   };
 }
 
@@ -194,7 +326,7 @@ const miaubyAgent = new Agent({
   tools: [diagnosticoAgenteTool],
 });
 
-async function executeAgent(message: string, traceId: string): Promise<string> {
+async function executeAgent(message: string, traceId: string, toolContracts: SafeToolContractBundle | null): Promise<string> {
   if (apiKey === '') {
     throw new Error('api_key_missing');
   }
@@ -203,6 +335,7 @@ async function executeAgent(message: string, traceId: string): Promise<string> {
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
     `personalidade: ${PERSONALITY_VERSION}`,
+    toolContractsForPrompt(toolContracts),
     `mensagem_operador: ${message}`,
   ].join('\n');
 
@@ -218,7 +351,7 @@ function sendSse(res: Response, event: string, data: unknown): void {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-async function streamAgent(message: string, traceId: string, res: Response): Promise<void> {
+async function streamAgent(message: string, traceId: string, res: Response, toolContracts: SafeToolContractBundle | null): Promise<void> {
   if (apiKey === '') {
     sendSse(res, 'error', {
       message: 'Servico agente sem credencial online configurada.',
@@ -230,6 +363,7 @@ async function streamAgent(message: string, traceId: string, res: Response): Pro
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
     `personalidade: ${PERSONALITY_VERSION}`,
+    toolContractsForPrompt(toolContracts),
     `mensagem_operador: ${message}`,
   ].join('\n');
 
@@ -264,7 +398,7 @@ async function streamAgent(message: string, traceId: string, res: Response): Pro
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '64kb' }));
+app.use(express.json({ limit: '128kb' }));
 app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (error instanceof SyntaxError) {
     res.status(400).json({
@@ -290,6 +424,7 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   const startedAt = Date.now();
   const traceId = safeText(req.body?.trace_id, 80) || crypto.randomUUID().replace(/-/g, '');
   const message = safeText(req.body?.message, 4000);
+  const toolContracts = safeToolContracts(req.body?.tool_contracts);
 
   if (message === '') {
     res.status(400).json({
@@ -301,12 +436,14 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   }
 
   try {
-    const text = await executeAgent(message, traceId);
+    const text = await executeAgent(message, traceId, toolContracts);
     res.json({
       ok: true,
       mode: 'agent_controlado',
       trace_id: traceId,
       model,
+      tool_contract_version: toolContracts?.version || '',
+      tool_contract_summary: toolContractResponseSummary(toolContracts),
       text,
       duration_ms: Date.now() - startedAt,
     });
@@ -325,6 +462,7 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
 app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
   const traceId = safeText(req.body?.trace_id, 80) || crypto.randomUUID().replace(/-/g, '');
   const message = safeText(req.body?.message, 4000);
+  const toolContracts = safeToolContracts(req.body?.tool_contracts);
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -348,8 +486,9 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
       mode: 'agent_controlado',
       trace_id: traceId,
       model,
+      tool_contract_version: toolContracts?.version || '',
     });
-    await streamAgent(message, traceId, res);
+    await streamAgent(message, traceId, res, toolContracts);
   } catch (error) {
     sendSse(res, 'error', {
       error: 'agent_stream_failed',

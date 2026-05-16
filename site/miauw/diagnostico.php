@@ -43,6 +43,7 @@ $nextPhase = $summary['next_phase'] ?? array();
 $agentService = $summary['agent_service'] ?? array();
 $agentShadow = $summary['agent_shadow'] ?? array();
 $agentRuntime = $summary['agent_runtime'] ?? array();
+$toolContracts = $summary['tool_contracts'] ?? array();
 $api = $summary['api'] ?? array();
 $skills = $summary['skills'] ?? array();
 $models = $summary['models'] ?? array();
@@ -158,7 +159,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 10</span>
+                    <span class="diag-kicker">Fase 11</span>
                     <h1>Diagnostico do Miauby</h1>
                     <p>Saude, persona, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>
@@ -222,6 +223,12 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <strong>Preservada</strong>
                 <p><?php echo e((string) ($personality['version'] ?? ($agent['personality_version'] ?? ''))); ?> | voz operacional versionada.</p>
             </article>
+            <article class="diag-card">
+                <span>Contratos tools</span>
+                <?php $toolContractSummary = is_array($toolContracts['summary'] ?? null) ? $toolContracts['summary'] : array(); ?>
+                <strong><?php echo e((string) ($toolContractSummary['schemas_exported'] ?? 0)); ?></strong>
+                <p><?php echo e((string) ($toolContracts['phase'] ?? 'fase11')); ?> | escrita Node bloqueada.</p>
+            </article>
         </section>
 
         <section class="diag-two">
@@ -260,7 +267,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
         <section class="diag-panel">
             <div class="diag-panel-head">
                 <div>
-                    <span>Fase 10</span>
+                    <span>Fase 11</span>
                     <h2>Contrato do servico agente</h2>
                 </div>
                 <p><?php echo e((string) ($nextPhase['runtime'] ?? '')); ?></p>
@@ -275,6 +282,22 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <?php foreach ((array) ($nextPhase['pronto_agora'] ?? array()) as $name => $ready) : ?>
                     <span><?php echo e((string) $name); ?>: <?php echo !empty($ready) ? 'pronto' : 'pendente'; ?></span>
                 <?php endforeach; ?>
+            </div>
+        </section>
+
+        <section class="diag-panel">
+            <div class="diag-panel-head">
+                <div>
+                    <span>Tools</span>
+                    <h2>Contrato exportado para o Node</h2>
+                </div>
+                <p><?php echo e((string) ($toolContracts['version'] ?? '')); ?></p>
+            </div>
+            <div class="diag-list compact">
+                <?php $toolContractSummary = is_array($toolContracts['summary'] ?? null) ? $toolContracts['summary'] : array(); ?>
+                <p><strong>Schemas</strong><span><?php echo e((string) ($toolContractSummary['schemas_exported'] ?? 0)); ?> de <?php echo e((string) ($toolContractSummary['openai_tools'] ?? 0)); ?> tool(s) online exportadas pelo PHP</span></p>
+                <p><strong>Dono</strong><span>PHP executa, PHP confirma, Node recebe contrato e continua sem escrita direta</span></p>
+                <p><strong>Checksum</strong><span><?php echo e(substr((string) ($toolContracts['checksum'] ?? ''), 0, 16)); ?></span></p>
             </div>
         </section>
 

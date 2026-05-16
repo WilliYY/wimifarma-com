@@ -55,15 +55,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260516b');
+    define('MIAUW_VERSION', '20260516c');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase10');
+    define('MIAUW_AGENT_VERSION', '2.0-fase11');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-persona-evolutiva');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-tool-contracts');
 }
 
 if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
@@ -516,6 +516,8 @@ function miauw_agent_public_status(): array
             'node_primary_adm_controlado',
             'contrato_persona_node',
             'eval_personalidade_node',
+            'contrato_tools_exportado',
+            'schemas_tools_no_node',
         ),
     );
 }
@@ -555,18 +557,19 @@ function miauw_agent_personality_contract(): array
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase10',
-        'proxima_fase' => 'corte_progressivo_de_tools_no_node_com_persona_validada',
+        'fase_atual' => 'fase11',
+        'proxima_fase' => 'migracao_progressiva_de_execucao_real_por_tool',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => miauw_agent_engine(),
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente, preservando a persona versionada do Miauby.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente, preservando a persona versionada do Miauby e recebendo contratos de tools exportados pelo registry PHP.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
             'persona_versionada' => function_exists('miauw_agent_personality_contract'),
             'eval_persona_node' => true,
+            'tool_contract_export' => function_exists('miauw_agent_tool_contract_export'),
             'traces_por_conversa' => true,
             'confirmacao_acoes_fortes' => true,
             'evals_locais' => is_file(__DIR__ . '/miauw-evals.php'),
@@ -578,8 +581,8 @@ function miauw_agent_next_phase_contract(): array
             'manutencao_adm' => true,
         ),
         'pendencias' => array(
-            'Exportar schemas das tools a partir do registry atual.',
-            'Migrar execucao real das tools para o servico Node com confirmacao antes de escrita.',
+            'Validar respostas do Node usando os contratos de tools em mais traces reais do adm.',
+            'Migrar execucao real das tools para o servico Node uma por vez, com confirmacao antes de escrita.',
             'Rodar os mesmos evals contra o servico Node em modo primario.',
             'Coletar traces do usuario adm antes de liberar outros funcionarios.',
             'Definir corte progressivo por skill quando o Node estiver gravando com auditoria completa.',
@@ -731,6 +734,9 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
         'trace_id' => miauw_substr($traceId, 0, 80),
         'message' => miauw_substr($message, 0, 4000),
     );
+    if (function_exists('miauw_agent_tool_contract_export')) {
+        $payload['tool_contracts'] = miauw_agent_tool_contract_export();
+    }
 
     $ch = curl_init($url);
     curl_setopt_array($ch, array(
@@ -871,6 +877,7 @@ function miauw_agent_shadow_compare(
                 'php_model' => $phpModel,
                 'shadow_model' => $shadowModel,
                 'shadow_trace_id' => (string) ($data['trace_id'] ?? $traceId),
+                'tool_contract_version' => (string) ($data['tool_contract_version'] ?? ''),
                 'php_chars' => miauw_strlen($phpReply),
                 'shadow_chars' => miauw_strlen($shadowText),
                 'same_text' => $sameText,
@@ -963,6 +970,7 @@ function miauw_agent_node_reply(int $conversationId, string $message, bool $widg
             'engine' => 'node',
             'node_trace_id' => (string) ($data['trace_id'] ?? $traceId),
             'node_model' => (string) ($data['model'] ?? ''),
+            'tool_contract_version' => (string) ($data['tool_contract_version'] ?? ''),
             'response_chars' => miauw_strlen($text),
         ),
     ));
@@ -3191,6 +3199,118 @@ function miauw_openai_tools(): array
                 'additionalProperties' => false,
             ),
         ),
+    );
+}
+
+function miauw_openai_tools_by_name(): array
+{
+    $indexed = array();
+
+    foreach (miauw_openai_tools() as $tool) {
+        if (!is_array($tool)) {
+            continue;
+        }
+
+        $name = trim((string) ($tool['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+
+        $indexed[$name] = $tool;
+    }
+
+    ksort($indexed);
+
+    return $indexed;
+}
+
+function miauw_agent_tool_contract_export(): array
+{
+    $registry = function_exists('miauw_skill_registry_public') ? miauw_skill_registry_public() : array();
+    $toolsByName = miauw_openai_tools_by_name();
+    $contracts = array();
+    $registryOpenAiNames = array();
+    $missingSchemas = array();
+    $withoutRegistry = array();
+    $highRiskWrites = 0;
+
+    foreach ($registry as $name => $meta) {
+        if (!empty($meta['openai_tool'])) {
+            $registryOpenAiNames[] = (string) $name;
+        }
+
+        if (
+            (string) ($meta['nivel'] ?? '') === 'escrita'
+            && (string) ($meta['risco'] ?? '') === 'alto'
+            && !empty($meta['local_action'])
+        ) {
+            $highRiskWrites++;
+        }
+    }
+
+    foreach ($registryOpenAiNames as $name) {
+        $tool = is_array($toolsByName[$name] ?? null) ? $toolsByName[$name] : null;
+        $meta = is_array($registry[$name] ?? null) ? $registry[$name] : array();
+        if (!$tool) {
+            $missingSchemas[] = $name;
+            continue;
+        }
+
+        $params = is_array($tool['parameters'] ?? null) ? $tool['parameters'] : array();
+        $contracts[$name] = array(
+            'name' => $name,
+            'title' => (string) ($meta['titulo'] ?? $name),
+            'module' => (string) ($meta['modulo'] ?? 'sistema'),
+            'level' => (string) ($meta['nivel'] ?? 'leitura'),
+            'risk' => (string) ($meta['risco'] ?? 'baixo'),
+            'permission' => (string) ($meta['permissao'] ?? 'autenticado'),
+            'executor_available' => !empty($meta['executor_disponivel']),
+            'local_action' => !empty($meta['local_action']),
+            'requires_confirmation' => miauw_tool_requires_confirmation((string) $name),
+            'writes_enabled_in_node' => false,
+            'execution_owner' => 'php',
+            'description' => (string) ($tool['description'] ?? ($meta['saida'] ?? '')),
+            'parameters' => $params,
+            'required' => array_values((array) ($params['required'] ?? array())),
+            'effects' => array_values((array) ($meta['efeitos'] ?? array())),
+            'audit' => array_values((array) ($meta['auditoria'] ?? array())),
+        );
+    }
+
+    foreach ($toolsByName as $name => $_tool) {
+        if (!isset($registry[$name])) {
+            $withoutRegistry[] = (string) $name;
+        }
+    }
+
+    ksort($contracts);
+    sort($missingSchemas);
+    sort($withoutRegistry);
+
+    $encoded = json_encode($contracts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+    $checksum = is_string($encoded) ? hash('sha256', $encoded) : '';
+
+    return array(
+        'version' => 'miauw-tool-contracts-2026-05-16',
+        'agent_version' => miauw_constant_string('MIAUW_AGENT_VERSION', ''),
+        'phase' => 'fase11-tool-contract-export',
+        'source' => 'php_skill_registry',
+        'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
+        'writes_enabled_in_node' => false,
+        'execution_owner' => 'php',
+        'confirmation_owner' => 'php',
+        'checksum' => $checksum,
+        'summary' => array(
+            'registry_total' => count($registry),
+            'openai_tools' => count($registryOpenAiNames),
+            'schemas_exported' => count($contracts),
+            'missing_schemas' => count($missingSchemas),
+            'schemas_without_registry' => count($withoutRegistry),
+            'high_risk_writes' => $highRiskWrites,
+        ),
+        'missing_schemas' => $missingSchemas,
+        'schemas_without_registry' => $withoutRegistry,
+        'tools' => $contracts,
     );
 }
 

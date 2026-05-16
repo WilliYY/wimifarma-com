@@ -2,6 +2,36 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-16 - Miauby exporta contratos de tools para o Node
+
+Decisao:
+
+- Criar a Fase 11 do Miauby com `MIAUW_AGENT_VERSION=2.0-fase11`.
+- Exportar contratos de tools pelo PHP a partir de `miauw_skill_registry_public()` e `miauw_openai_tools()`, incluindo schema, risco, modulo, confirmacao e dono da execucao.
+- Enviar `tool_contracts` ao servico Node em `/miauw/agent/run` e `/miauw/agent/stream`.
+- Manter `writes_enabled=false` no Node; confirmacoes, sessoes, auditoria e execucao real seguem no PHP.
+
+Motivo:
+
+- O Node precisa conhecer as capacidades auditadas do Miauby sem duplicar regras de negocio nem ganhar permissao de escrita antes da migracao controlada por tool.
+
+Impacto:
+
+- `apps/miauw-agent/`
+- `site/miauw/diagnostico.php`
+- `site/miauw/miauw-diagnostics.php`
+- `site/miauw/miauw-evals.php`
+- `site/miauw/miauw-funcoes.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- Nao enviar segredo, token, SQL bruto ou payload externo no contrato de tools.
+- Validar traces reais do `adm` antes de migrar execucao real de qualquer tool para Node.
+- Acoes fortes continuam exigindo confirmacao humana e rollback por `MIAUW_ENGINE=php`.
+
 ## 2026-05-16 - Miauby preserva personalidade no motor agente
 
 Decisao:

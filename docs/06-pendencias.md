@@ -120,7 +120,7 @@ Estado:
 - `miauw_skill_registry()` foi criado para inventariar skills por modulo, nivel, risco, permissao, executor e auditoria.
 - Contador de alertas e busca de conhecimentos foram otimizados em 2026-05-11 para reduzir carga repetida.
 - Alertas de encomenda da Cotacao foram ajustados para aparecerem so depois de mais de 1 dia, com comentario curto nos baloes do widget.
-- A evolucao generativa ja possui painel de revisao, evals locais ampliados, registry de tools, traces estruturados, confirmacao para acoes fortes, servico Node/TypeScript/Agents SDK, adaptador PHP de comparacao, corte controlado por `MIAUW_ENGINE` e contrato de personalidade da Fase 10. Ainda falta ampliar cenarios com casos reais da operacao, exemplos bons/ruins de voz do Miauby e migrar tools reais para o Node uma por vez, mantendo confirmacao e auditoria.
+- A evolucao generativa ja possui painel de revisao, evals locais ampliados, registry de tools, traces estruturados, confirmacao para acoes fortes, servico Node/TypeScript/Agents SDK, adaptador PHP de comparacao, corte controlado por `MIAUW_ENGINE`, contrato de personalidade da Fase 10 e contratos de tools exportados para o Node na Fase 11. Ainda falta ampliar cenarios com casos reais da operacao, exemplos bons/ruins de voz do Miauby e migrar tools reais para o Node uma por vez, mantendo confirmacao e auditoria.
 
 Risco:
 
@@ -129,7 +129,7 @@ Risco:
 Evolucao:
 
 - Seguir `docs/18-miauby-evolucao-generativa.md` antes de criar novas tools generativas.
-- Continuar criando testes para casos reais de operador: alertas, memoria, Farmacia Popular, cashback, ambiguidade entre financeiro/cotacao e ferramentas futuras.
+- Continuar criando testes para casos reais de operador: alertas, memoria, Farmacia Popular, cashback, ambiguidade entre financeiro/cotacao, uso do contrato de tools no Node e ferramentas futuras.
 
 ### Migracoes de banco versionadas
 

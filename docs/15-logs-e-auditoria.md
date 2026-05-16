@@ -50,6 +50,7 @@ Arquivos:
 - A Fase 8 liga o servico sombra do Miauby a `miauw_tool_traces` pelo PHP: `miauw_agent_shadow_compare` registra status, duracao, modelo, similaridade e previews sanitizados, sem guardar token, payload bruto, SQL ou stack trace.
 - A Fase 9 registra `miauw_agent_node_reply` quando o Node vira resposta oficial para usuario liberado, incluindo duracao, modelo e trace do Node; se falhar, grava erro sanitizado e o PHP assume a resposta oficial.
 - A Fase 10 adiciona versao de personalidade ao status/health do Miauby; regressao de voz deve ser tratada por eval (`npm run check:persona`) e por exemplos revisados, nao por trace com texto bruto sensivel.
+- A Fase 11 inclui `tool_contract_version` nos retornos/traces do Node quando o PHP envia contratos de tools. Traces devem registrar somente versao, checksum/resumo e contagens, nunca o contrato bruto com payload externo.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 

@@ -52,6 +52,7 @@ Status operacional:
 - A Fase 8 adiciona o adaptador PHP para o servico sombra: quando `MIAUW_AGENT_SHADOW_ON_SEND=true`, `api.php?action=send` chama `POST /miauw/agent/run`, compara com a resposta oficial PHP e registra trace seguro. O padrao segue `false`, sem impacto no operador.
 - A Fase 9 adiciona corte controlado por `MIAUW_ENGINE`: `php` mantem o motor antigo, `node_shadow` compara Node para usuarios liberados e `node` usa Node como resposta oficial para esses usuarios, com fallback automatico para PHP se o servico falhar. Durante implantacao acelerada, `MIAUW_MAINTENANCE_MODE=true` bloqueia usuarios comuns e libera `adm`.
 - A Fase 10 adiciona contrato versionado da personalidade do Miauby (`miauby-persona-2026-05-16`) no PHP e no Node. O servico `/miauw/agent/health` informa `personality_version`, e `npm run check:persona` valida o prompt Node sem chamar a camada online.
+- A Fase 11 adiciona contratos de tools exportados pelo PHP: `miauw_agent_tool_contract_export()` consolida registry, schemas, riscos e confirmacoes, e o adaptador envia `tool_contracts` ao servico Node. O Node usa isso como contexto, mas segue sem escrita direta e sem executar tools reais.
 
 Tabelas:
 
@@ -146,6 +147,7 @@ Direcao:
 - enquanto o servico Node nao executar tools auditadas, manter PHP como dono de login, sessao, confirmacoes e escrita forte.
 - usar traces `miauw_agent_shadow_compare` e `miauw_agent_node_reply` para medir divergencia, latencia e falhas durante o corte por `adm`.
 - preservar a personalidade versionada do Miauby ao migrar tools para Node; respostas genericas, secas ou burocraticas devem virar caso de eval antes de liberar mais usuarios.
+- consumir contratos exportados pelo PHP antes de migrar qualquer tool real para o Node, mantendo o PHP como dono de confirmacao e auditoria enquanto `writes_enabled=false`.
 
 Documento especifico:
 

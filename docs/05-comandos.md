@@ -40,8 +40,8 @@ docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-evals.php
 
 ```powershell
 cd C:\Projetos\wimifarma-com\apps\miauw-agent
-npm run check
-npm run build
+npm.cmd run check
+npm.cmd run build
 cd C:\Projetos\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
