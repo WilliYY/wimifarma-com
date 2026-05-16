@@ -377,6 +377,7 @@ async function callPhpReadTool(toolName: string, args: Record<string, unknown>, 
         Accept: 'application/json',
         'Content-Type': 'application/json',
         'X-Miauw-Agent-Token': internalToken,
+        'X-Forwarded-Proto': 'https',
       },
       body: JSON.stringify({
         trace_id: traceId,
