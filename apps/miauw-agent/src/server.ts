@@ -473,7 +473,7 @@ function periodArgsFromMessage(message: string): Record<string, unknown> {
 
 function inferReadBridgeRequest(message: string): { tool: string; args: Record<string, unknown> } | null {
   const text = normalizeIntentText(message);
-  const wantsLookup = /\b(busca|buscar|procura|procurar|consulta|consultar|ache|achar|pesquisa|pesquisar)\b/u.test(text);
+  const wantsLookup = /\b(busca|buscar|procura|procure|procurar|consulta|consultar|ache|achar|pesquisa|pesquisar)\b/u.test(text);
   const wantsSummary = /\b(resumo|relatorio|status|situacao|visao|geral)\b/u.test(text);
 
   if (text.includes('buscar_codigo_comissao')) {
