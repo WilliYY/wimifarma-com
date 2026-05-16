@@ -70,7 +70,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
   - `site/tarefa`
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
-- A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela fica em modo sombra e nao substitui `site/miauw/api.php` sem evals e corte controlado.
+- A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela pode rodar em sombra ou corte controlado por `MIAUW_ENGINE`, enquanto o PHP preserva login, sessoes, confirmacoes e escrita forte.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
@@ -267,6 +267,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A proxima camada do Miauby esta preparada por contrato em `miauw_agent_next_phase_contract()`: Node.js 22 + TypeScript, Agents SDK e endpoint interno `/miauw/agent`. Ainda nao trocar o motor do Miauby sem manter compatibilidade com PHP, sessao, widget, registry, traces, confirmacoes e evals atuais.
 - O Miauby iniciou a Fase 7 com `MIAUW_AGENT_VERSION=2.0-fase7`: `apps/miauw-agent` cria um servico Node.js 22 + TypeScript com `@openai/agents`, health/status publicos e endpoints internos `run`/`stream` protegidos por `MIAUW_AGENT_INTERNAL_TOKEN` ou fallback `MIAUW_GUARDIAN_TOKEN`. O servico esta em modo sombra, sem escrita real; o PHP continua dono de login, widget, confirmacoes, registry e auditoria.
 - O Miauby iniciou a Fase 8 com `MIAUW_AGENT_VERSION=2.0-fase8`: o PHP possui adaptador para chamar o servico Node em modo sombra, comparar resposta oficial PHP com resposta sombra, gravar `miauw_agent_shadow_compare` em `miauw_tool_traces` e mostrar status no diagnostico. Por padrao `MIAUW_AGENT_SHADOW_ON_SEND=false`, entao isso nao altera nem atrasa o chat da equipe; ligar somente para coleta controlada.
+- O Miauby iniciou a Fase 9 com `MIAUW_AGENT_VERSION=2.0-fase9`: existe `MIAUW_ENGINE=php|node_shadow|node` para alternar motor com rollback por `.env`; `node_shadow` compara Node para usuarios liberados, `node` usa Node como resposta oficial para esses usuarios e cai para PHP se o Node falhar. `MIAUW_MAINTENANCE_MODE=true` bloqueia envio de usuarios comuns durante implantacao acelerada e `adm` fica liberado por padrao em `MIAUW_AGENT_ENGINE_ALLOWED_USERS`/`MIAUW_MAINTENANCE_ALLOWED_USERS`.
 
 ## Estado validado em 2026-05-11
 

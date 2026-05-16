@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para a Cotacao V2 e para o servico sombra do Miauby agente; os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2 e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para a Cotacao V2 e para o servico do Miauby agente; os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2 e Redis de sessoes/presenca.
 
 ## Componentes envolvidos
 
@@ -46,7 +46,7 @@ Containers:
 - `wimifarma-cotacao-app`: Node.js 22 + Express + Socket.IO para `/cotacao/`.
 - `wimifarma-cotacao-db`: Postgres 17, monta `./cotacao-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-cotacao-redis`: Redis 7, monta `./cotacao-data/redis:/data`.
-- `wimifarma-miauw-agent`: Node.js 22 + TypeScript + Agents SDK para `/miauw/agent/` em modo sombra.
+- `wimifarma-miauw-agent`: Node.js 22 + TypeScript + Agents SDK para `/miauw/agent/` em sombra/corte controlado.
 
 Rede Docker:
 
@@ -60,7 +60,7 @@ Rede Docker:
 - Publico: `80/443` pelo Nginx Proxy Manager
 - Nginx Proxy Manager admin observado no VPS: porta `81`
 - Interno Cotacao V2: `wimifarma-cotacao-app:3000`
-- Interno Miauby agente sombra: `wimifarma-miauw-agent:3100`
+- Interno Miauby agente: `wimifarma-miauw-agent:3100`
 
 O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cotacao-app`; o Apache ja publica `/cotacao/` e `/cotacao/socket.io/`.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent`; o Apache publica `/miauw/agent/` internamente.
@@ -73,7 +73,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Manter `mysql/` como volume persistente e ignorado pelo Git.
 - Manter `cotacao-data/` como volume persistente e ignorado pelo Git.
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
-- Manter o Miauby agente em modo sombra ate os evals, traces de comparacao e criterio de rollback aprovarem a troca do motor atual.
+- Manter o Miauby agente sem escrita real; quando `MIAUW_ENGINE=node`, liberar primeiro apenas usuarios configurados e preservar rollback imediato para `php`.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -83,7 +83,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
 - A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
-- A Fase 7/8 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK e um adaptador PHP de comparacao sombra. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria ate corte controlado.
+- A Fase 7/8/9 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK, adaptador PHP de comparacao e corte por `MIAUW_ENGINE`. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria.
 - Palavras de categoria como `geral`, `urgente`, `encomenda` e `cotacao` nao devem aplicar cor, prioridade, ordem, filtro nem data operacional automaticamente; cor vem apenas de regra condicional explicita em `cotacao_v2_rules`.
 - Em 2026-05-14, a Cotacao PHP antiga em `site/cotacao` e os shims de compatibilidade da raiz foram removidos. Os ativos usados por `/cotacao/` ficam versionados em `apps/cotacao/public`, e o Compose nao monta mais nada de `site/cotacao` no container Node.
 

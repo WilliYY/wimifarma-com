@@ -39,6 +39,11 @@ try {
             'name' => 'Miauby',
             'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
         ),
+        'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status($user ?: null) : array(),
+        'maintenance' => function_exists('miauw_maintenance_status') ? miauw_maintenance_status($user ?: null) : array(
+            'active' => false,
+            'can_send' => true,
+        ),
     );
 
     if ($user) {
@@ -137,6 +142,11 @@ try {
         'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
             'name' => 'Miauby',
             'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
+        ),
+        'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status(null) : array(),
+        'maintenance' => function_exists('miauw_maintenance_status') ? miauw_maintenance_status(null) : array(
+            'active' => false,
+            'can_send' => true,
         ),
         'message' => 'Miauby ainda nao carregou. Tente novamente em instantes.',
         'fallback' => true,

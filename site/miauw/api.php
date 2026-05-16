@@ -60,6 +60,17 @@ try {
             miauw_json(array('ok' => false, 'message' => 'Texto grande demais. Resume, Machado de Assis operacional.'), 422);
         }
 
+        $maintenance = function_exists('miauw_maintenance_status') ? miauw_maintenance_status($user) : array('active' => false, 'can_send' => true);
+        if (function_exists('miauw_user_can_send_miauw') && !miauw_user_can_send_miauw($user)) {
+            miauw_json(array(
+                'ok' => false,
+                'message' => (string) ($maintenance['message'] ?? 'Miauby esta em atualizacao interna agora.'),
+                'maintenance' => $maintenance,
+                'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(),
+                'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status($user) : array(),
+            ), 423);
+        }
+
         $pageContext = trim((string) ($_POST['page_context'] ?? ''));
         if ($pageContext !== '') {
             $messageForAi = $message . "\n\nContexto da pagina atual: " . miauw_substr($pageContext, 0, 900);
@@ -118,6 +129,7 @@ try {
                 'mensagem_id' => $assistantMessageId,
                 'payload' => array(
                     'model' => (string) ($reply['model'] ?? ''),
+                    'engine' => (string) ($reply['engine'] ?? ''),
                     'fallback' => (bool) ($reply['fallback'] ?? false),
                     'requires_confirmation' => is_array($confirmation),
                     'agent_shadow' => is_array($shadowCompare) ? array(
@@ -141,12 +153,15 @@ try {
             'reply_parts' => function_exists('miauw_reply_parts') ? miauw_reply_parts($reply['text'], $widgetMode ? 2 : 5) : array($reply['text']),
             'fallback' => (bool) $reply['fallback'],
             'model' => $reply['model'],
+            'engine' => (string) ($reply['engine'] ?? ''),
             'trace_id' => $traceId,
             'confirmation' => $confirmation,
             'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
                 'name' => 'Miauby',
                 'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
             ),
+            'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status($user) : array(),
+            'maintenance' => $maintenance,
             'time' => date('d/m/y H:i'),
             'guardian_alert_count' => $guardianCount,
             'guardian_alerts' => array_map(static function (array $alert): array {

@@ -5,9 +5,9 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.2.0';
-const AGENT_VERSION = '2.0-fase8';
-const PHASE = 'fase8-shadow';
+const SERVICE_VERSION = '0.3.0';
+const AGENT_VERSION = '2.0-fase9';
+const PHASE = 'fase9-cutover';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 
 function envString(names: string[], fallback = ''): string {
@@ -43,7 +43,7 @@ function publicStatus() {
     service_version: SERVICE_VERSION,
     agent_version: AGENT_VERSION,
     phase: PHASE,
-    mode: 'shadow',
+    mode: 'cutover-ready',
     runtime: 'node22-typescript',
     sdk: 'agents-sdk',
     base_path: basePath,
@@ -131,7 +131,7 @@ function requireInternalToken(req: Request, res: Response, next: NextFunction): 
 
 const diagnosticoSombraTool = tool({
   name: 'diagnostico_miauby_sombra',
-  description: 'Retorna um resumo seguro do servico Miauby agente em modo sombra, sem executar escritas.',
+  description: 'Retorna um resumo seguro do servico Miauby agente, sem executar escritas.',
   parameters: z.object({
     assunto: z.string().max(120).optional(),
   }),
@@ -140,7 +140,7 @@ const diagnosticoSombraTool = tool({
       service: SERVICE_NAME,
       agent_version: AGENT_VERSION,
       phase: PHASE,
-      mode: 'shadow',
+      mode: 'agent_controlado',
       assunto: assunto || 'geral',
       writes_enabled: false,
       safety: [
@@ -153,15 +153,15 @@ const diagnosticoSombraTool = tool({
 });
 
 const miaubyAgent = new Agent({
-  name: 'Miauby Operacional Sombra',
+  name: 'Miauby Operacional',
   model,
   instructions: [
-    'Voce e o Miauby operacional da Wimifarma em modo sombra.',
+    'Voce e o Miauby operacional da Wimifarma.',
     'Responda em portugues do Brasil, com foco pratico para a operacao interna.',
     'Nao cite Codex, ChatGPT, fornecedor de IA, chave, token, prompt interno, stack trace ou caminho de servidor.',
     'Nao invente dados reais. Quando faltar produto, valor, data ou responsavel, peca exatamente o dado ausente.',
-    'Acoes fortes como sangria, encomenda, cotacao rapida, faturamento ou exclusao exigem confirmacao humana e nao devem ser executadas por este servico sombra.',
-    'Use a ferramenta de diagnostico apenas para explicar o proprio modo sombra quando isso ajudar.',
+    'Acoes fortes como sangria, encomenda, cotacao rapida, faturamento ou exclusao exigem confirmacao humana e nao devem ser executadas diretamente por este servico.',
+    'Se o operador pedir algo tecnico, responda como suporte tecnico interno e peca tela, acao feita, horario e print quando necessario.',
   ].join('\n'),
   tools: [diagnosticoSombraTool],
 });
@@ -173,7 +173,7 @@ async function executeAgent(message: string, traceId: string): Promise<string> {
 
   const input = [
     `trace_id: ${traceId}`,
-    'modo: sombra, sem escrita real',
+    'modo: agente operacional controlado, sem escrita real direta',
     `mensagem_operador: ${message}`,
   ].join('\n');
 
@@ -199,7 +199,7 @@ async function streamAgent(message: string, traceId: string, res: Response): Pro
 
   const input = [
     `trace_id: ${traceId}`,
-    'modo: sombra, sem escrita real',
+    'modo: agente operacional controlado, sem escrita real direta',
     `mensagem_operador: ${message}`,
   ].join('\n');
 
@@ -226,7 +226,7 @@ async function streamAgent(message: string, traceId: string, res: Response): Pro
 
   sendSse(res, 'done', {
     ok: true,
-    mode: 'shadow',
+    mode: 'agent_controlado',
     trace_id: traceId,
     text: safeText(chunks.join(''), 4000),
   });
@@ -274,7 +274,7 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
     const text = await executeAgent(message, traceId);
     res.json({
       ok: true,
-      mode: 'shadow',
+      mode: 'agent_controlado',
       trace_id: traceId,
       model,
       text,
@@ -283,7 +283,7 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   } catch (error) {
     res.status(502).json({
       ok: false,
-      mode: 'shadow',
+      mode: 'agent_controlado',
       trace_id: traceId,
       error: 'agent_run_failed',
       message: safeError(error),
@@ -315,7 +315,7 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
   try {
     sendSse(res, 'start', {
       ok: true,
-      mode: 'shadow',
+      mode: 'agent_controlado',
       trace_id: traceId,
       model,
     });

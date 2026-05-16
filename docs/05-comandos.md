@@ -50,7 +50,7 @@ curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent/run -H "Content-Type: appl
 
 O `POST /miauw/agent/run` sem token deve recusar com 401 ou 503, dependendo da configuracao local do token. Nao colocar o token real em comandos versionados.
 
-O adaptador PHP da Fase 8 compara respostas somente quando `MIAUW_AGENT_SHADOW_ON_SEND=true`; mantenha `false` em validacoes comuns para evitar chamada online e latencia no chat.
+O adaptador PHP compara respostas quando `MIAUW_AGENT_SHADOW_ON_SEND=true` ou quando `MIAUW_ENGINE=node_shadow` para usuario liberado. Para corte controlado, use `MIAUW_ENGINE=node` com `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm` e rollback para `MIAUW_ENGINE=php`.
 
 ## Local - Miauby evals
 
@@ -119,7 +119,7 @@ docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-cotacao-app
 ```
 
-Para mudancas no servico Miauby agente em modo sombra, usar rebuild direcionado:
+Para mudancas no servico Miauby agente, usar rebuild direcionado:
 
 ```bash
 cd /home/ubuntu/projetos/wimifarma-com

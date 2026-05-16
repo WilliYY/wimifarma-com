@@ -83,11 +83,11 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase8', static function (): void {
+miauw_eval_add('agent_status_fase9', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase8') === 0, 'Versao do agente deve apontar Fase 8.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase9') === 0, 'Versao do agente deve apontar Fase 9.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
@@ -102,23 +102,29 @@ miauw_eval_add('agent_status_fase8', static function (): void {
     miauw_eval_assert(in_array('streaming_real_sombra', (array) ($status['features'] ?? array()), true), 'Fase 7 precisa anunciar streaming real em sombra.');
     miauw_eval_assert(in_array('adaptador_php_sombra', (array) ($status['features'] ?? array()), true), 'Fase 8 precisa anunciar adaptador PHP sombra.');
     miauw_eval_assert(in_array('comparacao_respostas_sombra', (array) ($status['features'] ?? array()), true), 'Fase 8 precisa anunciar comparacao de respostas.');
+    miauw_eval_assert(in_array('modo_manutencao_operacional', (array) ($status['features'] ?? array()), true), 'Fase 9 precisa anunciar manutencao operacional.');
+    miauw_eval_assert(in_array('engine_switch_rollback', (array) ($status['features'] ?? array()), true), 'Fase 9 precisa anunciar chave de rollback.');
+    miauw_eval_assert(in_array('node_primary_adm_controlado', (array) ($status['features'] ?? array()), true), 'Fase 9 precisa anunciar Node primario controlado.');
+    miauw_eval_assert(in_array((string) ($status['engine'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Engine publica precisa ser valida.');
 });
 
-miauw_eval_add('fase8_contrato_adaptador_sombra', static function (): void {
+miauw_eval_add('fase9_contrato_corte_acelerado', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase8', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 8.');
+    miauw_eval_assert_same('fase9', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 9.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
     miauw_eval_assert_same('/miauw/agent', (string) ($contract['endpoint_interno'] ?? ''), 'Endpoint interno futuro mudou.');
-    miauw_eval_assert_same('sombra', (string) ($contract['modo'] ?? ''), 'Fase 8 deve continuar em modo sombra.');
+    miauw_eval_assert(in_array((string) ($contract['modo'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Fase 9 precisa expor modo de motor valido.');
     miauw_eval_assert(!empty($contract['pronto_agora']['registry_skills']), 'Registry precisa estar pronto antes do servico agente.');
     miauw_eval_assert(!empty($contract['pronto_agora']['evals_locais']), 'Evals locais precisam existir antes do servico agente.');
     miauw_eval_assert(!empty($contract['pronto_agora']['scaffold_servico_sombra']), 'Scaffold do servico sombra precisa estar marcado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['proxy_interno']), 'Proxy interno do servico sombra precisa estar marcado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['adaptador_php_sombra']), 'Adaptador PHP sombra precisa estar marcado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['trace_comparacao_sombra']), 'Trace de comparacao sombra precisa estar marcado.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['engine_switch']), 'Fase 9 precisa marcar engine switch pronto.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['manutencao_adm']), 'Fase 9 precisa marcar manutencao adm pronta.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {
@@ -238,6 +244,7 @@ miauw_eval_add('diagnostico_fase3_payload', static function (): void {
     miauw_eval_assert(is_array($data['summary']['padroes'] ?? null), 'Resumo de padroes ausente.');
     miauw_eval_assert(is_array($data['summary']['skills'] ?? null), 'Resumo de skills ausente no diagnostico.');
     miauw_eval_assert(is_array($data['summary']['agent_service'] ?? null), 'Resumo do servico agente ausente no diagnostico.');
+    miauw_eval_assert(is_array($data['summary']['agent_runtime'] ?? null), 'Resumo do motor agente ausente no diagnostico.');
     miauw_eval_assert_no_forbidden(json_encode($data['summary'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '', 'Resumo do diagnostico expos termo proibido.');
 });
 
@@ -427,6 +434,28 @@ miauw_eval_add('fase8_shadow_similarity_basica', static function (): void {
 
     miauw_eval_assert($similar > $different, 'Similaridade sombra deveria diferenciar respostas parecidas de respostas distantes.');
     miauw_eval_assert($similar >= 0 && $similar <= 1, 'Similaridade sombra precisa ficar entre 0 e 1.');
+});
+
+miauw_eval_add('fase9_engine_switch_seguro', static function (): void {
+    $engine = miauw_agent_engine();
+    $runtime = miauw_agent_runtime_status(array('username' => 'adm'));
+
+    miauw_eval_assert(in_array($engine, array('php', 'node_shadow', 'node'), true), 'Engine do Miauby precisa ficar em lista fechada.');
+    miauw_eval_assert_same($engine, (string) ($runtime['engine'] ?? ''), 'Runtime precisa refletir engine atual.');
+    miauw_eval_assert(!empty($runtime['engine_allowed']), 'Usuario adm precisa estar liberado para o corte controlado.');
+    miauw_eval_assert(isset($runtime['maintenance'], $runtime['shadow']), 'Runtime precisa trazer manutencao e sombra.');
+});
+
+miauw_eval_add('fase9_manutencao_default_adm', static function (): void {
+    $admStatus = miauw_maintenance_status(array('username' => 'adm'));
+    $otherStatus = miauw_maintenance_status(array('username' => 'operador'));
+
+    miauw_eval_assert(isset($admStatus['active'], $admStatus['can_send'], $admStatus['allowed_users']), 'Status de manutencao veio incompleto.');
+    miauw_eval_assert(in_array('adm', (array) ($admStatus['allowed_users'] ?? array()), true), 'Adm precisa ser o usuario padrao liberado na manutencao.');
+    if (!empty($admStatus['active'])) {
+        miauw_eval_assert(!empty($admStatus['can_send']), 'Adm nao pode ser bloqueado durante manutencao.');
+        miauw_eval_assert(empty($otherStatus['can_send']), 'Usuario comum deve ser bloqueado durante manutencao.');
+    }
 });
 
 $passed = 0;

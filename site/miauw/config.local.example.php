@@ -30,13 +30,19 @@ define('MIAUW_FARMACIA_POPULAR_UF', 'PR');
 define('MIAUW_GUARDIAN_TOKEN', 'troque_por_um_token_grande');
 
 /*
- * Opcional: servico Miauby agente em Node/Agents SDK rodando em modo sombra.
- * Deixe MIAUW_AGENT_SHADOW_ON_SEND false para nao impactar o chat operacional.
+ * Opcional: servico Miauby agente em Node/Agents SDK.
+ * MIAUW_ENGINE aceita php, node_shadow ou node. Use node somente para usuarios
+ * liberados e com manutencao ativa quando estiver em corte acelerado.
  */
 // define('MIAUW_AGENT_INTERNAL_TOKEN', ''); // se vazio/omitido, use MIAUW_GUARDIAN_TOKEN ou .env
 define('MIAUW_AGENT_INTERNAL_BASE_URL', 'http://wimifarma-miauw-agent:3100/miauw/agent');
 define('MIAUW_AGENT_SHADOW_ON_SEND', false);
 define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
+define('MIAUW_ENGINE', 'php');
+define('MIAUW_AGENT_ENGINE_ALLOWED_USERS', 'adm');
+define('MIAUW_MAINTENANCE_MODE', false);
+define('MIAUW_MAINTENANCE_ALLOWED_USERS', 'adm');
+define('MIAUW_MAINTENANCE_MESSAGE', 'Miauby esta em atualizacao interna agora. O acesso operacional volta em instantes.');
 
 /*
  * Opcional: ponte interna Miauby -> Cotacao V2. Se ficar vazio, o Miauby

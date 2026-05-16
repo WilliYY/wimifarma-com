@@ -2,6 +2,39 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-16 - Miauby ganha corte acelerado por engine
+
+Decisao:
+
+- Adicionar `MIAUW_ENGINE=php|node_shadow|node` para alternar o motor do Miauby por ambiente.
+- Manter `adm` como usuario padrao liberado em `MIAUW_AGENT_ENGINE_ALLOWED_USERS`.
+- Adicionar `MIAUW_MAINTENANCE_MODE` para bloquear usuarios comuns durante implantacao acelerada, com `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`.
+- Preservar PHP como dono de login, sessoes, confirmacoes, registry, traces e escritas fortes mesmo quando o Node vira resposta oficial para `adm`.
+
+Motivo:
+
+- Acelerar a validacao real do Miauby agente enquanto a equipe fica sem usar o chat, sem perder rollback rapido.
+
+Impacto:
+
+- `apps/miauw-agent/`
+- `docker-compose.yml`
+- `site/miauw/api.php`
+- `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-diagnostics.php`
+- `site/miauw/diagnostico.php`
+- `site/miauw/widget-status.php`
+- `.env.example`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- O Node ainda nao executa escrita real; tools fortes continuam pelo PHP e com confirmacao.
+- Rollback imediato e voltar `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
+- Nao liberar usuarios alem de `adm` antes de coletar traces/evals suficientes.
+
 ## 2026-05-15 - Miauby inicia servico agente dedicado em modo sombra
 
 Decisao:

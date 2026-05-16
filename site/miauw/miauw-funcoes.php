@@ -55,15 +55,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260515i');
+    define('MIAUW_VERSION', '20260516a');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase8');
+    define('MIAUW_AGENT_VERSION', '2.0-fase9');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-15-operacional-v2-adaptador-sombra');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-corte-acelerado');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -161,6 +161,35 @@ if (!defined('MIAUW_AGENT_SHADOW_TIMEOUT_MS')) {
         $miauwAgentShadowTimeout = 12000;
     }
     define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', max(1000, min(30000, $miauwAgentShadowTimeout)));
+}
+
+if (!defined('MIAUW_ENGINE')) {
+    $miauwEngine = miauw_env_string(array('MIAUW_ENGINE'));
+    define('MIAUW_ENGINE', $miauwEngine !== '' ? $miauwEngine : 'php');
+}
+
+if (!defined('MIAUW_AGENT_ENGINE_ALLOWED_USERS')) {
+    $miauwEngineUsers = miauw_env_string(array('MIAUW_AGENT_ENGINE_ALLOWED_USERS'));
+    define('MIAUW_AGENT_ENGINE_ALLOWED_USERS', $miauwEngineUsers !== '' ? $miauwEngineUsers : 'adm');
+}
+
+if (!defined('MIAUW_MAINTENANCE_MODE')) {
+    define('MIAUW_MAINTENANCE_MODE', miauw_env_bool(array('MIAUW_MAINTENANCE_MODE'), false));
+}
+
+if (!defined('MIAUW_MAINTENANCE_ALLOWED_USERS')) {
+    $miauwMaintenanceUsers = miauw_env_string(array('MIAUW_MAINTENANCE_ALLOWED_USERS'));
+    define('MIAUW_MAINTENANCE_ALLOWED_USERS', $miauwMaintenanceUsers !== '' ? $miauwMaintenanceUsers : 'adm');
+}
+
+if (!defined('MIAUW_MAINTENANCE_MESSAGE')) {
+    $miauwMaintenanceMessage = miauw_env_string(array('MIAUW_MAINTENANCE_MESSAGE'));
+    define(
+        'MIAUW_MAINTENANCE_MESSAGE',
+        $miauwMaintenanceMessage !== ''
+            ? $miauwMaintenanceMessage
+            : 'Miauby esta em atualizacao interna agora. O acesso operacional volta em instantes.'
+    );
 }
 
 if (!defined('COTACAO_INTERNAL_TOKEN')) {
@@ -359,6 +388,97 @@ function miauw_openai_public_status(): array
     );
 }
 
+function miauw_agent_engine(): string
+{
+    $engine = strtolower(trim(miauw_constant_string('MIAUW_ENGINE', 'php')));
+    $allowed = array('php', 'node_shadow', 'node');
+
+    return in_array($engine, $allowed, true) ? $engine : 'php';
+}
+
+function miauw_csv_list(string $value): array
+{
+    $parts = preg_split('/[,;]+/', $value) ?: array();
+    $items = array();
+
+    foreach ($parts as $part) {
+        $normalized = strtolower(trim((string) $part));
+        if ($normalized !== '') {
+            $items[] = $normalized;
+        }
+    }
+
+    return array_values(array_unique($items));
+}
+
+function miauw_user_identifier(?array $user): string
+{
+    if (!$user) {
+        return '';
+    }
+
+    $username = strtolower(trim((string) ($user['username'] ?? '')));
+    if ($username !== '') {
+        return $username;
+    }
+
+    return strtolower(trim((string) ($user['nome'] ?? '')));
+}
+
+function miauw_user_matches_allowed_list(?array $user, string $allowedCsv): bool
+{
+    $allowed = miauw_csv_list($allowedCsv);
+    if (in_array('*', $allowed, true)) {
+        return true;
+    }
+
+    $identifier = miauw_user_identifier($user);
+    return $identifier !== '' && in_array($identifier, $allowed, true);
+}
+
+function miauw_agent_engine_allowed_for_user(?array $user): bool
+{
+    return miauw_user_matches_allowed_list($user, miauw_constant_string('MIAUW_AGENT_ENGINE_ALLOWED_USERS', 'adm'));
+}
+
+function miauw_maintenance_status(?array $user = null): array
+{
+    $active = defined('MIAUW_MAINTENANCE_MODE') ? (bool) MIAUW_MAINTENANCE_MODE : false;
+    $allowedCsv = miauw_constant_string('MIAUW_MAINTENANCE_ALLOWED_USERS', 'adm');
+    $canSend = !$active || miauw_user_matches_allowed_list($user, $allowedCsv);
+
+    return array(
+        'active' => $active,
+        'can_send' => $canSend,
+        'allowed_users' => miauw_csv_list($allowedCsv),
+        'message' => miauw_constant_string(
+            'MIAUW_MAINTENANCE_MESSAGE',
+            'Miauby esta em atualizacao interna agora. O acesso operacional volta em instantes.'
+        ),
+    );
+}
+
+function miauw_user_can_send_miauw(?array $user): bool
+{
+    $status = miauw_maintenance_status($user);
+    return !empty($status['can_send']);
+}
+
+function miauw_agent_should_force_shadow(?array $user = null): bool
+{
+    return miauw_agent_engine() === 'node_shadow' && miauw_agent_engine_allowed_for_user($user);
+}
+
+function miauw_agent_runtime_status(?array $user = null): array
+{
+    return array(
+        'engine' => miauw_agent_engine(),
+        'engine_allowed' => miauw_agent_engine_allowed_for_user($user),
+        'maintenance' => miauw_maintenance_status($user),
+        'shadow' => function_exists('miauw_agent_shadow_status') ? miauw_agent_shadow_status() : array(),
+    );
+}
+
 function miauw_agent_public_status(): array
 {
     return array(
@@ -366,6 +486,8 @@ function miauw_agent_public_status(): array
         'version' => miauw_constant_string('MIAUW_AGENT_VERSION', '1.0'),
         'policy_version' => miauw_constant_string('MIAUW_AGENT_POLICY_VERSION', ''),
         'mode' => 'operacional',
+        'engine' => miauw_agent_engine(),
+        'maintenance_active' => defined('MIAUW_MAINTENANCE_MODE') ? (bool) MIAUW_MAINTENANCE_MODE : false,
         'features' => array(
             'persona_operacional',
             'guardrails_bastidor',
@@ -383,6 +505,9 @@ function miauw_agent_public_status(): array
             'streaming_real_sombra',
             'adaptador_php_sombra',
             'comparacao_respostas_sombra',
+            'modo_manutencao_operacional',
+            'engine_switch_rollback',
+            'node_primary_adm_controlado',
         ),
     );
 }
@@ -390,13 +515,13 @@ function miauw_agent_public_status(): array
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase8',
-        'proxima_fase' => 'evals_servico_sombra_e_corte_controlado',
+        'fase_atual' => 'fase9',
+        'proxima_fase' => 'corte_progressivo_de_tools_no_node',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
-        'modo' => 'sombra',
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O servico Node roda em paralelo por adaptador sombra para comparar respostas e traces antes de qualquer corte.',
+        'modo' => miauw_agent_engine(),
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
@@ -407,12 +532,15 @@ function miauw_agent_next_phase_contract(): array
             'proxy_interno' => true,
             'adaptador_php_sombra' => true,
             'trace_comparacao_sombra' => true,
+            'engine_switch' => true,
+            'manutencao_adm' => true,
         ),
         'pendencias' => array(
             'Exportar schemas das tools a partir do registry atual.',
-            'Rodar os mesmos evals contra o servico novo antes de ativar em producao.',
-            'Coletar comparacoes sombra suficientes antes de qualquer troca do motor principal.',
-            'Definir criterio de corte e rollback do motor principal.',
+            'Migrar execucao real das tools para o servico Node com confirmacao antes de escrita.',
+            'Rodar os mesmos evals contra o servico Node em modo primario.',
+            'Coletar traces do usuario adm antes de liberar outros funcionarios.',
+            'Definir corte progressivo por skill quando o Node estiver gravando com auditoria completa.',
         ),
         'nao_mudar_agora' => array(
             'Banco MySQL dos modulos internos.',
@@ -548,7 +676,7 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
     $token = miauw_constant_string('MIAUW_AGENT_INTERNAL_TOKEN');
 
     if ($baseUrl === '' || $token === '') {
-        throw new RuntimeException('Servico agente sombra sem configuracao interna.');
+        throw new RuntimeException('Servico agente sem configuracao interna.');
     }
 
     if (!function_exists('curl_init')) {
@@ -590,12 +718,12 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
             $detail .= ' - ' . $messageFromService;
         }
 
-        throw new RuntimeException('Falha no servico agente sombra: ' . $detail);
+        throw new RuntimeException('Falha no servico agente: ' . $detail);
     }
 
     if (empty($decoded['ok'])) {
         $serviceMessage = miauw_diagnostic_redact_string((string) ($decoded['message'] ?? 'execucao recusada'));
-        throw new RuntimeException('Servico agente sombra recusou a execucao: ' . $serviceMessage);
+        throw new RuntimeException('Servico agente recusou a execucao: ' . $serviceMessage);
     }
 
     return $decoded;
@@ -749,7 +877,10 @@ function miauw_agent_shadow_maybe(
     bool $widgetMode,
     int $assistantMessageId
 ): ?array {
-    if (!defined('MIAUW_AGENT_SHADOW_ON_SEND') || !(bool) MIAUW_AGENT_SHADOW_ON_SEND) {
+    $user = function_exists('current_user') ? current_user() : null;
+    $forceByEngine = function_exists('miauw_agent_should_force_shadow') && miauw_agent_should_force_shadow($user);
+
+    if ((!defined('MIAUW_AGENT_SHADOW_ON_SEND') || !(bool) MIAUW_AGENT_SHADOW_ON_SEND) && !$forceByEngine) {
         return null;
     }
 
@@ -757,6 +888,49 @@ function miauw_agent_shadow_maybe(
         'force' => true,
         'mensagem_id' => $assistantMessageId,
     ));
+}
+
+function miauw_agent_node_reply(int $conversationId, string $message, bool $widgetMode = false): array
+{
+    $status = miauw_agent_shadow_status();
+    if (empty($status['configured'])) {
+        throw new RuntimeException('Servico agente Node nao configurado.');
+    }
+
+    $trace = miauw_trace_context();
+    $traceId = (string) ($trace['trace_id'] ?? miauw_trace_new_id());
+    $timeoutMs = miauw_constant_int('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
+    $started = microtime(true);
+    $data = miauw_agent_shadow_request($message, $traceId, $timeoutMs);
+    $durationMs = (int) round((microtime(true) - $started) * 1000);
+    $text = (string) ($data['text'] ?? '');
+    $text = function_exists('miauw_sanitize_operator_reply') ? miauw_sanitize_operator_reply($text) : $text;
+
+    if (trim($text) === '') {
+        throw new RuntimeException('Servico agente Node retornou resposta vazia.');
+    }
+
+    miauw_trace_record('miauw_agent_node_reply', 'ok', array(
+        'conversa_id' => $conversationId,
+        'type' => 'agent_primary',
+        'summary' => 'Resposta oficial gerada pelo servico agente Node para usuario liberado.',
+        'duration_ms' => $durationMs,
+        'payload' => array(
+            'widget' => $widgetMode,
+            'engine' => 'node',
+            'node_trace_id' => (string) ($data['trace_id'] ?? $traceId),
+            'node_model' => (string) ($data['model'] ?? ''),
+            'response_chars' => miauw_strlen($text),
+        ),
+    ));
+
+    return array(
+        'text' => $text,
+        'fallback' => false,
+        'model' => 'miauw-agent-node:' . (string) ($data['model'] ?? 'agent'),
+        'engine' => 'node',
+        'duration_ms' => $durationMs,
+    );
 }
 
 function miauw_tools_requiring_confirmation(): array
@@ -3624,10 +3798,39 @@ function miauw_generate_reply(int $conversationId, string $message, bool $widget
                     'text' => $fpReply,
                     'fallback' => false,
                     'model' => 'miauw-farmacia-popular',
+                    'engine' => 'php_local',
                 );
             }
         } catch (Throwable $error) {
             error_log('Miauby farmacia popular local reply failed: ' . $error->getMessage());
+        }
+    }
+
+    $engine = function_exists('miauw_agent_engine') ? miauw_agent_engine() : 'php';
+    $user = function_exists('current_user') ? current_user() : null;
+    if ($engine === 'node' && function_exists('miauw_agent_engine_allowed_for_user') && miauw_agent_engine_allowed_for_user($user)) {
+        try {
+            return miauw_agent_node_reply($conversationId, $message, $widgetMode);
+        } catch (Throwable $agentError) {
+            error_log('Miauby Node agent fallback: ' . $agentError->getMessage());
+            miauw_trace_record('miauw_agent_node_reply', 'error', array(
+                'conversa_id' => $conversationId,
+                'type' => 'agent_primary',
+                'summary' => 'Motor Node falhou; PHP assumiu a resposta oficial.',
+                'error' => $agentError->getMessage(),
+                'payload' => array(
+                    'engine' => 'node',
+                    'fallback_to' => 'php',
+                    'widget' => $widgetMode,
+                ),
+            ));
+            if (function_exists('miauw_register_internal_error_alert')) {
+                miauw_register_internal_error_alert('miauby', 'Falha no motor agente Node', $agentError, array(
+                    'origem' => 'miauw_generate_reply',
+                    'engine' => 'node',
+                    'fallback_to' => 'php',
+                ));
+            }
         }
     }
 
@@ -3639,6 +3842,7 @@ function miauw_generate_reply(int $conversationId, string $message, bool $widget
             'text' => function_exists('miauw_sanitize_operator_reply') ? miauw_sanitize_operator_reply($text) : $text,
             'fallback' => false,
             'model' => (string) ($route['model'] ?? MIAUW_OPENAI_MODEL) . ':' . (string) ($route['name'] ?? 'route'),
+            'engine' => 'php',
         );
     } catch (Throwable $error) {
         error_log('Miauby OpenAI fallback: ' . $error->getMessage());
@@ -3654,6 +3858,7 @@ function miauw_generate_reply(int $conversationId, string $message, bool $widget
             'text' => function_exists('miauw_sanitize_operator_reply') ? miauw_sanitize_operator_reply($fallbackText) : $fallbackText,
             'fallback' => true,
             'model' => 'offline',
+            'engine' => 'offline',
         );
     }
 }

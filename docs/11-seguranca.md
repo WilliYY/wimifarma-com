@@ -21,6 +21,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Fase 6 do Miauby adiciona evals para manter dados incompletos fora de escrita, exigir confirmacao para escrita forte por risco e preservar a regra de nao inventar dados.
 - A Fase 7 do Miauby expõe apenas health/status sem segredo em `/miauw/agent/`; `run` e `stream` do servico sombra exigem `X-Miauw-Agent-Token` ou `X-Miauw-Internal-Token` com `MIAUW_AGENT_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN`.
 - A Fase 8 chama o servico sombra somente pelo PHP/adaptador com token interno. A comparacao automatica fica desligada por padrao (`MIAUW_AGENT_SHADOW_ON_SEND=false`) e os traces gravam apenas dados sanitizados de comparacao.
+- A Fase 9 permite usar o Node como motor oficial apenas por `MIAUW_ENGINE=node` e somente para usuarios em `MIAUW_AGENT_ENGINE_ALLOWED_USERS`; `MIAUW_MAINTENANCE_MODE=true` bloqueia envio de usuarios comuns durante o corte acelerado.
 
 ## Arquivos envolvidos
 
@@ -52,7 +53,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
 - Nao versionar `MIAUW_AGENT_INTERNAL_TOKEN`; se vazar, trocar no `.env` do VPS e reiniciar web/Miauby agente.
-- O servico Miauby agente sombra nao deve executar escrita real nem expor payload bruto. Mesmo com adaptador PHP, a resposta oficial segue no PHP ate comparacoes/evals aprovarem corte controlado.
+- O servico Miauby agente nao deve executar escrita real nem expor payload bruto. Mesmo com `MIAUW_ENGINE=node`, confirmacoes, sessoes e escritas fortes continuam controladas pelo PHP ate cada tool ser migrada e auditada separadamente.
+- Rollback de seguranca do Miauby: voltar `MIAUW_ENGINE=php`, desligar `MIAUW_MAINTENANCE_MODE` se a equipe ja puder usar e reiniciar `wimifarma-com-web`.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
 
 ## Decisoes tecnicas ja tomadas

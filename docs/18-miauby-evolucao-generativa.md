@@ -85,6 +85,14 @@ Miauby ja possui:
   - a comparacao grava `miauw_agent_shadow_compare` em `miauw_tool_traces` com duracao, modelo, tamanho, similaridade, previews sanitizados e sem token;
   - por padrao `MIAUW_AGENT_SHADOW_ON_SEND=false`, entao o operador continua recebendo somente a resposta PHP, sem atraso extra;
   - `/miauw/diagnostico.php` mostra o estado do adaptador sombra e se ele esta em modo manual ou comparando no envio.
+- Fase 9 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase9`;
+  - `MIAUW_ENGINE` aceita `php`, `node_shadow` ou `node`;
+  - `node_shadow` forca comparacao com o servico Node para usuarios liberados, sem trocar a resposta oficial;
+  - `node` usa o servico Node como resposta oficial para usuarios liberados e volta ao PHP automaticamente se o Node falhar;
+  - `MIAUW_AGENT_ENGINE_ALLOWED_USERS` libera o corte controlado apenas para usuarios listados, com `adm` como padrao;
+  - `MIAUW_MAINTENANCE_MODE` bloqueia envio de usuarios comuns durante implantacao acelerada, mantendo `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`;
+  - `/miauw/diagnostico.php`, `widget-status.php` e `api.php` expõem status de motor/manutencao sem publicar token, URL interna bruta ou segredo.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -121,7 +129,7 @@ Tabelas:
 Integracoes:
 
 - OpenAI Responses API;
-- Agents SDK no servico sombra `wimifarma-miauw-agent`;
+- Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE`;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.
 
@@ -166,9 +174,9 @@ Integracoes:
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
 - Exportar schemas das tools do registry PHP para o servico Node sem duplicar regra de negocio.
-- Ampliar a Fase 6/7/8 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback e erros comuns de usuarios.
+- Ampliar a Fase 6/7/8/9 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback e erros comuns de usuarios.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
-- Coletar comparacoes sombra suficientes antes de qualquer corte do motor principal.
+- Migrar execucao real das tools de alto valor para o Node, preservando confirmacao e auditoria no PHP enquanto a escrita nao estiver duplicada com seguranca.
 
 ## Como pode evoluir
 
@@ -180,4 +188,5 @@ Integracoes:
 - Fase 6: ampliar evals operacionais para regras proibidas, dados faltantes, nao inventar dados, schema/registry de tools e confirmacao de acoes destrutivas. Em andamento com runner local ampliado.
 - Fase 7: criar o servico dedicado do Miauby em Node.js 22 + TypeScript com Agents SDK, preservando compatibilidade com o PHP atual ate os evals aprovarem a troca. Iniciada com servico sombra e health/status.
 - Fase 8: criar adaptador PHP -> servico sombra, comparar respostas e traces em paralelo, e so depois planejar corte controlado do motor principal. Iniciada com adaptador desligado por padrao e traces de comparacao.
-- Fase 9: rodar evals e comparacoes reais contra o servico sombra, exportar schemas de tools para o Node e definir criterio de corte/rollback.
+- Fase 9: ligar manutencao para usuarios comuns, usar `MIAUW_ENGINE=node_shadow|node` apenas para `adm`, validar traces e manter rollback por `.env`.
+- Fase 10: exportar schemas de tools para o Node e migrar uma tool por vez para execucao real auditada, mantendo confirmacao para acoes fortes.

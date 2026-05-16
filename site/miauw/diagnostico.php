@@ -41,6 +41,7 @@ $agent = $summary['agent'] ?? array();
 $nextPhase = $summary['next_phase'] ?? array();
 $agentService = $summary['agent_service'] ?? array();
 $agentShadow = $summary['agent_shadow'] ?? array();
+$agentRuntime = $summary['agent_runtime'] ?? array();
 $api = $summary['api'] ?? array();
 $skills = $summary['skills'] ?? array();
 $models = $summary['models'] ?? array();
@@ -156,7 +157,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 8</span>
+                    <span class="diag-kicker">Fase 9</span>
                     <h1>Diagnostico do Miauby</h1>
                     <p>Saude, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>
@@ -208,6 +209,12 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <span>Adaptador sombra</span>
                 <strong><?php echo e(miauw_diag_agent_shadow_label(is_array($agentShadow) ? $agentShadow : array())); ?></strong>
                 <p><?php echo !empty($agentShadow['on_send']) ? 'Compara no envio' : 'Sem impacto no chat'; ?> | <?php echo e((string) ($agentShadow['timeout_ms'] ?? 0)); ?>ms</p>
+            </article>
+            <article class="diag-card">
+                <span>Motor atual</span>
+                <strong><?php echo e((string) ($agentRuntime['engine'] ?? 'php')); ?></strong>
+                <?php $runtimeMaintenance = is_array($agentRuntime['maintenance'] ?? null) ? $agentRuntime['maintenance'] : array(); ?>
+                <p><?php echo !empty($runtimeMaintenance['active']) ? 'Manutencao ativa' : 'Uso normal'; ?> | usuario <?php echo !empty($agentRuntime['engine_allowed']) ? 'liberado' : 'padrao'; ?></p>
             </article>
         </section>
 
