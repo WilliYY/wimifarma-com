@@ -107,6 +107,7 @@
     pendingBatchSaves: 0,
     deferredRemoteRowIds: new Set(),
     deferredRemoteFullRender: false,
+    sheetAutosizeJob: null,
     cellHistory: [],
     cellHistoryTarget: null,
     history: [],
@@ -1090,9 +1091,9 @@
       .join('');
     table.innerHTML = `<colgroup>${colgroup}</colgroup><thead><tr><th class="corner">#</th>${head}</tr></thead><tbody>${body}</tbody>`;
     updateRowCountBadge(visibleRows);
-    autosizeSheetInputs();
     updateSelectionClasses();
     bindCellHover();
+    scheduleSheetAutosize();
   }
 
   function autosizeInput(input) {
@@ -1146,11 +1147,28 @@
   }
 
   function scheduleSheetAutosize(root = table) {
-    if (scheduleSheetAutosize.queued) return;
-    scheduleSheetAutosize.queued = true;
+    if (state.sheetAutosizeJob) state.sheetAutosizeJob.cancelled = true;
+    const job = { cancelled: false };
+    state.sheetAutosizeJob = job;
     window.requestAnimationFrame(() => {
-      scheduleSheetAutosize.queued = false;
-      autosizeSheetInputs(root);
+      const inputs = Array.from((root || table).querySelectorAll('.sheet-input'));
+      const run = (index = 0) => {
+        if (job.cancelled) return;
+        const until = performance.now() + 7;
+        let nextIndex = index;
+        while (nextIndex < inputs.length && performance.now() < until) {
+          autosizeInput(inputs[nextIndex]);
+          nextIndex += 1;
+        }
+        if (nextIndex < inputs.length) {
+          window.requestAnimationFrame(() => run(nextIndex));
+          return;
+        }
+        if (state.sheetAutosizeJob === job) {
+          state.sheetAutosizeJob = null;
+        }
+      };
+      run();
     });
   }
 

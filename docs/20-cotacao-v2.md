@@ -159,6 +159,7 @@ MySQL `wimifarma_app`:
 - Eventos estruturais leves de coluna e linha tambem devem evitar snapshot completo: inserir linha, criar, renomear, mover, apagar, restaurar e redimensionar distribuidora enviam payload incremental suficiente para atualizar a grade localmente. Import e restore continuam pedindo snapshot completo.
 - As respostas de `/cotacao/api/*` sao `no-store` e o helper `api()` do frontend tambem usa `cache: 'no-store'`; `/cotacao/api/events` nao deve voltar `304`, porque isso mascara o delta como erro e empurra a tela para snapshot completo.
 - Durante redimensionamento de coluna, a largura visual e aplicada em tempo real, mas o auto-ajuste de altura fica limitado a coluna alterada e e processado em pequenos lotes apos o mouseup, evitando travamento ao soltar o mouse. O Socket.IO usa `column:resized` para resize, nao `columns:changed`, para nao acionar bootstrap completo em abas antigas.
+- Durante o carregamento inicial, a grade nao deve bloquear a tela ajustando a altura de todos os campos de uma vez. A tabela renderiza primeiro e o auto-ajuste geral roda em pequenos lotes por `requestAnimationFrame`, para reduzir segundos de tela vazia com `Carregando...`.
 - O numero da linha da celula ativa recebe destaque visual verde forte no frontend, apenas localmente, para facilitar leitura no estilo Google Sheets sem gravar estado nem sincronizar esse destaque com outras abas.
 - Estilos em lote usam `PUT/DELETE /cotacao/api/styles/batch`, mantendo `style_updated` singular para acoes simples e reduzindo varias requisicoes quando cores sao copiadas pelo fill handle ou aplicadas em selecoes grandes.
 - A presenca recebida por Socket.IO passa a atualizar a grade em tempo real, marcando celulas de outros usuarios com cor deterministica por aba e tooltip de localizacao.
@@ -215,6 +216,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-16, a sincronizacao de distribuidoras foi revisada para reduzir travamentos: eventos `column_*` sairam do grupo de snapshot obrigatorio, passaram a enviar coluna/ordem visivel no payload, e o frontend deixou de chamar `reloadSheet()` para resize, rename, criar/apagar/restaurar distribuidora quando o payload incremental e suficiente. A API da Cotacao tambem deixou de emitir ETag/cache condicional para evitar `304` em eventos incrementais.
 - Em 2026-05-16, a linha ativa ganhou indicador local: o numero da linha onde esta a celula ativa fica verde forte, sem persistencia no banco e sem evento de sincronizacao.
 - Em 2026-05-16, o resize foi refinado novamente: soltar a borda da coluna nao agenda mais autosize da planilha inteira e o servidor nao emite mais `columns:changed` para `column_resized`, usando `column:resized` para impedir recarregamento pesado em clientes antigos.
+- Em 2026-05-16, o carregamento inicial foi suavizado: o frontend deixou de executar auto-ajuste de altura de todos os `textarea` de forma sincrona logo apos o bootstrap, passando a fatiar esse trabalho em frames para a grade aparecer mais rapido.
 
 ## Riscos ao alterar
 
