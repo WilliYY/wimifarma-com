@@ -94,6 +94,15 @@ Miauby ja possui:
   - `MIAUW_MAINTENANCE_MODE` bloqueia envio de usuarios comuns durante implantacao acelerada, mantendo `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`;
   - `/miauw/diagnostico.php`, `widget-status.php` e `api.php` expõem status de motor/manutencao sem publicar token, URL interna bruta ou segredo.
 
+- Fase 10 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase10`;
+  - `MIAUW_AGENT_PERSONALITY_VERSION=miauby-persona-2026-05-16`;
+  - `miauw_agent_personality_contract()` registra papel, voz, bordoes controlados, anti-padroes e proxima melhoria da personalidade;
+  - o servico Node em `apps/miauw-agent` agora usa prompt de persona compacto, preservando humor curto, tom de fiscal interno, pedido minimo de contexto e regra de nao inventar dados;
+  - `GET /miauw/agent/health` expoe `personality_version` e `personality_features` sem segredo;
+  - `npm run check:persona` valida localmente o contrato da voz do Miauby sem chamar API online;
+  - `/miauw/diagnostico.php` mostra o contrato da personalidade para orientar revisoes futuras.
+
 ## Arquivos, tabelas e servicos envolvidos
 
 Arquivos:
@@ -109,6 +118,7 @@ Arquivos:
 - `site/miauw/guardian-cron.php`
 - `site/miauw/widget-status.php`
 - `apps/miauw-agent/package.json`
+- `apps/miauw-agent/scripts/check-persona.mjs`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-agent/Dockerfile`
 - `.env.example`
@@ -174,7 +184,7 @@ Integracoes:
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
 - Exportar schemas das tools do registry PHP para o servico Node sem duplicar regra de negocio.
-- Ampliar a Fase 6/7/8/9 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback e erros comuns de usuarios.
+- Ampliar a Fase 6/7/8/9/10 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 - Migrar execucao real das tools de alto valor para o Node, preservando confirmacao e auditoria no PHP enquanto a escrita nao estiver duplicada com seguranca.
 
@@ -189,4 +199,5 @@ Integracoes:
 - Fase 7: criar o servico dedicado do Miauby em Node.js 22 + TypeScript com Agents SDK, preservando compatibilidade com o PHP atual ate os evals aprovarem a troca. Iniciada com servico sombra e health/status.
 - Fase 8: criar adaptador PHP -> servico sombra, comparar respostas e traces em paralelo, e so depois planejar corte controlado do motor principal. Iniciada com adaptador desligado por padrao e traces de comparacao.
 - Fase 9: ligar manutencao para usuarios comuns, usar `MIAUW_ENGINE=node_shadow|node` apenas para `adm`, validar traces e manter rollback por `.env`.
-- Fase 10: exportar schemas de tools para o Node e migrar uma tool por vez para execucao real auditada, mantendo confirmacao para acoes fortes.
+- Fase 10: preservar a personalidade do Miauby como contrato versionado no PHP/Node, com eval local para impedir resposta generica durante o corte para agente.
+- Fase 11: exportar schemas de tools para o Node e migrar uma tool por vez para execucao real auditada, mantendo confirmacao para acoes fortes.

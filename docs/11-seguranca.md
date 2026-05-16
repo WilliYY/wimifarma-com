@@ -23,6 +23,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Fase 8 chama o servico sombra somente pelo PHP/adaptador com token interno. A comparacao automatica fica desligada por padrao (`MIAUW_AGENT_SHADOW_ON_SEND=false`) e os traces gravam apenas dados sanitizados de comparacao.
 - A Fase 9 permite usar o Node como motor oficial apenas por `MIAUW_ENGINE=node` e somente para usuarios em `MIAUW_AGENT_ENGINE_ALLOWED_USERS`; `MIAUW_MAINTENANCE_MODE=true` bloqueia envio de usuarios comuns durante o corte acelerado.
 
+- A Fase 10 preserva a personalidade do Miauby no Node sem relaxar guardrails: humor e bordoes nao autorizam inventar dado, expor bastidor ou executar acao forte sem confirmacao.
+
 ## Arquivos envolvidos
 
 - `.gitignore`

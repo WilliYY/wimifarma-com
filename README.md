@@ -77,6 +77,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 7 do agente operacional v2: `apps/miauw-agent` adiciona um servico Node.js 22 + TypeScript com `@openai/agents`, publicado internamente em `/miauw/agent/`, com health/status e endpoints internos `run`/`stream` protegidos por token. Ele roda em modo sombra, sem escrita real, enquanto o PHP segue dono do chat, sessoes, widget, confirmacoes e auditoria.
 - Miauby iniciou a Fase 8 do agente operacional v2: o PHP ganhou adaptador para chamar o servico Node em sombra, comparar resposta oficial com resposta sombra e registrar trace seguro em `miauw_tool_traces`. A comparacao automatica por envio fica desligada por padrao (`MIAUW_AGENT_SHADOW_ON_SEND=false`) para nao impactar a operacao.
 - Miauby iniciou a Fase 9 do agente operacional v2: existe `MIAUW_ENGINE=php|node_shadow|node` para cortar o motor com rollback por `.env`, `MIAUW_MAINTENANCE_MODE` bloqueia usuarios comuns durante testes e `adm` fica liberado por padrao para usar o Node como resposta oficial quando configurado.
+- Miauby iniciou a Fase 10 do agente operacional v2: a personalidade do Miauby agora tem contrato versionado (`miauby-persona-2026-05-16`) no PHP, no diagnostico e no servico Node. O agente Node preserva tom de fiscal interno, humor curto, bordoes controlados e pedido minimo de contexto, e `apps/miauw-agent` possui `npm run check:persona` para evitar regressao para resposta generica.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -152,6 +153,7 @@ docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
 docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
+cd apps/miauw-agent; npm run check:persona; cd ../..
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/health

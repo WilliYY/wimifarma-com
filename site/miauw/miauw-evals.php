@@ -83,13 +83,15 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase9', static function (): void {
+miauw_eval_add('agent_status_fase10', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase9') === 0, 'Versao do agente deve apontar Fase 9.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase10') === 0, 'Versao do agente deve apontar Fase 10.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
+    miauw_eval_assert_same('miauby-persona-2026-05-16', (string) ($status['personality_version'] ?? ''), 'Versao da persona publica mudou.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
+    miauw_eval_assert(in_array('persona_miauby_preservada', (array) ($status['features'] ?? array()), true), 'Fase 10 precisa anunciar persona preservada.');
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
     miauw_eval_assert(in_array('painel_diagnostico_revisao', (array) ($status['features'] ?? array()), true), 'Fase 3 precisa anunciar painel de diagnostico no status.');
     miauw_eval_assert(in_array('tools_operacionais_migradas', (array) ($status['features'] ?? array()), true), 'Fase 4 precisa anunciar tools operacionais migradas no status.');
@@ -105,13 +107,15 @@ miauw_eval_add('agent_status_fase9', static function (): void {
     miauw_eval_assert(in_array('modo_manutencao_operacional', (array) ($status['features'] ?? array()), true), 'Fase 9 precisa anunciar manutencao operacional.');
     miauw_eval_assert(in_array('engine_switch_rollback', (array) ($status['features'] ?? array()), true), 'Fase 9 precisa anunciar chave de rollback.');
     miauw_eval_assert(in_array('node_primary_adm_controlado', (array) ($status['features'] ?? array()), true), 'Fase 9 precisa anunciar Node primario controlado.');
+    miauw_eval_assert(in_array('contrato_persona_node', (array) ($status['features'] ?? array()), true), 'Fase 10 precisa anunciar contrato de persona Node.');
+    miauw_eval_assert(in_array('eval_personalidade_node', (array) ($status['features'] ?? array()), true), 'Fase 10 precisa anunciar eval de personalidade Node.');
     miauw_eval_assert(in_array((string) ($status['engine'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Engine publica precisa ser valida.');
 });
 
-miauw_eval_add('fase9_contrato_corte_acelerado', static function (): void {
+miauw_eval_add('fase10_contrato_persona_evolutiva', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase9', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 9.');
+    miauw_eval_assert_same('fase10', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 10.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
@@ -125,6 +129,23 @@ miauw_eval_add('fase9_contrato_corte_acelerado', static function (): void {
     miauw_eval_assert(!empty($contract['pronto_agora']['trace_comparacao_sombra']), 'Trace de comparacao sombra precisa estar marcado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['engine_switch']), 'Fase 9 precisa marcar engine switch pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['manutencao_adm']), 'Fase 9 precisa marcar manutencao adm pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['persona_versionada']), 'Fase 10 precisa marcar persona versionada pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['eval_persona_node']), 'Fase 10 precisa marcar eval de persona Node pronto.');
+});
+
+miauw_eval_add('fase10_persona_contract_preservado', static function (): void {
+    $contract = miauw_agent_personality_contract();
+    $json = json_encode($contract, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+
+    miauw_eval_assert_same('miauby-persona-2026-05-16', (string) ($contract['version'] ?? ''), 'Contrato de persona precisa ser versionado.');
+    miauw_eval_assert_contains('Fiscal interno', (string) ($contract['papel'] ?? ''), 'Persona precisa manter papel de fiscal interno.');
+    miauw_eval_assert_contains('personalidade forte', $json, 'Persona precisa exigir personalidade forte.');
+    miauw_eval_assert_contains('Sem dado, sem milagre', $json, 'Persona precisa preservar bordao operacional.');
+    miauw_eval_assert_contains('Meu bigode', $json, 'Persona precisa preservar voz do Miauby.');
+    miauw_eval_assert_contains('nao inventar dado', strtolower($json), 'Persona precisa preservar regra de nao inventar dado.');
+    miauw_eval_assert(stripos($json, 'Codex') === false, 'Contrato de persona nao deve citar agente de desenvolvimento.');
+    miauw_eval_assert(stripos($json, 'OpenAI') === false, 'Contrato de persona nao deve citar fornecedor.');
+    miauw_eval_assert(stripos($json, 'sk-') === false, 'Contrato de persona nao deve conter fragmento de chave.');
 });
 
 miauw_eval_add('guardrail_remove_bastidor_e_segredo', static function (): void {

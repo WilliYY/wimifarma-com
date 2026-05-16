@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $data = miauw_diagnostics_panel_data(true);
 $summary = $data['summary'];
 $agent = $summary['agent'] ?? array();
+$personality = $summary['personality'] ?? array();
 $nextPhase = $summary['next_phase'] ?? array();
 $agentService = $summary['agent_service'] ?? array();
 $agentShadow = $summary['agent_shadow'] ?? array();
@@ -157,9 +158,9 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 9</span>
+                    <span class="diag-kicker">Fase 10</span>
                     <h1>Diagnostico do Miauby</h1>
-                    <p>Saude, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
+                    <p>Saude, persona, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>
             </div>
             <div class="diag-version">
@@ -216,6 +217,11 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <?php $runtimeMaintenance = is_array($agentRuntime['maintenance'] ?? null) ? $agentRuntime['maintenance'] : array(); ?>
                 <p><?php echo !empty($runtimeMaintenance['active']) ? 'Manutencao ativa' : 'Uso normal'; ?> | usuario <?php echo !empty($agentRuntime['engine_allowed']) ? 'liberado' : 'padrao'; ?></p>
             </article>
+            <article class="diag-card">
+                <span>Persona</span>
+                <strong>Preservada</strong>
+                <p><?php echo e((string) ($personality['version'] ?? ($agent['personality_version'] ?? ''))); ?> | voz operacional versionada.</p>
+            </article>
         </section>
 
         <section class="diag-two">
@@ -254,7 +260,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
         <section class="diag-panel">
             <div class="diag-panel-head">
                 <div>
-                    <span>Fase 8</span>
+                    <span>Fase 10</span>
                     <h2>Contrato do servico agente</h2>
                 </div>
                 <p><?php echo e((string) ($nextPhase['runtime'] ?? '')); ?></p>
@@ -268,6 +274,26 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="diag-tags">
                 <?php foreach ((array) ($nextPhase['pronto_agora'] ?? array()) as $name => $ready) : ?>
                     <span><?php echo e((string) $name); ?>: <?php echo !empty($ready) ? 'pronto' : 'pendente'; ?></span>
+                <?php endforeach; ?>
+            </div>
+        </section>
+
+        <section class="diag-panel">
+            <div class="diag-panel-head">
+                <div>
+                    <span>Personalidade</span>
+                    <h2>Contrato da voz do Miauby</h2>
+                </div>
+                <p><?php echo e((string) ($personality['version'] ?? '')); ?></p>
+            </div>
+            <div class="diag-list compact">
+                <p><strong>Papel</strong><span><?php echo e((string) ($personality['papel'] ?? 'Fiscal interno da operacao')); ?></span></p>
+                <p><strong>Regra</strong><span>Personalidade forte + solucao pratica, sem inventar dado e sem bastidor tecnico.</span></p>
+                <p><strong>Proximo</strong><span><?php echo e((string) ($personality['proxima_melhoria'] ?? 'Coletar exemplos reais e ampliar evals.')); ?></span></p>
+            </div>
+            <div class="diag-tags">
+                <?php foreach ((array) ($personality['voz'] ?? array()) as $rule) : ?>
+                    <span><?php echo e((string) $rule); ?></span>
                 <?php endforeach; ?>
             </div>
         </section>

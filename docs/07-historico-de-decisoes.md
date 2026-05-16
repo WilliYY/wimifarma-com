@@ -2,6 +2,36 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-16 - Miauby preserva personalidade no motor agente
+
+Decisao:
+
+- Criar a Fase 10 do Miauby com contrato versionado de personalidade (`miauby-persona-2026-05-16`).
+- Expor `personality_version` no status PHP e no health do servico Node.
+- Reforcar o prompt do Node para preservar o tom de fiscal interno, humor curto, bordoes controlados, pedido minimo de contexto e regra de nao inventar dados.
+- Adicionar `npm run check:persona` em `apps/miauw-agent` para evitar regressao para resposta generica antes do deploy.
+
+Motivo:
+
+- Durante o corte controlado para o Node, o Miauby passou a responder corretamente, mas seco demais. A personalidade precisa virar contrato testavel, nao depender de lembranca manual.
+
+Impacto:
+
+- `apps/miauw-agent/`
+- `site/miauw/diagnostico.php`
+- `site/miauw/miauw-diagnostics.php`
+- `site/miauw/miauw-evals.php`
+- `site/miauw/miauw-funcoes.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- Humor nao pode virar falta de precisao: dados reais continuam exigindo fonte do sistema ou do operador.
+- Acoes fortes continuam com confirmacao humana e escrita controlada pelo PHP ate cada tool ser migrada com auditoria.
+- Coletar exemplos reais bons/ruins do `adm` para ampliar evals antes de liberar mais usuarios.
+
 ## 2026-05-16 - Miauby ganha corte acelerado por engine
 
 Decisao:

@@ -359,8 +359,10 @@ function miauw_diagnostics_agent_service_status(): array
 
     $status['reachable'] = true;
     $status['status'] = !empty($decoded['ok']) ? 'ok' : 'degraded';
+    $status['service_version'] = miauw_diagnostics_safe_text((string) ($decoded['service_version'] ?? ''), 40);
     $status['agent_version'] = miauw_diagnostics_safe_text((string) ($decoded['agent_version'] ?? ''), 40);
     $status['phase'] = miauw_diagnostics_safe_text((string) ($decoded['phase'] ?? ''), 40);
+    $status['personality_version'] = miauw_diagnostics_safe_text((string) ($decoded['personality_version'] ?? ''), 80);
     $status['runtime'] = miauw_diagnostics_safe_text((string) ($decoded['runtime'] ?? ''), 40);
     $status['api_configured'] = !empty($decoded['api_configured']);
     $status['writes_enabled'] = !empty($decoded['writes_enabled']);
@@ -387,6 +389,7 @@ function miauw_diagnostics_summary(bool $runScan = true): array
 
     return array(
         'agent' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(),
+        'personality' => function_exists('miauw_agent_personality_contract') ? miauw_agent_personality_contract() : array(),
         'next_phase' => function_exists('miauw_agent_next_phase_contract') ? miauw_agent_next_phase_contract() : array(),
         'agent_service' => miauw_diagnostics_agent_service_status(),
         'agent_shadow' => function_exists('miauw_agent_shadow_status') ? miauw_agent_shadow_status() : array(),

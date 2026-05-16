@@ -51,6 +51,7 @@ Status operacional:
 - A Fase 7 cria `wimifarma-miauw-agent`, servico Node.js 22 + TypeScript com Agents SDK em `/miauw/agent/`. Ele possui health/status e endpoints internos `run` e `stream` protegidos por token, mas roda em modo sombra sem escrita real; o chat PHP atual continua sendo o caminho oficial.
 - A Fase 8 adiciona o adaptador PHP para o servico sombra: quando `MIAUW_AGENT_SHADOW_ON_SEND=true`, `api.php?action=send` chama `POST /miauw/agent/run`, compara com a resposta oficial PHP e registra trace seguro. O padrao segue `false`, sem impacto no operador.
 - A Fase 9 adiciona corte controlado por `MIAUW_ENGINE`: `php` mantem o motor antigo, `node_shadow` compara Node para usuarios liberados e `node` usa Node como resposta oficial para esses usuarios, com fallback automatico para PHP se o servico falhar. Durante implantacao acelerada, `MIAUW_MAINTENANCE_MODE=true` bloqueia usuarios comuns e libera `adm`.
+- A Fase 10 adiciona contrato versionado da personalidade do Miauby (`miauby-persona-2026-05-16`) no PHP e no Node. O servico `/miauw/agent/health` informa `personality_version`, e `npm run check:persona` valida o prompt Node sem chamar a camada online.
 
 Tabelas:
 
@@ -144,6 +145,7 @@ Direcao:
 - antes de migrar tools reais para o servico Node/TypeScript/Agents SDK, rodar os mesmos evals contra o servico novo e manter fallback pelo `api.php` atual.
 - enquanto o servico Node nao executar tools auditadas, manter PHP como dono de login, sessao, confirmacoes e escrita forte.
 - usar traces `miauw_agent_shadow_compare` e `miauw_agent_node_reply` para medir divergencia, latencia e falhas durante o corte por `adm`.
+- preservar a personalidade versionada do Miauby ao migrar tools para Node; respostas genericas, secas ou burocraticas devem virar caso de eval antes de liberar mais usuarios.
 
 Documento especifico:
 

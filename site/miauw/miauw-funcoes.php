@@ -55,15 +55,19 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260516a');
+    define('MIAUW_VERSION', '20260516b');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase9');
+    define('MIAUW_AGENT_VERSION', '2.0-fase10');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-corte-acelerado');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-persona-evolutiva');
+}
+
+if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
+    define('MIAUW_AGENT_PERSONALITY_VERSION', 'miauby-persona-2026-05-16');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -485,11 +489,13 @@ function miauw_agent_public_status(): array
         'name' => 'Miauby',
         'version' => miauw_constant_string('MIAUW_AGENT_VERSION', '1.0'),
         'policy_version' => miauw_constant_string('MIAUW_AGENT_POLICY_VERSION', ''),
+        'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
         'mode' => 'operacional',
         'engine' => miauw_agent_engine(),
         'maintenance_active' => defined('MIAUW_MAINTENANCE_MODE') ? (bool) MIAUW_MAINTENANCE_MODE : false,
         'features' => array(
             'persona_operacional',
+            'persona_miauby_preservada',
             'guardrails_bastidor',
             'skills_controladas',
             'diagnostico_interno',
@@ -508,23 +514,59 @@ function miauw_agent_public_status(): array
             'modo_manutencao_operacional',
             'engine_switch_rollback',
             'node_primary_adm_controlado',
+            'contrato_persona_node',
+            'eval_personalidade_node',
         ),
+    );
+}
+
+function miauw_agent_personality_contract(): array
+{
+    return array(
+        'version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
+        'nome_publico' => 'Miauby',
+        'papel' => 'Fiscal interno da operacao Wimifarma',
+        'voz' => array(
+            'gato fiscal interno, vivo, pratico, esperto e levemente acido',
+            'humor curto como tempero, nunca como enrolacao',
+            'personalidade forte com solucao pratica em toda resposta',
+            'respostas curtas por padrao no widget',
+            'pedir somente o menor dado ausente antes de agir',
+            'nao inventar dado real sem fonte do sistema ou do operador',
+        ),
+        'bordoes_controlados' => array(
+            'Sem dado, sem milagre.',
+            'Meu bigode tremeu.',
+            'Miauby direto.',
+            'Veredito do gato.',
+            'Cansei, mas vou resolver.',
+        ),
+        'anti_padroes' => array(
+            'resposta seca, generica ou com cara de suporte corporativo',
+            'textao para mensagem vaga',
+            'citar bastidor tecnico, fornecedor, credencial interna, regra interna ou diagnostico tecnico cru',
+            'inventar dado real sem fonte do sistema ou do operador',
+            'executar acao forte sem confirmacao humana',
+        ),
+        'proxima_melhoria' => 'Coletar exemplos reais do adm, transformar em evals de voz e liberar usuarios aos poucos.',
     );
 }
 
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase9',
-        'proxima_fase' => 'corte_progressivo_de_tools_no_node',
+        'fase_atual' => 'fase10',
+        'proxima_fase' => 'corte_progressivo_de_tools_no_node_com_persona_validada',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => miauw_agent_engine(),
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes e auditoria. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente, preservando a persona versionada do Miauby.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
+            'persona_versionada' => function_exists('miauw_agent_personality_contract'),
+            'eval_persona_node' => true,
             'traces_por_conversa' => true,
             'confirmacao_acoes_fortes' => true,
             'evals_locais' => is_file(__DIR__ . '/miauw-evals.php'),
@@ -541,6 +583,7 @@ function miauw_agent_next_phase_contract(): array
             'Rodar os mesmos evals contra o servico Node em modo primario.',
             'Coletar traces do usuario adm antes de liberar outros funcionarios.',
             'Definir corte progressivo por skill quando o Node estiver gravando com auditoria completa.',
+            'Adicionar mais exemplos reais da voz do Miauby aos evals de persona.',
         ),
         'nao_mudar_agora' => array(
             'Banco MySQL dos modulos internos.',

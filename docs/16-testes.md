@@ -55,7 +55,8 @@ Ele valida:
 - Fase 6 do Miauby: contrato da proxima camada, schemas das tools, alinhamento registry/tools online, dados incompletos sem escrita, Cotacao pedindo termo quando falta produto/EAN/categoria, prompt de nao inventar dados e confirmacao obrigatoria para escrita forte por risco.
 - Fase 7 do Miauby: status publico anuncia servico sombra, diagnostico inclui status do servico agente e o endpoint `/miauw/agent/health` valida o container Node/TypeScript.
 - Fase 8 do Miauby: status publico anuncia adaptador PHP sombra, diagnostico inclui status do adaptador, evals validam skip controlado e similaridade sem chamada online.
-- Fase 9 do Miauby: status publico anuncia manutencao/engine switch, contrato aponta `fase9`, diagnostico inclui `agent_runtime`, evals validam engine em lista fechada e `adm` liberado para manutencao/corte.
+- Fase 9 do Miauby: status publico anuncia manutencao/engine switch, diagnostico inclui `agent_runtime`, evals validam engine em lista fechada e `adm` liberado para manutencao/corte.
+- Fase 10 do Miauby: status publico anuncia persona preservada, contrato aponta `fase10`, diagnostico inclui contrato da voz e `apps/miauw-agent` valida `npm run check:persona` sem chamada online.
 
 Rodar pelo container:
 
@@ -72,14 +73,14 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em banco, testar pelo menos login/status e logs.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
-- Se mexer em `apps/miauw-agent`, rodar `npm run check`, build do servico e validar `/miauw/agent/health`.
+- Se mexer em `apps/miauw-agent`, rodar `npm run check`, `npm run check:persona`, build do servico e validar `/miauw/agent/health`.
 - Se mexer no painel de diagnostico do Miauby, validar login local e acesso a `/miauw/diagnostico.php`.
 
 ## Decisoes tecnicas ja tomadas
 
 - A fase atual prioriza smoke tests por causa da migracao.
 - O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
-- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5, as regras operacionais ampliadas da Fase 6 e o contrato/status da Fase 7/8/9.
+- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5, as regras operacionais ampliadas da Fase 6, o contrato/status da Fase 7/8/9 e o contrato de personalidade da Fase 10.
 
 ## Riscos ao alterar
 
