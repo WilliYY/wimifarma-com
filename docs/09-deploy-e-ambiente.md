@@ -28,6 +28,7 @@ Higiene de pastas no VPS:
 - Antes de mover qualquer pasta, conferir se ela nao e a origem montada nos containers atuais, se nao guarda `.env`, `mysql/`, `cotacao-data/`, backups ou `config.local.php` unicos.
 - Pastas paradas devem ser movidas para uma quarentena de arquivo, como `/home/ubuntu/projetos/_arquivados-wimifarma/AAAA-MM-DD/`, e nao apagadas diretamente.
 - Depois da organizacao, o WinSCP deve mostrar a operacao ativa concentrada em `wimifarma-com`, com copias antigas guardadas dentro de `_arquivados-wimifarma`.
+- Em 2026-05-16, durante deploy do Miauby, o `wimifarma-com-db` foi encontrado em restart porque o `mysql/` oficial estava incompleto e sem `ibdata1`. O diretorio invalido foi movido para `/home/ubuntu/projetos/wimifarma-com/mysql-invalid-20260516113246`, e o `mysql/` oficial foi restaurado de `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/mysql`. Preservar ambos ate decisao explicita.
 
 ## Arquivos e servicos envolvidos
 
@@ -116,6 +117,7 @@ Higiene de pastas no VPS:
 - Fazer `git clone` por cima da pasta atual pode apagar volume/dados locais.
 - Mover ou apagar uma pasta que ainda esteja montada por container ativo pode tirar o site do ar. Conferir mounts com `docker inspect` antes de arquivar.
 - Arquivar uma pasta sem preservar `.env`, `mysql/`, `cotacao-data/` ou `config.local.php` pode perder configuracao ou dados locais unicos.
+- Se o MySQL do VPS entrar em restart com `Failed to find valid data directory`, nao recriar volume vazio. Conferir se existe `ibdata1` no `mysql/` oficial e procurar copias preservadas antes de qualquer acao.
 - Trocar nomes de container quebra proxy.
 - Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
 - Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual quando `MIAUW_ENGINE=php`, mas impede validar a Fase 7/8/9 do Miauby e quebra o motor `node`.
