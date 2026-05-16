@@ -104,6 +104,8 @@
     headerSelectTimer: null,
     pendingCellSaves: new Map(),
     pendingBatchSaves: 0,
+    deferredRemoteRowIds: new Set(),
+    deferredRemoteFullRender: false,
     cellHistory: [],
     cellHistoryTarget: null,
     history: [],
@@ -180,7 +182,7 @@
     if (!['GET', 'HEAD'].includes(String(options.method || 'GET').toUpperCase())) {
       headers['X-CSRF-Token'] = csrf;
     }
-    const response = await fetch(`${basePath}${path}`, { ...options, headers });
+    const response = await fetch(`${basePath}${path}`, { ...options, cache: 'no-store', headers });
     const contentType = response.headers.get('content-type') || '';
     const data = contentType.includes('application/json') ? await response.json() : await response.text();
     if (!response.ok) {
@@ -214,6 +216,51 @@
 
   function colByKey(columnKey) {
     return state.columns.find((column) => column.key === columnKey);
+  }
+
+  function orderColumns(columns) {
+    return (columns || []).slice().sort((left, right) => (
+      Number(left.position || 0) - Number(right.position || 0)
+      || String(left.label || '').localeCompare(String(right.label || ''))
+    ));
+  }
+
+  function replaceColumn(column) {
+    if (!column?.key) return false;
+    const index = state.columns.findIndex((item) => item.key === column.key);
+    if (index === -1) {
+      state.columns = orderColumns([...state.columns, column]);
+      return true;
+    }
+    state.columns[index] = { ...state.columns[index], ...column };
+    state.columns = orderColumns(state.columns);
+    return true;
+  }
+
+  function repairSelectionAfterColumnChange() {
+    const firstEditable = state.columns.find((column) => column.options?.computed !== true) || state.columns[0] || null;
+    if (state.activeCell && !colByKey(state.activeCell.columnKey)) {
+      state.activeCell = firstEditable && rowById(state.activeCell.rowId)
+        ? { rowId: state.activeCell.rowId, columnKey: firstEditable.key }
+        : null;
+      state.anchorCell = state.activeCell;
+      state.selectedRange = null;
+      state.selectionScope = null;
+    }
+    if (state.anchorCell && !colByKey(state.anchorCell.columnKey)) {
+      state.anchorCell = state.activeCell;
+    }
+    if (state.selectionScope?.columnKey && !colByKey(state.selectionScope.columnKey)) {
+      state.selectionScope = null;
+      state.selectedRange = null;
+    }
+  }
+
+  function setColumnsFromServer(columns) {
+    if (!Array.isArray(columns) || !columns.length) return false;
+    state.columns = orderColumns(columns);
+    repairSelectionAfterColumnChange();
+    return true;
   }
 
   function cellKey(rowId, columnKey) {
@@ -721,8 +768,8 @@
   }
 
   function updateSelectionClasses() {
-    table.querySelectorAll('.is-selected, .is-active-cell, .is-selected-header, .is-selected-row, .is-fill-preview').forEach((node) => {
-      node.classList.remove('is-selected', 'is-active-cell', 'is-selected-header', 'is-selected-row', 'is-fill-preview');
+    table.querySelectorAll('.is-selected, .is-active-cell, .is-active-row-header, .is-selected-header, .is-selected-row, .is-fill-preview').forEach((node) => {
+      node.classList.remove('is-selected', 'is-active-cell', 'is-active-row-header', 'is-selected-header', 'is-selected-row', 'is-fill-preview');
     });
     table.querySelectorAll('.fill-handle').forEach((node) => node.remove());
     selectedCells({ includeComputed: true }).forEach((cell) => {
@@ -756,6 +803,8 @@
         handle.className = 'fill-handle';
         active.appendChild(handle);
       }
+      const rowHeader = table.querySelector(`.row-index[data-row-id="${state.activeCell.rowId}"]`);
+      if (rowHeader) rowHeader.classList.add('is-active-row-header');
     }
     updateFillPreviewClasses();
     updateRemotePresenceClasses();
@@ -854,6 +903,41 @@
     if (!FILTERABLE_KEYS.includes(column.key)) return '';
     const active = state.filters[column.key] || state.colorFilters[column.key] ? ' is-active' : '';
     return `<button type="button" class="filter-button${active}" data-filter-column="${esc(column.key)}" title="Filtro" aria-label="Filtrar ${esc(column.label)}"></button>`;
+  }
+
+  function updateColumnHeader(columnKey, options = {}) {
+    const column = colByKey(columnKey);
+    const header = table.querySelector(`th[data-column-key="${columnKey}"]`);
+    if (!column || !header || (header.querySelector('.column-title-editor') && options.force !== true)) return;
+    const width = clampColumnWidth(column.width || 160);
+    header.style.width = `${width}px`;
+    header.innerHTML = `<span class="column-title">${esc(column.label)}</span>${headerFilterButton(column)}
+      <button type="button" class="resize-handle" data-resize-column="${esc(column.key)}" aria-label="Redimensionar ${esc(column.label)}" title="Arraste para ajustar"></button>`;
+    updateSelectionClasses();
+  }
+
+  function applyRemoteColumnChange(payload = {}) {
+    const type = payload.type || '';
+    if (['column_created', 'column_moved', 'column_deleted', 'column_restored'].includes(type)) {
+      if (!setColumnsFromServer(payload.columns)) return false;
+      renderTable();
+      return true;
+    }
+    if (type === 'column_renamed') {
+      if (!replaceColumn(payload.column)) return false;
+      updateColumnHeader(payload.column.key);
+      return true;
+    }
+    if (type === 'column_resized') {
+      const column = payload.column || null;
+      if (column) replaceColumn(column);
+      const columnKey = payload.columnKey || column?.key;
+      const width = clampColumnWidth(payload.width || column?.width);
+      if (!columnKey || !colByKey(columnKey)) return false;
+      applyColumnWidth(columnKey, width);
+      return true;
+    }
+    return false;
   }
 
   function renderCellHtml(row, column, styles, winner = computeWinner(row)) {
@@ -1027,6 +1111,15 @@
 
   function autosizeSheetInputs(root = table) {
     root.querySelectorAll('.sheet-input').forEach(autosizeInput);
+  }
+
+  function scheduleSheetAutosize(root = table) {
+    if (scheduleSheetAutosize.queued) return;
+    scheduleSheetAutosize.queued = true;
+    window.requestAnimationFrame(() => {
+      scheduleSheetAutosize.queued = false;
+      autosizeSheetInputs(root);
+    });
   }
 
   function bindCellHover(root = table) {
@@ -1203,12 +1296,14 @@
       });
       status('Outra pessoa editou esta celula', 'warn');
       markConflictCell(payload.rowId, payload.columnKey);
+      deferRemoteRender([payload.rowId]);
       return false;
     }
     row.values = { ...(row.values || {}), [payload.columnKey]: payload.value };
     row.version = payload.version;
     state.conflicts.delete(key);
     if (state.editing) {
+      deferRemoteRender([payload.rowId]);
       updateRenderedCell(payload.rowId, payload.columnKey, payload.value);
       return false;
     }
@@ -1219,13 +1314,15 @@
     let needsRender = false;
     const rowIds = new Set();
     (cells || []).forEach((cell) => {
+      if (!cell?.rowId || !cell?.columnKey) return;
+      if (cell?.rowId && rowById(cell.rowId)) rowIds.add(cell.rowId);
       if (applyRemoteCellUpdate(cell)) {
         needsRender = true;
-        rowIds.add(cell.rowId);
       }
     });
     applyRemoteCellsUpdate.rowIds = rowIds;
-    return needsRender;
+    if (state.editing && rowIds.size) deferRemoteRender(rowIds);
+    return needsRender || (state.editing && rowIds.size > 0);
   }
 
   function applyRemoteRowsAdded(rows) {
@@ -1377,6 +1474,8 @@
         if (applyRemoteRuleChange({ mode: event.type === 'rule_created' ? 'created' : 'updated', rules: [payload.rule] })) needsFullRender = true;
       } else if (event.type === 'rule_deleted') {
         if (applyRemoteRuleChange({ mode: 'deleted', id: payload.id })) needsFullRender = true;
+      } else if (event.type.startsWith('column_')) {
+        if (!applyRemoteColumnChange({ ...payload, type: event.type })) return false;
       } else if (event.type === 'backup_created' || event.type === 'google_sheets_exported') {
         continue;
       } else {
@@ -1384,9 +1483,14 @@
       }
     }
     needsRender = needsRender || needsFullRender;
-    if (needsRender && !state.editing) {
-      if (needsFullRender) renderTable();
-      else refreshRenderedRows(changedRowIds);
+    if (needsRender) {
+      if (state.editing) {
+        deferRemoteRender(changedRowIds, { full: needsFullRender });
+      } else if (needsFullRender) {
+        renderTable();
+      } else {
+        refreshRenderedRows(changedRowIds);
+      }
     }
     return true;
   }
@@ -1439,7 +1543,8 @@
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
       if (applyRemoteRowsAdded(payload.rows)) {
-        appendRenderedRows(applyRemoteRowsAdded.addedRows || payload.rows);
+        if (payload.mode === 'insert') renderTable();
+        else appendRenderedRows(applyRemoteRowsAdded.addedRows || payload.rows);
       }
     });
     socket.on('row:deleted', (payload) => {
@@ -1448,7 +1553,8 @@
     });
     socket.on('columns:changed', (payload = {}) => {
       rememberEventId(payload.eventId);
-      reloadSheet();
+      if (payload.clientId === clientId) return;
+      if (!applyRemoteColumnChange(payload)) reloadSheet();
     });
     socket.on('rules:update', (payload = {}) => {
       rememberEventId(payload.eventId);
@@ -1570,6 +1676,32 @@
 
   function hasPendingSaves() {
     return state.pendingCellSaves.size > 0 || state.pendingBatchSaves > 0;
+  }
+
+  function deferRemoteRender(rowIds = [], options = {}) {
+    Array.from(rowIds || []).forEach((rowId) => {
+      if (rowId) state.deferredRemoteRowIds.add(rowId);
+    });
+    if (options.full === true) {
+      state.deferredRemoteFullRender = true;
+    }
+  }
+
+  function clearDeferredRemoteRender() {
+    state.deferredRemoteRowIds.clear();
+    state.deferredRemoteFullRender = false;
+  }
+
+  function flushDeferredRemoteRender() {
+    if (state.editing) return;
+    if (state.deferredRemoteFullRender) {
+      clearDeferredRemoteRender();
+      renderTable();
+      return;
+    }
+    const rowIds = new Set(state.deferredRemoteRowIds);
+    clearDeferredRemoteRender();
+    if (rowIds.size) refreshRenderedRows(rowIds);
   }
 
   function applyLocalCellValue(row, columnKey, value, options = {}) {
@@ -1825,6 +1957,7 @@
       clearEditingVisuals();
       updatePresence(false);
       if (move) moveActive(move.row, move.col, false);
+      flushDeferredRemoteRender();
     }
     return options.waitForSave ? commitPromise : Promise.resolve();
   }
@@ -1841,6 +1974,7 @@
     }
     updatePresence(false);
     renderTable();
+    clearDeferredRemoteRender();
   }
 
   function moveActive(rowDelta, colDelta, extend = false) {
@@ -1909,7 +2043,9 @@
     data.rows.forEach((row) => {
       if (!state.rows.some((item) => item.id === row.id)) state.rows.push(row);
     });
-    await reloadSheet();
+    state.rows.sort((a, b) => Number(a.position) - Number(b.position));
+    rememberEventId(data.eventId);
+    renderTable();
     status('Sincronizado');
     return data.rows;
   }
@@ -2248,7 +2384,12 @@
       method: 'POST',
       body: JSON.stringify({ clientId })
     });
-    await reloadSheet();
+    if (setColumnsFromServer(data.columns)) renderTable();
+    else if (data.column) {
+      replaceColumn(data.column);
+      renderTable();
+    }
+    rememberEventId(data.eventId);
     return data;
   }
 
@@ -2262,7 +2403,13 @@
     if (options.history !== false) {
       pushHistory({ type: 'column-delete', columnKey, label: column.label });
     }
-    await reloadSheet();
+    if (setColumnsFromServer(data.columns)) renderTable();
+    else {
+      state.columns = state.columns.filter((item) => item.key !== columnKey);
+      repairSelectionAfterColumnChange();
+      renderTable();
+    }
+    rememberEventId(data.eventId);
     return data;
   }
 
@@ -2299,14 +2446,15 @@
             method: 'POST',
             body: JSON.stringify({ label: nextLabel, clientId })
           });
-          column.label = data.column?.label || nextLabel;
+          replaceColumn(data.column || { ...column, label: nextLabel });
+          rememberEventId(data.eventId);
           status('Sincronizado');
         }
       } finally {
         if (state.renamingColumn?.editor === editor) {
           state.renamingColumn = null;
         }
-        renderTable();
+        updateColumnHeader(columnKey, { force: true });
       }
     };
     state.renamingColumn = { columnKey, editor, finish };
@@ -2328,7 +2476,7 @@
     await state.renamingColumn.finish(save);
   }
 
-  function applyColumnWidth(columnKey, width) {
+  function applyColumnWidth(columnKey, width, options = {}) {
     const nextWidth = clampColumnWidth(width);
     const column = colByKey(columnKey);
     if (column) column.width = nextWidth;
@@ -2343,7 +2491,7 @@
       col.style.minWidth = `${nextWidth}px`;
       col.style.maxWidth = `${nextWidth}px`;
     }
-    autosizeSheetInputs();
+    if (options.autosize !== false) scheduleSheetAutosize();
     return nextWidth;
   }
 
@@ -2408,10 +2556,12 @@
   }
 
   async function saveColumnWidth(columnKey, width) {
-    await api(`/api/columns/${encodeURIComponent(columnKey)}/width`, {
+    const data = await api(`/api/columns/${encodeURIComponent(columnKey)}/width`, {
       method: 'POST',
       body: JSON.stringify({ width: clampColumnWidth(width), clientId })
     });
+    if (data.column) replaceColumn(data.column);
+    rememberEventId(data.eventId);
   }
 
   function positionFloatingMenu(menu, x, y) {
@@ -2482,7 +2632,12 @@
         method: 'POST',
         body: JSON.stringify({ anchorKey: columnKey, placement: action === 'column-before' ? 'before' : 'after', clientId })
       });
-      await reloadSheet();
+      if (setColumnsFromServer(data.columns)) renderTable();
+      else if (data.column) {
+        replaceColumn(data.column);
+        renderTable();
+      }
+      rememberEventId(data.eventId);
       if (data.column?.key) await beginColumnRename(data.column.key);
       return null;
     }
@@ -2740,7 +2895,7 @@
       }
       if (!state.resizing) return;
       const width = state.resizing.startWidth + event.clientX - state.resizing.startX;
-      const nextWidth = applyColumnWidth(state.resizing.columnKey, width);
+      const nextWidth = applyColumnWidth(state.resizing.columnKey, width, { autosize: false });
       updateResizeFeedback(state.resizing.columnKey, nextWidth, event.clientX);
     });
 
@@ -2751,6 +2906,7 @@
         state.resizing = null;
         document.body.classList.remove('is-resizing-column');
         hideResizeFeedback();
+        scheduleSheetAutosize();
         saveColumnWidth(columnKey, width).catch(console.error);
       }
       if (state.fillDragging) {

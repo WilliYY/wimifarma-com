@@ -91,12 +91,6 @@ const PERFORMANCE_INDEX_STATEMENTS = [
 ];
 const DELTA_EVENT_LIMIT = Math.max(20, Math.min(1000, Number.parseInt(env.COTACAO_DELTA_EVENT_LIMIT || '250', 10) || 250));
 const SNAPSHOT_EVENT_TYPES = new Set([
-  'column_created',
-  'column_renamed',
-  'column_moved',
-  'column_deleted',
-  'column_restored',
-  'column_resized',
   'google_sheets_imported',
   'backup_restored'
 ]);
@@ -148,6 +142,16 @@ const io = new Server(server, {
 });
 
 app.set('trust proxy', true);
+app.set('etag', false);
+app.use((req, res, next) => {
+  if (req.path === `${BASE_PATH}/api` || req.path.startsWith(`${BASE_PATH}/api/`)) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  }
+  next();
+});
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: '2mb' }));
 app.use(sessionMiddleware);
@@ -667,6 +671,18 @@ async function normalizeColumnOrder(quoteId) {
       [quoteId, ordered[index].key, index + 1]
     );
   }
+}
+
+async function visibleColumns(quoteId) {
+  const result = await pgPool.query(
+    `SELECT *
+     FROM cotacao_v2_columns
+     WHERE quote_id = $1
+       AND COALESCE((options->>'hidden')::boolean, false) = false
+     ORDER BY position ASC, label ASC`,
+    [quoteId]
+  );
+  return result.rows;
 }
 
 async function seedRows(quoteId) {
@@ -2065,7 +2081,7 @@ app.post(`${BASE_PATH}/api/rows/insert`, requireApiAuth, verifyCsrf, asyncRoute(
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId, mode: 'insert' });
   res.json({ ok: true, rows, eventId: Number(event.id) });
 }));
 
@@ -2100,22 +2116,24 @@ app.delete(`${BASE_PATH}/api/rows/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
 app.post(`${BASE_PATH}/api/columns`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
-  const column = await addDistributorColumn(
+  const createdColumn = await addDistributorColumn(
     quote.id,
     String(req.body.anchorKey || ''),
     String(req.body.placement || 'after') === 'before' ? 'before' : 'after',
     req.body.label
   );
+  const columns = await visibleColumns(quote.id);
+  const column = columns.find((item) => item.key === createdColumn.key) || createdColumn;
   const event = await appendEvent({
     quoteId: quote.id,
     type: 'column_created',
     columnKey: column.key,
-    payload: { column },
+    payload: { column, columns },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
-  res.json({ ok: true, column, eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { type: 'column_created', column, columns, eventId: Number(event.id), clientId });
+  res.json({ ok: true, column, columns, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/rename`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -2136,14 +2154,14 @@ app.post(`${BASE_PATH}/api/columns/:key/rename`, requireApiAuth, verifyCsrf, asy
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { type: 'column_renamed', column, eventId: Number(event.id), clientId });
   res.json({ ok: true, column, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/move`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
-  const column = await moveDistributorColumn(
+  const movedColumn = await moveDistributorColumn(
     quote.id,
     String(req.params.key || ''),
     String(req.body.direction || 'right') === 'left' ? 'left' : 'right',
@@ -2151,16 +2169,18 @@ app.post(`${BASE_PATH}/api/columns/:key/move`, requireApiAuth, verifyCsrf, async
     clientId
   );
   await normalizeColumnOrder(quote.id);
+  const columns = await visibleColumns(quote.id);
+  const column = columns.find((item) => item.key === movedColumn.key) || movedColumn;
   const event = await appendEvent({
     quoteId: quote.id,
     type: 'column_moved',
     columnKey: column.key,
-    payload: { column },
+    payload: { column, columns },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId });
-  res.json({ ok: true, column, eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { type: 'column_moved', column, columns, eventId: Number(event.id), clientId });
+  res.json({ ok: true, column, columns, eventId: Number(event.id) });
 }));
 
 app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -2188,16 +2208,17 @@ app.delete(`${BASE_PATH}/api/columns/:key`, requireApiAuth, verifyCsrf, asyncRou
     clientId: String(req.body?.clientId || '')
   });
   await normalizeColumnOrder(quote.id);
+  const columns = await visibleColumns(quote.id);
   const event = await appendEvent({
     quoteId: quote.id,
     type: 'column_deleted',
     columnKey,
-    payload: { columnKey },
+    payload: { columnKey, columns },
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
-  res.json({ ok: true, columnKey, eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { type: 'column_deleted', columnKey, columns, eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  res.json({ ok: true, columnKey, columns, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/restore`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -2234,16 +2255,18 @@ app.post(`${BASE_PATH}/api/columns/:key/restore`, requireApiAuth, verifyCsrf, as
     clientId: String(req.body?.clientId || '')
   });
   await normalizeColumnOrder(quote.id);
+  const columns = await visibleColumns(quote.id);
+  const restoredColumn = columns.find((item) => item.key === columnKey) || restored.rows[0];
   const event = await appendEvent({
     quoteId: quote.id,
     type: 'column_restored',
     columnKey,
-    payload: { columnKey },
+    payload: { columnKey, column: restoredColumn, columns },
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
-  res.json({ ok: true, column: restored.rows[0], eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { type: 'column_restored', columnKey, column: restoredColumn, columns, eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  res.json({ ok: true, column: restoredColumn, columns, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/columns/:key/width`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -2271,7 +2294,7 @@ app.post(`${BASE_PATH}/api/columns/:key/width`, requireApiAuth, verifyCsrf, asyn
     user: req.session.user,
     clientId: String(req.body?.clientId || '')
   });
-  io.to(`quote:${quote.id}`).emit('columns:changed', { eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
+  io.to(`quote:${quote.id}`).emit('columns:changed', { type: 'column_resized', column: updated.rows[0], columnKey, width, eventId: Number(event.id), clientId: String(req.body?.clientId || '') });
   res.json({ ok: true, column: updated.rows[0], eventId: Number(event.id) });
 }));
 
@@ -2614,6 +2637,10 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
     throw error;
   } finally {
     client.release();
+  }
+
+  if (!updatedCells.length) {
+    return res.json({ ok: true, cells: [], eventId: null, noop: true });
   }
 
   const event = await appendEvent({

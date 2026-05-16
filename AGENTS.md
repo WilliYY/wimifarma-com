@@ -41,6 +41,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
    - testes, build ou lint realizados;
    - pendencias abertas;
    - riscos ou cuidados encontrados.
+9. Quando houver alteracao de arquivos, fazer commit e push por padrao e, quando houver deploy aplicavel, enviar para o VPS tambem. So deixar sem commit/deploy se o usuario pedir explicitamente para nao publicar ou se houver bloqueio tecnico que precise ser relatado.
 
 ## Contexto atual
 
@@ -273,6 +274,9 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Durante o deploy de 2026-05-16, o `wimifarma-com-db` do VPS foi encontrado reiniciando porque `/home/ubuntu/projetos/wimifarma-com/mysql` estava incompleto e sem `ibdata1`. O diretorio invalido foi preservado como `/home/ubuntu/projetos/wimifarma-com/mysql-invalid-20260516113246`, e o `mysql/` oficial foi restaurado de `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/mysql` sem apagar a origem. Nao remover esses diretorios sem confirmacao clara.
 - Em 2026-05-16, a Cotacao V2 do VPS foi encontrada apontando para um Postgres novo/vazio em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/postgres`, com 20 linhas vazias e zero eventos. Os dados foram restaurados apenas nas tabelas `cotacao_v2_*` a partir da base preservada em `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/cotacao-data/postgres`, mantendo o `quote_id` antigo `c3f0cb73-435e-48f3-bc6f-42f2eb7d2b16`: 178 linhas ativas, 11 linhas com dados, 15 colunas, 35 estilos, 2 regras e 672 eventos ate 2026-05-15 21:13 UTC. Backups SQL manuais da operacao ficaram em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/manual-backups/`. Nao remover a base preservada nem os dumps sem confirmacao clara.
 - Ainda em 2026-05-16, alguns containers de banco do VPS (`wimifarma-com-db`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`) estavam rodando com label Compose `com.docker.compose.project=wimifarma-com-git`, embora usando o `docker-compose.yml` da pasta oficial. Enquanto esse estado nao for normalizado com janela e backup, deploy pontual de app deve evitar recriar dependencias, por exemplo `docker compose up -d --no-deps --build wimifarma-cotacao-app`.
+- Em 2026-05-16, a sincronizacao da Cotacao V2 foi reforcada para apagamentos e eventos remotos durante edicao: `Delete`/`Backspace` segue por `/cotacao/api/cells/batch`, lotes sem mudanca real nao criam evento vazio, e eventos de celula/lote recebidos enquanto a aba edita outra celula sao redesenhados ao encerrar a edicao para manter `Ganhador`, contadores e celulas dependentes atualizados.
+- Em 2026-05-16, os travamentos de distribuidora/resize foram atacados: eventos leves de coluna (`column_created`, `column_renamed`, `column_moved`, `column_deleted`, `column_restored`, `column_resized`) deixaram de exigir snapshot completo e agora carregam payload incremental; o frontend ignora o proprio evento de Socket.IO e atualiza coluna/ordem localmente. Redimensionar coluna nao recalcula mais altura de todos os textareas a cada movimento do mouse, apenas ao fim do arrasto. A API da Cotacao tambem usa `no-store`/sem ETag para impedir `304` em `/cotacao/api/events`, que fazia a tela cair em fallback pesado de snapshot.
+- Em 2026-05-16, o numero da linha da celula ativa na Cotacao V2 passou a ficar verde forte no frontend, como referencia visual local estilo Google Sheets; isso nao grava estado nem sincroniza com outras abas.
 
 ## Estado validado em 2026-05-11
 

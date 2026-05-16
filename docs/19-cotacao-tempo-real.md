@@ -38,6 +38,10 @@ O botao `Historico` da Cotacao V2 fica no topo, ao lado do contador de linhas co
 
 Em 2026-05-15, a mesma logica otimista foi aplicada aos lotes visiveis da planilha: colagem, desfazer/refazer de lote e alca de preenchimento atualizam a grade localmente, salvam por `/cotacao/api/cells/batch` e redesenham apenas as linhas afetadas. Eventos remotos de celula/lote tambem evitam renderizacao completa quando nao ha mudanca estrutural. Cores copiadas pelo fill handle ou aplicadas/apagadas em selecoes grandes usam endpoints de estilo em lote para reduzir chamadas pequenas.
 
+Em 2026-05-16, a aplicacao de eventos remotos durante edicao local foi reforcada: se uma aba esta editando uma celula e recebe `cell_updated` ou `cells_batch_updated` de outra aba, os valores entram no estado imediatamente, as linhas afetadas ficam marcadas para redesenho e a grade atualiza essas linhas ao encerrar a edicao. Isso evita que celulas calculadas, como `Ganhador`, e contadores fiquem visualmente atrasados. Lotes sem mudanca real tambem deixam de gerar eventos vazios na fila incremental.
+
+Tambem em 2026-05-16, eventos estruturais leves deixaram de cair automaticamente em snapshot completo. Inserir linha, criar, renomear, mover, apagar, restaurar ou redimensionar distribuidora passam a carregar payload suficiente para a outra aba atualizar colunas localmente. O resize de coluna tambem deixou de recalcular a altura de todas as celulas a cada movimento do mouse; o auto-ajuste roda uma vez apos o fim do arrasto. As chamadas de `/cotacao/api/*`, incluindo `/cotacao/api/events`, tambem passaram a responder e ser buscadas com `no-store`, evitando `304` de cache que fazia o frontend cair em fallback pesado de snapshot.
+
 Tambem em 2026-05-15, a navegacao de teclado durante edicao foi ajustada para uso operacional rapido: `Enter` salva a celula editada e desce exatamente uma linha. Em 2026-05-16, o editor voltou a priorizar edicao interna do texto: duplo clique e `F2` abrem a celula sem selecionar todo o conteudo, cliques dentro do editor posicionam o cursor e as setas movem o cursor dentro do texto.
 
 ## Historico da Cotacao PHP legada

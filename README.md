@@ -60,6 +60,9 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - A Etapa 4 deixou a troca de celula mais fluida: saves de celula passam a ser otimistas no frontend, redesenhando somente a linha afetada enquanto a API confirma em segundo plano.
 - A presenca ao vivo agora tambem aparece dentro da grade: quando outra pessoa seleciona ou edita uma celula visivel, a celula ganha contorno colorido, etiqueta do animal e tooltip com coluna/linha.
 - Apagar conteudo com `Delete`/`Backspace` na Cotacao V2 tambem ficou otimista: a selecao limpa na hora e o save em lote confirma em segundo plano sem redesenhar a tabela inteira para um caso simples.
+- Quando a aba esta editando uma celula e recebe eventos remotos de celula/lote, a Cotacao guarda as linhas afetadas e redesenha ao encerrar a edicao, evitando `Ganhador`, contadores ou celulas calculadas visualmente atrasadas.
+- Redimensionar coluna, inserir linha, criar, renomear, apagar ou restaurar distribuidora nao deve mais forcar `/cotacao/api/bootstrap` na propria aba nem nas demais; esses fluxos usam payload incremental de evento e atualizacao local da grade.
+- O numero da linha da celula ativa fica destacado em verde forte, facilitando localizar visualmente a linha atual sem alterar dados nem compartilhar esse destaque com outras telas.
 - A alca de preenchimento, colagem e desfazer/refazer de lotes agora seguem o mesmo modelo otimista: aplicam localmente, salvam em lote e atualizam somente as linhas afetadas; estilos copiados ou aplicados em selecoes grandes usam `/cotacao/api/styles/batch`.
 - Filtros continuam locais por navegador. Quando duas pessoas salvam a mesma celula, a Cotacao segue o comportamento estilo Sheets pedido pelo usuario: o ultimo salvamento vence, com presenca visual e historico de celula para recuperar valor anterior.
 - O botao `Sair` da Cotacao V2 encerra a sessao da Cotacao e volta para a home inicial `/`, em vez de mandar para o login.
