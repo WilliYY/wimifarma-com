@@ -102,18 +102,20 @@ if (!is_array($body)) {
 $tool = trim((string) ($body['tool'] ?? ''));
 $args = is_array($body['args'] ?? null) ? $body['args'] : array();
 $traceId = miauw_substr(trim((string) ($body['trace_id'] ?? '')), 0, 80);
+$userContext = is_array($body['user_context'] ?? null) ? $body['user_context'] : array();
 
-if (!function_exists('miauw_agent_node_read_tool_allowed') || !miauw_agent_node_read_tool_allowed($tool)) {
+if (!function_exists('miauw_agent_node_tool_bridge_allowed') || !miauw_agent_node_tool_bridge_allowed($tool)) {
     miauw_agent_tools_json(403, array(
         'ok' => false,
         'error' => 'tool_not_allowed',
-        'message' => 'Tool nao liberada para leitura pelo agente.',
+        'message' => 'Tool nao liberada para ponte universal do agente.',
         'writes_enabled' => false,
+        'writes_enabled_in_node' => false,
     ));
 }
 
 try {
-    $result = miauw_agent_node_read_tool_result($tool, $args, $traceId);
+    $result = miauw_agent_node_tool_bridge_result($tool, $args, $traceId, $userContext);
     miauw_agent_tools_json(200, $result);
 } catch (Throwable $error) {
     $message = function_exists('miauw_diagnostic_redact_string')
@@ -125,5 +127,6 @@ try {
         'error' => 'tool_execution_failed',
         'message' => $message,
         'writes_enabled' => false,
+        'writes_enabled_in_node' => false,
     ));
 }

@@ -5,22 +5,42 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.7.0';
-const AGENT_VERSION = '2.0-fase13';
-const PHASE = 'fase13-php-read-tool-bridge';
+const SERVICE_VERSION = '0.8.0';
+const AGENT_VERSION = '2.0-fase14';
+const PHASE = 'fase14-php-all-tools-bridge';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
-const NODE_READ_BRIDGE_TOOLS = [
+const NODE_LOW_RISK_READ_TOOLS = [
   'resumo_financeiro',
   'resumo_cashback',
   'resumo_codigos',
   'buscar_codigo_comissao',
   'buscar_cotacao',
 ];
+const NODE_TOOL_BRIDGE_FALLBACK_TOOLS = [
+  'resumo_financeiro',
+  'resumo_cashback',
+  'resumo_codigos',
+  'buscar_cliente',
+  'buscar_codigo_comissao',
+  'buscar_cotacao',
+  'farmacia_popular_valor',
+  'pesquisa_web_referencias',
+  'noticias_medicamentos_oficiais',
+  'criar_tarefa',
+  'criar_encomenda_cotacao',
+  'registrar_sangria',
+  'mapa_sistema',
+  'alertas_operacionais',
+  'diagnostico_operacional',
+  'memoria_operacional',
+  'diagnostico_skills',
+  'criar_lancamento_financeiro',
+];
 const NODE_EXECUTABLE_TOOLS = [
   'diagnostico_miauby_agente',
   'consultar_contrato_tool_miauby',
-  ...NODE_READ_BRIDGE_TOOLS,
+  ...NODE_TOOL_BRIDGE_FALLBACK_TOOLS,
 ];
 
 const MIAUBY_PERSONALITY_SUMMARY = [
@@ -40,13 +60,13 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Para mensagem sem objetivo claro, responda em 1 ou 2 linhas: reconheca o barulho, peca tela/dado/objetivo e puxe para acao. Nada de checklist longo.',
   'Quando faltar informacao operacional, peca exatamente o menor dado ausente: produto, EAN, valor, data, responsavel, tela, acao feita ou print.',
   'Nao invente dado real de caixa, estoque, cliente, cotacao, cashback, codigo, tarefa ou financeiro. Se nao veio do sistema ou do usuario, diga que falta.',
-  'Acoes fortes como sangria, faturamento, encomenda, cotacao rapida, criacao, exclusao ou alteracao de dado precisam de confirmacao humana e nao sao executadas diretamente por este servico.',
+  'Acoes fortes como sangria, faturamento, encomenda, cotacao rapida, criacao, exclusao ou alteracao de dado precisam de confirmacao humana. Quando a tool devolver confirmacao_required, explique isso e nao diga que gravou.',
   'Assuntos tecnicos devem virar suporte tecnico interno: peca modulo/tela, horario, acao feita e print. Nao cite bastidor de desenvolvimento.',
   'Nunca cite Codex, ChatGPT, fornecedor de IA, chave, token, prompt interno, stack trace, endpoint interno, arquivo ou caminho de servidor.',
   'Nao escreva codigo, SQL ou comandos para operador comum. Oriente processo, tela e dado necessario.',
-  'Voce pode usar tools de leitura real migradas para consultar financeiro, cashback, codigos e cotacao quando o operador pedir dado desses modulos.',
-  'Essas leituras passam pela ponte PHP interna auditada; nunca cite endpoint, token, payload ou bastidor tecnico ao operador.',
-  'Se precisar de cliente/telefone ou escrita forte, peca o dado minimo e deixe o fluxo PHP confirmar/executar.',
+  'Voce pode usar as tools operacionais migradas pela ponte PHP interna para consultar financeiro, cashback, codigos, cotacao, cliente mascarado, diagnosticos e tarefa.',
+  'Essas tools passam pela ponte PHP interna auditada; nunca cite endpoint, token, payload ou bastidor tecnico ao operador.',
+  'Tarefa e a unica escrita de baixo risco pela ponte PHP. Escritas fortes voltam como confirmacao obrigatoria e nao gravam direto.',
   'Feche com proximo passo curto quando couber. Humor e tempero; resolver e a refeicao.',
 ];
 
@@ -86,12 +106,15 @@ function publicStatus() {
     phase: PHASE,
     personality_version: PERSONALITY_VERSION,
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
-    mode: 'node-primary-safe-read-tools',
+    mode: 'node-primary-php-tool-bridge',
     tool_contracts: 'accepted_via_php_payload',
     node_executable_tools: NODE_EXECUTABLE_TOOLS,
-    migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
+    migrated_read_tools: NODE_LOW_RISK_READ_TOOLS,
+    migrated_tool_bridge_tools: NODE_TOOL_BRIDGE_FALLBACK_TOOLS,
     read_tools_enabled: true,
+    tool_bridge_enabled: true,
     php_read_bridge: internalToken !== '' && phpToolBridgeUrl !== '' ? 'configured' : 'not_configured',
+    php_tool_bridge: internalToken !== '' && phpToolBridgeUrl !== '' ? 'configured' : 'not_configured',
     runtime: 'node22-typescript',
     sdk: 'agents-sdk',
     base_path: basePath,
@@ -99,8 +122,12 @@ function publicStatus() {
     api_configured: apiKey !== '',
     internal_token_configured: internalToken !== '',
     writes_enabled: false,
+    direct_node_writes_enabled: false,
+    low_risk_php_bridge_writes: ['criar_tarefa'],
   };
 }
+
+type JsonSchema = Record<string, unknown>;
 
 type SafeToolContract = {
   name: string;
@@ -112,7 +139,12 @@ type SafeToolContract = {
   localAction: boolean;
   requiresConfirmation: boolean;
   writesEnabledInNode: boolean;
+  writesEnabledViaPhpBridge: boolean;
   nodeReadBridgeEnabled: boolean;
+  nodeToolBridgeEnabled: boolean;
+  nodeToolBridgeMode: string;
+  description: string;
+  parameters: JsonSchema;
 };
 
 type SafeToolContractBundle = {
@@ -127,6 +159,8 @@ type SafeToolContractBundle = {
     schemasExported: number;
     highRiskWrites: number;
     nodeReadBridgeTools: number;
+    nodeToolBridgeTools: number;
+    phpBridgeWriteTools: number;
   };
   tools: SafeToolContract[];
 };
@@ -135,6 +169,12 @@ type ToolContractQuery = {
   nome?: string;
   modulo?: string;
   risco?: string;
+};
+
+type UserContext = {
+  id?: number;
+  username?: string;
+  role?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -184,7 +224,12 @@ function safeToolContracts(value: unknown): SafeToolContractBundle | null {
       localAction: rawTool.local_action === true,
       requiresConfirmation: rawTool.requires_confirmation === true,
       writesEnabledInNode: false,
+      writesEnabledViaPhpBridge: rawTool.writes_enabled_via_php_bridge === true,
       nodeReadBridgeEnabled: rawTool.node_read_bridge_enabled === true,
+      nodeToolBridgeEnabled: rawTool.node_tool_bridge_enabled === true,
+      nodeToolBridgeMode: safeShort(rawTool.node_tool_bridge_mode, 60) || 'unavailable',
+      description: safeShort(rawTool.description, 500),
+      parameters: isRecord(rawTool.parameters) ? rawTool.parameters : {},
     });
   }
 
@@ -203,6 +248,14 @@ function safeToolContracts(value: unknown): SafeToolContractBundle | null {
         typeof summary.node_read_bridge_tools === 'number' && Number.isFinite(summary.node_read_bridge_tools)
           ? summary.node_read_bridge_tools
           : tools.filter((item) => item.nodeReadBridgeEnabled).length,
+      nodeToolBridgeTools:
+        typeof summary.node_tool_bridge_tools === 'number' && Number.isFinite(summary.node_tool_bridge_tools)
+          ? summary.node_tool_bridge_tools
+          : tools.filter((item) => item.nodeToolBridgeEnabled).length,
+      phpBridgeWriteTools:
+        typeof summary.php_bridge_write_tools === 'number' && Number.isFinite(summary.php_bridge_write_tools)
+          ? summary.php_bridge_write_tools
+          : tools.filter((item) => item.writesEnabledViaPhpBridge).length,
     },
     tools,
   };
@@ -219,16 +272,17 @@ function toolContractsForPrompt(contracts: SafeToolContractBundle | null): strin
   const lines = [
     `contrato_tools_php: ${contracts.version || 'sem-versao'} (${contracts.phase || 'sem-fase'})`,
     `dono_execucao: ${contracts.executionOwner}; dono_confirmacao: ${contracts.confirmationOwner}; escrita_node: bloqueada`,
-    `schemas_recebidos: ${contracts.summary.schemasExported}/${contracts.summary.openaiTools}; escritas_alto_risco: ${contracts.summary.highRiskWrites}; ponte_leitura_node: ${contracts.summary.nodeReadBridgeTools}`,
-    `tools_leitura_migradas_node: ${NODE_READ_BRIDGE_TOOLS.join(', ')}`,
-    'Use tools migradas de leitura quando o pedido envolver financeiro, cashback, codigos ou cotacao. Escritas continuam confirmadas/executadas pelo PHP.',
+    `schemas_recebidos: ${contracts.summary.schemasExported}/${contracts.summary.openaiTools}; escritas_alto_risco: ${contracts.summary.highRiskWrites}; ponte_tools_node: ${contracts.summary.nodeToolBridgeTools}; escrita_baixo_risco_php: ${contracts.summary.phpBridgeWriteTools}`,
+    `tools_ponte_php_node: ${contracts.tools.filter((item) => item.nodeToolBridgeEnabled).map((item) => item.name).slice(0, 24).join(', ')}`,
+    'Use tools migradas quando o pedido envolver dados operacionais. Se a tool retornar confirmacao_required, informe que precisa confirmar e nao afirme que gravou.',
   ];
 
   for (const item of contracts.tools.slice(0, 16)) {
     const required = item.required.length > 0 ? ` obrigatorios=${item.required.join(',')}` : '';
     const confirmation = item.requiresConfirmation ? ' confirmacao=sim' : ' confirmacao=nao';
-    const bridge = item.nodeReadBridgeEnabled ? ' node_read_bridge=sim' : '';
-    lines.push(`tool:${item.name} modulo=${item.module} nivel=${item.level} risco=${item.risk}${required}${confirmation}${bridge}`);
+    const bridge = item.nodeToolBridgeEnabled ? ` node_tool_bridge=${item.nodeToolBridgeMode || 'sim'}` : '';
+    const write = item.writesEnabledViaPhpBridge ? ' escrita_php_bridge=baixo_risco' : '';
+    lines.push(`tool:${item.name} modulo=${item.module} nivel=${item.level} risco=${item.risk}${required}${confirmation}${bridge}${write}`);
   }
 
   return lines.join('\n');
@@ -245,7 +299,22 @@ function toolContractResponseSummary(contracts: SafeToolContractBundle | null) {
     openai_tools: contracts.summary.openaiTools,
     high_risk_writes: contracts.summary.highRiskWrites,
     node_read_bridge_tools: contracts.summary.nodeReadBridgeTools,
+    node_tool_bridge_tools: contracts.summary.nodeToolBridgeTools,
+    php_bridge_write_tools: contracts.summary.phpBridgeWriteTools,
     writes_enabled_in_node: false,
+  };
+}
+
+function safeUserContext(value: unknown): UserContext {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const id = typeof value.id === 'number' && Number.isFinite(value.id) ? Math.trunc(value.id) : 0;
+  return {
+    id: id > 0 ? id : undefined,
+    username: safeShort(value.username, 80) || undefined,
+    role: safeShort(value.role, 40) || undefined,
   };
 }
 
@@ -294,6 +363,9 @@ function querySafeToolContracts(contracts: SafeToolContractBundle | null, query:
       local_action: item.localAction,
       requires_confirmation: item.requiresConfirmation,
       node_read_bridge_enabled: item.nodeReadBridgeEnabled,
+      node_tool_bridge_enabled: item.nodeToolBridgeEnabled,
+      node_tool_bridge_mode: item.nodeToolBridgeMode,
+      writes_enabled_via_php_bridge: item.writesEnabledViaPhpBridge,
       writes_enabled_in_node: false,
     }));
 
@@ -354,16 +426,17 @@ function safeError(error: unknown): string {
   return 'Nao consegui concluir a execucao do agente agora.';
 }
 
-async function callPhpReadTool(toolName: string, args: Record<string, unknown>, traceId: string): Promise<string> {
+async function callPhpTool(toolName: string, args: Record<string, unknown>, traceId: string, userContext: UserContext = {}): Promise<string> {
   const startedAt = Date.now();
 
   if (internalToken === '' || phpToolBridgeUrl === '') {
     return JSON.stringify({
       ok: false,
-      source: 'php_read_bridge',
+      source: 'php_tool_bridge',
       tool: toolName,
-      message: 'Ponte PHP de leitura nao configurada.',
+      message: 'Ponte PHP de tools nao configurada.',
       writes_enabled: false,
+      writes_enabled_in_node: false,
     });
   }
 
@@ -383,6 +456,7 @@ async function callPhpReadTool(toolName: string, args: Record<string, unknown>, 
         trace_id: traceId,
         tool: toolName,
         args,
+        user_context: userContext,
       }),
       signal: controller.signal,
     });
@@ -399,31 +473,39 @@ async function callPhpReadTool(toolName: string, args: Record<string, unknown>, 
       const message = isRecord(data) ? safeText(data.message, 240) : '';
       return JSON.stringify({
         ok: false,
-        source: 'php_read_bridge',
+        source: 'php_tool_bridge',
         tool: toolName,
-        message: message || 'A ponte PHP recusou a leitura agora.',
+        message: message || 'A ponte PHP recusou a tool agora.',
         http_status: response.status,
         duration_ms: Date.now() - startedAt,
         writes_enabled: false,
+        writes_enabled_in_node: false,
       });
     }
 
     return JSON.stringify({
       ok: true,
-      source: 'php_read_bridge',
+      source: 'php_tool_bridge',
       tool: toolName,
       text: safeText(data.text, 3500),
       duration_ms: Date.now() - startedAt,
-      writes_enabled: false,
+      confirmation_required: data.confirmation_required === true,
+      bridge_mode: safeShort(data.bridge_mode, 80),
+      risk: safeShort(data.risk, 40),
+      level: safeShort(data.level, 40),
+      writes_enabled: data.writes_enabled === true,
+      writes_enabled_in_node: false,
+      writes_enabled_via_php_bridge: data.writes_enabled_via_php_bridge === true,
     });
   } catch (error) {
     return JSON.stringify({
       ok: false,
-      source: 'php_read_bridge',
+      source: 'php_tool_bridge',
       tool: toolName,
       message: safeError(error),
       duration_ms: Date.now() - startedAt,
       writes_enabled: false,
+      writes_enabled_in_node: false,
     });
   } finally {
     clearTimeout(timeout);
@@ -472,10 +554,23 @@ function periodArgsFromMessage(message: string): Record<string, unknown> {
   return { mes, ano };
 }
 
-function inferReadBridgeRequest(message: string): { tool: string; args: Record<string, unknown> } | null {
+function inferToolBridgeRequest(message: string): { tool: string; args: Record<string, unknown> } | null {
   const text = normalizeIntentText(message);
   const wantsLookup = /\b(busca|buscar|procura|procure|procurar|consulta|consultar|ache|achar|pesquisa|pesquisar)\b/u.test(text);
   const wantsSummary = /\b(resumo|relatorio|status|situacao|visao|geral)\b/u.test(text);
+  const moduleFromText = (): string => {
+    if (text.includes('financeiro') || text.includes('caixa')) {
+      return 'financeiro';
+    }
+    if (text.includes('cotacao') || text.includes('cotacao')) {
+      return 'cotacao';
+    }
+    if (text.includes('cashback') || text.includes('cliente')) {
+      return 'cashback';
+    }
+
+    return 'geral';
+  };
 
   if (text.includes('buscar_codigo_comissao')) {
     return { tool: 'buscar_codigo_comissao', args: { busca: extractSearchTerm(message, 'codigo') } };
@@ -497,6 +592,34 @@ function inferReadBridgeRequest(message: string): { tool: string; args: Record<s
     return { tool: 'resumo_codigos', args: periodArgsFromMessage(message) };
   }
 
+  if (text.includes('buscar_cliente') || ((text.includes('cliente') || text.includes('telefone') || text.includes('saldo')) && wantsLookup)) {
+    return { tool: 'buscar_cliente', args: { busca: extractSearchTerm(message, 'cliente') } };
+  }
+
+  if (text.includes('diagnostico_skills') || (text.includes('skill') && wantsSummary) || (text.includes('tool') && wantsSummary) || (text.includes('ferramenta') && wantsSummary)) {
+    return { tool: 'diagnostico_skills', args: {} };
+  }
+
+  if (text.includes('mapa_sistema') || (text.includes('mapa') && (text.includes('sistema') || text.includes('telas') || text.includes('rotas')))) {
+    return { tool: 'mapa_sistema', args: {} };
+  }
+
+  if (text.includes('alertas_operacionais') || text.includes('alerta') || text.includes('pendencia') || text.includes('risco')) {
+    return { tool: 'alertas_operacionais', args: { modulo: moduleFromText(), forcar_varredura: false } };
+  }
+
+  if (text.includes('diagnostico_operacional') || text.includes('validar processo') || text.includes('processo certo')) {
+    return { tool: 'diagnostico_operacional', args: { modulo: moduleFromText() } };
+  }
+
+  if (text.includes('memoria_operacional') || text.includes('memoria') || text.includes('padrao aprendido')) {
+    return { tool: 'memoria_operacional', args: { consulta: extractSearchTerm(message, 'memoria operacional') } };
+  }
+
+  if (text.includes('farmacia popular')) {
+    return { tool: 'farmacia_popular_valor', args: { produto: extractSearchTerm(message, 'produto'), uf: 'PR' } };
+  }
+
   if ((text.includes('cotacao') || text.includes('produto') || text.includes('fornecedor')) && wantsLookup) {
     return { tool: 'buscar_cotacao', args: { busca: extractSearchTerm(message, 'cotacao') } };
   }
@@ -508,18 +631,18 @@ function inferReadBridgeRequest(message: string): { tool: string; args: Record<s
   return null;
 }
 
-async function prefetchReadBridgeContext(message: string, traceId: string): Promise<string> {
+async function prefetchToolBridgeContext(message: string, traceId: string, userContext: UserContext): Promise<string> {
   if (internalToken === '' || phpToolBridgeUrl === '') {
     return '';
   }
 
-  const request = inferReadBridgeRequest(message);
-  if (!request || !NODE_READ_BRIDGE_TOOLS.includes(request.tool)) {
+  const request = inferToolBridgeRequest(message);
+  if (!request || !NODE_TOOL_BRIDGE_FALLBACK_TOOLS.includes(request.tool)) {
     return '';
   }
 
-  const result = await callPhpReadTool(request.tool, request.args, traceId);
-  return `leitura_node_preexecutada: ${result}`;
+  const result = await callPhpTool(request.tool, request.args, traceId, userContext);
+  return `tool_php_node_preexecutada: ${result}`;
 }
 
 function compareToken(received: string, expected: string): boolean {
@@ -603,75 +726,105 @@ function buildContratoTool(toolContracts: SafeToolContractBundle | null) {
   });
 }
 
-function buildReadBridgeTools(traceId: string) {
-  const periodSchema = {
-    mes: z.number().int().min(1).max(12).optional(),
-    ano: z.number().int().min(2020).max(2100).optional(),
-  };
+function zodFromJsonProperty(rawProperty: unknown): z.ZodTypeAny {
+  const property = isRecord(rawProperty) ? rawProperty : {};
+  const type = safeShort(property.type, 30);
+  const enumValues = Array.isArray(property.enum)
+    ? property.enum.map((item) => safeShort(item, 80)).filter((item) => item !== '')
+    : [];
 
-  return [
-    tool({
-      name: 'resumo_financeiro',
-      description: 'Consulta um resumo real de leitura do Financeiro por periodo, via ponte PHP auditada.',
-      parameters: z.object(periodSchema),
-      async execute({ mes, ano }) {
-        return callPhpReadTool('resumo_financeiro', { mes, ano }, traceId);
-      },
-    }),
-    tool({
-      name: 'resumo_cashback',
-      description: 'Consulta um resumo real de leitura do Cashback por periodo, via ponte PHP auditada.',
-      parameters: z.object(periodSchema),
-      async execute({ mes, ano }) {
-        return callPhpReadTool('resumo_cashback', { mes, ano }, traceId);
-      },
-    }),
-    tool({
-      name: 'resumo_codigos',
-      description: 'Consulta um resumo real dos codigos de comissao por grupo de EAN, via ponte PHP auditada.',
-      parameters: z.object(periodSchema),
-      async execute({ mes, ano }) {
-        return callPhpReadTool('resumo_codigos', { mes, ano }, traceId);
-      },
-    }),
-    tool({
-      name: 'buscar_codigo_comissao',
-      description: 'Busca codigo, EAN ou preco de comissao no modulo Codigos, somente leitura.',
-      parameters: z.object({
-        busca: z.string().max(120),
-      }),
-      async execute({ busca }) {
-        return callPhpReadTool('buscar_codigo_comissao', { busca: safeText(busca, 120) }, traceId);
-      },
-    }),
-    tool({
-      name: 'buscar_cotacao',
-      description: 'Busca item, produto, EAN, categoria ou fornecedor na Cotacao V2, somente leitura.',
-      parameters: z.object({
-        busca: z.string().max(120),
-      }),
-      async execute({ busca }) {
-        return callPhpReadTool('buscar_cotacao', { busca: safeText(busca, 120) }, traceId);
-      },
-    }),
-  ];
+  let schema: z.ZodTypeAny;
+  if (enumValues.length > 0) {
+    schema = z.enum(enumValues as [string, ...string[]]);
+  } else if (type === 'integer') {
+    schema = z.number().int();
+  } else if (type === 'number') {
+    schema = z.number();
+  } else if (type === 'boolean') {
+    schema = z.boolean();
+  } else if (type === 'array') {
+    schema = z.array(z.unknown());
+  } else if (type === 'object') {
+    schema = z.record(z.string(), z.unknown());
+  } else {
+    schema = z.string();
+  }
+
+  if (type === 'string' && typeof property.minLength === 'number') {
+    schema = (schema as z.ZodString).min(Math.max(0, Math.trunc(property.minLength)));
+  }
+  if (type === 'string' && typeof property.maxLength === 'number') {
+    schema = (schema as z.ZodString).max(Math.max(1, Math.trunc(property.maxLength)));
+  }
+  if ((type === 'integer' || type === 'number') && typeof property.minimum === 'number') {
+    schema = (schema as z.ZodNumber).min(property.minimum);
+  }
+  if ((type === 'integer' || type === 'number') && typeof property.maximum === 'number') {
+    schema = (schema as z.ZodNumber).max(property.maximum);
+  }
+
+  return schema;
 }
 
-function buildMiaubyAgent(toolContracts: SafeToolContractBundle | null, traceId: string) {
+function zodFromJsonObjectSchema(rawSchema: unknown): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  const schema = isRecord(rawSchema) ? rawSchema : {};
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const required = new Set(safeStringArray(schema.required, 40));
+  const shape: Record<string, z.ZodTypeAny> = {};
+
+  for (const [name, property] of Object.entries(properties).slice(0, 30)) {
+    const key = safeShort(name, 80);
+    if (key === '') {
+      continue;
+    }
+
+    const propertySchema = zodFromJsonProperty(property);
+    shape[key] = required.has(key) ? propertySchema : propertySchema.optional();
+  }
+
+  return z.object(shape);
+}
+
+function bridgeToolsFromContracts(toolContracts: SafeToolContractBundle | null): SafeToolContract[] {
+  if (!toolContracts) {
+    return [];
+  }
+
+  return toolContracts.tools
+    .filter((item) => item.nodeToolBridgeEnabled && NODE_TOOL_BRIDGE_FALLBACK_TOOLS.includes(item.name))
+    .slice(0, 30);
+}
+
+function buildPhpBridgeTools(toolContracts: SafeToolContractBundle | null, traceId: string, userContext: UserContext) {
+  return bridgeToolsFromContracts(toolContracts).map((contract) =>
+    tool({
+      name: contract.name,
+      description:
+        contract.description ||
+        `Executa ${contract.title} pela ponte PHP auditada. Escrita direta no Node fica bloqueada; respeite confirmation_required.`,
+      parameters: zodFromJsonObjectSchema(contract.parameters),
+      async execute(args) {
+        return callPhpTool(contract.name, isRecord(args) ? args : {}, traceId, userContext);
+      },
+    }),
+  );
+}
+
+function buildMiaubyAgent(toolContracts: SafeToolContractBundle | null, traceId: string, userContext: UserContext) {
   return new Agent({
     name: 'Miauby Operacional',
     model,
     instructions: MIAUBY_AGENT_INSTRUCTIONS.join('\n'),
-    tools: [diagnosticoAgenteTool, buildContratoTool(toolContracts), ...buildReadBridgeTools(traceId)],
+    tools: [diagnosticoAgenteTool, buildContratoTool(toolContracts), ...buildPhpBridgeTools(toolContracts, traceId, userContext)],
   });
 }
 
-async function executeAgent(message: string, traceId: string, toolContracts: SafeToolContractBundle | null): Promise<string> {
+async function executeAgent(message: string, traceId: string, toolContracts: SafeToolContractBundle | null, userContext: UserContext): Promise<string> {
   if (apiKey === '') {
     throw new Error('api_key_missing');
   }
 
-  const prefetchContext = await prefetchReadBridgeContext(message, traceId);
+  const prefetchContext = await prefetchToolBridgeContext(message, traceId, userContext);
   const inputParts = [
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
@@ -684,7 +837,7 @@ async function executeAgent(message: string, traceId: string, toolContracts: Saf
   inputParts.push(`mensagem_operador: ${message}`);
   const input = inputParts.join('\n');
 
-  const result = await run(buildMiaubyAgent(toolContracts, traceId), input, {
+  const result = await run(buildMiaubyAgent(toolContracts, traceId, userContext), input, {
     maxTurns: 5,
   });
 
@@ -696,7 +849,13 @@ function sendSse(res: Response, event: string, data: unknown): void {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-async function streamAgent(message: string, traceId: string, res: Response, toolContracts: SafeToolContractBundle | null): Promise<void> {
+async function streamAgent(
+  message: string,
+  traceId: string,
+  res: Response,
+  toolContracts: SafeToolContractBundle | null,
+  userContext: UserContext,
+): Promise<void> {
   if (apiKey === '') {
     sendSse(res, 'error', {
       message: 'Servico agente sem credencial online configurada.',
@@ -704,7 +863,7 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
     return;
   }
 
-  const prefetchContext = await prefetchReadBridgeContext(message, traceId);
+  const prefetchContext = await prefetchToolBridgeContext(message, traceId, userContext);
   const inputParts = [
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
@@ -717,7 +876,7 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
   inputParts.push(`mensagem_operador: ${message}`);
   const input = inputParts.join('\n');
 
-  const stream = await run(buildMiaubyAgent(toolContracts, traceId), input, {
+  const stream = await run(buildMiaubyAgent(toolContracts, traceId, userContext), input, {
     maxTurns: 5,
     stream: true,
   });
@@ -743,9 +902,11 @@ async function streamAgent(message: string, traceId: string, res: Response, tool
     mode: 'agent_controlado',
     trace_id: traceId,
     node_executable_tools: NODE_EXECUTABLE_TOOLS,
-    migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
+    migrated_read_tools: NODE_LOW_RISK_READ_TOOLS,
+    migrated_tool_bridge_tools: bridgeToolsFromContracts(toolContracts).map((item) => item.name),
     read_tools_enabled: true,
     php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
+    php_tool_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
     tool_contract_version: toolContracts?.version || '',
     text: safeText(chunks.join(''), 4000),
   });
@@ -780,6 +941,7 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   const traceId = safeText(req.body?.trace_id, 80) || crypto.randomUUID().replace(/-/g, '');
   const message = safeText(req.body?.message, 4000);
   const toolContracts = safeToolContracts(req.body?.tool_contracts);
+  const userContext = safeUserContext(req.body?.user_context);
 
   if (message === '') {
     res.status(400).json({
@@ -791,16 +953,19 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   }
 
   try {
-    const text = await executeAgent(message, traceId, toolContracts);
+    const text = await executeAgent(message, traceId, toolContracts, userContext);
+    const migratedToolBridgeTools = bridgeToolsFromContracts(toolContracts).map((item) => item.name);
     res.json({
       ok: true,
       mode: 'agent_controlado',
       trace_id: traceId,
       model,
       node_executable_tools: NODE_EXECUTABLE_TOOLS,
-      migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
+      migrated_read_tools: NODE_LOW_RISK_READ_TOOLS,
+      migrated_tool_bridge_tools: migratedToolBridgeTools,
       read_tools_enabled: true,
       php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
+      php_tool_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
       tool_contract_version: toolContracts?.version || '',
       tool_contract_summary: toolContractResponseSummary(toolContracts),
       text,
@@ -822,6 +987,7 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
   const traceId = safeText(req.body?.trace_id, 80) || crypto.randomUUID().replace(/-/g, '');
   const message = safeText(req.body?.message, 4000);
   const toolContracts = safeToolContracts(req.body?.tool_contracts);
+  const userContext = safeUserContext(req.body?.user_context);
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -846,12 +1012,14 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
       trace_id: traceId,
       model,
       node_executable_tools: NODE_EXECUTABLE_TOOLS,
-      migrated_read_tools: NODE_READ_BRIDGE_TOOLS,
+      migrated_read_tools: NODE_LOW_RISK_READ_TOOLS,
+      migrated_tool_bridge_tools: bridgeToolsFromContracts(toolContracts).map((item) => item.name),
       read_tools_enabled: true,
       php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
+      php_tool_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
       tool_contract_version: toolContracts?.version || '',
     });
-    await streamAgent(message, traceId, res, toolContracts);
+    await streamAgent(message, traceId, res, toolContracts, userContext);
   } catch (error) {
     sendSse(res, 'error', {
       error: 'agent_stream_failed',

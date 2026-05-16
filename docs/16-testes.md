@@ -61,6 +61,7 @@ Ele valida:
 - Fase 11 do Miauby: status publico anuncia contratos de tools exportados, contrato aponta `fase11`, diagnostico inclui resumo/checksum dos contratos e o Node aceita `tool_contracts` sem liberar escrita direta.
 - Fase 12 do Miauby: status publico anuncia execucao Node de leitura segura, contrato aponta `fase12`, o export de contracts aponta `fase12-node-read-tool-contracts` e o Node lista `consultar_contrato_tool_miauby` em `node_executable_tools`.
 - Fase 13 do Miauby: status publico anuncia ponte PHP de leitura, contrato aponta `fase13`, o export de contracts aponta `fase13-php-read-tool-bridge`, as tools de leitura baixa aparecem com `node_read_bridge_enabled` e sangria/escritas seguem bloqueadas no Node.
+- Fase 14 do Miauby: status publico anuncia ponte PHP universal, contrato aponta `fase14`, o export de contracts aponta `fase14-php-all-tools-bridge`, as OpenAI tools aparecem com `node_tool_bridge_enabled`, `criar_tarefa` fica como escrita PHP de baixo risco e sangria/escritas fortes retornam `confirmation_required`.
 
 Rodar pelo container:
 

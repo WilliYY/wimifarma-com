@@ -2,6 +2,38 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-16 - Miauby acelera migracao para ponte universal de tools
+
+Decisao:
+
+- Criar a Fase 14 do Miauby com `MIAUW_AGENT_VERSION=2.0-fase14`.
+- Subir `apps/miauw-agent` para `SERVICE_VERSION=0.8.0` e `PHASE=fase14-php-all-tools-bridge`.
+- Fazer o Node montar tools do Agents SDK dinamicamente a partir de `miauw_agent_tool_contract_export()`.
+- Trocar `/miauw/agent-tools.php` de ponte apenas de leitura para ponte universal das OpenAI tools registradas.
+- Permitir `criar_tarefa` como escrita de baixo risco via PHP bridge com usuario logado, mantendo escrita direta do Node bloqueada.
+- Fazer sangria, lancamento financeiro, encomenda e acoes fortes retornarem `confirmation_required`, sem gravar fora da sessao PHP.
+
+Motivo:
+
+- Como o Miauby nao esta em uso pela equipe agora, acelerar o corte para o Node sem abrir acesso direto a banco nem pular confirmacao humana das acoes sensiveis.
+
+Impacto:
+
+- `apps/miauw-agent/`
+- `site/miauw/agent-tools.php`
+- `site/miauw/miauw-funcoes.php`
+- `site/miauw/miauw-evals.php`
+- `site/miauw/diagnostico.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- A ponte universal segue interna e tokenizada; nao expor `/miauw/agent-tools.php` publicamente sem token.
+- `criar_tarefa` grava via PHP bridge, entao o payload interno precisa continuar enviando `user_context` do usuario logado.
+- Confirmacao forte ainda nao vira card pela resposta Node sozinha; enquanto isso, frases claras de escrita forte continuam sendo capturadas pelo fluxo PHP antes do Node, e a ponte universal devolve `confirmation_required` quando o Node orquestra a tool.
+
 ## 2026-05-16 - Miauby migra leituras reais para ponte PHP do Node
 
 Decisao:

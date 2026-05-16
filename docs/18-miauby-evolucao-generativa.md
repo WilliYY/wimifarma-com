@@ -124,6 +124,15 @@ Miauby ja possui:
   - para pedidos claramente direcionados a essas leituras, o Node faz pre-leitura deterministica pela ponte antes da resposta, alem de manter as tools disponiveis ao Agents SDK;
   - `buscar_cliente` fica fora da primeira leva por privacidade, mesmo sendo leitura, e toda escrita forte continua no PHP com confirmacao humana;
   - a ponte registra `miauw_agent_node_read_tool` em `miauw_tool_traces` com tool, chaves de argumentos, duracao e `writes_enabled=false`, sem payload bruto externo ou token.
+- Fase 14 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase14`;
+  - o servico Node passou para `SERVICE_VERSION=0.8.0` e `PHASE=fase14-php-all-tools-bridge`;
+  - `site/miauw/agent-tools.php` virou ponte universal de tools para o Node, mantendo token interno e lista fechada vinda de `miauw_openai_tools()`;
+  - o Node monta tools do Agents SDK dinamicamente a partir de `miauw_agent_tool_contract_export()`, evitando duplicar schema/risco/confirmacao no TypeScript;
+  - leituras, diagnosticos, pesquisa controlada, Farmacia Popular e `buscar_cliente` mascarado podem ser orquestrados pelo Node, sempre executando no PHP;
+  - `criar_tarefa` e a unica escrita de baixo risco liberada pela ponte PHP com usuario logado no payload interno;
+  - sangria, lancamentos financeiros, encomendas e demais acoes fortes retornam `confirmation_required` pela ponte universal e nao gravam nada fora do fluxo de confirmacao da sessao PHP;
+  - a ponte registra `miauw_agent_node_tool_bridge` em `miauw_tool_traces` com tool, chaves de argumentos, modo, risco, duracao e status, sem token, SQL, payload bruto externo ou stack trace.
 
 ## Arquivos, tabelas e servicos envolvidos
 

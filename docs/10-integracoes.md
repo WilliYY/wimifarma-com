@@ -146,11 +146,11 @@ Direcao:
 - manter `miauw-evals.php` atualizado sempre que novas intents/tools forem adicionadas.
 - novas tools de escrita forte devem declarar risco no registry e passar pelo fluxo de confirmacao/traces antes da execucao.
 - para Cotacao, usar somente a ponte interna da V2 (`COTACAO_INTERNAL_BASE_URL` + token), evitando qualquer escrita direta nas tabelas antigas removidas.
-- antes de migrar tools reais de leitura para o servico Node/TypeScript/Agents SDK, rodar os mesmos evals contra o servico novo e manter fallback pelo `api.php` atual.
-- enquanto o servico Node nao executar escritas auditadas, manter PHP como dono de login, sessao, confirmacoes e escrita forte.
+- ao migrar tools para o servico Node/TypeScript/Agents SDK, usar a ponte PHP universal tokenizada; o Node orquestra, mas PHP segue executando, auditando e validando risco.
+- enquanto o servico Node nao executar confirmacoes da mesma sessao, manter PHP como dono de login, sessao, confirmacoes e escrita forte.
 - usar traces `miauw_agent_shadow_compare` e `miauw_agent_node_reply` para medir divergencia, latencia e falhas durante o corte por `adm`.
 - preservar a personalidade versionada do Miauby ao migrar tools para Node; respostas genericas, secas ou burocraticas devem virar caso de eval antes de liberar mais usuarios.
-- consumir contratos exportados pelo PHP antes de migrar qualquer tool de escrita para o Node, mantendo o PHP como dono de confirmacao e auditoria enquanto `writes_enabled=false`.
+- consumir contratos exportados pelo PHP antes de migrar qualquer tool de escrita para o Node; `criar_tarefa` pode gravar via PHP bridge com usuario logado, mas acoes fortes devem retornar `confirmation_required`.
 
 Documento especifico:
 

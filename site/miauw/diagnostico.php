@@ -227,7 +227,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 <span>Contratos tools</span>
                 <?php $toolContractSummary = is_array($toolContracts['summary'] ?? null) ? $toolContracts['summary'] : array(); ?>
                 <strong><?php echo e((string) ($toolContractSummary['schemas_exported'] ?? 0)); ?></strong>
-                <p><?php echo e((string) ($toolContracts['phase'] ?? 'fase13')); ?> | <?php echo e((string) ($toolContractSummary['node_read_bridge_tools'] ?? 0)); ?> leitura(s) Node | escrita bloqueada.</p>
+                <p><?php echo e((string) ($toolContracts['phase'] ?? 'fase14')); ?> | <?php echo e((string) ($toolContractSummary['node_tool_bridge_tools'] ?? $toolContractSummary['node_read_bridge_tools'] ?? 0)); ?> tool(s) Node | escrita direta bloqueada.</p>
             </article>
         </section>
 

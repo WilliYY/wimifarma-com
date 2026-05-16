@@ -8,8 +8,8 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.0-fase13',
-  'fase13-php-read-tool-bridge',
+  '2.0-fase14',
+  'fase14-php-all-tools-bridge',
   'PERSONALITY_VERSION',
   'miauby-persona-2026-05-16',
   'personalidade forte + solucao pratica',
@@ -19,7 +19,7 @@ const required = [
   'Nao invente dado real',
   'toolContractsForPrompt',
   'consultar_contrato_tool_miauby',
-  'php_read_bridge',
+  'php_tool_bridge',
   'buscar_codigo_comissao',
   'escrita_node: bloqueada',
 ];

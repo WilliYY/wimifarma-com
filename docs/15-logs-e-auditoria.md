@@ -53,6 +53,7 @@ Arquivos:
 - A Fase 11 inclui `tool_contract_version` nos retornos/traces do Node quando o PHP envia contratos de tools. Traces devem registrar somente versao, checksum/resumo e contagens, nunca o contrato bruto com payload externo.
 - A Fase 12 inclui `read_tools_enabled` e `node_executable_tools` nos retornos/traces resumidos do Node. Guardar somente a lista curta de tools seguras e versoes; nao persistir payload bruto de contratos nem argumentos completos do operador.
 - A Fase 13 registra chamadas da ponte PHP de leitura como `miauw_agent_node_read_tool` em `miauw_tool_traces`, com nome da tool, chaves dos argumentos, duracao e tamanho da resposta. Nao gravar token, payload bruto externo, SQL, stack trace ou dados completos do operador nesse trace.
+- A Fase 14 registra chamadas da ponte PHP universal como `miauw_agent_node_tool_bridge`, com nome da tool, chaves dos argumentos, modo, risco, duracao, status e se a escrita ocorreu via PHP bridge. Acoes fortes devem aparecer como `confirmation_required`, sem payload bruto, token, SQL ou stack trace.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 
