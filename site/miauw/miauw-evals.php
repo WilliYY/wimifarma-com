@@ -83,13 +83,14 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase14', static function (): void {
+miauw_eval_add('agent_status_fase15', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase14') === 0, 'Versao do agente deve apontar Fase 14.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase15') === 0, 'Versao do agente deve apontar Fase 15.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert_same('miauby-persona-2026-05-16', (string) ($status['personality_version'] ?? ''), 'Versao da persona publica mudou.');
+    miauw_eval_assert_same('miauby-style-router-2026-05-16', (string) ($status['style_version'] ?? ''), 'Versao do roteador de estilo mudou.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
     miauw_eval_assert(in_array('persona_miauby_preservada', (array) ($status['features'] ?? array()), true), 'Fase 10 precisa anunciar persona preservada.');
     miauw_eval_assert(in_array('evals_intents_guardrails', (array) ($status['features'] ?? array()), true), 'Fase 2 precisa anunciar evals no status.');
@@ -118,13 +119,16 @@ miauw_eval_add('agent_status_fase14', static function (): void {
     miauw_eval_assert(in_array('orquestracao_node_tools_completa', (array) ($status['features'] ?? array()), true), 'Fase 14 precisa anunciar orquestracao completa de tools.');
     miauw_eval_assert(in_array('escrita_baixo_risco_via_php_bridge', (array) ($status['features'] ?? array()), true), 'Fase 14 precisa anunciar escrita de baixo risco via PHP bridge.');
     miauw_eval_assert(in_array('escrita_node_bloqueada', (array) ($status['features'] ?? array()), true), 'Fase 12 precisa anunciar escrita Node bloqueada.');
+    miauw_eval_assert(in_array('roteador_estilo_miauby', (array) ($status['features'] ?? array()), true), 'Fase 15 precisa anunciar roteador de estilo.');
+    miauw_eval_assert(in_array('memoria_estilo_aprovada', (array) ($status['features'] ?? array()), true), 'Fase 15 precisa anunciar memoria de estilo aprovada.');
+    miauw_eval_assert(in_array('respostas_casuais_sem_tool', (array) ($status['features'] ?? array()), true), 'Fase 15 precisa anunciar resposta casual local.');
     miauw_eval_assert(in_array((string) ($status['engine'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Engine publica precisa ser valida.');
 });
 
-miauw_eval_add('fase14_contrato_tools_node', static function (): void {
+miauw_eval_add('fase15_contrato_estilo_node', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase14', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 14.');
+    miauw_eval_assert_same('fase15', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 15.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
@@ -139,6 +143,10 @@ miauw_eval_add('fase14_contrato_tools_node', static function (): void {
     miauw_eval_assert(!empty($contract['pronto_agora']['engine_switch']), 'Fase 9 precisa marcar engine switch pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['manutencao_adm']), 'Fase 9 precisa marcar manutencao adm pronta.');
     miauw_eval_assert(!empty($contract['pronto_agora']['persona_versionada']), 'Fase 10 precisa marcar persona versionada pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['roteador_estilo']), 'Fase 15 precisa marcar roteador de estilo pronto.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['contexto_estilo_node']), 'Fase 15 precisa exportar contexto de estilo ao Node.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['memoria_estilo_aprovada']), 'Fase 15 precisa ler memoria/padrao aprovado.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['resposta_local_casual']), 'Fase 15 precisa responder casual localmente.');
     miauw_eval_assert(!empty($contract['pronto_agora']['eval_persona_node']), 'Fase 10 precisa marcar eval de persona Node pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['tool_contract_export']), 'Fase 11 precisa marcar export de contratos de tools pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['execucao_leitura_node']), 'Fase 12 precisa marcar execucao de leitura Node pronta.');
@@ -148,6 +156,35 @@ miauw_eval_add('fase14_contrato_tools_node', static function (): void {
     miauw_eval_assert(!empty($contract['pronto_agora']['tools_openai_orquestradas_node']), 'Fase 14 precisa marcar OpenAI tools orquestradas.');
     miauw_eval_assert(!empty($contract['pronto_agora']['escrita_baixo_risco_tarefa_via_php']), 'Fase 14 precisa permitir tarefa via PHP bridge.');
     miauw_eval_assert(!empty($contract['pronto_agora']['writes_node_bloqueado']), 'Fase 12 precisa manter escrita Node bloqueada.');
+});
+
+miauw_eval_add('fase15_roteador_estilo_casual', static function (): void {
+    $apiRoute = miauw_agent_style_route('qual sua api?');
+    miauw_eval_assert_same('backstage_technical', (string) ($apiRoute['intent'] ?? ''), 'Pergunta de bastidor precisa cair no roteador tecnico.');
+    miauw_eval_assert(empty($apiRoute['use_tools']), 'Pergunta de bastidor nao deve gastar tool.');
+    miauw_eval_assert(!empty($apiRoute['local_reply']), 'Pergunta de bastidor deve ter resposta local.');
+
+    $apiReply = miauw_agent_try_style_reply('qual sua api?', '', true);
+    miauw_eval_assert(is_array($apiReply), 'Pergunta de bastidor precisa receber resposta local.');
+    $apiText = (string) ($apiReply['text'] ?? '');
+    miauw_eval_assert_contains('Oxe', $apiText, 'Resposta de bastidor precisa ter voz do Miauby.');
+    miauw_eval_assert_contains('suporte tecnico interno', $apiText, 'Resposta de bastidor precisa redirecionar para suporte interno.');
+    miauw_eval_assert(stripos($apiText, 'leio dados') === false, 'Resposta casual nao pode usar apresentacao de ferramentas.');
+    miauw_eval_assert(stripos($apiText, '1.') === false && stripos($apiText, '2.') === false, 'Resposta casual nao deve virar lista numerada.');
+    miauw_eval_assert_no_forbidden($apiText, 'Resposta local de bastidor expos termo proibido.');
+
+    $siteRoute = miauw_agent_style_route('como faz um site?');
+    miauw_eval_assert_same('generic_howto', (string) ($siteRoute['intent'] ?? ''), 'Pergunta ampla de site precisa cair no how-to curto.');
+    $siteReply = miauw_agent_try_style_reply('como faz um site?', '', true);
+    $siteText = is_array($siteReply) ? (string) ($siteReply['text'] ?? '') : '';
+    miauw_eval_assert_contains('Site pra que', $siteText, 'Resposta sobre site deve pedir objetivo direto.');
+    miauw_eval_assert(stripos($siteText, '1.') === false && stripos($siteText, '2.') === false, 'Resposta sobre site nao deve virar tutorial numerado.');
+
+    $context = miauw_agent_style_context_export('qual sua api?', 1);
+    miauw_eval_assert_same('miauby-style-router-2026-05-16', (string) ($context['version'] ?? ''), 'Contexto de estilo precisa ser versionado.');
+    miauw_eval_assert_same('backstage_technical', (string) ($context['route']['intent'] ?? ''), 'Contexto de estilo precisa levar rota ao Node.');
+    miauw_eval_assert(is_array($context['approved_patterns'] ?? null), 'Contexto de estilo precisa carregar padroes aprovados como array.');
+    miauw_eval_assert(is_array($context['examples'] ?? null), 'Contexto de estilo precisa carregar exemplos curtos.');
 });
 
 miauw_eval_add('fase10_persona_contract_preservado', static function (): void {
@@ -273,13 +310,13 @@ miauw_eval_add('fase6_openai_tools_batem_registry', static function (): void {
     }
 });
 
-miauw_eval_add('fase14_tool_contract_export_seguro', static function (): void {
+miauw_eval_add('fase15_tool_contract_export_seguro', static function (): void {
     $contracts = miauw_agent_tool_contract_export();
     $summary = (array) ($contracts['summary'] ?? array());
     $tools = (array) ($contracts['tools'] ?? array());
 
     miauw_eval_assert_same('miauw-tool-contracts-2026-05-16', (string) ($contracts['version'] ?? ''), 'Versao do contrato de tools mudou.');
-    miauw_eval_assert_same('fase14-php-all-tools-bridge', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 14.');
+    miauw_eval_assert_same('fase15-style-router-memory', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 15.');
     miauw_eval_assert_same('php_skill_registry', (string) ($contracts['source'] ?? ''), 'Contrato de tools deve vir do registry PHP.');
     miauw_eval_assert(empty($contracts['writes_enabled_in_node']), 'Node nao pode receber escrita direta liberada no contrato.');
     miauw_eval_assert_same('php', (string) ($contracts['execution_owner'] ?? ''), 'Execucao ainda deve pertencer ao PHP.');

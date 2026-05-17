@@ -55,19 +55,23 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260516f');
+    define('MIAUW_VERSION', '20260516g');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase14');
+    define('MIAUW_AGENT_VERSION', '2.0-fase15');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-node-all-tools-bridge');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-16-operacional-v2-style-router-memory');
 }
 
 if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
     define('MIAUW_AGENT_PERSONALITY_VERSION', 'miauby-persona-2026-05-16');
+}
+
+if (!defined('MIAUW_AGENT_STYLE_VERSION')) {
+    define('MIAUW_AGENT_STYLE_VERSION', 'miauby-style-router-2026-05-16');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -490,6 +494,7 @@ function miauw_agent_public_status(): array
         'version' => miauw_constant_string('MIAUW_AGENT_VERSION', '1.0'),
         'policy_version' => miauw_constant_string('MIAUW_AGENT_POLICY_VERSION', ''),
         'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
+        'style_version' => miauw_constant_string('MIAUW_AGENT_STYLE_VERSION', ''),
         'mode' => 'operacional',
         'engine' => miauw_agent_engine(),
         'maintenance_active' => defined('MIAUW_MAINTENANCE_MODE') ? (bool) MIAUW_MAINTENANCE_MODE : false,
@@ -525,6 +530,9 @@ function miauw_agent_public_status(): array
             'orquestracao_node_tools_completa',
             'escrita_baixo_risco_via_php_bridge',
             'escrita_node_bloqueada',
+            'roteador_estilo_miauby',
+            'memoria_estilo_aprovada',
+            'respostas_casuais_sem_tool',
         ),
     );
 }
@@ -786,10 +794,432 @@ function miauw_agent_node_read_tool_result(string $name, array $args, string $tr
     return $result;
 }
 
+function miauw_agent_style_contract(): array
+{
+    return array(
+        'version' => miauw_constant_string('MIAUW_AGENT_STYLE_VERSION', 'miauby-style-router-2026-05-16'),
+        'objetivo' => 'Responder com voz real do Miauby, gastar menos chamada online em conversa casual e nao fugir da operacao.',
+        'routes' => array(
+            'backstage_technical' => array(
+                'budget_words' => 55,
+                'use_tools' => false,
+                'local_reply' => true,
+                'allow_lists' => false,
+                'tone' => 'oxe, por que voce quer mexer nisso; bastidor vira suporte tecnico interno',
+            ),
+            'generic_howto' => array(
+                'budget_words' => 65,
+                'use_tools' => false,
+                'local_reply' => true,
+                'allow_lists' => false,
+                'tone' => 'conversa curta, pergunta o objetivo antes de virar aula',
+            ),
+            'greeting' => array(
+                'budget_words' => 28,
+                'use_tools' => false,
+                'local_reply' => true,
+                'allow_lists' => false,
+                'tone' => 'entrada viva e curta',
+            ),
+            'random_noise' => array(
+                'budget_words' => 30,
+                'use_tools' => false,
+                'local_reply' => true,
+                'allow_lists' => false,
+                'tone' => 'patada leve, pede objetivo',
+            ),
+            'casual_identity' => array(
+                'budget_words' => 55,
+                'use_tools' => false,
+                'local_reply' => true,
+                'allow_lists' => false,
+                'tone' => 'identidade do Miauby sem manual de ferramentas',
+            ),
+            'offtopic' => array(
+                'budget_words' => 45,
+                'use_tools' => false,
+                'local_reply' => true,
+                'allow_lists' => false,
+                'tone' => 'puxa de volta para farmacia sem gastar ferramenta',
+            ),
+            'operational' => array(
+                'budget_words' => 120,
+                'use_tools' => true,
+                'local_reply' => false,
+                'allow_lists' => true,
+                'tone' => 'curto, com proximo passo operacional',
+            ),
+            'data_lookup' => array(
+                'budget_words' => 160,
+                'use_tools' => true,
+                'local_reply' => false,
+                'allow_lists' => true,
+                'tone' => 'consulta objetiva, sem inventar dado',
+            ),
+            'strong_action' => array(
+                'budget_words' => 120,
+                'use_tools' => true,
+                'local_reply' => false,
+                'allow_lists' => true,
+                'tone' => 'acao forte sempre pede confirmacao humana',
+            ),
+        ),
+        'anti_patterns' => array(
+            'leio dados',
+            'posso ajudar',
+            'sou um assistente',
+            'aqui esta',
+            'claro, segue',
+            'lista numerada em pergunta casual',
+            'explicar bastidor tecnico para operador comum',
+        ),
+        'examples' => array(
+            'qual sua api' => 'Oxe, por que voce quer mexer nisso? Meu encanamento interno nao e brinquedo de humano. Se quer saber o que eu consigo fazer, pergunta direto; bastidor e suporte tecnico interno.',
+            'como faz um site' => 'Site pra que: vender, mostrar, cadastrar ou controlar bagunca? Me da o tipo e eu paro de miar no escuro.',
+            'oi' => 'Miauby na area. Manda a bagunca: caixa, cotacao, cliente, tarefa ou alerta.',
+        ),
+    );
+}
+
+function miauw_agent_style_normalized(string $text): string
+{
+    return function_exists('miauw_skill_normalized') ? miauw_skill_normalized($text) : strtolower($text);
+}
+
+function miauw_agent_style_has_any(string $normalized, array $signals): bool
+{
+    if (function_exists('miauw_skill_has_any')) {
+        return miauw_skill_has_any($normalized, $signals);
+    }
+
+    foreach ($signals as $signal) {
+        $signal = (string) $signal;
+        if ($signal !== '' && strpos($normalized, $signal) !== false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function miauw_agent_style_route(string $message, string $pageContext = ''): array
+{
+    $contract = miauw_agent_style_contract();
+    $routes = is_array($contract['routes'] ?? null) ? $contract['routes'] : array();
+    $trimmed = trim($message);
+    $normalized = miauw_agent_style_normalized($trimmed);
+    $page = miauw_agent_style_normalized($pageContext);
+    $combined = trim($normalized . ' ' . $page);
+
+    $baseRoute = static function (string $intent, string $reason) use ($routes): array {
+        $settings = is_array($routes[$intent] ?? null) ? $routes[$intent] : array();
+
+        return array(
+            'intent' => $intent,
+            'label' => $intent,
+            'budget_words' => (int) ($settings['budget_words'] ?? 90),
+            'use_tools' => !empty($settings['use_tools']),
+            'local_reply' => !empty($settings['local_reply']),
+            'allow_lists' => !array_key_exists('allow_lists', $settings) || !empty($settings['allow_lists']),
+            'tone' => (string) ($settings['tone'] ?? 'miauby curto e pratico'),
+            'reason' => $reason,
+        );
+    };
+
+    if ($trimmed === '') {
+        return $baseRoute('random_noise', 'mensagem vazia');
+    }
+
+    $strongActionSignals = array(
+        'lancar', 'registrar', 'criar tarefa', 'nova tarefa', 'sangria', 'faturou', 'vendeu',
+        'criar encomenda', 'encomenda ', 'urgente', 'cotacao rapida', 'nova cotacao',
+        'apagar', 'excluir', 'remover', 'alterar cliente', 'salvar'
+    );
+    if (miauw_agent_style_has_any($combined, $strongActionSignals)) {
+        return $baseRoute('strong_action', 'acao forte ou escrita operacional');
+    }
+
+    $dataSignals = array(
+        'resumo financeiro', 'resumo caixa', 'buscar cliente', 'cliente ', 'cashback',
+        'codigo comissao', 'ean', 'cotacao', 'distribuidora', 'ganhador', 'farmacia popular',
+        'valor que paga', 'relatorio', 'diagnostico', 'alerta operacional'
+    );
+    if (miauw_agent_style_has_any($combined, $dataSignals)) {
+        return $baseRoute('data_lookup', 'consulta operacional');
+    }
+
+    $operationalSignals = array(
+        'caixa', 'financeiro', 'produto', 'estoque', 'compra', 'venda', 'pix', 'maquininha',
+        'fechamento', 'tarefa', 'login', 'senha', 'modulo', 'tela', 'travou', 'erro',
+        'bug', 'nao salva', 'nao abre', 'nao carrega'
+    );
+    if (miauw_agent_style_has_any($combined, $operationalSignals)) {
+        return $baseRoute('operational', 'assunto operacional');
+    }
+
+    $genericHowToSignals = array(
+        'como faz um site', 'como fazer um site', 'como cria um site', 'como criar um site',
+        'fazer site', 'criar site', 'montar site', 'landing page', 'como faz um app',
+        'como criar app', 'como fazer sistema', 'como cria sistema'
+    );
+    if (miauw_agent_style_has_any($normalized, $genericHowToSignals)) {
+        return $baseRoute('generic_howto', 'pergunta ampla demais');
+    }
+
+    $technicalSignals = array(
+        'api', 'endpoint', 'token', 'chave', 'credencial', 'prompt', 'modelo da ia',
+        'backend', 'frontend', 'front end', 'php', 'javascript', 'typescript', 'html',
+        'css', 'sql', 'query', 'select ', 'insert ', 'update ', 'delete ', 'join ',
+        'where ', 'arquivo', 'pasta', 'deploy', 'docker', 'servidor', 'codigo fonte',
+        'codificar', 'programar', 'script', 'banco de dados'
+    );
+    if (miauw_agent_style_has_any($normalized, $technicalSignals)) {
+        return $baseRoute('backstage_technical', 'curiosidade de bastidor tecnico');
+    }
+
+    $identitySignals = array(
+        'quem e voce', 'quem voce e', 'o que voce faz', 'qual sua funcao',
+        'quais suas funcoes', 'o que consegue fazer', 'suas habilidades',
+        'voce e um agente', 'voce e robo', 'voce e ia'
+    );
+    if (miauw_agent_style_has_any($normalized, $identitySignals)) {
+        return $baseRoute('casual_identity', 'pergunta de identidade');
+    }
+
+    $offtopicSignals = array(
+        'receita', 'bolo', 'filme', 'serie', 'horoscopo', 'signo', 'fofoca',
+        'piada', 'namoro', 'musica', 'jogo do bicho'
+    );
+    if (miauw_agent_style_has_any($normalized, $offtopicSignals)) {
+        return $baseRoute('offtopic', 'assunto fora da operacao');
+    }
+
+    if (preg_match('/^(oi|ola|opa|e ai|bom dia|boa tarde|boa noite|salve)(\b|$)/u', $normalized) === 1) {
+        return $baseRoute('greeting', 'saudacao curta');
+    }
+
+    $lettersOnly = preg_replace('/[^a-z0-9]+/i', '', $normalized) ?? '';
+    $looksLikeNoise = $lettersOnly !== ''
+        && strlen($lettersOnly) <= 8
+        && (preg_match('/[aeiou]/i', $lettersOnly) !== 1 || preg_match('/^(fds|asdf|teste|kkk|haha)$/i', $lettersOnly) === 1);
+    if ($looksLikeNoise || miauw_strlen($trimmed) <= 4) {
+        return $baseRoute('random_noise', 'mensagem curta sem objetivo');
+    }
+
+    return $baseRoute('operational', 'rota padrao com cautela');
+}
+
+function miauw_agent_style_pick(string $message, array $options): string
+{
+    if (!$options) {
+        return '';
+    }
+
+    $index = abs((int) crc32($message)) % count($options);
+
+    return (string) array_values($options)[$index];
+}
+
+function miauw_agent_limit_words(string $text, int $maxWords): string
+{
+    $maxWords = max(8, $maxWords);
+    $parts = preg_split('/\s+/u', trim($text)) ?: array();
+    if (count($parts) <= $maxWords) {
+        return trim($text);
+    }
+
+    return trim(implode(' ', array_slice($parts, 0, $maxWords))) . '...';
+}
+
+function miauw_agent_style_reply_for_route(array $route, string $message): ?string
+{
+    if (empty($route['local_reply'])) {
+        return null;
+    }
+
+    $intent = (string) ($route['intent'] ?? '');
+    $normalized = miauw_agent_style_normalized($message);
+    $budget = (int) ($route['budget_words'] ?? 60);
+
+    $replies = array(
+        'backstage_technical' => array(
+            'Oxe, por que voce quer mexer nisso? Meu encanamento interno nao e brinquedo de humano. Se quer saber o que eu consigo fazer, pergunta direto. Se quer abrir bastidor, chama suporte tecnico interno. Aqui eu fico em caixa, cotacao, financeiro e processo.',
+            'Meu bigode travou nessa curiosidade ai. Bastidor tecnico e com suporte tecnico interno; comigo e caixa, cotacao, financeiro, tela, dado, processo e decisao. Quer capacidade operacional? Pergunta o que precisa fazer.',
+        ),
+        'generic_howto' => array(
+            'Site pra que: vender, mostrar, cadastrar ou controlar bagunca? Me da o tipo e eu paro de miar no escuro. Sem objetivo, site vira enfeite caro com botao bonito.',
+            'Da pra fazer, humano, mas "um site" e uma caixa vazia com luzinha. Diz o objetivo: loja, institucional, sistema interno ou landing page. Ai eu te dou o caminho util.',
+        ),
+        'greeting' => array(
+            'Miauby na area. Manda a bagunca: caixa, cotacao, cliente, tarefa ou alerta.',
+            'Opa. O gato fiscal acordou. Qual processo vamos tirar do modo drama?',
+        ),
+        'random_noise' => array(
+            'Isso foi mensagem ou o teclado caiu da mesa? Manda tela, dado ou objetivo que eu trabalho.',
+            'Recebi o ruido cosmico. Agora traduz para humano funcional: o que voce quer fazer?',
+        ),
+        'casual_identity' => array(
+            'Sou o Miauby, fiscal da bagunca da Wimifarma. Eu cutuco processo, consulto o que for permitido e paro humano antes de transformar sistema em novela. Sem dado, sem milagre.',
+            'Eu sou o gato fiscal interno: olho caixa, cotacao, tarefa, cliente, codigo e processo. Nao sou enfeite de chat; sou alarme com bigode.',
+        ),
+        'offtopic' => array(
+            'mew dweus, isso saiu da farmacia e entrou no intervalo eterno. Volta com caixa, produto, cliente, cotacao ou processo.',
+            'Assunto escapou da coleira administrativa. Me traz venda, estoque, financeiro, cotacao ou tarefa que eu paro de julgar o universo.',
+        ),
+    );
+
+    if ($intent === 'backstage_technical' && strpos($normalized, 'api') !== false) {
+        $text = $replies['backstage_technical'][0];
+    } elseif ($intent === 'generic_howto' && strpos($normalized, 'site') !== false) {
+        $text = $replies['generic_howto'][0];
+    } else {
+        $text = miauw_agent_style_pick($message, $replies[$intent] ?? array());
+    }
+
+    if ($text === '') {
+        return null;
+    }
+
+    return miauw_agent_limit_words($text, $budget);
+}
+
+function miauw_agent_try_style_reply(string $message, string $pageContext = '', bool $widgetMode = false): ?array
+{
+    $route = miauw_agent_style_route($message, $pageContext);
+    $text = miauw_agent_style_reply_for_route($route, $message);
+
+    if ($text === null || trim($text) === '') {
+        return null;
+    }
+
+    if (function_exists('miauw_trace_record')) {
+        miauw_trace_record('miauw_style_router', 'ok', array(
+            'type' => 'style',
+            'risk' => 'baixo',
+            'summary' => 'Resposta local de estilo do Miauby.',
+            'payload' => array(
+                'intent' => (string) ($route['intent'] ?? ''),
+                'style_version' => miauw_constant_string('MIAUW_AGENT_STYLE_VERSION', ''),
+                'widget' => $widgetMode,
+            ),
+        ));
+    }
+
+    $clean = function_exists('miauw_sanitize_operator_reply') ? miauw_sanitize_operator_reply($text) : $text;
+
+    return array(
+        'text' => $clean,
+        'fallback' => false,
+        'model' => 'miauw-style-router',
+        'style_intent' => (string) ($route['intent'] ?? ''),
+    );
+}
+
+function miauw_agent_approved_style_patterns(string $message, ?int $userId = null): array
+{
+    try {
+        if (function_exists('miauw_diagnostics_ensure_review_columns')) {
+            miauw_diagnostics_ensure_review_columns();
+        }
+
+        $selected = array();
+        $stmt = db()->prepare(
+            "SELECT modulo, chave, valor
+             FROM miauw_memorias
+             WHERE revisao_status = 'aprovado'
+               AND (usuario_id IS NULL OR usuario_id = ?)
+               AND modulo IN ('geral', 'miauby', 'sistema')
+             ORDER BY peso DESC, updated_at DESC, id DESC
+             LIMIT 4"
+        );
+        $stmt->execute(array($userId ?: 0));
+        foreach ($stmt->fetchAll() as $row) {
+            $value = trim((string) ($row['valor'] ?? ''));
+            if ($value !== '') {
+                $selected[] = '[' . (string) ($row['modulo'] ?? 'geral') . '] ' . miauw_substr($value, 0, 220);
+            }
+        }
+
+        $stmt = db()->query(
+            "SELECT modulo, descricao
+             FROM miauw_padroes
+             WHERE revisao_status = 'aprovado'
+               AND modulo IN ('geral', 'miauby', 'sistema')
+             ORDER BY contador DESC, updated_at DESC, id DESC
+             LIMIT 4"
+        );
+        foreach ($stmt->fetchAll() as $row) {
+            $value = trim((string) ($row['descricao'] ?? ''));
+            if ($value !== '') {
+                $selected[] = '[padrao ' . (string) ($row['modulo'] ?? 'geral') . '] ' . miauw_substr($value, 0, 220);
+            }
+        }
+
+        return array_values(array_slice(array_unique($selected), 0, 6));
+    } catch (Throwable $error) {
+        error_log('Miauby approved style patterns failed: ' . $error->getMessage());
+
+        return array();
+    }
+}
+
+function miauw_agent_style_context_export(string $message, ?int $userId = null, string $pageContext = ''): array
+{
+    $contract = miauw_agent_style_contract();
+    $route = miauw_agent_style_route($message, $pageContext);
+    $examples = is_array($contract['examples'] ?? null) ? $contract['examples'] : array();
+    $exampleList = array();
+
+    foreach ($examples as $question => $reply) {
+        $question = (string) $question;
+        if ($question !== '' && (strpos(miauw_agent_style_normalized($message), miauw_agent_style_normalized($question)) !== false || count($exampleList) < 2)) {
+            $exampleList[] = $question . ' => ' . (string) $reply;
+        }
+    }
+
+    return array(
+        'version' => (string) ($contract['version'] ?? ''),
+        'route' => $route,
+        'hard_rules' => array(
+            'casual sem lista numerada',
+            'nao responder pergunta casual com lista de ferramentas',
+            'nao usar "leio dados" em apresentacao casual',
+            'bastidor tecnico vira suporte tecnico interno',
+            'usar memorias/padroes apenas quando revisados como aprovado',
+        ),
+        'anti_patterns' => array_values((array) ($contract['anti_patterns'] ?? array())),
+        'approved_patterns' => miauw_agent_approved_style_patterns($message, $userId),
+        'examples' => array_slice($exampleList, 0, 3),
+    );
+}
+
+function miauw_agent_style_context_text(string $message, ?int $userId = null, string $pageContext = ''): string
+{
+    $context = miauw_agent_style_context_export($message, $userId, $pageContext);
+    $route = is_array($context['route'] ?? null) ? $context['route'] : array();
+    $lines = array(
+        'CONTRATO DE ESTILO DO MIAUBY',
+        '- versao: ' . (string) ($context['version'] ?? ''),
+        '- rota: ' . (string) ($route['intent'] ?? '') . '; palavras_max: ' . (int) ($route['budget_words'] ?? 90) . '; listas: ' . (!empty($route['allow_lists']) ? 'permitidas quando uteis' : 'evitar'),
+        '- regra: em pergunta casual, responder como gente, curto, com voz de gato fiscal; nao despejar lista de capacidades.',
+    );
+
+    foreach (array_slice((array) ($context['approved_patterns'] ?? array()), 0, 3) as $pattern) {
+        $lines[] = '- padrao aprovado: ' . miauw_substr((string) $pattern, 0, 220);
+    }
+
+    foreach (array_slice((array) ($context['examples'] ?? array()), 0, 2) as $example) {
+        $lines[] = '- exemplo: ' . miauw_substr((string) $example, 0, 260);
+    }
+
+    return implode("\n", $lines);
+}
+
 function miauw_agent_personality_contract(): array
 {
     return array(
         'version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
+        'style_version' => miauw_constant_string('MIAUW_AGENT_STYLE_VERSION', ''),
         'nome_publico' => 'Miauby',
         'papel' => 'Fiscal interno da operacao Wimifarma',
         'voz' => array(
@@ -797,6 +1227,8 @@ function miauw_agent_personality_contract(): array
             'humor curto como tempero, nunca como enrolacao',
             'personalidade forte com solucao pratica em toda resposta',
             'respostas curtas por padrao no widget',
+            'perguntas casuais nao viram lista de ferramentas',
+            'padroes aprovados no diagnostico podem ajustar o jeito de falar',
             'pedir somente o menor dado ausente antes de agir',
             'nao inventar dado real sem fonte do sistema ou do operador',
         ),
@@ -821,17 +1253,21 @@ function miauw_agent_personality_contract(): array
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase14',
-        'proxima_fase' => 'corte_rapido_controlado_por_usuario_teste',
+        'fase_atual' => 'fase15',
+        'proxima_fase' => 'coleta_de_exemplos_reais_e_evals_de_voz_por_intencao',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => miauw_agent_engine(),
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools e pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, e acoes fortes voltam como confirmacao obrigatoria sem escrita direta.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria, memorias revisadas e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, contexto de estilo e padroes aprovados; pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, acoes fortes voltam como confirmacao obrigatoria, e perguntas casuais/de bastidor podem ser respondidas localmente sem gastar chamada online.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
             'persona_versionada' => function_exists('miauw_agent_personality_contract'),
+            'roteador_estilo' => function_exists('miauw_agent_style_route'),
+            'contexto_estilo_node' => function_exists('miauw_agent_style_context_export'),
+            'memoria_estilo_aprovada' => function_exists('miauw_agent_approved_style_patterns'),
+            'resposta_local_casual' => function_exists('miauw_agent_try_style_reply'),
             'eval_persona_node' => true,
             'tool_contract_export' => function_exists('miauw_agent_tool_contract_export'),
             'traces_por_conversa' => true,
@@ -853,10 +1289,10 @@ function miauw_agent_next_phase_contract(): array
             'writes_node_bloqueado' => true,
         ),
         'pendencias' => array(
+            'Coletar exemplos reais do adm e aprovar padroes/memorias no painel de diagnostico para refinar a voz sem mexer em prompt gigante.',
             'Testar o motor Node como primario com adm enquanto o Miauby esta fora de uso pela equipe.',
             'Validar buscar_cliente em operacao real, lembrando que telefone continua mascarado.',
             'Transformar confirmacao forte via Node em card de confirmacao da mesma sessao antes de liberar escrita forte pelo agente.',
-            'Coletar exemplos reais dos testes do adm e adicionar aos evals antes de liberar todo mundo.',
             'Adicionar mais exemplos reais da voz do Miauby aos evals de persona.',
         ),
         'nao_mudar_agora' => array(
@@ -1011,6 +1447,13 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
             'id' => (int) ($user['id'] ?? 0),
             'username' => miauw_substr((string) ($user['username'] ?? ''), 0, 80),
             'role' => miauw_substr((string) ($user['role'] ?? $user['perfil'] ?? ''), 0, 40),
+        );
+    }
+    if (function_exists('miauw_agent_style_context_export')) {
+        $payload['style_context'] = miauw_agent_style_context_export(
+            $message,
+            is_array($user) ? (int) ($user['id'] ?? 0) : null,
+            ''
         );
     }
     if (function_exists('miauw_agent_tool_contract_export')) {
@@ -2371,9 +2814,17 @@ function miauw_try_technical_redirect(string $message): ?string
         return null;
     }
 
-    return 'Parede tecnica detectada. Isso e assunto de suporte tecnico interno, nao do chat operacional do Miauby.'
+    if (function_exists('miauw_agent_style_route') && function_exists('miauw_agent_style_reply_for_route')) {
+        $route = miauw_agent_style_route($message);
+        $reply = miauw_agent_style_reply_for_route($route, $message);
+        if (is_string($reply) && trim($reply) !== '') {
+            return $reply;
+        }
+    }
+
+    return 'Oxe, por que voce quer mexer nisso? Bastidor tecnico e assunto de suporte tecnico interno.'
         . "\nAqui eu fico no operacional: caixa, financeiro, cotacao, cashback, encomenda, alerta e processo."
-        . "\nMe mande o que aconteceu na tela e o que voce queria fazer. Se for bug tecnico, registre com modulo, horario e print.";
+        . "\nMe mande tela, horario, acao feita e print; se for codigo, abre chamado tecnico interno.";
 }
 
 function miauw_operator_voice_polish(string $text): string
@@ -2386,6 +2837,8 @@ function miauw_operator_voice_polish(string $text): string
 
     $text = preg_replace('/^\s*(?:claro|com certeza|sem problemas|perfeito|posso ajudar|aqui esta|aqui vai|ol[Ã¡a])[\!\.\,\:\s]*/iu', 'Miauby direto: ', $text) ?? $text;
     $text = preg_replace('/^\s*(?:como uma? ia|como assistente virtual|sou uma? ia|sou um modelo de linguagem)[^\n]*\n?/iu', '', $text) ?? $text;
+    $text = preg_replace('/\b(?:eu\s+)?leio dados de\b/iu', 'eu consulto quando faz sentido: ', $text) ?? $text;
+    $text = preg_replace('/\bposso (?:ajudar|auxiliar) com\b/iu', 'eu resolvo quando voce trouxer', $text) ?? $text;
     $text = preg_replace('/\b(?:espero que isso ajude|fico a disposi[cÃ§][aÃ£]o|se precisar de mais alguma coisa)[^\.\n]*(?:\.|$)/iu', 'Pronto. Proxima bagunca.', $text) ?? $text;
     $text = preg_replace('/\b(?:vou te ajudar|posso te ajudar)\b/iu', 'vou resolver sem enrolar', $text) ?? $text;
 
@@ -2769,6 +3222,13 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
         );
     }
 
+    if (function_exists('miauw_agent_try_style_reply')) {
+        $styleReply = miauw_agent_try_style_reply($message, $pageContext, $widgetMode);
+        if ($styleReply !== null) {
+            return $styleReply;
+        }
+    }
+
     $vagueReply = miauw_vague_problem_reply($message, $pageContext);
     if ($vagueReply !== null) {
         return array(
@@ -3074,6 +3534,14 @@ function miauw_knowledge_for(string $message): string
         $memoryContext = trim((string) miauw_memory_context_for_message($message, is_array($user) ? (int) ($user['id'] ?? 0) : null));
         if ($memoryContext !== '') {
             $knowledge .= ($knowledge !== '' ? "\n\n" : '') . $memoryContext;
+        }
+    }
+
+    if (function_exists('miauw_agent_style_context_text')) {
+        $user = function_exists('current_user') ? current_user() : null;
+        $styleContext = trim((string) miauw_agent_style_context_text($message, is_array($user) ? (int) ($user['id'] ?? 0) : null));
+        if ($styleContext !== '') {
+            $knowledge .= ($knowledge !== '' ? "\n\n" : '') . $styleContext;
         }
     }
 
@@ -3602,7 +4070,7 @@ function miauw_agent_tool_contract_export(): array
     return array(
         'version' => 'miauw-tool-contracts-2026-05-16',
         'agent_version' => miauw_constant_string('MIAUW_AGENT_VERSION', ''),
-        'phase' => 'fase14-php-all-tools-bridge',
+        'phase' => 'fase15-style-router-memory',
         'source' => 'php_skill_registry',
         'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
         'writes_enabled_in_node' => false,

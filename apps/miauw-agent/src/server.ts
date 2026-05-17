@@ -5,10 +5,11 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.8.0';
-const AGENT_VERSION = '2.0-fase14';
-const PHASE = 'fase14-php-all-tools-bridge';
+const SERVICE_VERSION = '0.9.0';
+const AGENT_VERSION = '2.0-fase15';
+const PHASE = 'fase15-style-router-memory';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
+const STYLE_VERSION = 'miauby-style-router-2026-05-16';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 const NODE_LOW_RISK_READ_TOOLS = [
   'resumo_financeiro',
@@ -56,7 +57,11 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Identidade: gato fiscal interno, esperto, pratico, expressivo, levemente acido, com humor curto e foco total em resolver a operacao.',
   'Tom: fale como Miauby, nao como suporte corporativo. Pode usar bronca leve, "meu bigode", "Sem dado, sem milagre" e frases de processo, mas sem exagerar.',
   'Regra de ouro: personalidade forte + solucao pratica. Se a resposta ficou seca, generica ou burocratica, reescreva com cara de Miauby.',
+  `Contrato de estilo: ${STYLE_VERSION}. Use a rota de estilo enviada pelo PHP para decidir tamanho, listas e se deve responder curto.`,
   'Use portugues do Brasil natural. Respostas curtas por padrao, especialmente para mensagem vaga, teste, risada, teclado aleatorio ou provocacao.',
+  'Pergunta casual nao vira lista de ferramentas. Nao responda "leio dados"; fale como gente, curto, com humor do Miauby, e peca o menor contexto.',
+  'Pergunta de bastidor tecnico recebe curiosidade cortada: "oxe, por que voce quer mexer nisso?", suporte tecnico interno e volta para processo.',
+  'Padroes aprovados enviados no contexto de estilo sao memoria de jeito e processo. Use como tempero; nao cite a tabela, revisao ou bastidor.',
   'Para mensagem sem objetivo claro, responda em 1 ou 2 linhas: reconheca o barulho, peca tela/dado/objetivo e puxe para acao. Nada de checklist longo.',
   'Quando faltar informacao operacional, peca exatamente o menor dado ausente: produto, EAN, valor, data, responsavel, tela, acao feita ou print.',
   'Nao invente dado real de caixa, estoque, cliente, cotacao, cashback, codigo, tarefa ou financeiro. Se nao veio do sistema ou do usuario, diga que falta.',
@@ -105,7 +110,10 @@ function publicStatus() {
     agent_version: AGENT_VERSION,
     phase: PHASE,
     personality_version: PERSONALITY_VERSION,
+    style_version: STYLE_VERSION,
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
+    style_router_enabled: true,
+    local_style_replies_enabled: true,
     mode: 'node-primary-php-tool-bridge',
     tool_contracts: 'accepted_via_php_payload',
     node_executable_tools: NODE_EXECUTABLE_TOOLS,
@@ -175,6 +183,26 @@ type UserContext = {
   id?: number;
   username?: string;
   role?: string;
+};
+
+type StyleRoute = {
+  intent: string;
+  label: string;
+  budgetWords: number;
+  useTools: boolean;
+  localReply: boolean;
+  allowLists: boolean;
+  tone: string;
+  reason: string;
+};
+
+type SafeStyleContext = {
+  version: string;
+  route: StyleRoute;
+  hardRules: string[];
+  antiPatterns: string[];
+  approvedPatterns: string[];
+  examples: string[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -259,6 +287,77 @@ function safeToolContracts(value: unknown): SafeToolContractBundle | null {
     },
     tools,
   };
+}
+
+function safeStyleRoute(value: unknown): StyleRoute {
+  const route = isRecord(value) ? value : {};
+  const budget =
+    typeof route.budget_words === 'number' && Number.isFinite(route.budget_words)
+      ? Math.trunc(route.budget_words)
+      : typeof route.budgetWords === 'number' && Number.isFinite(route.budgetWords)
+        ? Math.trunc(route.budgetWords)
+        : 90;
+
+  return {
+    intent: safeShort(route.intent, 60) || 'operational',
+    label: safeShort(route.label, 80) || safeShort(route.intent, 60) || 'operational',
+    budgetWords: Math.max(20, Math.min(220, budget)),
+    useTools: route.use_tools === true || route.useTools === true,
+    localReply: route.local_reply === true || route.localReply === true,
+    allowLists: !(route.allow_lists === false || route.allowLists === false),
+    tone: safeShort(route.tone, 180) || 'miauby curto e pratico',
+    reason: safeShort(route.reason, 180),
+  };
+}
+
+function safeStyleContext(value: unknown): SafeStyleContext {
+  if (!isRecord(value)) {
+    return {
+      version: STYLE_VERSION,
+      route: safeStyleRoute({ intent: 'operational', budget_words: 120, use_tools: true, local_reply: false }),
+      hardRules: [],
+      antiPatterns: [],
+      approvedPatterns: [],
+      examples: [],
+    };
+  }
+
+  return {
+    version: safeShort(value.version, 80) || STYLE_VERSION,
+    route: safeStyleRoute(value.route),
+    hardRules: safeStringArray(value.hard_rules ?? value.hardRules, 10),
+    antiPatterns: safeStringArray(value.anti_patterns ?? value.antiPatterns, 10),
+    approvedPatterns: safeStringArray(value.approved_patterns ?? value.approvedPatterns, 8),
+    examples: safeStringArray(value.examples, 5),
+  };
+}
+
+function styleContextForPrompt(styleContext: SafeStyleContext): string {
+  const route = styleContext.route;
+  const lines = [
+    `contrato_estilo_miauby: ${styleContext.version || STYLE_VERSION}`,
+    `rota_estilo: ${route.intent}; palavras_max=${route.budgetWords}; tools=${route.useTools ? 'sim' : 'nao'}; lista=${route.allowLists ? 'quando_util' : 'evitar'}; local=${route.localReply ? 'sim' : 'nao'}`,
+    `tom: ${route.tone}`,
+    'Regra: conversa casual nao vira manual, lista de tools nem apresentacao burocratica.',
+  ];
+
+  if (styleContext.hardRules.length > 0) {
+    lines.push(`regras_duras: ${styleContext.hardRules.slice(0, 5).join(' | ')}`);
+  }
+
+  if (styleContext.antiPatterns.length > 0) {
+    lines.push(`anti_padroes: ${styleContext.antiPatterns.slice(0, 5).join(' | ')}`);
+  }
+
+  if (styleContext.approvedPatterns.length > 0) {
+    lines.push(`padroes_aprovados: ${styleContext.approvedPatterns.slice(0, 4).join(' | ')}`);
+  }
+
+  if (styleContext.examples.length > 0) {
+    lines.push(`exemplos_de_voz: ${styleContext.examples.slice(0, 3).join(' | ')}`);
+  }
+
+  return lines.join('\n');
 }
 
 function toolContractsForPrompt(contracts: SafeToolContractBundle | null): string {
@@ -424,6 +523,90 @@ function safeError(error: unknown): string {
   }
 
   return 'Nao consegui concluir a execucao do agente agora.';
+}
+
+function limitWords(text: string, maxWords: number): string {
+  const parts = text.trim().split(/\s+/).filter(Boolean);
+  const safeMax = Math.max(8, Math.min(240, maxWords));
+
+  if (parts.length <= safeMax) {
+    return text.trim();
+  }
+
+  return `${parts.slice(0, safeMax).join(' ')}...`;
+}
+
+function pickReply(message: string, options: string[]): string {
+  if (options.length === 0) {
+    return '';
+  }
+
+  const hash = crypto.createHash('sha1').update(message).digest();
+  return options[hash[0] % options.length];
+}
+
+function localStyleReply(message: string, styleContext: SafeStyleContext): string {
+  const route = styleContext.route;
+  if (!route.localReply) {
+    return '';
+  }
+
+  const normalized = normalizeSearch(message);
+  const replies: Record<string, string[]> = {
+    backstage_technical: [
+      'Oxe, por que voce quer mexer nisso? Meu encanamento interno nao e brinquedo de humano. Se quer saber o que eu consigo fazer, pergunta direto. Se quer abrir bastidor, chama suporte tecnico interno.',
+      'Meu bigode travou nessa curiosidade ai. Bastidor tecnico e com suporte tecnico interno; comigo e caixa, cotacao, financeiro, tela, dado, processo e decisao. Quer capacidade operacional? Pergunta o que precisa fazer.',
+    ],
+    generic_howto: [
+      'Site pra que: vender, mostrar, cadastrar ou controlar bagunca? Me da o tipo e eu paro de miar no escuro. Sem objetivo, site vira enfeite caro com botao bonito.',
+      'Da pra fazer, humano, mas "um site" e uma caixa vazia com luzinha. Diz o objetivo: loja, institucional, sistema interno ou landing page. Ai eu te dou o caminho util.',
+    ],
+    greeting: [
+      'Miauby na area. Manda a bagunca: caixa, cotacao, cliente, tarefa ou alerta.',
+      'Opa. O gato fiscal acordou. Qual processo vamos tirar do modo drama?',
+    ],
+    random_noise: [
+      'Isso foi mensagem ou o teclado caiu da mesa? Manda tela, dado ou objetivo que eu trabalho.',
+      'Recebi o ruido cosmico. Agora traduz para humano funcional: o que voce quer fazer?',
+    ],
+    casual_identity: [
+      'Sou o Miauby, fiscal da bagunca da Wimifarma. Eu cutuco processo, consulto o que for permitido e paro humano antes de transformar sistema em novela. Sem dado, sem milagre.',
+      'Eu sou o gato fiscal interno: olho caixa, cotacao, tarefa, cliente, codigo e processo. Nao sou enfeite de chat; sou alarme com bigode.',
+    ],
+    offtopic: [
+      'mew dweus, isso saiu da farmacia e entrou no intervalo eterno. Volta com caixa, produto, cliente, cotacao ou processo.',
+      'Assunto escapou da coleira administrativa. Me traz venda, estoque, financeiro, cotacao ou tarefa que eu paro de julgar o universo.',
+    ],
+  };
+
+  let reply = '';
+  if (route.intent === 'backstage_technical' && normalized.includes('api')) {
+    reply = replies.backstage_technical[0];
+  } else if (route.intent === 'generic_howto' && normalized.includes('site')) {
+    reply = replies.generic_howto[0];
+  } else {
+    reply = pickReply(message, replies[route.intent] || []);
+  }
+
+  return limitWords(redactSecrets(reply), route.budgetWords);
+}
+
+function enforceStyleReply(text: string, styleContext: SafeStyleContext): string {
+  let clean = redactSecrets(text).trim();
+  const route = styleContext.route;
+
+  if (!route.allowLists) {
+    clean = clean
+      .replace(/^\s*\d+[\.\)]\s+/gmu, '')
+      .replace(/^\s*[-*]\s+/gmu, '');
+  }
+
+  clean = clean
+    .replace(/\b(?:eu\s+)?leio dados de\b/giu, 'eu consulto quando faz sentido: ')
+    .replace(/\bposso (?:ajudar|auxiliar) com\b/giu, 'eu resolvo quando voce trouxer')
+    .replace(/^\s*(?:claro|com certeza|posso ajudar|aqui esta|aqui vai)[!.,:\s]*/giu, 'Miauby direto: ');
+
+  return limitWords(clean, route.budgetWords);
 }
 
 async function callPhpTool(toolName: string, args: Record<string, unknown>, traceId: string, userContext: UserContext = {}): Promise<string> {
@@ -819,7 +1002,18 @@ function buildMiaubyAgent(toolContracts: SafeToolContractBundle | null, traceId:
   });
 }
 
-async function executeAgent(message: string, traceId: string, toolContracts: SafeToolContractBundle | null, userContext: UserContext): Promise<string> {
+async function executeAgent(
+  message: string,
+  traceId: string,
+  toolContracts: SafeToolContractBundle | null,
+  userContext: UserContext,
+  styleContext: SafeStyleContext,
+): Promise<string> {
+  const localReply = localStyleReply(message, styleContext);
+  if (localReply !== '') {
+    return localReply;
+  }
+
   if (apiKey === '') {
     throw new Error('api_key_missing');
   }
@@ -829,6 +1023,7 @@ async function executeAgent(message: string, traceId: string, toolContracts: Saf
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
     `personalidade: ${PERSONALITY_VERSION}`,
+    styleContextForPrompt(styleContext),
     toolContractsForPrompt(toolContracts),
   ];
   if (prefetchContext !== '') {
@@ -841,7 +1036,7 @@ async function executeAgent(message: string, traceId: string, toolContracts: Saf
     maxTurns: 5,
   });
 
-  return safeText((result as { finalOutput?: unknown }).finalOutput, 4000);
+  return enforceStyleReply(safeText((result as { finalOutput?: unknown }).finalOutput, 4000), styleContext);
 }
 
 function sendSse(res: Response, event: string, data: unknown): void {
@@ -855,7 +1050,23 @@ async function streamAgent(
   res: Response,
   toolContracts: SafeToolContractBundle | null,
   userContext: UserContext,
+  styleContext: SafeStyleContext,
 ): Promise<void> {
+  const localReply = localStyleReply(message, styleContext);
+  if (localReply !== '') {
+    sendSse(res, 'delta', { text: localReply });
+    sendSse(res, 'done', {
+      ok: true,
+      mode: 'agent_controlado',
+      trace_id: traceId,
+      style_version: styleContext.version || STYLE_VERSION,
+      style_intent: styleContext.route.intent,
+      local_style_reply: true,
+      text: localReply,
+    });
+    return;
+  }
+
   if (apiKey === '') {
     sendSse(res, 'error', {
       message: 'Servico agente sem credencial online configurada.',
@@ -868,6 +1079,7 @@ async function streamAgent(
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
     `personalidade: ${PERSONALITY_VERSION}`,
+    styleContextForPrompt(styleContext),
     toolContractsForPrompt(toolContracts),
   ];
   if (prefetchContext !== '') {
@@ -897,10 +1109,15 @@ async function streamAgent(
 
   await stream.completed;
 
+  const finalText = enforceStyleReply(chunks.join(''), styleContext);
+
   sendSse(res, 'done', {
     ok: true,
     mode: 'agent_controlado',
     trace_id: traceId,
+    style_version: styleContext.version || STYLE_VERSION,
+    style_intent: styleContext.route.intent,
+    local_style_reply: false,
     node_executable_tools: NODE_EXECUTABLE_TOOLS,
     migrated_read_tools: NODE_LOW_RISK_READ_TOOLS,
     migrated_tool_bridge_tools: bridgeToolsFromContracts(toolContracts).map((item) => item.name),
@@ -908,7 +1125,7 @@ async function streamAgent(
     php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
     php_tool_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
     tool_contract_version: toolContracts?.version || '',
-    text: safeText(chunks.join(''), 4000),
+    text: finalText,
   });
 }
 
@@ -942,6 +1159,7 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   const message = safeText(req.body?.message, 4000);
   const toolContracts = safeToolContracts(req.body?.tool_contracts);
   const userContext = safeUserContext(req.body?.user_context);
+  const styleContext = safeStyleContext(req.body?.style_context);
 
   if (message === '') {
     res.status(400).json({
@@ -953,13 +1171,16 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   }
 
   try {
-    const text = await executeAgent(message, traceId, toolContracts, userContext);
+    const text = await executeAgent(message, traceId, toolContracts, userContext, styleContext);
     const migratedToolBridgeTools = bridgeToolsFromContracts(toolContracts).map((item) => item.name);
     res.json({
       ok: true,
       mode: 'agent_controlado',
       trace_id: traceId,
       model,
+      style_version: styleContext.version || STYLE_VERSION,
+      style_intent: styleContext.route.intent,
+      local_style_reply: styleContext.route.localReply,
       node_executable_tools: NODE_EXECUTABLE_TOOLS,
       migrated_read_tools: NODE_LOW_RISK_READ_TOOLS,
       migrated_tool_bridge_tools: migratedToolBridgeTools,
@@ -988,6 +1209,7 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
   const message = safeText(req.body?.message, 4000);
   const toolContracts = safeToolContracts(req.body?.tool_contracts);
   const userContext = safeUserContext(req.body?.user_context);
+  const styleContext = safeStyleContext(req.body?.style_context);
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -1011,6 +1233,8 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
       mode: 'agent_controlado',
       trace_id: traceId,
       model,
+      style_version: styleContext.version || STYLE_VERSION,
+      style_intent: styleContext.route.intent,
       node_executable_tools: NODE_EXECUTABLE_TOOLS,
       migrated_read_tools: NODE_LOW_RISK_READ_TOOLS,
       migrated_tool_bridge_tools: bridgeToolsFromContracts(toolContracts).map((item) => item.name),
@@ -1019,7 +1243,7 @@ app.post(`${basePath}/stream`, requireInternalToken, async (req, res) => {
       php_tool_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
       tool_contract_version: toolContracts?.version || '',
     });
-    await streamAgent(message, traceId, res, toolContracts, userContext);
+    await streamAgent(message, traceId, res, toolContracts, userContext, styleContext);
   } catch (error) {
     sendSse(res, 'error', {
       error: 'agent_stream_failed',

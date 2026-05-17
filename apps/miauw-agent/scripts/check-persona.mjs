@@ -8,15 +8,20 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.0-fase14',
-  'fase14-php-all-tools-bridge',
+  '2.0-fase15',
+  'fase15-style-router-memory',
   'PERSONALITY_VERSION',
+  'STYLE_VERSION',
   'miauby-persona-2026-05-16',
+  'miauby-style-router-2026-05-16',
   'personalidade forte + solucao pratica',
   'Sem dado, sem milagre',
   'fiscal interno',
+  'Pergunta casual nao vira lista de ferramentas',
   'suporte tecnico interno',
   'Nao invente dado real',
+  'styleContextForPrompt',
+  'localStyleReply',
   'toolContractsForPrompt',
   'consultar_contrato_tool_miauby',
   'php_tool_bridge',

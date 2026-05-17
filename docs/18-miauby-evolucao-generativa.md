@@ -133,6 +133,15 @@ Miauby ja possui:
   - `criar_tarefa` e a unica escrita de baixo risco liberada pela ponte PHP com usuario logado no payload interno;
   - sangria, lancamentos financeiros, encomendas e demais acoes fortes retornam `confirmation_required` pela ponte universal e nao gravam nada fora do fluxo de confirmacao da sessao PHP;
   - a ponte registra `miauw_agent_node_tool_bridge` em `miauw_tool_traces` com tool, chaves de argumentos, modo, risco, duracao e status, sem token, SQL, payload bruto externo ou stack trace.
+- Fase 15 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase15`;
+  - o servico Node passou para `SERVICE_VERSION=0.9.0` e `PHASE=fase15-style-router-memory`;
+  - existe `MIAUW_AGENT_STYLE_VERSION=miauby-style-router-2026-05-16`;
+  - `miauw_agent_style_route()` classifica mensagens em bastidor tecnico, pergunta ampla, saudacao, ruido, identidade, assunto fora da operacao, consulta operacional e acao forte;
+  - perguntas casuais/de bastidor podem receber resposta local curta por `miauw_agent_try_style_reply()`, sem gastar chamada online nem tool;
+  - `miauw_agent_style_context_export()` envia ao Node a rota, limite de palavras, regras duras, exemplos de voz e memorias/padroes apenas quando revisados como `aprovado`;
+  - o Node respeita o contexto de estilo antes de chamar a camada online, aplica resposta local quando a rota permitir e poda listas/textos longos quando o contrato pedir conversa curta;
+  - os evals cobrem que "qual sua api?" vira resposta viva com suporte tecnico interno, que "como faz um site?" pede objetivo sem tutorial numerado e que o contexto de estilo chega versionado.
 
 ## Arquivos, tabelas e servicos envolvidos
 
