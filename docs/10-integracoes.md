@@ -65,7 +65,7 @@ Status operacional:
 - A Fase 16 adiciona o Treinador do Miauby: feedback do chat e revisao em `/miauw/treino.php` salvam exemplos versionados em `miauw_treinos_respostas`; somente exemplos aprovados entram no `style_context` enviado ao Node, que continua sem escrita direta.
 - A Fase 17 adiciona o compilador de treino: o PHP seleciona exemplos aprovados por relevancia, gera `training_profile` compacto no `style_context` e pode responder localmente quando a pergunta bater forte com treino aprovado, sem chamada online.
 - A Fase 18 adiciona perfis de voz/tom e contrato seguro de audio: o PHP envia `voice_profile` e `audio_contract` ao Node, mas o modo segue `text_only`, com microfone, transcricao, TTS, playback e armazenamento desligados ate uma fase propria com botao e consentimento.
-- A Fase 19 adiciona audio Realtime/WebRTC no chat principal: o botao `Falar` captura microfone somente por clique, envia SDP para `site/miauw/api.php?action=audio_session`, e o PHP cria a chamada em `/v1/realtime/calls` com `gpt-realtime`, sem expor chave no navegador. O audio nao e gravado nem transcrito para historico e voz nao executa escrita operacional direta.
+- A Fase 19 adiciona audio Realtime/WebRTC no chat principal e no widget global: o botao `Falar` captura microfone somente por clique, envia SDP para `site/miauw/api.php?action=audio_session`, e o PHP cria a chamada em `/v1/realtime/calls` com `gpt-realtime`, sem expor chave no navegador. O audio nao e gravado nem transcrito para historico, voz nao executa escrita operacional direta e bloqueio de microfone vira orientacao clara de permissao/HTTPS.
 
 Tabelas:
 

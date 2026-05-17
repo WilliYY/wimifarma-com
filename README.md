@@ -92,7 +92,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 16 do agente operacional v2: o chat ganhou feedback `Boa`/`Treinar`, o painel restrito `/miauw/treino.php` revisa exemplos de resposta, a tabela `miauw_treinos_respostas` preserva versoes sem apagar historico e exemplos aprovados entram no `style_context` enviado ao Node. O servico agente passou para `SERVICE_VERSION=0.10.0` e `PHASE=fase16-training-feedback`, ainda sem escrita direta no Node.
 - Miauby iniciou a Fase 17 do agente operacional v2: exemplos aprovados viram um perfil compilado de voz/relevancia antes de chegar ao Node, perguntas repetidas pelo treino podem responder localmente sem chamada online, e o servico agente passou para `SERVICE_VERSION=0.11.0` e `PHASE=fase17-training-compiler`.
 - Miauby iniciou a Fase 18 do agente operacional v2: o PHP exporta perfis versionados de voz/tom (`miauby_padrao`, `miauby_curto`, `miauby_operacional`) e um contrato de audio seguro (`text_only`, sem microfone, playback, transcricao ou gravacao). O Node passou para `SERVICE_VERSION=0.12.0` e `PHASE=fase18-voice-audio-readiness`, recebendo o perfil de voz no `style_context`; audio real continua desligado por padrao.
-- Miauby iniciou a Fase 19 do agente operacional v2: o chat ganhou botao `Falar`, abrindo audio em tempo real por WebRTC com `gpt-realtime` via servidor PHP em `/v1/realtime/calls`. A chave nao vai para o navegador, o microfone so liga por clique, audio nao e gravado/transcrito para historico e escrita operacional por voz continua bloqueada.
+- Miauby iniciou a Fase 19 do agente operacional v2: o chat e o widget global ganharam botao `Falar`, abrindo audio em tempo real por WebRTC com `gpt-realtime` via servidor PHP em `/v1/realtime/calls`. A chave nao vai para o navegador, o microfone so liga por clique, audio nao e gravado/transcrito para historico, escrita operacional por voz continua bloqueada e negacao de microfone vira orientacao clara ao usuario.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -107,7 +107,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio Realtime controlado no chat
+- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio Realtime controlado no chat e no widget
 - PostgreSQL 17 para dados da Cotacao V2
 - Redis 7 para sessoes e presenca da Cotacao V2
 
@@ -314,7 +314,7 @@ Para comparar respostas do PHP com o servico sombra em envios reais, ligar `MIAU
 
 Para corte acelerado do Miauby, use `MIAUW_MAINTENANCE_MODE=true`, `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm` e escolha `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`. Rollback rapido: voltar `MIAUW_ENGINE=php` e, se necessario, `MIAUW_MAINTENANCE_MODE=false`.
 
-Para audio do Miauby, `MIAUW_AUDIO_ENABLED=true` libera apenas o botao de fala no chat. O modelo padrao e `MIAUW_REALTIME_MODEL=gpt-realtime` e a voz padrao e `MIAUW_REALTIME_VOICE=marin`; a sessao WebRTC e criada pelo PHP com a chave do servidor, sem expor segredo no navegador e sem gravar audio no banco.
+Para audio do Miauby, `MIAUW_AUDIO_ENABLED=true` libera o botao de fala no chat e no widget global. O modelo padrao e `MIAUW_REALTIME_MODEL=gpt-realtime` e a voz padrao e `MIAUW_REALTIME_VOICE=marin`; a sessao WebRTC e criada pelo PHP com a chave do servidor, sem expor segredo no navegador e sem gravar audio no banco.
 
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 

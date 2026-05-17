@@ -25,7 +25,7 @@ $navItems = array(
     <link rel="alternate icon" href="<?php echo e(app_url('favicon.png')); ?>">
     <link rel="apple-touch-icon" href="<?php echo e(app_url('apple-touch-icon.png')); ?>">
     <link rel="stylesheet" href="<?php echo e(app_url('styles.css')); ?>?v=<?php echo e((string) filemtime(__DIR__ . '/styles.css')); ?>">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260515f">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260517e">
 </head>
 <body>
 <img class="cashback-screen-runner" src="<?php echo e(app_url('mario.gif')); ?>?v=<?php echo e((string) filemtime(__DIR__ . '/mario.gif')); ?>" alt="" aria-hidden="true" data-cashback-runner>

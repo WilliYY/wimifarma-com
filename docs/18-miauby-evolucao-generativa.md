@@ -170,7 +170,8 @@ Miauby ja possui:
   - `MIAUW_AGENT_VERSION=2.0-fase19`;
   - o servico Node passou para `SERVICE_VERSION=0.13.0` e `PHASE=fase19-realtime-audio-control`;
   - `miauw_agent_audio_contract()` agora descreve audio Realtime/WebRTC com `MIAUW_REALTIME_MODEL=gpt-realtime` e `MIAUW_REALTIME_VOICE=marin`, mantendo `storage_enabled=false`;
-  - o chat principal ganhou botao `Falar`; o navegador captura microfone somente apos clique e envia SDP ao PHP por `action=audio_session`;
+  - o chat principal e o widget global ganharam botao `Falar`; o navegador captura microfone somente apos clique e envia SDP ao PHP por `action=audio_session`;
+  - `widget-status.php` expoe `audio_contract` para o widget decidir quando mostrar o botao, e o frontend troca bloqueios de navegador por orientacao clara de permissao/HTTPS;
   - o PHP cria a chamada Realtime pelo servidor em `https://api.openai.com/v1/realtime/calls`, sem expor a chave no navegador, e devolve apenas o SDP de resposta;
   - audio nao vira mensagem, transcricao persistida, log de fala ou escrita operacional; acoes fortes continuam no fluxo de texto/confirmacao auditada;
   - `site/miauw/miauw-evals.php` cobre status Fase 19, contrato de audio sem gravacao, modelo/voz Realtime e contrato de tools em `fase19-realtime-audio-control`.
@@ -180,6 +181,7 @@ Miauby ja possui:
 Arquivos:
 
 - `site/miauw/api.php`
+- `site/miauw/app.js`
 - `site/miauw/agent-tools.php`
 - `site/miauw/diagnostico.php`
 - `site/miauw/treino.php`
@@ -191,6 +193,8 @@ Arquivos:
 - `site/miauw/miauw-system-map.php`
 - `site/miauw/guardian-cron.php`
 - `site/miauw/widget-status.php`
+- `site/miauw/widget.js`
+- `site/miauw/widget.css`
 - `apps/miauw-agent/package.json`
 - `apps/miauw-agent/scripts/check-persona.mjs`
 - `apps/miauw-agent/src/server.ts`

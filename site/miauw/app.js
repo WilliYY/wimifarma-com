@@ -399,6 +399,49 @@
     return 'Audio nao abriu agora. Revise permissao do microfone e tente de novo.';
   };
 
+  const microphonePermissionMessage = () => 'Microfone bloqueado no navegador. Clique no cadeado/configuracoes ao lado do endereco, permita Microfone para este site e tente de novo.';
+
+  const audioRequiresSecureContextMessage = () => 'Audio por microfone precisa de HTTPS ou localhost. No texto eu continuo funcionando.';
+
+  const audioErrorMessage = (error) => {
+    const name = error && error.name ? String(error.name) : '';
+    const message = error && error.message ? String(error.message) : '';
+    const lower = `${name} ${message}`.toLowerCase();
+
+    if (name === 'NotFoundError' || lower.includes('notfound')) {
+      return 'Nao achei microfone nesse navegador. Conecte ou selecione um microfone e tente de novo.';
+    }
+
+    if (name === 'NotReadableError' || lower.includes('notreadable')) {
+      return 'Microfone parece ocupado por outro app. Feche a outra chamada e tente de novo.';
+    }
+
+    if (name === 'OverconstrainedError' || lower.includes('overconstrained')) {
+      return 'O navegador recusou a configuracao do microfone. Tente de novo com o microfone padrao.';
+    }
+
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError' || lower.includes('permission denied') || lower.includes('permission dismissed') || lower.includes('notallowed')) {
+      return microphonePermissionMessage();
+    }
+
+    if (message && !lower.includes('denied')) {
+      return message;
+    }
+
+    return audioUnavailable();
+  };
+
+  const microphonePermissionState = async () => {
+    if (!navigator.permissions || typeof navigator.permissions.query !== 'function') return '';
+
+    try {
+      const permission = await navigator.permissions.query({ name: 'microphone' });
+      return permission && permission.state ? String(permission.state) : '';
+    } catch (error) {
+      return '';
+    }
+  };
+
   const startAudioSession = async () => {
     if (!audioButton || audioState.starting) return;
     if (audioState.active) {
@@ -408,6 +451,16 @@
 
     if (chat.dataset.audioEnabled !== '1') {
       addMessage('assistant', audioUnavailable());
+      return;
+    }
+
+    if (chat.dataset.audioStatus && chat.dataset.audioStatus !== 'pronto_com_botao') {
+      addMessage('assistant', audioUnavailable());
+      return;
+    }
+
+    if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      addMessage('assistant', audioRequiresSecureContextMessage());
       return;
     }
 
@@ -428,6 +481,11 @@
       document.body.appendChild(remoteAudio);
       audioState.pc = pc;
       audioState.remoteAudio = remoteAudio;
+
+      const permissionState = await microphonePermissionState();
+      if (permissionState === 'denied') {
+        throw Object.assign(new Error(microphonePermissionMessage()), { name: 'NotAllowedError' });
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -488,7 +546,7 @@
       addMessage('assistant', 'Estou ouvindo enquanto o botao ficar ligado. Sem gravacao e sem escrita por voz, combinado.');
     } catch (error) {
       closeAudioSession({ notify: false });
-      addMessage('assistant', error instanceof Error && error.message ? error.message : audioUnavailable());
+      addMessage('assistant', audioErrorMessage(error));
     }
   };
 

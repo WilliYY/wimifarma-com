@@ -772,7 +772,7 @@
 
 .miauw-widget-composer {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 9px;
     padding: 12px;
     border-top: 1px solid var(--miauw-line);
@@ -791,6 +791,53 @@
     min-width: 78px;
     min-height: 44px;
     padding: 0 15px;
+}
+
+.miauw-widget-composer .miauw-widget-audio {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 82px;
+    border: 1px solid var(--miauw-line);
+    background: #fff;
+    color: var(--miauw-wine);
+    box-shadow: 0 8px 18px rgba(97, 5, 29, 0.08);
+}
+
+.miauw-widget-composer .miauw-widget-audio[hidden] {
+    display: none;
+}
+
+.miauw-widget-composer .miauw-widget-audio:hover {
+    background: #fff3f7;
+}
+
+.miauw-widget-composer .miauw-widget-audio:disabled {
+    opacity: .58;
+    cursor: not-allowed;
+}
+
+.miauw-widget-composer .miauw-widget-audio.is-active {
+    border-color: var(--miauw-wine);
+    background: var(--miauw-wine);
+    color: #fff;
+}
+
+.miauw-widget-composer .miauw-widget-audio.is-starting {
+    color: var(--miauw-muted);
+}
+
+.miauw-widget-audio-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 0 4px rgba(164, 13, 58, .12);
+}
+
+.miauw-widget-audio.is-active .miauw-widget-audio-dot {
+    animation: miaubyWidgetRing 1.15s ease-in-out infinite;
 }
 
 .miauw-guide-cue {

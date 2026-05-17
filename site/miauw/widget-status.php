@@ -40,6 +40,7 @@ try {
             'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
         ),
         'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status($user ?: null) : array(),
+        'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
         'maintenance' => function_exists('miauw_maintenance_status') ? miauw_maintenance_status($user ?: null) : array(
             'active' => false,
             'can_send' => true,
@@ -144,6 +145,7 @@ try {
             'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
         ),
         'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status(null) : array(),
+        'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
         'maintenance' => function_exists('miauw_maintenance_status') ? miauw_maintenance_status(null) : array(
             'active' => false,
             'can_send' => true,

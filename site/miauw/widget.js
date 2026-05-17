@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260515f';
+    link.href = '/miauw/widget.css?v=20260517e';
     document.head.appendChild(link);
   }
 
@@ -24,6 +24,13 @@
     alertCount: 0,
     canDismissAlerts: true,
     view: 'chat',
+    audio: {
+      uiEnabled: false,
+      captureEnabled: false,
+      status: 'desativado',
+      model: '',
+      voice: '',
+    },
   };
 
   const root = document.createElement('section');
@@ -70,7 +77,11 @@
       </div>
       <form class="miauw-widget-composer" data-miauw-form hidden>
         <textarea name="message" rows="1" maxlength="1200" placeholder="Chama o Miauby..."></textarea>
-        <button type="submit">Enviar</button>
+        <button class="miauw-widget-audio" type="button" data-miauw-audio-toggle aria-label="Falar com Miauby" aria-pressed="false" title="Falar com Miauby" hidden>
+          <span class="miauw-widget-audio-dot" aria-hidden="true"></span>
+          <span data-miauw-audio-label>Falar</span>
+        </button>
+        <button class="miauw-widget-send" type="submit">Enviar</button>
       </form>
     </div>
   `;
@@ -93,8 +104,18 @@
   const alertList = root.querySelector('[data-miauw-alert-list]');
   const alertCountPill = root.querySelector('[data-miauw-tools-alert-count]');
   const alertRefresh = root.querySelector('[data-miauw-alerts-refresh]');
+  const audioButton = root.querySelector('[data-miauw-audio-toggle]');
+  const audioLabel = audioButton ? audioButton.querySelector('[data-miauw-audio-label]') : null;
   let typingMessage = null;
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const widgetAudioState = {
+    starting: false,
+    active: false,
+    pc: null,
+    stream: null,
+    remoteAudio: null,
+    dataChannel: null,
+  };
   let lastUserActivityAt = 0;
   let lastGuideAt = 0;
   let lastAmbientNudgeAt = 0;
@@ -241,6 +262,8 @@
       } else {
         setTimeout(() => input && input.focus(), 160);
       }
+    } else if (widgetAudioState.active || widgetAudioState.starting) {
+      closeWidgetAudioSession({ notify: false });
     }
   };
 
@@ -755,6 +778,232 @@
       tools.hidden = !state.authenticated;
     }
     setView(state.view, { skipLoad: true });
+    setWidgetAudioUi(widgetAudioState.active ? 'active' : 'idle', widgetAudioState.active ? 'Ouvindo' : 'Falar');
+  };
+
+  const applyAudioContract = (contract = {}) => {
+    const next = contract && typeof contract === 'object' ? contract : {};
+    state.audio = {
+      uiEnabled: Boolean(next.ui_enabled),
+      captureEnabled: Boolean(next.capture_enabled || next.enabled),
+      status: String(next.status || 'desativado'),
+      model: String(next.model || ''),
+      voice: String(next.voice || ''),
+    };
+    setWidgetAudioUi(widgetAudioState.active ? 'active' : 'idle', widgetAudioState.active ? 'Ouvindo' : 'Falar');
+  };
+
+  const widgetAudioUnavailable = () => {
+    const status = state.audio.status || 'desativado';
+    if (status === 'aguardando_chave') {
+      return 'Audio ainda nao esta configurado no servidor. No texto eu sigo firme.';
+    }
+    if (status === 'curl_indisponivel') {
+      return 'Audio indisponivel neste servidor agora. Meu bigode fica no texto por enquanto.';
+    }
+    if (status === 'desativado') {
+      return 'Audio esta desligado neste ambiente. Sem microfone surpresa, humano.';
+    }
+    return 'Audio nao abriu agora. Revise permissao do microfone e tente de novo.';
+  };
+
+  const microphonePermissionMessage = () => 'Microfone bloqueado no navegador. Clique no cadeado/configuracoes ao lado do endereco, permita Microfone para este site e tente de novo.';
+
+  const widgetAudioSecureContextMessage = () => 'Audio por microfone precisa de HTTPS ou localhost. No texto eu continuo funcionando.';
+
+  const widgetAudioErrorMessage = (error) => {
+    const name = error && error.name ? String(error.name) : '';
+    const message = error && error.message ? String(error.message) : '';
+    const lower = `${name} ${message}`.toLowerCase();
+
+    if (name === 'NotFoundError' || lower.includes('notfound')) {
+      return 'Nao achei microfone nesse navegador. Conecte ou selecione um microfone e tente de novo.';
+    }
+
+    if (name === 'NotReadableError' || lower.includes('notreadable')) {
+      return 'Microfone parece ocupado por outro app. Feche a outra chamada e tente de novo.';
+    }
+
+    if (name === 'OverconstrainedError' || lower.includes('overconstrained')) {
+      return 'O navegador recusou a configuracao do microfone. Tente de novo com o microfone padrao.';
+    }
+
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError' || lower.includes('permission denied') || lower.includes('permission dismissed') || lower.includes('notallowed')) {
+      return microphonePermissionMessage();
+    }
+
+    if (message && !lower.includes('denied')) {
+      return message;
+    }
+
+    return widgetAudioUnavailable();
+  };
+
+  const microphonePermissionState = async () => {
+    if (!navigator.permissions || typeof navigator.permissions.query !== 'function') return '';
+
+    try {
+      const permission = await navigator.permissions.query({ name: 'microphone' });
+      return permission && permission.state ? String(permission.state) : '';
+    } catch (error) {
+      return '';
+    }
+  };
+
+  const setWidgetAudioUi = (mode, label = '') => {
+    if (!audioButton) return;
+    const active = mode === 'active';
+    const busy = mode === 'starting';
+    const allowed = state.authenticated && state.view === 'chat' && state.audio.uiEnabled;
+
+    audioButton.hidden = !allowed;
+    audioButton.disabled = busy || !allowed;
+    audioButton.classList.toggle('is-active', active);
+    audioButton.classList.toggle('is-starting', busy);
+    audioButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if (audioLabel) {
+      audioLabel.textContent = label || (active ? 'Ouvindo' : 'Falar');
+    }
+  };
+
+  const closeWidgetAudioSession = (options = {}) => {
+    const wasActive = widgetAudioState.active || widgetAudioState.starting;
+
+    if (widgetAudioState.dataChannel) {
+      try { widgetAudioState.dataChannel.close(); } catch (error) { /* ignored */ }
+    }
+    if (widgetAudioState.pc) {
+      try { widgetAudioState.pc.close(); } catch (error) { /* ignored */ }
+    }
+    if (widgetAudioState.stream) {
+      widgetAudioState.stream.getTracks().forEach((track) => track.stop());
+    }
+    if (widgetAudioState.remoteAudio) {
+      widgetAudioState.remoteAudio.remove();
+    }
+
+    widgetAudioState.starting = false;
+    widgetAudioState.active = false;
+    widgetAudioState.pc = null;
+    widgetAudioState.stream = null;
+    widgetAudioState.remoteAudio = null;
+    widgetAudioState.dataChannel = null;
+    setWidgetAudioUi('idle', 'Falar');
+
+    if (options.notify && wasActive) {
+      addMessage('assistant', 'Audio encerrado. Nada ficou gravado, como combinado.');
+    }
+  };
+
+  const startWidgetAudioSession = async () => {
+    if (!audioButton || widgetAudioState.starting) return;
+    if (widgetAudioState.active) {
+      closeWidgetAudioSession({ notify: true });
+      return;
+    }
+
+    if (!state.authenticated) {
+      addMessage('assistant', 'Login primeiro. Microfone sem cracha nao entra no turno.');
+      return;
+    }
+
+    if (!state.audio.uiEnabled || state.audio.status !== 'pronto_com_botao') {
+      addMessage('assistant', widgetAudioUnavailable());
+      return;
+    }
+
+    if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      addMessage('assistant', widgetAudioSecureContextMessage());
+      return;
+    }
+
+    if (!window.RTCPeerConnection || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      addMessage('assistant', 'Seu navegador nao liberou conversa por audio aqui. No texto eu continuo afiado.');
+      return;
+    }
+
+    widgetAudioState.starting = true;
+    setWidgetAudioUi('starting', 'Abrindo');
+
+    try {
+      const pc = new RTCPeerConnection();
+      const remoteAudio = document.createElement('audio');
+      remoteAudio.autoplay = true;
+      remoteAudio.hidden = true;
+      remoteAudio.dataset.miauwWidgetAudio = '1';
+      document.body.appendChild(remoteAudio);
+      widgetAudioState.pc = pc;
+      widgetAudioState.remoteAudio = remoteAudio;
+
+      const permissionState = await microphonePermissionState();
+      if (permissionState === 'denied') {
+        throw Object.assign(new Error(microphonePermissionMessage()), { name: 'NotAllowedError' });
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+      widgetAudioState.stream = stream;
+      pc.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (remoteStream) {
+          remoteAudio.srcObject = remoteStream;
+          remoteAudio.play().catch(() => {});
+        }
+      };
+
+      const dataChannel = pc.createDataChannel('oai-events');
+      widgetAudioState.dataChannel = dataChannel;
+      dataChannel.addEventListener('message', () => {
+        // Audio temporario: nao vira historico do widget nesta fase.
+      });
+      pc.addEventListener('connectionstatechange', () => {
+        if (['failed', 'disconnected', 'closed'].includes(pc.connectionState) && widgetAudioState.active) {
+          closeWidgetAudioSession({ notify: pc.connectionState !== 'closed' });
+        }
+      });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const body = new FormData();
+      body.set('action', 'audio_session');
+      body.set('sdp', offer.sdp || '');
+      body.set('csrf_token', state.csrf);
+      body.set('widget', '1');
+
+      const response = await fetch('/miauw/api.php', {
+        method: 'POST',
+        body,
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf, 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      const data = await readJsonResponse(response);
+      state.csrf = data.csrf || state.csrf;
+      if (!data.ok || !data.answer_sdp) {
+        throw new Error(data.message || widgetAudioUnavailable());
+      }
+
+      await pc.setRemoteDescription({ type: 'answer', sdp: data.answer_sdp });
+
+      widgetAudioState.starting = false;
+      widgetAudioState.active = true;
+      widgetAudioState.pc = pc;
+      widgetAudioState.stream = stream;
+      widgetAudioState.remoteAudio = remoteAudio;
+      widgetAudioState.dataChannel = dataChannel;
+      setWidgetAudioUi('active', 'Ouvindo');
+      addMessage('assistant', 'Estou ouvindo aqui no widget. Sem gravacao e sem escrita por voz, combinado.');
+    } catch (error) {
+      closeWidgetAudioSession({ notify: false });
+      addMessage('assistant', widgetAudioErrorMessage(error));
+    }
   };
 
   const readJsonResponse = async (response) => {
@@ -801,6 +1050,7 @@
     state.csrf = data.csrf || state.csrf;
     state.avatar = data.avatar || state.avatar;
     state.authenticated = Boolean(data.authenticated);
+    applyAudioContract(data.audio_contract || {});
     updateAlertBadge(data.guardian_alert_count || 0, data.guardian_alerts || []);
     return data;
   };
@@ -1025,6 +1275,13 @@
     event.preventDefault();
     send(input.value);
   });
+
+  if (audioButton) {
+    audioButton.addEventListener('click', startWidgetAudioSession);
+    window.addEventListener('beforeunload', () => {
+      closeWidgetAudioSession({ notify: false });
+    });
+  }
 
   const markUserActivity = (event) => {
     lastUserActivityAt = Date.now();
