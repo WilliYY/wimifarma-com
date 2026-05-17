@@ -589,6 +589,6 @@ $modules = array(
         }
     }());
 </script>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260517g')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260517h')); ?>" defer></script>
 </body>
 </html>

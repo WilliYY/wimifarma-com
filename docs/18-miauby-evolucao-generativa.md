@@ -170,12 +170,12 @@ Miauby ja possui:
   - `MIAUW_AGENT_VERSION=2.0-fase19`;
   - o servico Node passou para `SERVICE_VERSION=0.14.0` e `PHASE=fase19-record-transcribe-confirm`;
   - `miauw_agent_audio_contract()` agora descreve audio por gravacao temporaria no navegador, transcricao com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe` e confirmacao humana antes de enviar, mantendo `storage_enabled=false`;
-  - o chat principal e o widget global usam botao `Falar`; o navegador captura microfone somente apos clique, grava o trecho em `MediaRecorder`, envia para o PHP por `action=audio_transcribe` e recebe texto editavel;
+  - o chat principal e o widget global usam botao `Falar`; o navegador captura microfone somente apos clique, grava o trecho em `MediaRecorder`, envia para o PHP por `action=audio_transcribe`, exibe um rascunho local com player/duracao/transcricao e recebe texto editavel;
   - `widget-status.php` expoe `audio_contract` para o widget decidir quando mostrar o botao, e o frontend troca bloqueios de navegador por orientacao clara de permissao/HTTPS;
   - os headers internos permitem `microphone=(self)` para o audio do Miauby funcionar no proprio dominio, mantendo camera e geolocalizacao bloqueadas;
   - o frontend nao encerra a captura apenas porque `navigator.permissions` retornou estado antigo; ele tenta `getUserMedia()`, anexa o estado de permissao ao erro amigavel e reduz avisos repetidos de microfone bloqueado;
   - o PHP chama `https://api.openai.com/v1/audio/transcriptions` com a chave do servidor, sem expor segredo no navegador, e nao armazena o arquivo de audio;
-  - audio so vira mensagem depois que o usuario revisar e apertar `Enviar`; `Cancelar` descarta o rascunho e escrita operacional por voz segue bloqueada;
+  - audio so vira mensagem depois que o usuario revisar e apertar `Enviar`; `Refazer` grava outro audio, `Descartar audio` remove o rascunho e escrita operacional por voz segue bloqueada;
   - `site/miauw/miauw-evals.php` cobre status Fase 19, contrato de transcricao confirmada, modelo de transcricao e contrato de tools em `fase19-record-transcribe-confirm`.
 
 ## Arquivos, tabelas e servicos envolvidos

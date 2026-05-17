@@ -117,6 +117,20 @@ try {
             </div>
 
             <form class="composer" data-chat-form autocomplete="off">
+                <section class="audio-draft" data-audio-draft hidden aria-live="polite">
+                    <div class="audio-draft-main">
+                        <div class="audio-draft-head">
+                            <span class="audio-draft-dot" aria-hidden="true"></span>
+                            <strong>Audio pronto</strong>
+                            <small data-audio-draft-duration>00:00</small>
+                        </div>
+                        <div class="audio-draft-player">
+                            <audio data-audio-draft-player controls controlsList="nodownload noplaybackrate"></audio>
+                            <span class="audio-draft-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                        </div>
+                    </div>
+                    <p><strong>Transcricao:</strong> <span data-audio-draft-transcript></span></p>
+                </section>
                 <textarea name="message" rows="1" maxlength="1200" placeholder="Fala logo, humano..." required></textarea>
                 <button
                     class="audio-button"
@@ -129,7 +143,7 @@ try {
                     <span class="audio-button-dot" aria-hidden="true"></span>
                     <span data-audio-label>Falar</span>
                 </button>
-                <button class="audio-cancel-button" type="button" data-audio-cancel hidden>Cancelar</button>
+                <button class="audio-cancel-button" type="button" data-audio-cancel hidden>Descartar audio</button>
                 <button class="send-button" type="submit" aria-label="Enviar">
                     <span>Enviar</span>
                 </button>

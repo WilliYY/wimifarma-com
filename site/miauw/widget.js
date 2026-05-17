@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260517g';
+    link.href = '/miauw/widget.css?v=20260517h';
     document.head.appendChild(link);
   }
 
@@ -77,12 +77,24 @@
         <button type="button" data-miauw-login-btn>Entrar</button>
       </div>
       <form class="miauw-widget-composer" data-miauw-form hidden>
+        <section class="miauw-widget-audio-draft" data-miauw-audio-draft hidden aria-live="polite">
+          <div class="miauw-widget-audio-draft-top">
+            <span class="miauw-widget-audio-draft-dot" aria-hidden="true"></span>
+            <strong>Audio pronto</strong>
+            <small data-miauw-audio-draft-duration>00:00</small>
+          </div>
+          <div class="miauw-widget-audio-draft-player">
+            <audio data-miauw-audio-draft-player controls controlsList="nodownload noplaybackrate"></audio>
+            <span class="miauw-widget-audio-draft-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </div>
+          <p><strong>Transcricao:</strong> <span data-miauw-audio-draft-transcript></span></p>
+        </section>
         <textarea name="message" rows="1" maxlength="1200" placeholder="Chama o Miauby..."></textarea>
         <button class="miauw-widget-audio" type="button" data-miauw-audio-toggle aria-label="Falar com Miauby" aria-pressed="false" title="Falar com Miauby" hidden>
           <span class="miauw-widget-audio-dot" aria-hidden="true"></span>
           <span data-miauw-audio-label>Falar</span>
         </button>
-        <button class="miauw-widget-audio-cancel" type="button" data-miauw-audio-cancel hidden>Cancelar</button>
+        <button class="miauw-widget-audio-cancel" type="button" data-miauw-audio-cancel hidden>Descartar audio</button>
         <button class="miauw-widget-send" type="submit">Enviar</button>
       </form>
     </div>
@@ -109,6 +121,10 @@
   const audioButton = root.querySelector('[data-miauw-audio-toggle]');
   const audioLabel = audioButton ? audioButton.querySelector('[data-miauw-audio-label]') : null;
   const audioCancelButton = root.querySelector('[data-miauw-audio-cancel]');
+  const audioDraft = root.querySelector('[data-miauw-audio-draft]');
+  const audioDraftPlayer = audioDraft ? audioDraft.querySelector('[data-miauw-audio-draft-player]') : null;
+  const audioDraftDuration = audioDraft ? audioDraft.querySelector('[data-miauw-audio-draft-duration]') : null;
+  const audioDraftTranscript = audioDraft ? audioDraft.querySelector('[data-miauw-audio-draft-transcript]') : null;
   let typingMessage = null;
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const widgetAudioState = {
@@ -124,6 +140,9 @@
     previousText: '',
     cancelText: '',
     stopReason: 'idle',
+    draftBlobUrl: '',
+    draftDuration: '00:00',
+    draftTranscript: '',
   };
   const widgetAudioNoticeState = {
     text: '',
@@ -918,12 +937,63 @@
     return candidates.find((item) => window.MediaRecorder.isTypeSupported(item)) || '';
   };
 
+  const widgetAudioSeconds = (totalSeconds) => {
+    const normalizedSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const minutes = String(Math.floor(normalizedSeconds / 60)).padStart(2, '0');
+    const seconds = String(normalizedSeconds % 60).padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
+
   const widgetAudioDuration = () => {
     if (!widgetAudioState.startedAt) return '00:00';
-    const totalSeconds = Math.max(0, Math.floor((Date.now() - widgetAudioState.startedAt) / 1000));
-    const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-    const seconds = String(totalSeconds % 60).padStart(2, '0');
-    return `${minutes}:${seconds}`;
+    return widgetAudioSeconds((Date.now() - widgetAudioState.startedAt) / 1000);
+  };
+
+  const clearWidgetAudioDraftPreview = () => {
+    if (widgetAudioState.draftBlobUrl && window.URL && typeof window.URL.revokeObjectURL === 'function') {
+      window.URL.revokeObjectURL(widgetAudioState.draftBlobUrl);
+    }
+    widgetAudioState.draftBlobUrl = '';
+    widgetAudioState.draftDuration = '00:00';
+    widgetAudioState.draftTranscript = '';
+
+    if (audioDraftPlayer) {
+      audioDraftPlayer.removeAttribute('src');
+      try { audioDraftPlayer.load(); } catch (error) { /* ignored */ }
+    }
+    if (audioDraftDuration) {
+      audioDraftDuration.textContent = '00:00';
+    }
+    if (audioDraftTranscript) {
+      audioDraftTranscript.textContent = '';
+    }
+    if (audioDraft) {
+      audioDraft.hidden = true;
+    }
+  };
+
+  const showWidgetAudioDraftPreview = (blob, transcript, durationLabel) => {
+    clearWidgetAudioDraftPreview();
+
+    const safeTranscript = String(transcript || '').trim();
+    const safeDuration = durationLabel || '00:00';
+    widgetAudioState.draftDuration = safeDuration;
+    widgetAudioState.draftTranscript = safeTranscript;
+
+    if (blob && audioDraftPlayer && window.URL && typeof window.URL.createObjectURL === 'function') {
+      widgetAudioState.draftBlobUrl = window.URL.createObjectURL(blob);
+      audioDraftPlayer.src = widgetAudioState.draftBlobUrl;
+    }
+
+    if (audioDraftDuration) {
+      audioDraftDuration.textContent = safeDuration;
+    }
+    if (audioDraftTranscript) {
+      audioDraftTranscript.textContent = safeTranscript || 'Nao veio texto claro. Refaca o audio antes de enviar.';
+    }
+    if (audioDraft) {
+      audioDraft.hidden = false;
+    }
   };
 
   const setWidgetAudioUi = (mode, label = '') => {
@@ -945,6 +1015,7 @@
     if (audioCancelButton) {
       audioCancelButton.hidden = !(allowed && (active || draft || mode === 'transcribing'));
       audioCancelButton.disabled = mode === 'transcribing';
+      audioCancelButton.textContent = active ? 'Cancelar audio' : (draft ? 'Descartar audio' : 'Aguarde');
     }
   };
 
@@ -973,6 +1044,7 @@
     widgetAudioState.startedAt = 0;
     widgetAudioState.stopReason = 'idle';
     if (options.clearDraft) {
+      clearWidgetAudioDraftPreview();
       widgetAudioState.draftActive = false;
       input.value = options.restorePrevious ? widgetAudioState.cancelText : input.value;
       input.style.height = 'auto';
@@ -1021,6 +1093,7 @@
 
   const finishWidgetRecordingAndTranscribe = async () => {
     const blob = new Blob(widgetAudioState.chunks, { type: widgetAudioMimeType() || 'audio/webm' });
+    const durationLabel = widgetAudioDuration();
     widgetAudioState.transcribing = true;
     widgetAudioState.recording = false;
     clearWidgetAudioTimer();
@@ -1036,6 +1109,7 @@
       input.focus();
       widgetAudioState.draftActive = true;
       widgetAudioState.transcribing = false;
+      showWidgetAudioDraftPreview(blob, transcript, durationLabel);
       setWidgetAudioUi('draft', 'Refazer');
     } catch (error) {
       resetWidgetAudioCaptureState({ clearDraft: true, restorePrevious: true });
@@ -1083,6 +1157,7 @@
 
       const mimeType = widgetAudioMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      clearWidgetAudioDraftPreview();
       widgetAudioState.stream = stream;
       widgetAudioState.recorder = recorder;
       widgetAudioState.chunks = [];
@@ -1393,6 +1468,7 @@
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
+    clearWidgetAudioDraftPreview();
     widgetAudioState.draftActive = false;
     widgetAudioState.previousText = '';
     widgetAudioState.cancelText = '';

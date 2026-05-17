@@ -28,7 +28,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Fase 11 envia contratos de tools do PHP para o Node como contexto seguro. Esses contratos nao carregam segredos, nao liberam escrita direta no Node e mantem `execution_owner`/`confirmation_owner` no PHP.
 - A Fase 12 permite ao Node executar somente `consultar_contrato_tool_miauby`, uma tool de leitura segura sobre contratos ja sanitizados. Ela nao consulta banco, nao grava dados e nao muda `writes_enabled=false`.
 - A Fase 13 adiciona `/miauw/agent-tools.php` como ponte interna protegida por `X-Miauw-Agent-Token`/`MIAUW_AGENT_INTERNAL_TOKEN`. Ela aceita somente tools de leitura baixa explicitamente listadas, registra trace sanitizado e mantem `writes_enabled=false`; o Node segue sem acesso direto a banco ou segredos de modulo.
-- A Fase 19 usa audio por gravacao temporaria/transcricao confirmada pelo servidor PHP, sem enviar chave ao navegador. Microfone so liga por clique, o arquivo nao e armazenado, a transcricao vira rascunho revisavel e voz nao pode executar escrita operacional direta; acoes fortes continuam exigindo confirmacao no fluxo auditado.
+- A Fase 19 usa audio por gravacao temporaria/transcricao confirmada pelo servidor PHP, sem enviar chave ao navegador. Microfone so liga por clique, o arquivo nao e armazenado, o player do rascunho fica local no navegador, a transcricao vira rascunho revisavel e voz nao pode executar escrita operacional direta; acoes fortes continuam exigindo confirmacao no fluxo auditado.
 
 ## Arquivos envolvidos
 

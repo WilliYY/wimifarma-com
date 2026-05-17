@@ -10,6 +10,10 @@
   const audioButton = chat.querySelector('[data-audio-toggle]');
   const audioLabel = audioButton ? audioButton.querySelector('[data-audio-label]') : null;
   const audioCancelButton = chat.querySelector('[data-audio-cancel]');
+  const audioDraft = chat.querySelector('[data-audio-draft]');
+  const audioDraftPlayer = audioDraft ? audioDraft.querySelector('[data-audio-draft-player]') : null;
+  const audioDraftDuration = audioDraft ? audioDraft.querySelector('[data-audio-draft-duration]') : null;
+  const audioDraftTranscript = audioDraft ? audioDraft.querySelector('[data-audio-draft-transcript]') : null;
   const shortcutButtons = document.querySelectorAll('[data-prompt]');
   const guardianCard = document.querySelector('.guardian-card');
   let typingMessage = null;
@@ -27,6 +31,9 @@
     previousText: '',
     cancelText: '',
     stopReason: 'idle',
+    draftBlobUrl: '',
+    draftDuration: '00:00',
+    draftTranscript: '',
   };
   const audioNoticeState = {
     text: '',
@@ -367,12 +374,63 @@
     return candidates.find((item) => window.MediaRecorder.isTypeSupported(item)) || '';
   };
 
+  const formatAudioSeconds = (totalSeconds) => {
+    const normalizedSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const minutes = String(Math.floor(normalizedSeconds / 60)).padStart(2, '0');
+    const seconds = String(normalizedSeconds % 60).padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
+
   const formatAudioDuration = () => {
     if (!audioState.startedAt) return '00:00';
-    const totalSeconds = Math.max(0, Math.floor((Date.now() - audioState.startedAt) / 1000));
-    const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-    const seconds = String(totalSeconds % 60).padStart(2, '0');
-    return `${minutes}:${seconds}`;
+    return formatAudioSeconds((Date.now() - audioState.startedAt) / 1000);
+  };
+
+  const clearAudioDraftPreview = () => {
+    if (audioState.draftBlobUrl && window.URL && typeof window.URL.revokeObjectURL === 'function') {
+      window.URL.revokeObjectURL(audioState.draftBlobUrl);
+    }
+    audioState.draftBlobUrl = '';
+    audioState.draftDuration = '00:00';
+    audioState.draftTranscript = '';
+
+    if (audioDraftPlayer) {
+      audioDraftPlayer.removeAttribute('src');
+      try { audioDraftPlayer.load(); } catch (error) { /* ignored */ }
+    }
+    if (audioDraftDuration) {
+      audioDraftDuration.textContent = '00:00';
+    }
+    if (audioDraftTranscript) {
+      audioDraftTranscript.textContent = '';
+    }
+    if (audioDraft) {
+      audioDraft.hidden = true;
+    }
+  };
+
+  const showAudioDraftPreview = (blob, transcript, durationLabel) => {
+    clearAudioDraftPreview();
+
+    const safeTranscript = String(transcript || '').trim();
+    const safeDuration = durationLabel || '00:00';
+    audioState.draftDuration = safeDuration;
+    audioState.draftTranscript = safeTranscript;
+
+    if (blob && audioDraftPlayer && window.URL && typeof window.URL.createObjectURL === 'function') {
+      audioState.draftBlobUrl = window.URL.createObjectURL(blob);
+      audioDraftPlayer.src = audioState.draftBlobUrl;
+    }
+
+    if (audioDraftDuration) {
+      audioDraftDuration.textContent = safeDuration;
+    }
+    if (audioDraftTranscript) {
+      audioDraftTranscript.textContent = safeTranscript || 'Nao veio texto claro. Refaca o audio antes de enviar.';
+    }
+    if (audioDraft) {
+      audioDraft.hidden = false;
+    }
   };
 
   const setAudioUi = (state, label = '') => {
@@ -391,6 +449,7 @@
     if (audioCancelButton) {
       audioCancelButton.hidden = !(active || draft || state === 'transcribing');
       audioCancelButton.disabled = state === 'transcribing';
+      audioCancelButton.textContent = active ? 'Cancelar audio' : (draft ? 'Descartar audio' : 'Aguarde');
     }
   };
 
@@ -419,6 +478,7 @@
     audioState.startedAt = 0;
     audioState.stopReason = 'idle';
     if (options.clearDraft) {
+      clearAudioDraftPreview();
       audioState.draftActive = false;
       if (input) {
         input.value = options.restorePrevious ? audioState.cancelText : input.value;
@@ -563,6 +623,7 @@
 
   const finishRecordingAndTranscribe = async () => {
     const blob = new Blob(audioState.chunks, { type: audioMimeType() || 'audio/webm' });
+    const durationLabel = formatAudioDuration();
     audioState.transcribing = true;
     audioState.recording = false;
     clearAudioTimer();
@@ -579,6 +640,7 @@
       }
       audioState.draftActive = true;
       audioState.transcribing = false;
+      showAudioDraftPreview(blob, transcript, durationLabel);
       setAudioUi('draft', 'Refazer');
     } catch (error) {
       resetAudioCaptureState({ clearDraft: true, restorePrevious: true });
@@ -626,6 +688,7 @@
 
       const mimeType = audioMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      clearAudioDraftPreview();
       audioState.stream = stream;
       audioState.recorder = recorder;
       audioState.chunks = [];
@@ -787,6 +850,7 @@
       const message = input.value;
       input.value = '';
       autoGrow();
+      clearAudioDraftPreview();
       audioState.draftActive = false;
       audioState.previousText = '';
       audioState.cancelText = '';
