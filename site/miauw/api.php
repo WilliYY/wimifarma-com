@@ -65,19 +65,21 @@ try {
         }
 
         $audioFile = is_array($_FILES['audio'] ?? null) ? $_FILES['audio'] : array();
+        $durationMs = max(0, (int) ($_POST['duration_ms'] ?? 0));
         if (function_exists('miauw_trace_record')) {
             miauw_trace_record('miauw_audio_transcribe', 'received', array(
                 'type' => 'audio',
                 'summary' => 'Audio temporario recebido para transcricao confirmada.',
                 'payload' => array(
                     'bytes' => (int) ($audioFile['size'] ?? 0),
-                    'mode' => 'record_transcribe_confirmed',
+                    'duration_ms' => $durationMs,
+                    'mode' => 'record_transcribe_voice_reply_confirmed',
                 ),
             ));
         }
 
         try {
-            $audio = miauw_agent_transcribe_audio_upload($audioFile, $user);
+            $audio = miauw_agent_transcribe_audio_upload($audioFile, $user, $durationMs);
             if (function_exists('miauw_trace_record')) {
                 miauw_trace_record('miauw_audio_transcribe', 'ok', array(
                     'type' => 'audio',
@@ -86,6 +88,7 @@ try {
                         'model' => (string) ($audio['model'] ?? ''),
                         'mode' => (string) ($audio['mode'] ?? ''),
                         'bytes' => (int) ($audio['bytes'] ?? 0),
+                        'duration_ms' => (int) ($audio['duration_ms'] ?? $durationMs),
                         'text_size' => miauw_strlen((string) ($audio['text'] ?? '')),
                     ),
                 ));
@@ -96,6 +99,7 @@ try {
                 'text' => (string) ($audio['text'] ?? ''),
                 'model' => (string) ($audio['model'] ?? ''),
                 'mode' => (string) ($audio['mode'] ?? ''),
+                'duration_ms' => (int) ($audio['duration_ms'] ?? $durationMs),
                 'trace_id' => $traceId,
                 'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
             ));
@@ -200,6 +204,8 @@ try {
     if ($action === 'send') {
         $message = trim((string) ($_POST['message'] ?? ''));
         $widgetMode = !empty($_POST['widget']);
+        $voiceReplyRequested = !empty($_POST['voice_reply']);
+        $inputMode = trim((string) ($_POST['input_mode'] ?? 'text'));
 
         if ($message === '') {
             miauw_json(array('ok' => false, 'message' => 'Mensagem vazia. Ate o Miauby precisa de alguma coisa para reclamar.'), 422);
@@ -242,6 +248,8 @@ try {
                 'payload' => array(
                     'widget' => $widgetMode,
                     'page_context' => $pageContext !== '',
+                    'input_mode' => $inputMode === 'audio' ? 'audio' : 'text',
+                    'voice_reply' => $voiceReplyRequested,
                     'message_size' => miauw_strlen($message),
                 ),
             ));
@@ -271,6 +279,38 @@ try {
         $confirmation = is_array($reply['confirmation'] ?? null)
             ? $reply['confirmation']
             : (function_exists('miauw_current_confirmation_response') ? miauw_current_confirmation_response() : null);
+
+        $replyAudio = null;
+        $replyAudioError = '';
+        if ($voiceReplyRequested && !is_array($confirmation) && function_exists('miauw_agent_generate_speech_reply')) {
+            try {
+                $replyAudio = miauw_agent_generate_speech_reply((string) ($reply['text'] ?? ''), $user);
+                if (function_exists('miauw_trace_record')) {
+                    miauw_trace_record('miauw_audio_speech', 'ok', array(
+                        'type' => 'audio',
+                        'summary' => 'Resposta falada gerada sob demanda, sem armazenar arquivo.',
+                        'mensagem_id' => $assistantMessageId,
+                        'payload' => array(
+                            'model' => (string) ($replyAudio['model'] ?? ''),
+                            'voice' => (string) ($replyAudio['voice'] ?? ''),
+                            'bytes' => (int) ($replyAudio['bytes'] ?? 0),
+                            'text_size' => (int) ($replyAudio['text_size'] ?? 0),
+                        ),
+                    ));
+                }
+            } catch (Throwable $audioError) {
+                $replyAudioError = $audioError instanceof InvalidArgumentException ? $audioError->getMessage() : 'Nao consegui gerar a voz agora.';
+                if (function_exists('miauw_trace_record')) {
+                    miauw_trace_record('miauw_audio_speech', 'blocked', array(
+                        'type' => 'audio',
+                        'summary' => 'Resposta falada nao foi gerada; texto segue disponivel.',
+                        'mensagem_id' => $assistantMessageId,
+                        'error' => $audioError->getMessage(),
+                    ));
+                }
+            }
+        }
+
         if (function_exists('miauw_trace_record')) {
             miauw_trace_record('api_send', 'ok', array(
                 'type' => 'request',
@@ -281,6 +321,8 @@ try {
                     'engine' => (string) ($reply['engine'] ?? ''),
                     'fallback' => (bool) ($reply['fallback'] ?? false),
                     'requires_confirmation' => is_array($confirmation),
+                    'voice_reply' => $voiceReplyRequested,
+                    'voice_reply_audio' => is_array($replyAudio),
                     'agent_shadow' => is_array($shadowCompare) ? array(
                         'status' => (string) ($shadowCompare['status'] ?? ''),
                         'similarity' => isset($shadowCompare['similarity']) ? (float) $shadowCompare['similarity'] : null,
@@ -306,6 +348,8 @@ try {
             'trace_id' => $traceId,
             'user_message_id' => $userMessageId,
             'assistant_message_id' => $assistantMessageId,
+            'reply_audio' => $replyAudio,
+            'reply_audio_error' => $replyAudioError,
             'confirmation' => $confirmation,
             'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
                 'name' => 'Miauby',

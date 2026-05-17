@@ -616,6 +616,106 @@
     color: rgba(255, 255, 255, .78);
 }
 
+.miauw-widget-msg.audio-message {
+    max-width: 98%;
+}
+
+.miauw-widget-msg.audio-message > div {
+    width: min(100%, 360px);
+}
+
+.miauw-widget-chat-audio {
+    display: grid;
+    gap: 8px;
+}
+
+.miauw-widget-chat-audio-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--miauw-wine);
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.miauw-widget-msg.user .miauw-widget-chat-audio-state {
+    color: #fff;
+}
+
+.miauw-widget-chat-audio-state::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: #13b979;
+    box-shadow: 0 0 0 4px rgba(19, 185, 121, .14);
+}
+
+.miauw-widget-chat-audio-state small {
+    border-radius: 999px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, .82);
+    color: var(--miauw-muted);
+    font-size: 11px;
+}
+
+.miauw-widget-msg.user .miauw-widget-chat-audio-state small {
+    color: rgba(255, 255, 255, .86);
+    background: rgba(255, 255, 255, .14);
+}
+
+.miauw-widget-chat-audio-player {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+}
+
+.miauw-widget-chat-audio-player audio {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+}
+
+.miauw-widget-chat-audio-bars {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    min-height: 26px;
+}
+
+.miauw-widget-chat-audio-bars i {
+    width: 4px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #c51f59, #f8a8bf);
+}
+
+.miauw-widget-msg.user .miauw-widget-chat-audio-bars i {
+    background: rgba(255, 255, 255, .82);
+}
+
+.miauw-widget-chat-audio-bars i:nth-child(1) { height: 9px; }
+.miauw-widget-chat-audio-bars i:nth-child(2) { height: 19px; }
+.miauw-widget-chat-audio-bars i:nth-child(3) { height: 13px; }
+.miauw-widget-chat-audio-bars i:nth-child(4) { height: 23px; }
+.miauw-widget-chat-audio-bars i:nth-child(5) { height: 15px; }
+
+.miauw-widget-chat-audio-text {
+    color: var(--miauw-muted);
+    font-size: 11.5px;
+}
+
+.miauw-widget-chat-audio-text summary {
+    cursor: pointer;
+    color: var(--miauw-wine);
+    font-weight: 850;
+}
+
+.miauw-widget-chat-audio-text p {
+    margin-top: 6px;
+}
+
 .miauw-widget-confirmation {
     display: grid;
     gap: 8px;
@@ -1323,7 +1423,12 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .miauw-widget-audio-draft-bars {
+    .miauw-widget-chat-audio-player {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .miauw-widget-audio-draft-bars,
+    .miauw-widget-chat-audio-bars {
         display: none;
     }
 

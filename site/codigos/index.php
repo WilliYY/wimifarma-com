@@ -75,9 +75,9 @@ try {
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
     <link rel="stylesheet" href="/codigos/styles.css?v=20260515i">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260517h">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260517i">
     <script src="/codigos/app.js?v=20260515i" defer></script>
-    <script src="/miauw/widget.js?v=20260517h" defer></script>
+    <script src="/miauw/widget.js?v=20260517i" defer></script>
 </head>
 <body class="codes-app-body">
     <header class="codes-topbar">

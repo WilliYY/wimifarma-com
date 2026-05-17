@@ -83,16 +83,16 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase19', static function (): void {
+miauw_eval_add('agent_status_fase20', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase19') === 0, 'Versao do agente deve apontar Fase 19.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase20') === 0, 'Versao do agente deve apontar Fase 20.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert_same('miauby-persona-2026-05-16', (string) ($status['personality_version'] ?? ''), 'Versao da persona publica mudou.');
     miauw_eval_assert_same('miauby-style-router-2026-05-16', (string) ($status['style_version'] ?? ''), 'Versao do roteador de estilo mudou.');
     miauw_eval_assert_same('miauby-voice-profile-2026-05-17', (string) ($status['voice_profile_version'] ?? ''), 'Versao de perfil de voz mudou.');
-    miauw_eval_assert_same('miauby-record-transcribe-2026-05-17', (string) ($status['audio_version'] ?? ''), 'Versao de audio seguro mudou.');
+    miauw_eval_assert_same('miauby-voice-reply-2026-05-17', (string) ($status['audio_version'] ?? ''), 'Versao de audio seguro mudou.');
     miauw_eval_assert_same('miauby_padrao', (string) ($status['voice_profile'] ?? ''), 'Perfil de voz padrao mudou.');
     miauw_eval_assert(in_array((string) ($status['audio_status'] ?? ''), array('desativado', 'aguardando_chave', 'curl_indisponivel', 'pronto_com_botao'), true), 'Audio deve ficar em estado seguro conhecido.');
     miauw_eval_assert(in_array('guardrails_bastidor', (array) ($status['features'] ?? array()), true), 'Guardrails precisam estar anunciados no status.');
@@ -138,17 +138,22 @@ miauw_eval_add('agent_status_fase19', static function (): void {
     miauw_eval_assert(in_array('audio_gravacao_temporaria', (array) ($status['features'] ?? array()), true), 'Fase 19 precisa anunciar gravacao temporaria.');
     miauw_eval_assert(in_array('audio_transcricao_confirmada', (array) ($status['features'] ?? array()), true), 'Fase 19 precisa anunciar transcricao confirmada.');
     miauw_eval_assert(in_array('audio_envio_confirmado', (array) ($status['features'] ?? array()), true), 'Fase 19 precisa anunciar envio confirmado pelo usuario.');
+    miauw_eval_assert(in_array('audio_bolha_player_chat', (array) ($status['features'] ?? array()), true), 'Fase 20 precisa anunciar bolha de audio no chat.');
+    miauw_eval_assert(in_array('audio_resposta_falada', (array) ($status['features'] ?? array()), true), 'Fase 20 precisa anunciar resposta falada.');
+    miauw_eval_assert(in_array('audio_curto_bloqueado', (array) ($status['features'] ?? array()), true), 'Fase 20 precisa bloquear audio curto.');
     miauw_eval_assert(in_array('audio_sem_armazenamento', (array) ($status['features'] ?? array()), true), 'Fase 19 precisa manter audio sem armazenamento.');
     miauw_eval_assert(in_array('contexto_voz_node', (array) ($status['features'] ?? array()), true), 'Fase 18 precisa anunciar contexto de voz no Node.');
     miauw_eval_assert_same('gpt-4o-transcribe', (string) ($status['transcription_model'] ?? ''), 'Modelo de transcricao padrao mudou.');
+    miauw_eval_assert_same('gpt-4o-mini-tts', (string) ($status['speech_model'] ?? ''), 'Modelo de voz falada padrao mudou.');
+    miauw_eval_assert((string) ($status['speech_voice'] ?? '') !== '', 'Voz de resposta falada nao pode ficar vazia.');
     miauw_eval_assert((string) ($status['realtime_voice'] ?? '') !== '', 'Voz realtime padrao nao pode ficar vazia.');
     miauw_eval_assert(in_array((string) ($status['engine'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Engine publica precisa ser valida.');
 });
 
-miauw_eval_add('fase19_contrato_voz_audio_node', static function (): void {
+miauw_eval_add('fase20_contrato_voz_audio_node', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase19', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 19.');
+    miauw_eval_assert_same('fase20', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 20.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
@@ -168,6 +173,9 @@ miauw_eval_add('fase19_contrato_voz_audio_node', static function (): void {
     miauw_eval_assert(!empty($contract['pronto_agora']['contexto_voz_node']), 'Fase 18 precisa marcar contexto de voz para Node pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['audio_botao_controlado']), 'Fase 19 precisa marcar botao de audio controlado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['audio_transcricao_confirmada']), 'Fase 19 precisa marcar transcricao confirmada.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['audio_bolha_player_chat']), 'Fase 20 precisa marcar bolha de audio pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['audio_resposta_falada']), 'Fase 20 precisa marcar resposta falada pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['audio_curto_bloqueado']), 'Fase 20 precisa marcar bloqueio de audio curto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['audio_sem_armazenamento']), 'Fase 19 precisa manter audio sem armazenamento.');
     miauw_eval_assert(!empty($contract['pronto_agora']['roteador_estilo']), 'Fase 15 precisa marcar roteador de estilo pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['contexto_estilo_node']), 'Fase 15 precisa exportar contexto de estilo ao Node.');
@@ -223,7 +231,7 @@ miauw_eval_add('fase15_roteador_estilo_casual', static function (): void {
     miauw_eval_assert(empty($context['audio_contract']['storage_enabled']), 'Audio nao pode ser armazenado pelo contexto.');
 });
 
-miauw_eval_add('fase19_perfil_voz_audio_seguro', static function (): void {
+miauw_eval_add('fase20_perfil_voz_audio_seguro', static function (): void {
     $profiles = miauw_agent_voice_profiles();
     $voice = miauw_agent_voice_profile_contract();
     $audio = miauw_agent_audio_contract();
@@ -234,19 +242,34 @@ miauw_eval_add('fase19_perfil_voz_audio_seguro', static function (): void {
     miauw_eval_assert_same('miauby_padrao', (string) ($voice['profile_id'] ?? ''), 'Perfil padrao de voz mudou.');
     miauw_eval_assert_contains('gato fiscal', (string) ($voice['tone'] ?? ''), 'Perfil de voz perdeu tom do Miauby.');
     miauw_eval_assert(is_array($voice['directives'] ?? null) && count((array) $voice['directives']) >= 3, 'Perfil de voz precisa ter diretivas curtas.');
-    miauw_eval_assert_same('miauby-record-transcribe-2026-05-17', (string) ($audio['version'] ?? ''), 'Contrato de audio precisa ser versionado.');
+    miauw_eval_assert_same('miauby-voice-reply-2026-05-17', (string) ($audio['version'] ?? ''), 'Contrato de audio precisa ser versionado.');
     miauw_eval_assert(!empty($audio['requires_explicit_user_action']), 'Audio precisa exigir clique do usuario.');
     miauw_eval_assert(!empty($audio['confirm_before_send']), 'Audio precisa exigir revisao antes de enviar.');
     miauw_eval_assert(empty($audio['storage_enabled']), 'Audio nao pode ser armazenado nesta fase.');
     miauw_eval_assert_same((bool) ($audio['enabled'] ?? false), (bool) ($audio['capture_enabled'] ?? false), 'Captura so pode ligar quando audio estiver habilitado.');
-    miauw_eval_assert(in_array((string) ($audio['mode'] ?? ''), array('text_only', 'record_transcribe_confirmed'), true), 'Modo de audio precisa ser seguro.');
+    miauw_eval_assert(in_array((string) ($audio['mode'] ?? ''), array('text_only', 'record_transcribe_voice_reply_confirmed'), true), 'Modo de audio precisa ser seguro.');
     miauw_eval_assert_same((bool) ($audio['enabled'] ?? false), (bool) ($audio['transcription_enabled'] ?? false), 'Transcricao so pode ligar quando audio estiver habilitado.');
-    miauw_eval_assert(empty($audio['playback_enabled']), 'Playback segue desligado nesta etapa.');
+    miauw_eval_assert_same((bool) ($audio['enabled'] ?? false), (bool) ($audio['playback_enabled'] ?? false), 'Playback so pode ligar quando audio estiver habilitado.');
+    miauw_eval_assert_same((bool) ($audio['enabled'] ?? false), (bool) ($audio['tts_enabled'] ?? false), 'TTS so pode ligar quando audio estiver habilitado.');
+    miauw_eval_assert_same((bool) ($audio['enabled'] ?? false), (bool) ($audio['voice_reply_enabled'] ?? false), 'Resposta falada so pode ligar quando audio estiver habilitado.');
     miauw_eval_assert_same('gpt-4o-transcribe', (string) ($audio['model'] ?? ''), 'Modelo de transcricao padrao mudou.');
-    miauw_eval_assert((string) ($audio['voice'] ?? '') !== '', 'Voz realtime nao pode ficar vazia.');
+    miauw_eval_assert_same('gpt-4o-mini-tts', (string) ($audio['speech_model'] ?? ''), 'Modelo de fala padrao mudou.');
+    miauw_eval_assert((string) ($audio['voice'] ?? '') !== '', 'Voz de fala nao pode ficar vazia.');
+    miauw_eval_assert((int) ($audio['min_recording_ms'] ?? 0) >= 1500, 'Audio curto precisa ser bloqueado antes da transcricao.');
     miauw_eval_assert_contains('voz: miauby_padrao', $contextText, 'Contexto textual precisa levar perfil de voz ao Node.');
     miauw_eval_assert_contains('audio=', $contextText, 'Contexto textual precisa explicitar estado do audio.');
     miauw_eval_assert_contains('modo=', $contextText, 'Contexto textual precisa explicitar modo de audio.');
+});
+
+miauw_eval_add('fase20_audio_curto_bloqueia_chute', static function (): void {
+    $blocked = false;
+    try {
+        miauw_agent_validate_transcribed_audio_text('A empresa farmaceutica Wimifarma esta oferecendo um novo servico de cotacao para clientes com cashback e encomenda.', 1000);
+    } catch (InvalidArgumentException $error) {
+        $blocked = true;
+    }
+
+    miauw_eval_assert($blocked, 'Transcricao longa em audio de 1 segundo precisa ser bloqueada.');
 });
 
 miauw_eval_add('fase17_treinador_compilado', static function (): void {
@@ -454,13 +477,13 @@ miauw_eval_add('fase6_openai_tools_batem_registry', static function (): void {
     }
 });
 
-miauw_eval_add('fase19_tool_contract_export_seguro', static function (): void {
+miauw_eval_add('fase20_tool_contract_export_seguro', static function (): void {
     $contracts = miauw_agent_tool_contract_export();
     $summary = (array) ($contracts['summary'] ?? array());
     $tools = (array) ($contracts['tools'] ?? array());
 
     miauw_eval_assert_same('miauw-tool-contracts-2026-05-16', (string) ($contracts['version'] ?? ''), 'Versao do contrato de tools mudou.');
-    miauw_eval_assert_same('fase19-record-transcribe-confirm', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 19.');
+    miauw_eval_assert_same('fase20-voice-reply-audio-bubbles', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 20.');
     miauw_eval_assert_same('php_skill_registry', (string) ($contracts['source'] ?? ''), 'Contrato de tools deve vir do registry PHP.');
     miauw_eval_assert(empty($contracts['writes_enabled_in_node']), 'Node nao pode receber escrita direta liberada no contrato.');
     miauw_eval_assert_same('php', (string) ($contracts['execution_owner'] ?? ''), 'Execucao ainda deve pertencer ao PHP.');

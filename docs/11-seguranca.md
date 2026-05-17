@@ -29,6 +29,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Fase 12 permite ao Node executar somente `consultar_contrato_tool_miauby`, uma tool de leitura segura sobre contratos ja sanitizados. Ela nao consulta banco, nao grava dados e nao muda `writes_enabled=false`.
 - A Fase 13 adiciona `/miauw/agent-tools.php` como ponte interna protegida por `X-Miauw-Agent-Token`/`MIAUW_AGENT_INTERNAL_TOKEN`. Ela aceita somente tools de leitura baixa explicitamente listadas, registra trace sanitizado e mantem `writes_enabled=false`; o Node segue sem acesso direto a banco ou segredos de modulo.
 - A Fase 19 usa audio por gravacao temporaria/transcricao confirmada pelo servidor PHP, sem enviar chave ao navegador. Microfone so liga por clique, o arquivo nao e armazenado, o player do rascunho fica local no navegador, a transcricao vira rascunho revisavel e voz nao pode executar escrita operacional direta; acoes fortes continuam exigindo confirmacao no fluxo auditado.
+- A Fase 20 mostra audio enviado como player local e gera resposta falada temporaria no PHP sem gravar arquivo no banco/disco. A transcricao continua como texto interno para contexto e auditoria, audio curto demais e bloqueado para reduzir chute, e falha de TTS cai para texto normal sem liberar escrita por voz.
 
 ## Arquivos envolvidos
 
@@ -61,7 +62,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
 - Nao versionar `MIAUW_AGENT_INTERNAL_TOKEN`; se vazar, trocar no `.env` do VPS e reiniciar web/Miauby agente.
-- Nao versionar `MIAUW_OPENAI_API_KEY`; a rota de audio usa a chave somente no PHP para transcrever o audio temporario.
+- Nao versionar `MIAUW_OPENAI_API_KEY`; as rotas de audio usam a chave somente no PHP para transcrever audio temporario e gerar resposta falada sem expor segredo ao navegador.
 - O servico Miauby agente nao deve executar escrita real nem expor payload bruto. Mesmo com `MIAUW_ENGINE=node`, confirmacoes, sessoes e escritas fortes continuam controladas pelo PHP ate cada tool ser migrada e auditada separadamente.
 - A ponte `/miauw/agent-tools.php` nao substitui sessao/CSRF dos modulos para uso publico; ela e exclusivamente interna, tokenizada, limitada a leitura baixa e deve continuar inacessivel sem token.
 - Contratos de tools enviados ao Node devem permanecer sanitizados: sem token, chave, SQL bruto, payload externo ou stack trace; schemas podem descrever parametros operacionais, mas nao segredo de ambiente.

@@ -39,6 +39,7 @@
     text: '',
     at: 0,
   };
+  const audioMessageUrls = [];
 
   const scrollToBottom = () => {
     if (feed) feed.scrollTop = feed.scrollHeight;
@@ -151,6 +152,101 @@
     article.appendChild(bubble);
     feed.appendChild(article);
     scrollToBottom();
+    return article;
+  };
+
+  const rememberAudioMessageUrl = (url) => {
+    const safeUrl = String(url || '');
+    if (safeUrl && safeUrl.startsWith('blob:')) {
+      audioMessageUrls.push(safeUrl);
+    }
+    return safeUrl;
+  };
+
+  const releaseAudioMessageUrls = () => {
+    if (!window.URL || typeof window.URL.revokeObjectURL !== 'function') return;
+    while (audioMessageUrls.length) {
+      const url = audioMessageUrls.pop();
+      if (url) {
+        try { window.URL.revokeObjectURL(url); } catch (error) { /* ignored */ }
+      }
+    }
+  };
+
+  const audioUrlFromBase64 = (base64, mime = 'audio/mpeg') => {
+    const raw = String(base64 || '').trim();
+    if (!raw || !window.URL || typeof window.URL.createObjectURL !== 'function') return '';
+
+    const binary = window.atob(raw);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return rememberAudioMessageUrl(window.URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/mpeg' })));
+  };
+
+  const audioBarsHtml = () => '<span class="chat-audio-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>';
+
+  const addAudioMessage = (role, audio, options = {}) => {
+    if (!feed || !audio || !audio.url) return null;
+
+    const article = document.createElement('article');
+    article.className = `message ${role} audio-message`;
+    const messageId = Number(options.messageId || 0);
+    if (messageId > 0) {
+      article.dataset.messageId = String(messageId);
+    }
+
+    if (role === 'assistant') {
+      const headerImage = document.querySelector('.agent img');
+      const img = document.createElement('img');
+      img.src = headerImage ? headerImage.src : '/miauw/assets/miauw-avatar.svg';
+      img.alt = '';
+      article.appendChild(img);
+    }
+
+    const duration = String(audio.duration || '').trim();
+    const transcript = String(audio.transcript || '').trim();
+    const label = role === 'assistant' ? 'Resposta em audio do Miauby' : 'Audio enviado';
+    const stamp = options.time || new Date().toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).replace(',', '');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble audio-bubble';
+    bubble.innerHTML = `
+      <div class="chat-audio-main">
+        <span class="chat-audio-state">${role === 'assistant' ? 'Miauby respondeu' : 'Audio enviado'}${duration ? ` <small>${escapeHtml(duration)}</small>` : ''}</span>
+        <div class="chat-audio-player">
+          <audio controls controlsList="nodownload noplaybackrate" src="${escapeHtml(audio.url)}" aria-label="${escapeHtml(label)}"></audio>
+          ${audioBarsHtml()}
+        </div>
+      </div>
+      ${role === 'assistant' && transcript ? `<details class="chat-audio-transcript"><summary>Texto</summary><p>${formatMessage(transcript)}</p></details>` : ''}
+      <time>${escapeHtml(stamp)}</time>
+    `;
+
+    if (role === 'assistant' && options.confirmation) {
+      renderConfirmation(bubble, options.confirmation);
+    }
+    if (role === 'assistant' && messageId > 0 && !options.suppressTraining) {
+      renderTrainingActions(bubble, messageId);
+    }
+
+    article.appendChild(bubble);
+    feed.appendChild(article);
+    scrollToBottom();
+
+    const player = bubble.querySelector('audio');
+    if (player && options.autoPlay) {
+      player.play().catch(() => {});
+    }
+
     return article;
   };
 
@@ -361,6 +457,7 @@
     }
   };
 
+  const MIN_AUDIO_RECORDING_MS = 1700;
   const MAX_AUDIO_RECORDING_MS = 90000;
 
   const audioMimeType = () => {
@@ -598,7 +695,15 @@
     }
   };
 
-  const transcribeAudioBlob = async (blob) => {
+  const transcriptLooksTooLongForAudio = (transcript, durationMs) => {
+    const text = String(transcript || '').trim();
+    if (!text || !durationMs) return false;
+    const words = text.split(/\s+/).filter(Boolean).length;
+    if (durationMs < 2500 && words > 12) return true;
+    return durationMs < 6500 && words > Math.max(16, Math.ceil((durationMs / 1000) * 5.5));
+  };
+
+  const transcribeAudioBlob = async (blob, durationMs = 0) => {
     if (!blob || blob.size <= 0) {
       throw new Error('O audio veio vazio. Segura um pouco mais antes de parar.');
     }
@@ -606,6 +711,7 @@
     const body = new FormData();
     body.set('action', 'audio_transcribe');
     body.set('csrf_token', csrf);
+    body.set('duration_ms', String(Math.max(0, Math.round(Number(durationMs) || 0))));
     body.set('audio', blob, 'miauby-audio.webm');
 
     const response = await fetch('/miauw/api.php', {
@@ -618,20 +724,33 @@
       throw new Error(data.detail || data.message || audioUnavailable());
     }
 
-    return String(data.text || '').trim();
+    const transcript = String(data.text || '').trim();
+    if (transcriptLooksTooLongForAudio(transcript, durationMs)) {
+      throw new Error('Esse audio ficou curto ou com ruido. Grave de novo com pelo menos 2 segundos, sem pressa.');
+    }
+
+    return transcript;
   };
 
   const finishRecordingAndTranscribe = async () => {
+    const durationMs = audioState.startedAt ? Date.now() - audioState.startedAt : 0;
     const blob = new Blob(audioState.chunks, { type: audioMimeType() || 'audio/webm' });
-    const durationLabel = formatAudioDuration();
-    audioState.transcribing = true;
+    const durationLabel = formatAudioSeconds(durationMs / 1000);
     audioState.recording = false;
     clearAudioTimer();
     stopAudioTracks();
+
+    if (durationMs < MIN_AUDIO_RECORDING_MS) {
+      resetAudioCaptureState({ clearDraft: true, restorePrevious: true });
+      showAudioNotice('Audio curto demais. Grave pelo menos 2 segundos, meu bigode nao adivinha sopro.');
+      return;
+    }
+
+    audioState.transcribing = true;
     setAudioUi('transcribing', 'Transcrevendo');
 
     try {
-      const transcript = await transcribeAudioBlob(blob);
+      const transcript = await transcribeAudioBlob(blob, durationMs);
       const previous = audioState.previousText.trim();
       if (input) {
         input.value = previous ? `${previous}\n${transcript}` : transcript;
@@ -732,11 +851,27 @@
     }
   };
 
-  const sendMessage = async (message) => {
+  const consumeAudioDraftForMessage = () => {
+    if (!audioState.draftActive || !audioState.draftBlobUrl) return null;
+
+    const draft = {
+      url: rememberAudioMessageUrl(audioState.draftBlobUrl),
+      duration: audioState.draftDuration || '00:00',
+      transcript: audioState.draftTranscript || '',
+    };
+    audioState.draftBlobUrl = '';
+    return draft;
+  };
+
+  const sendMessage = async (message, options = {}) => {
     const text = String(message || '').trim();
     if (!text) return;
 
-    addMessage('user', text);
+    if (options.userAudio && options.userAudio.url) {
+      addAudioMessage('user', options.userAudio);
+    } else {
+      addMessage('user', text);
+    }
     setLoading(true);
     showTyping();
     const typingDelay = new Promise((resolve) => setTimeout(resolve, 650));
@@ -745,6 +880,12 @@
     body.set('action', 'send');
     body.set('message', text);
     body.set('csrf_token', csrf);
+    if (options.voiceReply) {
+      body.set('voice_reply', '1');
+    }
+    if (options.userAudio && options.userAudio.url) {
+      body.set('input_mode', 'audio');
+    }
 
     try {
       const response = await fetch('/miauw/api.php', {
@@ -762,6 +903,24 @@
       }
 
       hideTyping();
+      if (options.voiceReply && data.reply_audio && data.reply_audio.audio_base64) {
+        const assistantAudioUrl = audioUrlFromBase64(data.reply_audio.audio_base64, data.reply_audio.mime || 'audio/mpeg');
+        if (assistantAudioUrl) {
+          addAudioMessage('assistant', {
+            url: assistantAudioUrl,
+            duration: '',
+            transcript: data.reply || '',
+          }, {
+            fallback: data.fallback,
+            time: data.time,
+            confirmation: data.confirmation || null,
+            messageId: data.assistant_message_id || 0,
+            autoPlay: true,
+          });
+          return;
+        }
+      }
+
       await addAssistantParts(data.reply_parts || [data.reply], {
         fallback: data.fallback,
         time: data.time,
@@ -848,6 +1007,7 @@
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const message = input.value;
+      const voiceDraft = consumeAudioDraftForMessage();
       input.value = '';
       autoGrow();
       clearAudioDraftPreview();
@@ -855,7 +1015,10 @@
       audioState.previousText = '';
       audioState.cancelText = '';
       setAudioUi('idle', 'Falar');
-      sendMessage(message);
+      sendMessage(message, {
+        userAudio: voiceDraft,
+        voiceReply: Boolean(voiceDraft),
+      });
     });
   }
 
@@ -864,6 +1027,7 @@
     audioButton.addEventListener('click', startAudioSession);
     window.addEventListener('beforeunload', () => {
       resetAudioCaptureState({ clearDraft: false });
+      releaseAudioMessageUrls();
     });
   }
 

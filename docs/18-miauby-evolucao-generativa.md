@@ -177,6 +177,16 @@ Miauby ja possui:
   - o PHP chama `https://api.openai.com/v1/audio/transcriptions` com a chave do servidor, sem expor segredo no navegador, e nao armazena o arquivo de audio;
   - audio so vira mensagem depois que o usuario revisar e apertar `Enviar`; `Refazer` grava outro audio, `Descartar audio` remove o rascunho e escrita operacional por voz segue bloqueada;
   - `site/miauw/miauw-evals.php` cobre status Fase 19, contrato de transcricao confirmada, modelo de transcricao e contrato de tools em `fase19-record-transcribe-confirm`.
+- Fase 20 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase20`;
+  - o servico Node passou para `SERVICE_VERSION=0.15.0` e `PHASE=fase20-voice-reply-audio-bubbles`;
+  - o contrato de audio passou para `miauby-voice-reply-2026-05-17`, com `MIAUW_SPEECH_MODEL=gpt-4o-mini-tts` e `MIAUW_SPEECH_VOICE=marin`;
+  - quando o usuario envia audio, o chat e o widget mostram a mensagem enviada como player/ondas, sem despejar a transcricao na bolha;
+  - a transcricao continua indo como texto interno ao backend para manter contexto, historico textual, guardrails, confirmacoes e tools auditadas;
+  - quando a entrada veio por audio, o PHP gera uma resposta falada por `/v1/audio/speech`, devolve o arquivo em memoria ao navegador e nao grava audio no banco ou disco;
+  - gravacoes curtas demais sao bloqueadas no frontend e no PHP, e transcricoes grandes demais para poucos segundos sao recusadas para reduzir chute em audio de 1 segundo;
+  - se a resposta falada falhar, o chat cai para texto normal sem executar escrita operacional por voz;
+  - `site/miauw/miauw-evals.php` cobre status Fase 20, contrato de voz, bolha de audio, TTS, bloqueio de audio curto e contrato de tools em `fase20-voice-reply-audio-bubbles`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -221,6 +231,7 @@ Integracoes:
 
 - OpenAI Responses API;
 - OpenAI Audio Transcriptions API para transcrever audio temporario do chat/widget antes do envio confirmado;
+- OpenAI Audio Speech API para gerar resposta falada temporaria do Miauby quando a entrada veio por audio;
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.
