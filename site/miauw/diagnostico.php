@@ -147,6 +147,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
         </a>
         <nav class="topbar-actions" aria-label="Menu Miauby">
             <a href="/miauw/">Chat</a>
+            <a href="/miauw/treino.php">Treino</a>
             <a href="/cashback/">Cashback</a>
             <a href="/cotacao/">Cotacao</a>
             <a href="/financeiro/">Financeiro</a>
@@ -159,7 +160,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="agent diagnostic-agent">
                 <img src="<?php echo e($avatar); ?>" alt="Miauby">
                 <div>
-                    <span class="diag-kicker">Fase 13</span>
+                    <span class="diag-kicker"><?php echo e((string) ($nextPhase['fase_atual'] ?? 'Fase atual')); ?></span>
                     <h1>Diagnostico do Miauby</h1>
                     <p>Saude, persona, evals, skills, traces, alertas, memorias e padroes em revisao.</p>
                 </div>

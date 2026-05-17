@@ -65,7 +65,7 @@ $modules = array(
     array(
         'name' => 'Miauby',
         'label' => 'Assistente interno',
-        'description' => 'Alertas, diagnosticos e apoio operacional.',
+        'description' => 'Chat, treino e apoio operacional.',
         'href' => '/miauw/',
         'accent' => 'violet',
     ),

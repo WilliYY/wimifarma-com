@@ -89,6 +89,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 13 do agente operacional v2: o servico Node executa tools reais de leitura baixa por uma ponte PHP interna tokenizada (`/miauw/agent-tools.php`) para Financeiro, Cashback, Codigos e Cotacao, com pre-leitura deterministica quando o pedido e claro. O Node continua sem credencial de banco e com `writes_enabled=false`; sangria, tarefas, encomendas e qualquer escrita forte seguem no fluxo PHP com confirmacao/auditoria.
 - Miauby iniciou a Fase 14 do agente operacional v2: o servico Node passou a orquestrar todas as OpenAI tools exportadas pelo registry via ponte PHP universal. Leituras, diagnosticos e cliente mascarado executam pelo PHP auditado; `criar_tarefa` pode gravar como escrita de baixo risco com usuario logado; sangria, lancamentos, encomendas e demais acoes fortes retornam `confirmation_required` e continuam sem escrita direta pelo Node.
 - Miauby iniciou a Fase 15 do agente operacional v2: existe um roteador de estilo versionado (`miauby-style-router-2026-05-16`) para perguntas casuais, bastidor tecnico, saudacoes e ruido. O PHP exporta contexto de estilo e memorias/padroes aprovados ao Node; o Node responde localmente quando nao precisa gastar chamada online, evita listas em conversa solta e preserva a voz de gato fiscal sem virar catalogo de ferramentas.
+- Miauby iniciou a Fase 16 do agente operacional v2: o chat ganhou feedback `Boa`/`Treinar`, o painel restrito `/miauw/treino.php` revisa exemplos de resposta, a tabela `miauw_treinos_respostas` preserva versoes sem apagar historico e exemplos aprovados entram no `style_context` enviado ao Node. O servico agente passou para `SERVICE_VERSION=0.10.0` e `PHASE=fase16-training-feedback`, ainda sem escrita direta no Node.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -103,7 +104,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP e tools Node de leitura segura por ponte PHP interna
+- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna e contexto de treino aprovado
 - PostgreSQL 17 para dados da Cotacao V2
 - Redis 7 para sessoes e presenca da Cotacao V2
 
@@ -150,6 +151,7 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/financeiro/login.php`
 - `http://127.0.0.1:3002/tarefa/login.php`
 - `http://127.0.0.1:3002/miauw/login.php`
+- `http://127.0.0.1:3002/miauw/treino.php`
 - `http://127.0.0.1:3002/miauw/diagnostico.php`
 - `http://127.0.0.1:3002/miauw/widget-status.php`
 - `http://127.0.0.1:3002/miauw/agent/health`

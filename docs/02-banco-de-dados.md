@@ -81,6 +81,7 @@ Inventario real observado em 2026-05-10:
 - `miauw_alerta_eventos`: eventos de alertas.
 - `miauw_padroes`: padroes detectados.
 - `miauw_tool_traces`: rastreabilidade do Miauby por conversa/request/tool, incluindo status, risco, confirmacao e resumo sanitizado.
+- `miauw_treinos_respostas`: exemplos de treino do Miauby coletados no chat e revisados por status/versao antes de entrar no contexto aprovado.
 - `miauw_farmacia_popular_valores`: valores de referencia.
 - `miauw_farmacia_popular_atualizacoes`: historico de atualizacao.
 
@@ -151,6 +152,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.
 - `miauw_tool_traces.payload_json` deve guardar somente contexto sanitizado e limitado; nao colocar chave, token, senha, SQL cru, payload bruto externo ou stack trace completo.
 - `miauw_tool_traces.requer_confirmacao` marca acoes fortes que precisaram de confirmacao humana antes da escrita real.
+- `miauw_treinos_respostas` deve ser append/versionado: feedback do chat nasce pendente, revisao aprova/rejeita/supera, e ajuste de item ja aprovado cria nova versao em vez de apagar o exemplo original.
+- So registros `miauw_treinos_respostas.status='aprovado'` podem entrar no contexto de estilo do Miauby; exemplos devem ser sanitizados e nao conter segredos, tokens, senha, CPF/telefone sem necessidade ou bastidor tecnico.
 - `wptl_options` guarda URLs do WordPress e pode causar redirects errados se alterado sem cuidado.
 
 ## Decisoes tecnicas ja tomadas

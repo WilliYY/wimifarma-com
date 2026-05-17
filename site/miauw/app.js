@@ -68,11 +68,31 @@
     bubble.appendChild(card);
   };
 
+  const renderTrainingActions = (bubble, messageId) => {
+    if (!bubble || !messageId || bubble.querySelector('[data-training-actions]')) return;
+
+    const actions = document.createElement('nav');
+    actions.className = 'training-actions';
+    actions.dataset.trainingActions = '1';
+    actions.dataset.messageId = String(messageId);
+    actions.setAttribute('aria-label', 'Treinar resposta do Miauby');
+    actions.innerHTML = `
+      <button type="button" data-training-rating="boa">Boa</button>
+      <button type="button" data-training-open>Treinar</button>
+      <span data-training-status></span>
+    `;
+    bubble.appendChild(actions);
+  };
+
   const addMessage = (role, text, options = {}) => {
     if (!feed) return;
 
     const article = document.createElement('article');
     article.className = `message ${role}`;
+    const messageId = Number(options.messageId || 0);
+    if (messageId > 0) {
+      article.dataset.messageId = String(messageId);
+    }
 
     if (role === 'assistant') {
       const headerImage = document.querySelector('.agent img');
@@ -97,6 +117,9 @@
     if (role === 'assistant' && options.confirmation) {
       renderConfirmation(bubble, options.confirmation);
     }
+    if (role === 'assistant' && messageId > 0 && !options.suppressTraining) {
+      renderTrainingActions(bubble, messageId);
+    }
     article.appendChild(bubble);
     feed.appendChild(article);
     scrollToBottom();
@@ -110,7 +133,7 @@
       return;
     }
 
-    const article = addMessage('assistant', '', options);
+    const article = addMessage('assistant', '', { ...options, suppressTraining: true });
     const paragraph = article ? article.querySelector('.bubble p') : null;
     if (!paragraph) return;
 
@@ -122,6 +145,12 @@
       paragraph.innerHTML = formatMessage(current);
       scrollToBottom();
       await new Promise((resolve) => setTimeout(resolve, 18));
+    }
+
+    const messageId = Number(options.messageId || 0);
+    const bubble = article.querySelector('.bubble');
+    if (messageId > 0 && bubble) {
+      renderTrainingActions(bubble, messageId);
     }
   };
 
@@ -135,8 +164,138 @@
       await streamAssistantMessage(safeParts[index], {
         ...options,
         confirmation: index === safeParts.length - 1 ? options.confirmation : null,
+        messageId: index === safeParts.length - 1 ? options.messageId : 0,
       });
     }
+  };
+
+  const setTrainingStatus = (actions, text, mode = 'idle') => {
+    if (!actions) return;
+    const status = actions.querySelector('[data-training-status]');
+    if (status) {
+      status.textContent = text || '';
+      status.dataset.mode = mode;
+    }
+  };
+
+  const sendTrainingFeedback = async ({
+    assistantMessageId,
+    rating,
+    reason = '',
+    ideal = '',
+    category = '',
+    style = '',
+  }, actions = null) => {
+    const id = Number(assistantMessageId || 0);
+    if (!id) return;
+
+    if (actions) {
+      actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+      setTrainingStatus(actions, 'Salvando...', 'loading');
+    }
+
+    const body = new FormData();
+    body.set('action', 'train_feedback');
+    body.set('assistant_message_id', String(id));
+    body.set('rating', rating || 'ajuste');
+    body.set('reason', reason);
+    body.set('ideal', ideal);
+    body.set('category', category);
+    body.set('style', style);
+    body.set('csrf_token', csrf);
+
+    try {
+      const response = await fetch('/miauw/api.php', {
+        method: 'POST',
+        body,
+        headers: { 'X-CSRF-Token': csrf },
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        throw new Error(data.message || 'Falha ao treinar.');
+      }
+
+      if (actions) {
+        setTrainingStatus(actions, data.status === 'aprovado' ? 'Aprovado' : 'Guardado', 'ok');
+        actions.classList.add('is-saved');
+      }
+    } catch (error) {
+      if (actions) {
+        actions.querySelectorAll('button').forEach((button) => { button.disabled = false; });
+        setTrainingStatus(actions, 'Falhou', 'error');
+      }
+      addMessage('assistant', 'Nao consegui guardar esse treino agora. Tenta de novo em instantes.');
+    }
+  };
+
+  const openTrainingDialog = (messageId, actions) => {
+    const id = Number(messageId || 0);
+    if (!id || document.querySelector('.miauw-training-modal')) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'miauw-training-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <form class="miauw-training-box">
+        <div>
+          <span>Treinar resposta</span>
+          <h2>Como o Miauby deveria falar?</h2>
+        </div>
+        <label>
+          Motivo
+          <select name="reason">
+            <option value="chatgpt_demais">Parece ChatGPT demais</option>
+            <option value="lista_demais">Listou demais</option>
+            <option value="seco">Seco demais</option>
+            <option value="longo">Longo demais</option>
+            <option value="fugiu">Fugiu do assunto</option>
+            <option value="sem_personalidade">Sem personalidade Miauby</option>
+            <option value="outro">Outro</option>
+          </select>
+        </label>
+        <label>
+          Tema
+          <input name="category" maxlength="80" placeholder="ex: compra de farmacia">
+        </label>
+        <label>
+          Estilo
+          <input name="style" maxlength="80" value="miauby direto">
+        </label>
+        <label>
+          Resposta ideal
+          <textarea name="ideal" maxlength="1200" rows="5" placeholder="Escreva do jeito que o Miauby deveria responder..."></textarea>
+        </label>
+        <nav>
+          <button class="btn primary" type="submit">Guardar treino</button>
+          <button class="btn ghost" type="button" data-training-cancel>Cancelar</button>
+        </nav>
+      </form>
+    `;
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay || event.target.closest('[data-training-cancel]')) {
+        close();
+      }
+    });
+    overlay.querySelector('form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      await sendTrainingFeedback({
+        assistantMessageId: id,
+        rating: 'ajuste',
+        reason: String(formData.get('reason') || ''),
+        ideal: String(formData.get('ideal') || ''),
+        category: String(formData.get('category') || ''),
+        style: String(formData.get('style') || ''),
+      }, actions);
+      close();
+    });
+
+    document.body.appendChild(overlay);
+    const textarea = overlay.querySelector('textarea');
+    if (textarea) textarea.focus();
   };
 
   const showTyping = () => {
@@ -209,6 +368,7 @@
         time: data.time,
         confirmation: data.confirmation || null,
         fallbackText: data.reply,
+        messageId: data.assistant_message_id || 0,
       });
     } catch (error) {
       await typingDelay;
@@ -329,6 +489,28 @@
     guardianCard.addEventListener('click', (event) => {
       const button = event.target.closest('[data-dismiss-alert]');
       if (button) dismissAlert(button);
+    });
+  }
+
+  if (feed) {
+    feed.addEventListener('click', (event) => {
+      const goodButton = event.target.closest('[data-training-rating]');
+      const trainButton = event.target.closest('[data-training-open]');
+      const actions = event.target.closest('[data-training-actions]');
+
+      if (goodButton && actions) {
+        sendTrainingFeedback({
+          assistantMessageId: actions.dataset.messageId,
+          rating: goodButton.dataset.trainingRating || 'boa',
+          reason: 'boa_resposta',
+          category: 'geral',
+          style: 'miauby',
+        }, actions);
+      }
+
+      if (trainButton && actions) {
+        openTrainingDialog(actions.dataset.messageId, actions);
+      }
     });
   }
 

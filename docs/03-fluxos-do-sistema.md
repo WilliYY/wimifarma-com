@@ -205,6 +205,7 @@ Arquivos principais:
 
 - `site/miauw/index.php`
 - `site/miauw/diagnostico.php`
+- `site/miauw/treino.php`
 - `site/miauw/api.php`
 - `site/miauw/widget-status.php`
 - `site/miauw/widget-auth.php`
@@ -226,6 +227,7 @@ Tabelas principais:
 - `miauw_alertas`
 - `miauw_alerta_eventos`
 - `miauw_padroes`
+- `miauw_treinos_respostas`
 - `miauw_farmacia_popular_valores`
 - `miauw_farmacia_popular_atualizacoes`
 
@@ -240,6 +242,8 @@ Direcao de evolucao:
 - preparar a proxima camada por contrato em `miauw_agent_next_phase_contract()`, sem trocar o fluxo PHP/widget ate os testes aprovarem;
 - registrar padroes e memorias com revisao e auditoria;
 - revisar memorias e padroes pelo painel restrito `/miauw/diagnostico.php`, marcando status sem apagar dados;
+- treinar respostas pelo proprio chat com `Boa`/`Treinar`, revisar no painel restrito `/miauw/treino.php` e usar apenas exemplos aprovados no contexto do Miauby;
+- preservar versoes de treino: aprovar, rejeitar ou superar sem excluir pergunta/resposta original;
 - separar leitura, sugestao e escrita;
 - documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.
 

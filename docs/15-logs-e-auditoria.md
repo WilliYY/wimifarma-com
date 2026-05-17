@@ -55,6 +55,7 @@ Arquivos:
 - A Fase 13 registra chamadas da ponte PHP de leitura como `miauw_agent_node_read_tool` em `miauw_tool_traces`, com nome da tool, chaves dos argumentos, duracao e tamanho da resposta. Nao gravar token, payload bruto externo, SQL, stack trace ou dados completos do operador nesse trace.
 - A Fase 14 registra chamadas da ponte PHP universal como `miauw_agent_node_tool_bridge`, com nome da tool, chaves dos argumentos, modo, risco, duracao, status e se a escrita ocorreu via PHP bridge. Acoes fortes devem aparecer como `confirmation_required`, sem payload bruto, token, SQL ou stack trace.
 - A Fase 15 registra respostas locais do roteador de estilo como `miauw_style_router` em `miauw_tool_traces`, guardando apenas intent, versao de estilo e se veio do widget. O trace nao deve salvar mensagem completa, resposta completa, memoria bruta, token, SQL ou payload externo.
+- A Fase 16 registra feedback/revisao do Treinador do Miauby em `wf_logs` como `miauw_treino_resposta` e `miauw_revisao_treino`; o conteudo completo fica em `miauw_treinos_respostas`, sanitizado e versionado, sem apagar pergunta/resposta original.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 

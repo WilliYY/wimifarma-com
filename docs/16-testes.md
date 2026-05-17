@@ -26,6 +26,7 @@ Rotas de smoke test:
 - `/financeiro/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
+- `/miauw/treino.php` deve exigir sessao e perfil autorizado
 - `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
 - `/miauw/widget-status.php`
 - `/miauw/agent/health` deve responder JSON 200 sem segredo quando o servico sombra estiver ativo
@@ -63,6 +64,7 @@ Ele valida:
 - Fase 13 do Miauby: status publico anuncia ponte PHP de leitura, contrato aponta `fase13`, o export de contracts aponta `fase13-php-read-tool-bridge`, as tools de leitura baixa aparecem com `node_read_bridge_enabled` e sangria/escritas seguem bloqueadas no Node.
 - Fase 14 do Miauby: status publico anuncia ponte PHP universal, contrato aponta `fase14`, o export de contracts aponta `fase14-php-all-tools-bridge`, as OpenAI tools aparecem com `node_tool_bridge_enabled`, `criar_tarefa` fica como escrita PHP de baixo risco e sangria/escritas fortes retornam `confirmation_required`.
 - Fase 15 do Miauby: status publico anuncia roteador de estilo, contrato aponta `fase15`, o export de contracts aponta `fase15-style-router-memory`, perguntas casuais/de bastidor recebem resposta local curta, "como faz um site?" nao vira tutorial numerado e `style_context` chega versionado ao Node com memorias/padroes apenas aprovados.
+- Fase 16 do Miauby: status publico anuncia treinador do chat, contrato aponta `fase16`, o export de contracts aponta `fase16-training-feedback`, feedback cria item pendente, revisao aprova exemplo versionado e `style_context` inclui treino aprovado.
 
 Rodar pelo container:
 
@@ -86,7 +88,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 
 - A fase atual prioriza smoke tests por causa da migracao.
 - O Miauby possui primeira camada automatizada de evals locais para intents e respostas proibidas.
-- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5, as regras operacionais ampliadas da Fase 6, o contrato/status da Fase 7/8/9, o contrato de personalidade da Fase 10, os contratos de tools da Fase 11, a tool Node de leitura segura da Fase 12, a ponte de leitura real da Fase 13, a ponte universal da Fase 14 e o roteador de estilo/memoria aprovada da Fase 15.
+- Os evals tambem validam o payload seguro do painel de diagnostico da Fase 3, o registry das tools operacionais da Fase 4, os traces/confirmacoes da Fase 5, as regras operacionais ampliadas da Fase 6, o contrato/status da Fase 7/8/9, o contrato de personalidade da Fase 10, os contratos de tools da Fase 11, a tool Node de leitura segura da Fase 12, a ponte de leitura real da Fase 13, a ponte universal da Fase 14, o roteador de estilo/memoria aprovada da Fase 15 e o treinador versionado da Fase 16.
 
 ## Riscos ao alterar
 

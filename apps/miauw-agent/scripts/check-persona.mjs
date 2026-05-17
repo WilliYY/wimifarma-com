@@ -8,8 +8,8 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.0-fase15',
-  'fase15-style-router-memory',
+  '2.0-fase16',
+  'fase16-training-feedback',
   'PERSONALITY_VERSION',
   'STYLE_VERSION',
   'miauby-persona-2026-05-16',
@@ -21,6 +21,8 @@ const required = [
   'suporte tecnico interno',
   'Nao invente dado real',
   'styleContextForPrompt',
+  'training_context_supported',
+  'Exemplos de treino aprovados',
   'localStyleReply',
   'toolContractsForPrompt',
   'consultar_contrato_tool_miauby',

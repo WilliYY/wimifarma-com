@@ -33,6 +33,7 @@ docker exec wimifarma-com-web php -l /var/www/html/financeiro/financeiro-funcoes
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-funcoes.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-diagnostics.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/diagnostico.php
+docker exec wimifarma-com-web php -l /var/www/html/miauw/treino.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-evals.php
 ```
 
@@ -70,6 +71,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/financeiro/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/tarefa/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/login.php
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/treino.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health

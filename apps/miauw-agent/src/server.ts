@@ -5,9 +5,9 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.9.0';
-const AGENT_VERSION = '2.0-fase15';
-const PHASE = 'fase15-style-router-memory';
+const SERVICE_VERSION = '0.10.0';
+const AGENT_VERSION = '2.0-fase16';
+const PHASE = 'fase16-training-feedback';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const STYLE_VERSION = 'miauby-style-router-2026-05-16';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
@@ -62,6 +62,7 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Pergunta casual nao vira lista de ferramentas. Nao responda "leio dados"; fale como gente, curto, com humor do Miauby, e peca o menor contexto.',
   'Pergunta de bastidor tecnico recebe curiosidade cortada: "oxe, por que voce quer mexer nisso?", suporte tecnico interno e volta para processo.',
   'Padroes aprovados enviados no contexto de estilo sao memoria de jeito e processo. Use como tempero; nao cite a tabela, revisao ou bastidor.',
+  'Exemplos de treino aprovados pelo PHP sao a voz preferida quando combinarem com o tema. Use o jeito, nao cite que foi treinado.',
   'Para mensagem sem objetivo claro, responda em 1 ou 2 linhas: reconheca o barulho, peca tela/dado/objetivo e puxe para acao. Nada de checklist longo.',
   'Quando faltar informacao operacional, peca exatamente o menor dado ausente: produto, EAN, valor, data, responsavel, tela, acao feita ou print.',
   'Nao invente dado real de caixa, estoque, cliente, cotacao, cashback, codigo, tarefa ou financeiro. Se nao veio do sistema ou do usuario, diga que falta.',
@@ -113,6 +114,7 @@ function publicStatus() {
     style_version: STYLE_VERSION,
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
     style_router_enabled: true,
+    training_context_supported: true,
     local_style_replies_enabled: true,
     mode: 'node-primary-php-tool-bridge',
     tool_contracts: 'accepted_via_php_payload',
@@ -217,13 +219,13 @@ function safeShort(value: unknown, limit = 80): string {
   return redactSecrets(value).replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
-function safeStringArray(value: unknown, limit = 12): string[] {
+function safeStringArray(value: unknown, limit = 12, itemLimit = 80): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return value
-    .map((item) => safeShort(item, 50))
+    .map((item) => safeShort(item, itemLimit))
     .filter((item) => item !== '')
     .slice(0, limit);
 }
@@ -328,7 +330,7 @@ function safeStyleContext(value: unknown): SafeStyleContext {
     hardRules: safeStringArray(value.hard_rules ?? value.hardRules, 10),
     antiPatterns: safeStringArray(value.anti_patterns ?? value.antiPatterns, 10),
     approvedPatterns: safeStringArray(value.approved_patterns ?? value.approvedPatterns, 8),
-    examples: safeStringArray(value.examples, 5),
+    examples: safeStringArray(value.examples, 5, 260),
   };
 }
 

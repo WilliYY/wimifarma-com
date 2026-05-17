@@ -155,6 +155,8 @@ try {
             'model' => $reply['model'],
             'engine' => (string) ($reply['engine'] ?? ''),
             'trace_id' => $traceId,
+            'user_message_id' => $userMessageId,
+            'assistant_message_id' => $assistantMessageId,
             'confirmation' => $confirmation,
             'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
                 'name' => 'Miauby',
@@ -177,6 +179,44 @@ try {
                     'risk_score' => (int) ($alert['risco_score'] ?? $alert['risk_score'] ?? 50),
                 );
             }, $guardianAlerts),
+        ));
+    }
+
+    if ($action === 'train_feedback') {
+        $assistantMessageId = (int) ($_POST['assistant_message_id'] ?? 0);
+        if ($assistantMessageId <= 0) {
+            miauw_json(array('ok' => false, 'message' => 'Nao achei esse balao para treinar.'), 422);
+        }
+
+        $rating = (string) ($_POST['rating'] ?? 'ajuste');
+        $reason = (string) ($_POST['reason'] ?? '');
+        $ideal = (string) ($_POST['ideal'] ?? '');
+        $category = (string) ($_POST['category'] ?? '');
+        $style = (string) ($_POST['style'] ?? '');
+        $autoApprove = function_exists('miauw_diagnostics_can_review')
+            && miauw_diagnostics_can_review($user)
+            && strtolower(trim($rating)) === 'boa';
+
+        $result = miauw_training_create_feedback(
+            $conversationId,
+            (int) $user['id'],
+            $assistantMessageId,
+            $rating,
+            $reason,
+            $ideal,
+            $category,
+            $style,
+            $autoApprove
+        );
+
+        miauw_json(array(
+            'ok' => true,
+            'id' => (int) ($result['id'] ?? 0),
+            'status' => (string) ($result['status'] ?? 'pendente'),
+            'rating' => (string) ($result['rating'] ?? ''),
+            'message' => ((string) ($result['status'] ?? 'pendente')) === 'aprovado'
+                ? 'Treino aprovado. Meu bigode anotou esse jeito.'
+                : 'Treino guardado para revisao. Nada foi apagado.',
         ));
     }
 

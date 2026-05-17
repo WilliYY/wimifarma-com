@@ -83,11 +83,11 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
-miauw_eval_add('agent_status_fase15', static function (): void {
+miauw_eval_add('agent_status_fase16', static function (): void {
     $status = miauw_agent_public_status();
 
     miauw_eval_assert_same('Miauby', (string) ($status['name'] ?? ''), 'Nome publico do agente mudou.');
-    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase15') === 0, 'Versao do agente deve apontar Fase 15.');
+    miauw_eval_assert(strpos((string) ($status['version'] ?? ''), '2.0-fase16') === 0, 'Versao do agente deve apontar Fase 16.');
     miauw_eval_assert((string) ($status['policy_version'] ?? '') !== '', 'Versao de politica nao pode ficar vazia.');
     miauw_eval_assert_same('miauby-persona-2026-05-16', (string) ($status['personality_version'] ?? ''), 'Versao da persona publica mudou.');
     miauw_eval_assert_same('miauby-style-router-2026-05-16', (string) ($status['style_version'] ?? ''), 'Versao do roteador de estilo mudou.');
@@ -122,13 +122,16 @@ miauw_eval_add('agent_status_fase15', static function (): void {
     miauw_eval_assert(in_array('roteador_estilo_miauby', (array) ($status['features'] ?? array()), true), 'Fase 15 precisa anunciar roteador de estilo.');
     miauw_eval_assert(in_array('memoria_estilo_aprovada', (array) ($status['features'] ?? array()), true), 'Fase 15 precisa anunciar memoria de estilo aprovada.');
     miauw_eval_assert(in_array('respostas_casuais_sem_tool', (array) ($status['features'] ?? array()), true), 'Fase 15 precisa anunciar resposta casual local.');
+    miauw_eval_assert(in_array('treinador_miauby_chat', (array) ($status['features'] ?? array()), true), 'Fase 16 precisa anunciar treinador no chat.');
+    miauw_eval_assert(in_array('exemplos_treinamento_versionados', (array) ($status['features'] ?? array()), true), 'Fase 16 precisa anunciar exemplos versionados.');
+    miauw_eval_assert(in_array('contexto_treino_aprovado', (array) ($status['features'] ?? array()), true), 'Fase 16 precisa anunciar contexto de treino aprovado.');
     miauw_eval_assert(in_array((string) ($status['engine'] ?? ''), array('php', 'node_shadow', 'node'), true), 'Engine publica precisa ser valida.');
 });
 
-miauw_eval_add('fase15_contrato_estilo_node', static function (): void {
+miauw_eval_add('fase16_contrato_treinador_node', static function (): void {
     $contract = miauw_agent_next_phase_contract();
 
-    miauw_eval_assert_same('fase15', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 15.');
+    miauw_eval_assert_same('fase16', (string) ($contract['fase_atual'] ?? ''), 'Contrato da proxima fase deve partir da fase 16.');
     miauw_eval_assert_contains('Node.js 22', (string) ($contract['runtime'] ?? ''), 'Contrato precisa fixar runtime Node.js 22.');
     miauw_eval_assert_contains('TypeScript', (string) ($contract['runtime'] ?? ''), 'Contrato precisa preparar TypeScript.');
     miauw_eval_assert_contains('Agents SDK', (string) ($contract['sdk'] ?? ''), 'Contrato precisa citar Agents SDK como camada futura.');
@@ -147,6 +150,9 @@ miauw_eval_add('fase15_contrato_estilo_node', static function (): void {
     miauw_eval_assert(!empty($contract['pronto_agora']['contexto_estilo_node']), 'Fase 15 precisa exportar contexto de estilo ao Node.');
     miauw_eval_assert(!empty($contract['pronto_agora']['memoria_estilo_aprovada']), 'Fase 15 precisa ler memoria/padrao aprovado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['resposta_local_casual']), 'Fase 15 precisa responder casual localmente.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['treinador_chat_feedback']), 'Fase 16 precisa marcar feedback do chat pronto.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['revisao_treino_humana']), 'Fase 16 precisa marcar revisao humana pronta.');
+    miauw_eval_assert(!empty($contract['pronto_agora']['contexto_treino_aprovado']), 'Fase 16 precisa exportar treino aprovado.');
     miauw_eval_assert(!empty($contract['pronto_agora']['eval_persona_node']), 'Fase 10 precisa marcar eval de persona Node pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['tool_contract_export']), 'Fase 11 precisa marcar export de contratos de tools pronto.');
     miauw_eval_assert(!empty($contract['pronto_agora']['execucao_leitura_node']), 'Fase 12 precisa marcar execucao de leitura Node pronta.');
@@ -185,6 +191,59 @@ miauw_eval_add('fase15_roteador_estilo_casual', static function (): void {
     miauw_eval_assert_same('backstage_technical', (string) ($context['route']['intent'] ?? ''), 'Contexto de estilo precisa levar rota ao Node.');
     miauw_eval_assert(is_array($context['approved_patterns'] ?? null), 'Contexto de estilo precisa carregar padroes aprovados como array.');
     miauw_eval_assert(is_array($context['examples'] ?? null), 'Contexto de estilo precisa carregar exemplos curtos.');
+});
+
+miauw_eval_add('fase16_treinador_versionado', static function (): void {
+    miauw_ensure_schema();
+    $pdo = db();
+    $pdo->beginTransaction();
+
+    try {
+        $stmt = $pdo->prepare('INSERT INTO miauw_conversas (usuario_id, titulo) VALUES (?, ?)');
+        $stmt->execute(array(1, 'Eval treino Miauby'));
+        $conversationId = (int) $pdo->lastInsertId();
+        miauw_add_message($conversationId, 1, 'user', 'quero comprar uma farmacia');
+        $assistantId = miauw_add_message($conversationId, null, 'assistant', 'Comprar para operar ou so curiosidade? Valide CNPJ, licencas e passivos.');
+
+        $feedback = miauw_training_create_feedback(
+            $conversationId,
+            1,
+            $assistantId,
+            'ajuste',
+            'chatgpt_demais',
+            'Comprar farmacia nao e comprar prateleira bonita, meu bigode. Primeiro separa: compra total, sociedade ou oportunidade? Sem isso, eu so cheiro risco e divida escondida.',
+            'negocio',
+            'miauby consultor',
+            false
+        );
+        miauw_eval_assert((int) ($feedback['id'] ?? 0) > 0, 'Feedback de treino nao gerou ID.');
+        miauw_eval_assert_same('pendente', (string) ($feedback['status'] ?? ''), 'Feedback ajustado deve nascer pendente.');
+
+        $done = miauw_training_review_item(
+            (int) $feedback['id'],
+            'aprovado',
+            1,
+            'Comprar farmacia nao e comprar prateleira bonita, meu bigode. Primeiro separa: compra total, sociedade ou oportunidade? Sem isso, eu so cheiro risco e divida escondida.',
+            'negocio',
+            'miauby consultor',
+            'eval'
+        );
+        miauw_eval_assert($done, 'Revisao de treino nao concluiu.');
+
+        $examples = miauw_training_context_examples('quero comprar farmacia', 2);
+        miauw_eval_assert(count($examples) >= 1, 'Treino aprovado nao entrou nos exemplos de contexto.');
+        $json = json_encode($examples, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+        miauw_eval_assert_contains('prateleira', $json, 'Exemplo aprovado perdeu resposta ideal.');
+
+        $context = miauw_agent_style_context_export('quero comprar farmacia', 1);
+        $contextJson = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+        miauw_eval_assert_contains('treino aprovado', $contextJson, 'Contexto de estilo nao incluiu treino aprovado.');
+        miauw_eval_assert(is_array($context['training_examples'] ?? null), 'Contexto deve expor training_examples como array.');
+    } finally {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+    }
 });
 
 miauw_eval_add('fase10_persona_contract_preservado', static function (): void {
@@ -310,13 +369,13 @@ miauw_eval_add('fase6_openai_tools_batem_registry', static function (): void {
     }
 });
 
-miauw_eval_add('fase15_tool_contract_export_seguro', static function (): void {
+miauw_eval_add('fase16_tool_contract_export_seguro', static function (): void {
     $contracts = miauw_agent_tool_contract_export();
     $summary = (array) ($contracts['summary'] ?? array());
     $tools = (array) ($contracts['tools'] ?? array());
 
     miauw_eval_assert_same('miauw-tool-contracts-2026-05-16', (string) ($contracts['version'] ?? ''), 'Versao do contrato de tools mudou.');
-    miauw_eval_assert_same('fase15-style-router-memory', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 15.');
+    miauw_eval_assert_same('fase16-training-feedback', (string) ($contracts['phase'] ?? ''), 'Contrato de tools deve apontar Fase 16.');
     miauw_eval_assert_same('php_skill_registry', (string) ($contracts['source'] ?? ''), 'Contrato de tools deve vir do registry PHP.');
     miauw_eval_assert(empty($contracts['writes_enabled_in_node']), 'Node nao pode receber escrita direta liberada no contrato.');
     miauw_eval_assert_same('php', (string) ($contracts['execution_owner'] ?? ''), 'Execucao ainda deve pertencer ao PHP.');

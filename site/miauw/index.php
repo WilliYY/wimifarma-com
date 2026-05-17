@@ -12,6 +12,7 @@ $guardianAlerts = array();
 $guardianAlertCount = 0;
 $guardianPatterns = array();
 $canOpenDiagnostics = function_exists('miauw_diagnostics_can_review') && miauw_diagnostics_can_review($user);
+$trainingSummary = function_exists('miauw_training_summary') ? miauw_training_summary() : array();
 
 try {
     if (function_exists('miauw_guardian_scan')) {
@@ -56,6 +57,7 @@ try {
             <a href="/cotacao/">Cotacao</a>
             <a href="/financeiro/">Financeiro</a>
             <?php if ($canOpenDiagnostics) : ?>
+                <a href="/miauw/treino.php">Treino</a>
                 <a href="/miauw/diagnostico.php">Diagnostico</a>
             <?php endif; ?>
             <a class="soft" href="/miauw/logout.php">Sair</a>
@@ -87,13 +89,20 @@ try {
                 <?php endif; ?>
 
                 <?php foreach ($messages as $message) : ?>
-                    <article class="message <?php echo $message['papel'] === 'assistant' ? 'assistant' : 'user'; ?>">
+                    <article class="message <?php echo $message['papel'] === 'assistant' ? 'assistant' : 'user'; ?>" data-message-id="<?php echo e((string) $message['id']); ?>">
                         <?php if ($message['papel'] === 'assistant') : ?>
                             <img src="<?php echo e($avatar); ?>" alt="">
                         <?php endif; ?>
                         <div class="bubble">
                             <p><?php echo nl2br(e($message['conteudo'])); ?></p>
                             <time><?php echo e(miauw_message_time((string) $message['created_at'])); ?></time>
+                            <?php if ($message['papel'] === 'assistant') : ?>
+                                <nav class="training-actions" data-training-actions data-message-id="<?php echo e((string) $message['id']); ?>" aria-label="Treinar resposta do Miauby">
+                                    <button type="button" data-training-rating="boa">Boa</button>
+                                    <button type="button" data-training-open>Treinar</button>
+                                    <span data-training-status></span>
+                                </nav>
+                            <?php endif; ?>
                         </div>
                     </article>
                 <?php endforeach; ?>
@@ -151,6 +160,20 @@ try {
                     </div>
                 <?php endif; ?>
             </div>
+
+            <?php if ($canOpenDiagnostics) : ?>
+                <div class="trainer-card">
+                    <div class="guardian-head">
+                        <div>
+                            <span>Treinador Miauby</span>
+                            <strong><?php echo e((string) ($trainingSummary['pendente'] ?? 0)); ?> pendente(s)</strong>
+                        </div>
+                        <i aria-hidden="true"></i>
+                    </div>
+                    <p class="guardian-empty">Use os botoes dos baloes para ensinar o jeito certo. Exemplo aprovado entra no contexto do Miauby sem apagar historico.</p>
+                    <a class="trainer-link" href="/miauw/treino.php">Abrir treinador</a>
+                </div>
+            <?php endif; ?>
         </aside>
     </main>
 </body>

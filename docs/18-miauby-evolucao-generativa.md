@@ -142,6 +142,14 @@ Miauby ja possui:
   - `miauw_agent_style_context_export()` envia ao Node a rota, limite de palavras, regras duras, exemplos de voz e memorias/padroes apenas quando revisados como `aprovado`;
   - o Node respeita o contexto de estilo antes de chamar a camada online, aplica resposta local quando a rota permitir e poda listas/textos longos quando o contrato pedir conversa curta;
   - os evals cobrem que "qual sua api?" vira resposta viva com suporte tecnico interno, que "como faz um site?" pede objetivo sem tutorial numerado e que o contexto de estilo chega versionado.
+- Fase 16 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase16`;
+  - o servico Node passou para `SERVICE_VERSION=0.10.0` e `PHASE=fase16-training-feedback`;
+  - o chat principal mostra feedback `Boa` e `Treinar` nos baloes do Miauby, enviando exemplos para revisao sem apagar mensagem original;
+  - `/miauw/treino.php` e um painel restrito a `admin`, `gerente` ou usuario `adm`, com fila por status `pendente`, `aprovado`, `rejeitado` e `superado`;
+  - `miauw_treinos_respostas` guarda pergunta, resposta original, resposta ideal, motivo, categoria, estilo, status e versao; revisoes novas criam versoes em vez de destruir historico;
+  - `miauw_agent_style_context_export()` inclui exemplos aprovados de treino no contexto de estilo enviado ao Node, sem expor tabela, revisao ou bastidor ao operador;
+  - `site/miauw/miauw-evals.php` cobre status da Fase 16, contrato de treino, fluxo versionado e contrato de tools em `fase16-training-feedback`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -150,6 +158,7 @@ Arquivos:
 - `site/miauw/api.php`
 - `site/miauw/agent-tools.php`
 - `site/miauw/diagnostico.php`
+- `site/miauw/treino.php`
 - `site/miauw/miauw-diagnostics.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/miauw-evals.php`
@@ -176,6 +185,7 @@ Tabelas:
 - `miauw_padroes`
 - `miauw_configuracoes`
 - `miauw_tool_traces`
+- `miauw_treinos_respostas`
 
 Integracoes:
 
@@ -190,6 +200,8 @@ Integracoes:
 - Toda escrita importante deve passar por ferramenta controlada, validada e auditavel.
 - Memorias e padroes nao podem armazenar senhas, tokens, chaves, CPF/telefone sem necessidade ou dados sensiveis em texto solto.
 - Revisao de memorias e padroes deve marcar status e manter historico; nao apagar dado automaticamente por clique operacional.
+- Treino de resposta tambem deve ser revisado antes de virar contexto aprovado; exemplo ruim, incompleto ou sensivel deve ficar pendente/rejeitado, nunca aprovado automaticamente para todos.
+- Revisar treino deve preservar versoes: quando algo aprovado muda, criar versao nova e marcar a anterior como `superado`, sem apagar a origem.
 - Respostas generativas devem separar fato real, inferencia e proximo passo.
 - Balões do widget devem ser curtos, sem codigo, e usar o comentario do alerta quando existir. Para encomendas da Cotacao, comentar apenas quando passou de 1 dia.
 - A autonomia deve ser gradual: primeiro diagnosticar, depois sugerir, depois executar apenas acoes pequenas com trilha de auditoria.
@@ -206,6 +218,7 @@ Integracoes:
 - Usar `miauw_agent_tool_contract_export()` como ponte de schema para o Node; nao duplicar manualmente parametros, riscos ou confirmacoes no servico agente.
 - Manter avaliacoes simples de skills em `site/miauw/miauw-evals.php`: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
+- Usar `miauw_treinos_respostas` para exemplos concretos de voz e resposta ideal, com pergunta/resposta original preservadas e aprovacao humana antes de entrar no contexto.
 - Manter a tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
 - A tela de diagnostico usa o status publico (`configured`, `validated`, `status`) e nao chama a OpenAI automaticamente. Um teste online explicito ainda pode ser adicionado depois.
 - Preferir respostas operacionais e sem codigo para usuarios finais. Codigo, SQL, stack trace e comandos devem aparecer apenas em contexto tecnico autorizado.
@@ -215,6 +228,7 @@ Integracoes:
 
 - Adicionar tool generativa sem schema pode criar escrita indevida no banco.
 - Aprendizado automatico sem filtro pode cristalizar erro operacional.
+- Aprovar treino ruim pode ensinar tom errado para assuntos amplos; revisar com exemplos curtos, vivos e sem dados sensiveis.
 - Respostas longas demais no widget podem atrapalhar fluxo do funcionario.
 - Aumentar contexto demais pode elevar custo e lentidao.
 - Misturar comandos de financeiro, cotacao e cashback pode registrar dado no modulo errado.
@@ -225,6 +239,7 @@ Integracoes:
 - Mapear todas as tools atuais de `miauw_openai_tools()` contra o registry e remover divergencias.
 - Ampliar testes de exemplos para intents de alertas, cotacao rapida, memoria e ferramentas OpenAI registradas.
 - Ampliar a tela administrativa de revisao com filtros por status/modulo e edicao controlada de memoria/padrao quando houver politica definida.
+- Alimentar `/miauw/treino.php` com exemplos reais do adm por tema e transformar os melhores casos em evals fixos de voz.
 - Validar a ponte PHP de leitura da Fase 13 com traces reais do `adm` e de funcionarios liberados.
 - Ampliar a Fase 6/7/8/9/10/11/12/13 com mais cenarios reais coletados da operacao: alertas, memoria, Farmacia Popular, cashback, erros comuns de usuarios e exemplos bons/ruins de voz do Miauby.
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
@@ -246,3 +261,4 @@ Integracoes:
 - Fase 11: exportar schemas de tools para o Node a partir do registry PHP e usar esse contrato no agente sem liberar escrita direta. Iniciada.
 - Fase 12: executar no Node a primeira tool real de leitura segura sobre contratos auditados, mantendo escrita, confirmacao e rollback no PHP. Iniciada.
 - Fase 13: migrar tools reais de leitura baixa para o Node por ponte PHP interna, mantendo banco, confirmacao, auditoria e escrita forte sob controle do PHP. Iniciada.
+- Fase 16: criar o Treinador do Miauby no chat e painel restrito, usando exemplos aprovados como contexto versionado antes de audio, voz ou portabilidade externa. Iniciada.

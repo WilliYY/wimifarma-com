@@ -58,6 +58,7 @@ Status operacional:
 - A Fase 13 libera tools reais de leitura baixa no Node por ponte PHP interna tokenizada (`/miauw/agent-tools.php`). O Node chama Financeiro, Cashback, Codigos e Cotacao pelo PHP, com pre-leitura deterministica para pedidos claros e tools disponiveis ao Agents SDK; `buscar_cliente` e todas as escritas fortes continuam fora dessa primeira leva.
 - A Fase 14 libera a ponte PHP universal para o Node orquestrar todas as tools exportadas pelo registry, mantendo execucao/auditoria no PHP, escrita direta Node bloqueada e acoes fortes retornando `confirmation_required`.
 - A Fase 15 adiciona o roteador de estilo versionado: o PHP envia `style_context` ao Node com rota, limite de palavras, regras de voz, exemplos e memorias/padroes aprovados. Perguntas casuais, bastidor tecnico, saudacoes e ruido podem ser respondidos localmente sem chamada online nem tool, preservando a voz do Miauby e reduzindo custo/latencia.
+- A Fase 16 adiciona o Treinador do Miauby: feedback do chat e revisao em `/miauw/treino.php` salvam exemplos versionados em `miauw_treinos_respostas`; somente exemplos aprovados entram no `style_context` enviado ao Node, que continua sem escrita direta.
 
 Tabelas:
 
@@ -66,6 +67,7 @@ Tabelas:
 - `miauw_memorias`
 - `miauw_conhecimentos`
 - `miauw_alertas`
+- `miauw_treinos_respostas`
 
 ### Farmacia Popular / Miauby
 
@@ -153,7 +155,7 @@ Direcao:
 - usar traces `miauw_agent_shadow_compare` e `miauw_agent_node_reply` para medir divergencia, latencia e falhas durante o corte por `adm`.
 - preservar a personalidade versionada do Miauby ao migrar tools para Node; respostas genericas, secas ou burocraticas devem virar caso de eval antes de liberar mais usuarios.
 - consumir contratos exportados pelo PHP antes de migrar qualquer tool de escrita para o Node; `criar_tarefa` pode gravar via PHP bridge com usuario logado, mas acoes fortes devem retornar `confirmation_required`.
-- para comportamento/persona, preferir evoluir `miauw_agent_style_route()`, memorias/padroes aprovados e evals de voz antes de aumentar prompt longo; conversa casual nao deve listar tools nem expor bastidor.
+- para comportamento/persona, preferir evoluir `miauw_agent_style_route()`, memorias/padroes aprovados, exemplos aprovados em `miauw_treinos_respostas` e evals de voz antes de aumentar prompt longo; conversa casual nao deve listar tools nem expor bastidor.
 
 Documento especifico:
 
