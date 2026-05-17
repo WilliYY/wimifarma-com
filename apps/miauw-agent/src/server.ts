@@ -5,13 +5,13 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.13.0';
+const SERVICE_VERSION = '0.14.0';
 const AGENT_VERSION = '2.0-fase19';
-const PHASE = 'fase19-realtime-audio-control';
+const PHASE = 'fase19-record-transcribe-confirm';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const STYLE_VERSION = 'miauby-style-router-2026-05-16';
 const VOICE_PROFILE_VERSION = 'miauby-voice-profile-2026-05-17';
-const AUDIO_CONTRACT_VERSION = 'miauby-realtime-audio-2026-05-17';
+const AUDIO_CONTRACT_VERSION = 'miauby-record-transcribe-2026-05-17';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 const NODE_LOW_RISK_READ_TOOLS = [
   'resumo_financeiro',
@@ -66,7 +66,7 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Padroes aprovados enviados no contexto de estilo sao memoria de jeito e processo. Use como tempero; nao cite a tabela, revisao ou bastidor.',
   'O perfil compilado de treino aprovado pelo PHP e prioridade de voz quando combinar com o tema. Use o jeito e as regras, nao cite que foi treinado.',
   `Perfil de voz/tom: ${VOICE_PROFILE_VERSION}. Quando o PHP enviar perfil_voz_miauby, respeite ritmo, humor e diretivas sem citar configuracao.`,
-  `Contrato de audio: ${AUDIO_CONTRACT_VERSION}. Audio so pode existir por botao explicito; nao diga que gravou audio, transcreveu historico ou executou escrita por voz.`,
+  `Contrato de audio: ${AUDIO_CONTRACT_VERSION}. Audio so pode existir por botao explicito; a fala vira rascunho transcrito para revisao antes de enviar. Nao diga que armazenou audio ou executou escrita por voz.`,
   'Exemplos de treino aprovados sao amostras curtas, nao historico para despejar. Copie o padrao de resposta, nao explique o treinamento.',
   'Para mensagem sem objetivo claro, responda em 1 ou 2 linhas: reconheca o barulho, peca tela/dado/objetivo e puxe para acao. Nada de checklist longo.',
   'Quando faltar informacao operacional, peca exatamente o menor dado ausente: produto, EAN, valor, data, responsavel, tela, acao feita ou print.',
@@ -98,6 +98,7 @@ const model = envString(['MIAUW_OPENAI_MODEL', 'OPENAI_MODEL'], DEFAULT_MODEL);
 const apiKey = envString(['MIAUW_OPENAI_API_KEY', 'OPENAI_API_KEY']);
 const internalToken = envString(['MIAUW_AGENT_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN']);
 const phpToolBridgeUrl = envString(['MIAUW_PHP_TOOL_BRIDGE_URL'], 'http://wimifarma-com-web/miauw/agent-tools.php');
+const transcriptionModel = envString(['MIAUW_TRANSCRIPTION_MODEL', 'OPENAI_TRANSCRIPTION_MODEL'], 'gpt-4o-transcribe');
 const realtimeModel = envString(['MIAUW_REALTIME_MODEL', 'OPENAI_REALTIME_MODEL'], 'gpt-realtime');
 const realtimeVoice = envString(['MIAUW_REALTIME_VOICE', 'OPENAI_REALTIME_VOICE'], 'marin');
 
@@ -121,6 +122,7 @@ function publicStatus() {
     style_version: STYLE_VERSION,
     voice_profile_version: VOICE_PROFILE_VERSION,
     audio_version: AUDIO_CONTRACT_VERSION,
+    transcription_model: transcriptionModel,
     realtime_model: realtimeModel,
     realtime_voice: realtimeVoice,
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
@@ -129,7 +131,10 @@ function publicStatus() {
     training_profile_supported: true,
     voice_profile_supported: true,
     audio_readiness_supported: true,
-    realtime_audio_supported: true,
+    record_transcribe_audio_supported: true,
+    audio_confirmation_required: true,
+    realtime_audio_supported: false,
+    browser_audio_capture_supported: true,
     browser_audio_requires_user_action: true,
     audio_capture_enabled: false,
     audio_playback_enabled: false,
@@ -450,7 +455,7 @@ function safeAudioContract(value: unknown): AudioContract {
     speechToSpeechEnabled: safeBoolean(audio.speech_to_speech_enabled ?? audio.speechToSpeechEnabled, false),
     storageEnabled: false,
     provider: safeShort(audio.provider, 80) || 'not_configured',
-    model: safeShort(audio.model, 80) || realtimeModel,
+    model: safeShort(audio.model, 80) || transcriptionModel,
     voice: safeShort(audio.voice, 80) || realtimeVoice,
     allowedFormats: allowedFormats.length > 0 ? allowedFormats : ['text'],
     privacyRules: safeStringArray(audio.privacy_rules ?? audio.privacyRules, 4, 160),
@@ -538,7 +543,7 @@ function styleContextForPrompt(styleContext: SafeStyleContext): string {
     lines.push(`regras_voz: ${voice.directives.slice(0, 4).join(' | ')}`);
   }
   lines.push(
-    `audio_miauby: ${voice.audio.version || AUDIO_CONTRACT_VERSION}; status=${voice.audio.status}; modo=${voice.audio.mode}; captura=${voice.audio.captureEnabled ? 'botao_explicito' : 'nao'}; playback=${voice.audio.playbackEnabled ? 'botao_explicito' : 'nao'}; armazenamento=nao; modelo=${voice.audio.model}; voz=${voice.audio.voice}`,
+    `audio_miauby: ${voice.audio.version || AUDIO_CONTRACT_VERSION}; status=${voice.audio.status}; modo=${voice.audio.mode}; captura=${voice.audio.captureEnabled ? 'botao_explicito' : 'nao'}; transcricao=${voice.audio.transcriptionEnabled ? 'rascunho_confirmado' : 'nao'}; playback=${voice.audio.playbackEnabled ? 'botao_explicito' : 'nao'}; armazenamento=nao; modelo=${voice.audio.model}; voz=${voice.audio.voice}`,
   );
 
   if (styleContext.examples.length > 0) {

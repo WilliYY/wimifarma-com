@@ -129,6 +129,7 @@ try {
                     <span class="audio-button-dot" aria-hidden="true"></span>
                     <span data-audio-label>Falar</span>
                 </button>
+                <button class="audio-cancel-button" type="button" data-audio-cancel hidden>Cancelar</button>
                 <button class="send-button" type="submit" aria-label="Enviar">
                     <span>Enviar</span>
                 </button>

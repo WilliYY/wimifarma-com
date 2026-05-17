@@ -166,15 +166,15 @@ Miauby ja possui:
   - `/miauw/treino.php` mostra o perfil de voz atual e avisa que audio segue sem microfone ou gravacao nesta fase;
   - o Node aceita `voice_profile` no `style_context`, inclui `perfil_voz_miauby`/`audio_miauby` no prompt e nao pode afirmar que ouviu/transcreveu/tocou audio quando o contrato estiver desligado;
   - `site/miauw/miauw-evals.php` cobre status Fase 18, contrato de voz/audio seguro, contexto de voz e contrato de tools em `fase18-voice-audio-readiness`.
-- Fase 19 do agente operacional v2 iniciada:
+- Fase 19 do agente operacional v2 ajustada para envio confirmado:
   - `MIAUW_AGENT_VERSION=2.0-fase19`;
-  - o servico Node passou para `SERVICE_VERSION=0.13.0` e `PHASE=fase19-realtime-audio-control`;
-  - `miauw_agent_audio_contract()` agora descreve audio Realtime/WebRTC com `MIAUW_REALTIME_MODEL=gpt-realtime` e `MIAUW_REALTIME_VOICE=marin`, mantendo `storage_enabled=false`;
-  - o chat principal e o widget global ganharam botao `Falar`; o navegador captura microfone somente apos clique e envia SDP ao PHP por `action=audio_session`;
+  - o servico Node passou para `SERVICE_VERSION=0.14.0` e `PHASE=fase19-record-transcribe-confirm`;
+  - `miauw_agent_audio_contract()` agora descreve audio por gravacao temporaria no navegador, transcricao com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe` e confirmacao humana antes de enviar, mantendo `storage_enabled=false`;
+  - o chat principal e o widget global usam botao `Falar`; o navegador captura microfone somente apos clique, grava o trecho em `MediaRecorder`, envia para o PHP por `action=audio_transcribe` e recebe texto editavel;
   - `widget-status.php` expoe `audio_contract` para o widget decidir quando mostrar o botao, e o frontend troca bloqueios de navegador por orientacao clara de permissao/HTTPS;
-  - o PHP cria a chamada Realtime pelo servidor em `https://api.openai.com/v1/realtime/calls`, sem expor a chave no navegador, e devolve apenas o SDP de resposta;
-  - audio nao vira mensagem, transcricao persistida, log de fala ou escrita operacional; acoes fortes continuam no fluxo de texto/confirmacao auditada;
-  - `site/miauw/miauw-evals.php` cobre status Fase 19, contrato de audio sem gravacao, modelo/voz Realtime e contrato de tools em `fase19-realtime-audio-control`.
+  - o PHP chama `https://api.openai.com/v1/audio/transcriptions` com a chave do servidor, sem expor segredo no navegador, e nao armazena o arquivo de audio;
+  - audio so vira mensagem depois que o usuario revisar e apertar `Enviar`; `Cancelar` descarta o rascunho e escrita operacional por voz segue bloqueada;
+  - `site/miauw/miauw-evals.php` cobre status Fase 19, contrato de transcricao confirmada, modelo de transcricao e contrato de tools em `fase19-record-transcribe-confirm`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -218,7 +218,7 @@ Tabelas:
 Integracoes:
 
 - OpenAI Responses API;
-- OpenAI Realtime API por WebRTC para audio controlado do chat;
+- OpenAI Audio Transcriptions API para transcrever audio temporario do chat/widget antes do envio confirmado;
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.
@@ -260,7 +260,7 @@ Integracoes:
 - Aprendizado automatico sem filtro pode cristalizar erro operacional.
 - Aprovar treino ruim pode ensinar tom errado para assuntos amplos; revisar com exemplos curtos, vivos e sem dados sensiveis.
 - `MIAUW_AUDIO_ENABLED=true` liga a interface de audio no chat, mas microfone so inicia por clique; sem HTTPS/navegador compativel ou chave configurada, o botao informa falha e o texto continua funcionando.
-- Audio Realtime nao deve ser persistido nem virar transcricao automatica de historico ate existir revisao/consentimento explicito para isso.
+- Audio gravado no botao e temporario: deve virar rascunho transcrito para revisao, nunca arquivo persistido, mensagem automatica ou escrita operacional direta.
 - Respostas longas demais no widget podem atrapalhar fluxo do funcionario.
 - Aumentar contexto demais pode elevar custo e lentidao.
 - Misturar comandos de financeiro, cotacao e cashback pode registrar dado no modulo errado.
@@ -296,3 +296,4 @@ Integracoes:
 - Fase 16: criar o Treinador do Miauby no chat e painel restrito, usando exemplos aprovados como contexto versionado antes de audio, voz ou portabilidade externa. Iniciada.
 - Fase 17: compilar treino aprovado em perfil curto, selecionar exemplos relevantes e responder localmente quando houver match forte para reduzir custo/latencia. Iniciada.
 - Fase 18: versionar perfis de voz/tom e preparar contrato seguro de audio em `text_only`, sem microfone, TTS ou gravacao ate existir botao/consentimento/provedor validado. Iniciada.
+- Fase 19: gravar audio temporario por botao, transcrever com OpenAI no PHP e exigir revisao humana com `Enviar`/`Cancelar` antes de virar mensagem. Iniciada.

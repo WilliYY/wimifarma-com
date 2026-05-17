@@ -527,7 +527,7 @@ a {
 
 .composer {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     gap: 12px;
     padding: clamp(16px, 2vw, 24px);
     border-top: 1px solid var(--line);
@@ -536,6 +536,7 @@ a {
 
 .composer textarea {
     width: 100%;
+    min-width: 0;
     min-height: 52px;
     max-height: 150px;
     resize: none;
@@ -553,7 +554,8 @@ a {
     box-shadow: 0 0 0 4px rgba(159, 16, 56, 0.09);
 }
 
-.send-button {
+.send-button,
+.audio-cancel-button {
     min-width: 112px;
     align-self: end;
 }
@@ -582,12 +584,33 @@ a {
     box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.24);
 }
 
+.audio-button.is-draft {
+    border-color: #10a56a;
+    color: #0d8a59;
+}
+
 .audio-button.is-starting {
     cursor: wait;
     opacity: 0.82;
 }
 
+.audio-cancel-button {
+    border-color: var(--line);
+    background: #fff;
+    color: var(--muted);
+}
+
+.audio-cancel-button[hidden] {
+    display: none;
+}
+
+.audio-cancel-button:hover {
+    border-color: var(--wine);
+    color: var(--wine);
+}
+
 .audio-button:disabled,
+.audio-cancel-button:disabled,
 .send-button:disabled {
     opacity: 0.7;
     cursor: wait;
@@ -1350,6 +1373,7 @@ a {
     }
 
     .audio-button,
+    .audio-cancel-button,
     .send-button {
         width: 100%;
     }

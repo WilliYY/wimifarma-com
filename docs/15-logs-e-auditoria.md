@@ -57,7 +57,7 @@ Arquivos:
 - A Fase 15 registra respostas locais do roteador de estilo como `miauw_style_router` em `miauw_tool_traces`, guardando apenas intent, versao de estilo e se veio do widget. O trace nao deve salvar mensagem completa, resposta completa, memoria bruta, token, SQL ou payload externo.
 - A Fase 16 registra feedback/revisao do Treinador do Miauby em `wf_logs` como `miauw_treino_resposta` e `miauw_revisao_treino`; o conteudo completo fica em `miauw_treinos_respostas`, sanitizado e versionado, sem apagar pergunta/resposta original.
 - A Fase 17 registra resposta local baseada em treino aprovado como `miauw_training_router` em `miauw_tool_traces`, salvando apenas score, intent, versao e flags seguras, sem payload bruto, segredo ou texto completo do operador.
-- A Fase 19 registra tentativa de abertura de audio como `miauw_audio_session` em `miauw_tool_traces`, guardando somente bytes do SDP, modo, modelo/voz e status sanitizado. O audio em si nao e gravado, transcrito para historico nem usado para executar escrita operacional direta.
+- A Fase 19 registra transcricao de audio como `miauw_audio_transcribe` em `miauw_tool_traces`, guardando somente tamanho do arquivo temporario, tamanho do texto, modo, modelo e status sanitizado. O arquivo de audio nao e armazenado e a fala so vira mensagem depois que o usuario revisar e apertar `Enviar`.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 

@@ -55,7 +55,7 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260517e');
+    define('MIAUW_VERSION', '20260517f');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
@@ -63,7 +63,7 @@ if (!defined('MIAUW_AGENT_VERSION')) {
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-17-operacional-v2-realtime-audio-control');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-17-operacional-v2-record-transcribe-confirm');
 }
 
 if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
@@ -79,7 +79,7 @@ if (!defined('MIAUW_AGENT_VOICE_PROFILE_VERSION')) {
 }
 
 if (!defined('MIAUW_AGENT_AUDIO_VERSION')) {
-    define('MIAUW_AGENT_AUDIO_VERSION', 'miauby-realtime-audio-2026-05-17');
+    define('MIAUW_AGENT_AUDIO_VERSION', 'miauby-record-transcribe-2026-05-17');
 }
 
 if (!defined('MIAUW_VOICE_PROFILE')) {
@@ -98,6 +98,11 @@ if (!defined('MIAUW_REALTIME_MODEL')) {
 if (!defined('MIAUW_REALTIME_VOICE')) {
     $miauwRealtimeVoice = miauw_env_string(array('MIAUW_REALTIME_VOICE', 'OPENAI_REALTIME_VOICE'));
     define('MIAUW_REALTIME_VOICE', $miauwRealtimeVoice !== '' ? $miauwRealtimeVoice : 'marin');
+}
+
+if (!defined('MIAUW_TRANSCRIPTION_MODEL')) {
+    $miauwTranscriptionModel = miauw_env_string(array('MIAUW_TRANSCRIPTION_MODEL', 'OPENAI_TRANSCRIPTION_MODEL'));
+    define('MIAUW_TRANSCRIPTION_MODEL', $miauwTranscriptionModel !== '' ? $miauwTranscriptionModel : 'gpt-4o-transcribe');
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -596,14 +601,17 @@ function miauw_agent_public_status(): array
             'perfis_voz_tom',
             'contrato_audio_seguro',
             'audio_botao_controlado',
-            'realtime_webrtc_controlado',
-            'audio_sem_gravacao',
+            'audio_gravacao_temporaria',
+            'audio_transcricao_confirmada',
+            'audio_envio_confirmado',
+            'audio_sem_armazenamento',
             'contexto_voz_node',
         ),
         'voice_profile_version' => miauw_constant_string('MIAUW_AGENT_VOICE_PROFILE_VERSION', ''),
         'audio_version' => miauw_constant_string('MIAUW_AGENT_AUDIO_VERSION', ''),
         'voice_profile' => function_exists('miauw_agent_voice_profile_id') ? miauw_agent_voice_profile_id() : '',
         'audio_status' => function_exists('miauw_agent_audio_contract') ? (string) (miauw_agent_audio_contract()['status'] ?? '') : '',
+        'transcription_model' => miauw_constant_string('MIAUW_TRANSCRIPTION_MODEL', ''),
         'realtime_model' => miauw_constant_string('MIAUW_REALTIME_MODEL', ''),
         'realtime_voice' => miauw_constant_string('MIAUW_REALTIME_VOICE', ''),
     );
@@ -1329,23 +1337,28 @@ function miauw_agent_audio_contract(): array
         'ui_enabled' => $requested,
         'requested_by_env' => $requested,
         'status' => $status,
-        'mode' => $requested ? 'realtime_webrtc_unified' : 'text_only',
+        'mode' => $requested ? 'record_transcribe_confirmed' : 'text_only',
         'capture_enabled' => $enabled,
-        'playback_enabled' => $enabled,
-        'transcription_enabled' => false,
+        'playback_enabled' => false,
+        'transcription_enabled' => $enabled,
         'tts_enabled' => false,
-        'speech_to_speech_enabled' => $enabled,
+        'speech_to_speech_enabled' => false,
         'storage_enabled' => false,
-        'provider' => $requested ? 'openai_realtime' : 'not_configured',
-        'model' => miauw_constant_string('MIAUW_REALTIME_MODEL', 'gpt-realtime'),
+        'provider' => $requested ? 'openai_audio_transcriptions' : 'not_configured',
+        'model' => miauw_constant_string('MIAUW_TRANSCRIPTION_MODEL', 'gpt-4o-transcribe'),
         'voice' => miauw_constant_string('MIAUW_REALTIME_VOICE', 'marin'),
+        'realtime_model' => miauw_constant_string('MIAUW_REALTIME_MODEL', 'gpt-realtime'),
+        'confirm_before_send' => true,
+        'max_recording_seconds' => 90,
         'allowed_formats' => $requested ? array('text', 'audio') : array('text'),
         'requires_explicit_user_action' => true,
         'privacy_rules' => array(
             'microfone nunca liga sozinho',
-            'audio so inicia por clique do usuario no botao de falar',
-            'audio nao e gravado nem armazenado pelo Miauby',
-            'fala em tempo real nao libera escrita operacional direta',
+            'gravacao temporaria so inicia por clique do usuario no botao de falar',
+            'audio temporario e descartado apos transcrever, enviar ou cancelar',
+            'transcricao entra no campo de texto para revisao antes de enviar',
+            'audio nao e armazenado no banco pelo Miauby',
+            'voz nao libera escrita operacional direta',
             'acao forte continua exigindo confirmacao humana pelo fluxo auditado',
             'resposta por audio segue os mesmos guardrails de texto, confirmacao e auditoria',
         ),
@@ -1472,6 +1485,125 @@ function miauw_agent_create_realtime_call(string $offerSdp, array $user): array
         'model' => (string) ($contract['model'] ?? ''),
         'voice' => (string) ($contract['voice'] ?? ''),
         'mode' => (string) ($contract['mode'] ?? ''),
+    );
+}
+
+function miauw_agent_transcribe_audio_upload(array $file, array $user): array
+{
+    $contract = miauw_agent_audio_contract();
+    if (empty($contract['ui_enabled'])) {
+        throw new RuntimeException('Audio do Miauby esta desligado neste ambiente.');
+    }
+
+    if (empty($contract['enabled']) || empty($contract['transcription_enabled'])) {
+        throw new RuntimeException('Audio do Miauby ainda nao esta pronto neste servidor.');
+    }
+
+    if (!function_exists('curl_init') || !function_exists('curl_file_create')) {
+        throw new RuntimeException('Audio indisponivel: transporte interno ausente.');
+    }
+
+    $errorCode = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        throw new InvalidArgumentException('Nao recebi o audio direito. Grave de novo e tente enviar.');
+    }
+
+    $tmpName = (string) ($file['tmp_name'] ?? '');
+    $size = (int) ($file['size'] ?? 0);
+    if ($tmpName === '' || !is_file($tmpName) || (!is_uploaded_file($tmpName) && PHP_SAPI !== 'cli')) {
+        throw new InvalidArgumentException('Audio temporario invalido. Grave de novo, humano.');
+    }
+
+    if ($size <= 0) {
+        throw new InvalidArgumentException('O audio veio vazio. Meu bigode nao transcreve silencio.');
+    }
+
+    if ($size > 25 * 1024 * 1024) {
+        throw new InvalidArgumentException('Audio grande demais. Grave um trecho menor antes de enviar.');
+    }
+
+    $originalName = preg_replace('/[^a-zA-Z0-9._-]+/', '-', (string) ($file['name'] ?? 'miauby-audio.webm'));
+    if (!is_string($originalName) || trim($originalName) === '') {
+        $originalName = 'miauby-audio.webm';
+    }
+
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    $allowedExtensions = array('mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm', 'ogg', 'flac');
+    if ($extension === '') {
+        $extension = 'webm';
+        $originalName .= '.webm';
+    }
+    if (!in_array($extension, $allowedExtensions, true)) {
+        throw new InvalidArgumentException('Formato de audio nao aceito aqui. Use o botao Falar novamente.');
+    }
+
+    $mime = (string) ($file['type'] ?? '');
+    if ($mime === '' || $mime === 'application/octet-stream') {
+        $mimeByExtension = array(
+            'mp3' => 'audio/mpeg',
+            'mp4' => 'audio/mp4',
+            'mpeg' => 'audio/mpeg',
+            'mpga' => 'audio/mpeg',
+            'm4a' => 'audio/mp4',
+            'wav' => 'audio/wav',
+            'webm' => 'audio/webm',
+            'ogg' => 'audio/ogg',
+            'flac' => 'audio/flac',
+        );
+        $mime = $mimeByExtension[$extension] ?? 'audio/webm';
+    }
+
+    $fields = array(
+        'model' => miauw_constant_string('MIAUW_TRANSCRIPTION_MODEL', 'gpt-4o-transcribe'),
+        'file' => curl_file_create($tmpName, $mime, $originalName),
+        'language' => 'pt',
+        'response_format' => 'json',
+        'prompt' => 'Transcreva em portugues do Brasil. Termos comuns: Wimifarma, Miauby, cotacao, cashback, sangria, EAN, distribuidora, encomenda, farmacia popular.',
+    );
+
+    $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
+    curl_setopt_array($ch, array(
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => array(
+            'Authorization: Bearer ' . MIAUW_OPENAI_API_KEY,
+            'Accept: application/json',
+            'OpenAI-Safety-Identifier: ' . miauw_agent_realtime_safety_identifier($user),
+        ),
+        CURLOPT_POSTFIELDS => $fields,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 8,
+        CURLOPT_TIMEOUT => 45,
+    ));
+
+    $raw = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if (!is_string($raw) || $raw === '' || $status < 200 || $status >= 300) {
+        $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+        $apiMessage = is_array($decoded) && is_string($decoded['error']['message'] ?? null)
+            ? miauw_redact_secret_fragments((string) $decoded['error']['message'])
+            : '';
+        $detail = $error !== '' ? miauw_redact_secret_fragments($error) : ('HTTP ' . $status);
+        if ($apiMessage !== '') {
+            $detail .= ' - ' . $apiMessage;
+        }
+
+        throw new RuntimeException('Falha ao transcrever audio do Miauby: ' . $detail);
+    }
+
+    $decoded = json_decode($raw, true);
+    $text = is_array($decoded) ? trim((string) ($decoded['text'] ?? '')) : '';
+    if ($text === '') {
+        throw new RuntimeException('Transcricao voltou vazia. Grave de novo mais perto do microfone.');
+    }
+
+    return array(
+        'text' => $text,
+        'model' => (string) ($contract['model'] ?? miauw_constant_string('MIAUW_TRANSCRIPTION_MODEL', 'gpt-4o-transcribe')),
+        'mode' => (string) ($contract['mode'] ?? 'record_transcribe_confirmed'),
+        'bytes' => $size,
     );
 }
 
@@ -1617,7 +1749,7 @@ function miauw_agent_personality_contract(): array
             'inventar dado real sem fonte do sistema ou do operador',
             'executar acao forte sem confirmacao humana',
         ),
-        'proxima_melhoria' => 'Adicionar botao de audio controlado, escolha de voz e validacao humana sem ligar microfone sozinho.',
+        'proxima_melhoria' => 'Ampliar perfis de voz e playback depois que o fluxo de gravar, transcrever, revisar e enviar estiver validado.',
     );
 }
 
@@ -1630,7 +1762,7 @@ function miauw_agent_next_phase_contract(): array
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => miauw_agent_engine(),
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria, memorias revisadas, treino aprovado, perfil de voz e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, contexto de estilo, padroes aprovados, perfil compilado dos treinos revisados e perfil de voz/tom; pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, acoes fortes voltam como confirmacao obrigatoria. O audio da Fase 19 abre por botao explicito via WebRTC, sem gravacao/transcricao persistida e sem escrita operacional por voz.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria, memorias revisadas, treino aprovado, perfil de voz e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, contexto de estilo, padroes aprovados, perfil compilado dos treinos revisados e perfil de voz/tom; pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, acoes fortes voltam como confirmacao obrigatoria. O audio da Fase 19 usa gravacao temporaria no navegador, transcricao pela camada online do PHP e rascunho revisavel antes de enviar, sem armazenar audio e sem escrita operacional direta por voz.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
@@ -1638,8 +1770,9 @@ function miauw_agent_next_phase_contract(): array
             'perfis_voz_tom' => function_exists('miauw_agent_voice_profile_contract'),
             'contrato_audio_seguro' => function_exists('miauw_agent_audio_contract'),
             'contexto_voz_node' => function_exists('miauw_agent_style_context_export'),
-            'audio_botao_controlado' => function_exists('miauw_agent_create_realtime_call'),
-            'audio_sem_gravacao' => true,
+            'audio_botao_controlado' => function_exists('miauw_agent_transcribe_audio_upload'),
+            'audio_transcricao_confirmada' => function_exists('miauw_agent_transcribe_audio_upload'),
+            'audio_sem_armazenamento' => true,
             'roteador_estilo' => function_exists('miauw_agent_style_route'),
             'contexto_estilo_node' => function_exists('miauw_agent_style_context_export'),
             'memoria_estilo_aprovada' => function_exists('miauw_agent_approved_style_patterns'),
@@ -5052,7 +5185,7 @@ function miauw_agent_tool_contract_export(): array
     return array(
         'version' => 'miauw-tool-contracts-2026-05-16',
         'agent_version' => miauw_constant_string('MIAUW_AGENT_VERSION', ''),
-        'phase' => 'fase19-realtime-audio-control',
+        'phase' => 'fase19-record-transcribe-confirm',
         'source' => 'php_skill_registry',
         'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
         'writes_enabled_in_node' => false,

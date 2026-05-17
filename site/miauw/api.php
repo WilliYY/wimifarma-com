@@ -48,6 +48,78 @@ try {
     $action = (string) ($_POST['action'] ?? '');
     $conversationId = miauw_current_conversation_id((int) $user['id']);
 
+    if ($action === 'audio_transcribe') {
+        $traceId = function_exists('miauw_trace_new_id') ? miauw_trace_new_id() : bin2hex(random_bytes(8));
+        if (function_exists('miauw_trace_set_context')) {
+            miauw_trace_set_context($traceId, $conversationId, (int) $user['id'], null);
+        }
+
+        $maintenance = function_exists('miauw_maintenance_status') ? miauw_maintenance_status($user) : array('active' => false, 'can_send' => true);
+        if (function_exists('miauw_user_can_send_miauw') && !miauw_user_can_send_miauw($user)) {
+            miauw_json(array(
+                'ok' => false,
+                'message' => (string) ($maintenance['message'] ?? 'Miauby esta em atualizacao interna agora.'),
+                'maintenance' => $maintenance,
+                'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+            ), 423);
+        }
+
+        $audioFile = is_array($_FILES['audio'] ?? null) ? $_FILES['audio'] : array();
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('miauw_audio_transcribe', 'received', array(
+                'type' => 'audio',
+                'summary' => 'Audio temporario recebido para transcricao confirmada.',
+                'payload' => array(
+                    'bytes' => (int) ($audioFile['size'] ?? 0),
+                    'mode' => 'record_transcribe_confirmed',
+                ),
+            ));
+        }
+
+        try {
+            $audio = miauw_agent_transcribe_audio_upload($audioFile, $user);
+            if (function_exists('miauw_trace_record')) {
+                miauw_trace_record('miauw_audio_transcribe', 'ok', array(
+                    'type' => 'audio',
+                    'summary' => 'Audio transcrito para rascunho revisavel, sem armazenar arquivo.',
+                    'payload' => array(
+                        'model' => (string) ($audio['model'] ?? ''),
+                        'mode' => (string) ($audio['mode'] ?? ''),
+                        'bytes' => (int) ($audio['bytes'] ?? 0),
+                        'text_size' => miauw_strlen((string) ($audio['text'] ?? '')),
+                    ),
+                ));
+            }
+
+            miauw_json(array(
+                'ok' => true,
+                'text' => (string) ($audio['text'] ?? ''),
+                'model' => (string) ($audio['model'] ?? ''),
+                'mode' => (string) ($audio['mode'] ?? ''),
+                'trace_id' => $traceId,
+                'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+            ));
+        } catch (Throwable $error) {
+            if (function_exists('miauw_trace_record')) {
+                miauw_trace_record('miauw_audio_transcribe', 'blocked', array(
+                    'type' => 'audio',
+                    'summary' => 'Audio do Miauby nao foi transcrito.',
+                    'error' => $error->getMessage(),
+                    'payload' => array(
+                        'contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+                    ),
+                ));
+            }
+
+            miauw_json(array(
+                'ok' => false,
+                'message' => 'Nao consegui transcrever esse audio agora. Permita o microfone, grave de novo e me mande sem pressa.',
+                'detail' => $error instanceof InvalidArgumentException ? $error->getMessage() : '',
+                'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+            ), 422);
+        }
+    }
+
     if ($action === 'audio_session') {
         $traceId = function_exists('miauw_trace_new_id') ? miauw_trace_new_id() : bin2hex(random_bytes(8));
         if (function_exists('miauw_trace_set_context')) {
@@ -63,6 +135,12 @@ try {
                 'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
             ), 423);
         }
+
+        miauw_json(array(
+            'ok' => false,
+            'message' => 'Atualize a pagina: o audio agora grava, transcreve e espera voce apertar Enviar ou Cancelar.',
+            'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+        ), 409);
 
         $sdp = (string) ($_POST['sdp'] ?? '');
         if (function_exists('miauw_trace_record')) {

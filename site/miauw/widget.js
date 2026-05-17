@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260517e';
+    link.href = '/miauw/widget.css?v=20260517f';
     document.head.appendChild(link);
   }
 
@@ -27,6 +27,7 @@
     audio: {
       uiEnabled: false,
       captureEnabled: false,
+      transcriptionEnabled: false,
       status: 'desativado',
       model: '',
       voice: '',
@@ -81,6 +82,7 @@
           <span class="miauw-widget-audio-dot" aria-hidden="true"></span>
           <span data-miauw-audio-label>Falar</span>
         </button>
+        <button class="miauw-widget-audio-cancel" type="button" data-miauw-audio-cancel hidden>Cancelar</button>
         <button class="miauw-widget-send" type="submit">Enviar</button>
       </form>
     </div>
@@ -106,15 +108,22 @@
   const alertRefresh = root.querySelector('[data-miauw-alerts-refresh]');
   const audioButton = root.querySelector('[data-miauw-audio-toggle]');
   const audioLabel = audioButton ? audioButton.querySelector('[data-miauw-audio-label]') : null;
+  const audioCancelButton = root.querySelector('[data-miauw-audio-cancel]');
   let typingMessage = null;
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const widgetAudioState = {
     starting: false,
-    active: false,
-    pc: null,
+    recording: false,
+    transcribing: false,
+    draftActive: false,
     stream: null,
-    remoteAudio: null,
-    dataChannel: null,
+    recorder: null,
+    chunks: [],
+    timer: null,
+    startedAt: 0,
+    previousText: '',
+    cancelText: '',
+    stopReason: 'idle',
   };
   let lastUserActivityAt = 0;
   let lastGuideAt = 0;
@@ -262,8 +271,8 @@
       } else {
         setTimeout(() => input && input.focus(), 160);
       }
-    } else if (widgetAudioState.active || widgetAudioState.starting) {
-      closeWidgetAudioSession({ notify: false });
+    } else if (widgetAudioState.recording || widgetAudioState.starting || widgetAudioState.transcribing) {
+      resetWidgetAudioCaptureState({ clearDraft: false });
     }
   };
 
@@ -778,7 +787,7 @@
       tools.hidden = !state.authenticated;
     }
     setView(state.view, { skipLoad: true });
-    setWidgetAudioUi(widgetAudioState.active ? 'active' : 'idle', widgetAudioState.active ? 'Ouvindo' : 'Falar');
+    setWidgetAudioUi(widgetAudioState.recording ? 'recording' : (widgetAudioState.draftActive ? 'draft' : 'idle'), widgetAudioState.recording ? 'Parar' : (widgetAudioState.draftActive ? 'Refazer' : 'Falar'));
   };
 
   const applyAudioContract = (contract = {}) => {
@@ -786,11 +795,12 @@
     state.audio = {
       uiEnabled: Boolean(next.ui_enabled),
       captureEnabled: Boolean(next.capture_enabled || next.enabled),
+      transcriptionEnabled: Boolean(next.transcription_enabled),
       status: String(next.status || 'desativado'),
       model: String(next.model || ''),
       voice: String(next.voice || ''),
     };
-    setWidgetAudioUi(widgetAudioState.active ? 'active' : 'idle', widgetAudioState.active ? 'Ouvindo' : 'Falar');
+    setWidgetAudioUi(widgetAudioState.recording ? 'recording' : (widgetAudioState.draftActive ? 'draft' : 'idle'), widgetAudioState.recording ? 'Parar' : (widgetAudioState.draftActive ? 'Refazer' : 'Falar'));
   };
 
   const widgetAudioUnavailable = () => {
@@ -850,55 +860,153 @@
     }
   };
 
+  const MAX_WIDGET_AUDIO_RECORDING_MS = 90000;
+
+  const widgetAudioMimeType = () => {
+    if (!window.MediaRecorder || typeof window.MediaRecorder.isTypeSupported !== 'function') return '';
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ];
+    return candidates.find((item) => window.MediaRecorder.isTypeSupported(item)) || '';
+  };
+
+  const widgetAudioDuration = () => {
+    if (!widgetAudioState.startedAt) return '00:00';
+    const totalSeconds = Math.max(0, Math.floor((Date.now() - widgetAudioState.startedAt) / 1000));
+    const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+    const seconds = String(totalSeconds % 60).padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
+
   const setWidgetAudioUi = (mode, label = '') => {
     if (!audioButton) return;
-    const active = mode === 'active';
-    const busy = mode === 'starting';
+    const active = mode === 'recording';
+    const busy = mode === 'starting' || mode === 'transcribing';
+    const draft = mode === 'draft';
     const allowed = state.authenticated && state.view === 'chat' && state.audio.uiEnabled;
 
     audioButton.hidden = !allowed;
     audioButton.disabled = busy || !allowed;
     audioButton.classList.toggle('is-active', active);
     audioButton.classList.toggle('is-starting', busy);
+    audioButton.classList.toggle('is-draft', draft);
     audioButton.setAttribute('aria-pressed', active ? 'true' : 'false');
     if (audioLabel) {
-      audioLabel.textContent = label || (active ? 'Ouvindo' : 'Falar');
+      audioLabel.textContent = label || (active ? `Parar ${widgetAudioDuration()}` : 'Falar');
+    }
+    if (audioCancelButton) {
+      audioCancelButton.hidden = !(allowed && (active || draft || mode === 'transcribing'));
+      audioCancelButton.disabled = mode === 'transcribing';
     }
   };
 
-  const closeWidgetAudioSession = (options = {}) => {
-    const wasActive = widgetAudioState.active || widgetAudioState.starting;
-
-    if (widgetAudioState.dataChannel) {
-      try { widgetAudioState.dataChannel.close(); } catch (error) { /* ignored */ }
-    }
-    if (widgetAudioState.pc) {
-      try { widgetAudioState.pc.close(); } catch (error) { /* ignored */ }
-    }
+  const stopWidgetAudioTracks = () => {
     if (widgetAudioState.stream) {
       widgetAudioState.stream.getTracks().forEach((track) => track.stop());
     }
-    if (widgetAudioState.remoteAudio) {
-      widgetAudioState.remoteAudio.remove();
+    widgetAudioState.stream = null;
+  };
+
+  const clearWidgetAudioTimer = () => {
+    if (widgetAudioState.timer) {
+      window.clearInterval(widgetAudioState.timer);
+      widgetAudioState.timer = null;
+    }
+  };
+
+  const resetWidgetAudioCaptureState = (options = {}) => {
+    clearWidgetAudioTimer();
+    stopWidgetAudioTracks();
+    widgetAudioState.starting = false;
+    widgetAudioState.recording = false;
+    widgetAudioState.transcribing = false;
+    widgetAudioState.recorder = null;
+    widgetAudioState.chunks = [];
+    widgetAudioState.startedAt = 0;
+    widgetAudioState.stopReason = 'idle';
+    if (options.clearDraft) {
+      widgetAudioState.draftActive = false;
+      input.value = options.restorePrevious ? widgetAudioState.cancelText : input.value;
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 104)}px`;
+      widgetAudioState.previousText = '';
+      widgetAudioState.cancelText = '';
+    }
+    setWidgetAudioUi(widgetAudioState.draftActive ? 'draft' : 'idle', widgetAudioState.draftActive ? 'Refazer' : 'Falar');
+  };
+
+  const cancelWidgetAudioDraft = () => {
+    if (widgetAudioState.recording && widgetAudioState.recorder) {
+      widgetAudioState.stopReason = 'cancel';
+      try { widgetAudioState.recorder.stop(); } catch (error) { resetWidgetAudioCaptureState({ clearDraft: true, restorePrevious: true }); }
+      return;
     }
 
-    widgetAudioState.starting = false;
-    widgetAudioState.active = false;
-    widgetAudioState.pc = null;
-    widgetAudioState.stream = null;
-    widgetAudioState.remoteAudio = null;
-    widgetAudioState.dataChannel = null;
-    setWidgetAudioUi('idle', 'Falar');
+    resetWidgetAudioCaptureState({ clearDraft: true, restorePrevious: true });
+  };
 
-    if (options.notify && wasActive) {
-      addMessage('assistant', 'Audio encerrado. Nada ficou gravado, como combinado.');
+  const transcribeWidgetAudioBlob = async (blob) => {
+    if (!blob || blob.size <= 0) {
+      throw new Error('O audio veio vazio. Segura um pouco mais antes de parar.');
+    }
+
+    const body = new FormData();
+    body.set('action', 'audio_transcribe');
+    body.set('audio', blob, 'miauby-audio.webm');
+    body.set('csrf_token', state.csrf);
+    body.set('widget', '1');
+
+    const response = await fetch('/miauw/api.php', {
+      method: 'POST',
+      body,
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf, 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    const data = await readJsonResponse(response);
+    state.csrf = data.csrf || state.csrf;
+    if (!data.ok || !data.text) {
+      throw new Error(data.detail || data.message || widgetAudioUnavailable());
+    }
+
+    return String(data.text || '').trim();
+  };
+
+  const finishWidgetRecordingAndTranscribe = async () => {
+    const blob = new Blob(widgetAudioState.chunks, { type: widgetAudioMimeType() || 'audio/webm' });
+    widgetAudioState.transcribing = true;
+    widgetAudioState.recording = false;
+    clearWidgetAudioTimer();
+    stopWidgetAudioTracks();
+    setWidgetAudioUi('transcribing', 'Transcrevendo');
+
+    try {
+      const transcript = await transcribeWidgetAudioBlob(blob);
+      const previous = widgetAudioState.previousText.trim();
+      input.value = previous ? `${previous}\n${transcript}` : transcript;
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 104)}px`;
+      input.focus();
+      widgetAudioState.draftActive = true;
+      widgetAudioState.transcribing = false;
+      setWidgetAudioUi('draft', 'Refazer');
+    } catch (error) {
+      resetWidgetAudioCaptureState({ clearDraft: true, restorePrevious: true });
+      addMessage('assistant', widgetAudioErrorMessage(error));
     }
   };
 
   const startWidgetAudioSession = async () => {
     if (!audioButton || widgetAudioState.starting) return;
-    if (widgetAudioState.active) {
-      closeWidgetAudioSession({ notify: true });
+    if (widgetAudioState.recording && widgetAudioState.recorder) {
+      widgetAudioState.stopReason = 'transcribe';
+      try { widgetAudioState.recorder.stop(); } catch (error) { addMessage('assistant', widgetAudioErrorMessage(error)); }
+      return;
+    }
+
+    if (widgetAudioState.transcribing) {
       return;
     }
 
@@ -917,8 +1025,8 @@
       return;
     }
 
-    if (!window.RTCPeerConnection || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      addMessage('assistant', 'Seu navegador nao liberou conversa por audio aqui. No texto eu continuo afiado.');
+    if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      addMessage('assistant', 'Seu navegador nao liberou gravacao por audio aqui. No texto eu continuo afiado.');
       return;
     }
 
@@ -926,15 +1034,6 @@
     setWidgetAudioUi('starting', 'Abrindo');
 
     try {
-      const pc = new RTCPeerConnection();
-      const remoteAudio = document.createElement('audio');
-      remoteAudio.autoplay = true;
-      remoteAudio.hidden = true;
-      remoteAudio.dataset.miauwWidgetAudio = '1';
-      document.body.appendChild(remoteAudio);
-      widgetAudioState.pc = pc;
-      widgetAudioState.remoteAudio = remoteAudio;
-
       const permissionState = await microphonePermissionState();
       if (permissionState === 'denied') {
         throw Object.assign(new Error(microphonePermissionMessage()), { name: 'NotAllowedError' });
@@ -948,60 +1047,47 @@
         },
       });
 
-      stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+      const mimeType = widgetAudioMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       widgetAudioState.stream = stream;
-      pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (remoteStream) {
-          remoteAudio.srcObject = remoteStream;
-          remoteAudio.play().catch(() => {});
-        }
-      };
-
-      const dataChannel = pc.createDataChannel('oai-events');
-      widgetAudioState.dataChannel = dataChannel;
-      dataChannel.addEventListener('message', () => {
-        // Audio temporario: nao vira historico do widget nesta fase.
-      });
-      pc.addEventListener('connectionstatechange', () => {
-        if (['failed', 'disconnected', 'closed'].includes(pc.connectionState) && widgetAudioState.active) {
-          closeWidgetAudioSession({ notify: pc.connectionState !== 'closed' });
-        }
-      });
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      const body = new FormData();
-      body.set('action', 'audio_session');
-      body.set('sdp', offer.sdp || '');
-      body.set('csrf_token', state.csrf);
-      body.set('widget', '1');
-
-      const response = await fetch('/miauw/api.php', {
-        method: 'POST',
-        body,
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json', 'X-CSRF-Token': state.csrf, 'X-Requested-With': 'XMLHttpRequest' },
-      });
-      const data = await readJsonResponse(response);
-      state.csrf = data.csrf || state.csrf;
-      if (!data.ok || !data.answer_sdp) {
-        throw new Error(data.message || widgetAudioUnavailable());
+      widgetAudioState.recorder = recorder;
+      widgetAudioState.chunks = [];
+      widgetAudioState.cancelText = input.value || '';
+      if (!widgetAudioState.draftActive) {
+        widgetAudioState.previousText = input.value || '';
       }
+      widgetAudioState.stopReason = 'transcribe';
 
-      await pc.setRemoteDescription({ type: 'answer', sdp: data.answer_sdp });
+      recorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size > 0) {
+          widgetAudioState.chunks.push(event.data);
+        }
+      });
+
+      recorder.addEventListener('stop', () => {
+        const reason = widgetAudioState.stopReason;
+        if (reason === 'cancel') {
+          resetWidgetAudioCaptureState({ clearDraft: true, restorePrevious: true });
+          return;
+        }
+        finishWidgetRecordingAndTranscribe();
+      });
 
       widgetAudioState.starting = false;
-      widgetAudioState.active = true;
-      widgetAudioState.pc = pc;
-      widgetAudioState.stream = stream;
-      widgetAudioState.remoteAudio = remoteAudio;
-      widgetAudioState.dataChannel = dataChannel;
-      setWidgetAudioUi('active', 'Ouvindo');
-      addMessage('assistant', 'Estou ouvindo aqui no widget. Sem gravacao e sem escrita por voz, combinado.');
+      widgetAudioState.recording = true;
+      widgetAudioState.draftActive = false;
+      widgetAudioState.startedAt = Date.now();
+      recorder.start(350);
+      setWidgetAudioUi('recording', `Parar ${widgetAudioDuration()}`);
+      widgetAudioState.timer = window.setInterval(() => {
+        setWidgetAudioUi('recording', `Parar ${widgetAudioDuration()}`);
+        if (Date.now() - widgetAudioState.startedAt >= MAX_WIDGET_AUDIO_RECORDING_MS && widgetAudioState.recording && widgetAudioState.recorder) {
+          widgetAudioState.stopReason = 'transcribe';
+          try { widgetAudioState.recorder.stop(); } catch (error) { /* ignored */ }
+        }
+      }, 500);
     } catch (error) {
-      closeWidgetAudioSession({ notify: false });
+      resetWidgetAudioCaptureState({ clearDraft: widgetAudioState.draftActive, restorePrevious: false });
       addMessage('assistant', widgetAudioErrorMessage(error));
     }
   };
@@ -1273,14 +1359,22 @@
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
+    widgetAudioState.draftActive = false;
+    widgetAudioState.previousText = '';
+    widgetAudioState.cancelText = '';
+    setWidgetAudioUi('idle', 'Falar');
     send(input.value);
   });
 
   if (audioButton) {
     audioButton.addEventListener('click', startWidgetAudioSession);
     window.addEventListener('beforeunload', () => {
-      closeWidgetAudioSession({ notify: false });
+      resetWidgetAudioCaptureState({ clearDraft: false });
     });
+  }
+
+  if (audioCancelButton) {
+    audioCancelButton.addEventListener('click', cancelWidgetAudioDraft);
   }
 
   const markUserActivity = (event) => {

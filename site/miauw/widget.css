@@ -772,7 +772,7 @@
 
 .miauw-widget-composer {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     gap: 9px;
     padding: 12px;
     border-top: 1px solid var(--miauw-line);
@@ -780,6 +780,7 @@
 }
 
 .miauw-widget-composer textarea {
+    min-width: 0;
     min-height: 44px;
     max-height: 104px;
     resize: none;
@@ -824,8 +825,35 @@
     color: #fff;
 }
 
+.miauw-widget-composer .miauw-widget-audio.is-draft {
+    border-color: #10a56a;
+    color: #0d8a59;
+}
+
 .miauw-widget-composer .miauw-widget-audio.is-starting {
     color: var(--miauw-muted);
+}
+
+.miauw-widget-composer .miauw-widget-audio-cancel {
+    min-width: 76px;
+    border: 1px solid var(--miauw-line);
+    background: #fff;
+    color: var(--miauw-muted);
+    box-shadow: 0 8px 18px rgba(97, 5, 29, 0.06);
+}
+
+.miauw-widget-composer .miauw-widget-audio-cancel[hidden] {
+    display: none;
+}
+
+.miauw-widget-composer .miauw-widget-audio-cancel:hover {
+    border-color: var(--miauw-wine);
+    color: var(--miauw-wine);
+}
+
+.miauw-widget-composer .miauw-widget-audio-cancel:disabled {
+    opacity: .58;
+    cursor: wait;
 }
 
 .miauw-widget-audio-dot {
@@ -1197,6 +1225,15 @@
         min-inline-size: 210px;
         max-width: calc(100vw - 24px);
         max-inline-size: calc(100vw - 24px);
+    }
+
+    .miauw-widget-composer {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .miauw-widget-composer .miauw-widget-audio-cancel:not([hidden]) {
+        grid-column: 1 / -1;
+        width: 100%;
     }
 }
 

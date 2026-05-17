@@ -246,7 +246,7 @@ Direcao de evolucao:
 - preservar versoes de treino: aprovar, rejeitar ou superar sem excluir pergunta/resposta original;
 - compilar treinos aprovados em perfil curto e responder localmente quando houver pergunta repetida/fortemente parecida, para reduzir custo e evitar conversa infinita por temas;
 - aplicar perfil de voz/tom versionado no contexto do Miauby;
-- permitir audio Realtime apenas pelo botao `Falar`, com microfone por clique, sem gravacao/transcricao persistida e sem escrita operacional por voz;
+- permitir audio apenas pelo botao `Falar`, com microfone por clique, gravacao temporaria, transcricao revisavel e sem escrita operacional por voz;
 - separar leitura, sugestao e escrita;
 - documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.
 

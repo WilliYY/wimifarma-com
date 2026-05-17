@@ -1157,9 +1157,9 @@ $pageTitle = $view === 'auditoria' ? 'Auditoria Financeira' : ($view === 'relato
     <link rel="icon" type="image/svg+xml" href="/financeiro/favicon.svg">
     <link rel="alternate icon" href="/financeiro/favicon.png">
     <link rel="stylesheet" href="/financeiro/styles.css?v=20260507a">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260517e">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260517f">
     <script src="/financeiro/app.js?v=20260507a" defer></script>
-    <script src="/miauw/widget.js?v=20260517e" defer></script>
+    <script src="/miauw/widget.js?v=20260517f" defer></script>
 </head>
 <body>
 <header class="finance-topbar">

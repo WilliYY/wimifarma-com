@@ -9,17 +9,24 @@
   const clearButton = chat.querySelector('[data-clear-chat]');
   const audioButton = chat.querySelector('[data-audio-toggle]');
   const audioLabel = audioButton ? audioButton.querySelector('[data-audio-label]') : null;
+  const audioCancelButton = chat.querySelector('[data-audio-cancel]');
   const shortcutButtons = document.querySelectorAll('[data-prompt]');
   const guardianCard = document.querySelector('.guardian-card');
   let typingMessage = null;
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const audioState = {
     starting: false,
-    active: false,
-    pc: null,
+    recording: false,
+    transcribing: false,
+    draftActive: false,
     stream: null,
-    remoteAudio: null,
-    dataChannel: null,
+    recorder: null,
+    chunks: [],
+    timer: null,
+    startedAt: 0,
+    previousText: '',
+    cancelText: '',
+    stopReason: 'idle',
   };
 
   const scrollToBottom = () => {
@@ -343,46 +350,90 @@
     }
   };
 
+  const MAX_AUDIO_RECORDING_MS = 90000;
+
+  const audioMimeType = () => {
+    if (!window.MediaRecorder || typeof window.MediaRecorder.isTypeSupported !== 'function') return '';
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ];
+    return candidates.find((item) => window.MediaRecorder.isTypeSupported(item)) || '';
+  };
+
+  const formatAudioDuration = () => {
+    if (!audioState.startedAt) return '00:00';
+    const totalSeconds = Math.max(0, Math.floor((Date.now() - audioState.startedAt) / 1000));
+    const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+    const seconds = String(totalSeconds % 60).padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
+
   const setAudioUi = (state, label = '') => {
     if (!audioButton) return;
-    const active = state === 'active';
-    const busy = state === 'starting';
+    const active = state === 'recording';
+    const busy = state === 'starting' || state === 'transcribing';
+    const draft = state === 'draft';
     audioButton.classList.toggle('is-active', active);
     audioButton.classList.toggle('is-starting', busy);
+    audioButton.classList.toggle('is-draft', draft);
     audioButton.setAttribute('aria-pressed', active ? 'true' : 'false');
     audioButton.disabled = busy || chat.dataset.audioEnabled !== '1';
     if (audioLabel) {
-      audioLabel.textContent = label || (active ? 'Ouvindo' : 'Falar');
+      audioLabel.textContent = label || (active ? `Parar ${formatAudioDuration()}` : 'Falar');
+    }
+    if (audioCancelButton) {
+      audioCancelButton.hidden = !(active || draft || state === 'transcribing');
+      audioCancelButton.disabled = state === 'transcribing';
     }
   };
 
-  const closeAudioSession = (options = {}) => {
-    const wasActive = audioState.active || audioState.starting;
-
-    if (audioState.dataChannel) {
-      try { audioState.dataChannel.close(); } catch (error) { /* ignored */ }
-    }
-    if (audioState.pc) {
-      try { audioState.pc.close(); } catch (error) { /* ignored */ }
-    }
+  const stopAudioTracks = () => {
     if (audioState.stream) {
       audioState.stream.getTracks().forEach((track) => track.stop());
     }
-    if (audioState.remoteAudio) {
-      audioState.remoteAudio.remove();
-    }
-
-    audioState.starting = false;
-    audioState.active = false;
-    audioState.pc = null;
     audioState.stream = null;
-    audioState.remoteAudio = null;
-    audioState.dataChannel = null;
-    setAudioUi('idle', 'Falar');
+  };
 
-    if (options.notify && wasActive) {
-      addMessage('assistant', 'Audio encerrado. Nada ficou gravado, como combinado.');
+  const clearAudioTimer = () => {
+    if (audioState.timer) {
+      window.clearInterval(audioState.timer);
+      audioState.timer = null;
     }
+  };
+
+  const resetAudioCaptureState = (options = {}) => {
+    clearAudioTimer();
+    stopAudioTracks();
+    audioState.starting = false;
+    audioState.recording = false;
+    audioState.transcribing = false;
+    audioState.recorder = null;
+    audioState.chunks = [];
+    audioState.startedAt = 0;
+    audioState.stopReason = 'idle';
+    if (options.clearDraft) {
+      audioState.draftActive = false;
+      if (input) {
+        input.value = options.restorePrevious ? audioState.cancelText : input.value;
+        autoGrow();
+      }
+      audioState.previousText = '';
+      audioState.cancelText = '';
+    }
+    setAudioUi(audioState.draftActive ? 'draft' : 'idle', audioState.draftActive ? 'Refazer' : 'Falar');
+  };
+
+  const cancelAudioDraft = () => {
+    if (audioState.recording && audioState.recorder) {
+      audioState.stopReason = 'cancel';
+      try { audioState.recorder.stop(); } catch (error) { resetAudioCaptureState({ clearDraft: true, restorePrevious: true }); }
+      return;
+    }
+
+    resetAudioCaptureState({ clearDraft: true, restorePrevious: true });
   };
 
   const audioUnavailable = () => {
@@ -442,10 +493,63 @@
     }
   };
 
+  const transcribeAudioBlob = async (blob) => {
+    if (!blob || blob.size <= 0) {
+      throw new Error('O audio veio vazio. Segura um pouco mais antes de parar.');
+    }
+
+    const body = new FormData();
+    body.set('action', 'audio_transcribe');
+    body.set('csrf_token', csrf);
+    body.set('audio', blob, 'miauby-audio.webm');
+
+    const response = await fetch('/miauw/api.php', {
+      method: 'POST',
+      body,
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const data = await response.json();
+    if (!data.ok || !data.text) {
+      throw new Error(data.detail || data.message || audioUnavailable());
+    }
+
+    return String(data.text || '').trim();
+  };
+
+  const finishRecordingAndTranscribe = async () => {
+    const blob = new Blob(audioState.chunks, { type: audioMimeType() || 'audio/webm' });
+    audioState.transcribing = true;
+    audioState.recording = false;
+    clearAudioTimer();
+    stopAudioTracks();
+    setAudioUi('transcribing', 'Transcrevendo');
+
+    try {
+      const transcript = await transcribeAudioBlob(blob);
+      const previous = audioState.previousText.trim();
+      if (input) {
+        input.value = previous ? `${previous}\n${transcript}` : transcript;
+        autoGrow();
+        input.focus();
+      }
+      audioState.draftActive = true;
+      audioState.transcribing = false;
+      setAudioUi('draft', 'Refazer');
+    } catch (error) {
+      resetAudioCaptureState({ clearDraft: true, restorePrevious: true });
+      addMessage('assistant', audioErrorMessage(error));
+    }
+  };
+
   const startAudioSession = async () => {
     if (!audioButton || audioState.starting) return;
-    if (audioState.active) {
-      closeAudioSession({ notify: true });
+    if (audioState.recording && audioState.recorder) {
+      audioState.stopReason = 'transcribe';
+      try { audioState.recorder.stop(); } catch (error) { addMessage('assistant', audioErrorMessage(error)); }
+      return;
+    }
+
+    if (audioState.transcribing) {
       return;
     }
 
@@ -464,8 +568,8 @@
       return;
     }
 
-    if (!window.RTCPeerConnection || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      addMessage('assistant', 'Seu navegador nao liberou conversa por audio aqui. No texto eu continuo afiado.');
+    if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      addMessage('assistant', 'Seu navegador nao liberou gravacao por audio aqui. No texto eu continuo afiado.');
       return;
     }
 
@@ -473,15 +577,6 @@
     setAudioUi('starting', 'Abrindo');
 
     try {
-      const pc = new RTCPeerConnection();
-      const remoteAudio = document.createElement('audio');
-      remoteAudio.autoplay = true;
-      remoteAudio.hidden = true;
-      remoteAudio.dataset.miauwAudio = '1';
-      document.body.appendChild(remoteAudio);
-      audioState.pc = pc;
-      audioState.remoteAudio = remoteAudio;
-
       const permissionState = await microphonePermissionState();
       if (permissionState === 'denied') {
         throw Object.assign(new Error(microphonePermissionMessage()), { name: 'NotAllowedError' });
@@ -495,57 +590,47 @@
         },
       });
 
-      stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+      const mimeType = audioMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       audioState.stream = stream;
-      pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (remoteStream) {
-          remoteAudio.srcObject = remoteStream;
-          remoteAudio.play().catch(() => {});
-        }
-      };
-
-      const dataChannel = pc.createDataChannel('oai-events');
-      audioState.dataChannel = dataChannel;
-      dataChannel.addEventListener('message', () => {
-        // Audio fica fora do historico do chat nesta fase.
-      });
-      pc.addEventListener('connectionstatechange', () => {
-        if (['failed', 'disconnected', 'closed'].includes(pc.connectionState) && audioState.active) {
-          closeAudioSession({ notify: pc.connectionState !== 'closed' });
-        }
-      });
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      const body = new FormData();
-      body.set('action', 'audio_session');
-      body.set('sdp', offer.sdp || '');
-      body.set('csrf_token', csrf);
-
-      const response = await fetch('/miauw/api.php', {
-        method: 'POST',
-        body,
-        headers: { 'X-CSRF-Token': csrf },
-      });
-      const data = await response.json();
-      if (!data.ok || !data.answer_sdp) {
-        throw new Error(data.message || audioUnavailable());
+      audioState.recorder = recorder;
+      audioState.chunks = [];
+      audioState.cancelText = input ? input.value : '';
+      if (!audioState.draftActive) {
+        audioState.previousText = input ? input.value : '';
       }
+      audioState.stopReason = 'transcribe';
 
-      await pc.setRemoteDescription({ type: 'answer', sdp: data.answer_sdp });
+      recorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size > 0) {
+          audioState.chunks.push(event.data);
+        }
+      });
+
+      recorder.addEventListener('stop', () => {
+        const reason = audioState.stopReason;
+        if (reason === 'cancel') {
+          resetAudioCaptureState({ clearDraft: true, restorePrevious: true });
+          return;
+        }
+        finishRecordingAndTranscribe();
+      });
 
       audioState.starting = false;
-      audioState.active = true;
-      audioState.pc = pc;
-      audioState.stream = stream;
-      audioState.remoteAudio = remoteAudio;
-      audioState.dataChannel = dataChannel;
-      setAudioUi('active', 'Ouvindo');
-      addMessage('assistant', 'Estou ouvindo enquanto o botao ficar ligado. Sem gravacao e sem escrita por voz, combinado.');
+      audioState.recording = true;
+      audioState.draftActive = false;
+      audioState.startedAt = Date.now();
+      recorder.start(350);
+      setAudioUi('recording', `Parar ${formatAudioDuration()}`);
+      audioState.timer = window.setInterval(() => {
+        setAudioUi('recording', `Parar ${formatAudioDuration()}`);
+        if (Date.now() - audioState.startedAt >= MAX_AUDIO_RECORDING_MS && audioState.recording && audioState.recorder) {
+          audioState.stopReason = 'transcribe';
+          try { audioState.recorder.stop(); } catch (error) { /* ignored */ }
+        }
+      }, 500);
     } catch (error) {
-      closeAudioSession({ notify: false });
+      resetAudioCaptureState({ clearDraft: audioState.draftActive, restorePrevious: false });
       addMessage('assistant', audioErrorMessage(error));
     }
   };
@@ -668,6 +753,10 @@
       const message = input.value;
       input.value = '';
       autoGrow();
+      audioState.draftActive = false;
+      audioState.previousText = '';
+      audioState.cancelText = '';
+      setAudioUi('idle', 'Falar');
       sendMessage(message);
     });
   }
@@ -676,8 +765,12 @@
     setAudioUi('idle', 'Falar');
     audioButton.addEventListener('click', startAudioSession);
     window.addEventListener('beforeunload', () => {
-      closeAudioSession({ notify: false });
+      resetAudioCaptureState({ clearDraft: false });
     });
+  }
+
+  if (audioCancelButton) {
+    audioCancelButton.addEventListener('click', cancelAudioDraft);
   }
 
   if (clearButton) {
