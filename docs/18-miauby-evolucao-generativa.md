@@ -166,6 +166,14 @@ Miauby ja possui:
   - `/miauw/treino.php` mostra o perfil de voz atual e avisa que audio segue sem microfone ou gravacao nesta fase;
   - o Node aceita `voice_profile` no `style_context`, inclui `perfil_voz_miauby`/`audio_miauby` no prompt e nao pode afirmar que ouviu/transcreveu/tocou audio quando o contrato estiver desligado;
   - `site/miauw/miauw-evals.php` cobre status Fase 18, contrato de voz/audio seguro, contexto de voz e contrato de tools em `fase18-voice-audio-readiness`.
+- Fase 19 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase19`;
+  - o servico Node passou para `SERVICE_VERSION=0.13.0` e `PHASE=fase19-realtime-audio-control`;
+  - `miauw_agent_audio_contract()` agora descreve audio Realtime/WebRTC com `MIAUW_REALTIME_MODEL=gpt-realtime` e `MIAUW_REALTIME_VOICE=marin`, mantendo `storage_enabled=false`;
+  - o chat principal ganhou botao `Falar`; o navegador captura microfone somente apos clique e envia SDP ao PHP por `action=audio_session`;
+  - o PHP cria a chamada Realtime pelo servidor em `https://api.openai.com/v1/realtime/calls`, sem expor a chave no navegador, e devolve apenas o SDP de resposta;
+  - audio nao vira mensagem, transcricao persistida, log de fala ou escrita operacional; acoes fortes continuam no fluxo de texto/confirmacao auditada;
+  - `site/miauw/miauw-evals.php` cobre status Fase 19, contrato de audio sem gravacao, modelo/voz Realtime e contrato de tools em `fase19-realtime-audio-control`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -206,6 +214,7 @@ Tabelas:
 Integracoes:
 
 - OpenAI Responses API;
+- OpenAI Realtime API por WebRTC para audio controlado do chat;
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.
@@ -246,7 +255,8 @@ Integracoes:
 - Adicionar tool generativa sem schema pode criar escrita indevida no banco.
 - Aprendizado automatico sem filtro pode cristalizar erro operacional.
 - Aprovar treino ruim pode ensinar tom errado para assuntos amplos; revisar com exemplos curtos, vivos e sem dados sensiveis.
-- `MIAUW_AUDIO_ENABLED` ainda nao liga audio real; ele serve apenas para marcar intencao de ambiente. Botao, provider, consentimento, transcricao/TTS e armazenamento precisam de fase propria e novos testes.
+- `MIAUW_AUDIO_ENABLED=true` liga a interface de audio no chat, mas microfone so inicia por clique; sem HTTPS/navegador compativel ou chave configurada, o botao informa falha e o texto continua funcionando.
+- Audio Realtime nao deve ser persistido nem virar transcricao automatica de historico ate existir revisao/consentimento explicito para isso.
 - Respostas longas demais no widget podem atrapalhar fluxo do funcionario.
 - Aumentar contexto demais pode elevar custo e lentidao.
 - Misturar comandos de financeiro, cotacao e cashback pode registrar dado no modulo errado.

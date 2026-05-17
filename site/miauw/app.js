@@ -7,10 +7,20 @@
   const input = form ? form.querySelector('textarea[name="message"]') : null;
   const csrf = chat.dataset.csrf || '';
   const clearButton = chat.querySelector('[data-clear-chat]');
+  const audioButton = chat.querySelector('[data-audio-toggle]');
+  const audioLabel = audioButton ? audioButton.querySelector('[data-audio-label]') : null;
   const shortcutButtons = document.querySelectorAll('[data-prompt]');
   const guardianCard = document.querySelector('.guardian-card');
   let typingMessage = null;
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const audioState = {
+    starting: false,
+    active: false,
+    pc: null,
+    stream: null,
+    remoteAudio: null,
+    dataChannel: null,
+  };
 
   const scrollToBottom = () => {
     if (feed) feed.scrollTop = feed.scrollHeight;
@@ -333,6 +343,155 @@
     }
   };
 
+  const setAudioUi = (state, label = '') => {
+    if (!audioButton) return;
+    const active = state === 'active';
+    const busy = state === 'starting';
+    audioButton.classList.toggle('is-active', active);
+    audioButton.classList.toggle('is-starting', busy);
+    audioButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+    audioButton.disabled = busy || chat.dataset.audioEnabled !== '1';
+    if (audioLabel) {
+      audioLabel.textContent = label || (active ? 'Ouvindo' : 'Falar');
+    }
+  };
+
+  const closeAudioSession = (options = {}) => {
+    const wasActive = audioState.active || audioState.starting;
+
+    if (audioState.dataChannel) {
+      try { audioState.dataChannel.close(); } catch (error) { /* ignored */ }
+    }
+    if (audioState.pc) {
+      try { audioState.pc.close(); } catch (error) { /* ignored */ }
+    }
+    if (audioState.stream) {
+      audioState.stream.getTracks().forEach((track) => track.stop());
+    }
+    if (audioState.remoteAudio) {
+      audioState.remoteAudio.remove();
+    }
+
+    audioState.starting = false;
+    audioState.active = false;
+    audioState.pc = null;
+    audioState.stream = null;
+    audioState.remoteAudio = null;
+    audioState.dataChannel = null;
+    setAudioUi('idle', 'Falar');
+
+    if (options.notify && wasActive) {
+      addMessage('assistant', 'Audio encerrado. Nada ficou gravado, como combinado.');
+    }
+  };
+
+  const audioUnavailable = () => {
+    const status = chat.dataset.audioStatus || 'desativado';
+    if (status === 'aguardando_chave') {
+      return 'Audio ainda nao esta configurado no servidor. O texto segue firme.';
+    }
+    if (status === 'curl_indisponivel') {
+      return 'Audio indisponivel neste servidor agora. Meu bigode fica no texto por enquanto.';
+    }
+    if (status === 'desativado') {
+      return 'Audio esta desligado neste ambiente. Sem microfone surpresa, humano.';
+    }
+    return 'Audio nao abriu agora. Revise permissao do microfone e tente de novo.';
+  };
+
+  const startAudioSession = async () => {
+    if (!audioButton || audioState.starting) return;
+    if (audioState.active) {
+      closeAudioSession({ notify: true });
+      return;
+    }
+
+    if (chat.dataset.audioEnabled !== '1') {
+      addMessage('assistant', audioUnavailable());
+      return;
+    }
+
+    if (!window.RTCPeerConnection || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      addMessage('assistant', 'Seu navegador nao liberou conversa por audio aqui. No texto eu continuo afiado.');
+      return;
+    }
+
+    audioState.starting = true;
+    setAudioUi('starting', 'Abrindo');
+
+    try {
+      const pc = new RTCPeerConnection();
+      const remoteAudio = document.createElement('audio');
+      remoteAudio.autoplay = true;
+      remoteAudio.hidden = true;
+      remoteAudio.dataset.miauwAudio = '1';
+      document.body.appendChild(remoteAudio);
+      audioState.pc = pc;
+      audioState.remoteAudio = remoteAudio;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+      audioState.stream = stream;
+      pc.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (remoteStream) {
+          remoteAudio.srcObject = remoteStream;
+          remoteAudio.play().catch(() => {});
+        }
+      };
+
+      const dataChannel = pc.createDataChannel('oai-events');
+      audioState.dataChannel = dataChannel;
+      dataChannel.addEventListener('message', () => {
+        // Audio fica fora do historico do chat nesta fase.
+      });
+      pc.addEventListener('connectionstatechange', () => {
+        if (['failed', 'disconnected', 'closed'].includes(pc.connectionState) && audioState.active) {
+          closeAudioSession({ notify: pc.connectionState !== 'closed' });
+        }
+      });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const body = new FormData();
+      body.set('action', 'audio_session');
+      body.set('sdp', offer.sdp || '');
+      body.set('csrf_token', csrf);
+
+      const response = await fetch('/miauw/api.php', {
+        method: 'POST',
+        body,
+        headers: { 'X-CSRF-Token': csrf },
+      });
+      const data = await response.json();
+      if (!data.ok || !data.answer_sdp) {
+        throw new Error(data.message || audioUnavailable());
+      }
+
+      await pc.setRemoteDescription({ type: 'answer', sdp: data.answer_sdp });
+
+      audioState.starting = false;
+      audioState.active = true;
+      audioState.pc = pc;
+      audioState.stream = stream;
+      audioState.remoteAudio = remoteAudio;
+      audioState.dataChannel = dataChannel;
+      setAudioUi('active', 'Ouvindo');
+      addMessage('assistant', 'Estou ouvindo enquanto o botao ficar ligado. Sem gravacao e sem escrita por voz, combinado.');
+    } catch (error) {
+      closeAudioSession({ notify: false });
+      addMessage('assistant', error instanceof Error && error.message ? error.message : audioUnavailable());
+    }
+  };
+
   const sendMessage = async (message) => {
     const text = String(message || '').trim();
     if (!text) return;
@@ -452,6 +611,14 @@
       input.value = '';
       autoGrow();
       sendMessage(message);
+    });
+  }
+
+  if (audioButton) {
+    setAudioUi('idle', 'Falar');
+    audioButton.addEventListener('click', startAudioSession);
+    window.addEventListener('beforeunload', () => {
+      closeAudioSession({ notify: false });
     });
   }
 

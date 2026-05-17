@@ -185,6 +185,7 @@ a {
 }
 
 .btn,
+.audio-button,
 .send-button,
 .quick-card button {
     border: 1px solid var(--line);
@@ -198,6 +199,7 @@ a {
 }
 
 .btn:hover,
+.audio-button:hover,
 .send-button:hover,
 .quick-card button:hover {
     transform: translateY(-1px);
@@ -205,6 +207,7 @@ a {
 }
 
 .btn.primary,
+.audio-button.is-active,
 .send-button {
     border-color: var(--wine);
     background: var(--wine);
@@ -524,7 +527,7 @@ a {
 
 .composer {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 12px;
     padding: clamp(16px, 2vw, 24px);
     border-top: 1px solid var(--line);
@@ -555,9 +558,51 @@ a {
     align-self: end;
 }
 
+.audio-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-width: 98px;
+    align-self: end;
+    background: #fff;
+}
+
+.audio-button-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 99px;
+    background: currentColor;
+    box-shadow: 0 0 0 5px rgba(159, 16, 56, 0.1);
+}
+
+.audio-button.is-active .audio-button-dot {
+    color: #fff;
+    animation: miauwAudioPulse 1.05s infinite ease-in-out;
+    box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.24);
+}
+
+.audio-button.is-starting {
+    cursor: wait;
+    opacity: 0.82;
+}
+
+.audio-button:disabled,
 .send-button:disabled {
     opacity: 0.7;
     cursor: wait;
+}
+
+@keyframes miauwAudioPulse {
+    0%, 100% {
+        transform: scale(0.88);
+        opacity: 0.72;
+    }
+
+    50% {
+        transform: scale(1.18);
+        opacity: 1;
+    }
 }
 
 .side-panel {
@@ -1304,6 +1349,7 @@ a {
         grid-template-columns: 1fr;
     }
 
+    .audio-button,
     .send-button {
         width: 100%;
     }

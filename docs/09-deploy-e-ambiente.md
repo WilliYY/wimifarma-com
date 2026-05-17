@@ -91,6 +91,7 @@ Higiene de pastas no VPS:
 - Para o Miauby agente sombra, definir `MIAUW_AGENT_INTERNAL_TOKEN` ou manter `MIAUW_GUARDIAN_TOKEN` como fallback; o endpoint publico de health nao exige token, mas `run` e `stream` internos exigem.
 - Para comparar o PHP com o Miauby agente sombra em envios reais, ligar `MIAUW_AGENT_SHADOW_ON_SEND=true`; manter `false` por padrao para nao adicionar latencia no chat operacional.
 - Para corte acelerado do Miauby, definir `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`, `MIAUW_MAINTENANCE_MODE=true` e `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`. Rollback: `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
+- Para audio do Miauby, manter `MIAUW_OPENAI_API_KEY` somente no `.env`, usar `MIAUW_AUDIO_ENABLED=true`, `MIAUW_REALTIME_MODEL=gpt-realtime` e `MIAUW_REALTIME_VOICE=marin`. O botao depende de HTTPS/navegador com WebRTC e o PHP cria a sessao Realtime sem expor chave no browser.
 - Antes de deploy, fazer commit e push da alteracao. Por regra operacional atual, toda alteracao de arquivo deve ser commitada, enviada ao GitHub e publicada no VPS quando houver deploy aplicavel, salvo pedido explicito para nao publicar ou bloqueio tecnico relatado.
 - Depois de deploy, rodar `docker compose ps`, `docker compose logs --tail=80 wimifarma-cotacao-app` e validar `http://127.0.0.1:3002/cotacao/health`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
@@ -110,7 +111,7 @@ Higiene de pastas no VPS:
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
-- A Fase 7/8/9/10/11/12/13/14/15 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools e roteador de estilo/memoria aprovada. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
+- A Fase 7/8/9/10/11/12/13/14/15/16/17/18/19 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools, roteador de estilo/memoria aprovada, treinador, perfis de voz e audio Realtime controlado. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
 
 ## Riscos ao alterar
 
@@ -120,7 +121,7 @@ Higiene de pastas no VPS:
 - Se o MySQL do VPS entrar em restart com `Failed to find valid data directory`, nao recriar volume vazio. Conferir se existe `ibdata1` no `mysql/` oficial e procurar copias preservadas antes de qualquer acao.
 - Trocar nomes de container quebra proxy.
 - Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
-- Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual quando `MIAUW_ENGINE=php`, mas impede validar a Fase 7/8/9 do Miauby e quebra o motor `node`.
+- Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual quando `MIAUW_ENGINE=php`, mas impede validar o agente Node do Miauby e quebra o motor `node`.
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
 - Se o WordPress nao reconhecer HTTPS atras do proxy, ele gera assets `http://` e o navegador bloqueia CSS/JS por mixed content.

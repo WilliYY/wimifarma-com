@@ -13,6 +13,7 @@ $guardianAlertCount = 0;
 $guardianPatterns = array();
 $canOpenDiagnostics = function_exists('miauw_diagnostics_can_review') && miauw_diagnostics_can_review($user);
 $trainingSummary = function_exists('miauw_training_summary') ? miauw_training_summary() : array();
+$audioContract = function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array();
 
 try {
     if (function_exists('miauw_guardian_scan')) {
@@ -64,7 +65,14 @@ try {
         </nav>
     </header>
 
-    <main class="miauw-shell" data-chat data-csrf="<?php echo e(csrf_token()); ?>">
+    <main
+        class="miauw-shell"
+        data-chat
+        data-csrf="<?php echo e(csrf_token()); ?>"
+        data-audio-enabled="<?php echo !empty($audioContract['ui_enabled']) ? '1' : '0'; ?>"
+        data-audio-status="<?php echo e((string) ($audioContract['status'] ?? 'desativado')); ?>"
+        data-audio-model="<?php echo e((string) ($audioContract['model'] ?? '')); ?>"
+        data-audio-voice="<?php echo e((string) ($audioContract['voice'] ?? '')); ?>">
         <section class="chat-panel" aria-label="Conversa com Miauby">
             <div class="chat-header">
                 <div class="agent">
@@ -110,6 +118,17 @@ try {
 
             <form class="composer" data-chat-form autocomplete="off">
                 <textarea name="message" rows="1" maxlength="1200" placeholder="Fala logo, humano..." required></textarea>
+                <button
+                    class="audio-button"
+                    type="button"
+                    data-audio-toggle
+                    aria-label="Falar com Miauby"
+                    aria-pressed="false"
+                    title="Falar com Miauby"
+                    <?php echo !empty($audioContract['ui_enabled']) ? '' : 'disabled'; ?>>
+                    <span class="audio-button-dot" aria-hidden="true"></span>
+                    <span data-audio-label>Falar</span>
+                </button>
                 <button class="send-button" type="submit" aria-label="Enviar">
                     <span>Enviar</span>
                 </button>

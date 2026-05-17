@@ -48,6 +48,77 @@ try {
     $action = (string) ($_POST['action'] ?? '');
     $conversationId = miauw_current_conversation_id((int) $user['id']);
 
+    if ($action === 'audio_session') {
+        $traceId = function_exists('miauw_trace_new_id') ? miauw_trace_new_id() : bin2hex(random_bytes(8));
+        if (function_exists('miauw_trace_set_context')) {
+            miauw_trace_set_context($traceId, $conversationId, (int) $user['id'], null);
+        }
+
+        $maintenance = function_exists('miauw_maintenance_status') ? miauw_maintenance_status($user) : array('active' => false, 'can_send' => true);
+        if (function_exists('miauw_user_can_send_miauw') && !miauw_user_can_send_miauw($user)) {
+            miauw_json(array(
+                'ok' => false,
+                'message' => (string) ($maintenance['message'] ?? 'Miauby esta em atualizacao interna agora.'),
+                'maintenance' => $maintenance,
+                'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+            ), 423);
+        }
+
+        $sdp = (string) ($_POST['sdp'] ?? '');
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('miauw_audio_session', 'received', array(
+                'type' => 'audio',
+                'summary' => 'Pedido de audio recebido pelo Miauby.',
+                'payload' => array(
+                    'sdp_bytes' => strlen($sdp),
+                    'mode' => 'realtime_webrtc',
+                ),
+            ));
+        }
+
+        try {
+            $audio = miauw_agent_create_realtime_call($sdp, $user);
+            if (function_exists('miauw_trace_record')) {
+                miauw_trace_record('miauw_audio_session', 'ok', array(
+                    'type' => 'audio',
+                    'summary' => 'Sessao de audio criada sem armazenar audio.',
+                    'payload' => array(
+                        'model' => (string) ($audio['model'] ?? ''),
+                        'voice' => (string) ($audio['voice'] ?? ''),
+                        'mode' => (string) ($audio['mode'] ?? ''),
+                    ),
+                ));
+            }
+
+            miauw_json(array(
+                'ok' => true,
+                'answer_sdp' => (string) ($audio['answer_sdp'] ?? ''),
+                'model' => (string) ($audio['model'] ?? ''),
+                'voice' => (string) ($audio['voice'] ?? ''),
+                'mode' => (string) ($audio['mode'] ?? ''),
+                'trace_id' => $traceId,
+                'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+            ));
+        } catch (Throwable $error) {
+            if (function_exists('miauw_trace_record')) {
+                miauw_trace_record('miauw_audio_session', 'blocked', array(
+                    'type' => 'audio',
+                    'summary' => 'Audio do Miauby nao iniciou.',
+                    'error' => $error->getMessage(),
+                    'payload' => array(
+                        'contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+                    ),
+                ));
+            }
+
+            miauw_json(array(
+                'ok' => false,
+                'message' => 'Nao consegui abrir o audio agora. Meu bigode nao vai fingir: revise permissao do microfone e configuracao interna.',
+                'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+            ), 422);
+        }
+    }
+
     if ($action === 'send') {
         $message = trim((string) ($_POST['message'] ?? ''));
         $widgetMode = !empty($_POST['widget']);

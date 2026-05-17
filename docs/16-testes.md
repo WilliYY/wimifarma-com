@@ -67,6 +67,7 @@ Ele valida:
 - Fase 16 do Miauby: status publico anuncia treinador do chat, contrato aponta `fase16`, o export de contracts aponta `fase16-training-feedback`, feedback cria item pendente, revisao aprova exemplo versionado e `style_context` inclui treino aprovado.
 - Fase 17 do Miauby: status publico anuncia treino compilado, contrato aponta `fase17`, o export de contracts aponta `fase17-training-compiler`, `style_context` inclui `training_profile`, e pergunta exata aprovada pode responder pelo `miauw-training-router`.
 - Fase 18 do Miauby: status publico anuncia perfis de voz/tom, contrato aponta `fase18`, o export de contracts aponta `fase18-voice-audio-readiness`, `style_context` inclui `voice_profile`/`audio_contract`, e audio permanece `text_only` sem captura, playback, transcricao, TTS ou armazenamento.
+- Fase 19 do Miauby: status publico anuncia botao de audio controlado, contrato aponta `fase19`, o export de contracts aponta `fase19-realtime-audio-control`, `audio_contract` exige acao explicita, usa `gpt-realtime` por padrao e mantem `storage_enabled=false`.
 
 Rodar pelo container:
 
