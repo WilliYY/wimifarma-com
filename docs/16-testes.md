@@ -69,6 +69,7 @@ Ele valida:
 - Fase 18 do Miauby: status publico anuncia perfis de voz/tom, contrato aponta `fase18`, o export de contracts aponta `fase18-voice-audio-readiness`, `style_context` inclui `voice_profile`/`audio_contract`, e audio permanece `text_only` sem captura, playback, transcricao, TTS ou armazenamento.
 - Fase 19 do Miauby: status publico anuncia botao de audio controlado, contrato aponta `fase19`, o export de contracts aponta `fase19-record-transcribe-confirm`, `audio_contract` exige acao explicita, usa `gpt-4o-transcribe` por padrao, mantem `storage_enabled=false` e exige revisao antes de enviar; o widget tambem recebe `audio_contract` por `widget-status.php`, tenta captura real antes de concluir bloqueio, mostra rascunho local com player/transcricao e mostra erro amigavel quando o navegador/Windows recusar o microfone.
 - Fase 20 do Miauby: status publico anuncia bolha/player de audio e resposta falada, contrato aponta `fase20`, o export de contracts aponta `fase20-voice-reply-audio-bubbles`, `audio_contract` libera playback/TTS somente quando audio estiver configurado, usa `gpt-4o-mini-tts` por padrao, mantem `storage_enabled=false` e bloqueia audio curto ou transcricao grande demais para poucos segundos.
+- Fase 21 do Miauby: status publico anuncia playback `blob:` liberado em CSP, seletor de voz no diagnostico e perfil TTS forte; o contrato aponta `fase21`, o export de contracts aponta `fase21-voice-playback-profile-selector`, `audio_contract` lista as vozes permitidas e mantem `storage_enabled=false`.
 
 Rodar pelo container:
 

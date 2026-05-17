@@ -393,14 +393,21 @@ a {
     font-size: 0.86rem;
 }
 
-.chat-audio-transcript summary {
+.chat-audio-transcript button {
     cursor: pointer;
+    border: 0;
+    padding: 0;
+    background: transparent;
     color: var(--wine);
     font-weight: 850;
 }
 
 .chat-audio-transcript p {
     margin-top: 7px;
+}
+
+.chat-audio-transcript p[hidden] {
+    display: none;
 }
 
 .miauw-confirmation-card {
@@ -1357,6 +1364,37 @@ a {
 .diag-actions {
     display: flex;
     gap: 8px;
+}
+
+.diag-voice-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin: 14px 0;
+    border: 1px solid rgba(239, 185, 200, 0.78);
+    border-radius: 14px;
+    padding: 12px;
+    background: #fff8fa;
+}
+
+.diag-voice-form label {
+    display: grid;
+    gap: 6px;
+    min-width: min(100%, 420px);
+    flex: 1 1 420px;
+    color: var(--muted);
+    font-weight: 900;
+}
+
+.diag-voice-form select {
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0 12px;
+    background: #fff;
+    color: var(--text);
+    font-weight: 850;
 }
 
 .diag-btn {

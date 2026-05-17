@@ -187,6 +187,16 @@ Miauby ja possui:
   - gravacoes curtas demais sao bloqueadas no frontend e no PHP, e transcricoes grandes demais para poucos segundos sao recusadas para reduzir chute em audio de 1 segundo;
   - se a resposta falada falhar, o chat cai para texto normal sem executar escrita operacional por voz;
   - `site/miauw/miauw-evals.php` cobre status Fase 20, contrato de voz, bolha de audio, TTS, bloqueio de audio curto e contrato de tools em `fase20-voice-reply-audio-bubbles`.
+- Fase 21 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase21`;
+  - o servico Node passou para `SERVICE_VERSION=0.16.0` e `PHASE=fase21-voice-playback-profile-selector`;
+  - o contrato de audio passou para `miauby-voice-playback-profile-2026-05-17`;
+  - o CSP do Miauby e dos modulos internos permite `blob:`/`data:` somente em `media-src`, corrigindo playback dos players sem abrir script/frame/origem externa;
+  - a resposta falada do Miauby aparece como audio principal e a transcricao fica escondida por padrao atras de `Ver texto`;
+  - `miauw_agent_speech_voices()` limita vozes base a `marin`, `cedar`, `ash`, `coral` e `verse`;
+  - `/miauw/diagnostico.php` permite salvar a voz base em `miauw_configuracoes.miauw_speech_voice`, sem versionar segredo e sem reiniciar container;
+  - o prompt de TTS recebeu instrucoes fortes de fala real, ritmo, energia e regra para usar video/voz externa apenas como inspiracao geral autorizada, nunca como clonagem de pessoa/personagem;
+  - `site/miauw/miauw-evals.php` cobre status Fase 21, seletor de voz, playback por blob, contrato de voz, TTS e export de tools em `fase21-voice-playback-profile-selector`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -232,6 +242,7 @@ Integracoes:
 - OpenAI Responses API;
 - OpenAI Audio Transcriptions API para transcrever audio temporario do chat/widget antes do envio confirmado;
 - OpenAI Audio Speech API para gerar resposta falada temporaria do Miauby quando a entrada veio por audio;
+- seletor seguro de voz base no diagnostico do Miauby, persistido em `miauw_configuracoes`;
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.

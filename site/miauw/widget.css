@@ -706,14 +706,21 @@
     font-size: 11.5px;
 }
 
-.miauw-widget-chat-audio-text summary {
+.miauw-widget-chat-audio-text button {
     cursor: pointer;
+    border: 0;
+    padding: 0;
+    background: transparent;
     color: var(--miauw-wine);
     font-weight: 850;
 }
 
 .miauw-widget-chat-audio-text p {
     margin-top: 6px;
+}
+
+.miauw-widget-chat-audio-text p[hidden] {
+    display: none;
 }
 
 .miauw-widget-confirmation {

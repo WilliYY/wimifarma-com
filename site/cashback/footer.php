@@ -5,6 +5,6 @@
         <span>Operacao Wimifarma Cashback.</span>
     </footer>
     <script src="<?php echo e(app_url('app.js')); ?>?v=<?php echo e((string) filemtime(__DIR__ . '/app.js')); ?>"></script>
-<script src="/miauw/widget.js?v=20260517i" defer></script>
+<script src="/miauw/widget.js?v=20260517j" defer></script>
 </body>
 </html>

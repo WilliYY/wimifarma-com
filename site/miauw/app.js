@@ -223,11 +223,11 @@
       <div class="chat-audio-main">
         <span class="chat-audio-state">${role === 'assistant' ? 'Miauby respondeu' : 'Audio enviado'}${duration ? ` <small>${escapeHtml(duration)}</small>` : ''}</span>
         <div class="chat-audio-player">
-          <audio controls controlsList="nodownload noplaybackrate" src="${escapeHtml(audio.url)}" aria-label="${escapeHtml(label)}"></audio>
+          <audio controls preload="metadata" controlsList="nodownload noplaybackrate" src="${escapeHtml(audio.url)}" aria-label="${escapeHtml(label)}"></audio>
           ${audioBarsHtml()}
         </div>
       </div>
-      ${role === 'assistant' && transcript ? `<details class="chat-audio-transcript"><summary>Texto</summary><p>${formatMessage(transcript)}</p></details>` : ''}
+      ${role === 'assistant' && transcript ? `<div class="chat-audio-transcript"><button type="button" data-audio-transcript-toggle>Ver texto</button><p data-audio-transcript-text hidden>${formatMessage(transcript)}</p></div>` : ''}
       <time>${escapeHtml(stamp)}</time>
     `;
 
@@ -243,6 +243,16 @@
     scrollToBottom();
 
     const player = bubble.querySelector('audio');
+    const transcriptButton = bubble.querySelector('[data-audio-transcript-toggle]');
+    const transcriptText = bubble.querySelector('[data-audio-transcript-text]');
+    if (transcriptButton && transcriptText) {
+      transcriptButton.addEventListener('click', () => {
+        const willShow = transcriptText.hidden;
+        transcriptText.hidden = !willShow;
+        transcriptButton.textContent = willShow ? 'Ocultar texto' : 'Ver texto';
+      });
+    }
+
     if (player && options.autoPlay) {
       player.play().catch(() => {});
     }

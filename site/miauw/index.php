@@ -125,7 +125,7 @@ try {
                             <small data-audio-draft-duration>00:00</small>
                         </div>
                         <div class="audio-draft-player">
-                            <audio data-audio-draft-player controls controlsList="nodownload noplaybackrate"></audio>
+                            <audio data-audio-draft-player controls preload="metadata" controlsList="nodownload noplaybackrate"></audio>
                             <span class="audio-draft-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
                         </div>
                     </div>

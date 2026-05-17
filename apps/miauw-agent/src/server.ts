@@ -5,13 +5,13 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.15.0';
-const AGENT_VERSION = '2.0-fase20';
-const PHASE = 'fase20-voice-reply-audio-bubbles';
+const SERVICE_VERSION = '0.16.0';
+const AGENT_VERSION = '2.0-fase21';
+const PHASE = 'fase21-voice-playback-profile-selector';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const STYLE_VERSION = 'miauby-style-router-2026-05-16';
 const VOICE_PROFILE_VERSION = 'miauby-voice-profile-2026-05-17';
-const AUDIO_CONTRACT_VERSION = 'miauby-voice-reply-2026-05-17';
+const AUDIO_CONTRACT_VERSION = 'miauby-voice-playback-profile-2026-05-17';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 const NODE_LOW_RISK_READ_TOOLS = [
   'resumo_financeiro',
@@ -66,7 +66,7 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Padroes aprovados enviados no contexto de estilo sao memoria de jeito e processo. Use como tempero; nao cite a tabela, revisao ou bastidor.',
   'O perfil compilado de treino aprovado pelo PHP e prioridade de voz quando combinar com o tema. Use o jeito e as regras, nao cite que foi treinado.',
   `Perfil de voz/tom: ${VOICE_PROFILE_VERSION}. Quando o PHP enviar perfil_voz_miauby, respeite ritmo, humor e diretivas sem citar configuracao.`,
-  `Contrato de audio: ${AUDIO_CONTRACT_VERSION}. Audio so pode existir por botao explicito; a fala vira rascunho transcrito para revisao antes de enviar, a mensagem enviada aparece como player e a resposta pode voltar falada. Nao diga que armazenou audio ou executou escrita por voz.`,
+  `Contrato de audio: ${AUDIO_CONTRACT_VERSION}. Audio so pode existir por botao explicito; a fala vira rascunho transcrito para revisao antes de enviar, a mensagem enviada aparece como player e a resposta pode voltar falada com voz selecionavel. Nao diga que armazenou audio ou executou escrita por voz.`,
   'Exemplos de treino aprovados sao amostras curtas, nao historico para despejar. Copie o padrao de resposta, nao explique o treinamento.',
   'Para mensagem sem objetivo claro, responda em 1 ou 2 linhas: reconheca o barulho, peca tela/dado/objetivo e puxe para acao. Nada de checklist longo.',
   'Quando faltar informacao operacional, peca exatamente o menor dado ausente: produto, EAN, valor, data, responsavel, tela, acao feita ou print.',
@@ -137,6 +137,9 @@ function publicStatus() {
     audio_readiness_supported: true,
     record_transcribe_audio_supported: true,
     audio_confirmation_required: true,
+    audio_blob_media_supported: true,
+    voice_selector_supported: true,
+    speech_profile_prompt_supported: true,
     realtime_audio_supported: false,
     browser_audio_capture_supported: true,
     browser_audio_requires_user_action: true,

@@ -8,8 +8,8 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.0-fase20',
-  'fase20-voice-reply-audio-bubbles',
+  '2.0-fase21',
+  'fase21-voice-playback-profile-selector',
   'PERSONALITY_VERSION',
   'STYLE_VERSION',
   'VOICE_PROFILE_VERSION',
@@ -17,7 +17,7 @@ const required = [
   'miauby-persona-2026-05-16',
   'miauby-style-router-2026-05-16',
   'miauby-voice-profile-2026-05-17',
-  'miauby-voice-reply-2026-05-17',
+  'miauby-voice-playback-profile-2026-05-17',
   'personalidade forte + solucao pratica',
   'Sem dado, sem milagre',
   'fiscal interno',
@@ -32,6 +32,9 @@ const required = [
   'record_transcribe_audio_supported',
   'voice_reply_supported',
   'audio_bubble_player_supported',
+  'audio_blob_media_supported',
+  'voice_selector_supported',
+  'speech_profile_prompt_supported',
   'short_audio_guard_supported',
   'audio_confirmation_required',
   'browser_audio_capture_supported',

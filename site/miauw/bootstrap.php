@@ -27,7 +27,7 @@ function miauw_send_security_headers(): void
         return;
     }
 
-    header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self';", true);
+    header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob: data:; base-uri 'self'; frame-ancestors 'self'; form-action 'self';", true);
 }
 
 miauw_send_security_headers();

@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260517i';
+    link.href = '/miauw/widget.css?v=20260517j';
     document.head.appendChild(link);
   }
 
@@ -84,7 +84,7 @@
             <small data-miauw-audio-draft-duration>00:00</small>
           </div>
           <div class="miauw-widget-audio-draft-player">
-            <audio data-miauw-audio-draft-player controls controlsList="nodownload noplaybackrate"></audio>
+            <audio data-miauw-audio-draft-player controls preload="metadata" controlsList="nodownload noplaybackrate"></audio>
             <span class="miauw-widget-audio-draft-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
           </div>
           <p><strong>Transcricao:</strong> <span data-miauw-audio-draft-transcript></span></p>
@@ -472,10 +472,10 @@
       <div class="miauw-widget-chat-audio">
         <span class="miauw-widget-chat-audio-state">${role === 'assistant' ? 'Miauby respondeu' : 'Audio enviado'}${duration ? ` <small>${escapeHtml(duration)}</small>` : ''}</span>
         <span class="miauw-widget-chat-audio-player">
-          <audio controls controlsList="nodownload noplaybackrate" src="${escapeHtml(audio.url)}" aria-label="${role === 'assistant' ? 'Resposta em audio do Miauby' : 'Audio enviado'}"></audio>
+          <audio controls preload="metadata" controlsList="nodownload noplaybackrate" src="${escapeHtml(audio.url)}" aria-label="${role === 'assistant' ? 'Resposta em audio do Miauby' : 'Audio enviado'}"></audio>
           ${widgetAudioBarsHtml()}
         </span>
-        ${role === 'assistant' && transcript ? `<details class="miauw-widget-chat-audio-text"><summary>Texto</summary><p>${formatMessage(transcript)}</p></details>` : ''}
+        ${role === 'assistant' && transcript ? `<section class="miauw-widget-chat-audio-text"><button type="button" data-miauw-audio-transcript-toggle>Ver texto</button><p data-miauw-audio-transcript-text hidden>${formatMessage(transcript)}</p></section>` : ''}
         <time>${escapeHtml(time)}</time>
       </div>
     `;
@@ -488,6 +488,16 @@
     scrollBottom();
 
     const player = item.querySelector('audio');
+    const transcriptButton = item.querySelector('[data-miauw-audio-transcript-toggle]');
+    const transcriptText = item.querySelector('[data-miauw-audio-transcript-text]');
+    if (transcriptButton && transcriptText) {
+      transcriptButton.addEventListener('click', () => {
+        const willShow = transcriptText.hidden;
+        transcriptText.hidden = !willShow;
+        transcriptButton.textContent = willShow ? 'Ocultar texto' : 'Ver texto';
+      });
+    }
+
     if (player && options.autoPlay) {
       player.play().catch(() => {});
     }

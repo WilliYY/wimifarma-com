@@ -10,6 +10,7 @@ if (!miauw_diagnostics_can_review($user)) {
     exit;
 }
 
+miauw_ensure_schema();
 miauw_diagnostics_ensure_review_columns();
 
 $notice = $_SESSION['miauw_diagnostics_notice'] ?? null;
@@ -22,13 +23,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$ok) {
         $_SESSION['miauw_diagnostics_notice'] = array('type' => 'error', 'message' => 'Sessao expirada. Atualize e tente de novo.');
     } else {
-        $kind = (string) ($_POST['kind'] ?? '');
-        $id = (int) ($_POST['id'] ?? 0);
-        $status = (string) ($_POST['status'] ?? '');
-        $done = miauw_diagnostics_review_item($kind, $id, $status, (int) $user['id']);
-        $_SESSION['miauw_diagnostics_notice'] = $done
-            ? array('type' => 'success', 'message' => 'Revisao registrada. Nada foi apagado.')
-            : array('type' => 'error', 'message' => 'Nao consegui registrar essa revisao.');
+        $action = (string) ($_POST['action'] ?? '');
+
+        if ($action === 'audio_voice') {
+            $requestedVoice = strtolower(trim((string) ($_POST['speech_voice'] ?? '')));
+            $voices = function_exists('miauw_agent_speech_voices') ? miauw_agent_speech_voices() : array();
+            $voice = function_exists('miauw_agent_speech_voice') ? miauw_agent_speech_voice($requestedVoice) : 'marin';
+            $done = isset($voices[$requestedVoice]) && function_exists('miauw_config_set') && miauw_config_set('miauw_speech_voice', $voice);
+            $_SESSION['miauw_diagnostics_notice'] = $done
+                ? array('type' => 'success', 'message' => 'Voz do Miauby atualizada. Historico preservado, sem mexer em segredo.')
+                : array('type' => 'error', 'message' => 'Nao consegui salvar essa voz. Escolha uma opcao da lista.');
+        } else {
+            $kind = (string) ($_POST['kind'] ?? '');
+            $id = (int) ($_POST['id'] ?? 0);
+            $status = (string) ($_POST['status'] ?? '');
+            $done = miauw_diagnostics_review_item($kind, $id, $status, (int) $user['id']);
+            $_SESSION['miauw_diagnostics_notice'] = $done
+                ? array('type' => 'success', 'message' => 'Revisao registrada. Nada foi apagado.')
+                : array('type' => 'error', 'message' => 'Nao consegui registrar essa revisao.');
+        }
     }
 
     header('Location: /miauw/diagnostico.php');
@@ -47,6 +60,10 @@ $toolContracts = $summary['tool_contracts'] ?? array();
 $api = $summary['api'] ?? array();
 $skills = $summary['skills'] ?? array();
 $models = $summary['models'] ?? array();
+$audioContract = function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array();
+$voiceContract = function_exists('miauw_agent_voice_profile_contract') ? miauw_agent_voice_profile_contract() : array();
+$speechVoice = function_exists('miauw_agent_speech_voice') ? miauw_agent_speech_voice() : 'marin';
+$speechVoices = function_exists('miauw_agent_speech_voices') ? miauw_agent_speech_voices() : array();
 $memCounts = $summary['memorias'] ?? array();
 $patternCounts = $summary['padroes'] ?? array();
 $messageStats = $summary['mensagens_24h'] ?? array();
@@ -318,6 +335,44 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <div class="diag-tags">
                 <?php foreach ((array) ($personality['voz'] ?? array()) as $rule) : ?>
                     <span><?php echo e((string) $rule); ?></span>
+                <?php endforeach; ?>
+            </div>
+        </section>
+
+        <section class="diag-panel">
+            <div class="diag-panel-head">
+                <div>
+                    <span>Audio</span>
+                    <h2>Voz falada do Miauby</h2>
+                </div>
+                <p><?php echo e((string) ($audioContract['version'] ?? '')); ?></p>
+            </div>
+            <div class="diag-list compact">
+                <p><strong>Status</strong><span><?php echo e((string) ($audioContract['status'] ?? 'desativado')); ?> | playback <?php echo !empty($audioContract['playback_enabled']) ? 'ativo' : 'desligado'; ?> | TTS <?php echo !empty($audioContract['tts_enabled']) ? 'ativo' : 'desligado'; ?></span></p>
+                <p><strong>Modelo</strong><span><?php echo e((string) ($audioContract['speech_model'] ?? '')); ?> | voz atual <?php echo e((string) ($speechVoices[$speechVoice]['label'] ?? $speechVoice)); ?></span></p>
+                <p><strong>Perfil</strong><span><?php echo e((string) ($voiceContract['label'] ?? 'Miauby padrao')); ?> | <?php echo e((string) ($voiceContract['tone'] ?? '')); ?></span></p>
+                <p><strong>Playback</strong><span>Audio do chat/widget usa URL temporaria do navegador; CSP libera somente midia `blob:`/`data:`.</span></p>
+            </div>
+            <form class="diag-voice-form" method="post">
+                <input type="hidden" name="csrf_token" value="<?php echo e(csrf_token()); ?>">
+                <input type="hidden" name="action" value="audio_voice">
+                <label>
+                    <span>Escolher voz base</span>
+                    <select name="speech_voice">
+                        <?php foreach ($speechVoices as $voiceId => $voiceInfo) : ?>
+                            <option value="<?php echo e((string) $voiceId); ?>" <?php echo $speechVoice === (string) $voiceId ? 'selected' : ''; ?>>
+                                <?php echo e((string) ($voiceInfo['label'] ?? $voiceId)); ?> - <?php echo e((string) ($voiceInfo['temper'] ?? '')); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <button class="diag-btn ok" type="submit">Salvar voz</button>
+            </form>
+            <div class="diag-tags">
+                <?php foreach ((array) ($audioContract['voice_options'] ?? array()) as $voiceOption) : ?>
+                    <?php if (is_array($voiceOption)) : ?>
+                        <span><?php echo e((string) ($voiceOption['label'] ?? $voiceOption['id'] ?? 'voz')); ?>: <?php echo e((string) ($voiceOption['temper'] ?? '')); ?></span>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
         </section>
