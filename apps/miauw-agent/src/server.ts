@@ -5,11 +5,13 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.11.0';
-const AGENT_VERSION = '2.0-fase17';
-const PHASE = 'fase17-training-compiler';
+const SERVICE_VERSION = '0.12.0';
+const AGENT_VERSION = '2.0-fase18';
+const PHASE = 'fase18-voice-audio-readiness';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const STYLE_VERSION = 'miauby-style-router-2026-05-16';
+const VOICE_PROFILE_VERSION = 'miauby-voice-profile-2026-05-17';
+const AUDIO_CONTRACT_VERSION = 'miauby-audio-readiness-2026-05-17';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
 const NODE_LOW_RISK_READ_TOOLS = [
   'resumo_financeiro',
@@ -63,6 +65,8 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Pergunta de bastidor tecnico recebe curiosidade cortada: "oxe, por que voce quer mexer nisso?", suporte tecnico interno e volta para processo.',
   'Padroes aprovados enviados no contexto de estilo sao memoria de jeito e processo. Use como tempero; nao cite a tabela, revisao ou bastidor.',
   'O perfil compilado de treino aprovado pelo PHP e prioridade de voz quando combinar com o tema. Use o jeito e as regras, nao cite que foi treinado.',
+  `Perfil de voz/tom: ${VOICE_PROFILE_VERSION}. Quando o PHP enviar perfil_voz_miauby, respeite ritmo, humor e diretivas sem citar configuracao.`,
+  `Contrato de audio: ${AUDIO_CONTRACT_VERSION}. Audio esta em preparo seguro; nao diga que ouviu audio, transcreveu fala ou tocou voz se o contrato estiver text_only/desativado.`,
   'Exemplos de treino aprovados sao amostras curtas, nao historico para despejar. Copie o padrao de resposta, nao explique o treinamento.',
   'Para mensagem sem objetivo claro, responda em 1 ou 2 linhas: reconheca o barulho, peca tela/dado/objetivo e puxe para acao. Nada de checklist longo.',
   'Quando faltar informacao operacional, peca exatamente o menor dado ausente: produto, EAN, valor, data, responsavel, tela, acao feita ou print.',
@@ -113,10 +117,16 @@ function publicStatus() {
     phase: PHASE,
     personality_version: PERSONALITY_VERSION,
     style_version: STYLE_VERSION,
+    voice_profile_version: VOICE_PROFILE_VERSION,
+    audio_version: AUDIO_CONTRACT_VERSION,
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
     style_router_enabled: true,
     training_context_supported: true,
     training_profile_supported: true,
+    voice_profile_supported: true,
+    audio_readiness_supported: true,
+    audio_capture_enabled: false,
+    audio_playback_enabled: false,
     local_style_replies_enabled: true,
     mode: 'node-primary-php-tool-bridge',
     tool_contracts: 'accepted_via_php_payload',
@@ -212,6 +222,33 @@ type TrainingProfile = {
   styles: string[];
 };
 
+type AudioContract = {
+  version: string;
+  enabled: boolean;
+  requestedByEnv: boolean;
+  status: string;
+  mode: string;
+  captureEnabled: boolean;
+  playbackEnabled: boolean;
+  transcriptionEnabled: boolean;
+  ttsEnabled: boolean;
+  storageEnabled: boolean;
+  provider: string;
+  allowedFormats: string[];
+  privacyRules: string[];
+};
+
+type VoiceProfile = {
+  version: string;
+  profileId: string;
+  label: string;
+  tone: string;
+  tempo: string;
+  humor: string;
+  directives: string[];
+  audio: AudioContract;
+};
+
 type SafeStyleContext = {
   version: string;
   route: StyleRoute;
@@ -219,6 +256,7 @@ type SafeStyleContext = {
   antiPatterns: string[];
   approvedPatterns: string[];
   trainingProfile: TrainingProfile;
+  voiceProfile: VoiceProfile;
   examples: string[];
 };
 
@@ -336,6 +374,24 @@ function safeNumber(value: unknown, fallback = 0, min = 0, max = 100000): number
   return Math.max(min, Math.min(max, Math.trunc(numberValue)));
 }
 
+function safeBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'sim', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'nao', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return fallback;
+}
+
 function safeTrainingProfile(value: unknown): TrainingProfile {
   if (!isRecord(value)) {
     return {
@@ -364,6 +420,42 @@ function safeTrainingProfile(value: unknown): TrainingProfile {
   };
 }
 
+function safeAudioContract(value: unknown): AudioContract {
+  const audio = isRecord(value) ? value : {};
+  const allowedFormats = safeStringArray(audio.allowed_formats ?? audio.allowedFormats, 4, 30).filter((item) => item === 'text');
+
+  return {
+    version: safeShort(audio.version, 100) || AUDIO_CONTRACT_VERSION,
+    enabled: false,
+    requestedByEnv: safeBoolean(audio.requested_by_env ?? audio.requestedByEnv, false),
+    status: safeShort(audio.status, 60) || 'desativado',
+    mode: safeShort(audio.mode, 40) || 'text_only',
+    captureEnabled: false,
+    playbackEnabled: false,
+    transcriptionEnabled: false,
+    ttsEnabled: false,
+    storageEnabled: false,
+    provider: safeShort(audio.provider, 80) || 'not_configured',
+    allowedFormats: allowedFormats.length > 0 ? allowedFormats : ['text'],
+    privacyRules: safeStringArray(audio.privacy_rules ?? audio.privacyRules, 4, 160),
+  };
+}
+
+function safeVoiceProfile(value: unknown): VoiceProfile {
+  const profile = isRecord(value) ? value : {};
+
+  return {
+    version: safeShort(profile.version, 100) || VOICE_PROFILE_VERSION,
+    profileId: safeShort(profile.profile_id ?? profile.profileId, 60) || 'miauby_padrao',
+    label: safeShort(profile.label, 80) || 'Miauby padrao',
+    tone: safeShort(profile.tone, 180) || 'gato fiscal interno, vivo e pratico',
+    tempo: safeShort(profile.tempo, 40) || 'medio',
+    humor: safeShort(profile.humor, 80) || 'curto',
+    directives: safeStringArray(profile.directives, 5, 160),
+    audio: safeAudioContract(profile.audio),
+  };
+}
+
 function safeStyleContext(value: unknown): SafeStyleContext {
   if (!isRecord(value)) {
     return {
@@ -373,6 +465,7 @@ function safeStyleContext(value: unknown): SafeStyleContext {
       antiPatterns: [],
       approvedPatterns: [],
       trainingProfile: safeTrainingProfile(null),
+      voiceProfile: safeVoiceProfile(null),
       examples: [],
     };
   }
@@ -384,6 +477,7 @@ function safeStyleContext(value: unknown): SafeStyleContext {
     antiPatterns: safeStringArray(value.anti_patterns ?? value.antiPatterns, 10),
     approvedPatterns: safeStringArray(value.approved_patterns ?? value.approvedPatterns, 8),
     trainingProfile: safeTrainingProfile(value.training_profile ?? value.trainingProfile),
+    voiceProfile: safeVoiceProfile(value.voice_profile ?? value.voiceProfile),
     examples: safeStringArray(value.examples, 5, 260),
   };
 }
@@ -421,6 +515,15 @@ function styleContextForPrompt(styleContext: SafeStyleContext): string {
       lines.push(`sinais_treino: categorias=${training.categories.join(',') || 'geral'}; estilos=${training.styles.join(',') || 'miauby'}`);
     }
   }
+
+  const voice = styleContext.voiceProfile;
+  lines.push(`perfil_voz_miauby: ${voice.version || VOICE_PROFILE_VERSION}; id=${voice.profileId}; tom=${voice.tone}; ritmo=${voice.tempo}; humor=${voice.humor}`);
+  if (voice.directives.length > 0) {
+    lines.push(`regras_voz: ${voice.directives.slice(0, 4).join(' | ')}`);
+  }
+  lines.push(
+    `audio_miauby: ${voice.audio.version || AUDIO_CONTRACT_VERSION}; status=${voice.audio.status}; modo=${voice.audio.mode}; captura=nao; playback=nao; armazenamento=nao`,
+  );
 
   if (styleContext.examples.length > 0) {
     lines.push(`exemplos_de_voz: ${styleContext.examples.slice(0, 3).join(' | ')}`);

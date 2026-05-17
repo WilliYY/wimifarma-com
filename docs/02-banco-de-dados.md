@@ -155,6 +155,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `miauw_treinos_respostas` deve ser append/versionado: feedback do chat nasce pendente, revisao aprova/rejeita/supera, e ajuste de item ja aprovado cria nova versao em vez de apagar o exemplo original.
 - So registros `miauw_treinos_respostas.status='aprovado'` podem entrar no contexto de estilo do Miauby; exemplos devem ser sanitizados e nao conter segredos, tokens, senha, CPF/telefone sem necessidade ou bastidor tecnico.
 - A Fase 17 usa os registros aprovados para montar perfil compilado em memoria por request; isso nao cria nova tabela e nao apaga exemplos antigos.
+- A Fase 18 adiciona perfis de voz/tom e contrato de audio apenas em codigo/configuracao; nao cria tabela nova, nao grava audio e nao armazena transcricao/TTS.
 - `wptl_options` guarda URLs do WordPress e pode causar redirects errados se alterado sem cuidado.
 
 ## Decisoes tecnicas ja tomadas

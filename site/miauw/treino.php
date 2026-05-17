@@ -50,6 +50,8 @@ $summary = miauw_training_summary();
 $items = miauw_training_items($filter, 60);
 $agent = function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array();
 $nextPhase = function_exists('miauw_agent_next_phase_contract') ? miauw_agent_next_phase_contract() : array();
+$voiceProfile = function_exists('miauw_agent_voice_profile_contract') ? miauw_agent_voice_profile_contract() : array();
+$audioContract = is_array($voiceProfile['audio'] ?? null) ? $voiceProfile['audio'] : array();
 $avatar = miauw_avatar_src();
 
 function miauw_training_date_label(string $date): string
@@ -94,7 +96,7 @@ function miauw_training_date_label(string $date): string
                 <div>
                     <span class="diag-kicker"><?php echo e((string) ($nextPhase['fase_atual'] ?? 'Fase atual')); ?></span>
                     <h1>Treinador do Miauby</h1>
-                    <p>Feedback do chat, exemplos aprovados e perfil compilado antes de virar voz oficial.</p>
+                    <p>Feedback do chat, exemplos aprovados, perfil compilado e voz/tom antes de audio oficial.</p>
                 </div>
             </div>
             <div class="diag-version">
@@ -106,6 +108,13 @@ function miauw_training_date_label(string $date): string
         <?php if (is_array($notice)) : ?>
             <div class="diag-notice <?php echo e((string) ($notice['type'] ?? 'info')); ?>">
                 <?php echo e((string) ($notice['message'] ?? '')); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($voiceProfile) : ?>
+            <div class="diag-notice">
+                Voz atual: <?php echo e((string) ($voiceProfile['label'] ?? 'Miauby padrao')); ?>.
+                Audio: <?php echo e((string) ($audioContract['status'] ?? 'desativado')); ?>, sem microfone ou gravacao nesta fase.
             </div>
         <?php endif; ?>
 

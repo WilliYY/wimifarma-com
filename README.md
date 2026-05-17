@@ -91,6 +91,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Miauby iniciou a Fase 15 do agente operacional v2: existe um roteador de estilo versionado (`miauby-style-router-2026-05-16`) para perguntas casuais, bastidor tecnico, saudacoes e ruido. O PHP exporta contexto de estilo e memorias/padroes aprovados ao Node; o Node responde localmente quando nao precisa gastar chamada online, evita listas em conversa solta e preserva a voz de gato fiscal sem virar catalogo de ferramentas.
 - Miauby iniciou a Fase 16 do agente operacional v2: o chat ganhou feedback `Boa`/`Treinar`, o painel restrito `/miauw/treino.php` revisa exemplos de resposta, a tabela `miauw_treinos_respostas` preserva versoes sem apagar historico e exemplos aprovados entram no `style_context` enviado ao Node. O servico agente passou para `SERVICE_VERSION=0.10.0` e `PHASE=fase16-training-feedback`, ainda sem escrita direta no Node.
 - Miauby iniciou a Fase 17 do agente operacional v2: exemplos aprovados viram um perfil compilado de voz/relevancia antes de chegar ao Node, perguntas repetidas pelo treino podem responder localmente sem chamada online, e o servico agente passou para `SERVICE_VERSION=0.11.0` e `PHASE=fase17-training-compiler`.
+- Miauby iniciou a Fase 18 do agente operacional v2: o PHP exporta perfis versionados de voz/tom (`miauby_padrao`, `miauby_curto`, `miauby_operacional`) e um contrato de audio seguro (`text_only`, sem microfone, playback, transcricao ou gravacao). O Node passou para `SERVICE_VERSION=0.12.0` e `PHASE=fase18-voice-audio-readiness`, recebendo o perfil de voz no `style_context`; audio real continua desligado por padrao.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
@@ -105,7 +106,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado e perfil compilado de voz
+- Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado e perfis de voz/tom
 - PostgreSQL 17 para dados da Cotacao V2
 - Redis 7 para sessoes e presenca da Cotacao V2
 
@@ -244,6 +245,8 @@ MIAUW_AGENT_ENGINE_ALLOWED_USERS
 MIAUW_MAINTENANCE_MODE
 MIAUW_MAINTENANCE_ALLOWED_USERS
 MIAUW_MAINTENANCE_MESSAGE
+MIAUW_VOICE_PROFILE
+MIAUW_AUDIO_ENABLED
 COTACAO_INTERNAL_TOKEN
 COTACAO_INTERNAL_BASE_URL
 COTACAO_POSTGRES_PASSWORD

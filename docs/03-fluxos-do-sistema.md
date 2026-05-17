@@ -245,6 +245,7 @@ Direcao de evolucao:
 - treinar respostas pelo proprio chat com `Boa`/`Treinar`, revisar no painel restrito `/miauw/treino.php` e usar apenas exemplos aprovados no contexto do Miauby;
 - preservar versoes de treino: aprovar, rejeitar ou superar sem excluir pergunta/resposta original;
 - compilar treinos aprovados em perfil curto e responder localmente quando houver pergunta repetida/fortemente parecida, para reduzir custo e evitar conversa infinita por temas;
+- aplicar perfil de voz/tom versionado no contexto do Miauby, mantendo audio real em `text_only` sem microfone, transcricao, TTS, playback ou gravacao ate existir fluxo explicito;
 - separar leitura, sugestao e escrita;
 - documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.
 

@@ -158,6 +158,14 @@ Miauby ja possui:
   - `miauw_training_try_local_reply()` permite resposta local para pergunta repetida ou muito parecida com treino aprovado, sem chamada online, registrando trace `miauw_training_router`;
   - o Node aceita `training_profile` dentro do `style_context` e usa `perfil_treino_aprovado` no prompt, sem receber credencial de banco nem executar escrita direta;
   - `site/miauw/miauw-evals.php` cobre treino compilado, resposta local por treino e contrato de tools em `fase17-training-compiler`.
+- Fase 18 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase18`;
+  - o servico Node passou para `SERVICE_VERSION=0.12.0` e `PHASE=fase18-voice-audio-readiness`;
+  - `miauw_agent_voice_profile_contract()` exporta perfis versionados de voz/tom (`miauby_padrao`, `miauby_curto`, `miauby_operacional`) para o `style_context`;
+  - `miauw_agent_audio_contract()` prepara audio em modo seguro `text_only`, com microfone, playback, transcricao, TTS e armazenamento desligados;
+  - `/miauw/treino.php` mostra o perfil de voz atual e avisa que audio segue sem microfone ou gravacao nesta fase;
+  - o Node aceita `voice_profile` no `style_context`, inclui `perfil_voz_miauby`/`audio_miauby` no prompt e nao pode afirmar que ouviu/transcreveu/tocou audio quando o contrato estiver desligado;
+  - `site/miauw/miauw-evals.php` cobre status Fase 18, contrato de voz/audio seguro, contexto de voz e contrato de tools em `fase18-voice-audio-readiness`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -238,6 +246,7 @@ Integracoes:
 - Adicionar tool generativa sem schema pode criar escrita indevida no banco.
 - Aprendizado automatico sem filtro pode cristalizar erro operacional.
 - Aprovar treino ruim pode ensinar tom errado para assuntos amplos; revisar com exemplos curtos, vivos e sem dados sensiveis.
+- `MIAUW_AUDIO_ENABLED` ainda nao liga audio real; ele serve apenas para marcar intencao de ambiente. Botao, provider, consentimento, transcricao/TTS e armazenamento precisam de fase propria e novos testes.
 - Respostas longas demais no widget podem atrapalhar fluxo do funcionario.
 - Aumentar contexto demais pode elevar custo e lentidao.
 - Misturar comandos de financeiro, cotacao e cashback pode registrar dado no modulo errado.
@@ -272,3 +281,4 @@ Integracoes:
 - Fase 13: migrar tools reais de leitura baixa para o Node por ponte PHP interna, mantendo banco, confirmacao, auditoria e escrita forte sob controle do PHP. Iniciada.
 - Fase 16: criar o Treinador do Miauby no chat e painel restrito, usando exemplos aprovados como contexto versionado antes de audio, voz ou portabilidade externa. Iniciada.
 - Fase 17: compilar treino aprovado em perfil curto, selecionar exemplos relevantes e responder localmente quando houver match forte para reduzir custo/latencia. Iniciada.
+- Fase 18: versionar perfis de voz/tom e preparar contrato seguro de audio em `text_only`, sem microfone, TTS ou gravacao ate existir botao/consentimento/provedor validado. Iniciada.

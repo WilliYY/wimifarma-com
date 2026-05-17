@@ -60,6 +60,7 @@ Status operacional:
 - A Fase 15 adiciona o roteador de estilo versionado: o PHP envia `style_context` ao Node com rota, limite de palavras, regras de voz, exemplos e memorias/padroes aprovados. Perguntas casuais, bastidor tecnico, saudacoes e ruido podem ser respondidos localmente sem chamada online nem tool, preservando a voz do Miauby e reduzindo custo/latencia.
 - A Fase 16 adiciona o Treinador do Miauby: feedback do chat e revisao em `/miauw/treino.php` salvam exemplos versionados em `miauw_treinos_respostas`; somente exemplos aprovados entram no `style_context` enviado ao Node, que continua sem escrita direta.
 - A Fase 17 adiciona o compilador de treino: o PHP seleciona exemplos aprovados por relevancia, gera `training_profile` compacto no `style_context` e pode responder localmente quando a pergunta bater forte com treino aprovado, sem chamada online.
+- A Fase 18 adiciona perfis de voz/tom e contrato seguro de audio: o PHP envia `voice_profile` e `audio_contract` ao Node, mas o modo segue `text_only`, com microfone, transcricao, TTS, playback e armazenamento desligados ate uma fase propria com botao e consentimento.
 
 Tabelas:
 

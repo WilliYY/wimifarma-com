@@ -55,15 +55,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260517b');
+    define('MIAUW_VERSION', '20260517c');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase17');
+    define('MIAUW_AGENT_VERSION', '2.0-fase18');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-17-operacional-v2-training-compiler');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-17-operacional-v2-voice-audio-readiness');
 }
 
 if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
@@ -72,6 +72,22 @@ if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
 
 if (!defined('MIAUW_AGENT_STYLE_VERSION')) {
     define('MIAUW_AGENT_STYLE_VERSION', 'miauby-style-router-2026-05-16');
+}
+
+if (!defined('MIAUW_AGENT_VOICE_PROFILE_VERSION')) {
+    define('MIAUW_AGENT_VOICE_PROFILE_VERSION', 'miauby-voice-profile-2026-05-17');
+}
+
+if (!defined('MIAUW_AGENT_AUDIO_VERSION')) {
+    define('MIAUW_AGENT_AUDIO_VERSION', 'miauby-audio-readiness-2026-05-17');
+}
+
+if (!defined('MIAUW_VOICE_PROFILE')) {
+    define('MIAUW_VOICE_PROFILE', miauw_env_string(array('MIAUW_VOICE_PROFILE'), 'miauby_padrao'));
+}
+
+if (!defined('MIAUW_AUDIO_ENABLED')) {
+    define('MIAUW_AUDIO_ENABLED', miauw_env_bool(array('MIAUW_AUDIO_ENABLED'), false));
 }
 
 if (!defined('MIAUW_OPENAI_API_KEY')) {
@@ -567,7 +583,15 @@ function miauw_agent_public_status(): array
             'treino_aprovado_compilado',
             'resposta_local_por_treino',
             'evals_treino_relevancia',
+            'perfis_voz_tom',
+            'contrato_audio_seguro',
+            'audio_desativado_por_padrao',
+            'contexto_voz_node',
         ),
+        'voice_profile_version' => miauw_constant_string('MIAUW_AGENT_VOICE_PROFILE_VERSION', ''),
+        'audio_version' => miauw_constant_string('MIAUW_AGENT_AUDIO_VERSION', ''),
+        'voice_profile' => function_exists('miauw_agent_voice_profile_id') ? miauw_agent_voice_profile_id() : '',
+        'audio_status' => function_exists('miauw_agent_audio_contract') ? (string) (miauw_agent_audio_contract()['status'] ?? '') : '',
     );
 }
 
@@ -1197,6 +1221,123 @@ function miauw_agent_approved_style_patterns(string $message, ?int $userId = nul
     }
 }
 
+function miauw_agent_voice_profiles(): array
+{
+    return array(
+        'miauby_padrao' => array(
+            'id' => 'miauby_padrao',
+            'label' => 'Miauby padrao',
+            'tone' => 'gato fiscal interno, vivo, direto, esperto e levemente acido',
+            'tempo' => 'medio',
+            'humor' => 'curto, so quando ajuda',
+            'directives' => array(
+                'responder como gente, sem catalogo de ferramentas',
+                'pedir o menor dado ausente antes de agir',
+                'usar bronca leve sem humilhar o operador',
+                'fechar com proximo passo pratico quando couber',
+            ),
+            'tts_hint' => array(
+                'voice' => 'a escolher',
+                'pace' => 'natural',
+                'emotion' => 'curioso_pratico',
+            ),
+        ),
+        'miauby_curto' => array(
+            'id' => 'miauby_curto',
+            'label' => 'Miauby curto',
+            'tone' => 'bem direto, vivo, com uma frase de personalidade e acao',
+            'tempo' => 'rapido',
+            'humor' => 'minimo',
+            'directives' => array(
+                'preferir uma ou duas frases',
+                'evitar lista salvo se o pedido exigir',
+                'trocar explicacao longa por pergunta objetiva',
+                'nao enrolar em assunto fora da operacao',
+            ),
+            'tts_hint' => array(
+                'voice' => 'a escolher',
+                'pace' => 'um pouco rapido',
+                'emotion' => 'esperto_impaciente',
+            ),
+        ),
+        'miauby_operacional' => array(
+            'id' => 'miauby_operacional',
+            'label' => 'Miauby operacional',
+            'tone' => 'mais serio, fiscal e focado em risco, processo e decisao',
+            'tempo' => 'medio',
+            'humor' => 'baixo',
+            'directives' => array(
+                'priorizar risco, dado faltante e confirmacao',
+                'separar fato do que ainda precisa validar',
+                'manter voz do Miauby sem virar piada',
+                'nunca dizer que gravou acao forte sem confirmacao humana',
+            ),
+            'tts_hint' => array(
+                'voice' => 'a escolher',
+                'pace' => 'claro',
+                'emotion' => 'alerta_controlado',
+            ),
+        ),
+    );
+}
+
+function miauw_agent_voice_profile_id(?string $requested = null): string
+{
+    $profiles = miauw_agent_voice_profiles();
+    $candidate = trim((string) ($requested ?? miauw_constant_string('MIAUW_VOICE_PROFILE', 'miauby_padrao')));
+    if ($candidate !== '' && isset($profiles[$candidate])) {
+        return $candidate;
+    }
+
+    return 'miauby_padrao';
+}
+
+function miauw_agent_audio_contract(): array
+{
+    $requested = defined('MIAUW_AUDIO_ENABLED') && (bool) MIAUW_AUDIO_ENABLED;
+
+    return array(
+        'version' => miauw_constant_string('MIAUW_AGENT_AUDIO_VERSION', ''),
+        'enabled' => false,
+        'requested_by_env' => $requested,
+        'status' => $requested ? 'preparado_sem_interface' : 'desativado',
+        'mode' => 'text_only',
+        'capture_enabled' => false,
+        'playback_enabled' => false,
+        'transcription_enabled' => false,
+        'tts_enabled' => false,
+        'storage_enabled' => false,
+        'provider' => 'not_configured',
+        'allowed_formats' => array('text'),
+        'requires_explicit_user_action' => true,
+        'privacy_rules' => array(
+            'microfone nunca liga sozinho',
+            'audio nao e gravado nem armazenado nesta fase',
+            'transcricao e voz sintetica exigem botao, confirmacao e provider configurado em fase futura',
+            'resposta por audio deve seguir os mesmos guardrails de texto, confirmacao e auditoria',
+        ),
+    );
+}
+
+function miauw_agent_voice_profile_contract(?string $requested = null): array
+{
+    $profiles = miauw_agent_voice_profiles();
+    $id = miauw_agent_voice_profile_id($requested);
+    $profile = is_array($profiles[$id] ?? null) ? $profiles[$id] : $profiles['miauby_padrao'];
+
+    return array(
+        'version' => miauw_constant_string('MIAUW_AGENT_VOICE_PROFILE_VERSION', ''),
+        'profile_id' => (string) ($profile['id'] ?? $id),
+        'label' => (string) ($profile['label'] ?? 'Miauby padrao'),
+        'tone' => (string) ($profile['tone'] ?? ''),
+        'tempo' => (string) ($profile['tempo'] ?? 'medio'),
+        'humor' => (string) ($profile['humor'] ?? 'curto'),
+        'directives' => array_values((array) ($profile['directives'] ?? array())),
+        'tts_hint' => (array) ($profile['tts_hint'] ?? array()),
+        'audio' => miauw_agent_audio_contract(),
+    );
+}
+
 function miauw_agent_style_context_export(string $message, ?int $userId = null, string $pageContext = ''): array
 {
     $contract = miauw_agent_style_contract();
@@ -1212,6 +1353,7 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
     }
     $trainingExamples = function_exists('miauw_training_context_examples') ? miauw_training_context_examples($message, 2) : array();
     $trainingProfile = function_exists('miauw_training_context_profile') ? miauw_training_context_profile($message, 2) : array();
+    $voiceProfile = miauw_agent_voice_profile_contract();
     foreach ($trainingExamples as $example) {
         $question = (string) ($example['pergunta'] ?? '');
         $reply = (string) ($example['resposta_ideal'] ?? '');
@@ -1231,11 +1373,14 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
             'usar memorias/padroes apenas quando revisados como aprovado',
             'usar exemplos de treino aprovados sem citar treino, tabela ou revisao',
             'preferir perfil de treino compilado em vez de aumentar contexto bruto',
+            'audio segue desligado ate botao, confirmacao e provider seguro',
         ),
         'anti_patterns' => array_values((array) ($contract['anti_patterns'] ?? array())),
         'approved_patterns' => miauw_agent_approved_style_patterns($message, $userId),
         'training_examples' => $trainingExamples,
         'training_profile' => $trainingProfile,
+        'voice_profile' => $voiceProfile,
+        'audio_contract' => $voiceProfile['audio'],
         'examples' => array_slice($exampleList, 0, 4),
     );
 }
@@ -1250,6 +1395,18 @@ function miauw_agent_style_context_text(string $message, ?int $userId = null, st
         '- rota: ' . (string) ($route['intent'] ?? '') . '; palavras_max: ' . (int) ($route['budget_words'] ?? 90) . '; listas: ' . (!empty($route['allow_lists']) ? 'permitidas quando uteis' : 'evitar'),
         '- regra: em pergunta casual, responder como gente, curto, com voz de gato fiscal; nao despejar lista de capacidades.',
     );
+
+    $voiceProfile = is_array($context['voice_profile'] ?? null) ? $context['voice_profile'] : array();
+    if ($voiceProfile) {
+        $audio = is_array($voiceProfile['audio'] ?? null) ? $voiceProfile['audio'] : array();
+        $lines[] = '- voz: ' . (string) ($voiceProfile['profile_id'] ?? 'miauby_padrao')
+            . '; tom=' . miauw_substr((string) ($voiceProfile['tone'] ?? ''), 0, 120)
+            . '; audio=' . (string) ($audio['status'] ?? 'desativado')
+            . '; modo=' . (string) ($audio['mode'] ?? 'text_only');
+        foreach (array_slice((array) ($voiceProfile['directives'] ?? array()), 0, 2) as $directive) {
+            $lines[] = '- regra de voz: ' . miauw_substr((string) $directive, 0, 160);
+        }
+    }
 
     foreach (array_slice((array) ($context['approved_patterns'] ?? array()), 0, 3) as $pattern) {
         $lines[] = '- padrao aprovado: ' . miauw_substr((string) $pattern, 0, 220);
@@ -1284,6 +1441,7 @@ function miauw_agent_personality_contract(): array
             'humor curto como tempero, nunca como enrolacao',
             'personalidade forte com solucao pratica em toda resposta',
             'respostas curtas por padrao no widget',
+            'perfil de voz/tom selecionavel por contrato versionado',
             'perguntas casuais nao viram lista de ferramentas',
             'padroes aprovados no diagnostico podem ajustar o jeito de falar',
             'pedir somente o menor dado ausente antes de agir',
@@ -1303,24 +1461,28 @@ function miauw_agent_personality_contract(): array
             'inventar dado real sem fonte do sistema ou do operador',
             'executar acao forte sem confirmacao humana',
         ),
-        'proxima_melhoria' => 'Usar o treino compilado para audio/voz e portabilidade do nucleo sem perder confirmacao e auditoria.',
+        'proxima_melhoria' => 'Adicionar botao de audio controlado, escolha de voz e validacao humana sem ligar microfone sozinho.',
     );
 }
 
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase17',
-        'proxima_fase' => 'audio_perfis_de_voz_e_core_portavel',
+        'fase_atual' => 'fase18',
+        'proxima_fase' => 'botao_audio_controlado_e_voz_por_usuario',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => miauw_agent_engine(),
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria, memorias revisadas, treino aprovado e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, contexto de estilo, padroes aprovados e um perfil compilado dos treinos revisados; pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, acoes fortes voltam como confirmacao obrigatoria, e perguntas casuais/de bastidor ou repetidas pelo treino podem ser respondidas localmente sem gastar chamada online.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria, memorias revisadas, treino aprovado, perfil de voz e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, contexto de estilo, padroes aprovados, perfil compilado dos treinos revisados e perfil de voz/tom; pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, acoes fortes voltam como confirmacao obrigatoria, audio permanece text_only/desativado ate botao explicito, e perguntas casuais/de bastidor ou repetidas pelo treino podem ser respondidas localmente sem gastar chamada online.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
             'persona_versionada' => function_exists('miauw_agent_personality_contract'),
+            'perfis_voz_tom' => function_exists('miauw_agent_voice_profile_contract'),
+            'contrato_audio_seguro' => function_exists('miauw_agent_audio_contract'),
+            'contexto_voz_node' => function_exists('miauw_agent_style_context_export'),
+            'audio_sem_captura' => true,
             'roteador_estilo' => function_exists('miauw_agent_style_route'),
             'contexto_estilo_node' => function_exists('miauw_agent_style_context_export'),
             'memoria_estilo_aprovada' => function_exists('miauw_agent_approved_style_patterns'),
@@ -1355,7 +1517,8 @@ function miauw_agent_next_phase_contract(): array
             'Testar o motor Node como primario com adm enquanto o Miauby esta fora de uso pela equipe.',
             'Validar buscar_cliente em operacao real, lembrando que telefone continua mascarado.',
             'Transformar confirmacao forte via Node em card de confirmacao da mesma sessao antes de liberar escrita forte pelo agente.',
-            'Adicionar audio/voz apenas depois que o nucleo de treino compilado e revisao estiver estavel.',
+            'Adicionar botao de audio apenas com acao explicita do usuario, sem gravar audio por padrao.',
+            'Escolher provider/modelo/voz de TTS e STT antes de liberar playback ou transcricao.',
         ),
         'nao_mudar_agora' => array(
             'Banco MySQL dos modulos internos.',
@@ -4731,7 +4894,7 @@ function miauw_agent_tool_contract_export(): array
     return array(
         'version' => 'miauw-tool-contracts-2026-05-16',
         'agent_version' => miauw_constant_string('MIAUW_AGENT_VERSION', ''),
-        'phase' => 'fase17-training-compiler',
+        'phase' => 'fase18-voice-audio-readiness',
         'source' => 'php_skill_registry',
         'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
         'writes_enabled_in_node' => false,

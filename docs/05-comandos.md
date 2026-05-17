@@ -53,6 +53,8 @@ O `POST /miauw/agent/run` sem token deve recusar com 401 ou 503, dependendo da c
 
 O adaptador PHP compara respostas quando `MIAUW_AGENT_SHADOW_ON_SEND=true` ou quando `MIAUW_ENGINE=node_shadow` para usuario liberado. Para corte controlado, use `MIAUW_ENGINE=node` com `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm` e rollback para `MIAUW_ENGINE=php`.
 
+O perfil de voz atual pode ser ajustado por ambiente com `MIAUW_VOICE_PROFILE=miauby_padrao|miauby_curto|miauby_operacional`. `MIAUW_AUDIO_ENABLED` nao liga microfone/TTS nesta fase; audio segue em contrato seguro `text_only` ate existir fluxo proprio.
+
 ## Local - Miauby evals
 
 ```powershell
