@@ -15,6 +15,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A ponte interna do Miauby para a Cotacao V2 exige `X-Miauw-Internal-Token` e fica indisponivel se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
 - `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
+- `Permissions-Policy` bloqueia camera e geolocalizacao; microfone fica liberado apenas para a propria origem (`microphone=(self)`) para permitir o botao de audio do Miauby, que ainda exige clique explicito do usuario.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
 - `/miauw/diagnostico.php` e restrito a `admin`, `gerente` ou `adm`, usa CSRF nas acoes e sanitiza textos de memorias, padroes e diagnosticos antes de exibir.
 - A Fase 5 do Miauby exige confirmacao humana para acoes fortes antes de gravar dados e registra traces sanitizados em `miauw_tool_traces`.

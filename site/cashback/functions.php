@@ -13,7 +13,7 @@ function send_security_headers(): void
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: SAMEORIGIN');
     header('Referrer-Policy: strict-origin-when-cross-origin');
-    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+    header('Permissions-Policy: camera=(), microphone=(self), geolocation=()');
     header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self';");
 
     if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
