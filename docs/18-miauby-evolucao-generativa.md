@@ -150,6 +150,14 @@ Miauby ja possui:
   - `miauw_treinos_respostas` guarda pergunta, resposta original, resposta ideal, motivo, categoria, estilo, status e versao; revisoes novas criam versoes em vez de destruir historico;
   - `miauw_agent_style_context_export()` inclui exemplos aprovados de treino no contexto de estilo enviado ao Node, sem expor tabela, revisao ou bastidor ao operador;
   - `site/miauw/miauw-evals.php` cobre status da Fase 16, contrato de treino, fluxo versionado e contrato de tools em `fase16-training-feedback`.
+- Fase 17 do agente operacional v2 iniciada:
+  - `MIAUW_AGENT_VERSION=2.0-fase17`;
+  - o servico Node passou para `SERVICE_VERSION=0.11.0` e `PHASE=fase17-training-compiler`;
+  - `miauw_training_context_profile()` compila treinos aprovados em regras curtas de voz, confianca, categorias e estilos, reduzindo contexto bruto por tema;
+  - `miauw_training_context_examples()` agora ranqueia exemplos por relevancia, coincidencia exata, termos sensiveis e rota de estilo;
+  - `miauw_training_try_local_reply()` permite resposta local para pergunta repetida ou muito parecida com treino aprovado, sem chamada online, registrando trace `miauw_training_router`;
+  - o Node aceita `training_profile` dentro do `style_context` e usa `perfil_treino_aprovado` no prompt, sem receber credencial de banco nem executar escrita direta;
+  - `site/miauw/miauw-evals.php` cobre treino compilado, resposta local por treino e contrato de tools em `fase17-training-compiler`.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -219,6 +227,7 @@ Integracoes:
 - Manter avaliacoes simples de skills em `site/miauw/miauw-evals.php`: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
 - Usar `miauw_treinos_respostas` para exemplos concretos de voz e resposta ideal, com pergunta/resposta original preservadas e aprovacao humana antes de entrar no contexto.
+- Compilar treinos aprovados em perfil curto antes de enviar ao Node; nao transformar cada tema treinado em prompt permanente.
 - Manter a tela de diagnostico do Miauby mostrando API, modelo, skills ativas, ultimos alertas, ultimos padroes e falhas recentes.
 - A tela de diagnostico usa o status publico (`configured`, `validated`, `status`) e nao chama a OpenAI automaticamente. Um teste online explicito ainda pode ser adicionado depois.
 - Preferir respostas operacionais e sem codigo para usuarios finais. Codigo, SQL, stack trace e comandos devem aparecer apenas em contexto tecnico autorizado.
@@ -262,3 +271,4 @@ Integracoes:
 - Fase 12: executar no Node a primeira tool real de leitura segura sobre contratos auditados, mantendo escrita, confirmacao e rollback no PHP. Iniciada.
 - Fase 13: migrar tools reais de leitura baixa para o Node por ponte PHP interna, mantendo banco, confirmacao, auditoria e escrita forte sob controle do PHP. Iniciada.
 - Fase 16: criar o Treinador do Miauby no chat e painel restrito, usando exemplos aprovados como contexto versionado antes de audio, voz ou portabilidade externa. Iniciada.
+- Fase 17: compilar treino aprovado em perfil curto, selecionar exemplos relevantes e responder localmente quando houver match forte para reduzir custo/latencia. Iniciada.

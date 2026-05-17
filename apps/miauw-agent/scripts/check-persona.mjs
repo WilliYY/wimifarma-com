@@ -8,8 +8,8 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.0-fase16',
-  'fase16-training-feedback',
+  '2.0-fase17',
+  'fase17-training-compiler',
   'PERSONALITY_VERSION',
   'STYLE_VERSION',
   'miauby-persona-2026-05-16',
@@ -22,7 +22,9 @@ const required = [
   'Nao invente dado real',
   'styleContextForPrompt',
   'training_context_supported',
-  'Exemplos de treino aprovados',
+  'training_profile_supported',
+  'perfil_treino_aprovado',
+  'O perfil compilado de treino aprovado',
   'localStyleReply',
   'toolContractsForPrompt',
   'consultar_contrato_tool_miauby',

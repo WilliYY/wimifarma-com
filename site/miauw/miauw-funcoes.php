@@ -55,15 +55,15 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260517a');
+    define('MIAUW_VERSION', '20260517b');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
-    define('MIAUW_AGENT_VERSION', '2.0-fase16');
+    define('MIAUW_AGENT_VERSION', '2.0-fase17');
 }
 
 if (!defined('MIAUW_AGENT_POLICY_VERSION')) {
-    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-17-operacional-v2-training-feedback');
+    define('MIAUW_AGENT_POLICY_VERSION', '2026-05-17-operacional-v2-training-compiler');
 }
 
 if (!defined('MIAUW_AGENT_PERSONALITY_VERSION')) {
@@ -564,6 +564,9 @@ function miauw_agent_public_status(): array
             'treinador_miauby_chat',
             'exemplos_treinamento_versionados',
             'contexto_treino_aprovado',
+            'treino_aprovado_compilado',
+            'resposta_local_por_treino',
+            'evals_treino_relevancia',
         ),
     );
 }
@@ -1207,12 +1210,13 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
             $exampleList[] = $question . ' => ' . (string) $reply;
         }
     }
-    $trainingExamples = function_exists('miauw_training_context_examples') ? miauw_training_context_examples($message, 3) : array();
+    $trainingExamples = function_exists('miauw_training_context_examples') ? miauw_training_context_examples($message, 2) : array();
+    $trainingProfile = function_exists('miauw_training_context_profile') ? miauw_training_context_profile($message, 2) : array();
     foreach ($trainingExamples as $example) {
         $question = (string) ($example['pergunta'] ?? '');
         $reply = (string) ($example['resposta_ideal'] ?? '');
         if ($question !== '' && $reply !== '') {
-            $exampleList[] = 'treino aprovado: ' . miauw_substr($question, 0, 140) . ' => ' . miauw_substr($reply, 0, 280);
+            $exampleList[] = 'treino aprovado: ' . miauw_substr($question, 0, 120) . ' => ' . miauw_substr($reply, 0, 240);
         }
     }
 
@@ -1226,11 +1230,13 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
             'bastidor tecnico vira suporte tecnico interno',
             'usar memorias/padroes apenas quando revisados como aprovado',
             'usar exemplos de treino aprovados sem citar treino, tabela ou revisao',
+            'preferir perfil de treino compilado em vez de aumentar contexto bruto',
         ),
         'anti_patterns' => array_values((array) ($contract['anti_patterns'] ?? array())),
         'approved_patterns' => miauw_agent_approved_style_patterns($message, $userId),
         'training_examples' => $trainingExamples,
-        'examples' => array_slice($exampleList, 0, 5),
+        'training_profile' => $trainingProfile,
+        'examples' => array_slice($exampleList, 0, 4),
     );
 }
 
@@ -1247,6 +1253,16 @@ function miauw_agent_style_context_text(string $message, ?int $userId = null, st
 
     foreach (array_slice((array) ($context['approved_patterns'] ?? array()), 0, 3) as $pattern) {
         $lines[] = '- padrao aprovado: ' . miauw_substr((string) $pattern, 0, 220);
+    }
+
+    $trainingProfile = is_array($context['training_profile'] ?? null) ? $context['training_profile'] : array();
+    if ($trainingProfile) {
+        $lines[] = '- treino: aprovados=' . (int) ($trainingProfile['approved_total'] ?? 0)
+            . '; confianca=' . (string) ($trainingProfile['confidence'] ?? 'baixa')
+            . '; exemplos=' . (int) ($trainingProfile['examples_selected'] ?? 0);
+        foreach (array_slice((array) ($trainingProfile['directives'] ?? array()), 0, 3) as $directive) {
+            $lines[] = '- regra de treino: ' . miauw_substr((string) $directive, 0, 180);
+        }
     }
 
     foreach (array_slice((array) ($context['examples'] ?? array()), 0, 2) as $example) {
@@ -1287,20 +1303,20 @@ function miauw_agent_personality_contract(): array
             'inventar dado real sem fonte do sistema ou do operador',
             'executar acao forte sem confirmacao humana',
         ),
-        'proxima_melhoria' => 'Coletar exemplos reais do adm, transformar em evals de voz e liberar usuarios aos poucos.',
+        'proxima_melhoria' => 'Usar o treino compilado para audio/voz e portabilidade do nucleo sem perder confirmacao e auditoria.',
     );
 }
 
 function miauw_agent_next_phase_contract(): array
 {
     return array(
-        'fase_atual' => 'fase16',
+        'fase_atual' => 'fase17',
         'proxima_fase' => 'audio_perfis_de_voz_e_core_portavel',
         'runtime' => 'Node.js 22 + TypeScript',
         'sdk' => 'Agents SDK',
         'endpoint_interno' => '/miauw/agent',
         'modo' => miauw_agent_engine(),
-        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria, memorias revisadas, treino aprovado e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, contexto de estilo, padroes aprovados e exemplos de treino revisados; pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, acoes fortes voltam como confirmacao obrigatoria, e perguntas casuais/de bastidor podem ser respondidas localmente sem gastar chamada online.',
+        'compatibilidade' => 'O PHP continua dono de login, sessao, widget, confirmacoes, auditoria, memorias revisadas, treino aprovado e escritas fortes. O motor pode alternar entre PHP, sombra Node e Node primario para usuarios liberados, com rollback por ambiente. O Node recebe contratos de tools, contexto de estilo, padroes aprovados e um perfil compilado dos treinos revisados; pode orquestrar todas as tools exportadas pela ponte PHP interna tokenizada, sem credenciais de banco. Leituras/diagnosticos executam no PHP, tarefa pode gravar como baixo risco com usuario logado, acoes fortes voltam como confirmacao obrigatoria, e perguntas casuais/de bastidor ou repetidas pelo treino podem ser respondidas localmente sem gastar chamada online.',
         'pronto_agora' => array(
             'registry_skills' => function_exists('miauw_skill_registry_public'),
             'guardrails_operacionais' => true,
@@ -1312,6 +1328,8 @@ function miauw_agent_next_phase_contract(): array
             'treinador_chat_feedback' => function_exists('miauw_training_create_feedback'),
             'revisao_treino_humana' => function_exists('miauw_training_review_item'),
             'contexto_treino_aprovado' => function_exists('miauw_training_context_examples'),
+            'perfil_treino_compilado' => function_exists('miauw_training_context_profile'),
+            'resposta_local_por_treino' => function_exists('miauw_training_try_local_reply'),
             'eval_persona_node' => true,
             'tool_contract_export' => function_exists('miauw_agent_tool_contract_export'),
             'traces_por_conversa' => true,
@@ -1337,7 +1355,7 @@ function miauw_agent_next_phase_contract(): array
             'Testar o motor Node como primario com adm enquanto o Miauby esta fora de uso pela equipe.',
             'Validar buscar_cliente em operacao real, lembrando que telefone continua mascarado.',
             'Transformar confirmacao forte via Node em card de confirmacao da mesma sessao antes de liberar escrita forte pelo agente.',
-            'Adicionar audio/voz apenas depois que o nucleo de treino e revisao estiver estavel.',
+            'Adicionar audio/voz apenas depois que o nucleo de treino compilado e revisao estiver estavel.',
         ),
         'nao_mudar_agora' => array(
             'Banco MySQL dos modulos internos.',
@@ -2741,74 +2759,180 @@ function miauw_training_review_item(
     }
 }
 
-function miauw_training_context_examples(string $message, int $limit = 3): array
+function miauw_training_fetch_approved_rows(int $limit = 120): array
 {
     try {
-        $limit = max(1, min(8, $limit));
+        $limit = max(1, min(200, $limit));
         $exists = db()->query("SHOW TABLES LIKE 'miauw_treinos_respostas'")->fetchColumn();
         if (!$exists) {
             return array();
         }
 
         $stmt = db()->query(
-            "SELECT pergunta, resposta_ideal, categoria, estilo, created_at
+            "SELECT id, pergunta, resposta_ideal, categoria, estilo, reviewed_at, created_at
              FROM miauw_treinos_respostas
              WHERE status = 'aprovado'
                AND resposta_ideal IS NOT NULL
                AND resposta_ideal <> ''
              ORDER BY reviewed_at DESC, created_at DESC, id DESC
-             LIMIT 80"
+             LIMIT " . $limit
         );
-        $rows = $stmt->fetchAll() ?: array();
-        if (!$rows) {
-            return array();
+
+        return $stmt->fetchAll() ?: array();
+    } catch (Throwable $error) {
+        error_log('Miauby training approved rows failed: ' . $error->getMessage());
+
+        return array();
+    }
+}
+
+function miauw_training_words(string $text): array
+{
+    $normalized = miauw_agent_style_normalized($text);
+    $normalized = preg_replace('/[^a-z0-9]+/u', ' ', $normalized) ?? $normalized;
+    $words = preg_split('/\s+/', trim($normalized)) ?: array();
+    $stop = array_flip(array(
+        'aqui', 'agora', 'ainda', 'algo', 'como', 'com', 'das', 'dos', 'ele', 'ela', 'era',
+        'essa', 'esse', 'isso', 'mais', 'meu', 'minha', 'muito', 'para', 'pela', 'pelo',
+        'por', 'pra', 'que', 'qual', 'quais', 'quando', 'sao', 'sem', 'ser', 'sua',
+        'tem', 'uma', 'uns', 'voce', 'você',
+    ));
+    $selected = array();
+
+    foreach ($words as $word) {
+        $word = trim((string) $word);
+        if ($word === '' || miauw_strlen($word) < 3 || isset($stop[$word])) {
+            continue;
         }
+        $selected[$word] = true;
+    }
 
-        $messageWords = array_filter(preg_split('/\s+/', miauw_agent_style_normalized($message)) ?: array(), static function (string $word): bool {
-            return miauw_strlen($word) >= 4;
-        });
-        $messageWords = array_values(array_unique($messageWords));
-        $scored = array();
+    return array_keys($selected);
+}
 
-        foreach ($rows as $row) {
-            $haystack = miauw_agent_style_normalized(
-                (string) ($row['pergunta'] ?? '') . ' '
-                . (string) ($row['resposta_ideal'] ?? '') . ' '
-                . (string) ($row['categoria'] ?? '') . ' '
-                . (string) ($row['estilo'] ?? '')
-            );
-            $score = 0;
-            foreach ($messageWords as $word) {
-                if ($word !== '' && strpos($haystack, $word) !== false) {
-                    $score += 4;
-                }
-            }
-            if ($score === 0 && count($scored) < $limit) {
-                $score = 1;
-            }
-            if ($score > 0) {
-                $row['_score'] = $score;
-                $scored[] = $row;
+function miauw_training_row_score(array $row, string $message, array $messageWords, array $route): array
+{
+    $normalizedMessage = miauw_agent_style_normalized($message);
+    $question = (string) ($row['pergunta'] ?? '');
+    $reply = (string) ($row['resposta_ideal'] ?? '');
+    $category = (string) ($row['categoria'] ?? '');
+    $style = (string) ($row['estilo'] ?? '');
+    $questionNormalized = miauw_agent_style_normalized($question);
+    $replyNormalized = miauw_agent_style_normalized($reply);
+    $metaNormalized = miauw_agent_style_normalized($category . ' ' . $style);
+    $score = 0;
+    $matched = array();
+    $exact = false;
+
+    if ($normalizedMessage !== '' && $questionNormalized !== '') {
+        if ($normalizedMessage === $questionNormalized) {
+            $score += 120;
+            $exact = true;
+        } elseif (strpos($normalizedMessage, $questionNormalized) !== false || strpos($questionNormalized, $normalizedMessage) !== false) {
+            $score += 50;
+        } else {
+            similar_text($normalizedMessage, $questionNormalized, $similarity);
+            if ($similarity >= 82) {
+                $score += 45;
+            } elseif ($similarity >= 64) {
+                $score += 14;
             }
         }
+    }
 
-        usort($scored, static function (array $a, array $b): int {
-            return ((int) $b['_score'] <=> (int) $a['_score'])
-                ?: (strtotime((string) ($b['created_at'] ?? '')) <=> strtotime((string) ($a['created_at'] ?? '')));
-        });
+    foreach ($messageWords as $word) {
+        $hit = false;
+        if ($word !== '' && strpos($questionNormalized, $word) !== false) {
+            $score += 8;
+            $hit = true;
+        }
+        if ($word !== '' && strpos($replyNormalized, $word) !== false) {
+            $score += 4;
+            $hit = true;
+        }
+        if ($word !== '' && strpos($metaNormalized, $word) !== false) {
+            $score += 5;
+            $hit = true;
+        }
+        if ($hit) {
+            $matched[$word] = true;
+        }
+    }
 
+    $intent = (string) ($route['intent'] ?? '');
+    $haystack = trim($questionNormalized . ' ' . $replyNormalized . ' ' . $metaNormalized);
+    if ($intent === 'backstage_technical' && miauw_agent_style_has_any($haystack, array('tecnica', 'tecnico', 'interna', 'chave', 'senha', 'login', 'api', 'php', 'programar', 'linguagem'))) {
+        $score += 16;
+    }
+    if (in_array($intent, array('offtopic', 'generic_howto', 'random_noise', 'greeting'), true) && miauw_agent_style_has_any($metaNormalized, array('geral', 'miauby'))) {
+        $score += 7;
+    }
+    if (miauw_agent_style_has_any($normalizedMessage, array('comprar', 'compra', 'viagem', 'bolo', 'sorvete', 'bombom', 'unhas', 'futebol'))
+        && miauw_agent_style_has_any($haystack, array('comprar', 'compra', 'viagem', 'bolo', 'sorvete', 'bombom', 'unhas', 'futebol'))) {
+        $score += 12;
+    }
+    if (miauw_agent_style_has_any($normalizedMessage, array('senha', 'login', 'chave', 'token', 'credencial'))
+        && miauw_agent_style_has_any($haystack, array('senha', 'login', 'chave', 'token', 'credencial'))) {
+        $score += 24;
+    }
+
+    return array(
+        'score' => $score,
+        'matched_terms' => array_keys($matched),
+        'exact' => $exact,
+    );
+}
+
+function miauw_training_relevant_rows(string $message, int $limit = 3, int $poolLimit = 120): array
+{
+    $limit = max(1, min(8, $limit));
+    $rows = miauw_training_fetch_approved_rows($poolLimit);
+    if (!$rows) {
+        return array();
+    }
+
+    $messageWords = miauw_training_words($message);
+    $route = miauw_agent_style_route($message);
+    $scored = array();
+
+    foreach ($rows as $row) {
+        $result = miauw_training_row_score($row, $message, $messageWords, $route);
+        if ((int) $result['score'] <= 0) {
+            continue;
+        }
+        $row['_score'] = (int) $result['score'];
+        $row['_matched_terms'] = (array) $result['matched_terms'];
+        $row['_exact_match'] = (bool) $result['exact'];
+        $scored[] = $row;
+    }
+
+    usort($scored, static function (array $a, array $b): int {
+        return ((int) $b['_score'] <=> (int) $a['_score'])
+            ?: (strtotime((string) ($b['reviewed_at'] ?? $b['created_at'] ?? '')) <=> strtotime((string) ($a['reviewed_at'] ?? $a['created_at'] ?? '')));
+    });
+
+    return array_slice($scored, 0, $limit);
+}
+
+function miauw_training_context_examples(string $message, int $limit = 3): array
+{
+    try {
         $examples = array();
-        foreach (array_slice($scored, 0, $limit) as $row) {
+        foreach (miauw_training_relevant_rows($message, $limit) as $row) {
             $question = miauw_training_sanitize_text((string) ($row['pergunta'] ?? ''), 180);
             $reply = miauw_training_sanitize_text((string) ($row['resposta_ideal'] ?? ''), 360);
-            if ($question !== '' && $reply !== '') {
-                $examples[] = array(
-                    'pergunta' => $question,
-                    'resposta_ideal' => $reply,
-                    'categoria' => miauw_training_sanitize_text((string) ($row['categoria'] ?? 'geral'), 80),
-                    'estilo' => miauw_training_sanitize_text((string) ($row['estilo'] ?? 'miauby'), 80),
-                );
+            if ($question === '' || $reply === '') {
+                continue;
             }
+            $examples[] = array(
+                'pergunta' => $question,
+                'resposta_ideal' => $reply,
+                'categoria' => miauw_training_sanitize_text((string) ($row['categoria'] ?? 'geral'), 80),
+                'estilo' => miauw_training_sanitize_text((string) ($row['estilo'] ?? 'miauby'), 80),
+                'score' => (int) ($row['_score'] ?? 0),
+                'matched_terms' => array_values(array_slice((array) ($row['_matched_terms'] ?? array()), 0, 6)),
+                'exact_match' => !empty($row['_exact_match']),
+            );
         }
 
         return $examples;
@@ -2817,6 +2941,111 @@ function miauw_training_context_examples(string $message, int $limit = 3): array
 
         return array();
     }
+}
+
+function miauw_training_context_profile(string $message, int $limit = 3): array
+{
+    $route = miauw_agent_style_route($message);
+    $examples = miauw_training_context_examples($message, $limit);
+    $summary = miauw_training_summary();
+    $topScore = 0;
+    $categories = array();
+    $styles = array();
+    foreach ($examples as $example) {
+        $topScore = max($topScore, (int) ($example['score'] ?? 0));
+        $category = (string) ($example['categoria'] ?? 'geral');
+        $style = (string) ($example['estilo'] ?? 'miauby');
+        if ($category !== '') {
+            $categories[$category] = ($categories[$category] ?? 0) + 1;
+        }
+        if ($style !== '') {
+            $styles[$style] = ($styles[$style] ?? 0) + 1;
+        }
+    }
+
+    arsort($categories);
+    arsort($styles);
+    $normalized = miauw_agent_style_normalized($message);
+    $directives = array(
+        'usar treino aprovado como padrao de voz, nao como assunto para citar',
+        'responder curto quando a mensagem for solta; pedir o menor recorte util',
+    );
+    if (miauw_agent_style_has_any($normalized, array('senha', 'login', 'chave', 'token', 'credencial', 'api', 'modelo', 'php', 'programar', 'linguagem'))) {
+        $directives[] = 'bastidor, senha, chave e login: recusar sem expor e puxar para suporte interno ou objetivo operacional';
+    }
+    if (miauw_agent_style_has_any($normalized, array('comprar', 'compra', 'viagem', 'bolo', 'sorvete', 'bombom', 'unhas', 'futebol', 'chatgpt'))) {
+        $directives[] = 'tema amplo ou fora da operacao: perguntar finalidade e amarrar em caixa, produto, cotacao, tarefa ou financeiro';
+    }
+    if ((string) ($route['intent'] ?? '') === 'strong_action') {
+        $directives[] = 'acao forte: pedir dados obrigatorios e confirmacao humana antes de gravar';
+    }
+
+    $confidence = 'baixa';
+    if ($topScore >= 90) {
+        $confidence = 'exata';
+    } elseif ($topScore >= 24) {
+        $confidence = 'alta';
+    } elseif ($topScore >= 10) {
+        $confidence = 'media';
+    }
+
+    return array(
+        'version' => 'miauby-training-compiler-2026-05-17',
+        'approved_total' => (int) ($summary['aprovado'] ?? 0),
+        'examples_selected' => count($examples),
+        'confidence' => $confidence,
+        'top_score' => $topScore,
+        'route_intent' => (string) ($route['intent'] ?? ''),
+        'directives' => array_values(array_slice(array_unique($directives), 0, 5)),
+        'categories' => array_slice(array_keys($categories), 0, 4),
+        'styles' => array_slice(array_keys($styles), 0, 4),
+    );
+}
+
+function miauw_training_try_local_reply(string $message, string $pageContext = '', bool $widgetMode = false): ?array
+{
+    $rows = miauw_training_relevant_rows($message, 1);
+    if (!$rows) {
+        return null;
+    }
+
+    $top = $rows[0];
+    $score = (int) ($top['_score'] ?? 0);
+    $matchedTerms = (array) ($top['_matched_terms'] ?? array());
+    $isExact = !empty($top['_exact_match']);
+    if (!$isExact && ($score < 76 || count($matchedTerms) < 2)) {
+        return null;
+    }
+
+    $text = miauw_training_sanitize_text((string) ($top['resposta_ideal'] ?? ''), $widgetMode ? 500 : 900);
+    if ($text === '') {
+        return null;
+    }
+
+    if (function_exists('miauw_trace_record')) {
+        $route = miauw_agent_style_route($message, $pageContext);
+        miauw_trace_record('miauw_training_router', 'ok', array(
+            'type' => 'style',
+            'risk' => 'baixo',
+            'summary' => 'Resposta local por treino aprovado.',
+            'payload' => array(
+                'intent' => (string) ($route['intent'] ?? ''),
+                'score' => $score,
+                'exact' => $isExact,
+                'training_version' => 'miauby-training-compiler-2026-05-17',
+                'widget' => $widgetMode,
+            ),
+        ));
+    }
+
+    $clean = function_exists('miauw_sanitize_operator_reply') ? miauw_sanitize_operator_reply($text) : $text;
+
+    return array(
+        'text' => $clean,
+        'fallback' => false,
+        'model' => 'miauw-training-router',
+        'style_intent' => 'training_approved',
+    );
 }
 
 function miauw_clear_conversation(int $conversationId, int $userId): void
@@ -3645,6 +3874,13 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             'fallback' => false,
             'model' => 'miauw-action',
         );
+    }
+
+    if (function_exists('miauw_training_try_local_reply')) {
+        $trainingReply = miauw_training_try_local_reply($message, $pageContext, $widgetMode);
+        if ($trainingReply !== null) {
+            return $trainingReply;
+        }
     }
 
     if (function_exists('miauw_agent_try_style_reply')) {
@@ -4495,7 +4731,7 @@ function miauw_agent_tool_contract_export(): array
     return array(
         'version' => 'miauw-tool-contracts-2026-05-16',
         'agent_version' => miauw_constant_string('MIAUW_AGENT_VERSION', ''),
-        'phase' => 'fase16-training-feedback',
+        'phase' => 'fase17-training-compiler',
         'source' => 'php_skill_registry',
         'personality_version' => miauw_constant_string('MIAUW_AGENT_PERSONALITY_VERSION', ''),
         'writes_enabled_in_node' => false,
@@ -5173,6 +5409,15 @@ function miauw_generate_reply(int $conversationId, string $message, bool $widget
             }
         } catch (Throwable $error) {
             error_log('Miauby farmacia popular local reply failed: ' . $error->getMessage());
+        }
+    }
+
+    if (function_exists('miauw_training_try_local_reply')) {
+        $trainingReply = miauw_training_try_local_reply($message, '', $widgetMode);
+        if ($trainingReply !== null) {
+            $trainingReply['engine'] = 'php_local';
+
+            return $trainingReply;
         }
     }
 

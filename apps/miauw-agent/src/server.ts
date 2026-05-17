@@ -5,9 +5,9 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.10.0';
-const AGENT_VERSION = '2.0-fase16';
-const PHASE = 'fase16-training-feedback';
+const SERVICE_VERSION = '0.11.0';
+const AGENT_VERSION = '2.0-fase17';
+const PHASE = 'fase17-training-compiler';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const STYLE_VERSION = 'miauby-style-router-2026-05-16';
 const DEFAULT_MODEL = 'gpt-5.4-mini';
@@ -62,7 +62,8 @@ const MIAUBY_AGENT_INSTRUCTIONS = [
   'Pergunta casual nao vira lista de ferramentas. Nao responda "leio dados"; fale como gente, curto, com humor do Miauby, e peca o menor contexto.',
   'Pergunta de bastidor tecnico recebe curiosidade cortada: "oxe, por que voce quer mexer nisso?", suporte tecnico interno e volta para processo.',
   'Padroes aprovados enviados no contexto de estilo sao memoria de jeito e processo. Use como tempero; nao cite a tabela, revisao ou bastidor.',
-  'Exemplos de treino aprovados pelo PHP sao a voz preferida quando combinarem com o tema. Use o jeito, nao cite que foi treinado.',
+  'O perfil compilado de treino aprovado pelo PHP e prioridade de voz quando combinar com o tema. Use o jeito e as regras, nao cite que foi treinado.',
+  'Exemplos de treino aprovados sao amostras curtas, nao historico para despejar. Copie o padrao de resposta, nao explique o treinamento.',
   'Para mensagem sem objetivo claro, responda em 1 ou 2 linhas: reconheca o barulho, peca tela/dado/objetivo e puxe para acao. Nada de checklist longo.',
   'Quando faltar informacao operacional, peca exatamente o menor dado ausente: produto, EAN, valor, data, responsavel, tela, acao feita ou print.',
   'Nao invente dado real de caixa, estoque, cliente, cotacao, cashback, codigo, tarefa ou financeiro. Se nao veio do sistema ou do usuario, diga que falta.',
@@ -115,6 +116,7 @@ function publicStatus() {
     personality_features: MIAUBY_PERSONALITY_SUMMARY,
     style_router_enabled: true,
     training_context_supported: true,
+    training_profile_supported: true,
     local_style_replies_enabled: true,
     mode: 'node-primary-php-tool-bridge',
     tool_contracts: 'accepted_via_php_payload',
@@ -198,12 +200,25 @@ type StyleRoute = {
   reason: string;
 };
 
+type TrainingProfile = {
+  version: string;
+  approvedTotal: number;
+  examplesSelected: number;
+  confidence: string;
+  topScore: number;
+  routeIntent: string;
+  directives: string[];
+  categories: string[];
+  styles: string[];
+};
+
 type SafeStyleContext = {
   version: string;
   route: StyleRoute;
   hardRules: string[];
   antiPatterns: string[];
   approvedPatterns: string[];
+  trainingProfile: TrainingProfile;
   examples: string[];
 };
 
@@ -312,6 +327,43 @@ function safeStyleRoute(value: unknown): StyleRoute {
   };
 }
 
+function safeNumber(value: unknown, fallback = 0, min = 0, max = 100000): number {
+  const numberValue = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(numberValue)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, Math.trunc(numberValue)));
+}
+
+function safeTrainingProfile(value: unknown): TrainingProfile {
+  if (!isRecord(value)) {
+    return {
+      version: '',
+      approvedTotal: 0,
+      examplesSelected: 0,
+      confidence: 'baixa',
+      topScore: 0,
+      routeIntent: '',
+      directives: [],
+      categories: [],
+      styles: [],
+    };
+  }
+
+  return {
+    version: safeShort(value.version, 100),
+    approvedTotal: safeNumber(value.approved_total ?? value.approvedTotal, 0, 0, 10000),
+    examplesSelected: safeNumber(value.examples_selected ?? value.examplesSelected, 0, 0, 8),
+    confidence: safeShort(value.confidence, 30) || 'baixa',
+    topScore: safeNumber(value.top_score ?? value.topScore, 0, 0, 999),
+    routeIntent: safeShort(value.route_intent ?? value.routeIntent, 60),
+    directives: safeStringArray(value.directives, 5, 180),
+    categories: safeStringArray(value.categories, 4, 80),
+    styles: safeStringArray(value.styles, 4, 80),
+  };
+}
+
 function safeStyleContext(value: unknown): SafeStyleContext {
   if (!isRecord(value)) {
     return {
@@ -320,6 +372,7 @@ function safeStyleContext(value: unknown): SafeStyleContext {
       hardRules: [],
       antiPatterns: [],
       approvedPatterns: [],
+      trainingProfile: safeTrainingProfile(null),
       examples: [],
     };
   }
@@ -330,6 +383,7 @@ function safeStyleContext(value: unknown): SafeStyleContext {
     hardRules: safeStringArray(value.hard_rules ?? value.hardRules, 10),
     antiPatterns: safeStringArray(value.anti_patterns ?? value.antiPatterns, 10),
     approvedPatterns: safeStringArray(value.approved_patterns ?? value.approvedPatterns, 8),
+    trainingProfile: safeTrainingProfile(value.training_profile ?? value.trainingProfile),
     examples: safeStringArray(value.examples, 5, 260),
   };
 }
@@ -353,6 +407,19 @@ function styleContextForPrompt(styleContext: SafeStyleContext): string {
 
   if (styleContext.approvedPatterns.length > 0) {
     lines.push(`padroes_aprovados: ${styleContext.approvedPatterns.slice(0, 4).join(' | ')}`);
+  }
+
+  const training = styleContext.trainingProfile;
+  if (training.approvedTotal > 0 || training.directives.length > 0) {
+    lines.push(
+      `perfil_treino_aprovado: ${training.version || 'sem-versao'}; aprovados=${training.approvedTotal}; selecionados=${training.examplesSelected}; confianca=${training.confidence}; score=${training.topScore}`,
+    );
+    if (training.directives.length > 0) {
+      lines.push(`regras_treino: ${training.directives.slice(0, 4).join(' | ')}`);
+    }
+    if (training.categories.length > 0 || training.styles.length > 0) {
+      lines.push(`sinais_treino: categorias=${training.categories.join(',') || 'geral'}; estilos=${training.styles.join(',') || 'miauby'}`);
+    }
   }
 
   if (styleContext.examples.length > 0) {

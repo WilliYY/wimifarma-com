@@ -84,7 +84,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
 - A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
 - A Fase 7/8/9 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK, adaptador PHP de comparacao e corte por `MIAUW_ENGINE`. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria.
-- A Fase 16 do Miauby mantem o PHP como dono de treino/revisao e envia ao Node apenas contexto aprovado/versionado; o servico agente continua sem credencial de banco e sem escrita direta.
+- A Fase 17 do Miauby mantem o PHP como dono de treino/revisao e envia ao Node apenas contexto aprovado, versionado e compilado por relevancia; o servico agente continua sem credencial de banco e sem escrita direta.
 - Palavras de categoria como `geral`, `urgente`, `encomenda` e `cotacao` nao devem aplicar cor, prioridade, ordem, filtro nem data operacional automaticamente; cor vem apenas de regra condicional explicita em `cotacao_v2_rules`.
 - Em 2026-05-14, a Cotacao PHP antiga em `site/cotacao` e os shims de compatibilidade da raiz foram removidos. Os ativos usados por `/cotacao/` ficam versionados em `apps/cotacao/public`, e o Compose nao monta mais nada de `site/cotacao` no container Node.
 

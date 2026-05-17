@@ -154,6 +154,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `miauw_tool_traces.requer_confirmacao` marca acoes fortes que precisaram de confirmacao humana antes da escrita real.
 - `miauw_treinos_respostas` deve ser append/versionado: feedback do chat nasce pendente, revisao aprova/rejeita/supera, e ajuste de item ja aprovado cria nova versao em vez de apagar o exemplo original.
 - So registros `miauw_treinos_respostas.status='aprovado'` podem entrar no contexto de estilo do Miauby; exemplos devem ser sanitizados e nao conter segredos, tokens, senha, CPF/telefone sem necessidade ou bastidor tecnico.
+- A Fase 17 usa os registros aprovados para montar perfil compilado em memoria por request; isso nao cria nova tabela e nao apaga exemplos antigos.
 - `wptl_options` guarda URLs do WordPress e pode causar redirects errados se alterado sem cuidado.
 
 ## Decisoes tecnicas ja tomadas
