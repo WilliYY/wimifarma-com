@@ -180,8 +180,8 @@ function tarefa_render_task(array $task, array $prioridades, bool $history = fal
     <title>Tarefas - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="/tarefa/favicon.svg">
     <link rel="stylesheet" href="/tarefa/styles.css?v=20260507b">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260517f">
-    <script src="/miauw/widget.js?v=20260517f" defer></script>
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260517g">
+    <script src="/miauw/widget.js?v=20260517g" defer></script>
 </head>
 <body class="task-app-body">
     <header class="task-topbar">

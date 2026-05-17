@@ -10,7 +10,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260517f';
+    link.href = '/miauw/widget.css?v=20260517g';
     document.head.appendChild(link);
   }
 
@@ -124,6 +124,10 @@
     previousText: '',
     cancelText: '',
     stopReason: 'idle',
+  };
+  const widgetAudioNoticeState = {
+    text: '',
+    at: 0,
   };
   let lastUserActivityAt = 0;
   let lastGuideAt = 0;
@@ -817,13 +821,25 @@
     return 'Audio nao abriu agora. Revise permissao do microfone e tente de novo.';
   };
 
-  const microphonePermissionMessage = () => 'Microfone bloqueado no navegador. Clique no cadeado/configuracoes ao lado do endereco, permita Microfone para este site e tente de novo.';
+  const microphonePermissionMessage = (permissionState = '') => {
+    if (permissionState === 'granted') {
+      return 'O Chrome mostra permissao ativa, mas nao entregou o microfone. Recarregue a pagina; se continuar, verifique Windows > Privacidade > Microfone para o Chrome.';
+    }
+    if (permissionState === 'prompt') {
+      return 'O Chrome ainda nao confirmou o microfone. Aperte Falar de novo e escolha Permitir quando aparecer.';
+    }
+    if (permissionState === 'denied') {
+      return 'O Chrome ainda esta devolvendo microfone bloqueado. Clique em Redefinir permissao, recarregue a pagina e permita o microfone de novo.';
+    }
+    return 'Microfone bloqueado no navegador. Clique no cadeado/configuracoes ao lado do endereco, permita Microfone para este site, recarregue a pagina e tente de novo.';
+  };
 
   const widgetAudioSecureContextMessage = () => 'Audio por microfone precisa de HTTPS ou localhost. No texto eu continuo funcionando.';
 
   const widgetAudioErrorMessage = (error) => {
     const name = error && error.name ? String(error.name) : '';
     const message = error && error.message ? String(error.message) : '';
+    const permissionState = error && error.miauwPermissionState ? String(error.miauwPermissionState) : '';
     const lower = `${name} ${message}`.toLowerCase();
 
     if (name === 'NotFoundError' || lower.includes('notfound')) {
@@ -839,7 +855,7 @@
     }
 
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError' || lower.includes('permission denied') || lower.includes('permission dismissed') || lower.includes('notallowed')) {
-      return microphonePermissionMessage();
+      return microphonePermissionMessage(permissionState);
     }
 
     if (message && !lower.includes('denied')) {
@@ -847,6 +863,16 @@
     }
 
     return widgetAudioUnavailable();
+  };
+
+  const showWidgetAudioNotice = (text) => {
+    const safeText = String(text || widgetAudioUnavailable()).trim();
+    const now = Date.now();
+    if (safeText === widgetAudioNoticeState.text && now - widgetAudioNoticeState.at < 15000) return;
+
+    widgetAudioNoticeState.text = safeText;
+    widgetAudioNoticeState.at = now;
+    addMessage('assistant', safeText);
   };
 
   const microphonePermissionState = async () => {
@@ -857,6 +883,25 @@
       return permission && permission.state ? String(permission.state) : '';
     } catch (error) {
       return '';
+    }
+  };
+
+  const getWidgetAudioStream = async () => {
+    const permissionState = await microphonePermissionState();
+
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch (error) {
+      if (error && typeof error === 'object') {
+        error.miauwPermissionState = permissionState;
+      }
+      throw error;
     }
   };
 
@@ -994,7 +1039,7 @@
       setWidgetAudioUi('draft', 'Refazer');
     } catch (error) {
       resetWidgetAudioCaptureState({ clearDraft: true, restorePrevious: true });
-      addMessage('assistant', widgetAudioErrorMessage(error));
+      showWidgetAudioNotice(widgetAudioErrorMessage(error));
     }
   };
 
@@ -1002,7 +1047,7 @@
     if (!audioButton || widgetAudioState.starting) return;
     if (widgetAudioState.recording && widgetAudioState.recorder) {
       widgetAudioState.stopReason = 'transcribe';
-      try { widgetAudioState.recorder.stop(); } catch (error) { addMessage('assistant', widgetAudioErrorMessage(error)); }
+      try { widgetAudioState.recorder.stop(); } catch (error) { showWidgetAudioNotice(widgetAudioErrorMessage(error)); }
       return;
     }
 
@@ -1011,22 +1056,22 @@
     }
 
     if (!state.authenticated) {
-      addMessage('assistant', 'Login primeiro. Microfone sem cracha nao entra no turno.');
+      showWidgetAudioNotice('Login primeiro. Microfone sem cracha nao entra no turno.');
       return;
     }
 
     if (!state.audio.uiEnabled || state.audio.status !== 'pronto_com_botao') {
-      addMessage('assistant', widgetAudioUnavailable());
+      showWidgetAudioNotice(widgetAudioUnavailable());
       return;
     }
 
     if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-      addMessage('assistant', widgetAudioSecureContextMessage());
+      showWidgetAudioNotice(widgetAudioSecureContextMessage());
       return;
     }
 
     if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      addMessage('assistant', 'Seu navegador nao liberou gravacao por audio aqui. No texto eu continuo afiado.');
+      showWidgetAudioNotice('Seu navegador nao liberou gravacao por audio aqui. No texto eu continuo afiado.');
       return;
     }
 
@@ -1034,18 +1079,7 @@
     setWidgetAudioUi('starting', 'Abrindo');
 
     try {
-      const permissionState = await microphonePermissionState();
-      if (permissionState === 'denied') {
-        throw Object.assign(new Error(microphonePermissionMessage()), { name: 'NotAllowedError' });
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const stream = await getWidgetAudioStream();
 
       const mimeType = widgetAudioMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
@@ -1088,7 +1122,7 @@
       }, 500);
     } catch (error) {
       resetWidgetAudioCaptureState({ clearDraft: widgetAudioState.draftActive, restorePrevious: false });
-      addMessage('assistant', widgetAudioErrorMessage(error));
+      showWidgetAudioNotice(widgetAudioErrorMessage(error));
     }
   };
 

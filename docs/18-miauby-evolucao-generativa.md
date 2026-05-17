@@ -172,6 +172,7 @@ Miauby ja possui:
   - `miauw_agent_audio_contract()` agora descreve audio por gravacao temporaria no navegador, transcricao com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe` e confirmacao humana antes de enviar, mantendo `storage_enabled=false`;
   - o chat principal e o widget global usam botao `Falar`; o navegador captura microfone somente apos clique, grava o trecho em `MediaRecorder`, envia para o PHP por `action=audio_transcribe` e recebe texto editavel;
   - `widget-status.php` expoe `audio_contract` para o widget decidir quando mostrar o botao, e o frontend troca bloqueios de navegador por orientacao clara de permissao/HTTPS;
+  - o frontend nao encerra a captura apenas porque `navigator.permissions` retornou estado antigo; ele tenta `getUserMedia()`, anexa o estado de permissao ao erro amigavel e reduz avisos repetidos de microfone bloqueado;
   - o PHP chama `https://api.openai.com/v1/audio/transcriptions` com a chave do servidor, sem expor segredo no navegador, e nao armazena o arquivo de audio;
   - audio so vira mensagem depois que o usuario revisar e apertar `Enviar`; `Cancelar` descarta o rascunho e escrita operacional por voz segue bloqueada;
   - `site/miauw/miauw-evals.php` cobre status Fase 19, contrato de transcricao confirmada, modelo de transcricao e contrato de tools em `fase19-record-transcribe-confirm`.
@@ -259,7 +260,7 @@ Integracoes:
 - Adicionar tool generativa sem schema pode criar escrita indevida no banco.
 - Aprendizado automatico sem filtro pode cristalizar erro operacional.
 - Aprovar treino ruim pode ensinar tom errado para assuntos amplos; revisar com exemplos curtos, vivos e sem dados sensiveis.
-- `MIAUW_AUDIO_ENABLED=true` liga a interface de audio no chat, mas microfone so inicia por clique; sem HTTPS/navegador compativel ou chave configurada, o botao informa falha e o texto continua funcionando.
+- `MIAUW_AUDIO_ENABLED=true` liga a interface de audio no chat, mas microfone so inicia por clique; sem HTTPS/navegador compativel ou chave configurada, o botao informa falha e o texto continua funcionando. Se o Chrome mostrar permissao ativa mas `getUserMedia()` ainda recusar, o problema pode estar em permissao do sistema operacional, pagina sem recarregar apos redefinir permissao ou outro app usando o microfone.
 - Audio gravado no botao e temporario: deve virar rascunho transcrito para revisao, nunca arquivo persistido, mensagem automatica ou escrita operacional direta.
 - Respostas longas demais no widget podem atrapalhar fluxo do funcionario.
 - Aumentar contexto demais pode elevar custo e lentidao.

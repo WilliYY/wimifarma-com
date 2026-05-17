@@ -28,6 +28,10 @@
     cancelText: '',
     stopReason: 'idle',
   };
+  const audioNoticeState = {
+    text: '',
+    at: 0,
+  };
 
   const scrollToBottom = () => {
     if (feed) feed.scrollTop = feed.scrollHeight;
@@ -450,13 +454,25 @@
     return 'Audio nao abriu agora. Revise permissao do microfone e tente de novo.';
   };
 
-  const microphonePermissionMessage = () => 'Microfone bloqueado no navegador. Clique no cadeado/configuracoes ao lado do endereco, permita Microfone para este site e tente de novo.';
+  const microphonePermissionMessage = (permissionState = '') => {
+    if (permissionState === 'granted') {
+      return 'O Chrome mostra permissao ativa, mas nao entregou o microfone. Recarregue a pagina; se continuar, verifique Windows > Privacidade > Microfone para o Chrome.';
+    }
+    if (permissionState === 'prompt') {
+      return 'O Chrome ainda nao confirmou o microfone. Aperte Falar de novo e escolha Permitir quando aparecer.';
+    }
+    if (permissionState === 'denied') {
+      return 'O Chrome ainda esta devolvendo microfone bloqueado. Clique em Redefinir permissao, recarregue a pagina e permita o microfone de novo.';
+    }
+    return 'Microfone bloqueado no navegador. Clique no cadeado/configuracoes ao lado do endereco, permita Microfone para este site, recarregue a pagina e tente de novo.';
+  };
 
   const audioRequiresSecureContextMessage = () => 'Audio por microfone precisa de HTTPS ou localhost. No texto eu continuo funcionando.';
 
   const audioErrorMessage = (error) => {
     const name = error && error.name ? String(error.name) : '';
     const message = error && error.message ? String(error.message) : '';
+    const permissionState = error && error.miauwPermissionState ? String(error.miauwPermissionState) : '';
     const lower = `${name} ${message}`.toLowerCase();
 
     if (name === 'NotFoundError' || lower.includes('notfound')) {
@@ -472,7 +488,7 @@
     }
 
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError' || lower.includes('permission denied') || lower.includes('permission dismissed') || lower.includes('notallowed')) {
-      return microphonePermissionMessage();
+      return microphonePermissionMessage(permissionState);
     }
 
     if (message && !lower.includes('denied')) {
@@ -480,6 +496,16 @@
     }
 
     return audioUnavailable();
+  };
+
+  const showAudioNotice = (text) => {
+    const safeText = String(text || audioUnavailable()).trim();
+    const now = Date.now();
+    if (safeText === audioNoticeState.text && now - audioNoticeState.at < 15000) return;
+
+    audioNoticeState.text = safeText;
+    audioNoticeState.at = now;
+    addMessage('assistant', safeText);
   };
 
   const microphonePermissionState = async () => {
@@ -490,6 +516,25 @@
       return permission && permission.state ? String(permission.state) : '';
     } catch (error) {
       return '';
+    }
+  };
+
+  const getAudioStream = async () => {
+    const permissionState = await microphonePermissionState();
+
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch (error) {
+      if (error && typeof error === 'object') {
+        error.miauwPermissionState = permissionState;
+      }
+      throw error;
     }
   };
 
@@ -537,7 +582,7 @@
       setAudioUi('draft', 'Refazer');
     } catch (error) {
       resetAudioCaptureState({ clearDraft: true, restorePrevious: true });
-      addMessage('assistant', audioErrorMessage(error));
+      showAudioNotice(audioErrorMessage(error));
     }
   };
 
@@ -545,7 +590,7 @@
     if (!audioButton || audioState.starting) return;
     if (audioState.recording && audioState.recorder) {
       audioState.stopReason = 'transcribe';
-      try { audioState.recorder.stop(); } catch (error) { addMessage('assistant', audioErrorMessage(error)); }
+      try { audioState.recorder.stop(); } catch (error) { showAudioNotice(audioErrorMessage(error)); }
       return;
     }
 
@@ -554,22 +599,22 @@
     }
 
     if (chat.dataset.audioEnabled !== '1') {
-      addMessage('assistant', audioUnavailable());
+      showAudioNotice(audioUnavailable());
       return;
     }
 
     if (chat.dataset.audioStatus && chat.dataset.audioStatus !== 'pronto_com_botao') {
-      addMessage('assistant', audioUnavailable());
+      showAudioNotice(audioUnavailable());
       return;
     }
 
     if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-      addMessage('assistant', audioRequiresSecureContextMessage());
+      showAudioNotice(audioRequiresSecureContextMessage());
       return;
     }
 
     if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      addMessage('assistant', 'Seu navegador nao liberou gravacao por audio aqui. No texto eu continuo afiado.');
+      showAudioNotice('Seu navegador nao liberou gravacao por audio aqui. No texto eu continuo afiado.');
       return;
     }
 
@@ -577,18 +622,7 @@
     setAudioUi('starting', 'Abrindo');
 
     try {
-      const permissionState = await microphonePermissionState();
-      if (permissionState === 'denied') {
-        throw Object.assign(new Error(microphonePermissionMessage()), { name: 'NotAllowedError' });
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const stream = await getAudioStream();
 
       const mimeType = audioMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
@@ -631,7 +665,7 @@
       }, 500);
     } catch (error) {
       resetAudioCaptureState({ clearDraft: audioState.draftActive, restorePrevious: false });
-      addMessage('assistant', audioErrorMessage(error));
+      showAudioNotice(audioErrorMessage(error));
     }
   };
 
