@@ -138,7 +138,7 @@
         Array.prototype.slice.call(document.querySelectorAll('[data-account-card]')).forEach(function (card) {
             var button = card.querySelector('[data-account-toggle]');
             var id = card.getAttribute('data-account-id') || '';
-            var key = 'gestao:account-collapsed:' + id;
+            var key = 'gestao:account-collapsed:v2:' + id;
 
             if (!button || !id || button.dataset.gestaoCollapseBound === '1') {
                 return;
@@ -157,13 +157,46 @@
 
             button.dataset.gestaoCollapseBound = '1';
             try {
-                setCollapsed(window.localStorage.getItem(key) === '1');
+                setCollapsed(window.localStorage.getItem(key) !== '0');
             } catch (error) {
-                setCollapsed(false);
+                setCollapsed(true);
             }
 
             button.addEventListener('click', function () {
                 setCollapsed(!card.classList.contains('is-collapsed'));
+            });
+        });
+    }
+
+    function initPaymentCollapse() {
+        Array.prototype.slice.call(document.querySelectorAll('[data-payment-block]')).forEach(function (block) {
+            var button = block.querySelector('[data-payment-toggle]');
+            var id = block.getAttribute('data-payment-block-id') || '';
+            var key = 'gestao:payments-collapsed:v1:' + id;
+
+            if (!button || !id || button.dataset.gestaoPaymentBound === '1') {
+                return;
+            }
+
+            function setCollapsed(collapsed) {
+                block.classList.toggle('is-collapsed', collapsed);
+                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                try {
+                    window.localStorage.setItem(key, collapsed ? '1' : '0');
+                } catch (error) {
+                    // Ignore private browsing/storage limitations.
+                }
+            }
+
+            button.dataset.gestaoPaymentBound = '1';
+            try {
+                setCollapsed(window.localStorage.getItem(key) !== '0');
+            } catch (error) {
+                setCollapsed(true);
+            }
+
+            button.addEventListener('click', function () {
+                setCollapsed(!block.classList.contains('is-collapsed'));
             });
         });
     }
@@ -208,6 +241,7 @@
             initMoneyValidation();
             initConfirmations();
             initAccountCollapse();
+            initPaymentCollapse();
             initItemOptions();
         });
     } else {
@@ -216,6 +250,7 @@
         initMoneyValidation();
         initConfirmations();
         initAccountCollapse();
+        initPaymentCollapse();
         initItemOptions();
     }
 }());

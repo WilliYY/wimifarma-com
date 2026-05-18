@@ -417,6 +417,7 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 - A Gestao permite clicar em cada lancamento para abrir suas acoes sem poluir o extrato inteiro.
 - Qualquer lancamento ativo pode receber pagamento parcial proprio, quitacao, juros/diferenca e cancelamento.
 - Lancamento cancelado pode ser reaberto sem ressuscitar pagamentos cancelados; pagamentos cancelados continuam apenas como historico, e o total da conta e recalculado pelos lancamentos ativos.
+- Os cards de conta da Gestao ficam minimizados por padrao; ao abrir uma conta, os lancamentos e o bloco `Pagamentos desta conta` tambem ficam fechados ate o operador clicar, mantendo a tela mais limpa.
 
 ## Fluxo de trabalho esperado
 

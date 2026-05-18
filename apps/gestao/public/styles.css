@@ -491,9 +491,49 @@ textarea {
     color: var(--wine);
 }
 
+.gestao-ledger-toggle {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+.gestao-ledger-toggle:hover,
+.gestao-ledger-toggle:focus-visible {
+    color: var(--pink);
+}
+
+.gestao-ledger-title em {
+    margin-left: 8px;
+    color: var(--muted);
+    font-style: normal;
+    font-size: 0.72rem;
+    font-weight: 900;
+}
+
+.gestao-ledger-toggle span::after {
+    content: " abrir";
+    margin-left: 8px;
+    color: var(--wine);
+    font-size: 0.72rem;
+    font-weight: 950;
+}
+
+.gestao-ledger-block:not(.is-collapsed) .gestao-ledger-toggle span::after {
+    content: " fechar";
+}
+
 .gestao-ledger-title strong {
     white-space: nowrap;
     font-size: 0.9rem;
+}
+
+.gestao-ledger-block.is-collapsed [data-payment-list] {
+    display: none;
 }
 
 .gestao-empty-line {

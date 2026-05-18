@@ -100,7 +100,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.2.1';
+const SERVICE_VERSION = '1.2.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1549,9 +1549,12 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     : `<div class="gestao-ledger-block"><div class="gestao-ledger-title"><span>Lancamentos da conta</span></div><p class="gestao-empty-line">Sem itens lancados.</p></div>`;
 
   const paymentHtml = account.payments.length
-    ? `<div class="gestao-ledger-block gestao-ledger-payments">
-       <div class="gestao-ledger-title"><span>Pagamentos desta conta</span><strong>${e(formatMoney(paidCents))}</strong></div>
-       <ul class="gestao-payments">
+    ? `<div class="gestao-ledger-block gestao-ledger-payments" data-payment-block data-payment-block-id="${e(id)}">
+       <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-payment-toggle aria-expanded="false">
+         <span>Pagamentos desta conta <em>${e(account.payments.length)} registro(s)</em></span>
+         <strong>${e(formatMoney(paidCents))}</strong>
+       </button>
+       <ul class="gestao-payments" data-payment-list>
         ${account.payments.map((payment) => {
           const paymentActive = payment.status !== 'cancelado';
           return `
@@ -1577,7 +1580,13 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         }).join('')}
        </ul>
        </div>`
-    : `<div class="gestao-ledger-block gestao-ledger-payments"><div class="gestao-ledger-title"><span>Pagamentos desta conta</span><strong>${e(formatMoney(0))}</strong></div><p class="gestao-empty-line">Nenhum pagamento registrado ainda.</p></div>`;
+    : `<div class="gestao-ledger-block gestao-ledger-payments" data-payment-block data-payment-block-id="${e(id)}">
+       <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-payment-toggle aria-expanded="false">
+         <span>Pagamentos desta conta <em>0 registro</em></span>
+         <strong>${e(formatMoney(0))}</strong>
+       </button>
+       <p class="gestao-empty-line" data-payment-list>Nenhum pagamento registrado ainda.</p>
+       </div>`;
 
   const pendingActions = status === 'pendente'
     ? `${remainingCents > 0 ? `
@@ -1768,9 +1777,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-detail">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-clean">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260518-detail" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260518-clean" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -1861,8 +1870,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-detail">
-  <script src="${BASE_PATH}/login-runner.js?v=20260518-detail" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-clean">
+  <script src="${BASE_PATH}/login-runner.js?v=20260518-clean" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

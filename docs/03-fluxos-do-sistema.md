@@ -211,7 +211,7 @@ Regras a preservar:
 - contas pagas podem ser reabertas para ajuste e faturas podem ser canceladas sem exclusao fisica; pagamentos cancelados deixam de contar no total pago do mes;
 - lancamentos e pagamentos individuais podem ser cancelados por status, mantendo historico visivel no extrato; lancamento cancelado pode ser reaberto, mas pagamentos que ja foram cancelados continuam apenas como historico ate o operador registrar novo pagamento;
 - a observacao da conta pode ser editada depois do lancamento;
-- os cards de conta podem ser minimizados, mantendo o resumo e a barra de progresso visiveis;
+- os cards de conta ficam minimizados por padrao e podem ser abertos individualmente, mantendo o resumo e a barra de progresso visiveis; dentro da conta, a lista de pagamentos tambem pode ser minimizada para reduzir poluicao visual;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.
 
