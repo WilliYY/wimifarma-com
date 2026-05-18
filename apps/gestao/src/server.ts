@@ -85,7 +85,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.1.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -816,7 +816,7 @@ async function addPayment(req: Request): Promise<void> {
   if (!id) throw new Error('Conta invalida.');
   if (cents <= 0) throw new Error('Informe um valor pago maior que zero.');
 
-  const description = cleanText(req.body.pagamento_descricao, 180) || 'Pagamento';
+  let description = cleanText(req.body.pagamento_descricao, 180);
   const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
   try {
@@ -832,6 +832,9 @@ async function addPayment(req: Request): Promise<void> {
     const remaining = Math.max(0, Number(account.total_cents) - paid);
     if (remaining <= 0) throw new Error('Essa conta ja esta paga.');
     if (cents > remaining) throw new Error('Pagamento maior que o saldo. Adicione juros ou diferenca como item antes de pagar.');
+    if (!description) {
+      description = cents >= remaining ? 'Pagamento final' : 'Pagamento parcial';
+    }
     await client.query(
       'INSERT INTO gestao_account_payments (account_id, description, amount_cents, paid_at, created_by) VALUES ($1, $2, $3, $4::timestamptz, $5)',
       [id, description, cents, parseDatetimeLocal(req.body.pagamento_em), userId],
@@ -1012,19 +1015,23 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
   const remainingCents = Math.max(0, totalCents - paidCents);
   const progress = totalCents > 0 ? Math.min(100, Math.max(0, (paidCents / totalCents) * 100)) : 0;
   const canEdit = status !== 'cancelado';
-  const finalButtonLabel = paidCents > 0 ? 'Confirmar restante' : 'Confirmar pago';
+  const finalButtonLabel = paidCents > 0 ? 'Quitar saldo' : 'Quitar integral';
+  const remainingMoney = formatMoney(remainingCents);
 
   const itemHtml = account.items.length
-    ? `<div class="gestao-subtitle">Lancado</div>
+    ? `<div class="gestao-ledger-block">
+       <div class="gestao-ledger-title"><span>Lancamentos da conta</span><strong>${e(formatMoney(totalCents))}</strong></div>
        <ul class="gestao-items">
         ${account.items.map((item) => `
           <li><span>${e(item.description)}</span><strong>${e(formatMoney(item.amount_cents))}</strong></li>
         `).join('')}
-       </ul>`
-    : '';
+       </ul>
+       </div>`
+    : `<div class="gestao-ledger-block"><div class="gestao-ledger-title"><span>Lancamentos da conta</span></div><p class="gestao-empty-line">Sem itens lancados.</p></div>`;
 
   const paymentHtml = account.payments.length
-    ? `<div class="gestao-subtitle">Pagamentos</div>
+    ? `<div class="gestao-ledger-block gestao-ledger-payments">
+       <div class="gestao-ledger-title"><span>Pagamentos desta conta</span><strong>${e(formatMoney(paidCents))}</strong></div>
        <ul class="gestao-payments">
         ${account.payments.map((payment) => `
           <li>
@@ -1032,11 +1039,12 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
             <strong>${e(formatMoney(payment.amount_cents))}</strong>
           </li>
         `).join('')}
-       </ul>`
-    : '';
+       </ul>
+       </div>`
+    : `<div class="gestao-ledger-block gestao-ledger-payments"><div class="gestao-ledger-title"><span>Pagamentos desta conta</span><strong>${e(formatMoney(0))}</strong></div><p class="gestao-empty-line">Nenhum pagamento registrado ainda.</p></div>`;
 
-  const pendingActions = status === 'pendente'
-    ? `<form method="post" data-confirm="Registrar o saldo restante como pago?">
+  const pendingActions = status === 'pendente' && remainingCents > 0
+    ? `<form method="post" data-confirm="Registrar ${e(remainingMoney)} como pagamento final desta conta?">
          ${csrfField(req)}
          <input type="hidden" name="action" value="confirm_paid">
          <input type="hidden" name="id" value="${e(id)}">
@@ -1069,9 +1077,9 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
            <input type="hidden" name="action" value="add_item">
            <input type="hidden" name="id" value="${e(id)}">
            <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-           <label><span>Adicionar no lancado</span><input type="text" name="novo_item_descricao" maxlength="180" placeholder="Juros, multa, diferenca"></label>
+           <label><span>Adicionar cobranca/juros</span><input type="text" name="novo_item_descricao" maxlength="180" placeholder="Juros, multa, diferenca"></label>
            <label><span>Valor</span><input type="text" name="novo_item_valor" inputmode="decimal" placeholder="0,00" data-money-input></label>
-           <button type="submit" class="gestao-btn gestao-btn-secondary">Adicionar item</button>
+           <button type="submit" class="gestao-btn gestao-btn-secondary">Adicionar no saldo</button>
          </form>
          ${status === 'pendente' && remainingCents > 0 ? `
            <form method="post" class="gestao-mini-form gestao-payment-form" data-require-money>
@@ -1079,8 +1087,8 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
              <input type="hidden" name="action" value="add_payment">
              <input type="hidden" name="id" value="${e(id)}">
              <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-             <label><span>Pagamento parcial</span><input type="text" name="pagamento_descricao" maxlength="180" placeholder="Parcela, pix, boleto"></label>
-             <label><span>Valor pago</span><input type="text" name="pagamento_valor" inputmode="decimal" placeholder="${e(moneyInput(remainingCents))}" data-money-input></label>
+             <label><span>Pagamento nesta conta</span><input type="text" name="pagamento_descricao" maxlength="180" placeholder="Parcela, pix, boleto"></label>
+             <label><span>Valor pago</span><input type="text" name="pagamento_valor" inputmode="decimal" placeholder="ex: ${e(moneyInput(Math.min(remainingCents, 4000)))}" autocomplete="off" data-money-input></label>
              <label><span>Data do pagamento</span><input type="datetime-local" name="pagamento_em" value="${e(datetimeLocalInput())}"></label>
              <button type="submit" class="gestao-btn gestao-btn-primary">Registrar pagamento</button>
            </form>
@@ -1103,6 +1111,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         ${status === 'pago' ? `<span>Pago ${e(brDate(account.paid_at, true))}</span>` : ''}
       </div>
       <div class="gestao-balance" aria-label="Resumo de pagamento da conta">
+        <span>Total <strong>${e(formatMoney(totalCents))}</strong></span>
         <span>Pago <strong>${e(formatMoney(paidCents))}</strong></span>
         <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
       </div>
@@ -1137,9 +1146,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-node">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-ledger">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260518-node" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260518-ledger" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -1228,8 +1237,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-node">
-  <script src="${BASE_PATH}/login-runner.js?v=20260518-node" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-ledger">
+  <script src="${BASE_PATH}/login-runner.js?v=20260518-ledger" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

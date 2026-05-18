@@ -48,8 +48,8 @@ Criadas por `apps/gestao/src/server.ts`:
 
 - `gestao_schema_migrations`: controle simples de migracoes/importacoes aplicadas.
 - `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, datas e usuario criador.
-- `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros ou diferenca.
-- `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes e somar no mes correto.
+- `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros, multa ou diferenca.
+- `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto.
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
 - `gestao_sessions`: sessoes web da Gestao gerenciadas por `connect-pg-simple`.
 
@@ -170,7 +170,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `gestao_accounts.total_cents` deve ser a soma de `gestao_account_items.amount_cents`; contas novas salvam `generated_at` automaticamente e pagamentos entram em `gestao_account_payments` com `paid_at` proprio.
 - O total mensal pago da Gestao vem de `gestao_account_payments.amount_cents` pelo intervalo de `paid_at`; `gestao_accounts.paid_at` representa a data de quitacao da conta inteira quando o saldo chega a zero.
-- A Gestao permite adicionar itens depois do lancamento, como juros ou diferencas; isso aumenta `total_cents` e pode reabrir uma conta paga se o saldo voltar a existir.
+- A Gestao permite adicionar itens depois do lancamento, como juros ou diferencas; isso aumenta `total_cents` e pode reabrir uma conta paga se o saldo voltar a existir. Pagamentos parciais nunca alteram o valor lancado: eles entram apenas em `gestao_account_payments`, abatendo o saldo.
+- O botao de quitacao da Gestao deve registrar somente o saldo restante como novo pagamento final, preservando no extrato os pagamentos anteriores e qualquer juros/adicao posterior.
 - A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events` e `wf_logs`, preservando itens e pagamentos lancados.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.

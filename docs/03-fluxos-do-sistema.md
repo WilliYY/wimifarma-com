@@ -201,8 +201,9 @@ Regras a preservar:
 - `generated_at` e automatico na criacao da conta;
 - `total_cents` e calculado pelos itens, nao digitado como fonte separada;
 - a categoria e texto livre, com sugestoes apenas para acelerar digitacao;
-- pagamento parcial grava linha em `gestao_account_payments` com valor e data, abatendo o saldo da conta;
-- confirmar restante registra um pagamento final do saldo aberto, muda status para `pago`, grava `gestao_accounts.paid_at` e passa a somar no total mensal pago pelo pagamento;
+- cada conta aparece como extrato proprio: lancamentos/juros ficam juntos, pagamentos parciais ficam no historico da mesma conta, e saldo/progresso sao calculados sem misturar contas;
+- pagamento parcial grava linha em `gestao_account_payments` com valor e data, abatendo o saldo da conta sem mexer nos itens lancados;
+- confirmar restante registra um pagamento final apenas do saldo aberto, muda status para `pago`, grava `gestao_accounts.paid_at` e passa a somar no total mensal pago pelo pagamento;
 - adicionar item depois do lancamento, como juros ou diferenca, aumenta o total e pode voltar uma conta paga para `pendente` se houver saldo;
 - cancelar ou voltar para pendente nao apaga fisicamente a conta, seus itens nem seus pagamentos;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.

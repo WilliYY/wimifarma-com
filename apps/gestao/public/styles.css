@@ -84,7 +84,7 @@ textarea {
 }
 
 .gestao-page {
-    width: min(1280px, calc(100% - 36px));
+    width: min(1360px, calc(100% - 36px));
     margin: 0 auto;
     padding: 34px 0 64px;
 }
@@ -218,12 +218,13 @@ textarea {
 }
 
 .gestao-layout {
-    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
     align-items: start;
 }
 
 .gestao-form,
 .gestao-list-panel {
+    min-width: 0;
     padding: 20px;
 }
 
@@ -246,7 +247,7 @@ textarea {
 
 .gestao-form-grid {
     display: grid;
-    grid-template-columns: minmax(180px, 1.35fr) minmax(150px, 0.85fr) minmax(150px, 0.85fr);
+    grid-template-columns: 1fr;
     gap: 12px;
 }
 
@@ -299,9 +300,14 @@ textarea {
 
 .gestao-account {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 178px;
+    grid-template-columns: minmax(0, 1fr) minmax(156px, 178px);
     gap: 14px;
     padding: 16px;
+    min-width: 0;
+}
+
+.gestao-account-main {
+    min-width: 0;
 }
 
 .gestao-account.status-pago {
@@ -342,6 +348,7 @@ textarea {
 
 .gestao-account-total span,
 .gestao-subtitle,
+.gestao-ledger-title span,
 .gestao-payments small {
     color: var(--muted);
     font-size: 0.74rem;
@@ -404,6 +411,34 @@ textarea {
     height: 100%;
     border-radius: inherit;
     background: linear-gradient(90deg, #059669, #22c55e);
+}
+
+.gestao-ledger-block {
+    min-width: 0;
+    margin-top: 14px;
+}
+
+.gestao-ledger-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    color: var(--wine);
+}
+
+.gestao-ledger-title strong {
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+
+.gestao-empty-line {
+    margin: 8px 0 0;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: var(--rose-soft);
+    color: var(--muted);
+    font-weight: 800;
 }
 
 .gestao-items,
@@ -474,13 +509,14 @@ textarea {
 
 .gestao-mini-form {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) minmax(120px, 150px) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(112px, 140px) auto;
     gap: 10px;
     align-items: end;
     padding: 12px;
     border: 1px solid #f7c0d2;
     border-radius: 8px;
     background: rgba(255, 248, 251, 0.86);
+    min-width: 0;
 }
 
 .gestao-mini-form label {
@@ -503,8 +539,12 @@ textarea {
 }
 
 .gestao-payment-form {
-    grid-template-columns: minmax(180px, 1fr) minmax(120px, 140px) minmax(170px, 190px) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(112px, 136px) minmax(166px, 190px) auto;
     background: #fffafb;
+}
+
+.gestao-mini-form button {
+    white-space: nowrap;
 }
 
 .gestao-mini-form input:focus {
@@ -595,7 +635,7 @@ textarea {
     }
 
     .gestao-page {
-        width: min(100% - 24px, 1280px);
+        width: min(100% - 24px, 1360px);
         padding-top: 24px;
     }
 
