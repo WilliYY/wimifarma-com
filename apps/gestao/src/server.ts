@@ -100,7 +100,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.2.2';
+const SERVICE_VERSION = '1.2.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1679,24 +1679,26 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
 
   return `<article class="gestao-account status-${e(status)}" data-account-card data-account-id="${e(id)}">
     <div class="gestao-account-main">
-      <div class="gestao-account-head">
-        <div>
-          <span class="gestao-pill">${e(categoryLabel(account.category))}</span>
-          <h2>${e(account.title)}</h2>
+      <div class="gestao-account-summary" data-account-toggle role="button" tabindex="0" aria-expanded="false">
+        <div class="gestao-account-head">
+          <div>
+            <span class="gestao-pill">${e(categoryLabel(account.category))}</span>
+            <h2>${e(account.title)}</h2>
+          </div>
+          <div class="gestao-account-total"><span>Total lancado</span><strong>${e(formatMoney(totalCents))}</strong></div>
         </div>
-        <div class="gestao-account-total"><span>Total lancado</span><strong>${e(formatMoney(totalCents))}</strong></div>
+        <div class="gestao-account-meta">
+          <span>Gerado ${e(brDate(account.generated_at, true))}</span>
+          <span>Competencia ${e(monthLabel(account.competence_month || selectedMonth))}</span>
+          ${status === 'pago' ? `<span>Pago ${e(brDate(account.paid_at, true))}</span>` : ''}
+        </div>
+        <div class="gestao-balance" aria-label="Resumo de pagamento da conta">
+          <span>Total <strong>${e(formatMoney(totalCents))}</strong></span>
+          <span>Pago <strong>${e(formatMoney(paidCents))}</strong></span>
+          <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
+        </div>
+        <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
       </div>
-      <div class="gestao-account-meta">
-        <span>Gerado ${e(brDate(account.generated_at, true))}</span>
-        <span>Competencia ${e(monthLabel(account.competence_month || selectedMonth))}</span>
-        ${status === 'pago' ? `<span>Pago ${e(brDate(account.paid_at, true))}</span>` : ''}
-      </div>
-      <div class="gestao-balance" aria-label="Resumo de pagamento da conta">
-        <span>Total <strong>${e(formatMoney(totalCents))}</strong></span>
-        <span>Pago <strong>${e(formatMoney(paidCents))}</strong></span>
-        <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
-      </div>
-      <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
       <div class="gestao-account-details" data-account-details>
         ${itemHtml}
         ${paymentHtml}
@@ -1706,7 +1708,6 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     </div>
     <div class="gestao-account-actions">
       <span class="gestao-status">${e(accountStatusLabel(status))}</span>
-      <button type="button" class="gestao-btn gestao-btn-ghost gestao-collapse-btn" data-account-toggle aria-expanded="true">Minimizar</button>
       ${pendingActions}
       ${paidActions}
       ${canceledActions}
@@ -1777,9 +1778,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-clean">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-click">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260518-clean" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260518-click" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -1870,8 +1871,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-clean">
-  <script src="${BASE_PATH}/login-runner.js?v=20260518-clean" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-click">
+  <script src="${BASE_PATH}/login-runner.js?v=20260518-click" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

@@ -136,18 +136,17 @@
 
     function initAccountCollapse() {
         Array.prototype.slice.call(document.querySelectorAll('[data-account-card]')).forEach(function (card) {
-            var button = card.querySelector('[data-account-toggle]');
+            var trigger = card.querySelector('[data-account-toggle]');
             var id = card.getAttribute('data-account-id') || '';
             var key = 'gestao:account-collapsed:v2:' + id;
 
-            if (!button || !id || button.dataset.gestaoCollapseBound === '1') {
+            if (!trigger || !id || trigger.dataset.gestaoCollapseBound === '1') {
                 return;
             }
 
             function setCollapsed(collapsed) {
                 card.classList.toggle('is-collapsed', collapsed);
-                button.textContent = collapsed ? 'Abrir' : 'Minimizar';
-                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                trigger.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
                 try {
                     window.localStorage.setItem(key, collapsed ? '1' : '0');
                 } catch (error) {
@@ -155,14 +154,22 @@
                 }
             }
 
-            button.dataset.gestaoCollapseBound = '1';
+            trigger.dataset.gestaoCollapseBound = '1';
             try {
                 setCollapsed(window.localStorage.getItem(key) !== '0');
             } catch (error) {
                 setCollapsed(true);
             }
 
-            button.addEventListener('click', function () {
+            trigger.addEventListener('click', function () {
+                setCollapsed(!card.classList.contains('is-collapsed'));
+            });
+            trigger.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+
+                event.preventDefault();
                 setCollapsed(!card.classList.contains('is-collapsed'));
             });
         });
