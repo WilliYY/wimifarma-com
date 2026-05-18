@@ -188,6 +188,7 @@ textarea {
 .gestao-stats div,
 .gestao-form,
 .gestao-list-panel,
+.gestao-category-panel,
 .gestao-notepad,
 .gestao-account,
 .gestao-login-card {
@@ -225,6 +226,7 @@ textarea {
 
 .gestao-form,
 .gestao-list-panel,
+.gestao-category-panel,
 .gestao-notepad {
     min-width: 0;
     padding: 20px;
@@ -235,11 +237,115 @@ textarea {
     gap: 18px;
 }
 
-.gestao-notepad {
+.gestao-side-stack {
     position: sticky;
     top: 92px;
     display: grid;
     gap: 14px;
+}
+
+.gestao-notepad,
+.gestao-category-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.gestao-category-legend {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.gestao-category-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.gestao-category-chip {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 100%;
+    padding: 5px 9px;
+    border: 1px solid #f4bfd0;
+    border-radius: 999px;
+    background: #fff8fb;
+    color: var(--wine);
+    text-decoration: none;
+    font-size: 0.78rem;
+    font-weight: 950;
+}
+
+.gestao-category-chip strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-category-chip.is-active {
+    border-color: var(--wine);
+    background: #fff0f5;
+    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.08);
+}
+
+.gestao-category-open,
+.gestao-category-closed {
+    min-width: 22px;
+    min-height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    color: #ffffff;
+    font-size: 0.72rem;
+}
+
+.gestao-category-open {
+    background: var(--green);
+}
+
+.gestao-category-closed {
+    background: var(--danger);
+}
+
+.gestao-category-tools,
+.gestao-category-form {
+    display: grid;
+    gap: 10px;
+}
+
+.gestao-category-focus {
+    display: grid;
+    gap: 3px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #fff5f8;
+}
+
+.gestao-category-focus span,
+.gestao-category-focus small {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 850;
+}
+
+.gestao-category-focus strong {
+    color: var(--wine);
+}
+
+.gestao-category-form input {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 10px;
+    outline: 0;
 }
 
 .gestao-notepad-new,
@@ -320,6 +426,25 @@ textarea {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(128px, 150px);
     gap: 10px;
+}
+
+.gestao-check-row {
+    min-height: 40px;
+    display: inline-flex !important;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    padding: 8px 10px;
+    border: 1px solid #f4bfd0;
+    border-radius: 999px;
+    background: #fff8fb;
+}
+
+.gestao-check-row input {
+    width: 18px;
+    min-height: 18px;
+    accent-color: var(--wine);
 }
 
 .gestao-btn {
@@ -403,6 +528,17 @@ textarea {
     border-color: rgba(5, 150, 105, 0.32);
 }
 
+.gestao-account.due-overdue,
+.gestao-account.due-today {
+    border-color: #fb7185;
+    border-left: 5px solid var(--danger);
+    box-shadow: 0 24px 60px rgba(220, 38, 38, 0.12);
+}
+
+.gestao-account.due-soon {
+    border-left: 5px solid var(--amber);
+}
+
 .gestao-account.status-cancelado {
     opacity: 0.78;
 }
@@ -415,11 +551,29 @@ textarea {
 }
 
 .gestao-account-head h2 {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     margin: 8px 0 0;
     color: var(--ink);
     font-size: 1.12rem;
     line-height: 1.2;
     letter-spacing: 0;
+}
+
+.gestao-title-edit {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #f4bfd0;
+    border-radius: 999px;
+    background: #fff8fb;
+    color: var(--wine);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 950;
 }
 
 .gestao-account-head strong {
@@ -471,6 +625,21 @@ textarea {
     color: var(--muted);
     font-size: 0.83rem;
     font-weight: 750;
+}
+
+.gestao-due-meta {
+    color: var(--wine);
+}
+
+.gestao-due-alert {
+    width: fit-content;
+    margin-top: 10px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: #fff1f2;
+    color: var(--danger);
+    font-size: 0.78rem;
+    font-weight: 950;
 }
 
 .gestao-balance {
@@ -894,8 +1063,64 @@ textarea {
 }
 
 .gestao-title-form,
-.gestao-repeat-form {
+.gestao-repeat-form,
+.gestao-due-form {
     grid-template-columns: minmax(180px, 1fr) auto;
+}
+
+.gestao-due-form {
+    grid-template-columns: minmax(190px, 1fr) auto auto;
+}
+
+.gestao-title-panel {
+    display: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 10px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: #fff8fb;
+}
+
+.gestao-title-panel.is-open {
+    display: grid;
+}
+
+.gestao-title-panel input {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.gestao-repeat-toggle-form {
+    width: 100%;
+}
+
+.gestao-repeat-toggle {
+    width: 100%;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 14px;
+    cursor: pointer;
+    font-weight: 950;
+}
+
+.gestao-repeat-toggle.is-on {
+    border: 1px solid #86efac;
+    background: #dcfce7;
+    color: #047857;
+}
+
+.gestao-repeat-toggle.is-off {
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #be123c;
 }
 
 .gestao-alert {
@@ -983,12 +1208,13 @@ textarea {
         grid-template-columns: 1fr;
     }
 
-    .gestao-notepad {
+    .gestao-side-stack {
         position: static;
     }
 
     .gestao-mini-form,
-    .gestao-payment-form {
+    .gestao-payment-form,
+    .gestao-due-form {
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     }
 
@@ -1016,6 +1242,8 @@ textarea {
     .gestao-account,
     .gestao-mini-form,
     .gestao-payment-form,
+    .gestao-due-form,
+    .gestao-title-panel,
     .gestao-item-pay-form,
     .gestao-item-adjust-form {
         grid-template-columns: 1fr;

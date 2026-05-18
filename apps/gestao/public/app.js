@@ -274,6 +274,38 @@
         });
     }
 
+    function initTitleEditors() {
+        Array.prototype.slice.call(document.querySelectorAll('[data-account-card]')).forEach(function (card) {
+            var button = card.querySelector('[data-title-edit-toggle]');
+            var panel = card.querySelector('[data-title-edit-panel]');
+
+            if (!button || !panel || button.dataset.gestaoTitleBound === '1') {
+                return;
+            }
+
+            function setOpen(open) {
+                panel.classList.toggle('is-open', open);
+                button.setAttribute('aria-expanded', open ? 'true' : 'false');
+                if (open && card.classList.contains('is-collapsed')) {
+                    card.classList.remove('is-collapsed');
+                    var trigger = card.querySelector('[data-account-toggle]');
+                    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+                }
+            }
+
+            button.dataset.gestaoTitleBound = '1';
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(!panel.classList.contains('is-open'));
+                if (panel.classList.contains('is-open')) {
+                    var input = panel.querySelector('input[name="titulo"]');
+                    if (input) input.focus();
+                }
+            });
+        });
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
@@ -285,6 +317,7 @@
             initBlockCollapse('[data-history-block]', '[data-history-toggle]', 'gestao:history-collapsed:v1');
             initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v1');
             initItemOptions();
+            initTitleEditors();
         });
     } else {
         bindMoneyInputs(document);
@@ -296,5 +329,6 @@
         initBlockCollapse('[data-history-block]', '[data-history-toggle]', 'gestao:history-collapsed:v1');
         initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v1');
         initItemOptions();
+        initTitleEditors();
     }
 }());

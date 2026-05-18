@@ -39,6 +39,9 @@ type AccountRow = {
   total_cents: string;
   competence_month: string;
   note: string | null;
+  due_at: Date | string | null;
+  repeat_next_month: boolean;
+  repeated_from_account_id: string | null;
   created_by: number | null;
   generated_at: Date | string;
   paid_at: Date | string | null;
@@ -90,6 +93,15 @@ type NotepadRow = {
   updated_at: Date | string;
 };
 
+type CategorySummary = {
+  key: string;
+  label: string;
+  openCount: number;
+  closedCount: number;
+  openCents: number;
+  closedCents: number;
+};
+
 type RenderAccount = AccountRow & {
   items: ItemRow[];
   payments: PaymentRow[];
@@ -110,7 +122,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.3.0';
+const SERVICE_VERSION = '1.4.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -273,6 +285,15 @@ function nextMonthValue(month: string): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+function nextMonthDateTime(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  const next = new Date(date.getTime());
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  return next.toISOString();
+}
+
 function monthBounds(month: string): { start: string; end: string } {
   const normalized = monthValue(month);
   const year = Number.parseInt(normalized.slice(0, 4), 10);
@@ -318,6 +339,23 @@ function brDate(value: Date | string | null | undefined, withTime = false): stri
   }).format(date);
 }
 
+function datetimeLocalValue(value: Date | string | null | undefined): string {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}`;
+}
+
 function datetimeLocalInput(): string {
   const parts = new Intl.DateTimeFormat('sv-SE', {
     timeZone: TZ,
@@ -343,10 +381,41 @@ function parseDatetimeLocal(value: unknown): string {
   return new Date().toISOString();
 }
 
+function parseOptionalDatetimeLocal(value: unknown): string | null {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  return parseDatetimeLocal(text);
+}
+
 function bodyArray(body: Record<string, unknown>, field: string): unknown[] {
   const value = body[field] ?? body[`${field}[]`];
   if (Array.isArray(value)) return value;
   return value === undefined ? [] : [value];
+}
+
+function categoryKey(value: unknown): string {
+  const normalized = categoryLabel(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, '-');
+  return normalized || 'geral';
+}
+
+function dueStatus(account: AccountRow): { key: string; label: string; days: number | null } {
+  if (!account.due_at || account.status !== 'pendente') return { key: 'none', label: '', days: null };
+  const due = account.due_at instanceof Date ? account.due_at : new Date(String(account.due_at));
+  if (Number.isNaN(due.getTime())) return { key: 'none', label: '', days: null };
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dueStart = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+  const days = Math.round((dueStart - todayStart) / 86400000);
+  if (days < 0) return { key: 'overdue', label: `Venceu ha ${Math.abs(days)} dia(s)`, days };
+  if (days === 0) return { key: 'today', label: 'Urgente: vence hoje', days };
+  if (days <= 3) return { key: 'soon', label: `Vence em ${days} dia(s)`, days };
+  return { key: 'scheduled', label: `Vence em ${days} dia(s)`, days };
 }
 
 function mysqlDateToPg(value: unknown): string | null {
@@ -520,6 +589,9 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query("ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'ativo'");
   await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS canceled_at timestamptz');
   await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS canceled_by integer');
+  await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS due_at timestamptz');
+  await pgPool.query("ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeat_next_month boolean NOT NULL DEFAULT false");
+  await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeated_from_account_id bigint');
   await pgPool.query(`
     DO $$
     BEGIN
@@ -541,6 +613,13 @@ async function ensureSchema(): Promise<void> {
         ALTER TABLE gestao_account_payments
         ADD CONSTRAINT gestao_account_payments_item_id_fkey
         FOREIGN KEY (item_id) REFERENCES gestao_account_items(id) ON DELETE RESTRICT;
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'gestao_accounts_repeated_from_fkey'
+      ) THEN
+        ALTER TABLE gestao_accounts
+        ADD CONSTRAINT gestao_accounts_repeated_from_fkey
+        FOREIGN KEY (repeated_from_account_id) REFERENCES gestao_accounts(id) ON DELETE SET NULL;
       END IF;
     END $$;
   `);
@@ -572,6 +651,14 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_accounts_generated_idx
     ON gestao_accounts (generated_at DESC, id DESC)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_accounts_due_idx
+    ON gestao_accounts (due_at ASC NULLS LAST, status, id)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_accounts_repeated_from_idx
+    ON gestao_accounts (repeated_from_account_id, competence_month)
   `);
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_items_account_order_idx
@@ -850,8 +937,8 @@ async function createAccount(req: Request): Promise<void> {
     await client.query('BEGIN');
     const accountResult = await client.query<{ id: string }>(
       `INSERT INTO gestao_accounts
-        (title, category, status, total_cents, competence_month, note, created_by, generated_at, paid_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, now(), CASE WHEN $3 = 'pago' THEN now() ELSE NULL END)
+        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, created_by, generated_at, paid_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9, now(), CASE WHEN $3 = 'pago' THEN now() ELSE NULL END)
        RETURNING id`,
       [
         title,
@@ -860,6 +947,8 @@ async function createAccount(req: Request): Promise<void> {
         totalCents,
         monthValue(req.body.competencia_mes),
         cleanText(req.body.observacao, 5000) || null,
+        parseOptionalDatetimeLocal(req.body.vencimento_em),
+        req.body.repetir_mes === '1',
         userId,
       ],
     );
@@ -877,6 +966,9 @@ async function createAccount(req: Request): Promise<void> {
       );
     }
     await auditPg(client, accountId, userId, 'gestao_conta_criada', `Conta criada: ${title} / ${formatMoney(totalCents)}`);
+    if (req.body.repetir_mes === '1') {
+      await auditPg(client, accountId, userId, 'gestao_recorrencia_ativada', 'Conta marcada para repetir no proximo mes.');
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -885,6 +977,15 @@ async function createAccount(req: Request): Promise<void> {
     client.release();
   }
   await logMysql(userId, 'gestao_conta_criada', 'gestao_conta', accountId, `Conta criada: ${title} / ${formatMoney(totalCents)}`);
+  if (req.body.repetir_mes === '1') {
+    const previousId = req.body.id;
+    req.body.id = String(accountId);
+    try {
+      await repeatAccountNextMonth(req);
+    } finally {
+      req.body.id = previousId;
+    }
+  }
 }
 
 async function addItem(req: Request): Promise<void> {
@@ -1282,7 +1383,99 @@ async function updateAccountTitle(req: Request): Promise<void> {
   await logMysql(userId, 'gestao_conta_renomeada', 'gestao_conta', id, `Conta renomeada na Gestao: ${title}`);
 }
 
-async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number; month: string }> {
+async function updateAccountDue(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  if (!id) throw new Error('Conta invalida.');
+  const dueAt = req.body.limpar_vencimento === '1' ? null : parseOptionalDatetimeLocal(req.body.vencimento_em);
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const account = await client.query('SELECT id FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    await client.query('UPDATE gestao_accounts SET due_at = $1::timestamptz WHERE id = $2', [dueAt, id]);
+    await auditPg(client, id, userId, 'gestao_vencimento_atualizado', dueAt ? `Vencimento atualizado: ${brDate(dueAt, true)}` : 'Vencimento removido.');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_vencimento_atualizado', 'gestao_conta', id, dueAt ? 'Vencimento atualizado na Gestao.' : 'Vencimento removido na Gestao.');
+}
+
+async function accountIdsByCategory(month: string, key: string): Promise<number[]> {
+  const accounts = await listAccounts(month);
+  return accounts
+    .filter((account) => categoryKey(account.category) === key)
+    .map((account) => Number(account.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+}
+
+async function updateCategoryGroup(req: Request): Promise<number> {
+  const selectedMonth = monthValue(req.body.competencia_mes);
+  const fromKey = cleanText(req.body.categoria_chave, 120);
+  const newCategory = categoryLabel(req.body.nova_categoria);
+  if (!fromKey) throw new Error('Categoria invalida.');
+  if (!newCategory) throw new Error('Informe o novo nome da categoria.');
+  const ids = await accountIdsByCategory(selectedMonth, fromKey);
+  if (!ids.length) throw new Error('Nenhuma conta encontrada nessa categoria.');
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE gestao_accounts SET category = $1 WHERE id = ANY($2::bigint[])', [newCategory, ids]);
+    for (const id of ids) {
+      await auditPg(client, id, userId, 'gestao_categoria_alterada', `Categoria alterada em lote para ${newCategory}.`);
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_categoria_alterada', 'gestao_categoria', null, `Categoria alterada em lote para ${newCategory}: ${ids.length} conta(s).`);
+  return ids.length;
+}
+
+async function cancelCategoryGroup(req: Request): Promise<number> {
+  const selectedMonth = monthValue(req.body.competencia_mes);
+  const fromKey = cleanText(req.body.categoria_chave, 120);
+  if (!fromKey) throw new Error('Categoria invalida.');
+  const ids = await accountIdsByCategory(selectedMonth, fromKey);
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let changed = 0;
+  try {
+    await client.query('BEGIN');
+    for (const id of ids) {
+      const result = await client.query(
+        "UPDATE gestao_accounts SET status = 'cancelado', paid_at = NULL, canceled_at = now() WHERE id = $1 AND status = 'pendente'",
+        [id],
+      );
+      if (result.rowCount) {
+        changed += 1;
+        await client.query(
+          "UPDATE gestao_account_payments SET status = 'cancelado', canceled_at = now(), canceled_by = $1 WHERE account_id = $2 AND status = 'ativo'",
+          [userId, id],
+        );
+        await auditPg(client, id, userId, 'gestao_categoria_cancelada', 'Conta aberta cancelada por acao na categoria.');
+      }
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_categoria_cancelada', 'gestao_categoria', null, `Categoria cancelada em lote: ${changed} conta(s) aberta(s).`);
+  return changed;
+}
+
+async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number; month: string; created: boolean }> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
 
@@ -1290,6 +1483,7 @@ async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number
   const client = await pgPool.connect();
   let newAccountId = 0;
   let targetMonth = '';
+  let created = false;
   try {
     await client.query('BEGIN');
     const accountResult = await client.query<AccountRow>(
@@ -1299,6 +1493,26 @@ async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number
     const account = accountResult.rows[0];
     if (!account) throw new Error('Conta nao encontrada.');
     if (account.status === 'cancelado') throw new Error('Reabra a conta antes de repetir para o proximo mes.');
+
+    targetMonth = nextMonthValue(account.competence_month);
+    const existing = await client.query<{ id: string }>(
+      `SELECT id
+       FROM gestao_accounts
+       WHERE repeated_from_account_id = $1
+         AND competence_month = $2
+         AND status <> 'cancelado'
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [id, targetMonth],
+    );
+    if (existing.rowCount) {
+      newAccountId = Number(existing.rows[0].id);
+      await client.query('UPDATE gestao_accounts SET repeat_next_month = true WHERE id = $1', [id]);
+      await auditPg(client, id, userId, 'gestao_recorrencia_ativada', `Recorrencia mantida para ${monthLabel(targetMonth)}.`);
+      await client.query('COMMIT');
+      return { accountId: newAccountId, month: targetMonth, created };
+    }
 
     const itemResult = await client.query<ItemRow>(
       `SELECT *
@@ -1310,17 +1524,17 @@ async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number
     );
     if (!itemResult.rowCount) throw new Error('Essa conta nao tem lancamento ativo para repetir.');
 
-    targetMonth = nextMonthValue(account.competence_month);
     const totalCents = itemResult.rows.reduce((sum, item) => sum + Number(item.amount_cents || 0), 0);
     const title = cleanText(req.body.titulo_repetir, 180) || account.title;
     const repeatedResult = await client.query<{ id: string }>(
       `INSERT INTO gestao_accounts
-        (title, category, status, total_cents, competence_month, note, created_by, generated_at, paid_at, canceled_at)
-       VALUES ($1, $2, 'pendente', $3, $4, $5, $6, now(), NULL, NULL)
+        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, repeated_from_account_id, created_by, generated_at, paid_at, canceled_at)
+       VALUES ($1, $2, 'pendente', $3, $4, $5, $6::timestamptz, false, $7, $8, now(), NULL, NULL)
        RETURNING id`,
-      [title, account.category, totalCents, targetMonth, account.note, userId],
+      [title, account.category, totalCents, targetMonth, account.note, nextMonthDateTime(account.due_at), id, userId],
     );
     newAccountId = Number(repeatedResult.rows[0].id);
+    created = true;
 
     for (const [index, item] of itemResult.rows.entries()) {
       await client.query(
@@ -1329,6 +1543,7 @@ async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number
       );
     }
 
+    await client.query('UPDATE gestao_accounts SET repeat_next_month = true WHERE id = $1', [id]);
     await auditPg(client, id, userId, 'gestao_conta_repetida_origem', `Conta repetida para ${monthLabel(targetMonth)}: ${title}`);
     await auditPg(client, newAccountId, userId, 'gestao_conta_repetida', `Conta criada por repeticao de ${account.title}`);
     await client.query('COMMIT');
@@ -1339,7 +1554,39 @@ async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number
     client.release();
   }
   await logMysql(userId, 'gestao_conta_repetida', 'gestao_conta', newAccountId, `Conta repetida para ${monthLabel(targetMonth)} na Gestao.`);
-  return { accountId: newAccountId, month: targetMonth };
+  return { accountId: newAccountId, month: targetMonth, created };
+}
+
+async function toggleRepeatNextMonth(req: Request): Promise<boolean> {
+  const id = Number(req.body.id || 0);
+  if (!id) throw new Error('Conta invalida.');
+  const userId = req.session.user?.id || null;
+  const current = await pgPool.query<{ repeat_next_month: boolean; status: string }>(
+    'SELECT repeat_next_month, status FROM gestao_accounts WHERE id = $1 LIMIT 1',
+    [id],
+  );
+  const account = current.rows[0];
+  if (!account) throw new Error('Conta nao encontrada.');
+  if (account.status === 'cancelado') throw new Error('Reabra a conta antes de mexer na repeticao.');
+  if (!account.repeat_next_month) {
+    await repeatAccountNextMonth(req);
+    return true;
+  }
+
+  await pgPool.query('UPDATE gestao_accounts SET repeat_next_month = false WHERE id = $1', [id]);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    await auditPg(client, id, userId, 'gestao_recorrencia_desativada', 'Conta deixou de repetir automaticamente no proximo mes.');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_recorrencia_desativada', 'gestao_conta', id, 'Recorrencia da Gestao desativada.');
+  return false;
 }
 
 async function reopenAccount(req: Request): Promise<void> {
@@ -1454,9 +1701,11 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
         )
      ORDER BY
        CASE a.status WHEN 'pendente' THEN 0 WHEN 'pago' THEN 1 ELSE 2 END ASC,
+       CASE WHEN a.status = 'pendente' AND a.due_at IS NOT NULL THEN 0 ELSE 1 END ASC,
+       CASE WHEN a.status = 'pendente' THEN a.due_at END ASC NULLS LAST,
        COALESCE(a.paid_at, p.last_payment_at, a.generated_at) DESC,
        a.id DESC
-     LIMIT 180`,
+     LIMIT 500`,
     [month, bounds.start, bounds.end],
   );
   const accounts = accountsResult.rows;
@@ -1532,6 +1781,87 @@ async function listNotepadNotes(): Promise<NotepadRow[]> {
   return result.rows;
 }
 
+function categorySummaries(accounts: RenderAccount[]): CategorySummary[] {
+  const groups = new Map<string, CategorySummary>();
+  for (const account of accounts) {
+    const key = categoryKey(account.category);
+    const existing = groups.get(key);
+    const summary = existing || {
+      key,
+      label: categoryLabel(account.category),
+      openCount: 0,
+      closedCount: 0,
+      openCents: 0,
+      closedCents: 0,
+    };
+    const total = Number(account.total_cents || 0);
+    const paid = Number(account.paid_cents || 0);
+    const remaining = Math.max(0, total - paid);
+    if (account.status === 'pendente' && remaining > 0) {
+      summary.openCount += 1;
+      summary.openCents += remaining;
+    } else {
+      summary.closedCount += 1;
+      summary.closedCents += total;
+    }
+    groups.set(key, summary);
+  }
+  return [...groups.values()].sort((a, b) => {
+    if (b.openCount !== a.openCount) return b.openCount - a.openCount;
+    if (b.closedCount !== a.closedCount) return b.closedCount - a.closedCount;
+    return a.label.localeCompare(b.label, 'pt-BR');
+  });
+}
+
+function renderCategoryPanel(req: Request, summaries: CategorySummary[], selectedMonth: string, selectedCategory: string): string {
+  const chips = summaries.length
+    ? summaries.map((summary) => {
+      const active = selectedCategory === summary.key;
+      const href = active
+        ? `${BASE_PATH}/?mes=${encodeURIComponent(selectedMonth)}`
+        : `${BASE_PATH}/?mes=${encodeURIComponent(selectedMonth)}&categoria=${encodeURIComponent(summary.key)}`;
+      return `<a class="gestao-category-chip ${active ? 'is-active' : ''}" href="${href}">
+        <span class="gestao-category-open">${e(summary.openCount)}</span>
+        <strong>${e(summary.label)}</strong>
+        <span class="gestao-category-closed">${e(summary.closedCount)}</span>
+      </a>`;
+    }).join('')
+    : '<p class="gestao-empty-line">Sem categorias nesse mes ainda.</p>';
+  const active = summaries.find((summary) => summary.key === selectedCategory);
+  const activeTools = active ? `<div class="gestao-category-tools">
+    <div class="gestao-category-focus">
+      <span>Categoria selecionada</span>
+      <strong>${e(active.label)}</strong>
+      <small>${e(active.openCount)} aberta(s) / ${e(active.closedCount)} fechada(s)</small>
+    </div>
+    <form method="post" class="gestao-category-form">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="update_category_group">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <input type="hidden" name="categoria_chave" value="${e(active.key)}">
+      <label><span>Trocar categoria</span><input type="text" name="nova_categoria" maxlength="80" value="${e(active.label)}"></label>
+      <button type="submit" class="gestao-btn gestao-btn-secondary">Aplicar</button>
+    </form>
+    <form method="post" data-confirm="Cancelar todas as contas abertas dessa categoria? As contas fechadas ficam preservadas no historico.">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="cancel_category_group">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <input type="hidden" name="categoria_chave" value="${e(active.key)}">
+      <button type="submit" class="gestao-link-danger">Cancelar abertas desta categoria</button>
+    </form>
+  </div>` : '';
+
+  return `<aside class="gestao-category-panel" aria-label="Categorias da Gestao">
+    <div class="gestao-section-title">
+      <span class="gestao-kicker">Categorias</span>
+      <strong>${e(summaries.length)}</strong>
+    </div>
+    <div class="gestao-category-legend"><span>abertas</span><span>fechadas</span></div>
+    <div class="gestao-category-chips">${chips}</div>
+    ${activeTools}
+  </aside>`;
+}
+
 async function addNotepadNote(req: Request): Promise<void> {
   const body = cleanText(req.body.nota_texto, 2000);
   if (!body) throw new Error('Escreva uma anotacao antes de salvar.');
@@ -1579,6 +1909,8 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
   const canEdit = status !== 'cancelado';
   const finalButtonLabel = paidCents > 0 ? 'Quitar saldo' : 'Quitar integral';
   const remainingMoney = formatMoney(remainingCents);
+  const due = dueStatus(account);
+  const repeatEnabled = Boolean(account.repeat_next_month);
   const activePayments = account.payments.filter((payment) => payment.status !== 'cancelado');
   const historyPayments = account.payments.filter((payment) => payment.status === 'cancelado');
   const openItems = account.items.filter((item) => {
@@ -1707,8 +2039,10 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
        <p class="gestao-empty-line" data-payment-list>Nenhum pagamento registrado ainda.</p>
        </div>`;
 
+  const quickHistoryItems = historyItems.slice(-3).reverse();
+  const quickCanceledPayments = historyPayments.slice(-3).reverse();
   const historyRows = [
-    ...historyItems.map((item) => {
+    ...quickHistoryItems.map((item) => {
       const itemCents = Number(item.amount_cents || 0);
       const itemPaid = Number(item.paid_cents || 0);
       const paid = item.status !== 'cancelado' && Math.max(0, itemCents - itemPaid) <= 0;
@@ -1729,7 +2063,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         </form>` : ''}
       </li>`;
     }),
-    ...historyPayments.map((payment) => `<li>
+    ...quickCanceledPayments.map((payment) => `<li>
       <span>
         <strong>Pagamento cancelado</strong>
         <em>${e(payment.description)}${payment.item_description ? ` - ${payment.item_description}` : ''}</em>
@@ -1737,20 +2071,13 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
       </span>
       <strong>${e(formatMoney(payment.amount_cents))}</strong>
     </li>`),
-    ...account.auditEvents.slice(0, 18).map((event) => `<li>
-      <span>
-        <strong>${e(event.action.replace(/^gestao_/, '').replaceAll('_', ' '))}</strong>
-        <em>${e(event.summary)}</em>
-        <small>${e(brDate(event.created_at, true))}</small>
-      </span>
-    </li>`),
   ].join('');
   const historyHtml = `<div class="gestao-ledger-block gestao-history" data-history-block data-history-block-id="${e(id)}">
     <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-history-toggle aria-expanded="false">
-      <span>Historico <em>${e(historyItems.length + historyPayments.length + account.auditEvents.length)} evento(s)</em></span>
+      <span>Historico rapido <em>${e(Math.min(3, historyItems.length + historyPayments.length))} de ${e(historyItems.length + historyPayments.length)} item(ns)</em></span>
       <strong>ver</strong>
     </button>
-    ${historyRows ? `<ul class="gestao-payments gestao-history-list" data-history-list>${historyRows}</ul>` : '<p class="gestao-empty-line" data-history-list>Nenhum historico nessa conta ainda.</p>'}
+    ${historyRows ? `<ul class="gestao-payments gestao-history-list" data-history-list>${historyRows}</ul>` : '<p class="gestao-empty-line" data-history-list>Nenhum historico rapido nessa conta ainda.</p>'}
   </div>`;
 
   const pendingActions = status === 'pendente'
@@ -1807,6 +2134,16 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
        </form>`
     : '';
 
+  const repeatAction = canEdit ? `<form method="post" class="gestao-repeat-toggle-form" data-confirm="${repeatEnabled ? 'Parar a repeticao futura desta conta? A copia ja criada nao sera apagada.' : `Ativar repeticao e criar/garantir copia para ${e(monthLabel(nextMonthValue(account.competence_month || selectedMonth)))}?`}">
+    ${csrfField(req)}
+    <input type="hidden" name="action" value="toggle_repeat_next_month">
+    <input type="hidden" name="id" value="${e(id)}">
+    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+    <button type="submit" class="gestao-repeat-toggle ${repeatEnabled ? 'is-on' : 'is-off'}">
+      <span>${repeatEnabled ? 'Repetindo mes que vem' : 'Nao repetir mes que vem'}</span>
+    </button>
+  </form>` : '';
+
   const forms = canEdit
     ? `<div class="gestao-account-forms">
          <form method="post" class="gestao-mini-form" data-require-money>
@@ -1833,22 +2170,23 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
        </div>`
     : '';
 
-  const titleForm = canEdit ? `<form method="post" class="gestao-mini-form gestao-title-form">
+  const titleForm = canEdit ? `<form method="post" class="gestao-title-panel" data-title-edit-panel>
     ${csrfField(req)}
     <input type="hidden" name="action" value="update_title">
     <input type="hidden" name="id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-    <label><span>Renomear conta</span><input type="text" name="titulo" maxlength="180" value="${e(account.title)}" required></label>
-    <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar nome</button>
+    <input type="text" name="titulo" maxlength="180" value="${e(account.title)}" required>
+    <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
   </form>` : '';
 
-  const repeatForm = canEdit ? `<form method="post" class="gestao-mini-form gestao-repeat-form" data-confirm="Criar uma copia pendente desta conta para ${e(monthLabel(nextMonthValue(account.competence_month || selectedMonth)))}?">
+  const dueForm = canEdit ? `<form method="post" class="gestao-mini-form gestao-due-form">
     ${csrfField(req)}
-    <input type="hidden" name="action" value="repeat_next_month">
+    <input type="hidden" name="action" value="update_due">
     <input type="hidden" name="id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-    <label><span>Nome no proximo mes</span><input type="text" name="titulo_repetir" maxlength="180" value="${e(account.title)}"></label>
-    <button type="submit" class="gestao-btn gestao-btn-primary">Repetir mes que vem</button>
+    <label><span>Vencimento</span><input type="datetime-local" name="vencimento_em" value="${e(datetimeLocalValue(account.due_at))}"></label>
+    <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar vencimento</button>
+    <button type="submit" name="limpar_vencimento" value="1" class="gestao-btn gestao-btn-ghost">Apagar</button>
   </form>` : '';
 
   const noteForm = `<div class="gestao-note-block" data-note-block data-note-block-id="${e(id)}">
@@ -1866,21 +2204,23 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     </form>
   </div>`;
 
-  return `<article class="gestao-account status-${e(status)}" data-account-card data-account-id="${e(id)}">
+  return `<article class="gestao-account status-${e(status)} due-${e(due.key)}" data-account-card data-account-id="${e(id)}">
     <div class="gestao-account-main">
       <div class="gestao-account-summary" data-account-toggle role="button" tabindex="0" aria-expanded="false">
         <div class="gestao-account-head">
           <div>
             <span class="gestao-pill">${e(categoryLabel(account.category))}</span>
-            <h2>${e(account.title)}</h2>
+            <h2><span>${e(account.title)}</span>${canEdit ? `<button type="button" class="gestao-title-edit" data-title-edit-toggle aria-label="Renomear ${e(account.title)}" title="Renomear">✎</button>` : ''}</h2>
           </div>
           <div class="gestao-account-total"><span>Total lancado</span><strong>${e(formatMoney(totalCents))}</strong></div>
         </div>
         <div class="gestao-account-meta">
           <span>Gerado ${e(brDate(account.generated_at, true))}</span>
           <span>Competencia ${e(monthLabel(account.competence_month || selectedMonth))}</span>
+          ${account.due_at ? `<span class="gestao-due-meta">${e(brDate(account.due_at, true))}</span>` : ''}
           ${status === 'pago' ? `<span>Pago ${e(brDate(account.paid_at, true))}</span>` : ''}
         </div>
+        ${due.label ? `<div class="gestao-due-alert"><span>${e(due.label)}</span></div>` : ''}
         <div class="gestao-balance" aria-label="Resumo de pagamento da conta">
           <span>Total <strong>${e(formatMoney(totalCents))}</strong></span>
           <span>Pago <strong>${e(formatMoney(paidCents))}</strong></span>
@@ -1890,7 +2230,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
       </div>
       <div class="gestao-account-details" data-account-details>
         ${titleForm}
-        ${repeatForm}
+        ${dueForm}
         ${itemHtml}
         ${paymentHtml}
         ${historyHtml}
@@ -1901,6 +2241,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     <div class="gestao-account-actions">
       <span class="gestao-status">${e(accountStatusLabel(status))}</span>
       ${pendingActions}
+      ${repeatAction}
       ${paidActions}
       ${canceledActions}
     </div>
@@ -1953,14 +2294,24 @@ function renderNotepad(req: Request, notes: NotepadRow[], selectedMonth: string)
 
 async function renderApp(req: Request): Promise<string> {
   const selectedMonth = monthValue(req.query.mes);
+  const selectedCategory = cleanText(req.query.categoria, 120);
   const flash = takeFlash(req);
   const summary = await monthSummary(selectedMonth);
-  const accounts = await listAccounts(selectedMonth);
+  const allAccounts = await listAccounts(selectedMonth);
   const notes = await listNotepadNotes();
-  const suggestions = categorySuggestions().map((label) => `<option value="${e(label)}">`).join('');
-  const accountsHtml = accounts.length
-    ? accounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
+  const summaries = categorySummaries(allAccounts);
+  const activeCategory = summaries.some((summary) => summary.key === selectedCategory) ? selectedCategory : '';
+  const visibleAccounts = activeCategory
+    ? allAccounts.filter((account) => categoryKey(account.category) === activeCategory)
+    : [
+      ...allAccounts.filter((account) => account.status === 'pendente'),
+      ...allAccounts.filter((account) => account.status !== 'pendente').slice(0, 3),
+    ];
+  const suggestions = summaries.map((summary) => `<option value="${e(summary.label)}">`).join('');
+  const accountsHtml = visibleAccounts.length
+    ? visibleAccounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
     : '<div class="gestao-empty">Nada lancado nesse mes ainda.</div>';
+  const categoryPanelHtml = renderCategoryPanel(req, summaries, selectedMonth, activeCategory);
   const notepadHtml = renderNotepad(req, notes, selectedMonth);
 
   return `<!doctype html>
@@ -1970,9 +2321,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-recurring">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-categories">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260518-recurring" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260518-categories" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -2021,7 +2372,7 @@ async function renderApp(req: Request): Promise<string> {
         <div class="gestao-form-grid">
           <label>
             <span>Categoria</span>
-            <input type="text" name="categoria" maxlength="80" value="Geral" list="gestao-categorias" placeholder="Funcionario, boleto internet, fornecedor">
+            <input type="text" name="categoria" maxlength="80" list="gestao-categorias" placeholder="Digite a categoria">
             <datalist id="gestao-categorias">${suggestions}</datalist>
           </label>
           <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
@@ -2029,6 +2380,7 @@ async function renderApp(req: Request): Promise<string> {
             <span>Status inicial</span>
             <select name="status"><option value="pendente">Pendente</option><option value="pago">Pago agora</option></select>
           </label>
+          <label><span>Vencimento opcional</span><input type="datetime-local" name="vencimento_em"></label>
         </div>
         <div class="gestao-line-items" data-line-items>
           <div class="gestao-line-item">
@@ -2037,16 +2389,20 @@ async function renderApp(req: Request): Promise<string> {
           </div>
         </div>
         <button type="button" class="gestao-btn gestao-btn-secondary" data-add-item>Adicionar item</button>
+        <label class="gestao-check-row"><input type="checkbox" name="repetir_mes" value="1"><span>Repetir mes que vem</span></label>
         <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Detalhe curto, se precisar."></textarea></label>
         <button type="submit" class="gestao-btn gestao-btn-primary">Lancar conta</button>
       </form>
 
       <section class="gestao-list-panel">
-        <div class="gestao-section-title"><span class="gestao-kicker">Contas do mes</span><strong>${e(monthLabel(selectedMonth))}</strong></div>
+        <div class="gestao-section-title"><span class="gestao-kicker">${activeCategory ? 'Categoria filtrada' : 'Contas abertas + ultimas fechadas'}</span><strong>${activeCategory ? e(summaries.find((summary) => summary.key === activeCategory)?.label || '') : e(monthLabel(selectedMonth))}</strong></div>
         <div class="gestao-list">${accountsHtml}</div>
       </section>
 
-      ${notepadHtml}
+      <div class="gestao-side-stack">
+        ${categoryPanelHtml}
+        ${notepadHtml}
+      </div>
     </section>
   </main>
 </body>
@@ -2061,7 +2417,7 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-recurring">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-categories">
   <script src="${BASE_PATH}/login-runner.js?v=20260518-click" defer></script>
 </head>
 <body class="gestao-login-body">
@@ -2214,9 +2570,21 @@ app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(async (req, res) =
     } else if (action === 'update_title') {
       await updateAccountTitle(req);
       setFlash(req, 'success', 'Nome da conta atualizado.');
+    } else if (action === 'update_due') {
+      await updateAccountDue(req);
+      setFlash(req, 'success', req.body.limpar_vencimento === '1' ? 'Vencimento removido.' : 'Vencimento atualizado.');
     } else if (action === 'repeat_next_month') {
       const repeated = await repeatAccountNextMonth(req);
       setFlash(req, 'success', `Conta repetida para ${monthLabel(repeated.month)}.`);
+    } else if (action === 'toggle_repeat_next_month') {
+      const enabled = await toggleRepeatNextMonth(req);
+      setFlash(req, 'success', enabled ? 'Conta marcada para repetir mes que vem.' : 'Repeticao do proximo mes desativada.');
+    } else if (action === 'update_category_group') {
+      const changed = await updateCategoryGroup(req);
+      setFlash(req, 'success', `Categoria atualizada em ${changed} conta(s).`);
+    } else if (action === 'cancel_category_group') {
+      const changed = await cancelCategoryGroup(req);
+      setFlash(req, 'success', `Categoria cancelada em ${changed} conta(s) aberta(s).`);
     } else if (action === 'add_notepad_note') {
       await addNotepadNote(req);
       setFlash(req, 'success', 'Nota adicionada no bloco de lembretes.');

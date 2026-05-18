@@ -47,7 +47,7 @@ A Cotacao V2 autentica no MySQL `wf_users`, mas os dados da planilha nova ficam 
 Criadas por `apps/gestao/src/server.ts`:
 
 - `gestao_schema_migrations`: controle simples de migracoes/importacoes aplicadas.
-- `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, datas e usuario criador.
+- `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, vencimento opcional (`due_at`), ciclo de repeticao para o proximo mes (`repeat_next_month`), origem de copia mensal (`repeated_from_account_id`), datas e usuario criador.
 - `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros, multa ou diferenca; cada item pode ser cancelado e reaberto sem apagar historico.
 - `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto; pagamentos podem ser gerais da conta ou vinculados a qualquer lancamento aberto por `item_id`, e tambem podem ser cancelados sem exclusao fisica.
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
@@ -176,7 +176,9 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Cancelar fatura, lancamento ou pagamento deve marcar status/cancelamento, nao apagar fisicamente. Pagamentos cancelados nao contam no total pago do mes.
 - O botao de quitacao da Gestao deve registrar somente o saldo restante como novo pagamento final, preservando no extrato os pagamentos anteriores e qualquer juros/adicao posterior.
 - A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events` e `wf_logs`, preservando itens e pagamentos lancados.
-- Repetir uma conta para o mes seguinte cria novo registro em `gestao_accounts` com `status='pendente'`, nova `generated_at`, mesmos itens ativos em `gestao_account_items` e nenhum pagamento em `gestao_account_payments`; a origem e a nova conta recebem eventos em `gestao_audit_events`.
+- Categoria da Gestao e texto livre, mas a tela agrupa por chave normalizada apenas na aplicacao: remove acentos, ignora maiusculas/minusculas e junta espacos/pontuacao. O texto original da categoria continua preservado em `gestao_accounts.category`; `aluguel`, `Aluguel` e `ALUGUEL` aparecem juntos, enquanto `boleto agua` e `boleto energia` continuam separados.
+- Vencimento (`due_at`) e independente da competencia mensal e de `paid_at`; ele serve para ordenar urgencia e pode ser alterado ou removido sem recalcular o valor da conta.
+- Repetir uma conta para o mes seguinte cria ou garante de forma idempotente novo registro em `gestao_accounts` com `status='pendente'`, nova `generated_at`, mesmos itens ativos em `gestao_account_items`, vencimento avancado em um mes quando houver `due_at`, nenhum pagamento em `gestao_account_payments` e `repeated_from_account_id` apontando para a origem; desligar o ciclo muda `repeat_next_month=false` sem apagar copia ja criada.
 - Renomear uma conta altera apenas `gestao_accounts.title`, sem recalcular valores nem apagar itens, pagamentos ou auditoria.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.

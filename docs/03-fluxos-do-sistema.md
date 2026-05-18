@@ -202,6 +202,10 @@ Regras a preservar:
 - `generated_at` e automatico na criacao da conta;
 - `total_cents` e calculado pelos itens, nao digitado como fonte separada;
 - a categoria e texto livre, com sugestoes apenas para acelerar digitacao;
+- categorias iguais por escrita diferente sao agrupadas visualmente por normalizacao de acento/caixa/espaco, preservando o texto original salvo; o painel lateral mostra bolinhas com abertas em verde e fechadas em vermelho, e clicar em uma categoria filtra as abertas primeiro e depois as fechadas daquela categoria;
+- o painel de categorias permite trocar a categoria de um grupo inteiro ou cancelar somente contas abertas daquele grupo, sem apagar contas fechadas nem historico;
+- a lista principal sem filtro mostra contas abertas do mes e apenas as 3 ultimas fechadas como acesso rapido; o restante fica acessivel pelo filtro de categorias para evitar lista infinita de contas ja pagas;
+- a conta pode ter vencimento opcional com data/hora; contas pendentes com vencimento mais proximo sobem na lista e recebem aviso visual de vencido, vence hoje ou vence em poucos dias;
 - cada conta aparece como extrato proprio: lancamentos/juros ficam juntos, pagamentos parciais ficam no historico da mesma conta, e saldo/progresso sao calculados sem misturar contas;
 - pagamento parcial grava linha em `gestao_account_payments` com valor e data, abatendo o saldo da conta sem mexer nos itens lancados;
 - quando o pagamento parcial e feito dentro de qualquer lancamento aberto, `gestao_account_payments.item_id` liga o pagamento ao item e o backend limita o valor ao menor saldo entre item e conta;
@@ -211,7 +215,7 @@ Regras a preservar:
 - contas pagas podem ser reabertas para ajuste e faturas podem ser canceladas sem exclusao fisica; pagamentos cancelados deixam de contar no total pago do mes;
 - lancamentos e pagamentos individuais podem ser cancelados por status, mantendo historico visivel no extrato; lancamento cancelado pode ser reaberto, mas pagamentos que ja foram cancelados continuam apenas como historico ate o operador registrar novo pagamento;
 - a conta pode ser renomeada depois de lancada para reaproveitar valor/composicao em outro nome sem mexer no historico financeiro;
-- `Repetir mes que vem` cria uma nova conta pendente na competencia seguinte, copiando categoria, observacao e itens ativos, mas sem copiar pagamentos, cancelamentos nem status pago;
+- `Repetir mes que vem` funciona como ciclo liga/desliga: quando ativo, garante uma copia pendente na competencia seguinte, copiando categoria, observacao, vencimento avancado e itens ativos, mas sem copiar pagamentos, cancelamentos nem status pago; desligar o ciclo nao apaga copia ja criada para evitar perda acidental;
 - a observacao da conta pode ser editada depois do lancamento e fica minimizada por padrao ate o operador abrir;
 - os cards de conta ficam minimizados por padrao e podem ser abertos individualmente ao clicar no resumo da propria conta, mantendo o resumo e a barra de progresso visiveis sem botao extra de abrir/minimizar; dentro da conta, pagamentos, observacao e historico tambem podem ser minimizados para reduzir poluicao visual;
 - lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
