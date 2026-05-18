@@ -10,7 +10,8 @@ Entrada publica:
 
 - `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
-- A home usa no maximo cinco cards por linha no desktop; `Códigos` entra como sexto card abaixo do Cashback.
+- O card `Gestao` abre o modulo administrativo de contas a pagar manuais; `Codigos` e `Gestao` ficam na segunda linha da home em desktop.
+- A home usa no maximo cinco cards por linha no desktop; `Codigos` e `Gestao` entram na segunda linha.
 
 Rotas de login:
 
@@ -18,6 +19,7 @@ Rotas de login:
 - `/codigos/login.php`
 - `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando em `wf_users`)
 - `/financeiro/login.php`
+- `/gestao/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/wp-login.php`
@@ -170,6 +172,34 @@ Interface:
 - o topo do Financeiro mostra apenas `Caixa`, `Relatorio` e `Sair`;
 - a view dedicada de Auditoria nao fica disponivel na navegacao operacional;
 - os registros em `financeiro_auditoria` continuam sendo gravados para suporte e rastreabilidade.
+
+## Fluxo Gestao
+
+A Gestao Fase 1 organiza contas a pagar manuais. A conta principal guarda titulo, categoria, competencia, status e total; os itens internos guardam a composicao do valor, permitindo lancamentos como salario, aumento e comissao na mesma conta.
+
+Arquivos principais:
+
+- `site/gestao/index.php`
+- `site/gestao/login.php`
+- `site/gestao/gestao-funcoes.php`
+- `site/gestao/styles.css`
+- `site/gestao/app.js`
+
+Tabelas principais:
+
+- `gestao_contas`
+- `gestao_conta_itens`
+- `wf_logs`
+
+Regras a preservar:
+
+- acesso restrito a usuario `adm`, role `admin` ou role `gerente`;
+- formularios usam sessao interna e CSRF;
+- `gerado_em` e automatico na criacao da conta;
+- `valor_total` e calculado pelos itens, nao digitado como fonte separada;
+- confirmar pagamento muda status para `pago`, grava `pago_em` e passa a somar no total mensal pago;
+- cancelar ou voltar para pendente nao apaga fisicamente a conta nem seus itens;
+- acoes de login, criacao e mudanca de status registram `wf_logs`.
 
 ## Fluxo Tarefas
 

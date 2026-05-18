@@ -14,6 +14,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
 - A ponte interna do Miauby para a Cotacao V2 exige `X-Miauw-Internal-Token` e fica indisponivel se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
 - `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos.
+- `/gestao/` reutiliza a sessao `WFWCASHBACK`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa prepared statements para lancar/confirmar/cancelar contas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - `Permissions-Policy` bloqueia camera e geolocalizacao; microfone fica liberado apenas para a propria origem (`microphone=(self)`) para permitir o botao de audio do Miauby, que ainda exige clique explicito do usuario.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
@@ -43,6 +44,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/codigos/api.php`
+- `site/gestao/gestao-funcoes.php`
 - `site/wp-config.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/config.local.example.php`
@@ -56,6 +58,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Usar prepared statements.
 - Proteger jobs por token quando forem chamados externamente.
 - Revisar permissao antes de expor qualquer endpoint novo.
+- Dados da Gestao sao administrativos e financeiros; nao expor em endpoints publicos, logs detalhados ou contexto generativo sem filtro/confirmacao futura.
 - Diagnosticos internos do Miauby nao devem exibir stack trace, payload bruto, caminho completo, chave, token, CPF, telefone ou email no painel operacional.
 - Traces do Miauby nao devem persistir segredo, chave, token, senha, payload bruto externo, SQL cru ou stack trace completo.
 - Acoes fortes por Miauby devem permanecer pendentes ate confirmacao explicita do operador; cancelar deve limpar a acao pendente sem executar escrita.

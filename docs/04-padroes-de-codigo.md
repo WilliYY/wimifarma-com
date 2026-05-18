@@ -27,6 +27,8 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - `apps/cotacao/public/app.js`
 - `site/financeiro/bootstrap.php`
 - `site/financeiro/financeiro-funcoes.php`
+- `site/gestao/bootstrap.php`
+- `site/gestao/gestao-funcoes.php`
 - `site/tarefa/bootstrap.php`
 - `site/tarefa/tarefa-funcoes.php`
 - `site/miauw/bootstrap.php`
@@ -56,6 +58,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Validar entrada de `$_GET`, `$_POST` e JSON antes de usar.
 - Endpoints JSON internos, como `/codigos/api.php`, devem reutilizar sessao, CSRF e prepared statements dos helpers existentes.
 - Manter CSS/JS do modulo dentro da propria pasta.
+- Em modulos administrativos manuais, como Gestao, manter dados principais e itens em funcoes de modulo, com total derivado dos itens e status reversivel em vez de apagar registro.
 - Atualizar docs no mesmo commit da mudanca.
 - Criar novas abstracoes apenas quando reduzirem complexidade real.
 

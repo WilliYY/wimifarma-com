@@ -21,6 +21,7 @@ Rotas:
 - `/codigos/login.php`
 - `/cotacao/login.php`
 - `/financeiro/login.php`
+- `/gestao/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/treino.php`
@@ -42,6 +43,7 @@ Tabelas:
 - Perfis/roles em `wf_users.role` devem ser respeitados quando a rota exigir permissao.
 - WordPress nao deve ser confundido com login dos modulos internos.
 - A exclusao de tabelas inteiras em `/codigos/` exige sessao interna ativa, CSRF e senha operacional `wimifarma`; essa senha pode ser alterada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
+- A Gestao (`/gestao/`) exige usuario interno autenticado e fica restrita a username `adm`, role `admin` ou role `gerente`; lancar, confirmar, cancelar ou reabrir conta usa CSRF.
 - O painel `/miauw/diagnostico.php` exige usuario interno autenticado e fica restrito a role `admin`, role `gerente` ou username `adm`; acoes de revisao usam CSRF.
 - O painel `/miauw/treino.php` segue a mesma restricao de diagnostico (`admin`, `gerente` ou `adm`); revisar/aprovar/rejeitar treino usa CSRF e nao apaga historico.
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.

@@ -55,6 +55,13 @@ $modules = array(
         'accent' => 'amber',
     ),
     array(
+        'name' => 'Gestao',
+        'label' => 'Administrativo',
+        'description' => 'Contas a pagar, pagos do mes e pendencias.',
+        'href' => '/gestao/',
+        'accent' => 'wine',
+    ),
+    array(
         'name' => 'Tarefas',
         'label' => 'Operacao interna',
         'description' => 'Prioridades, historico e conclusoes.',
@@ -283,6 +290,10 @@ $modules = array(
 
         .wf-card[data-accent="teal"] .wf-card-mark {
             background: #0f766e;
+        }
+
+        .wf-card[data-accent="wine"] .wf-card-mark {
+            background: #a80f43;
         }
 
         .wf-card h2 {

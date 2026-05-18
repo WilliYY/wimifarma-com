@@ -72,6 +72,8 @@ Inventario real observado em 2026-05-10:
 - `financeiro_lancamentos`: lancamentos gerais.
 - `financeiro_configuracoes`: configuracoes do modulo financeiro.
 - `financeiro_auditoria`: auditoria financeira.
+- `gestao_contas`: contas a pagar manuais, com titulo, categoria, status, competencia, total, data de geracao e data de pagamento.
+- `gestao_conta_itens`: itens que compoem cada conta da Gestao, como salario, aumento, comissao, boleto ou parcela.
 - `miauw_conversas`: conversas do Miauby.
 - `miauw_mensagens`: mensagens do Miauby.
 - `miauw_conhecimentos`: base de conhecimento.
@@ -118,6 +120,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Cashback: `site/cashback/functions.php`
 - Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `site/financeiro/financeiro-funcoes.php`
+- Gestao: `site/gestao/gestao-funcoes.php`
 - Tarefas: `site/tarefa/tarefa-funcoes.php`
 - Miauby: `site/miauw/miauw-funcoes.php` e `site/miauw/miauw-intelligence.php`
 
@@ -147,6 +150,8 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
+- `gestao_contas.valor_total` deve ser a soma de `gestao_conta_itens.valor`; contas novas salvam `gerado_em` automaticamente, `status='pago'` salva `pago_em`, e somente contas pagas entram no total mensal pago pelo mes de `pago_em`.
+- A Gestao Fase 1 nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `wf_logs`, preservando os itens lancados.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.

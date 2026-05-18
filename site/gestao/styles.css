@@ -1,0 +1,499 @@
+:root {
+    --wine: #a80f43;
+    --wine-dark: #7f092e;
+    --rose: #f9d8e5;
+    --rose-soft: #fff5f8;
+    --ink: #24121a;
+    --muted: #835266;
+    --line: #f2a9c2;
+    --green: #059669;
+    --amber: #b45309;
+    --danger: #dc2626;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--ink);
+    font-family: "Segoe UI", Arial, sans-serif;
+    background:
+        linear-gradient(120deg, rgba(168, 15, 67, 0.07), rgba(255, 255, 255, 0.94) 36%, rgba(248, 232, 239, 0.9)),
+        #fff8fb;
+}
+
+a {
+    color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+.gestao-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 72px;
+    padding: 14px 32px;
+    background: linear-gradient(90deg, #780623, var(--wine));
+    color: #ffffff;
+    box-shadow: 0 16px 34px rgba(127, 9, 46, 0.18);
+}
+
+.gestao-brand,
+.gestao-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.gestao-brand {
+    text-decoration: none;
+    font-weight: 950;
+}
+
+.gestao-brand img {
+    width: 58px;
+    height: auto;
+    filter: brightness(0) invert(1);
+}
+
+.gestao-nav a {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.36);
+    border-radius: 999px;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 850;
+}
+
+.gestao-page {
+    width: min(1280px, calc(100% - 36px));
+    margin: 0 auto;
+    padding: 34px 0 64px;
+}
+
+.gestao-hero,
+.gestao-stats,
+.gestao-layout {
+    display: grid;
+    gap: 16px;
+}
+
+.gestao-hero {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    margin-bottom: 20px;
+}
+
+.gestao-hero h1,
+.gestao-login-card h1 {
+    margin: 0;
+    color: var(--wine);
+    font-size: clamp(2.35rem, 6vw, 4.5rem);
+    line-height: 0.95;
+    letter-spacing: 0;
+}
+
+.gestao-hero p,
+.gestao-login-card p {
+    max-width: 680px;
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.gestao-kicker {
+    display: inline-flex;
+    color: #7f3350;
+    font-size: 0.75rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.gestao-month-filter {
+    display: inline-grid;
+    grid-template-columns: 180px auto;
+    align-items: end;
+    gap: 10px;
+}
+
+.gestao-month-filter label,
+.gestao-form label,
+.gestao-login-form label {
+    display: grid;
+    gap: 7px;
+    color: #673046;
+    font-size: 0.84rem;
+    font-weight: 900;
+}
+
+.gestao-month-filter input,
+.gestao-form input,
+.gestao-form select,
+.gestao-form textarea,
+.gestao-login-form input {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.92);
+    outline: 0;
+}
+
+.gestao-form textarea {
+    resize: vertical;
+}
+
+.gestao-month-filter input:focus,
+.gestao-form input:focus,
+.gestao-form select:focus,
+.gestao-form textarea:focus,
+.gestao-login-form input:focus {
+    border-color: var(--wine);
+    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.12);
+}
+
+.gestao-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 18px;
+}
+
+.gestao-stats div,
+.gestao-form,
+.gestao-list-panel,
+.gestao-account,
+.gestao-login-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 24px 60px rgba(127, 9, 46, 0.08);
+}
+
+.gestao-stats div {
+    display: grid;
+    gap: 8px;
+    padding: 18px;
+}
+
+.gestao-stats span,
+.gestao-section-title span {
+    color: #7b4058;
+    font-size: 0.76rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.gestao-stats strong {
+    color: var(--wine);
+    font-size: 1.65rem;
+    line-height: 1.1;
+}
+
+.gestao-layout {
+    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+    align-items: start;
+}
+
+.gestao-form,
+.gestao-list-panel {
+    padding: 20px;
+}
+
+.gestao-form {
+    display: grid;
+    gap: 16px;
+}
+
+.gestao-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.gestao-section-title strong {
+    color: var(--wine);
+}
+
+.gestao-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.gestao-line-items {
+    display: grid;
+    gap: 10px;
+}
+
+.gestao-line-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 142px;
+    gap: 10px;
+}
+
+.gestao-btn {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 18px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 950;
+}
+
+.gestao-btn-primary {
+    background: var(--wine);
+    color: #ffffff;
+    box-shadow: 0 14px 28px rgba(168, 15, 67, 0.18);
+}
+
+.gestao-btn-secondary {
+    border-color: var(--line);
+    background: #ffffff;
+    color: var(--wine);
+}
+
+.gestao-btn-ghost {
+    border-color: #f7b6cb;
+    background: #fff8fb;
+    color: var(--wine);
+}
+
+.gestao-list {
+    display: grid;
+    gap: 12px;
+}
+
+.gestao-account {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 170px;
+    gap: 14px;
+    padding: 16px;
+}
+
+.gestao-account.status-pago {
+    border-color: rgba(5, 150, 105, 0.32);
+}
+
+.gestao-account.status-cancelado {
+    opacity: 0.78;
+}
+
+.gestao-account-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.gestao-account-head h2 {
+    margin: 8px 0 0;
+    color: var(--ink);
+    font-size: 1.12rem;
+    line-height: 1.2;
+    letter-spacing: 0;
+}
+
+.gestao-account-head strong {
+    white-space: nowrap;
+    color: var(--wine);
+    font-size: 1.1rem;
+}
+
+.gestao-pill,
+.gestao-status {
+    display: inline-flex;
+    width: fit-content;
+    border-radius: 999px;
+    padding: 5px 10px;
+    background: #ffe8f0;
+    color: #8b1740;
+    font-size: 0.75rem;
+    font-weight: 950;
+}
+
+.gestao-account-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 0.83rem;
+    font-weight: 750;
+}
+
+.gestao-items {
+    display: grid;
+    gap: 6px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.gestao-items li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--rose-soft);
+    color: #5b2a3d;
+}
+
+.gestao-items li strong {
+    white-space: nowrap;
+}
+
+.gestao-note {
+    margin: 12px 0 0;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+.gestao-account-actions {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+}
+
+.gestao-account-actions form,
+.gestao-account-actions button {
+    width: 100%;
+}
+
+.gestao-alert {
+    margin: 0 0 18px;
+    padding: 12px 14px;
+    border: 1px solid #99e7c5;
+    border-radius: 8px;
+    background: #ecfdf5;
+    color: #047857;
+    font-weight: 850;
+}
+
+.gestao-alert.error {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.gestao-empty {
+    padding: 18px;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    color: var(--muted);
+    font-weight: 850;
+}
+
+.gestao-login-body {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+
+.gestao-login-card {
+    position: relative;
+    z-index: 2;
+    width: min(430px, calc(100vw - 32px));
+    display: grid;
+    gap: 14px;
+    padding: 28px;
+}
+
+.gestao-login-logo {
+    width: 168px;
+    height: auto;
+}
+
+.gestao-login-form {
+    display: grid;
+    gap: 14px;
+}
+
+.gestao-login-runner {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    width: clamp(124px, 16vw, 210px);
+    height: auto;
+    pointer-events: none;
+    filter: drop-shadow(0 18px 26px rgba(127, 9, 46, 0.2));
+    transform: translate3d(var(--login-runner-x, 14vw), var(--login-runner-y, 62vh), 0) scaleX(var(--login-runner-dir, 1));
+    will-change: transform;
+}
+
+@media (max-width: 1050px) {
+    .gestao-layout,
+    .gestao-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .gestao-topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 14px 18px;
+    }
+
+    .gestao-page {
+        width: min(100% - 24px, 1280px);
+        padding-top: 24px;
+    }
+
+    .gestao-stats,
+    .gestao-form-grid,
+    .gestao-month-filter,
+    .gestao-line-item,
+    .gestao-account {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-account-head {
+        flex-direction: column;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+}

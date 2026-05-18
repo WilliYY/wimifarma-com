@@ -12,6 +12,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Codigos: atalhos de itens com comissao diferente, com codigo, EAN e preco editaveis em autosave.
 - Cotacao: itens, fornecedores, categorias, precos, status, formatacao e auditoria.
 - Financeiro: fechamentos, sangrias, PIX, maquininhas, lancamentos e auditoria.
+- Gestao: contas a pagar manuais, itens de composicao e total pago por mes.
 - Tarefas: tarefas simples internas.
 - Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; a Fase 13 possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada, contratos de tools enviados do PHP para o Node e tools reais de leitura baixa por ponte PHP interna, sem liberar escrita direta.
 - WordPress: site principal e conteudo publico.
@@ -24,6 +25,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Codigos: `site/codigos/`
 - Cotacao V2: `apps/cotacao/`, publicada em `/cotacao/` por proxy interno do Apache
 - Financeiro: `site/financeiro/`
+- Gestao: `site/gestao/`
 - Tarefas: `site/tarefa/`
 - Miauby: `site/miauw/`
 - Miauby agente: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
@@ -39,6 +41,7 @@ Rotas principais:
 - `/codigos/login.php`
 - `/cotacao/login.php`
 - `/financeiro/login.php`
+- `/gestao/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
@@ -50,6 +53,7 @@ Rotas principais:
 - Codigos de comissao devem preservar codigo, EAN, preco e historico basico por logs; a tela separa os EANs em blocos por prefixo de dois digitos, com `20` e `40` como padrao e botao `+` para criar outros blocos persistidos no backend, e a exclusao deve esconder o item sem apagar o registro fisico imediatamente.
 - Cotacao deve preservar ordem, categorias, fornecedores, precos, observacoes, cores/formatacao e status.
 - Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias.
+- Gestao deve preservar contas lancadas, itens que compoem o total, data de geracao automatica, confirmacao de pagamento e logs de status sem apagar historico.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.
 - O servico Miauby agente nao deve executar escrita real. O adaptador PHP compara respostas por trace e o corte inicial fica limitado a usuarios liberados por `MIAUW_ENGINE`, com rollback por `.env`.
 - WordPress deve continuar servindo o site principal enquanto os modulos internos ficam acessiveis por suas rotas.

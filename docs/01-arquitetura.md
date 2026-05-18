@@ -37,6 +37,7 @@ Arquivos principais:
 - `site/wp-config.php`
 - `site/cashback/config.php`
 - `site/codigos/`
+- `site/gestao/`
 - `.env.example`
 
 Containers:

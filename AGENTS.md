@@ -64,10 +64,12 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro e GIFs decorativos com o mesmo padrao de movimento dos logins.
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
+- O card `Gestao` abre o modulo administrativo em `site/gestao`, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais e total pago por mes.
 - Modulos internos PHP puro:
   - `site/cashback`
   - `site/codigos`
   - `site/financeiro`
+  - `site/gestao`
   - `site/tarefa`
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
@@ -144,6 +146,7 @@ Rotas internas:
 - `/cotacao/login.php`
 - `/cotacao/health`
 - `/financeiro/login.php`
+- `/gestao/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
@@ -284,6 +287,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Em 2026-05-17, o Miauby iniciou a Fase 21 com `MIAUW_AGENT_VERSION=2.0-fase21`: o playback de audio no chat/widget foi corrigido liberando `blob:`/`data:` apenas em `media-src` do CSP, a transcricao da resposta falada fica escondida por padrao atras de `Ver texto`, o prompt de TTS ganhou instrucoes fortes de fala real e o painel restrito `/miauw/diagnostico.php` ganhou seletor seguro de voz base (`marin`, `cedar`, `ash`, `coral`, `verse`) persistido em `miauw_configuracoes`. O servico `wimifarma-miauw-agent` passou para `SERVICE_VERSION=0.16.0` e `PHASE=fase21-voice-playback-profile-selector`.
 - Ainda em 2026-05-17, o frontend de audio do Miauby foi ajustado para nao bloquear a captura apenas pelo pre-check `navigator.permissions`; ele tenta `getUserMedia()` de verdade, anexa o estado de permissao ao erro amigavel e evita repetir o mesmo aviso de microfone varias vezes em poucos segundos.
 - Ainda em 2026-05-17, o header comum `Permissions-Policy` dos modulos internos passou a permitir `microphone=(self)` para o audio do Miauby no proprio dominio, mantendo camera e geolocalizacao bloqueadas.
+- Em 2026-05-18, a Gestao iniciou a Fase 1 administrativa em `site/gestao`: login com o mesmo tema vinho/rosa, acesso restrito a `adm`, `admin` ou `gerente`, tabelas MySQL `gestao_contas` e `gestao_conta_itens`, lancamento manual de contas com itens flexiveis, data de geracao automatica, status `pendente`/`pago`/`cancelado`, acao de confirmar pagamento que soma no total do mes por `pago_em`, e logs em `wf_logs`.
 - Durante o deploy de 2026-05-16, o `wimifarma-com-db` do VPS foi encontrado reiniciando porque `/home/ubuntu/projetos/wimifarma-com/mysql` estava incompleto e sem `ibdata1`. O diretorio invalido foi preservado como `/home/ubuntu/projetos/wimifarma-com/mysql-invalid-20260516113246`, e o `mysql/` oficial foi restaurado de `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/mysql` sem apagar a origem. Nao remover esses diretorios sem confirmacao clara.
 - Em 2026-05-16, a Cotacao V2 do VPS foi encontrada apontando para um Postgres novo/vazio em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/postgres`, com 20 linhas vazias e zero eventos. Os dados foram restaurados apenas nas tabelas `cotacao_v2_*` a partir da base preservada em `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/cotacao-data/postgres`, mantendo o `quote_id` antigo `c3f0cb73-435e-48f3-bc6f-42f2eb7d2b16`: 178 linhas ativas, 11 linhas com dados, 15 colunas, 35 estilos, 2 regras e 672 eventos ate 2026-05-15 21:13 UTC. Backups SQL manuais da operacao ficaram em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/manual-backups/`. Nao remover a base preservada nem os dumps sem confirmacao clara.
 - Ainda em 2026-05-16, alguns containers de banco do VPS (`wimifarma-com-db`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`) estavam rodando com label Compose `com.docker.compose.project=wimifarma-com-git`, embora usando o `docker-compose.yml` da pasta oficial. Enquanto esse estado nao for normalizado com janela e backup, deploy pontual de app deve evitar recriar dependencias, por exemplo `docker compose up -d --no-deps --build wimifarma-cotacao-app`.
