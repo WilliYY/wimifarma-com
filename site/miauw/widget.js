@@ -3,6 +3,7 @@
   window.__miauwWidgetLoaded = true;
 
   const currentPath = window.location.pathname || '';
+  const isCotacaoPath = currentPath.startsWith('/cotacao');
   if (currentPath.startsWith('/miauw/')) return;
 
   const cssId = 'miauw-widget-css';
@@ -10,7 +11,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260517j';
+    link.href = '/miauw/widget.css?v=20260517k';
     document.head.appendChild(link);
   }
 
@@ -154,6 +155,8 @@
   let lastAmbientNudgeAt = 0;
   let activityTimer = null;
   let pendingNudge = null;
+  let cotacaoRunnerActive = false;
+  let cotacaoRunnerTimer = null;
   const recentInteractions = [];
   const NUDGE_ACTIVITY_WINDOW = 1000 * 18;
 
@@ -176,6 +179,8 @@
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
+
+  const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
 
   const isWidgetTarget = (target) => target && root.contains(target);
 
@@ -669,6 +674,180 @@
       view: 'chat',
       storage: { key: 'miauby_home_creature_nudge_at', value: now },
     });
+  };
+
+  const cotacaoRunnerHomePoint = () => {
+    const rect = bubble.getBoundingClientRect();
+    if (rect.width > 1 && rect.height > 1) {
+      return {
+        x: rect.left + (rect.width / 2),
+        y: rect.top + (rect.height / 2),
+      };
+    }
+
+    return {
+      x: window.innerWidth - 64,
+      y: window.innerHeight - 64,
+    };
+  };
+
+  const cotacaoRunnerWaypoint = () => ({
+    x: clampNumber(80 + Math.random() * Math.max(120, window.innerWidth - 160), 70, Math.max(70, window.innerWidth - 70)),
+    y: clampNumber(92 + Math.random() * Math.max(120, window.innerHeight - 184), 82, Math.max(82, window.innerHeight - 82)),
+  });
+
+  const spawnCotacaoPikachuRunner = () => {
+    if (!isCotacaoPath || reducedMotion || cotacaoRunnerActive || document.hidden || state.open) {
+      return false;
+    }
+
+    cotacaoRunnerActive = true;
+    const runner = document.createElement('img');
+    runner.className = 'miauw-cotacao-runner';
+    runner.src = '/miauw/pikachu-loop.webp';
+    runner.alt = '';
+    runner.setAttribute('aria-hidden', 'true');
+    runner.setAttribute('data-miauby-screen-object', 'pikachu da cotacao');
+    runner.setAttribute('data-miauby-screen-label', 'Pikachu dando ronda dentro da Cotacao');
+    document.body.appendChild(runner);
+
+    const home = cotacaoRunnerHomePoint();
+    let rect = runner.getBoundingClientRect();
+    let width = rect.width || 128;
+    let height = rect.height || 86;
+    let x = home.x - (width / 2);
+    let y = home.y - (height / 2);
+    let vx = home.x > window.innerWidth / 2 ? -(1.35 + Math.random() * 0.85) : (1.35 + Math.random() * 0.85);
+    let vy = -0.7 + Math.random() * 1.4;
+    let waypoint = cotacaoRunnerWaypoint();
+    let lastTick = performance.now();
+    const startedAt = lastTick;
+    const phase = Math.random() * Math.PI * 2;
+    const pointer = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      active: false,
+    };
+
+    const setRunnerPosition = () => {
+      runner.style.setProperty('--miauw-cotacao-runner-x', `${x.toFixed(1)}px`);
+      runner.style.setProperty('--miauw-cotacao-runner-y', `${y.toFixed(1)}px`);
+      runner.style.setProperty('--miauw-cotacao-runner-dir', vx < 0 ? '-1' : '1');
+      runner.style.setProperty('--miauw-cotacao-runner-tilt', `${clampNumber(vy * 4.5, -13, 13).toFixed(1)}deg`);
+    };
+
+    const onPointerMove = (event) => {
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      pointer.active = true;
+    };
+
+    const onPointerLeave = () => {
+      pointer.active = false;
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerleave', onPointerLeave, { passive: true });
+    window.addEventListener('blur', onPointerLeave);
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerleave', onPointerLeave);
+      window.removeEventListener('blur', onPointerLeave);
+      runner.classList.add('is-returning');
+      window.setTimeout(() => runner.remove(), 240);
+      cotacaoRunnerActive = false;
+    };
+
+    const tick = (now) => {
+      if (!runner.isConnected) {
+        cotacaoRunnerActive = false;
+        return;
+      }
+
+      const elapsed = now - startedAt;
+      const dt = Math.min(32, now - lastTick) / 16.67;
+      lastTick = now;
+      rect = runner.getBoundingClientRect();
+      width = rect.width || width;
+      height = rect.height || height;
+
+      const centerX = x + (width / 2);
+      const centerY = y + (height / 2);
+      const returningHome = elapsed > 9800;
+      const target = returningHome ? cotacaoRunnerHomePoint() : waypoint;
+      const targetDx = target.x - centerX;
+      const targetDy = target.y - centerY;
+      const targetDistance = Math.max(1, Math.hypot(targetDx, targetDy));
+
+      if (!returningHome && targetDistance < 92) {
+        waypoint = cotacaoRunnerWaypoint();
+      }
+
+      const targetForce = returningHome ? 0.12 : 0.048;
+      vx += (targetDx / targetDistance) * targetForce * dt;
+      vy += (targetDy / targetDistance) * targetForce * dt;
+      vx += Math.cos((now / 820) + phase) * 0.018 * dt;
+      vy += Math.sin((now / 960) + phase) * 0.018 * dt;
+
+      const mouseDx = centerX - pointer.x;
+      const mouseDy = centerY - pointer.y;
+      const mouseDistance = Math.max(1, Math.hypot(mouseDx, mouseDy));
+      if (pointer.active && mouseDistance < 230) {
+        const flee = (230 - mouseDistance) / 230;
+        vx += (mouseDx / mouseDistance) * flee * 0.7;
+        vy += (mouseDy / mouseDistance) * flee * 0.7;
+        runner.classList.add('is-fleeing');
+      } else {
+        runner.classList.remove('is-fleeing');
+      }
+
+      const maxSpeed = returningHome ? 4.15 : 3.25;
+      const speed = Math.max(0.001, Math.hypot(vx, vy));
+      if (speed > maxSpeed) {
+        vx = (vx / speed) * maxSpeed;
+        vy = (vy / speed) * maxSpeed;
+      }
+
+      vx *= 0.994;
+      vy *= 0.994;
+      x += vx * dt;
+      y += vy * dt;
+
+      const maxX = Math.max(10, window.innerWidth - width - 10);
+      const maxY = Math.max(74, window.innerHeight - height - 10);
+      if (x < 10 || x > maxX) {
+        vx *= -0.84;
+        x = clampNumber(x, 10, maxX);
+      }
+      if (y < 74 || y > maxY) {
+        vy *= -0.84;
+        y = clampNumber(y, 74, maxY);
+      }
+
+      setRunnerPosition();
+
+      if ((returningHome && targetDistance < 34) || elapsed > 14500) {
+        cleanup();
+        return;
+      }
+
+      window.requestAnimationFrame(tick);
+    };
+
+    setRunnerPosition();
+    window.requestAnimationFrame(tick);
+    return true;
+  };
+
+  const scheduleCotacaoPikachuRunner = (delay = 65000) => {
+    if (!isCotacaoPath || reducedMotion) return;
+
+    window.clearTimeout(cotacaoRunnerTimer);
+    cotacaoRunnerTimer = window.setTimeout(() => {
+      const spawned = spawnCotacaoPikachuRunner();
+      scheduleCotacaoPikachuRunner(spawned ? 62000 + Math.random() * 58000 : 14000);
+    }, delay);
   };
 
   const ambientNudgeText = () => {
@@ -1674,12 +1853,14 @@
   window.MiaubyGuide = {
     paw: showGuideCue,
     effect: spawnScreenEffect,
+    pikachu: spawnCotacaoPikachuRunner,
     recentInteractions: () => recentInteractions.slice(),
     screenObjects: () => screenObjects(),
   };
 
   loadStatus({ statusOnly: true });
   window.setTimeout(maybeShowHomeCreatureNudge, 2200);
+  scheduleCotacaoPikachuRunner(7500 + Math.random() * 5500);
   window.setInterval(() => {
     loadStatus({ statusOnly: !state.open });
   }, 1000 * 60 * 5);
