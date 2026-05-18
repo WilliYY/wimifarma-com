@@ -11,7 +11,7 @@ Entrada publica:
 - `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; `Codigos` e `Gestao` ficam na segunda linha da home em desktop.
-- A home usa no maximo cinco cards por linha no desktop; `Codigos` e `Gestao` entram na segunda linha.
+- A home usa no maximo cinco cards por linha no desktop; `Codigos` e `Gestao` entram na segunda linha. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 
 Rotas de login:
 

@@ -358,11 +358,11 @@ $modules = array(
 
         @media (max-width: 640px) {
             .wf-shell {
-                width: min(100% - 24px, 1180px);
+                width: min(100% - 18px, 1180px);
             }
 
             .wf-main {
-                padding: 24px 0 96px;
+                padding: 16px 0 84px;
             }
 
             .wf-runner.is-nyan {
@@ -378,7 +378,75 @@ $modules = array(
             }
 
             .wf-modules {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+
+            .wf-card {
+                min-height: 148px;
+                gap: 7px;
+                padding: 13px 12px;
+                box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
+            }
+
+            .wf-card:hover,
+            .wf-card:focus-visible {
+                transform: translateY(-2px);
+            }
+
+            .wf-card-mark {
+                width: 30px;
+                height: 7px;
+            }
+
+            .wf-card h2 {
+                font-size: clamp(1rem, 6vw, 1.18rem);
+                line-height: 1.08;
+                overflow-wrap: anywhere;
+            }
+
+            .wf-card span {
+                font-size: 0.72rem;
+                line-height: 1.18;
+            }
+
+            .wf-card p {
+                display: -webkit-box;
+                min-height: 2.2em;
+                overflow: hidden;
+                color: #526174;
+                font-size: 0.76rem;
+                line-height: 1.18;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+            }
+
+            .wf-card b {
+                font-size: 0.78rem;
+            }
+
+            .wf-card-badge {
+                top: 10px;
+                right: 10px;
+                min-width: 26px;
+                height: 24px;
+                padding: 0 7px;
+                font-size: 0.72rem;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .wf-modules {
+                gap: 8px;
+            }
+
+            .wf-card {
+                min-height: 132px;
+                padding: 11px 10px;
+            }
+
+            .wf-card p {
+                display: none;
             }
         }
 

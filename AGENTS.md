@@ -64,6 +64,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Gestao em Node.js 22 + TypeScript + Express, com Postgres 17 dedicado para contas, itens, pagamentos, auditoria e sessoes.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro e GIFs decorativos com o mesmo padrao de movimento dos logins.
+- No mobile, a home publica deve manter os cards dos modulos em duas colunas compactas para mostrar mais acessos por tela; textos longos podem ser reduzidos/truncados visualmente, mas os links precisam continuar claros e tocaveis.
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - O card `Gestao` abre o modulo administrativo em `/gestao/`, servido oficialmente por `apps/gestao` via proxy Apache, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais, pagamentos parciais e total pago por mes.
 - Modulos internos PHP puro:
