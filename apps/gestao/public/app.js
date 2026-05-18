@@ -134,17 +134,53 @@
         });
     }
 
+    function initAccountCollapse() {
+        Array.prototype.slice.call(document.querySelectorAll('[data-account-card]')).forEach(function (card) {
+            var button = card.querySelector('[data-account-toggle]');
+            var id = card.getAttribute('data-account-id') || '';
+            var key = 'gestao:account-collapsed:' + id;
+
+            if (!button || !id || button.dataset.gestaoCollapseBound === '1') {
+                return;
+            }
+
+            function setCollapsed(collapsed) {
+                card.classList.toggle('is-collapsed', collapsed);
+                button.textContent = collapsed ? 'Abrir' : 'Minimizar';
+                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                try {
+                    window.localStorage.setItem(key, collapsed ? '1' : '0');
+                } catch (error) {
+                    // Ignore private browsing/storage limitations.
+                }
+            }
+
+            button.dataset.gestaoCollapseBound = '1';
+            try {
+                setCollapsed(window.localStorage.getItem(key) === '1');
+            } catch (error) {
+                setCollapsed(false);
+            }
+
+            button.addEventListener('click', function () {
+                setCollapsed(!card.classList.contains('is-collapsed'));
+            });
+        });
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
             initTotals();
             initMoneyValidation();
             initConfirmations();
+            initAccountCollapse();
         });
     } else {
         bindMoneyInputs(document);
         initTotals();
         initMoneyValidation();
         initConfirmations();
+        initAccountCollapse();
     }
 }());

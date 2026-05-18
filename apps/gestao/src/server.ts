@@ -53,17 +53,32 @@ type ItemRow = {
   description: string;
   amount_cents: string;
   sort_order: number;
+  status: 'ativo' | 'cancelado';
+  canceled_at: Date | string | null;
+  paid_cents?: string;
   created_at: Date | string;
 };
 
 type PaymentRow = {
   id: string;
   account_id: string;
+  item_id: string | null;
+  item_description?: string | null;
   description: string;
   amount_cents: string;
+  status: 'ativo' | 'cancelado';
+  canceled_at: Date | string | null;
   paid_at: Date | string;
   created_by: number | null;
   created_at: Date | string;
+};
+
+type NotepadRow = {
+  id: string;
+  body: string;
+  created_by: number | null;
+  created_at: Date | string;
+  updated_at: Date | string;
 };
 
 type RenderAccount = AccountRow & {
@@ -85,7 +100,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.1.0';
+const SERVICE_VERSION = '1.2.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -480,6 +495,37 @@ async function ensureSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await pgPool.query("ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'ativo'");
+  await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS canceled_at timestamptz');
+  await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS canceled_by integer');
+  await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS item_id bigint');
+  await pgPool.query("ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'ativo'");
+  await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS canceled_at timestamptz');
+  await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS canceled_by integer');
+  await pgPool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'gestao_account_items_status_check'
+      ) THEN
+        ALTER TABLE gestao_account_items
+        ADD CONSTRAINT gestao_account_items_status_check CHECK (status IN ('ativo', 'cancelado'));
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'gestao_account_payments_status_check'
+      ) THEN
+        ALTER TABLE gestao_account_payments
+        ADD CONSTRAINT gestao_account_payments_status_check CHECK (status IN ('ativo', 'cancelado'));
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'gestao_account_payments_item_id_fkey'
+      ) THEN
+        ALTER TABLE gestao_account_payments
+        ADD CONSTRAINT gestao_account_payments_item_id_fkey
+        FOREIGN KEY (item_id) REFERENCES gestao_account_items(id) ON DELETE RESTRICT;
+      END IF;
+    END $$;
+  `);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS gestao_audit_events (
       id bigserial PRIMARY KEY,
@@ -488,6 +534,17 @@ async function ensureSchema(): Promise<void> {
       action varchar(80) NOT NULL,
       summary varchar(255) NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS gestao_notepad_notes (
+      id bigserial PRIMARY KEY,
+      body text NOT NULL,
+      created_by integer,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
     )
   `);
   await pgPool.query(`
@@ -509,6 +566,15 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_payments_paid_at_idx
     ON gestao_account_payments (paid_at, account_id)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_account_payments_item_active_idx
+    ON gestao_account_payments (item_id, paid_at, id)
+    WHERE item_id IS NOT NULL AND status = 'ativo'
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_notepad_notes_active_idx
+    ON gestao_notepad_notes (deleted_at, updated_at DESC, id DESC)
   `);
   await pgPool.query(`
     CREATE OR REPLACE FUNCTION gestao_touch_updated_at()
@@ -681,12 +747,40 @@ async function importMysqlGestaoOnce(): Promise<void> {
   }
 }
 
-async function paidTotal(client: pg.Pool | pg.PoolClient, accountId: number): Promise<number> {
+async function paidTotal(client: pg.Pool | pg.PoolClient, accountId: number, itemId?: number): Promise<number> {
+  if (itemId) {
+    const itemResult = await client.query<{ paid_cents: string }>(
+      `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents
+       FROM gestao_account_payments
+       WHERE account_id = $1
+         AND item_id = $2
+         AND status = 'ativo'`,
+      [accountId, itemId],
+    );
+    return Number(itemResult.rows[0]?.paid_cents || 0);
+  }
+
   const result = await client.query<{ paid_cents: string }>(
-    'SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents FROM gestao_account_payments WHERE account_id = $1',
+    `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents
+     FROM gestao_account_payments
+     WHERE account_id = $1
+       AND status = 'ativo'`,
     [accountId],
   );
   return Number(result.rows[0]?.paid_cents || 0);
+}
+
+async function recalcAccountTotal(client: pg.PoolClient, accountId: number): Promise<number> {
+  const result = await client.query<{ total_cents: string }>(
+    `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total_cents
+     FROM gestao_account_items
+     WHERE account_id = $1
+       AND status = 'ativo'`,
+    [accountId],
+  );
+  const totalCents = Number(result.rows[0]?.total_cents || 0);
+  await client.query('UPDATE gestao_accounts SET total_cents = $1 WHERE id = $2', [totalCents, accountId]);
+  return totalCents;
 }
 
 async function syncPaymentStatus(client: pg.PoolClient, accountId: number): Promise<void> {
@@ -700,7 +794,7 @@ async function syncPaymentStatus(client: pg.PoolClient, accountId: number): Prom
   const paid = await paidTotal(client, accountId);
   if (Number(account.total_cents) > 0 && paid >= Number(account.total_cents)) {
     const dateResult = await client.query<{ paid_at: Date | string | null }>(
-      'SELECT MAX(paid_at) AS paid_at FROM gestao_account_payments WHERE account_id = $1',
+      "SELECT MAX(paid_at) AS paid_at FROM gestao_account_payments WHERE account_id = $1 AND status = 'ativo'",
       [accountId],
     );
     await client.query(
@@ -812,6 +906,7 @@ async function addItem(req: Request): Promise<void> {
 
 async function addPayment(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
+  const itemId = Number(req.body.item_id || 0);
   const cents = parseMoneyToCents(req.body.pagamento_valor);
   if (!id) throw new Error('Conta invalida.');
   if (cents <= 0) throw new Error('Informe um valor pago maior que zero.');
@@ -828,19 +923,37 @@ async function addPayment(req: Request): Promise<void> {
     const account = accountResult.rows[0];
     if (!account) throw new Error('Conta nao encontrada.');
     if (account.status === 'cancelado') throw new Error('Reabra a conta antes de registrar pagamento.');
-    const paid = await paidTotal(client, id);
-    const remaining = Math.max(0, Number(account.total_cents) - paid);
+    const accountPaid = await paidTotal(client, id);
+    const accountRemaining = Math.max(0, Number(account.total_cents) - accountPaid);
+    let remaining = 0;
+    let itemDescription = '';
+    if (itemId > 0) {
+      const itemResult = await client.query<{ description: string; amount_cents: number; status: string }>(
+        'SELECT description, amount_cents, status FROM gestao_account_items WHERE id = $1 AND account_id = $2 FOR UPDATE',
+        [itemId, id],
+      );
+      const item = itemResult.rows[0];
+      if (!item) throw new Error('Lancamento nao encontrado nessa conta.');
+      if (item.status === 'cancelado') throw new Error('Esse lancamento esta cancelado.');
+      const itemPaid = await paidTotal(client, id, itemId);
+      remaining = Math.min(Math.max(0, Number(item.amount_cents) - itemPaid), accountRemaining);
+      itemDescription = item.description;
+    } else {
+      remaining = accountRemaining;
+    }
     if (remaining <= 0) throw new Error('Essa conta ja esta paga.');
     if (cents > remaining) throw new Error('Pagamento maior que o saldo. Adicione juros ou diferenca como item antes de pagar.');
     if (!description) {
-      description = cents >= remaining ? 'Pagamento final' : 'Pagamento parcial';
+      description = itemId > 0
+        ? (cents >= remaining ? `Quitacao de ${itemDescription}` : `Parcial de ${itemDescription}`)
+        : (cents >= remaining ? 'Pagamento final' : 'Pagamento parcial');
     }
     await client.query(
-      'INSERT INTO gestao_account_payments (account_id, description, amount_cents, paid_at, created_by) VALUES ($1, $2, $3, $4::timestamptz, $5)',
-      [id, description, cents, parseDatetimeLocal(req.body.pagamento_em), userId],
+      'INSERT INTO gestao_account_payments (account_id, item_id, description, amount_cents, paid_at, created_by) VALUES ($1, $2, $3, $4, $5::timestamptz, $6)',
+      [id, itemId > 0 ? itemId : null, description, cents, parseDatetimeLocal(req.body.pagamento_em), userId],
     );
     await syncPaymentStatus(client, id);
-    await auditPg(client, id, userId, 'gestao_pagamento_criado', `Pagamento registrado: ${formatMoney(cents)}`);
+    await auditPg(client, id, userId, 'gestao_pagamento_criado', `Pagamento registrado: ${formatMoney(cents)}${itemId > 0 ? ` em ${itemDescription}` : ''}`);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -886,6 +999,228 @@ async function confirmRemaining(req: Request): Promise<void> {
   await logMysql(userId, 'gestao_conta_status', 'gestao_conta', id, 'Conta quitada na Gestao.');
 }
 
+async function confirmItem(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  const itemId = Number(req.body.item_id || 0);
+  if (!id || !itemId) throw new Error('Lancamento invalido.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let paidCents = 0;
+  let itemDescription = '';
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<{ total_cents: number; status: string }>(
+      'SELECT total_cents, status FROM gestao_accounts WHERE id = $1 FOR UPDATE',
+      [id],
+    );
+    const account = accountResult.rows[0];
+    if (!account) throw new Error('Conta nao encontrada.');
+    if (account.status === 'cancelado') throw new Error('Reabra a conta antes de pagar lancamento.');
+
+    const itemResult = await client.query<{ description: string; amount_cents: number; status: string }>(
+      'SELECT description, amount_cents, status FROM gestao_account_items WHERE id = $1 AND account_id = $2 FOR UPDATE',
+      [itemId, id],
+    );
+    const item = itemResult.rows[0];
+    if (!item) throw new Error('Lancamento nao encontrado.');
+    if (item.status === 'cancelado') throw new Error('Esse lancamento esta cancelado.');
+    itemDescription = item.description;
+    const accountPaid = await paidTotal(client, id);
+    const accountRemaining = Math.max(0, Number(account.total_cents || 0) - accountPaid);
+    const paid = await paidTotal(client, id, itemId);
+    paidCents = Math.min(Math.max(0, Number(item.amount_cents) - paid), accountRemaining);
+    if (paidCents <= 0) throw new Error('Esse lancamento ja esta pago.');
+
+    await client.query(
+      'INSERT INTO gestao_account_payments (account_id, item_id, description, amount_cents, paid_at, created_by) VALUES ($1, $2, $3, $4, now(), $5)',
+      [id, itemId, `Quitacao de ${item.description}`, paidCents, userId],
+    );
+    await syncPaymentStatus(client, id);
+    await auditPg(client, id, userId, 'gestao_item_quitado', `Lancamento quitado: ${item.description} / ${formatMoney(paidCents)}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_item_quitado', 'gestao_conta', id, `Lancamento quitado na Gestao: ${itemDescription} / ${formatMoney(paidCents)}`);
+}
+
+async function addItemAdjustment(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  const itemId = Number(req.body.item_id || 0);
+  const cents = parseMoneyToCents(req.body.ajuste_valor);
+  if (!id || !itemId) throw new Error('Lancamento invalido.');
+  if (cents <= 0) throw new Error('Informe um valor maior que zero para o ajuste.');
+
+  const reason = cleanText(req.body.ajuste_descricao, 180) || 'Juros ou diferenca';
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let itemDescription = '';
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<{ status: string }>(
+      'SELECT status FROM gestao_accounts WHERE id = $1 FOR UPDATE',
+      [id],
+    );
+    const account = accountResult.rows[0];
+    if (!account) throw new Error('Conta nao encontrada.');
+    if (account.status === 'cancelado') throw new Error('Reabra a conta antes de adicionar ajuste.');
+
+    const itemResult = await client.query<{ description: string; sort_order: number; status: string }>(
+      'SELECT description, sort_order, status FROM gestao_account_items WHERE id = $1 AND account_id = $2 FOR UPDATE',
+      [itemId, id],
+    );
+    const item = itemResult.rows[0];
+    if (!item) throw new Error('Lancamento nao encontrado.');
+    if (item.status === 'cancelado') throw new Error('Esse lancamento esta cancelado.');
+    itemDescription = item.description;
+    const description = `${reason} - ${item.description}`.slice(0, 180);
+
+    await client.query(
+      'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order) VALUES ($1, $2, $3, $4)',
+      [id, description, cents, Number(item.sort_order || 0) + 1],
+    );
+    await recalcAccountTotal(client, id);
+    await syncPaymentStatus(client, id);
+    await auditPg(client, id, userId, 'gestao_item_ajuste', `Ajuste em lancamento: ${item.description} / ${formatMoney(cents)}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_item_ajuste', 'gestao_conta', id, `Ajuste em lancamento na Gestao: ${itemDescription} / ${formatMoney(cents)}`);
+}
+
+async function cancelItem(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  const itemId = Number(req.body.item_id || 0);
+  if (!id || !itemId) throw new Error('Lancamento invalido.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let itemDescription = '';
+  try {
+    await client.query('BEGIN');
+    const account = await client.query('SELECT id, status FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    if (account.rows[0].status === 'cancelado') throw new Error('Reabra a conta antes de cancelar lancamento.');
+
+    const itemResult = await client.query<{ description: string; status: string }>(
+      'SELECT description, status FROM gestao_account_items WHERE id = $1 AND account_id = $2 FOR UPDATE',
+      [itemId, id],
+    );
+    const item = itemResult.rows[0];
+    if (!item) throw new Error('Lancamento nao encontrado.');
+    if (item.status === 'cancelado') throw new Error('Esse lancamento ja esta cancelado.');
+    itemDescription = item.description;
+
+    await client.query(
+      "UPDATE gestao_account_items SET status = 'cancelado', canceled_at = now(), canceled_by = $1 WHERE id = $2",
+      [userId, itemId],
+    );
+    await client.query(
+      "UPDATE gestao_account_payments SET status = 'cancelado', canceled_at = now(), canceled_by = $1 WHERE item_id = $2 AND status = 'ativo'",
+      [userId, itemId],
+    );
+    await recalcAccountTotal(client, id);
+    await syncPaymentStatus(client, id);
+    await auditPg(client, id, userId, 'gestao_item_cancelado', `Lancamento cancelado: ${item.description}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_item_cancelado', 'gestao_conta', id, `Lancamento cancelado na Gestao: ${itemDescription}`);
+}
+
+async function cancelPayment(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  const paymentId = Number(req.body.payment_id || 0);
+  if (!id || !paymentId) throw new Error('Pagamento invalido.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let cents = 0;
+  try {
+    await client.query('BEGIN');
+    const account = await client.query('SELECT id, status FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    if (account.rows[0].status === 'cancelado') throw new Error('Reabra a conta antes de cancelar pagamento.');
+
+    const paymentResult = await client.query<{ amount_cents: number; status: string }>(
+      'SELECT amount_cents, status FROM gestao_account_payments WHERE id = $1 AND account_id = $2 FOR UPDATE',
+      [paymentId, id],
+    );
+    const payment = paymentResult.rows[0];
+    if (!payment) throw new Error('Pagamento nao encontrado.');
+    if (payment.status === 'cancelado') throw new Error('Esse pagamento ja esta cancelado.');
+    cents = Number(payment.amount_cents || 0);
+    await client.query(
+      "UPDATE gestao_account_payments SET status = 'cancelado', canceled_at = now(), canceled_by = $1 WHERE id = $2",
+      [userId, paymentId],
+    );
+    await syncPaymentStatus(client, id);
+    await auditPg(client, id, userId, 'gestao_pagamento_cancelado', `Pagamento cancelado: ${formatMoney(cents)}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_pagamento_cancelado', 'gestao_conta', id, `Pagamento cancelado na Gestao: ${formatMoney(cents)}`);
+}
+
+async function updateAccountNote(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  if (!id) throw new Error('Conta invalida.');
+  const note = cleanText(req.body.observacao, 5000);
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const account = await client.query('SELECT id FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    await client.query('UPDATE gestao_accounts SET note = $1 WHERE id = $2', [note || null, id]);
+    await auditPg(client, id, userId, 'gestao_observacao_atualizada', 'Observacao da conta atualizada.');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_observacao_atualizada', 'gestao_conta', id, 'Observacao da conta atualizada na Gestao.');
+}
+
+async function reopenAccount(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  if (!id) throw new Error('Conta invalida.');
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const account = await client.query('SELECT id FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    await client.query("UPDATE gestao_accounts SET status = 'pendente', paid_at = NULL, canceled_at = NULL WHERE id = $1", [id]);
+    await auditPg(client, id, userId, 'gestao_conta_reaberta', 'Conta reaberta para ajuste.');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_conta_reaberta', 'gestao_conta', id, 'Conta reaberta para ajuste na Gestao.');
+}
+
 async function setStatus(req: Request, status: 'pendente' | 'cancelado'): Promise<void> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
@@ -897,6 +1232,10 @@ async function setStatus(req: Request, status: 'pendente' | 'cancelado'): Promis
     if (!account.rowCount) throw new Error('Conta nao encontrada.');
     if (status === 'cancelado') {
       await client.query("UPDATE gestao_accounts SET status = 'cancelado', paid_at = NULL, canceled_at = now() WHERE id = $1", [id]);
+      await client.query(
+        "UPDATE gestao_account_payments SET status = 'cancelado', canceled_at = now(), canceled_by = $1 WHERE account_id = $2 AND status = 'ativo'",
+        [userId, id],
+      );
     } else {
       await client.query("UPDATE gestao_accounts SET status = 'pendente', paid_at = NULL, canceled_at = NULL WHERE id = $1", [id]);
       await syncPaymentStatus(client, id);
@@ -918,7 +1257,8 @@ async function monthSummary(month: string) {
     `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents
      FROM gestao_account_payments
      WHERE paid_at >= $1::timestamptz
-       AND paid_at < $2::timestamptz`,
+       AND paid_at < $2::timestamptz
+       AND status = 'ativo'`,
     [bounds.start, bounds.end],
   );
   const summaryResult = await pgPool.query<{
@@ -934,6 +1274,7 @@ async function monthSummary(month: string) {
      LEFT JOIN (
        SELECT account_id, SUM(amount_cents) AS paid_cents
        FROM gestao_account_payments
+       WHERE status = 'ativo'
        GROUP BY account_id
      ) p ON p.account_id = a.id
      WHERE a.competence_month = $1`,
@@ -958,6 +1299,7 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
      LEFT JOIN (
        SELECT account_id, SUM(amount_cents) AS paid_cents, MAX(paid_at) AS last_payment_at
        FROM gestao_account_payments
+       WHERE status = 'ativo'
        GROUP BY account_id
      ) p ON p.account_id = a.id
      WHERE a.competence_month = $1
@@ -980,11 +1322,26 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
 
   const ids = accounts.map((account) => Number(account.id));
   const itemsResult = await pgPool.query<ItemRow>(
-    'SELECT * FROM gestao_account_items WHERE account_id = ANY($1::bigint[]) ORDER BY account_id ASC, sort_order ASC, id ASC',
+    `SELECT i.*,
+            COALESCE(p.paid_cents, 0)::bigint AS paid_cents
+     FROM gestao_account_items i
+     LEFT JOIN (
+       SELECT item_id, SUM(amount_cents) AS paid_cents
+       FROM gestao_account_payments
+       WHERE status = 'ativo'
+         AND item_id IS NOT NULL
+       GROUP BY item_id
+     ) p ON p.item_id = i.id
+     WHERE i.account_id = ANY($1::bigint[])
+     ORDER BY i.account_id ASC, i.sort_order ASC, i.id ASC`,
     [ids],
   );
   const paymentsResult = await pgPool.query<PaymentRow>(
-    'SELECT * FROM gestao_account_payments WHERE account_id = ANY($1::bigint[]) ORDER BY account_id ASC, paid_at ASC, id ASC',
+    `SELECT p.*, i.description AS item_description
+     FROM gestao_account_payments p
+     LEFT JOIN gestao_account_items i ON i.id = p.item_id
+     WHERE p.account_id = ANY($1::bigint[])
+     ORDER BY p.account_id ASC, p.paid_at ASC, p.id ASC`,
     [ids],
   );
 
@@ -1007,6 +1364,54 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
   }));
 }
 
+async function listNotepadNotes(): Promise<NotepadRow[]> {
+  const result = await pgPool.query<NotepadRow>(
+    `SELECT id, body, created_by, created_at, updated_at
+     FROM gestao_notepad_notes
+     WHERE deleted_at IS NULL
+     ORDER BY updated_at DESC, id DESC
+     LIMIT 24`,
+  );
+  return result.rows;
+}
+
+async function addNotepadNote(req: Request): Promise<void> {
+  const body = cleanText(req.body.nota_texto, 2000);
+  if (!body) throw new Error('Escreva uma anotacao antes de salvar.');
+  const userId = req.session.user?.id || null;
+  await pgPool.query(
+    'INSERT INTO gestao_notepad_notes (body, created_by) VALUES ($1, $2)',
+    [body, userId],
+  );
+  await logMysql(userId, 'gestao_bloco_nota_criado', 'gestao_nota', null, 'Nota da Gestao criada.');
+}
+
+async function updateNotepadNote(req: Request): Promise<void> {
+  const id = Number(req.body.note_id || 0);
+  const body = cleanText(req.body.nota_texto, 2000);
+  if (!id) throw new Error('Nota invalida.');
+  if (!body) throw new Error('A nota nao pode ficar vazia. Apague se nao precisar mais.');
+  const userId = req.session.user?.id || null;
+  const result = await pgPool.query(
+    'UPDATE gestao_notepad_notes SET body = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL',
+    [body, id],
+  );
+  if (!result.rowCount) throw new Error('Nota nao encontrada.');
+  await logMysql(userId, 'gestao_bloco_nota_editado', 'gestao_nota', id, 'Nota da Gestao editada.');
+}
+
+async function deleteNotepadNote(req: Request): Promise<void> {
+  const id = Number(req.body.note_id || 0);
+  if (!id) throw new Error('Nota invalida.');
+  const userId = req.session.user?.id || null;
+  const result = await pgPool.query(
+    'UPDATE gestao_notepad_notes SET deleted_at = now(), deleted_by = $1 WHERE id = $2 AND deleted_at IS NULL',
+    [userId, id],
+  );
+  if (!result.rowCount) throw new Error('Nota nao encontrada.');
+  await logMysql(userId, 'gestao_bloco_nota_apagado', 'gestao_nota', id, 'Nota da Gestao apagada.');
+}
+
 function renderAccount(req: Request, account: RenderAccount, selectedMonth: string): string {
   const id = Number(account.id);
   const status = account.status || 'pendente';
@@ -1021,11 +1426,76 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
   const itemHtml = account.items.length
     ? `<div class="gestao-ledger-block">
        <div class="gestao-ledger-title"><span>Lancamentos da conta</span><strong>${e(formatMoney(totalCents))}</strong></div>
-       <ul class="gestao-items">
-        ${account.items.map((item) => `
-          <li><span>${e(item.description)}</span><strong>${e(formatMoney(item.amount_cents))}</strong></li>
-        `).join('')}
-       </ul>
+       <div class="gestao-item-list">
+        ${account.items.map((item) => {
+          const itemId = Number(item.id);
+          const itemCents = Number(item.amount_cents || 0);
+          const itemPaid = Number(item.paid_cents || 0);
+          const itemRemaining = Math.max(0, itemCents - itemPaid);
+          const itemPayable = Math.min(itemRemaining, remainingCents);
+          const itemProgress = itemCents > 0 ? Math.min(100, Math.max(0, (itemPaid / itemCents) * 100)) : 0;
+          const itemActive = item.status !== 'cancelado';
+          return `
+            <section class="gestao-item-row ${itemActive ? '' : 'is-canceled'}">
+              <div class="gestao-item-main">
+                <div class="gestao-item-title">
+                  <strong>${e(item.description)}</strong>
+                  ${itemActive ? (itemRemaining <= 0 ? '<span class="gestao-mini-pill ok">Pago</span>' : '<span class="gestao-mini-pill">Aberto</span>') : '<span class="gestao-mini-pill danger">Cancelado</span>'}
+                </div>
+                <div class="gestao-item-numbers">
+                  <span>Lancado <strong>${e(formatMoney(itemCents))}</strong></span>
+                  <span>Pago <strong>${e(formatMoney(itemPaid))}</strong></span>
+                  <span>Saldo <strong>${e(formatMoney(itemRemaining))}</strong></span>
+                </div>
+                <div class="gestao-item-progress" aria-hidden="true"><span style="width:${itemProgress.toFixed(2)}%"></span></div>
+              </div>
+              ${canEdit && itemActive ? `
+                <div class="gestao-item-actions">
+                  ${status === 'pendente' && itemPayable > 0 ? `
+                    <form method="post" class="gestao-item-pay-form" data-require-money>
+                      ${csrfField(req)}
+                      <input type="hidden" name="action" value="add_payment">
+                      <input type="hidden" name="id" value="${e(id)}">
+                      <input type="hidden" name="item_id" value="${e(itemId)}">
+                      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+                      <input type="hidden" name="pagamento_descricao" value="Pagamento de ${e(item.description)}">
+                      <input type="hidden" name="pagamento_em" value="${e(datetimeLocalInput())}">
+                      <input type="text" name="pagamento_valor" inputmode="decimal" placeholder="Pagar ex: ${e(moneyInput(Math.min(itemPayable, 2500)))}" data-money-input>
+                      <button type="submit" class="gestao-btn gestao-btn-secondary">Pagar</button>
+                    </form>
+                    <form method="post" data-confirm="Quitar ${e(formatMoney(itemPayable))} deste lancamento?">
+                      ${csrfField(req)}
+                      <input type="hidden" name="action" value="confirm_item">
+                      <input type="hidden" name="id" value="${e(id)}">
+                      <input type="hidden" name="item_id" value="${e(itemId)}">
+                      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+                      <button type="submit" class="gestao-btn gestao-btn-ghost">Quitar item</button>
+                    </form>
+                  ` : ''}
+                  <form method="post" class="gestao-item-adjust-form" data-require-money>
+                    ${csrfField(req)}
+                    <input type="hidden" name="action" value="add_item_adjustment">
+                    <input type="hidden" name="id" value="${e(id)}">
+                    <input type="hidden" name="item_id" value="${e(itemId)}">
+                    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+                    <input type="text" name="ajuste_descricao" maxlength="180" placeholder="Juros, multa, diferenca">
+                    <input type="text" name="ajuste_valor" inputmode="decimal" placeholder="0,00" data-money-input>
+                    <button type="submit" class="gestao-btn gestao-btn-secondary">Adicionar</button>
+                  </form>
+                  <form method="post" data-confirm="Cancelar este lancamento e pagamentos ligados a ele?">
+                    ${csrfField(req)}
+                    <input type="hidden" name="action" value="cancel_item">
+                    <input type="hidden" name="id" value="${e(id)}">
+                    <input type="hidden" name="item_id" value="${e(itemId)}">
+                    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+                    <button type="submit" class="gestao-link-danger">Cancelar lancamento</button>
+                  </form>
+                </div>
+              ` : ''}
+            </section>
+          `;
+        }).join('')}
+       </div>
        </div>`
     : `<div class="gestao-ledger-block"><div class="gestao-ledger-title"><span>Lancamentos da conta</span></div><p class="gestao-empty-line">Sem itens lancados.</p></div>`;
 
@@ -1033,30 +1503,74 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     ? `<div class="gestao-ledger-block gestao-ledger-payments">
        <div class="gestao-ledger-title"><span>Pagamentos desta conta</span><strong>${e(formatMoney(paidCents))}</strong></div>
        <ul class="gestao-payments">
-        ${account.payments.map((payment) => `
-          <li>
-            <span><strong>${e(payment.description)}</strong><small>${e(brDate(payment.paid_at, true))}</small></span>
-            <strong>${e(formatMoney(payment.amount_cents))}</strong>
-          </li>
-        `).join('')}
+        ${account.payments.map((payment) => {
+          const paymentActive = payment.status !== 'cancelado';
+          return `
+            <li class="${paymentActive ? '' : 'is-canceled'}">
+              <span>
+                <strong>${e(payment.description)}</strong>
+                ${payment.item_description ? `<em>${e(payment.item_description)}</em>` : ''}
+                <small>${e(brDate(payment.paid_at, true))}${paymentActive ? '' : ` / cancelado ${e(brDate(payment.canceled_at, true))}`}</small>
+              </span>
+              <strong>${e(formatMoney(payment.amount_cents))}</strong>
+              ${canEdit && paymentActive ? `
+                <form method="post" data-confirm="Cancelar este pagamento sem apagar o historico?">
+                  ${csrfField(req)}
+                  <input type="hidden" name="action" value="cancel_payment">
+                  <input type="hidden" name="id" value="${e(id)}">
+                  <input type="hidden" name="payment_id" value="${e(payment.id)}">
+                  <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+                  <button type="submit" class="gestao-link-danger">Cancelar</button>
+                </form>
+              ` : ''}
+            </li>
+          `;
+        }).join('')}
        </ul>
        </div>`
     : `<div class="gestao-ledger-block gestao-ledger-payments"><div class="gestao-ledger-title"><span>Pagamentos desta conta</span><strong>${e(formatMoney(0))}</strong></div><p class="gestao-empty-line">Nenhum pagamento registrado ainda.</p></div>`;
 
-  const pendingActions = status === 'pendente' && remainingCents > 0
-    ? `<form method="post" data-confirm="Registrar ${e(remainingMoney)} como pagamento final desta conta?">
+  const pendingActions = status === 'pendente'
+    ? `${remainingCents > 0 ? `
+       <form method="post" data-confirm="Registrar ${e(remainingMoney)} como pagamento final desta conta?">
          ${csrfField(req)}
          <input type="hidden" name="action" value="confirm_paid">
          <input type="hidden" name="id" value="${e(id)}">
          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
          <button type="submit" class="gestao-btn gestao-btn-primary">${e(finalButtonLabel)}</button>
        </form>
+     ` : `
+       <form method="post" data-confirm="Marcar esta conta como paga novamente?">
+         ${csrfField(req)}
+         <input type="hidden" name="action" value="confirm_paid">
+         <input type="hidden" name="id" value="${e(id)}">
+         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+         <button type="submit" class="gestao-btn gestao-btn-primary">Confirmar pago</button>
+       </form>
+     `}
        <form method="post" data-confirm="Cancelar esta conta sem apagar o historico?">
          ${csrfField(req)}
          <input type="hidden" name="action" value="cancel">
          <input type="hidden" name="id" value="${e(id)}">
          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-         <button type="submit" class="gestao-btn gestao-btn-ghost">Cancelar</button>
+         <button type="submit" class="gestao-btn gestao-btn-ghost">Cancelar fatura</button>
+       </form>`
+    : '';
+
+  const paidActions = status === 'pago'
+    ? `<form method="post" data-confirm="Reabrir esta conta paga para ajustar lancamentos ou pagamentos?">
+         ${csrfField(req)}
+         <input type="hidden" name="action" value="reopen">
+         <input type="hidden" name="id" value="${e(id)}">
+         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+         <button type="submit" class="gestao-btn gestao-btn-secondary">Reabrir pago</button>
+       </form>
+       <form method="post" data-confirm="Cancelar esta fatura paga sem apagar o historico?">
+         ${csrfField(req)}
+         <input type="hidden" name="action" value="cancel">
+         <input type="hidden" name="id" value="${e(id)}">
+         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+         <button type="submit" class="gestao-btn gestao-btn-ghost">Cancelar fatura</button>
        </form>`
     : '';
 
@@ -1066,7 +1580,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
          <input type="hidden" name="action" value="reopen">
          <input type="hidden" name="id" value="${e(id)}">
          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-         <button type="submit" class="gestao-btn gestao-btn-ghost">Voltar pendente</button>
+         <button type="submit" class="gestao-btn gestao-btn-secondary">Reabrir conta</button>
        </form>`
     : '';
 
@@ -1077,7 +1591,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
            <input type="hidden" name="action" value="add_item">
            <input type="hidden" name="id" value="${e(id)}">
            <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-           <label><span>Adicionar cobranca/juros</span><input type="text" name="novo_item_descricao" maxlength="180" placeholder="Juros, multa, diferenca"></label>
+           <label><span>Adicionar cobranca/juros geral</span><input type="text" name="novo_item_descricao" maxlength="180" placeholder="Juros, multa, diferenca"></label>
            <label><span>Valor</span><input type="text" name="novo_item_valor" inputmode="decimal" placeholder="0,00" data-money-input></label>
            <button type="submit" class="gestao-btn gestao-btn-secondary">Adicionar no saldo</button>
          </form>
@@ -1096,7 +1610,16 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
        </div>`
     : '';
 
-  return `<article class="gestao-account status-${e(status)}">
+  const noteForm = `<form method="post" class="gestao-note-panel">
+    ${csrfField(req)}
+    <input type="hidden" name="action" value="update_note">
+    <input type="hidden" name="id" value="${e(id)}">
+    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+    <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Observacao desta conta.">${e(account.note || '')}</textarea></label>
+    <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar observacao</button>
+  </form>`;
+
+  return `<article class="gestao-account status-${e(status)}" data-account-card data-account-id="${e(id)}">
     <div class="gestao-account-main">
       <div class="gestao-account-head">
         <div>
@@ -1116,17 +1639,65 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
       </div>
       <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
-      ${itemHtml}
-      ${paymentHtml}
-      ${account.note ? `<p class="gestao-note">${e(account.note).replaceAll('\n', '<br>')}</p>` : ''}
+      <div class="gestao-account-details" data-account-details>
+        ${itemHtml}
+        ${paymentHtml}
+        ${noteForm}
+        ${forms}
+      </div>
     </div>
     <div class="gestao-account-actions">
       <span class="gestao-status">${e(accountStatusLabel(status))}</span>
+      <button type="button" class="gestao-btn gestao-btn-ghost gestao-collapse-btn" data-account-toggle aria-expanded="true">Minimizar</button>
       ${pendingActions}
+      ${paidActions}
       ${canceledActions}
     </div>
-    ${forms}
   </article>`;
+}
+
+function renderNotepad(req: Request, notes: NotepadRow[], selectedMonth: string): string {
+  const notesHtml = notes.length
+    ? notes.map((note) => `
+      <article class="gestao-note-card">
+        <form method="post">
+          ${csrfField(req)}
+          <input type="hidden" name="action" value="update_notepad_note">
+          <input type="hidden" name="note_id" value="${e(note.id)}">
+          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+          <textarea name="nota_texto" rows="4">${e(note.body)}</textarea>
+          <div class="gestao-note-card-foot">
+            <small>Editado ${e(brDate(note.updated_at, true))}</small>
+            <div>
+              <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
+            </div>
+          </div>
+        </form>
+        <form method="post" data-confirm="Apagar esta anotacao?">
+          ${csrfField(req)}
+          <input type="hidden" name="action" value="delete_notepad_note">
+          <input type="hidden" name="note_id" value="${e(note.id)}">
+          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+          <button type="submit" class="gestao-link-danger">Apagar anotacao</button>
+        </form>
+      </article>
+    `).join('')
+    : '<p class="gestao-empty-line">Sem lembretes ainda.</p>';
+
+  return `<aside class="gestao-notepad" aria-label="Bloco de notas da Gestao">
+    <div class="gestao-section-title">
+      <span class="gestao-kicker">Bloco de notas</span>
+      <strong>Lembretes</strong>
+    </div>
+    <form method="post" class="gestao-notepad-new">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="add_notepad_note">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <textarea name="nota_texto" rows="5" placeholder="Anote algo para lembrar depois."></textarea>
+      <button type="submit" class="gestao-btn gestao-btn-primary">Adicionar nota</button>
+    </form>
+    <div class="gestao-notes-list">${notesHtml}</div>
+  </aside>`;
 }
 
 async function renderApp(req: Request): Promise<string> {
@@ -1134,10 +1705,12 @@ async function renderApp(req: Request): Promise<string> {
   const flash = takeFlash(req);
   const summary = await monthSummary(selectedMonth);
   const accounts = await listAccounts(selectedMonth);
+  const notes = await listNotepadNotes();
   const suggestions = categorySuggestions().map((label) => `<option value="${e(label)}">`).join('');
   const accountsHtml = accounts.length
     ? accounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
     : '<div class="gestao-empty">Nada lancado nesse mes ainda.</div>';
+  const notepadHtml = renderNotepad(req, notes, selectedMonth);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -1146,9 +1719,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-ledger">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-detail">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260518-ledger" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260518-detail" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -1223,6 +1796,8 @@ async function renderApp(req: Request): Promise<string> {
         <div class="gestao-section-title"><span class="gestao-kicker">Contas do mes</span><strong>${e(monthLabel(selectedMonth))}</strong></div>
         <div class="gestao-list">${accountsHtml}</div>
       </section>
+
+      ${notepadHtml}
     </section>
   </main>
 </body>
@@ -1237,8 +1812,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-ledger">
-  <script src="${BASE_PATH}/login-runner.js?v=20260518-ledger" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-detail">
+  <script src="${BASE_PATH}/login-runner.js?v=20260518-detail" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
@@ -1369,12 +1944,36 @@ app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(async (req, res) =
     } else if (action === 'confirm_paid') {
       await confirmRemaining(req);
       setFlash(req, 'success', 'Saldo confirmado e registrado nos pagamentos.');
+    } else if (action === 'confirm_item') {
+      await confirmItem(req);
+      setFlash(req, 'success', 'Lancamento quitado.');
+    } else if (action === 'add_item_adjustment') {
+      await addItemAdjustment(req);
+      setFlash(req, 'success', 'Juros ou diferenca adicionados ao lancamento.');
+    } else if (action === 'cancel_item') {
+      await cancelItem(req);
+      setFlash(req, 'success', 'Lancamento cancelado sem apagar historico.');
+    } else if (action === 'cancel_payment') {
+      await cancelPayment(req);
+      setFlash(req, 'success', 'Pagamento cancelado sem apagar historico.');
+    } else if (action === 'update_note') {
+      await updateAccountNote(req);
+      setFlash(req, 'success', 'Observacao atualizada.');
+    } else if (action === 'add_notepad_note') {
+      await addNotepadNote(req);
+      setFlash(req, 'success', 'Nota adicionada no bloco de lembretes.');
+    } else if (action === 'update_notepad_note') {
+      await updateNotepadNote(req);
+      setFlash(req, 'success', 'Nota atualizada.');
+    } else if (action === 'delete_notepad_note') {
+      await deleteNotepadNote(req);
+      setFlash(req, 'success', 'Nota apagada.');
     } else if (action === 'cancel') {
       await setStatus(req, 'cancelado');
       setFlash(req, 'success', 'Conta cancelada sem apagar o historico.');
     } else if (action === 'reopen') {
-      await setStatus(req, 'pendente');
-      setFlash(req, 'success', 'Conta voltou para pendente.');
+      await reopenAccount(req);
+      setFlash(req, 'success', 'Conta reaberta para ajuste.');
     }
   } catch (error) {
     setFlash(req, 'error', error instanceof Error ? error.message : 'Nao consegui salvar essa conta agora.');

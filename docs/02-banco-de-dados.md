@@ -48,10 +48,11 @@ Criadas por `apps/gestao/src/server.ts`:
 
 - `gestao_schema_migrations`: controle simples de migracoes/importacoes aplicadas.
 - `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, datas e usuario criador.
-- `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros, multa ou diferenca.
-- `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto.
+- `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros, multa ou diferenca; cada item pode ser cancelado sem apagar historico.
+- `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto; pagamentos podem ser gerais da conta ou vinculados a um lancamento especifico por `item_id`, e tambem podem ser cancelados sem exclusao fisica.
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
 - `gestao_sessions`: sessoes web da Gestao gerenciadas por `connect-pg-simple`.
+- `gestao_notepad_notes`: bloco de notas administrativo lateral, com edicao e exclusao logica por `deleted_at`.
 
 A Gestao autentica no MySQL `wf_users`, espelha resumo curto em `wf_logs` e importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
 
@@ -168,9 +169,11 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
-- `gestao_accounts.total_cents` deve ser a soma de `gestao_account_items.amount_cents`; contas novas salvam `generated_at` automaticamente e pagamentos entram em `gestao_account_payments` com `paid_at` proprio.
-- O total mensal pago da Gestao vem de `gestao_account_payments.amount_cents` pelo intervalo de `paid_at`; `gestao_accounts.paid_at` representa a data de quitacao da conta inteira quando o saldo chega a zero.
+- `gestao_accounts.total_cents` deve ser a soma dos itens ativos em `gestao_account_items.amount_cents`; contas novas salvam `generated_at` automaticamente e pagamentos ativos entram em `gestao_account_payments` com `paid_at` proprio.
+- O total mensal pago da Gestao vem de `gestao_account_payments.amount_cents` ativo pelo intervalo de `paid_at`; `gestao_accounts.paid_at` representa a data de quitacao da conta inteira quando o saldo chega a zero.
 - A Gestao permite adicionar itens depois do lancamento, como juros ou diferencas; isso aumenta `total_cents` e pode reabrir uma conta paga se o saldo voltar a existir. Pagamentos parciais nunca alteram o valor lancado: eles entram apenas em `gestao_account_payments`, abatendo o saldo.
+- Pagamentos vinculados a `gestao_account_payments.item_id` tambem respeitam o saldo geral da conta para nao duplicar pagamento quando ja existe pagamento geral antigo.
+- Cancelar fatura, lancamento ou pagamento deve marcar status/cancelamento, nao apagar fisicamente. Pagamentos cancelados nao contam no total pago do mes.
 - O botao de quitacao da Gestao deve registrar somente o saldo restante como novo pagamento final, preservando no extrato os pagamentos anteriores e qualquer juros/adicao posterior.
 - A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events` e `wf_logs`, preservando itens e pagamentos lancados.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.

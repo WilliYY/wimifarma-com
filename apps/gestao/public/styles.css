@@ -84,7 +84,7 @@ textarea {
 }
 
 .gestao-page {
-    width: min(1360px, calc(100% - 36px));
+    width: min(1680px, calc(100% - 32px));
     margin: 0 auto;
     padding: 34px 0 64px;
 }
@@ -188,6 +188,7 @@ textarea {
 .gestao-stats div,
 .gestao-form,
 .gestao-list-panel,
+.gestao-notepad,
 .gestao-account,
 .gestao-login-card {
     border: 1px solid var(--line);
@@ -218,12 +219,13 @@ textarea {
 }
 
 .gestao-layout {
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(270px, 320px) minmax(560px, 1fr) minmax(270px, 320px);
     align-items: start;
 }
 
 .gestao-form,
-.gestao-list-panel {
+.gestao-list-panel,
+.gestao-notepad {
     min-width: 0;
     padding: 20px;
 }
@@ -231,6 +233,60 @@ textarea {
 .gestao-form {
     display: grid;
     gap: 16px;
+}
+
+.gestao-notepad {
+    position: sticky;
+    top: 92px;
+    display: grid;
+    gap: 14px;
+}
+
+.gestao-notepad-new,
+.gestao-note-card,
+.gestao-note-card form {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.gestao-notes-list {
+    display: grid;
+    gap: 10px;
+}
+
+.gestao-note-card {
+    padding: 12px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: #fff8fb;
+}
+
+.gestao-note-card textarea,
+.gestao-notepad-new textarea,
+.gestao-note-panel textarea {
+    width: 100%;
+    min-height: 86px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.94);
+    outline: 0;
+    resize: vertical;
+}
+
+.gestao-note-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.gestao-note-card small {
+    color: var(--muted);
+    font-size: 0.73rem;
+    font-weight: 800;
 }
 
 .gestao-section-title {
@@ -300,7 +356,7 @@ textarea {
 
 .gestao-account {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(156px, 178px);
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 170px);
     gap: 14px;
     padding: 16px;
     min-width: 0;
@@ -413,6 +469,14 @@ textarea {
     background: linear-gradient(90deg, #059669, #22c55e);
 }
 
+.gestao-account.is-collapsed .gestao-account-details {
+    display: none;
+}
+
+.gestao-account.is-collapsed {
+    padding-bottom: 14px;
+}
+
 .gestao-ledger-block {
     min-width: 0;
     margin-top: 14px;
@@ -450,10 +514,117 @@ textarea {
     list-style: none;
 }
 
+.gestao-item-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.gestao-item-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid #f8d2df;
+    border-radius: 8px;
+    background: var(--rose-soft);
+}
+
+.gestao-item-row.is-canceled {
+    opacity: 0.68;
+}
+
+.gestao-item-title,
+.gestao-item-numbers {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.gestao-item-title strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.gestao-mini-pill {
+    display: inline-flex;
+    border-radius: 999px;
+    padding: 3px 8px;
+    background: #ffe8f0;
+    color: var(--wine);
+    font-size: 0.68rem;
+    font-weight: 950;
+}
+
+.gestao-mini-pill.ok {
+    background: #dcfce7;
+    color: #047857;
+}
+
+.gestao-mini-pill.danger {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.gestao-item-numbers {
+    margin-top: 6px;
+    color: #673046;
+    font-size: 0.78rem;
+    font-weight: 850;
+}
+
+.gestao-item-numbers strong {
+    color: var(--wine);
+}
+
+.gestao-item-progress {
+    height: 6px;
+    margin-top: 7px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #fde7ef;
+}
+
+.gestao-item-progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #0f9f6e, #22c55e);
+}
+
+.gestao-item-actions {
+    display: grid;
+    gap: 8px;
+}
+
+.gestao-item-pay-form,
+.gestao-item-adjust-form {
+    display: grid;
+    grid-template-columns: minmax(130px, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.gestao-item-adjust-form {
+    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.8fr) auto;
+}
+
+.gestao-item-actions input {
+    width: 100%;
+    min-height: 36px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--ink);
+    background: #ffffff;
+    outline: 0;
+}
+
 .gestao-items li,
 .gestao-payments li {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(96px, auto);
+    grid-template-columns: minmax(0, 1fr) minmax(96px, auto) auto;
     align-items: center;
     gap: 12px;
     padding: 8px 10px;
@@ -478,15 +649,49 @@ textarea {
     background: #edfdf5;
 }
 
+.gestao-payments li.is-canceled {
+    background: #fff1f2;
+    opacity: 0.72;
+}
+
 .gestao-payments li > span {
     display: grid;
     gap: 2px;
+}
+
+.gestao-payments em {
+    color: #087f5b;
+    font-size: 0.73rem;
+    font-style: normal;
+    font-weight: 850;
+}
+
+.gestao-payments form {
+    justify-self: end;
 }
 
 .gestao-note {
     margin: 12px 0 0;
     color: var(--muted);
     line-height: 1.45;
+}
+
+.gestao-note-panel {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: rgba(255, 248, 251, 0.82);
+}
+
+.gestao-note-panel label {
+    display: grid;
+    gap: 6px;
+    color: #673046;
+    font-size: 0.78rem;
+    font-weight: 900;
 }
 
 .gestao-account-actions {
@@ -509,7 +714,7 @@ textarea {
 
 .gestao-mini-form {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(112px, 140px) auto;
+    grid-template-columns: minmax(170px, 1fr) minmax(112px, 140px) auto;
     gap: 10px;
     align-items: end;
     padding: 12px;
@@ -539,7 +744,7 @@ textarea {
 }
 
 .gestao-payment-form {
-    grid-template-columns: minmax(0, 1fr) minmax(112px, 136px) minmax(166px, 190px) auto;
+    grid-template-columns: minmax(150px, 1fr) minmax(112px, 136px) minmax(166px, 190px) auto;
     background: #fffafb;
 }
 
@@ -574,6 +779,21 @@ textarea {
     border-radius: 8px;
     color: var(--muted);
     font-weight: 850;
+}
+
+.gestao-link-danger {
+    display: inline-flex;
+    width: fit-content;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+    font-weight: 900;
+    text-decoration: underline;
+    text-underline-offset: 3px;
 }
 
 .gestao-login-body {
@@ -622,6 +842,15 @@ textarea {
         grid-template-columns: 1fr;
     }
 
+    .gestao-notepad {
+        position: static;
+    }
+
+    .gestao-mini-form,
+    .gestao-payment-form {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+
     .gestao-stats {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -645,7 +874,9 @@ textarea {
     .gestao-line-item,
     .gestao-account,
     .gestao-mini-form,
-    .gestao-payment-form {
+    .gestao-payment-form,
+    .gestao-item-pay-form,
+    .gestao-item-adjust-form {
         grid-template-columns: 1fr;
     }
 
