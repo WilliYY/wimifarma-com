@@ -74,10 +74,10 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260515i">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260518a">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
     <script src="/codigos/app.js?v=20260515i" defer></script>
-    <script src="/miauw/widget.js?v=20260517j" defer></script>
+    <script src="/miauw/widget.js?v=20260517k" defer></script>
 </head>
 <body class="codes-app-body">
     <header class="codes-topbar">

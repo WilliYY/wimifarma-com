@@ -69,7 +69,7 @@ Tabelas principais:
 
 O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A tela principal funciona como planilha simples, com campos sempre editaveis para `Código`, `EAN` e `Preço`, salvando automaticamente as mudancas.
 
-Para evitar confusao operacional, a tela separa os itens em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao. O botao `+` cria um novo bloco pelo backend em `wf_codigos_blocos` apenas quando o usuario informa manualmente o prefixo desejado, permitindo que o bloco continue existindo mesmo antes do primeiro item. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa faixa horizontal para criar tabelas lado a lado e aproveitar melhor as laterais do monitor.
+Para evitar confusao operacional, a tela separa os itens em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao. O botao `+` cria um novo bloco pelo backend em `wf_codigos_blocos` apenas quando o usuario informa manualmente o prefixo desejado, permitindo que o bloco continue existindo mesmo antes do primeiro item. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa faixa horizontal interna para criar tabelas lado a lado e aproveitar melhor as laterais do monitor, sem criar rolagem horizontal vazia no documento inteiro.
 
 O login de Codigos segue o padrao visual vinho/rosa dos outros logins internos, mas preserva o fluxo proprio de sessao, CSRF e autenticacao em `wf_users`.
 
