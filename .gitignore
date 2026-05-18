@@ -1,9 +1,11 @@
 /backups/
 /mysql/
 /cotacao-data/
+/gestao-data/
 node_modules/
 **/node_modules/
 apps/miauw-agent/dist/
+apps/gestao/dist/
 .env
 /site/miauw/config.local.php
 **/config.local.php

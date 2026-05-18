@@ -57,26 +57,28 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis` e `wimifarma-miauw-agent`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
+- Gestao em Node.js 22 + TypeScript + Express, com Postgres 17 dedicado para contas, itens, pagamentos, auditoria e sessoes.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro e GIFs decorativos com o mesmo padrao de movimento dos logins.
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
-- O card `Gestao` abre o modulo administrativo em `site/gestao`, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais e total pago por mes.
+- O card `Gestao` abre o modulo administrativo em `/gestao/`, servido oficialmente por `apps/gestao` via proxy Apache, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais, pagamentos parciais e total pago por mes.
 - Modulos internos PHP puro:
   - `site/cashback`
   - `site/codigos`
   - `site/financeiro`
-  - `site/gestao`
   - `site/tarefa`
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
+- A rota `/gestao/` e servida por proxy interno do Apache para `wimifarma-gestao-app:3200/gestao`; `site/gestao` fica apenas como legado/fallback de historico e nao e a fonte oficial da tela.
 - A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela pode rodar em sombra ou corte controlado por `MIAUW_ENGINE`, enquanto o PHP preserva login, sessoes, confirmacoes e escrita forte.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
+- Banco da Gestao: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
 
 ## Portas e proxy
 
@@ -87,6 +89,7 @@ Nao misturar portas:
 - `127.0.0.1:13002`: tunel local do PuTTY usado em testes no Windows.
 - `80/443`: portas publicas do Nginx Proxy Manager.
 - `wimifarma-cotacao-app:3000`: destino interno do Apache para `/cotacao/`; nao publicar diretamente no Nginx Proxy Manager.
+- `wimifarma-gestao-app:3200`: destino interno do Apache para `/gestao/`; nao publicar diretamente no Nginx Proxy Manager.
 
 O Proxy Host de `wimifarma.com` e `www.wimifarma.com` deve apontar para:
 
@@ -161,9 +164,12 @@ docker compose ps
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
 docker exec wimifarma-com-web php -l /var/www/html/cashback/config.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cashback/login.php
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/gestao/login.php
+curl.exe -sS http://127.0.0.1:3002/gestao/health
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/widget-status.php
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-cotacao-app
+docker compose logs --tail=80 wimifarma-gestao-app
 ```
 
 Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualmente.
@@ -287,7 +293,8 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Em 2026-05-17, o Miauby iniciou a Fase 21 com `MIAUW_AGENT_VERSION=2.0-fase21`: o playback de audio no chat/widget foi corrigido liberando `blob:`/`data:` apenas em `media-src` do CSP, a transcricao da resposta falada fica escondida por padrao atras de `Ver texto`, o prompt de TTS ganhou instrucoes fortes de fala real e o painel restrito `/miauw/diagnostico.php` ganhou seletor seguro de voz base (`marin`, `cedar`, `ash`, `coral`, `verse`) persistido em `miauw_configuracoes`. O servico `wimifarma-miauw-agent` passou para `SERVICE_VERSION=0.16.0` e `PHASE=fase21-voice-playback-profile-selector`.
 - Ainda em 2026-05-17, o frontend de audio do Miauby foi ajustado para nao bloquear a captura apenas pelo pre-check `navigator.permissions`; ele tenta `getUserMedia()` de verdade, anexa o estado de permissao ao erro amigavel e evita repetir o mesmo aviso de microfone varias vezes em poucos segundos.
 - Ainda em 2026-05-17, o header comum `Permissions-Policy` dos modulos internos passou a permitir `microphone=(self)` para o audio do Miauby no proprio dominio, mantendo camera e geolocalizacao bloqueadas.
-- Em 2026-05-18, a Gestao iniciou a Fase 1 administrativa em `site/gestao`: login com o mesmo tema vinho/rosa, acesso restrito a `adm`, `admin` ou `gerente`, tabelas MySQL `gestao_contas` e `gestao_conta_itens`, lancamento manual de contas com itens flexiveis, data de geracao automatica, status `pendente`/`pago`/`cancelado`, acao de confirmar pagamento que soma no total do mes por `pago_em`, e logs em `wf_logs`.
+- Em 2026-05-18, a Gestao iniciou a Fase 1 administrativa em `site/gestao`: login com o mesmo tema vinho/rosa, acesso restrito a `adm`, `admin` ou `gerente`, tabelas MySQL `gestao_contas`, `gestao_conta_itens` e `gestao_conta_pagamentos`, lancamento manual de contas com categoria livre, itens flexiveis, data de geracao automatica, status `pendente`/`pago`/`cancelado`, pagamentos parciais datados que somam no total pago do mes, saldo pendente por conta, adicao posterior de itens/juros e logs em `wf_logs`.
+- Ainda em 2026-05-18, a Gestao passou para a base definitiva de modulo critico: `apps/gestao` em Node.js 22 + TypeScript, proxy Apache em `/gestao/`, Postgres 17 dedicado `wimifarma_gestao`, sessoes `WFGESTAO` no Postgres, dinheiro salvo em centavos inteiros, tabelas `gestao_accounts`, `gestao_account_items`, `gestao_account_payments` e `gestao_audit_events`, importacao unica do legado MySQL quando existir, autenticacao por `wf_users` e espelho resumido em `wf_logs`. O Node nao deve acessar credenciais diretas fora do `.env`, e `gestao-data/` fica fora do Git.
 - Durante o deploy de 2026-05-16, o `wimifarma-com-db` do VPS foi encontrado reiniciando porque `/home/ubuntu/projetos/wimifarma-com/mysql` estava incompleto e sem `ibdata1`. O diretorio invalido foi preservado como `/home/ubuntu/projetos/wimifarma-com/mysql-invalid-20260516113246`, e o `mysql/` oficial foi restaurado de `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/mysql` sem apagar a origem. Nao remover esses diretorios sem confirmacao clara.
 - Em 2026-05-16, a Cotacao V2 do VPS foi encontrada apontando para um Postgres novo/vazio em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/postgres`, com 20 linhas vazias e zero eventos. Os dados foram restaurados apenas nas tabelas `cotacao_v2_*` a partir da base preservada em `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/cotacao-data/postgres`, mantendo o `quote_id` antigo `c3f0cb73-435e-48f3-bc6f-42f2eb7d2b16`: 178 linhas ativas, 11 linhas com dados, 15 colunas, 35 estilos, 2 regras e 672 eventos ate 2026-05-15 21:13 UTC. Backups SQL manuais da operacao ficaram em `/home/ubuntu/projetos/wimifarma-com/cotacao-data/manual-backups/`. Nao remover a base preservada nem os dumps sem confirmacao clara.
 - Ainda em 2026-05-16, alguns containers de banco do VPS (`wimifarma-com-db`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`) estavam rodando com label Compose `com.docker.compose.project=wimifarma-com-git`, embora usando o `docker-compose.yml` da pasta oficial. Enquanto esse estado nao for normalizado com janela e backup, deploy pontual de app deve evitar recriar dependencias, por exemplo `docker compose up -d --no-deps --build wimifarma-cotacao-app`.

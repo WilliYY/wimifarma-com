@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos e da Cotacao V2. A migracao trouxe dados do HostGator para MySQL local em Docker; a Cotacao V2 usa Postgres separado para a nova planilha em tempo real.
+O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gestao. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2 e Gestao usam Postgres separados para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -13,6 +13,9 @@ O banco guarda dados do WordPress, dos modulos internos e da Cotacao V2. A migra
 - Imagem Cotacao V2: `postgres:17-alpine`
 - Volume Cotacao V2: `cotacao-data/postgres/`
 - Redis Cotacao V2: `wimifarma-cotacao-redis`, volume `cotacao-data/redis/`
+- Container Gestao: `wimifarma-gestao-db`
+- Imagem Gestao: `postgres:17-alpine`
+- Volume Gestao: `gestao-data/postgres/`
 - Init SQL: `docker/mysql/init/01-create-databases.sql`
 - Config web: `docker-compose.yml`
 - Config app: `site/cashback/config.php`
@@ -23,6 +26,7 @@ O banco guarda dados do WordPress, dos modulos internos e da Cotacao V2. A migra
 - `wimifarma_wp`: WordPress, prefixo `wptl_`.
 - `wimifarma_app`: modulos internos.
 - `wimifarma_cotacao`: Cotacao V2 em Postgres.
+- `wimifarma_gestao`: Gestao em Postgres.
 
 ## Tabelas da Cotacao V2 em Postgres
 
@@ -37,6 +41,19 @@ Criadas por `apps/cotacao/src/server.js`:
 - `cotacao_v2_column_audit`: historico de renomeacao/reordenacao de distribuidoras.
 
 A Cotacao V2 autentica no MySQL `wf_users`, mas os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
+
+## Tabelas da Gestao em Postgres
+
+Criadas por `apps/gestao/src/server.ts`:
+
+- `gestao_schema_migrations`: controle simples de migracoes/importacoes aplicadas.
+- `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, datas e usuario criador.
+- `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros ou diferenca.
+- `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes e somar no mes correto.
+- `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
+- `gestao_sessions`: sessoes web da Gestao gerenciadas por `connect-pg-simple`.
+
+A Gestao autentica no MySQL `wf_users`, espelha resumo curto em `wf_logs` e importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
 
 ## Tabelas em `wimifarma_app`
 
@@ -72,8 +89,9 @@ Inventario real observado em 2026-05-10:
 - `financeiro_lancamentos`: lancamentos gerais.
 - `financeiro_configuracoes`: configuracoes do modulo financeiro.
 - `financeiro_auditoria`: auditoria financeira.
-- `gestao_contas`: contas a pagar manuais, com titulo, categoria, status, competencia, total, data de geracao e data de pagamento.
-- `gestao_conta_itens`: itens que compoem cada conta da Gestao, como salario, aumento, comissao, boleto ou parcela.
+- `gestao_contas`: legado MySQL/importacao da Gestao PHP; a escrita oficial nova usa Postgres `gestao_accounts`.
+- `gestao_conta_itens`: legado MySQL/importacao dos itens da Gestao PHP.
+- `gestao_conta_pagamentos`: legado MySQL/importacao dos pagamentos da Gestao PHP.
 - `miauw_conversas`: conversas do Miauby.
 - `miauw_mensagens`: mensagens do Miauby.
 - `miauw_conhecimentos`: base de conhecimento.
@@ -120,7 +138,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Cashback: `site/cashback/functions.php`
 - Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `site/financeiro/financeiro-funcoes.php`
-- Gestao: `site/gestao/gestao-funcoes.php`
+- Gestao: `apps/gestao/src/server.ts`
 - Tarefas: `site/tarefa/tarefa-funcoes.php`
 - Miauby: `site/miauw/miauw-funcoes.php` e `site/miauw/miauw-intelligence.php`
 
@@ -150,8 +168,10 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
-- `gestao_contas.valor_total` deve ser a soma de `gestao_conta_itens.valor`; contas novas salvam `gerado_em` automaticamente, `status='pago'` salva `pago_em`, e somente contas pagas entram no total mensal pago pelo mes de `pago_em`.
-- A Gestao Fase 1 nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `wf_logs`, preservando os itens lancados.
+- `gestao_accounts.total_cents` deve ser a soma de `gestao_account_items.amount_cents`; contas novas salvam `generated_at` automaticamente e pagamentos entram em `gestao_account_payments` com `paid_at` proprio.
+- O total mensal pago da Gestao vem de `gestao_account_payments.amount_cents` pelo intervalo de `paid_at`; `gestao_accounts.paid_at` representa a data de quitacao da conta inteira quando o saldo chega a zero.
+- A Gestao permite adicionar itens depois do lancamento, como juros ou diferencas; isso aumenta `total_cents` e pode reabrir uma conta paga se o saldo voltar a existir.
+- A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events` e `wf_logs`, preservando itens e pagamentos lancados.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.
@@ -168,8 +188,10 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Dois bancos separados: WordPress em `wimifarma_wp`; apps internos em `wimifarma_app`.
 - A Cotacao V2 adiciona Postgres separado (`wimifarma_cotacao`) para reduzir risco de remendos no MySQL/PHP antigo e permitir um motor mais proximo de planilha colaborativa.
 - A Cotacao PHP antiga foi removida do repositorio em 2026-05-14; as tabelas `cotacao_*` em MySQL ficam apenas como legado historico/dados antigos, enquanto a planilha oficial usa `cotacao_v2_*` no Postgres.
+- A Gestao adiciona Postgres separado (`wimifarma_gestao`) para contas administrativas criticas, pagamentos parciais, auditoria e sessoes; as tabelas MySQL `gestao_*` ficam como legado/importacao.
 - O volume `mysql/` fica fora do Git.
 - O volume `cotacao-data/` fica fora do Git.
+- O volume `gestao-data/` fica fora do Git.
 - Dumps antigos ficam fora da raiz do projeto.
 - A senha real do banco vem de `.env`.
 - A Cotacao preserva regras antigas de formatacao no banco como historico, mas `cotacao_disable_legacy_category_trigger_rules()` desativa regras ativas por texto de categoria para `geral`/`urgente`/`encomenda`/`cotacao` durante `cotacao_ensure_schema()`.
@@ -184,6 +206,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Alterar `cotacao_eventos` sem compatibilidade pode forcar fallback frequente para snapshot completo e reintroduzir travadas na Cotacao.
 - Reativar gatilhos de categoria para `geral`/`urgente`/`encomenda`/`cotacao` pode voltar a causar mudanca invisivel de estado e lag na planilha.
 - Apagar `cotacao-data/` perde dados da Cotacao V2.
+- Apagar `gestao-data/` perde dados oficiais da Gestao.
 - Criar regras automáticas fora de `cotacao_v2_rules` reabre o bug de palavra-gatilho.
 
 ## Pendencias

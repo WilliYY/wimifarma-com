@@ -32,7 +32,8 @@ Arquivos:
 - `apps/cotacao/src/server.js`
 - `apps/miauw-agent/src/server.ts`
 - `site/financeiro/financeiro-funcoes.php`
-- `site/gestao/gestao-funcoes.php`
+- `apps/gestao/src/server.ts`
+- `site/gestao/gestao-funcoes.php` (legado)
 - `site/miauw/miauw-intelligence.php`
 - `site/miauw/miauw-funcoes.php`
 
@@ -41,7 +42,7 @@ Arquivos:
 - Acoes financeiras e de cotacao devem manter auditoria.
 - O Financeiro nao exibe mais a aba/tela operacional de Auditoria no topo, mas deve continuar gravando `financeiro_auditoria`.
 - Logs nao devem gravar senhas, tokens ou chaves.
-- Gestao registra login, falha de login, criacao de conta e mudanca de status em `wf_logs`; o log deve guardar resumo curto, nunca senha, token ou observacao sensivel completa.
+- Gestao registra criacao de conta, adicao de item, registro de pagamento parcial e mudanca de status em `gestao_audit_events`, alem de espelhar resumo curto em `wf_logs`; login e falha de login continuam no log geral. O log deve guardar resumo curto, nunca senha, token, observacao sensivel completa ou detalhe financeiro alem do necessario.
 - Códigos registra criacao de blocos, criacao de itens, edicao, reordenacao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
 - Guardrails do Miauby v2 que reescrevem resposta por vazamento de bastidor devem registrar diagnostico invisivel com termos detectados, origem, versao do agente e versao da politica, sem salvar a resposta completa nem segredo.

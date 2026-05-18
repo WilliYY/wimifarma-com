@@ -64,8 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Gestao - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/gestao/styles.css?v=20260518a">
-    <script src="/gestao/login-runner.js?v=20260518a" defer></script>
+    <link rel="stylesheet" href="/gestao/styles.css?v=20260518b">
+    <script src="/gestao/login-runner.js?v=20260518b" defer></script>
 </head>
 <body class="gestao-login-body">
     <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

@@ -35,6 +35,7 @@ Higiene de pastas no VPS:
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
 - `apps/cotacao/`
+- `apps/gestao/`
 - `.env`
 - `.env.example`
 - `site/wp-config.php`
@@ -49,6 +50,7 @@ Higiene de pastas no VPS:
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
 - `cotacao-data/`
+- `gestao-data/`
 - Nginx Proxy Manager externo a este repositorio
 - GoDaddy DNS externo a este repositorio
 
@@ -56,6 +58,7 @@ Higiene de pastas no VPS:
 
 - `wimifarma-com-web:80`: porta interna correta para o proxy Docker.
 - `wimifarma-cotacao-app:3000`: servico interno da Cotacao V2, acessado pelo Apache por proxy reverso em `/cotacao`.
+- `wimifarma-gestao-app:3200`: servico interno da Gestao, acessado pelo Apache por proxy reverso em `/gestao`.
 - `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra/corte controlado, acessado pelo Apache por proxy reverso em `/miauw/agent`.
 - `127.0.0.1:3002`: porta local publicada pelo Compose.
 - `127.0.0.1:13002`: tunel PuTTY usado em testes.
@@ -81,10 +84,12 @@ Higiene de pastas no VPS:
 - `site/wp-content/endurance-page-cache/` e cache legado de HostGator e nao deve ser versionado nem preservado como fonte da home.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter o proxy Apache de `/cotacao/` para `wimifarma-cotacao-app:3000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
+- Manter o proxy Apache de `/gestao/` para `wimifarma-gestao-app:3200`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter `.env` local em cada ambiente.
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
+- Definir `GESTAO_POSTGRES_PASSWORD` e `GESTAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Gestao Node/Postgres.
 - Para backup/restore da Cotacao V2, manter `COTACAO_BACKUP_DIR=/app/backups` e o volume `./cotacao-data/backups:/app/backups`.
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
 - A senha operacional para excluir tabelas inteiras em Codigos e `wimifarma` por padrao e pode ser trocada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env` de cada ambiente.
@@ -93,7 +98,7 @@ Higiene de pastas no VPS:
 - Para corte acelerado do Miauby, definir `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`, `MIAUW_MAINTENANCE_MODE=true` e `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`. Rollback: `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
 - Para audio do Miauby, manter `MIAUW_OPENAI_API_KEY` somente no `.env`, usar `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`. O botao depende de HTTPS/navegador com microfone e o PHP transcreve o audio temporario sem expor chave no browser; `MIAUW_REALTIME_MODEL`/`MIAUW_REALTIME_VOICE` ficam reservados para evolucao futura de playback/voz.
 - Antes de deploy, fazer commit e push da alteracao. Por regra operacional atual, toda alteracao de arquivo deve ser commitada, enviada ao GitHub e publicada no VPS quando houver deploy aplicavel, salvo pedido explicito para nao publicar ou bloqueio tecnico relatado.
-- Depois de deploy, rodar `docker compose ps`, `docker compose logs --tail=80 wimifarma-cotacao-app` e validar `http://127.0.0.1:3002/cotacao/health`.
+- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cotacao/health` e `http://127.0.0.1:3002/gestao/health`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
 
 ## Decisoes tecnicas ja tomadas
@@ -110,6 +115,7 @@ Higiene de pastas no VPS:
 - `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
+- A Gestao roda fora do PHP/WordPress: Apache faz proxy de `/gestao/` para Node, Node usa Postgres para contas, pagamentos, auditoria e sessoes, e MySQL somente para login/logs/importacao legado.
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
 - A Fase 7/8/9/10/11/12/13/14/15/16/17/18/19 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools, roteador de estilo/memoria aprovada, treinador, perfis de voz e audio por transcricao confirmada. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
 
@@ -121,6 +127,7 @@ Higiene de pastas no VPS:
 - Se o MySQL do VPS entrar em restart com `Failed to find valid data directory`, nao recriar volume vazio. Conferir se existe `ibdata1` no `mysql/` oficial e procurar copias preservadas antes de qualquer acao.
 - Trocar nomes de container quebra proxy.
 - Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
+- Remover o proxy Apache de `/gestao/` derruba a Gestao oficial; `site/gestao` nao deve ser tratado como fonte oficial depois da migracao Node/Postgres.
 - Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual quando `MIAUW_ENGINE=php`, mas impede validar o agente Node do Miauby e quebra o motor `node`.
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.
@@ -134,6 +141,7 @@ Higiene de pastas no VPS:
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, nao investigar CSS primeiro; validar `git log`, rebuild do container e destino do Nginx Proxy Manager.
 - Se a rota publica ainda mostrar `wfwc-home-launchpad`, validar tambem se `site/wp-content/endurance-page-cache/` foi removido/ignorado no deploy.
 - Apagar `cotacao-data/` remove dados da Cotacao V2. Fazer backup antes de qualquer limpeza ou troca de volume.
+- Apagar `gestao-data/` remove contas, itens, pagamentos, auditoria e sessoes da Gestao. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Configurar credencial Google Sheets errada pode fazer import/export falhar ou atingir a planilha errada. Validar sempre com `/cotacao/api/google-sheets/status`.
 
 ## Pendencias
@@ -147,6 +155,7 @@ Higiene de pastas no VPS:
 - Limpar cache runtime do SpeedyCache no VPS apos o deploy da correcao de HTTPS/cache.
 - Criar rotina de rollback.
 - Criar rotina agendada e externa de backup para `cotacao-data/postgres` e `cotacao-data/backups` antes de colocar dados reais na Cotacao V2.
+- Criar rotina agendada e externa de backup para `gestao-data/postgres` antes de uso amplo da Gestao administrativa.
 - Criar checklist de corte progressivo por tool para liberar usuarios alem de `adm` depois dos evals e traces reais.
 
 ## Evolucao futura

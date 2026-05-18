@@ -175,31 +175,37 @@ Interface:
 
 ## Fluxo Gestao
 
-A Gestao Fase 1 organiza contas a pagar manuais. A conta principal guarda titulo, categoria, competencia, status e total; os itens internos guardam a composicao do valor, permitindo lancamentos como salario, aumento e comissao na mesma conta.
+A Gestao organiza contas a pagar manuais em um servico Node.js + TypeScript com Postgres dedicado. A conta principal guarda titulo, categoria livre, competencia, status e total em centavos; os itens internos guardam a composicao do valor, permitindo lancamentos como salario, aumento, comissao, boleto e juros na mesma conta. Pagamentos ficam separados e datados para permitir pagar em partes ate quitar o saldo.
 
 Arquivos principais:
 
-- `site/gestao/index.php`
-- `site/gestao/login.php`
-- `site/gestao/gestao-funcoes.php`
-- `site/gestao/styles.css`
-- `site/gestao/app.js`
+- `apps/gestao/src/server.ts`
+- `apps/gestao/public/styles.css`
+- `apps/gestao/public/app.js`
+- `apps/gestao/public/login-runner.js`
+- `site/gestao/` (legado PHP; rota oficial passa pelo proxy Apache para o Node)
 
 Tabelas principais:
 
-- `gestao_contas`
-- `gestao_conta_itens`
+- Postgres `gestao_accounts`
+- Postgres `gestao_account_items`
+- Postgres `gestao_account_payments`
+- Postgres `gestao_audit_events`
+- Postgres `gestao_sessions`
 - `wf_logs`
 
 Regras a preservar:
 
 - acesso restrito a usuario `adm`, role `admin` ou role `gerente`;
-- formularios usam sessao interna e CSRF;
-- `gerado_em` e automatico na criacao da conta;
-- `valor_total` e calculado pelos itens, nao digitado como fonte separada;
-- confirmar pagamento muda status para `pago`, grava `pago_em` e passa a somar no total mensal pago;
-- cancelar ou voltar para pendente nao apaga fisicamente a conta nem seus itens;
-- acoes de login, criacao e mudanca de status registram `wf_logs`.
+- formularios usam sessao `WFGESTAO` em Postgres e CSRF;
+- `generated_at` e automatico na criacao da conta;
+- `total_cents` e calculado pelos itens, nao digitado como fonte separada;
+- a categoria e texto livre, com sugestoes apenas para acelerar digitacao;
+- pagamento parcial grava linha em `gestao_account_payments` com valor e data, abatendo o saldo da conta;
+- confirmar restante registra um pagamento final do saldo aberto, muda status para `pago`, grava `gestao_accounts.paid_at` e passa a somar no total mensal pago pelo pagamento;
+- adicionar item depois do lancamento, como juros ou diferenca, aumenta o total e pode voltar uma conta paga para `pendente` se houver saldo;
+- cancelar ou voltar para pendente nao apaga fisicamente a conta, seus itens nem seus pagamentos;
+- acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.
 
 ## Fluxo Tarefas
 

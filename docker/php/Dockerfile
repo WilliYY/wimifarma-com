@@ -34,6 +34,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/gestao/" "http://wimifarma-gestao-app:3200/gestao/"'; \
+        echo 'ProxyPassReverse "/gestao/" "http://wimifarma-gestao-app:3200/gestao/"'; \
+        echo 'ProxyPass "/gestao" "http://wimifarma-gestao-app:3200/gestao"'; \
+        echo 'ProxyPassReverse "/gestao" "http://wimifarma-gestao-app:3200/gestao"'; \
+    } > /etc/apache2/conf-available/wimifarma-gestao-proxy.conf \
+    && a2enconf wimifarma-gestao-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

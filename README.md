@@ -13,7 +13,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Codigos para atalhos de itens com comissao diferente, com codigo, EAN e preco editaveis;
 - Cotacao para controle de itens, fornecedores, precos e status de compras;
 - Financeiro para fechamento, sangrias, PIX, maquininhas e rastreabilidade interna;
-- Gestao para contas a pagar manuais, itens de composicao e total pago por mes;
+- Gestao para contas a pagar manuais, itens de composicao, pagamentos parciais e total pago por mes;
 - Tarefas internas;
 - Miauby, assistente interno com integracao OpenAI e recursos de diagnostico.
 
@@ -23,12 +23,13 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 
 - Projeto local em `C:\Projetos\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis` e `wimifarma-miauw-agent`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
-- `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, `gestao_*` e `miauw_*`.
+- `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
 - A Cotacao V2 fica em `apps/cotacao`, usa Node.js/Express/Socket.IO, Postgres e Redis, e e publicada por proxy interno do Apache em `/cotacao/`.
 - O login da Cotacao continua usando usuarios da tabela MySQL `wf_users`; os dados novos da planilha ficam em Postgres no volume ignorado `cotacao-data/`.
+- A Gestao fica oficialmente em `apps/gestao`, usa Node.js/TypeScript/Express com Postgres dedicado `wimifarma_gestao`, e e publicada por proxy interno do Apache em `/gestao/`; o MySQL fica para autenticacao `wf_users`, logs e importacao de dados legados.
 - A Cotacao PHP antiga foi removida; `site/cotacao` nao existe mais e os ativos da tela oficial ficam em `apps/cotacao/public`.
 - Rotas de login dos modulos responderam HTTP 200 na auditoria local.
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
@@ -41,7 +42,7 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - A home publica mostra no maximo cinco cards por linha no desktop; os cards de `Códigos` e `Gestao` entram na segunda linha, e os cards foram elevados para abrir espaco visual.
 - O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com blocos por prefixo de EAN persistidos em `wf_codigos_blocos`, autosave de `Codigo`, `EAN` e `Preco`, botao `+` com prefixo manual para criar o bloco desejado, tabelas em faixa horizontal sem gerar rolagem vazia no documento, reordenacao por arrastar o numero da linha, criacao de novas linhas no rodape de cada grupo, exclusao logica de itens apagados e exclusao protegida de tabelas nao padrao por senha de confirmacao.
 - O login de Codigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, preservando a autenticacao em `wf_users`.
-- O modulo `site/gestao` iniciou a Fase 1 administrativa: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_contas`, itens flexiveis em `gestao_conta_itens`, data de geracao automatica, status `pendente`/`pago`/`cancelado` e soma mensal baseada em `pago_em`.
+- O modulo `Gestao` foi elevado para Node.js + TypeScript + Postgres: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_accounts`, categoria livre, itens flexiveis em `gestao_account_items`, pagamentos parciais datados em `gestao_account_payments`, status reversivel, saldo por conta, auditoria em `gestao_audit_events` e espelho curto em `wf_logs`.
 - O Financeiro mostra no topo apenas `Caixa`, `Relatorio` e `Sair`; a tela dedicada de Auditoria saiu da navegacao da equipe, mas a tabela `financeiro_auditoria` continua registrando alteracoes internas.
 - A Cotacao V2 substitui a interface antiga em `/cotacao/` para eliminar bugs de palavra-gatilho, salto de linha e travamento em categoria. Palavras como `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; cor so vem de regra condicional criada explicitamente na tela.
 - A Cotacao V2 usa linha com UUID estavel, save por celula, presenca ao vivo via Socket.IO/Redis, filtros locais por tela e eventos em Postgres. A primeira validacao confirmou login, bootstrap, save dessas palavras criticas e criacao/remocao de regra condicional explicita.
@@ -160,6 +161,7 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/cotacao/login.php`
 - `http://127.0.0.1:3002/financeiro/login.php`
 - `http://127.0.0.1:3002/gestao/login.php`
+- `http://127.0.0.1:3002/gestao/health`
 - `http://127.0.0.1:3002/tarefa/login.php`
 - `http://127.0.0.1:3002/miauw/login.php`
 - `http://127.0.0.1:3002/miauw/treino.php`
@@ -194,8 +196,10 @@ Mais comandos ficam em `docs/05-comandos.md`.
 .
 |-- apps/
 |   |-- cotacao/             # Cotacao V2 Node.js/Socket.IO
+|   |-- gestao/              # Gestao Node.js/TypeScript/Postgres
 |   `-- miauw-agent/         # Miauby agente Node/TypeScript em sombra/corte controlado
 |-- cotacao-data/            # volumes Postgres/Redis ignorados pelo Git
+|-- gestao-data/             # volume Postgres da Gestao ignorado pelo Git
 |-- docker/
 |   |-- php/Dockerfile
 |   `-- mysql/init/
@@ -206,7 +210,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |   |-- cashback/
 |   |-- codigos/
 |   |-- financeiro/
-|   |-- gestao/
+|   |-- gestao/               # legado PHP; rota oficial usa apps/gestao por proxy
 |   |-- miauw/
 |   |-- tarefa/
 |   |-- wp-admin/

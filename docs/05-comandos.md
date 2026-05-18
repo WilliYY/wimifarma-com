@@ -20,6 +20,8 @@ docker compose logs --tail=80 wimifarma-com-db
 docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-cotacao-db
 docker compose logs --tail=80 wimifarma-cotacao-redis
+docker compose logs --tail=80 wimifarma-gestao-app
+docker compose logs --tail=80 wimifarma-gestao-db
 docker compose logs --tail=80 wimifarma-miauw-agent
 ```
 
@@ -55,6 +57,20 @@ O adaptador PHP compara respostas quando `MIAUW_AGENT_SHADOW_ON_SEND=true` ou qu
 
 O perfil de voz atual pode ser ajustado por ambiente com `MIAUW_VOICE_PROFILE=miauby_padrao|miauby_curto|miauby_operacional`. O audio do chat usa `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`; microfone so abre pelo botao `Falar`, o audio temporario vira rascunho transcrito, e o usuario escolhe `Enviar` ou `Cancelar`.
 
+## Local - Gestao Node/Postgres
+
+```powershell
+cd C:\Projetos\wimifarma-com\apps\gestao
+npm.cmd run check
+npm.cmd run build
+cd C:\Projetos\wimifarma-com
+docker compose up -d --no-deps --build wimifarma-gestao-app wimifarma-com-web
+curl.exe -sS http://127.0.0.1:3002/gestao/health
+docker exec wimifarma-gestao-db psql -U wimifarma_gestao -d wimifarma_gestao -c "\dt"
+```
+
+A Gestao oficial usa `apps/gestao` por proxy Apache em `/gestao/`. O MySQL continua sendo usado para `wf_users`, `wf_logs` e importacao unica do legado, mas contas novas ficam no Postgres `wimifarma_gestao`.
+
 ## Local - Miauby evals
 
 ```powershell
@@ -71,12 +87,14 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cashback/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cotacao/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/financeiro/login.php
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/gestao/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/tarefa/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/treino.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health
+curl.exe -sS http://127.0.0.1:3002/gestao/health
 ```
 
 ## Local - home e Cotacao tempo real
@@ -99,6 +117,7 @@ A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por
 ```powershell
 docker exec wimifarma-com-db sh -c "mysql -u`$MYSQL_USER -p`$MYSQL_PASSWORD -N -B -e 'SHOW TABLES FROM wimifarma_app; SHOW TABLES FROM wimifarma_wp;'"
 docker exec wimifarma-cotacao-db psql -U wimifarma_cotacao -d wimifarma_cotacao -c "\dt"
+docker exec wimifarma-gestao-db psql -U wimifarma_gestao -d wimifarma_gestao -c "\dt"
 ```
 
 ## Git local
@@ -132,6 +151,19 @@ docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
 docker compose ps
 curl -I https://wimifarma.com/miauw/agent/health
 docker compose logs --tail=80 wimifarma-miauw-agent
+```
+
+Para mudancas no servico Gestao, usar rebuild direcionado e preservar os bancos existentes:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+git pull --ff-only origin main
+docker compose up -d wimifarma-gestao-db
+docker compose up -d --no-deps --build wimifarma-gestao-app wimifarma-com-web
+docker compose ps
+curl -sS http://127.0.0.1:3002/gestao/health
+docker compose logs --tail=80 wimifarma-gestao-app
+docker compose logs --tail=80 wimifarma-com-web
 ```
 
 ## VPS - auditar e organizar pastas do projeto
