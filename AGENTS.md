@@ -418,6 +418,7 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 - Qualquer lancamento ativo pode receber pagamento parcial proprio, quitacao, juros/diferenca e cancelamento.
 - Lancamento cancelado pode ser reaberto sem ressuscitar pagamentos cancelados; pagamentos cancelados continuam apenas como historico, e o total da conta e recalculado pelos lancamentos ativos.
 - Os cards de conta da Gestao ficam minimizados por padrao e abrem/fecham ao clicar no resumo da propria conta, sem botao extra de abrir/minimizar; ao abrir uma conta, os lancamentos e o bloco `Pagamentos desta conta` tambem ficam fechados ate o operador clicar, mantendo a tela mais limpa.
+- A Gestao aceita renomear conta ja lancada, repetir a conta para o mes seguinte com os itens ativos e sem copiar pagamentos, deixa a observacao minimizada por padrao e move lancamentos pagos/cancelados, pagamentos cancelados e eventos de auditoria para o bloco `Historico`, tambem minimizado por padrao.
 
 ## Fluxo de trabalho esperado
 

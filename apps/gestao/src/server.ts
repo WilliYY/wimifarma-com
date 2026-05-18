@@ -73,6 +73,15 @@ type PaymentRow = {
   created_at: Date | string;
 };
 
+type AuditEventRow = {
+  id: string;
+  account_id: string | null;
+  user_id: number | null;
+  action: string;
+  summary: string;
+  created_at: Date | string;
+};
+
 type NotepadRow = {
   id: string;
   body: string;
@@ -84,6 +93,7 @@ type NotepadRow = {
 type RenderAccount = AccountRow & {
   items: ItemRow[];
   payments: PaymentRow[];
+  auditEvents: AuditEventRow[];
 };
 
 type MysqlUserRow = {
@@ -100,7 +110,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.2.3';
+const SERVICE_VERSION = '1.3.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -253,6 +263,14 @@ function monthValue(value?: unknown): string {
 function monthLabel(month: string): string {
   const normalized = monthValue(month);
   return `${normalized.slice(5, 7)}/${normalized.slice(0, 4)}`;
+}
+
+function nextMonthValue(month: string): string {
+  const normalized = monthValue(month);
+  const year = Number.parseInt(normalized.slice(0, 4), 10);
+  const monthIndex = Number.parseInt(normalized.slice(5, 7), 10);
+  const date = new Date(Date.UTC(year, monthIndex, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function monthBounds(month: string): { start: string; end: string } {
@@ -1240,6 +1258,90 @@ async function updateAccountNote(req: Request): Promise<void> {
   await logMysql(userId, 'gestao_observacao_atualizada', 'gestao_conta', id, 'Observacao da conta atualizada na Gestao.');
 }
 
+async function updateAccountTitle(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  const title = cleanText(req.body.titulo, 180);
+  if (!id) throw new Error('Conta invalida.');
+  if (!title) throw new Error('Informe o novo nome da conta.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const account = await client.query<{ title: string }>('SELECT title FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    await client.query('UPDATE gestao_accounts SET title = $1 WHERE id = $2', [title, id]);
+    await auditPg(client, id, userId, 'gestao_conta_renomeada', `Conta renomeada: ${account.rows[0].title} -> ${title}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_conta_renomeada', 'gestao_conta', id, `Conta renomeada na Gestao: ${title}`);
+}
+
+async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number; month: string }> {
+  const id = Number(req.body.id || 0);
+  if (!id) throw new Error('Conta invalida.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let newAccountId = 0;
+  let targetMonth = '';
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<AccountRow>(
+      'SELECT * FROM gestao_accounts WHERE id = $1 FOR UPDATE',
+      [id],
+    );
+    const account = accountResult.rows[0];
+    if (!account) throw new Error('Conta nao encontrada.');
+    if (account.status === 'cancelado') throw new Error('Reabra a conta antes de repetir para o proximo mes.');
+
+    const itemResult = await client.query<ItemRow>(
+      `SELECT *
+       FROM gestao_account_items
+       WHERE account_id = $1
+         AND status = 'ativo'
+       ORDER BY sort_order ASC, id ASC`,
+      [id],
+    );
+    if (!itemResult.rowCount) throw new Error('Essa conta nao tem lancamento ativo para repetir.');
+
+    targetMonth = nextMonthValue(account.competence_month);
+    const totalCents = itemResult.rows.reduce((sum, item) => sum + Number(item.amount_cents || 0), 0);
+    const title = cleanText(req.body.titulo_repetir, 180) || account.title;
+    const repeatedResult = await client.query<{ id: string }>(
+      `INSERT INTO gestao_accounts
+        (title, category, status, total_cents, competence_month, note, created_by, generated_at, paid_at, canceled_at)
+       VALUES ($1, $2, 'pendente', $3, $4, $5, $6, now(), NULL, NULL)
+       RETURNING id`,
+      [title, account.category, totalCents, targetMonth, account.note, userId],
+    );
+    newAccountId = Number(repeatedResult.rows[0].id);
+
+    for (const [index, item] of itemResult.rows.entries()) {
+      await client.query(
+        'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order) VALUES ($1, $2, $3, $4)',
+        [newAccountId, item.description, Number(item.amount_cents || 0), (index + 1) * 10],
+      );
+    }
+
+    await auditPg(client, id, userId, 'gestao_conta_repetida_origem', `Conta repetida para ${monthLabel(targetMonth)}: ${title}`);
+    await auditPg(client, newAccountId, userId, 'gestao_conta_repetida', `Conta criada por repeticao de ${account.title}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_conta_repetida', 'gestao_conta', newAccountId, `Conta repetida para ${monthLabel(targetMonth)} na Gestao.`);
+  return { accountId: newAccountId, month: targetMonth };
+}
+
 async function reopenAccount(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
@@ -1384,6 +1486,14 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
      ORDER BY p.account_id ASC, p.paid_at ASC, p.id ASC`,
     [ids],
   );
+  const auditResult = await pgPool.query<AuditEventRow>(
+    `SELECT id, account_id, user_id, action, summary, created_at
+     FROM gestao_audit_events
+     WHERE account_id = ANY($1::bigint[])
+     ORDER BY account_id ASC, created_at DESC, id DESC
+     LIMIT 600`,
+    [ids],
+  );
 
   const itemsByAccount = new Map<string, ItemRow[]>();
   for (const item of itemsResult.rows) {
@@ -1397,10 +1507,17 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
     paymentsByAccount.set(key, [...(paymentsByAccount.get(key) || []), payment]);
   }
 
+  const auditByAccount = new Map<string, AuditEventRow[]>();
+  for (const event of auditResult.rows) {
+    const key = String(event.account_id);
+    auditByAccount.set(key, [...(auditByAccount.get(key) || []), event]);
+  }
+
   return accounts.map((account) => ({
     ...account,
     items: itemsByAccount.get(String(account.id)) || [],
     payments: paymentsByAccount.get(String(account.id)) || [],
+    auditEvents: auditByAccount.get(String(account.id)) || [],
   }));
 }
 
@@ -1462,25 +1579,36 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
   const canEdit = status !== 'cancelado';
   const finalButtonLabel = paidCents > 0 ? 'Quitar saldo' : 'Quitar integral';
   const remainingMoney = formatMoney(remainingCents);
+  const activePayments = account.payments.filter((payment) => payment.status !== 'cancelado');
+  const historyPayments = account.payments.filter((payment) => payment.status === 'cancelado');
+  const openItems = account.items.filter((item) => {
+    const itemCents = Number(item.amount_cents || 0);
+    const itemPaid = Number(item.paid_cents || 0);
+    return item.status !== 'cancelado' && Math.max(0, itemCents - itemPaid) > 0;
+  });
+  const historyItems = account.items.filter((item) => {
+    const itemCents = Number(item.amount_cents || 0);
+    const itemPaid = Number(item.paid_cents || 0);
+    return item.status === 'cancelado' || Math.max(0, itemCents - itemPaid) <= 0;
+  });
 
-  const itemHtml = account.items.length
+  const itemHtml = openItems.length
     ? `<div class="gestao-ledger-block">
-       <div class="gestao-ledger-title"><span>Lancamentos da conta</span><strong>${e(formatMoney(totalCents))}</strong></div>
+       <div class="gestao-ledger-title"><span>Lancamentos abertos</span><strong>${e(formatMoney(openItems.reduce((sum, item) => sum + Math.max(0, Number(item.amount_cents || 0) - Number(item.paid_cents || 0)), 0)))}</strong></div>
        <div class="gestao-item-list">
-        ${account.items.map((item) => {
+        ${openItems.map((item) => {
           const itemId = Number(item.id);
           const itemCents = Number(item.amount_cents || 0);
           const itemPaid = Number(item.paid_cents || 0);
           const itemRemaining = Math.max(0, itemCents - itemPaid);
           const itemPayable = Math.min(itemRemaining, remainingCents);
           const itemProgress = itemCents > 0 ? Math.min(100, Math.max(0, (itemPaid / itemCents) * 100)) : 0;
-          const itemActive = item.status !== 'cancelado';
           return `
-            <section class="gestao-item-row ${itemActive ? '' : 'is-canceled'}" data-item-row data-item-id="${e(itemId)}">
+            <section class="gestao-item-row" data-item-row data-item-id="${e(itemId)}">
               <button type="button" class="gestao-item-main" data-item-toggle aria-expanded="false">
                 <div class="gestao-item-title">
                   <strong>${e(item.description)}</strong>
-                  ${itemActive ? (itemRemaining <= 0 ? '<span class="gestao-mini-pill ok">Pago</span>' : '<span class="gestao-mini-pill">Aberto</span>') : '<span class="gestao-mini-pill danger">Cancelado</span>'}
+                  <span class="gestao-mini-pill">Aberto</span>
                   <span class="gestao-item-open-label">Opcoes</span>
                 </div>
                 <div class="gestao-item-numbers">
@@ -1492,7 +1620,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
               </button>
               ${canEdit ? `
                 <div class="gestao-item-actions">
-                  ${itemActive && status === 'pendente' && itemPayable > 0 ? `
+                  ${status === 'pendente' && itemPayable > 0 ? `
                     <form method="post" class="gestao-item-pay-form" data-require-money>
                       ${csrfField(req)}
                       <input type="hidden" name="action" value="add_payment">
@@ -1513,7 +1641,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
                       <button type="submit" class="gestao-btn gestao-btn-ghost">Quitar item</button>
                     </form>
                   ` : ''}
-                  ${itemActive ? `<form method="post" class="gestao-item-adjust-form" data-require-money>
+                  <form method="post" class="gestao-item-adjust-form" data-require-money>
                     ${csrfField(req)}
                     <input type="hidden" name="action" value="add_item_adjustment">
                     <input type="hidden" name="id" value="${e(id)}">
@@ -1530,15 +1658,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
                     <input type="hidden" name="item_id" value="${e(itemId)}">
                     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
                     <button type="submit" class="gestao-link-danger">Cancelar lancamento</button>
-                  </form>` : `
-                  <form method="post" data-confirm="Reabrir este lancamento? Os pagamentos cancelados continuam no historico.">
-                    ${csrfField(req)}
-                    <input type="hidden" name="action" value="reopen_item">
-                    <input type="hidden" name="id" value="${e(id)}">
-                    <input type="hidden" name="item_id" value="${e(itemId)}">
-                    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-                    <button type="submit" class="gestao-btn gestao-btn-secondary">Reabrir lancamento</button>
-                  </form>`}
+                  </form>
                 </div>
               ` : ''}
             </section>
@@ -1546,26 +1666,25 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         }).join('')}
        </div>
        </div>`
-    : `<div class="gestao-ledger-block"><div class="gestao-ledger-title"><span>Lancamentos da conta</span></div><p class="gestao-empty-line">Sem itens lancados.</p></div>`;
+    : `<div class="gestao-ledger-block"><div class="gestao-ledger-title"><span>Lancamentos abertos</span></div><p class="gestao-empty-line">Sem lancamentos abertos nessa conta.</p></div>`;
 
-  const paymentHtml = account.payments.length
+  const paymentHtml = activePayments.length
     ? `<div class="gestao-ledger-block gestao-ledger-payments" data-payment-block data-payment-block-id="${e(id)}">
        <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-payment-toggle aria-expanded="false">
-         <span>Pagamentos desta conta <em>${e(account.payments.length)} registro(s)</em></span>
+         <span>Pagamentos desta conta <em>${e(activePayments.length)} registro(s)</em></span>
          <strong>${e(formatMoney(paidCents))}</strong>
        </button>
        <ul class="gestao-payments" data-payment-list>
-        ${account.payments.map((payment) => {
-          const paymentActive = payment.status !== 'cancelado';
+        ${activePayments.map((payment) => {
           return `
-            <li class="${paymentActive ? '' : 'is-canceled'}">
+            <li>
               <span>
                 <strong>${e(payment.description)}</strong>
                 ${payment.item_description ? `<em>${e(payment.item_description)}</em>` : ''}
-                <small>${e(brDate(payment.paid_at, true))}${paymentActive ? '' : ` / cancelado ${e(brDate(payment.canceled_at, true))}`}</small>
+                <small>${e(brDate(payment.paid_at, true))}</small>
               </span>
               <strong>${e(formatMoney(payment.amount_cents))}</strong>
-              ${canEdit && paymentActive ? `
+              ${canEdit ? `
                 <form method="post" data-confirm="Cancelar este pagamento sem apagar o historico?">
                   ${csrfField(req)}
                   <input type="hidden" name="action" value="cancel_payment">
@@ -1587,6 +1706,52 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
        </button>
        <p class="gestao-empty-line" data-payment-list>Nenhum pagamento registrado ainda.</p>
        </div>`;
+
+  const historyRows = [
+    ...historyItems.map((item) => {
+      const itemCents = Number(item.amount_cents || 0);
+      const itemPaid = Number(item.paid_cents || 0);
+      const paid = item.status !== 'cancelado' && Math.max(0, itemCents - itemPaid) <= 0;
+      return `<li>
+        <span>
+          <strong>${paid ? 'Lancamento pago' : 'Lancamento cancelado'}</strong>
+          <em>${e(item.description)}</em>
+          <small>${e(brDate(item.canceled_at || item.created_at, true))}</small>
+        </span>
+        <strong>${e(formatMoney(itemCents))}</strong>
+        ${canEdit && item.status === 'cancelado' ? `<form method="post" data-confirm="Reabrir este lancamento? Os pagamentos cancelados continuam no historico.">
+          ${csrfField(req)}
+          <input type="hidden" name="action" value="reopen_item">
+          <input type="hidden" name="id" value="${e(id)}">
+          <input type="hidden" name="item_id" value="${e(item.id)}">
+          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+          <button type="submit" class="gestao-btn gestao-btn-secondary">Reabrir</button>
+        </form>` : ''}
+      </li>`;
+    }),
+    ...historyPayments.map((payment) => `<li>
+      <span>
+        <strong>Pagamento cancelado</strong>
+        <em>${e(payment.description)}${payment.item_description ? ` - ${payment.item_description}` : ''}</em>
+        <small>${e(brDate(payment.paid_at, true))}${payment.canceled_at ? ` / cancelado ${e(brDate(payment.canceled_at, true))}` : ''}</small>
+      </span>
+      <strong>${e(formatMoney(payment.amount_cents))}</strong>
+    </li>`),
+    ...account.auditEvents.slice(0, 18).map((event) => `<li>
+      <span>
+        <strong>${e(event.action.replace(/^gestao_/, '').replaceAll('_', ' '))}</strong>
+        <em>${e(event.summary)}</em>
+        <small>${e(brDate(event.created_at, true))}</small>
+      </span>
+    </li>`),
+  ].join('');
+  const historyHtml = `<div class="gestao-ledger-block gestao-history" data-history-block data-history-block-id="${e(id)}">
+    <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-history-toggle aria-expanded="false">
+      <span>Historico <em>${e(historyItems.length + historyPayments.length + account.auditEvents.length)} evento(s)</em></span>
+      <strong>ver</strong>
+    </button>
+    ${historyRows ? `<ul class="gestao-payments gestao-history-list" data-history-list>${historyRows}</ul>` : '<p class="gestao-empty-line" data-history-list>Nenhum historico nessa conta ainda.</p>'}
+  </div>`;
 
   const pendingActions = status === 'pendente'
     ? `${remainingCents > 0 ? `
@@ -1668,14 +1833,38 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
        </div>`
     : '';
 
-  const noteForm = `<form method="post" class="gestao-note-panel">
+  const titleForm = canEdit ? `<form method="post" class="gestao-mini-form gestao-title-form">
+    ${csrfField(req)}
+    <input type="hidden" name="action" value="update_title">
+    <input type="hidden" name="id" value="${e(id)}">
+    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+    <label><span>Renomear conta</span><input type="text" name="titulo" maxlength="180" value="${e(account.title)}" required></label>
+    <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar nome</button>
+  </form>` : '';
+
+  const repeatForm = canEdit ? `<form method="post" class="gestao-mini-form gestao-repeat-form" data-confirm="Criar uma copia pendente desta conta para ${e(monthLabel(nextMonthValue(account.competence_month || selectedMonth)))}?">
+    ${csrfField(req)}
+    <input type="hidden" name="action" value="repeat_next_month">
+    <input type="hidden" name="id" value="${e(id)}">
+    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+    <label><span>Nome no proximo mes</span><input type="text" name="titulo_repetir" maxlength="180" value="${e(account.title)}"></label>
+    <button type="submit" class="gestao-btn gestao-btn-primary">Repetir mes que vem</button>
+  </form>` : '';
+
+  const noteForm = `<div class="gestao-note-block" data-note-block data-note-block-id="${e(id)}">
+    <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-note-toggle aria-expanded="false">
+      <span>Observacao</span>
+      <strong>${account.note ? 'editar' : 'abrir'}</strong>
+    </button>
+    <form method="post" class="gestao-note-panel" data-note-panel>
     ${csrfField(req)}
     <input type="hidden" name="action" value="update_note">
     <input type="hidden" name="id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
     <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Observacao desta conta.">${e(account.note || '')}</textarea></label>
     <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar observacao</button>
-  </form>`;
+    </form>
+  </div>`;
 
   return `<article class="gestao-account status-${e(status)}" data-account-card data-account-id="${e(id)}">
     <div class="gestao-account-main">
@@ -1700,8 +1889,11 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
       </div>
       <div class="gestao-account-details" data-account-details>
+        ${titleForm}
+        ${repeatForm}
         ${itemHtml}
         ${paymentHtml}
+        ${historyHtml}
         ${noteForm}
         ${forms}
       </div>
@@ -1778,9 +1970,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-click">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-recurring">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260518-click" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260518-recurring" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -1839,12 +2031,10 @@ async function renderApp(req: Request): Promise<string> {
           </label>
         </div>
         <div class="gestao-line-items" data-line-items>
-          ${['Salario, aumento, comissao, boleto', 'Aumento', 'Comissao'].map((placeholder) => `
-            <div class="gestao-line-item">
-              <label><span>Descricao do item</span><input type="text" name="item_descricao[]" maxlength="180" placeholder="${e(placeholder)}"></label>
-              <label><span>Valor</span><input type="text" name="item_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
-            </div>
-          `).join('')}
+          <div class="gestao-line-item">
+            <label><span>Descricao do item</span><input type="text" name="item_descricao[]" maxlength="180" placeholder="Salario, boleto, comissao, parcela"></label>
+            <label><span>Valor</span><input type="text" name="item_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
+          </div>
         </div>
         <button type="button" class="gestao-btn gestao-btn-secondary" data-add-item>Adicionar item</button>
         <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Detalhe curto, se precisar."></textarea></label>
@@ -1871,7 +2061,7 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-click">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-recurring">
   <script src="${BASE_PATH}/login-runner.js?v=20260518-click" defer></script>
 </head>
 <body class="gestao-login-body">
@@ -2021,6 +2211,12 @@ app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(async (req, res) =
     } else if (action === 'update_note') {
       await updateAccountNote(req);
       setFlash(req, 'success', 'Observacao atualizada.');
+    } else if (action === 'update_title') {
+      await updateAccountTitle(req);
+      setFlash(req, 'success', 'Nome da conta atualizado.');
+    } else if (action === 'repeat_next_month') {
+      const repeated = await repeatAccountNextMonth(req);
+      setFlash(req, 'success', `Conta repetida para ${monthLabel(repeated.month)}.`);
     } else if (action === 'add_notepad_note') {
       await addNotepadNote(req);
       setFlash(req, 'success', 'Nota adicionada no bloco de lembretes.');

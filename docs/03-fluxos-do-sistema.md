@@ -210,8 +210,11 @@ Regras a preservar:
 - cancelar ou voltar para pendente nao apaga fisicamente a conta, seus itens nem seus pagamentos;
 - contas pagas podem ser reabertas para ajuste e faturas podem ser canceladas sem exclusao fisica; pagamentos cancelados deixam de contar no total pago do mes;
 - lancamentos e pagamentos individuais podem ser cancelados por status, mantendo historico visivel no extrato; lancamento cancelado pode ser reaberto, mas pagamentos que ja foram cancelados continuam apenas como historico ate o operador registrar novo pagamento;
-- a observacao da conta pode ser editada depois do lancamento;
-- os cards de conta ficam minimizados por padrao e podem ser abertos individualmente ao clicar no resumo da propria conta, mantendo o resumo e a barra de progresso visiveis sem botao extra de abrir/minimizar; dentro da conta, a lista de pagamentos tambem pode ser minimizada para reduzir poluicao visual;
+- a conta pode ser renomeada depois de lancada para reaproveitar valor/composicao em outro nome sem mexer no historico financeiro;
+- `Repetir mes que vem` cria uma nova conta pendente na competencia seguinte, copiando categoria, observacao e itens ativos, mas sem copiar pagamentos, cancelamentos nem status pago;
+- a observacao da conta pode ser editada depois do lancamento e fica minimizada por padrao ate o operador abrir;
+- os cards de conta ficam minimizados por padrao e podem ser abertos individualmente ao clicar no resumo da propria conta, mantendo o resumo e a barra de progresso visiveis sem botao extra de abrir/minimizar; dentro da conta, pagamentos, observacao e historico tambem podem ser minimizados para reduzir poluicao visual;
+- lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.
 

@@ -208,6 +208,39 @@
         });
     }
 
+    function initBlockCollapse(selector, buttonSelector, keyPrefix) {
+        Array.prototype.slice.call(document.querySelectorAll(selector)).forEach(function (block) {
+            var button = block.querySelector(buttonSelector);
+            var id = block.getAttribute('data-history-block-id') || block.getAttribute('data-note-block-id') || '';
+            var key = keyPrefix + ':' + id;
+
+            if (!button || !id || button.dataset.gestaoBlockBound === '1') {
+                return;
+            }
+
+            function setCollapsed(collapsed) {
+                block.classList.toggle('is-collapsed', collapsed);
+                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                try {
+                    window.localStorage.setItem(key, collapsed ? '1' : '0');
+                } catch (error) {
+                    // Ignore private browsing/storage limitations.
+                }
+            }
+
+            button.dataset.gestaoBlockBound = '1';
+            try {
+                setCollapsed(window.localStorage.getItem(key) !== '0');
+            } catch (error) {
+                setCollapsed(true);
+            }
+
+            button.addEventListener('click', function () {
+                setCollapsed(!block.classList.contains('is-collapsed'));
+            });
+        });
+    }
+
     function initItemOptions() {
         Array.prototype.slice.call(document.querySelectorAll('[data-item-row]')).forEach(function (row) {
             var button = row.querySelector('[data-item-toggle]');
@@ -249,6 +282,8 @@
             initConfirmations();
             initAccountCollapse();
             initPaymentCollapse();
+            initBlockCollapse('[data-history-block]', '[data-history-toggle]', 'gestao:history-collapsed:v1');
+            initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v1');
             initItemOptions();
         });
     } else {
@@ -258,6 +293,8 @@
         initConfirmations();
         initAccountCollapse();
         initPaymentCollapse();
+        initBlockCollapse('[data-history-block]', '[data-history-toggle]', 'gestao:history-collapsed:v1');
+        initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v1');
         initItemOptions();
     }
 }());
