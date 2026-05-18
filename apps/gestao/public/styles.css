@@ -534,6 +534,29 @@ textarea {
     opacity: 0.68;
 }
 
+.gestao-item-row.is-open {
+    border-color: var(--pink);
+    background: #fff8fb;
+}
+
+.gestao-item-main {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.gestao-item-main:hover,
+.gestao-item-main:focus-visible {
+    color: var(--wine);
+}
+
 .gestao-item-title,
 .gestao-item-numbers {
     display: flex;
@@ -567,6 +590,21 @@ textarea {
     color: #b91c1c;
 }
 
+.gestao-item-open-label {
+    margin-left: auto;
+    color: var(--wine);
+    font-size: 0.72rem;
+    font-weight: 950;
+}
+
+.gestao-item-open-label::after {
+    content: " abrir";
+}
+
+.gestao-item-row.is-open .gestao-item-open-label::after {
+    content: " fechar";
+}
+
 .gestao-item-numbers {
     margin-top: 6px;
     color: #673046;
@@ -594,8 +632,12 @@ textarea {
 }
 
 .gestao-item-actions {
-    display: grid;
+    display: none;
     gap: 8px;
+}
+
+.gestao-item-row.is-open .gestao-item-actions {
+    display: grid;
 }
 
 .gestao-item-pay-form,

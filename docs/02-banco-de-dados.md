@@ -48,8 +48,8 @@ Criadas por `apps/gestao/src/server.ts`:
 
 - `gestao_schema_migrations`: controle simples de migracoes/importacoes aplicadas.
 - `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, datas e usuario criador.
-- `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros, multa ou diferenca; cada item pode ser cancelado sem apagar historico.
-- `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto; pagamentos podem ser gerais da conta ou vinculados a um lancamento especifico por `item_id`, e tambem podem ser cancelados sem exclusao fisica.
+- `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros, multa ou diferenca; cada item pode ser cancelado e reaberto sem apagar historico.
+- `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto; pagamentos podem ser gerais da conta ou vinculados a qualquer lancamento aberto por `item_id`, e tambem podem ser cancelados sem exclusao fisica.
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
 - `gestao_sessions`: sessoes web da Gestao gerenciadas por `connect-pg-simple`.
 - `gestao_notepad_notes`: bloco de notas administrativo lateral, com edicao e exclusao logica por `deleted_at`.

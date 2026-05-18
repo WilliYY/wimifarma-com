@@ -168,6 +168,39 @@
         });
     }
 
+    function initItemOptions() {
+        Array.prototype.slice.call(document.querySelectorAll('[data-item-row]')).forEach(function (row) {
+            var button = row.querySelector('[data-item-toggle]');
+            var itemId = row.getAttribute('data-item-id') || '';
+            var key = 'gestao:item-open:' + itemId;
+
+            if (!button || !itemId || button.dataset.gestaoItemBound === '1') {
+                return;
+            }
+
+            function setOpen(open) {
+                row.classList.toggle('is-open', open);
+                button.setAttribute('aria-expanded', open ? 'true' : 'false');
+                try {
+                    window.localStorage.setItem(key, open ? '1' : '0');
+                } catch (error) {
+                    // Ignore private browsing/storage limitations.
+                }
+            }
+
+            button.dataset.gestaoItemBound = '1';
+            try {
+                setOpen(window.localStorage.getItem(key) === '1');
+            } catch (error) {
+                setOpen(false);
+            }
+
+            button.addEventListener('click', function () {
+                setOpen(!row.classList.contains('is-open'));
+            });
+        });
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
@@ -175,6 +208,7 @@
             initMoneyValidation();
             initConfirmations();
             initAccountCollapse();
+            initItemOptions();
         });
     } else {
         bindMoneyInputs(document);
@@ -182,5 +216,6 @@
         initMoneyValidation();
         initConfirmations();
         initAccountCollapse();
+        initItemOptions();
     }
 }());

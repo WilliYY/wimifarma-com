@@ -100,7 +100,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.2.0';
+const SERVICE_VERSION = '1.2.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1140,6 +1140,46 @@ async function cancelItem(req: Request): Promise<void> {
   await logMysql(userId, 'gestao_item_cancelado', 'gestao_conta', id, `Lancamento cancelado na Gestao: ${itemDescription}`);
 }
 
+async function reopenItem(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  const itemId = Number(req.body.item_id || 0);
+  if (!id || !itemId) throw new Error('Lancamento invalido.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let itemDescription = '';
+  try {
+    await client.query('BEGIN');
+    const account = await client.query('SELECT id, status FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    if (account.rows[0].status === 'cancelado') throw new Error('Reabra a conta antes de reabrir lancamento.');
+
+    const itemResult = await client.query<{ description: string; status: string }>(
+      'SELECT description, status FROM gestao_account_items WHERE id = $1 AND account_id = $2 FOR UPDATE',
+      [itemId, id],
+    );
+    const item = itemResult.rows[0];
+    if (!item) throw new Error('Lancamento nao encontrado.');
+    if (item.status !== 'cancelado') throw new Error('Esse lancamento ja esta aberto.');
+    itemDescription = item.description;
+
+    await client.query(
+      "UPDATE gestao_account_items SET status = 'ativo', canceled_at = NULL, canceled_by = NULL WHERE id = $1",
+      [itemId],
+    );
+    await recalcAccountTotal(client, id);
+    await syncPaymentStatus(client, id);
+    await auditPg(client, id, userId, 'gestao_item_reaberto', `Lancamento reaberto: ${item.description}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_item_reaberto', 'gestao_conta', id, `Lancamento reaberto na Gestao: ${itemDescription}`);
+}
+
 async function cancelPayment(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   const paymentId = Number(req.body.payment_id || 0);
@@ -1436,11 +1476,12 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
           const itemProgress = itemCents > 0 ? Math.min(100, Math.max(0, (itemPaid / itemCents) * 100)) : 0;
           const itemActive = item.status !== 'cancelado';
           return `
-            <section class="gestao-item-row ${itemActive ? '' : 'is-canceled'}">
-              <div class="gestao-item-main">
+            <section class="gestao-item-row ${itemActive ? '' : 'is-canceled'}" data-item-row data-item-id="${e(itemId)}">
+              <button type="button" class="gestao-item-main" data-item-toggle aria-expanded="false">
                 <div class="gestao-item-title">
                   <strong>${e(item.description)}</strong>
                   ${itemActive ? (itemRemaining <= 0 ? '<span class="gestao-mini-pill ok">Pago</span>' : '<span class="gestao-mini-pill">Aberto</span>') : '<span class="gestao-mini-pill danger">Cancelado</span>'}
+                  <span class="gestao-item-open-label">Opcoes</span>
                 </div>
                 <div class="gestao-item-numbers">
                   <span>Lancado <strong>${e(formatMoney(itemCents))}</strong></span>
@@ -1448,10 +1489,10 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
                   <span>Saldo <strong>${e(formatMoney(itemRemaining))}</strong></span>
                 </div>
                 <div class="gestao-item-progress" aria-hidden="true"><span style="width:${itemProgress.toFixed(2)}%"></span></div>
-              </div>
-              ${canEdit && itemActive ? `
+              </button>
+              ${canEdit ? `
                 <div class="gestao-item-actions">
-                  ${status === 'pendente' && itemPayable > 0 ? `
+                  ${itemActive && status === 'pendente' && itemPayable > 0 ? `
                     <form method="post" class="gestao-item-pay-form" data-require-money>
                       ${csrfField(req)}
                       <input type="hidden" name="action" value="add_payment">
@@ -1472,7 +1513,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
                       <button type="submit" class="gestao-btn gestao-btn-ghost">Quitar item</button>
                     </form>
                   ` : ''}
-                  <form method="post" class="gestao-item-adjust-form" data-require-money>
+                  ${itemActive ? `<form method="post" class="gestao-item-adjust-form" data-require-money>
                     ${csrfField(req)}
                     <input type="hidden" name="action" value="add_item_adjustment">
                     <input type="hidden" name="id" value="${e(id)}">
@@ -1489,7 +1530,15 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
                     <input type="hidden" name="item_id" value="${e(itemId)}">
                     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
                     <button type="submit" class="gestao-link-danger">Cancelar lancamento</button>
-                  </form>
+                  </form>` : `
+                  <form method="post" data-confirm="Reabrir este lancamento? Os pagamentos cancelados continuam no historico.">
+                    ${csrfField(req)}
+                    <input type="hidden" name="action" value="reopen_item">
+                    <input type="hidden" name="id" value="${e(id)}">
+                    <input type="hidden" name="item_id" value="${e(itemId)}">
+                    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+                    <button type="submit" class="gestao-btn gestao-btn-secondary">Reabrir lancamento</button>
+                  </form>`}
                 </div>
               ` : ''}
             </section>
@@ -1953,6 +2002,9 @@ app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(async (req, res) =
     } else if (action === 'cancel_item') {
       await cancelItem(req);
       setFlash(req, 'success', 'Lancamento cancelado sem apagar historico.');
+    } else if (action === 'reopen_item') {
+      await reopenItem(req);
+      setFlash(req, 'success', 'Lancamento reaberto para ajuste.');
     } else if (action === 'cancel_payment') {
       await cancelPayment(req);
       setFlash(req, 'success', 'Pagamento cancelado sem apagar historico.');

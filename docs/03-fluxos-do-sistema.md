@@ -204,12 +204,12 @@ Regras a preservar:
 - a categoria e texto livre, com sugestoes apenas para acelerar digitacao;
 - cada conta aparece como extrato proprio: lancamentos/juros ficam juntos, pagamentos parciais ficam no historico da mesma conta, e saldo/progresso sao calculados sem misturar contas;
 - pagamento parcial grava linha em `gestao_account_payments` com valor e data, abatendo o saldo da conta sem mexer nos itens lancados;
-- quando o pagamento parcial e feito dentro de um lancamento especifico, `gestao_account_payments.item_id` liga o pagamento ao item e o backend limita o valor ao menor saldo entre item e conta;
+- quando o pagamento parcial e feito dentro de qualquer lancamento aberto, `gestao_account_payments.item_id` liga o pagamento ao item e o backend limita o valor ao menor saldo entre item e conta;
 - confirmar restante registra um pagamento final apenas do saldo aberto, muda status para `pago`, grava `gestao_accounts.paid_at` e passa a somar no total mensal pago pelo pagamento;
 - adicionar item depois do lancamento, como juros ou diferenca, aumenta o total e pode voltar uma conta paga para `pendente` se houver saldo;
 - cancelar ou voltar para pendente nao apaga fisicamente a conta, seus itens nem seus pagamentos;
 - contas pagas podem ser reabertas para ajuste e faturas podem ser canceladas sem exclusao fisica; pagamentos cancelados deixam de contar no total pago do mes;
-- lancamentos e pagamentos individuais podem ser cancelados por status, mantendo historico visivel no extrato;
+- lancamentos e pagamentos individuais podem ser cancelados por status, mantendo historico visivel no extrato; lancamento cancelado pode ser reaberto, mas pagamentos que ja foram cancelados continuam apenas como historico ate o operador registrar novo pagamento;
 - a observacao da conta pode ser editada depois do lancamento;
 - os cards de conta podem ser minimizados, mantendo o resumo e a barra de progresso visiveis;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
