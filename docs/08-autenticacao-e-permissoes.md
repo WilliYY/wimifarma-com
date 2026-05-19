@@ -45,6 +45,7 @@ Tabelas:
 - WordPress nao deve ser confundido com login dos modulos internos.
 - A exclusao de tabelas inteiras em `/codigos/` exige sessao interna ativa, CSRF e senha operacional `wimifarma`; essa senha pode ser alterada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
 - A Gestao (`/gestao/` e `/gestao/pedidos`) usa o servico Node `apps/gestao`, autentica contra `wf_users`, cria sessao propria `WFGESTAO` no Postgres da Gestao e fica restrita a username `adm`, role `admin` ou role `gerente`; lancar conta, criar pedido, confirmar chegada, adicionar item/juros, registrar pagamento parcial, confirmar saldo, cancelar ou reabrir conta usa CSRF.
+- Quando uma rota protegida da Gestao envia o operador para `/gestao/login.php`, o destino seguro original e preservado na sessao; entrar pelo card `Pedidos` deve voltar para `/gestao/pedidos`, nao para a tela principal de contas.
 - O endpoint publico `/gestao/api/orders/badge` retorna somente a contagem de pedidos previstos para chegar hoje, sem detalhes financeiros ou nomes de fornecedores, para alimentar a bolinha do card `Pedidos` na home.
 - O painel `/miauw/diagnostico.php` exige usuario interno autenticado e fica restrito a role `admin`, role `gerente` ou username `adm`; acoes de revisao usam CSRF.
 - O painel `/miauw/treino.php` segue a mesma restricao de diagnostico (`admin`, `gerente` ou `adm`); revisar/aprovar/rejeitar treino usa CSRF e nao apaga historico.

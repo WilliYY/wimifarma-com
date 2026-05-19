@@ -28,6 +28,7 @@ declare module 'express-session' {
     flash?: Flash;
     loginAttempts?: number[];
     loginBlockedUntil?: number;
+    returnTo?: string;
   }
 }
 
@@ -280,8 +281,28 @@ function verifyCsrf(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
+function safeGestaoReturnPath(value: unknown): string {
+  const text = String(value || '').trim();
+  if (!text || text.includes('://') || text.startsWith('//')) return '';
+  try {
+    const url = new URL(text, 'http://gestao.local');
+    const allowedPaths = new Set([
+      `${BASE_PATH}/`,
+      `${BASE_PATH}/index.php`,
+      `${BASE_PATH}/pedidos`,
+      `${BASE_PATH}/pedidos/`,
+    ]);
+    if (!allowedPaths.has(url.pathname)) return '';
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return '';
+  }
+}
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.user || !isAllowedUser(req.session.user)) {
+    const returnTo = safeGestaoReturnPath(req.originalUrl);
+    if (returnTo) req.session.returnTo = returnTo;
     return res.redirect(`${BASE_PATH}/login.php`);
   }
   return next();
@@ -308,6 +329,12 @@ function redirectHome(res: Response, month = '', view = ''): void {
   const path = cleanView === 'pedidos' ? `${BASE_PATH}/pedidos` : `${BASE_PATH}/`;
   const target = month ? `${path}?mes=${encodeURIComponent(month)}` : path;
   res.redirect(target);
+}
+
+function loginRedirectTarget(req: Request): string {
+  const target = safeGestaoReturnPath(req.session.returnTo);
+  delete req.session.returnTo;
+  return target || `${BASE_PATH}/`;
 }
 
 function currentView(req: Request): '' | 'pedidos' {
@@ -3372,11 +3399,11 @@ app.get(`${BASE_PATH}/api/orders/badge`, asyncRoute(async (_req, res) => {
 }));
 
 app.get(`${BASE_PATH}/login`, (req, res) => {
-  if (req.session.user && isAllowedUser(req.session.user)) return redirectHome(res);
+  if (req.session.user && isAllowedUser(req.session.user)) return res.redirect(loginRedirectTarget(req));
   return res.type('html').send(renderLogin(req));
 });
 app.get(`${BASE_PATH}/login.php`, (req, res) => {
-  if (req.session.user && isAllowedUser(req.session.user)) return redirectHome(res);
+  if (req.session.user && isAllowedUser(req.session.user)) return res.redirect(loginRedirectTarget(req));
   return res.type('html').send(renderLogin(req, req.query.restrito ? 'Gestao e area restrita para adm, admin ou gerente.' : ''));
 });
 app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
@@ -3398,6 +3425,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     return res.status(401).type('html').send(renderLogin(req, 'Usuario, senha ou permissao incorretos.'));
   }
 
+  const returnTo = safeGestaoReturnPath(req.session.returnTo) || `${BASE_PATH}/`;
   clearLoginRateLimit(req);
   req.session.regenerate((error) => {
     if (error) {
@@ -3407,7 +3435,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     req.session.user = user;
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
     void logMysql(user.id, 'login_gestao', 'user', user.id, 'Login Gestao Node realizado.');
-    res.redirect(`${BASE_PATH}/`);
+    res.redirect(returnTo);
   });
 }));
 
