@@ -1320,13 +1320,14 @@ async function renderApp(req: Request): Promise<string> {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-separado">
-  <script src="${BASE_PATH}/app.js?v=20260519-separado" defer></script>
+  <link rel="icon" type="image/png" href="/cashback/favicon.png">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-frontfix">
+  <script src="${BASE_PATH}/app.js?v=20260519-frontfix" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
     <a class="gestao-brand" href="/">
-      <img src="/wp-content/uploads/2025/09/cropped-logo-wimifarma.png" alt="Wimifarma">
+      <img src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
       <span>Pedidos</span>
     </a>
     <nav class="gestao-nav" aria-label="Navegacao">
@@ -1384,13 +1385,14 @@ function renderLogin(req: Request, error = ''): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-separado">
-  <script src="${BASE_PATH}/login-runner.js?v=20260519-separado" defer></script>
+  <link rel="icon" type="image/png" href="/cashback/favicon.png">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-frontfix">
+  <script src="${BASE_PATH}/login-runner.js?v=20260519-frontfix" defer></script>
 </head>
 <body class="gestao-login-body">
-  <img class="gestao-login-runner" src="/wp-content/uploads/2025/09/pikachu-loop.webp" alt="" aria-hidden="true">
+  <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
   <main class="gestao-login-card">
-    <img class="gestao-login-logo" src="/wp-content/uploads/2025/09/cropped-logo-wimifarma.png" alt="Wimifarma">
+    <img class="gestao-login-logo" src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
     <span class="gestao-kicker">Area interna</span>
     <h1>Pedidos</h1>
     <p>Controle de chegada de fornecedores e boletos.</p>

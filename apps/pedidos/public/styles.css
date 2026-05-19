@@ -67,8 +67,10 @@ textarea {
 }
 
 .gestao-brand img {
-    width: 58px;
+    width: 64px;
+    max-height: 28px;
     height: auto;
+    object-fit: contain;
     filter: brightness(0) invert(1);
 }
 
@@ -343,12 +345,12 @@ textarea {
 
 .gestao-orders-side {
     min-width: 0;
+    align-content: start;
 }
 
 .gestao-orders-side > .gestao-orders-panel {
-    position: sticky;
-    top: 92px;
-    z-index: 3;
+    position: static;
+    z-index: auto;
 }
 
 .gestao-order-form-grid {
@@ -1506,8 +1508,10 @@ textarea {
 }
 
 .gestao-login-logo {
-    width: 168px;
+    width: 170px;
+    max-height: 54px;
     height: auto;
+    object-fit: contain;
 }
 
 .gestao-login-form {
