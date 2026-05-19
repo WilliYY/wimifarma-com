@@ -53,6 +53,7 @@ Criadas por `apps/gestao/src/server.ts`:
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
 - `gestao_sessions`: sessoes web da Gestao gerenciadas por `connect-pg-simple`.
 - `gestao_notepad_notes`: bloco de notas administrativo lateral, com edicao e exclusao logica por `deleted_at`.
+- `gestao_supplier_orders`: pedidos de fornecedores vinculados a uma conta da Gestao por `account_id`, com status `pedido`, `confirmado`, `historico` ou `cancelado`, previsao de chegada, data de confirmacao, data de finalizacao e usuario responsavel por cada etapa.
 
 A Gestao autentica no MySQL `wf_users`, espelha resumo curto em `wf_logs` e importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
 
@@ -180,6 +181,10 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Vencimento (`due_at`) e independente da competencia mensal e de `paid_at`; ele serve para ordenar urgencia e pode ser alterado ou removido sem recalcular o valor da conta.
 - Repetir uma conta para o mes seguinte cria ou garante de forma idempotente novo registro em `gestao_accounts` com `status='pendente'`, nova `generated_at`, mesmos itens ativos em `gestao_account_items`, vencimento avancado em um mes quando houver `due_at`, nenhum pagamento em `gestao_account_payments` e `repeated_from_account_id` apontando para a origem; desligar o ciclo muda `repeat_next_month=false` sem apagar copia ja criada.
 - Renomear uma conta altera apenas `gestao_accounts.title`, sem recalcular valores nem apagar itens, pagamentos ou auditoria.
+- Pedidos de fornecedores nunca guardam dinheiro em tabela paralela: cada pedido cria uma `gestao_accounts` na categoria `Boleto`, as parcelas/valores entram em `gestao_account_items` e pagamentos parciais/totais entram em `gestao_account_payments`. Assim, o resumo mensal e a categoria `Boleto` da Gestao continuam sendo a fonte oficial do controle financeiro.
+- Contas vinculadas a `gestao_supplier_orders` devem permanecer na categoria `Boleto`; a recategorizacao em lote bloqueia categorias que contem pedidos vinculados para nao quebrar os totais financeiros pedidos pelo fluxo.
+- O status de `gestao_supplier_orders` controla apenas a operacao de recebimento: `pedido` aguarda chegada, `confirmado` ja chegou e aguarda pagamento/saldo, `historico` significa recebido e quitado, e `cancelado` preserva o vinculo quando a conta vinculada e cancelada. Confirmar chegada de pedido ja pago move direto para `historico`.
+- `gestao_supplier_orders.expected_arrival_at` alimenta o badge do card `Pedidos` na home, contando somente pedidos em status `pedido` previstos para chegar no dia local.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.

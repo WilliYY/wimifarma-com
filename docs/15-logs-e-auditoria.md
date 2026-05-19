@@ -18,6 +18,8 @@ Tabelas de auditoria/log:
 - `wf_logs`
 - `cotacao_auditoria`
 - `financeiro_auditoria`
+- `gestao_audit_events`
+- `gestao_supplier_orders`
 - `miauw_alertas`
 - `miauw_alerta_eventos`
 - `miauw_padroes`
@@ -43,6 +45,7 @@ Arquivos:
 - O Financeiro nao exibe mais a aba/tela operacional de Auditoria no topo, mas deve continuar gravando `financeiro_auditoria`.
 - Logs nao devem gravar senhas, tokens ou chaves.
 - Gestao registra criacao de conta, criacao por Miauby, renomeacao, vencimento atualizado/removido, repeticao para o mes seguinte, ciclo de repeticao ligado/desligado, troca/cancelamento em lote por categoria, arquivamento de contas canceladas, adicao de item, ajuste de lancamento, registro/cancelamento de pagamento parcial, quitacao de item, cancelamento/reabertura de lancamento, reabertura/cancelamento de fatura, observacao editada e mudanca de status em `gestao_audit_events`, alem de espelhar resumo curto em `wf_logs`; login e falha de login continuam no log geral. O log deve guardar resumo curto, nunca senha, token, observacao sensivel completa ou detalhe financeiro alem do necessario.
+- Pedidos da Gestao registra criacao, pagamento informado na criacao, chegada confirmada, finalizacao no historico, reabertura por novo valor/juros ou reabertura da conta, e cancelamento por categoria com eventos `gestao_pedido_criado`, `gestao_pedido_pago_criacao`, `gestao_pedido_chegada_confirmada`, `gestao_pedido_finalizado`, `gestao_pedido_reaberto` e `gestao_pedido_cancelado_categoria`. O pedido fica ligado a uma conta da categoria `Boleto`, entao pagamentos parciais/totais tambem seguem os eventos financeiros ja existentes.
 - Códigos registra criacao de blocos, criacao de itens, edicao, reordenacao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
 - Guardrails do Miauby v2 que reescrevem resposta por vazamento de bastidor devem registrar diagnostico invisivel com termos detectados, origem, versao do agente e versao da politica, sem salvar a resposta completa nem segredo.

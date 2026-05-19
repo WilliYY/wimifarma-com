@@ -12,6 +12,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Cashback para clientes, compras, creditos e resgates;
 - Codigos para atalhos de itens com comissao diferente, com codigo, EAN e preco editaveis;
 - Cotacao para controle de itens, fornecedores, precos e status de compras;
+- Pedidos para recebimento de fornecedores, vencimento de boletos, pagamentos parciais e historico;
 - Financeiro para fechamento, sangrias, PIX, maquininhas e rastreabilidade interna;
 - Gestao para contas a pagar manuais, itens de composicao, pagamentos parciais, vencimentos, categorias livres e total pago por mes;
 - Tarefas internas;
@@ -39,10 +40,10 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
 - A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `site/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
-- A home publica mostra no maximo cinco cards por linha no desktop; os cards de `Códigos` e `Gestao` entram na segunda linha, os cards foram elevados para abrir espaco visual, e no mobile os cards ficam compactos em duas colunas para caber mais acessos por tela.
+- A home publica mostra no maximo cinco cards por linha no desktop; `Pedidos` fica ao lado de `Cotacao` e mostra badge de pedidos previstos para chegar hoje, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
 - O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com blocos por prefixo de EAN persistidos em `wf_codigos_blocos`, autosave de `Codigo`, `EAN` e `Preco`, botao `+` com prefixo manual para criar o bloco desejado, tabelas em faixa horizontal sem gerar rolagem vazia no documento, reordenacao por arrastar o numero da linha, criacao de novas linhas no rodape de cada grupo, exclusao logica de itens apagados e exclusao protegida de tabelas nao padrao por senha de confirmacao.
 - O login de Codigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, preservando a autenticacao em `wf_users`.
-- O modulo `Gestao` foi elevado para Node.js + TypeScript + Postgres: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_accounts`, categoria livre com resumo lateral normalizado, itens flexiveis em `gestao_account_items`, pagamentos parciais datados em `gestao_account_payments`, vencimento opcional com urgencia visual, status reversivel, extrato por conta com saldo/progresso, pagamento parcial por qualquer lancamento aberto, cancelamento/reabertura de lancamento sem apagar historico, exclusao da tela apenas por arquivamento de contas canceladas, reabertura de contas pagas, renomeacao por icone de lapis, repeticao do mes seguinte em ciclo liga/desliga sem copiar pagamentos, observacao editavel/minimizavel, cards minimizaveis por clique no resumo da conta, pagamentos/historico minimizaveis e bloco de notas lateral em `gestao_notepad_notes`, com auditoria em `gestao_audit_events` e espelho curto em `wf_logs`.
+- O modulo `Gestao` foi elevado para Node.js + TypeScript + Postgres: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_accounts`, categoria livre com resumo lateral normalizado, itens flexiveis em `gestao_account_items`, pagamentos parciais datados em `gestao_account_payments`, vencimento opcional com urgencia visual, status reversivel, extrato por conta com saldo/progresso, pagamento parcial por qualquer lancamento aberto, cancelamento/reabertura de lancamento sem apagar historico, exclusao da tela apenas por arquivamento de contas canceladas, reabertura de contas pagas, renomeacao por icone de lapis, repeticao do mes seguinte em ciclo liga/desliga sem copiar pagamentos, observacao editavel/minimizavel, cards minimizaveis por clique no resumo da conta, pagamentos/historico minimizaveis e bloco de notas lateral em `gestao_notepad_notes`, com auditoria em `gestao_audit_events` e espelho curto em `wf_logs`. A tela `/gestao/pedidos` controla pedidos de fornecedores em `gestao_supplier_orders`, sempre vinculando valores, parcelas e pagamentos a uma conta da categoria `Boleto`; contas de pedidos nao entram em recategorizacao em lote para preservar esse controle.
 - O Financeiro mostra no topo apenas `Caixa`, `Relatorio` e `Sair`; a tela dedicada de Auditoria saiu da navegacao da equipe, mas a tabela `financeiro_auditoria` continua registrando alteracoes internas.
 - A Cotacao V2 substitui a interface antiga em `/cotacao/` para eliminar bugs de palavra-gatilho, salto de linha e travamento em categoria. Palavras como `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; cor so vem de regra condicional criada explicitamente na tela.
 - A Cotacao V2 usa linha com UUID estavel, save por celula, presenca ao vivo via Socket.IO/Redis, filtros locais por tela e eventos em Postgres. A primeira validacao confirmou login, bootstrap, save dessas palavras criticas e criacao/remocao de regra condicional explicita.
@@ -162,6 +163,7 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/cotacao/login.php`
 - `http://127.0.0.1:3002/financeiro/login.php`
 - `http://127.0.0.1:3002/gestao/login.php`
+- `http://127.0.0.1:3002/gestao/pedidos`
 - `http://127.0.0.1:3002/gestao/health`
 - `http://127.0.0.1:3002/tarefa/login.php`
 - `http://127.0.0.1:3002/miauw/login.php`

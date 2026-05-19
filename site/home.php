@@ -48,6 +48,14 @@ $modules = array(
         'accent' => 'green',
     ),
     array(
+        'name' => 'Pedidos',
+        'label' => 'Fornecedores e boletos',
+        'description' => 'Chegadas, vencimentos e pagamentos.',
+        'href' => '/gestao/pedidos',
+        'accent' => 'wine',
+        'order_badge' => true,
+    ),
+    array(
         'name' => 'Financeiro',
         'label' => 'Fechamento diario',
         'description' => 'Caixa, sangrias, PIX e auditoria.',
@@ -346,6 +354,11 @@ $modules = array(
             display: none;
         }
 
+        .wf-card-badge.is-calm {
+            background: #16a34a;
+            box-shadow: 0 10px 22px rgba(22, 163, 74, 0.22);
+        }
+
         @media (max-width: 1040px) {
             .wf-header-inner {
                 justify-content: center;
@@ -495,6 +508,9 @@ $modules = array(
                         <i class="wf-card-mark" aria-hidden="true"></i>
                         <?php if (!empty($module['task_badge'])): ?>
                             <em class="wf-card-badge" data-wf-task-badge hidden aria-label="Tarefas abertas"></em>
+                        <?php endif; ?>
+                        <?php if (!empty($module['order_badge'])): ?>
+                            <em class="wf-card-badge is-calm" data-wf-order-badge hidden aria-label="Pedidos para chegar hoje"></em>
                         <?php endif; ?>
                         <h2><?php echo wf_home_e($module['name']); ?></h2>
                         <span><?php echo wf_home_e($module['label']); ?></span>
@@ -661,10 +677,46 @@ $modules = array(
             });
         }
 
+        function initOrderBadge() {
+            var badge = document.querySelector('[data-wf-order-badge]');
+
+            if (!badge || !window.fetch) {
+                return;
+            }
+
+            fetch('<?php echo wf_home_e(wf_home_url('/gestao/api/orders/badge')); ?>', {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            }).then(function (response) {
+                if (!response.ok) {
+                    throw new Error('order badge unavailable');
+                }
+
+                return response.json();
+            }).then(function (payload) {
+                var count = Number(payload && payload.arriving_today ? payload.arriving_today : 0);
+                if (!Number.isFinite(count) || count < 0) {
+                    count = 0;
+                }
+
+                badge.textContent = count > 99 ? '99+' : String(count);
+                badge.classList.toggle('is-calm', count === 0);
+                badge.setAttribute('aria-label', count === 1 ? '1 pedido para chegar hoje' : String(count) + ' pedidos para chegar hoje');
+                badge.hidden = false;
+            }).catch(function () {
+                badge.hidden = true;
+            });
+        }
+
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initTaskBadge);
+            document.addEventListener('DOMContentLoaded', function () {
+                initTaskBadge();
+                initOrderBadge();
+            });
         } else {
             initTaskBadge();
+            initOrderBadge();
         }
     }());
 </script>

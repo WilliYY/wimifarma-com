@@ -67,6 +67,8 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - No mobile, a home publica deve manter os cards dos modulos em duas colunas compactas para mostrar mais acessos por tela; textos longos podem ser reduzidos/truncados visualmente, mas os links precisam continuar claros e tocaveis.
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - O card `Gestao` abre o modulo administrativo em `/gestao/`, servido oficialmente por `apps/gestao` via proxy Apache, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais, pagamentos parciais e total pago por mes.
+- O card `Pedidos` abre `/gestao/pedidos`, dentro da Gestao Node/Postgres, para controlar pedidos de fornecedores, chegada, vencimento de boleto, pagamentos parciais/totais e historico; pagamentos de pedidos alimentam automaticamente a categoria `Boleto` da Gestao.
+- Contas vinculadas a `Pedidos` devem permanecer na categoria `Boleto`; a recategorizacao em lote e bloqueada quando a categoria contem pedidos, e cancelamento/reabertura da conta sincroniza o status do pedido vinculado.
 - Modulos internos PHP puro:
   - `site/cashback`
   - `site/codigos`
@@ -80,6 +82,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Banco dos apps: `wimifarma_app`.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 - Banco da Gestao: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
+- Pedidos da Gestao usam Postgres `gestao_supplier_orders` ligado a `gestao_accounts`; os valores/parcelas ficam em `gestao_account_items` e os pagamentos ficam em `gestao_account_payments`, preservando totais mensais, categoria `Boleto` e auditoria.
 
 ## Portas e proxy
 
@@ -424,6 +427,7 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 - Em 2026-05-19, a Gestao recebeu ajuste visual para reduzir excesso de informacao: `Vencimento`, `Pagamentos`, `Observacao`, `Historico` e `Ajustes e pagamento` ficam alinhados como blocos recolhidos, com respiro maior entre formularios e contraste mais claro para pagamento, lancamentos e alertas de urgencia.
 - Em 2026-05-19, a Gestao passou a permitir excluir contas canceladas da tela sem apagar fisicamente: a acao arquiva em `gestao_accounts.archived_at`/`archived_by`, remove dos totais/listas/categorias visiveis e preserva itens, pagamentos e auditoria. Categorias filtradas tambem podem arquivar canceladas em lote.
 - Em 2026-05-19, o Miauby ganhou comandos controlados para Gestao: `gestao`/`abrir gestao` aponta para `/gestao/`, e `gestao - titulo - valor - categoria` prepara criacao de conta a pagar com confirmacao humana antes de gravar pelo endpoint interno tokenizado da Gestao. A tool `resumo_gestao` e leitura baixa; `criar_conta_gestao` e escrita forte com auditoria.
+- Em 2026-05-19, a Gestao ganhou a tela `/gestao/pedidos` para pedidos de fornecedores: o formulario cria pedido e conta vinculada na categoria `Boleto`, aceita varias parcelas/valores, vencimento opcional do boleto, previsao de chegada e pedido ja pago. A lista separa `Pedidos feitos`, `Confirmados` e `Historico`; confirmar chegada move para Confirmados ou direto para Historico se ja estava pago; pagar parcial/total usa `gestao_account_payments`, adiciona juros/diferenca por item, ordena vencimentos proximos primeiro e arquiva em Historico quando recebido e quitado. A home publica ganhou o card `Pedidos` ao lado de `Cotacao` com badge de pedidos previstos para chegar hoje via `/gestao/api/orders/badge`.
 
 ## Fluxo de trabalho esperado
 

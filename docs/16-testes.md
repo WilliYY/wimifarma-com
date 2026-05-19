@@ -25,6 +25,10 @@ Rotas de smoke test:
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/tarefa/login.php`
+- `/gestao/login.php`
+- `/gestao/health`
+- `/gestao/pedidos` deve exigir sessao e carregar o fluxo visual de pedidos quando autenticado
+- `/gestao/api/orders/badge` deve responder JSON sem segredo com a quantidade de pedidos previstos para chegar hoje
 - `/miauw/login.php`
 - `/miauw/treino.php` deve exigir sessao e perfil autorizado
 - `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
@@ -84,6 +88,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Rodar validacoes proporcionais ao risco.
 - Se mexer em helper comum, testar todos os modulos.
 - Se mexer em banco, testar pelo menos login/status e logs.
+- Se mexer em Gestao/Pedidos, rodar `npm run check`, `npm run build`, health de `/gestao/health`, smoke de `/gestao/login.php`, badge `/gestao/api/orders/badge` e validacao visual da tela afetada.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
 - Se mexer em `apps/miauw-agent`, rodar `npm run check`, `npm run check:persona`, build do servico e validar `/miauw/agent/health`.

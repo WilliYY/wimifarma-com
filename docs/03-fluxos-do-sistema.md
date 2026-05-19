@@ -10,7 +10,8 @@ Entrada publica:
 
 - `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
-- O card `Gestao` abre o modulo administrativo de contas a pagar manuais; `Codigos` e `Gestao` ficam na segunda linha da home em desktop.
+- O card `Pedidos` abre `/gestao/pedidos`, ao lado de `Cotacao`, com badge de pedidos previstos para chegar hoje.
+- O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
 - A home usa no maximo cinco cards por linha no desktop; `Codigos` e `Gestao` entram na segunda linha. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 
 Rotas de login:
@@ -20,6 +21,7 @@ Rotas de login:
 - `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando em `wf_users`)
 - `/financeiro/login.php`
 - `/gestao/login.php`
+- `/gestao/pedidos`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/wp-login.php`
@@ -193,6 +195,7 @@ Tabelas principais:
 - Postgres `gestao_audit_events`
 - Postgres `gestao_sessions`
 - Postgres `gestao_notepad_notes`
+- Postgres `gestao_supplier_orders`
 - `wf_logs`
 
 Regras a preservar:
@@ -223,6 +226,18 @@ Regras a preservar:
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.
 - o Miauby pode abrir a Gestao com o comando `gestao`/`abrir gestao` e preparar uma conta com `gestao - titulo - valor - categoria`; se faltar dado, ele pergunta, e a gravacao so acontece depois de confirmacao humana pelo chat.
+
+Subfluxo `Pedidos` em `/gestao/pedidos`:
+
+- o formulario `Pedidos feitos` registra fornecedor, um ou mais valores/parcelas, vencimento opcional do boleto, previsao opcional de chegada, competencia, observacao e opcao `Ja foi pago, so falta chegar`;
+- criar um pedido tambem cria uma conta vinculada em `gestao_accounts` com categoria `Boleto`; cada valor/parcela vira item em `gestao_account_items`;
+- contas vinculadas a pedidos ficam travadas na categoria `Boleto`; recategorizacao em lote e bloqueada quando a categoria contem pedidos para preservar o controle financeiro automatico;
+- se o pedido ja foi pago na criacao, o pagamento entra imediatamente em `gestao_account_payments`, mas o pedido continua em `pedido` ate a chegada ser confirmada;
+- ao clicar em `Confirmar chegada`, o pedido vai para `Confirmados` quando ainda existe saldo ou direto para `Historico` quando ja estava quitado;
+- `Confirmados` ordena os boletos com vencimento mais proximo primeiro e mostra alertas de vencido/urgente/atencao conforme a proximidade;
+- pagamentos parciais, botao `Pago` e ajustes de juros/diferenca reutilizam `gestao_account_payments` e `gestao_account_items`, alimentando automaticamente o total mensal e a categoria `Boleto`;
+- quando o pedido esta recebido e quitado, ele vai para `Historico` com datas de criacao, confirmacao, pagamento e finalizacao preservadas;
+- o badge da home consulta `/gestao/api/orders/badge` e mostra quantos pedidos em status `pedido` tem previsao de chegada no dia.
 
 ## Fluxo Tarefas
 
