@@ -25,6 +25,7 @@ services:
       - wimifarma-com-db
       - wimifarma-cotacao-app
       - wimifarma-gestao-app
+      - wimifarma-pedidos-app
       - wimifarma-miauw-agent
     environment:
       WIMIFARMA_DB_HOST: wimifarma-com-db
@@ -125,6 +126,34 @@ services:
       GESTAO_SESSION_SECRET: ${GESTAO_SESSION_SECRET:-wimifarma_gestao_dev_secret_change_me}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
       GESTAO_INTERNAL_TOKEN: ${GESTAO_INTERNAL_TOKEN:-}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-pedidos-app:
+    build:
+      context: ./apps/pedidos
+      dockerfile: Dockerfile
+    container_name: wimifarma-pedidos-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-gestao-db
+    environment:
+      NODE_ENV: production
+      PORT: 3300
+      BASE_PATH: /pedidos
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      POSTGRES_HOST: wimifarma-gestao-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_gestao
+      POSTGRES_USER: wimifarma_gestao
+      POSTGRES_PASSWORD: ${GESTAO_POSTGRES_PASSWORD:-wimifarma_gestao_dev_pass}
+      PEDIDOS_SESSION_SECRET: ${PEDIDOS_SESSION_SECRET:-wimifarma_pedidos_dev_secret_change_me}
+      GESTAO_SESSION_SECRET: ${GESTAO_SESSION_SECRET:-wimifarma_gestao_dev_secret_change_me}
     networks:
       - wimifarma-com-network
 

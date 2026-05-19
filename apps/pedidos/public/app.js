@@ -108,6 +108,64 @@
         refreshTotal();
     }
 
+    function initOrderTotals() {
+        var form = document.querySelector('[data-gestao-order-form]');
+        var totalNode = document.querySelector('[data-order-total]');
+        var addButton = document.querySelector('[data-add-order-item]');
+        var list = document.querySelector('[data-order-items]');
+
+        if (!form || !totalNode || !list) {
+            return;
+        }
+
+        function moneyInputs() {
+            return Array.prototype.slice.call(form.querySelectorAll('[data-money-input]'));
+        }
+
+        function refreshTotal() {
+            var total = moneyInputs().reduce(function (sum, input) {
+                return sum + Math.max(0, parseMoney(input.value));
+            }, 0);
+
+            totalNode.textContent = 'Total ' + formatMoney(total);
+        }
+
+        bindMoneyInputs(form);
+        document.addEventListener('gestao:money-change', refreshTotal);
+
+        if (addButton) {
+            addButton.addEventListener('click', function () {
+                var count = moneyInputs().length + 1;
+                var label = document.createElement('label');
+                label.innerHTML = [
+                    '<span>Parcela ',
+                    String(count),
+                    '</span>',
+                    '<input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input>'
+                ].join('');
+                list.appendChild(label);
+                bindMoneyInputs(label);
+                label.querySelector('input').focus();
+                refreshTotal();
+            });
+        }
+
+        form.addEventListener('submit', function (event) {
+            var total = moneyInputs().reduce(function (sum, input) {
+                return sum + Math.max(0, parseMoney(input.value));
+            }, 0);
+
+            if (total <= 0) {
+                event.preventDefault();
+                window.alert('Informe pelo menos um valor maior que zero.');
+                var firstInput = moneyInputs()[0];
+                if (firstInput) firstInput.focus();
+            }
+        });
+
+        refreshTotal();
+    }
+
     function initMoneyValidation() {
         Array.prototype.slice.call(document.querySelectorAll('form[data-require-money]')).forEach(function (form) {
             form.addEventListener('submit', function (event) {
@@ -314,6 +372,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
             initTotals();
+            initOrderTotals();
             initMoneyValidation();
             initConfirmations();
             initAccountCollapse();
@@ -328,6 +387,7 @@
     } else {
         bindMoneyInputs(document);
         initTotals();
+        initOrderTotals();
         initMoneyValidation();
         initConfirmations();
         initAccountCollapse();

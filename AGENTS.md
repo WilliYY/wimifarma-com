@@ -57,18 +57,22 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
 - Gestao em Node.js 22 + TypeScript + Express, com Postgres 17 dedicado para contas, itens, pagamentos, auditoria e sessoes.
+- Pedidos em Node.js 22 + TypeScript + Express, separado da Gestao em `/pedidos/`, com sessao propria e tabelas operacionais proprias no Postgres da Gestao para manter integracao financeira.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro e GIFs decorativos com o mesmo padrao de movimento dos logins.
 - No mobile, a home publica deve manter os cards dos modulos em duas colunas compactas para mostrar mais acessos por tela; textos longos podem ser reduzidos/truncados visualmente, mas os links precisam continuar claros e tocaveis.
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - O card `Gestao` abre o modulo administrativo em `/gestao/`, servido oficialmente por `apps/gestao` via proxy Apache, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais, pagamentos parciais e total pago por mes.
-- O card `Pedidos` abre `/gestao/pedidos`, dentro da Gestao Node/Postgres, para controlar pedidos de fornecedores, chegada, vencimento de boleto, pagamentos parciais/totais e historico; pagamentos de pedidos alimentam automaticamente a categoria `Boleto` da Gestao.
-- Contas vinculadas a `Pedidos` devem permanecer na categoria `Boleto`; a recategorizacao em lote e bloqueada quando a categoria contem pedidos, e cancelamento/reabertura da conta sincroniza o status do pedido vinculado.
+- O card `Pedidos` abre `/pedidos/`, servido oficialmente por `apps/pedidos` via proxy Apache, separado visual e estruturalmente da Gestao. A URL antiga `/gestao/pedidos` redireciona para `/pedidos/` apenas por compatibilidade.
+- Pedidos controla fornecedores, chegada, vencimento de boleto, pagamentos parciais/totais e historico em duas tabelas operacionais: `pedidos_orders` para pedidos registrados/aguardando chegada e `pedidos_confirmed_orders` para confirmados e historico.
+- Pagamentos de Pedidos alimentam automaticamente a categoria `Boleto` da Gestao por `gestao_accounts`, `gestao_account_items` e `gestao_account_payments`. Pedidos e Gestao sao modulos distintos; novas telas/cards com dominio proprio devem ter rota/app proprios em vez de virar subview de Gestao.
+- Contas vinculadas a `Pedidos` devem permanecer na categoria `Boleto`; a recategorizacao em lote e bloqueada quando a categoria contem pedidos, e cancelamento/reabertura/pagamento da conta sincroniza o status do pedido vinculado.
+- Ao criar um novo card/modulo, decidir primeiro o melhor desenho tecnico para aquele dominio: linguagem/runtime, banco, tabelas, indices, sessoes, permissao, auditoria, health e deploy. Nao misturar em modulo existente apenas por conveniencia visual; se o card tiver regra de negocio propria, ele deve nascer com estrutura propria e integracoes explicitas.
 - Modulos internos PHP puro:
   - `site/cashback`
   - `site/codigos`
@@ -77,12 +81,14 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
 - A rota `/gestao/` e servida por proxy interno do Apache para `wimifarma-gestao-app:3200/gestao`; `site/gestao` fica apenas como legado/fallback de historico e nao e a fonte oficial da tela.
+- A rota `/pedidos/` e servida por proxy interno do Apache para `wimifarma-pedidos-app:3300/pedidos`; Pedidos nao deve voltar a ser implementado dentro de `/gestao/`.
 - A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela pode rodar em sombra ou corte controlado por `MIAUW_ENGINE`, enquanto o PHP preserva login, sessoes, confirmacoes e escrita forte.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
-- Banco da Gestao: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
-- Pedidos da Gestao usam Postgres `gestao_supplier_orders` ligado a `gestao_accounts`; os valores/parcelas ficam em `gestao_account_items` e os pagamentos ficam em `gestao_account_payments`, preservando totais mensais, categoria `Boleto` e auditoria.
+- Banco da Gestao/Pedidos: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
+- Pedidos usa Postgres `pedidos_orders` e `pedidos_confirmed_orders` ligados a `gestao_accounts`; os valores/parcelas ficam em `gestao_account_items` e os pagamentos ficam em `gestao_account_payments`, preservando totais mensais, categoria `Boleto` e auditoria. `gestao_supplier_orders` fica apenas como legado/compatibilidade e fonte de migracao para dados criados antes da separacao.
+- Para banco de dados novo, modelar entidades do dominio em tabelas proprias, usar FK/constraints, dinheiro em centavos inteiros, indices nos campos de filtro/join, indices parciais para filas/status, soft delete quando houver auditoria e documentar a fonte de verdade antes de escrever a tela.
 
 ## Portas e proxy
 
@@ -94,6 +100,7 @@ Nao misturar portas:
 - `80/443`: portas publicas do Nginx Proxy Manager.
 - `wimifarma-cotacao-app:3000`: destino interno do Apache para `/cotacao/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-gestao-app:3200`: destino interno do Apache para `/gestao/`; nao publicar diretamente no Nginx Proxy Manager.
+- `wimifarma-pedidos-app:3300`: destino interno do Apache para `/pedidos/`; nao publicar diretamente no Nginx Proxy Manager.
 
 O Proxy Host de `wimifarma.com` e `www.wimifarma.com` deve apontar para:
 
@@ -427,7 +434,7 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 - Em 2026-05-19, a Gestao recebeu ajuste visual para reduzir excesso de informacao: `Vencimento`, `Pagamentos`, `Observacao`, `Historico` e `Ajustes e pagamento` ficam alinhados como blocos recolhidos, com respiro maior entre formularios e contraste mais claro para pagamento, lancamentos e alertas de urgencia.
 - Em 2026-05-19, a Gestao passou a permitir excluir contas canceladas da tela sem apagar fisicamente: a acao arquiva em `gestao_accounts.archived_at`/`archived_by`, remove dos totais/listas/categorias visiveis e preserva itens, pagamentos e auditoria. Categorias filtradas tambem podem arquivar canceladas em lote.
 - Em 2026-05-19, o Miauby ganhou comandos controlados para Gestao: `gestao`/`abrir gestao` aponta para `/gestao/`, e `gestao - titulo - valor - categoria` prepara criacao de conta a pagar com confirmacao humana antes de gravar pelo endpoint interno tokenizado da Gestao. A tool `resumo_gestao` e leitura baixa; `criar_conta_gestao` e escrita forte com auditoria.
-- Em 2026-05-19, a Gestao ganhou a tela `/gestao/pedidos` para pedidos de fornecedores: o formulario cria pedido e conta vinculada na categoria `Boleto`, aceita varias parcelas/valores, vencimento opcional do boleto, previsao de chegada e pedido ja pago. A lista separa `Pedidos feitos`, `Confirmados` e `Historico`; confirmar chegada move para Confirmados ou direto para Historico se ja estava pago; pagar parcial/total usa `gestao_account_payments`, adiciona juros/diferenca por item, ordena vencimentos proximos primeiro e arquiva em Historico quando recebido e quitado. A home publica ganhou o card `Pedidos` ao lado de `Cotacao` com badge de pedidos previstos para chegar hoje via `/gestao/api/orders/badge`.
+- Em 2026-05-19, Pedidos foi corrigido para modulo separado em `/pedidos/` com `apps/pedidos` e container `wimifarma-pedidos-app:3300`. A lista separa `Pedidos feitos`, `Confirmados` e `Historico`; confirmar chegada move para Confirmados ou direto para Historico se ja estava pago; pagar parcial/total usa `gestao_account_payments`, adiciona juros/diferenca por item, ordena vencimentos proximos primeiro e arquiva em Historico quando recebido e quitado. A home publica ganhou o card `Pedidos` ao lado de `Cotacao` com badge de pedidos previstos para chegar hoje via `/pedidos/api/badge`. A rota antiga `/gestao/pedidos` redireciona para `/pedidos/`.
 
 ## Fluxo de trabalho esperado
 

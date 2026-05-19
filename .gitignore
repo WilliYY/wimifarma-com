@@ -6,6 +6,7 @@ node_modules/
 **/node_modules/
 apps/miauw-agent/dist/
 apps/gestao/dist/
+apps/pedidos/dist/
 .env
 /site/miauw/config.local.php
 **/config.local.php

@@ -43,6 +43,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/pedidos/" "http://wimifarma-pedidos-app:3300/pedidos/"'; \
+        echo 'ProxyPassReverse "/pedidos/" "http://wimifarma-pedidos-app:3300/pedidos/"'; \
+        echo 'ProxyPass "/pedidos" "http://wimifarma-pedidos-app:3300/pedidos"'; \
+        echo 'ProxyPassReverse "/pedidos" "http://wimifarma-pedidos-app:3300/pedidos"'; \
+    } > /etc/apache2/conf-available/wimifarma-pedidos-proxy.conf \
+    && a2enconf wimifarma-pedidos-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

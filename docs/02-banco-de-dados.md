@@ -53,7 +53,10 @@ Criadas por `apps/gestao/src/server.ts`:
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
 - `gestao_sessions`: sessoes web da Gestao gerenciadas por `connect-pg-simple`.
 - `gestao_notepad_notes`: bloco de notas administrativo lateral, com edicao e exclusao logica por `deleted_at`.
-- `gestao_supplier_orders`: pedidos de fornecedores vinculados a uma conta da Gestao por `account_id`, com status `pedido`, `confirmado`, `historico` ou `cancelado`, previsao de chegada, data de confirmacao, data de finalizacao e usuario responsavel por cada etapa.
+- `pedidos_sessions`: sessoes web do modulo Pedidos gerenciadas por `connect-pg-simple`.
+- `pedidos_orders`: pedidos registrados/aguardando chegada, vinculados por `account_id` a uma conta financeira da categoria `Boleto`.
+- `pedidos_confirmed_orders`: pedidos que ja tiveram chegada confirmada, com `lifecycle` `confirmado`, `historico` ou `cancelado`, datas de confirmacao/finalizacao e usuario responsavel por cada etapa.
+- `gestao_supplier_orders`: tabela legada de pedidos criados antes da separacao; fica preservada como compatibilidade/fonte de migracao para `pedidos_orders` e `pedidos_confirmed_orders`, nao como fonte nova da tela.
 
 A Gestao autentica no MySQL `wf_users`, espelha resumo curto em `wf_logs` e importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
 
@@ -182,9 +185,11 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Repetir uma conta para o mes seguinte cria ou garante de forma idempotente novo registro em `gestao_accounts` com `status='pendente'`, nova `generated_at`, mesmos itens ativos em `gestao_account_items`, vencimento avancado em um mes quando houver `due_at`, nenhum pagamento em `gestao_account_payments` e `repeated_from_account_id` apontando para a origem; desligar o ciclo muda `repeat_next_month=false` sem apagar copia ja criada.
 - Renomear uma conta altera apenas `gestao_accounts.title`, sem recalcular valores nem apagar itens, pagamentos ou auditoria.
 - Pedidos de fornecedores nunca guardam dinheiro em tabela paralela: cada pedido cria uma `gestao_accounts` na categoria `Boleto`, as parcelas/valores entram em `gestao_account_items` e pagamentos parciais/totais entram em `gestao_account_payments`. Assim, o resumo mensal e a categoria `Boleto` da Gestao continuam sendo a fonte oficial do controle financeiro.
-- Contas vinculadas a `gestao_supplier_orders` devem permanecer na categoria `Boleto`; a recategorizacao em lote bloqueia categorias que contem pedidos vinculados para nao quebrar os totais financeiros pedidos pelo fluxo.
-- O status de `gestao_supplier_orders` controla apenas a operacao de recebimento: `pedido` aguarda chegada, `confirmado` ja chegou e aguarda pagamento/saldo, `historico` significa recebido e quitado, e `cancelado` preserva o vinculo quando a conta vinculada e cancelada. Confirmar chegada de pedido ja pago move direto para `historico`.
-- `gestao_supplier_orders.expected_arrival_at` alimenta o badge do card `Pedidos` na home, contando somente pedidos em status `pedido` previstos para chegar no dia local.
+- Contas vinculadas a `pedidos_orders` ou `pedidos_confirmed_orders` devem permanecer na categoria `Boleto`; a recategorizacao em lote bloqueia categorias que contem pedidos vinculados para nao quebrar os totais financeiros pedidos pelo fluxo.
+- `pedidos_orders` controla a fila de pedidos feitos/aguardando chegada. Confirmar chegada preenche `moved_to_confirmed_at` e cria/atualiza o registro correspondente em `pedidos_confirmed_orders`.
+- `pedidos_confirmed_orders.lifecycle` controla a operacao depois da chegada: `confirmado` ja chegou e aguarda pagamento/saldo, `historico` significa recebido e quitado, e `cancelado` preserva o vinculo quando a conta vinculada e cancelada. Confirmar chegada de pedido ja pago move direto para `historico`.
+- `pedidos_orders.expected_arrival_at` alimenta o badge do card `Pedidos` na home via `/pedidos/api/badge`, contando somente pedidos aguardando chegada previstos para o dia local.
+- Novos cards/modulos devem ter modelagem propria de banco antes da UI: entidade principal, tabela de historico/auditoria quando necessario, FKs, constraints, indices em joins/filtros, indices parciais para filas ou status ativos, e regra clara de qual tabela e fonte de verdade. Reaproveitar tabela de outro modulo so quando ela representar o mesmo fato de negocio; no caso de Pedidos, apenas o financeiro usa as tabelas da Gestao porque precisa alimentar `Boleto`.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.

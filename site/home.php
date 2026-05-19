@@ -51,7 +51,7 @@ $modules = array(
         'name' => 'Pedidos',
         'label' => 'Fornecedores e boletos',
         'description' => 'Chegadas, vencimentos e pagamentos.',
-        'href' => '/gestao/pedidos',
+        'href' => '/pedidos/',
         'accent' => 'wine',
         'order_badge' => true,
     ),
@@ -684,7 +684,7 @@ $modules = array(
                 return;
             }
 
-            fetch('<?php echo wf_home_e(wf_home_url('/gestao/api/orders/badge')); ?>', {
+            fetch('<?php echo wf_home_e(wf_home_url('/pedidos/api/badge')); ?>', {
                 credentials: 'same-origin',
                 cache: 'no-store',
                 headers: { 'Accept': 'application/json' }

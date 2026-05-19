@@ -20,17 +20,20 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 
 O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evoluir em uma VPS mais flexivel, com Docker, controle de versao, deploy rastreavel e espaco para novos modulos.
 
+Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dominio antes da tela: linguagem/runtime, banco, tabelas, indices, sessao, permissao, auditoria, health e deploy. Cards com regra de negocio propria devem nascer como modulo proprio e integrar outros dominios por tabelas/APIs claras, nao por mistura visual dentro de outro modulo.
+
 ## Status atual
 
 - Projeto local em `C:\Projetos\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
 - A Cotacao V2 fica em `apps/cotacao`, usa Node.js/Express/Socket.IO, Postgres e Redis, e e publicada por proxy interno do Apache em `/cotacao/`.
 - O login da Cotacao continua usando usuarios da tabela MySQL `wf_users`; os dados novos da planilha ficam em Postgres no volume ignorado `cotacao-data/`.
 - A Gestao fica oficialmente em `apps/gestao`, usa Node.js/TypeScript/Express com Postgres dedicado `wimifarma_gestao`, e e publicada por proxy interno do Apache em `/gestao/`; o MySQL fica para autenticacao `wf_users`, logs e importacao de dados legados.
+- Pedidos fica oficialmente em `apps/pedidos`, usa Node.js/TypeScript/Express, sessao propria `WFPEDIDOS` e rota/proxy separados em `/pedidos/`. Ele usa tabelas operacionais `pedidos_orders` e `pedidos_confirmed_orders` no Postgres da Gestao para manter a integracao financeira com `Boleto`.
 - A Cotacao PHP antiga foi removida; `site/cotacao` nao existe mais e os ativos da tela oficial ficam em `apps/cotacao/public`.
 - Rotas de login dos modulos responderam HTTP 200 na auditoria local.
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
@@ -43,7 +46,8 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 - A home publica mostra no maximo cinco cards por linha no desktop; `Pedidos` fica ao lado de `Cotacao` e mostra badge de pedidos previstos para chegar hoje, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
 - O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com blocos por prefixo de EAN persistidos em `wf_codigos_blocos`, autosave de `Codigo`, `EAN` e `Preco`, botao `+` com prefixo manual para criar o bloco desejado, tabelas em faixa horizontal sem gerar rolagem vazia no documento, reordenacao por arrastar o numero da linha, criacao de novas linhas no rodape de cada grupo, exclusao logica de itens apagados e exclusao protegida de tabelas nao padrao por senha de confirmacao.
 - O login de Codigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, preservando a autenticacao em `wf_users`.
-- O modulo `Gestao` foi elevado para Node.js + TypeScript + Postgres: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_accounts`, categoria livre com resumo lateral normalizado, itens flexiveis em `gestao_account_items`, pagamentos parciais datados em `gestao_account_payments`, vencimento opcional com urgencia visual, status reversivel, extrato por conta com saldo/progresso, pagamento parcial por qualquer lancamento aberto, cancelamento/reabertura de lancamento sem apagar historico, exclusao da tela apenas por arquivamento de contas canceladas, reabertura de contas pagas, renomeacao por icone de lapis, repeticao do mes seguinte em ciclo liga/desliga sem copiar pagamentos, observacao editavel/minimizavel, cards minimizaveis por clique no resumo da conta, pagamentos/historico minimizaveis e bloco de notas lateral em `gestao_notepad_notes`, com auditoria em `gestao_audit_events` e espelho curto em `wf_logs`. A tela `/gestao/pedidos` controla pedidos de fornecedores em `gestao_supplier_orders`, sempre vinculando valores, parcelas e pagamentos a uma conta da categoria `Boleto`; contas de pedidos nao entram em recategorizacao em lote para preservar esse controle.
+- O modulo `Gestao` foi elevado para Node.js + TypeScript + Postgres: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_accounts`, categoria livre com resumo lateral normalizado, itens flexiveis em `gestao_account_items`, pagamentos parciais datados em `gestao_account_payments`, vencimento opcional com urgencia visual, status reversivel, extrato por conta com saldo/progresso, pagamento parcial por qualquer lancamento aberto, cancelamento/reabertura de lancamento sem apagar historico, exclusao da tela apenas por arquivamento de contas canceladas, reabertura de contas pagas, renomeacao por icone de lapis, repeticao do mes seguinte em ciclo liga/desliga sem copiar pagamentos, observacao editavel/minimizavel, cards minimizaveis por clique no resumo da conta, pagamentos/historico minimizaveis e bloco de notas lateral em `gestao_notepad_notes`, com auditoria em `gestao_audit_events` e espelho curto em `wf_logs`.
+- O modulo `Pedidos` controla fornecedores em `/pedidos/`, separado da tela de Gestao. Ele usa `pedidos_orders` para pedidos registrados/aguardando chegada e `pedidos_confirmed_orders` para confirmados/historico, sempre vinculando valores, parcelas e pagamentos a uma conta da categoria `Boleto` em `gestao_accounts`. Contas de pedidos nao entram em recategorizacao em lote para preservar esse controle. A URL antiga `/gestao/pedidos` redireciona para `/pedidos/`.
 - O Financeiro mostra no topo apenas `Caixa`, `Relatorio` e `Sair`; a tela dedicada de Auditoria saiu da navegacao da equipe, mas a tabela `financeiro_auditoria` continua registrando alteracoes internas.
 - A Cotacao V2 substitui a interface antiga em `/cotacao/` para eliminar bugs de palavra-gatilho, salto de linha e travamento em categoria. Palavras como `geral`, `urgente`, `encomenda` e `cotacao` sao texto comum; cor so vem de regra condicional criada explicitamente na tela.
 - A Cotacao V2 usa linha com UUID estavel, save por celula, presenca ao vivo via Socket.IO/Redis, filtros locais por tela e eventos em Postgres. A primeira validacao confirmou login, bootstrap, save dessas palavras criticas e criacao/remocao de regra condicional explicita.
@@ -117,6 +121,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
+- Node.js 22 + TypeScript + Express para Gestao e Pedidos
 - Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio por gravacao temporaria/transcricao confirmada, bolha/player de audio, resposta falada temporaria e seletor seguro de voz no diagnostico
 - PostgreSQL 17 para dados da Cotacao V2
 - Redis 7 para sessoes e presenca da Cotacao V2
@@ -163,8 +168,9 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/cotacao/login.php`
 - `http://127.0.0.1:3002/financeiro/login.php`
 - `http://127.0.0.1:3002/gestao/login.php`
-- `http://127.0.0.1:3002/gestao/pedidos`
 - `http://127.0.0.1:3002/gestao/health`
+- `http://127.0.0.1:3002/pedidos/`
+- `http://127.0.0.1:3002/pedidos/health`
 - `http://127.0.0.1:3002/tarefa/login.php`
 - `http://127.0.0.1:3002/miauw/login.php`
 - `http://127.0.0.1:3002/miauw/treino.php`
@@ -179,12 +185,14 @@ docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-com-db
 docker compose logs --tail=80 wimifarma-cotacao-app
+docker compose logs --tail=80 wimifarma-pedidos-app
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
 docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
 cd apps/miauw-agent; npm.cmd run check:persona; cd ../..
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/gestao/login.php
+curl.exe -sS http://127.0.0.1:3002/pedidos/health
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/api/diagnostics
@@ -200,6 +208,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- apps/
 |   |-- cotacao/             # Cotacao V2 Node.js/Socket.IO
 |   |-- gestao/              # Gestao Node.js/TypeScript/Postgres
+|   |-- pedidos/             # Pedidos Node.js/TypeScript, separado de Gestao
 |   `-- miauw-agent/         # Miauby agente Node/TypeScript em sombra/corte controlado
 |-- cotacao-data/            # volumes Postgres/Redis ignorados pelo Git
 |-- gestao-data/             # volume Postgres da Gestao ignorado pelo Git
@@ -274,6 +283,9 @@ COTACAO_INTERNAL_TOKEN
 COTACAO_INTERNAL_BASE_URL
 GESTAO_INTERNAL_TOKEN
 GESTAO_INTERNAL_BASE_URL
+GESTAO_POSTGRES_PASSWORD
+GESTAO_SESSION_SECRET
+PEDIDOS_SESSION_SECRET
 COTACAO_POSTGRES_PASSWORD
 COTACAO_SESSION_SECRET
 COTACAO_BACKUP_DIR

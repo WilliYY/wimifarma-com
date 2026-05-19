@@ -36,6 +36,7 @@ Higiene de pastas no VPS:
 - `docker/php/Dockerfile`
 - `apps/cotacao/`
 - `apps/gestao/`
+- `apps/pedidos/`
 - `.env`
 - `.env.example`
 - `site/wp-config.php`
@@ -59,6 +60,7 @@ Higiene de pastas no VPS:
 - `wimifarma-com-web:80`: porta interna correta para o proxy Docker.
 - `wimifarma-cotacao-app:3000`: servico interno da Cotacao V2, acessado pelo Apache por proxy reverso em `/cotacao`.
 - `wimifarma-gestao-app:3200`: servico interno da Gestao, acessado pelo Apache por proxy reverso em `/gestao`.
+- `wimifarma-pedidos-app:3300`: servico interno de Pedidos, acessado pelo Apache por proxy reverso em `/pedidos`.
 - `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra/corte controlado, acessado pelo Apache por proxy reverso em `/miauw/agent`.
 - `127.0.0.1:3002`: porta local publicada pelo Compose.
 - `127.0.0.1:13002`: tunel PuTTY usado em testes.
@@ -85,12 +87,14 @@ Higiene de pastas no VPS:
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter o proxy Apache de `/cotacao/` para `wimifarma-cotacao-app:3000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/gestao/` para `wimifarma-gestao-app:3200`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
-- A rota `/gestao/pedidos` e o badge `/gestao/api/orders/badge` ficam dentro do mesmo proxy de `/gestao/`; nao criar proxy ou container separado para Pedidos.
+- Manter o proxy Apache de `/pedidos/` para `wimifarma-pedidos-app:3300`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
+- Pedidos e Gestao sao modulos separados. A rota antiga `/gestao/pedidos` e o endpoint antigo `/gestao/api/orders/badge` ficam somente como compatibilidade/redirecionamento para `/pedidos/` e `/pedidos/api/badge`.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter `.env` local em cada ambiente.
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
 - Definir `GESTAO_POSTGRES_PASSWORD` e `GESTAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Gestao Node/Postgres.
+- Definir `PEDIDOS_SESSION_SECRET` no `.env` de cada ambiente antes de subir Pedidos; se faltar, o servico usa fallback operacional, mas producao deve ter segredo proprio.
 - Para comandos da Gestao pelo Miauby, manter `GESTAO_INTERNAL_TOKEN` preenchido nos servicos web e Gestao, ou usar `MIAUW_GUARDIAN_TOKEN` como fallback; o PHP chama `GESTAO_INTERNAL_BASE_URL` internamente e a Gestao rejeita `/gestao/api/internal/...` sem token.
 - Para backup/restore da Cotacao V2, manter `COTACAO_BACKUP_DIR=/app/backups` e o volume `./cotacao-data/backups:/app/backups`.
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
@@ -100,7 +104,7 @@ Higiene de pastas no VPS:
 - Para corte acelerado do Miauby, definir `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`, `MIAUW_MAINTENANCE_MODE=true` e `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`. Rollback: `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
 - Para audio do Miauby, manter `MIAUW_OPENAI_API_KEY` somente no `.env`, usar `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`. O botao depende de HTTPS/navegador com microfone e o PHP transcreve o audio temporario sem expor chave no browser; `MIAUW_REALTIME_MODEL`/`MIAUW_REALTIME_VOICE` ficam reservados para evolucao futura de playback/voz.
 - Antes de deploy, fazer commit e push da alteracao. Por regra operacional atual, toda alteracao de arquivo deve ser commitada, enviada ao GitHub e publicada no VPS quando houver deploy aplicavel, salvo pedido explicito para nao publicar ou bloqueio tecnico relatado.
-- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health` e, quando mexer em Pedidos, `http://127.0.0.1:3002/gestao/api/orders/badge`.
+- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health` e, quando mexer em Pedidos, `http://127.0.0.1:3002/pedidos/health` e `http://127.0.0.1:3002/pedidos/api/badge`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
 
 ## Decisoes tecnicas ja tomadas

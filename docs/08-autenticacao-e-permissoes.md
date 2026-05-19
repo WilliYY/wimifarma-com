@@ -22,7 +22,7 @@ Rotas:
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/gestao/login.php`
-- `/gestao/pedidos`
+- `/pedidos/`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/treino.php`
@@ -44,9 +44,10 @@ Tabelas:
 - Perfis/roles em `wf_users.role` devem ser respeitados quando a rota exigir permissao.
 - WordPress nao deve ser confundido com login dos modulos internos.
 - A exclusao de tabelas inteiras em `/codigos/` exige sessao interna ativa, CSRF e senha operacional `wimifarma`; essa senha pode ser alterada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
-- A Gestao (`/gestao/` e `/gestao/pedidos`) usa o servico Node `apps/gestao`, autentica contra `wf_users`, cria sessao propria `WFGESTAO` no Postgres da Gestao e fica restrita a username `adm`, role `admin` ou role `gerente`; lancar conta, criar pedido, confirmar chegada, adicionar item/juros, registrar pagamento parcial, confirmar saldo, cancelar ou reabrir conta usa CSRF.
-- Quando uma rota protegida da Gestao envia o operador para `/gestao/login.php`, o destino seguro original e preservado na sessao; entrar pelo card `Pedidos` deve voltar para `/gestao/pedidos`, nao para a tela principal de contas.
-- O endpoint publico `/gestao/api/orders/badge` retorna somente a contagem de pedidos previstos para chegar hoje, sem detalhes financeiros ou nomes de fornecedores, para alimentar a bolinha do card `Pedidos` na home.
+- A Gestao (`/gestao/`) usa o servico Node `apps/gestao`, autentica contra `wf_users`, cria sessao propria `WFGESTAO` no Postgres da Gestao e fica restrita a username `adm`, role `admin` ou role `gerente`; lancar conta, adicionar item/juros, registrar pagamento parcial, confirmar saldo, cancelar ou reabrir conta usa CSRF.
+- Pedidos (`/pedidos/`) usa o servico Node separado `apps/pedidos`, autentica contra `wf_users`, cria sessao propria `WFPEDIDOS` no Postgres da Gestao e fica restrito a username `adm`, role `admin` ou role `gerente`; criar pedido, confirmar chegada, atualizar vencimento, adicionar juros/valor, registrar parcial e marcar pago usa CSRF.
+- Quando uma rota protegida de Pedidos envia o operador para `/pedidos/login.php`, o destino seguro original e preservado na sessao; entrar pelo card `Pedidos` deve voltar para `/pedidos/`, nao para a tela principal de Gestao.
+- O endpoint publico `/pedidos/api/badge` retorna somente a contagem de pedidos previstos para chegar hoje, sem detalhes financeiros ou nomes de fornecedores, para alimentar a bolinha do card `Pedidos` na home.
 - O painel `/miauw/diagnostico.php` exige usuario interno autenticado e fica restrito a role `admin`, role `gerente` ou username `adm`; acoes de revisao usam CSRF.
 - O painel `/miauw/treino.php` segue a mesma restricao de diagnostico (`admin`, `gerente` ou `adm`); revisar/aprovar/rejeitar treino usa CSRF e nao apaga historico.
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.

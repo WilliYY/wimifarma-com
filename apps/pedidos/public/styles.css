@@ -1,0 +1,1609 @@
+:root {
+    --wine: #a80f43;
+    --wine-dark: #7f092e;
+    --rose: #f9d8e5;
+    --rose-soft: #fff5f8;
+    --ink: #24121a;
+    --muted: #835266;
+    --line: #f2a9c2;
+    --line-soft: #f8d1dd;
+    --surface: #ffffff;
+    --surface-soft: #fff9fb;
+    --green: #059669;
+    --amber: #b45309;
+    --danger: #dc2626;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--ink);
+    font-family: "Segoe UI", Arial, sans-serif;
+    background:
+        linear-gradient(120deg, rgba(168, 15, 67, 0.07), rgba(255, 255, 255, 0.94) 36%, rgba(248, 232, 239, 0.9)),
+        #fff8fb;
+}
+
+a {
+    color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+.gestao-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 72px;
+    padding: 14px 32px;
+    background: linear-gradient(90deg, #780623, var(--wine));
+    color: #ffffff;
+    box-shadow: 0 16px 34px rgba(127, 9, 46, 0.18);
+}
+
+.gestao-brand,
+.gestao-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.gestao-brand {
+    text-decoration: none;
+    font-weight: 950;
+}
+
+.gestao-brand img {
+    width: 58px;
+    height: auto;
+    filter: brightness(0) invert(1);
+}
+
+.gestao-nav a {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.36);
+    border-radius: 999px;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 850;
+}
+
+.gestao-page {
+    width: min(1680px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 34px 0 64px;
+}
+
+.gestao-hero,
+.gestao-stats,
+.gestao-layout,
+.gestao-orders-workspace {
+    display: grid;
+    gap: 16px;
+}
+
+.gestao-hero {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    margin-bottom: 20px;
+}
+
+.gestao-hero h1,
+.gestao-login-card h1 {
+    margin: 0;
+    color: var(--wine);
+    font-size: clamp(2.35rem, 6vw, 4.5rem);
+    line-height: 0.95;
+    letter-spacing: 0;
+}
+
+.gestao-login-card h1 {
+    max-width: 100%;
+    font-size: clamp(2.15rem, 11vw, 3.35rem);
+    line-height: 1.04;
+    overflow-wrap: anywhere;
+}
+
+.gestao-hero p,
+.gestao-login-card p {
+    max-width: 680px;
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.gestao-kicker {
+    display: inline-flex;
+    color: #7f3350;
+    font-size: 0.75rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.gestao-month-filter {
+    display: inline-grid;
+    grid-template-columns: 180px auto;
+    align-items: end;
+    gap: 10px;
+}
+
+.gestao-month-filter label,
+.gestao-form label,
+.gestao-orders-form label,
+.gestao-login-form label {
+    display: grid;
+    gap: 7px;
+    color: #673046;
+    font-size: 0.84rem;
+    font-weight: 900;
+}
+
+.gestao-month-filter input,
+.gestao-form input,
+.gestao-form select,
+.gestao-form textarea,
+.gestao-orders-form input,
+.gestao-orders-form textarea,
+.gestao-login-form input {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.92);
+    outline: 0;
+}
+
+.gestao-form textarea {
+    resize: vertical;
+}
+
+.gestao-orders-form textarea {
+    resize: vertical;
+}
+
+.gestao-month-filter input:focus,
+.gestao-form input:focus,
+.gestao-form select:focus,
+.gestao-form textarea:focus,
+.gestao-orders-form input:focus,
+.gestao-orders-form textarea:focus,
+.gestao-login-form input:focus {
+    border-color: var(--wine);
+    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.12);
+}
+
+.gestao-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 18px;
+}
+
+.gestao-stats div,
+.gestao-orders-summary div,
+.gestao-form,
+.gestao-orders-panel,
+.gestao-list-panel,
+.gestao-category-panel,
+.gestao-notepad,
+.gestao-account,
+.gestao-order-card,
+.gestao-login-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 24px 60px rgba(127, 9, 46, 0.08);
+}
+
+.gestao-stats div {
+    display: grid;
+    gap: 8px;
+    padding: 18px;
+}
+
+.gestao-view-tabs {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 18px;
+}
+
+.gestao-view-tabs a {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--wine);
+    text-decoration: none;
+    font-size: 0.86rem;
+    font-weight: 950;
+}
+
+.gestao-view-tabs a.is-active {
+    border-color: var(--wine);
+    background: var(--wine);
+    color: #ffffff;
+    box-shadow: 0 14px 28px rgba(168, 15, 67, 0.15);
+}
+
+.gestao-view-tabs span {
+    min-width: 22px;
+    min-height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--wine);
+    font-size: 0.72rem;
+}
+
+.gestao-stats span,
+.gestao-section-title span {
+    color: #7b4058;
+    font-size: 0.76rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.gestao-stats strong {
+    color: var(--wine);
+    font-size: 1.65rem;
+    line-height: 1.1;
+}
+
+.gestao-layout {
+    grid-template-columns: minmax(380px, 460px) minmax(560px, 1fr) minmax(270px, 320px);
+    align-items: start;
+}
+
+.gestao-form,
+.gestao-list-panel,
+.gestao-orders-panel,
+.gestao-category-panel,
+.gestao-notepad {
+    min-width: 0;
+    padding: 20px;
+}
+
+.gestao-form {
+    display: grid;
+    gap: 18px;
+}
+
+.gestao-orders-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.gestao-orders-summary div {
+    display: grid;
+    gap: 8px;
+    padding: 16px;
+}
+
+.gestao-orders-summary span {
+    color: #7b4058;
+    font-size: 0.74rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.gestao-orders-summary strong {
+    color: var(--wine);
+    font-size: 1.8rem;
+}
+
+.gestao-orders-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 380px) minmax(520px, 1fr) minmax(300px, 360px);
+    align-items: start;
+    gap: 16px;
+}
+
+.gestao-orders-side,
+.gestao-orders-stack,
+.gestao-orders-form,
+.gestao-order-values,
+.gestao-order-actions {
+    display: grid;
+    gap: 12px;
+}
+
+.gestao-orders-panel {
+    min-width: 0;
+    padding: 18px;
+}
+
+.gestao-orders-side {
+    min-width: 0;
+}
+
+.gestao-orders-side > .gestao-orders-panel {
+    position: sticky;
+    top: 92px;
+    z-index: 3;
+}
+
+.gestao-order-form-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+}
+
+.gestao-order-form-grid label:last-child {
+    grid-column: 1 / -1;
+}
+
+.gestao-order-card {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.96);
+}
+
+.gestao-order-card.status-pedido {
+    border-left: 5px solid #2563eb;
+}
+
+.gestao-order-card.status-confirmado.due-overdue,
+.gestao-order-card.status-confirmado.due-urgent {
+    border-left: 5px solid var(--danger);
+    box-shadow: 0 24px 60px rgba(220, 38, 38, 0.1);
+}
+
+.gestao-order-card.status-confirmado.due-attention {
+    border-left: 5px solid var(--amber);
+}
+
+.gestao-order-card.status-historico {
+    border-color: rgba(5, 150, 105, 0.24);
+    background: #fcfffd;
+}
+
+.gestao-order-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.gestao-order-head h2 {
+    margin: 7px 0 0;
+    color: var(--ink);
+    font-size: 1.14rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.gestao-order-head > strong {
+    white-space: nowrap;
+    color: var(--wine);
+    font-size: 1.08rem;
+}
+
+.gestao-order-meta,
+.gestao-order-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.gestao-order-meta span,
+.gestao-order-flags span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    border-radius: 999px;
+    padding: 4px 9px;
+    background: #fff7fa;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 850;
+}
+
+.gestao-order-flag.arrival-today,
+.gestao-order-flag.arrival-late,
+.gestao-order-flag.due-urgent,
+.gestao-order-flag.due-overdue {
+    background: #fff1f2;
+    color: var(--danger);
+}
+
+.gestao-order-flag.due-attention,
+.gestao-order-flag.arrival-soon {
+    background: #fffbeb;
+    color: var(--amber);
+}
+
+.gestao-order-flag.arrival-scheduled,
+.gestao-order-flag.due-scheduled {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.gestao-order-lines,
+.gestao-order-payments {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.gestao-order-lines li,
+.gestao-order-payments li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #fff8fb;
+    color: #5b2a3d;
+    font-size: 0.8rem;
+    font-weight: 850;
+}
+
+.gestao-order-payments li {
+    border: 1px solid #bbf7d0;
+    background: #ecfdf5;
+}
+
+.gestao-order-payments span {
+    display: grid;
+    gap: 2px;
+}
+
+.gestao-order-payments small {
+    color: #087f5b;
+    font-size: 0.72rem;
+}
+
+.gestao-order-due-form,
+.gestao-order-pay-form,
+.gestao-order-adjust-form {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) auto auto;
+    align-items: end;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: #fffafd;
+}
+
+.gestao-order-pay-form {
+    grid-template-columns: minmax(140px, 1fr) minmax(170px, 0.8fr) auto;
+    border-color: #bbf7d0;
+    background: #f8fffb;
+}
+
+.gestao-order-adjust-form {
+    grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.7fr) auto;
+}
+
+.gestao-order-due-form label,
+.gestao-order-pay-form label,
+.gestao-order-adjust-form label {
+    display: grid;
+    gap: 6px;
+    color: #673046;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.gestao-order-due-form input,
+.gestao-order-pay-form input,
+.gestao-order-adjust-form input {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 10px;
+    color: var(--ink);
+    background: #ffffff;
+    outline: 0;
+}
+
+.gestao-side-stack {
+    position: sticky;
+    top: 92px;
+    display: grid;
+    gap: 14px;
+}
+
+.gestao-notepad,
+.gestao-category-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.gestao-category-legend {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.gestao-category-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.gestao-category-chip {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 100%;
+    padding: 5px 9px;
+    border: 1px solid #f4bfd0;
+    border-radius: 999px;
+    background: #fff8fb;
+    color: var(--wine);
+    text-decoration: none;
+    font-size: 0.78rem;
+    font-weight: 950;
+}
+
+.gestao-category-chip strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-category-chip.is-active {
+    border-color: var(--wine);
+    background: #fff0f5;
+    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.08);
+}
+
+.gestao-category-open,
+.gestao-category-closed {
+    min-width: 22px;
+    min-height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    color: #ffffff;
+    font-size: 0.72rem;
+}
+
+.gestao-category-open {
+    background: var(--green);
+}
+
+.gestao-category-closed {
+    background: var(--danger);
+}
+
+.gestao-category-tools,
+.gestao-category-form {
+    display: grid;
+    gap: 10px;
+}
+
+.gestao-category-focus {
+    display: grid;
+    gap: 3px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #fff5f8;
+}
+
+.gestao-category-focus span,
+.gestao-category-focus small {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 850;
+}
+
+.gestao-category-focus strong {
+    color: var(--wine);
+}
+
+.gestao-category-form input {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 10px;
+    outline: 0;
+}
+
+.gestao-notepad-new,
+.gestao-note-card,
+.gestao-note-card form {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.gestao-notes-list {
+    display: grid;
+    gap: 10px;
+}
+
+.gestao-note-card {
+    padding: 12px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: #fff8fb;
+}
+
+.gestao-note-card textarea,
+.gestao-notepad-new textarea,
+.gestao-note-panel textarea {
+    width: 100%;
+    min-height: 86px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.94);
+    outline: 0;
+    resize: vertical;
+}
+
+.gestao-note-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.gestao-note-card small {
+    color: var(--muted);
+    font-size: 0.73rem;
+    font-weight: 800;
+}
+
+.gestao-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.gestao-section-title strong {
+    color: var(--wine);
+}
+
+.gestao-form-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.7fr);
+    gap: 12px;
+}
+
+.gestao-form-grid label:first-child {
+    grid-column: 1 / -1;
+}
+
+.gestao-line-items {
+    display: grid;
+    gap: 10px;
+}
+
+.gestao-line-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(128px, 150px);
+    gap: 10px;
+}
+
+.gestao-check-row {
+    min-height: 40px;
+    display: inline-flex !important;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    padding: 8px 10px;
+    border: 1px solid #f4bfd0;
+    border-radius: 999px;
+    background: #fff8fb;
+}
+
+.gestao-check-row input {
+    width: 18px;
+    min-height: 18px;
+    accent-color: var(--wine);
+}
+
+.gestao-btn {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 18px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 950;
+}
+
+.gestao-btn-primary {
+    background: var(--wine);
+    color: #ffffff;
+    box-shadow: 0 14px 28px rgba(168, 15, 67, 0.18);
+}
+
+.gestao-btn-secondary {
+    border-color: var(--line);
+    background: #ffffff;
+    color: var(--wine);
+}
+
+.gestao-btn-ghost {
+    border-color: #f7b6cb;
+    background: #fff8fb;
+    color: var(--wine);
+}
+
+.gestao-list {
+    display: grid;
+    gap: 12px;
+}
+
+.gestao-account {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 170px);
+    gap: 14px;
+    padding: 18px;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.96);
+}
+
+.gestao-account-main {
+    min-width: 0;
+}
+
+.gestao-account-summary {
+    display: block;
+    min-width: 0;
+    padding: 4px;
+    margin: -4px;
+    border-radius: 8px;
+    cursor: pointer;
+    outline: 0;
+}
+
+.gestao-account-summary:hover,
+.gestao-account-summary:focus-visible {
+    background: #fff5f9;
+    box-shadow: inset 0 0 0 1px #f7c0d2;
+}
+
+.gestao-account-summary::after {
+    content: "Clique para abrir";
+    display: inline-flex;
+    margin-top: 8px;
+    color: var(--wine);
+    font-size: 0.72rem;
+    font-weight: 950;
+}
+
+.gestao-account:not(.is-collapsed) .gestao-account-summary::after {
+    content: "Clique para fechar";
+}
+
+.gestao-account.status-pago {
+    border-color: rgba(5, 150, 105, 0.32);
+}
+
+.gestao-account.due-overdue,
+.gestao-account.due-today {
+    border-color: #fb7185;
+    border-left: 5px solid var(--danger);
+    box-shadow: 0 24px 60px rgba(220, 38, 38, 0.12);
+}
+
+.gestao-account.due-soon {
+    border-left: 5px solid var(--amber);
+}
+
+.gestao-account.status-cancelado {
+    opacity: 0.78;
+}
+
+.gestao-account-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.gestao-account-head h2 {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 7px 0 0;
+    color: var(--ink);
+    font-size: 1.28rem;
+    font-weight: 950;
+    line-height: 1.2;
+    letter-spacing: 0;
+}
+
+.gestao-title-edit {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #f4bfd0;
+    border-radius: 999px;
+    background: #fff8fb;
+    color: var(--wine);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 950;
+}
+
+.gestao-account-head strong {
+    white-space: nowrap;
+    color: var(--wine);
+    font-size: 1.1rem;
+}
+
+.gestao-account-total {
+    display: grid;
+    justify-items: end;
+    gap: 3px;
+    text-align: right;
+}
+
+.gestao-account-total span,
+.gestao-subtitle,
+.gestao-ledger-title span,
+.gestao-payments small {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 900;
+}
+
+.gestao-subtitle {
+    margin-top: 14px;
+    color: #7b4058;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.gestao-pill,
+.gestao-status {
+    display: inline-flex;
+    width: fit-content;
+    border-radius: 999px;
+    padding: 5px 10px;
+    background: #ffe8f0;
+    color: #8b1740;
+    font-size: 0.75rem;
+    font-weight: 950;
+}
+
+.gestao-account-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 750;
+}
+
+.gestao-due-alert {
+    width: fit-content;
+    margin-top: 9px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid #fecdd3;
+    background: #fff1f2;
+    color: var(--danger);
+    font-size: 0.78rem;
+    font-weight: 950;
+}
+
+.gestao-balance {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 12px;
+    color: #673046;
+    font-size: 0.86rem;
+    font-weight: 850;
+}
+
+.gestao-balance strong {
+    color: var(--wine);
+}
+
+.gestao-progress {
+    height: 8px;
+    margin-top: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #fde7ef;
+}
+
+.gestao-progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #059669, #22c55e);
+}
+
+.gestao-account.is-collapsed .gestao-account-details {
+    display: none;
+}
+
+.gestao-account.is-collapsed {
+    padding-bottom: 14px;
+}
+
+.gestao-account-details {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.gestao-ledger-block {
+    min-width: 0;
+    margin-top: 0;
+}
+
+.gestao-ledger-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    min-height: 38px;
+    padding: 9px 11px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: linear-gradient(180deg, #fff, var(--surface-soft));
+    color: var(--wine);
+}
+
+.gestao-ledger-toggle {
+    width: 100%;
+    border: 1px solid var(--line-soft);
+    background: linear-gradient(180deg, #fff, #fff7fa);
+    box-shadow: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+.gestao-ledger-toggle:hover,
+.gestao-ledger-toggle:focus-visible {
+    color: var(--pink);
+}
+
+.gestao-ledger-title em {
+    margin-left: 8px;
+    color: var(--muted);
+    font-style: normal;
+    font-size: 0.72rem;
+    font-weight: 900;
+}
+
+.gestao-ledger-toggle span::after {
+    content: " abrir";
+    margin-left: 8px;
+    color: var(--wine);
+    font-size: 0.72rem;
+    font-weight: 950;
+}
+
+.gestao-ledger-block:not(.is-collapsed) .gestao-ledger-toggle span::after {
+    content: " fechar";
+}
+
+.gestao-ledger-title strong {
+    white-space: nowrap;
+    font-size: 0.9rem;
+    color: var(--wine);
+}
+
+.gestao-ledger-block.is-collapsed [data-payment-list],
+.gestao-due-block.is-collapsed [data-due-panel],
+.gestao-adjust-block.is-collapsed [data-adjust-panel] {
+    display: none;
+}
+
+.gestao-history.is-collapsed [data-history-list],
+.gestao-note-block.is-collapsed [data-note-panel] {
+    display: none;
+}
+
+.gestao-history-list li {
+    background: #fff7ed;
+}
+
+.gestao-history-list li > span {
+    display: grid;
+    gap: 2px;
+}
+
+.gestao-history-list em {
+    color: #7b4058;
+    font-style: normal;
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+.gestao-empty-line {
+    margin: 8px 0 0;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: var(--rose-soft);
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.gestao-items,
+.gestao-payments {
+    display: grid;
+    gap: 6px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.gestao-item-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.gestao-item-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: #fff9fb;
+}
+
+.gestao-item-row.is-canceled {
+    opacity: 0.68;
+}
+
+.gestao-item-row.is-open {
+    border-color: var(--pink);
+    background: #fff8fb;
+}
+
+.gestao-item-main {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.gestao-item-main:hover,
+.gestao-item-main:focus-visible {
+    color: var(--wine);
+}
+
+.gestao-item-title,
+.gestao-item-numbers {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.gestao-item-title strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.gestao-mini-pill {
+    display: inline-flex;
+    border-radius: 999px;
+    padding: 3px 8px;
+    background: #ffe8f0;
+    color: var(--wine);
+    font-size: 0.68rem;
+    font-weight: 950;
+}
+
+.gestao-mini-pill.ok {
+    background: #dcfce7;
+    color: #047857;
+}
+
+.gestao-mini-pill.danger {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.gestao-item-open-label {
+    margin-left: auto;
+    color: var(--wine);
+    font-size: 0.72rem;
+    font-weight: 950;
+}
+
+.gestao-item-open-label::after {
+    content: " abrir";
+}
+
+.gestao-item-row.is-open .gestao-item-open-label::after {
+    content: " fechar";
+}
+
+.gestao-item-numbers {
+    margin-top: 6px;
+    color: #673046;
+    font-size: 0.78rem;
+    font-weight: 850;
+}
+
+.gestao-item-numbers strong {
+    color: var(--wine);
+}
+
+.gestao-item-progress {
+    height: 6px;
+    margin-top: 7px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #fde7ef;
+}
+
+.gestao-item-progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #0f9f6e, #22c55e);
+}
+
+.gestao-item-actions {
+    display: none;
+    gap: 8px;
+}
+
+.gestao-item-row.is-open .gestao-item-actions {
+    display: grid;
+}
+
+.gestao-item-pay-form,
+.gestao-item-adjust-form {
+    display: grid;
+    grid-template-columns: minmax(130px, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.gestao-item-adjust-form {
+    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.8fr) auto;
+}
+
+.gestao-item-actions input {
+    width: 100%;
+    min-height: 36px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--ink);
+    background: #ffffff;
+    outline: 0;
+}
+
+.gestao-items li,
+.gestao-payments li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(96px, auto) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--rose-soft);
+    color: #5b2a3d;
+}
+
+.gestao-items li > span,
+.gestao-payments li > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.gestao-items li > strong,
+.gestao-payments li > strong {
+    justify-self: end;
+    white-space: nowrap;
+}
+
+.gestao-payments li {
+    border: 1px solid #bbf7d0;
+    background: #ecfdf5;
+}
+
+.gestao-payments li.is-canceled {
+    background: #fff1f2;
+    opacity: 0.72;
+}
+
+.gestao-payments li > span {
+    display: grid;
+    gap: 2px;
+}
+
+.gestao-payments em {
+    color: #087f5b;
+    font-size: 0.73rem;
+    font-style: normal;
+    font-weight: 850;
+}
+
+.gestao-payments form {
+    justify-self: end;
+}
+
+.gestao-note {
+    margin: 12px 0 0;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+.gestao-note-panel {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: rgba(255, 248, 251, 0.82);
+}
+
+.gestao-note-panel label {
+    display: grid;
+    gap: 6px;
+    color: #673046;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.gestao-account-actions {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+}
+
+.gestao-account-actions form,
+.gestao-account-actions button {
+    width: 100%;
+}
+
+.gestao-account-forms {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 14px;
+}
+
+.gestao-action-panel {
+    display: grid;
+    gap: 14px;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: #fffafd;
+}
+
+.gestao-mini-form {
+    display: grid;
+    grid-template-columns: minmax(170px, 1fr) minmax(112px, 140px) auto;
+    gap: 10px;
+    align-items: end;
+    padding: 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: #ffffff;
+    min-width: 0;
+}
+
+.gestao-mini-form label {
+    display: grid;
+    gap: 6px;
+    color: #673046;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.gestao-mini-form input {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 10px;
+    color: var(--ink);
+    background: #ffffff;
+    outline: 0;
+}
+
+.gestao-payment-form {
+    grid-template-columns: minmax(150px, 1fr) minmax(112px, 136px) minmax(166px, 190px);
+    border-color: #e8aac0;
+    background: #fff;
+    box-shadow: 0 12px 30px rgba(168, 15, 67, 0.08);
+}
+
+.gestao-payment-form .gestao-btn-primary {
+    grid-column: 1 / -1;
+    justify-self: end;
+    min-width: 190px;
+}
+
+.gestao-mini-form button {
+    white-space: nowrap;
+}
+
+.gestao-mini-form input:focus {
+    border-color: var(--wine);
+    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.12);
+}
+
+.gestao-title-form,
+.gestao-repeat-form,
+.gestao-due-form {
+    grid-template-columns: minmax(180px, 1fr) auto;
+}
+
+.gestao-due-form {
+    grid-template-columns: minmax(190px, 1fr) auto auto;
+    margin-top: 10px;
+}
+
+.gestao-title-panel {
+    display: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 10px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: #fff8fb;
+}
+
+.gestao-title-panel.is-open {
+    display: grid;
+}
+
+.gestao-title-panel input {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.gestao-repeat-toggle-form {
+    width: 100%;
+}
+
+.gestao-repeat-toggle {
+    width: 100%;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 14px;
+    cursor: pointer;
+    font-weight: 950;
+}
+
+.gestao-repeat-toggle.is-on {
+    border: 1px solid #86efac;
+    background: #dcfce7;
+    color: #047857;
+}
+
+.gestao-repeat-toggle.is-off {
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.gestao-alert {
+    margin: 0 0 18px;
+    padding: 12px 14px;
+    border: 1px solid #99e7c5;
+    border-radius: 8px;
+    background: #ecfdf5;
+    color: #047857;
+    font-weight: 850;
+}
+
+.gestao-alert.error {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.gestao-empty {
+    padding: 18px;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    color: var(--muted);
+    font-weight: 850;
+}
+
+.gestao-link-danger {
+    display: inline-flex;
+    width: fit-content;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+    font-weight: 900;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.gestao-login-body {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+
+.gestao-login-card {
+    position: relative;
+    z-index: 2;
+    width: min(520px, calc(100vw - 32px));
+    display: grid;
+    gap: 14px;
+    padding: 28px;
+    overflow: hidden;
+}
+
+.gestao-login-logo {
+    width: 168px;
+    height: auto;
+}
+
+.gestao-login-form {
+    display: grid;
+    gap: 14px;
+}
+
+.gestao-login-runner {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    width: clamp(124px, 16vw, 210px);
+    height: auto;
+    pointer-events: none;
+    filter: drop-shadow(0 18px 26px rgba(127, 9, 46, 0.2));
+    transform: translate3d(var(--login-runner-x, 14vw), var(--login-runner-y, 62vh), 0) scaleX(var(--login-runner-dir, 1));
+    will-change: transform;
+}
+
+@media (max-width: 1050px) {
+    .gestao-layout,
+    .gestao-hero,
+    .gestao-orders-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-side-stack,
+    .gestao-orders-side > .gestao-orders-panel {
+        position: static;
+    }
+
+    .gestao-mini-form,
+    .gestao-payment-form,
+    .gestao-due-form,
+    .gestao-order-due-form,
+    .gestao-order-pay-form,
+    .gestao-order-adjust-form {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+
+    .gestao-stats,
+    .gestao-orders-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .gestao-topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 14px 18px;
+    }
+
+    .gestao-page {
+        width: min(100% - 24px, 1360px);
+        padding-top: 24px;
+    }
+
+    .gestao-stats,
+    .gestao-orders-summary,
+    .gestao-form-grid,
+    .gestao-order-form-grid,
+    .gestao-month-filter,
+    .gestao-line-item,
+    .gestao-account,
+    .gestao-mini-form,
+    .gestao-payment-form,
+    .gestao-due-form,
+    .gestao-title-panel,
+    .gestao-item-pay-form,
+    .gestao-item-adjust-form,
+    .gestao-order-due-form,
+    .gestao-order-pay-form,
+    .gestao-order-adjust-form {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-account-head,
+    .gestao-order-head {
+        flex-direction: column;
+    }
+
+    .gestao-account-total {
+        justify-items: start;
+        text-align: left;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+}
