@@ -6,6 +6,9 @@
     --ink: #24121a;
     --muted: #835266;
     --line: #f2a9c2;
+    --line-soft: #f8d1dd;
+    --surface: #ffffff;
+    --surface-soft: #fff9fb;
     --green: #059669;
     --amber: #b45309;
     --danger: #dc2626;
@@ -487,8 +490,9 @@ textarea {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(150px, 170px);
     gap: 14px;
-    padding: 16px;
+    padding: 18px;
     min-width: 0;
+    background: rgba(255, 255, 255, 0.96);
 }
 
 .gestao-account-main {
@@ -554,9 +558,10 @@ textarea {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin: 8px 0 0;
+    margin: 7px 0 0;
     color: var(--ink);
-    font-size: 1.12rem;
+    font-size: 1.28rem;
+    font-weight: 950;
     line-height: 1.2;
     letter-spacing: 0;
 }
@@ -620,22 +625,19 @@ textarea {
 .gestao-account-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 14px;
+    gap: 6px 12px;
     margin-top: 10px;
     color: var(--muted);
-    font-size: 0.83rem;
+    font-size: 0.8rem;
     font-weight: 750;
-}
-
-.gestao-due-meta {
-    color: var(--wine);
 }
 
 .gestao-due-alert {
     width: fit-content;
-    margin-top: 10px;
-    padding: 7px 10px;
+    margin-top: 9px;
+    padding: 6px 10px;
     border-radius: 999px;
+    border: 1px solid #fecdd3;
     background: #fff1f2;
     color: var(--danger);
     font-size: 0.78rem;
@@ -679,9 +681,15 @@ textarea {
     padding-bottom: 14px;
 }
 
+.gestao-account-details {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
 .gestao-ledger-block {
     min-width: 0;
-    margin-top: 14px;
+    margin-top: 0;
 }
 
 .gestao-ledger-title {
@@ -690,15 +698,18 @@ textarea {
     justify-content: space-between;
     gap: 12px;
     min-width: 0;
+    min-height: 38px;
+    padding: 9px 11px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: linear-gradient(180deg, #fff, var(--surface-soft));
     color: var(--wine);
 }
 
 .gestao-ledger-toggle {
     width: 100%;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
+    border: 1px solid var(--line-soft);
+    background: linear-gradient(180deg, #fff, #fff7fa);
     box-shadow: none;
     cursor: pointer;
     text-align: left;
@@ -732,9 +743,12 @@ textarea {
 .gestao-ledger-title strong {
     white-space: nowrap;
     font-size: 0.9rem;
+    color: var(--wine);
 }
 
-.gestao-ledger-block.is-collapsed [data-payment-list] {
+.gestao-ledger-block.is-collapsed [data-payment-list],
+.gestao-due-block.is-collapsed [data-due-panel],
+.gestao-adjust-block.is-collapsed [data-adjust-panel] {
     display: none;
 }
 
@@ -788,9 +802,9 @@ textarea {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     padding: 10px;
-    border: 1px solid #f8d2df;
+    border: 1px solid var(--line-soft);
     border-radius: 8px;
-    background: var(--rose-soft);
+    background: #fff9fb;
 }
 
 .gestao-item-row.is-canceled {
@@ -951,7 +965,8 @@ textarea {
 }
 
 .gestao-payments li {
-    background: #edfdf5;
+    border: 1px solid #bbf7d0;
+    background: #ecfdf5;
 }
 
 .gestao-payments li.is-canceled {
@@ -1013,8 +1028,17 @@ textarea {
 .gestao-account-forms {
     grid-column: 1 / -1;
     display: grid;
-    gap: 10px;
-    padding-top: 2px;
+    gap: 14px;
+}
+
+.gestao-action-panel {
+    display: grid;
+    gap: 14px;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: #fffafd;
 }
 
 .gestao-mini-form {
@@ -1023,9 +1047,9 @@ textarea {
     gap: 10px;
     align-items: end;
     padding: 12px;
-    border: 1px solid #f7c0d2;
+    border: 1px solid var(--line-soft);
     border-radius: 8px;
-    background: rgba(255, 248, 251, 0.86);
+    background: #ffffff;
     min-width: 0;
 }
 
@@ -1049,8 +1073,16 @@ textarea {
 }
 
 .gestao-payment-form {
-    grid-template-columns: minmax(150px, 1fr) minmax(112px, 136px) minmax(166px, 190px) auto;
-    background: #fffafb;
+    grid-template-columns: minmax(150px, 1fr) minmax(112px, 136px) minmax(166px, 190px);
+    border-color: #e8aac0;
+    background: #fff;
+    box-shadow: 0 12px 30px rgba(168, 15, 67, 0.08);
+}
+
+.gestao-payment-form .gestao-btn-primary {
+    grid-column: 1 / -1;
+    justify-self: end;
+    min-width: 190px;
 }
 
 .gestao-mini-form button {
@@ -1070,6 +1102,7 @@ textarea {
 
 .gestao-due-form {
     grid-template-columns: minmax(190px, 1fr) auto auto;
+    margin-top: 10px;
 }
 
 .gestao-title-panel {

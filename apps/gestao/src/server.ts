@@ -2080,6 +2080,8 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     ${historyRows ? `<ul class="gestao-payments gestao-history-list" data-history-list>${historyRows}</ul>` : '<p class="gestao-empty-line" data-history-list>Nenhum historico rapido nessa conta ainda.</p>'}
   </div>`;
 
+  const dueSummary = account.due_at ? brDate(account.due_at, true) : 'definir';
+
   const pendingActions = status === 'pendente'
     ? `${remainingCents > 0 ? `
        <form method="post" data-confirm="Registrar ${e(remainingMoney)} como pagamento final desta conta?">
@@ -2145,7 +2147,13 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
   </form>` : '';
 
   const forms = canEdit
-    ? `<div class="gestao-account-forms">
+    ? `<div class="gestao-ledger-block gestao-adjust-block" data-adjust-block data-adjust-block-id="${e(id)}">
+         <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-adjust-toggle aria-expanded="false">
+           <span>Ajustes e pagamento</span>
+           <strong>${e(remainingMoney)}</strong>
+         </button>
+         <div class="gestao-action-panel" data-adjust-panel>
+           <div class="gestao-account-forms">
          <form method="post" class="gestao-mini-form" data-require-money>
            ${csrfField(req)}
            <input type="hidden" name="action" value="add_item">
@@ -2167,6 +2175,8 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
              <button type="submit" class="gestao-btn gestao-btn-primary">Registrar pagamento</button>
            </form>
          ` : ''}
+           </div>
+         </div>
        </div>`
     : '';
 
@@ -2179,15 +2189,21 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
   </form>` : '';
 
-  const dueForm = canEdit ? `<form method="post" class="gestao-mini-form gestao-due-form">
-    ${csrfField(req)}
-    <input type="hidden" name="action" value="update_due">
-    <input type="hidden" name="id" value="${e(id)}">
-    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-    <label><span>Vencimento</span><input type="datetime-local" name="vencimento_em" value="${e(datetimeLocalValue(account.due_at))}"></label>
-    <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar vencimento</button>
-    <button type="submit" name="limpar_vencimento" value="1" class="gestao-btn gestao-btn-ghost">Apagar</button>
-  </form>` : '';
+  const dueForm = canEdit ? `<div class="gestao-ledger-block gestao-due-block" data-due-block data-due-block-id="${e(id)}">
+    <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-due-toggle aria-expanded="false">
+      <span>Vencimento</span>
+      <strong>${e(dueSummary)}</strong>
+    </button>
+    <form method="post" class="gestao-mini-form gestao-due-form" data-due-panel>
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="update_due">
+      <input type="hidden" name="id" value="${e(id)}">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <label><span>Data e horario</span><input type="datetime-local" name="vencimento_em" value="${e(datetimeLocalValue(account.due_at))}"></label>
+      <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
+      <button type="submit" name="limpar_vencimento" value="1" class="gestao-btn gestao-btn-ghost">Apagar</button>
+    </form>
+  </div>` : '';
 
   const noteForm = `<div class="gestao-note-block" data-note-block data-note-block-id="${e(id)}">
     <button type="button" class="gestao-ledger-title gestao-ledger-toggle" data-note-toggle aria-expanded="false">
@@ -2217,7 +2233,6 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         <div class="gestao-account-meta">
           <span>Gerado ${e(brDate(account.generated_at, true))}</span>
           <span>Competencia ${e(monthLabel(account.competence_month || selectedMonth))}</span>
-          ${account.due_at ? `<span class="gestao-due-meta">${e(brDate(account.due_at, true))}</span>` : ''}
           ${status === 'pago' ? `<span>Pago ${e(brDate(account.paid_at, true))}</span>` : ''}
         </div>
         ${due.label ? `<div class="gestao-due-alert"><span>${e(due.label)}</span></div>` : ''}
@@ -2321,9 +2336,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-categories">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-compact">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260518-categories" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260519-compact" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -2417,7 +2432,7 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260518-categories">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-compact">
   <script src="${BASE_PATH}/login-runner.js?v=20260518-click" defer></script>
 </head>
 <body class="gestao-login-body">

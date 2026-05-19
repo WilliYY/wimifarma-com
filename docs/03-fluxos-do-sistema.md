@@ -217,7 +217,7 @@ Regras a preservar:
 - a conta pode ser renomeada depois de lancada para reaproveitar valor/composicao em outro nome sem mexer no historico financeiro;
 - `Repetir mes que vem` funciona como ciclo liga/desliga: quando ativo, garante uma copia pendente na competencia seguinte, copiando categoria, observacao, vencimento avancado e itens ativos, mas sem copiar pagamentos, cancelamentos nem status pago; desligar o ciclo nao apaga copia ja criada para evitar perda acidental;
 - a observacao da conta pode ser editada depois do lancamento e fica minimizada por padrao ate o operador abrir;
-- os cards de conta ficam minimizados por padrao e podem ser abertos individualmente ao clicar no resumo da propria conta, mantendo o resumo e a barra de progresso visiveis sem botao extra de abrir/minimizar; dentro da conta, pagamentos, observacao e historico tambem podem ser minimizados para reduzir poluicao visual;
+- os cards de conta ficam minimizados por padrao e podem ser abertos individualmente ao clicar no resumo da propria conta, mantendo o resumo e a barra de progresso visiveis sem botao extra de abrir/minimizar; dentro da conta, vencimento, pagamentos, observacao, historico e ajustes/pagamento tambem ficam em blocos recolhidos para reduzir poluicao visual;
 - lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.

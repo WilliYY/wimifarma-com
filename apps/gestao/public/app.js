@@ -179,7 +179,7 @@
         Array.prototype.slice.call(document.querySelectorAll('[data-payment-block]')).forEach(function (block) {
             var button = block.querySelector('[data-payment-toggle]');
             var id = block.getAttribute('data-payment-block-id') || '';
-            var key = 'gestao:payments-collapsed:v1:' + id;
+            var key = 'gestao:payments-collapsed:v2:' + id;
 
             if (!button || !id || button.dataset.gestaoPaymentBound === '1') {
                 return;
@@ -211,7 +211,11 @@
     function initBlockCollapse(selector, buttonSelector, keyPrefix) {
         Array.prototype.slice.call(document.querySelectorAll(selector)).forEach(function (block) {
             var button = block.querySelector(buttonSelector);
-            var id = block.getAttribute('data-history-block-id') || block.getAttribute('data-note-block-id') || '';
+            var id = block.getAttribute('data-history-block-id') ||
+                block.getAttribute('data-note-block-id') ||
+                block.getAttribute('data-due-block-id') ||
+                block.getAttribute('data-adjust-block-id') ||
+                '';
             var key = keyPrefix + ':' + id;
 
             if (!button || !id || button.dataset.gestaoBlockBound === '1') {
@@ -315,7 +319,9 @@
             initAccountCollapse();
             initPaymentCollapse();
             initBlockCollapse('[data-history-block]', '[data-history-toggle]', 'gestao:history-collapsed:v1');
-            initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v1');
+            initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v2');
+            initBlockCollapse('[data-due-block]', '[data-due-toggle]', 'gestao:due-collapsed:v1');
+            initBlockCollapse('[data-adjust-block]', '[data-adjust-toggle]', 'gestao:adjust-collapsed:v1');
             initItemOptions();
             initTitleEditors();
         });
@@ -327,7 +333,9 @@
         initAccountCollapse();
         initPaymentCollapse();
         initBlockCollapse('[data-history-block]', '[data-history-toggle]', 'gestao:history-collapsed:v1');
-        initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v1');
+        initBlockCollapse('[data-note-block]', '[data-note-toggle]', 'gestao:note-collapsed:v2');
+        initBlockCollapse('[data-due-block]', '[data-due-toggle]', 'gestao:due-collapsed:v1');
+        initBlockCollapse('[data-adjust-block]', '[data-adjust-toggle]', 'gestao:adjust-collapsed:v1');
         initItemOptions();
         initTitleEditors();
     }
