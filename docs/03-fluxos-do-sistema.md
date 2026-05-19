@@ -213,6 +213,7 @@ Regras a preservar:
 - adicionar item depois do lancamento, como juros ou diferenca, aumenta o total e pode voltar uma conta paga para `pendente` se houver saldo;
 - cancelar ou voltar para pendente nao apaga fisicamente a conta, seus itens nem seus pagamentos;
 - contas pagas podem ser reabertas para ajuste e faturas podem ser canceladas sem exclusao fisica; pagamentos cancelados deixam de contar no total pago do mes;
+- contas canceladas podem ser excluidas da tela individualmente ou por categoria filtrada; isso e arquivamento logico em `archived_at`/`archived_by`, nao delete fisico, e deixa a auditoria preservada;
 - lancamentos e pagamentos individuais podem ser cancelados por status, mantendo historico visivel no extrato; lancamento cancelado pode ser reaberto, mas pagamentos que ja foram cancelados continuam apenas como historico ate o operador registrar novo pagamento;
 - a conta pode ser renomeada depois de lancada para reaproveitar valor/composicao em outro nome sem mexer no historico financeiro;
 - `Repetir mes que vem` funciona como ciclo liga/desliga: quando ativo, garante uma copia pendente na competencia seguinte, copiando categoria, observacao, vencimento avancado e itens ativos, mas sem copiar pagamentos, cancelamentos nem status pago; desligar o ciclo nao apaga copia ja criada para evitar perda acidental;
@@ -221,6 +222,7 @@ Regras a preservar:
 - lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.
+- o Miauby pode abrir a Gestao com o comando `gestao`/`abrir gestao` e preparar uma conta com `gestao - titulo - valor - categoria`; se faltar dado, ele pergunta, e a gravacao so acontece depois de confirmacao humana pelo chat.
 
 ## Fluxo Tarefas
 
@@ -298,6 +300,7 @@ Direcao de evolucao:
 - compilar treinos aprovados em perfil curto e responder localmente quando houver pergunta repetida/fortemente parecida, para reduzir custo e evitar conversa infinita por temas;
 - aplicar perfil de voz/tom versionado no contexto do Miauby;
 - permitir audio apenas pelo botao `Falar`, com microfone por clique, gravacao temporaria, transcricao revisavel e sem escrita operacional por voz;
+- comandos de Gestao entram como tool controlada: leitura por resumo interno e escrita de conta a pagar apenas com titulo, valor, categoria, endpoint interno tokenizado e confirmacao humana;
 - separar leitura, sugestao e escrita;
 - documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.
 

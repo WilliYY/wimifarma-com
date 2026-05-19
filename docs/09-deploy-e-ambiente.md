@@ -90,6 +90,7 @@ Higiene de pastas no VPS:
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
 - Definir `GESTAO_POSTGRES_PASSWORD` e `GESTAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Gestao Node/Postgres.
+- Para comandos da Gestao pelo Miauby, manter `GESTAO_INTERNAL_TOKEN` preenchido nos servicos web e Gestao, ou usar `MIAUW_GUARDIAN_TOKEN` como fallback; o PHP chama `GESTAO_INTERNAL_BASE_URL` internamente e a Gestao rejeita `/gestao/api/internal/...` sem token.
 - Para backup/restore da Cotacao V2, manter `COTACAO_BACKUP_DIR=/app/backups` e o volume `./cotacao-data/backups:/app/backups`.
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
 - A senha operacional para excluir tabelas inteiras em Codigos e `wimifarma` por padrao e pode ser trocada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env` de cada ambiente.

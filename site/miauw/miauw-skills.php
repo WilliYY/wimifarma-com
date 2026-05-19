@@ -157,6 +157,43 @@ function miauw_skill_registry(): array
             'auditoria' => array(),
             'efeitos' => array(),
         ),
+        'resumo_gestao' => array(
+            'nome' => 'resumo_gestao',
+            'titulo' => 'Resumo Gestao',
+            'modulo' => 'gestao',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'adm_gerente',
+            'executor' => 'miauw_skill_gestao_summary',
+            'openai_tool' => true,
+            'local_action' => false,
+            'fase' => 4,
+            'card' => 'Gestao',
+            'aliases' => array('gestao', 'gestão', 'contas a pagar', 'boletos', 'administrativo'),
+            'entrada' => array('mes', 'ano'),
+            'saida' => 'Resumo textual de contas a pagar, pendencias e categorias.',
+            'auditoria' => array(),
+            'efeitos' => array(),
+        ),
+        'criar_conta_gestao' => array(
+            'nome' => 'criar_conta_gestao',
+            'titulo' => 'Criar conta na Gestao',
+            'modulo' => 'gestao',
+            'nivel' => 'escrita',
+            'risco' => 'alto',
+            'permissao' => 'adm_gerente',
+            'executor' => 'miauw_skill_create_gestao_account',
+            'openai_tool' => true,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Gestao',
+            'aliases' => array('gestao', 'gestão', 'lancar conta', 'conta a pagar', 'boleto'),
+            'entrada' => array('titulo', 'valor', 'categoria', 'competencia_mes', 'vencimento_em', 'observacao'),
+            'parametros_obrigatorios' => array('titulo', 'valor', 'categoria'),
+            'saida' => 'Conta criada na Gestao somente apos confirmacao humana.',
+            'auditoria' => array('gestao_audit_events', 'wf_logs', 'miauw_tool_traces'),
+            'efeitos' => array('cria_conta_a_pagar', 'exige_confirmacao'),
+        ),
         'resumo_cotacao' => array(
             'nome' => 'resumo_cotacao',
             'titulo' => 'Resumo cotacao',
@@ -622,6 +659,8 @@ function miauw_skill_core_tool_names(): array
         'buscar_cliente',
         'resumo_codigos',
         'buscar_codigo_comissao',
+        'resumo_gestao',
+        'criar_conta_gestao',
     );
 }
 
@@ -663,6 +702,7 @@ function miauw_skill_core_migration_status(): array
         'missing' => $missing,
         'executores_indisponiveis' => $unavailable,
         'cotacao_v2_internal_configurado' => function_exists('miauw_skill_cotacao_v2_internal_configured') ? miauw_skill_cotacao_v2_internal_configured() : false,
+        'gestao_internal_configurado' => function_exists('miauw_skill_gestao_internal_configured') ? miauw_skill_gestao_internal_configured() : false,
         'tools' => $tools,
     );
 }
@@ -697,6 +737,7 @@ function miauw_skill_registry_diagnostics(): string
     }
 
     $lines[] = 'Cotacao V2 interna para o Miauby: ' . (!empty($core['cotacao_v2_internal_configurado']) ? 'configurada por token interno.' : 'aguardando token interno no ambiente.');
+    $lines[] = 'Gestao interna para o Miauby: ' . (!empty($core['gestao_internal_configurado']) ? 'configurada por token interno.' : 'aguardando token interno no ambiente.');
 
     $lines[] = 'Skills de escrita exigem dados claros. Se faltar produto, responsavel, valor, fornecedor ou categoria, perguntar antes.';
 
@@ -1452,6 +1493,355 @@ function miauw_skill_cotacao_v2_internal_request(string $method, string $path, a
     }
 
     return $data;
+}
+
+function miauw_skill_gestao_internal_token(): string
+{
+    if (defined('GESTAO_INTERNAL_TOKEN') && trim((string) GESTAO_INTERNAL_TOKEN) !== '') {
+        return trim((string) GESTAO_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('GESTAO_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN'));
+}
+
+function miauw_skill_gestao_internal_base_url(): string
+{
+    $url = defined('GESTAO_INTERNAL_BASE_URL') ? trim((string) GESTAO_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('GESTAO_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-gestao-app:3200/gestao', '/');
+}
+
+function miauw_skill_gestao_internal_configured(): bool
+{
+    return miauw_skill_gestao_internal_token() !== '';
+}
+
+function miauw_skill_gestao_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    $token = miauw_skill_gestao_internal_token();
+    if ($token === '') {
+        return null;
+    }
+
+    $url = miauw_skill_gestao_internal_base_url() . '/' . ltrim($path, '/');
+    if ($query) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    $method = strtoupper($method);
+    $headers = array(
+        'Accept: application/json',
+        'X-Miauw-Internal-Token: ' . $token,
+    );
+    $options = array(
+        'method' => $method,
+        'header' => implode("\r\n", $headers),
+        'timeout' => 5,
+        'ignore_errors' => true,
+    );
+
+    if ($method !== 'GET') {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $options['header'] .= "\r\nContent-Type: application/json";
+        $options['content'] = is_string($json) ? $json : '{}';
+    }
+
+    $context = stream_context_create(array('http' => $options));
+    $raw = @file_get_contents($url, false, $context);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+
+    $status = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d+)/', (string) $header, $match)) {
+                $status = (int) $match[1];
+                break;
+            }
+        }
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        return null;
+    }
+
+    if ($status >= 400) {
+        $message = isset($data['error']) ? (string) $data['error'] : 'Falha na Gestao interna.';
+        throw new RuntimeException($message);
+    }
+
+    return $data;
+}
+
+function miauw_skill_gestao_summary(array $period = array()): array
+{
+    $month = sprintf('%04d-%02d', (int) ($period['ano'] ?? date('Y')), (int) ($period['mes'] ?? date('n')));
+    if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+        $month = date('Y-m');
+    }
+
+    if (!miauw_skill_gestao_internal_configured()) {
+        return array('GESTAO: ponte interna aguardando token. Abra /gestao/ para conferir as contas.');
+    }
+
+    try {
+        $response = miauw_skill_gestao_internal_request('GET', '/api/internal/summary', array(), array('mes' => $month));
+    } catch (Throwable $error) {
+        error_log('Miauby Gestao summary failed: ' . $error->getMessage());
+        return array('GESTAO: nao consegui consultar agora. O bigode anotou que a ponte interna chiou.');
+    }
+
+    if (!is_array($response) || empty($response['ok'])) {
+        return array('GESTAO: consulta interna indisponivel agora. Confira /gestao/.');
+    }
+
+    $summary = is_array($response['summary'] ?? null) ? $response['summary'] : array();
+    $categories = is_array($response['categories'] ?? null) ? $response['categories'] : array();
+    $lines = array(
+        'GESTAO ' . substr((string) ($response['month'] ?? $month), 5, 2) . '/' . substr((string) ($response['month'] ?? $month), 0, 4),
+        'Pago no mes: ' . (string) ($summary['paid'] ?? miauw_skill_money(((int) ($summary['paid_cents'] ?? 0)) / 100)),
+        'Pendente: ' . (string) ($summary['pending'] ?? miauw_skill_money(((int) ($summary['pending_cents'] ?? 0)) / 100)),
+        'Gerado: ' . (string) ($summary['generated'] ?? miauw_skill_money(((int) ($summary['generated_cents'] ?? 0)) / 100)),
+        'Contas pendentes: ' . (int) ($summary['pending_accounts'] ?? 0),
+    );
+
+    $top = array_slice($categories, 0, 5);
+    if ($top) {
+        $lines[] = 'Categorias:';
+        foreach ($top as $category) {
+            if (!is_array($category)) {
+                continue;
+            }
+            $lines[] = '- ' . (string) ($category['label'] ?? 'Geral')
+                . ': ' . (int) ($category['open_count'] ?? 0) . ' aberta(s), '
+                . (int) ($category['closed_count'] ?? 0) . ' fechada(s)';
+        }
+    }
+
+    return $lines;
+}
+
+function miauw_skill_gestao_access_reply(string $pageContext = ''): string
+{
+    $suffix = trim($pageContext) !== '' ? ' Da tela atual eu so aponto o caminho, sem inventar conta.' : '';
+
+    return 'Gestao fica em /gestao/.' . "\n"
+        . 'Quer criar conta por comando? Usa assim: `gestao - titulo - 500 - categoria`.' . $suffix;
+}
+
+function miauw_skill_gestao_money_to_float($value): float
+{
+    $text = trim((string) $value);
+    $text = preg_replace('/\b(reais|real|rs)\b/iu', '', $text) ?? $text;
+    $text = str_ireplace('R$', '', $text);
+    $text = preg_replace('/\s+/', '', $text) ?? $text;
+    if ($text === '') {
+        return 0.0;
+    }
+    if (strpos($text, ',') !== false && strpos($text, '.') !== false) {
+        $text = str_replace('.', '', $text);
+        $text = str_replace(',', '.', $text);
+    } elseif (strpos($text, ',') !== false) {
+        $text = str_replace(',', '.', $text);
+    }
+    $value = (float) $text;
+
+    return $value > 0 ? round($value, 2) : 0.0;
+}
+
+function miauw_skill_gestao_clean_part(string $text, int $maxLength): string
+{
+    $text = trim(preg_replace('/\s+/', ' ', $text) ?? '');
+    $text = trim($text, " \t\n\r\0\x0B-:;,.()");
+
+    return $text === '' ? '' : substr($text, 0, $maxLength);
+}
+
+function miauw_skill_gestao_command_from_message(string $message): ?array
+{
+    $normalized = miauw_skill_normalized($message);
+    if (preg_match('/^\s*(?:como|onde|qual|quais|quanto|quantos|quando|por que|porque|listar|consulta|consultar|resumo)\b/i', $normalized)) {
+        return null;
+    }
+
+    if (!preg_match('/^\s*(?:(?:miauby|miauw)\s+)?(?:gestao|gestão)(?:\s|$|[-:;,.])/iu', trim($message))) {
+        return null;
+    }
+
+    $body = trim($message);
+    $body = preg_replace('/^\s*(?:miauby|miauw)\s+/iu', '', $body) ?? $body;
+    $body = preg_replace('/^\s*(?:gestao|gestão)\s*/iu', '', $body) ?? $body;
+    $body = preg_replace('/^\s*(?:cria|criar|lanca|lancar|lança|lançar|registrar|registra|adiciona|adicionar|conta|boleto)\s*/iu', '', $body) ?? $body;
+    $body = miauw_skill_gestao_clean_part($body, 360);
+
+    if ($body === '') {
+        return array('acao' => 'abrir_gestao', 'raw_message' => $message);
+    }
+
+    if (preg_match('/^(?:resumo|listar|lista|consulta|consultar|quanto|total|pendente|pagas?)\b/iu', $body)) {
+        return null;
+    }
+
+    $dueAt = null;
+    if (preg_match('/\b(?:vence|vencimento)\s*(?:em|dia)?\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:[ T][0-9]{2}:[0-9]{2})?|[0-9]{2}\/[0-9]{2}\/[0-9]{4}(?:\s+[0-9]{2}:[0-9]{2})?)/iu', $body, $dueMatch)) {
+        $rawDue = trim((string) $dueMatch[1]);
+        if (preg_match('/^([0-9]{2})\/([0-9]{2})\/([0-9]{4})(?:\s+([0-9]{2}:[0-9]{2}))?$/', $rawDue, $dateMatch)) {
+            $dueAt = $dateMatch[3] . '-' . $dateMatch[2] . '-' . $dateMatch[1] . (isset($dateMatch[4]) && $dateMatch[4] !== '' ? 'T' . $dateMatch[4] : '');
+        } else {
+            $dueAt = str_replace(' ', 'T', $rawDue);
+        }
+        $body = trim(str_replace((string) $dueMatch[0], ' ', $body));
+    }
+
+    $parts = preg_split('/\s*[-|;]\s*/u', $body) ?: array();
+    $parts = array_values(array_filter(array_map(static function ($part): string {
+        return trim((string) $part);
+    }, $parts), static function ($part): bool {
+        return $part !== '';
+    }));
+
+    $moneyPattern = '/(?:r\$\s*)?[0-9]+(?:\.[0-9]{3})*(?:,[0-9]{1,2})?|(?:r\$\s*)?[0-9]+(?:\.[0-9]{1,2})?/iu';
+    $value = 0.0;
+    $valueText = '';
+    $title = '';
+    $category = '';
+
+    foreach ($parts as $index => $part) {
+        if (preg_match($moneyPattern, $part, $moneyMatch)) {
+            $candidate = miauw_skill_gestao_money_to_float((string) $moneyMatch[0]);
+            if ($candidate > 0) {
+                $value = $candidate;
+                $valueText = (string) $moneyMatch[0];
+                $moneyPosition = strpos($part, (string) $moneyMatch[0]);
+                $left = $moneyPosition === false ? '' : miauw_skill_gestao_clean_part(substr($part, 0, $moneyPosition), 180);
+                $right = $moneyPosition === false ? '' : miauw_skill_gestao_clean_part(substr($part, $moneyPosition + strlen((string) $moneyMatch[0])), 80);
+                if ($left !== '' && $title === '') {
+                    $title = $left;
+                }
+                if ($title === '' && isset($parts[$index - 1])) {
+                    $title = miauw_skill_gestao_clean_part((string) $parts[$index - 1], 180);
+                }
+                if (isset($parts[$index + 1])) {
+                    $category = miauw_skill_gestao_clean_part((string) $parts[$index + 1], 80);
+                } elseif ($right !== '') {
+                    $category = $right;
+                }
+                break;
+            }
+        }
+    }
+
+    if ($value <= 0 && preg_match($moneyPattern, $body, $moneyMatch)) {
+        $value = miauw_skill_gestao_money_to_float((string) $moneyMatch[0]);
+        $valueText = (string) $moneyMatch[0];
+    }
+
+    if ($value > 0 && $title === '') {
+        $before = trim(substr($body, 0, (int) strpos($body, $valueText)));
+        $title = miauw_skill_gestao_clean_part($before, 180);
+    }
+
+    if ($value > 0 && $category === '') {
+        $after = trim(substr($body, (int) strpos($body, $valueText) + strlen($valueText)));
+        $after = preg_replace('/^\s*(?:categoria|cat)\s*[:\-]?\s*/iu', '', $after) ?? $after;
+        $category = miauw_skill_gestao_clean_part($after, 80);
+    }
+
+    if ($title === '' && count($parts) >= 3) {
+        $title = miauw_skill_gestao_clean_part((string) $parts[0], 180);
+    }
+
+    return array(
+        'titulo' => $title,
+        'valor' => $value,
+        'categoria' => $category,
+        'descricao' => $title !== '' ? $title : 'Valor principal',
+        'competencia_mes' => date('Y-m'),
+        'vencimento_em' => $dueAt,
+        'observacao' => '',
+        'raw_message' => $message,
+    );
+}
+
+function miauw_skill_gestao_missing_reply(array $command): string
+{
+    $missing = array();
+    if (trim((string) ($command['titulo'] ?? '')) === '') {
+        $missing[] = 'nome/titulo';
+    }
+    if ((float) ($command['valor'] ?? 0) <= 0) {
+        $missing[] = 'valor';
+    }
+    if (trim((string) ($command['categoria'] ?? '')) === '') {
+        $missing[] = 'categoria';
+    }
+
+    return 'Oxe, para Gestao eu preciso de ' . implode(', ', $missing) . ".\n"
+        . 'Formato rapido: `gestao - Rogerio - 500 - geral`. Sem isso eu nao gravo conta no escuro.';
+}
+
+function miauw_skill_create_gestao_account(array $command, ?int $userId = null): array
+{
+    $title = miauw_skill_gestao_clean_part((string) ($command['titulo'] ?? ''), 180);
+    $category = miauw_skill_gestao_clean_part((string) ($command['categoria'] ?? ''), 80);
+    $value = (float) ($command['valor'] ?? 0);
+    if ($title === '') {
+        throw new RuntimeException('Informe o nome ou titulo da conta.');
+    }
+    if ($value <= 0) {
+        throw new RuntimeException('Informe um valor maior que zero.');
+    }
+    if ($category === '') {
+        throw new RuntimeException('Informe a categoria da conta.');
+    }
+    if (!miauw_skill_gestao_internal_configured()) {
+        throw new RuntimeException('Gestao interna sem token configurado.');
+    }
+
+    $payload = array(
+        'titulo' => $title,
+        'categoria' => $category,
+        'valor' => $value,
+        'descricao' => miauw_skill_gestao_clean_part((string) ($command['descricao'] ?? $title), 180) ?: $title,
+        'competencia_mes' => preg_match('/^\d{4}-\d{2}$/', (string) ($command['competencia_mes'] ?? '')) ? (string) $command['competencia_mes'] : date('Y-m'),
+        'vencimento_em' => (string) ($command['vencimento_em'] ?? ''),
+        'observacao' => miauw_skill_gestao_clean_part((string) ($command['observacao'] ?? ''), 500),
+        'created_by' => $userId,
+    );
+
+    $response = miauw_skill_gestao_internal_request('POST', '/api/internal/accounts', $payload);
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['account'] ?? null)) {
+        throw new RuntimeException('A Gestao nao confirmou a criacao da conta.');
+    }
+
+    return array(
+        'id' => (int) ($response['account']['id'] ?? 0),
+        'titulo' => $title,
+        'categoria' => $category,
+        'valor' => $value,
+        'total' => (string) ($response['account']['total'] ?? miauw_skill_money($value)),
+        'competencia_mes' => (string) ($response['account']['month'] ?? $payload['competencia_mes']),
+        'status' => (string) ($response['account']['status'] ?? 'pendente'),
+    );
+}
+
+function miauw_skill_gestao_action_reply(array $result): string
+{
+    return "Conta criada na Gestao.\n"
+        . 'ID: ' . (int) ($result['id'] ?? 0) . "\n"
+        . 'Titulo: ' . (string) ($result['titulo'] ?? '') . "\n"
+        . 'Categoria: ' . (string) ($result['categoria'] ?? '') . "\n"
+        . 'Valor: ' . (string) ($result['total'] ?? miauw_skill_money((float) ($result['valor'] ?? 0))) . "\n"
+        . 'Competencia: ' . (string) ($result['competencia_mes'] ?? date('Y-m')) . '.';
 }
 
 function miauw_skill_cotacao_v2_lookup(string $message): ?array

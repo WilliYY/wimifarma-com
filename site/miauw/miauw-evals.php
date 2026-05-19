@@ -78,7 +78,8 @@ function miauw_eval_reset_action_state(): void
     unset(
         $_SESSION['miauw_pending_confirm_action'],
         $_SESSION['miauw_pending_financeiro_lancamento'],
-        $_SESSION['miauw_pending_cotacao_encomenda']
+        $_SESSION['miauw_pending_cotacao_encomenda'],
+        $_SESSION['miauw_pending_gestao_account']
     );
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
@@ -421,6 +422,7 @@ miauw_eval_add('registry_skills_essenciais', static function (): void {
         'resumo_financeiro',
         'resumo_cashback',
         'resumo_codigos',
+        'resumo_gestao',
         'buscar_cliente',
         'buscar_cotacao',
         'buscar_codigo_comissao',
@@ -428,6 +430,7 @@ miauw_eval_add('registry_skills_essenciais', static function (): void {
         'criar_lancamento_financeiro',
         'criar_tarefa',
         'criar_encomenda_cotacao',
+        'criar_conta_gestao',
         'criar_cotacao_urgente',
     );
 
@@ -518,7 +521,10 @@ miauw_eval_add('fase21_tool_contract_export_seguro', static function (): void {
     miauw_eval_assert_same('confirmation_required', (string) ($tools['registrar_sangria']['node_tool_bridge_mode'] ?? ''), 'Sangria deve voltar como confirmacao pela ponte universal.');
     miauw_eval_assert(!empty($tools['buscar_codigo_comissao']['node_read_bridge_enabled']), 'Busca de codigos precisa estar liberada na ponte de leitura.');
     miauw_eval_assert(!empty($tools['buscar_cotacao']['node_read_bridge_enabled']), 'Busca de Cotacao precisa estar liberada na ponte de leitura.');
+    miauw_eval_assert(!empty($tools['resumo_gestao']['node_read_bridge_enabled']), 'Resumo da Gestao precisa estar liberado na ponte de leitura.');
     miauw_eval_assert(!empty($tools['buscar_cliente']['node_tool_bridge_enabled']), 'Busca de cliente mascarado precisa entrar na ponte universal.');
+    miauw_eval_assert(!empty($tools['criar_conta_gestao']['requires_confirmation']), 'Criar conta da Gestao precisa continuar exigindo confirmacao.');
+    miauw_eval_assert_same('confirmation_required', (string) ($tools['criar_conta_gestao']['node_tool_bridge_mode'] ?? ''), 'Conta da Gestao deve voltar como confirmacao pela ponte universal.');
     miauw_eval_assert(!empty($tools['criar_tarefa']['writes_enabled_via_php_bridge']), 'Tarefa precisa estar liberada como escrita PHP de baixo risco.');
     miauw_eval_assert(is_array($tools['registrar_sangria']['parameters'] ?? null), 'Sangria precisa exportar schema.');
     miauw_eval_assert_no_forbidden(json_encode($contracts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '', 'Contrato de tools expos termo proibido.');
@@ -526,7 +532,7 @@ miauw_eval_add('fase21_tool_contract_export_seguro', static function (): void {
 
 miauw_eval_add('fase14_ponte_php_universal_segura', static function (): void {
     $tools = miauw_agent_node_read_tool_names();
-    $expected = array('resumo_financeiro', 'resumo_cashback', 'resumo_codigos', 'buscar_codigo_comissao', 'buscar_cotacao');
+    $expected = array('resumo_financeiro', 'resumo_cashback', 'resumo_codigos', 'resumo_gestao', 'buscar_codigo_comissao', 'buscar_cotacao');
 
     foreach ($expected as $name) {
         miauw_eval_assert(in_array($name, $tools, true), 'Tool de leitura ausente na ponte Node: ' . $name);
@@ -595,6 +601,33 @@ miauw_eval_add('intent_sangria_precisa_valor', static function (): void {
     miauw_eval_assert(is_array($command), 'Sangria com valor nao foi detectada.');
     miauw_eval_assert_same('Sangria', (string) ($command['categoria'] ?? ''), 'Categoria de sangria incorreta.');
     miauw_eval_assert(abs((float) ($command['valor'] ?? 0) - 30.0) < 0.001, 'Valor de sangria incorreto.');
+});
+
+miauw_eval_add('intent_gestao_conta_confirmada', static function (): void {
+    miauw_eval_reset_action_state();
+    $command = miauw_skill_gestao_command_from_message('gestao - Rogerio - 500 - geral');
+
+    miauw_eval_assert(is_array($command), 'Comando da Gestao nao foi detectado.');
+    miauw_eval_assert_same('Rogerio', (string) ($command['titulo'] ?? ''), 'Titulo da Gestao incorreto.');
+    miauw_eval_assert(abs((float) ($command['valor'] ?? 0) - 500.0) < 0.001, 'Valor da Gestao incorreto.');
+    miauw_eval_assert_same('geral', (string) ($command['categoria'] ?? ''), 'Categoria da Gestao incorreta.');
+    miauw_eval_assert(miauw_tool_requires_confirmation('criar_conta_gestao'), 'Criar conta na Gestao precisa exigir confirmacao.');
+
+    $compact = miauw_skill_gestao_command_from_message('gestao rogerio 500 geral');
+    miauw_eval_assert(is_array($compact), 'Comando compacto da Gestao nao foi detectado.');
+    miauw_eval_assert_same('rogerio', (string) ($compact['titulo'] ?? ''), 'Comando compacto da Gestao errou titulo.');
+    miauw_eval_assert_same('geral', (string) ($compact['categoria'] ?? ''), 'Comando compacto da Gestao errou categoria.');
+
+    $missing = miauw_skill_gestao_command_from_message('gestao 500 geral');
+    miauw_eval_assert(is_array($missing), 'Comando incompleto da Gestao deve ser detectado para pedir complemento.');
+    miauw_eval_assert_same('', (string) ($missing['titulo'] ?? ''), 'Comando sem titulo nao pode inventar nome.');
+    miauw_eval_assert_contains('nome/titulo', miauw_skill_gestao_missing_reply($missing), 'Gestao sem titulo precisa pedir titulo.');
+
+    $reply = miauw_try_controlled_action('gestao - Rogerio - 500 - geral', 1, '', true);
+    miauw_eval_assert(is_array($reply), 'Comando da Gestao precisa gerar resposta controlada.');
+    miauw_eval_assert(is_array($reply['confirmation'] ?? null), 'Comando da Gestao precisa virar confirmacao, nao escrita direta.');
+    miauw_eval_assert_same('criar_conta_gestao', (string) ($reply['confirmation']['tool'] ?? ''), 'Confirmacao da Gestao usou tool errada.');
+    miauw_eval_reset_action_state();
 });
 
 miauw_eval_add('fase6_dados_incompletos_pedem_contexto', static function (): void {

@@ -685,6 +685,7 @@ function miauw_agent_node_read_tool_names(): array
         'resumo_financeiro',
         'resumo_cashback',
         'resumo_codigos',
+        'resumo_gestao',
         'buscar_codigo_comissao',
         'buscar_cotacao',
     );
@@ -768,6 +769,9 @@ function miauw_agent_node_confirmation_text(string $name, array $args): string
     }
     if ($name === 'criar_lancamento_financeiro') {
         $command['raw_message'] = 'node_bridge_criar_lancamento_financeiro';
+    }
+    if ($name === 'criar_conta_gestao') {
+        $command['raw_message'] = 'node_bridge_criar_conta_gestao';
     }
 
     $summary = miauw_confirmation_summary($name, $command);
@@ -2572,6 +2576,7 @@ function miauw_tools_requiring_confirmation(): array
         'criar_cotacao_urgente',
         'criar_cotacao_rapida',
         'criar_planilha_cotacao',
+        'criar_conta_gestao',
     );
 }
 
@@ -2621,6 +2626,13 @@ function miauw_confirmation_summary(string $tool, array $command): string
         return 'Criar encomenda na Cotacao: '
             . trim((string) ($command['produto'] ?? 'produto nao informado'))
             . ' para ' . trim((string) ($command['responsavel'] ?? 'responsavel nao informado')) . '.';
+    }
+
+    if ($tool === 'criar_conta_gestao') {
+        return 'Criar conta na Gestao: '
+            . trim((string) ($command['titulo'] ?? 'titulo nao informado'))
+            . ', ' . $money($command['valor'] ?? 0)
+            . ', categoria ' . trim((string) ($command['categoria'] ?? 'nao informada')) . '.';
     }
 
     if ($tool === 'criar_cotacao_urgente') {
@@ -2705,6 +2717,11 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
 
         $result = miauw_skill_create_cotacao_encomenda($command);
         return miauw_skill_cotacao_encomenda_action_reply($result);
+    }
+
+    if ($tool === 'criar_conta_gestao') {
+        $result = miauw_skill_create_gestao_account($command, $userId);
+        return miauw_skill_gestao_action_reply($result);
     }
 
     if ($tool === 'criar_cotacao_urgente') {
@@ -4658,6 +4675,91 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
         );
     }
 
+    $pendingGestaoKey = 'miauw_pending_gestao_account';
+    $pendingGestao = $_SESSION[$pendingGestaoKey] ?? null;
+
+    if (is_array($pendingGestao)) {
+        $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
+        if (function_exists('miauw_skill_has_any') && miauw_skill_has_any($normalized, array('cancela', 'cancelar', 'deixa', 'esquece'))) {
+            unset($_SESSION[$pendingGestaoKey]);
+
+            return array(
+                'text' => 'Cancelado. Nenhuma conta foi criada na Gestao.',
+                'fallback' => false,
+                'model' => 'miauw-gestao-action',
+            );
+        }
+
+        $combined = trim((string) ($pendingGestao['raw_message'] ?? '') . ' ' . $message);
+        $command = function_exists('miauw_skill_gestao_command_from_message')
+            ? miauw_skill_gestao_command_from_message($combined)
+            : null;
+        if (is_array($command)) {
+            foreach (array('titulo', 'valor', 'categoria') as $field) {
+                if (($command[$field] ?? '') === '' || ($field === 'valor' && (float) ($command[$field] ?? 0) <= 0)) {
+                    $command[$field] = $pendingGestao[$field] ?? $command[$field] ?? '';
+                }
+            }
+            $_SESSION[$pendingGestaoKey] = $command;
+        } else {
+            $command = $pendingGestao;
+        }
+
+        if (
+            trim((string) ($command['titulo'] ?? '')) !== ''
+            && (float) ($command['valor'] ?? 0) > 0
+            && trim((string) ($command['categoria'] ?? '')) !== ''
+        ) {
+            unset($_SESSION[$pendingGestaoKey]);
+
+            return miauw_confirmation_request_reply('criar_conta_gestao', $command, $userId);
+        }
+
+        return array(
+            'text' => function_exists('miauw_skill_gestao_missing_reply') ? miauw_skill_gestao_missing_reply($command) : 'Faltou dado da conta da Gestao.',
+            'fallback' => false,
+            'model' => 'miauw-gestao-guide',
+        );
+    }
+
+    $normalizedForGestaoAccess = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
+    if (preg_match('/^\s*(?:abrir|abre|acessar|acessa|entrar|entra)\s+(?:na\s+|no\s+)?gestao\b/u', $normalizedForGestaoAccess)) {
+        return array(
+            'text' => function_exists('miauw_skill_gestao_access_reply') ? miauw_skill_gestao_access_reply($pageContext) : 'Gestao fica em /gestao/.',
+            'fallback' => false,
+            'model' => 'miauw-gestao-access',
+        );
+    }
+
+    if (function_exists('miauw_skill_gestao_command_from_message')) {
+        $gestaoCommand = miauw_skill_gestao_command_from_message($message);
+        if (is_array($gestaoCommand)) {
+            if ((string) ($gestaoCommand['acao'] ?? '') === 'abrir_gestao') {
+                return array(
+                    'text' => function_exists('miauw_skill_gestao_access_reply') ? miauw_skill_gestao_access_reply($pageContext) : 'Gestao fica em /gestao/.',
+                    'fallback' => false,
+                    'model' => 'miauw-gestao-access',
+                );
+            }
+
+            if (
+                trim((string) ($gestaoCommand['titulo'] ?? '')) === ''
+                || (float) ($gestaoCommand['valor'] ?? 0) <= 0
+                || trim((string) ($gestaoCommand['categoria'] ?? '')) === ''
+            ) {
+                $_SESSION[$pendingGestaoKey] = $gestaoCommand;
+
+                return array(
+                    'text' => function_exists('miauw_skill_gestao_missing_reply') ? miauw_skill_gestao_missing_reply($gestaoCommand) : 'Faltou dado da conta da Gestao.',
+                    'fallback' => false,
+                    'model' => 'miauw-gestao-guide',
+                );
+            }
+
+            return miauw_confirmation_request_reply('criar_conta_gestao', $gestaoCommand, $userId);
+        }
+    }
+
     if (function_exists('miauw_training_try_local_reply')) {
         $trainingReply = miauw_training_try_local_reply($message, $pageContext, $widgetMode);
         if ($trainingReply !== null) {
@@ -5060,7 +5162,7 @@ function miauw_model_route(string $message): array
         'pesquisa web', 'pesquisar na net', 'referencias externas',
     );
     $smartTerms = array(
-        'financeiro', 'caixa', 'cotacao', 'cashback', 'cliente', 'produto', 'ean', 'fornecedor',
+        'financeiro', 'caixa', 'cotacao', 'cashback', 'gestao', 'contas a pagar', 'boleto', 'cliente', 'produto', 'ean', 'fornecedor',
         'campanha', 'whatsapp', 'estoque', 'compra', 'venda', 'ideia', 'crie', 'texto', 'resumo',
         'como faz', 'como mexe', 'onde fica', 'tela', 'fluxo', 'sistema', 'memoria', 'padrao', 'padroes',
         'encomenda', 'encomendar', 'pedido de cliente', 'pedido cliente', 'medicamento', 'remedio',
@@ -5195,6 +5297,20 @@ function miauw_openai_tools(): array
         ),
         array(
             'type' => 'function',
+            'name' => 'resumo_gestao',
+            'description' => 'Consulta resumo da Gestao administrativa: contas a pagar, pendencias e categorias por mes e ano.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'mes' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 12),
+                    'ano' => array('type' => 'integer', 'minimum' => 2020, 'maximum' => 2035),
+                ),
+                'required' => array('mes', 'ano'),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
             'name' => 'buscar_cliente',
             'description' => 'Busca cliente por nome ou telefone parcial no cashback, sem expor telefone completo.',
             'parameters' => array(
@@ -5299,6 +5415,25 @@ function miauw_openai_tools(): array
                     'observacao' => array('type' => 'string', 'maxLength' => 160),
                 ),
                 'required' => array('produto', 'responsavel'),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
+            'name' => 'criar_conta_gestao',
+            'description' => 'Prepara criacao de conta a pagar na Gestao quando houver titulo, valor e categoria. Exemplo: "gestao - Rogerio - 500 - geral". Se faltar titulo, valor ou categoria, pergunte antes. A conta so grava depois da confirmacao humana.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'titulo' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 180),
+                    'valor' => array('type' => 'number', 'minimum' => 0.01),
+                    'categoria' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 80),
+                    'descricao' => array('type' => 'string', 'maxLength' => 180),
+                    'competencia_mes' => array('type' => 'string', 'description' => 'Mes em YYYY-MM. Se nao houver mes claro, use o mes atual.'),
+                    'vencimento_em' => array('type' => 'string', 'description' => 'Data/hora opcional em YYYY-MM-DD ou YYYY-MM-DDTHH:MM.'),
+                    'observacao' => array('type' => 'string', 'maxLength' => 500),
+                ),
+                'required' => array('titulo', 'valor', 'categoria'),
                 'additionalProperties' => false,
             ),
         ),
@@ -5550,6 +5685,9 @@ function miauw_openai_tool_result(string $name, array $args): string
         if ($name === 'criar_lancamento_financeiro') {
             $command['raw_message'] = 'tool_call_criar_lancamento_financeiro';
         }
+        if ($name === 'criar_conta_gestao') {
+            $command['raw_message'] = 'tool_call_criar_conta_gestao';
+        }
 
         $user = function_exists('current_user') ? current_user() : null;
         $confirmation = miauw_queue_confirmation(
@@ -5578,6 +5716,13 @@ function miauw_openai_tool_result(string $name, array $args): string
             ? miauw_skill_period_from_message(sprintf('%02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))))
             : array();
         return implode("\n", miauw_skill_codigos_summary($period));
+    }
+
+    if ($name === 'resumo_gestao') {
+        $period = function_exists('miauw_skill_period_from_message')
+            ? miauw_skill_period_from_message(sprintf('%02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))))
+            : array('mes' => (int) ($args['mes'] ?? date('n')), 'ano' => (int) ($args['ano'] ?? date('Y')));
+        return implode("\n", miauw_skill_gestao_summary($period));
     }
 
     if ($name === 'buscar_cliente') {

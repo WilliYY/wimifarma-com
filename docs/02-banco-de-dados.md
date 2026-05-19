@@ -47,7 +47,7 @@ A Cotacao V2 autentica no MySQL `wf_users`, mas os dados da planilha nova ficam 
 Criadas por `apps/gestao/src/server.ts`:
 
 - `gestao_schema_migrations`: controle simples de migracoes/importacoes aplicadas.
-- `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, vencimento opcional (`due_at`), ciclo de repeticao para o proximo mes (`repeat_next_month`), origem de copia mensal (`repeated_from_account_id`), datas e usuario criador.
+- `gestao_accounts`: contas administrativas, com titulo, categoria livre, status, total em centavos, competencia, vencimento opcional (`due_at`), ciclo de repeticao para o proximo mes (`repeat_next_month`), origem de copia mensal (`repeated_from_account_id`), arquivamento de canceladas para ocultar da tela (`archived_at`, `archived_by`), datas e usuario criador.
 - `gestao_account_items`: itens que formam o total da conta, como salario, aumento, comissao, boleto, parcela, juros, multa ou diferenca; cada item pode ser cancelado e reaberto sem apagar historico.
 - `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto; pagamentos podem ser gerais da conta ou vinculados a qualquer lancamento aberto por `item_id`, e tambem podem ser cancelados sem exclusao fisica.
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
@@ -175,7 +175,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Pagamentos vinculados a `gestao_account_payments.item_id` tambem respeitam o saldo geral da conta para nao duplicar pagamento quando ja existe pagamento geral antigo.
 - Cancelar fatura, lancamento ou pagamento deve marcar status/cancelamento, nao apagar fisicamente. Pagamentos cancelados nao contam no total pago do mes.
 - O botao de quitacao da Gestao deve registrar somente o saldo restante como novo pagamento final, preservando no extrato os pagamentos anteriores e qualquer juros/adicao posterior.
-- A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events` e `wf_logs`, preservando itens e pagamentos lancados.
+- A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events` e `wf_logs`, preservando itens e pagamentos lancados. Quando o operador "exclui" uma conta cancelada, o sistema apenas preenche `archived_at`/`archived_by` para tirar da tela e dos totais visiveis, mantendo a trilha no Postgres.
 - Categoria da Gestao e texto livre, mas a tela agrupa por chave normalizada apenas na aplicacao: remove acentos, ignora maiusculas/minusculas e junta espacos/pontuacao. O texto original da categoria continua preservado em `gestao_accounts.category`; `aluguel`, `Aluguel` e `ALUGUEL` aparecem juntos, enquanto `boleto agua` e `boleto energia` continuam separados.
 - Vencimento (`due_at`) e independente da competencia mensal e de `paid_at`; ele serve para ordenar urgencia e pode ser alterado ou removido sem recalcular o valor da conta.
 - Repetir uma conta para o mes seguinte cria ou garante de forma idempotente novo registro em `gestao_accounts` com `status='pendente'`, nova `generated_at`, mesmos itens ativos em `gestao_account_items`, vencimento avancado em um mes quando houver `due_at`, nenhum pagamento em `gestao_account_payments` e `repeated_from_account_id` apontando para a origem; desligar o ciclo muda `repeat_next_month=false` sem apagar copia ja criada.

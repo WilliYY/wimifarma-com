@@ -54,6 +54,7 @@ services:
       MIAUW_REALTIME_VOICE: ${MIAUW_REALTIME_VOICE:-marin}
       COTACAO_INTERNAL_TOKEN: ${COTACAO_INTERNAL_TOKEN:-}
       COTACAO_INTERNAL_BASE_URL: ${COTACAO_INTERNAL_BASE_URL:-http://wimifarma-cotacao-app:3000/cotacao}
+      GESTAO_INTERNAL_TOKEN: ${GESTAO_INTERNAL_TOKEN:-}
       GESTAO_INTERNAL_BASE_URL: ${GESTAO_INTERNAL_BASE_URL:-http://wimifarma-gestao-app:3200/gestao}
     ports:
       - "127.0.0.1:3002:80"
@@ -122,6 +123,8 @@ services:
       POSTGRES_USER: wimifarma_gestao
       POSTGRES_PASSWORD: ${GESTAO_POSTGRES_PASSWORD:-wimifarma_gestao_dev_pass}
       GESTAO_SESSION_SECRET: ${GESTAO_SESSION_SECRET:-wimifarma_gestao_dev_secret_change_me}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      GESTAO_INTERNAL_TOKEN: ${GESTAO_INTERNAL_TOKEN:-}
     networks:
       - wimifarma-com-network
 

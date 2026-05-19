@@ -46,6 +46,8 @@ type AccountRow = {
   generated_at: Date | string;
   paid_at: Date | string | null;
   canceled_at: Date | string | null;
+  archived_at: Date | string | null;
+  archived_by: number | null;
   paid_cents?: string;
   last_payment_at?: Date | string | null;
 };
@@ -98,6 +100,7 @@ type CategorySummary = {
   label: string;
   openCount: number;
   closedCount: number;
+  canceledCount: number;
   openCents: number;
   closedCents: number;
 };
@@ -122,10 +125,11 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.4.0';
+const SERVICE_VERSION = '1.5.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const INTERNAL_TOKEN = String(env.GESTAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
 const TZ = 'America/Sao_Paulo';
 
 const pgPool = new Pool({
@@ -195,6 +199,19 @@ function timingSafeStringEqual(left: string, right: string): boolean {
   const leftHash = crypto.createHash('sha256').update(left).digest();
   const rightHash = crypto.createHash('sha256').update(right).digest();
   return crypto.timingSafeEqual(leftHash, rightHash);
+}
+
+function requireInternalAuth(req: Request, res: Response, next: NextFunction) {
+  if (!INTERNAL_TOKEN) {
+    return res.status(503).json({ ok: false, error: 'internal_token_not_configured' });
+  }
+
+  const received = String(req.get('x-miauw-internal-token') || req.get('x-gestao-internal-token') || '').trim();
+  if (!received || !timingSafeStringEqual(received, INTERNAL_TOKEN)) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+
+  return next();
 }
 
 function isAllowedUser(user: User | MysqlUserRow): boolean {
@@ -592,6 +609,8 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS due_at timestamptz');
   await pgPool.query("ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeat_next_month boolean NOT NULL DEFAULT false");
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeated_from_account_id bigint');
+  await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS archived_at timestamptz');
+  await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS archived_by integer');
   await pgPool.query(`
     DO $$
     BEGIN
@@ -659,6 +678,11 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_accounts_repeated_from_idx
     ON gestao_accounts (repeated_from_account_id, competence_month)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_accounts_visible_month_idx
+    ON gestao_accounts (competence_month, status, id)
+    WHERE archived_at IS NULL
   `);
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_items_account_order_idx
@@ -986,6 +1010,81 @@ async function createAccount(req: Request): Promise<void> {
       req.body.id = previousId;
     }
   }
+}
+
+async function createInternalAccount(req: Request): Promise<{ accountId: number; totalCents: number; title: string; month: string; status: 'pendente' | 'pago' }> {
+  const title = cleanText(req.body.titulo || req.body.title, 180);
+  if (!title) throw new Error('Informe o nome ou titulo da conta.');
+
+  const items: Array<{ description: string; cents: number }> = [];
+  const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+  for (const rawItem of rawItems.slice(0, 30)) {
+    if (!rawItem || typeof rawItem !== 'object') continue;
+    const item = rawItem as Record<string, unknown>;
+    const description = cleanText(item.descricao || item.description || item.titulo || item.title, 180);
+    const cents = item.amount_cents !== undefined ? Math.max(0, Number(item.amount_cents || 0)) : parseMoneyToCents(item.valor || item.value || item.amount);
+    if (!description && cents <= 0) continue;
+    if (cents <= 0) throw new Error('Cada item usado precisa ter valor maior que zero.');
+    items.push({ description: description || 'Valor principal', cents });
+  }
+
+  if (!items.length) {
+    const cents = parseMoneyToCents(req.body.valor || req.body.value || req.body.amount);
+    if (cents <= 0) throw new Error('Informe um valor maior que zero.');
+    const description = cleanText(req.body.descricao || req.body.description, 180) || title;
+    items.push({ description, cents });
+  }
+
+  const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
+  const status = req.body.status === 'pago' ? 'pago' : 'pendente';
+  const userId = Number(req.body.created_by || req.body.usuario_id || 0) || null;
+  const month = monthValue(req.body.competencia_mes || req.body.month || req.body.mes);
+  const repeatNextMonth = req.body.repetir_mes === true || req.body.repetir_mes === '1' || req.body.repeat_next_month === true;
+  const client = await pgPool.connect();
+  let accountId = 0;
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<{ id: string }>(
+      `INSERT INTO gestao_accounts
+        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, created_by, generated_at, paid_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9, now(), CASE WHEN $3 = 'pago' THEN now() ELSE NULL END)
+       RETURNING id`,
+      [
+        title,
+        categoryLabel(req.body.categoria || req.body.category),
+        status,
+        totalCents,
+        month,
+        cleanText(req.body.observacao || req.body.note, 5000) || null,
+        parseOptionalDatetimeLocal(req.body.vencimento_em || req.body.due_at),
+        repeatNextMonth,
+        userId,
+      ],
+    );
+    accountId = Number(accountResult.rows[0].id);
+    for (const [index, item] of items.entries()) {
+      await client.query(
+        'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order) VALUES ($1, $2, $3, $4)',
+        [accountId, item.description, item.cents, (index + 1) * 10],
+      );
+    }
+    if (status === 'pago') {
+      await client.query(
+        'INSERT INTO gestao_account_payments (account_id, description, amount_cents, paid_at, created_by) VALUES ($1, $2, $3, now(), $4)',
+        [accountId, 'Pagamento confirmado pelo Miauby', totalCents, userId],
+      );
+    }
+    await auditPg(client, accountId, userId, 'gestao_conta_criada_miauby', `Conta criada pelo Miauby: ${title} / ${formatMoney(totalCents)}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_conta_criada_miauby', 'gestao_conta', accountId, `Conta criada pelo Miauby: ${title} / ${formatMoney(totalCents)}`);
+
+  return { accountId, totalCents, title, month, status };
 }
 
 async function addItem(req: Request): Promise<void> {
@@ -1475,6 +1574,66 @@ async function cancelCategoryGroup(req: Request): Promise<number> {
   return changed;
 }
 
+async function archiveCanceledAccount(req: Request): Promise<void> {
+  const id = Number(req.body.id || 0);
+  if (!id) throw new Error('Conta invalida.');
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const account = await client.query<{ status: string; title: string }>(
+      'SELECT status, title FROM gestao_accounts WHERE id = $1 FOR UPDATE',
+      [id],
+    );
+    if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    if (account.rows[0].status !== 'cancelado') throw new Error('So contas canceladas podem ser excluidas da tela.');
+    const result = await client.query(
+      'UPDATE gestao_accounts SET archived_at = now(), archived_by = $1 WHERE id = $2 AND archived_at IS NULL',
+      [userId, id],
+    );
+    if (!result.rowCount) throw new Error('Essa conta ja foi excluida da tela.');
+    await auditPg(client, id, userId, 'gestao_conta_arquivada', 'Conta cancelada excluida da tela; historico preservado no banco.');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_conta_arquivada', 'gestao_conta', id, 'Conta cancelada excluida da tela da Gestao; historico preservado.');
+}
+
+async function archiveCanceledCategoryGroup(req: Request): Promise<number> {
+  const selectedMonth = monthValue(req.body.competencia_mes);
+  const fromKey = cleanText(req.body.categoria_chave, 120);
+  if (!fromKey) throw new Error('Categoria invalida.');
+  const ids = await accountIdsByCategory(selectedMonth, fromKey);
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let changed = 0;
+  try {
+    await client.query('BEGIN');
+    for (const id of ids) {
+      const result = await client.query(
+        "UPDATE gestao_accounts SET archived_at = now(), archived_by = $1 WHERE id = $2 AND status = 'cancelado' AND archived_at IS NULL",
+        [userId, id],
+      );
+      if (result.rowCount) {
+        changed += 1;
+        await auditPg(client, id, userId, 'gestao_conta_arquivada_categoria', 'Conta cancelada excluida da tela por acao em categoria.');
+      }
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logMysql(userId, 'gestao_conta_arquivada_categoria', 'gestao_categoria', null, `Categoria teve ${changed} conta(s) cancelada(s) excluida(s) da tela.`);
+  return changed;
+}
+
 async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number; month: string; created: boolean }> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
@@ -1643,11 +1802,13 @@ async function setStatus(req: Request, status: 'pendente' | 'cancelado'): Promis
 async function monthSummary(month: string) {
   const bounds = monthBounds(month);
   const paidResult = await pgPool.query<{ paid_cents: string }>(
-    `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents
-     FROM gestao_account_payments
-     WHERE paid_at >= $1::timestamptz
-       AND paid_at < $2::timestamptz
-       AND status = 'ativo'`,
+    `SELECT COALESCE(SUM(p.amount_cents), 0)::bigint AS paid_cents
+     FROM gestao_account_payments p
+     JOIN gestao_accounts a ON a.id = p.account_id
+     WHERE p.paid_at >= $1::timestamptz
+       AND p.paid_at < $2::timestamptz
+       AND p.status = 'ativo'
+       AND a.archived_at IS NULL`,
     [bounds.start, bounds.end],
   );
   const summaryResult = await pgPool.query<{
@@ -1666,7 +1827,8 @@ async function monthSummary(month: string) {
        WHERE status = 'ativo'
        GROUP BY account_id
      ) p ON p.account_id = a.id
-     WHERE a.competence_month = $1`,
+     WHERE a.competence_month = $1
+       AND a.archived_at IS NULL`,
     [month],
   );
   const summary = summaryResult.rows[0];
@@ -1691,7 +1853,9 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
        WHERE status = 'ativo'
        GROUP BY account_id
      ) p ON p.account_id = a.id
-     WHERE a.competence_month = $1
+     WHERE a.archived_at IS NULL
+       AND (
+        a.competence_month = $1
         OR (a.paid_at >= $2::timestamptz AND a.paid_at < $3::timestamptz)
         OR EXISTS (
           SELECT 1 FROM gestao_account_payments gp
@@ -1699,6 +1863,7 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
             AND gp.paid_at >= $2::timestamptz
             AND gp.paid_at < $3::timestamptz
         )
+       )
      ORDER BY
        CASE a.status WHEN 'pendente' THEN 0 WHEN 'pago' THEN 1 ELSE 2 END ASC,
        CASE WHEN a.status = 'pendente' AND a.due_at IS NOT NULL THEN 0 ELSE 1 END ASC,
@@ -1791,6 +1956,7 @@ function categorySummaries(accounts: RenderAccount[]): CategorySummary[] {
       label: categoryLabel(account.category),
       openCount: 0,
       closedCount: 0,
+      canceledCount: 0,
       openCents: 0,
       closedCents: 0,
     };
@@ -1803,6 +1969,9 @@ function categorySummaries(accounts: RenderAccount[]): CategorySummary[] {
     } else {
       summary.closedCount += 1;
       summary.closedCents += total;
+      if (account.status === 'cancelado') {
+        summary.canceledCount += 1;
+      }
     }
     groups.set(key, summary);
   }
@@ -1832,7 +2001,7 @@ function renderCategoryPanel(req: Request, summaries: CategorySummary[], selecte
     <div class="gestao-category-focus">
       <span>Categoria selecionada</span>
       <strong>${e(active.label)}</strong>
-      <small>${e(active.openCount)} aberta(s) / ${e(active.closedCount)} fechada(s)</small>
+      <small>${e(active.openCount)} aberta(s) / ${e(active.closedCount)} fechada(s)${active.canceledCount > 0 ? ` / ${e(active.canceledCount)} cancelada(s)` : ''}</small>
     </div>
     <form method="post" class="gestao-category-form">
       ${csrfField(req)}
@@ -1849,6 +2018,13 @@ function renderCategoryPanel(req: Request, summaries: CategorySummary[], selecte
       <input type="hidden" name="categoria_chave" value="${e(active.key)}">
       <button type="submit" class="gestao-link-danger">Cancelar abertas desta categoria</button>
     </form>
+    ${active.canceledCount > 0 ? `<form method="post" data-confirm="Excluir as contas canceladas dessa categoria da tela? O historico fica preservado no banco e na auditoria.">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="archive_canceled_category_group">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <input type="hidden" name="categoria_chave" value="${e(active.key)}">
+      <button type="submit" class="gestao-link-danger">Excluir canceladas desta categoria</button>
+    </form>` : ''}
   </div>` : '';
 
   return `<aside class="gestao-category-panel" aria-label="Categorias da Gestao">
@@ -2133,6 +2309,13 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
          <input type="hidden" name="id" value="${e(id)}">
          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
          <button type="submit" class="gestao-btn gestao-btn-secondary">Reabrir conta</button>
+       </form>
+       <form method="post" data-confirm="Excluir esta conta cancelada da tela? Isso arquiva a conta e preserva historico/auditoria.">
+         ${csrfField(req)}
+         <input type="hidden" name="action" value="archive_canceled">
+         <input type="hidden" name="id" value="${e(id)}">
+         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+         <button type="submit" class="gestao-btn gestao-btn-ghost">Excluir da tela</button>
        </form>`
     : '';
 
@@ -2336,9 +2519,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-compact">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-archive">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260519-compact" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260519-archive" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -2432,7 +2615,7 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-compact">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-archive">
   <script src="${BASE_PATH}/login-runner.js?v=20260518-click" defer></script>
 </head>
 <body class="gestao-login-body">
@@ -2498,6 +2681,55 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
     mysql_auth: true,
     base_path: BASE_PATH,
   });
+}));
+
+app.get(`${BASE_PATH}/api/internal/summary`, requireInternalAuth, asyncRoute(async (req, res) => {
+  const month = monthValue(req.query.mes || req.query.month || req.query.competencia_mes);
+  const summary = await monthSummary(month);
+  const accounts = await listAccounts(month);
+  const categories = categorySummaries(accounts);
+  res.json({
+    ok: true,
+    month,
+    summary: {
+      paid_cents: summary.paidCents,
+      pending_cents: summary.pendingCents,
+      generated_cents: summary.generatedCents,
+      pending_accounts: summary.pendingAccounts,
+      paid: formatMoney(summary.paidCents),
+      pending: formatMoney(summary.pendingCents),
+      generated: formatMoney(summary.generatedCents),
+    },
+    categories: categories.map((category) => ({
+      key: category.key,
+      label: category.label,
+      open_count: category.openCount,
+      closed_count: category.closedCount,
+      canceled_count: category.canceledCount,
+      open_cents: category.openCents,
+      closed_cents: category.closedCents,
+    })),
+    accounts_count: accounts.length,
+  });
+}));
+
+app.post(`${BASE_PATH}/api/internal/accounts`, requireInternalAuth, asyncRoute(async (req, res) => {
+  try {
+    const result = await createInternalAccount(req);
+    res.status(201).json({
+      ok: true,
+      account: {
+        id: result.accountId,
+        title: result.title,
+        total_cents: result.totalCents,
+        total: formatMoney(result.totalCents),
+        month: result.month,
+        status: result.status,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error instanceof Error ? error.message : 'Nao consegui criar a conta.' });
+  }
 }));
 
 app.get(`${BASE_PATH}/login`, (req, res) => {
@@ -2600,6 +2832,9 @@ app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(async (req, res) =
     } else if (action === 'cancel_category_group') {
       const changed = await cancelCategoryGroup(req);
       setFlash(req, 'success', `Categoria cancelada em ${changed} conta(s) aberta(s).`);
+    } else if (action === 'archive_canceled_category_group') {
+      const changed = await archiveCanceledCategoryGroup(req);
+      setFlash(req, 'success', `${changed} conta(s) cancelada(s) excluida(s) da tela. Historico preservado.`);
     } else if (action === 'add_notepad_note') {
       await addNotepadNote(req);
       setFlash(req, 'success', 'Nota adicionada no bloco de lembretes.');
@@ -2615,6 +2850,9 @@ app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(async (req, res) =
     } else if (action === 'reopen') {
       await reopenAccount(req);
       setFlash(req, 'success', 'Conta reaberta para ajuste.');
+    } else if (action === 'archive_canceled') {
+      await archiveCanceledAccount(req);
+      setFlash(req, 'success', 'Conta cancelada excluida da tela. Historico preservado.');
     }
   } catch (error) {
     setFlash(req, 'error', error instanceof Error ? error.message : 'Nao consegui salvar essa conta agora.');

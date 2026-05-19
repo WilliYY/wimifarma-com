@@ -197,6 +197,11 @@ Miauby ja possui:
   - `/miauw/diagnostico.php` permite salvar a voz base em `miauw_configuracoes.miauw_speech_voice`, sem versionar segredo e sem reiniciar container;
   - o prompt de TTS recebeu instrucoes fortes de fala real, ritmo, energia e regra para usar video/voz externa apenas como inspiracao geral autorizada, nunca como clonagem de pessoa/personagem;
   - `site/miauw/miauw-evals.php` cobre status Fase 21, seletor de voz, playback por blob, contrato de voz, TTS e export de tools em `fase21-voice-playback-profile-selector`.
+- Complemento operacional da Fase 21:
+  - o Miauby ganhou tools de Gestao no registry: `resumo_gestao` como leitura baixa e `criar_conta_gestao` como escrita forte;
+  - comando `gestao`/`abrir gestao` aponta para `/gestao/`;
+  - comando `gestao - titulo - valor - categoria` prepara uma conta a pagar, exige titulo/valor/categoria e fica pendente de confirmacao humana antes de gravar;
+  - a escrita usa endpoint interno tokenizado da Gestao, sem credencial direta de Postgres no PHP e sem escrita direta pelo Node.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -221,6 +226,7 @@ Arquivos:
 - `apps/miauw-agent/scripts/check-persona.mjs`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-agent/Dockerfile`
+- `apps/gestao/src/server.ts`
 - `.env.example`
 - `docker-compose.yml`
 
@@ -244,6 +250,7 @@ Integracoes:
 - OpenAI Audio Speech API para gerar resposta falada temporaria do Miauby quando a entrada veio por audio;
 - seletor seguro de voz base no diagnostico do Miauby, persistido em `miauw_configuracoes`;
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
+- ponte interna da Gestao (`/gestao/api/internal/...`) para resumo e criacao confirmada de conta a pagar;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
 - futuro Google Sheets para Cotacao.
 
@@ -258,6 +265,7 @@ Integracoes:
 - Respostas generativas devem separar fato real, inferencia e proximo passo.
 - Balões do widget devem ser curtos, sem codigo, e usar o comentario do alerta quando existir. Para encomendas da Cotacao, comentar apenas quando passou de 1 dia.
 - A autonomia deve ser gradual: primeiro diagnosticar, depois sugerir, depois executar apenas acoes pequenas com trilha de auditoria.
+- Gestao e modulo financeiro critico: criar conta a pagar pelo Miauby e escrita forte, sempre exige confirmacao humana e auditoria. Consultar resumo da Gestao e leitura baixa.
 - Cotacao + Sheets precisa de IDs estaveis e controle de conflito antes de qualquer automacao generativa de sync.
 
 ## Decisoes tecnicas recomendadas
