@@ -2140,7 +2140,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     <input type="hidden" name="id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
     <button type="submit" class="gestao-repeat-toggle ${repeatEnabled ? 'is-on' : 'is-off'}">
-      <span>${repeatEnabled ? 'Repetindo mes que vem' : 'Nao repetir mes que vem'}</span>
+      <span>${repeatEnabled ? 'Repetindo mes que vem' : 'Repetir mes que vem'}</span>
     </button>
   </form>` : '';
 
