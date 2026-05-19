@@ -89,7 +89,7 @@ textarea {
 }
 
 .gestao-page {
-    width: min(1680px, calc(100% - 32px));
+    width: min(1880px, calc(100% - 20px));
     margin: 0 auto;
     padding: 34px 0 64px;
 }
@@ -326,12 +326,11 @@ textarea {
 
 .gestao-orders-layout {
     display: grid;
-    grid-template-columns: minmax(320px, 360px) minmax(360px, 1fr) minmax(300px, 340px);
+    grid-template-columns: minmax(285px, 0.85fr) minmax(300px, 1fr) minmax(360px, 1.25fr) minmax(260px, 0.8fr);
     grid-template-areas:
-        "form waiting history"
-        "confirmed confirmed history";
+        "form waiting confirmed history";
     align-items: start;
-    gap: 16px;
+    gap: 14px;
 }
 
 .gestao-orders-side,
@@ -380,6 +379,10 @@ textarea {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
+}
+
+.gestao-orders-side .gestao-order-form-grid {
+    grid-template-columns: 1fr;
 }
 
 .gestao-order-form-grid label {
@@ -516,6 +519,69 @@ textarea {
     font-size: 0.72rem;
 }
 
+.gestao-order-edit {
+    border: 1px solid #f8ccda;
+    border-radius: 8px;
+    background: #fffafd;
+}
+
+.gestao-order-edit summary {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    padding: 8px 11px;
+    color: var(--wine);
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 950;
+    list-style-position: inside;
+}
+
+.gestao-order-edit-panel,
+.gestao-order-edit-list {
+    display: grid;
+    gap: 10px;
+}
+
+.gestao-order-edit-panel {
+    padding: 0 10px 10px;
+}
+
+.gestao-order-edit-supplier,
+.gestao-order-edit-item,
+.gestao-order-edit-row {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+}
+
+.gestao-order-edit-supplier {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+}
+
+.gestao-order-edit-row {
+    padding: 10px;
+    border: 1px solid #f9d7e2;
+    border-radius: 8px;
+    background: #fff7fa;
+}
+
+.gestao-order-edit-item {
+    grid-template-columns: minmax(0, 1.3fr) minmax(104px, 0.7fr) auto;
+    align-items: end;
+}
+
+.gestao-order-edit-remove,
+.gestao-order-archive-form {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.gestao-order-archive-form {
+    padding-top: 2px;
+}
+
 .gestao-order-due-form,
 .gestao-order-pay-form,
 .gestao-order-adjust-form {
@@ -541,7 +607,8 @@ textarea {
 
 .gestao-order-due-form label,
 .gestao-order-pay-form label,
-.gestao-order-adjust-form label {
+.gestao-order-adjust-form label,
+.gestao-order-edit label {
     display: grid;
     gap: 6px;
     color: #673046;
@@ -551,8 +618,10 @@ textarea {
 
 .gestao-order-due-form input,
 .gestao-order-pay-form input,
-.gestao-order-adjust-form input {
+.gestao-order-adjust-form input,
+.gestao-order-edit input {
     width: 100%;
+    min-width: 0;
     min-height: 40px;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -1588,7 +1657,9 @@ textarea {
     .gestao-due-form,
     .gestao-order-due-form,
     .gestao-order-pay-form,
-    .gestao-order-adjust-form {
+    .gestao-order-adjust-form,
+    .gestao-order-edit-supplier,
+    .gestao-order-edit-item {
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     }
 
@@ -1625,7 +1696,9 @@ textarea {
     .gestao-item-adjust-form,
     .gestao-order-due-form,
     .gestao-order-pay-form,
-    .gestao-order-adjust-form {
+    .gestao-order-adjust-form,
+    .gestao-order-edit-supplier,
+    .gestao-order-edit-item {
         grid-template-columns: 1fr;
     }
 

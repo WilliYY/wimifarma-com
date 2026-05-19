@@ -728,6 +728,22 @@ async function syncPedidoAfterAccountChange(client: pg.PoolClient, accountId: nu
   }
 }
 
+async function refreshAccountTotal(client: pg.PoolClient, accountId: number): Promise<number> {
+  const result = await client.query<{ total_cents: string }>(
+    `UPDATE gestao_accounts
+     SET total_cents = COALESCE((
+       SELECT SUM(amount_cents)
+       FROM gestao_account_items
+       WHERE account_id = $1
+         AND status = 'ativo'
+     ), 0)
+     WHERE id = $1
+     RETURNING total_cents`,
+    [accountId],
+  );
+  return Number(result.rows[0]?.total_cents || 0);
+}
+
 async function createOrder(req: Request): Promise<void> {
   const supplier = cleanText(req.body.fornecedor, 180);
   if (!supplier) throw new Error('Informe o nome do fornecedor.');
@@ -908,6 +924,233 @@ async function addItem(req: Request): Promise<void> {
     client.release();
   }
   await logMysql(userId, 'pedidos_valor_adicionado', 'gestao_conta', id, `Valor adicionado no pedido: ${description} / ${formatMoney(cents)}`);
+}
+
+async function updateOrderSupplier(req: Request): Promise<void> {
+  const accountId = Number(req.body.id || 0);
+  const supplier = cleanText(req.body.fornecedor, 180);
+  if (!accountId) throw new Error('Conta invalida.');
+  if (!supplier) throw new Error('Informe o nome do fornecedor.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let oldSupplier = '';
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<{ id: string; status: string }>(
+      'SELECT id, status FROM gestao_accounts WHERE id = $1 AND archived_at IS NULL FOR UPDATE',
+      [accountId],
+    );
+    const account = accountResult.rows[0];
+    if (!account) throw new Error('Pedido nao encontrado.');
+    if (account.status === 'cancelado') throw new Error('Esse pedido esta cancelado.');
+
+    const waitingResult = await client.query<{ id: string; supplier_name: string }>(
+      'SELECT id, supplier_name FROM pedidos_orders WHERE account_id = $1 FOR UPDATE',
+      [accountId],
+    );
+    const confirmedResult = await client.query<{ id: string; supplier_name: string }>(
+      'SELECT id, supplier_name FROM pedidos_confirmed_orders WHERE account_id = $1 FOR UPDATE',
+      [accountId],
+    );
+    oldSupplier = confirmedResult.rows[0]?.supplier_name || waitingResult.rows[0]?.supplier_name || '';
+    if (!oldSupplier) throw new Error('Pedido nao encontrado.');
+
+    await client.query('UPDATE gestao_accounts SET title = $1 WHERE id = $2', [`Pedido - ${supplier}`.slice(0, 180), accountId]);
+    await client.query('UPDATE pedidos_orders SET supplier_name = $1 WHERE account_id = $2', [supplier, accountId]);
+    await client.query('UPDATE pedidos_confirmed_orders SET supplier_name = $1 WHERE account_id = $2', [supplier, accountId]);
+
+    if (oldSupplier && oldSupplier !== supplier) {
+      const items = await client.query<{ id: string; description: string }>(
+        "SELECT id, description FROM gestao_account_items WHERE account_id = $1 AND status = 'ativo' FOR UPDATE",
+        [accountId],
+      );
+      const oldSuffix = ` - ${oldSupplier}`;
+      for (const item of items.rows) {
+        if (!item.description.endsWith(oldSuffix)) continue;
+        const newDescription = `${item.description.slice(0, -oldSuffix.length)} - ${supplier}`.slice(0, 180);
+        await client.query('UPDATE gestao_account_items SET description = $1 WHERE id = $2', [newDescription, Number(item.id)]);
+      }
+    }
+
+    await auditPg(client, accountId, userId, 'pedidos_nome_atualizado', `Fornecedor alterado: ${oldSupplier} -> ${supplier}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await logMysql(userId, 'pedidos_nome_atualizado', 'gestao_conta', accountId, `Fornecedor do pedido alterado: ${oldSupplier} -> ${supplier}`);
+}
+
+async function updateOrderItem(req: Request): Promise<void> {
+  const accountId = Number(req.body.id || 0);
+  const itemId = Number(req.body.item_id || 0);
+  const description = cleanText(req.body.item_descricao, 180);
+  const cents = parseMoneyToCents(req.body.item_valor);
+  if (!accountId || !itemId) throw new Error('Lancamento invalido.');
+  if (!description) throw new Error('Informe o nome do lancamento.');
+  if (cents <= 0) throw new Error('Informe um valor maior que zero.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<{ id: string; status: string }>(
+      'SELECT id, status FROM gestao_accounts WHERE id = $1 AND archived_at IS NULL FOR UPDATE',
+      [accountId],
+    );
+    const account = accountResult.rows[0];
+    if (!account) throw new Error('Pedido nao encontrado.');
+    if (account.status === 'cancelado') throw new Error('Esse pedido esta cancelado.');
+
+    const itemResult = await client.query<{ description: string; amount_cents: string }>(
+      "SELECT description, amount_cents FROM gestao_account_items WHERE id = $1 AND account_id = $2 AND status = 'ativo' FOR UPDATE",
+      [itemId, accountId],
+    );
+    const item = itemResult.rows[0];
+    if (!item) throw new Error('Lancamento nao encontrado.');
+
+    const paidForItem = await client.query<{ paid_cents: string }>(
+      "SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents FROM gestao_account_payments WHERE item_id = $1 AND status = 'ativo'",
+      [itemId],
+    );
+    if (cents < Number(paidForItem.rows[0]?.paid_cents || 0)) {
+      throw new Error('O valor nao pode ficar menor que o total ja pago nessa parcela.');
+    }
+
+    await client.query('UPDATE gestao_account_items SET description = $1, amount_cents = $2 WHERE id = $3', [description, cents, itemId]);
+    const newTotal = await refreshAccountTotal(client, accountId);
+    const paid = await paidTotal(client, accountId);
+    if (newTotal < paid) {
+      throw new Error('O total do pedido nao pode ficar menor que o valor ja pago.');
+    }
+    await syncPaymentStatus(client, accountId);
+    await syncPedidoAfterAccountChange(client, accountId, userId);
+    await auditPg(client, accountId, userId, 'pedidos_valor_atualizado', `Lancamento alterado: ${item.description} / ${formatMoney(item.amount_cents)} -> ${description} / ${formatMoney(cents)}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await logMysql(userId, 'pedidos_valor_atualizado', 'gestao_item', itemId, `Valor do pedido atualizado: ${description} / ${formatMoney(cents)}`);
+}
+
+async function cancelOrderItem(req: Request): Promise<void> {
+  const accountId = Number(req.body.id || 0);
+  const itemId = Number(req.body.item_id || 0);
+  if (!accountId || !itemId) throw new Error('Lancamento invalido.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let description = '';
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<{ id: string; status: string }>(
+      'SELECT id, status FROM gestao_accounts WHERE id = $1 AND archived_at IS NULL FOR UPDATE',
+      [accountId],
+    );
+    const account = accountResult.rows[0];
+    if (!account) throw new Error('Pedido nao encontrado.');
+    if (account.status === 'cancelado') throw new Error('Esse pedido esta cancelado.');
+
+    const countResult = await client.query<{ count: string }>(
+      "SELECT COUNT(*)::bigint AS count FROM gestao_account_items WHERE account_id = $1 AND status = 'ativo'",
+      [accountId],
+    );
+    if (Number(countResult.rows[0]?.count || 0) <= 1) {
+      throw new Error('Para remover o ultimo valor, arquive o pedido da tela.');
+    }
+
+    const itemResult = await client.query<{ description: string }>(
+      "SELECT description FROM gestao_account_items WHERE id = $1 AND account_id = $2 AND status = 'ativo' FOR UPDATE",
+      [itemId, accountId],
+    );
+    const item = itemResult.rows[0];
+    if (!item) throw new Error('Lancamento nao encontrado.');
+    description = item.description;
+
+    const paidResult = await client.query<{ paid_cents: string }>(
+      "SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents FROM gestao_account_payments WHERE item_id = $1 AND status = 'ativo'",
+      [itemId],
+    );
+    if (Number(paidResult.rows[0]?.paid_cents || 0) > 0) {
+      throw new Error('Esse valor ja tem pagamento vinculado. Edite o valor ou arquive o pedido.');
+    }
+
+    await client.query(
+      "UPDATE gestao_account_items SET status = 'cancelado', canceled_at = now(), canceled_by = $1 WHERE id = $2",
+      [userId, itemId],
+    );
+    const newTotal = await refreshAccountTotal(client, accountId);
+    const paid = await paidTotal(client, accountId);
+    if (newTotal < paid) {
+      throw new Error('O total do pedido nao pode ficar menor que o valor ja pago.');
+    }
+    await syncPaymentStatus(client, accountId);
+    await syncPedidoAfterAccountChange(client, accountId, userId);
+    await auditPg(client, accountId, userId, 'pedidos_valor_cancelado', `Lancamento removido da tela: ${description}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await logMysql(userId, 'pedidos_valor_cancelado', 'gestao_item', itemId, `Valor removido do pedido: ${description}`);
+}
+
+async function archiveOrder(req: Request): Promise<void> {
+  const accountId = Number(req.body.id || 0);
+  if (!accountId) throw new Error('Pedido invalido.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let supplier = '';
+  try {
+    await client.query('BEGIN');
+    const accountResult = await client.query<{ id: string; archived_at: Date | string | null }>(
+      'SELECT id, archived_at FROM gestao_accounts WHERE id = $1 FOR UPDATE',
+      [accountId],
+    );
+    const account = accountResult.rows[0];
+    if (!account) throw new Error('Pedido nao encontrado.');
+    if (account.archived_at) throw new Error('Esse pedido ja saiu da tela.');
+
+    const supplierResult = await client.query<{ supplier_name: string }>(
+      `SELECT supplier_name FROM pedidos_confirmed_orders WHERE account_id = $1
+       UNION ALL
+       SELECT supplier_name FROM pedidos_orders WHERE account_id = $1
+       LIMIT 1`,
+      [accountId],
+    );
+    supplier = supplierResult.rows[0]?.supplier_name || 'pedido';
+
+    await client.query('UPDATE gestao_accounts SET archived_at = now(), archived_by = $1::integer WHERE id = $2', [userId, accountId]);
+    await client.query(
+      "UPDATE pedidos_orders SET canceled_at = COALESCE(canceled_at, now()), canceled_by = COALESCE(canceled_by, $1::integer) WHERE account_id = $2 AND moved_to_confirmed_at IS NULL",
+      [userId, accountId],
+    );
+    await client.query(
+      "UPDATE pedidos_confirmed_orders SET lifecycle = 'cancelado', finished_at = COALESCE(finished_at, now()), finished_by = COALESCE(finished_by, $1::integer) WHERE account_id = $2 AND lifecycle <> 'cancelado'",
+      [userId, accountId],
+    );
+    await auditPg(client, accountId, userId, 'pedidos_pedido_arquivado', `Pedido arquivado da tela: ${supplier}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await logMysql(userId, 'pedidos_pedido_arquivado', 'gestao_conta', accountId, `Pedido arquivado da tela: ${supplier}`);
 }
 
 async function addPayment(req: Request): Promise<void> {
@@ -1172,6 +1415,7 @@ async function paidThisMonth(month: string): Promise<number> {
      WHERE p.status = 'ativo'
        AND p.paid_at >= $1::timestamptz
        AND p.paid_at < $2::timestamptz
+       AND a.archived_at IS NULL
        AND (
         EXISTS (SELECT 1 FROM pedidos_orders o WHERE o.account_id = a.id)
         OR EXISTS (SELECT 1 FROM pedidos_confirmed_orders c WHERE c.account_id = a.id)
@@ -1215,10 +1459,30 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   const due = dueStatus(order);
   const arrival = arrivalStatus(order);
   const activePayments = order.payments.filter((payment) => payment.status !== 'cancelado');
-  const itemRows = order.items
-    .filter((item) => item.status !== 'cancelado')
+  const activeItems = order.items.filter((item) => item.status !== 'cancelado');
+  const itemRows = activeItems
     .map((item) => `<li><span>${e(item.description)}</span><strong>${e(formatMoney(item.amount_cents))}</strong></li>`)
     .join('');
+  const editableItemRows = activeItems.map((item) => `<div class="gestao-order-edit-row">
+      <form method="post" class="gestao-order-edit-item" data-require-money>
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="update_order_item">
+        <input type="hidden" name="id" value="${e(accountId)}">
+        <input type="hidden" name="item_id" value="${e(item.id)}">
+        <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+        <label><span>Nome do valor</span><input type="text" name="item_descricao" maxlength="180" value="${e(item.description)}" required></label>
+        <label><span>Valor</span><input type="text" name="item_valor" inputmode="decimal" value="${e(moneyInput(Number(item.amount_cents || 0)))}" data-money-input required></label>
+        <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
+      </form>
+      <form method="post" class="gestao-order-edit-remove" data-confirm="Remover este valor da tela? A auditoria e os dados ja pagos continuam preservados.">
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="cancel_order_item">
+        <input type="hidden" name="id" value="${e(accountId)}">
+        <input type="hidden" name="item_id" value="${e(item.id)}">
+        <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+        <button type="submit" class="gestao-link-danger">Excluir valor</button>
+      </form>
+    </div>`).join('');
   const paymentRows = activePayments
     .slice(-4)
     .reverse()
@@ -1235,6 +1499,28 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
     <button type="submit" class="gestao-btn gestao-btn-primary">Confirmar chegada</button>
   </form>` : '';
+
+  const editControls = `<details class="gestao-order-edit">
+    <summary>Editar / arquivar</summary>
+    <div class="gestao-order-edit-panel">
+      <form method="post" class="gestao-order-edit-supplier">
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="update_order_supplier">
+        <input type="hidden" name="id" value="${e(accountId)}">
+        <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+        <label><span>Fornecedor</span><input type="text" name="fornecedor" maxlength="180" value="${e(order.supplier_name)}" required></label>
+        <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar nome</button>
+      </form>
+      ${editableItemRows ? `<div class="gestao-order-edit-list">${editableItemRows}</div>` : ''}
+      <form method="post" class="gestao-order-archive-form" data-confirm="Arquivar este pedido desta etapa? Ele sai da tela, mas historico, pagamentos e auditoria continuam preservados.">
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="archive_order">
+        <input type="hidden" name="id" value="${e(accountId)}">
+        <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+        <button type="submit" class="gestao-btn gestao-btn-ghost">Excluir desta tela</button>
+      </form>
+    </div>
+  </details>`;
 
   const confirmedActions = order.status === 'confirmado' ? `<div class="gestao-order-actions">
     <form method="post" class="gestao-order-due-form">
@@ -1301,6 +1587,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     ${itemRows ? `<ul class="gestao-order-lines">${itemRows}</ul>` : ''}
     ${paymentRows ? `<ul class="gestao-order-payments">${paymentRows}</ul>` : ''}
     ${order.status === 'pedido' && order.account_status === 'pago' ? '<p class="gestao-empty-line">Ja esta pago; ao confirmar a chegada, vai direto para o historico.</p>' : ''}
+    ${editControls}
     ${arrivalAction}
     ${confirmedActions}
   </article>`;
@@ -1333,8 +1620,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-layoutfix">
-  <script src="${BASE_PATH}/app.js?v=20260519-layoutfix" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-actions">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
+  <script src="${BASE_PATH}/app.js?v=20260519-actions" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
@@ -1389,6 +1677,7 @@ async function renderApp(req: Request): Promise<string> {
       </div>
     </section>
   </main>
+  <script src="/miauw/widget.js?v=20260517j" defer></script>
 </body>
 </html>`;
 }
@@ -1401,8 +1690,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-layoutfix">
-  <script src="${BASE_PATH}/login-runner.js?v=20260519-layoutfix" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-actions">
+  <script src="${BASE_PATH}/login-runner.js?v=20260519-actions" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
@@ -1536,6 +1825,18 @@ async function handlePost(req: Request, res: Response): Promise<void> {
     } else if (action === 'update_due') {
       await updateDue(req);
       setFlash(req, 'success', req.body.limpar_vencimento === '1' ? 'Vencimento removido.' : 'Vencimento atualizado.');
+    } else if (action === 'update_order_supplier') {
+      await updateOrderSupplier(req);
+      setFlash(req, 'success', 'Fornecedor atualizado com auditoria.');
+    } else if (action === 'update_order_item') {
+      await updateOrderItem(req);
+      setFlash(req, 'success', 'Valor do pedido atualizado.');
+    } else if (action === 'cancel_order_item') {
+      await cancelOrderItem(req);
+      setFlash(req, 'success', 'Valor removido da tela com auditoria preservada.');
+    } else if (action === 'archive_order') {
+      await archiveOrder(req);
+      setFlash(req, 'success', 'Pedido saiu da tela, mantendo historico e auditoria.');
     }
   } catch (error) {
     setFlash(req, 'error', error instanceof Error ? error.message : 'Nao consegui salvar esse pedido agora.');

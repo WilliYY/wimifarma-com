@@ -240,6 +240,9 @@ Modulo `Pedidos` em `/pedidos/`:
 - `Confirmados` ordena os boletos com vencimento mais proximo primeiro e mostra alertas de vencido/urgente/atencao conforme a proximidade;
 - pagamentos parciais, botao `Pago` e ajustes de juros/diferenca reutilizam `gestao_account_payments` e `gestao_account_items`, alimentando automaticamente o total mensal e a categoria `Boleto`;
 - quando o pedido esta recebido e quitado, ele vai para `Historico` com datas de criacao, confirmacao, pagamento e finalizacao preservadas;
+- cada card de pedido permite editar fornecedor e valores ativos em qualquer etapa, com auditoria em `gestao_audit_events` e espelho em `wf_logs`;
+- remover valores ou excluir um pedido da tela nao apaga dados financeiros: valores viram `cancelado` quando permitido, e pedidos inteiros usam arquivamento logico em `gestao_accounts.archived_at`/`archived_by` mais lifecycle/cancelamento nas tabelas de Pedidos;
+- a tela `/pedidos/` carrega o widget do Miauby como apoio operacional, sem transformar Pedidos em subview da Gestao;
 - o badge da home consulta `/pedidos/api/badge` e mostra quantos pedidos em `pedidos_orders` tem previsao de chegada no dia;
 - a URL antiga `/gestao/pedidos` redireciona para `/pedidos/` apenas por compatibilidade e nao deve receber novas features.
 
