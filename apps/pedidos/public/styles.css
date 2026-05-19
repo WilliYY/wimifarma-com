@@ -154,6 +154,7 @@ textarea {
 .gestao-login-form label {
     display: grid;
     gap: 7px;
+    min-width: 0;
     color: #673046;
     font-size: 0.84rem;
     font-weight: 900;
@@ -167,6 +168,7 @@ textarea {
 .gestao-orders-form textarea,
 .gestao-login-form input {
     width: 100%;
+    min-width: 0;
     min-height: 44px;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -324,7 +326,10 @@ textarea {
 
 .gestao-orders-layout {
     display: grid;
-    grid-template-columns: minmax(320px, 380px) minmax(520px, 1fr) minmax(300px, 360px);
+    grid-template-columns: minmax(320px, 360px) minmax(360px, 1fr) minmax(300px, 340px);
+    grid-template-areas:
+        "form waiting history"
+        "confirmed confirmed history";
     align-items: start;
     gap: 16px;
 }
@@ -344,6 +349,7 @@ textarea {
 }
 
 .gestao-orders-side {
+    grid-area: form;
     min-width: 0;
     align-content: start;
 }
@@ -353,10 +359,31 @@ textarea {
     z-index: auto;
 }
 
+.gestao-orders-waiting {
+    grid-area: waiting;
+}
+
+.gestao-orders-confirmed {
+    grid-area: confirmed;
+}
+
+.gestao-orders-history {
+    grid-area: history;
+}
+
+.gestao-orders-waiting-stack {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    align-items: start;
+}
+
 .gestao-order-form-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
+}
+
+.gestao-order-form-grid label {
+    min-width: 0;
 }
 
 .gestao-order-form-grid label:last-child {
@@ -1534,8 +1561,20 @@ textarea {
 
 @media (max-width: 1050px) {
     .gestao-layout,
-    .gestao-hero,
+    .gestao-hero {
+        grid-template-columns: 1fr;
+    }
+
     .gestao-orders-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "form"
+            "waiting"
+            "confirmed"
+            "history";
+    }
+
+    .gestao-orders-waiting-stack {
         grid-template-columns: 1fr;
     }
 

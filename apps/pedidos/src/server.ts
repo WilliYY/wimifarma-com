@@ -839,7 +839,19 @@ async function confirmArrival(req: Request): Promise<void> {
     await client.query(
       `INSERT INTO pedidos_confirmed_orders
         (order_id, account_id, supplier_name, lifecycle, expected_arrival_at, confirmed_at, confirmed_by, finished_at, finished_by, created_by, created_at)
-       VALUES ($1, $2, $3, $4, $5::date, now(), $6, CASE WHEN $4 = 'historico' THEN now() ELSE NULL END, CASE WHEN $4 = 'historico' THEN $6 ELSE NULL END, $7, $8)
+       VALUES (
+         $1::bigint,
+         $2::bigint,
+         $3::text,
+         $4::text,
+         $5::date,
+         now(),
+         $6::integer,
+         CASE WHEN $4::text = 'historico' THEN now() ELSE NULL::timestamptz END,
+         CASE WHEN $4::text = 'historico' THEN $6::integer ELSE NULL::integer END,
+         $7::integer,
+         $8::timestamptz
+       )
        ON CONFLICT (account_id) DO UPDATE
        SET lifecycle = EXCLUDED.lifecycle,
            confirmed_at = COALESCE(pedidos_confirmed_orders.confirmed_at, EXCLUDED.confirmed_at),
@@ -1321,8 +1333,8 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-frontfix">
-  <script src="${BASE_PATH}/app.js?v=20260519-frontfix" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-layoutfix">
+  <script src="${BASE_PATH}/app.js?v=20260519-layoutfix" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
@@ -1361,8 +1373,11 @@ async function renderApp(req: Request): Promise<string> {
             <div class="gestao-section-title"><span class="gestao-kicker">Pedidos feitos</span><strong>${e(waitingOrders.length)}</strong></div>
             ${renderOrderForm(req, selectedMonth)}
           </div>
-          <div class="gestao-orders-stack">${waitingHtml}</div>
         </aside>
+        <section class="gestao-orders-panel gestao-orders-waiting">
+          <div class="gestao-section-title"><span class="gestao-kicker">Aguardando chegada</span><strong>${e(waitingOrders.length)}</strong></div>
+          <div class="gestao-orders-stack gestao-orders-waiting-stack">${waitingHtml}</div>
+        </section>
         <section class="gestao-orders-panel gestao-orders-confirmed">
           <div class="gestao-section-title"><span class="gestao-kicker">Confirmados</span><strong>vencimento primeiro</strong></div>
           <div class="gestao-orders-stack">${confirmedHtml}</div>
@@ -1386,8 +1401,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-frontfix">
-  <script src="${BASE_PATH}/login-runner.js?v=20260519-frontfix" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-layoutfix">
+  <script src="${BASE_PATH}/login-runner.js?v=20260519-layoutfix" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
