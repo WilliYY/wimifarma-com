@@ -207,13 +207,24 @@ function miauw_diagnostics_recent_internal_events(int $limit = 10): array
         }
 
         $error = is_array($decoded['error'] ?? null) ? $decoded['error'] : array();
+        $context = is_array($decoded['context'] ?? null) ? $decoded['context'] : array();
+        $contextParts = array();
+        foreach (array('origem', 'tool', 'confirmation_id', 'summary') as $key) {
+            if (isset($context[$key]) && trim((string) $context[$key]) !== '') {
+                $contextParts[] = $key . ': ' . miauw_diagnostics_safe_text((string) $context[$key], $key === 'summary' ? 120 : 48);
+            }
+        }
+
         $items[] = array(
             'created_at' => (string) ($decoded['created_at'] ?? ''),
             'type' => miauw_diagnostics_safe_text((string) ($decoded['type'] ?? 'diagnostico'), 60),
             'module' => miauw_diagnostics_safe_text((string) ($decoded['module'] ?? 'miauby'), 60),
             'title' => miauw_diagnostics_safe_text((string) ($decoded['title'] ?? 'Evento interno'), 180),
             'error_class' => miauw_diagnostics_safe_text((string) ($error['class'] ?? ''), 90),
+            'error_message' => miauw_diagnostics_safe_text((string) ($error['message'] ?? ''), 180),
             'error_hash' => miauw_diagnostics_safe_text((string) ($error['hash'] ?? ''), 45),
+            'trace_id' => miauw_diagnostics_safe_text((string) ($decoded['trace_id'] ?? ''), 32),
+            'context_summary' => miauw_diagnostics_safe_text(implode(' | ', $contextParts), 220),
         );
 
         if (count($items) >= $limit) {

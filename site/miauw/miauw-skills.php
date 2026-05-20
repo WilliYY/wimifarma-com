@@ -1666,6 +1666,14 @@ function miauw_skill_gestao_clean_part(string $text, int $maxLength): string
     return $text === '' ? '' : substr($text, 0, $maxLength);
 }
 
+function miauw_skill_gestao_clean_after_money(string $text, int $maxLength): string
+{
+    $text = preg_replace('/^\s*(?:reais|real|rs)\b\.?\s*/iu', '', $text) ?? $text;
+    $text = preg_replace('/^\s*(?:categoria|cat)\s*[:\-]?\s*/iu', '', $text) ?? $text;
+
+    return miauw_skill_gestao_clean_part($text, $maxLength);
+}
+
 function miauw_skill_gestao_command_from_message(string $message): ?array
 {
     $normalized = miauw_skill_normalized($message);
@@ -1723,17 +1731,24 @@ function miauw_skill_gestao_command_from_message(string $message): ?array
                 $valueText = (string) $moneyMatch[0];
                 $moneyPosition = strpos($part, (string) $moneyMatch[0]);
                 $left = $moneyPosition === false ? '' : miauw_skill_gestao_clean_part(substr($part, 0, $moneyPosition), 180);
-                $right = $moneyPosition === false ? '' : miauw_skill_gestao_clean_part(substr($part, $moneyPosition + strlen((string) $moneyMatch[0])), 80);
+                $right = $moneyPosition === false ? '' : miauw_skill_gestao_clean_after_money(substr($part, $moneyPosition + strlen((string) $moneyMatch[0])), 80);
                 if ($left !== '' && $title === '') {
                     $title = $left;
                 }
-                if ($title === '' && isset($parts[$index - 1])) {
-                    $title = miauw_skill_gestao_clean_part((string) $parts[$index - 1], 180);
-                }
-                if (isset($parts[$index + 1])) {
-                    $category = miauw_skill_gestao_clean_part((string) $parts[$index + 1], 80);
-                } elseif ($right !== '') {
-                    $category = $right;
+
+                if ($index === 0 && count($parts) >= 3) {
+                    $middleParts = array_slice($parts, 1, -1);
+                    $title = miauw_skill_gestao_clean_part(implode(' - ', $middleParts), 180);
+                    $category = miauw_skill_gestao_clean_part((string) end($parts), 80);
+                } else {
+                    if ($title === '' && $index > 0) {
+                        $title = miauw_skill_gestao_clean_part(implode(' - ', array_slice($parts, 0, $index)), 180);
+                    }
+                    if (isset($parts[$index + 1])) {
+                        $category = miauw_skill_gestao_clean_part(implode(' - ', array_slice($parts, $index + 1)), 80);
+                    } elseif ($right !== '') {
+                        $category = $right;
+                    }
                 }
                 break;
             }
@@ -1752,8 +1767,22 @@ function miauw_skill_gestao_command_from_message(string $message): ?array
 
     if ($value > 0 && $category === '') {
         $after = trim(substr($body, (int) strpos($body, $valueText) + strlen($valueText)));
+        $after = preg_replace('/^\s*(?:reais|real|rs)\b\.?\s*/iu', '', $after) ?? $after;
         $after = preg_replace('/^\s*(?:categoria|cat)\s*[:\-]?\s*/iu', '', $after) ?? $after;
-        $category = miauw_skill_gestao_clean_part($after, 80);
+
+        if ($title === '') {
+            $afterWords = array_values(array_filter(preg_split('/\s+/u', trim($after)) ?: array(), static function ($part): bool {
+                return trim((string) $part) !== '';
+            }));
+            if (count($afterWords) >= 2) {
+                $category = miauw_skill_gestao_clean_part((string) array_pop($afterWords), 80);
+                $title = miauw_skill_gestao_clean_part(implode(' ', $afterWords), 180);
+            } else {
+                $category = miauw_skill_gestao_clean_part($after, 80);
+            }
+        } else {
+            $category = miauw_skill_gestao_clean_part($after, 80);
+        }
     }
 
     if ($title === '' && count($parts) >= 3) {

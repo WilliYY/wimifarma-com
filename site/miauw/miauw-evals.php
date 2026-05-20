@@ -618,6 +618,17 @@ miauw_eval_add('intent_gestao_conta_confirmada', static function (): void {
     miauw_eval_assert_same('rogerio', (string) ($compact['titulo'] ?? ''), 'Comando compacto da Gestao errou titulo.');
     miauw_eval_assert_same('geral', (string) ($compact['categoria'] ?? ''), 'Comando compacto da Gestao errou categoria.');
 
+    $valueFirst = miauw_skill_gestao_command_from_message('gestao - 50 - Will - geral');
+    miauw_eval_assert(is_array($valueFirst), 'Comando valor-titulo-categoria da Gestao nao foi detectado.');
+    miauw_eval_assert_same('Will', (string) ($valueFirst['titulo'] ?? ''), 'Comando valor primeiro errou titulo.');
+    miauw_eval_assert(abs((float) ($valueFirst['valor'] ?? 0) - 50.0) < 0.001, 'Comando valor primeiro errou valor.');
+    miauw_eval_assert_same('geral', (string) ($valueFirst['categoria'] ?? ''), 'Comando valor primeiro errou categoria.');
+
+    $moneyOnly = miauw_skill_gestao_command_from_message('gestao - 30 reais');
+    miauw_eval_assert(is_array($moneyOnly), 'Comando so com valor da Gestao deve ser detectado para orientar.');
+    miauw_eval_assert_same('', (string) ($moneyOnly['titulo'] ?? ''), 'Comando so com valor nao pode inventar titulo.');
+    miauw_eval_assert_same('', (string) ($moneyOnly['categoria'] ?? ''), 'Comando so com valor nao pode usar moeda como categoria.');
+
     $missing = miauw_skill_gestao_command_from_message('gestao 500 geral');
     miauw_eval_assert(is_array($missing), 'Comando incompleto da Gestao deve ser detectado para pedir complemento.');
     miauw_eval_assert_same('', (string) ($missing['titulo'] ?? ''), 'Comando sem titulo nao pode inventar nome.');
@@ -627,6 +638,28 @@ miauw_eval_add('intent_gestao_conta_confirmada', static function (): void {
     miauw_eval_assert(is_array($reply), 'Comando da Gestao precisa gerar resposta controlada.');
     miauw_eval_assert(is_array($reply['confirmation'] ?? null), 'Comando da Gestao precisa virar confirmacao, nao escrita direta.');
     miauw_eval_assert_same('criar_conta_gestao', (string) ($reply['confirmation']['tool'] ?? ''), 'Confirmacao da Gestao usou tool errada.');
+    miauw_eval_reset_action_state();
+});
+
+miauw_eval_add('intent_gestao_pendente_nao_contamina_novo_prompt', static function (): void {
+    miauw_eval_reset_action_state();
+    miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
+
+    $missing = miauw_try_controlled_action('gestao - 30 reais', 1, '', true);
+    miauw_eval_assert(is_array($missing), 'Gestao incompleta precisa responder orientacao.');
+    miauw_eval_assert(!isset($missing['confirmation']), 'Gestao incompleta nao pode pedir confirmacao.');
+    miauw_eval_assert_contains('nome/titulo', (string) ($missing['text'] ?? ''), 'Gestao incompleta precisa pedir titulo.');
+    miauw_eval_assert_contains('categoria', (string) ($missing['text'] ?? ''), 'Gestao incompleta precisa pedir categoria.');
+
+    $reply = miauw_try_controlled_action('gestao - 50 - Will - geral', 1, '', true);
+    miauw_eval_assert(is_array($reply), 'Novo comando da Gestao precisa gerar resposta.');
+    miauw_eval_assert(is_array($reply['confirmation'] ?? null), 'Novo comando completo precisa virar confirmacao.');
+    $summary = (string) ($reply['confirmation']['summary'] ?? '');
+    miauw_eval_assert_contains('Will', $summary, 'Novo comando deve usar o titulo atual.');
+    miauw_eval_assert_contains('R$ 50,00', $summary, 'Novo comando deve usar o valor atual.');
+    miauw_eval_assert_contains('categoria geral', $summary, 'Novo comando deve usar categoria atual.');
+    miauw_eval_assert(strpos($summary, '30') === false, 'Novo comando nao pode herdar valor do prompt anterior.');
+
     miauw_eval_reset_action_state();
 });
 

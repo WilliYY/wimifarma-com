@@ -2881,16 +2881,28 @@ function miauw_try_confirmation_reply(string $message, int $userId): ?array
             'model' => 'miauw-action-confirmed',
         );
     } catch (Throwable $error) {
+        $trace = miauw_trace_context();
         miauw_trace_record($tool, 'error', array(
             'type' => 'acao',
             'summary' => (string) ($pending['summary'] ?? 'Falha em acao confirmada.'),
             'requires_confirmation' => true,
             'duration_ms' => (int) round((microtime(true) - $started) * 1000),
             'error' => $error->getMessage(),
+            'payload' => array(
+                'confirmation_id' => (string) ($pending['id'] ?? ''),
+                'command_keys' => array_keys(is_array($pending['command'] ?? null) ? $pending['command'] : array()),
+            ),
         ));
 
         return array(
-            'text' => miauw_action_error_reply($error),
+            'text' => miauw_action_error_reply($error, array(
+                'origem' => 'miauw_confirmed_action',
+                'tool' => $tool,
+                'confirmation_id' => (string) ($pending['id'] ?? ''),
+                'trace_id' => (string) ($trace['trace_id'] ?? ''),
+                'summary' => (string) ($pending['summary'] ?? ''),
+                'command_keys' => array_keys(is_array($pending['command'] ?? null) ? $pending['command'] : array()),
+            )),
             'fallback' => false,
             'model' => 'miauw-action',
         );
@@ -4061,6 +4073,7 @@ function miauw_write_invisible_diagnostic(string $type, string $module, string $
 {
     try {
         $dir = miauw_diagnostic_directory();
+        $trace = function_exists('miauw_trace_context') ? miauw_trace_context() : array();
 
         $record = array(
             'created_at' => date('c'),
@@ -4068,6 +4081,9 @@ function miauw_write_invisible_diagnostic(string $type, string $module, string $
             'module' => miauw_diagnostic_module_from_context($module, (string) ($context['page_context'] ?? '')),
             'title' => miauw_substr($title, 0, 180),
             'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',
+            'trace_id' => (string) ($context['trace_id'] ?? $trace['trace_id'] ?? ''),
+            'conversation_id' => isset($context['conversa_id']) ? (int) $context['conversa_id'] : ($trace['conversa_id'] ?? null),
+            'message_id' => isset($context['mensagem_id']) ? (int) $context['mensagem_id'] : ($trace['mensagem_id'] ?? null),
             'request' => array(
                 'uri' => miauw_diagnostic_redact_string((string) ($_SERVER['REQUEST_URI'] ?? '')),
                 'method' => (string) ($_SERVER['REQUEST_METHOD'] ?? ''),
@@ -4132,10 +4148,11 @@ function miauw_register_internal_error_alert(string $module, string $title, Thro
     }
 }
 
-function miauw_public_action_error(Throwable $error): string
+function miauw_public_action_error(Throwable $error, array $context = array()): string
 {
     $message = trim($error->getMessage());
     $lower = strtolower($message);
+    $alreadyLogged = !empty($context['diagnostic_logged']);
 
     $technical = array(
         'log_action', 'argument #4', 'array given', 'call to undefined', 'undefined function',
@@ -4145,13 +4162,17 @@ function miauw_public_action_error(Throwable $error): string
 
     foreach ($technical as $needle) {
         if (strpos($lower, $needle) !== false) {
-            miauw_register_internal_error_alert('miauby', 'Erro interno em acao controlada', $error, array('origem' => 'miauw_public_action_error'));
+            if (!$alreadyLogged) {
+                miauw_register_internal_error_alert('miauby', 'Erro interno em acao controlada', $error, array_merge(array('origem' => 'miauw_public_action_error'), $context));
+            }
             return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Se repetir, chame o suporte tecnico interno com tela, horario e acao feita.';
         }
     }
 
     if ($message === '') {
-        miauw_register_internal_error_alert('miauby', 'Erro interno sem mensagem', $error, array('origem' => 'miauw_public_action_error'));
+        if (!$alreadyLogged) {
+            miauw_register_internal_error_alert('miauby', 'Erro interno sem mensagem', $error, array_merge(array('origem' => 'miauw_public_action_error'), $context));
+        }
         return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Se repetir, chame o suporte tecnico interno com tela, horario e acao feita.';
     }
 
@@ -4159,21 +4180,114 @@ function miauw_public_action_error(Throwable $error): string
         return miauw_substr(preg_replace('/\s+/', ' ', $message) ?? $message, 0, 220);
     }
 
-    miauw_register_internal_error_alert('miauby', 'Erro em acao controlada', $error, array('origem' => 'miauw_public_action_error'));
+    if (!$alreadyLogged) {
+        miauw_register_internal_error_alert('miauby', 'Erro em acao controlada', $error, array_merge(array('origem' => 'miauw_public_action_error'), $context));
+    }
 
     return 'Nao consegui concluir agora. Registrei diagnostico interno para revisao. Se repetir, chame o suporte tecnico interno com tela, horario e acao feita.';
 }
 
-function miauw_action_error_reply(Throwable $error): string
+function miauw_action_error_reply(Throwable $error, array $context = array()): string
 {
-    miauw_register_internal_error_alert('miauby', 'Falha em acao controlada', $error, array('origem' => 'miauw_action_error_reply'));
+    $diagnosticContext = array_merge(array('origem' => 'miauw_action_error_reply'), $context);
+    miauw_register_internal_error_alert('miauby', 'Falha em acao controlada', $error, $diagnosticContext);
 
-    $public = miauw_public_action_error($error);
+    $public = miauw_public_action_error($error, array_merge($diagnosticContext, array('diagnostic_logged' => true)));
     if (strpos($public, 'Nao consegui concluir agora') === 0) {
         return $public;
     }
 
     return 'Nao gravei: ' . $public;
+}
+
+function miauw_gestao_command_complete(array $command): bool
+{
+    return trim((string) ($command['titulo'] ?? '')) !== ''
+        && (float) ($command['valor'] ?? 0) > 0
+        && trim((string) ($command['categoria'] ?? '')) !== '';
+}
+
+function miauw_gestao_missing_fields(array $command): array
+{
+    $missing = array();
+    if (trim((string) ($command['titulo'] ?? '')) === '') {
+        $missing[] = 'titulo';
+    }
+    if ((float) ($command['valor'] ?? 0) <= 0) {
+        $missing[] = 'valor';
+    }
+    if (trim((string) ($command['categoria'] ?? '')) === '') {
+        $missing[] = 'categoria';
+    }
+
+    return $missing;
+}
+
+function miauw_gestao_clean_followup_text(string $text, int $limit): string
+{
+    if (function_exists('miauw_skill_gestao_clean_after_money')) {
+        return miauw_skill_gestao_clean_after_money($text, $limit);
+    }
+    if (function_exists('miauw_skill_gestao_clean_part')) {
+        return miauw_skill_gestao_clean_part($text, $limit);
+    }
+
+    return substr(trim(preg_replace('/\s+/', ' ', $text) ?? $text), 0, $limit);
+}
+
+function miauw_gestao_command_from_pending_answer(array $pending, string $message): array
+{
+    $command = $pending;
+    $missing = miauw_gestao_missing_fields($command);
+    $answer = trim($message);
+    $answerWithoutMoney = $answer;
+    $moneyPattern = '/(?:r\$\s*)?[0-9]+(?:\.[0-9]{3})*(?:,[0-9]{1,2})?|(?:r\$\s*)?[0-9]+(?:\.[0-9]{1,2})?/iu';
+
+    if (in_array('valor', $missing, true) && preg_match($moneyPattern, $answer, $moneyMatch)) {
+        $value = function_exists('miauw_skill_gestao_money_to_float')
+            ? miauw_skill_gestao_money_to_float((string) $moneyMatch[0])
+            : (float) str_replace(',', '.', (string) $moneyMatch[0]);
+        if ($value > 0) {
+            $command['valor'] = $value;
+            $position = strpos($answer, (string) $moneyMatch[0]);
+            if ($position !== false) {
+                $answerWithoutMoney = trim(substr($answer, 0, $position) . ' ' . substr($answer, $position + strlen((string) $moneyMatch[0])));
+            }
+        }
+    }
+
+    $parts = array_values(array_filter(array_map(static function ($part): string {
+        return trim((string) $part);
+    }, preg_split('/\s*[-|;]\s*/u', $answerWithoutMoney) ?: array()), static function ($part): bool {
+        return $part !== '';
+    }));
+    $words = array_values(array_filter(preg_split('/\s+/u', trim($answerWithoutMoney)) ?: array(), static function ($part): bool {
+        return trim((string) $part) !== '';
+    }));
+
+    $stillMissing = miauw_gestao_missing_fields($command);
+    if (in_array('titulo', $stillMissing, true) && in_array('categoria', $stillMissing, true)) {
+        if (count($parts) >= 2) {
+            $category = (string) array_pop($parts);
+            $command['titulo'] = miauw_gestao_clean_followup_text(implode(' - ', $parts), 180);
+            $command['categoria'] = miauw_gestao_clean_followup_text($category, 80);
+        } elseif (count($words) >= 2) {
+            $category = (string) array_pop($words);
+            $command['titulo'] = miauw_gestao_clean_followup_text(implode(' ', $words), 180);
+            $command['categoria'] = miauw_gestao_clean_followup_text($category, 80);
+        }
+    } elseif (in_array('titulo', $stillMissing, true)) {
+        $text = count($parts) >= 1 ? (string) $parts[0] : $answerWithoutMoney;
+        $command['titulo'] = miauw_gestao_clean_followup_text($text, 180);
+    } elseif (in_array('categoria', $stillMissing, true)) {
+        $text = count($parts) >= 1 ? (string) end($parts) : $answerWithoutMoney;
+        $command['categoria'] = miauw_gestao_clean_followup_text($text, 80);
+    }
+
+    $command['descricao'] = trim((string) ($command['titulo'] ?? '')) !== '' ? (string) $command['titulo'] : (string) ($command['descricao'] ?? 'Valor principal');
+    $command['raw_message'] = trim((string) ($pending['raw_message'] ?? 'gestao') . ' | complemento: ' . $message);
+
+    return $command;
 }
 
 function miauw_try_offtopic_redirect(string $message): ?string
@@ -4690,26 +4804,47 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             );
         }
 
-        $combined = trim((string) ($pendingGestao['raw_message'] ?? '') . ' ' . $message);
-        $command = function_exists('miauw_skill_gestao_command_from_message')
-            ? miauw_skill_gestao_command_from_message($combined)
+        $currentGestaoCommand = function_exists('miauw_skill_gestao_command_from_message')
+            ? miauw_skill_gestao_command_from_message($message)
             : null;
-        if (is_array($command)) {
-            foreach (array('titulo', 'valor', 'categoria') as $field) {
-                if (($command[$field] ?? '') === '' || ($field === 'valor' && (float) ($command[$field] ?? 0) <= 0)) {
-                    $command[$field] = $pendingGestao[$field] ?? $command[$field] ?? '';
-                }
+
+        if (is_array($currentGestaoCommand)) {
+            unset($_SESSION[$pendingGestaoKey]);
+            miauw_trace_record('criar_conta_gestao', 'pending_replaced', array(
+                'type' => 'acao',
+                'summary' => 'Comando incompleto anterior da Gestao foi descartado por nova mensagem Gestao.',
+                'payload' => array(
+                    'old_missing' => miauw_gestao_missing_fields($pendingGestao),
+                    'new_missing' => miauw_gestao_missing_fields($currentGestaoCommand),
+                    'new_command_complete' => miauw_gestao_command_complete($currentGestaoCommand),
+                ),
+            ));
+
+            if ((string) ($currentGestaoCommand['acao'] ?? '') === 'abrir_gestao') {
+                return array(
+                    'text' => function_exists('miauw_skill_gestao_access_reply') ? miauw_skill_gestao_access_reply($pageContext) : 'Gestao fica em /gestao/.',
+                    'fallback' => false,
+                    'model' => 'miauw-gestao-access',
+                );
             }
-            $_SESSION[$pendingGestaoKey] = $command;
-        } else {
-            $command = $pendingGestao;
+
+            if (miauw_gestao_command_complete($currentGestaoCommand)) {
+                return miauw_confirmation_request_reply('criar_conta_gestao', $currentGestaoCommand, $userId);
+            }
+
+            $_SESSION[$pendingGestaoKey] = $currentGestaoCommand;
+
+            return array(
+                'text' => function_exists('miauw_skill_gestao_missing_reply') ? miauw_skill_gestao_missing_reply($currentGestaoCommand) : 'Faltou dado da conta da Gestao.',
+                'fallback' => false,
+                'model' => 'miauw-gestao-guide',
+            );
         }
 
-        if (
-            trim((string) ($command['titulo'] ?? '')) !== ''
-            && (float) ($command['valor'] ?? 0) > 0
-            && trim((string) ($command['categoria'] ?? '')) !== ''
-        ) {
+        $command = miauw_gestao_command_from_pending_answer($pendingGestao, $message);
+        $_SESSION[$pendingGestaoKey] = $command;
+
+        if (miauw_gestao_command_complete($command)) {
             unset($_SESSION[$pendingGestaoKey]);
 
             return miauw_confirmation_request_reply('criar_conta_gestao', $command, $userId);

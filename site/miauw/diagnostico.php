@@ -477,7 +477,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
                 </div>
                 <div class="diag-list">
                     <?php foreach ((array) $data['events'] as $event) : ?>
-                        <p><strong><?php echo e((string) $event['title']); ?></strong><span><?php echo e((string) $event['module']); ?> | <?php echo e((string) $event['type']); ?> | <?php echo e(miauw_diag_date_label((string) $event['created_at'])); ?></span></p>
+                        <p><strong><?php echo e((string) $event['title']); ?></strong><span><?php echo e((string) $event['module']); ?> | <?php echo e((string) $event['type']); ?> | <?php echo e(miauw_diag_date_label((string) $event['created_at'])); ?><?php echo trim((string) ($event['trace_id'] ?? '')) !== '' ? ' | trace ' . e((string) $event['trace_id']) : ''; ?><?php echo trim((string) ($event['error_hash'] ?? '')) !== '' ? '<br>Erro: ' . e((string) ($event['error_class'] ?? '')) . ' #' . e(substr((string) $event['error_hash'], 0, 10)) : ''; ?><?php echo trim((string) ($event['error_message'] ?? '')) !== '' ? '<br>' . e((string) $event['error_message']) : ''; ?><?php echo trim((string) ($event['context_summary'] ?? '')) !== '' ? '<br>' . e((string) $event['context_summary']) : ''; ?></span></p>
                     <?php endforeach; ?>
                     <?php if (empty($data['events'])) : ?>
                         <p><strong>Sem falha recente</strong><span>Nenhum diagnostico interno no arquivo mensal atual.</span></p>

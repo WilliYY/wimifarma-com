@@ -324,6 +324,8 @@ Direcao de evolucao:
 - aplicar perfil de voz/tom versionado no contexto do Miauby;
 - permitir audio apenas pelo botao `Falar`, com microfone por clique, gravacao temporaria, transcricao revisavel e sem escrita operacional por voz;
 - comandos de Gestao entram como tool controlada: leitura por resumo interno e escrita de conta a pagar apenas com titulo, valor, categoria, endpoint interno tokenizado e confirmacao humana;
+- em comandos de Gestao, uma nova mensagem que comeca por `gestao` sempre substitui pendencia incompleta anterior; complementos so sao usados quando a resposta nao inicia novo comando, evitando juntar prompts antigos com novos lancamentos;
+- o formato de criacao aceita `gestao - titulo - 500 - categoria` e tambem `gestao - 500 - titulo - categoria` para reduzir erro operacional no celular;
 - separar leitura, sugestao e escrita;
 - documentacao especifica em `docs/18-miauby-evolucao-generativa.md`.
 

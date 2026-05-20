@@ -69,6 +69,7 @@ Arquivos:
 - A Fase 17 registra resposta local baseada em treino aprovado como `miauw_training_router` em `miauw_tool_traces`, salvando apenas score, intent, versao e flags seguras, sem payload bruto, segredo ou texto completo do operador.
 - A Fase 19 registra transcricao de audio como `miauw_audio_transcribe` em `miauw_tool_traces`, guardando somente tamanho do arquivo temporario, tamanho do texto, modo, modelo e status sanitizado. O arquivo de audio nao e armazenado e a fala so vira mensagem depois que o usuario revisar e apertar `Enviar`.
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
+- Falhas em acoes confirmadas do Miauby registram diagnostico invisivel automatico com `trace_id`, ferramenta, id da confirmacao, resumo sanitizado e chaves dos argumentos, alem do trace `error` em `miauw_tool_traces`. O painel `/miauw/diagnostico.php` mostra esses dados de forma resumida, sem token, SQL bruto, payload completo ou stack trace.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
 
 ## Decisoes tecnicas ja tomadas
