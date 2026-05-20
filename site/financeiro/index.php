@@ -1160,7 +1160,7 @@ $pageTitle = $view === 'auditoria' ? 'Auditoria Financeira' : ($view === 'relato
     <title><?php echo e($pageTitle); ?> - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="/financeiro/favicon.svg">
     <link rel="alternate icon" href="/financeiro/favicon.png">
-    <link rel="stylesheet" href="/financeiro/styles.css?v=20260507a">
+    <link rel="stylesheet" href="/financeiro/styles.css?v=20260520-card">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
     <script src="/financeiro/app.js?v=20260507a" defer></script>
     <script src="/miauw/widget.js?v=20260517j" defer></script>

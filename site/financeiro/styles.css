@@ -417,6 +417,7 @@ h3 {
 .daily-revenue-card {
     position: relative;
     overflow: hidden;
+    padding-bottom: clamp(24px, 2.4vw, 34px);
 }
 
 .daily-revenue-card::before {
@@ -440,7 +441,7 @@ h3 {
 }
 
 .daily-revenue-table-wrap {
-    max-height: 440px;
+    max-height: min(68vh, 740px);
     overflow: auto;
     border: 1px solid var(--line);
     border-radius: 18px;
@@ -1625,7 +1626,7 @@ textarea {
     }
 
     .daily-revenue-table-wrap {
-        max-height: 360px;
+        max-height: min(64vh, 540px);
     }
 
     .daily-revenue-table {

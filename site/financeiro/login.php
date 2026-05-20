@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Login Financeiro - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="/financeiro/favicon.svg">
     <link rel="alternate icon" href="/financeiro/favicon.png">
-    <link rel="stylesheet" href="/financeiro/styles.css?v=20260504d">
+    <link rel="stylesheet" href="/financeiro/styles.css?v=20260520-card">
     <script src="/financeiro/app.js?v=20260504d" defer></script>
     <script src="/financeiro/login-runner.js?v=20260504d" defer></script>
 </head>
