@@ -1439,7 +1439,7 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
     </div>
     <button type="button" class="gestao-btn gestao-btn-secondary" data-add-order-item>Adicionar parcela</button>
     <div class="gestao-order-form-grid">
-      <label><span>Vencimento do boleto</span><input type="datetime-local" name="vencimento_em"></label>
+      <label><span>Vencimento do boleto</span><input type="date" name="vencimento_em"></label>
       <label><span>Previsao de chegada</span><input type="date" name="chegada_prevista"></label>
       <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
     </div>
@@ -1493,6 +1493,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     : (order.status === 'confirmado' ? 'Confirmado' : 'Historico');
   const canManageOrder = order.status === 'pedido' || order.status === 'confirmado';
   const editPanelId = `pedido-edit-${accountId}`;
+  const detailsId = `pedido-details-${accountId}`;
 
   const arrivalAction = order.status === 'pedido' ? `<form method="post" data-confirm="Confirmar que o pedido de ${e(order.supplier_name)} chegou?">
     ${csrfField(req)}
@@ -1515,6 +1516,9 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     </div>` : '';
 
   const orderTools = canManageOrder ? `<div class="gestao-order-head-tools" aria-label="Acoes do pedido">
+      <button type="button" class="gestao-icon-btn gestao-icon-btn-collapse" title="Minimizar pedido" aria-label="Minimizar pedido" aria-controls="${e(detailsId)}" aria-expanded="true" data-order-collapse-toggle>
+        <span aria-hidden="true">&minus;</span>
+      </button>
       <button type="button" class="gestao-icon-btn gestao-icon-btn-edit" title="Editar fornecedor e valores" aria-label="Editar fornecedor e valores" aria-controls="${e(editPanelId)}" aria-expanded="false" data-order-edit-toggle>
         <span aria-hidden="true">&#9998;</span>
       </button>
@@ -1535,7 +1539,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
       <input type="hidden" name="action" value="update_due">
       <input type="hidden" name="id" value="${e(accountId)}">
       <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-      <label><span>Vencimento</span><input type="datetime-local" name="vencimento_em" value="${e(datetimeLocalValue(order.due_at))}"></label>
+      <label><span>Vencimento</span><input type="date" name="vencimento_em" value="${e(dateInputValue(order.due_at))}"></label>
       <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
       <button type="submit" name="limpar_vencimento" value="1" class="gestao-btn gestao-btn-ghost">Sem vencimento</button>
     </form>
@@ -1567,7 +1571,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     </form>
   </div>` : '';
 
-  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}">
+  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}" ${canManageOrder ? `data-order-card-collapse data-order-card-id="${e(accountId)}"` : ''}>
     <div class="gestao-order-head">
       <div>
         <span class="gestao-pill">${e(statusLabel)}</span>
@@ -1578,28 +1582,30 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         ${orderTools}
       </div>
     </div>
-    ${editPanel}
-    <div class="gestao-order-meta">
-      <span>Criado ${e(brDate(order.created_at, true))}</span>
-      ${order.expected_arrival_at ? `<span>Chegada ${e(brDateOnly(order.expected_arrival_at))}</span>` : '<span>Chegada sem previsao</span>'}
-      ${order.confirmed_at ? `<span>Confirmado ${e(brDate(order.confirmed_at, true))}</span>` : ''}
-      ${order.finished_at ? `<span>Finalizado ${e(brDate(order.finished_at, true))}</span>` : ''}
+    <div class="gestao-order-card-details" id="${e(detailsId)}" data-order-card-details>
+      ${editPanel}
+      <div class="gestao-order-meta">
+        <span>Criado ${e(brDate(order.created_at, true))}</span>
+        ${order.expected_arrival_at ? `<span>Chegada ${e(brDateOnly(order.expected_arrival_at))}</span>` : '<span>Chegada sem previsao</span>'}
+        ${order.confirmed_at ? `<span>Confirmado ${e(brDate(order.confirmed_at, true))}</span>` : ''}
+        ${order.finished_at ? `<span>Finalizado ${e(brDate(order.finished_at, true))}</span>` : ''}
+      </div>
+      <div class="gestao-order-flags">
+        ${order.status === 'pedido' ? `<span class="gestao-order-flag arrival-${e(arrival.key)}">${e(arrival.label)}</span>` : `<span class="gestao-order-flag due-${e(due.key)}">${e(due.label)}</span>`}
+        <span>Alimenta Boleto</span>
+      </div>
+      <div class="gestao-balance">
+        <span>Total <strong>${e(formatMoney(totalCents))}</strong></span>
+        <span>Pago <strong>${e(formatMoney(paidCents))}</strong></span>
+        <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
+      </div>
+      <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
+      ${itemRows ? `<ul class="gestao-order-lines">${itemRows}</ul>` : ''}
+      ${paymentRows ? `<ul class="gestao-order-payments">${paymentRows}</ul>` : ''}
+      ${order.status === 'pedido' && order.account_status === 'pago' ? '<p class="gestao-empty-line">Ja esta pago; ao confirmar a chegada, vai direto para o historico.</p>' : ''}
+      ${arrivalAction}
+      ${confirmedActions}
     </div>
-    <div class="gestao-order-flags">
-      ${order.status === 'pedido' ? `<span class="gestao-order-flag arrival-${e(arrival.key)}">${e(arrival.label)}</span>` : `<span class="gestao-order-flag due-${e(due.key)}">${e(due.label)}</span>`}
-      <span>Alimenta Boleto</span>
-    </div>
-    <div class="gestao-balance">
-      <span>Total <strong>${e(formatMoney(totalCents))}</strong></span>
-      <span>Pago <strong>${e(formatMoney(paidCents))}</strong></span>
-      <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
-    </div>
-    <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
-    ${itemRows ? `<ul class="gestao-order-lines">${itemRows}</ul>` : ''}
-    ${paymentRows ? `<ul class="gestao-order-payments">${paymentRows}</ul>` : ''}
-    ${order.status === 'pedido' && order.account_status === 'pago' ? '<p class="gestao-empty-line">Ja esta pago; ao confirmar a chegada, vai direto para o historico.</p>' : ''}
-    ${arrivalAction}
-    ${confirmedActions}
   </article>`;
 }
 
@@ -1630,9 +1636,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-icons">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-collapse">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260520-icons" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260520-collapse" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
@@ -1700,8 +1706,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-icons">
-  <script src="${BASE_PATH}/login-runner.js?v=20260520-icons" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-collapse">
+  <script src="${BASE_PATH}/login-runner.js?v=20260520-collapse" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

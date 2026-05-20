@@ -372,12 +372,40 @@
         Array.prototype.slice.call(document.querySelectorAll('[data-order-edit-toggle]')).forEach(function (button) {
             var panelId = button.getAttribute('aria-controls') || '';
             var panel = panelId ? document.getElementById(panelId) : null;
+            var card = panel ? panel.closest('[data-order-card-collapse]') : null;
 
             if (!panel || button.dataset.gestaoOrderEditBound === '1') {
                 return;
             }
 
+            function expandCard() {
+                var collapseButton = card ? card.querySelector('[data-order-collapse-toggle]') : null;
+                var cardId = card ? card.getAttribute('data-order-card-id') || '' : '';
+                var key = 'pedidos:order-card-collapsed:v1:' + cardId;
+
+                if (!card || !card.classList.contains('is-order-collapsed')) {
+                    return;
+                }
+
+                card.classList.remove('is-order-collapsed');
+                if (collapseButton) {
+                    var icon = collapseButton.querySelector('[aria-hidden="true"]');
+                    collapseButton.setAttribute('aria-expanded', 'true');
+                    collapseButton.setAttribute('aria-label', 'Minimizar pedido');
+                    collapseButton.setAttribute('title', 'Minimizar pedido');
+                    if (icon) icon.textContent = '-';
+                }
+                try {
+                    window.localStorage.setItem(key, '0');
+                } catch (error) {
+                    // Ignore private browsing/storage limitations.
+                }
+            }
+
             function setOpen(open) {
+                if (open) {
+                    expandCard();
+                }
                 panel.classList.toggle('is-open', open);
                 button.classList.toggle('is-active', open);
                 button.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -391,6 +419,56 @@
             button.dataset.gestaoOrderEditBound = '1';
             button.addEventListener('click', function () {
                 setOpen(!panel.classList.contains('is-open'));
+            });
+        });
+    }
+
+    function initOrderCardCollapse() {
+        Array.prototype.slice.call(document.querySelectorAll('[data-order-card-collapse]')).forEach(function (card) {
+            var button = card.querySelector('[data-order-collapse-toggle]');
+            var id = card.getAttribute('data-order-card-id') || '';
+            var key = 'pedidos:order-card-collapsed:v1:' + id;
+
+            if (!button || !id || button.dataset.pedidosCollapseBound === '1') {
+                return;
+            }
+
+            function setCollapsed(collapsed) {
+                var icon = button.querySelector('[aria-hidden="true"]');
+                var label = collapsed ? 'Expandir pedido' : 'Minimizar pedido';
+
+                card.classList.toggle('is-order-collapsed', collapsed);
+                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                button.setAttribute('aria-label', label);
+                button.setAttribute('title', label);
+                if (icon) {
+                    icon.textContent = collapsed ? '+' : '-';
+                }
+                if (collapsed) {
+                    var editPanel = card.querySelector('[data-order-edit-panel]');
+                    var editButton = card.querySelector('[data-order-edit-toggle]');
+                    if (editPanel) editPanel.classList.remove('is-open');
+                    if (editButton) {
+                        editButton.classList.remove('is-active');
+                        editButton.setAttribute('aria-expanded', 'false');
+                    }
+                }
+                try {
+                    window.localStorage.setItem(key, collapsed ? '1' : '0');
+                } catch (error) {
+                    // Ignore private browsing/storage limitations.
+                }
+            }
+
+            button.dataset.pedidosCollapseBound = '1';
+            try {
+                setCollapsed(window.localStorage.getItem(key) === '1');
+            } catch (error) {
+                setCollapsed(false);
+            }
+
+            button.addEventListener('click', function () {
+                setCollapsed(!card.classList.contains('is-order-collapsed'));
             });
         });
     }
@@ -411,6 +489,7 @@
             initItemOptions();
             initTitleEditors();
             initOrderEditPanels();
+            initOrderCardCollapse();
         });
     } else {
         bindMoneyInputs(document);
@@ -427,5 +506,6 @@
         initItemOptions();
         initTitleEditors();
         initOrderEditPanels();
+        initOrderCardCollapse();
     }
 }());

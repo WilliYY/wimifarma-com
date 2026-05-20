@@ -231,7 +231,7 @@ Regras a preservar:
 
 Modulo `Pedidos` em `/pedidos/`:
 
-- o formulario `Pedidos feitos` registra fornecedor, um ou mais valores/parcelas, vencimento opcional do boleto, previsao opcional de chegada, competencia, observacao e opcao `Ja foi pago, so falta chegar`;
+- o formulario `Pedidos feitos` registra fornecedor, um ou mais valores/parcelas, vencimento opcional do boleto apenas por data, previsao opcional de chegada, competencia, observacao e opcao `Ja foi pago, so falta chegar`;
 - criar um pedido tambem cria uma conta vinculada em `gestao_accounts` com categoria `Boleto`; cada valor/parcela vira item em `gestao_account_items`;
 - o fluxo operacional fica separado da Gestao: `pedidos_orders` guarda pedidos feitos/aguardando chegada, e `pedidos_confirmed_orders` guarda confirmados e historico;
 - contas vinculadas a pedidos ficam travadas na categoria `Boleto`; recategorizacao em lote e bloqueada quando a categoria contem pedidos para preservar o controle financeiro automatico;
@@ -240,7 +240,7 @@ Modulo `Pedidos` em `/pedidos/`:
 - `Confirmados` ordena os boletos com vencimento mais proximo primeiro e mostra alertas de vencido/urgente/atencao conforme a proximidade;
 - pagamentos parciais, botao `Pago` e ajustes de juros/diferenca reutilizam `gestao_account_payments` e `gestao_account_items`, alimentando automaticamente o total mensal e a categoria `Boleto`;
 - quando o pedido esta recebido e quitado, ele vai para `Historico` com datas de criacao, confirmacao, pagamento e finalizacao preservadas;
-- cards em `Aguardando chegada` e `Confirmados` mostram icone de lapis para abrir a edicao de fornecedor/valores ativos, com auditoria em `gestao_audit_events` e espelho em `wf_logs`;
+- cards em `Aguardando chegada` e `Confirmados` podem ser minimizados para manter a tela enxuta e mostram icone de lapis para abrir a edicao de fornecedor/valores ativos, com auditoria em `gestao_audit_events` e espelho em `wf_logs`;
 - esses mesmos cards mostram icone de excluir para retirar da tela quando nao houver necessidade de registrar o boleto;
 - remover valores ou excluir um pedido da tela nao apaga dados financeiros: valores viram `cancelado` quando permitido, e pedidos inteiros usam arquivamento logico em `gestao_accounts.archived_at`/`archived_by` mais lifecycle/cancelamento nas tabelas de Pedidos;
 - a tela `/pedidos/` carrega o widget do Miauby como apoio operacional, sem transformar Pedidos em subview da Gestao;

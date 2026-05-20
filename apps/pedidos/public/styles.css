@@ -405,6 +405,21 @@ textarea {
     min-width: 0;
 }
 
+.gestao-order-card-details {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+}
+
+.gestao-order-card.is-order-collapsed {
+    gap: 0;
+    padding-bottom: 14px;
+}
+
+.gestao-order-card.is-order-collapsed .gestao-order-card-details {
+    display: none;
+}
+
 .gestao-order-card.status-pedido {
     border-left: 5px solid #2563eb;
 }
