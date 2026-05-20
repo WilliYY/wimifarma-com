@@ -238,9 +238,9 @@ Modulo `Pedidos` em `/pedidos/`:
 - se o pedido ja foi pago na criacao, o pagamento entra imediatamente em `gestao_account_payments`, mas o pedido continua em `pedido` ate a chegada ser confirmada;
 - ao clicar em `Confirmar chegada`, o pedido vai para `Confirmados` quando ainda existe saldo ou direto para `Historico` quando ja estava quitado;
 - `Confirmados` ordena os boletos com vencimento mais proximo primeiro e mostra alertas de vencido/urgente/atencao conforme a proximidade;
-- pagamentos parciais, botao `Pago` e ajustes de juros/diferenca reutilizam `gestao_account_payments` e `gestao_account_items`, alimentando automaticamente o total mensal e a categoria `Boleto`;
+- pagamentos parciais, botao `Pago` e ajustes de juros/diferenca reutilizam `gestao_account_payments` e `gestao_account_items`, alimentando automaticamente o total mensal e a categoria `Boleto`; a data de pagamento parcial e informada apenas por data na interface;
 - quando o pedido esta recebido e quitado, ele vai para `Historico` com datas de criacao, confirmacao, pagamento e finalizacao preservadas;
-- cards em `Aguardando chegada` e `Confirmados` podem ser minimizados para manter a tela enxuta e mostram icone de lapis para abrir a edicao de fornecedor/valores ativos, com auditoria em `gestao_audit_events` e espelho em `wf_logs`;
+- cards em `Aguardando chegada` e `Confirmados` podem ser minimizados ao clicar no resumo do proprio card, sem botao extra de `+/-`; no modo reduzido, `Aguardando chegada` mantem `Confirmar chegada` visivel e `Confirmados` mantem `Pago` visivel, enquanto o icone de lapis abre a edicao de fornecedor/valores ativos com auditoria em `gestao_audit_events` e espelho em `wf_logs`;
 - esses mesmos cards mostram icone de excluir para retirar da tela quando nao houver necessidade de registrar o boleto;
 - remover valores ou excluir um pedido da tela nao apaga dados financeiros: valores viram `cancelado` quando permitido, e pedidos inteiros usam arquivamento logico em `gestao_accounts.archived_at`/`archived_by` mais lifecycle/cancelamento nas tabelas de Pedidos;
 - a tela `/pedidos/` carrega o widget do Miauby como apoio operacional, sem transformar Pedidos em subview da Gestao;

@@ -336,17 +336,17 @@ function parseDatetimeLocal(value: unknown): string {
   return parseOptionalDatetimeLocal(value) || new Date().toISOString();
 }
 
-function datetimeLocalInput(value = new Date()): string {
-  const date = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
-  return date.toISOString().slice(0, 16);
-}
-
-function datetimeLocalValue(value: Date | string | null | undefined): string {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return '';
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+function localDateInput(value = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value);
+  const year = parts.find((part) => part.type === 'year')?.value || '';
+  const month = parts.find((part) => part.type === 'month')?.value || '';
+  const day = parts.find((part) => part.type === 'day')?.value || '';
+  return year && month && day ? `${year}-${month}-${day}` : value.toISOString().slice(0, 10);
 }
 
 function dateInputValue(value: Date | string | null | undefined): string {
@@ -1495,13 +1495,21 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   const editPanelId = `pedido-edit-${accountId}`;
   const detailsId = `pedido-details-${accountId}`;
 
-  const arrivalAction = order.status === 'pedido' ? `<form method="post" data-confirm="Confirmar que o pedido de ${e(order.supplier_name)} chegou?">
+  const arrivalAction = order.status === 'pedido' ? `<form method="post" class="gestao-order-primary-action" data-confirm="Confirmar que o pedido de ${e(order.supplier_name)} chegou?">
     ${csrfField(req)}
     <input type="hidden" name="action" value="confirm_order_arrival">
     <input type="hidden" name="order_id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
     <button type="submit" class="gestao-btn gestao-btn-primary">Confirmar chegada</button>
   </form>` : '';
+  const paidAction = order.status === 'confirmado' && remainingCents > 0 ? `<form method="post" class="gestao-order-primary-action" data-confirm="Registrar ${e(formatMoney(remainingCents))} como pago e mover para o historico?">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="confirm_paid">
+      <input type="hidden" name="id" value="${e(accountId)}">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <button type="submit" class="gestao-btn gestao-btn-primary">Pago</button>
+    </form>` : '';
+  const quickAction = order.status === 'pedido' ? arrivalAction : paidAction;
 
   const editPanel = canManageOrder ? `<div class="gestao-order-edit-panel" id="${e(editPanelId)}" data-order-edit-panel>
       <form method="post" class="gestao-order-edit-supplier">
@@ -1516,9 +1524,6 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     </div>` : '';
 
   const orderTools = canManageOrder ? `<div class="gestao-order-head-tools" aria-label="Acoes do pedido">
-      <button type="button" class="gestao-icon-btn gestao-icon-btn-collapse" title="Minimizar pedido" aria-label="Minimizar pedido" aria-controls="${e(detailsId)}" aria-expanded="true" data-order-collapse-toggle>
-        <span aria-hidden="true">&minus;</span>
-      </button>
       <button type="button" class="gestao-icon-btn gestao-icon-btn-edit" title="Editar fornecedor e valores" aria-label="Editar fornecedor e valores" aria-controls="${e(editPanelId)}" aria-expanded="false" data-order-edit-toggle>
         <span aria-hidden="true">&#9998;</span>
       </button>
@@ -1550,16 +1555,10 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
       <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
       <input type="hidden" name="pagamento_descricao" value="Pagamento pedido ${e(order.supplier_name)}">
       <label><span>Pagamento parcial</span><input type="text" name="pagamento_valor" inputmode="decimal" placeholder="0,00" data-money-input></label>
-      <label><span>Data do pagamento</span><input type="datetime-local" name="pagamento_em" value="${e(datetimeLocalInput())}"></label>
+      <label><span>Data do pagamento</span><input type="date" name="pagamento_em" value="${e(localDateInput())}"></label>
       <button type="submit" class="gestao-btn gestao-btn-secondary">Registrar parcial</button>
     </form>
-    <form method="post" data-confirm="Registrar ${e(formatMoney(remainingCents))} como pago e mover para o historico?">
-      ${csrfField(req)}
-      <input type="hidden" name="action" value="confirm_paid">
-      <input type="hidden" name="id" value="${e(accountId)}">
-      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-      <button type="submit" class="gestao-btn gestao-btn-primary">Pago</button>
-    </form>` : ''}
+    ${paidAction}` : ''}
     <form method="post" class="gestao-order-adjust-form" data-require-money>
       ${csrfField(req)}
       <input type="hidden" name="action" value="add_item">
@@ -1573,15 +1572,18 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
 
   return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}" ${canManageOrder ? `data-order-card-collapse data-order-card-id="${e(accountId)}"` : ''}>
     <div class="gestao-order-head">
-      <div>
-        <span class="gestao-pill">${e(statusLabel)}</span>
-        <h2>${e(order.supplier_name)}</h2>
+      ${canManageOrder ? `<div class="gestao-order-summary-toggle" role="button" tabindex="0" title="Abrir ou recolher detalhes do pedido" aria-label="Abrir ou recolher detalhes do pedido" aria-controls="${e(detailsId)}" aria-expanded="true" data-order-collapse-toggle>` : '<div class="gestao-order-summary-static">'}
+        <span>
+          <span class="gestao-pill">${e(statusLabel)}</span>
+          <h2>${e(order.supplier_name)}</h2>
+        </span>
+        <strong>${e(formatMoney(totalCents))}</strong>
       </div>
       <div class="gestao-order-head-side">
-        <strong>${e(formatMoney(totalCents))}</strong>
         ${orderTools}
       </div>
     </div>
+    ${quickAction ? `<div class="gestao-order-quick-action" data-order-quick-action>${quickAction}</div>` : ''}
     <div class="gestao-order-card-details" id="${e(detailsId)}" data-order-card-details>
       ${editPanel}
       <div class="gestao-order-meta">
@@ -1636,9 +1638,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-collapse">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-summary">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260520-collapse" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260520-summary" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
@@ -1706,8 +1708,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-collapse">
-  <script src="${BASE_PATH}/login-runner.js?v=20260520-collapse" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-summary">
+  <script src="${BASE_PATH}/login-runner.js?v=20260520-summary" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

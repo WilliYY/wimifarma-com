@@ -379,7 +379,7 @@
             }
 
             function expandCard() {
-                var collapseButton = card ? card.querySelector('[data-order-collapse-toggle]') : null;
+                var collapseToggle = card ? card.querySelector('[data-order-collapse-toggle]') : null;
                 var cardId = card ? card.getAttribute('data-order-card-id') || '' : '';
                 var key = 'pedidos:order-card-collapsed:v1:' + cardId;
 
@@ -388,12 +388,10 @@
                 }
 
                 card.classList.remove('is-order-collapsed');
-                if (collapseButton) {
-                    var icon = collapseButton.querySelector('[aria-hidden="true"]');
-                    collapseButton.setAttribute('aria-expanded', 'true');
-                    collapseButton.setAttribute('aria-label', 'Minimizar pedido');
-                    collapseButton.setAttribute('title', 'Minimizar pedido');
-                    if (icon) icon.textContent = '-';
+                if (collapseToggle) {
+                    collapseToggle.setAttribute('aria-expanded', 'true');
+                    collapseToggle.setAttribute('aria-label', 'Recolher detalhes do pedido');
+                    collapseToggle.setAttribute('title', 'Recolher detalhes do pedido');
                 }
                 try {
                     window.localStorage.setItem(key, '0');
@@ -425,25 +423,21 @@
 
     function initOrderCardCollapse() {
         Array.prototype.slice.call(document.querySelectorAll('[data-order-card-collapse]')).forEach(function (card) {
-            var button = card.querySelector('[data-order-collapse-toggle]');
+            var toggle = card.querySelector('[data-order-collapse-toggle]');
             var id = card.getAttribute('data-order-card-id') || '';
             var key = 'pedidos:order-card-collapsed:v1:' + id;
 
-            if (!button || !id || button.dataset.pedidosCollapseBound === '1') {
+            if (!toggle || !id || toggle.dataset.pedidosCollapseBound === '1') {
                 return;
             }
 
             function setCollapsed(collapsed) {
-                var icon = button.querySelector('[aria-hidden="true"]');
-                var label = collapsed ? 'Expandir pedido' : 'Minimizar pedido';
+                var label = collapsed ? 'Abrir detalhes do pedido' : 'Recolher detalhes do pedido';
 
                 card.classList.toggle('is-order-collapsed', collapsed);
-                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                button.setAttribute('aria-label', label);
-                button.setAttribute('title', label);
-                if (icon) {
-                    icon.textContent = collapsed ? '+' : '-';
-                }
+                toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                toggle.setAttribute('aria-label', label);
+                toggle.setAttribute('title', label);
                 if (collapsed) {
                     var editPanel = card.querySelector('[data-order-edit-panel]');
                     var editButton = card.querySelector('[data-order-edit-toggle]');
@@ -460,14 +454,21 @@
                 }
             }
 
-            button.dataset.pedidosCollapseBound = '1';
+            toggle.dataset.pedidosCollapseBound = '1';
             try {
                 setCollapsed(window.localStorage.getItem(key) === '1');
             } catch (error) {
                 setCollapsed(false);
             }
 
-            button.addEventListener('click', function () {
+            toggle.addEventListener('click', function () {
+                setCollapsed(!card.classList.contains('is-order-collapsed'));
+            });
+            toggle.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                event.preventDefault();
                 setCollapsed(!card.classList.contains('is-order-collapsed'));
             });
         });

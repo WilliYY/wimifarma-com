@@ -412,12 +412,29 @@ textarea {
 }
 
 .gestao-order-card.is-order-collapsed {
-    gap: 0;
+    gap: 10px;
     padding-bottom: 14px;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-card-details {
     display: none;
+}
+
+.gestao-order-quick-action {
+    display: none;
+}
+
+.gestao-order-card.is-order-collapsed .gestao-order-quick-action {
+    display: block;
+}
+
+.gestao-order-quick-action form,
+.gestao-order-primary-action {
+    margin: 0;
+}
+
+.gestao-order-quick-action .gestao-btn {
+    width: 100%;
 }
 
 .gestao-order-card.status-pedido {
@@ -453,6 +470,50 @@ textarea {
     min-width: 0;
 }
 
+.gestao-order-summary-toggle,
+.gestao-order-summary-static {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.gestao-order-summary-toggle {
+    appearance: none;
+    margin: -4px;
+    padding: 4px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.gestao-order-summary-toggle:hover,
+.gestao-order-summary-toggle:focus-visible {
+    outline: 0;
+    background: #fff7fa;
+}
+
+.gestao-order-summary-toggle > span,
+.gestao-order-summary-static > span {
+    min-width: 0;
+}
+
+.gestao-order-summary-toggle > strong,
+.gestao-order-summary-static > strong {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    color: var(--wine);
+    font-size: 1.08rem;
+    font-weight: 950;
+}
+
 .gestao-order-head h2 {
     margin: 7px 0 0;
     color: var(--ink);
@@ -466,12 +527,6 @@ textarea {
     display: grid;
     justify-items: end;
     gap: 8px;
-}
-
-.gestao-order-head-side > strong {
-    white-space: nowrap;
-    color: var(--wine);
-    font-size: 1.08rem;
 }
 
 .gestao-order-head-tools {
