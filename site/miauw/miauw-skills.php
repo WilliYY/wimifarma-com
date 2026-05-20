@@ -1635,7 +1635,7 @@ function miauw_skill_gestao_access_reply(string $pageContext = ''): string
     $suffix = trim($pageContext) !== '' ? ' Da tela atual eu so aponto o caminho, sem inventar conta.' : '';
 
     return 'Gestao fica em /gestao/.' . "\n"
-        . 'Quer criar conta por comando? Usa assim: `gestao - titulo - 500 - categoria`.' . $suffix;
+        . 'Quer criar conta por comando? Usa assim: `gestao - titulo - 500 - categoria`. Se mandar so nome e valor, eu jogo em geral.' . $suffix;
 }
 
 function miauw_skill_gestao_money_to_float($value): float
@@ -1672,6 +1672,23 @@ function miauw_skill_gestao_clean_after_money(string $text, int $maxLength): str
     $text = preg_replace('/^\s*(?:categoria|cat)\s*[:\-]?\s*/iu', '', $text) ?? $text;
 
     return miauw_skill_gestao_clean_part($text, $maxLength);
+}
+
+function miauw_skill_gestao_looks_like_category(string $text): bool
+{
+    $normalized = miauw_skill_normalized(miauw_skill_gestao_clean_part($text, 80));
+    $normalized = trim(preg_replace('/[^a-z0-9]+/u', ' ', $normalized) ?? $normalized);
+    if ($normalized === '') {
+        return false;
+    }
+
+    $known = array(
+        'geral', 'outro', 'outros', 'boleto', 'boletos', 'aluguel', 'salario', 'salarios',
+        'comissao', 'comissoes', 'funcionario', 'funcionarios', 'internet', 'energia',
+        'agua', 'fornecedor', 'fornecedores', 'pedido', 'pedidos'
+    );
+
+    return in_array($normalized, $known, true);
 }
 
 function miauw_skill_gestao_command_from_message(string $message): ?array
@@ -1720,6 +1737,7 @@ function miauw_skill_gestao_command_from_message(string $message): ?array
     $moneyPattern = '/(?:r\$\s*)?[0-9]+(?:\.[0-9]{3})*(?:,[0-9]{1,2})?|(?:r\$\s*)?[0-9]+(?:\.[0-9]{1,2})?/iu';
     $value = 0.0;
     $valueText = '';
+    $moneyPartIndex = -1;
     $title = '';
     $category = '';
 
@@ -1729,6 +1747,7 @@ function miauw_skill_gestao_command_from_message(string $message): ?array
             if ($candidate > 0) {
                 $value = $candidate;
                 $valueText = (string) $moneyMatch[0];
+                $moneyPartIndex = (int) $index;
                 $moneyPosition = strpos($part, (string) $moneyMatch[0]);
                 $left = $moneyPosition === false ? '' : miauw_skill_gestao_clean_part(substr($part, 0, $moneyPosition), 180);
                 $right = $moneyPosition === false ? '' : miauw_skill_gestao_clean_after_money(substr($part, $moneyPosition + strlen((string) $moneyMatch[0])), 80);
@@ -1787,6 +1806,37 @@ function miauw_skill_gestao_command_from_message(string $message): ?array
 
     if ($title === '' && count($parts) >= 3) {
         $title = miauw_skill_gestao_clean_part((string) $parts[0], 180);
+    }
+
+    if ($value > 0 && $moneyPartIndex >= 0 && count($parts) >= 3) {
+        if ($moneyPartIndex === 0) {
+            $afterParts = array_values(array_slice($parts, 1));
+            $firstAfter = miauw_skill_gestao_clean_part((string) ($afterParts[0] ?? ''), 80);
+            if (count($afterParts) >= 2 && miauw_skill_gestao_looks_like_category($firstAfter)) {
+                $category = $firstAfter;
+                $title = miauw_skill_gestao_clean_part(implode(' - ', array_slice($afterParts, 1)), 180);
+            }
+        } elseif ($moneyPartIndex === count($parts) - 1) {
+            $beforeParts = array_values(array_slice($parts, 0, $moneyPartIndex));
+            $firstBefore = miauw_skill_gestao_clean_part((string) ($beforeParts[0] ?? ''), 80);
+            $lastBefore = miauw_skill_gestao_clean_part((string) end($beforeParts), 80);
+            if (count($beforeParts) >= 2 && miauw_skill_gestao_looks_like_category($firstBefore)) {
+                $category = $firstBefore;
+                $title = miauw_skill_gestao_clean_part(implode(' - ', array_slice($beforeParts, 1)), 180);
+            } elseif (count($beforeParts) >= 2 && miauw_skill_gestao_looks_like_category($lastBefore)) {
+                $category = $lastBefore;
+                $title = miauw_skill_gestao_clean_part(implode(' - ', array_slice($beforeParts, 0, -1)), 180);
+            }
+        }
+    }
+
+    if ($value > 0 && $title === '' && $category !== '' && !miauw_skill_gestao_looks_like_category($category)) {
+        $title = $category;
+        $category = 'geral';
+    }
+
+    if ($value > 0 && $title !== '' && $category === '') {
+        $category = 'geral';
     }
 
     return array(

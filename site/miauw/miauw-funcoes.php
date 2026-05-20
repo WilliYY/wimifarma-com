@@ -5556,7 +5556,7 @@ function miauw_openai_tools(): array
         array(
             'type' => 'function',
             'name' => 'criar_conta_gestao',
-            'description' => 'Prepara criacao de conta a pagar na Gestao quando houver titulo, valor e categoria. Exemplo: "gestao - Rogerio - 500 - geral". Se faltar titulo, valor ou categoria, pergunte antes. A conta so grava depois da confirmacao humana.',
+            'description' => 'Prepara criacao de conta a pagar na Gestao quando houver titulo e valor; a categoria pode vir antes ou depois, e se vier so nome + valor use categoria geral. Exemplos: "gestao - Rogerio - 500 - geral", "gestao - 50 - Will", "gestao Will 50". Se faltar titulo ou valor, pergunte antes. A conta so grava depois da confirmacao humana.',
             'parameters' => array(
                 'type' => 'object',
                 'properties' => array(

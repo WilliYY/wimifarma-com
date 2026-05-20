@@ -200,7 +200,7 @@ Miauby ja possui:
 - Complemento operacional da Fase 21:
   - o Miauby ganhou tools de Gestao no registry: `resumo_gestao` como leitura baixa e `criar_conta_gestao` como escrita forte;
   - comando `gestao`/`abrir gestao` aponta para `/gestao/`;
-  - comando `gestao - titulo - valor - categoria` ou `gestao - valor - titulo - categoria` prepara uma conta a pagar, exige titulo/valor/categoria e fica pendente de confirmacao humana antes de gravar;
+  - comando `gestao - titulo - valor - categoria`, `gestao - valor - titulo`, `gestao - titulo - valor` ou `gestao titulo valor` prepara uma conta a pagar, aceita categoria antes/depois e usa categoria `geral` quando houver so titulo + valor; se faltar titulo ou valor, pergunta antes;
   - se uma mensagem incompleta gerou orientacao de formato, o proximo prompt que comecar por `gestao` substitui a pendencia anterior em vez de concatenar textos antigos;
   - a escrita usa endpoint interno tokenizado da Gestao, sem credencial direta de Postgres no PHP e sem escrita direta pelo Node.
 

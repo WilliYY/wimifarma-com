@@ -114,6 +114,11 @@ type RenderAccount = AccountRow & {
   auditEvents: AuditEventRow[];
 };
 
+type AccountSearchResult = {
+  account: RenderAccount;
+  score: number;
+};
+
 type MysqlUserRow = {
   id: number;
   username: string;
@@ -465,6 +470,152 @@ function parseOptionalDate(value: unknown): string | null {
   if (!text) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   return null;
+}
+
+function queryValue(value: unknown): string {
+  return cleanText(value, 120);
+}
+
+function searchLimitValue(value: unknown): number {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 10;
+  return Math.min(80, Math.max(10, parsed));
+}
+
+function searchNormalize(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function searchTokens(query: string): string[] {
+  return Array.from(new Set(searchNormalize(query).split(' ').filter((token) => token.length >= 2)));
+}
+
+function moneySearchCents(query: string): number | null {
+  const moneyMatch = query.match(/(?:r\$\s*)?\d+(?:\.\d{3})*(?:,\d{1,2})?|(?:r\$\s*)?\d+(?:\.\d{1,2})?/i);
+  if (!moneyMatch) return null;
+  const cents = parseMoneyToCents(moneyMatch[0]);
+  return cents > 0 ? cents : null;
+}
+
+function accountSearchText(account: RenderAccount, totalCents: number, paidCents: number, remainingCents: number): string {
+  const pieces = [
+    account.title,
+    account.category,
+    accountStatusLabel(account.status),
+    monthLabel(account.competence_month),
+    brDate(account.generated_at, true),
+    brDateOnly(account.generated_at),
+    brDate(account.due_at, true),
+    brDateOnly(account.due_at),
+    brDate(account.paid_at, true),
+    brDateOnly(account.paid_at),
+    formatMoney(totalCents),
+    formatMoney(paidCents),
+    formatMoney(remainingCents),
+    moneyInput(totalCents),
+    moneyInput(paidCents),
+    moneyInput(remainingCents),
+    ...account.items.flatMap((item) => [
+      item.description,
+      item.status,
+      brDate(item.created_at, true),
+      brDateOnly(item.created_at),
+      formatMoney(item.amount_cents),
+      moneyInput(Number(item.amount_cents || 0)),
+    ]),
+    ...account.payments.flatMap((payment) => [
+      payment.description,
+      payment.item_description || '',
+      payment.status,
+      brDate(payment.paid_at, true),
+      brDateOnly(payment.paid_at),
+      formatMoney(payment.amount_cents),
+      moneyInput(Number(payment.amount_cents || 0)),
+    ]),
+  ];
+  return searchNormalize(pieces.filter(Boolean).join(' '));
+}
+
+function moneyClosenessScore(target: number, candidates: number[]): number {
+  let best = 0;
+  for (const candidate of candidates) {
+    if (candidate <= 0) continue;
+    const diff = Math.abs(candidate - target);
+    if (diff === 0) {
+      best = Math.max(best, 120);
+    } else if (diff <= 500) {
+      best = Math.max(best, 85);
+    } else if (diff <= 2000) {
+      best = Math.max(best, 55);
+    } else {
+      const ratio = diff / Math.max(candidate, target, 1);
+      if (ratio <= 0.1) best = Math.max(best, 35);
+    }
+  }
+  return best;
+}
+
+function searchAccounts(accounts: RenderAccount[], query: string): AccountSearchResult[] {
+  const trimmed = queryValue(query);
+  if (!trimmed) return [];
+  const normalized = searchNormalize(trimmed);
+  const tokens = searchTokens(trimmed);
+  const searchedCents = moneySearchCents(trimmed);
+  const results: AccountSearchResult[] = [];
+
+  accounts.forEach((account, index) => {
+    const totalCents = Number(account.total_cents || 0);
+    const paidCents = Number(account.paid_cents || 0);
+    const remainingCents = Math.max(0, totalCents - paidCents);
+    const titleText = searchNormalize(account.title);
+    const categoryText = searchNormalize(account.category);
+    const statusText = searchNormalize(accountStatusLabel(account.status));
+    const fullText = accountSearchText(account, totalCents, paidCents, remainingCents);
+    let score = 0;
+
+    if (normalized && fullText.includes(normalized)) score += 120;
+    if (normalized && titleText.includes(normalized)) score += 90;
+    if (normalized && categoryText.includes(normalized)) score += 60;
+    if (normalized && statusText.includes(normalized)) score += 30;
+
+    for (const token of tokens) {
+      if (titleText.includes(token)) score += 28;
+      else if (categoryText.includes(token)) score += 18;
+      else if (fullText.includes(token)) score += 10;
+    }
+
+    if (searchedCents !== null) {
+      const candidates = [
+        totalCents,
+        paidCents,
+        remainingCents,
+        ...account.items.map((item) => Number(item.amount_cents || 0)),
+        ...account.payments.map((payment) => Number(payment.amount_cents || 0)),
+      ];
+      score += moneyClosenessScore(searchedCents, candidates);
+    }
+
+    if (score > 0) {
+      results.push({ account, score: score * 1000 - index });
+    }
+  });
+
+  return results.sort((a, b) => b.score - a.score);
+}
+
+function gestaoListUrl(month: string, categoryKeyValue = '', search = '', limit = 0): string {
+  const params = new URLSearchParams();
+  params.set('mes', monthValue(month));
+  if (categoryKeyValue) params.set('categoria', categoryKeyValue);
+  if (search) params.set('busca', search);
+  if (limit > 10) params.set('limite', String(limit));
+  return `${BASE_PATH}/?${params.toString()}`;
 }
 
 function bodyArray(body: Record<string, unknown>, field: string): unknown[] {
@@ -1828,14 +1979,18 @@ async function archiveCanceledAccount(req: Request): Promise<void> {
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
-    const account = await client.query<{ status: string; title: string }>(
-      'SELECT status, title FROM gestao_accounts WHERE id = $1 FOR UPDATE',
+    const account = await client.query<{ status: string; title: string; archived_at: Date | string | null }>(
+      'SELECT status, title, archived_at FROM gestao_accounts WHERE id = $1 FOR UPDATE',
       [id],
     );
     if (!account.rowCount) throw new Error('Conta nao encontrada.');
+    if (account.rows[0].archived_at) {
+      await client.query('COMMIT');
+      return;
+    }
     if (account.rows[0].status !== 'cancelado') throw new Error('So contas canceladas podem ser excluidas da tela.');
     const result = await client.query(
-      'UPDATE gestao_accounts SET archived_at = now(), archived_by = $1 WHERE id = $2 AND archived_at IS NULL',
+      "UPDATE gestao_accounts SET archived_at = now(), archived_by = $1 WHERE id = $2 AND status = 'cancelado' AND archived_at IS NULL RETURNING id",
       [userId, id],
     );
     if (!result.rowCount) throw new Error('Essa conta ja foi excluida da tela.');
@@ -2283,7 +2438,7 @@ function renderCategoryPanel(req: Request, summaries: CategorySummary[], selecte
       <input type="hidden" name="categoria_chave" value="${e(active.key)}">
       <button type="submit" class="gestao-link-danger">Cancelar abertas desta categoria</button>
     </form>
-    ${active.canceledCount > 0 ? `<form method="post" data-confirm="Excluir as contas canceladas dessa categoria da tela? O historico fica preservado no banco e na auditoria.">
+    ${active.canceledCount > 0 ? `<form method="post" action="${BASE_PATH}/" data-confirm="Excluir as contas canceladas dessa categoria da tela? O historico fica preservado no banco e na auditoria.">
       ${csrfField(req)}
       <input type="hidden" name="action" value="archive_canceled_category_group">
       <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
@@ -2575,7 +2730,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
          <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
          <button type="submit" class="gestao-btn gestao-btn-secondary">Reabrir conta</button>
        </form>
-       <form method="post" data-confirm="Excluir esta conta cancelada da tela? Isso arquiva a conta e preserva historico/auditoria.">
+       <form method="post" action="${BASE_PATH}/" data-confirm="Excluir esta conta cancelada da tela? Isso arquiva a conta e preserva historico/auditoria.">
          ${csrfField(req)}
          <input type="hidden" name="action" value="archive_canceled">
          <input type="hidden" name="id" value="${e(id)}">
@@ -2755,16 +2910,47 @@ function renderNotepad(req: Request, notes: NotepadRow[], selectedMonth: string)
   </aside>`;
 }
 
+function renderSearchPanel(selectedMonth: string, searchQuery: string, totalResults: number, shownResults: number, currentLimit: number): string {
+  const hasSearch = searchQuery !== '';
+  const nextLimit = currentLimit + 10;
+  const clearUrl = gestaoListUrl(selectedMonth);
+  const moreUrl = gestaoListUrl(selectedMonth, '', searchQuery, nextLimit);
+  const resultLine = hasSearch
+    ? `<p>${e(totalResults)} resultado(s) encontrados. Mostrando ${e(shownResults)}.</p>`
+    : '<p>Procure por nome, valor, categoria, vencimento ou data de lancamento.</p>';
+
+  return `<section class="gestao-search-panel" aria-label="Busca de contas">
+    <form method="get" class="gestao-search-form">
+      <input type="hidden" name="mes" value="${e(selectedMonth)}">
+      <label>
+        <span>Pesquisar</span>
+        <input type="search" name="busca" value="${e(searchQuery)}" placeholder="Ex: Rogerio, 82, boleto, 18/05">
+      </label>
+      <button type="submit" class="gestao-btn gestao-btn-primary">Buscar</button>
+      ${hasSearch ? `<a class="gestao-btn gestao-btn-ghost" href="${e(clearUrl)}">Limpar</a>` : ''}
+    </form>
+    <div class="gestao-search-meta">
+      ${resultLine}
+      ${hasSearch && totalResults > shownResults ? `<a href="${e(moreUrl)}">Mostrar mais</a>` : ''}
+    </div>
+  </section>`;
+}
+
 async function renderApp(req: Request): Promise<string> {
   const selectedMonth = monthValue(req.query.mes);
-  const selectedCategory = cleanText(req.query.categoria, 120);
+  const searchQuery = queryValue(req.query.busca);
+  const searchLimit = searchLimitValue(req.query.limite);
+  const selectedCategory = searchQuery ? '' : cleanText(req.query.categoria, 120);
   const flash = takeFlash(req);
   const summary = await monthSummary(selectedMonth);
   const allAccounts = await listAccounts(selectedMonth);
   const notes = await listNotepadNotes();
   const summaries = categorySummaries(allAccounts);
   const activeCategory = summaries.some((summary) => summary.key === selectedCategory) ? selectedCategory : '';
-  const visibleAccounts = activeCategory
+  const searchResults = searchQuery ? searchAccounts(allAccounts, searchQuery) : [];
+  const visibleAccounts = searchQuery
+    ? searchResults.slice(0, searchLimit).map((result) => result.account)
+    : activeCategory
     ? allAccounts.filter((account) => categoryKey(account.category) === activeCategory)
     : [
       ...allAccounts.filter((account) => account.status === 'pendente'),
@@ -2773,9 +2959,13 @@ async function renderApp(req: Request): Promise<string> {
   const suggestions = summaries.map((summary) => `<option value="${e(summary.label)}">`).join('');
   const accountsHtml = visibleAccounts.length
     ? visibleAccounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
-    : '<div class="gestao-empty">Nada lancado nesse mes ainda.</div>';
+    : `<div class="gestao-empty">${searchQuery ? 'Nada encontrado para essa busca.' : 'Nada lancado nesse mes ainda.'}</div>`;
   const categoryPanelHtml = renderCategoryPanel(req, summaries, selectedMonth, activeCategory);
   const notepadHtml = renderNotepad(req, notes, selectedMonth);
+  const searchPanelHtml = renderSearchPanel(selectedMonth, searchQuery, searchResults.length, visibleAccounts.length, searchLimit);
+  const listTitle = searchQuery
+    ? `<div class="gestao-section-title"><span class="gestao-kicker">Busca</span><strong>${e(searchQuery)}</strong></div>`
+    : `<div class="gestao-section-title"><span class="gestao-kicker">${activeCategory ? 'Categoria filtrada' : 'Contas abertas + ultimas fechadas'}</span><strong>${activeCategory ? e(summaries.find((summary) => summary.key === activeCategory)?.label || '') : e(monthLabel(selectedMonth))}</strong></div>`;
   const contentHtml = `<section class="gestao-layout">
       <form method="post" class="gestao-form" data-gestao-form>
         ${csrfField(req)}
@@ -2811,7 +3001,7 @@ async function renderApp(req: Request): Promise<string> {
       </form>
 
       <section class="gestao-list-panel">
-        <div class="gestao-section-title"><span class="gestao-kicker">${activeCategory ? 'Categoria filtrada' : 'Contas abertas + ultimas fechadas'}</span><strong>${activeCategory ? e(summaries.find((summary) => summary.key === activeCategory)?.label || '') : e(monthLabel(selectedMonth))}</strong></div>
+        ${listTitle}
         <div class="gestao-list">${accountsHtml}</div>
       </section>
 
@@ -2827,9 +3017,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-pedidos">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-search">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260519-pedidos" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260520-search" defer></script>
   <script src="/miauw/widget.js?v=20260517j" defer></script>
 </head>
 <body class="gestao-app-body">
@@ -2849,7 +3039,6 @@ async function renderApp(req: Request): Promise<string> {
       <div>
         <span class="gestao-kicker">Administrativo</span>
         <h1>Gestao</h1>
-        <p>Contas manuais, categorias livres, pagamentos parciais e saldo conferido por mes.</p>
       </div>
       <form method="get" class="gestao-month-filter">
         <label><span>Mes</span><input type="month" name="mes" value="${e(selectedMonth)}"></label>
@@ -2860,11 +3049,13 @@ async function renderApp(req: Request): Promise<string> {
     ${flash.message ? `<div class="gestao-alert ${e(flash.type)}">${e(flash.message)}</div>` : ''}
 
     <section class="gestao-stats" aria-label="Resumo do mes">
-      <div><span>Pago no mes</span><strong>${e(formatMoney(summary.paidCents))}</strong></div>
-      <div><span>Pendente do mes</span><strong>${e(formatMoney(summary.pendingCents))}</strong></div>
-      <div><span>Gerado no mes</span><strong>${e(formatMoney(summary.generatedCents))}</strong></div>
-      <div><span>Contas pendentes</span><strong>${e(summary.pendingAccounts)}</strong></div>
+      <div><span>Pago</span><strong>${e(formatMoney(summary.paidCents))}</strong></div>
+      <div><span>Pendente</span><strong>${e(formatMoney(summary.pendingCents))}</strong></div>
+      <div><span>Gerado</span><strong>${e(formatMoney(summary.generatedCents))}</strong></div>
+      <div><span>Abertas</span><strong>${e(summary.pendingAccounts)}</strong></div>
     </section>
+
+    ${searchPanelHtml}
 
     ${contentHtml}
   </main>
@@ -2880,7 +3071,7 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-archive">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-search">
   <script src="${BASE_PATH}/login-runner.js?v=20260518-click" defer></script>
 </head>
 <body class="gestao-login-body">
