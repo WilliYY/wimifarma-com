@@ -1491,6 +1491,8 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   const statusLabel = order.status === 'pedido'
     ? 'Aguardando chegada'
     : (order.status === 'confirmado' ? 'Confirmado' : 'Historico');
+  const canManageOrder = order.status === 'pedido' || order.status === 'confirmado';
+  const editPanelId = `pedido-edit-${accountId}`;
 
   const arrivalAction = order.status === 'pedido' ? `<form method="post" data-confirm="Confirmar que o pedido de ${e(order.supplier_name)} chegou?">
     ${csrfField(req)}
@@ -1500,9 +1502,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     <button type="submit" class="gestao-btn gestao-btn-primary">Confirmar chegada</button>
   </form>` : '';
 
-  const editControls = `<details class="gestao-order-edit">
-    <summary>Editar / arquivar</summary>
-    <div class="gestao-order-edit-panel">
+  const editPanel = canManageOrder ? `<div class="gestao-order-edit-panel" id="${e(editPanelId)}" data-order-edit-panel>
       <form method="post" class="gestao-order-edit-supplier">
         ${csrfField(req)}
         <input type="hidden" name="action" value="update_order_supplier">
@@ -1512,15 +1512,22 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar nome</button>
       </form>
       ${editableItemRows ? `<div class="gestao-order-edit-list">${editableItemRows}</div>` : ''}
-      <form method="post" class="gestao-order-archive-form" data-confirm="Arquivar este pedido desta etapa? Ele sai da tela, mas historico, pagamentos e auditoria continuam preservados.">
+    </div>` : '';
+
+  const orderTools = canManageOrder ? `<div class="gestao-order-head-tools" aria-label="Acoes do pedido">
+      <button type="button" class="gestao-icon-btn gestao-icon-btn-edit" title="Editar fornecedor e valores" aria-label="Editar fornecedor e valores" aria-controls="${e(editPanelId)}" aria-expanded="false" data-order-edit-toggle>
+        <span aria-hidden="true">&#9998;</span>
+      </button>
+      <form method="post" class="gestao-order-icon-form" data-confirm="Arquivar este pedido da tela? Use quando nao houver necessidade de registrar o boleto. Historico e auditoria continuam preservados.">
         ${csrfField(req)}
         <input type="hidden" name="action" value="archive_order">
         <input type="hidden" name="id" value="${e(accountId)}">
         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-        <button type="submit" class="gestao-btn gestao-btn-ghost">Excluir desta tela</button>
+        <button type="submit" class="gestao-icon-btn gestao-icon-btn-danger" title="Excluir desta tela" aria-label="Excluir desta tela">
+          <span aria-hidden="true">&times;</span>
+        </button>
       </form>
-    </div>
-  </details>`;
+    </div>` : '';
 
   const confirmedActions = order.status === 'confirmado' ? `<div class="gestao-order-actions">
     <form method="post" class="gestao-order-due-form">
@@ -1566,8 +1573,12 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <span class="gestao-pill">${e(statusLabel)}</span>
         <h2>${e(order.supplier_name)}</h2>
       </div>
-      <strong>${e(formatMoney(totalCents))}</strong>
+      <div class="gestao-order-head-side">
+        <strong>${e(formatMoney(totalCents))}</strong>
+        ${orderTools}
+      </div>
     </div>
+    ${editPanel}
     <div class="gestao-order-meta">
       <span>Criado ${e(brDate(order.created_at, true))}</span>
       ${order.expected_arrival_at ? `<span>Chegada ${e(brDateOnly(order.expected_arrival_at))}</span>` : '<span>Chegada sem previsao</span>'}
@@ -1587,7 +1598,6 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     ${itemRows ? `<ul class="gestao-order-lines">${itemRows}</ul>` : ''}
     ${paymentRows ? `<ul class="gestao-order-payments">${paymentRows}</ul>` : ''}
     ${order.status === 'pedido' && order.account_status === 'pago' ? '<p class="gestao-empty-line">Ja esta pago; ao confirmar a chegada, vai direto para o historico.</p>' : ''}
-    ${editControls}
     ${arrivalAction}
     ${confirmedActions}
   </article>`;
@@ -1620,9 +1630,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-actions">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-icons">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260519-actions" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260520-icons" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
@@ -1690,8 +1700,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260519-actions">
-  <script src="${BASE_PATH}/login-runner.js?v=20260519-actions" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-icons">
+  <script src="${BASE_PATH}/login-runner.js?v=20260520-icons" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>

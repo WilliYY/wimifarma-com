@@ -401,6 +401,10 @@ textarea {
     background: rgba(255, 255, 255, 0.96);
 }
 
+.gestao-order-card > * {
+    min-width: 0;
+}
+
 .gestao-order-card.status-pedido {
     border-left: 5px solid #2563eb;
 }
@@ -421,10 +425,17 @@ textarea {
 }
 
 .gestao-order-head {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: flex;
     align-items: start;
     justify-content: space-between;
     gap: 12px;
+}
+
+.gestao-order-head > div:first-child {
+    min-width: 0;
 }
 
 .gestao-order-head h2 {
@@ -435,10 +446,67 @@ textarea {
     overflow-wrap: anywhere;
 }
 
-.gestao-order-head > strong {
+.gestao-order-head-side {
+    flex: 0 0 auto;
+    display: grid;
+    justify-items: end;
+    gap: 8px;
+}
+
+.gestao-order-head-side > strong {
     white-space: nowrap;
     color: var(--wine);
     font-size: 1.08rem;
+}
+
+.gestao-order-head-tools {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.gestao-order-icon-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.gestao-icon-btn {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #f4bfd0;
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--wine);
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 950;
+    line-height: 1;
+    text-decoration: none;
+    box-shadow: 0 10px 22px rgba(168, 15, 67, 0.1);
+}
+
+.gestao-icon-btn:hover,
+.gestao-icon-btn:focus-visible,
+.gestao-icon-btn.is-active {
+    border-color: var(--wine);
+    background: #fff0f5;
+    outline: 0;
+}
+
+.gestao-icon-btn-danger {
+    border-color: #fecaca;
+    color: var(--danger);
+}
+
+.gestao-icon-btn-danger:hover,
+.gestao-icon-btn-danger:focus-visible {
+    border-color: var(--danger);
+    background: #fff1f2;
 }
 
 .gestao-order-meta,
@@ -519,32 +587,25 @@ textarea {
     font-size: 0.72rem;
 }
 
-.gestao-order-edit {
+.gestao-order-edit-panel {
+    display: none;
     border: 1px solid #f8ccda;
     border-radius: 8px;
+    padding: 12px;
     background: #fffafd;
 }
 
-.gestao-order-edit summary {
-    min-height: 38px;
-    display: flex;
-    align-items: center;
-    padding: 8px 11px;
-    color: var(--wine);
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 950;
-    list-style-position: inside;
+.gestao-order-edit-panel.is-open {
+    display: grid;
 }
 
 .gestao-order-edit-panel,
 .gestao-order-edit-list {
-    display: grid;
     gap: 10px;
 }
 
-.gestao-order-edit-panel {
-    padding: 0 10px 10px;
+.gestao-order-edit-list {
+    display: grid;
 }
 
 .gestao-order-edit-supplier,
@@ -556,7 +617,7 @@ textarea {
 }
 
 .gestao-order-edit-supplier {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 1fr;
     align-items: end;
 }
 
@@ -568,8 +629,13 @@ textarea {
 }
 
 .gestao-order-edit-item {
-    grid-template-columns: minmax(0, 1.3fr) minmax(104px, 0.7fr) auto;
+    grid-template-columns: 1fr;
     align-items: end;
+}
+
+.gestao-order-edit-supplier .gestao-btn,
+.gestao-order-edit-item .gestao-btn {
+    width: 100%;
 }
 
 .gestao-order-edit-remove,
@@ -608,7 +674,7 @@ textarea {
 .gestao-order-due-form label,
 .gestao-order-pay-form label,
 .gestao-order-adjust-form label,
-.gestao-order-edit label {
+.gestao-order-edit-panel label {
     display: grid;
     gap: 6px;
     color: #673046;
@@ -619,7 +685,7 @@ textarea {
 .gestao-order-due-form input,
 .gestao-order-pay-form input,
 .gestao-order-adjust-form input,
-.gestao-order-edit input {
+.gestao-order-edit-panel input {
     width: 100%;
     min-width: 0;
     min-height: 40px;
@@ -1710,6 +1776,10 @@ textarea {
     .gestao-account-total {
         justify-items: start;
         text-align: left;
+    }
+
+    .gestao-order-head-side {
+        justify-items: start;
     }
 }
 
