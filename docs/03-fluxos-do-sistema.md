@@ -168,6 +168,7 @@ Regras a preservar:
 - divergencias/sobra/falta;
 - justificativas;
 - auditoria interna.
+- Caixa e Relatorio usam a mesma linha em `financeiro_fechamentos` para cada dia. O botao `Fechar sem movimento` do Relatorio e apenas um atalho para marcar `status='sem_movimento'`, igual ao Caixa, e nao deve travar a digitacao posterior de venda/faturamento. Se depois for informado faturamento em um dia sem movimento, o dia volta para `conferencia` e fica editavel no Caixa.
 
 Interface:
 

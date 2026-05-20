@@ -391,7 +391,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }).then(function (response) {
             return parseJsonResponse(response, 'Nao foi possivel fechar o dia.');
         }).then(function () {
-            setDailyRevenueState('Dia fechado sem movimento.', 'saved');
+            setDailyRevenueState('Dia marcado sem movimento.', 'saved');
             window.location.reload();
         }).catch(function (error) {
             emptyConfirmButton.disabled = false;

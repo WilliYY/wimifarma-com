@@ -249,7 +249,11 @@ function fin_day_status_label(?array $closing): string
 
     $status = (string) ($closing['status'] ?? 'aberto');
 
-    if (in_array($status, array('fechado', 'sem_movimento'), true)) {
+    if ($status === 'sem_movimento') {
+        return 'Sem movimento';
+    }
+
+    if ($status === 'fechado') {
         return 'Fechado';
     }
 
@@ -520,7 +524,7 @@ function fin_year_summary(int $year): array
                 COALESCE(SUM(total_conferido), 0) AS total,
                 COALESCE(SUM(sobra_falta), 0) AS diferenca,
                 COALESCE(SUM(CASE WHEN status = "divergente" THEN 1 ELSE 0 END), 0) AS divergentes,
-                COALESCE(SUM(CASE WHEN status IN ("fechado", "divergente") THEN 1 ELSE 0 END), 0) AS fechados
+                COALESCE(SUM(CASE WHEN status IN ("fechado", "divergente", "sem_movimento") THEN 1 ELSE 0 END), 0) AS fechados
          FROM financeiro_fechamentos
          WHERE YEAR(data_fechamento) = ?
          GROUP BY MONTH(data_fechamento)'
@@ -745,7 +749,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (fin_is_ajax()) {
                 fin_json(array(
                     'ok' => true,
-                    'message' => 'Dia fechado sem movimento.',
+                    'message' => 'Dia marcado sem movimento.',
                     'entry_date' => $entryDate,
                     'status' => financeiro_status_label((string) ($after['status'] ?? 'sem_movimento')),
                     'fechado_em' => !empty($after['fechado_em']) ? fin_entry_datetime((string) $after['fechado_em']) : '',
@@ -753,7 +757,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ));
             }
 
-            set_flash('success', 'Dia fechado sem movimento.');
+            set_flash('success', 'Dia marcado sem movimento.');
             header('Location: ' . fin_url(array('view' => 'relatorio', 'rel_ano' => $reportPostYear, 'rel_mes' => $reportPostMonth), 'faturamento-diario'));
             exit;
         }
@@ -895,7 +899,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             financeiro_update_manual_closing((int) $closing['id'], $data);
             fin_close_day((int) $closing['id'], 'sem_movimento');
-            set_flash('success', 'Dia fechado sem movimento.');
+            set_flash('success', 'Dia marcado sem movimento.');
             fin_redirect($postYear, $postMonth, $postDate, 'dia');
         }
 
@@ -1349,6 +1353,7 @@ $pageTitle = $view === 'auditoria' ? 'Auditoria Financeira' : ($view === 'relato
                                     $isSunday = date('w', strtotime($dayDate)) === '0';
                                     $isEmptyClose = $dayStatus === 'sem_movimento';
                                     $dayLocked = $dayClosing ? financeiro_is_locked($dayClosing) : false;
+                                    $emptyButtonDisabled = $dayLocked || $isEmptyClose;
                                     $closedBy = trim((string) ($dayClosing['responsavel_nome'] ?? ''));
                                     if ($closedBy === '' && trim((string) ($dayClosing['responsavel_texto'] ?? '')) !== '') {
                                         $closedBy = trim((string) $dayClosing['responsavel_texto']);
@@ -1370,14 +1375,14 @@ $pageTitle = $view === 'auditoria' ? 'Auditoria Financeira' : ($view === 'relato
                                                 placeholder="0,00"
                                                 data-revenue-date="<?php echo e($dayDate); ?>"
                                                 data-daily-revenue-input
-                                                <?php echo $isEmptyClose ? 'disabled' : ''; ?>>
+                                            >
                                         </td>
                                         <td>
                                             <button
                                                 class="empty-day-button"
                                                 type="button"
                                                 data-empty-day="<?php echo e($dayDate); ?>"
-                                                <?php echo $dayLocked ? 'disabled' : ''; ?>>
+                                                <?php echo $emptyButtonDisabled ? 'disabled' : ''; ?>>
                                                 <?php echo $isEmptyClose ? 'Sem movimento' : 'Fechar sem mov.'; ?>
                                             </button>
                                         </td>

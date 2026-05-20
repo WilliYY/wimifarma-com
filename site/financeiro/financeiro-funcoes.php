@@ -305,10 +305,11 @@ function financeiro_save_faturamento_dia(string $date, float $value, ?int $userI
     $closing = financeiro_get_or_create_closing($date);
     $before = financeiro_fetch_by_id((int) $closing['id']) ?: $closing;
     $registeredAt = $value > 0.009 ? date('Y-m-d H:i:s') : null;
+    $reopenEmptyDay = (string) ($before['status'] ?? '') === 'sem_movimento' && $value > 0.009;
 
     $stmt = db()->prepare(
         'UPDATE financeiro_fechamentos
-         SET faturamento_dia = ?, faturamento_registrado_em = ?
+         SET faturamento_dia = ?, faturamento_registrado_em = ?' . ($reopenEmptyDay ? ", status = 'conferencia', fechado_em = NULL, fechado_por = NULL" : '') . '
          WHERE id = ?'
     );
     $stmt->execute(array($value, $registeredAt, (int) $closing['id']));
@@ -323,6 +324,8 @@ function financeiro_save_faturamento_dia(string $date, float $value, ?int $userI
             'data_fechamento' => $date,
             'faturamento_dia' => $value,
             'faturamento_registrado_em' => $registeredAt,
+            'status' => (string) ($after['status'] ?? $before['status'] ?? ''),
+            'sem_movimento_convertido' => $reopenEmptyDay,
             'origem' => $source,
             'usuario_id' => $userId,
         )
@@ -538,7 +541,8 @@ function financeiro_get_or_create_closing(string $date): array
 
 function financeiro_is_locked(array $closing): bool
 {
-    return in_array((string) ($closing['status'] ?? ''), array('fechado', 'divergente', 'sem_movimento'), true);
+    // "Sem movimento" e um atalho editavel; somente fechamento final trava o caixa.
+    return in_array((string) ($closing['status'] ?? ''), array('fechado', 'divergente'), true);
 }
 
 function financeiro_upload_file(string $field, string $kind): ?string
