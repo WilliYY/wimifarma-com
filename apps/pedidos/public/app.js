@@ -425,7 +425,7 @@
         Array.prototype.slice.call(document.querySelectorAll('[data-order-card-collapse]')).forEach(function (card) {
             var toggle = card.querySelector('[data-order-collapse-toggle]');
             var id = card.getAttribute('data-order-card-id') || '';
-            var key = 'pedidos:order-card-collapsed:v1:' + id;
+            var key = 'pedidos:order-card-collapsed:v2:' + id;
 
             if (!toggle || !id || toggle.dataset.pedidosCollapseBound === '1') {
                 return;
@@ -456,9 +456,10 @@
 
             toggle.dataset.pedidosCollapseBound = '1';
             try {
-                setCollapsed(window.localStorage.getItem(key) === '1');
+                var stored = window.localStorage.getItem(key);
+                setCollapsed(stored === null ? true : stored === '1');
             } catch (error) {
-                setCollapsed(false);
+                setCollapsed(true);
             }
 
             toggle.addEventListener('click', function () {

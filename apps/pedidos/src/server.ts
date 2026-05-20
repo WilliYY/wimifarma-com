@@ -744,7 +744,7 @@ async function refreshAccountTotal(client: pg.PoolClient, accountId: number): Pr
   return Number(result.rows[0]?.total_cents || 0);
 }
 
-async function createOrder(req: Request): Promise<void> {
+async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow: boolean }> {
   const supplier = cleanText(req.body.fornecedor, 180);
   if (!supplier) throw new Error('Informe o nome do fornecedor.');
 
@@ -761,6 +761,7 @@ async function createOrder(req: Request): Promise<void> {
   const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
   const userId = req.session.user?.id || null;
   const paidNow = req.body.pago_agora === '1';
+  const arrivedNow = req.body.chegou_agora === '1';
   const month = monthValue(req.body.competencia_mes);
   const dueAt = parseOptionalDatetimeLocal(req.body.vencimento_em);
   const expectedArrivalAt = parseOptionalDate(req.body.chegada_prevista);
@@ -796,15 +797,40 @@ async function createOrder(req: Request): Promise<void> {
 
     const orderResult = await client.query<{ id: string }>(
       `INSERT INTO pedidos_orders
-        (account_id, supplier_name, expected_arrival_at, created_by)
-       VALUES ($1, $2, $3::date, $4)
+        (account_id, supplier_name, expected_arrival_at, moved_to_confirmed_at, created_by)
+       VALUES ($1, $2, $3::date, CASE WHEN $4::boolean THEN now() ELSE NULL::timestamptz END, $5)
        RETURNING id`,
-      [accountId, supplier, expectedArrivalAt, userId],
+      [accountId, supplier, expectedArrivalAt, arrivedNow, userId],
     );
     orderId = Number(orderResult.rows[0].id);
+
+    if (arrivedNow) {
+      const lifecycle = paidNow ? 'historico' : 'confirmado';
+      await client.query(
+        `INSERT INTO pedidos_confirmed_orders
+          (order_id, account_id, supplier_name, lifecycle, expected_arrival_at, confirmed_at, confirmed_by, finished_at, finished_by, created_by)
+         VALUES (
+           $1::bigint,
+           $2::bigint,
+           $3::text,
+           $4::text,
+           $5::date,
+           now(),
+           $6::integer,
+           CASE WHEN $4::text = 'historico' THEN now() ELSE NULL::timestamptz END,
+           CASE WHEN $4::text = 'historico' THEN $6::integer ELSE NULL::integer END,
+           $6::integer
+         )`,
+        [orderId, accountId, supplier, lifecycle, expectedArrivalAt, userId],
+      );
+    }
+
     await auditPg(client, accountId, userId, 'pedidos_pedido_criado', `Pedido criado para ${supplier} / ${formatMoney(totalCents)}`);
     if (paidNow) {
       await auditPg(client, accountId, userId, 'pedidos_pedido_pago_criacao', 'Pedido criado ja com pagamento registrado.');
+    }
+    if (arrivedNow) {
+      await auditPg(client, accountId, userId, 'pedidos_pedido_ja_recebido', paidNow ? 'Pedido criado ja recebido e quitado.' : 'Pedido criado ja recebido e enviado para Confirmados.');
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -815,6 +841,7 @@ async function createOrder(req: Request): Promise<void> {
   }
 
   await logMysql(userId, 'pedidos_pedido_criado', 'pedidos_pedido', orderId, `Pedido criado: ${supplier} / ${formatMoney(totalCents)}`);
+  return { paidNow, arrivedNow };
 }
 
 async function confirmArrival(req: Request): Promise<void> {
@@ -1443,7 +1470,10 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
       <label><span>Previsao de chegada</span><input type="date" name="chegada_prevista"></label>
       <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
     </div>
-    <label class="gestao-check-row"><input type="checkbox" name="pago_agora" value="1"><span>Ja foi pago, so falta chegar</span></label>
+    <div class="gestao-order-checks">
+      <label class="gestao-check-row"><input type="checkbox" name="pago_agora" value="1"><span>Ja foi pago, so falta chegar</span></label>
+      <label class="gestao-check-row"><input type="checkbox" name="chegou_agora" value="1"><span>Ja chegou, so pagar</span></label>
+    </div>
     <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Pedido, numero do boleto ou detalhe curto."></textarea></label>
     <button type="submit" class="gestao-btn gestao-btn-primary">Registrar pedido</button>
   </form>`;
@@ -1494,6 +1524,16 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   const canManageOrder = order.status === 'pedido' || order.status === 'confirmado';
   const editPanelId = `pedido-edit-${accountId}`;
   const detailsId = `pedido-details-${accountId}`;
+  const compactStatusHtml = order.status === 'pedido'
+    ? `<span class="gestao-order-mini-chip arrival-${e(arrival.key)}">${e(arrival.label)}</span>`
+    : order.status === 'confirmado'
+      ? `<span class="gestao-order-mini-chip due-${e(due.key)}">${e(due.label)}</span>`
+      : `<span class="gestao-order-mini-chip due-none">Finalizado</span>`;
+  const compactBalanceHtml = order.status === 'confirmado'
+    ? `<span class="gestao-order-mini-chip balance">Saldo ${e(formatMoney(remainingCents))}</span>`
+    : order.status === 'pedido' && order.account_status === 'pago'
+      ? '<span class="gestao-order-mini-chip paid">Ja pago</span>'
+      : `<span class="gestao-order-mini-chip balance">Saldo ${e(formatMoney(remainingCents))}</span>`;
 
   const arrivalAction = order.status === 'pedido' ? `<form method="post" class="gestao-order-primary-action" data-confirm="Confirmar que o pedido de ${e(order.supplier_name)} chegou?">
     ${csrfField(req)}
@@ -1576,6 +1616,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <span>
           <span class="gestao-pill">${e(statusLabel)}</span>
           <h2>${e(order.supplier_name)}</h2>
+          <small class="gestao-order-compact-meta">${compactStatusHtml}${compactBalanceHtml}</small>
         </span>
         <strong>${e(formatMoney(totalCents))}</strong>
       </div>
@@ -1638,9 +1679,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-summary">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-compact">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260520-summary" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260520-compact" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
@@ -1708,8 +1749,8 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-summary">
-  <script src="${BASE_PATH}/login-runner.js?v=20260520-summary" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-compact">
+  <script src="${BASE_PATH}/login-runner.js?v=20260520-compact" defer></script>
 </head>
 <body class="gestao-login-body">
   <img class="gestao-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
@@ -1826,8 +1867,11 @@ async function handlePost(req: Request, res: Response): Promise<void> {
   const selectedMonth = monthValue(req.body.competencia_mes);
   try {
     if (action === 'create_order') {
-      await createOrder(req);
-      setFlash(req, 'success', 'Pedido registrado. Quando chegar, confirme no card Pedidos feitos.');
+      const created = await createOrder(req);
+      const message = created.arrivedNow
+        ? (created.paidNow ? 'Pedido registrado, recebido e enviado ao historico.' : 'Pedido registrado direto em Confirmados.')
+        : 'Pedido registrado. Quando chegar, confirme no card Pedidos feitos.';
+      setFlash(req, 'success', message);
     } else if (action === 'confirm_order_arrival') {
       await confirmArrival(req);
       setFlash(req, 'success', 'Chegada confirmada. Se ainda tiver saldo, o boleto ficou em Confirmados.');

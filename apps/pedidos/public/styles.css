@@ -337,6 +337,7 @@ textarea {
 .gestao-orders-stack,
 .gestao-orders-form,
 .gestao-order-values,
+.gestao-order-checks,
 .gestao-order-actions {
     display: grid;
     gap: 12px;
@@ -412,8 +413,8 @@ textarea {
 }
 
 .gestao-order-card.is-order-collapsed {
-    gap: 10px;
-    padding-bottom: 14px;
+    gap: 12px;
+    padding: 14px;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-card-details {
@@ -502,6 +503,8 @@ textarea {
 
 .gestao-order-summary-toggle > span,
 .gestao-order-summary-static > span {
+    display: grid;
+    gap: 7px;
     min-width: 0;
 }
 
@@ -515,11 +518,62 @@ textarea {
 }
 
 .gestao-order-head h2 {
-    margin: 7px 0 0;
+    margin: 0;
     color: var(--ink);
     font-size: 1.14rem;
     line-height: 1.2;
     overflow-wrap: anywhere;
+}
+
+.gestao-order-compact-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.25;
+}
+
+.gestao-order-mini-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 24px;
+    border-radius: 999px;
+    padding: 4px 8px;
+    background: #fff7fa;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 950;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gestao-order-mini-chip.due-overdue,
+.gestao-order-mini-chip.due-urgent,
+.gestao-order-mini-chip.arrival-today,
+.gestao-order-mini-chip.arrival-late {
+    background: #fff1f2;
+    color: var(--danger);
+}
+
+.gestao-order-mini-chip.due-attention,
+.gestao-order-mini-chip.arrival-soon {
+    background: #fffbeb;
+    color: var(--amber);
+}
+
+.gestao-order-mini-chip.due-scheduled,
+.gestao-order-mini-chip.arrival-scheduled {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.gestao-order-mini-chip.balance,
+.gestao-order-mini-chip.paid {
+    background: #ecfdf5;
+    color: #047857;
 }
 
 .gestao-order-head-side {
@@ -722,7 +776,7 @@ textarea {
 .gestao-order-pay-form,
 .gestao-order-adjust-form {
     display: grid;
-    grid-template-columns: minmax(160px, 1fr) auto auto;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
     align-items: end;
     gap: 10px;
     padding: 12px;
@@ -732,13 +786,12 @@ textarea {
 }
 
 .gestao-order-pay-form {
-    grid-template-columns: minmax(140px, 1fr) minmax(170px, 0.8fr) auto;
     border-color: #bbf7d0;
     background: #f8fffb;
 }
 
 .gestao-order-adjust-form {
-    grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.7fr) auto;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
 }
 
 .gestao-order-due-form label,
@@ -765,6 +818,14 @@ textarea {
     color: var(--ink);
     background: #ffffff;
     outline: 0;
+}
+
+.gestao-order-due-form .gestao-btn,
+.gestao-order-pay-form .gestao-btn,
+.gestao-order-adjust-form .gestao-btn {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 14px;
 }
 
 .gestao-side-stack {
@@ -964,11 +1025,13 @@ textarea {
     grid-template-columns: auto 1fr;
     align-items: center;
     gap: 10px;
-    width: fit-content;
+    width: 100%;
+    max-width: 100%;
     padding: 8px 10px;
     border: 1px solid #f4bfd0;
-    border-radius: 999px;
+    border-radius: 14px;
     background: #fff8fb;
+    line-height: 1.25;
 }
 
 .gestao-check-row input {
