@@ -318,10 +318,16 @@ function bodyArray(body: Record<string, unknown>, field: string): unknown[] {
   return value === undefined ? [] : [value];
 }
 
-function parseOptionalDate(value: unknown): string | null {
+function parseArrivalDaysToDate(value: unknown): string | null {
   const text = String(value ?? '').trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  return null;
+  if (text === '') return null;
+  if (!/^\d+$/.test(text)) throw new Error('Na previsao de chegada, informe somente numeros de dias.');
+  const days = Number.parseInt(text, 10);
+  if (!Number.isFinite(days) || days < 0) throw new Error('Na previsao de chegada, informe um numero valido de dias.');
+  if (days > 365) throw new Error('Na previsao de chegada, use no maximo 365 dias.');
+  const [year, month, day] = localDateInput().split('-').map((part) => Number.parseInt(part, 10));
+  const date = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+  return date.toISOString().slice(0, 10);
 }
 
 function parseOptionalDatetimeLocal(value: unknown): string | null {
@@ -764,7 +770,7 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
   const arrivedNow = req.body.chegou_agora === '1';
   const month = monthValue(req.body.competencia_mes);
   const dueAt = parseOptionalDatetimeLocal(req.body.vencimento_em);
-  const expectedArrivalAt = parseOptionalDate(req.body.chegada_prevista);
+  const expectedArrivalAt = parseArrivalDaysToDate(req.body.chegada_prevista);
   const note = cleanText(req.body.observacao, 1200);
   const client = await pgPool.connect();
   let accountId = 0;
@@ -1467,7 +1473,7 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
     <button type="button" class="gestao-btn gestao-btn-secondary" data-add-order-item>Adicionar parcela</button>
     <div class="gestao-order-form-grid">
       <label><span>Vencimento do boleto</span><input type="date" name="vencimento_em"></label>
-      <label><span>Previsao de chegada</span><input type="date" name="chegada_prevista"></label>
+      <label><span>Previsao de chegada (dias)</span><input type="text" name="chegada_prevista" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Ex.: 2" title="Digite somente o numero de dias ate a chegada" data-arrival-days></label>
       <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
     </div>
     <div class="gestao-order-checks">
@@ -1681,7 +1687,7 @@ async function renderApp(req: Request): Promise<string> {
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-compact">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260520-compact" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260521-arrival-days" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">

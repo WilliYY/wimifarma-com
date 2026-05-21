@@ -233,7 +233,8 @@ Regras a preservar:
 
 Modulo `Pedidos` em `/pedidos/`:
 
-- o formulario `Pedidos feitos` registra fornecedor, um ou mais valores/parcelas, vencimento opcional do boleto apenas por data, previsao opcional de chegada, competencia, observacao e opcoes `Ja foi pago, so falta chegar` e `Ja chegou, so pagar`;
+- o formulario `Pedidos feitos` registra fornecedor, um ou mais valores/parcelas, vencimento opcional do boleto apenas por data, previsao opcional de chegada como numero de dias, competencia, observacao e opcoes `Ja foi pago, so falta chegar` e `Ja chegou, so pagar`;
+- a previsao de chegada de novo pedido e digitada como numero de dias, nao como data manual: `2` significa dois dias a partir do dia atual local, e o sistema grava a data calculada em `pedidos_orders.expected_arrival_at`;
 - criar um pedido tambem cria uma conta vinculada em `gestao_accounts` com categoria `Boleto`; cada valor/parcela vira item em `gestao_account_items`;
 - o fluxo operacional fica separado da Gestao: `pedidos_orders` guarda pedidos feitos/aguardando chegada, e `pedidos_confirmed_orders` guarda confirmados e historico;
 - contas vinculadas a pedidos ficam travadas na categoria `Boleto`; recategorizacao em lote e bloqueada quando a categoria contem pedidos para preservar o controle financeiro automatico;

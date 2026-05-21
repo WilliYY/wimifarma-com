@@ -48,6 +48,27 @@
         });
     }
 
+    function bindArrivalDaysInputs(root) {
+        Array.prototype.slice.call((root || document).querySelectorAll('[data-arrival-days]')).forEach(function (input) {
+            if (input.dataset.pedidosArrivalBound === '1') {
+                return;
+            }
+
+            input.dataset.pedidosArrivalBound = '1';
+            input.addEventListener('input', function () {
+                var onlyNumbers = String(input.value || '').replace(/\D/g, '').slice(0, 3);
+                if (input.value !== onlyNumbers) {
+                    input.value = onlyNumbers;
+                }
+            });
+            input.addEventListener('blur', function () {
+                if (input.value !== '') {
+                    input.value = String(Number.parseInt(input.value, 10));
+                }
+            });
+        });
+    }
+
     function initTotals() {
         var form = document.querySelector('[data-gestao-form]');
         var totalNode = document.querySelector('[data-gestao-total]');
@@ -131,6 +152,7 @@
         }
 
         bindMoneyInputs(form);
+        bindArrivalDaysInputs(form);
         document.addEventListener('gestao:money-change', refreshTotal);
 
         if (addButton) {
@@ -154,12 +176,20 @@
             var total = moneyInputs().reduce(function (sum, input) {
                 return sum + Math.max(0, parseMoney(input.value));
             }, 0);
+            var arrivalInput = form.querySelector('[data-arrival-days]');
 
             if (total <= 0) {
                 event.preventDefault();
                 window.alert('Informe pelo menos um valor maior que zero.');
                 var firstInput = moneyInputs()[0];
                 if (firstInput) firstInput.focus();
+                return;
+            }
+
+            if (arrivalInput && arrivalInput.value && !/^\d+$/.test(arrivalInput.value)) {
+                event.preventDefault();
+                window.alert('Na previsao de chegada, informe somente numeros de dias.');
+                arrivalInput.focus();
             }
         });
 
@@ -478,6 +508,7 @@
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
+            bindArrivalDaysInputs(document);
             initTotals();
             initOrderTotals();
             initMoneyValidation();
@@ -495,6 +526,7 @@
         });
     } else {
         bindMoneyInputs(document);
+        bindArrivalDaysInputs(document);
         initTotals();
         initOrderTotals();
         initMoneyValidation();
