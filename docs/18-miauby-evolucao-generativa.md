@@ -203,6 +203,7 @@ Miauby ja possui:
   - comando `gestao - titulo - valor - categoria`, `gestao - valor - titulo`, `gestao - titulo - valor` ou `gestao titulo valor` prepara uma conta a pagar, aceita categoria antes/depois e usa categoria `geral` quando houver so titulo + valor; se faltar titulo ou valor, pergunta antes;
   - se uma mensagem incompleta gerou orientacao de formato, o proximo prompt que comecar por `gestao` substitui a pendencia anterior em vez de concatenar textos antigos;
   - a escrita usa endpoint interno tokenizado da Gestao, sem credencial direta de Postgres no PHP e sem escrita direta pelo Node.
+  - botoes de `Confirmar`/`Cancelar` em cards de confirmacao enviam comando silencioso para a API: o chat nao exibe nem grava `confirmar <id>`/`cancelar <id>` como fala do operador, mas continua registrando trace e resposta auditada da acao.
 
 ## Arquivos, tabelas e servicos envolvidos
 

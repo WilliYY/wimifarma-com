@@ -206,6 +206,8 @@ try {
         $widgetMode = !empty($_POST['widget']);
         $voiceReplyRequested = !empty($_POST['voice_reply']);
         $inputMode = trim((string) ($_POST['input_mode'] ?? 'text'));
+        $silentConfirmation = !empty($_POST['silent_confirmation'])
+            && preg_match('/^\s*(?:confirmar|confirma|confirmo|cancelar|cancela)\s+[0-9a-f]{8}\s*$/iu', $message) === 1;
 
         if ($message === '') {
             miauw_json(array('ok' => false, 'message' => 'Mensagem vazia. Ate o Miauby precisa de alguma coisa para reclamar.'), 422);
@@ -237,7 +239,9 @@ try {
         }
 
         $traceId = function_exists('miauw_trace_new_id') ? miauw_trace_new_id() : bin2hex(random_bytes(8));
-        $userMessageId = miauw_add_message($conversationId, (int) $user['id'], 'user', $message);
+        $userMessageId = $silentConfirmation
+            ? null
+            : miauw_add_message($conversationId, (int) $user['id'], 'user', $message);
         if (function_exists('miauw_trace_set_context')) {
             miauw_trace_set_context($traceId, $conversationId, (int) $user['id'], $userMessageId);
         }
@@ -250,12 +254,20 @@ try {
                     'page_context' => $pageContext !== '',
                     'input_mode' => $inputMode === 'audio' ? 'audio' : 'text',
                     'voice_reply' => $voiceReplyRequested,
+                    'silent_confirmation' => $silentConfirmation,
                     'message_size' => miauw_strlen($message),
                 ),
             ));
         }
 
         $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
+        if ($reply === null && $silentConfirmation) {
+            $reply = array(
+                'text' => 'Essa confirmacao expirou ou nao esta mais disponivel. Gere a acao de novo para eu confirmar sem misturar dados.',
+                'fallback' => false,
+                'model' => 'miauw-confirmacao',
+            );
+        }
         if ($reply === null) {
             $reply = miauw_generate_reply($conversationId, $messageForAi, $widgetMode);
         }
@@ -266,7 +278,7 @@ try {
             $reply['text'] = miauw_widget_compact_reply((string) ($reply['text'] ?? ''), $message);
         }
         $assistantMessageId = miauw_add_message($conversationId, null, 'assistant', $reply['text'], $reply['model'], (bool) $reply['fallback']);
-        $shadowCompare = function_exists('miauw_agent_shadow_maybe')
+        $shadowCompare = !$silentConfirmation && function_exists('miauw_agent_shadow_maybe')
             ? miauw_agent_shadow_maybe(
                 $conversationId,
                 $messageForAi,
@@ -323,6 +335,7 @@ try {
                     'requires_confirmation' => is_array($confirmation),
                     'voice_reply' => $voiceReplyRequested,
                     'voice_reply_audio' => is_array($replyAudio),
+                    'silent_confirmation' => $silentConfirmation,
                     'agent_shadow' => is_array($shadowCompare) ? array(
                         'status' => (string) ($shadowCompare['status'] ?? ''),
                         'similarity' => isset($shadowCompare['similarity']) ? (float) $shadowCompare['similarity'] : null,
@@ -347,6 +360,7 @@ try {
             'engine' => (string) ($reply['engine'] ?? ''),
             'trace_id' => $traceId,
             'user_message_id' => $userMessageId,
+            'silent_confirmation' => $silentConfirmation,
             'assistant_message_id' => $assistantMessageId,
             'reply_audio' => $replyAudio,
             'reply_audio_error' => $replyAudioError,

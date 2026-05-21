@@ -90,7 +90,8 @@
       button.addEventListener('click', () => {
         const action = button.dataset.confirmAction || 'cancelar';
         card.querySelectorAll('button').forEach((item) => { item.disabled = true; });
-        sendMessage(`${action} ${confirmation.id}`);
+        button.textContent = action === 'confirmar' ? 'Confirmando...' : 'Cancelando...';
+        sendMessage(`${action} ${confirmation.id}`, { silentConfirmation: true });
       });
     });
 
@@ -879,7 +880,7 @@
 
     if (options.userAudio && options.userAudio.url) {
       addAudioMessage('user', options.userAudio);
-    } else {
+    } else if (!options.silentConfirmation) {
       addMessage('user', text);
     }
     setLoading(true);
@@ -890,6 +891,9 @@
     body.set('action', 'send');
     body.set('message', text);
     body.set('csrf_token', csrf);
+    if (options.silentConfirmation) {
+      body.set('silent_confirmation', '1');
+    }
     if (options.voiceReply) {
       body.set('voice_reply', '1');
     }

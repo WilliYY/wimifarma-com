@@ -3018,9 +3018,9 @@ async function renderApp(req: Request): Promise<string> {
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-search">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260521a">
   <script src="${BASE_PATH}/app.js?v=20260520-search" defer></script>
-  <script src="/miauw/widget.js?v=20260517j" defer></script>
+  <script src="/miauw/widget.js?v=20260521a" defer></script>
 </head>
 <body class="gestao-app-body">
   <header class="gestao-topbar">

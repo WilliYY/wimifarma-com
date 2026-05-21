@@ -11,7 +11,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260517k';
+    link.href = '/miauw/widget.css?v=20260521a';
     document.head.appendChild(link);
   }
 
@@ -390,7 +390,8 @@
       button.addEventListener('click', () => {
         const action = button.dataset.miauwConfirmAction || 'cancelar';
         card.querySelectorAll('button').forEach((item) => { item.disabled = true; });
-        send(`${action} ${confirmation.id}`);
+        button.textContent = action === 'confirmar' ? 'Confirmando...' : 'Cancelando...';
+        send(`${action} ${confirmation.id}`, { silentConfirmation: true });
       });
     });
 
@@ -1667,7 +1668,7 @@
 
     if (options.userAudio && options.userAudio.url) {
       addWidgetAudioMessage('user', options.userAudio);
-    } else {
+    } else if (!options.silentConfirmation) {
       addMessage('user', text);
     }
     input.value = '';
@@ -1682,6 +1683,9 @@
     body.set('csrf_token', state.csrf);
     body.set('page_context', pageContext());
     body.set('widget', '1');
+    if (options.silentConfirmation) {
+      body.set('silent_confirmation', '1');
+    }
     if (options.voiceReply) {
       body.set('voice_reply', '1');
     }
