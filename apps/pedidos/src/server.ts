@@ -61,6 +61,7 @@ type OrderRow = {
   total_cents: string;
   competence_month: string;
   due_at: Date | string | null;
+  item_due_at: Date | string | null;
   generated_at: Date | string;
   paid_at: Date | string | null;
   paid_cents?: string;
@@ -73,6 +74,7 @@ type ItemRow = {
   description: string;
   amount_cents: string;
   sort_order: number;
+  due_at: Date | string | null;
   status: 'ativo' | 'cancelado';
   canceled_at: Date | string | null;
   paid_cents?: string;
@@ -330,6 +332,34 @@ function parseArrivalDaysToDate(value: unknown): string | null {
   return date.toISOString().slice(0, 10);
 }
 
+function parseOptionalDateOnly(value: unknown, label = 'vencimento'): string | null {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`Informe ${label} em formato de data.`);
+  const [year, month, day] = text.split('-').map((part) => Number.parseInt(part, 10));
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error(`Informe ${label} valido.`);
+  }
+  return text;
+}
+
+function accountDueFromDate(date: string | null): string | null {
+  return date ? `${date}T12:00:00-03:00` : null;
+}
+
+function earliestDateOnly(values: Array<string | null | undefined>): string | null {
+  const valid = values
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  return valid[0] || null;
+}
+
 function parseOptionalDatetimeLocal(value: unknown): string | null {
   const text = String(value ?? '').trim();
   if (!text) return null;
@@ -380,9 +410,52 @@ function brDateOnly(value: Date | string | null | undefined): string {
   return brDate(value, false);
 }
 
-function dueStatus(order: OrderRow): { key: string; label: string; days: number | null } {
-  if (!order.due_at || order.account_status !== 'pendente') return { key: 'none', label: 'Sem vencimento', days: null };
-  const due = order.due_at instanceof Date ? order.due_at : new Date(String(order.due_at));
+function effectiveDueText(order: OrderRow | RenderOrder): string {
+  const fallback = dateInputValue(order.item_due_at || order.due_at);
+  if (!('items' in order) || !('payments' in order) || order.account_status !== 'pendente') return fallback;
+
+  const activeItems = order.items
+    .filter((item) => item.status !== 'cancelado')
+    .slice()
+    .sort((left, right) => {
+      const leftDue = dateInputValue(left.due_at) || '9999-12-31';
+      const rightDue = dateInputValue(right.due_at) || '9999-12-31';
+      if (leftDue !== rightDue) return leftDue.localeCompare(rightDue);
+      return Number(left.sort_order || 0) - Number(right.sort_order || 0);
+    });
+  if (!activeItems.length) return fallback;
+
+  const paidByItem = new Map<string, number>();
+  let generalPaidCents = 0;
+  for (const payment of order.payments.filter((row) => row.status !== 'cancelado')) {
+    const cents = Number(payment.amount_cents || 0);
+    if (payment.item_id) {
+      paidByItem.set(String(payment.item_id), (paidByItem.get(String(payment.item_id)) || 0) + cents);
+    } else {
+      generalPaidCents += cents;
+    }
+  }
+
+  for (const item of activeItems) {
+    const itemDue = dateInputValue(item.due_at);
+    const amount = Number(item.amount_cents || 0);
+    const directPaid = Math.min(amount, paidByItem.get(String(item.id)) || 0);
+    let remaining = Math.max(0, amount - directPaid);
+    if (remaining > 0 && generalPaidCents > 0) {
+      const allocated = Math.min(remaining, generalPaidCents);
+      remaining -= allocated;
+      generalPaidCents -= allocated;
+    }
+    if (remaining > 0 && itemDue) return itemDue;
+  }
+
+  return fallback;
+}
+
+function dueStatus(order: OrderRow | RenderOrder): { key: string; label: string; days: number | null } {
+  const dueText = effectiveDueText(order);
+  if (!dueText || order.account_status !== 'pendente') return { key: 'none', label: 'Sem vencimento', days: null };
+  const due = new Date(`${dueText}T12:00:00`);
   if (Number.isNaN(due.getTime())) return { key: 'none', label: 'Sem vencimento', days: null };
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -513,12 +586,17 @@ async function ensureSchema(): Promise<void> {
       description varchar(180) NOT NULL,
       amount_cents bigint NOT NULL CHECK (amount_cents >= 0),
       sort_order integer NOT NULL DEFAULT 0,
+      due_at date,
       status text NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'cancelado')),
       canceled_at timestamptz,
       canceled_by integer,
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await pgPool.query("ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'ativo'");
+  await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS due_at date');
+  await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS canceled_at timestamptz');
+  await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS canceled_by integer');
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS gestao_account_payments (
       id bigserial PRIMARY KEY,
@@ -603,6 +681,11 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_items_account_order_idx
     ON gestao_account_items (account_id, sort_order, id)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_account_items_account_due_idx
+    ON gestao_account_items (account_id, due_at ASC NULLS LAST, id)
+    WHERE status = 'ativo'
   `);
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_payments_account_paid_idx
@@ -750,17 +833,37 @@ async function refreshAccountTotal(client: pg.PoolClient, accountId: number): Pr
   return Number(result.rows[0]?.total_cents || 0);
 }
 
+async function refreshAccountDue(client: pg.PoolClient, accountId: number): Promise<void> {
+  await client.query(
+    `UPDATE gestao_accounts
+     SET due_at = (
+       SELECT CASE
+         WHEN MIN(i.due_at) IS NULL THEN NULL
+         ELSE (MIN(i.due_at)::text || 'T12:00:00-03:00')::timestamptz
+       END
+       FROM gestao_account_items i
+       WHERE i.account_id = $1
+         AND i.status = 'ativo'
+     )
+     WHERE id = $1`,
+    [accountId],
+  );
+}
+
 async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow: boolean }> {
   const supplier = cleanText(req.body.fornecedor, 180);
   if (!supplier) throw new Error('Informe o nome do fornecedor.');
 
   const values = bodyArray(req.body, 'pedido_valor');
-  const items: Array<{ description: string; cents: number }> = [];
+  const dueValues = bodyArray(req.body, 'pedido_vencimento');
+  const legacyDueDate = parseOptionalDateOnly(req.body.vencimento_em, 'o vencimento do boleto');
+  const items: Array<{ description: string; cents: number; dueDate: string | null }> = [];
   for (let index = 0; index < Math.min(values.length, 30); index += 1) {
     const cents = parseMoneyToCents(values[index]);
     if (cents <= 0) continue;
     const label = values.length > 1 ? `Parcela ${index + 1}` : 'Pedido';
-    items.push({ description: `${label} - ${supplier}`.slice(0, 180), cents });
+    const dueDate = parseOptionalDateOnly(dueValues[index], `o vencimento da ${label.toLowerCase()}`) || (values.length === 1 ? legacyDueDate : null);
+    items.push({ description: `${label} - ${supplier}`.slice(0, 180), cents, dueDate });
   }
   if (!items.length) throw new Error('Informe pelo menos um valor maior que zero para o pedido.');
 
@@ -769,7 +872,7 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
   const paidNow = req.body.pago_agora === '1';
   const arrivedNow = req.body.chegou_agora === '1';
   const month = monthValue(req.body.competencia_mes);
-  const dueAt = parseOptionalDatetimeLocal(req.body.vencimento_em);
+  const dueAt = accountDueFromDate(earliestDateOnly(items.map((item) => item.dueDate)) || legacyDueDate);
   const expectedArrivalAt = parseArrivalDaysToDate(req.body.chegada_prevista);
   const note = cleanText(req.body.observacao, 1200);
   const client = await pgPool.connect();
@@ -789,8 +892,8 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
 
     for (const [index, item] of items.entries()) {
       await client.query(
-        'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order) VALUES ($1, $2, $3, $4)',
-        [accountId, item.description, item.cents, (index + 1) * 10],
+        'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order, due_at) VALUES ($1, $2, $3, $4, $5::date)',
+        [accountId, item.description, item.cents, (index + 1) * 10, item.dueDate],
       );
     }
 
@@ -930,6 +1033,7 @@ async function addItem(req: Request): Promise<void> {
   if (!id) throw new Error('Conta invalida.');
   if (cents <= 0) throw new Error('Informe um valor maior que zero para adicionar.');
   const description = cleanText(req.body.novo_item_descricao, 180) || 'Juros ou diferenca';
+  const dueDate = parseOptionalDateOnly(req.body.novo_item_vencimento, 'o vencimento do novo valor');
   const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
   try {
@@ -942,10 +1046,11 @@ async function addItem(req: Request): Promise<void> {
       [id],
     );
     await client.query(
-      'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order) VALUES ($1, $2, $3, $4)',
-      [id, description, cents, Number(orderResult.rows[0]?.next_order || 10)],
+      'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order, due_at) VALUES ($1, $2, $3, $4, $5::date)',
+      [id, description, cents, Number(orderResult.rows[0]?.next_order || 10), dueDate],
     );
     await client.query('UPDATE gestao_accounts SET total_cents = total_cents + $1 WHERE id = $2', [cents, id]);
+    await refreshAccountDue(client, id);
     await syncPaymentStatus(client, id);
     await syncPedidoAfterAccountChange(client, id, userId);
     await auditPg(client, id, userId, 'pedidos_valor_adicionado', `Valor adicionado: ${description} / ${formatMoney(cents)}`);
@@ -1023,6 +1128,8 @@ async function updateOrderItem(req: Request): Promise<void> {
   const itemId = Number(req.body.item_id || 0);
   const description = cleanText(req.body.item_descricao, 180);
   const cents = parseMoneyToCents(req.body.item_valor);
+  const hasDueField = Object.prototype.hasOwnProperty.call(req.body, 'item_vencimento');
+  const requestedDueDate = hasDueField ? parseOptionalDateOnly(req.body.item_vencimento, 'o vencimento da parcela') : null;
   if (!accountId || !itemId) throw new Error('Lancamento invalido.');
   if (!description) throw new Error('Informe o nome do lancamento.');
   if (cents <= 0) throw new Error('Informe um valor maior que zero.');
@@ -1039,12 +1146,13 @@ async function updateOrderItem(req: Request): Promise<void> {
     if (!account) throw new Error('Pedido nao encontrado.');
     if (account.status === 'cancelado') throw new Error('Esse pedido esta cancelado.');
 
-    const itemResult = await client.query<{ description: string; amount_cents: string }>(
-      "SELECT description, amount_cents FROM gestao_account_items WHERE id = $1 AND account_id = $2 AND status = 'ativo' FOR UPDATE",
+    const itemResult = await client.query<{ description: string; amount_cents: string; due_at: Date | string | null }>(
+      "SELECT description, amount_cents, due_at FROM gestao_account_items WHERE id = $1 AND account_id = $2 AND status = 'ativo' FOR UPDATE",
       [itemId, accountId],
     );
     const item = itemResult.rows[0];
     if (!item) throw new Error('Lancamento nao encontrado.');
+    const dueDate = hasDueField ? requestedDueDate : (dateInputValue(item.due_at) || null);
 
     const paidForItem = await client.query<{ paid_cents: string }>(
       "SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents FROM gestao_account_payments WHERE item_id = $1 AND status = 'ativo'",
@@ -1054,8 +1162,9 @@ async function updateOrderItem(req: Request): Promise<void> {
       throw new Error('O valor nao pode ficar menor que o total ja pago nessa parcela.');
     }
 
-    await client.query('UPDATE gestao_account_items SET description = $1, amount_cents = $2 WHERE id = $3', [description, cents, itemId]);
+    await client.query('UPDATE gestao_account_items SET description = $1, amount_cents = $2, due_at = $3::date WHERE id = $4', [description, cents, dueDate, itemId]);
     const newTotal = await refreshAccountTotal(client, accountId);
+    await refreshAccountDue(client, accountId);
     const paid = await paidTotal(client, accountId);
     if (newTotal < paid) {
       throw new Error('O total do pedido nao pode ficar menor que o valor ja pago.');
@@ -1121,6 +1230,7 @@ async function cancelOrderItem(req: Request): Promise<void> {
       [userId, itemId],
     );
     const newTotal = await refreshAccountTotal(client, accountId);
+    await refreshAccountDue(client, accountId);
     const paid = await paidTotal(client, accountId);
     if (newTotal < paid) {
       throw new Error('O total do pedido nao pode ficar menor que o valor ja pago.');
@@ -1263,11 +1373,13 @@ async function updateDue(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
   const userId = req.session.user?.id || null;
-  const dueAt = req.body.limpar_vencimento === '1' ? null : parseOptionalDatetimeLocal(req.body.vencimento_em);
-  await pgPool.query('UPDATE gestao_accounts SET due_at = $1::timestamptz WHERE id = $2', [dueAt, id]);
+  const dueDate = req.body.limpar_vencimento === '1' ? null : parseOptionalDateOnly(req.body.vencimento_em, 'o vencimento do boleto');
+  const dueAt = accountDueFromDate(dueDate);
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('UPDATE gestao_account_items SET due_at = $1::date WHERE account_id = $2 AND status = $3', [dueDate, id, 'ativo']);
+    await client.query('UPDATE gestao_accounts SET due_at = $1::timestamptz WHERE id = $2', [dueAt, id]);
     await auditPg(client, id, userId, dueAt ? 'pedidos_vencimento_atualizado' : 'pedidos_vencimento_removido', dueAt ? 'Vencimento do boleto atualizado.' : 'Vencimento do boleto removido.');
     await client.query('COMMIT');
   } catch (error) {
@@ -1307,12 +1419,20 @@ async function listOrders(month: string): Promise<RenderOrder[]> {
             a.total_cents,
             a.competence_month,
             a.due_at,
+            item_due.item_due_at,
             a.generated_at,
             a.paid_at,
             COALESCE(p.paid_cents, 0)::bigint AS paid_cents,
             p.last_payment_at
      FROM pedidos_orders o
      JOIN gestao_accounts a ON a.id = o.account_id
+     LEFT JOIN LATERAL (
+       SELECT MIN(i.due_at) AS item_due_at
+       FROM gestao_account_items i
+       WHERE i.account_id = a.id
+         AND i.status = 'ativo'
+         AND i.due_at IS NOT NULL
+     ) item_due ON true
      LEFT JOIN (${paidSubquery}) p ON p.account_id = a.id
      WHERE o.moved_to_confirmed_at IS NULL
        AND o.canceled_at IS NULL
@@ -1340,12 +1460,20 @@ async function listOrders(month: string): Promise<RenderOrder[]> {
             a.total_cents,
             a.competence_month,
             a.due_at,
+            item_due.item_due_at,
             a.generated_at,
             a.paid_at,
             COALESCE(p.paid_cents, 0)::bigint AS paid_cents,
             p.last_payment_at
      FROM pedidos_confirmed_orders c
      JOIN gestao_accounts a ON a.id = c.account_id
+     LEFT JOIN LATERAL (
+       SELECT MIN(i.due_at) AS item_due_at
+       FROM gestao_account_items i
+       WHERE i.account_id = a.id
+         AND i.status = 'ativo'
+         AND i.due_at IS NOT NULL
+     ) item_due ON true
      LEFT JOIN (${paidSubquery}) p ON p.account_id = a.id
      WHERE c.lifecycle <> 'cancelado'
        AND a.archived_at IS NULL
@@ -1404,21 +1532,22 @@ async function listOrders(month: string): Promise<RenderOrder[]> {
   }
 
   return orders
-    .sort((left, right) => orderSortKey(left) - orderSortKey(right))
     .map((order) => ({
       ...order,
       items: itemsByAccount.get(String(order.account_id)) || [],
       payments: paymentsByAccount.get(String(order.account_id)) || [],
-    }));
+    }))
+    .sort((left, right) => orderSortKey(left) - orderSortKey(right));
 }
 
-function orderSortKey(order: OrderRow): number {
+function orderSortKey(order: OrderRow | RenderOrder): number {
   const base = order.status === 'pedido' ? 0 : order.status === 'confirmado' ? 10_000_000_000_000 : 20_000_000_000_000;
   if (order.status === 'pedido') {
     return base + (order.expected_arrival_at ? new Date(String(order.expected_arrival_at)).getTime() : 9_000_000_000_000);
   }
   if (order.status === 'confirmado') {
-    return base + (order.due_at ? new Date(String(order.due_at)).getTime() : 9_000_000_000_000);
+    const dueText = effectiveDueText(order);
+    return base + (dueText ? new Date(`${dueText}T12:00:00`).getTime() : 9_000_000_000_000);
   }
   return base - (order.finished_at ? new Date(String(order.finished_at)).getTime() : new Date(String(order.created_at)).getTime());
 }
@@ -1468,11 +1597,17 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
     </div>
     <label><span>Nome do fornecedor</span><input type="text" name="fornecedor" maxlength="180" placeholder="Distribuidora, laboratorio, representante" required></label>
     <div class="gestao-order-values" data-order-items>
-      <label><span>Valor do boleto ou pedido</span><input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
+      <div class="gestao-order-parcel" data-order-parcel>
+        <div class="gestao-order-parcel-head">
+          <strong>Parcela 1</strong>
+          <small>Valor e vencimento</small>
+        </div>
+        <label><span>Valor do boleto ou pedido</span><input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
+        <label><span>Vencimento desta parcela</span><input type="date" name="pedido_vencimento[]"></label>
+      </div>
     </div>
     <button type="button" class="gestao-btn gestao-btn-secondary" data-add-order-item>Adicionar parcela</button>
     <div class="gestao-order-form-grid">
-      <label><span>Vencimento do boleto</span><input type="date" name="vencimento_em"></label>
       <label><span>Previsao de chegada (dias)</span><input type="text" name="chegada_prevista" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Ex.: 2" title="Digite somente o numero de dias ate a chegada" data-arrival-days></label>
       <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
     </div>
@@ -1497,7 +1632,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   const activePayments = order.payments.filter((payment) => payment.status !== 'cancelado');
   const activeItems = order.items.filter((item) => item.status !== 'cancelado');
   const itemRows = activeItems
-    .map((item) => `<li><span>${e(item.description)}</span><strong>${e(formatMoney(item.amount_cents))}</strong></li>`)
+    .map((item) => `<li><span>${e(item.description)}<small>${item.due_at ? `Vence ${e(brDateOnly(item.due_at))}` : 'Sem vencimento'}</small></span><strong>${e(formatMoney(item.amount_cents))}</strong></li>`)
     .join('');
   const editableItemRows = activeItems.map((item) => `<div class="gestao-order-edit-row">
       <form method="post" class="gestao-order-edit-item" data-require-money>
@@ -1508,6 +1643,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
         <label><span>Nome do valor</span><input type="text" name="item_descricao" maxlength="180" value="${e(item.description)}" required></label>
         <label><span>Valor</span><input type="text" name="item_valor" inputmode="decimal" value="${e(moneyInput(Number(item.amount_cents || 0)))}" data-money-input required></label>
+        <label><span>Vencimento da parcela</span><input type="date" name="item_vencimento" value="${e(dateInputValue(item.due_at))}"></label>
         <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
       </form>
       <form method="post" class="gestao-order-edit-remove" data-confirm="Remover este valor da tela? A auditoria e os dados ja pagos continuam preservados.">
@@ -1590,9 +1726,9 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
       <input type="hidden" name="action" value="update_due">
       <input type="hidden" name="id" value="${e(accountId)}">
       <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-      <label><span>Vencimento</span><input type="date" name="vencimento_em" value="${e(dateInputValue(order.due_at))}"></label>
-      <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
-      <button type="submit" name="limpar_vencimento" value="1" class="gestao-btn gestao-btn-ghost">Sem vencimento</button>
+      <label><span>Vencimento para todas parcelas</span><input type="date" name="vencimento_em" value="${e(dateInputValue(order.item_due_at || order.due_at))}"></label>
+      <button type="submit" class="gestao-btn gestao-btn-secondary">Aplicar</button>
+      <button type="submit" name="limpar_vencimento" value="1" class="gestao-btn gestao-btn-ghost">Limpar datas</button>
     </form>
     ${remainingCents > 0 ? `<form method="post" class="gestao-order-pay-form" data-require-money>
       ${csrfField(req)}
@@ -1612,6 +1748,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
       <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
       <label><span>Adicionar valor ou juros</span><input type="text" name="novo_item_descricao" maxlength="180" placeholder="Juros, multa, diferenca"></label>
       <label><span>Valor</span><input type="text" name="novo_item_valor" inputmode="decimal" placeholder="0,00" data-money-input></label>
+      <label><span>Vencimento</span><input type="date" name="novo_item_vencimento"></label>
       <button type="submit" class="gestao-btn gestao-btn-secondary">Adicionar</button>
     </form>
   </div>` : '';
@@ -1685,9 +1822,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-compact">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260521-parcelas">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
-  <script src="${BASE_PATH}/app.js?v=20260521-arrival-days" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260521-parcelas" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">

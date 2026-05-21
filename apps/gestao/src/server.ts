@@ -803,6 +803,7 @@ async function ensureSchema(): Promise<void> {
       description varchar(180) NOT NULL,
       amount_cents integer NOT NULL CHECK (amount_cents > 0),
       sort_order integer NOT NULL DEFAULT 0,
+      due_at date,
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -819,6 +820,7 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await pgPool.query("ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'ativo'");
+  await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS due_at date');
   await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS canceled_at timestamptz');
   await pgPool.query('ALTER TABLE gestao_account_items ADD COLUMN IF NOT EXISTS canceled_by integer');
   await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS item_id bigint');
@@ -922,6 +924,11 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_items_account_order_idx
     ON gestao_account_items (account_id, sort_order, id)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_account_items_account_due_idx
+    ON gestao_account_items (account_id, due_at ASC NULLS LAST, id)
+    WHERE status = 'ativo'
   `);
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_payments_account_paid_idx

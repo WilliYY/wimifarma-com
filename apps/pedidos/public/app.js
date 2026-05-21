@@ -69,6 +69,25 @@
         });
     }
 
+    function bindDateInputs(root) {
+        Array.prototype.slice.call((root || document).querySelectorAll('input[type="date"], input[type="month"]')).forEach(function (input) {
+            if (input.dataset.pedidosDateBound === '1') {
+                return;
+            }
+
+            input.dataset.pedidosDateBound = '1';
+            input.addEventListener('click', function () {
+                if (typeof input.showPicker === 'function') {
+                    try {
+                        input.showPicker();
+                    } catch (error) {
+                        // Some browsers only allow showPicker during direct user gestures.
+                    }
+                }
+            });
+        });
+    }
+
     function initTotals() {
         var form = document.querySelector('[data-gestao-form]');
         var totalNode = document.querySelector('[data-gestao-total]');
@@ -157,17 +176,34 @@
 
         if (addButton) {
             addButton.addEventListener('click', function () {
-                var count = moneyInputs().length + 1;
-                var label = document.createElement('label');
-                label.innerHTML = [
-                    '<span>Parcela ',
+                var count = Array.prototype.slice.call(list.querySelectorAll('[data-order-parcel]')).length + 1;
+                var row = document.createElement('div');
+                row.className = 'gestao-order-parcel';
+                row.setAttribute('data-order-parcel', '');
+                row.innerHTML = [
+                    '<div class="gestao-order-parcel-head">',
+                    '<strong>Parcela ',
                     String(count),
-                    '</span>',
-                    '<input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input>'
+                    '</strong>',
+                    '<button type="button" class="gestao-icon-btn gestao-icon-btn-danger gestao-order-parcel-remove" title="Remover parcela" aria-label="Remover parcela" data-remove-order-item>&times;</button>',
+                    '</div>',
+                    '<label>',
+                    '<span>Valor da parcela</span>',
+                    '<input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input>',
+                    '</label>',
+                    '<label>',
+                    '<span>Vencimento desta parcela</span>',
+                    '<input type="date" name="pedido_vencimento[]">',
+                    '</label>'
                 ].join('');
-                list.appendChild(label);
-                bindMoneyInputs(label);
-                label.querySelector('input').focus();
+                list.appendChild(row);
+                bindMoneyInputs(row);
+                bindDateInputs(row);
+                row.querySelector('[data-remove-order-item]').addEventListener('click', function () {
+                    row.remove();
+                    refreshTotal();
+                });
+                row.querySelector('input').focus();
                 refreshTotal();
             });
         }
@@ -509,6 +545,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
             bindArrivalDaysInputs(document);
+            bindDateInputs(document);
             initTotals();
             initOrderTotals();
             initMoneyValidation();
@@ -527,6 +564,7 @@
     } else {
         bindMoneyInputs(document);
         bindArrivalDaysInputs(document);
+        bindDateInputs(document);
         initTotals();
         initOrderTotals();
         initMoneyValidation();
