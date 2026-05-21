@@ -213,7 +213,7 @@ a {
 .task-brand img {
     width: 98px;
     height: auto;
-    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.16));
+    filter: brightness(0) invert(1) drop-shadow(0 8px 18px rgba(0, 0, 0, 0.16));
 }
 
 .task-brand strong {

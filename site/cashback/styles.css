@@ -73,6 +73,10 @@ button {
     border-radius: 12px;
 }
 
+.topbar .brand-logo {
+    filter: brightness(0) invert(1);
+}
+
 .brand {
     display: block;
     font-size: 1.24rem;

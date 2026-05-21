@@ -39,6 +39,9 @@ Atualizacao 2026-05-05:
 - Widget Miauby atualizado para 20260506a, com balao curto e resposta compacta tambem na home.
 - O badge de tarefas agora sincroniza melhor com backend: consulta periodica, foco da aba, retorno de visibilidade e compartilhamento entre abas via localStorage.
 
+Atualizacao 2026-05-21:
+- Logo oficial trocada pelo SVG horizontal novo em assets/img/logo-wimifarma.svg, assets/img/logo-wimifarma-official.svg e assets/img/logo-wimifarma-compact.svg, preservando fundo transparente e nomes de arquivo.
+
 Medida recomendada da logo:
 - Canva: 1200 x 360 px.
 - Fundo transparente.

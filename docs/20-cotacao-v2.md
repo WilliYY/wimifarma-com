@@ -12,7 +12,7 @@ Arquivos principais:
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
 - `apps/cotacao/public/assets/`
-- `apps/cotacao/public/logo-wimifarma.svg`
+- `apps/cotacao/public/logo-wimifarma.svg` (logo oficial SVG horizontal sincronizada com os demais modulos)
 - `apps/cotacao/public/favicon.svg`
 - `apps/cotacao/public/favicon.png`
 - `apps/cotacao/package.json`

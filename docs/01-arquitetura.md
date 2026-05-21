@@ -96,6 +96,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - `.dockerignore` reduz contexto de build para evitar enviar dados sensiveis e volume MySQL ao Docker.
 - Cache de pagina WordPress/SpeedyCache fica desligado por padrao durante a migracao. Em hosts publicos, so deve ser ativado com `WIMIFARMA_PUBLIC_PAGE_CACHE=true` depois que HTTPS e assets estiverem validados.
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
+- A logo oficial da marca fica versionada como SVG horizontal nos assets compartilhados dos modulos e da home; a atualizacao de 2026-05-21 usa os mesmos nomes de arquivo para preservar rotas e cache controlado.
 - A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
 - A Gestao foi separada em servico Node.js + TypeScript com Postgres dedicado porque e modulo administrativo critico; MySQL permanece para `wf_users`, `wf_logs` e importacao unica do legado.
 - Pedidos de fornecedores foi separado da Gestao em `apps/pedidos`, mas continua usando as tabelas financeiras `gestao_accounts`, `gestao_account_items` e `gestao_account_payments` para alimentar automaticamente os totais/categoria `Boleto` e reaproveitar o historico financeiro existente. A parte operacional fica em `pedidos_orders` e `pedidos_confirmed_orders`.

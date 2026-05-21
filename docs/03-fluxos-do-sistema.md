@@ -8,7 +8,7 @@ Este documento descreve os fluxos reais encontrados no sistema e os cuidados par
 
 Entrada publica:
 
-- `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
+- `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo oficial SVG atualizada, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
 - O card `Pedidos` abre `/pedidos/`, ao lado de `Cotacao`, com badge de pedidos previstos para chegar hoje.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
