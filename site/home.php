@@ -7,6 +7,7 @@ $publicHosts = array('wimifarma.com', 'www.wimifarma.com');
 $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
+$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-official.svg') . '?v=20260521-logo';
 
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -100,7 +101,7 @@ $modules = array(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="<?php echo wf_home_e(wf_home_asset('assets/img/favicon.svg')); ?>">
-    <link rel="preload" as="image" href="<?php echo wf_home_e(wf_home_asset('assets/img/logo-wimifarma-official.svg')); ?>">
+    <link rel="preload" as="image" href="<?php echo wf_home_e($homeLogoUrl); ?>">
     <style>
         * {
             box-sizing: border-box;
@@ -493,7 +494,7 @@ $modules = array(
     <header class="wf-header">
         <div class="wf-shell wf-header-inner">
             <a class="wf-brand" href="<?php echo wf_home_e(wf_home_url('/')); ?>" aria-label="Wimifarma">
-                <img src="<?php echo wf_home_e(wf_home_asset('assets/img/logo-wimifarma-official.svg')); ?>" alt="Wimifarma" width="236" height="72">
+                <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="236" height="72">
             </a>
         </div>
     </header>
