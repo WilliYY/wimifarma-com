@@ -14,6 +14,12 @@ Entrada publica:
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
 - A home usa no maximo cinco cards por linha no desktop; `Codigos` e `Gestao` entram na segunda linha. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 
+Identidade visual validada em 2026-05-21:
+
+- Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw carregam a logo nova nas telas de login e nas telas internas autenticadas.
+- Os SVGs ativos desses modulos batem com o mesmo hash da logo oficial nova.
+- `/wp-login.php` e uma tela WordPress separada e continua podendo exibir o cabecalho/logo padrao do WordPress; isso nao e regressao dos modulos internos, salvo quando a tarefa pedir customizacao do login WordPress.
+
 Rotas de login:
 
 - `/cashback/login.php`
@@ -341,6 +347,7 @@ Cuidados:
 
 - A rota `/` esta interceptada por `site/.htaccess` e servida por `site/home.php` durante a estabilizacao da migracao.
 - WordPress continua responsavel por `/wp-admin`, `/wp-login.php`, posts, paginas legadas e assets em `/wp-content`.
+- O `/wp-login.php` nao segue automaticamente a identidade dos logins internos; em 2026-05-21 foi confirmado que ele permanecia com o cabecalho padrao do WordPress.
 - `WP_HOME` e `WP_SITEURL` sao ajustados para localhost em desenvolvimento.
 - Em producao, confirmar URLs finais depois do DNS/SSL.
 - Plugins vindos do HostGator podem afetar performance.
