@@ -112,7 +112,7 @@ Regras a preservar:
 
 ## Fluxo XP
 
-O modulo XP gamifica vendas dos atendentes. A tela principal fica como fase de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; a aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo, edicao e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca as vendas do dia; o backend calcula automaticamente os pontos.
+O modulo XP gamifica vendas dos atendentes. A tela principal fica como fase de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; o perfil ADM tambem aparece como jogador visual de teste no nivel 1. A aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo por XP, edicao e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca os valores do dia; o backend calcula automaticamente os pontos.
 
 Arquivos principais:
 
@@ -138,6 +138,7 @@ Regras a preservar:
 - qualquer usuario interno autenticado pode visualizar a trilha XP;
 - alimentar dados exige username `adm` ou role `admin`/`gerente`;
 - a navegacao do XP separa `Trilha` de `Configuracoes`; formularios e historico operacional ficam fora da tela principal da fase para evitar poluicao visual;
+- a aba `Configuracoes` prioriza leitura de XP e nao exibe cards de total de venda; valores monetarios ficam como entrada operacional para gerar XP;
 - formularios usam CSRF e prepared statements;
 - fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;
 - a moldura ADM e usada no perfil/admin do XP, com foto propria salva separada dos funcionarios;

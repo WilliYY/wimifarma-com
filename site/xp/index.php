@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (string) ($_POST['note'] ?? ''),
                 (int) $user['id']
             );
-            set_flash('success', 'Venda lancada e XP calculado.');
+            set_flash('success', 'XP calculado e lancado.');
         } elseif ($action === 'delete_sale') {
             xp_delete_sale((int) ($_POST['sale_id'] ?? 0), (int) $user['id']);
             set_flash('success', 'Lancamento cancelado sem apagar historico.');
@@ -103,6 +103,19 @@ foreach ($employees as $employee) {
     $playersByLevel[$level][] = $employee;
 }
 
+$adminPlayer = array(
+    'id' => 'adm',
+    'name' => 'ADM',
+    'photo_path' => $adminProfile['photo_path'],
+    'is_admin' => true,
+    'progress' => xp_progress_from_total(0),
+);
+if (!isset($playersByLevel[1])) {
+    $playersByLevel[1] = array();
+}
+array_unshift($playersByLevel[1], $adminPlayer);
+$gamePlayers = array_merge(array($adminPlayer), array_slice($employees, 0, 3));
+
 $today = date('Y-m-d');
 ?><!doctype html>
 <html lang="pt-BR">
@@ -111,7 +124,7 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260522c">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260522d">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
     <script src="/xp/app.js?v=20260522d" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
@@ -136,7 +149,6 @@ $today = date('Y-m-d');
         <section class="xp-hero xp-settings-only">
             <div>
                 <h1>XP</h1>
-                <p>R$ 1.000,00 em vendas viram <?php echo e(xp_number(XP_POINTS_PER_THOUSAND_REAIS)); ?> XP. A trilha sobe de nivel automaticamente.</p>
             </div>
             <form class="xp-month" method="get">
                 <input type="hidden" name="tab" value="configuracoes">
@@ -156,10 +168,6 @@ $today = date('Y-m-d');
             <article>
                 <span>Funcionarios</span>
                 <strong><?php echo e((string) $summary['employee_count']); ?></strong>
-            </article>
-            <article>
-                <span>Vendas <?php echo e($monthContext['label']); ?></span>
-                <strong><?php echo e(xp_cents_to_money($summary['month_amount_cents'])); ?></strong>
             </article>
             <article>
                 <span>XP do mes</span>
@@ -215,7 +223,7 @@ $today = date('Y-m-d');
                 </article>
 
                 <article class="xp-admin-card xp-admin-card-wide">
-                    <h2>Lancar venda diaria</h2>
+                    <h2>Gerar XP diario</h2>
                     <form method="post" class="xp-form xp-form-sale">
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="create_sale">
@@ -233,7 +241,7 @@ $today = date('Y-m-d');
                             <input type="date" name="sale_date" value="<?php echo e($today); ?>" required>
                         </label>
                         <label>
-                            <span>Venda</span>
+                            <span>Valor em R$</span>
                             <input type="text" name="amount" inputmode="decimal" required placeholder="1.000,00">
                         </label>
                         <label class="xp-form-note">
@@ -251,7 +259,7 @@ $today = date('Y-m-d');
             <div class="xp-world-hud">
                 <div class="xp-world-copy">
                     <h1>XP</h1>
-                    <span>Fase de vendas dos atendentes</span>
+                    <span>Fase dos atendentes</span>
                 </div>
                 <div class="xp-world-score">
                     <span>Ranking atual</span>
@@ -278,7 +286,7 @@ $today = date('Y-m-d');
                                     <div class="xp-node-players" aria-label="Funcionarios neste nivel">
                                         <?php foreach ($players as $player) : ?>
                                             <?php $photoUrl = xp_photo_url($player['photo_path'] ?? null); ?>
-                                            <button type="button" class="xp-node-player" data-xp-focus-employee="<?php echo e((string) $player['id']); ?>" title="<?php echo e((string) $player['name']); ?>">
+                                            <button type="button" class="xp-node-player <?php echo !empty($player['is_admin']) ? 'is-adm' : ''; ?>" data-xp-focus-employee="<?php echo e((string) $player['id']); ?>" title="<?php echo e((string) $player['name']); ?>">
                                                 <?php if ($photoUrl !== '') : ?>
                                                     <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $player['name']); ?>">
                                                 <?php else : ?>
@@ -293,14 +301,14 @@ $today = date('Y-m-d');
                     <?php endfor; ?>
                 </div>
             </div>
-            <?php if (!empty($employees)) : ?>
+            <?php if (!empty($gamePlayers)) : ?>
                 <div class="xp-game-roster" aria-label="Placar de jogadores">
-                    <?php foreach (array_slice($employees, 0, 4) as $hudEmployee) : ?>
+                    <?php foreach ($gamePlayers as $hudEmployee) : ?>
                         <?php
                         $hudProgress = $hudEmployee['progress'];
                         $hudPhotoUrl = xp_photo_url($hudEmployee['photo_path'] ?? null);
                         ?>
-                        <button type="button" class="xp-game-player" data-xp-focus-employee="<?php echo e((string) $hudEmployee['id']); ?>">
+                        <button type="button" class="xp-game-player <?php echo !empty($hudEmployee['is_admin']) ? 'is-adm' : ''; ?>" data-xp-focus-employee="<?php echo e((string) $hudEmployee['id']); ?>">
                             <span class="xp-game-avatar">
                                 <?php if ($hudPhotoUrl !== '') : ?>
                                     <img src="<?php echo e($hudPhotoUrl); ?>" alt="<?php echo e((string) $hudEmployee['name']); ?>">
@@ -310,7 +318,7 @@ $today = date('Y-m-d');
                             </span>
                             <span class="xp-game-info">
                                 <strong><?php echo e((string) $hudEmployee['name']); ?></strong>
-                                <small>Nivel <?php echo e((string) $hudProgress['level']); ?> - <?php echo e(xp_percent($hudProgress['percent'])); ?></small>
+                                <small><?php echo !empty($hudEmployee['is_admin']) ? 'ADM - teste' : 'Nivel ' . e((string) $hudProgress['level']) . ' - ' . e(xp_percent($hudProgress['percent'])); ?></small>
                                 <em><b style="width: <?php echo e((string) $hudProgress['percent']); ?>%;"></b></em>
                             </span>
                         </button>
@@ -323,7 +331,7 @@ $today = date('Y-m-d');
             <?php if (empty($employees)) : ?>
                 <article class="xp-empty">
                     <h2>Nenhum funcionario cadastrado ainda</h2>
-                    <p>Cadastre os atendentes e lance as vendas diarias para a trilha comecar a andar.</p>
+                    <p>Cadastre os atendentes e gere XP diario para a trilha comecar a andar.</p>
                 </article>
             <?php endif; ?>
 
@@ -348,8 +356,8 @@ $today = date('Y-m-d');
                             <p>Nivel <?php echo e((string) $progress['level']); ?> -> <?php echo e((string) $progress['next_level']); ?></p>
                             <dl>
                                 <div>
-                                    <dt>Vendas do mes</dt>
-                                    <dd><?php echo e(xp_cents_to_money($employee['month_amount_cents'])); ?></dd>
+                                    <dt>XP do mes</dt>
+                                    <dd><?php echo e(xp_number($employee['month_xp'])); ?></dd>
                                 </div>
                                 <div>
                                     <dt>XP total</dt>
@@ -359,7 +367,7 @@ $today = date('Y-m-d');
                         </div>
 
                         <div class="xp-liquid-bar" style="--xp-fill: <?php echo e((string) $progress['percent']); ?>%;">
-                            <span><?php echo e(xp_number($progress['progress_xp'])); ?>/<?php echo e(xp_number($progress['required_xp'])); ?></span>
+                            <span><?php echo e(xp_number($progress['progress_xp'])); ?>/<?php echo e(xp_number($progress['required_xp'])); ?> XP</span>
                         </div>
                     </div>
 
@@ -389,7 +397,7 @@ $today = date('Y-m-d');
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="deactivate_employee">
                                 <input type="hidden" name="employee_id" value="<?php echo e((string) $employee['id']); ?>">
-                                <button type="submit" class="xp-btn xp-btn-danger" data-xp-confirm="Remover este funcionario da tela XP? As vendas antigas ficam preservadas.">Remover da tela</button>
+                                <button type="submit" class="xp-btn xp-btn-danger" data-xp-confirm="Remover este funcionario da tela XP? Os lancamentos antigos ficam preservados.">Remover da tela</button>
                             </form>
                         </details>
                     <?php endif; ?>
@@ -401,14 +409,14 @@ $today = date('Y-m-d');
             <section class="xp-recent xp-settings-only" aria-label="Lancamentos recentes">
                 <h2>Ultimos lancamentos</h2>
                 <?php if (empty($recentSales)) : ?>
-                    <p>Nenhuma venda lancada ainda.</p>
+                    <p>Nenhum lancamento ainda.</p>
                 <?php else : ?>
                     <div class="xp-recent-list">
                         <?php foreach ($recentSales as $sale) : ?>
                             <article>
                                 <div>
                                     <strong><?php echo e((string) $sale['employee_name']); ?></strong>
-                                    <span><?php echo e(br_date($sale['sale_date'] ?? null)); ?> - <?php echo e(xp_cents_to_money($sale['amount_cents'] ?? 0)); ?></span>
+                                    <span><?php echo e(br_date($sale['sale_date'] ?? null)); ?></span>
                                 </div>
                                 <b><?php echo e(xp_number($sale['xp_points'] ?? 0)); ?> XP</b>
                                 <form method="post">
