@@ -255,6 +255,7 @@ $today = date('Y-m-d');
             </section>
         <?php endif; ?>
 
+        <?php if ($activeTab === 'trilha') : ?>
         <section class="xp-world xp-trail-only" aria-label="Trilha de niveis XP">
             <div class="xp-world-hud">
                 <div class="xp-world-copy">
@@ -326,6 +327,7 @@ $today = date('Y-m-d');
                 </div>
             <?php endif; ?>
         </section>
+        <?php endif; ?>
 
         <section class="xp-employee-grid xp-settings-only" aria-label="Funcionarios XP">
             <?php if (empty($employees)) : ?>
