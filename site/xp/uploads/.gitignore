@@ -1,3 +1,7 @@
 *
 !.gitignore
 !.htaccess
+!adm/
+!adm/.gitkeep
+!funcionarios/
+!funcionarios/.gitkeep

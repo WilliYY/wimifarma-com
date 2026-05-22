@@ -325,9 +325,10 @@ $modules = array(
         .wf-card.is-xp-card::after {
             content: "";
             position: absolute;
-            inset: -8px;
+            inset: 0;
             z-index: 1;
-            background: url("/xp/assets/moldura-card-home.svg") center / 100% 100% no-repeat;
+            border-radius: inherit;
+            background: url("/xp/assets/moldura-card-home.svg") center / 210% 210% no-repeat;
             pointer-events: none;
         }
 
@@ -477,6 +478,10 @@ $modules = array(
                 height: 24px;
                 padding: 0 7px;
                 font-size: 0.72rem;
+            }
+
+            .wf-card.is-xp-card::after {
+                background-size: 230% 230%;
             }
         }
 

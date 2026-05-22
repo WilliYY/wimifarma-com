@@ -123,6 +123,7 @@ Arquivos principais:
 - `site/xp/app.js`
 - `site/xp/assets/`
 - `site/xp/uploads/funcionarios/`
+- `site/xp/uploads/adm/`
 
 Tabelas principais:
 
@@ -139,6 +140,7 @@ Regras a preservar:
 - formularios usam CSRF e prepared statements;
 - fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;
 - a moldura ADM e usada no perfil/admin do XP, com foto propria salva separada dos funcionarios;
+- as pastas `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/` precisam existir e ficar gravaveis pelo Apache/PHP no VPS;
 - a pasta de uploads bloqueia listagem e execucao de scripts por `.htaccess`;
 - R$ 1.000,00 em vendas gera 2.500 XP, gravado como inteiro no lancamento;
 - o nivel 1 exige 30.000 XP para passar; os niveis seguintes ficam progressivamente mais dificeis e nao possuem limite fixo;

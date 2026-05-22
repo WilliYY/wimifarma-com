@@ -251,14 +251,14 @@ function xp_photo_url(?string $photoPath): string
 function xp_level_asset(int $level): string
 {
     if ($level % 10 === 0) {
-        return '/xp/assets/nivel-10-castelo.svg';
+        return '/xp/assets/nivel-10-castelo.svg?v=20260522b';
     }
 
     if ($level % 5 === 0) {
-        return '/xp/assets/nivel-5-estrela.svg';
+        return '/xp/assets/nivel-5-estrela.svg?v=20260522b';
     }
 
-    return '/xp/assets/bloco-xp.svg';
+    return '/xp/assets/bloco-xp.svg?v=20260522b';
 }
 
 function xp_level_kind(int $level): string
@@ -445,14 +445,18 @@ function xp_upload_photo(?array $file, int $userId, string $folder = 'funcionari
 
     $prefix = preg_replace('/[^a-z0-9_-]+/i', '-', $prefix) ?: 'foto';
     $uploadDir = __DIR__ . '/uploads/' . $folder;
-    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
+    if (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
         throw new RuntimeException('Nao consegui preparar a pasta de fotos.');
+    }
+
+    if (!is_writable($uploadDir)) {
+        throw new RuntimeException('Pasta de fotos sem permissao de escrita.');
     }
 
     $fileName = $prefix . '-' . max(0, $userId) . '-' . date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extensions[$mime];
     $targetPath = $uploadDir . '/' . $fileName;
 
-    if (!move_uploaded_file($tmpName, $targetPath)) {
+    if (!@move_uploaded_file($tmpName, $targetPath)) {
         throw new RuntimeException('Nao consegui salvar a foto.');
     }
 

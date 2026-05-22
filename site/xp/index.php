@@ -247,7 +247,7 @@ $today = date('Y-m-d');
                         <?php $players = $playersByLevel[$level] ?? array(); ?>
                         <article class="xp-level xp-level-<?php echo e(xp_level_kind($level)); ?> <?php echo !empty($players) ? 'has-players' : ''; ?>" data-xp-level="<?php echo e((string) $level); ?>">
                             <?php if ($level > $levelStart) : ?>
-                                <img class="xp-path" src="/xp/assets/caminho-xp.svg" alt="" aria-hidden="true">
+                                <img class="xp-path" src="/xp/assets/caminho-xp.svg?v=20260522b" alt="" aria-hidden="true">
                             <?php endif; ?>
                             <div class="xp-level-node">
                                 <img class="xp-level-art" src="<?php echo e(xp_level_asset($level)); ?>" alt="">
