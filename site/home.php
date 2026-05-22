@@ -59,7 +59,7 @@ $modules = array(
     array(
         'name' => 'XP',
         'label' => 'Jogo dos atendentes',
-        'description' => 'Niveis, fotos, vendas e ranking mensal.',
+        'description' => 'Niveis, fotos, XP e ranking mensal.',
         'href' => '/xp/',
         'accent' => 'gold',
         'xp_frame' => true,
@@ -318,9 +318,13 @@ $modules = array(
         }
 
         .wf-card.is-xp-card {
-            border-color: rgba(245, 158, 11, 0.34);
-            background: rgba(255, 252, 232, 0.94);
-            padding: 24px 20px 20px;
+            border: 14px solid transparent;
+            border-image: url("/xp/assets/moldura-card-home.svg?v=20260522d") 104 / 26px / 5px stretch;
+            background:
+                linear-gradient(rgba(255, 253, 237, 0.95), rgba(255, 253, 237, 0.95)) padding-box,
+                linear-gradient(135deg, rgba(255, 246, 199, 0.94), rgba(255, 253, 237, 0.98)) border-box;
+            padding: 16px 18px 18px;
+            box-shadow: 0 18px 38px rgba(120, 78, 6, 0.12);
         }
 
         .wf-card.is-xp-card::before,
@@ -332,15 +336,13 @@ $modules = array(
         }
 
         .wf-card.is-xp-card::before {
-            inset: 22px 16px 16px;
+            inset: 14px;
             border-radius: 7px;
-            background: rgba(255, 253, 238, 0.64);
+            background: rgba(255, 253, 238, 0.58);
         }
 
         .wf-card.is-xp-card::after {
-            inset: -4px;
-            border-radius: 10px;
-            background: url("/xp/assets/moldura-card-home.svg?v=20260522c") center / 150% 150% no-repeat;
+            display: none;
         }
 
         .wf-card.is-xp-card > * {
@@ -492,16 +494,14 @@ $modules = array(
             }
 
             .wf-card.is-xp-card {
-                padding: 17px 14px 14px;
+                border-width: 11px;
+                border-image-width: 20px;
+                border-image-outset: 0;
+                padding: 12px 12px 13px;
             }
 
             .wf-card.is-xp-card::before {
-                inset: 17px 11px 11px;
-            }
-
-            .wf-card.is-xp-card::after {
-                inset: -3px;
-                background-size: 165% 165%;
+                inset: 11px;
             }
         }
 
