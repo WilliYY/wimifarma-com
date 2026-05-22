@@ -955,15 +955,13 @@ select {
     isolation: isolate;
 }
 
-.xp-liquid-bar::before {
-    content: "";
+.xp-liquid-bar > i {
     position: absolute;
     left: 6px;
     top: 6px;
     bottom: 6px;
     z-index: 1;
-    width: var(--xp-fill);
-    min-width: 10px;
+    display: block;
     max-width: calc(100% - 12px);
     border-radius: 999px;
     background: linear-gradient(90deg, #fff579 0%, #ffd13f 48%, #f59e0b 100%);
