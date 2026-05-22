@@ -122,11 +122,18 @@
             window.history.scrollRestoration = 'manual';
         }
 
-        if (document.body.classList.contains('is-settings-view') && !window.location.hash) {
-            window.setTimeout(function () {
-                window.scrollTo(0, 0);
-            }, 0);
+        if (!document.body.classList.contains('is-settings-view') || window.location.hash) {
+            return;
         }
+
+        var resetToTop = function () {
+            window.scrollTo(0, 0);
+        };
+
+        resetToTop();
+        window.setTimeout(resetToTop, 60);
+        window.setTimeout(resetToTop, 240);
+        window.addEventListener('pageshow', resetToTop);
     }
 
     if (document.readyState === 'loading') {
