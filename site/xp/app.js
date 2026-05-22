@@ -52,14 +52,23 @@
 
         function focusEmployee(employeeId) {
             var card = document.querySelector('[data-xp-employee-card="' + employeeId + '"]');
-            if (!card) {
+            var player = document.querySelector('[data-xp-focus-employee="' + employeeId + '"]');
+            var levelNode = player ? player.closest('[data-xp-level]') : null;
+
+            if (!card && !levelNode) {
                 return;
             }
 
-            var level = card.getAttribute('data-xp-employee-level');
-            var levelNode = document.querySelector('[data-xp-level="' + level + '"]');
+            if (card && !levelNode) {
+                var level = card.getAttribute('data-xp-employee-level');
+                levelNode = document.querySelector('[data-xp-level="' + level + '"]');
+            }
+
             clearFocus();
-            card.classList.add('is-focused');
+
+            if (card) {
+                card.classList.add('is-focused');
+            }
 
             if (levelNode) {
                 levelNode.classList.add('is-highlighted');
@@ -69,7 +78,9 @@
                 }
             }
 
-            card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            if (card) {
+                card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
         }
 
         cards.forEach(function (card) {
@@ -92,6 +103,18 @@
                 focusEmployee(cards[0].getAttribute('data-xp-employee-card'));
             }, 220);
         }
+
+        document.querySelectorAll('[data-xp-track-step]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (!track) {
+                    return;
+                }
+
+                var direction = Number(button.getAttribute('data-xp-track-step') || '1');
+                var distance = Math.max(260, track.clientWidth * 0.72);
+                track.scrollBy({ left: distance * direction, behavior: 'smooth' });
+            });
+        });
     }
 
     if (document.readyState === 'loading') {

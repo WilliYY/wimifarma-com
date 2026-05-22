@@ -14,13 +14,18 @@ try {
 }
 
 $monthContext = xp_month_context($_GET['month'] ?? null);
+$activeTab = (string) ($_GET['tab'] ?? 'trilha');
+$activeTab = $activeTab === 'configuracoes' ? 'configuracoes' : 'trilha';
+$trailUrl = '/xp/?tab=trilha&month=' . rawurlencode((string) $monthContext['month']);
+$settingsUrl = '/xp/?tab=configuracoes&month=' . rawurlencode((string) $monthContext['month']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = $_POST['csrf_token'] ?? '';
 
     if (!is_string($token) || !hash_equals(csrf_token(), $token)) {
         set_flash('error', 'Sessao expirada. Tente novamente.');
-        xp_redirect_home();
+        header('Location: ' . $settingsUrl);
+        exit;
     }
 
     try {
@@ -69,7 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_flash('error', 'Nao consegui salvar o XP agora.');
     }
 
-    xp_redirect_home();
+    header('Location: ' . $settingsUrl);
+    exit;
 }
 
 $flash = get_flash();
@@ -105,30 +111,35 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260522a">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260522c">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
-    <script src="/xp/app.js?v=20260522a" defer></script>
+    <script src="/xp/app.js?v=20260522b" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
 </head>
-<body class="xp-app-body">
+<body class="xp-app-body <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>">
     <header class="xp-topbar">
         <a class="xp-brand" href="/">
             <img src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
             <strong>XP</strong>
         </a>
+        <nav class="xp-section-tabs" aria-label="Abas XP">
+            <a class="<?php echo $activeTab === 'trilha' ? 'is-active' : ''; ?>" href="<?php echo e($trailUrl); ?>" <?php echo $activeTab === 'trilha' ? 'aria-current="page"' : ''; ?>>Trilha</a>
+            <a class="<?php echo $activeTab === 'configuracoes' ? 'is-active' : ''; ?>" href="<?php echo e($settingsUrl); ?>" <?php echo $activeTab === 'configuracoes' ? 'aria-current="page"' : ''; ?>>Configura&ccedil;&otilde;es</a>
+        </nav>
         <nav class="xp-nav" aria-label="Navegacao">
             <a href="/">Home</a>
             <a href="/xp/logout.php">Sair</a>
         </nav>
     </header>
 
-    <main class="xp-page" data-miauby-screen-object="modulo xp" data-miauby-screen-label="Modulo XP: <?php echo e((string) $summary['employee_count']); ?> funcionario(s)">
-        <section class="xp-hero">
+    <main class="xp-page <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>" data-miauby-screen-object="modulo xp" data-miauby-screen-label="Modulo XP: <?php echo e((string) $summary['employee_count']); ?> funcionario(s)">
+        <section class="xp-hero xp-settings-only">
             <div>
                 <h1>XP</h1>
                 <p>R$ 1.000,00 em vendas viram <?php echo e(xp_number(XP_POINTS_PER_THOUSAND_REAIS)); ?> XP. A trilha sobe de nivel automaticamente.</p>
             </div>
             <form class="xp-month" method="get">
+                <input type="hidden" name="tab" value="configuracoes">
                 <label>
                     <span>Mes</span>
                     <input type="month" name="month" value="<?php echo e($monthContext['month']); ?>">
@@ -138,10 +149,10 @@ $today = date('Y-m-d');
         </section>
 
         <?php if (!empty($flash['message'])) : ?>
-            <div class="xp-alert <?php echo e((string) $flash['type']); ?>"><?php echo e((string) $flash['message']); ?></div>
+            <div class="xp-alert xp-settings-only <?php echo e((string) $flash['type']); ?>"><?php echo e((string) $flash['message']); ?></div>
         <?php endif; ?>
 
-        <section class="xp-summary-grid" aria-label="Resumo XP">
+        <section class="xp-summary-grid xp-settings-only" aria-label="Resumo XP">
             <article>
                 <span>Funcionarios</span>
                 <strong><?php echo e((string) $summary['employee_count']); ?></strong>
@@ -161,7 +172,7 @@ $today = date('Y-m-d');
         </section>
 
         <?php if ($canManage) : ?>
-            <section class="xp-admin-grid" aria-label="Administracao XP">
+            <section class="xp-admin-grid xp-settings-only" aria-label="Administracao XP">
                 <article class="xp-admin-card xp-admin-profile-card">
                     <h2>Moldura ADM</h2>
                     <div class="xp-admin-avatar">
@@ -236,10 +247,21 @@ $today = date('Y-m-d');
             </section>
         <?php endif; ?>
 
-        <section class="xp-world" aria-label="Trilha de niveis XP">
-            <div class="xp-world-copy">
-                <h2>Trilha XP</h2>
-                <span>Niveis infinitos em zigue-zague</span>
+        <section class="xp-world xp-trail-only" aria-label="Trilha de niveis XP">
+            <div class="xp-world-hud">
+                <div class="xp-world-copy">
+                    <h1>XP</h1>
+                    <span>Fase de vendas dos atendentes</span>
+                </div>
+                <div class="xp-world-score">
+                    <span>Ranking atual</span>
+                    <strong><?php echo !empty($summary['top_employee']) ? e((string) $summary['top_employee']['name']) : 'Sem jogadores'; ?></strong>
+                    <small><?php echo e(xp_number($summary['total_xp'])); ?> XP total na equipe</small>
+                </div>
+                <div class="xp-world-controls" aria-label="Controles da trilha">
+                    <button type="button" data-xp-track-step="-1" aria-label="Voltar niveis">&lsaquo;</button>
+                    <button type="button" data-xp-track-step="1" aria-label="Avancar niveis">&rsaquo;</button>
+                </div>
             </div>
             <div class="xp-track-scroll" data-xp-track>
                 <div class="xp-track" style="--xp-level-count: <?php echo e((string) (($levelEnd - $levelStart) + 1)); ?>;">
@@ -271,9 +293,33 @@ $today = date('Y-m-d');
                     <?php endfor; ?>
                 </div>
             </div>
+            <?php if (!empty($employees)) : ?>
+                <div class="xp-game-roster" aria-label="Placar de jogadores">
+                    <?php foreach (array_slice($employees, 0, 4) as $hudEmployee) : ?>
+                        <?php
+                        $hudProgress = $hudEmployee['progress'];
+                        $hudPhotoUrl = xp_photo_url($hudEmployee['photo_path'] ?? null);
+                        ?>
+                        <button type="button" class="xp-game-player" data-xp-focus-employee="<?php echo e((string) $hudEmployee['id']); ?>">
+                            <span class="xp-game-avatar">
+                                <?php if ($hudPhotoUrl !== '') : ?>
+                                    <img src="<?php echo e($hudPhotoUrl); ?>" alt="<?php echo e((string) $hudEmployee['name']); ?>">
+                                <?php else : ?>
+                                    <i><?php echo e(xp_employee_initials((string) $hudEmployee['name'])); ?></i>
+                                <?php endif; ?>
+                            </span>
+                            <span class="xp-game-info">
+                                <strong><?php echo e((string) $hudEmployee['name']); ?></strong>
+                                <small>Nivel <?php echo e((string) $hudProgress['level']); ?> - <?php echo e(xp_percent($hudProgress['percent'])); ?></small>
+                                <em><b style="width: <?php echo e((string) $hudProgress['percent']); ?>%;"></b></em>
+                            </span>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </section>
 
-        <section class="xp-employee-grid" aria-label="Funcionarios XP">
+        <section class="xp-employee-grid xp-settings-only" aria-label="Funcionarios XP">
             <?php if (empty($employees)) : ?>
                 <article class="xp-empty">
                     <h2>Nenhum funcionario cadastrado ainda</h2>
@@ -352,7 +398,7 @@ $today = date('Y-m-d');
         </section>
 
         <?php if ($canManage) : ?>
-            <section class="xp-recent" aria-label="Lancamentos recentes">
+            <section class="xp-recent xp-settings-only" aria-label="Lancamentos recentes">
                 <h2>Ultimos lancamentos</h2>
                 <?php if (empty($recentSales)) : ?>
                     <p>Nenhuma venda lancada ainda.</p>
