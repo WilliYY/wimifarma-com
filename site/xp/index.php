@@ -114,7 +114,7 @@ if (!isset($playersByLevel[1])) {
     $playersByLevel[1] = array();
 }
 array_unshift($playersByLevel[1], $adminPlayer);
-$gamePlayers = array_merge(array($adminPlayer), array_slice($employees, 0, 3));
+$gamePlayers = array_merge(array($adminPlayer), $employees);
 
 $today = date('Y-m-d');
 ?><!doctype html>
@@ -124,9 +124,9 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260522k">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260522l">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
-    <script src="/xp/app.js?v=20260522d" defer></script>
+    <script src="/xp/app.js?v=20260522e" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
 </head>
 <body class="xp-app-body <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>">
@@ -185,7 +185,7 @@ $today = date('Y-m-d');
                     <h2>Moldura ADM</h2>
                     <div class="xp-admin-avatar">
                         <?php if ($adminProfile['photo_path'] !== '') : ?>
-                            <img src="<?php echo e($adminProfile['photo_path']); ?>" alt="Foto ADM XP">
+                            <img src="<?php echo e($adminProfile['photo_path']); ?>" alt="Foto ADM XP" loading="lazy" decoding="async">
                         <?php else : ?>
                             <span>ADM</span>
                         <?php endif; ?>
@@ -258,10 +258,6 @@ $today = date('Y-m-d');
         <?php if ($activeTab === 'trilha') : ?>
         <section class="xp-world xp-trail-only" aria-label="Trilha de niveis XP">
             <div class="xp-world-hud">
-                <div class="xp-world-copy">
-                    <h1>XP</h1>
-                    <span>Fase dos atendentes</span>
-                </div>
                 <div class="xp-world-score">
                     <span>Ranking atual</span>
                     <strong><?php echo !empty($summary['top_employee']) ? e((string) $summary['top_employee']['name']) : 'Sem jogadores'; ?></strong>
@@ -272,29 +268,57 @@ $today = date('Y-m-d');
                     <button type="button" data-xp-track-step="1" aria-label="Avancar niveis">&rsaquo;</button>
                 </div>
             </div>
+            <div class="xp-player-summary" data-xp-player-summary hidden>
+                <button type="button" class="xp-player-summary-close" data-xp-player-summary-close aria-label="Fechar resumo">&times;</button>
+                <span data-xp-summary-role>Atendente XP</span>
+                <strong data-xp-summary-name>Jogador</strong>
+                <small data-xp-summary-level>Nivel 1 -> 2</small>
+                <div class="xp-player-summary-bar" data-xp-summary-bar>
+                    <i></i>
+                    <b data-xp-summary-progress>0/30.000 XP</b>
+                </div>
+                <dl>
+                    <div>
+                        <dt>XP do mes</dt>
+                        <dd data-xp-summary-month>0</dd>
+                    </div>
+                    <div>
+                        <dt>XP total</dt>
+                        <dd data-xp-summary-total>0</dd>
+                    </div>
+                    <div>
+                        <dt>Progresso</dt>
+                        <dd data-xp-summary-percent>0%</dd>
+                    </div>
+                </dl>
+            </div>
             <div class="xp-track-scroll" data-xp-track>
                 <div class="xp-track" style="--xp-level-count: <?php echo e((string) (($levelEnd - $levelStart) + 1)); ?>;">
                     <?php for ($level = $levelStart; $level <= $levelEnd; $level++) : ?>
                         <?php $players = $playersByLevel[$level] ?? array(); ?>
                         <article class="xp-level xp-level-<?php echo e(xp_level_kind($level)); ?> <?php echo !empty($players) ? 'has-players' : ''; ?>" data-xp-level="<?php echo e((string) $level); ?>">
                             <?php if ($level > $levelStart) : ?>
-                                <img class="xp-path" src="/xp/assets/caminho-xp.svg?v=20260522b" alt="" aria-hidden="true">
+                                <img class="xp-path" src="/xp/assets/caminho-xp.svg?v=20260522b" alt="" aria-hidden="true" loading="lazy" decoding="async">
                             <?php endif; ?>
                             <div class="xp-level-node">
-                                <img class="xp-level-art" src="<?php echo e(xp_level_asset($level)); ?>" alt="">
+                                <img class="xp-level-art" src="<?php echo e(xp_level_asset($level)); ?>" alt="" loading="lazy" decoding="async">
                                 <strong>Nivel <?php echo e((string) $level); ?></strong>
                                 <?php if (!empty($players)) : ?>
                                     <div class="xp-node-players" aria-label="Funcionarios neste nivel">
-                                        <?php foreach ($players as $player) : ?>
+                                        <?php $visiblePlayers = array_slice($players, 0, 4); ?>
+                                        <?php foreach ($visiblePlayers as $player) : ?>
                                             <?php $photoUrl = xp_photo_url($player['photo_path'] ?? null); ?>
-                                            <button type="button" class="xp-node-player <?php echo !empty($player['is_admin']) ? 'is-adm' : ''; ?>" data-xp-focus-employee="<?php echo e((string) $player['id']); ?>" title="<?php echo e((string) $player['name']); ?>">
+                                            <button type="button" class="xp-node-player <?php echo !empty($player['is_admin']) ? 'is-adm' : ''; ?>" data-xp-focus-employee="<?php echo e((string) $player['id']); ?>" title="<?php echo e((string) $player['name']); ?>"<?php echo xp_player_data_attrs($player); ?>>
                                                 <?php if ($photoUrl !== '') : ?>
-                                                    <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $player['name']); ?>">
+                                                    <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $player['name']); ?>" loading="lazy" decoding="async">
                                                 <?php else : ?>
                                                     <span><?php echo e(xp_employee_initials((string) $player['name'])); ?></span>
                                                 <?php endif; ?>
                                             </button>
                                         <?php endforeach; ?>
+                                        <?php if (count($players) > count($visiblePlayers)) : ?>
+                                            <span class="xp-node-more">+<?php echo e((string) (count($players) - count($visiblePlayers))); ?></span>
+                                        <?php endif; ?>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -307,13 +331,12 @@ $today = date('Y-m-d');
                     <?php foreach ($gamePlayers as $hudEmployee) : ?>
                         <?php
                         $hudProgress = $hudEmployee['progress'];
-                        $hudProgressClass = 'xp-fill-p' . (string) (int) round(max(0, min(100, (float) $hudProgress['percent'])));
                         $hudPhotoUrl = xp_photo_url($hudEmployee['photo_path'] ?? null);
                         ?>
-                        <button type="button" class="xp-game-player <?php echo !empty($hudEmployee['is_admin']) ? 'is-adm' : ''; ?>" data-xp-focus-employee="<?php echo e((string) $hudEmployee['id']); ?>">
+                        <button type="button" class="xp-game-player <?php echo !empty($hudEmployee['is_admin']) ? 'is-adm' : ''; ?>" data-xp-focus-employee="<?php echo e((string) $hudEmployee['id']); ?>" style="<?php echo e(xp_progress_fill_style($hudProgress)); ?>"<?php echo xp_player_data_attrs($hudEmployee); ?>>
                             <span class="xp-game-avatar">
                                 <?php if ($hudPhotoUrl !== '') : ?>
-                                    <img src="<?php echo e($hudPhotoUrl); ?>" alt="<?php echo e((string) $hudEmployee['name']); ?>">
+                                    <img src="<?php echo e($hudPhotoUrl); ?>" alt="<?php echo e((string) $hudEmployee['name']); ?>" loading="lazy" decoding="async">
                                 <?php else : ?>
                                     <i><?php echo e(xp_employee_initials((string) $hudEmployee['name'])); ?></i>
                                 <?php endif; ?>
@@ -321,7 +344,7 @@ $today = date('Y-m-d');
                             <span class="xp-game-info">
                                 <strong><?php echo e((string) $hudEmployee['name']); ?></strong>
                                 <small><?php echo !empty($hudEmployee['is_admin']) ? 'ADM - teste' : 'Nivel ' . e((string) $hudProgress['level']) . ' - ' . e(xp_percent($hudProgress['percent'])); ?></small>
-                                <em class="<?php echo e($hudProgressClass); ?>"><b></b></em>
+                                <em><b></b></em>
                             </span>
                         </button>
                     <?php endforeach; ?>
@@ -341,14 +364,13 @@ $today = date('Y-m-d');
             <?php foreach ($employees as $employee) : ?>
                 <?php
                 $progress = $employee['progress'];
-                $progressFillClass = 'xp-fill-p' . (string) (int) round(max(0, min(100, (float) $progress['percent'])));
                 $photoUrl = xp_photo_url($employee['photo_path'] ?? null);
                 ?>
                 <article class="xp-employee-card" data-xp-employee-card="<?php echo e((string) $employee['id']); ?>" data-xp-employee-level="<?php echo e((string) $progress['level']); ?>">
                     <div class="xp-employee-main">
                         <div class="xp-avatar-frame">
                             <?php if ($photoUrl !== '') : ?>
-                                <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $employee['name']); ?>">
+                                <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $employee['name']); ?>" loading="lazy" decoding="async">
                             <?php else : ?>
                                 <span><?php echo e(xp_employee_initials((string) $employee['name'])); ?></span>
                             <?php endif; ?>
@@ -370,13 +392,13 @@ $today = date('Y-m-d');
                             </dl>
                         </div>
 
-                        <div class="xp-liquid-bar <?php echo e($progressFillClass); ?>">
+                        <div class="xp-liquid-bar" style="<?php echo e(xp_progress_fill_style($progress)); ?>">
                             <i aria-hidden="true"></i>
                             <span><?php echo e(xp_number($progress['progress_xp'])); ?>/<?php echo e(xp_number($progress['required_xp'])); ?> XP</span>
                         </div>
                     </div>
 
-                    <div class="xp-progress-line <?php echo e($progressFillClass); ?>" aria-label="Progresso para o proximo nivel">
+                    <div class="xp-progress-line" style="<?php echo e(xp_progress_fill_style($progress)); ?>" aria-label="Progresso para o proximo nivel">
                         <i></i>
                         <span><?php echo e(xp_percent($progress['percent'])); ?></span>
                     </div>

@@ -112,7 +112,7 @@ Regras a preservar:
 
 ## Fluxo XP
 
-O modulo XP gamifica vendas dos atendentes. A tela principal fica como fase de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; o perfil ADM tambem aparece como jogador visual de teste no nivel 1. A aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo por XP, edicao, exclusao logica de usuarios/funcionarios e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca os valores do dia; o backend calcula automaticamente os pontos.
+O modulo XP gamifica vendas dos atendentes. A tela principal fica como mapa de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; o perfil ADM tambem aparece como jogador visual de teste no nivel 1. A trilha mostra os niveis 1 a 20 enquanto a equipe estiver no inicio e, depois disso, usa uma janela curta ao redor do nivel mais alto para continuar dando sensacao de progressao infinita sem renderizar niveis demais. A aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo por XP, edicao, exclusao logica de usuarios/funcionarios e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca os valores do dia; o backend calcula automaticamente os pontos.
 
 Arquivos principais:
 
@@ -138,6 +138,7 @@ Regras a preservar:
 - qualquer usuario interno autenticado pode visualizar a trilha XP;
 - alimentar dados exige username `adm` ou role `admin`/`gerente`;
 - a navegacao do XP separa `Trilha` de `Configuracoes`; formularios e historico operacional ficam fora da tela principal da fase para evitar poluicao visual;
+- a Trilha exibe jogadores em avatares compactos nos niveis e em uma faixa resumida, sem acoes de editar/excluir; clicar em um jogador abre apenas o resumo de XP;
 - a aba `Configuracoes` prioriza leitura de XP e nao exibe cards de total de venda; valores monetarios ficam como entrada operacional para gerar XP;
 - formularios usam CSRF e prepared statements;
 - fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;

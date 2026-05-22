@@ -4,6 +4,8 @@ declare(strict_types=1);
 const XP_POINTS_PER_THOUSAND_REAIS = 2500;
 const XP_FIRST_LEVEL_REQUIREMENT = 30000;
 const XP_UPLOAD_MAX_BYTES = 3145728;
+const XP_TRACK_BASE_LEVELS = 20;
+const XP_TRACK_DYNAMIC_LEVELS = 20;
 
 function xp_ensure_schema(): void
 {
@@ -61,7 +63,29 @@ function xp_ensure_schema(): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
+    xp_ensure_index(
+        'wf_xp_sales',
+        'idx_xp_sales_active_employee_date',
+        'ALTER TABLE wf_xp_sales ADD INDEX idx_xp_sales_active_employee_date (deleted_at, employee_id, sale_date)'
+    );
+
     $done = true;
+}
+
+function xp_ensure_index(string $table, string $index, string $alterSql): void
+{
+    $stmt = db()->prepare(
+        'SELECT COUNT(*)
+         FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?'
+    );
+    $stmt->execute(array($table, $index));
+
+    if ((int) $stmt->fetchColumn() > 0) {
+        return;
+    }
+
+    db()->exec($alterSql);
 }
 
 function xp_require_user(): array
@@ -282,11 +306,52 @@ function xp_level_track_bounds(array $employees): array
         $maxLevel = max($maxLevel, (int) ($employee['progress']['level'] ?? 1));
     }
 
-    if ($maxLevel <= 18) {
-        return array(1, max(18, $maxLevel + 6));
+    if ($maxLevel <= XP_TRACK_BASE_LEVELS) {
+        return array(1, XP_TRACK_BASE_LEVELS);
     }
 
-    return array(max(1, $maxLevel - 12), $maxLevel + 8);
+    $start = max(1, $maxLevel - 8);
+    $end = $start + XP_TRACK_DYNAMIC_LEVELS - 1;
+
+    return array($start, $end);
+}
+
+function xp_progress_fill_style(array $progress): string
+{
+    $percent = max(0, min(100, (float) ($progress['percent'] ?? 0)));
+    $ratio = $percent / 100;
+
+    return '--xp-fill-percent: ' . rtrim(rtrim(number_format($percent, 2, '.', ''), '0'), '.') . '%; --xp-fill-ratio: ' . number_format($ratio, 4, '.', '') . ';';
+}
+
+function xp_player_data_attrs(array $player): string
+{
+    $progress = is_array($player['progress'] ?? null)
+        ? $player['progress']
+        : xp_progress_from_total((int) ($player['total_xp'] ?? 0));
+    $percent = max(0, min(100, (float) ($progress['percent'] ?? 0)));
+    $isAdmin = !empty($player['is_admin']);
+
+    $attrs = array(
+        'data-xp-player-name' => (string) ($player['name'] ?? 'Jogador'),
+        'data-xp-player-role' => $isAdmin ? 'ADM - teste' : 'Atendente XP',
+        'data-xp-player-level' => $isAdmin
+            ? 'ADM - teste'
+            : 'Nivel ' . (string) ((int) ($progress['level'] ?? 1)) . ' -> ' . (string) ((int) ($progress['next_level'] ?? 2)),
+        'data-xp-player-percent' => xp_percent($percent),
+        'data-xp-player-percent-value' => number_format($percent, 2, '.', ''),
+        'data-xp-player-progress' => xp_number($progress['progress_xp'] ?? 0),
+        'data-xp-player-required' => xp_number($progress['required_xp'] ?? XP_FIRST_LEVEL_REQUIREMENT),
+        'data-xp-player-month' => xp_number($player['month_xp'] ?? 0),
+        'data-xp-player-total' => xp_number($player['total_xp'] ?? 0),
+    );
+
+    $html = '';
+    foreach ($attrs as $name => $value) {
+        $html .= ' ' . $name . '="' . e((string) $value) . '"';
+    }
+
+    return $html;
 }
 
 function xp_find_employee(int $id): ?array

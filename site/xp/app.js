@@ -40,6 +40,7 @@
     function initTrackFocus() {
         var track = document.querySelector('[data-xp-track]');
         var cards = Array.prototype.slice.call(document.querySelectorAll('[data-xp-employee-card]'));
+        var summary = document.querySelector('[data-xp-player-summary]');
 
         function clearFocus() {
             document.querySelectorAll('.xp-level.is-highlighted').forEach(function (node) {
@@ -78,9 +79,46 @@
                 }
             }
 
-            if (card) {
+            if (card && card.offsetParent !== null) {
                 card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             }
+        }
+
+        function setSummaryText(selector, value) {
+            if (!summary) {
+                return;
+            }
+
+            var node = summary.querySelector(selector);
+            if (node) {
+                node.textContent = value || '';
+            }
+        }
+
+        function showPlayerSummary(button) {
+            if (!summary || !button) {
+                return;
+            }
+
+            var progress = button.getAttribute('data-xp-player-progress') || '0';
+            var required = button.getAttribute('data-xp-player-required') || '30.000';
+            var percentValue = Number(button.getAttribute('data-xp-player-percent-value') || '0');
+            var fill = Math.max(0, Math.min(100, percentValue));
+
+            setSummaryText('[data-xp-summary-role]', button.getAttribute('data-xp-player-role') || 'Atendente XP');
+            setSummaryText('[data-xp-summary-name]', button.getAttribute('data-xp-player-name') || 'Jogador');
+            setSummaryText('[data-xp-summary-level]', button.getAttribute('data-xp-player-level') || 'Nivel 1 -> 2');
+            setSummaryText('[data-xp-summary-progress]', progress + '/' + required + ' XP');
+            setSummaryText('[data-xp-summary-month]', button.getAttribute('data-xp-player-month') || '0');
+            setSummaryText('[data-xp-summary-total]', button.getAttribute('data-xp-player-total') || '0');
+            setSummaryText('[data-xp-summary-percent]', button.getAttribute('data-xp-player-percent') || '0%');
+
+            var bar = summary.querySelector('[data-xp-summary-bar]');
+            if (bar) {
+                bar.style.setProperty('--xp-fill-percent', String(fill) + '%');
+            }
+
+            summary.hidden = false;
         }
 
         cards.forEach(function (card) {
@@ -95,6 +133,15 @@
         document.querySelectorAll('[data-xp-focus-employee]').forEach(function (button) {
             button.addEventListener('click', function () {
                 focusEmployee(button.getAttribute('data-xp-focus-employee'));
+                showPlayerSummary(button);
+            });
+        });
+
+        document.querySelectorAll('[data-xp-player-summary-close]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (summary) {
+                    summary.hidden = true;
+                }
             });
         });
 
