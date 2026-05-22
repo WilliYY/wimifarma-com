@@ -37,6 +37,11 @@ docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-diagnostics.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/diagnostico.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/treino.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-evals.php
+docker exec wimifarma-com-web php -l /var/www/html/xp/bootstrap.php
+docker exec wimifarma-com-web php -l /var/www/html/xp/xp-funcoes.php
+docker exec wimifarma-com-web php -l /var/www/html/xp/index.php
+docker exec wimifarma-com-web php -l /var/www/html/xp/login.php
+docker exec wimifarma-com-web php -l /var/www/html/xp/health.php
 ```
 
 ## Local - Miauby agente Node
@@ -88,6 +93,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cotacao/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/financeiro/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/gestao/login.php
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/xp/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/tarefa/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/treino.php
@@ -95,6 +101,7 @@ curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health
 curl.exe -sS http://127.0.0.1:3002/gestao/health
+curl.exe -sS http://127.0.0.1:3002/xp/health.php
 ```
 
 ## Local - home e Cotacao tempo real

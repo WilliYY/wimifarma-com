@@ -76,6 +76,9 @@ Inventario real observado em 2026-05-10:
 - `wf_whatsapp_mensagens`: mensagens e campanhas.
 - `wf_codigos_comissao`: atalhos de itens com comissao diferente, com codigo, EAN, preco, ordem e exclusao logica.
 - `wf_codigos_blocos`: blocos visuais do modulo Codigos por prefixo de EAN, permitindo manter blocos vazios ate o primeiro item ser cadastrado.
+- `wf_xp_employees`: funcionarios/atendentes do modulo XP, com nome, caminho da foto validada, status e exclusao logica.
+- `wf_xp_sales`: vendas lancadas para o XP, com valor em centavos, pontos inteiros, data, funcionario, usuario criador e cancelamento logico.
+- `wf_xp_settings`: configuracoes simples do XP, como a foto da moldura ADM.
 - `wf_tarefas`: tarefas internas.
 - `cotacao_blocos`: blocos de cotacao.
 - `cotacao_fornecedores`: fornecedores por bloco.
@@ -144,6 +147,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `site/financeiro/financeiro-funcoes.php`
 - Gestao: `apps/gestao/src/server.ts`
+- XP: `site/xp/xp-funcoes.php`
 - Tarefas: `site/tarefa/tarefa-funcoes.php`
 - Miauby: `site/miauw/miauw-funcoes.php` e `site/miauw/miauw-intelligence.php`
 
@@ -154,6 +158,11 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_cashback_creditos` depende de cliente/compra e controla saldo restante.
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `wf_codigos_comissao` deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `wf_codigos_blocos` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa a coluna `ordem` dos itens dentro do grupo visual. Apagar pela tela marca `ativo=0` e `apagado_em`, preservando o registro para auditoria basica.
+- `wf_xp_employees` e a fonte de verdade dos funcionarios na trilha XP; remover pela tela marca `status='inativo'` e `deleted_at`, sem apagar vendas antigas.
+- `wf_xp_sales.amount_cents` guarda venda em centavos inteiros e `wf_xp_sales.xp_points` guarda o XP calculado no momento do lancamento. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`.
+- Vendas XP canceladas preenchem `deleted_at`/`deleted_by` e saem dos totais, preservando historico e logs.
+- Fotos do XP ficam fora do banco em `site/xp/uploads/funcionarios/` ou `site/xp/uploads/adm/`; o banco guarda somente caminho relativo validado.
+- `wf_xp_settings.adm_photo_path` guarda a foto da moldura ADM, separada das fotos dos funcionarios.
 - `cotacao_precos` depende de item e fornecedor.
 - As tabelas antigas `cotacao_*` em MySQL ficam como legado historico da Cotacao PHP e nao devem receber nova logica de planilha.
 - `cotacao_v2_rows.id` e o ID estavel de linha da Cotacao V2.

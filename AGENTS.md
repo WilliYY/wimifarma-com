@@ -71,6 +71,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - O card `Gestao` abre o modulo administrativo em `/gestao/`, servido oficialmente por `apps/gestao` via proxy Apache, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais, pagamentos parciais e total pago por mes.
 - O card `Pedidos` abre `/pedidos/`, servido oficialmente por `apps/pedidos` via proxy Apache, separado visual e estruturalmente da Gestao. A URL antiga `/gestao/pedidos` redireciona para `/pedidos/` apenas por compatibilidade.
+- O card `XP` abre `/xp/`, modulo PHP/MySQL proprio para gamificacao dos atendentes por vendas lancadas manualmente, com cadastro de funcionarios, upload validado de foto, trilha horizontal em zigue-zague e progressao infinita de niveis.
 - Pedidos controla fornecedores, chegada, vencimento de boleto por parcela, pagamentos parciais/totais, edicao auditada e historico em duas tabelas operacionais: `pedidos_orders` para pedidos registrados/aguardando chegada e `pedidos_confirmed_orders` para confirmados e historico. Na criacao, a previsao de chegada e digitada como numero de dias e gravada como data calculada em `expected_arrival_at`.
 - Pagamentos de Pedidos alimentam automaticamente a categoria `Boleto` da Gestao por `gestao_accounts`, `gestao_account_items` e `gestao_account_payments`. Pedidos e Gestao sao modulos distintos; novas telas/cards com dominio proprio devem ter rota/app proprios em vez de virar subview de Gestao.
 - Contas vinculadas a `Pedidos` devem permanecer na categoria `Boleto`; a recategorizacao em lote e bloqueada quando a categoria contem pedidos, e cancelamento/reabertura/pagamento da conta sincroniza o status do pedido vinculado.
@@ -79,6 +80,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
   - `site/cashback`
   - `site/codigos`
   - `site/financeiro`
+  - `site/xp`
   - `site/tarefa`
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
@@ -87,6 +89,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela pode rodar em sombra ou corte controlado por `MIAUW_ENGINE`, enquanto o PHP preserva login, sessoes, confirmacoes e escrita forte.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
+- Banco do XP: tabelas MySQL `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` em `wimifarma_app`; a fonte de verdade dos funcionarios, vendas gamificadas e foto da moldura ADM fica nessas tabelas, com venda em centavos inteiros, XP inteiro e uploads validados em `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/`.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 - Banco da Gestao/Pedidos: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
 - Pedidos usa Postgres `pedidos_orders` e `pedidos_confirmed_orders` ligados a `gestao_accounts`; os valores/parcelas ficam em `gestao_account_items`, incluindo `due_at` por parcela quando houver vencimento, e os pagamentos ficam em `gestao_account_payments`, preservando totais mensais, categoria `Boleto` e auditoria. O vencimento geral em `gestao_accounts.due_at` e derivado da menor data ativa das parcelas para ordenacao/resumo. A previsao de chegada entra pela UI como dias ate chegar, mas a fonte de verdade continua sendo a data em `pedidos_orders.expected_arrival_at`. Editar fornecedor/valores/vencimentos passa por auditoria, remover da tela usa cancelamento/arquivamento logico, e `gestao_supplier_orders` fica apenas como legado/compatibilidade e fonte de migracao para dados criados antes da separacao.
@@ -163,6 +166,8 @@ Rotas internas:
 - `/cotacao/health`
 - `/financeiro/login.php`
 - `/gestao/login.php`
+- `/xp/login.php`
+- `/xp/health.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`

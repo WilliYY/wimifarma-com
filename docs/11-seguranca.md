@@ -14,6 +14,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
 - A ponte interna do Miauby para a Cotacao V2 exige `X-Miauw-Internal-Token` e fica indisponivel se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
 - `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos.
+- `/xp/` reutiliza a sessao interna, exige usuario autenticado para visualizar, restringe alimentacao de dados a `adm`, `admin` ou `gerente`, valida CSRF e valida fotos por tipo real, tamanho e dimensoes antes de salvar.
 - `/gestao/` usa sessao propria `WFGESTAO` persistida no Postgres da Gestao, autentica contra `wf_users`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa queries parametrizadas para lancar contas, adicionar itens/juros, registrar pagamentos parciais, confirmar saldo, cancelar ou reabrir contas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - `Permissions-Policy` bloqueia camera e geolocalizacao; microfone fica liberado apenas para a propria origem (`microphone=(self)`) para permitir o botao de audio do Miauby, que ainda exige clique explicito do usuario.
@@ -44,6 +45,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/codigos/api.php`
+- `site/xp/xp-funcoes.php`
+- `site/xp/uploads/.htaccess`
 - `apps/gestao/src/server.ts`
 - `site/gestao/gestao-funcoes.php` (legado)
 - `site/wp-config.php`
@@ -59,6 +62,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Usar prepared statements.
 - Proteger jobs por token quando forem chamados externamente.
 - Revisar permissao antes de expor qualquer endpoint novo.
+- Uploads de fotos do XP devem continuar restritos a imagens reais JPG/PNG/WEBP, sem aceitar nome original como destino e sem permitir execucao/listagem na pasta publica.
 - Dados da Gestao sao administrativos e financeiros; nao expor contas, categorias livres, itens, pagamentos, saldos ou observacoes em endpoints publicos, logs detalhados ou contexto generativo sem filtro/confirmacao futura. `wimifarma-gestao-db` nao deve ser publicado fora da rede Docker.
 - Diagnosticos internos do Miauby nao devem exibir stack trace, payload bruto, caminho completo, chave, token, CPF, telefone ou email no painel operacional.
 - Traces do Miauby nao devem persistir segredo, chave, token, senha, payload bruto externo, SQL cru ou stack trace completo.

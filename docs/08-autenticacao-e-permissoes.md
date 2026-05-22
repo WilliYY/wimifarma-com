@@ -23,6 +23,7 @@ Rotas:
 - `/financeiro/login.php`
 - `/gestao/login.php`
 - `/pedidos/`
+- `/xp/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/treino.php`
@@ -48,6 +49,8 @@ Tabelas:
 - Pedidos (`/pedidos/`) usa o servico Node separado `apps/pedidos`, autentica contra `wf_users`, cria sessao propria `WFPEDIDOS` no Postgres da Gestao e fica restrito a username `adm`, role `admin` ou role `gerente`; criar pedido, confirmar chegada, atualizar vencimento, adicionar juros/valor, registrar parcial e marcar pago usa CSRF.
 - Quando uma rota protegida de Pedidos envia o operador para `/pedidos/login.php`, o destino seguro original e preservado na sessao; entrar pelo card `Pedidos` deve voltar para `/pedidos/`, nao para a tela principal de Gestao.
 - O endpoint publico `/pedidos/api/badge` retorna somente a contagem de pedidos previstos para chegar hoje, sem detalhes financeiros ou nomes de fornecedores, para alimentar a bolinha do card `Pedidos` na home.
+- XP (`/xp/`) reutiliza a sessao interna do PHP e autentica contra `wf_users`; visualizar exige usuario autenticado, enquanto cadastrar funcionario, trocar foto, atualizar foto da moldura ADM, lancar venda, cancelar venda ou remover funcionario exige username `adm`, role `admin` ou role `gerente` e CSRF.
+- Fotos do XP aceitam somente JPG, PNG ou WEBP validados no servidor, ate 3 MB, com caminho final limitado a `/xp/uploads/funcionarios/`.
 - O painel `/miauw/diagnostico.php` exige usuario interno autenticado e fica restrito a role `admin`, role `gerente` ou username `adm`; acoes de revisao usam CSRF.
 - O painel `/miauw/treino.php` segue a mesma restricao de diagnostico (`admin`, `gerente` ou `adm`); revisar/aprovar/rejeitar treino usa CSRF e nao apaga historico.
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.

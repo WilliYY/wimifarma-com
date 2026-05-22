@@ -24,6 +24,9 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - `site/codigos/bootstrap.php`
 - `site/codigos/api.php`
 - `site/codigos/codigos-funcoes.php`
+- `site/xp/bootstrap.php`
+- `site/xp/xp-funcoes.php`
+- `site/xp/index.php`
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
 - `apps/gestao/src/server.ts`
@@ -46,6 +49,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Cotacao deve preservar estado visual e ordem.
 - Financeiro deve preservar justificativas e divergencias.
 - Gestao deve preservar conta, itens, pagamentos, auditoria e saldos em centavos, sem apagar historico.
+- XP deve preservar vendas em centavos, XP em inteiro, fotos validadas, remocao logica e logs de alimentacao.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -54,6 +58,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - O WordPress continua como raiz principal.
 - Segredos entram por ambiente ou `config.local.php`.
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
+- O XP adotou PHP procedural + MySQL por ser modulo interno manual, sem colaboracao em tempo real nem necessidade de runtime novo.
 
 ## Padroes para novas alteracoes
 
@@ -64,6 +69,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Validar entrada de `$_GET`, `$_POST` e JSON antes de usar.
 - Endpoints JSON internos, como `/codigos/api.php`, devem reutilizar sessao, CSRF e prepared statements dos helpers existentes.
 - Manter CSS/JS do modulo dentro da propria pasta.
+- Uploads de novos modulos devem validar erro, tamanho, MIME real por imagem, extensao controlada, dimensoes minimas/maximas, nome aleatorio e pasta com execucao de script bloqueada.
 - Em modulos administrativos manuais, manter dados principais e itens/pagamentos com total derivado, status reversivel e historico preservado.
 - Em `apps/gestao`, salvar dinheiro em centavos inteiros, usar queries parametrizadas, criar indices por padrao de acesso, manter sessoes em Postgres e evitar dependencia direta de tabelas MySQL fora de `wf_users`/`wf_logs`/importacao legado.
 - Atualizar docs no mesmo commit da mudanca.

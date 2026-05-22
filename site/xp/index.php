@@ -1,0 +1,382 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/bootstrap.php';
+
+xp_send_no_cache_headers();
+$user = xp_require_user();
+$canManage = xp_user_can_manage($user);
+
+try {
+    xp_ensure_schema();
+} catch (Throwable $schemaError) {
+    set_flash('error', 'Nao consegui preparar o modulo XP agora. Verifique o banco.');
+}
+
+$monthContext = xp_month_context($_GET['month'] ?? null);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $token = $_POST['csrf_token'] ?? '';
+
+    if (!is_string($token) || !hash_equals(csrf_token(), $token)) {
+        set_flash('error', 'Sessao expirada. Tente novamente.');
+        xp_redirect_home();
+    }
+
+    try {
+        xp_require_manager($user);
+        $action = (string) ($_POST['action'] ?? '');
+
+        if ($action === 'create_employee') {
+            xp_create_employee(
+                (string) ($_POST['name'] ?? ''),
+                $_FILES['photo'] ?? null,
+                (int) $user['id']
+            );
+            set_flash('success', 'Funcionario cadastrado no XP.');
+        } elseif ($action === 'update_admin_profile') {
+            xp_update_admin_profile($_FILES['photo'] ?? null, (int) $user['id']);
+            set_flash('success', 'Foto da moldura ADM atualizada.');
+        } elseif ($action === 'update_employee') {
+            xp_update_employee(
+                (int) ($_POST['employee_id'] ?? 0),
+                (string) ($_POST['name'] ?? ''),
+                $_FILES['photo'] ?? null,
+                (int) $user['id']
+            );
+            set_flash('success', 'Funcionario atualizado.');
+        } elseif ($action === 'deactivate_employee') {
+            xp_deactivate_employee((int) ($_POST['employee_id'] ?? 0));
+            set_flash('success', 'Funcionario removido da tela XP.');
+        } elseif ($action === 'create_sale') {
+            xp_create_sale(
+                (int) ($_POST['employee_id'] ?? 0),
+                (string) ($_POST['sale_date'] ?? ''),
+                $_POST['amount'] ?? '0',
+                (string) ($_POST['note'] ?? ''),
+                (int) $user['id']
+            );
+            set_flash('success', 'Venda lancada e XP calculado.');
+        } elseif ($action === 'delete_sale') {
+            xp_delete_sale((int) ($_POST['sale_id'] ?? 0), (int) $user['id']);
+            set_flash('success', 'Lancamento cancelado sem apagar historico.');
+        } else {
+            set_flash('error', 'Acao invalida.');
+        }
+    } catch (InvalidArgumentException $error) {
+        set_flash('error', $error->getMessage());
+    } catch (Throwable $error) {
+        set_flash('error', 'Nao consegui salvar o XP agora.');
+    }
+
+    xp_redirect_home();
+}
+
+$flash = get_flash();
+$employees = array();
+$summary = array('employee_count' => 0, 'month_amount_cents' => 0, 'month_xp' => 0, 'total_xp' => 0, 'top_employee' => null);
+$recentSales = array();
+$adminProfile = array('photo_path' => '');
+
+try {
+    $adminProfile = xp_admin_profile();
+    $employees = xp_list_employees($monthContext);
+    $summary = xp_summary($employees);
+    $recentSales = xp_recent_sales(9);
+} catch (Throwable $listError) {
+    $flash = array('type' => 'error', 'message' => 'Nao consegui carregar o XP agora.');
+}
+
+[$levelStart, $levelEnd] = xp_level_track_bounds($employees);
+$playersByLevel = array();
+foreach ($employees as $employee) {
+    $level = (int) ($employee['progress']['level'] ?? 1);
+    if (!isset($playersByLevel[$level])) {
+        $playersByLevel[$level] = array();
+    }
+    $playersByLevel[$level][] = $employee;
+}
+
+$today = date('Y-m-d');
+?><!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>XP - Wimifarma</title>
+    <link rel="icon" type="image/png" href="/cashback/favicon.png">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260522a">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
+    <script src="/xp/app.js?v=20260522a" defer></script>
+    <script src="/miauw/widget.js?v=20260517k" defer></script>
+</head>
+<body class="xp-app-body">
+    <header class="xp-topbar">
+        <a class="xp-brand" href="/">
+            <img src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
+            <strong>XP</strong>
+        </a>
+        <nav class="xp-nav" aria-label="Navegacao">
+            <a href="/">Home</a>
+            <a href="/xp/logout.php">Sair</a>
+        </nav>
+    </header>
+
+    <main class="xp-page" data-miauby-screen-object="modulo xp" data-miauby-screen-label="Modulo XP: <?php echo e((string) $summary['employee_count']); ?> funcionario(s)">
+        <section class="xp-hero">
+            <div>
+                <h1>XP</h1>
+                <p>R$ 1.000,00 em vendas viram <?php echo e(xp_number(XP_POINTS_PER_THOUSAND_REAIS)); ?> XP. A trilha sobe de nivel automaticamente.</p>
+            </div>
+            <form class="xp-month" method="get">
+                <label>
+                    <span>Mes</span>
+                    <input type="month" name="month" value="<?php echo e($monthContext['month']); ?>">
+                </label>
+                <button type="submit" class="xp-btn">Ver</button>
+            </form>
+        </section>
+
+        <?php if (!empty($flash['message'])) : ?>
+            <div class="xp-alert <?php echo e((string) $flash['type']); ?>"><?php echo e((string) $flash['message']); ?></div>
+        <?php endif; ?>
+
+        <section class="xp-summary-grid" aria-label="Resumo XP">
+            <article>
+                <span>Funcionarios</span>
+                <strong><?php echo e((string) $summary['employee_count']); ?></strong>
+            </article>
+            <article>
+                <span>Vendas <?php echo e($monthContext['label']); ?></span>
+                <strong><?php echo e(xp_cents_to_money($summary['month_amount_cents'])); ?></strong>
+            </article>
+            <article>
+                <span>XP do mes</span>
+                <strong><?php echo e(xp_number($summary['month_xp'])); ?></strong>
+            </article>
+            <article>
+                <span>XP total</span>
+                <strong><?php echo e(xp_number($summary['total_xp'])); ?></strong>
+            </article>
+        </section>
+
+        <?php if ($canManage) : ?>
+            <section class="xp-admin-grid" aria-label="Administracao XP">
+                <article class="xp-admin-card xp-admin-profile-card">
+                    <h2>Moldura ADM</h2>
+                    <div class="xp-admin-avatar">
+                        <?php if ($adminProfile['photo_path'] !== '') : ?>
+                            <img src="<?php echo e($adminProfile['photo_path']); ?>" alt="Foto ADM XP">
+                        <?php else : ?>
+                            <span>ADM</span>
+                        <?php endif; ?>
+                    </div>
+                    <form method="post" enctype="multipart/form-data" class="xp-form">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="update_admin_profile">
+                        <label>
+                            <span>Sua foto</span>
+                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input required>
+                            <small>Essa foto usa a moldura ADM.</small>
+                        </label>
+                        <div class="xp-photo-preview" hidden data-xp-photo-preview></div>
+                        <button type="submit" class="xp-btn xp-btn-primary">Atualizar ADM</button>
+                    </form>
+                </article>
+
+                <article class="xp-admin-card">
+                    <h2>Cadastrar funcionario</h2>
+                    <form method="post" enctype="multipart/form-data" class="xp-form">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="create_employee">
+                        <label>
+                            <span>Nome</span>
+                            <input type="text" name="name" maxlength="180" required placeholder="Nome do atendente">
+                        </label>
+                        <label>
+                            <span>Foto</span>
+                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input>
+                            <small>JPG, PNG ou WEBP ate 3 MB.</small>
+                        </label>
+                        <div class="xp-photo-preview" hidden data-xp-photo-preview></div>
+                        <button type="submit" class="xp-btn xp-btn-primary">Adicionar</button>
+                    </form>
+                </article>
+
+                <article class="xp-admin-card xp-admin-card-wide">
+                    <h2>Lancar venda diaria</h2>
+                    <form method="post" class="xp-form xp-form-sale">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="create_sale">
+                        <label>
+                            <span>Funcionario</span>
+                            <select name="employee_id" required>
+                                <option value="">Escolha</option>
+                                <?php foreach ($employees as $employee) : ?>
+                                    <option value="<?php echo e((string) $employee['id']); ?>"><?php echo e((string) $employee['name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Data</span>
+                            <input type="date" name="sale_date" value="<?php echo e($today); ?>" required>
+                        </label>
+                        <label>
+                            <span>Venda</span>
+                            <input type="text" name="amount" inputmode="decimal" required placeholder="1.000,00">
+                        </label>
+                        <label class="xp-form-note">
+                            <span>Observacao</span>
+                            <input type="text" name="note" maxlength="220" placeholder="Opcional">
+                        </label>
+                        <button type="submit" class="xp-btn xp-btn-primary">Gerar XP</button>
+                    </form>
+                    <p class="xp-admin-hint">Exemplo: R$ 1.000,00 gera <?php echo e(xp_number(XP_POINTS_PER_THOUSAND_REAIS)); ?> XP.</p>
+                </article>
+            </section>
+        <?php endif; ?>
+
+        <section class="xp-world" aria-label="Trilha de niveis XP">
+            <div class="xp-world-copy">
+                <h2>Trilha XP</h2>
+                <span>Niveis infinitos em zigue-zague</span>
+            </div>
+            <div class="xp-track-scroll" data-xp-track>
+                <div class="xp-track" style="--xp-level-count: <?php echo e((string) (($levelEnd - $levelStart) + 1)); ?>;">
+                    <?php for ($level = $levelStart; $level <= $levelEnd; $level++) : ?>
+                        <?php $players = $playersByLevel[$level] ?? array(); ?>
+                        <article class="xp-level xp-level-<?php echo e(xp_level_kind($level)); ?> <?php echo !empty($players) ? 'has-players' : ''; ?>" data-xp-level="<?php echo e((string) $level); ?>">
+                            <?php if ($level > $levelStart) : ?>
+                                <img class="xp-path" src="/xp/assets/caminho-xp.svg" alt="" aria-hidden="true">
+                            <?php endif; ?>
+                            <div class="xp-level-node">
+                                <img class="xp-level-art" src="<?php echo e(xp_level_asset($level)); ?>" alt="">
+                                <strong>Nivel <?php echo e((string) $level); ?></strong>
+                                <?php if (!empty($players)) : ?>
+                                    <div class="xp-node-players" aria-label="Funcionarios neste nivel">
+                                        <?php foreach ($players as $player) : ?>
+                                            <?php $photoUrl = xp_photo_url($player['photo_path'] ?? null); ?>
+                                            <button type="button" class="xp-node-player" data-xp-focus-employee="<?php echo e((string) $player['id']); ?>" title="<?php echo e((string) $player['name']); ?>">
+                                                <?php if ($photoUrl !== '') : ?>
+                                                    <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $player['name']); ?>">
+                                                <?php else : ?>
+                                                    <span><?php echo e(xp_employee_initials((string) $player['name'])); ?></span>
+                                                <?php endif; ?>
+                                            </button>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </article>
+                    <?php endfor; ?>
+                </div>
+            </div>
+        </section>
+
+        <section class="xp-employee-grid" aria-label="Funcionarios XP">
+            <?php if (empty($employees)) : ?>
+                <article class="xp-empty">
+                    <h2>Nenhum funcionario cadastrado ainda</h2>
+                    <p>Cadastre os atendentes e lance as vendas diarias para a trilha comecar a andar.</p>
+                </article>
+            <?php endif; ?>
+
+            <?php foreach ($employees as $employee) : ?>
+                <?php
+                $progress = $employee['progress'];
+                $photoUrl = xp_photo_url($employee['photo_path'] ?? null);
+                ?>
+                <article class="xp-employee-card" data-xp-employee-card="<?php echo e((string) $employee['id']); ?>" data-xp-employee-level="<?php echo e((string) $progress['level']); ?>">
+                    <div class="xp-employee-main">
+                        <div class="xp-avatar-frame">
+                            <?php if ($photoUrl !== '') : ?>
+                                <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $employee['name']); ?>">
+                            <?php else : ?>
+                                <span><?php echo e(xp_employee_initials((string) $employee['name'])); ?></span>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="xp-employee-info">
+                            <span class="xp-rank">#<?php echo e((string) $employee['rank']); ?></span>
+                            <h2><?php echo e((string) $employee['name']); ?></h2>
+                            <p>Nivel <?php echo e((string) $progress['level']); ?> -> <?php echo e((string) $progress['next_level']); ?></p>
+                            <dl>
+                                <div>
+                                    <dt>Vendas do mes</dt>
+                                    <dd><?php echo e(xp_cents_to_money($employee['month_amount_cents'])); ?></dd>
+                                </div>
+                                <div>
+                                    <dt>XP total</dt>
+                                    <dd><?php echo e(xp_number($employee['total_xp'])); ?></dd>
+                                </div>
+                            </dl>
+                        </div>
+
+                        <div class="xp-liquid-bar" style="--xp-fill: <?php echo e((string) $progress['percent']); ?>%;">
+                            <span><?php echo e(xp_number($progress['progress_xp'])); ?>/<?php echo e(xp_number($progress['required_xp'])); ?></span>
+                        </div>
+                    </div>
+
+                    <div class="xp-progress-line" aria-label="Progresso para o proximo nivel">
+                        <i style="width: <?php echo e((string) $progress['percent']); ?>%;"></i>
+                        <span><?php echo e(xp_percent($progress['percent'])); ?></span>
+                    </div>
+
+                    <?php if ($canManage) : ?>
+                        <details class="xp-edit-details">
+                            <summary>Editar funcionario</summary>
+                            <form method="post" enctype="multipart/form-data" class="xp-form xp-form-edit">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="update_employee">
+                                <input type="hidden" name="employee_id" value="<?php echo e((string) $employee['id']); ?>">
+                                <label>
+                                    <span>Nome</span>
+                                    <input type="text" name="name" maxlength="180" value="<?php echo e((string) $employee['name']); ?>" required>
+                                </label>
+                                <label>
+                                    <span>Nova foto</span>
+                                    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input>
+                                </label>
+                                <button type="submit" class="xp-btn">Salvar</button>
+                            </form>
+                            <form method="post" class="xp-inline-danger">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="deactivate_employee">
+                                <input type="hidden" name="employee_id" value="<?php echo e((string) $employee['id']); ?>">
+                                <button type="submit" class="xp-btn xp-btn-danger" data-xp-confirm="Remover este funcionario da tela XP? As vendas antigas ficam preservadas.">Remover da tela</button>
+                            </form>
+                        </details>
+                    <?php endif; ?>
+                </article>
+            <?php endforeach; ?>
+        </section>
+
+        <?php if ($canManage) : ?>
+            <section class="xp-recent" aria-label="Lancamentos recentes">
+                <h2>Ultimos lancamentos</h2>
+                <?php if (empty($recentSales)) : ?>
+                    <p>Nenhuma venda lancada ainda.</p>
+                <?php else : ?>
+                    <div class="xp-recent-list">
+                        <?php foreach ($recentSales as $sale) : ?>
+                            <article>
+                                <div>
+                                    <strong><?php echo e((string) $sale['employee_name']); ?></strong>
+                                    <span><?php echo e(br_date($sale['sale_date'] ?? null)); ?> - <?php echo e(xp_cents_to_money($sale['amount_cents'] ?? 0)); ?></span>
+                                </div>
+                                <b><?php echo e(xp_number($sale['xp_points'] ?? 0)); ?> XP</b>
+                                <form method="post">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="delete_sale">
+                                    <input type="hidden" name="sale_id" value="<?php echo e((string) $sale['id']); ?>">
+                                    <button type="submit" class="xp-mini-danger" data-xp-confirm="Cancelar este lancamento?">Cancelar</button>
+                                </form>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </section>
+        <?php endif; ?>
+    </main>
+</body>
+</html>

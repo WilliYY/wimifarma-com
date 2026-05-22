@@ -33,6 +33,7 @@ Arquivos:
 
 - `site/cashback/functions.php`
 - `site/codigos/codigos-funcoes.php`
+- `site/xp/xp-funcoes.php`
 - `apps/cotacao/src/server.js`
 - `apps/miauw-agent/src/server.ts`
 - `site/financeiro/financeiro-funcoes.php`
@@ -50,6 +51,7 @@ Arquivos:
 - Gestao registra criacao de conta, criacao por Miauby, renomeacao, vencimento atualizado/removido, repeticao para o mes seguinte, ciclo de repeticao ligado/desligado, troca/cancelamento em lote por categoria, arquivamento de contas canceladas, adicao de item, ajuste de lancamento, registro/cancelamento de pagamento parcial, quitacao de item, cancelamento/reabertura de lancamento, reabertura/cancelamento de fatura, observacao editada e mudanca de status em `gestao_audit_events`, alem de espelhar resumo curto em `wf_logs`; login e falha de login continuam no log geral. O log deve guardar resumo curto, nunca senha, token, observacao sensivel completa ou detalhe financeiro alem do necessario.
 - Pedidos registra criacao, pagamento informado na criacao, chegada confirmada, finalizacao no historico, reabertura por novo valor/juros ou reabertura da conta, e cancelamento por categoria com eventos `pedidos_pedido_criado`, `pedidos_pedido_pago_criacao`, `pedidos_chegada_confirmada`, `pedidos_pedido_finalizado`, `pedidos_pedido_reaberto`, `pedidos_valor_adicionado`, `pedidos_pagamento_criado`, `pedidos_boleto_quitado` e compatibilidade `gestao_pedido_cancelado_categoria` quando cancelado a partir da Gestao. O pedido fica ligado a uma conta da categoria `Boleto`, entao pagamentos parciais/totais tambem seguem os eventos financeiros ja existentes.
 - Códigos registra criacao de blocos, criacao de itens, edicao, reordenacao e exclusao logica em `wf_logs`; autosave pode gerar mais eventos de edicao, entao os logs devem continuar sem segredos.
+- XP registra login/falha/logout e alimentacao em `wf_logs`: `login_xp`, `login_xp_falha`, `logout_xp`, `xp_adm_foto_atualizada`, `xp_funcionario_criado`, `xp_funcionario_editado`, `xp_funcionario_inativado`, `xp_venda_lancada` e `xp_venda_cancelada`. Logs devem guardar resumo curto, sem arquivo original, senha ou dado sensivel.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
 - Guardrails do Miauby v2 que reescrevem resposta por vazamento de bastidor devem registrar diagnostico invisivel com termos detectados, origem, versao do agente e versao da politica, sem salvar a resposta completa nem segredo.
 - O painel `/miauw/diagnostico.php` mostra diagnosticos internos recentes em forma resumida e sanitizada, sem payload bruto nem stack trace.

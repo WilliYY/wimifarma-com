@@ -11,6 +11,7 @@ Entrada publica:
 - `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo oficial SVG atualizada, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
 - O card `Pedidos` abre `/pedidos/`, ao lado de `Cotacao`, com badge de pedidos previstos para chegar hoje.
+- O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
 - A home usa no maximo cinco cards por linha no desktop; `Codigos` e `Gestao` entram na segunda linha. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 
@@ -28,6 +29,7 @@ Rotas de login:
 - `/financeiro/login.php`
 - `/gestao/login.php`
 - `/pedidos/`
+- `/xp/login.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/wp-login.php`
@@ -107,6 +109,41 @@ Regras a preservar:
 - apagar pela tela deve fazer exclusao logica (`ativo=0`) para reduzir risco de perda acidental;
 - apagar uma tabela inteira so e permitido para blocos numericos nao padrao, exige card de confirmacao, CSRF, sessao ativa e senha operacional `wimifarma`, com suporte a override por `CODIGOS_GROUP_DELETE_PASSWORD`;
 - acoes de criar, editar e apagar registram `wf_logs`.
+
+## Fluxo XP
+
+O modulo XP gamifica vendas dos atendentes. A equipe cadastra funcionarios, sobe uma foto e lanca as vendas do dia; o backend calcula automaticamente os pontos e a tela mostra a trilha horizontal em zigue-zague.
+
+Arquivos principais:
+
+- `site/xp/index.php`
+- `site/xp/login.php`
+- `site/xp/xp-funcoes.php`
+- `site/xp/styles.css`
+- `site/xp/app.js`
+- `site/xp/assets/`
+- `site/xp/uploads/funcionarios/`
+
+Tabelas principais:
+
+- `wf_xp_employees`
+- `wf_xp_sales`
+- `wf_xp_settings`
+- `wf_users` para login
+- `wf_logs` para auditoria
+
+Regras a preservar:
+
+- qualquer usuario interno autenticado pode visualizar a trilha XP;
+- alimentar dados exige username `adm` ou role `admin`/`gerente`;
+- formularios usam CSRF e prepared statements;
+- fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;
+- a moldura ADM e usada no perfil/admin do XP, com foto propria salva separada dos funcionarios;
+- a pasta de uploads bloqueia listagem e execucao de scripts por `.htaccess`;
+- R$ 1.000,00 em vendas gera 2.500 XP, gravado como inteiro no lancamento;
+- o nivel 1 exige 30.000 XP para passar; os niveis seguintes ficam progressivamente mais dificeis e nao possuem limite fixo;
+- a trilha usa `Bloco XP` nos niveis comuns, `Nivel 5` a cada multiplo de 5 e `nivel 10` a cada multiplo de 10;
+- cancelar venda ou remover funcionario deve ser logico, sem apagar historico fisico.
 
 ## Fluxo Cotacao
 

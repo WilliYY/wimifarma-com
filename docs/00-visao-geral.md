@@ -13,6 +13,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Cotacao: itens, fornecedores, categorias, precos, status, formatacao e auditoria.
 - Financeiro: fechamentos, sangrias, PIX, maquininhas, lancamentos e auditoria.
 - Gestao: contas a pagar manuais, itens de composicao, pagamentos parciais e total pago por mes.
+- XP: cadastro de atendentes, foto, venda diaria, pontos e progressao visual de niveis.
 - Tarefas: tarefas simples internas.
 - Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; a Fase 13 possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada, contratos de tools enviados do PHP para o Node e tools reais de leitura baixa por ponte PHP interna, sem liberar escrita direta.
 - WordPress: site principal e conteudo publico.
@@ -26,6 +27,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Cotacao V2: `apps/cotacao/`, publicada em `/cotacao/` por proxy interno do Apache
 - Financeiro: `site/financeiro/`
 - Gestao: `apps/gestao/`, publicada em `/gestao/` por proxy interno do Apache; `site/gestao/` fica como legado.
+- XP: `site/xp/`
 - Tarefas: `site/tarefa/`
 - Miauby: `site/miauw/`
 - Miauby agente: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
@@ -43,6 +45,8 @@ Rotas principais:
 - `/financeiro/login.php`
 - `/gestao/login.php`
 - `/gestao/health`
+- `/xp/login.php`
+- `/xp/health.php`
 - `/tarefa/login.php`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
@@ -55,6 +59,7 @@ Rotas principais:
 - Cotacao deve preservar ordem, categorias, fornecedores, precos, observacoes, cores/formatacao e status.
 - Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias.
 - Gestao deve preservar contas lancadas, itens que compoem o total, categoria livre, pagamentos parciais datados, data de geracao automatica, confirmacao de saldo e logs/auditoria sem apagar historico.
+- XP deve preservar funcionarios, fotos validadas, vendas em centavos, XP inteiro, logs de alimentacao e progressao por total historico sem apagar lancamentos; cancelamentos devem ser logicos.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.
 - O servico Miauby agente nao deve executar escrita real. O adaptador PHP compara respostas por trace e o corte inicial fica limitado a usuarios liberados por `MIAUW_ENGINE`, com rollback por `.env`.
 - WordPress deve continuar servindo o site principal enquanto os modulos internos ficam acessiveis por suas rotas.
@@ -68,6 +73,7 @@ Rotas principais:
 - O Nginx Proxy Manager deve encaminhar o dominio publico para `wimifarma-com-web:80`, nao para a porta de tunel.
 - A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
 - A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o MySQL continua apenas para login interno, logs e legado importado.
+- O XP fica em PHP/MySQL porque e alimentado manualmente pela equipe, reaproveita `wf_users`, CSRF, `wf_logs` e nao precisa de runtime/proxy novo.
 - O Miauby agente dedicado foi iniciado em `apps/miauw-agent`; `site/miauw/api.php` continua dono de sessao, confirmacoes e escritas fortes mesmo quando `MIAUW_ENGINE=node`.
 
 ## Riscos ao alterar

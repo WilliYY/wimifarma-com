@@ -41,6 +41,7 @@ Arquivos principais:
 - `site/wp-config.php`
 - `site/cashback/config.php`
 - `site/codigos/`
+- `site/xp/`
 - `site/gestao/` (legado; rota oficial usa `apps/gestao`)
 - `.env.example`
 
@@ -85,6 +86,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
 - Manter a Gestao oficial em `/gestao/` via Node/Postgres; `site/gestao` e apenas legado/fallback historico.
 - Manter `Pedidos` como modulo separado em `/pedidos/`, usando `apps/pedidos`, container `wimifarma-pedidos-app:3300`, sessao propria `WFPEDIDOS`, CSRF proprio e proxy Apache dedicado. A URL antiga `/gestao/pedidos` deve apenas redirecionar para `/pedidos/`.
+- Manter o XP como modulo proprio em `/xp/`, com PHP/MySQL, sessao interna compartilhada, CSRF, healthcheck e uploads validados; nao misturar a regra de gamificacao em Gestao ou Financeiro.
 - Para futuras telas/cards com dominio proprio, escolher explicitamente o melhor desenho tecnico antes de implementar: linguagem/runtime, banco, schema, indices, permissoes, auditoria, healthcheck, deploy e integracoes. Preferir rota/app/servico separados em vez de transformar a Gestao em concentrador de subviews.
 - Cada modulo novo deve declarar sua fonte de verdade. Quando precisar alimentar outro dominio, integrar por tabelas/APIs estruturadas, nao por acoplamento visual ou reaproveitamento de tela.
 - Manter o Miauby agente sem escrita real; quando `MIAUW_ENGINE=node`, liberar primeiro apenas usuarios configurados e preservar rollback imediato para `php`.
@@ -100,6 +102,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
 - A Gestao foi separada em servico Node.js + TypeScript com Postgres dedicado porque e modulo administrativo critico; MySQL permanece para `wf_users`, `wf_logs` e importacao unica do legado.
 - Pedidos de fornecedores foi separado da Gestao em `apps/pedidos`, mas continua usando as tabelas financeiras `gestao_accounts`, `gestao_account_items` e `gestao_account_payments` para alimentar automaticamente os totais/categoria `Boleto` e reaproveitar o historico financeiro existente. A parte operacional fica em `pedidos_orders` e `pedidos_confirmed_orders`; vencimentos individuais de parcelas ficam em `gestao_account_items.due_at`, e `gestao_accounts.due_at` guarda a menor data ativa para resumo/ordenacao.
+- XP foi criado em `site/xp` com PHP procedural e MySQL `wimifarma_app`, pois o fluxo e cadastro/lancamento manual diario e consegue reaproveitar a autenticacao `wf_users`, logs `wf_logs`, validacao de upload e deploy do container web sem novo servico.
 - O criterio para banco novo e: tabelas do dominio com FKs/constraints, dinheiro em centavos inteiros quando houver valor financeiro, indices em filtros/joins frequentes, indices parciais para filas/status, soft delete/arquivamento logico quando houver auditoria e migracao/compatibilidade documentada quando substituir tabela antiga.
 - A Fase 7/8/9 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK, adaptador PHP de comparacao e corte por `MIAUW_ENGINE`. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria.
 - A Fase 17 do Miauby mantem o PHP como dono de treino/revisao e envia ao Node apenas contexto aprovado, versionado e compilado por relevancia; o servico agente continua sem credencial de banco e sem escrita direta.

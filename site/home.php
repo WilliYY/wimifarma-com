@@ -57,6 +57,14 @@ $modules = array(
         'order_badge' => true,
     ),
     array(
+        'name' => 'XP',
+        'label' => 'Jogo dos atendentes',
+        'description' => 'Niveis, fotos, vendas e ranking mensal.',
+        'href' => '/xp/',
+        'accent' => 'gold',
+        'xp_frame' => true,
+    ),
+    array(
         'name' => 'Financeiro',
         'label' => 'Fechamento diario',
         'description' => 'Caixa, sangrias, PIX e auditoria.',
@@ -305,6 +313,29 @@ $modules = array(
             background: #a80f43;
         }
 
+        .wf-card[data-accent="gold"] .wf-card-mark {
+            background: #f59e0b;
+        }
+
+        .wf-card.is-xp-card {
+            border-color: rgba(245, 158, 11, 0.34);
+            background: rgba(255, 252, 232, 0.94);
+        }
+
+        .wf-card.is-xp-card::after {
+            content: "";
+            position: absolute;
+            inset: -8px;
+            z-index: 1;
+            background: url("/xp/assets/moldura-card-home.svg") center / 100% 100% no-repeat;
+            pointer-events: none;
+        }
+
+        .wf-card.is-xp-card > * {
+            position: relative;
+            z-index: 2;
+        }
+
         .wf-card h2 {
             margin: 0;
             color: #0f172a;
@@ -505,7 +536,7 @@ $modules = array(
 
             <section class="wf-modules" aria-label="Sistemas Wimifarma">
                 <?php foreach ($modules as $module): ?>
-                    <a class="wf-card" href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>" data-accent="<?php echo wf_home_e($module['accent']); ?>">
+                    <a class="wf-card<?php echo !empty($module['xp_frame']) ? ' is-xp-card' : ''; ?>" href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>" data-accent="<?php echo wf_home_e($module['accent']); ?>">
                         <i class="wf-card-mark" aria-hidden="true"></i>
                         <?php if (!empty($module['task_badge'])): ?>
                             <em class="wf-card-badge" data-wf-task-badge hidden aria-label="Tarefas abertas"></em>

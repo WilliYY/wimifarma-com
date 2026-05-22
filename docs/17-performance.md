@@ -220,6 +220,7 @@ Servicos:
 - Plugins premium ignorados pelo Git podem existir no ambiente e afetar comportamento.
 - Aumentar recursos sem medir pode mascarar problema de plugin.
 - Animacoes da home nao devem bloquear clique nos cards nem cobrir permanentemente os acessos.
+- Assets SVG grandes do XP, especialmente elementos vindos do Canva, devem ser observados no VPS; se a trilha ficar lenta, otimizar/exportar versoes menores antes de adicionar mais animacoes.
 
 ## Pendencias
 
