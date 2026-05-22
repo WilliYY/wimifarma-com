@@ -124,7 +124,7 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260522i">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260522j">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
     <script src="/xp/app.js?v=20260522d" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
@@ -307,6 +307,7 @@ $today = date('Y-m-d');
                     <?php foreach ($gamePlayers as $hudEmployee) : ?>
                         <?php
                         $hudProgress = $hudEmployee['progress'];
+                        $hudProgressClass = 'xp-fill-p' . (string) (int) round(max(0, min(100, (float) $hudProgress['percent'])));
                         $hudPhotoUrl = xp_photo_url($hudEmployee['photo_path'] ?? null);
                         ?>
                         <button type="button" class="xp-game-player <?php echo !empty($hudEmployee['is_admin']) ? 'is-adm' : ''; ?>" data-xp-focus-employee="<?php echo e((string) $hudEmployee['id']); ?>">
@@ -320,7 +321,7 @@ $today = date('Y-m-d');
                             <span class="xp-game-info">
                                 <strong><?php echo e((string) $hudEmployee['name']); ?></strong>
                                 <small><?php echo !empty($hudEmployee['is_admin']) ? 'ADM - teste' : 'Nivel ' . e((string) $hudProgress['level']) . ' - ' . e(xp_percent($hudProgress['percent'])); ?></small>
-                                <em><b style="width: <?php echo e((string) $hudProgress['percent']); ?>%;"></b></em>
+                                <em class="<?php echo e($hudProgressClass); ?>"><b></b></em>
                             </span>
                         </button>
                     <?php endforeach; ?>
@@ -340,8 +341,7 @@ $today = date('Y-m-d');
             <?php foreach ($employees as $employee) : ?>
                 <?php
                 $progress = $employee['progress'];
-                $progressScale = number_format(max(0, min(1, ((float) $progress['percent']) / 100)), 4, '.', '');
-                $progressFillPx = number_format(232 * (float) $progressScale, 2, '.', '');
+                $progressFillClass = 'xp-fill-p' . (string) (int) round(max(0, min(100, (float) $progress['percent'])));
                 $photoUrl = xp_photo_url($employee['photo_path'] ?? null);
                 ?>
                 <article class="xp-employee-card" data-xp-employee-card="<?php echo e((string) $employee['id']); ?>" data-xp-employee-level="<?php echo e((string) $progress['level']); ?>">
@@ -370,14 +370,14 @@ $today = date('Y-m-d');
                             </dl>
                         </div>
 
-                        <div class="xp-liquid-bar">
-                            <i aria-hidden="true" style="width: <?php echo e($progressFillPx); ?>px;"></i>
+                        <div class="xp-liquid-bar <?php echo e($progressFillClass); ?>">
+                            <i aria-hidden="true"></i>
                             <span><?php echo e(xp_number($progress['progress_xp'])); ?>/<?php echo e(xp_number($progress['required_xp'])); ?> XP</span>
                         </div>
                     </div>
 
-                    <div class="xp-progress-line" aria-label="Progresso para o proximo nivel">
-                        <i style="width: <?php echo e((string) $progress['percent']); ?>%;"></i>
+                    <div class="xp-progress-line <?php echo e($progressFillClass); ?>" aria-label="Progresso para o proximo nivel">
+                        <i></i>
                         <span><?php echo e(xp_percent($progress['percent'])); ?></span>
                     </div>
 
