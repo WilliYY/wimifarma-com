@@ -957,18 +957,17 @@ select {
 
 .xp-liquid-bar > i {
     position: absolute;
-    left: 6px;
+    left: 58px;
     top: 6px;
     bottom: 6px;
     z-index: 1;
     display: block;
-    width: calc(100% - 12px);
+    width: var(--xp-fill-px, 0px);
+    max-width: calc(100% - 68px);
     border-radius: 999px;
     background: linear-gradient(90deg, #fff579 0%, #ffd13f 48%, #f59e0b 100%);
     box-shadow: 0 0 22px rgba(255, 218, 67, 0.72);
-    transform: scaleX(0);
-    transform-origin: left center;
-    transition: transform 260ms ease;
+    transition: width 260ms ease;
 }
 
 .xp-liquid-bar::after {
