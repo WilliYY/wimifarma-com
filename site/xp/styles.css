@@ -1136,6 +1136,21 @@ select {
     font-weight: 950;
 }
 
+.xp-employee-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+.xp-delete-user-form {
+    margin: 0;
+}
+
+.xp-employee-actions .xp-btn {
+    min-height: 38px;
+    padding: 9px 14px;
+}
+
 .xp-edit-details {
     margin-top: 12px;
     border-top: 1px solid rgba(15, 23, 42, 0.12);
@@ -1156,10 +1171,6 @@ select {
 
 .xp-form-edit span {
     color: #275066;
-}
-
-.xp-inline-danger {
-    margin-top: 10px;
 }
 
 .xp-empty {

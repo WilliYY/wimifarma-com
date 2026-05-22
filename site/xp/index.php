@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_flash('success', 'Funcionario atualizado.');
         } elseif ($action === 'deactivate_employee') {
             xp_deactivate_employee((int) ($_POST['employee_id'] ?? 0));
-            set_flash('success', 'Funcionario removido da tela XP.');
+            set_flash('success', 'Usuario removido do XP.');
         } elseif ($action === 'create_sale') {
             xp_create_sale(
                 (int) ($_POST['employee_id'] ?? 0),
@@ -382,8 +382,16 @@ $today = date('Y-m-d');
                     </div>
 
                     <?php if ($canManage) : ?>
+                        <div class="xp-employee-actions" aria-label="Acoes do usuario">
+                            <form method="post" class="xp-delete-user-form">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="deactivate_employee">
+                                <input type="hidden" name="employee_id" value="<?php echo e((string) $employee['id']); ?>">
+                                <button type="submit" class="xp-btn xp-btn-danger" aria-label="Excluir usuario <?php echo e((string) $employee['name']); ?> do XP" data-xp-confirm="Excluir este usuario do XP? Ele sai da trilha e da lista, mas os lancamentos antigos ficam preservados.">Excluir usuario</button>
+                            </form>
+                        </div>
                         <details class="xp-edit-details">
-                            <summary>Editar funcionario</summary>
+                            <summary>Editar usuario</summary>
                             <form method="post" enctype="multipart/form-data" class="xp-form xp-form-edit">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="update_employee">
@@ -397,12 +405,6 @@ $today = date('Y-m-d');
                                     <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input>
                                 </label>
                                 <button type="submit" class="xp-btn">Salvar</button>
-                            </form>
-                            <form method="post" class="xp-inline-danger">
-                                <?php echo csrf_field(); ?>
-                                <input type="hidden" name="action" value="deactivate_employee">
-                                <input type="hidden" name="employee_id" value="<?php echo e((string) $employee['id']); ?>">
-                                <button type="submit" class="xp-btn xp-btn-danger" data-xp-confirm="Remover este funcionario da tela XP? Os lancamentos antigos ficam preservados.">Remover da tela</button>
                             </form>
                         </details>
                     <?php endif; ?>

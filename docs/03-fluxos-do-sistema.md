@@ -112,7 +112,7 @@ Regras a preservar:
 
 ## Fluxo XP
 
-O modulo XP gamifica vendas dos atendentes. A tela principal fica como fase de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; o perfil ADM tambem aparece como jogador visual de teste no nivel 1. A aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo por XP, edicao e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca os valores do dia; o backend calcula automaticamente os pontos.
+O modulo XP gamifica vendas dos atendentes. A tela principal fica como fase de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; o perfil ADM tambem aparece como jogador visual de teste no nivel 1. A aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo por XP, edicao, exclusao logica de usuarios/funcionarios e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca os valores do dia; o backend calcula automaticamente os pontos.
 
 Arquivos principais:
 
@@ -147,7 +147,7 @@ Regras a preservar:
 - R$ 1.000,00 em vendas gera 2.500 XP, gravado como inteiro no lancamento;
 - o nivel 1 exige 30.000 XP para passar; os niveis seguintes ficam progressivamente mais dificeis e nao possuem limite fixo;
 - a trilha usa `Bloco XP` nos niveis comuns, `Nivel 5` a cada multiplo de 5 e `nivel 10` a cada multiplo de 10;
-- cancelar venda ou remover funcionario deve ser logico, sem apagar historico fisico.
+- cancelar venda ou excluir/remover usuario/funcionario deve ser logico, sem apagar historico fisico; o botao `Excluir usuario` tira o atendente da lista e da trilha, preservando os lancamentos antigos.
 
 ## Fluxo Cotacao
 
