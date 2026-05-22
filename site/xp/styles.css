@@ -962,7 +962,7 @@ select {
     bottom: 6px;
     z-index: 1;
     display: block;
-    width: var(--xp-fill-px, 0px);
+    width: 0;
     max-width: calc(100% - 68px);
     border-radius: 999px;
     background: linear-gradient(90deg, #fff579 0%, #ffd13f 48%, #f59e0b 100%);
