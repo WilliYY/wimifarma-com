@@ -124,7 +124,7 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260522f">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260522g">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
     <script src="/xp/app.js?v=20260522d" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
@@ -369,8 +369,8 @@ $today = date('Y-m-d');
                             </dl>
                         </div>
 
-                        <div class="xp-liquid-bar" style="--xp-fill: <?php echo e((string) $progress['percent']); ?>%; --xp-scale: <?php echo e($progressScale); ?>;">
-                            <i aria-hidden="true"></i>
+                        <div class="xp-liquid-bar" style="--xp-fill: <?php echo e((string) $progress['percent']); ?>%;">
+                            <i aria-hidden="true" style="transform: scaleX(<?php echo e($progressScale); ?>);"></i>
                             <span><?php echo e(xp_number($progress['progress_xp'])); ?>/<?php echo e(xp_number($progress['required_xp'])); ?> XP</span>
                         </div>
                     </div>
