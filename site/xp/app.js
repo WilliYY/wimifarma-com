@@ -117,13 +117,27 @@
         });
     }
 
+    function initTabPosition() {
+        if ('scrollRestoration' in window.history) {
+            window.history.scrollRestoration = 'manual';
+        }
+
+        if (document.body.classList.contains('is-settings-view') && !window.location.hash) {
+            window.setTimeout(function () {
+                window.scrollTo(0, 0);
+            }, 0);
+        }
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
+            initTabPosition();
             confirmDanger();
             initPhotoPreview();
             initTrackFocus();
         });
     } else {
+        initTabPosition();
         confirmDanger();
         initPhotoPreview();
         initTrackFocus();
