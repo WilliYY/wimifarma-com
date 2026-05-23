@@ -635,10 +635,27 @@ select {
     padding: 16px 4px 26px;
     scroll-behavior: smooth;
     scrollbar-width: none;
+    cursor: grab;
+    overscroll-behavior-x: contain;
+    touch-action: pan-y;
+    user-select: none;
 }
 
 .xp-track-scroll::-webkit-scrollbar {
     display: none;
+}
+
+.xp-track-scroll.is-drag-ready,
+.xp-track-scroll.is-dragging {
+    cursor: grabbing;
+}
+
+.xp-track-scroll.is-dragging {
+    scroll-behavior: auto;
+}
+
+.xp-track-scroll.is-dragging * {
+    cursor: grabbing !important;
 }
 
 .xp-page.is-trail-view .xp-track-scroll {
@@ -700,17 +717,19 @@ select {
 }
 
 .xp-page.is-trail-view .xp-path {
-    left: calc(-1 * clamp(108px, 6.25vw, 130px));
-    width: clamp(164px, 9.2vw, 196px);
-    opacity: 0.88;
+    left: calc(-1 * clamp(116px, 6.9vw, 142px));
+    width: clamp(188px, 10.8vw, 222px);
+    height: clamp(220px, 29vh, 278px);
+    object-fit: fill;
+    opacity: 0.9;
 }
 
 .xp-page.is-trail-view .xp-level:nth-child(odd) .xp-path {
-    transform: translateY(-50%) rotate(-7deg);
+    transform: translateY(-50%) rotate(-2deg);
 }
 
 .xp-page.is-trail-view .xp-level:nth-child(even) .xp-path {
-    transform: translateY(-50%) rotate(7deg) scaleY(-1);
+    transform: translateY(-50%) rotate(2deg) scaleY(-1);
 }
 
 .xp-level-node {
@@ -1638,6 +1657,12 @@ select {
     .xp-path {
         left: -60px;
         width: 92px;
+    }
+
+    .xp-page.is-trail-view .xp-path {
+        left: -84px;
+        width: 148px;
+        height: 176px;
     }
 
     .xp-recent-list article {

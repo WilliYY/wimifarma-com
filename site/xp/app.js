@@ -37,10 +37,86 @@
         });
     }
 
+    function initTrackDrag(track) {
+        if (!track || !window.PointerEvent) {
+            return;
+        }
+
+        var isPointerDown = false;
+        var isDragging = false;
+        var startX = 0;
+        var startScrollLeft = 0;
+        var activePointerId = null;
+        var lastDragAt = 0;
+        var dragThreshold = 6;
+
+        function isInteractiveTarget(target) {
+            return !!(target && target.closest && target.closest('a, button, input, select, textarea, label, details, summary'));
+        }
+
+        function finishDrag() {
+            if (isDragging) {
+                lastDragAt = Date.now();
+            }
+
+            isPointerDown = false;
+            isDragging = false;
+            activePointerId = null;
+            track.classList.remove('is-drag-ready');
+            track.classList.remove('is-dragging');
+        }
+
+        track.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0 || isInteractiveTarget(event.target)) {
+                return;
+            }
+
+            isPointerDown = true;
+            isDragging = false;
+            startX = event.clientX;
+            startScrollLeft = track.scrollLeft;
+            activePointerId = event.pointerId;
+            track.classList.add('is-drag-ready');
+
+            if (track.setPointerCapture) {
+                track.setPointerCapture(event.pointerId);
+            }
+        });
+
+        track.addEventListener('pointermove', function (event) {
+            if (!isPointerDown || event.pointerId !== activePointerId) {
+                return;
+            }
+
+            var deltaX = event.clientX - startX;
+            if (!isDragging && Math.abs(deltaX) < dragThreshold) {
+                return;
+            }
+
+            isDragging = true;
+            track.classList.add('is-dragging');
+            track.scrollLeft = startScrollLeft - deltaX;
+            event.preventDefault();
+        });
+
+        track.addEventListener('pointerup', finishDrag);
+        track.addEventListener('pointercancel', finishDrag);
+        track.addEventListener('lostpointercapture', finishDrag);
+
+        track.addEventListener('click', function (event) {
+            if (Date.now() - lastDragAt < 140) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        }, true);
+    }
+
     function initTrackFocus() {
         var track = document.querySelector('[data-xp-track]');
         var cards = Array.prototype.slice.call(document.querySelectorAll('[data-xp-employee-card]'));
         var summary = document.querySelector('[data-xp-player-summary]');
+
+        initTrackDrag(track);
 
         function clearFocus() {
             document.querySelectorAll('.xp-level.is-highlighted').forEach(function (node) {
