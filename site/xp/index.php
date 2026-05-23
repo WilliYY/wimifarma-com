@@ -124,9 +124,9 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260523b">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260523c">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
-    <script src="/xp/app.js?v=20260523b" defer></script>
+    <script src="/xp/app.js?v=20260523c" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
 </head>
 <body class="xp-app-body <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>">
@@ -298,7 +298,7 @@ $today = date('Y-m-d');
                         <?php $players = $playersByLevel[$level] ?? array(); ?>
                         <article class="xp-level xp-level-<?php echo e(xp_level_kind($level)); ?> <?php echo !empty($players) ? 'has-players' : ''; ?>" data-xp-level="<?php echo e((string) $level); ?>">
                             <?php if ($level > $levelStart) : ?>
-                                <img class="xp-path" src="/xp/assets/caminho-xp.svg?v=20260523a" alt="" aria-hidden="true" loading="lazy" decoding="async">
+                                <img class="xp-path" src="/xp/assets/caminho-xp.svg?v=20260523c" alt="" aria-hidden="true" loading="lazy" decoding="async">
                             <?php endif; ?>
                             <div class="xp-level-node">
                                 <img class="xp-level-art" src="<?php echo e(xp_level_asset($level)); ?>" alt="" loading="lazy" decoding="async">

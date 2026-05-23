@@ -111,12 +111,92 @@
         }, true);
     }
 
+    function initTrackPaths(track) {
+        if (!track || !window.requestAnimationFrame) {
+            return;
+        }
+
+        var scheduled = false;
+
+        function pathAnchor(level, position) {
+            var art = level.querySelector('.xp-level-art');
+            var label = level.querySelector('.xp-level-node strong');
+            var artRect = art ? art.getBoundingClientRect() : level.getBoundingClientRect();
+            var labelRect = label ? label.getBoundingClientRect() : artRect;
+            var isTop = level.offsetTop < ((level.parentElement ? level.parentElement.clientHeight : 0) / 2);
+
+            return {
+                x: artRect.left + (artRect.width / 2),
+                y: isTop && position === 'near'
+                    ? labelRect.bottom + 6
+                    : artRect.top + Math.max(6, artRect.height * 0.12)
+            };
+        }
+
+        function updateTrackPaths() {
+            scheduled = false;
+
+            Array.prototype.forEach.call(track.querySelectorAll('.xp-path'), function (path) {
+                var level = path.closest('[data-xp-level]');
+                var previousLevel = level ? level.previousElementSibling : null;
+
+                if (!level || !previousLevel) {
+                    return;
+                }
+
+                var levelRect = level.getBoundingClientRect();
+                var start = pathAnchor(previousLevel, 'near');
+                var end = pathAnchor(level, 'near');
+                var goesDown = end.y > start.y;
+                var padX = 20;
+                var padY = 18;
+                var minX = Math.min(start.x, end.x);
+                var minY = Math.min(start.y, end.y);
+                var width = Math.abs(end.x - start.x) + (padX * 2);
+                var height = Math.abs(end.y - start.y) + (padY * 2);
+
+                path.style.setProperty('--xp-path-left', Math.round(minX - levelRect.left - padX) + 'px');
+                path.style.setProperty('--xp-path-top', Math.round(minY - levelRect.top - padY) + 'px');
+                path.style.setProperty('--xp-path-width', Math.round(width) + 'px');
+                path.style.setProperty('--xp-path-height', Math.round(height) + 'px');
+                path.style.setProperty('--xp-path-transform', goesDown ? 'scaleY(-1)' : 'none');
+                path.classList.add('is-positioned');
+            });
+        }
+
+        function scheduleTrackPaths() {
+            if (scheduled) {
+                return;
+            }
+
+            scheduled = true;
+            window.requestAnimationFrame(updateTrackPaths);
+        }
+
+        scheduleTrackPaths();
+        window.setTimeout(scheduleTrackPaths, 120);
+        window.setTimeout(scheduleTrackPaths, 420);
+        window.addEventListener('resize', scheduleTrackPaths);
+
+        if (window.ResizeObserver) {
+            var observer = new ResizeObserver(scheduleTrackPaths);
+            observer.observe(track);
+        }
+
+        Array.prototype.forEach.call(track.querySelectorAll('img'), function (image) {
+            if (!image.complete) {
+                image.addEventListener('load', scheduleTrackPaths, { once: true });
+            }
+        });
+    }
+
     function initTrackFocus() {
         var track = document.querySelector('[data-xp-track]');
         var cards = Array.prototype.slice.call(document.querySelectorAll('[data-xp-employee-card]'));
         var summary = document.querySelector('[data-xp-player-summary]');
 
         initTrackDrag(track);
+        initTrackPaths(track);
 
         function clearFocus() {
             document.querySelectorAll('.xp-level.is-highlighted').forEach(function (node) {

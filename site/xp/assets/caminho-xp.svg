@@ -1,76 +1,76 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220" viewBox="0 0 360 220" role="img" aria-label="Pegadas">
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="240" viewBox="0 0 360 240" preserveAspectRatio="none" role="img" aria-label="Pegadas">
   <g fill="#111827" opacity="0.82">
-    <g transform="translate(32 174) rotate(-18)">
+    <g transform="translate(8 214) rotate(-18)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-8" cy="-3" r="3"/>
       <circle cx="-2" cy="-6" r="3.3"/>
       <circle cx="5" cy="-5" r="2.8"/>
       <circle cx="10" cy="0" r="2.5"/>
     </g>
-    <g transform="translate(62 158) rotate(16)">
+    <g transform="translate(42 196) rotate(16)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-10" cy="0" r="2.5"/>
       <circle cx="-5" cy="-5" r="2.8"/>
       <circle cx="2" cy="-6" r="3.3"/>
       <circle cx="8" cy="-3" r="3"/>
     </g>
-    <g transform="translate(91 143) rotate(-18)">
+    <g transform="translate(75 178) rotate(-18)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-8" cy="-3" r="3"/>
       <circle cx="-2" cy="-6" r="3.3"/>
       <circle cx="5" cy="-5" r="2.8"/>
       <circle cx="10" cy="0" r="2.5"/>
     </g>
-    <g transform="translate(121 127) rotate(16)">
+    <g transform="translate(108 160) rotate(16)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-10" cy="0" r="2.5"/>
       <circle cx="-5" cy="-5" r="2.8"/>
       <circle cx="2" cy="-6" r="3.3"/>
       <circle cx="8" cy="-3" r="3"/>
     </g>
-    <g transform="translate(150 112) rotate(-18)">
+    <g transform="translate(141 142) rotate(-18)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-8" cy="-3" r="3"/>
       <circle cx="-2" cy="-6" r="3.3"/>
       <circle cx="5" cy="-5" r="2.8"/>
       <circle cx="10" cy="0" r="2.5"/>
     </g>
-    <g transform="translate(180 96) rotate(16)">
+    <g transform="translate(174 124) rotate(16)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-10" cy="0" r="2.5"/>
       <circle cx="-5" cy="-5" r="2.8"/>
       <circle cx="2" cy="-6" r="3.3"/>
       <circle cx="8" cy="-3" r="3"/>
     </g>
-    <g transform="translate(209 81) rotate(-18)">
+    <g transform="translate(207 106) rotate(-18)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-8" cy="-3" r="3"/>
       <circle cx="-2" cy="-6" r="3.3"/>
       <circle cx="5" cy="-5" r="2.8"/>
       <circle cx="10" cy="0" r="2.5"/>
     </g>
-    <g transform="translate(239 65) rotate(16)">
+    <g transform="translate(240 88) rotate(16)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-10" cy="0" r="2.5"/>
       <circle cx="-5" cy="-5" r="2.8"/>
       <circle cx="2" cy="-6" r="3.3"/>
       <circle cx="8" cy="-3" r="3"/>
     </g>
-    <g transform="translate(268 50) rotate(-18)">
+    <g transform="translate(273 70) rotate(-18)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-8" cy="-3" r="3"/>
       <circle cx="-2" cy="-6" r="3.3"/>
       <circle cx="5" cy="-5" r="2.8"/>
       <circle cx="10" cy="0" r="2.5"/>
     </g>
-    <g transform="translate(298 37) rotate(16)">
+    <g transform="translate(306 52) rotate(16)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-10" cy="0" r="2.5"/>
       <circle cx="-5" cy="-5" r="2.8"/>
       <circle cx="2" cy="-6" r="3.3"/>
       <circle cx="8" cy="-3" r="3"/>
     </g>
-    <g transform="translate(328 28) rotate(-18)">
+    <g transform="translate(352 22) rotate(-18)">
       <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
       <circle cx="-8" cy="-3" r="3"/>
       <circle cx="-2" cy="-6" r="3.3"/>

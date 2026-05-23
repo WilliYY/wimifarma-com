@@ -704,32 +704,40 @@ select {
 
 .xp-path {
     position: absolute;
-    left: -68px;
-    top: 50%;
-    width: 104px;
-    transform: translateY(-50%) rotate(-6deg);
+    left: var(--xp-path-left, -68px);
+    top: var(--xp-path-top, 50%);
+    z-index: 0;
+    width: var(--xp-path-width, 104px);
+    height: var(--xp-path-height, auto);
+    object-fit: fill;
+    transform: var(--xp-path-transform, translateY(-50%) rotate(-6deg));
+    transform-origin: center;
     opacity: 0.9;
     pointer-events: none;
 }
 
-.xp-level:nth-child(even) .xp-path {
+.xp-level:nth-child(even) .xp-path:not(.is-positioned) {
     transform: translateY(-50%) rotate(8deg) scaleY(-1);
 }
 
 .xp-page.is-trail-view .xp-path {
-    left: calc(-1 * clamp(116px, 6.9vw, 142px));
-    width: clamp(188px, 10.8vw, 222px);
-    height: clamp(220px, 29vh, 278px);
-    object-fit: fill;
+    left: var(--xp-path-left, calc(-1 * clamp(116px, 6.9vw, 142px)));
+    top: var(--xp-path-top, 50%);
+    width: var(--xp-path-width, clamp(188px, 10.8vw, 222px));
+    height: var(--xp-path-height, clamp(220px, 29vh, 278px));
     opacity: 0.9;
 }
 
-.xp-page.is-trail-view .xp-level:nth-child(odd) .xp-path {
+.xp-page.is-trail-view .xp-level:nth-child(odd) .xp-path:not(.is-positioned) {
     transform: translateY(-50%) rotate(-2deg);
 }
 
-.xp-page.is-trail-view .xp-level:nth-child(even) .xp-path {
+.xp-page.is-trail-view .xp-level:nth-child(even) .xp-path:not(.is-positioned) {
     transform: translateY(-50%) rotate(2deg) scaleY(-1);
+}
+
+.xp-path.is-positioned {
+    transform: var(--xp-path-transform, none);
 }
 
 .xp-level-node {
@@ -1660,9 +1668,10 @@ select {
     }
 
     .xp-page.is-trail-view .xp-path {
-        left: -84px;
-        width: 148px;
-        height: 176px;
+        left: var(--xp-path-left, -84px);
+        top: var(--xp-path-top, 50%);
+        width: var(--xp-path-width, 148px);
+        height: var(--xp-path-height, 176px);
     }
 
     .xp-recent-list article {

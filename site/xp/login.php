@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260523b">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260523c">
     <script src="/xp/login-runner.js?v=20260522a" defer></script>
 </head>
 <body class="xp-login-body">
