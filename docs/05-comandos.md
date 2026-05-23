@@ -11,6 +11,44 @@ cd C:\Projetos\wimifarma-com
 docker compose up -d --build
 ```
 
+## Local - novo PC com Codex
+
+Prompt curto para iniciar em outro computador:
+
+```text
+Puxe o projeto Wimifarma do GitHub em C:\Projetos\wimifarma-com e siga o AGENTS.md.
+Repositorio: https://github.com/WilliYY/wimifarma-com.git
+```
+
+Fluxo esperado para o Codex:
+
+```powershell
+New-Item -ItemType Directory -Force C:\Projetos | Out-Null
+if ((Test-Path C:\Projetos\wimifarma-com) -and -not (Test-Path C:\Projetos\wimifarma-com\.git)) {
+    throw "A pasta C:\Projetos\wimifarma-com ja existe, mas nao e um repositorio Git. Verifique antes de continuar."
+}
+if (-not (Test-Path C:\Projetos\wimifarma-com)) {
+    git clone https://github.com/WilliYY/wimifarma-com.git C:\Projetos\wimifarma-com
+} else {
+    cd C:\Projetos\wimifarma-com
+    git fetch origin
+    $status = git status --short
+    git status --short --branch
+    if ($status) {
+        throw "Ha alteracoes locais. Nao fazer pull automatico antes de revisar."
+    }
+    git pull --ff-only origin main
+}
+cd C:\Projetos\wimifarma-com
+Get-Content AGENTS.md | Select-Object -First 220
+Get-Content README.md | Select-Object -First 220
+Get-Content docs\05-comandos.md | Select-Object -First 220
+```
+
+Se `git status --short --branch` mostrar arquivos modificados antes do pull, nao sobrescrever automaticamente. Relatar ao usuario e pedir confirmacao.
+
+Esse fluxo so puxa o codigo. Ele nao cria `.env`, nao copia `config.local.php`, nao baixa bancos/volumes e nao configura SSH do VPS. Para rodar localmente, configurar segredos por fonte segura e seguir a secao `Local - iniciar projeto`. Para deploy automatico pelo Codex, o outro PC precisa ter SSH/plink configurado para o VPS.
+
 ## Local - status e logs
 
 ```powershell

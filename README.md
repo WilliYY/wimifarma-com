@@ -134,6 +134,17 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
 ## Instalar localmente
 
+### Em outro PC com Codex
+
+Se o projeto ainda nao existir nesse computador, peça ao Codex:
+
+```text
+Puxe o projeto Wimifarma do GitHub em C:\Projetos\wimifarma-com e siga o AGENTS.md.
+Repositorio: https://github.com/WilliYY/wimifarma-com.git
+```
+
+O comportamento esperado esta documentado em `AGENTS.md` e `docs/05-comandos.md`: clonar quando a pasta nao existe; se ela ja existir, fazer `git fetch`, conferir se nao ha alteracoes locais e so entao `git pull --ff-only origin main`. Segredos como `.env`, `config.local.php`, bancos e volumes nao vem do Git e precisam ser configurados por fonte segura da maquina/servidor.
+
 1. Entrar na pasta do projeto:
 
 ```powershell
