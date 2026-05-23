@@ -2409,6 +2409,59 @@ function categorySummaries(accounts: RenderAccount[]): CategorySummary[] {
   });
 }
 
+function recurringAccountsForMonth(accounts: RenderAccount[], selectedMonth: string): RenderAccount[] {
+  const month = monthValue(selectedMonth);
+  return accounts
+    .filter((account) => account.competence_month === month && account.status !== 'cancelado' && Boolean(account.repeat_next_month))
+    .sort((a, b) => {
+      const aStatus = a.status === 'pendente' ? 0 : 1;
+      const bStatus = b.status === 'pendente' ? 0 : 1;
+      if (aStatus !== bStatus) return aStatus - bStatus;
+      const aDue = a.due_at ? new Date(String(a.due_at)).getTime() : Number.POSITIVE_INFINITY;
+      const bDue = b.due_at ? new Date(String(b.due_at)).getTime() : Number.POSITIVE_INFINITY;
+      if (aDue !== bDue) return aDue - bDue;
+      return a.title.localeCompare(b.title, 'pt-BR');
+    });
+}
+
+function renderMonthlyPanel(accounts: RenderAccount[], selectedMonth: string): string {
+  const recurringAccounts = recurringAccountsForMonth(accounts, selectedMonth);
+  const totalCents = recurringAccounts.reduce((sum, account) => sum + Number(account.total_cents || 0), 0);
+  const nextMonthLabel = monthLabel(nextMonthValue(selectedMonth));
+  const rowsHtml = recurringAccounts.length
+    ? recurringAccounts.map((account) => {
+      const accountTotalCents = Number(account.total_cents || 0);
+      const paidCents = Number(account.paid_cents || 0);
+      const remainingCents = Math.max(0, accountTotalCents - paidCents);
+      const due = dueStatus(account);
+      const searchUrl = gestaoListUrl(selectedMonth, '', account.title);
+      const meta = [
+        accountStatusLabel(account.status),
+        remainingCents > 0 ? `Saldo ${formatMoney(remainingCents)}` : 'Sem saldo aberto',
+        due.label,
+      ].filter(Boolean).join(' / ');
+      return `<a class="gestao-monthly-item status-${e(account.status)}" href="${e(searchUrl)}">
+        <span class="gestao-pill">${e(categoryLabel(account.category))}</span>
+        <strong>${e(account.title)}</strong>
+        <small>${e(meta)}</small>
+        <em>Repete em ${e(nextMonthLabel)} - ${e(formatMoney(accountTotalCents))}</em>
+      </a>`;
+    }).join('')
+    : '<p class="gestao-empty-line">Nenhuma conta mensal repetindo neste mes.</p>';
+
+  return `<aside class="gestao-monthly-panel" aria-label="Contas mensais da Gestao">
+    <div class="gestao-section-title">
+      <span class="gestao-kicker">Mensal</span>
+      <strong>${e(recurringAccounts.length)}</strong>
+    </div>
+    <div class="gestao-monthly-total">
+      <span>Repetindo para ${e(nextMonthLabel)}</span>
+      <strong>${e(formatMoney(totalCents))}</strong>
+    </div>
+    <div class="gestao-monthly-list">${rowsHtml}</div>
+  </aside>`;
+}
+
 function renderCategoryPanel(req: Request, summaries: CategorySummary[], selectedMonth: string, selectedCategory: string): string {
   const chips = summaries.length
     ? summaries.map((summary) => {
@@ -2967,6 +3020,7 @@ async function renderApp(req: Request): Promise<string> {
   const accountsHtml = visibleAccounts.length
     ? visibleAccounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
     : `<div class="gestao-empty">${searchQuery ? 'Nada encontrado para essa busca.' : 'Nada lancado nesse mes ainda.'}</div>`;
+  const monthlyPanelHtml = renderMonthlyPanel(allAccounts, selectedMonth);
   const categoryPanelHtml = renderCategoryPanel(req, summaries, selectedMonth, activeCategory);
   const notepadHtml = renderNotepad(req, notes, selectedMonth);
   const searchPanelHtml = renderSearchPanel(selectedMonth, searchQuery, searchResults.length, visibleAccounts.length, searchLimit);
@@ -3013,6 +3067,7 @@ async function renderApp(req: Request): Promise<string> {
       </section>
 
       <div class="gestao-side-stack">
+        ${monthlyPanelHtml}
         ${categoryPanelHtml}
         ${notepadHtml}
       </div>
@@ -3024,7 +3079,7 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-search">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260523-monthly">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260521a">
   <script src="${BASE_PATH}/app.js?v=20260520-search" defer></script>
   <script src="/miauw/widget.js?v=20260521a" defer></script>

@@ -261,6 +261,7 @@ Regras a preservar:
 - categorias iguais por escrita diferente sao agrupadas visualmente por normalizacao de acento/caixa/espaco, preservando o texto original salvo; o painel lateral mostra bolinhas com abertas em verde e fechadas em vermelho, e clicar em uma categoria filtra as abertas primeiro e depois as fechadas daquela categoria;
 - o painel de categorias permite trocar a categoria de um grupo inteiro ou cancelar somente contas abertas daquele grupo, sem apagar contas fechadas nem historico;
 - a lista principal sem filtro mostra contas abertas do mes e apenas as 3 ultimas fechadas como acesso rapido; o restante fica acessivel pelo filtro de categorias para evitar lista infinita de contas ja pagas;
+- o card lateral `Mensal` mostra as contas da competencia atual com `Repetir mes que vem` ativo, somando o valor que sera levado para a proxima competencia e permitindo abrir a busca daquela conta;
 - a busca fica abaixo dos resumos do mes e pesquisa contas/boletos por titulo, categoria, status, valor aproximado, saldo, vencimento, data de lancamento, data de pagamento, lancamentos e pagamentos; ela mostra 10 resultados primeiro, permite `Mostrar mais` e `Limpar`;
 - a conta pode ter vencimento opcional com data/hora; contas pendentes com vencimento mais proximo sobem na lista e recebem aviso visual de vencido, vence hoje ou vence em poucos dias;
 - cada conta aparece como extrato proprio: lancamentos/juros ficam juntos, pagamentos parciais ficam no historico da mesma conta, e saldo/progresso sao calculados sem misturar contas;
