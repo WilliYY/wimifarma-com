@@ -1066,6 +1066,11 @@ select {
     box-shadow: 0 24px 46px rgba(255, 193, 47, 0.24), 0 18px 36px rgba(0, 0, 0, 0.2);
 }
 
+.xp-employee-card.is-adm {
+    border-color: rgba(255, 226, 122, 0.48);
+    background: linear-gradient(135deg, rgba(243, 255, 249, 0.96), rgba(252, 239, 255, 0.94));
+}
+
 .xp-employee-main {
     display: grid;
     grid-template-columns: 112px minmax(150px, 1fr) minmax(230px, 0.86fr);
@@ -1094,6 +1099,11 @@ select {
     pointer-events: none;
 }
 
+.xp-avatar-frame.is-adm::after {
+    inset: -18px;
+    background-image: url("/xp/assets/moldura-adm-transparente.png?v=20260523a");
+}
+
 .xp-avatar-frame img {
     position: relative;
     z-index: 2;
@@ -1116,6 +1126,11 @@ select {
     font-weight: 950;
 }
 
+.xp-avatar-frame.is-adm span {
+    background: linear-gradient(135deg, #3b1a69, #7c2d12);
+    font-size: 1.1rem;
+}
+
 .xp-employee-info {
     min-width: 0;
 }
@@ -1132,12 +1147,25 @@ select {
     font-weight: 950;
 }
 
+.xp-employee-card.is-adm .xp-rank {
+    color: #fff9cf;
+    background: linear-gradient(180deg, #6d4bd8, #2b155f);
+}
+
 .xp-employee-info h2 {
     margin: 6px 0 2px;
     color: #122033;
     font-size: 1.12rem;
     line-height: 1.05;
     overflow-wrap: anywhere;
+}
+
+.xp-admin-player-note {
+    display: block;
+    margin: -3px 0 8px;
+    color: #6d3f86;
+    font-size: 0.72rem;
+    font-weight: 850;
 }
 
 .xp-employee-info p {

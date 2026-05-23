@@ -86,6 +86,7 @@ $adminProfile = array('photo_path' => '');
 
 try {
     $adminProfile = xp_admin_profile();
+    xp_sync_admin_employee($adminProfile['photo_path'], (int) $user['id']);
     $employees = xp_list_employees($monthContext);
     $summary = xp_summary($employees);
     $recentSales = xp_recent_sales(9);
@@ -102,19 +103,7 @@ foreach ($employees as $employee) {
     }
     $playersByLevel[$level][] = $employee;
 }
-
-$adminPlayer = array(
-    'id' => 'adm',
-    'name' => 'ADM',
-    'photo_path' => $adminProfile['photo_path'],
-    'is_admin' => true,
-    'progress' => xp_progress_from_total(0),
-);
-if (!isset($playersByLevel[1])) {
-    $playersByLevel[1] = array();
-}
-array_unshift($playersByLevel[1], $adminPlayer);
-$gamePlayers = array_merge(array($adminPlayer), $employees);
+$gamePlayers = $employees;
 
 $today = date('Y-m-d');
 ?><!doctype html>
@@ -124,7 +113,7 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260523e">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260523f">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
     <script src="/xp/app.js?v=20260523d" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
@@ -145,7 +134,7 @@ $today = date('Y-m-d');
         </nav>
     </header>
 
-    <main class="xp-page <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>" data-miauby-screen-object="modulo xp" data-miauby-screen-label="Modulo XP: <?php echo e((string) $summary['employee_count']); ?> funcionario(s)">
+    <main class="xp-page <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>" data-miauby-screen-object="modulo xp" data-miauby-screen-label="Modulo XP: <?php echo e((string) $summary['employee_count']); ?> jogador(es)">
         <section class="xp-hero xp-settings-only">
             <div>
                 <h1>XP</h1>
@@ -166,7 +155,7 @@ $today = date('Y-m-d');
 
         <section class="xp-summary-grid xp-settings-only" aria-label="Resumo XP">
             <article>
-                <span>Funcionarios</span>
+                <span>Jogadores</span>
                 <strong><?php echo e((string) $summary['employee_count']); ?></strong>
             </article>
             <article>
@@ -232,7 +221,7 @@ $today = date('Y-m-d');
                             <select name="employee_id" required>
                                 <option value="">Escolha</option>
                                 <?php foreach ($employees as $employee) : ?>
-                                    <option value="<?php echo e((string) $employee['id']); ?>"><?php echo e((string) $employee['name']); ?></option>
+                                    <option value="<?php echo e((string) $employee['id']); ?>"><?php echo !empty($employee['is_admin']) ? 'ADM - teste' : e((string) $employee['name']); ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </label>
@@ -356,7 +345,7 @@ $today = date('Y-m-d');
         <section class="xp-employee-grid xp-settings-only" aria-label="Funcionarios XP">
             <?php if (empty($employees)) : ?>
                 <article class="xp-empty">
-                    <h2>Nenhum funcionario cadastrado ainda</h2>
+                    <h2>Nenhum jogador cadastrado ainda</h2>
                     <p>Cadastre os atendentes e gere XP diario para a trilha comecar a andar.</p>
                 </article>
             <?php endif; ?>
@@ -365,21 +354,25 @@ $today = date('Y-m-d');
                 <?php
                 $progress = $employee['progress'];
                 $photoUrl = xp_photo_url($employee['photo_path'] ?? null);
+                $isAdminPlayer = !empty($employee['is_admin']);
                 ?>
-                <article class="xp-employee-card" data-xp-employee-card="<?php echo e((string) $employee['id']); ?>" data-xp-employee-level="<?php echo e((string) $progress['level']); ?>">
+                <article class="xp-employee-card <?php echo $isAdminPlayer ? 'is-adm' : ''; ?>" data-xp-employee-card="<?php echo e((string) $employee['id']); ?>" data-xp-employee-level="<?php echo e((string) $progress['level']); ?>">
                     <div class="xp-employee-main">
-                        <div class="xp-avatar-frame">
+                        <div class="xp-avatar-frame <?php echo $isAdminPlayer ? 'is-adm' : ''; ?>">
                             <?php if ($photoUrl !== '') : ?>
                                 <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $employee['name']); ?>" loading="lazy" decoding="async">
                             <?php else : ?>
-                                <span><?php echo e(xp_employee_initials((string) $employee['name'])); ?></span>
+                                <span><?php echo $isAdminPlayer ? 'ADM' : e(xp_employee_initials((string) $employee['name'])); ?></span>
                             <?php endif; ?>
                         </div>
 
                         <div class="xp-employee-info">
-                            <span class="xp-rank">#<?php echo e((string) $employee['rank']); ?></span>
+                            <span class="xp-rank"><?php echo $isAdminPlayer ? 'ADM' : '#' . e((string) $employee['rank']); ?></span>
                             <h2><?php echo e((string) $employee['name']); ?></h2>
                             <p>Nivel <?php echo e((string) $progress['level']); ?> -> <?php echo e((string) $progress['next_level']); ?></p>
+                            <?php if ($isAdminPlayer) : ?>
+                                <small class="xp-admin-player-note">Player de teste para lancar XP no proprio ADM.</small>
+                            <?php endif; ?>
                             <dl>
                                 <div>
                                     <dt>XP do mes</dt>
@@ -403,7 +396,7 @@ $today = date('Y-m-d');
                         <span><?php echo e(xp_percent($progress['percent'])); ?></span>
                     </div>
 
-                    <?php if ($canManage) : ?>
+                    <?php if ($canManage && !$isAdminPlayer) : ?>
                         <div class="xp-employee-actions" aria-label="Acoes do usuario">
                             <form method="post" class="xp-delete-user-form">
                                 <?php echo csrf_field(); ?>

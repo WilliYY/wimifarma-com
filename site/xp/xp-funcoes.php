@@ -6,6 +6,7 @@ const XP_FIRST_LEVEL_REQUIREMENT = 30000;
 const XP_UPLOAD_MAX_BYTES = 3145728;
 const XP_TRACK_BASE_LEVELS = 20;
 const XP_TRACK_DYNAMIC_LEVELS = 20;
+const XP_ADMIN_SYSTEM_KEY = 'adm';
 
 function xp_ensure_schema(): void
 {
@@ -21,6 +22,7 @@ function xp_ensure_schema(): void
             name VARCHAR(180) NOT NULL,
             photo_path VARCHAR(255) NULL,
             status ENUM('ativo', 'inativo') NOT NULL DEFAULT 'ativo',
+            system_key VARCHAR(32) NULL,
             created_by INT UNSIGNED NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
@@ -29,6 +31,17 @@ function xp_ensure_schema(): void
             KEY idx_xp_employees_status_name (status, name),
             KEY idx_xp_employees_created_at (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
+    xp_ensure_column(
+        'wf_xp_employees',
+        'system_key',
+        'ALTER TABLE wf_xp_employees ADD COLUMN system_key VARCHAR(32) NULL AFTER status'
+    );
+    xp_ensure_index(
+        'wf_xp_employees',
+        'ux_xp_employees_system_key',
+        'ALTER TABLE wf_xp_employees ADD UNIQUE KEY ux_xp_employees_system_key (system_key)'
     );
 
     db()->exec(
@@ -70,6 +83,22 @@ function xp_ensure_schema(): void
     );
 
     $done = true;
+}
+
+function xp_ensure_column(string $table, string $column, string $alterSql): void
+{
+    $stmt = db()->prepare(
+        'SELECT COUNT(*)
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $stmt->execute(array($table, $column));
+
+    if ((int) $stmt->fetchColumn() > 0) {
+        return;
+    }
+
+    db()->exec($alterSql);
 }
 
 function xp_ensure_index(string $table, string $index, string $alterSql): void
@@ -371,6 +400,57 @@ function xp_find_employee(int $id): ?array
     return $employee ?: null;
 }
 
+function xp_is_admin_employee(array $employee): bool
+{
+    return (string) ($employee['system_key'] ?? '') === XP_ADMIN_SYSTEM_KEY;
+}
+
+function xp_sync_admin_employee(?string $photoPath = null, ?int $userId = null): int
+{
+    xp_ensure_schema();
+
+    $photoPath = xp_photo_url($photoPath) !== '' ? xp_photo_url($photoPath) : null;
+
+    $stmt = db()->prepare('SELECT id FROM wf_xp_employees WHERE system_key = ? LIMIT 1');
+    $stmt->execute(array(XP_ADMIN_SYSTEM_KEY));
+    $id = (int) $stmt->fetchColumn();
+
+    if ($id <= 0) {
+        $stmt = db()->prepare(
+            "SELECT id
+             FROM wf_xp_employees
+             WHERE UPPER(name) = 'ADM'
+             ORDER BY id ASC
+             LIMIT 1"
+        );
+        $stmt->execute();
+        $id = (int) $stmt->fetchColumn();
+    }
+
+    if ($id > 0) {
+        $stmt = db()->prepare(
+            "UPDATE wf_xp_employees
+             SET name = 'ADM',
+                 photo_path = ?,
+                 status = 'ativo',
+                 system_key = ?,
+                 deleted_at = NULL
+             WHERE id = ?"
+        );
+        $stmt->execute(array($photoPath, XP_ADMIN_SYSTEM_KEY, $id));
+
+        return $id;
+    }
+
+    $stmt = db()->prepare(
+        "INSERT INTO wf_xp_employees (name, photo_path, status, system_key, created_by)
+         VALUES ('ADM', ?, 'ativo', ?, ?)"
+    );
+    $stmt->execute(array($photoPath, XP_ADMIN_SYSTEM_KEY, $userId));
+
+    return (int) db()->lastInsertId();
+}
+
 function xp_list_employees(array $monthContext): array
 {
     xp_ensure_schema();
@@ -396,12 +476,16 @@ function xp_list_employees(array $monthContext): array
             GROUP BY employee_id
          ) m ON m.employee_id = e.id
          WHERE e.status = 'ativo' AND e.deleted_at IS NULL
-         ORDER BY total_xp DESC, e.name ASC"
+         ORDER BY total_xp DESC, (e.system_key = ?) ASC, e.name ASC"
     );
-    $stmt->execute(array($monthContext['start'], $monthContext['end']));
+    $stmt->execute(array($monthContext['start'], $monthContext['end'], XP_ADMIN_SYSTEM_KEY));
     $employees = $stmt->fetchAll();
 
     foreach ($employees as $index => &$employee) {
+        $employee['is_admin'] = xp_is_admin_employee($employee);
+        if (!empty($employee['is_admin'])) {
+            $employee['name'] = 'ADM';
+        }
         $employee['rank'] = $index + 1;
         $employee['total_amount_cents'] = (int) ($employee['total_amount_cents'] ?? 0);
         $employee['total_xp'] = (int) ($employee['total_xp'] ?? 0);
@@ -569,6 +653,7 @@ function xp_update_admin_profile(?array $photoFile, int $userId): void
     }
 
     xp_setting_set('adm_photo_path', $photoPath, $userId);
+    xp_sync_admin_employee($photoPath, $userId);
 
     if (function_exists('log_action')) {
         log_action('xp_adm_foto_atualizada', 'xp_settings', null, 'Foto da moldura ADM do XP atualizada.');
@@ -582,6 +667,10 @@ function xp_create_employee(string $name, ?array $photoFile, int $userId): int
     $name = xp_clean_text($name, 180);
     if ($name === '') {
         throw new InvalidArgumentException('Informe o nome do funcionario.');
+    }
+
+    if (strtoupper($name) === 'ADM') {
+        throw new InvalidArgumentException('ADM ja existe como player de teste.');
     }
 
     $photoPath = xp_upload_photo($photoFile, $userId);
@@ -605,6 +694,10 @@ function xp_update_employee(int $id, string $name, ?array $photoFile, int $userI
     $employee = xp_find_employee($id);
     if (!$employee) {
         throw new InvalidArgumentException('Funcionario nao encontrado.');
+    }
+
+    if (xp_is_admin_employee($employee)) {
+        throw new InvalidArgumentException('A foto e o nome do ADM sao controlados pela moldura ADM.');
     }
 
     $name = xp_clean_text($name, 180);
@@ -633,6 +726,10 @@ function xp_deactivate_employee(int $id): void
     $employee = xp_find_employee($id);
     if (!$employee) {
         throw new InvalidArgumentException('Funcionario nao encontrado.');
+    }
+
+    if (xp_is_admin_employee($employee)) {
+        throw new InvalidArgumentException('O ADM e um player fixo de teste e nao pode ser excluido.');
     }
 
     $stmt = db()->prepare(
