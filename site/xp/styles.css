@@ -658,9 +658,9 @@ select {
 }
 
 .xp-page.is-trail-view .xp-track {
-    grid-auto-columns: clamp(96px, 6.5vw, 124px);
+    grid-auto-columns: clamp(82px, 5.55vw, 106px);
     min-height: 100%;
-    gap: clamp(14px, 1.45vw, 24px);
+    gap: clamp(8px, 0.95vw, 16px);
 }
 
 .xp-level {
@@ -672,7 +672,7 @@ select {
 }
 
 .xp-page.is-trail-view .xp-level {
-    min-height: clamp(320px, 52vh, 470px);
+    min-height: clamp(300px, 49vh, 430px);
 }
 
 .xp-level:nth-child(odd) {
@@ -699,6 +699,20 @@ select {
     transform: translateY(-50%) rotate(8deg) scaleY(-1);
 }
 
+.xp-page.is-trail-view .xp-path {
+    left: calc(-1 * clamp(108px, 6.25vw, 130px));
+    width: clamp(164px, 9.2vw, 196px);
+    opacity: 0.88;
+}
+
+.xp-page.is-trail-view .xp-level:nth-child(odd) .xp-path {
+    transform: translateY(-50%) rotate(-7deg);
+}
+
+.xp-page.is-trail-view .xp-level:nth-child(even) .xp-path {
+    transform: translateY(-50%) rotate(7deg) scaleY(-1);
+}
+
 .xp-level-node {
     position: relative;
     z-index: 1;
@@ -708,6 +722,11 @@ select {
     justify-items: center;
     align-content: center;
     transition: transform 180ms ease, filter 180ms ease;
+}
+
+.xp-page.is-trail-view .xp-level-node {
+    width: 104px;
+    min-height: 132px;
 }
 
 .xp-level.has-players .xp-level-node,
@@ -729,6 +748,17 @@ select {
     height: 128px;
 }
 
+.xp-page.is-trail-view .xp-level-art {
+    width: 92px;
+    height: 92px;
+}
+
+.xp-page.is-trail-view .xp-level-star .xp-level-art,
+.xp-page.is-trail-view .xp-level-castle .xp-level-art {
+    width: 112px;
+    height: 112px;
+}
+
 .xp-level-node strong {
     position: absolute;
     left: 50%;
@@ -747,6 +777,13 @@ select {
     white-space: nowrap;
 }
 
+.xp-page.is-trail-view .xp-level-node strong {
+    bottom: 9px;
+    min-width: 78px;
+    padding: 3px 7px;
+    font-size: 0.66rem;
+}
+
 .xp-node-players {
     position: absolute;
     left: 50%;
@@ -757,6 +794,11 @@ select {
     gap: 3px;
     width: 96px;
     transform: translate(-50%, -50%);
+}
+
+.xp-page.is-trail-view .xp-node-players {
+    width: 78px;
+    gap: 2px;
 }
 
 .xp-node-player {
@@ -770,6 +812,13 @@ select {
     background: #115e59;
     box-shadow: 0 7px 12px rgba(0, 0, 0, 0.26);
     cursor: pointer;
+}
+
+.xp-page.is-trail-view .xp-node-player,
+.xp-page.is-trail-view .xp-node-more {
+    width: 26px;
+    height: 26px;
+    border-width: 2px;
 }
 
 .xp-node-player.is-adm {

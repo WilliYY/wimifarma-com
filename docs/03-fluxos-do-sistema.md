@@ -112,7 +112,7 @@ Regras a preservar:
 
 ## Fluxo XP
 
-O modulo XP gamifica vendas dos atendentes. A tela principal fica como mapa de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; o perfil ADM tambem aparece como jogador visual de teste no nivel 1. A trilha mostra os niveis 1 a 20 enquanto a equipe estiver no inicio e, depois disso, usa uma janela curta ao redor do nivel mais alto para continuar dando sensacao de progressao infinita sem renderizar niveis demais. A aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo por XP, edicao, exclusao logica de usuarios/funcionarios e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca os valores do dia; o backend calcula automaticamente os pontos.
+O modulo XP gamifica vendas dos atendentes. A tela principal fica como mapa de jogo com a trilha XP horizontal em zigue-zague, sem barra de rolagem visivel dentro da fase; o perfil ADM tambem aparece como jogador visual de teste no nivel 1. A trilha mostra os niveis 1 a 20 enquanto a equipe estiver no inicio e, depois disso, usa uma janela curta ao redor do nivel mais alto para continuar dando sensacao de progressao infinita sem renderizar niveis demais. A escala visual da trilha no desktop deve ficar mais afastada, com pegadas alongadas e preenchidas entre cada nivel para reforcar a leitura de caminho. A aba `Configuracoes` concentra cadastro de funcionarios, upload de fotos, filtro de mes, resumo por XP, edicao, exclusao logica de usuarios/funcionarios e lancamentos diarios. A equipe cadastra funcionarios, sobe uma foto e lanca os valores do dia; o backend calcula automaticamente os pontos.
 
 Arquivos principais:
 
