@@ -717,6 +717,46 @@
     updatePresence(false);
   }
 
+  function keepActiveCellInView() {
+    if (!sheetWrap || !state.activeCell) return;
+    const active = table.querySelector(`[data-row-id="${state.activeCell.rowId}"][data-column-key="${state.activeCell.columnKey}"]`);
+    if (!active) return;
+
+    const margin = 10;
+    const headerHeight = table.tHead?.offsetHeight || 0;
+    const rowHeaderWidth = table.querySelector('th.corner')?.offsetWidth || 0;
+    const activeRect = active.getBoundingClientRect();
+    const wrapRect = sheetWrap.getBoundingClientRect();
+    const minTop = wrapRect.top + headerHeight + margin;
+    const maxBottom = wrapRect.bottom - margin;
+    const minLeft = wrapRect.left + rowHeaderWidth + margin;
+    const maxRight = wrapRect.right - margin;
+    let nextTop = sheetWrap.scrollTop;
+    let nextLeft = sheetWrap.scrollLeft;
+
+    if (activeRect.top < minTop) {
+      nextTop += activeRect.top - minTop;
+    } else if (activeRect.bottom > maxBottom) {
+      nextTop += activeRect.bottom - maxBottom;
+    }
+
+    if (activeRect.left < minLeft) {
+      nextLeft += activeRect.left - minLeft;
+    } else if (activeRect.right > maxRight) {
+      nextLeft += activeRect.right - maxRight;
+    }
+
+    nextTop = Math.max(0, nextTop);
+    nextLeft = Math.max(0, nextLeft);
+    if (nextTop !== sheetWrap.scrollTop || nextLeft !== sheetWrap.scrollLeft) {
+      sheetWrap.scrollTo({
+        top: nextTop,
+        left: nextLeft,
+        behavior: 'auto'
+      });
+    }
+  }
+
   function selectColumn(columnKey) {
     selectColumnRange(columnKey, columnKey);
   }
@@ -2052,7 +2092,10 @@
     const rows = gridRows();
     const coords = coordsFor(state.activeCell.rowId, state.activeCell.columnKey, rows);
     const cell = cellAt(coords.row + rowDelta, coords.col + colDelta, rows);
-    if (cell) setSelection(cell.rowId, cell.columnKey, extend);
+    if (cell) {
+      setSelection(cell.rowId, cell.columnKey, extend);
+      keepActiveCellInView();
+    }
   }
 
   async function undo() {
