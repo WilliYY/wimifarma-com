@@ -359,8 +359,7 @@ select {
     position: absolute;
     inset: -34px;
     z-index: 1;
-    background: url("/xp/assets/moldura-adm.svg") center / contain no-repeat;
-    mix-blend-mode: multiply;
+    background: url("/xp/assets/moldura-adm-transparente.png?v=20260523a") center / contain no-repeat;
     opacity: 0.98;
     pointer-events: none;
 }
@@ -864,14 +863,13 @@ select {
     position: absolute;
     inset: -9px;
     z-index: 3;
-    background: url("/xp/assets/moldura-funcionarios.svg") center / contain no-repeat;
-    mix-blend-mode: multiply;
+    background: url("/xp/assets/moldura-funcionarios-transparente.png?v=20260523a") center / contain no-repeat;
     pointer-events: none;
 }
 
 .xp-node-player.is-adm::after {
     inset: -11px;
-    background-image: url("/xp/assets/moldura-adm.svg");
+    background-image: url("/xp/assets/moldura-adm-transparente.png?v=20260523a");
 }
 
 .xp-node-player img,
@@ -968,14 +966,13 @@ select {
     position: absolute;
     inset: -11px;
     z-index: 3;
-    background: url("/xp/assets/moldura-funcionarios.svg") center / contain no-repeat;
-    mix-blend-mode: multiply;
+    background: url("/xp/assets/moldura-funcionarios-transparente.png?v=20260523a") center / contain no-repeat;
     pointer-events: none;
 }
 
 .xp-game-player.is-adm .xp-game-avatar::after {
     inset: -12px;
-    background-image: url("/xp/assets/moldura-adm.svg");
+    background-image: url("/xp/assets/moldura-adm-transparente.png?v=20260523a");
 }
 
 .xp-game-avatar img,
@@ -1093,8 +1090,7 @@ select {
     position: absolute;
     inset: -16px;
     z-index: 4;
-    background: url("/xp/assets/moldura-funcionarios.svg") center / contain no-repeat;
-    mix-blend-mode: multiply;
+    background: url("/xp/assets/moldura-funcionarios-transparente.png?v=20260523a") center / contain no-repeat;
     pointer-events: none;
 }
 
