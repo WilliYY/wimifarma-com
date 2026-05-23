@@ -1,81 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="360" height="240" viewBox="0 0 360 240" preserveAspectRatio="none" role="img" aria-label="Pegadas">
-  <g fill="#111827" opacity="0.82">
-    <g transform="translate(8 214) rotate(-18)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-8" cy="-3" r="3"/>
-      <circle cx="-2" cy="-6" r="3.3"/>
-      <circle cx="5" cy="-5" r="2.8"/>
-      <circle cx="10" cy="0" r="2.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="92" height="44" viewBox="0 0 92 44" role="img" aria-label="Pegadas">
+  <g fill="#0f3650" opacity="0.88">
+    <g transform="translate(18 11) rotate(-13)">
+      <ellipse cx="0" cy="10" rx="4.6" ry="9.2"/>
+      <circle cx="-5.6" cy="-1.6" r="1.8"/>
+      <circle cx="-1.4" cy="-3.5" r="2"/>
+      <circle cx="3" cy="-3" r="1.7"/>
+      <circle cx="6" cy="0.4" r="1.5"/>
     </g>
-    <g transform="translate(42 196) rotate(16)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-10" cy="0" r="2.5"/>
-      <circle cx="-5" cy="-5" r="2.8"/>
-      <circle cx="2" cy="-6" r="3.3"/>
-      <circle cx="8" cy="-3" r="3"/>
+    <g transform="translate(39 26) rotate(13)">
+      <ellipse cx="0" cy="10" rx="4.6" ry="9.2"/>
+      <circle cx="-6" cy="0.4" r="1.5"/>
+      <circle cx="-3" cy="-3" r="1.7"/>
+      <circle cx="1.4" cy="-3.5" r="2"/>
+      <circle cx="5.6" cy="-1.6" r="1.8"/>
     </g>
-    <g transform="translate(75 178) rotate(-18)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-8" cy="-3" r="3"/>
-      <circle cx="-2" cy="-6" r="3.3"/>
-      <circle cx="5" cy="-5" r="2.8"/>
-      <circle cx="10" cy="0" r="2.5"/>
-    </g>
-    <g transform="translate(108 160) rotate(16)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-10" cy="0" r="2.5"/>
-      <circle cx="-5" cy="-5" r="2.8"/>
-      <circle cx="2" cy="-6" r="3.3"/>
-      <circle cx="8" cy="-3" r="3"/>
-    </g>
-    <g transform="translate(141 142) rotate(-18)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-8" cy="-3" r="3"/>
-      <circle cx="-2" cy="-6" r="3.3"/>
-      <circle cx="5" cy="-5" r="2.8"/>
-      <circle cx="10" cy="0" r="2.5"/>
-    </g>
-    <g transform="translate(174 124) rotate(16)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-10" cy="0" r="2.5"/>
-      <circle cx="-5" cy="-5" r="2.8"/>
-      <circle cx="2" cy="-6" r="3.3"/>
-      <circle cx="8" cy="-3" r="3"/>
-    </g>
-    <g transform="translate(207 106) rotate(-18)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-8" cy="-3" r="3"/>
-      <circle cx="-2" cy="-6" r="3.3"/>
-      <circle cx="5" cy="-5" r="2.8"/>
-      <circle cx="10" cy="0" r="2.5"/>
-    </g>
-    <g transform="translate(240 88) rotate(16)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-10" cy="0" r="2.5"/>
-      <circle cx="-5" cy="-5" r="2.8"/>
-      <circle cx="2" cy="-6" r="3.3"/>
-      <circle cx="8" cy="-3" r="3"/>
-    </g>
-    <g transform="translate(273 70) rotate(-18)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-8" cy="-3" r="3"/>
-      <circle cx="-2" cy="-6" r="3.3"/>
-      <circle cx="5" cy="-5" r="2.8"/>
-      <circle cx="10" cy="0" r="2.5"/>
-    </g>
-    <g transform="translate(306 52) rotate(16)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-10" cy="0" r="2.5"/>
-      <circle cx="-5" cy="-5" r="2.8"/>
-      <circle cx="2" cy="-6" r="3.3"/>
-      <circle cx="8" cy="-3" r="3"/>
-    </g>
-    <g transform="translate(352 22) rotate(-18)">
-      <ellipse cx="0" cy="14" rx="7.5" ry="15"/>
-      <circle cx="-8" cy="-3" r="3"/>
-      <circle cx="-2" cy="-6" r="3.3"/>
-      <circle cx="5" cy="-5" r="2.8"/>
-      <circle cx="10" cy="0" r="2.5"/>
+    <g transform="translate(63 11) rotate(-13)">
+      <ellipse cx="0" cy="10" rx="4.6" ry="9.2"/>
+      <circle cx="-5.6" cy="-1.6" r="1.8"/>
+      <circle cx="-1.4" cy="-3.5" r="2"/>
+      <circle cx="3" cy="-3" r="1.7"/>
+      <circle cx="6" cy="0.4" r="1.5"/>
     </g>
   </g>
 </svg>

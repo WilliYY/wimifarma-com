@@ -334,10 +334,8 @@ function xp_player_data_attrs(array $player): string
 
     $attrs = array(
         'data-xp-player-name' => (string) ($player['name'] ?? 'Jogador'),
-        'data-xp-player-role' => $isAdmin ? 'ADM - teste' : 'Atendente XP',
-        'data-xp-player-level' => $isAdmin
-            ? 'ADM - teste'
-            : 'Nivel ' . (string) ((int) ($progress['level'] ?? 1)) . ' -> ' . (string) ((int) ($progress['next_level'] ?? 2)),
+        'data-xp-player-role' => $isAdmin ? 'ADM' : 'Atendente XP',
+        'data-xp-player-level' => 'Nivel ' . (string) ((int) ($progress['level'] ?? 1)) . ' -> ' . (string) ((int) ($progress['next_level'] ?? 2)),
         'data-xp-player-percent' => xp_percent($percent),
         'data-xp-player-percent-value' => number_format($percent, 2, '.', ''),
         'data-xp-player-progress' => xp_number($progress['progress_xp'] ?? 0),

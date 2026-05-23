@@ -118,7 +118,7 @@
 
         var scheduled = false;
 
-        function pathAnchor(level, position) {
+        function pathAnchor(level) {
             var art = level.querySelector('.xp-level-art');
             var label = level.querySelector('.xp-level-node strong');
             var artRect = art ? art.getBoundingClientRect() : level.getBoundingClientRect();
@@ -127,8 +127,8 @@
 
             return {
                 x: artRect.left + (artRect.width / 2),
-                y: isTop && position === 'near'
-                    ? labelRect.bottom + 6
+                y: isTop
+                    ? labelRect.bottom + 4
                     : artRect.top + Math.max(6, artRect.height * 0.12)
             };
         }
@@ -145,21 +145,17 @@
                 }
 
                 var levelRect = level.getBoundingClientRect();
-                var start = pathAnchor(previousLevel, 'near');
-                var end = pathAnchor(level, 'near');
-                var goesDown = end.y > start.y;
-                var padX = 20;
-                var padY = 18;
-                var minX = Math.min(start.x, end.x);
-                var minY = Math.min(start.y, end.y);
-                var width = Math.abs(end.x - start.x) + (padX * 2);
-                var height = Math.abs(end.y - start.y) + (padY * 2);
+                var start = pathAnchor(previousLevel);
+                var end = pathAnchor(level);
+                var deltaX = end.x - start.x;
+                var deltaY = end.y - start.y;
+                var width = Math.max(1, Math.sqrt((deltaX * deltaX) + (deltaY * deltaY)));
+                var angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
 
-                path.style.setProperty('--xp-path-left', Math.round(minX - levelRect.left - padX) + 'px');
-                path.style.setProperty('--xp-path-top', Math.round(minY - levelRect.top - padY) + 'px');
+                path.style.setProperty('--xp-path-left', Math.round(start.x - levelRect.left) + 'px');
+                path.style.setProperty('--xp-path-top', Math.round(start.y - levelRect.top) + 'px');
                 path.style.setProperty('--xp-path-width', Math.round(width) + 'px');
-                path.style.setProperty('--xp-path-height', Math.round(height) + 'px');
-                path.style.setProperty('--xp-path-transform', goesDown ? 'scaleY(-1)' : 'none');
+                path.style.setProperty('--xp-path-angle', angle.toFixed(2) + 'deg');
                 path.classList.add('is-positioned');
             });
         }

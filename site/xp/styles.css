@@ -708,23 +708,27 @@ select {
     top: var(--xp-path-top, 50%);
     z-index: 0;
     width: var(--xp-path-width, 104px);
-    height: var(--xp-path-height, auto);
-    object-fit: fill;
-    transform: var(--xp-path-transform, translateY(-50%) rotate(-6deg));
-    transform-origin: center;
+    height: 44px;
+    background-image: url("/xp/assets/caminho-xp.svg?v=20260523d");
+    background-repeat: repeat-x;
+    background-position: left center;
+    background-size: auto 100%;
+    transform: translateY(-50%) rotate(var(--xp-path-angle, -6deg));
+    transform-origin: left center;
     opacity: 0.9;
     pointer-events: none;
 }
 
 .xp-level:nth-child(even) .xp-path:not(.is-positioned) {
-    transform: translateY(-50%) rotate(8deg) scaleY(-1);
+    transform: translateY(-50%) rotate(8deg);
 }
 
 .xp-page.is-trail-view .xp-path {
     left: var(--xp-path-left, calc(-1 * clamp(116px, 6.9vw, 142px)));
     top: var(--xp-path-top, 50%);
     width: var(--xp-path-width, clamp(188px, 10.8vw, 222px));
-    height: var(--xp-path-height, clamp(220px, 29vh, 278px));
+    height: clamp(38px, 4.2vw, 48px);
+    background-size: auto 100%;
     opacity: 0.9;
 }
 
@@ -733,11 +737,11 @@ select {
 }
 
 .xp-page.is-trail-view .xp-level:nth-child(even) .xp-path:not(.is-positioned) {
-    transform: translateY(-50%) rotate(2deg) scaleY(-1);
+    transform: translateY(-50%) rotate(2deg);
 }
 
 .xp-path.is-positioned {
-    transform: var(--xp-path-transform, none);
+    transform: translateY(-50%) rotate(var(--xp-path-angle, 0deg));
 }
 
 .xp-level-node {
@@ -829,16 +833,18 @@ select {
 }
 
 .xp-node-player {
+    position: relative;
     width: 30px;
     height: 30px;
-    overflow: hidden;
-    border: 2px solid #fff3a4;
+    overflow: visible;
+    border: 0;
     border-radius: 50%;
     padding: 0;
     color: #ffffff;
-    background: #115e59;
+    background: transparent;
     box-shadow: 0 7px 12px rgba(0, 0, 0, 0.26);
     cursor: pointer;
+    isolation: isolate;
 }
 
 .xp-page.is-trail-view .xp-node-player,
@@ -849,24 +855,48 @@ select {
 }
 
 .xp-node-player.is-adm {
-    border-color: #ffe27a;
-    background: #3b1a69;
+    background: transparent;
     box-shadow: 0 0 0 3px rgba(255, 226, 122, 0.22), 0 8px 14px rgba(0, 0, 0, 0.3);
 }
 
-.xp-node-player img {
+.xp-node-player::after {
+    content: "";
+    position: absolute;
+    inset: -9px;
+    z-index: 3;
+    background: url("/xp/assets/moldura-funcionarios.svg") center / contain no-repeat;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+}
+
+.xp-node-player.is-adm::after {
+    inset: -11px;
+    background-image: url("/xp/assets/moldura-adm.svg");
+}
+
+.xp-node-player img,
+.xp-node-player span {
+    position: relative;
+    z-index: 2;
     width: 100%;
     height: 100%;
+    border-radius: 50%;
+}
+
+.xp-node-player img {
     object-fit: cover;
 }
 
 .xp-node-player span {
     display: grid;
-    width: 100%;
-    height: 100%;
     place-items: center;
+    background: linear-gradient(135deg, #0ea5e9, #0f766e);
     font-size: 0.72rem;
     font-weight: 950;
+}
+
+.xp-node-player.is-adm span {
+    background: linear-gradient(135deg, #3b1a69, #7c2d12);
 }
 
 .xp-node-more {
@@ -917,29 +947,60 @@ select {
 }
 
 .xp-game-player.is-adm .xp-game-avatar {
-    background: #3b1a69;
+    background: transparent;
 }
 
 .xp-game-avatar {
+    position: relative;
     width: 38px;
     height: 38px;
     display: grid;
     place-items: center;
-    overflow: hidden;
-    border: 2px solid #ffe27a;
+    overflow: visible;
+    border: 0;
     border-radius: 50%;
-    background: #115e59;
+    background: transparent;
+    isolation: isolate;
+}
+
+.xp-game-avatar::after {
+    content: "";
+    position: absolute;
+    inset: -11px;
+    z-index: 3;
+    background: url("/xp/assets/moldura-funcionarios.svg") center / contain no-repeat;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+}
+
+.xp-game-player.is-adm .xp-game-avatar::after {
+    inset: -12px;
+    background-image: url("/xp/assets/moldura-adm.svg");
+}
+
+.xp-game-avatar img,
+.xp-game-avatar i {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
 }
 
 .xp-game-avatar img {
-    width: 100%;
-    height: 100%;
     object-fit: cover;
 }
 
 .xp-game-avatar i {
+    display: grid;
+    place-items: center;
     font-style: normal;
     font-weight: 950;
+    background: linear-gradient(135deg, #0ea5e9, #0f766e);
+}
+
+.xp-game-player.is-adm .xp-game-avatar i {
+    background: linear-gradient(135deg, #3b1a69, #7c2d12);
 }
 
 .xp-game-info {
@@ -1022,7 +1083,7 @@ select {
     display: grid;
     place-items: center;
     color: #ffffff;
-    background: linear-gradient(135deg, #0f766e, #0f3f4d);
+    background: transparent;
     border-radius: 50%;
     isolation: isolate;
 }
@@ -1031,14 +1092,15 @@ select {
     content: "";
     position: absolute;
     inset: -16px;
-    z-index: 2;
+    z-index: 4;
     background: url("/xp/assets/moldura-funcionarios.svg") center / contain no-repeat;
+    mix-blend-mode: multiply;
     pointer-events: none;
 }
 
 .xp-avatar-frame img {
     position: relative;
-    z-index: 3;
+    z-index: 2;
     width: 76px;
     height: 76px;
     border-radius: 50%;
@@ -1047,7 +1109,7 @@ select {
 
 .xp-avatar-frame span {
     position: relative;
-    z-index: 3;
+    z-index: 2;
     display: grid;
     width: 76px;
     height: 76px;
@@ -1671,7 +1733,8 @@ select {
         left: var(--xp-path-left, -84px);
         top: var(--xp-path-top, 50%);
         width: var(--xp-path-width, 148px);
-        height: var(--xp-path-height, 176px);
+        height: 38px;
+        background-size: auto 100%;
     }
 
     .xp-recent-list article {

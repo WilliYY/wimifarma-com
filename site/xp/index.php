@@ -124,9 +124,9 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260523c">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260523d">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
-    <script src="/xp/app.js?v=20260523c" defer></script>
+    <script src="/xp/app.js?v=20260523d" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
 </head>
 <body class="xp-app-body <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>">
@@ -298,7 +298,7 @@ $today = date('Y-m-d');
                         <?php $players = $playersByLevel[$level] ?? array(); ?>
                         <article class="xp-level xp-level-<?php echo e(xp_level_kind($level)); ?> <?php echo !empty($players) ? 'has-players' : ''; ?>" data-xp-level="<?php echo e((string) $level); ?>">
                             <?php if ($level > $levelStart) : ?>
-                                <img class="xp-path" src="/xp/assets/caminho-xp.svg?v=20260523c" alt="" aria-hidden="true" loading="lazy" decoding="async">
+                                <span class="xp-path" aria-hidden="true"></span>
                             <?php endif; ?>
                             <div class="xp-level-node">
                                 <img class="xp-level-art" src="<?php echo e(xp_level_asset($level)); ?>" alt="" loading="lazy" decoding="async">
@@ -312,7 +312,7 @@ $today = date('Y-m-d');
                                                 <?php if ($photoUrl !== '') : ?>
                                                     <img src="<?php echo e($photoUrl); ?>" alt="<?php echo e((string) $player['name']); ?>" loading="lazy" decoding="async">
                                                 <?php else : ?>
-                                                    <span><?php echo e(xp_employee_initials((string) $player['name'])); ?></span>
+                                                    <span><?php echo !empty($player['is_admin']) ? 'ADM' : e(xp_employee_initials((string) $player['name'])); ?></span>
                                                 <?php endif; ?>
                                             </button>
                                         <?php endforeach; ?>
@@ -338,12 +338,12 @@ $today = date('Y-m-d');
                                 <?php if ($hudPhotoUrl !== '') : ?>
                                     <img src="<?php echo e($hudPhotoUrl); ?>" alt="<?php echo e((string) $hudEmployee['name']); ?>" loading="lazy" decoding="async">
                                 <?php else : ?>
-                                    <i><?php echo e(xp_employee_initials((string) $hudEmployee['name'])); ?></i>
+                                    <i><?php echo !empty($hudEmployee['is_admin']) ? 'ADM' : e(xp_employee_initials((string) $hudEmployee['name'])); ?></i>
                                 <?php endif; ?>
                             </span>
                             <span class="xp-game-info">
                                 <strong><?php echo e((string) $hudEmployee['name']); ?></strong>
-                                <small><?php echo !empty($hudEmployee['is_admin']) ? 'ADM - teste' : 'Nivel ' . e((string) $hudProgress['level']) . ' - ' . e(xp_percent($hudProgress['percent'])); ?></small>
+                                <small><?php echo !empty($hudEmployee['is_admin']) ? 'ADM' : 'Nivel ' . e((string) $hudProgress['level']) . ' - ' . e(xp_percent($hudProgress['percent'])); ?></small>
                                 <em><b></b></em>
                             </span>
                         </button>
