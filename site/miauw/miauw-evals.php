@@ -729,6 +729,35 @@ miauw_eval_add('fase6_prompt_nao_inventa_dados', static function (): void {
     miauw_eval_assert_contains('Acoes fortes', $prompt, 'Prompt precisa lembrar confirmacao para acoes fortes.');
 });
 
+miauw_eval_add('xp_contexto_aura_miauby', static function (): void {
+    miauw_ensure_schema();
+
+    $status = miauw_agent_public_status();
+    miauw_eval_assert(in_array('contexto_xp_aura', (array) ($status['features'] ?? array()), true), 'Status do Miauby precisa anunciar contexto XP/aura.');
+
+    $knowledge = miauw_knowledge_for('como farmar aura no xp');
+    miauw_eval_assert_contains('/xp/', $knowledge, 'Conhecimento do XP precisa apontar a rota.');
+    miauw_eval_assert_contains('2.500 XP', $knowledge, 'Conhecimento do XP precisa preservar regra de conversao.');
+    miauw_eval_assert_contains('farmar aura', $knowledge, 'Conhecimento do XP precisa preservar linguagem de aura.');
+
+    $prompt = miauw_system_prompt($knowledge);
+    miauw_eval_assert_contains('XP E FARMAR AURA', $prompt, 'Prompt precisa ter secao operacional do XP.');
+    miauw_eval_assert_contains('Nao invente ranking', $prompt, 'Prompt precisa impedir placar inventado no XP.');
+    miauw_eval_assert_contains('farmar aura', $prompt, 'Prompt precisa permitir a linguagem de aura no XP.');
+
+    $route = miauw_agent_style_route('como farmar aura no xp');
+    miauw_eval_assert_same('operational', (string) ($route['intent'] ?? ''), 'Pergunta de XP precisa ser tratada como operacional.');
+
+    $context = miauw_agent_style_context_export('como farmar aura no xp', 1);
+    $contextJson = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+    miauw_eval_assert_contains('contexto XP', $contextJson, 'Contexto de estilo precisa levar XP ao agente Node.');
+    miauw_eval_assert_contains('30.000 XP', $contextJson, 'Contexto Node precisa saber o primeiro marco do XP.');
+
+    $contract = miauw_agent_personality_contract();
+    $contractJson = json_encode($contract, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+    miauw_eval_assert_contains('farmar aura', $contractJson, 'Contrato de personalidade precisa citar farmar aura.');
+});
+
 miauw_eval_add('intent_tarefa_criacao', static function (): void {
     $command = miauw_skill_tarefa_command_from_message('criar tarefa alta conferir fechamento - revisar divergencia de pix');
 

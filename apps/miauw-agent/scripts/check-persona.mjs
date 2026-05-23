@@ -54,6 +54,8 @@ const required = [
   'php_tool_bridge',
   'buscar_codigo_comissao',
   'escrita_node: bloqueada',
+  'farmar aura',
+  'Contexto XP',
 ];
 
 const forbiddenInInstructions = [

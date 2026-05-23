@@ -55,7 +55,7 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260521a');
+    define('MIAUW_VERSION', '20260523a');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
@@ -665,6 +665,7 @@ function miauw_agent_public_status(): array
             'seletor_voz_diagnostico',
             'perfil_voz_tts_forte',
             'contexto_voz_node',
+            'contexto_xp_aura',
         ),
         'voice_profile_version' => miauw_constant_string('MIAUW_AGENT_VOICE_PROFILE_VERSION', ''),
         'audio_version' => miauw_constant_string('MIAUW_AGENT_AUDIO_VERSION', ''),
@@ -1197,7 +1198,7 @@ function miauw_agent_style_reply_for_route(array $route, string $message): ?stri
             'Da pra fazer, humano, mas "um site" e uma caixa vazia com luzinha. Diz o objetivo: loja, institucional, sistema interno ou landing page. Ai eu te dou o caminho util.',
         ),
         'greeting' => array(
-            'Miauby na area. Manda a bagunca: caixa, cotacao, cliente, tarefa ou alerta.',
+            'Miauby na area. Manda a bagunca: caixa, cotacao, XP, cliente, tarefa ou alerta.',
             'Opa. O gato fiscal acordou. Qual processo vamos tirar do modo drama?',
         ),
         'random_noise' => array(
@@ -1205,8 +1206,8 @@ function miauw_agent_style_reply_for_route(array $route, string $message): ?stri
             'Recebi o ruido cosmico. Agora traduz para humano funcional: o que voce quer fazer?',
         ),
         'casual_identity' => array(
-            'Sou o Miauby, fiscal da bagunca da Wimifarma. Eu cutuco processo, consulto o que for permitido e paro humano antes de transformar sistema em novela. Sem dado, sem milagre.',
-            'Eu sou o gato fiscal interno: olho caixa, cotacao, tarefa, cliente, codigo e processo. Nao sou enfeite de chat; sou alarme com bigode.',
+            'Sou o Miauby, fiscal da bagunca da Wimifarma. Eu cutuco processo, XP, consulta permitida e paro humano antes de transformar sistema em novela. Sem dado, sem milagre.',
+            'Eu sou o gato fiscal interno: olho caixa, cotacao, XP, tarefa, cliente, codigo e processo. Nao sou enfeite de chat; sou alarme com bigode.',
         ),
         'offtopic' => array(
             'mew dweus, isso saiu da farmacia e entrou no intervalo eterno. Volta com caixa, produto, cliente, cotacao ou processo.',
@@ -1965,6 +1966,12 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
             $exampleList[] = $question . ' => ' . (string) $reply;
         }
     }
+    $xpProbe = miauw_agent_style_normalized(trim($message . ' ' . $pageContext));
+    $xpContextRequested = preg_match('/(^|[^a-z0-9])(xp|aura)([^a-z0-9]|$)/i', $xpProbe) === 1
+        || miauw_agent_style_has_any($xpProbe, array('farmar aura', 'trilha xp', 'pontos xp', 'ranking xp', 'nivel xp'));
+    if ($xpContextRequested) {
+        $exampleList[] = 'contexto XP: /xp/ gamifica vendas dos atendentes; R$ 1.000,00 gera 2.500 XP; nivel 1 passa com 30.000 XP; "farmar aura" e incentivo brincalhao para vender e registrar certo; nao inventar ranking, venda ou pontuacao sem dado do sistema.';
+    }
     $trainingExamples = function_exists('miauw_training_context_examples') ? miauw_training_context_examples($message, 2) : array();
     $trainingProfile = function_exists('miauw_training_context_profile') ? miauw_training_context_profile($message, 2) : array();
     $voiceProfile = miauw_agent_voice_profile_contract();
@@ -2060,6 +2067,7 @@ function miauw_agent_personality_contract(): array
             'padroes aprovados no diagnostico podem ajustar o jeito de falar',
             'pedir somente o menor dado ausente antes de agir',
             'nao inventar dado real sem fonte do sistema ou do operador',
+            'conhecer o XP dos atendentes e usar farmar aura como incentivo sem inventar pontuacao',
         ),
         'bordoes_controlados' => array(
             'Sem dado, sem milagre.',
@@ -3116,6 +3124,11 @@ function miauw_seed_knowledge(): void
             'Cotacao',
             'A cotacao fica em /cotacao/. A Cotacao Geral funciona como planilha: EAN, produto, quantidade, categoria, distribuidoras e quem ganhou. Categorias sao dinamicas e filtros ajudam a achar encomendas e urgencias. Texto em categoria nao vira comando escondido: encomenda/urgente so tem efeito operacional quando a prioridade explicita foi salva por usuario ou ferramenta controlada. Encomenda criada pelo Miauby registra data/hora porque usa a ferramenta propria com prioridade encomenda. Produtos como Skala, shampoo, creme de cabelo, desodorante, esmalte e perfume devem favorecer categoria perfumaria; produto com mg/ml/comprimido/gotas deve favorecer medicamento; controlados devem ficar bem sinalizados.',
             'cotacao, ean, produto, categoria, distribuidora, encomenda'
+        ),
+        array(
+            'XP - gamificacao dos atendentes',
+            'O XP fica em /xp/ e gamifica vendas dos atendentes com trilha de jogo, ranking, fotos e niveis. R$ 1.000,00 em vendas gera 2.500 XP; o nivel 1 precisa de 30.000 XP para passar e os proximos niveis ficam progressivamente mais dificeis. "Farmar aura no XP" e brincadeira interna para incentivar atendimento bom, venda real e lancamento correto. O ADM tambem e player fixo de teste. Miauby pode animar a equipe sobre XP, mas nao deve inventar venda, ranking, nivel ou pontuacao sem dado do sistema ou do usuario.',
+            'xp, gamificacao, atendentes, vendas, aura, farmar aura, ranking, nivel, trilha, adm'
         ),
         array(
             'Farmacia Popular',
@@ -5143,7 +5156,8 @@ function miauw_knowledge_for(string $message): string
 {
     $messageWords = preg_split('/[^a-z0-9]+/i', strtolower($message));
     $messageWords = array_values(array_filter(array_unique($messageWords ?: array()), static function ($word): bool {
-        return strlen((string) $word) >= 4;
+        $word = (string) $word;
+        return strlen($word) >= 4 || $word === 'xp';
     }));
 
     $items = array();

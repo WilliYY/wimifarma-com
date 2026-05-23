@@ -150,6 +150,7 @@ Regras a preservar:
 - o nivel 1 exige 30.000 XP para passar; os niveis seguintes ficam progressivamente mais dificeis e nao possuem limite fixo;
 - a trilha usa `Bloco XP` nos niveis comuns, `Nivel 5` a cada multiplo de 5 e `nivel 10` a cada multiplo de 10;
 - cancelar venda ou excluir/remover usuario/funcionario deve ser logico, sem apagar historico fisico; o botao `Excluir usuario` tira o atendente da lista e da trilha, preservando os lancamentos antigos.
+- o Miauby conhece o XP e pode usar "farmar aura no XP" como incentivo de jogo para vendas reais e lancamentos corretos, mas nao pode inventar ranking, pontuacao, foto, funcionario ou nivel sem dado vindo do sistema ou do usuario.
 
 ## Fluxo Cotacao
 

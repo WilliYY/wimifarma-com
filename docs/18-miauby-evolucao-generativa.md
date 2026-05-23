@@ -204,6 +204,10 @@ Miauby ja possui:
   - se uma mensagem incompleta gerou orientacao de formato, o proximo prompt que comecar por `gestao` substitui a pendencia anterior em vez de concatenar textos antigos;
   - a escrita usa endpoint interno tokenizado da Gestao, sem credencial direta de Postgres no PHP e sem escrita direta pelo Node.
   - botoes de `Confirmar`/`Cancelar` em cards de confirmacao enviam comando silencioso para a API: o chat nao exibe nem grava `confirmar <id>`/`cancelar <id>` como fala do operador, mas continua registrando trace e resposta auditada da acao.
+- Complemento XP/aura:
+  - o Miauby recebeu contexto fixo sobre o modulo `/xp/`, regra R$ 1.000,00 = 2.500 XP, primeiro marco de 30.000 XP e papel do ADM como player de teste;
+  - "farmar aura no XP" fica liberado como linguagem interna motivacional para venda real e lancamento correto;
+  - o prompt, a base de conhecimento e o contexto enviado ao agente Node reforcam que o Miauby nao pode inventar ranking, nivel, foto, venda ou pontuacao sem dado do sistema ou do operador.
 
 ## Arquivos, tabelas e servicos envolvidos
 
