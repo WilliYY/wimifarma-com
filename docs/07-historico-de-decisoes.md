@@ -2,6 +2,31 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-24 - Home publica usa logo animada
+
+Decisao:
+
+- Trocar apenas a logo da home publica por `logo-wimifarma-home-animated.gif`.
+- Manter os SVGs oficiais dos modulos internos sem alteracao.
+- Recortar visualmente o GIF full HD dentro de uma moldura escura para a marca branca ficar legivel sobre o fundo claro da home.
+
+Motivo:
+
+- O usuario forneceu uma logo animada e pediu que ela substituisse a logo da home, ficando visivel na primeira tela.
+
+Impacto:
+
+- `site/home.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma-home-animated.gif`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- O GIF e maior que o SVG estatico; manter cache/versionamento e validar carregamento visual em desktop e mobile.
+- Nao trocar automaticamente as logos dos modulos internos enquanto o pedido for apenas a home.
+
 ## 2026-05-16 - Miauby acelera migracao para ponte universal de tools
 
 Decisao:

@@ -7,7 +7,7 @@ $publicHosts = array('wimifarma.com', 'www.wimifarma.com');
 $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
-$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-official.svg') . '?v=20260521-logo';
+$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.gif') . '?v=20260524-animated-logo';
 
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -187,17 +187,42 @@ $modules = array(
         }
 
         .wf-brand {
+            position: relative;
             display: inline-flex;
             align-items: center;
-            width: 236px;
-            max-width: 58vw;
+            justify-content: center;
+            width: clamp(286px, 29vw, 430px);
+            max-width: 82vw;
+            height: clamp(70px, 7vw, 100px);
+            overflow: hidden;
+            border-radius: 999px;
+            background: #050505;
             text-decoration: none;
+            box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+        }
+
+        .wf-brand::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            background: url("<?php echo wf_home_e(wf_home_asset('assets/img/logo-wimifarma-official.svg')); ?>") center / 74% auto no-repeat;
+            filter: brightness(0) invert(1);
+            opacity: 0.58;
         }
 
         .wf-brand img {
+            position: relative;
+            z-index: 1;
             display: block;
             width: 100%;
-            height: auto;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            transform: scale(1.52);
+            transform-origin: center;
+            mix-blend-mode: screen;
         }
 
         .wf-main {
@@ -550,7 +575,7 @@ $modules = array(
     <header class="wf-header">
         <div class="wf-shell wf-header-inner">
             <a class="wf-brand" href="<?php echo wf_home_e(wf_home_url('/')); ?>" aria-label="Wimifarma">
-                <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="236" height="72">
+                <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="430" height="100">
             </a>
         </div>
     </header>

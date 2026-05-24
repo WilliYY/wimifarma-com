@@ -8,7 +8,7 @@ Este documento descreve os fluxos reais encontrados no sistema e os cuidados par
 
 Entrada publica:
 
-- `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo oficial SVG atualizada, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
+- `/`: home/portal independente em `site/home.php`, com fundo visual em tela inteira, logo animada propria da home, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
 - O card `Pedidos` abre `/pedidos/`, ao lado de `Cotacao`, com badge de pedidos previstos para chegar hoje.
 - O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card como `border-image` de borda/cantos para destacar a entrada sem cortar a arte nem cobrir o texto.
@@ -18,7 +18,7 @@ Entrada publica:
 Identidade visual validada em 2026-05-21:
 
 - Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw carregam a logo nova nas telas de login e nas telas internas autenticadas.
-- Os SVGs ativos desses modulos batem com o mesmo hash da logo oficial nova.
+- Os SVGs ativos desses modulos batem com o mesmo hash da logo oficial nova; a home publica pode usar o GIF animado como variacao visual sem alterar a identidade dos modulos internos.
 - `/wp-login.php` e uma tela WordPress separada e continua podendo exibir o cabecalho/logo padrao do WordPress; isso nao e regressao dos modulos internos, salvo quando a tarefa pedir customizacao do login WordPress.
 
 Rotas de login:
