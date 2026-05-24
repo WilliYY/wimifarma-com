@@ -95,6 +95,7 @@ textarea {
 .gestao-hero,
 .gestao-stats,
 .gestao-layout,
+.gestao-lists-grid,
 .gestao-orders-workspace {
     display: grid;
     gap: 16px;
@@ -341,8 +342,15 @@ textarea {
 }
 
 .gestao-layout {
-    grid-template-columns: minmax(380px, 460px) minmax(560px, 1fr) minmax(270px, 320px);
+    grid-template-columns: minmax(330px, 390px) minmax(760px, 1fr) minmax(260px, 300px);
     align-items: start;
+}
+
+.gestao-lists-grid {
+    grid-template-columns: minmax(420px, 1fr) minmax(310px, 0.78fr);
+    align-items: start;
+    gap: 12px;
+    min-width: 0;
 }
 
 .gestao-form,
@@ -353,6 +361,10 @@ textarea {
 .gestao-notepad {
     min-width: 0;
     padding: 20px;
+}
+
+.gestao-list-panel {
+    padding: 14px;
 }
 
 .gestao-form {
@@ -633,9 +645,38 @@ textarea {
     font-size: 1.2rem;
 }
 
+.gestao-monthly-total-inline {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 8px 10px;
+}
+
+.gestao-monthly-total-inline strong {
+    font-size: 0.98rem;
+    white-space: nowrap;
+}
+
 .gestao-monthly-list {
     display: grid;
     gap: 10px;
+}
+
+.gestao-monthly-sort-list.is-saving {
+    opacity: 0.76;
+}
+
+.gestao-account.is-monthly-item {
+    cursor: grab;
+}
+
+.gestao-account.is-monthly-item:active {
+    cursor: grabbing;
+}
+
+.gestao-account.is-monthly-item.is-dragging {
+    opacity: 0.54;
+    border-style: dashed;
 }
 
 .gestao-monthly-item {
@@ -908,49 +949,123 @@ textarea {
 
 .gestao-list {
     display: grid;
-    gap: 12px;
+    gap: 7px;
 }
 
 .gestao-account {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(150px, 170px);
-    gap: 14px;
-    padding: 18px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
     min-width: 0;
+    overflow: hidden;
     background: rgba(255, 255, 255, 0.96);
 }
 
 .gestao-account-main {
     min-width: 0;
+    display: none;
+    padding: 10px;
+    border-top: 1px solid var(--line-soft);
+    background: #fffdfd;
+}
+
+.gestao-account:not(.is-collapsed) .gestao-account-main {
+    display: block;
+}
+
+.gestao-account-compact {
+    display: grid;
+    grid-template-columns: minmax(54px, 0.55fr) minmax(88px, 1fr) minmax(68px, 0.62fr) 54px 48px;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 42px;
+    padding: 6px 8px;
+}
+
+.gestao-compact-category,
+.gestao-compact-state {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 24px;
+    border-radius: 999px;
+    padding: 3px 8px;
+    background: #ffe8f0;
+    color: #8b1740;
+    font-size: 0.65rem;
+    font-weight: 950;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-compact-title {
+    min-width: 0;
+    color: var(--ink);
+    font-size: 0.86rem;
+    font-weight: 950;
+    line-height: 1.1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-compact-title em {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-style: normal;
+    font-weight: 850;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-compact-value {
+    color: var(--wine);
+    font-size: 0.82rem;
+    font-weight: 950;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.gestao-quick-pay {
+    min-width: 0;
+}
+
+.gestao-compact-pay,
+.gestao-compact-open {
+    width: 100%;
+    min-height: 28px;
+    border-radius: 999px;
+    padding: 0 6px;
+    cursor: pointer;
+    font-size: 0.66rem;
+    font-weight: 950;
+}
+
+.gestao-compact-pay {
+    border: 1px solid var(--wine);
+    background: var(--wine);
+    color: #ffffff;
+}
+
+.gestao-compact-open {
+    border: 1px solid #f4bfd0;
+    background: #ffffff;
+    color: var(--wine);
 }
 
 .gestao-account-summary {
     display: block;
     min-width: 0;
-    padding: 4px;
-    margin: -4px;
+    padding: 2px;
     border-radius: 8px;
-    cursor: pointer;
     outline: 0;
-}
-
-.gestao-account-summary:hover,
-.gestao-account-summary:focus-visible {
-    background: #fff5f9;
-    box-shadow: inset 0 0 0 1px #f7c0d2;
-}
-
-.gestao-account-summary::after {
-    content: "Clique para abrir";
-    display: inline-flex;
-    margin-top: 8px;
-    color: var(--wine);
-    font-size: 0.72rem;
-    font-weight: 950;
-}
-
-.gestao-account:not(.is-collapsed) .gestao-account-summary::after {
-    content: "Clique para fechar";
 }
 
 .gestao-account.status-pago {
@@ -1103,13 +1218,13 @@ textarea {
 }
 
 .gestao-account.is-collapsed {
-    padding-bottom: 14px;
+    padding-bottom: 0;
 }
 
 .gestao-account-details {
     display: grid;
     gap: 10px;
-    margin-top: 12px;
+    margin-top: 0;
 }
 
 .gestao-ledger-block {
@@ -1440,14 +1555,16 @@ textarea {
 }
 
 .gestao-account-actions {
-    display: grid;
-    align-content: start;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
+    padding-top: 4px;
 }
 
 .gestao-account-actions form,
 .gestao-account-actions button {
-    width: 100%;
+    width: auto;
 }
 
 .gestao-account-forms {
@@ -1662,6 +1779,7 @@ textarea {
 
 @media (max-width: 1050px) {
     .gestao-layout,
+    .gestao-lists-grid,
     .gestao-hero,
     .gestao-orders-layout {
         grid-template-columns: 1fr;
@@ -1683,6 +1801,18 @@ textarea {
 
     .gestao-stats,
     .gestao-orders-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1051px) and (max-width: 1320px) {
+    .gestao-layout {
+        grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+    }
+
+    .gestao-side-stack {
+        grid-column: 1 / -1;
+        position: static;
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
@@ -1726,6 +1856,22 @@ textarea {
 
     .gestao-account-total {
         justify-items: start;
+        text-align: left;
+    }
+
+    .gestao-account-compact {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .gestao-compact-category,
+    .gestao-compact-value,
+    .gestao-quick-pay,
+    .gestao-compact-state,
+    .gestao-compact-open {
+        width: 100%;
+    }
+
+    .gestao-compact-value {
         text-align: left;
     }
 }

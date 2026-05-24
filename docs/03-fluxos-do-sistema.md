@@ -260,8 +260,8 @@ Regras a preservar:
 - a categoria e texto livre, com sugestoes apenas para acelerar digitacao;
 - categorias iguais por escrita diferente sao agrupadas visualmente por normalizacao de acento/caixa/espaco, preservando o texto original salvo; o painel lateral mostra bolinhas com abertas em verde e fechadas em vermelho, e clicar em uma categoria filtra as abertas primeiro e depois as fechadas daquela categoria;
 - o painel de categorias permite trocar a categoria de um grupo inteiro ou cancelar somente contas abertas daquele grupo, sem apagar contas fechadas nem historico;
-- a lista principal sem filtro mostra contas abertas do mes e apenas as 3 ultimas fechadas como acesso rapido; o restante fica acessivel pelo filtro de categorias para evitar lista infinita de contas ja pagas;
-- o card lateral `Mensal` mostra as contas da competencia atual com `Repetir mes que vem` ativo, somando o valor que sera levado para a proxima competencia e permitindo abrir a busca daquela conta;
+- a lista principal sem filtro mostra somente contas abertas do mes em linhas compactas com `Categoria`, `Nome`, `Valor`, `Pagar` e `Abrir`; contas pagas/canceladas ficam acessiveis pela busca ou pelo filtro de categorias para evitar lista infinita de historico;
+- o painel `Mensal` fica ao lado da lista principal e mostra as contas da competencia atual com `Repetir mes que vem` ativo na mesma estrutura compacta; ele soma o valor que sera levado para a proxima competencia, permite abrir o extrato completo e salva a ordem manual quando o operador arrasta as linhas com o mouse;
 - a busca fica abaixo dos resumos do mes e pesquisa contas/boletos por titulo, categoria, status, valor aproximado, saldo, vencimento, data de lancamento, data de pagamento, lancamentos e pagamentos; ela mostra 10 resultados primeiro, permite `Mostrar mais` e `Limpar`;
 - a conta pode ter vencimento opcional com data/hora; contas pendentes com vencimento mais proximo sobem na lista e recebem aviso visual de vencido, vence hoje ou vence em poucos dias;
 - cada conta aparece como extrato proprio: lancamentos/juros ficam juntos, pagamentos parciais ficam no historico da mesma conta, e saldo/progresso sao calculados sem misturar contas;
@@ -276,7 +276,7 @@ Regras a preservar:
 - a conta pode ser renomeada depois de lancada para reaproveitar valor/composicao em outro nome sem mexer no historico financeiro;
 - `Repetir mes que vem` funciona como ciclo liga/desliga: quando ativo, garante uma copia pendente na competencia seguinte, copiando categoria, observacao, vencimento avancado e itens ativos, mas sem copiar pagamentos, cancelamentos nem status pago; desligar o ciclo nao apaga copia ja criada para evitar perda acidental;
 - a observacao da conta pode ser editada depois do lancamento e fica minimizada por padrao ate o operador abrir;
-- os cards de conta ficam minimizados por padrao e podem ser abertos individualmente ao clicar no resumo da propria conta, mantendo o resumo e a barra de progresso visiveis sem botao extra de abrir/minimizar; dentro da conta, vencimento, pagamentos, observacao, historico e ajustes/pagamento tambem ficam em blocos recolhidos para reduzir poluicao visual;
+- os cards de conta ficam compactos por padrao e podem ser abertos individualmente pelo botao `Abrir`, mantendo a lista fina para caber mais contas por tela; dentro da conta, vencimento, pagamentos, observacao, historico e ajustes/pagamento tambem ficam em blocos recolhidos para reduzir poluicao visual;
 - lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.

@@ -138,7 +138,9 @@
         Array.prototype.slice.call(document.querySelectorAll('[data-account-card]')).forEach(function (card) {
             var trigger = card.querySelector('[data-account-toggle]');
             var id = card.getAttribute('data-account-id') || '';
-            var key = 'gestao:account-collapsed:v2:' + id;
+            var key = 'gestao:account-collapsed:v3:' + id;
+            var openLabel = trigger ? (trigger.getAttribute('data-open-label') || 'Abrir') : 'Abrir';
+            var closeLabel = trigger ? (trigger.getAttribute('data-close-label') || 'Fechar') : 'Fechar';
 
             if (!trigger || !id || trigger.dataset.gestaoCollapseBound === '1') {
                 return;
@@ -147,6 +149,7 @@
             function setCollapsed(collapsed) {
                 card.classList.toggle('is-collapsed', collapsed);
                 trigger.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                trigger.textContent = collapsed ? openLabel : closeLabel;
                 try {
                     window.localStorage.setItem(key, collapsed ? '1' : '0');
                 } catch (error) {
@@ -293,7 +296,10 @@
                 if (open && card.classList.contains('is-collapsed')) {
                     card.classList.remove('is-collapsed');
                     var trigger = card.querySelector('[data-account-toggle]');
-                    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+                    if (trigger) {
+                        trigger.setAttribute('aria-expanded', 'true');
+                        trigger.textContent = trigger.getAttribute('data-close-label') || 'Fechar';
+                    }
                 }
             }
 
@@ -307,6 +313,121 @@
                     if (input) input.focus();
                 }
             });
+        });
+    }
+
+    function initMonthlyDrag() {
+        var list = document.querySelector('[data-monthly-sort-list]');
+        if (!list || list.dataset.gestaoMonthlyDragBound === '1') {
+            return;
+        }
+
+        var dragging = null;
+        list.dataset.gestaoMonthlyDragBound = '1';
+
+        function items() {
+            return Array.prototype.slice.call(list.querySelectorAll('[data-monthly-item]'));
+        }
+
+        function csrfToken() {
+            var meta = document.querySelector('meta[name="csrf-token"]');
+            return meta ? meta.getAttribute('content') || '' : '';
+        }
+
+        function basePath() {
+            return document.body.getAttribute('data-gestao-base-path') || '/gestao';
+        }
+
+        function closestItem(target) {
+            return target && target.closest ? target.closest('[data-monthly-item]') : null;
+        }
+
+        function afterElement(y) {
+            var candidates = items().filter(function (item) {
+                return item !== dragging;
+            });
+            return candidates.reduce(function (closest, item) {
+                var box = item.getBoundingClientRect();
+                var offset = y - box.top - (box.height / 2);
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: item };
+                }
+                return closest;
+            }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+        }
+
+        function setSaving(saving) {
+            list.classList.toggle('is-saving', saving);
+        }
+
+        function saveOrder() {
+            var ids = items().map(function (item) {
+                return item.getAttribute('data-monthly-account-id') || '';
+            }).filter(Boolean);
+            if (!ids.length) {
+                return Promise.resolve();
+            }
+            setSaving(true);
+            return window.fetch(basePath() + '/api/monthly-order', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken()
+                },
+                body: JSON.stringify({
+                    competencia_mes: list.getAttribute('data-month') || '',
+                    ids: ids
+                })
+            }).then(function (response) {
+                if (!response.ok) {
+                    throw new Error('Nao consegui salvar a ordem mensal.');
+                }
+                return response.json();
+            }).then(function (payload) {
+                if (!payload || payload.ok !== true) {
+                    throw new Error(payload && payload.error ? payload.error : 'Nao consegui salvar a ordem mensal.');
+                }
+            }).catch(function (error) {
+                window.alert(error.message || 'Nao consegui salvar a ordem mensal.');
+            }).finally(function () {
+                setSaving(false);
+            });
+        }
+
+        list.addEventListener('dragstart', function (event) {
+            var item = closestItem(event.target);
+            if (!item) {
+                return;
+            }
+            dragging = item;
+            item.classList.add('is-dragging');
+            if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', item.getAttribute('data-monthly-account-id') || '');
+            }
+        });
+
+        list.addEventListener('dragover', function (event) {
+            if (!dragging) {
+                return;
+            }
+            event.preventDefault();
+            var before = afterElement(event.clientY);
+            if (before) {
+                list.insertBefore(dragging, before);
+            } else {
+                list.appendChild(dragging);
+            }
+        });
+
+        list.addEventListener('dragend', function () {
+            if (!dragging) {
+                return;
+            }
+            dragging.classList.remove('is-dragging');
+            dragging = null;
+            saveOrder();
         });
     }
 
@@ -324,6 +445,7 @@
             initBlockCollapse('[data-adjust-block]', '[data-adjust-toggle]', 'gestao:adjust-collapsed:v1');
             initItemOptions();
             initTitleEditors();
+            initMonthlyDrag();
         });
     } else {
         bindMoneyInputs(document);
@@ -338,5 +460,6 @@
         initBlockCollapse('[data-adjust-block]', '[data-adjust-toggle]', 'gestao:adjust-collapsed:v1');
         initItemOptions();
         initTitleEditors();
+        initMonthlyDrag();
     }
 }());

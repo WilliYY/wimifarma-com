@@ -42,6 +42,7 @@ type AccountRow = {
   note: string | null;
   due_at: Date | string | null;
   repeat_next_month: boolean;
+  monthly_sort_order: number;
   repeated_from_account_id: string | null;
   created_by: number | null;
   generated_at: Date | string;
@@ -247,10 +248,14 @@ function csrfField(req: Request): string {
   return `<input type="hidden" name="csrf_token" value="${e(ensureCsrf(req))}">`;
 }
 
-function verifyCsrf(req: Request, res: Response, next: NextFunction) {
+function csrfMatches(req: Request): boolean {
   const expected = req.session.csrfToken || '';
   const received = String(req.body?.csrf_token || req.get('x-csrf-token') || '');
-  if (!expected || !received || expected !== received) {
+  return Boolean(expected && received && expected === received);
+}
+
+function verifyCsrf(req: Request, res: Response, next: NextFunction) {
+  if (!csrfMatches(req)) {
     setFlash(req, 'error', 'Sessao expirada. Tente novamente.');
     return redirectHome(res, monthValue(req.body?.competencia_mes), currentView(req));
   }
@@ -829,6 +834,7 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS canceled_by integer');
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS due_at timestamptz');
   await pgPool.query("ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeat_next_month boolean NOT NULL DEFAULT false");
+  await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS monthly_sort_order integer NOT NULL DEFAULT 0');
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeated_from_account_id bigint');
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS archived_at timestamptz');
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS archived_by integer');
@@ -915,6 +921,11 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_accounts_repeated_from_idx
     ON gestao_accounts (repeated_from_account_id, competence_month)
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS gestao_accounts_monthly_sort_idx
+    ON gestao_accounts (competence_month, repeat_next_month, monthly_sort_order, id)
+    WHERE archived_at IS NULL
   `);
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_accounts_visible_month_idx
@@ -2414,6 +2425,13 @@ function recurringAccountsForMonth(accounts: RenderAccount[], selectedMonth: str
   return accounts
     .filter((account) => account.competence_month === month && account.status !== 'cancelado' && Boolean(account.repeat_next_month))
     .sort((a, b) => {
+      const aOrder = Number(a.monthly_sort_order || 0);
+      const bOrder = Number(b.monthly_sort_order || 0);
+      if (aOrder > 0 || bOrder > 0) {
+        const normalizedA = aOrder > 0 ? aOrder : Number.MAX_SAFE_INTEGER;
+        const normalizedB = bOrder > 0 ? bOrder : Number.MAX_SAFE_INTEGER;
+        if (normalizedA !== normalizedB) return normalizedA - normalizedB;
+      }
       const aStatus = a.status === 'pendente' ? 0 : 1;
       const bStatus = b.status === 'pendente' ? 0 : 1;
       if (aStatus !== bStatus) return aStatus - bStatus;
@@ -2424,42 +2442,25 @@ function recurringAccountsForMonth(accounts: RenderAccount[], selectedMonth: str
     });
 }
 
-function renderMonthlyPanel(accounts: RenderAccount[], selectedMonth: string): string {
+function renderMonthlyPanel(req: Request, accounts: RenderAccount[], selectedMonth: string): string {
   const recurringAccounts = recurringAccountsForMonth(accounts, selectedMonth);
   const totalCents = recurringAccounts.reduce((sum, account) => sum + Number(account.total_cents || 0), 0);
   const nextMonthLabel = monthLabel(nextMonthValue(selectedMonth));
   const rowsHtml = recurringAccounts.length
-    ? recurringAccounts.map((account) => {
-      const accountTotalCents = Number(account.total_cents || 0);
-      const paidCents = Number(account.paid_cents || 0);
-      const remainingCents = Math.max(0, accountTotalCents - paidCents);
-      const due = dueStatus(account);
-      const searchUrl = gestaoListUrl(selectedMonth, '', account.title);
-      const meta = [
-        accountStatusLabel(account.status),
-        remainingCents > 0 ? `Saldo ${formatMoney(remainingCents)}` : 'Sem saldo aberto',
-        due.label,
-      ].filter(Boolean).join(' / ');
-      return `<a class="gestao-monthly-item status-${e(account.status)}" href="${e(searchUrl)}">
-        <span class="gestao-pill">${e(categoryLabel(account.category))}</span>
-        <strong>${e(account.title)}</strong>
-        <small>${e(meta)}</small>
-        <em>Repete em ${e(nextMonthLabel)} - ${e(formatMoney(accountTotalCents))}</em>
-      </a>`;
-    }).join('')
+    ? recurringAccounts.map((account) => renderAccount(req, account, selectedMonth, { monthly: true })).join('')
     : '<p class="gestao-empty-line">Nenhuma conta mensal repetindo neste mes.</p>';
 
-  return `<aside class="gestao-monthly-panel" aria-label="Contas mensais da Gestao">
+  return `<section class="gestao-list-panel gestao-monthly-list-panel" aria-label="Contas mensais da Gestao">
     <div class="gestao-section-title">
       <span class="gestao-kicker">Mensal</span>
       <strong>${e(recurringAccounts.length)}</strong>
     </div>
-    <div class="gestao-monthly-total">
+    <div class="gestao-monthly-total gestao-monthly-total-inline">
       <span>Repetindo para ${e(nextMonthLabel)}</span>
       <strong>${e(formatMoney(totalCents))}</strong>
     </div>
-    <div class="gestao-monthly-list">${rowsHtml}</div>
-  </aside>`;
+    <div class="gestao-list gestao-monthly-sort-list" data-monthly-sort-list data-month="${e(monthValue(selectedMonth))}">${rowsHtml}</div>
+  </section>`;
 }
 
 function renderCategoryPanel(req: Request, summaries: CategorySummary[], selectedMonth: string, selectedCategory: string): string {
@@ -2555,7 +2556,51 @@ async function deleteNotepadNote(req: Request): Promise<void> {
   await logMysql(userId, 'gestao_bloco_nota_apagado', 'gestao_nota', id, 'Nota da Gestao apagada.');
 }
 
-function renderAccount(req: Request, account: RenderAccount, selectedMonth: string): string {
+async function updateMonthlyOrder(req: Request): Promise<void> {
+  const selectedMonth = monthValue(req.body.competencia_mes || req.body.month || req.body.mes);
+  const ids = bodyArray(req.body, 'ids')
+    .map((value) => Number(value || 0))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const uniqueIds = [...new Set(ids)];
+  if (!uniqueIds.length) throw new Error('Nenhuma conta mensal para ordenar.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const validResult = await client.query<{ id: string }>(
+      `SELECT id
+       FROM gestao_accounts
+       WHERE id = ANY($1::bigint[])
+         AND competence_month = $2
+         AND repeat_next_month = true
+         AND status <> 'cancelado'
+         AND archived_at IS NULL`,
+      [uniqueIds, selectedMonth],
+    );
+    if (validResult.rowCount !== uniqueIds.length) {
+      throw new Error('A ordem mensal mudou. Recarregue a pagina e tente de novo.');
+    }
+
+    for (const [index, id] of uniqueIds.entries()) {
+      await client.query(
+        'UPDATE gestao_accounts SET monthly_sort_order = $1 WHERE id = $2',
+        [(index + 1) * 10, id],
+      );
+    }
+    await auditPg(client, null, userId, 'gestao_mensal_ordem_atualizada', `Ordem mensal atualizada em ${selectedMonth}.`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await logMysql(userId, 'gestao_mensal_ordem_atualizada', 'gestao', null, `Ordem mensal atualizada em ${selectedMonth}.`);
+}
+
+function renderAccount(req: Request, account: RenderAccount, selectedMonth: string, options: { monthly?: boolean } = {}): string {
   const id = Number(account.id);
   const status = account.status || 'pendente';
   const totalCents = Number(account.total_cents || 0);
@@ -2883,9 +2928,29 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     </form>
   </div>`;
 
-  return `<article class="gestao-account status-${e(status)} due-${e(due.key)}" data-account-card data-account-id="${e(id)}">
+  const quickPayControl = status === 'pendente'
+    ? `<form method="post" class="gestao-quick-pay" data-confirm="${remainingCents > 0 ? `Registrar ${e(remainingMoney)} como pagamento final desta conta?` : 'Marcar esta conta como paga novamente?'}">
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="confirm_paid">
+        <input type="hidden" name="id" value="${e(id)}">
+        <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+        <button type="submit" class="gestao-compact-pay">Pagar</button>
+      </form>`
+    : `<span class="gestao-compact-state">${e(accountStatusLabel(status))}</span>`;
+  const monthlyAttrs = options.monthly ? ` data-monthly-item data-monthly-account-id="${e(id)}" draggable="true"` : '';
+  const monthlyMeta = options.monthly ? `<em>Repete ${e(monthLabel(nextMonthValue(selectedMonth)))}</em>` : '';
+
+  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
+    <div class="gestao-account-compact">
+      <span class="gestao-compact-category">${e(categoryLabel(account.category))}</span>
+      <strong class="gestao-compact-title">${e(account.title)}${due.label ? `<em>${e(due.label)}</em>` : ''}${monthlyMeta}</strong>
+      <span class="gestao-compact-value">${e(formatMoney(remainingCents > 0 ? remainingCents : totalCents))}</span>
+      ${quickPayControl}
+      <button type="button" class="gestao-compact-open" data-account-toggle data-open-label="Abrir" data-close-label="Fechar" aria-expanded="false">Abrir</button>
+    </div>
     <div class="gestao-account-main">
-      <div class="gestao-account-summary" data-account-toggle role="button" tabindex="0" aria-expanded="false">
+      <div class="gestao-account-details" data-account-details>
+        <div class="gestao-account-summary">
         <div class="gestao-account-head">
           <div>
             <span class="gestao-pill">${e(categoryLabel(account.category))}</span>
@@ -2904,9 +2969,8 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
           <span>Pago <strong>${e(formatMoney(paidCents))}</strong></span>
           <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
         </div>
-        <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
-      </div>
-      <div class="gestao-account-details" data-account-details>
+          <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
+        </div>
         ${titleForm}
         ${dueForm}
         ${itemHtml}
@@ -2914,14 +2978,14 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
         ${historyHtml}
         ${noteForm}
         ${forms}
+        <div class="gestao-account-actions">
+          <span class="gestao-status">${e(accountStatusLabel(status))}</span>
+          ${pendingActions}
+          ${repeatAction}
+          ${paidActions}
+          ${canceledActions}
+        </div>
       </div>
-    </div>
-    <div class="gestao-account-actions">
-      <span class="gestao-status">${e(accountStatusLabel(status))}</span>
-      ${pendingActions}
-      ${repeatAction}
-      ${paidActions}
-      ${canceledActions}
     </div>
   </article>`;
 }
@@ -3012,21 +3076,18 @@ async function renderApp(req: Request): Promise<string> {
     ? searchResults.slice(0, searchLimit).map((result) => result.account)
     : activeCategory
     ? allAccounts.filter((account) => categoryKey(account.category) === activeCategory)
-    : [
-      ...allAccounts.filter((account) => account.status === 'pendente'),
-      ...allAccounts.filter((account) => account.status !== 'pendente').slice(0, 3),
-    ];
+    : allAccounts.filter((account) => account.status === 'pendente');
   const suggestions = summaries.map((summary) => `<option value="${e(summary.label)}">`).join('');
   const accountsHtml = visibleAccounts.length
     ? visibleAccounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
     : `<div class="gestao-empty">${searchQuery ? 'Nada encontrado para essa busca.' : 'Nada lancado nesse mes ainda.'}</div>`;
-  const monthlyPanelHtml = renderMonthlyPanel(allAccounts, selectedMonth);
+  const monthlyPanelHtml = renderMonthlyPanel(req, allAccounts, selectedMonth);
   const categoryPanelHtml = renderCategoryPanel(req, summaries, selectedMonth, activeCategory);
   const notepadHtml = renderNotepad(req, notes, selectedMonth);
   const searchPanelHtml = renderSearchPanel(selectedMonth, searchQuery, searchResults.length, visibleAccounts.length, searchLimit);
   const listTitle = searchQuery
     ? `<div class="gestao-section-title"><span class="gestao-kicker">Busca</span><strong>${e(searchQuery)}</strong></div>`
-    : `<div class="gestao-section-title"><span class="gestao-kicker">${activeCategory ? 'Categoria filtrada' : 'Contas abertas + ultimas fechadas'}</span><strong>${activeCategory ? e(summaries.find((summary) => summary.key === activeCategory)?.label || '') : e(monthLabel(selectedMonth))}</strong></div>`;
+    : `<div class="gestao-section-title"><span class="gestao-kicker">${activeCategory ? 'Categoria filtrada' : 'Contas abertas'}</span><strong>${activeCategory ? e(summaries.find((summary) => summary.key === activeCategory)?.label || '') : e(monthLabel(selectedMonth))}</strong></div>`;
   const contentHtml = `<section class="gestao-layout">
       <form method="post" class="gestao-form" data-gestao-form>
         ${csrfField(req)}
@@ -3061,13 +3122,16 @@ async function renderApp(req: Request): Promise<string> {
         <button type="submit" class="gestao-btn gestao-btn-primary">Lancar conta</button>
       </form>
 
-      <section class="gestao-list-panel">
-        ${listTitle}
-        <div class="gestao-list">${accountsHtml}</div>
-      </section>
+      <div class="gestao-lists-grid">
+        <section class="gestao-list-panel">
+          ${listTitle}
+          <div class="gestao-list">${accountsHtml}</div>
+        </section>
+
+        ${monthlyPanelHtml}
+      </div>
 
       <div class="gestao-side-stack">
-        ${monthlyPanelHtml}
         ${categoryPanelHtml}
         ${notepadHtml}
       </div>
@@ -3077,14 +3141,15 @@ async function renderApp(req: Request): Promise<string> {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260523-monthly">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260523-compact-monthly">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260521a">
-  <script src="${BASE_PATH}/app.js?v=20260520-search" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260523-compact-monthly" defer></script>
   <script src="/miauw/widget.js?v=20260521a" defer></script>
 </head>
-<body class="gestao-app-body">
+<body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">
   <header class="gestao-topbar">
     <a class="gestao-brand" href="/">
       <img src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
@@ -3247,6 +3312,18 @@ app.post(`${BASE_PATH}/api/internal/accounts`, requireInternalAuth, asyncRoute(a
     });
   } catch (error) {
     res.status(400).json({ ok: false, error: error instanceof Error ? error.message : 'Nao consegui criar a conta.' });
+  }
+}));
+
+app.post(`${BASE_PATH}/api/monthly-order`, requireAuth, asyncRoute(async (req, res) => {
+  if (!csrfMatches(req)) {
+    return res.status(403).json({ ok: false, error: 'Sessao expirada. Recarregue a pagina.' });
+  }
+  try {
+    await updateMonthlyOrder(req);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error instanceof Error ? error.message : 'Nao consegui salvar a ordem mensal.' });
   }
 }));
 
