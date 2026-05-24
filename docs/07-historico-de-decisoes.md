@@ -8,11 +8,11 @@ Decisao:
 
 - Trocar apenas a logo da home publica por `logo-wimifarma-home-animated.gif`.
 - Manter os SVGs oficiais dos modulos internos sem alteracao.
-- Recortar visualmente o GIF full HD dentro de uma moldura escura para a marca branca ficar legivel sobre o fundo claro da home.
+- Remover a camada do SVG antigo e usar o GIF animado com transparencia, sem moldura de fundo na home.
 
 Motivo:
 
-- O usuario forneceu uma logo animada e pediu que ela substituisse a logo da home, ficando visivel na primeira tela.
+- O usuario forneceu uma logo animada e pediu que ela substituisse a logo da home, ficando visivel na primeira tela e sem fundo.
 
 Impacto:
 

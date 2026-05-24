@@ -13,7 +13,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - A home publica mostrou HTML com assets `http://wimifarma.com/...` mesmo apos ajustes de HTTPS, indicando cache estatico antigo do SpeedyCache/`advanced-cache.php`.
 - Mesmo sem header de SpeedyCache, a home publica ainda podia gerar parte dos assets em `http://`; o tema ganhou uma segunda camada de normalizacao HTTPS.
 - A raiz `/` passou a ser servida por `site/home.php`, sem bootstrap do WordPress, para isolar a primeira tela de plugins/cache enquanto a migracao estabiliza.
-- A home standalone usa video de fundo em tela inteira, logo animada propria e tres GIFs animados decorativos; manter o movimento leve e reaproveitar o padrao dos logins.
+- A home standalone usa video de fundo em tela inteira, logo animada propria sem fundo e tres GIFs animados decorativos; manter o movimento leve e reaproveitar o padrao dos logins.
 
 ## Cotacao V2 - baseline de performance em 2026-05-14
 
