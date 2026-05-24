@@ -17,6 +17,12 @@ RewriteRule ^$ home.php [L]
 </IfModule>
 # END Wimifarma stable home
 
+# BEGIN Wimifarma WordPress hardening
+<Files "xmlrpc.php">
+    Require all denied
+</Files>
+# END Wimifarma WordPress hardening
+
 # BEGIN WordPress
 <IfModule mod_rewrite.c>
 RewriteEngine On

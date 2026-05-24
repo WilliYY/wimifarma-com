@@ -135,15 +135,29 @@ const sessionMiddleware = session({
   }
 });
 
+const loginRateLimits = new Map();
+const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_RATE_LIMIT_BLOCK_MS = 10 * 60 * 1000;
+const LOGIN_RATE_LIMIT_MAX_FAILURES = 5;
+
 const io = new Server(server, {
   path: `${BASE_PATH}/socket.io`,
   serveClient: true,
   transports: ['websocket', 'polling']
 });
 
+app.disable('x-powered-by');
 app.set('trust proxy', true);
 app.set('etag', false);
 app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; media-src 'self' blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self';"
+  );
   if (req.path === `${BASE_PATH}/api` || req.path.startsWith(`${BASE_PATH}/api/`)) {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
@@ -211,6 +225,59 @@ function verifyCsrf(req, res, next) {
     return res.status(403).json({ ok: false, error: 'Sessao expirada. Recarregue a pagina.' });
   }
   return next();
+}
+
+function loginRateLimitKey(req, username) {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  const clientIp = String(req.ip || req.socket?.remoteAddress || 'unknown');
+  return `${clientIp}|${normalizedUsername}`;
+}
+
+function pruneLoginRateLimits(now = Date.now()) {
+  for (const [key, value] of loginRateLimits.entries()) {
+    const blockedUntil = Number(value.blockedUntil || 0);
+    const attempts = Array.isArray(value.attempts) ? value.attempts : [];
+    const hasRecentAttempt = attempts.some((timestamp) => now - timestamp <= LOGIN_RATE_LIMIT_WINDOW_MS);
+    if (!hasRecentAttempt && blockedUntil <= now) {
+      loginRateLimits.delete(key);
+    }
+  }
+}
+
+function loginWaitSeconds(req, username) {
+  pruneLoginRateLimits();
+  const now = Date.now();
+  const sessionWait = Math.max(0, Math.ceil((Number(req.session.loginBlockedUntil || 0) - now) / 1000));
+  const record = loginRateLimits.get(loginRateLimitKey(req, username));
+  const sharedWait = record ? Math.max(0, Math.ceil((Number(record.blockedUntil || 0) - now) / 1000)) : 0;
+  return Math.max(sessionWait, sharedWait);
+}
+
+function registerLoginFailure(req, username) {
+  const now = Date.now();
+  const sessionAttempts = Array.isArray(req.session.loginAttempts) ? req.session.loginAttempts : [];
+  const freshSessionAttempts = sessionAttempts.filter((timestamp) => Number.isFinite(timestamp) && now - timestamp <= LOGIN_RATE_LIMIT_WINDOW_MS);
+  freshSessionAttempts.push(now);
+  req.session.loginAttempts = freshSessionAttempts;
+  if (freshSessionAttempts.length >= LOGIN_RATE_LIMIT_MAX_FAILURES) {
+    req.session.loginBlockedUntil = now + LOGIN_RATE_LIMIT_BLOCK_MS;
+  }
+
+  const key = loginRateLimitKey(req, username);
+  const current = loginRateLimits.get(key) || { attempts: [], blockedUntil: 0 };
+  const attempts = (Array.isArray(current.attempts) ? current.attempts : [])
+    .filter((timestamp) => Number.isFinite(timestamp) && now - timestamp <= LOGIN_RATE_LIMIT_WINDOW_MS);
+  attempts.push(now);
+  loginRateLimits.set(key, {
+    attempts,
+    blockedUntil: attempts.length >= LOGIN_RATE_LIMIT_MAX_FAILURES ? now + LOGIN_RATE_LIMIT_BLOCK_MS : Number(current.blockedUntil || 0)
+  });
+}
+
+function clearLoginRateLimit(req, username) {
+  delete req.session.loginAttempts;
+  delete req.session.loginBlockedUntil;
+  loginRateLimits.delete(loginRateLimitKey(req, username));
 }
 
 function requireAuth(req, res, next) {
@@ -1824,10 +1891,22 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   }
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
+  const waitSeconds = loginWaitSeconds(req, username);
+  if (waitSeconds > 0) {
+    return res.status(429).type('html').send(renderLogin(req, `Muitas tentativas de login. Aguarde cerca de ${Math.max(1, Math.ceil(waitSeconds / 60))} minuto(s).`));
+  }
   const user = await authenticate(username, password);
   if (!user) {
+    registerLoginFailure(req, username);
     return res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha invalidos.'));
   }
+  clearLoginRateLimit(req, username);
+  await new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
   req.session.user = user;
   req.session.csrfToken = crypto.randomBytes(24).toString('hex');
   return res.redirect(`${BASE_PATH}/`);

@@ -55,6 +55,7 @@ Tabelas:
 - O painel `/miauw/treino.php` segue a mesma restricao de diagnostico (`admin`, `gerente` ou `adm`); revisar/aprovar/rejeitar treino usa CSRF e nao apaga historico.
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.
 - O audio do Miauby (`api.php?action=audio_transcribe`) exige a mesma sessao interna e CSRF do chat; o browser envia audio temporario para transcricao e nunca recebe chave de API.
+- Logins PHP internos usam limitador compartilhado por sessao e por `IP + usuario` em `wf_login_rate_limits`; Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
 
 ## Decisoes tecnicas ja tomadas
 
@@ -85,5 +86,5 @@ Tabelas:
 
 - Criar RBAC simples por permissao, nao apenas por role textual.
 - Adicionar auditoria central de login/logout/falhas.
-- Adicionar limite de tentativas consistente em todos os modulos.
+- Evoluir o limite de tentativas para painel de monitoramento/alerta, preservando os bloqueios atuais.
 - Criar testes automatizados para login, logout, CSRF e acesso negado.

@@ -82,14 +82,79 @@ function get_flash(): array
     return is_array($flash) ? $flash : array();
 }
 
-function login_rate_limit_wait_seconds(): int
+function login_rate_limit_username(?string $username = null): string
 {
-    $blockedUntil = (int) ($_SESSION['login_blocked_until'] ?? 0);
+    $candidate = $username;
 
-    return max(0, $blockedUntil - time());
+    if ($candidate === null) {
+        $candidate = $_POST['username'] ?? '';
+    }
+
+    return strtolower(trim((string) $candidate));
 }
 
-function register_login_failure(): void
+function login_rate_limit_client_ip(): string
+{
+    $candidates = array();
+
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $forwarded = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
+        $candidates[] = trim((string) ($forwarded[0] ?? ''));
+    }
+
+    $candidates[] = (string) ($_SERVER['HTTP_X_REAL_IP'] ?? '');
+    $candidates[] = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+
+    foreach ($candidates as $candidate) {
+        if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
+            return $candidate;
+        }
+    }
+
+    return 'unknown';
+}
+
+function login_rate_limit_identity(?string $username = null): array
+{
+    $normalizedUsername = login_rate_limit_username($username);
+    $clientIp = login_rate_limit_client_ip();
+
+    return array(
+        'scope' => 'internal-login',
+        'identity_hash' => hash('sha256', $clientIp . '|' . $normalizedUsername),
+        'username_hash' => hash('sha256', $normalizedUsername),
+        'ip_address' => $clientIp,
+    );
+}
+
+function login_rate_limit_wait_seconds(?string $username = null): int
+{
+    $blockedUntil = (int) ($_SESSION['login_blocked_until'] ?? 0);
+    $sessionWait = max(0, $blockedUntil - time());
+
+    try {
+        $identity = login_rate_limit_identity($username);
+        $stmt = db()->prepare(
+            'SELECT blocked_until
+             FROM wf_login_rate_limits
+             WHERE scope = ? AND identity_hash = ?
+             LIMIT 1'
+        );
+        $stmt->execute(array($identity['scope'], $identity['identity_hash']));
+        $blockedAt = $stmt->fetchColumn();
+
+        if ($blockedAt) {
+            $databaseWait = max(0, strtotime((string) $blockedAt) - time());
+            return max($sessionWait, $databaseWait);
+        }
+    } catch (Throwable $error) {
+        return $sessionWait;
+    }
+
+    return $sessionWait;
+}
+
+function register_login_failure(?string $username = null): void
 {
     $now = time();
     $attempts = $_SESSION['login_attempts'] ?? array();
@@ -104,11 +169,48 @@ function register_login_failure(): void
     if (count($attempts) >= 5) {
         $_SESSION['login_blocked_until'] = $now + 600;
     }
+
+    try {
+        $identity = login_rate_limit_identity($username);
+        $stmt = db()->prepare(
+            "INSERT INTO wf_login_rate_limits
+                (scope, identity_hash, username_hash, ip_address, failed_count, first_failed_at, last_failed_at, blocked_until)
+             VALUES
+                (?, ?, ?, ?, 1, NOW(), NOW(), NULL)
+             ON DUPLICATE KEY UPDATE
+                username_hash = VALUES(username_hash),
+                ip_address = VALUES(ip_address),
+                failed_count = IF(last_failed_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE), 1, failed_count + 1),
+                first_failed_at = IF(last_failed_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE), NOW(), first_failed_at),
+                last_failed_at = NOW(),
+                blocked_until = IF(
+                    IF(last_failed_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE), 1, failed_count + 1) >= 5,
+                    DATE_ADD(NOW(), INTERVAL 10 MINUTE),
+                    blocked_until
+                )"
+        );
+        $stmt->execute(array(
+            $identity['scope'],
+            $identity['identity_hash'],
+            $identity['username_hash'],
+            $identity['ip_address'],
+        ));
+    } catch (Throwable $error) {
+        // O limitador por sessao continua ativo se o banco nao puder registrar a falha.
+    }
 }
 
-function clear_login_rate_limit(): void
+function clear_login_rate_limit(?string $username = null): void
 {
     unset($_SESSION['login_attempts'], $_SESSION['login_blocked_until']);
+
+    try {
+        $identity = login_rate_limit_identity($username);
+        $stmt = db()->prepare('DELETE FROM wf_login_rate_limits WHERE scope = ? AND identity_hash = ?');
+        $stmt->execute(array($identity['scope'], $identity['identity_hash']));
+    } catch (Throwable $error) {
+        // Limpeza do limitador nao deve bloquear login valido.
+    }
 }
 
 function current_user(): ?array
@@ -514,6 +616,24 @@ function ensure_schema_updates(): void
     if (!schema_table_exists('wf_users') || !schema_table_exists('wf_compras')) {
         return;
     }
+
+    db()->exec(
+        "CREATE TABLE IF NOT EXISTS wf_login_rate_limits (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            scope VARCHAR(40) NOT NULL,
+            identity_hash CHAR(64) NOT NULL,
+            username_hash CHAR(64) NOT NULL,
+            ip_address VARCHAR(64) NULL,
+            failed_count INT UNSIGNED NOT NULL DEFAULT 0,
+            first_failed_at DATETIME NOT NULL,
+            last_failed_at DATETIME NOT NULL,
+            blocked_until DATETIME NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_wf_login_rate_identity (scope, identity_hash),
+            KEY idx_wf_login_rate_blocked (blocked_until),
+            KEY idx_wf_login_rate_last_failed (last_failed_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
 
     db()->exec(
         "CREATE TABLE IF NOT EXISTS wf_whatsapp_mensagens (

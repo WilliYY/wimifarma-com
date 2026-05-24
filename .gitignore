@@ -24,6 +24,9 @@ apps/pedidos/dist/
 /site/wp-content/speedycache-config/
 /site/wp-content/advanced-cache.php
 /site/wp-content/mu-plugins/endurance-page-cache.php
+/site/wp-content/uploads/*
+!/site/wp-content/uploads/
+!/site/wp-content/uploads/.htaccess
 /site/miauw/relatorios/*.ndjson
 /site/miauw/relatorios/*.pdf
 

@@ -18,6 +18,11 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/gestao/` usa sessao propria `WFGESTAO` persistida no Postgres da Gestao, autentica contra `wf_users`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa queries parametrizadas para lancar contas, adicionar itens/juros, registrar pagamentos parciais, confirmar saldo, cancelar ou reabrir contas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - `Permissions-Policy` bloqueia camera e geolocalizacao; microfone fica liberado apenas para a propria origem (`microphone=(self)`) para permitir o botao de audio do Miauby, que ainda exige clique explicito do usuario.
+- Os logins PHP internos usam limitador por sessao e por chave `IP + usuario` persistida em `wf_login_rate_limits`, com bloqueio temporario apos falhas repetidas.
+- A Cotacao V2 tambem limita tentativas de login por sessao e por chave em memoria `IP + usuario`, regenera a sessao apos login valido e envia headers de seguranca equivalentes aos modulos Node administrativos.
+- `xmlrpc.php` do WordPress fica bloqueado por `.htaccess` enquanto nao houver uso operacional confirmado de XML-RPC.
+- `site/wp-content/uploads/.htaccess` e `site/xp/uploads/.htaccess` bloqueiam listagem e execucao de scripts em pastas de upload versionadas.
+- `scripts/check-secrets.ps1` faz uma varredura local dos arquivos versionados antes de push para detectar chaves, tokens, blocos de chave privada e atribuicoes obvias de segredo.
 - Miauby possui rotinas de redacao/evita expor alguns dados sensiveis em diagnosticos.
 - `/miauw/diagnostico.php` e restrito a `admin`, `gerente` ou `adm`, usa CSRF nas acoes e sanitiza textos de memorias, padroes e diagnosticos antes de exibir.
 - A Fase 5 do Miauby exige confirmacao humana para acoes fortes antes de gravar dados e registra traces sanitizados em `miauw_tool_traces`.
@@ -47,11 +52,14 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `site/codigos/api.php`
 - `site/xp/xp-funcoes.php`
 - `site/xp/uploads/.htaccess`
+- `site/wp-content/uploads/.htaccess`
 - `apps/gestao/src/server.ts`
+- `apps/cotacao/src/server.js`
 - `site/gestao/gestao-funcoes.php` (legado)
 - `site/wp-config.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/config.local.example.php`
+- `scripts/check-secrets.ps1`
 - `cotacao-data/`
 
 ## Regras que precisam ser preservadas
@@ -98,6 +106,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - O painel de diagnostico reduz dados sensiveis, mas ainda e uma tela sensivel e deve permanecer restrito.
 - Um `COTACAO_SESSION_SECRET` fraco permite falsificacao de sessao; usar valor longo e exclusivo por ambiente.
 - Expor Postgres ou Redis publicamente permitiria leitura/alteracao de dados internos; eles devem ficar apenas na rede Docker.
+- Se algum aplicativo externo depender de XML-RPC do WordPress, o bloqueio atual em `site/.htaccess` precisara ser reavaliado com allowlist ou autenticacao especifica.
 
 ## Pendencias
 
@@ -105,8 +114,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Remover credenciais/fallbacks legados.
 - Criar politica de backup criptografado.
 - Revisar permissao de arquivos no VPS.
-- Desabilitar ou proteger `xmlrpc.php` se nao for necessario.
-- Criar rotina de varredura de segredos antes de push.
+- Avaliar se o bloqueio de `xmlrpc.php` pode continuar permanente.
+- Rodar `powershell -ExecutionPolicy Bypass -File scripts/check-secrets.ps1` antes de pushes com alteracao sensivel.
 - Criar testes de permissao especificos da Cotacao V2 para API HTTP e Socket.IO.
 
 ## Evolucao futura

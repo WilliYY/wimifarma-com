@@ -114,6 +114,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - O frontend de audio do Miauby tenta abrir o microfone por `getUserMedia()` mesmo quando o estado previo de permissao parece desatualizado; se o Chrome/Windows recusar, a mensagem indica recarregar/redefinir permissao ou revisar a permissao de microfone do sistema.
 - Os headers de seguranca dos modulos internos permitem `microphone=(self)` para o audio do Miauby no proprio dominio, mantendo camera e geolocalizacao bloqueadas.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
+- A seguranca de base inclui CSRF nos formularios internos, headers de seguranca, bloqueio de `xmlrpc.php`, bloqueio de execucao em uploads versionados, limitador de login nos modulos PHP e na Cotacao V2, e varredura local de segredos por `scripts/check-secrets.ps1`.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
@@ -208,6 +209,7 @@ docker compose logs --tail=80 wimifarma-pedidos-app
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
 docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
+powershell -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
 cd apps/miauw-agent; npm.cmd run check:persona; cd ../..
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/gestao/login.php

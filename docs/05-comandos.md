@@ -122,6 +122,17 @@ docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
 
 Esse runner valida intents, guardrails, registry e rotas de modelo do Miauby sem chamar OpenAI e sem executar escritas reais.
 
+## Local - seguranca
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check-secrets.ps1
+curl.exe -I http://127.0.0.1:3002/cotacao/login.php
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code}`n" http://127.0.0.1:3002/xmlrpc.php
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code}`n" http://127.0.0.1:3002/wp-content/uploads/
+```
+
+O `xmlrpc.php` e a listagem de `wp-content/uploads/` devem responder 403 enquanto o hardening estiver ativo.
+
 ## Local - rotas rapidas
 
 ```powershell
@@ -196,6 +207,18 @@ docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
 docker compose ps
 curl -I https://wimifarma.com/miauw/agent/health
 docker compose logs --tail=80 wimifarma-miauw-agent
+```
+
+Para mudancas no PHP/Apache e na Cotacao V2 ao mesmo tempo, usar rebuild direcionado:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+git pull --ff-only origin main
+docker compose up -d --no-deps --build wimifarma-com-web wimifarma-cotacao-app
+docker compose ps
+curl -sS http://127.0.0.1:3002/cotacao/health
+curl -I http://127.0.0.1:3002/cotacao/login.php
+curl -I http://127.0.0.1:3002/xmlrpc.php
 ```
 
 Para mudancas no servico Gestao, usar rebuild direcionado e preservar os bancos existentes:
