@@ -2781,7 +2781,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     ${historyRows ? `<ul class="gestao-payments gestao-history-list" data-history-list>${historyRows}</ul>` : '<p class="gestao-empty-line" data-history-list>Nenhum historico rapido nessa conta ainda.</p>'}
   </div>`;
 
-  const dueSummary = account.due_at ? brDate(account.due_at, true) : 'definir';
+  const dueSummary = account.due_at ? brDateOnly(account.due_at) : 'definir';
 
   const pendingActions = status === 'pendente'
     ? `${remainingCents > 0 ? `
@@ -2907,7 +2907,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
       <input type="hidden" name="action" value="update_due">
       <input type="hidden" name="id" value="${e(id)}">
       <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-      <label><span>Data e horario</span><input type="datetime-local" name="vencimento_em" value="${e(datetimeLocalValue(account.due_at))}"></label>
+      <label><span>Data</span><input type="date" name="vencimento_em" value="${e(dateInputValue(account.due_at))}"></label>
       <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
       <button type="submit" name="limpar_vencimento" value="1" class="gestao-btn gestao-btn-ghost">Apagar</button>
     </form>
@@ -3108,7 +3108,7 @@ async function renderApp(req: Request): Promise<string> {
             <span>Status inicial</span>
             <select name="status"><option value="pendente">Pendente</option><option value="pago">Pago agora</option></select>
           </label>
-          <label><span>Vencimento opcional</span><input type="datetime-local" name="vencimento_em"></label>
+          <label><span>Vencimento opcional</span><input type="date" name="vencimento_em"></label>
         </div>
         <div class="gestao-line-items" data-line-items>
           <div class="gestao-line-item">
@@ -3144,7 +3144,7 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260523-compact-monthly">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260524-compact-monthly">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260521a">
   <script src="${BASE_PATH}/app.js?v=20260523-compact-monthly" defer></script>
   <script src="/miauw/widget.js?v=20260521a" defer></script>

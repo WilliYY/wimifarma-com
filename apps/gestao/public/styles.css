@@ -367,6 +367,10 @@ textarea {
     padding: 14px;
 }
 
+.gestao-list-panel .gestao-section-title {
+    margin-bottom: 8px;
+}
+
 .gestao-form {
     display: grid;
     gap: 18px;
@@ -649,7 +653,10 @@ textarea {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     margin-bottom: 10px;
-    padding: 8px 10px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: #fff8fb;
+    border: 1px solid #f5bed0;
 }
 
 .gestao-monthly-total-inline strong {
@@ -960,6 +967,8 @@ textarea {
     min-width: 0;
     overflow: hidden;
     background: rgba(255, 255, 255, 0.96);
+    border-color: #f1b6ca;
+    box-shadow: 0 8px 22px rgba(111, 15, 54, 0.08);
 }
 
 .gestao-account-main {
@@ -976,11 +985,11 @@ textarea {
 
 .gestao-account-compact {
     display: grid;
-    grid-template-columns: minmax(54px, 0.55fr) minmax(88px, 1fr) minmax(68px, 0.62fr) 54px 48px;
+    grid-template-columns: minmax(58px, 0.55fr) minmax(108px, 1fr) minmax(78px, 0.64fr) 58px 52px;
     align-items: center;
     gap: 6px;
     min-width: 0;
-    min-height: 42px;
+    min-height: 44px;
     padding: 6px 8px;
 }
 
@@ -1027,10 +1036,11 @@ textarea {
 
 .gestao-compact-value {
     color: var(--wine);
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 950;
     white-space: nowrap;
     text-align: right;
+    min-width: 0;
 }
 
 .gestao-quick-pay {
@@ -1042,9 +1052,9 @@ textarea {
     width: 100%;
     min-height: 28px;
     border-radius: 999px;
-    padding: 0 6px;
+    padding: 0 5px;
     cursor: pointer;
-    font-size: 0.66rem;
+    font-size: 0.65rem;
     font-weight: 950;
 }
 
@@ -1058,6 +1068,41 @@ textarea {
     border: 1px solid #f4bfd0;
     background: #ffffff;
     color: var(--wine);
+}
+
+.gestao-account.is-monthly-item .gestao-account-compact {
+    grid-template-columns: auto minmax(0, 1fr) 56px 50px;
+    grid-template-areas:
+        "category title value value"
+        "category title pay open";
+    align-items: center;
+    row-gap: 3px;
+    min-height: 56px;
+}
+
+.gestao-account.is-monthly-item .gestao-compact-category {
+    grid-area: category;
+    align-self: start;
+    margin-top: 2px;
+}
+
+.gestao-account.is-monthly-item .gestao-compact-title {
+    grid-area: title;
+}
+
+.gestao-account.is-monthly-item .gestao-compact-value {
+    grid-area: value;
+    justify-self: end;
+    max-width: 100%;
+    font-size: 0.78rem;
+}
+
+.gestao-account.is-monthly-item .gestao-quick-pay {
+    grid-area: pay;
+}
+
+.gestao-account.is-monthly-item .gestao-compact-open {
+    grid-area: open;
 }
 
 .gestao-account-summary {
