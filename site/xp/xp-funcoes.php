@@ -345,12 +345,11 @@ function xp_level_track_bounds(array $employees): array
     return array($start, $end);
 }
 
-function xp_progress_fill_style(array $progress): string
+function xp_progress_fill_class(array $progress): string
 {
     $percent = max(0, min(100, (float) ($progress['percent'] ?? 0)));
-    $ratio = $percent / 100;
 
-    return '--xp-fill-percent: ' . rtrim(rtrim(number_format($percent, 2, '.', ''), '0'), '.') . '%; --xp-fill-ratio: ' . number_format($ratio, 4, '.', '') . ';';
+    return 'xp-fill-p' . (string) ((int) round($percent));
 }
 
 function xp_player_data_attrs(array $player): string

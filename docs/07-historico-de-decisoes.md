@@ -2,6 +2,33 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-25 - XP reforca barras amarelas em Configuracoes e Trilha
+
+Decisao:
+
+- Reforcar o preenchimento amarelo dos elementos internos das barras de progresso do XP.
+- Aplicar o mesmo criterio aos cards de `Configuracoes` e a faixa inferior de jogadores na `Trilha`.
+- Subir a versao do CSS do XP para evitar cache antigo no navegador.
+- Usar classes `xp-fill-p0` a `xp-fill-p100` nos elementos renderizados pelo PHP, evitando depender de `style` inline bloqueado pelo CSP.
+- Remover o `style` inline residual da trilha, ja que a variavel nao era usada pelo CSS vivo.
+
+Motivo:
+
+- O progresso ja estava calculado no backend, mas a barra ainda podia aparecer como trilho azul/cinza porque o CSP bloqueava o `style` inline usado para passar `--xp-fill-percent`.
+
+Impacto:
+
+- `site/xp/index.php`
+- `site/xp/styles.css`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- A mudanca e somente visual; o percentual continua vindo de `xp_progress_from_total()` e a classe arredonda apenas o preenchimento visual para 0-100.
+- Manter a barra legivel em 0%, percentuais pequenos e 100%.
+
 ## 2026-05-25 - XP destaca progresso dos cards em amarelo
 
 Decisao:
