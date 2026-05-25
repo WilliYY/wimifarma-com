@@ -138,6 +138,7 @@ Regras a preservar:
 
 - qualquer usuario interno autenticado pode visualizar a trilha XP;
 - alimentar dados exige username `adm` ou role `admin`/`gerente`;
+- o login do XP deve manter a logo oficial, o titulo `Entrar no XP`, a descricao e o formulario, sem o selo textual amarelo `Wimifarma XP`;
 - a navegacao do XP separa `Trilha` de `Configuracoes`; formularios e historico operacional ficam fora da tela principal da fase para evitar poluicao visual;
 - a Trilha exibe jogadores em avatares compactos nos niveis e em uma faixa resumida, sem acoes de editar/excluir; clicar em um jogador abre apenas o resumo de XP;
 - a aba `Configuracoes` prioriza leitura de XP e nao exibe cards de total de venda; valores monetarios ficam como entrada operacional para gerar XP;

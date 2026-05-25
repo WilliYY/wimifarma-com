@@ -2,6 +2,31 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-25 - XP remove selo textual amarelo do login
+
+Decisao:
+
+- Remover o texto amarelo `Wimifarma XP` do card de login do XP.
+- Manter apenas a logo oficial, o titulo `Entrar no XP`, a descricao e o formulario.
+- Subir a versao do CSS do login para evitar cache antigo.
+
+Motivo:
+
+- O selo textual repetia a marca e poluia visualmente a tela de login.
+
+Impacto:
+
+- `site/xp/login.php`
+- `site/xp/styles.css`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- Mudanca apenas visual; nao altera autenticacao, sessao, CSRF, rate limit, banco, trilha, barras de XP ou permissoes.
+- Nao recolocar o selo textual sem pedido explicito.
+
 ## 2026-05-25 - Codigos mostra nomes longos completos
 
 Decisao:
