@@ -13,11 +13,21 @@ docker compose up -d --build
 
 ## Local - novo PC com Codex
 
-Prompt curto para iniciar em outro computador:
+Prompt minimo para continuar um chat quando o projeto ja esta neste PC:
+
+```text
+Use C:\Projetos\wimifarma-com, siga o AGENTS.md e execute esta tarefa:
+[ESCREVA A TAREFA]
+```
+
+Esse prompt e suficiente porque `AGENTS.md`, `README.md` e os documentos em `docs/` guardam o contexto atualizado do projeto, incluindo stack, modulos, deploy, regras de seguranca, XP, Codigos e decisoes recentes. O Codex ainda deve fazer `git fetch origin`, conferir `git status --short --branch` e ler os documentos obrigatorios antes de alterar arquivos.
+
+Prompt curto para iniciar em outro computador ou quando nao tiver certeza se a pasta existe:
 
 ```text
 Puxe o projeto Wimifarma do GitHub em C:\Projetos\wimifarma-com e siga o AGENTS.md.
 Repositorio: https://github.com/WilliYY/wimifarma-com.git
+Tarefa: [ESCREVA A TAREFA]
 ```
 
 Fluxo esperado para o Codex:
