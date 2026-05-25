@@ -42,7 +42,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
     font: inherit;
 }
 
@@ -328,7 +329,7 @@ a {
 }
 
 .codes-sheet-panel {
-    flex: 0 0 560px;
+    flex: 0 0 clamp(620px, 44vw, 760px);
     min-width: 0;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -338,7 +339,7 @@ a {
 }
 
 .codes-sheet-panel-other {
-    flex-basis: 560px;
+    flex-basis: clamp(620px, 44vw, 760px);
     width: auto;
 }
 
@@ -420,13 +421,13 @@ a {
 }
 
 .codes-sheet {
-    min-width: 560px;
+    min-width: 620px;
 }
 
 .codes-sheet-head,
 .codes-row {
     display: grid;
-    grid-template-columns: 38px minmax(220px, 1fr) 92px 88px 116px;
+    grid-template-columns: 38px minmax(300px, 1.7fr) 92px 88px 116px;
     align-items: stretch;
 }
 
@@ -531,7 +532,8 @@ a {
     border: 0;
 }
 
-.codes-row input {
+.codes-row input,
+.codes-row textarea {
     width: 100%;
     min-width: 0;
     min-height: 38px;
@@ -546,11 +548,21 @@ a {
     text-transform: uppercase;
 }
 
+.codes-row textarea {
+    height: auto;
+    overflow: hidden;
+    resize: none;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
 .codes-row input[name="preco"] {
     text-transform: none;
 }
 
-.codes-row input:focus {
+.codes-row input:focus,
+.codes-row textarea:focus {
     border-color: var(--wine);
     background: #fff;
     box-shadow: inset 0 0 0 1px rgba(163, 15, 61, 0.16);
@@ -885,12 +897,12 @@ a {
     }
 
     .codes-sheet {
-        min-width: 526px;
+        min-width: 560px;
     }
 
     .codes-sheet-head,
     .codes-row {
-        grid-template-columns: 36px minmax(200px, 1fr) 86px 82px 108px;
+        grid-template-columns: 36px minmax(230px, 1.4fr) 86px 82px 108px;
     }
 }
 

@@ -102,6 +102,7 @@ Regras a preservar:
 
 - codigo, EAN e preco devem ser editaveis sem fluxo complexo;
 - edicoes devem salvar automaticamente por `/codigos/api.php`, mantendo sessao e CSRF;
+- a coluna `Codigo` deve mostrar a frase inteira visualmente, quebrando linha e aumentando a altura da linha/tabela quando o texto for longo;
 - editar uma linha nao deve mover sua posicao, salvo quando o EAN mudar para outro prefixo visual;
 - reordenar deve ser feito arrastando o numero da linha dentro do mesmo grupo, persistindo `ordem`;
 - novos itens entram no fim do grupo visual de EAN correspondente;

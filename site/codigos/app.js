@@ -206,6 +206,7 @@
                 input.value = '';
             }
         });
+        resizeRowCodeField(row);
 
         if (ean) {
             ean.placeholder = placeholderForGroup(group);
@@ -235,6 +236,7 @@
         }
         if (field(row, 'codigo')) {
             field(row, 'codigo').value = item.codigo || '';
+            resizeCodeField(field(row, 'codigo'));
         }
         if (field(row, 'ean')) {
             field(row, 'ean').value = item.ean || '';
@@ -285,7 +287,7 @@
             + '<input type="hidden" name="action" value="create">'
             + '<input type="hidden" name="id" value="">'
             + '<span class="codes-row-number">+</span>'
-            + '<label><span>Codigo</span><input type="text" name="codigo" maxlength="180" placeholder="Novo codigo" required></label>'
+            + '<label><span>Codigo</span><textarea name="codigo" maxlength="180" rows="1" spellcheck="false" placeholder="Novo codigo" required></textarea></label>'
             + '<label><span>EAN</span><input type="text" name="ean" maxlength="80" placeholder="' + escapeHtml(placeholderForGroup(group)) + '" required></label>'
             + '<label><span>Preco</span><input type="text" name="preco" inputmode="decimal" data-price-input placeholder="0,00" required></label>'
             + '<div class="codes-row-actions"><span class="codes-save-status is-muted" data-save-status>Novo</span></div>'
@@ -310,6 +312,19 @@
         if (input) {
             input.focus();
         }
+    }
+
+    function resizeCodeField(input) {
+        if (!input || input.name !== 'codigo' || input.tagName !== 'TEXTAREA') {
+            return;
+        }
+
+        input.style.height = 'auto';
+        input.style.height = Math.max(38, input.scrollHeight) + 'px';
+    }
+
+    function resizeRowCodeField(row) {
+        resizeCodeField(field(row, 'codigo'));
     }
 
     function groupAdderInput() {
@@ -839,6 +854,21 @@
                 }
             });
         });
+        resizeRowCodeField(row);
+
+        var codeInput = field(row, 'codigo');
+        if (codeInput && codeInput.tagName === 'TEXTAREA') {
+            codeInput.addEventListener('input', function () {
+                resizeCodeField(codeInput);
+            });
+            codeInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    saveRow(row, { force: true });
+                    codeInput.blur();
+                }
+            });
+        }
 
         row.addEventListener('input', function () {
             scheduleSave(row);

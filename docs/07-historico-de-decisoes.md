@@ -2,6 +2,32 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-25 - Codigos mostra nomes longos completos
+
+Decisao:
+
+- Trocar o campo visual da coluna `Codigo` para area editavel com quebra de linha automatica.
+- Aumentar a largura base das tabelas de Codigos e deixar a linha crescer quando o texto exigir.
+- Preservar o autosave, o mesmo `name="codigo"` e o agrupamento por EAN.
+
+Motivo:
+
+- Nomes longos estavam sendo truncados/cortados visualmente, dificultando a leitura operacional.
+
+Impacto:
+
+- `site/codigos/index.php`
+- `site/codigos/styles.css`
+- `site/codigos/app.js`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- Textos muito longos aumentam a altura da linha; manter a rolagem horizontal interna da faixa de tabelas.
+- O backend continua recebendo `codigo` como texto normal, sem mudanca de banco.
+
 ## 2026-05-25 - XP reforca barras amarelas em Configuracoes e Trilha
 
 Decisao:

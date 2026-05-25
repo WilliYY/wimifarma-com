@@ -74,9 +74,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Codigos - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/codigos/styles.css?v=20260518a">
+    <link rel="stylesheet" href="/codigos/styles.css?v=20260525a">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
-    <script src="/codigos/app.js?v=20260515i" defer></script>
+    <script src="/codigos/app.js?v=20260525a" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
 </head>
 <body class="codes-app-body">
@@ -157,7 +157,7 @@ try {
                                     <span class="codes-row-number codes-row-drag-handle" data-drag-handle title="Arraste para mudar a ordem"><?php echo e((string) ($index + 1)); ?></span>
                                     <label>
                                         <span>Código</span>
-                                        <input type="text" name="codigo" value="<?php echo e((string) ($item['codigo'] ?? '')); ?>" maxlength="180" required>
+                                        <textarea name="codigo" maxlength="180" rows="1" spellcheck="false" required><?php echo e((string) ($item['codigo'] ?? '')); ?></textarea>
                                     </label>
                                     <label>
                                         <span>EAN</span>
@@ -181,7 +181,7 @@ try {
                                 <span class="codes-row-number">+</span>
                                 <label>
                                     <span>Código</span>
-                                    <input type="text" name="codigo" maxlength="180" placeholder="Novo codigo" required>
+                                    <textarea name="codigo" maxlength="180" rows="1" spellcheck="false" placeholder="Novo codigo" required></textarea>
                                 </label>
                                 <label>
                                     <span>EAN</span>
@@ -227,7 +227,7 @@ try {
                                     <span class="codes-row-number codes-row-drag-handle" data-drag-handle title="Arraste para mudar a ordem"><?php echo e((string) ($index + 1)); ?></span>
                                     <label>
                                         <span>Código</span>
-                                        <input type="text" name="codigo" value="<?php echo e((string) ($item['codigo'] ?? '')); ?>" maxlength="180" required>
+                                        <textarea name="codigo" maxlength="180" rows="1" spellcheck="false" required><?php echo e((string) ($item['codigo'] ?? '')); ?></textarea>
                                     </label>
                                     <label>
                                         <span>EAN</span>
