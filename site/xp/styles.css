@@ -1627,17 +1627,8 @@ select {
     height: auto;
 }
 
-.xp-login-card > span {
-    display: inline-flex;
-    margin-top: 18px;
-    color: #ffe27a;
-    font-size: 0.82rem;
-    font-weight: 950;
-    text-transform: uppercase;
-}
-
 .xp-login-card h1 {
-    margin: 8px 0;
+    margin: 18px 0 8px;
     font-size: 2rem;
     line-height: 1;
 }

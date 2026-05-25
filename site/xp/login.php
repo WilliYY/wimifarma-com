@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260523f">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260525d">
     <script src="/xp/login-runner.js?v=20260522a" defer></script>
 </head>
 <body class="xp-login-body">
@@ -65,7 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <main class="xp-login-card">
         <img class="xp-login-logo" src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
-        <span>Wimifarma XP</span>
         <h1>Entrar no XP</h1>
         <p>Trilha de niveis dos atendentes por vendas lancadas diariamente.</p>
 
