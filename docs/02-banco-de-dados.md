@@ -78,7 +78,7 @@ Inventario real observado em 2026-05-10:
 - `wf_codigos_comissao`: atalhos de itens com comissao diferente, com codigo, EAN, preco, ordem e exclusao logica.
 - `wf_codigos_blocos`: blocos visuais do modulo Codigos por prefixo de EAN, permitindo manter blocos vazios ate o primeiro item ser cadastrado.
 - `wf_xp_employees`: funcionarios/atendentes do modulo XP, com nome, caminho da foto validada, status, `system_key` opcional para players fixos do sistema e exclusao logica.
-- `wf_xp_sales`: vendas lancadas para o XP, com valor em centavos, pontos inteiros, data, funcionario, usuario criador e cancelamento logico.
+- `wf_xp_sales`: vendas lancadas para o XP, com valor em centavos, pontos inteiros, data, funcionario, usuario criador, observacao opcional e cancelamento logico.
 - `wf_xp_settings`: configuracoes simples do XP, como a foto da moldura ADM.
 - `wf_tarefas`: tarefas internas.
 - `cotacao_blocos`: blocos de cotacao.
@@ -161,7 +161,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_login_rate_limits` nao guarda usuario em texto puro; usa hashes para chave operacional do limitador, preserva o IP usado no bloqueio para diagnostico e pode ser limpo sem afetar usuarios, sessoes ou historico financeiro.
 - `wf_codigos_comissao` deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `wf_codigos_blocos` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa a coluna `ordem` dos itens dentro do grupo visual. Apagar pela tela marca `ativo=0` e `apagado_em`, preservando o registro para auditoria basica.
 - `wf_xp_employees` e a fonte de verdade dos funcionarios na trilha XP; remover pela tela marca `status='inativo'` e `deleted_at`, sem apagar vendas antigas. O ADM usa `system_key='adm'`, aparece como player fixo de teste para receber XP, e nao deve ser editado/excluido pelos controles comuns de usuario.
-- `wf_xp_sales.amount_cents` guarda venda em centavos inteiros e `wf_xp_sales.xp_points` guarda o XP calculado no momento do lancamento. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`. O schema do XP garante indice aditivo `idx_xp_sales_active_employee_date` para leituras por venda ativa, funcionario e mes.
+- `wf_xp_sales.amount_cents` guarda venda em centavos inteiros, `wf_xp_sales.xp_points` guarda o XP calculado no momento do lancamento e `wf_xp_sales.note` guarda a observacao opcional exibida em `Ultimos lancamentos`. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`. O schema do XP garante indice aditivo `idx_xp_sales_active_employee_date` para leituras por venda ativa, funcionario e mes.
 - Vendas XP canceladas preenchem `deleted_at`/`deleted_by` e saem dos totais, preservando historico e logs.
 - Fotos do XP ficam fora do banco em `site/xp/uploads/funcionarios/` ou `site/xp/uploads/adm/`; o banco guarda somente caminho relativo validado.
 - `wf_xp_settings.adm_photo_path` guarda a foto da moldura ADM, separada das fotos dos funcionarios.

@@ -2,6 +2,30 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-24 - XP mostra observacao e barra nos lancamentos
+
+Decisao:
+
+- Exibir a observacao opcional de cada venda em `Ultimos lancamentos` da aba `Configuracoes`.
+- Substituir o texto solto de XP do lancamento por uma barra amarela compacta, mantendo o foco da aba em leitura de XP.
+
+Motivo:
+
+- O usuario precisava conferir a observacao feita no lancamento e identificar visualmente o XP tambem no historico operacional da configuracao.
+
+Impacto:
+
+- `site/xp/index.php`
+- `site/xp/styles.css`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- A observacao vem de `wf_xp_sales.note` e e exibida escapada; manter limite curto para evitar poluir a lista.
+- A barra do lancamento e um destaque visual do XP daquele registro, nao altera regra de calculo, totais, niveis nem cancelamento logico.
+
 ## 2026-05-24 - Home publica usa logo animada
 
 Decisao:

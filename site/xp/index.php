@@ -113,7 +113,7 @@ $today = date('Y-m-d');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
-    <link rel="stylesheet" href="/xp/styles.css?v=20260523f">
+    <link rel="stylesheet" href="/xp/styles.css?v=20260524a">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
     <script src="/xp/app.js?v=20260523d" defer></script>
     <script src="/miauw/widget.js?v=20260517k" defer></script>
@@ -435,12 +435,21 @@ $today = date('Y-m-d');
                 <?php else : ?>
                     <div class="xp-recent-list">
                         <?php foreach ($recentSales as $sale) : ?>
+                            <?php
+                            $saleXp = (int) ($sale['xp_points'] ?? 0);
+                            $saleNote = trim((string) ($sale['note'] ?? ''));
+                            ?>
                             <article>
-                                <div>
+                                <div class="xp-recent-main">
                                     <strong><?php echo e((string) $sale['employee_name']); ?></strong>
                                     <span><?php echo e(br_date($sale['sale_date'] ?? null)); ?></span>
+                                    <?php if ($saleNote !== '') : ?>
+                                        <p class="xp-recent-note"><span>Observacao</span><?php echo e($saleNote); ?></p>
+                                    <?php endif; ?>
                                 </div>
-                                <b><?php echo e(xp_number($sale['xp_points'] ?? 0)); ?> XP</b>
+                                <div class="xp-recent-xp" aria-label="XP do lancamento">
+                                    <span><?php echo e(xp_number($saleXp)); ?> XP</span>
+                                </div>
                                 <form method="post">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="delete_sale">
