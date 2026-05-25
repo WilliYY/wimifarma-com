@@ -371,12 +371,12 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-order-checks,
 .gestao-order-actions {
     display: grid;
-    gap: 12px;
+    gap: 10px;
 }
 
 .gestao-orders-panel {
     min-width: 0;
-    padding: 18px;
+    padding: 14px;
 }
 
 .gestao-order-parcel {
@@ -480,8 +480,10 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.is-order-collapsed {
-    gap: 7px;
-    padding: 10px 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
     box-shadow: 0 12px 28px rgba(127, 9, 46, 0.06);
 }
 
@@ -490,14 +492,22 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
+    grid-column: 1;
+    grid-row: 1;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle,
 .gestao-order-card.is-order-collapsed .gestao-order-summary-static {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    margin: -2px;
+    padding: 2px;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle > span,
@@ -506,30 +516,39 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.is-order-collapsed .gestao-pill {
-    padding: 3px 8px;
-    font-size: 0.66rem;
+    padding: 2px 7px;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    white-space: nowrap;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-head h2 {
-    font-size: 0.98rem;
-    line-height: 1.12;
+    font-size: 0.94rem;
+    line-height: 1.08;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle > strong,
 .gestao-order-card.is-order-collapsed .gestao-order-summary-static > strong {
-    font-size: 0.96rem;
+    align-self: center;
+    font-size: 0.88rem;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-compact-meta {
     gap: 4px;
     font-size: 0.66rem;
     line-height: 1.1;
+    flex-wrap: nowrap;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-mini-chip {
-    min-height: 20px;
-    padding: 2px 6px;
-    font-size: 0.64rem;
+    min-height: 18px;
+    padding: 2px 5px;
+    font-size: 0.6rem;
+    line-height: 1.1;
+    white-space: nowrap;
 }
 
 .gestao-order-quick-action {
@@ -537,13 +556,27 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-quick-action {
-    display: block;
+    display: flex;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    justify-self: end;
+    align-items: center;
+    justify-content: flex-end;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-quick-action .gestao-btn {
-    min-height: 34px;
+    width: auto;
+    min-width: 76px;
+    min-height: 28px;
     padding: 0 12px;
-    font-size: 0.82rem;
+    font-size: 0.74rem;
+    white-space: nowrap;
+    box-shadow: none;
+}
+
+.gestao-order-card.is-order-collapsed.status-pedido .gestao-order-quick-action .gestao-btn {
+    min-width: 96px;
 }
 
 .gestao-order-quick-action form,
@@ -563,6 +596,11 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-order-card.status-confirmado.due-urgent {
     border-left: 5px solid var(--danger);
     box-shadow: 0 24px 60px rgba(220, 38, 38, 0.1);
+}
+
+.gestao-order-card.is-order-collapsed.status-confirmado.due-overdue,
+.gestao-order-card.is-order-collapsed.status-confirmado.due-urgent {
+    box-shadow: 0 10px 22px rgba(220, 38, 38, 0.08);
 }
 
 .gestao-order-card.status-confirmado.due-attention {
@@ -732,10 +770,10 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.is-order-collapsed .gestao-icon-btn {
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    font-size: 0.84rem;
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    font-size: 0.78rem;
     box-shadow: 0 8px 18px rgba(168, 15, 67, 0.08);
 }
 
@@ -2048,6 +2086,20 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 
     .gestao-order-head-side {
         justify-items: start;
+    }
+
+    .gestao-order-card.is-order-collapsed {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-head {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-quick-action {
+        grid-column: 1;
+        grid-row: auto;
+        justify-self: start;
     }
 }
 

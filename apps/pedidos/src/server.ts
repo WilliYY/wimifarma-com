@@ -1682,7 +1682,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     <input type="hidden" name="action" value="confirm_order_arrival">
     <input type="hidden" name="order_id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-    <button type="submit" class="gestao-btn gestao-btn-primary">Confirmar chegada</button>
+    <button type="submit" class="gestao-btn gestao-btn-primary" title="Confirmar chegada" aria-label="Confirmar chegada">Confirmar</button>
   </form>` : '';
   const paidAction = order.status === 'confirmado' && remainingCents > 0 ? `<form method="post" class="gestao-order-primary-action" data-confirm="Registrar ${e(formatMoney(remainingCents))} como pago e mover para o historico?">
       ${csrfField(req)}
@@ -1822,7 +1822,7 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260525-compact-cards">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260525-inline-actions">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
   <script src="${BASE_PATH}/app.js?v=20260521-parcelas" defer></script>
 </head>
