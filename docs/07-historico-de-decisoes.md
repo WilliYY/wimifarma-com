@@ -2,6 +2,30 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-25 - XP destaca progresso dos cards em amarelo
+
+Decisao:
+
+- Manter a barra inferior dos cards de funcionarios na aba `Configuracoes`.
+- Aplicar preenchimento amarelo proporcional ao percentual real do nivel usando as variaveis de progresso ja calculadas pelo backend.
+
+Motivo:
+
+- O usuario pediu que a barra de XP tambem aparecesse nessa area de acordo com as porcentagens, sem alterar calculo, niveis ou lancamentos.
+
+Impacto:
+
+- `site/xp/index.php`
+- `site/xp/styles.css`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- A barra e apenas visual e usa `--xp-fill-percent`; qualquer mudanca futura de regra de XP deve continuar vindo de `xp_progress_from_total()`.
+- Manter contraste legivel para percentuais pequenos, 0% e 100%.
+
 ## 2026-05-24 - XP mostra observacao e barra nos lancamentos
 
 Decisao:

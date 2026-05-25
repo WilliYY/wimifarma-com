@@ -140,6 +140,7 @@ Regras a preservar:
 - a navegacao do XP separa `Trilha` de `Configuracoes`; formularios e historico operacional ficam fora da tela principal da fase para evitar poluicao visual;
 - a Trilha exibe jogadores em avatares compactos nos niveis e em uma faixa resumida, sem acoes de editar/excluir; clicar em um jogador abre apenas o resumo de XP;
 - a aba `Configuracoes` prioriza leitura de XP e nao exibe cards de total de venda; valores monetarios ficam como entrada operacional para gerar XP;
+- os cards de funcionarios em `Configuracoes` devem exibir a barra inferior amarela preenchida conforme o percentual real para o proximo nivel;
 - em `Ultimos lancamentos`, a observacao opcional salva em `wf_xp_sales.note` deve aparecer no lancamento, e o XP do lancamento deve ser destacado por uma barra amarela compacta;
 - formularios usam CSRF e prepared statements;
 - fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;
