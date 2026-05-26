@@ -113,6 +113,52 @@ Destino correto:
 
 ## Integracoes planejadas
 
+### WhatsApp / Miauby via Evolution API
+
+Objetivo:
+
+- permitir que o Miauby responda mensagens recebidas por WhatsApp, inicialmente como canal interno controlado para o usuario/equipe, sem abrir dados operacionais para clientes ou grupos.
+
+Desenho recomendado:
+
+- Evolution API roda como servico separado no VPS, com banco/cache proprios e segredos apenas no `.env`;
+- uma instancia WhatsApp e conectada por QR Code/WhatsApp Web ou, em uma etapa mais formal, por WhatsApp Cloud API oficial;
+- a Evolution API envia eventos de mensagem recebida por webhook para um endpoint proprio do projeto, por exemplo `site/miauw/whatsapp-webhook.php`;
+- o endpoint valida token secreto, origem/evento, instancia, numero remetente e tipo de conversa antes de chamar o Miauby;
+- o Miauby continua sendo o motor de resposta e de permissao; a Evolution API deve ser apenas transporte de entrada/saida;
+- a resposta volta pela API estruturada da Evolution API, por exemplo envio de texto para a mesma conversa.
+
+Regras iniciais obrigatorias:
+
+- comecar com allowlist de numeros autorizados, como o telefone do dono/equipe, e ignorar clientes, grupos e remetentes desconhecidos;
+- opcionalmente exigir prefixo como `miauby` para ativar resposta automatica no WhatsApp;
+- nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
+- manter acoes fortes bloqueadas ou retornando confirmacao humana auditada; WhatsApp nao deve virar atalho para sangria, contas, encomenda ou escrita sensivel sem fluxo proprio;
+- registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token;
+- se for usar Gemini ou outro provedor, encapsular como motor configuravel do Miauby, nao como resposta solta direto na Evolution API.
+
+Cuidados sobre o numero:
+
+- o numero `+55 44 9739-4711`, mostrado como Wimifarma Cash Back, so deve ser usado se estiver sob controle da empresa e se a equipe aceitar que ele funcione como canal automatizado;
+- para teste, preferir uma instancia/numero separado ou uma allowlist rigorosa antes de conectar o numero usado com clientes;
+- no modo WhatsApp Web/Baileys, a sessao depende da conexao autorizada por QR Code e pode exigir manutencao operacional;
+- no modo WhatsApp Cloud API oficial, ha regras da Meta, configuracao propria e possivel custo por conversa.
+
+Variaveis futuras candidatas:
+
+- `MIAUW_WHATSAPP_ENABLED`
+- `MIAUW_WHATSAPP_WEBHOOK_TOKEN`
+- `MIAUW_WHATSAPP_ALLOWED_NUMBERS`
+- `MIAUW_WHATSAPP_REQUIRE_PREFIX`
+- `EVOLUTION_API_BASE_URL`
+- `EVOLUTION_API_KEY`
+- `EVOLUTION_API_INSTANCE`
+
+Status:
+
+- planejado/documentado;
+- ainda nao ha endpoint de webhook, servico Evolution API no Compose, tabela propria de conversas WhatsApp nem deploy dessa integracao.
+
 ### Google Sheets / Cotacao
 
 Objetivo:

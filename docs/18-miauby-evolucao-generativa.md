@@ -208,6 +208,12 @@ Miauby ja possui:
   - o Miauby recebeu contexto fixo sobre o modulo `/xp/`, regra R$ 1.000,00 = 2.500 XP, primeiro marco de 30.000 XP e papel do ADM como player de teste;
   - "farmar aura no XP" fica liberado como linguagem interna motivacional para venda real e lancamento correto;
   - o prompt, a base de conhecimento e o contexto enviado ao agente Node reforcam que o Miauby nao pode inventar ranking, nivel, foto, venda ou pontuacao sem dado do sistema ou do operador.
+- Planejamento WhatsApp:
+  - o Miauby pode evoluir para responder por WhatsApp usando Evolution API como transporte, recebendo eventos por webhook e enviando respostas pela API de mensagem;
+  - a Evolution API nao deve virar motor de IA nem dona de regra operacional; ela apenas entrega a mensagem ao Miauby e devolve a resposta autorizada;
+  - a primeira etapa deve ser restrita a numeros autorizados, preferencialmente com prefixo `miauby`, ignorando clientes e grupos;
+  - usar o numero publico do Cashback exige cuidado extra, porque clientes poderiam conversar com um assistente interno se nao houver allowlist;
+  - Gemini ou outro provedor pode ser avaliado como backend configuravel do Miauby, mas precisa passar pelos mesmos contratos de persona, guardrails, tools, confirmacoes e traces.
 
 ## Arquivos, tabelas e servicos envolvidos
 
@@ -258,6 +264,7 @@ Integracoes:
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - ponte interna da Gestao (`/gestao/api/internal/...`) para resumo e criacao confirmada de conta a pagar;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
+- Evolution API como candidata futura para canal WhatsApp do Miauby, com webhook tokenizado, allowlist de remetentes e envio de resposta por API estruturada;
 - futuro Google Sheets para Cotacao.
 
 ## Regras de negocio que precisam ser preservadas
@@ -273,6 +280,7 @@ Integracoes:
 - A autonomia deve ser gradual: primeiro diagnosticar, depois sugerir, depois executar apenas acoes pequenas com trilha de auditoria.
 - Gestao e modulo financeiro critico: criar conta a pagar pelo Miauby e escrita forte, sempre exige confirmacao humana e auditoria. Consultar resumo da Gestao e leitura baixa.
 - Cotacao + Sheets precisa de IDs estaveis e controle de conflito antes de qualquer automacao generativa de sync.
+- WhatsApp deve ser tratado como canal externo nao autenticado por padrao: sem allowlist/prefixo/token validado, o Miauby nao deve consultar nem responder dados internos.
 
 ## Decisoes tecnicas recomendadas
 
@@ -292,6 +300,8 @@ Integracoes:
 - A tela de diagnostico usa o status publico (`configured`, `validated`, `status`) e nao chama a OpenAI automaticamente. Um teste online explicito ainda pode ser adicionado depois.
 - Preferir respostas operacionais e sem codigo para usuarios finais. Codigo, SQL, stack trace e comandos devem aparecer apenas em contexto tecnico autorizado.
 - Medir latencia do widget e da API antes de aumentar contexto, modelos ou autonomia. Primeiro otimizar consultas, cache e tools controladas.
+- Para WhatsApp, criar endpoint dedicado em `site/miauw/` em vez de reutilizar `api.php`, porque o fluxo nao tem sessao PHP/CSRF do operador e precisa de validacao propria de webhook.
+- Manter resposta WhatsApp inicialmente textual e curta; audio, anexos e comandos de escrita devem vir depois de auditoria, testes e politica de privacidade.
 
 ## Riscos ao alterar
 
@@ -304,6 +314,8 @@ Integracoes:
 - Aumentar contexto demais pode elevar custo e lentidao.
 - Misturar comandos de financeiro, cotacao e cashback pode registrar dado no modulo errado.
 - Otimizacoes de contexto podem esconder conhecimento antigo se o pre-filtro for estreito demais; manter fallback para conhecimentos recentes e revisar com exemplos reais.
+- Conectar o numero publico de Cashback sem filtro pode expor o Miauby interno a clientes, grupos, spam e engenharia social.
+- Provedores alternativos como Gemini podem ter comportamento, limites e politicas diferentes; antes de liberar em producao, comparar respostas em modo sombra e manter rollback para o motor atual.
 
 ## Pendencias
 
@@ -316,6 +328,8 @@ Integracoes:
 - Criar metricas simples de tempo para `widget-status.php`, `api.php?action=send` e uso de conhecimentos.
 - Avaliar `buscar_cliente` com revisao de privacidade antes de migrar para o Node.
 - Migrar execucao real das tools de alto valor para o Node somente depois da ponte de leitura, preservando confirmacao e auditoria no PHP enquanto a escrita nao estiver duplicada com seguranca.
+- Definir se o WhatsApp do Miauby usara numero separado ou o numero do Cashback com allowlist; nao conectar numero publico a respostas internas sem decisao operacional.
+- Prototipar Evolution API em ambiente isolado, com webhook falso e envio para um numero autorizado, antes de mexer no VPS de producao.
 
 ## Como pode evoluir
 
@@ -336,3 +350,4 @@ Integracoes:
 - Fase 17: compilar treino aprovado em perfil curto, selecionar exemplos relevantes e responder localmente quando houver match forte para reduzir custo/latencia. Iniciada.
 - Fase 18: versionar perfis de voz/tom e preparar contrato seguro de audio em `text_only`, sem microfone, TTS ou gravacao ate existir botao/consentimento/provedor validado. Iniciada.
 - Fase 19: gravar audio temporario por botao, transcrever com OpenAI no PHP e exigir revisao humana com `Enviar`/`Cancelar` antes de virar mensagem. Iniciada.
+- Fase futura WhatsApp: criar ponte Evolution API -> webhook Miauby -> resposta autorizada, primeiro com allowlist e texto, depois avaliando audio/provedores alternativos em modo sombra.

@@ -1807,6 +1807,10 @@ async function renderApp(req: Request): Promise<string> {
   const openTicketBalances = confirmedOrders
     .map((order) => Math.max(0, Number(order.total_cents || 0) - Number(order.paid_cents || 0)))
     .filter((remainingCents) => remainingCents > 0);
+  const waitingTicketValue = waitingOrders.reduce(
+    (sum, order) => sum + Math.max(0, Number(order.total_cents || 0) - Number(order.paid_cents || 0)),
+    0,
+  );
   const openTickets = openTicketBalances.length;
   const openTicketsValue = openTicketBalances.reduce((sum, remainingCents) => sum + remainingCents, 0);
   const waitingHtml = waitingOrders.length
@@ -1858,6 +1862,7 @@ async function renderApp(req: Request): Promise<string> {
       <div class="gestao-orders-summary">
         <div><span>Chegam hoje</span><strong>${e(arrivingToday)}</strong></div>
         <div><span>Aguardando chegada</span><strong>${e(waitingOrders.length)}</strong></div>
+        <div><span>Valor para chegar</span><strong>${e(formatMoney(waitingTicketValue))}</strong></div>
         <div><span>Boletos em aberto</span><strong>${e(openTickets)}</strong></div>
         <div><span>Valor boletos abertos</span><strong>${e(formatMoney(openTicketsValue))}</strong></div>
         <div><span>Pago em pedidos</span><strong>${e(formatMoney(paidMonth))}</strong></div>

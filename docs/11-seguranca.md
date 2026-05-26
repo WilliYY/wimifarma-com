@@ -86,6 +86,10 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Contratos de tools enviados ao Node devem permanecer sanitizados: sem token, chave, SQL bruto, payload externo ou stack trace; schemas podem descrever parametros operacionais, mas nao segredo de ambiente.
 - Rollback de seguranca do Miauby: voltar `MIAUW_ENGINE=php`, desligar `MIAUW_MAINTENANCE_MODE` se a equipe ja puder usar e reiniciar `wimifarma-com-web`.
 - Manter palavras de categoria da Cotacao como dados comuns; regras visuais precisam ser explicitas e nao podem virar permissao/gatilho escondido.
+- Qualquer webhook externo futuro para Miauby no WhatsApp deve validar token proprio, instancia, evento e remetente antes de chamar o agente; a primeira versao deve usar allowlist de numeros e ignorar grupos/clientes desconhecidos.
+- Numeros publicos de atendimento, como o WhatsApp do Cashback, nao devem acionar o Miauby interno sem prefixo/allowlist. O canal WhatsApp nao pode expor dados de cliente, financeiro, cotacao ou gestao para remetente nao autenticado.
+- Payloads brutos da Evolution API ou WhatsApp nao devem ser persistidos em traces/logs; registrar apenas metadados sanitizados, telefone mascarado, status, latencia e erro resumido.
+- Segredos de Evolution API, tokens de webhook e chaves de provedores alternativos como Gemini devem ficar apenas em `.env`/config local e entrar na varredura de segredos antes do push.
 
 ## Decisoes tecnicas ja tomadas
 
