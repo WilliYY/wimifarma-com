@@ -123,6 +123,7 @@ Estado atual:
 
 - backend dedicado iniciado em `apps/miauw-whatsapp`, Node.js 22 + TypeScript;
 - Postgres 17 proprio em `wimifarma-miauw-whatsapp-db`, volume `miauw-whatsapp-data/`;
+- template da Evolution API em `ops/evolution/`, para deploy separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`;
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
 - `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru;
 - `GET /miauw/whatsapp/health` mostra status seguro;
@@ -132,7 +133,8 @@ Estado atual:
 
 Desenho:
 
-- Evolution API roda como servico separado no VPS, com banco/cache proprios e segredos apenas no `.env`;
+- Evolution API roda como servico separado no VPS, com banco/cache/instancias proprios e segredos apenas no `.env`;
+- o bridge chama a Evolution internamente por `http://wimifarma-evolution-api:8080`; a API nao deve ser exposta diretamente no Nginx Proxy Manager sem revisao;
 - uma instancia WhatsApp e conectada por QR Code/WhatsApp Web ou, em uma etapa mais formal, por WhatsApp Cloud API oficial;
 - a Evolution API envia eventos de mensagem recebida por webhook para `https://wimifarma.com/miauw/whatsapp/webhook`;
 - o endpoint valida token secreto, origem/evento, instancia, numero remetente, prefixo e tipo de conversa antes de chamar o Miauby;
@@ -176,8 +178,9 @@ Variaveis:
 
 Status:
 
-- backend do bridge criado e desligado por padrao;
-- ainda falta configurar segredos reais, subir Evolution API separada, conectar QR da instancia e testar webhook real no VPS.
+- backend do bridge criado, ativado no VPS por `.env` e protegido por token;
+- template da Evolution API criado em `ops/evolution/`;
+- ainda falta conectar o numero por QR/codigo de pareamento e preencher allowlist com remetentes autorizados.
 
 ### Google Sheets / Cotacao
 

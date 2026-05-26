@@ -30,6 +30,7 @@ Arquivos principais:
 - `docker/php/Dockerfile`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
+- `ops/evolution/docker-compose.yml`
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
@@ -60,6 +61,8 @@ Containers:
 - `wimifarma-miauw-agent`: Node.js 22 + TypeScript + Agents SDK para `/miauw/agent/` em sombra/corte controlado.
 - `wimifarma-miauw-whatsapp`: Node.js 22 + TypeScript para `/miauw/whatsapp/`, recebendo webhooks da Evolution API, exibindo painel operacional seguro e processando fila/outbox.
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal WhatsApp do Miauby, monta `./miauw-whatsapp-data/postgres:/var/lib/postgresql/data`.
+- `wimifarma-evolution-api`: Evolution API v2 como transporte WhatsApp, em stack separada no VPS, ligada na rede `wimifarma-com-network` para o bridge chamar internamente.
+- `wimifarma-evolution-postgres` e `wimifarma-evolution-redis`: persistencia propria da Evolution API, fora dos bancos do Wimifarma.
 
 Rede Docker:
 
@@ -76,11 +79,12 @@ Rede Docker:
 - Interno Gestao: `wimifarma-gestao-app:3200`
 - Interno Miauby agente: `wimifarma-miauw-agent:3100`
 - Interno Miauby WhatsApp: `wimifarma-miauw-whatsapp:3400`
+- Interno Evolution API para o bridge: `wimifarma-evolution-api:8080`
 
 O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cotacao-app`; o Apache ja publica `/cotacao/` e `/cotacao/socket.io/`.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-gestao-app`; o Apache publica `/gestao/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent`; o Apache publica `/miauw/agent/` internamente.
-Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whatsapp`; o Apache publica `/miauw/whatsapp/` internamente.
+Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whatsapp` nem para `wimifarma-evolution-api`; o Apache publica `/miauw/whatsapp/` internamente, e a Evolution API fica limitada a localhost/rede Docker ate decisao explicita.
 
 ## Regras que precisam ser preservadas
 

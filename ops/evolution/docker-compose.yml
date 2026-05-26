@@ -1,0 +1,55 @@
+services:
+  wimifarma-evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: wimifarma-evolution-api
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-evolution-postgres
+      - wimifarma-evolution-redis
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./instances:/evolution/instances
+    networks:
+      - wimifarma-evolution-network
+      - wimifarma-com-network
+
+  wimifarma-evolution-manager:
+    image: evoapicloud/evolution-manager:latest
+    container_name: wimifarma-evolution-manager
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3003:80"
+    networks:
+      - wimifarma-evolution-network
+
+  wimifarma-evolution-redis:
+    image: redis:7-alpine
+    container_name: wimifarma-evolution-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --port 6379
+    volumes:
+      - ./redis:/data
+    networks:
+      - wimifarma-evolution-network
+
+  wimifarma-evolution-postgres:
+    image: postgres:15-alpine
+    container_name: wimifarma-evolution-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE:-evolution}
+      POSTGRES_USER: ${POSTGRES_USERNAME:-evolution}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_evolution_postgres_password}
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-evolution-network
+
+networks:
+  wimifarma-evolution-network:
+    name: wimifarma-evolution-network
+  wimifarma-com-network:
+    external: true

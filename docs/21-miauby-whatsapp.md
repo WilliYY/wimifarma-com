@@ -11,7 +11,7 @@ Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A impl
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal.
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`.
 - A home publica possui o card `Miauby Whatsapp`, apontando para `/miauw/whatsapp/`.
-- Evolution API fica fora deste repositorio, como servico separado no VPS.
+- Evolution API fica fora do Compose principal, com template em `ops/evolution/` e servico separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`.
 - `wimifarma-miauw-agent` continua sendo o motor de resposta do Miauby.
 
 Fluxo:
@@ -85,7 +85,18 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 
 ## Evolution API
 
-A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda como transporte separado no VPS, com segredos e estado proprios. Depois de conectar o numero por QR, configurar o webhook para:
+A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda como transporte separado no VPS, com segredos e estado proprios. O template versionado fica em `ops/evolution/`; a pasta real do VPS fica em `/home/ubuntu/projetos/wimifarma-evolution-api`, com `.env`, instancias, Postgres e Redis fora do Git.
+
+No `.env` do Wimifarma principal:
+
+```text
+EVOLUTION_API_BASE_URL=http://wimifarma-evolution-api:8080
+EVOLUTION_API_INSTANCE=wimifarma-cashback-test
+```
+
+`EVOLUTION_API_KEY` deve receber o mesmo valor de `AUTHENTICATION_API_KEY` da stack Evolution.
+
+Depois de conectar o numero por QR/codigo de pareamento, configurar o webhook da instancia para:
 
 ```text
 https://wimifarma.com/miauw/whatsapp/webhook?token=<MIAUW_WHATSAPP_WEBHOOK_TOKEN>
@@ -114,9 +125,8 @@ curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 
 ## Proximas etapas
 
-1. Subir a Evolution API em servico separado.
-2. Conectar o numero por QR.
-3. Configurar webhook da instancia.
-4. Preencher `MIAUW_WHATSAPP_ALLOWED_SENDERS` com remetentes autorizados.
-5. Testar com um remetente em allowlist e prefixo `miauby`.
-6. Depois avaliar audio, midias e liberacao controlada sem prefixo.
+1. Conectar o numero por QR/codigo de pareamento.
+2. Configurar webhook da instancia.
+3. Preencher `MIAUW_WHATSAPP_ALLOWED_SENDERS` com remetentes autorizados.
+4. Testar com um remetente em allowlist e prefixo `miauby`.
+5. Depois avaliar audio, midias e liberacao controlada sem prefixo.

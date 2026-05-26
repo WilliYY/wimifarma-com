@@ -39,6 +39,7 @@ Higiene de pastas no VPS:
 - `apps/pedidos/`
 - `apps/miauw-agent/`
 - `apps/miauw-whatsapp/`
+- `ops/evolution/`
 - `.env`
 - `.env.example`
 - `site/wp-config.php`
@@ -55,6 +56,7 @@ Higiene de pastas no VPS:
 - `cotacao-data/`
 - `gestao-data/`
 - `miauw-whatsapp-data/`
+- `/home/ubuntu/projetos/wimifarma-evolution-api` no VPS, com `.env`, Postgres, Redis e instancias da Evolution API fora do Git
 - Nginx Proxy Manager externo a este repositorio
 - GoDaddy DNS externo a este repositorio
 
@@ -66,6 +68,7 @@ Higiene de pastas no VPS:
 - `wimifarma-pedidos-app:3300`: servico interno de Pedidos, acessado pelo Apache por proxy reverso em `/pedidos`.
 - `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra/corte controlado, acessado pelo Apache por proxy reverso em `/miauw/agent`.
 - `wimifarma-miauw-whatsapp:3400`: servico interno do bridge WhatsApp do Miauby, acessado pelo Apache por proxy reverso em `/miauw/whatsapp`.
+- `wimifarma-evolution-api:8080`: Evolution API interna para envio de mensagens do bridge, em stack separada; bind externo apenas em `127.0.0.1:8080`.
 - `127.0.0.1:3002`: porta local publicada pelo Compose.
 - `127.0.0.1:13002`: tunel PuTTY usado em testes.
 - `80/443`: publico via Nginx Proxy Manager.
@@ -95,6 +98,7 @@ Higiene de pastas no VPS:
 - Pedidos e Gestao sao modulos separados. A rota antiga `/gestao/pedidos` e o endpoint antigo `/gestao/api/orders/badge` ficam somente como compatibilidade/redirecionamento para `/pedidos/` e `/pedidos/api/badge`.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/miauw/whatsapp/` para `wimifarma-miauw-whatsapp:3400`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`, e o painel `/miauw/whatsapp/` deve mostrar apenas dados seguros.
+- Manter a Evolution API fora do Nginx Proxy Manager por padrao; usar API interna `http://wimifarma-evolution-api:8080` e porta local `127.0.0.1:8080` apenas para operacao controlada.
 - Manter `.env` local em cada ambiente.
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
@@ -106,6 +110,7 @@ Higiene de pastas no VPS:
 - A senha operacional para excluir tabelas inteiras em Codigos e `wimifarma` por padrao e pode ser trocada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env` de cada ambiente.
 - Para o Miauby agente sombra, definir `MIAUW_AGENT_INTERNAL_TOKEN` ou manter `MIAUW_GUARDIAN_TOKEN` como fallback; o endpoint publico de health nao exige token, mas `run` e `stream` internos exigem.
 - Para o Miauby WhatsApp, definir `MIAUW_WHATSAPP_POSTGRES_PASSWORD`, `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS`, `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE` antes de usar webhook real. O default versionado continua `MIAUW_WHATSAPP_ENABLED=false`; no VPS, a ativacao pode ser feita por `.env` e validada em `/miauw/whatsapp/`.
+- Para a Evolution API no VPS, copiar `ops/evolution/docker-compose.yml` e `ops/evolution/.env.example` para `/home/ubuntu/projetos/wimifarma-evolution-api`, gerar segredos reais no `.env` local, subir com `docker compose up -d` e apontar o `.env` principal para `EVOLUTION_API_BASE_URL=http://wimifarma-evolution-api:8080`.
 - Para comparar o PHP com o Miauby agente sombra em envios reais, ligar `MIAUW_AGENT_SHADOW_ON_SEND=true`; manter `false` por padrao para nao adicionar latencia no chat operacional.
 - Para corte acelerado do Miauby, definir `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`, `MIAUW_MAINTENANCE_MODE=true` e `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`. Rollback: `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
 - Para audio do Miauby, manter `MIAUW_OPENAI_API_KEY` somente no `.env`, usar `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`. O botao depende de HTTPS/navegador com microfone e o PHP transcreve o audio temporario sem expor chave no browser; `MIAUW_REALTIME_MODEL`/`MIAUW_REALTIME_VOICE` ficam reservados para evolucao futura de playback/voz.

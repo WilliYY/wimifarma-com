@@ -125,6 +125,36 @@ curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 
 O bridge nasce com `MIAUW_WHATSAPP_ENABLED=false`. Antes de aceitar webhook real, configurar no `.env`: `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS`, `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`.
 
+## VPS - Evolution API para Miauby WhatsApp
+
+Template versionado:
+
+```powershell
+ops\evolution\docker-compose.yml
+ops\evolution\.env.example
+```
+
+Deploy no VPS em stack separada:
+
+```bash
+mkdir -p /home/ubuntu/projetos/wimifarma-evolution-api
+cd /home/ubuntu/projetos/wimifarma-evolution-api
+cp /home/ubuntu/projetos/wimifarma-com/ops/evolution/docker-compose.yml .
+cp /home/ubuntu/projetos/wimifarma-com/ops/evolution/.env.example .env
+# preencher segredos reais no .env antes de subir
+docker compose up -d
+curl -sS http://127.0.0.1:8080
+```
+
+No `.env` do projeto principal, apontar o bridge para a API interna:
+
+```bash
+EVOLUTION_API_BASE_URL=http://wimifarma-evolution-api:8080
+EVOLUTION_API_INSTANCE=wimifarma-cashback-test
+```
+
+`EVOLUTION_API_KEY` deve ser o mesmo valor de `AUTHENTICATION_API_KEY` da stack Evolution, sem versionar.
+
 ## Local - Gestao Node/Postgres
 
 ```powershell

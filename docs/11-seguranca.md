@@ -93,6 +93,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Numeros publicos de atendimento, como o WhatsApp do Cashback, nao devem acionar o Miauby interno sem prefixo/allowlist. O canal WhatsApp nao pode expor dados de cliente, financeiro, cotacao ou gestao para remetente nao autenticado.
 - Payloads brutos da Evolution API ou WhatsApp nao devem ser persistidos em traces/logs; registrar apenas metadados sanitizados, telefone mascarado, status, latencia e erro resumido.
 - O painel `/miauw/whatsapp/` deve continuar limitado a status, contadores, motivos de ignorado e telefones mascarados; nunca adicionar token, payload bruto ou telefone completo ao HTML.
+- A Evolution API deve ficar fechada em `127.0.0.1:8080` e na rede Docker interna. Nao publicar `wimifarma-evolution-api` no Nginx Proxy Manager sem autenticar e revisar superficie de ataque.
 - Segredos de Evolution API, tokens de webhook e chaves de provedores alternativos como Gemini devem ficar apenas em `.env`/config local e entrar na varredura de segredos antes do push.
 - `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `EVOLUTION_API_KEY` e `MIAUW_WHATSAPP_POSTGRES_PASSWORD` nunca devem ser versionados. Se vazarem, trocar no `.env` do VPS e reiniciar `wimifarma-miauw-whatsapp`.
 

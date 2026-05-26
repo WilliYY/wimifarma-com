@@ -70,8 +70,9 @@ Estado:
 
 - O backend `apps/miauw-whatsapp` foi criado com Node.js 22 + TypeScript.
 - O canal usa Postgres 17 dedicado (`wimifarma-miauw-whatsapp-db`) para webhook, fila, dedupe e outbox.
-- O servico nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`.
-- Ainda falta configurar segredos reais no `.env`, subir/conectar a Evolution API separada, escanear o QR do numero de teste e configurar o webhook da instancia.
+- O repositorio nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`; no VPS o canal pode ser ativado por `.env`.
+- A Evolution API tem template em `ops/evolution/` e deve rodar separada em `/home/ubuntu/projetos/wimifarma-evolution-api`.
+- Ainda falta conectar o numero por QR/codigo de pareamento, preencher allowlist de remetentes autorizados e configurar o webhook da instancia.
 
 Risco:
 
@@ -80,8 +81,8 @@ Risco:
 
 Evolucao:
 
-- Configurar `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS`, `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`.
-- Validar `GET /miauw/whatsapp/health` no VPS.
+- Configurar `MIAUW_WHATSAPP_ALLOWED_SENDERS` com o numero remetente autorizado.
+- Validar `GET /miauw/whatsapp/health` no VPS com `evolution_configured=true` e `allowlist_count > 0`.
 - Testar webhook com payload controlado antes de usar mensagem real.
 - Conectar o numero por QR na Evolution API e testar primeiro com prefixo `miauby`.
 

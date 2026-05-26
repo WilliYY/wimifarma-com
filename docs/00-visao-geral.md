@@ -33,6 +33,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Miauby: `site/miauw/`
 - Miauby agente: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
 - Miauby WhatsApp: `apps/miauw-whatsapp/`, publicado em `/miauw/whatsapp/` por proxy interno do Apache
+- Evolution API: template em `ops/evolution/`, deploy separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`
 - Docker: `docker-compose.yml`, `docker/php/Dockerfile`
 - Banco: volume local `mysql/` ignorado pelo Git
 - Documentacao: `README.md`, `AGENTS.md`, `docs/`
@@ -81,6 +82,7 @@ Rotas principais:
 - O XP fica em PHP/MySQL porque e alimentado manualmente pela equipe, reaproveita `wf_users`, CSRF, `wf_logs` e nao precisa de runtime/proxy novo.
 - O Miauby agente dedicado foi iniciado em `apps/miauw-agent`; `site/miauw/api.php` continua dono de sessao, confirmacoes e escritas fortes mesmo quando `MIAUW_ENGINE=node`.
 - O Miauby WhatsApp foi iniciado em `apps/miauw-whatsapp` com Postgres 17 dedicado porque o canal precisa de fila duravel, idempotencia e outbox auditavel.
+- A Evolution API fica fora da stack principal do Wimifarma, como transporte separado, com Postgres/Redis/instancias proprios e API acessivel internamente pelo bridge.
 
 ## Riscos ao alterar
 

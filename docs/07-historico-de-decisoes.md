@@ -2,6 +2,30 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-26 - Evolution API fica em stack separada
+
+Decisao:
+
+- Criar template operacional em `ops/evolution/` para a Evolution API v2.3.7, com Postgres e Redis proprios.
+- No VPS, rodar a stack em `/home/ubuntu/projetos/wimifarma-evolution-api`, fora do Compose principal do Wimifarma.
+- Expor a API apenas em `127.0.0.1:8080` e na rede Docker `wimifarma-com-network`, usando `http://wimifarma-evolution-api:8080` como `EVOLUTION_API_BASE_URL` do bridge.
+
+Motivo:
+
+- A Evolution e transporte externo de WhatsApp, com estado/instancias/QR proprios. Separar a stack evita misturar dados de sessao do WhatsApp com bancos e deploys do sistema Wimifarma.
+
+Impacto:
+
+- `ops/evolution/`
+- `.env` do VPS
+- `docs/`
+
+Riscos/cuidados:
+
+- Nao publicar a Evolution diretamente na internet sem regra de proxy/autenticacao revisada.
+- `AUTHENTICATION_API_KEY`, Postgres da Evolution e instancias ficam fora do Git.
+- A allowlist continua sendo dos remetentes autorizados, nao do numero conectado na instancia.
+
 ## 2026-05-26 - Miauby WhatsApp ganha card e painel operacional
 
 Decisao:

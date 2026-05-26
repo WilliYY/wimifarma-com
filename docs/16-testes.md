@@ -40,6 +40,7 @@ Rotas de smoke test:
 - `/miauw/agent/health` deve responder JSON 200 sem segredo quando o servico sombra estiver ativo
 - `/miauw/whatsapp/` deve responder HTML 200 com painel seguro quando o bridge WhatsApp e seu Postgres estiverem ativos
 - `/miauw/whatsapp/health` deve responder JSON 200 sem segredo quando o bridge WhatsApp e seu Postgres estiverem ativos
+- `http://127.0.0.1:8080` deve responder quando a Evolution API separada estiver ativa no VPS
 - `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
 - `/miauw/agent-tools.php` deve recusar sem token interno e aceitar somente tools de leitura baixa quando chamado pelo servico agente
 - `/cotacao/health` deve responder JSON 200 pela Cotacao V2
@@ -100,6 +101,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
 - Se mexer em `apps/miauw-agent`, rodar `npm run check`, `npm run check:persona`, build do servico e validar `/miauw/agent/health`.
 - Se mexer em `apps/miauw-whatsapp`, rodar `npm run check`, `npm run build`, validar `/miauw/whatsapp/` e `/miauw/whatsapp/health`; quando `MIAUW_WHATSAPP_ENABLED=false`, confirmar que o webhook retorna `accepted=false`, e quando estiver ativo, confirmar que webhook sem token recusa com 401/503 sem processar mensagem real.
+- Se mexer em `ops/evolution`, validar `docker compose config` na pasta da stack e, no VPS, `docker compose ps`, `curl http://127.0.0.1:8080` e o health do bridge com `evolution_configured=true`.
 - Se mexer no painel de diagnostico do Miauby, validar login local e acesso a `/miauw/diagnostico.php`.
 
 ## Decisoes tecnicas ja tomadas
