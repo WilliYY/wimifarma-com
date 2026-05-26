@@ -101,7 +101,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 
 A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda como transporte separado no VPS, com segredos e estado proprios. O template versionado fica em `ops/evolution/`; a pasta real do VPS fica em `/home/ubuntu/projetos/wimifarma-evolution-api`, com `.env`, instancias, Postgres e Redis fora do Git.
 
-Em 2026-05-26, o template foi fixado em `evoapicloud/evolution-api:v2.3.6` para uma nova tentativa de pareamento, depois de a `v2.3.7` retornar `401 Unauthorized` e `Invalid buffer` nas instancias de teste.
+Em 2026-05-26, o template foi fixado em `evoapicloud/evolution-api:v2.3.0` para uma nova tentativa de pareamento. A `v2.3.7` retornou `401 Unauthorized` e `Invalid buffer`; a `v2.3.6` tambem falhou com `Invalid buffer` porque ignorou `CONFIG_SESSION_PHONE_VERSION`. A `v2.3.0` ainda usa o pin `CONFIG_SESSION_PHONE_VERSION` ao iniciar o Baileys.
 
 O manager operacional, quando necessario, deve ser acessado pelo manager embutido da API em `http://127.0.0.1:8080/manager` via acesso local/tunel. Nao manter container manager separado.
 

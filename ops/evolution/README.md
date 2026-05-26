@@ -2,7 +2,7 @@
 
 Template operacional para subir a Evolution API como transporte externo do Miauby WhatsApp.
 
-Imagem atual do template: `evoapicloud/evolution-api:v2.3.6`. Em 2026-05-26, o VPS foi baixado de `v2.3.7` para `v2.3.6` para testar pareamento depois de falhas `401 Unauthorized` e `Invalid buffer` no Baileys.
+Imagem atual do template: `evoapicloud/evolution-api:v2.3.0`. Em 2026-05-26, o VPS foi baixado de `v2.3.7` para `v2.3.6`, mas a imagem ainda ignorou `CONFIG_SESSION_PHONE_VERSION` e manteve erro `Invalid buffer`. A tentativa seguinte usou `v2.3.0`, que ainda respeita o pin de versao do WhatsApp Web.
 
 Regras:
 
