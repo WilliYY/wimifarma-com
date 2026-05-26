@@ -8,6 +8,7 @@ Regras:
 - nao publicar a API diretamente no Nginx Proxy Manager sem decisao explicita;
 - manter `wimifarma-evolution-api` ligado na rede `wimifarma-com-network` para o bridge chamar `http://wimifarma-evolution-api:8080`;
 - manter Postgres, Redis e instancias em volumes/pastas desta stack, fora do projeto principal.
+- usar o manager embutido da propria API em `http://127.0.0.1:8080/manager` somente por acesso local/tunel SSH quando necessario; nao manter container manager separado.
 
 Fluxo no VPS:
 

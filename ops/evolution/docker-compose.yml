@@ -16,15 +16,6 @@ services:
       - wimifarma-evolution-network
       - wimifarma-com-network
 
-  wimifarma-evolution-manager:
-    image: evoapicloud/evolution-manager:latest
-    container_name: wimifarma-evolution-manager
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3003:80"
-    networks:
-      - wimifarma-evolution-network
-
   wimifarma-evolution-redis:
     image: redis:7-alpine
     container_name: wimifarma-evolution-redis
