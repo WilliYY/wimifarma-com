@@ -1804,7 +1804,11 @@ async function renderApp(req: Request): Promise<string> {
   const waitingOrders = orders.filter((order) => order.status === 'pedido');
   const confirmedOrders = orders.filter((order) => order.status === 'confirmado');
   const historyOrders = orders.filter((order) => order.status === 'historico').slice(0, 12);
-  const openTickets = confirmedOrders.filter((order) => Number(order.total_cents || 0) - Number(order.paid_cents || 0) > 0).length;
+  const openTicketBalances = confirmedOrders
+    .map((order) => Math.max(0, Number(order.total_cents || 0) - Number(order.paid_cents || 0)))
+    .filter((remainingCents) => remainingCents > 0);
+  const openTickets = openTicketBalances.length;
+  const openTicketsValue = openTicketBalances.reduce((sum, remainingCents) => sum + remainingCents, 0);
   const waitingHtml = waitingOrders.length
     ? waitingOrders.map((order) => renderOrderCard(req, order, selectedMonth)).join('')
     : '<div class="gestao-empty">Nenhum pedido aguardando chegada.</div>';
@@ -1822,7 +1826,7 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260525-inline-actions">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260526-open-ticket-value">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
   <script src="${BASE_PATH}/app.js?v=20260521-parcelas" defer></script>
 </head>
@@ -1855,6 +1859,7 @@ async function renderApp(req: Request): Promise<string> {
         <div><span>Chegam hoje</span><strong>${e(arrivingToday)}</strong></div>
         <div><span>Aguardando chegada</span><strong>${e(waitingOrders.length)}</strong></div>
         <div><span>Boletos em aberto</span><strong>${e(openTickets)}</strong></div>
+        <div><span>Valor boletos abertos</span><strong>${e(formatMoney(openTicketsValue))}</strong></div>
         <div><span>Pago em pedidos</span><strong>${e(formatMoney(paidMonth))}</strong></div>
       </div>
       <div class="gestao-orders-layout">
