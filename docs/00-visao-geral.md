@@ -16,7 +16,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - XP: cadastro de atendentes, foto, venda diaria, pontos e progressao visual de niveis.
 - Tarefas: tarefas simples internas.
 - Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada, contratos de tools enviados do PHP para o Node e tools reais por ponte PHP interna, sem liberar escrita direta.
-- Miauby WhatsApp: bridge dedicado em Node.js/TypeScript com Postgres proprio, webhook da Evolution API, fila, dedupe, allowlist e outbox, publicado em `/miauw/whatsapp/` e desligado por padrao.
+- Miauby WhatsApp: bridge dedicado em Node.js/TypeScript com Postgres proprio, webhook da Evolution API, fila, dedupe, allowlist, painel operacional e outbox, publicado em `/miauw/whatsapp/`; o repositorio fica desligado por padrao e cada ambiente liga por `.env`.
 - WordPress: site principal e conteudo publico.
 
 ## Arquivos, rotas e componentes envolvidos
@@ -53,6 +53,7 @@ Rotas principais:
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
 - `/miauw/agent/health`
+- `/miauw/whatsapp/`
 - `/miauw/whatsapp/health`
 
 ## Regras de negocio que precisam ser preservadas
@@ -65,7 +66,7 @@ Rotas principais:
 - XP deve preservar funcionarios, fotos validadas, vendas em centavos, XP inteiro, logs de alimentacao e progressao por total historico sem apagar lancamentos; cancelamentos devem ser logicos.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.
 - O servico Miauby agente nao deve executar escrita real. O adaptador PHP compara respostas por trace e o corte inicial fica limitado a usuarios liberados por `MIAUW_ENGINE`, com rollback por `.env`.
-- O bridge WhatsApp do Miauby deve manter Evolution API como transporte, usar allowlist, bloquear grupos por padrao, guardar apenas metadados sanitizados/hash/mascara/cifra no Postgres dedicado e nao executar escrita forte diretamente pelo WhatsApp.
+- O bridge WhatsApp do Miauby deve manter Evolution API como transporte, usar allowlist, bloquear grupos por padrao, guardar apenas metadados sanitizados/hash/mascara/cifra no Postgres dedicado, exibir no painel apenas dados seguros e nao executar escrita forte diretamente pelo WhatsApp.
 - WordPress deve continuar servindo o site principal enquanto os modulos internos ficam acessiveis por suas rotas.
 
 ## Decisoes tecnicas ja tomadas

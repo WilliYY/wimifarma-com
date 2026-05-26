@@ -33,9 +33,40 @@ type QueueRow = {
   attempts: number;
 };
 
+type CountRow = {
+  status: string;
+  count: string;
+};
+
+type DashboardEventRow = {
+  status: string;
+  ignore_reason: string;
+  sender_phone_mask: string;
+  message_type: string;
+  attempts: number;
+  created_at: string;
+};
+
+type DashboardOutboxRow = {
+  status: string;
+  recipient_phone_mask: string;
+  attempts: number;
+  created_at: string;
+  sent_at: string | null;
+};
+
+type DashboardSummary = {
+  status: JsonRecord;
+  eventCounts: Record<string, number>;
+  outboxCounts: Record<string, number>;
+  contactsTotal: number;
+  recentEvents: DashboardEventRow[];
+  recentOutbox: DashboardOutboxRow[];
+};
+
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.1.0';
+const SERVICE_VERSION = '0.2.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -776,6 +807,349 @@ function publicStatus(): JsonRecord {
   };
 }
 
+function countsByStatus(rows: CountRow[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    counts[row.status] = Number(row.count || 0);
+  }
+  return counts;
+}
+
+function countOf(counts: Record<string, number>, status: string): number {
+  return counts[status] || 0;
+}
+
+async function dashboardSummary(): Promise<DashboardSummary> {
+  const [eventsResult, outboxResult, contactsResult, recentEventsResult, recentOutboxResult] = await Promise.all([
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_events
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM miauw_whatsapp_contacts`,
+    ),
+    pgPool.query<DashboardEventRow>(
+      `SELECT status,
+              ignore_reason,
+              sender_phone_mask,
+              message_type,
+              attempts,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_events
+        ORDER BY created_at DESC
+        LIMIT 10`,
+    ),
+    pgPool.query<DashboardOutboxRow>(
+      `SELECT status,
+              recipient_phone_mask,
+              attempts,
+              created_at::text AS created_at,
+              sent_at::text AS sent_at
+         FROM miauw_whatsapp_outbox
+        ORDER BY created_at DESC
+        LIMIT 10`,
+    ),
+  ]);
+
+  return {
+    status: publicStatus(),
+    eventCounts: countsByStatus(eventsResult.rows),
+    outboxCounts: countsByStatus(outboxResult.rows),
+    contactsTotal: Number(contactsResult.rows[0]?.count || 0),
+    recentEvents: recentEventsResult.rows,
+    recentOutbox: recentOutboxResult.rows,
+  };
+}
+
+function htmlEscape(value: unknown): string {
+  const replacements: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return String(value ?? '').replace(/[&<>"']/g, (char) => replacements[char] || char);
+}
+
+function boolStatus(status: JsonRecord, key: string): boolean {
+  return status[key] === true;
+}
+
+function textStatus(status: JsonRecord, key: string): string {
+  return String(status[key] ?? '');
+}
+
+function numberStatus(status: JsonRecord, key: string): number {
+  const value = Number(status[key] ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'America/Sao_Paulo',
+    }).format(date);
+  } catch {
+    return date.toISOString().replace('T', ' ').slice(0, 16);
+  }
+}
+
+function renderPill(active: boolean, activeLabel: string, inactiveLabel: string): string {
+  return `<span class="pill ${active ? 'is-ok' : 'is-warn'}">${htmlEscape(active ? activeLabel : inactiveLabel)}</span>`;
+}
+
+function renderMetric(title: string, value: string | number, hint: string): string {
+  return `
+    <article class="metric">
+      <span>${htmlEscape(title)}</span>
+      <strong>${htmlEscape(value)}</strong>
+      <small>${htmlEscape(hint)}</small>
+    </article>`;
+}
+
+function renderRecentEvents(rows: DashboardEventRow[]): string {
+  if (!rows.length) {
+    return '<tr><td colspan="6" class="empty">Sem eventos recebidos ainda.</td></tr>';
+  }
+  return rows.map((row) => `
+    <tr>
+      <td>${htmlEscape(formatDate(row.created_at))}</td>
+      <td>${htmlEscape(row.sender_phone_mask || '-')}</td>
+      <td>${htmlEscape(row.status)}</td>
+      <td>${htmlEscape(row.ignore_reason || '-')}</td>
+      <td>${htmlEscape(row.message_type || '-')}</td>
+      <td>${htmlEscape(row.attempts)}</td>
+    </tr>`).join('');
+}
+
+function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
+  if (!rows.length) {
+    return '<tr><td colspan="5" class="empty">Sem respostas na outbox ainda.</td></tr>';
+  }
+  return rows.map((row) => `
+    <tr>
+      <td>${htmlEscape(formatDate(row.created_at))}</td>
+      <td>${htmlEscape(row.recipient_phone_mask || '-')}</td>
+      <td>${htmlEscape(row.status)}</td>
+      <td>${htmlEscape(row.attempts)}</td>
+      <td>${htmlEscape(formatDate(row.sent_at))}</td>
+    </tr>`).join('');
+}
+
+function renderDashboard(summary: DashboardSummary): string {
+  const status = summary.status;
+  const enabled = boolStatus(status, 'enabled');
+  const evolutionConfigured = boolStatus(status, 'evolution_configured');
+  const agentConfigured = boolStatus(status, 'agent_configured');
+  const webhookConfigured = boolStatus(status, 'webhook_token_configured');
+  const encryptionConfigured = boolStatus(status, 'encryption_configured');
+  const groupsEnabled = boolStatus(status, 'groups_enabled');
+  const requirePrefix = boolStatus(status, 'require_prefix');
+  const queued = countOf(summary.eventCounts, 'queued') + countOf(summary.eventCounts, 'processing');
+  const eventProblems = countOf(summary.eventCounts, 'failed') + countOf(summary.eventCounts, 'dead');
+  const pendingOutbox = countOf(summary.outboxCounts, 'pending') + countOf(summary.outboxCounts, 'sending');
+  const outboxProblems = countOf(summary.outboxCounts, 'failed') + countOf(summary.outboxCounts, 'dead');
+  const replied = countOf(summary.eventCounts, 'replied');
+  const ignored = countOf(summary.eventCounts, 'ignored');
+  const prefix = textStatus(status, 'prefix') || '-';
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Miauby Whatsapp</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #f7f8fb;
+      color: #211722;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: inherit; text-decoration: none; }
+    .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 40px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .eyebrow { margin: 0 0 6px; color: #9b174e; font-size: 12px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 46px; line-height: .95; letter-spacing: 0; color: #a70643; }
+    .intro { max-width: 720px; margin: 10px 0 0; color: #5e4b59; font-size: 15px; line-height: 1.45; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .actions a {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 14px;
+      border: 1px solid #e6ccd8;
+      border-radius: 8px;
+      background: #fff;
+      color: #8f0e42;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .metric, .panel {
+      border: 1px solid #ead5df;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 16px 32px rgba(89, 27, 57, .08);
+    }
+    .metric { min-height: 112px; padding: 15px; }
+    .metric span, .panel h2 { color: #8d0f43; font-size: 12px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
+    .metric strong { display: block; margin: 12px 0 7px; font-size: 30px; line-height: 1; color: #b10647; }
+    .metric small { color: #645260; font-size: 12px; line-height: 1.35; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .panel { padding: 16px; overflow: hidden; }
+    .panel h2 { margin: 0 0 12px; }
+    .status-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .status-item { border: 1px solid #f1d8e3; border-radius: 8px; padding: 12px; background: #fffafb; }
+    .status-item b { display: block; margin-bottom: 8px; color: #251827; font-size: 14px; }
+    .status-item small { color: #6a5964; font-size: 12px; line-height: 1.35; }
+    .pill { display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; }
+    .pill.is-ok { background: #daf6e8; color: #097143; }
+    .pill.is-warn { background: #fff2d2; color: #8c5a00; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 620px; font-size: 13px; }
+    th, td { padding: 9px 8px; border-bottom: 1px solid #f0dbe4; text-align: left; vertical-align: top; }
+    th { color: #8f0e42; font-size: 11px; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
+    td { color: #2e2430; }
+    .empty { color: #6a5964; text-align: center; }
+    .footnote { margin: 14px 0 0; color: #6a5964; font-size: 12px; line-height: 1.4; }
+    @media (max-width: 860px) {
+      .topbar { display: block; }
+      .actions { justify-content: flex-start; margin-top: 14px; }
+      .metrics, .grid { grid-template-columns: 1fr; }
+      .status-list { grid-template-columns: 1fr; }
+      h1 { font-size: 36px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Wimifarma</p>
+        <h1>Miauby Whatsapp</h1>
+        <p class="intro">Painel seguro do canal interno via Evolution API: mostra atividade, fila, outbox e configuracoes sem expor token, telefone cru ou payload bruto.</p>
+      </div>
+      <nav class="actions" aria-label="Atalhos">
+        <a href="/">Home</a>
+        <a href="${htmlEscape(BASE_PATH)}/health">Health</a>
+        <a href="${htmlEscape(BASE_PATH)}/status">Status JSON</a>
+      </nav>
+    </header>
+
+    <section class="metrics" aria-label="Resumo">
+      ${renderMetric('Canal', enabled ? 'Ativo' : 'Desligado', `Prefixo: ${requirePrefix ? prefix : 'sem prefixo'} | Allowlist: ${numberStatus(status, 'allowlist_count')}`)}
+      ${renderMetric('Fila', queued, `${replied} respondidas | ${ignored} ignoradas`)}
+      ${renderMetric('Outbox', pendingOutbox, `${countOf(summary.outboxCounts, 'sent')} enviadas | ${outboxProblems} problemas`)}
+      ${renderMetric('Contatos', summary.contactsTotal, `${eventProblems} eventos com falha ou dead-letter`)}
+    </section>
+
+    <section class="grid" aria-label="Status operacional">
+      <article class="panel">
+        <h2>Configuracao</h2>
+        <div class="status-list">
+          <div class="status-item">
+            <b>Canal</b>
+            ${renderPill(enabled, 'Ativo', 'Desligado')}
+            <small>Ligado por MIAUW_WHATSAPP_ENABLED no ambiente.</small>
+          </div>
+          <div class="status-item">
+            <b>Evolution API</b>
+            ${renderPill(evolutionConfigured, 'Configurada', 'Pendente')}
+            <small>Instancia: ${htmlEscape(EVOLUTION_INSTANCE)}</small>
+          </div>
+          <div class="status-item">
+            <b>Agente Miauby</b>
+            ${renderPill(agentConfigured, 'Configurado', 'Pendente')}
+            <small>Motor interno usado para respostas curtas.</small>
+          </div>
+          <div class="status-item">
+            <b>Seguranca</b>
+            ${renderPill(webhookConfigured && encryptionConfigured, 'Tokens ok', 'Revisar')}
+            <small>Grupos: ${groupsEnabled ? 'liberados' : 'bloqueados'} | Rate: ${numberStatus(status, 'rate_limit_per_minute')}/min.</small>
+          </div>
+        </div>
+        <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Estados</h2>
+        <div class="status-list">
+          <div class="status-item"><b>Recebidos</b><span class="pill is-ok">${countOf(summary.eventCounts, 'received')}</span><small>Eventos brutos aceitos antes da decisao.</small></div>
+          <div class="status-item"><b>Na fila</b><span class="pill is-warn">${queued}</span><small>Eventos aguardando processamento.</small></div>
+          <div class="status-item"><b>Ignorados</b><span class="pill is-warn">${ignored}</span><small>Fora de allowlist, sem prefixo, grupo ou vazio.</small></div>
+          <div class="status-item"><b>Problemas</b><span class="pill is-warn">${eventProblems + outboxProblems}</span><small>Falhas com retry ou dead-letter.</small></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Eventos recentes</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Quando</th><th>Remetente</th><th>Status</th><th>Motivo</th><th>Tipo</th><th>Tent.</th></tr></thead>
+            <tbody>${renderRecentEvents(summary.recentEvents)}</tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Outbox recente</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Quando</th><th>Destino</th><th>Status</th><th>Tent.</th><th>Enviado</th></tr></thead>
+            <tbody>${renderRecentOutbox(summary.recentOutbox)}</tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+function renderDashboardError(error: unknown): string {
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Miauby Whatsapp</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f8fb; color: #211722; font-family: system-ui, sans-serif; }
+    main { width: min(680px, calc(100% - 32px)); border: 1px solid #ead5df; border-radius: 8px; background: #fff; padding: 24px; box-shadow: 0 16px 32px rgba(89, 27, 57, .08); }
+    h1 { margin: 0 0 10px; color: #a70643; }
+    p { color: #5e4b59; }
+    a { color: #8f0e42; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Miauby Whatsapp</h1>
+    <p>Nao foi possivel carregar o painel operacional agora.</p>
+    <p>${htmlEscape(safeError(error))}</p>
+    <a href="${htmlEscape(BASE_PATH)}/health">Abrir health</a>
+  </main>
+</body>
+</html>`;
+}
+
 function redact(value: string): string {
   return value
     .replace(/[A-Za-z0-9_-]{24,}/g, '[redacted]')
@@ -806,6 +1180,18 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   }
   next(error);
 });
+
+async function dashboardHandler(_req: Request, res: Response): Promise<void> {
+  try {
+    const summary = await dashboardSummary();
+    res.type('html').send(renderDashboard(summary));
+  } catch (error) {
+    res.status(503).type('html').send(renderDashboardError(error));
+  }
+}
+
+app.get(BASE_PATH, dashboardHandler);
+app.get(`${BASE_PATH}/`, dashboardHandler);
 
 app.get(`${BASE_PATH}/health`, async (_req, res) => {
   try {

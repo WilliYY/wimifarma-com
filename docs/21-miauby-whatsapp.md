@@ -2,7 +2,7 @@
 
 ## O que esta parte documenta
 
-Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API, fila duravel, deduplicacao, allowlist e outbox. O canal nasce desligado por padrao e so responde quando as variaveis de ambiente forem configuradas.
+Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
 
 ## Componentes
 
@@ -10,6 +10,7 @@ Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A impl
 - `wimifarma-miauw-whatsapp`: container do bridge WhatsApp.
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal.
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`.
+- A home publica possui o card `Miauby Whatsapp`, apontando para `/miauw/whatsapp/`.
 - Evolution API fica fora deste repositorio, como servico separado no VPS.
 - `wimifarma-miauw-agent` continua sendo o motor de resposta do Miauby.
 
@@ -61,6 +62,7 @@ Principais variaveis:
 
 ## Endpoints
 
+- `GET /miauw/whatsapp/`: painel operacional seguro com canal, Evolution API, fila, outbox e eventos recentes, sem segredo ou telefone cru.
 - `GET /miauw/whatsapp/health`: status seguro do servico.
 - `GET /miauw/whatsapp/status`: status seguro do servico.
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API.
@@ -70,8 +72,9 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 
 ## Regras iniciais
 
-- O servico nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`.
+- O repositorio mantem o servico desligado por `MIAUW_WHATSAPP_ENABLED=false`; cada ambiente pode ligar por `.env`.
 - Com o servico ligado, `MIAUW_WHATSAPP_WEBHOOK_TOKEN` e uma chave de cifragem precisam estar configurados.
+- O painel `/miauw/whatsapp/` pode ficar publico porque mostra apenas status, contadores e telefones mascarados; nao adicionar segredos, payload bruto ou telefone completo nele.
 - A primeira etapa usa allowlist por `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
 - Grupos ficam bloqueados por padrao.
 - Prefixo `miauby` fica exigido por padrao.
@@ -106,13 +109,14 @@ Com Docker ativo:
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-miauw-whatsapp wimifarma-com-web
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
+curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 ```
 
 ## Proximas etapas
 
-1. Configurar segredos reais no `.env` do VPS.
-2. Subir a Evolution API em servico separado.
-3. Conectar o numero por QR.
-4. Configurar webhook da instancia.
+1. Subir a Evolution API em servico separado.
+2. Conectar o numero por QR.
+3. Configurar webhook da instancia.
+4. Preencher `MIAUW_WHATSAPP_ALLOWED_SENDERS` com remetentes autorizados.
 5. Testar com um remetente em allowlist e prefixo `miauby`.
 6. Depois avaliar audio, midias e liberacao controlada sem prefixo.

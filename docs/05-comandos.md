@@ -120,6 +120,7 @@ npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-miauw-whatsapp wimifarma-com-web
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
+curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 ```
 
 O bridge nasce com `MIAUW_WHATSAPP_ENABLED=false`. Antes de aceitar webhook real, configurar no `.env`: `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS`, `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`.
@@ -173,6 +174,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health
+curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/whatsapp/
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/whatsapp/health
 curl.exe -sS http://127.0.0.1:3002/gestao/health
 curl.exe -sS http://127.0.0.1:3002/xp/health.php
@@ -243,6 +245,7 @@ git pull origin main
 docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-miauw-whatsapp wimifarma-com-web
 docker compose ps
 curl -I https://wimifarma.com/miauw/whatsapp/health
+curl -I https://wimifarma.com/miauw/whatsapp/
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
 

@@ -94,6 +94,13 @@ $modules = array(
         'accent' => 'violet',
     ),
     array(
+        'name' => 'Miauby Whatsapp',
+        'label' => 'Canal e fila',
+        'description' => 'Webhook, Evolution, eventos e outbox.',
+        'href' => '/miauw/whatsapp/',
+        'accent' => 'teal',
+    ),
+    array(
         'name' => 'Códigos',
         'label' => 'Comissoes especiais',
         'description' => 'Codigo, EAN e preco em lista rapida.',

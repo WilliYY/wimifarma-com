@@ -38,6 +38,7 @@ Rotas de smoke test:
 - `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
 - `/miauw/widget-status.php`
 - `/miauw/agent/health` deve responder JSON 200 sem segredo quando o servico sombra estiver ativo
+- `/miauw/whatsapp/` deve responder HTML 200 com painel seguro quando o bridge WhatsApp e seu Postgres estiverem ativos
 - `/miauw/whatsapp/health` deve responder JSON 200 sem segredo quando o bridge WhatsApp e seu Postgres estiverem ativos
 - `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
 - `/miauw/agent-tools.php` deve recusar sem token interno e aceitar somente tools de leitura baixa quando chamado pelo servico agente
@@ -98,7 +99,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
 - Se mexer em `apps/miauw-agent`, rodar `npm run check`, `npm run check:persona`, build do servico e validar `/miauw/agent/health`.
-- Se mexer em `apps/miauw-whatsapp`, rodar `npm run check`, `npm run build`, validar `/miauw/whatsapp/health` e confirmar que o webhook desligado retorna `accepted=false` sem processar mensagem real.
+- Se mexer em `apps/miauw-whatsapp`, rodar `npm run check`, `npm run build`, validar `/miauw/whatsapp/` e `/miauw/whatsapp/health`; quando `MIAUW_WHATSAPP_ENABLED=false`, confirmar que o webhook retorna `accepted=false`, e quando estiver ativo, confirmar que webhook sem token recusa com 401/503 sem processar mensagem real.
 - Se mexer no painel de diagnostico do Miauby, validar login local e acesso a `/miauw/diagnostico.php`.
 
 ## Decisoes tecnicas ja tomadas

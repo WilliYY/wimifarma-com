@@ -124,10 +124,11 @@ Estado atual:
 - backend dedicado iniciado em `apps/miauw-whatsapp`, Node.js 22 + TypeScript;
 - Postgres 17 proprio em `wimifarma-miauw-whatsapp-db`, volume `miauw-whatsapp-data/`;
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
+- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru;
 - `GET /miauw/whatsapp/health` mostra status seguro;
 - `POST /miauw/whatsapp/webhook` recebe eventos da Evolution API;
 - `POST /miauw/whatsapp/worker/run` processa fila manualmente com token interno;
-- o canal nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`.
+- o repositorio nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`, mas o VPS pode ativar por `.env` quando token/cifragem estiverem configurados.
 
 Desenho:
 
@@ -145,7 +146,7 @@ Regras iniciais obrigatorias:
 - opcionalmente exigir prefixo como `miauby` para ativar resposta automatica no WhatsApp;
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
 - manter acoes fortes bloqueadas ou retornando confirmacao humana auditada; WhatsApp nao deve virar atalho para sangria, contas, encomenda ou escrita sensivel sem fluxo proprio;
-- registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token;
+- registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token; o painel operacional deve seguir a mesma regra;
 - se for usar Gemini ou outro provedor, encapsular como motor configuravel do Miauby, nao como resposta solta direto na Evolution API.
 
 Cuidados sobre o numero:

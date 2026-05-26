@@ -2,6 +2,31 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-26 - Miauby WhatsApp ganha card e painel operacional
+
+Decisao:
+
+- Adicionar o card `Miauby Whatsapp` na home publica apontando para `/miauw/whatsapp/`.
+- Transformar `GET /miauw/whatsapp/` em painel operacional seguro, com status do canal, Evolution API, fila, outbox, eventos recentes e telefones apenas mascarados.
+- Manter o default do repositorio desligado, mas permitir ativacao no VPS por `MIAUW_WHATSAPP_ENABLED=true` no `.env`.
+
+Motivo:
+
+- O canal precisa ficar visivel para operacao antes de conectar a Evolution API, sem depender apenas de JSON de health e sem expor segredos.
+
+Impacto:
+
+- `site/home.php`
+- `apps/miauw-whatsapp/src/server.ts`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- O painel nao deve exibir token, payload bruto da Evolution nem telefone completo.
+- Com o canal ativo, manter allowlist e prefixo antes de apontar o webhook real da Evolution API.
+
 ## 2026-05-26 - Miauby WhatsApp usa backend dedicado e Postgres proprio
 
 Decisao:
