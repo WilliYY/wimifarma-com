@@ -100,6 +100,11 @@ const WORKER_BATCH_SIZE = numberEnv('MIAUW_WHATSAPP_WORKER_BATCH_SIZE', 5, 1, 20
 const MAX_ATTEMPTS = numberEnv('MIAUW_WHATSAPP_MAX_ATTEMPTS', 5, 1, 12);
 const REQUEST_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_REQUEST_TIMEOUT_MS', 18000, 3000, 60000);
 const ALLOWED_SENDERS = parseAllowedSenders(textEnv('MIAUW_WHATSAPP_ALLOWED_SENDERS') || textEnv('MIAUW_WHATSAPP_ALLOWED_NUMBERS'));
+const DASHBOARD_USER = textEnv('MIAUW_WHATSAPP_DASHBOARD_USER');
+const DASHBOARD_PASSWORD = textEnv('MIAUW_WHATSAPP_DASHBOARD_PASSWORD');
+const DASHBOARD_AUTH_ENABLED = DASHBOARD_USER !== '' && DASHBOARD_PASSWORD !== '';
+const DASHBOARD_COOKIE_NAME = 'MIAUW_WHATSAPP_DASH';
+const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES', 720, 5, 10080);
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -271,6 +276,96 @@ function requireInternalToken(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
   return next();
+}
+
+function cookieValue(req: Request, name: string): string {
+  const raw = String(req.get('cookie') || '');
+  for (const part of raw.split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) {
+      try {
+        return decodeURIComponent(rest.join('=') || '');
+      } catch {
+        return '';
+      }
+    }
+  }
+  return '';
+}
+
+function dashboardAuthSecret(): string {
+  return CRYPTO_SECRET || WEBHOOK_TOKEN || INTERNAL_TOKEN || DASHBOARD_PASSWORD || 'miauw-whatsapp-dashboard-dev';
+}
+
+function signDashboardPayload(payload: string): string {
+  return crypto.createHmac('sha256', dashboardAuthSecret()).update(payload).digest('base64url');
+}
+
+function createDashboardSession(username: string): string {
+  const payload = Buffer.from(JSON.stringify({
+    u: username,
+    exp: Date.now() + DASHBOARD_SESSION_TTL_MINUTES * 60 * 1000,
+    n: crypto.randomBytes(12).toString('base64url'),
+  })).toString('base64url');
+  return `${payload}.${signDashboardPayload(payload)}`;
+}
+
+function dashboardSessionValid(req: Request): boolean {
+  if (!DASHBOARD_AUTH_ENABLED) return true;
+  const token = cookieValue(req, DASHBOARD_COOKIE_NAME);
+  const [payload, signature] = token.split('.');
+  if (!payload || !signature || !timingSafeStringEqual(signature, signDashboardPayload(payload))) return false;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as JsonRecord;
+    return decoded.u === DASHBOARD_USER && Number(decoded.exp || 0) > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function secureCookie(req: Request): boolean {
+  return req.secure || String(req.get('x-forwarded-proto') || '').toLowerCase() === 'https';
+}
+
+function setDashboardCookie(req: Request, res: Response, token: string): void {
+  const parts = [
+    `${DASHBOARD_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    `Max-Age=${DASHBOARD_SESSION_TTL_MINUTES * 60}`,
+    `Path=${BASE_PATH}`,
+    'HttpOnly',
+    'SameSite=Lax',
+  ];
+  if (secureCookie(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearDashboardCookie(req: Request, res: Response): void {
+  const parts = [
+    `${DASHBOARD_COOKIE_NAME}=`,
+    'Max-Age=0',
+    `Path=${BASE_PATH}`,
+    'HttpOnly',
+    'SameSite=Lax',
+  ];
+  if (secureCookie(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function requireDashboardAuth(req: Request, res: Response, next: NextFunction) {
+  if (dashboardSessionValid(req)) return next();
+  res.status(401).type('html').send(renderDashboardLogin(''));
+}
+
+function dashboardFaviconLink(): string {
+  return '<link rel="icon" type="image/png" href="/miauw/favicon.png">';
+}
+
+function dashboardLogoutAction(): string {
+  if (!DASHBOARD_AUTH_ENABLED) return '';
+  return `
+        <form method="post" action="${htmlEscape(BASE_PATH)}/logout">
+          <button type="submit">Sair</button>
+        </form>`;
 }
 
 function payloadSummary(payload: JsonRecord, data: JsonRecord, messageType: string, provider: WhatsappProvider): JsonRecord {
@@ -966,6 +1061,7 @@ function publicStatus(): JsonRecord {
     meta_webhook_verify_configured: META_WEBHOOK_VERIFY_TOKEN !== '',
     meta_signature_configured: META_APP_SECRET !== '',
     encryption_configured: CRYPTO_SECRET !== '',
+    dashboard_auth_configured: DASHBOARD_AUTH_ENABLED,
     allowlist_count: ALLOWED_SENDERS.size,
     require_prefix: REQUIRE_PREFIX,
     prefix: REQUIRE_PREFIX ? PREFIX : '',
@@ -1124,6 +1220,99 @@ function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
     </tr>`).join('');
 }
 
+function renderDashboardLogin(error: string): string {
+  const errorHtml = error
+    ? `<p class="error">${htmlEscape(error)}</p>`
+    : '';
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${dashboardFaviconLink()}
+  <title>Miauby Whatsapp</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top left, #fff5f9 0, #f7f8fb 42%, #ffffff 100%);
+      color: #211722;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(390px, calc(100% - 32px));
+      border: 1px solid #ead5df;
+      border-radius: 8px;
+      background: #fff;
+      padding: 24px;
+      box-shadow: 0 18px 42px rgba(89, 27, 57, .14);
+    }
+    .mascot {
+      width: 76px;
+      height: 76px;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto 12px;
+    }
+    h1 { margin: 0; color: #a70643; font-size: 30px; line-height: 1; text-align: center; letter-spacing: 0; }
+    p { margin: 10px 0 18px; color: #5e4b59; font-size: 14px; line-height: 1.4; text-align: center; }
+    label { display: block; margin: 0 0 12px; color: #8d0f43; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+    input {
+      width: 100%;
+      min-height: 44px;
+      margin-top: 6px;
+      border: 1px solid #e3c6d4;
+      border-radius: 8px;
+      padding: 0 12px;
+      color: #211722;
+      font: inherit;
+      outline: none;
+    }
+    input:focus { border-color: #b10647; box-shadow: 0 0 0 3px rgba(177, 6, 71, .12); }
+    button {
+      width: 100%;
+      min-height: 44px;
+      border: 0;
+      border-radius: 8px;
+      background: #b10647;
+      color: #fff;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .error {
+      border: 1px solid #ffb3c8;
+      border-radius: 8px;
+      background: #fff2f6;
+      padding: 10px;
+      color: #9d063d;
+      font-weight: 800;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="mascot" src="/cashback/gato-hapy.gif" alt="Gato happy">
+    <h1>Miauby Whatsapp</h1>
+    <p>Acesso operacional do canal WhatsApp.</p>
+    ${errorHtml}
+    <form method="post" action="${htmlEscape(BASE_PATH)}/login">
+      <label>Usuario
+        <input name="username" autocomplete="username" required autofocus>
+      </label>
+      <label>Senha
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Entrar</button>
+    </form>
+  </main>
+</body>
+</html>`;
+}
+
 function renderDashboard(summary: DashboardSummary): string {
   const status = summary.status;
   const enabled = boolStatus(status, 'enabled');
@@ -1134,6 +1323,7 @@ function renderDashboard(summary: DashboardSummary): string {
   const metaVerifyConfigured = boolStatus(status, 'meta_webhook_verify_configured');
   const metaSignatureConfigured = boolStatus(status, 'meta_signature_configured');
   const encryptionConfigured = boolStatus(status, 'encryption_configured');
+  const dashboardAuthConfigured = boolStatus(status, 'dashboard_auth_configured');
   const groupsEnabled = boolStatus(status, 'groups_enabled');
   const requirePrefix = boolStatus(status, 'require_prefix');
   const queued = countOf(summary.eventCounts, 'queued') + countOf(summary.eventCounts, 'processing');
@@ -1149,6 +1339,7 @@ function renderDashboard(summary: DashboardSummary): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${dashboardFaviconLink()}
   <title>Miauby Whatsapp</title>
   <style>
     * { box-sizing: border-box; }
@@ -1166,7 +1357,8 @@ function renderDashboard(summary: DashboardSummary): string {
     h1 { margin: 0; font-size: 46px; line-height: .95; letter-spacing: 0; color: #a70643; }
     .intro { max-width: 720px; margin: 10px 0 0; color: #5e4b59; font-size: 15px; line-height: 1.45; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-    .actions a {
+    .actions form { margin: 0; }
+    .actions a, .actions button {
       min-height: 38px;
       display: inline-flex;
       align-items: center;
@@ -1177,6 +1369,8 @@ function renderDashboard(summary: DashboardSummary): string {
       color: #8f0e42;
       font-size: 13px;
       font-weight: 800;
+      font-family: inherit;
+      cursor: pointer;
     }
     .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
     .metric, .panel {
@@ -1227,6 +1421,7 @@ function renderDashboard(summary: DashboardSummary): string {
         <a href="/">Home</a>
         <a href="${htmlEscape(BASE_PATH)}/health">Health</a>
         <a href="${htmlEscape(BASE_PATH)}/status">Status JSON</a>
+        ${dashboardLogoutAction()}
       </nav>
     </header>
 
@@ -1259,7 +1454,7 @@ function renderDashboard(summary: DashboardSummary): string {
           <div class="status-item">
             <b>Seguranca</b>
             ${renderPill((webhookConfigured || metaVerifyConfigured) && encryptionConfigured, 'Tokens ok', 'Revisar')}
-            <small>Meta assinatura: ${metaSignatureConfigured ? 'ativa' : 'pendente'} | Grupos: ${groupsEnabled ? 'liberados' : 'bloqueados'} | Rate: ${numberStatus(status, 'rate_limit_per_minute')}/min.</small>
+            <small>Painel: ${dashboardAuthConfigured ? 'login ativo' : 'aberto por ambiente'} | Meta assinatura: ${metaSignatureConfigured ? 'ativa' : 'pendente'} | Grupos: ${groupsEnabled ? 'liberados' : 'bloqueados'} | Rate: ${numberStatus(status, 'rate_limit_per_minute')}/min.</small>
           </div>
         </div>
         <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>
@@ -1306,6 +1501,7 @@ function renderDashboardError(error: unknown): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${dashboardFaviconLink()}
   <title>Miauby Whatsapp</title>
   <style>
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f8fb; color: #211722; font-family: system-ui, sans-serif; }
@@ -1354,6 +1550,7 @@ app.use(express.json({
     (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
   },
 }));
+app.use(express.urlencoded({ extended: false, limit: '16kb' }));
 app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (error instanceof SyntaxError) {
     res.status(400).json({ ok: false, error: 'invalid_json' });
@@ -1371,8 +1568,37 @@ async function dashboardHandler(_req: Request, res: Response): Promise<void> {
   }
 }
 
-app.get(BASE_PATH, dashboardHandler);
-app.get(`${BASE_PATH}/`, dashboardHandler);
+app.get(`${BASE_PATH}/login`, (req, res) => {
+  if (dashboardSessionValid(req)) {
+    res.redirect(303, BASE_PATH);
+    return;
+  }
+  res.type('html').send(renderDashboardLogin(''));
+});
+
+app.post(`${BASE_PATH}/login`, (req, res) => {
+  if (!DASHBOARD_AUTH_ENABLED) {
+    res.redirect(303, BASE_PATH);
+    return;
+  }
+  const username = safeText(req.body?.username, 120);
+  const password = safeText(req.body?.password, 300);
+  if (timingSafeStringEqual(username, DASHBOARD_USER) && timingSafeStringEqual(password, DASHBOARD_PASSWORD)) {
+    setDashboardCookie(req, res, createDashboardSession(username));
+    res.redirect(303, BASE_PATH);
+    return;
+  }
+  clearDashboardCookie(req, res);
+  res.status(401).type('html').send(renderDashboardLogin('Usuario ou senha invalidos.'));
+});
+
+app.post(`${BASE_PATH}/logout`, (req, res) => {
+  clearDashboardCookie(req, res);
+  res.redirect(303, `${BASE_PATH}/login`);
+});
+
+app.get(BASE_PATH, requireDashboardAuth, dashboardHandler);
+app.get(`${BASE_PATH}/`, requireDashboardAuth, dashboardHandler);
 
 app.get(`${BASE_PATH}/webhook`, (req, res) => {
   const mode = safeText(req.query['hub.mode'], 80);
@@ -1394,7 +1620,7 @@ app.get(`${BASE_PATH}/health`, async (_req, res) => {
   }
 });
 
-app.get(`${BASE_PATH}/status`, (_req, res) => {
+app.get(`${BASE_PATH}/status`, requireDashboardAuth, (_req, res) => {
   res.json(publicStatus());
 });
 

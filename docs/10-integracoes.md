@@ -125,8 +125,9 @@ Estado atual:
 - Postgres 17 proprio em `wimifarma-miauw-whatsapp-db`, volume `miauw-whatsapp-data/`;
 - template da Evolution API em `ops/evolution/`, para deploy separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`;
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
-- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru;
-- `GET /miauw/whatsapp/health` mostra status seguro;
+- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru, protegido por login do ambiente quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos;
+- `GET /miauw/whatsapp/login` mostra o login proprio do painel;
+- `GET /miauw/whatsapp/health` mostra status seguro e permanece publico para smoke test;
 - `GET /miauw/whatsapp/webhook` valida o desafio `hub.challenge` da Meta Cloud API quando `MIAUW_WHATSAPP_PROVIDER=meta`;
 - `POST /miauw/whatsapp/webhook` recebe eventos da Evolution API ou da Meta Cloud API;
 - `POST /miauw/whatsapp/worker/run` processa fila manualmente com token interno;

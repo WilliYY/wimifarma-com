@@ -38,7 +38,7 @@ Rotas de smoke test:
 - `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
 - `/miauw/widget-status.php`
 - `/miauw/agent/health` deve responder JSON 200 sem segredo quando o servico sombra estiver ativo
-- `/miauw/whatsapp/` deve responder HTML 200 com painel seguro quando o bridge WhatsApp e seu Postgres estiverem ativos
+- `/miauw/whatsapp/` deve responder HTML 200 com painel seguro quando o login do painel estiver desligado, ou HTML de login/401 quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estiverem configurados
 - `/miauw/whatsapp/health` deve responder JSON 200 sem segredo quando o bridge WhatsApp e seu Postgres estiverem ativos
 - `http://127.0.0.1:8080` deve responder quando a Evolution API separada estiver ativa no VPS
 - `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
@@ -100,7 +100,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
 - Se mexer em `apps/miauw-agent`, rodar `npm run check`, `npm run check:persona`, build do servico e validar `/miauw/agent/health`.
-- Se mexer em `apps/miauw-whatsapp`, rodar `npm run check`, `npm run build`, validar `/miauw/whatsapp/` e `/miauw/whatsapp/health`; quando `MIAUW_WHATSAPP_ENABLED=false`, confirmar que o webhook retorna `accepted=false`, e quando estiver ativo, confirmar que webhook sem token/assinatura recusa com 401/503 sem processar mensagem real. No modo Meta, validar tambem `GET /miauw/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...`.
+- Se mexer em `apps/miauw-whatsapp`, rodar `npm run check`, `npm run build`, validar `/miauw/whatsapp/`, `/miauw/whatsapp/login` quando o login estiver ativo e `/miauw/whatsapp/health`; quando `MIAUW_WHATSAPP_ENABLED=false`, confirmar que o webhook retorna `accepted=false`, e quando estiver ativo, confirmar que webhook sem token/assinatura recusa com 401/503 sem processar mensagem real. No modo Meta, validar tambem `GET /miauw/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...`.
 - Se mexer em `ops/evolution`, validar `docker compose config` na pasta da stack e, no VPS, `docker compose ps`, `curl http://127.0.0.1:8080` e o health do bridge com `evolution_configured=true`.
 - Se mexer no painel de diagnostico do Miauby, validar login local e acesso a `/miauw/diagnostico.php`.
 

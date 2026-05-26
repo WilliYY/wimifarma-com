@@ -39,6 +39,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - A Fase 20 mostra audio enviado como player local e gera resposta falada temporaria no PHP sem gravar arquivo no banco/disco. A transcricao continua como texto interno para contexto e auditoria, audio curto demais e bloqueado para reduzir chute, e falha de TTS cai para texto normal sem liberar escrita por voz.
 - A Fase 21 permite `blob:`/`data:` apenas em `media-src` para os players temporarios do chat/widget, mantendo scripts, frames e origens externas bloqueados. O seletor de voz no diagnostico salva somente um ID de voz permitido em `miauw_configuracoes`, nunca chave, sample de audio ou arquivo de voz.
 - O bridge WhatsApp do Miauby (`apps/miauw-whatsapp`) nasce desligado no repositorio, exige token de webhook quando ligado, usa allowlist de remetentes, bloqueia grupos por padrao, limita respostas por mensagem, aplica rate limit por remetente e guarda no Postgres apenas hash/mascara e identificadores cifrados para resposta, sem payload bruto da Evolution.
+- O painel do bridge WhatsApp pode exigir login por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`; a sessao usa cookie `HttpOnly`, `SameSite=Lax`, assinatura HMAC e TTL configuravel, enquanto `/miauw/whatsapp/health` permanece publico e sem segredo para monitoramento.
 
 ## Arquivos envolvidos
 
@@ -92,10 +93,10 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - O webhook `/miauw/whatsapp/webhook` deve continuar protegido por `MIAUW_WHATSAPP_WEBHOOK_TOKEN` ou, no modo Meta, por `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e preferencialmente `META_WHATSAPP_APP_SECRET` com `X-Hub-Signature-256`; se o canal estiver ligado sem token/cifragem, deve recusar processamento.
 - Numeros publicos de atendimento, como o WhatsApp do Cashback, nao devem acionar o Miauby interno sem prefixo/allowlist. O canal WhatsApp nao pode expor dados de cliente, financeiro, cotacao ou gestao para remetente nao autenticado.
 - Payloads brutos da Evolution API ou WhatsApp nao devem ser persistidos em traces/logs; registrar apenas metadados sanitizados, telefone mascarado, status, latencia e erro resumido.
-- O painel `/miauw/whatsapp/` deve continuar limitado a status, contadores, motivos de ignorado e telefones mascarados; nunca adicionar token, payload bruto ou telefone completo ao HTML.
+- O painel `/miauw/whatsapp/` deve continuar limitado a status, contadores, motivos de ignorado e telefones mascarados; nunca adicionar token, payload bruto ou telefone completo ao HTML. Em producao, manter `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` preenchidos no `.env`.
 - A Evolution API deve ficar fechada em `127.0.0.1:8080` e na rede Docker interna. Nao publicar `wimifarma-evolution-api` no Nginx Proxy Manager sem autenticar e revisar superficie de ataque.
 - Segredos de Evolution API, Meta Cloud API, tokens de webhook e chaves de provedores alternativos como Gemini devem ficar apenas em `.env`/config local e entrar na varredura de segredos antes do push.
-- `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `EVOLUTION_API_KEY`, `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_APP_SECRET` e `MIAUW_WHATSAPP_POSTGRES_PASSWORD` nunca devem ser versionados. Se vazarem, trocar no `.env` do VPS e reiniciar `wimifarma-miauw-whatsapp`.
+- `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`, `EVOLUTION_API_KEY`, `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_APP_SECRET` e `MIAUW_WHATSAPP_POSTGRES_PASSWORD` nunca devem ser versionados. Se vazarem, trocar no `.env` do VPS e reiniciar `wimifarma-miauw-whatsapp`.
 
 ## Decisoes tecnicas ja tomadas
 

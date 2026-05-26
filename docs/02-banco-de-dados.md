@@ -32,6 +32,8 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gest
 - `wimifarma_gestao`: Gestao em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 
+O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
+
 ## Tabelas do Miauby WhatsApp em Postgres
 
 Criadas por `apps/miauw-whatsapp/src/server.ts`:

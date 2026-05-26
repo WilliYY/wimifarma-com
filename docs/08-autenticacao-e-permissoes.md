@@ -28,6 +28,7 @@ Rotas:
 - `/miauw/login.php`
 - `/miauw/treino.php`
 - `/miauw/diagnostico.php`
+- `/miauw/whatsapp/login`
 - `/wp-login.php`
 
 Tabelas:
@@ -55,6 +56,7 @@ Tabelas:
 - O painel `/miauw/treino.php` segue a mesma restricao de diagnostico (`admin`, `gerente` ou `adm`); revisar/aprovar/rejeitar treino usa CSRF e nao apaga historico.
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.
 - O audio do Miauby (`api.php?action=audio_transcribe`) exige a mesma sessao interna e CSRF do chat; o browser envia audio temporario para transcricao e nunca recebe chave de API.
+- O painel Miauby WhatsApp (`/miauw/whatsapp/`) usa login proprio por variaveis de ambiente `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` quando preenchidas; a sessao e cookie assinado do servico Node, separado de `wf_users` e do WordPress.
 - Logins PHP internos usam limitador compartilhado por sessao e por `IP + usuario` em `wf_login_rate_limits`; Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
 
 ## Decisoes tecnicas ja tomadas

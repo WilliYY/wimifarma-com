@@ -49,6 +49,9 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_ENCRYPTION_KEY`
 - `MIAUW_WHATSAPP_HASH_SALT`
 - `MIAUW_WHATSAPP_ALLOWED_SENDERS`
+- `MIAUW_WHATSAPP_DASHBOARD_USER`
+- `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`
+- `MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES=720`
 - `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`
 - `MIAUW_WHATSAPP_PREFIX=miauby`
 - `MIAUW_WHATSAPP_GROUPS_ENABLED=false`
@@ -68,9 +71,12 @@ Principais variaveis:
 
 ## Endpoints
 
-- `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox e eventos recentes, sem segredo ou telefone cru.
+- `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox e eventos recentes, sem segredo ou telefone cru; quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos, exige login por cookie assinado.
+- `GET /miauw/whatsapp/login`: tela de login do painel, com o gato happy e favicon proprio do Miauby.
+- `POST /miauw/whatsapp/login`: autentica o painel com usuario/senha do ambiente.
+- `POST /miauw/whatsapp/logout`: encerra a sessao do painel.
 - `GET /miauw/whatsapp/health`: status seguro do servico.
-- `GET /miauw/whatsapp/status`: status seguro do servico.
+- `GET /miauw/whatsapp/status`: status seguro do servico, protegido pelo login do painel quando ele esta configurado.
 - `GET /miauw/whatsapp/webhook`: verificacao `hub.challenge` da Meta Cloud API.
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
@@ -81,7 +87,8 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 
 - O repositorio mantem o servico desligado por `MIAUW_WHATSAPP_ENABLED=false`; cada ambiente pode ligar por `.env`.
 - Com o servico ligado, `MIAUW_WHATSAPP_WEBHOOK_TOKEN` e uma chave de cifragem precisam estar configurados.
-- O painel `/miauw/whatsapp/` pode ficar publico porque mostra apenas status, contadores e telefones mascarados; nao adicionar segredos, payload bruto ou telefone completo nele.
+- O painel `/miauw/whatsapp/` deve ficar protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` nos ambientes operacionais. Health continua publico e sem segredo para smoke test.
+- Mesmo protegido por login, o painel nao deve exibir segredos, payload bruto ou telefone completo.
 - A primeira etapa usa allowlist por `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
 - Grupos ficam bloqueados por padrao.
 - Prefixo `miauby` fica exigido por padrao.
@@ -177,6 +184,8 @@ docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-mia
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 ```
+
+Quando o login do painel estiver ativo, `/miauw/whatsapp/` deve retornar a tela de login sem cookie e deve abrir o painel apos `POST /miauw/whatsapp/login` com credenciais do ambiente. `/miauw/whatsapp/health` deve continuar respondendo JSON publico.
 
 ## Proximas etapas
 
