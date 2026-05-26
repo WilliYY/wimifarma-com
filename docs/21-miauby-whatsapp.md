@@ -89,6 +89,8 @@ A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda 
 
 O manager operacional, quando necessario, deve ser acessado pelo manager embutido da API em `http://127.0.0.1:8080/manager` via acesso local/tunel. Nao manter container manager separado.
 
+Para reduzir falhas de pareamento QR/codigo na Evolution/Baileys, a stack deve manter cache local, historico/contatos/chats/labels desligados e `CONFIG_SESSION_PHONE_VERSION=2.3000.1033773198`. Esse ajuste evita sobrecarga e erros como `Invalid buffer` durante o login.
+
 No `.env` do Wimifarma principal:
 
 ```text
@@ -120,7 +122,7 @@ Na Evolution API `v2.3.7` validada no VPS, `POST /webhook/set/{instance}` aceito
 
 `webhookByEvents` deve ficar `false`, para a Evolution nao anexar o nome do evento ao caminho do webhook.
 
-O numero `+55 44 9739-4711` pode ser usado como teste se estiver sob controle da empresa, mas os remetentes autorizados ainda precisam entrar em `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
+O numero `+55 44 99739-4711` pode ser usado como teste se estiver sob controle da empresa, mas os remetentes autorizados ainda precisam entrar em `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
 
 ## Testes
 

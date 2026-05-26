@@ -9,6 +9,7 @@ Regras:
 - manter `wimifarma-evolution-api` ligado na rede `wimifarma-com-network` para o bridge chamar `http://wimifarma-evolution-api:8080`;
 - manter Postgres, Redis e instancias em volumes/pastas desta stack, fora do projeto principal.
 - usar o manager embutido da propria API em `http://127.0.0.1:8080/manager` somente por acesso local/tunel SSH quando necessario; nao manter container manager separado.
+- manter o workaround de pareamento da Evolution/Baileys: cache local, historico/contatos/chats/labels desligados e `CONFIG_SESSION_PHONE_VERSION=2.3000.1033773198`, reduzindo erro de QR/codigo invalido durante login.
 
 Fluxo no VPS:
 
@@ -44,3 +45,15 @@ Na Evolution API `v2.3.7`, o endpoint `POST /webhook/set/{instance}` aceitou o c
 ```
 
 Manter `webhookByEvents=false`, porque o bridge recebe todos os eventos em `/miauw/whatsapp/webhook`.
+
+Para erro de QR/codigo de pareamento invalido ou `Invalid buffer` nos logs do Baileys, preservar estas variaveis no `.env` real:
+
+```text
+CACHE_REDIS_ENABLED=false
+CACHE_LOCAL_ENABLED=true
+DATABASE_SAVE_DATA_CHATS=false
+DATABASE_SAVE_DATA_CONTACTS=false
+DATABASE_SAVE_DATA_HISTORIC=false
+DATABASE_SAVE_DATA_LABELS=false
+CONFIG_SESSION_PHONE_VERSION=2.3000.1033773198
+```
