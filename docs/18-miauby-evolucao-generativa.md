@@ -283,6 +283,7 @@ Integracoes:
   - escrita: altera dados somente com validacao e auditoria.
 - Usar `miauw_skill_registry()` antes de adicionar novas tools soltas.
 - Usar `miauw_agent_tool_contract_export()` como ponte de schema para o Node; nao duplicar manualmente parametros, riscos ou confirmacoes no servico agente.
+- Quando `MIAUW_ENGINE=node` estiver ativo e o Node pedir tool forte com `confirmation_required`, o servico deve devolver `tool_events` estruturados para o PHP criar a confirmacao na sessao real do operador. Nao confiar em texto solto de confirmacao vindo da ponte interna, porque isso nao grava a pendencia no navegador do usuario.
 - Manter avaliacoes simples de skills em `site/miauw/miauw-evals.php`: exemplos de entrada, saida esperada e casos proibidos.
 - Usar `miauw_padroes` como memoria operacional resumida, nao como caixa de texto infinito.
 - Usar `miauw_treinos_respostas` para exemplos concretos de voz e resposta ideal, com pergunta/resposta original preservadas e aprovacao humana antes de entrar no contexto.

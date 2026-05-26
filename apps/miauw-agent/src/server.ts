@@ -224,6 +224,22 @@ type UserContext = {
   role?: string;
 };
 
+type ToolBridgeEvent = {
+  tool: string;
+  confirmationRequired: boolean;
+  args: Record<string, unknown>;
+  text: string;
+  summary: string;
+  bridgeMode: string;
+  risk: string;
+  level: string;
+};
+
+type AgentExecutionResult = {
+  text: string;
+  toolEvents: ToolBridgeEvent[];
+};
+
 type StyleRoute = {
   intent: string;
   label: string;
@@ -731,6 +747,47 @@ function safeError(error: unknown): string {
   return 'Nao consegui concluir a execucao do agente agora.';
 }
 
+function safeToolArgValue(value: unknown, depth = 0): unknown {
+  if (depth > 3) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return safeText(value, 500);
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'boolean' || value === null) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 12).map((item) => safeToolArgValue(item, depth + 1));
+  }
+
+  if (isRecord(value)) {
+    return safeToolArgs(value, depth + 1);
+  }
+
+  return '';
+}
+
+function safeToolArgs(args: Record<string, unknown>, depth = 0): Record<string, unknown> {
+  const safeArgs: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(args).slice(0, 24)) {
+    const safeKey = key.replace(/[^a-z0-9_\-]/gi, '').slice(0, 80);
+    if (safeKey !== '') {
+      safeArgs[safeKey] = safeToolArgValue(value, depth);
+    }
+  }
+
+  return safeArgs;
+}
+
 function limitWords(text: string, maxWords: number): string {
   const parts = text.trim().split(/\s+/).filter(Boolean);
   const safeMax = Math.max(8, Math.min(240, maxWords));
@@ -815,7 +872,13 @@ function enforceStyleReply(text: string, styleContext: SafeStyleContext): string
   return limitWords(clean, route.budgetWords);
 }
 
-async function callPhpTool(toolName: string, args: Record<string, unknown>, traceId: string, userContext: UserContext = {}): Promise<string> {
+async function callPhpTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  traceId: string,
+  userContext: UserContext = {},
+  toolEvents: ToolBridgeEvent[] = [],
+): Promise<string> {
   const startedAt = Date.now();
 
   if (internalToken === '' || phpToolBridgeUrl === '') {
@@ -872,7 +935,7 @@ async function callPhpTool(toolName: string, args: Record<string, unknown>, trac
       });
     }
 
-    return JSON.stringify({
+    const result = {
       ok: true,
       source: 'php_tool_bridge',
       tool: toolName,
@@ -885,7 +948,22 @@ async function callPhpTool(toolName: string, args: Record<string, unknown>, trac
       writes_enabled: data.writes_enabled === true,
       writes_enabled_in_node: false,
       writes_enabled_via_php_bridge: data.writes_enabled_via_php_bridge === true,
-    });
+    };
+
+    if (result.confirmation_required) {
+      toolEvents.push({
+        tool: toolName,
+        confirmationRequired: true,
+        args: safeToolArgs(args),
+        text: result.text,
+        summary: safeText(data.summary, 500),
+        bridgeMode: result.bridge_mode,
+        risk: result.risk,
+        level: result.level,
+      });
+    }
+
+    return JSON.stringify(result);
   } catch (error) {
     return JSON.stringify({
       ok: false,
@@ -1020,7 +1098,12 @@ function inferToolBridgeRequest(message: string): { tool: string; args: Record<s
   return null;
 }
 
-async function prefetchToolBridgeContext(message: string, traceId: string, userContext: UserContext): Promise<string> {
+async function prefetchToolBridgeContext(
+  message: string,
+  traceId: string,
+  userContext: UserContext,
+  toolEvents: ToolBridgeEvent[] = [],
+): Promise<string> {
   if (internalToken === '' || phpToolBridgeUrl === '') {
     return '';
   }
@@ -1030,7 +1113,7 @@ async function prefetchToolBridgeContext(message: string, traceId: string, userC
     return '';
   }
 
-  const result = await callPhpTool(request.tool, request.args, traceId, userContext);
+  const result = await callPhpTool(request.tool, request.args, traceId, userContext, toolEvents);
   return `tool_php_node_preexecutada: ${result}`;
 }
 
@@ -1184,7 +1267,12 @@ function bridgeToolsFromContracts(toolContracts: SafeToolContractBundle | null):
     .slice(0, 30);
 }
 
-function buildPhpBridgeTools(toolContracts: SafeToolContractBundle | null, traceId: string, userContext: UserContext) {
+function buildPhpBridgeTools(
+  toolContracts: SafeToolContractBundle | null,
+  traceId: string,
+  userContext: UserContext,
+  toolEvents: ToolBridgeEvent[],
+) {
   return bridgeToolsFromContracts(toolContracts).map((contract) =>
     tool({
       name: contract.name,
@@ -1193,18 +1281,23 @@ function buildPhpBridgeTools(toolContracts: SafeToolContractBundle | null, trace
         `Executa ${contract.title} pela ponte PHP auditada. Escrita direta no Node fica bloqueada; respeite confirmation_required.`,
       parameters: zodFromJsonObjectSchema(contract.parameters),
       async execute(args) {
-        return callPhpTool(contract.name, isRecord(args) ? args : {}, traceId, userContext);
+        return callPhpTool(contract.name, isRecord(args) ? args : {}, traceId, userContext, toolEvents);
       },
     }),
   );
 }
 
-function buildMiaubyAgent(toolContracts: SafeToolContractBundle | null, traceId: string, userContext: UserContext) {
+function buildMiaubyAgent(
+  toolContracts: SafeToolContractBundle | null,
+  traceId: string,
+  userContext: UserContext,
+  toolEvents: ToolBridgeEvent[],
+) {
   return new Agent({
     name: 'Miauby Operacional',
     model,
     instructions: MIAUBY_AGENT_INSTRUCTIONS.join('\n'),
-    tools: [diagnosticoAgenteTool, buildContratoTool(toolContracts), ...buildPhpBridgeTools(toolContracts, traceId, userContext)],
+    tools: [diagnosticoAgenteTool, buildContratoTool(toolContracts), ...buildPhpBridgeTools(toolContracts, traceId, userContext, toolEvents)],
   });
 }
 
@@ -1214,17 +1307,18 @@ async function executeAgent(
   toolContracts: SafeToolContractBundle | null,
   userContext: UserContext,
   styleContext: SafeStyleContext,
-): Promise<string> {
+): Promise<AgentExecutionResult> {
+  const toolEvents: ToolBridgeEvent[] = [];
   const localReply = localStyleReply(message, styleContext);
   if (localReply !== '') {
-    return localReply;
+    return { text: localReply, toolEvents };
   }
 
   if (apiKey === '') {
     throw new Error('api_key_missing');
   }
 
-  const prefetchContext = await prefetchToolBridgeContext(message, traceId, userContext);
+  const prefetchContext = await prefetchToolBridgeContext(message, traceId, userContext, toolEvents);
   const inputParts = [
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
@@ -1238,11 +1332,14 @@ async function executeAgent(
   inputParts.push(`mensagem_operador: ${message}`);
   const input = inputParts.join('\n');
 
-  const result = await run(buildMiaubyAgent(toolContracts, traceId, userContext), input, {
+  const result = await run(buildMiaubyAgent(toolContracts, traceId, userContext, toolEvents), input, {
     maxTurns: 5,
   });
 
-  return enforceStyleReply(safeText((result as { finalOutput?: unknown }).finalOutput, 4000), styleContext);
+  return {
+    text: enforceStyleReply(safeText((result as { finalOutput?: unknown }).finalOutput, 4000), styleContext),
+    toolEvents,
+  };
 }
 
 function sendSse(res: Response, event: string, data: unknown): void {
@@ -1258,6 +1355,7 @@ async function streamAgent(
   userContext: UserContext,
   styleContext: SafeStyleContext,
 ): Promise<void> {
+  const toolEvents: ToolBridgeEvent[] = [];
   const localReply = localStyleReply(message, styleContext);
   if (localReply !== '') {
     sendSse(res, 'delta', { text: localReply });
@@ -1268,6 +1366,7 @@ async function streamAgent(
       style_version: styleContext.version || STYLE_VERSION,
       style_intent: styleContext.route.intent,
       local_style_reply: true,
+      tool_events: toolEvents,
       text: localReply,
     });
     return;
@@ -1280,7 +1379,7 @@ async function streamAgent(
     return;
   }
 
-  const prefetchContext = await prefetchToolBridgeContext(message, traceId, userContext);
+  const prefetchContext = await prefetchToolBridgeContext(message, traceId, userContext, toolEvents);
   const inputParts = [
     `trace_id: ${traceId}`,
     'modo: agente operacional controlado, sem escrita real direta',
@@ -1294,7 +1393,7 @@ async function streamAgent(
   inputParts.push(`mensagem_operador: ${message}`);
   const input = inputParts.join('\n');
 
-  const stream = await run(buildMiaubyAgent(toolContracts, traceId, userContext), input, {
+  const stream = await run(buildMiaubyAgent(toolContracts, traceId, userContext, toolEvents), input, {
     maxTurns: 5,
     stream: true,
   });
@@ -1331,6 +1430,7 @@ async function streamAgent(
     php_read_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
     php_tool_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
     tool_contract_version: toolContracts?.version || '',
+    tool_events: toolEvents,
     text: finalText,
   });
 }
@@ -1377,7 +1477,7 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
   }
 
   try {
-    const text = await executeAgent(message, traceId, toolContracts, userContext, styleContext);
+    const execution = await executeAgent(message, traceId, toolContracts, userContext, styleContext);
     const migratedToolBridgeTools = bridgeToolsFromContracts(toolContracts).map((item) => item.name);
     res.json({
       ok: true,
@@ -1395,7 +1495,8 @@ app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
       php_tool_bridge_enabled: internalToken !== '' && phpToolBridgeUrl !== '',
       tool_contract_version: toolContracts?.version || '',
       tool_contract_summary: toolContractResponseSummary(toolContracts),
-      text,
+      tool_events: execution.toolEvents,
+      text: execution.text,
       duration_ms: Date.now() - startedAt,
     });
   } catch (error) {

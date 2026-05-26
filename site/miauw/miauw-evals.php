@@ -564,6 +564,34 @@ miauw_eval_add('fase14_ponte_php_universal_segura', static function (): void {
     miauw_eval_assert_contains('CONFIRMACAO_NECESSARIA', (string) ($strong['text'] ?? ''), 'Resposta de sangria deve deixar confirmacao explicita.');
 });
 
+miauw_eval_add('fase21_node_confirmacao_volta_para_sessao_php', static function (): void {
+    miauw_eval_reset_action_state();
+
+    $confirmation = miauw_agent_node_confirmation_from_events(array(
+        array(
+            'tool' => 'criar_conta_gestao',
+            'confirmationRequired' => true,
+            'args' => array(
+                'titulo' => 'Teste sem gravar',
+                'valor' => 10,
+                'categoria' => 'geral',
+            ),
+            'summary' => 'Criar conta na Gestao: Teste sem gravar, R$ 10,00, categoria geral.',
+        ),
+    ), 1);
+
+    miauw_eval_assert(is_array($confirmation), 'Evento de confirmacao do Node precisa virar confirmacao real no PHP.');
+    miauw_eval_assert_same('criar_conta_gestao', (string) ($confirmation['tool'] ?? ''), 'Tool da confirmacao voltou errada.');
+    miauw_eval_assert(is_array($_SESSION['miauw_pending_confirm_action'] ?? null), 'Confirmacao Node precisa ficar pendente na sessao do operador.');
+    miauw_eval_assert_contains('Teste sem gravar', (string) ($confirmation['summary'] ?? ''), 'Resumo da confirmacao Node ficou sem dados da acao.');
+
+    $blocked = miauw_try_confirmation_reply('oi', 1);
+    miauw_eval_assert(is_array($blocked), 'Mensagem seguinte deve avisar que existe confirmacao pendente.');
+    miauw_eval_assert_contains('confirma ou cancela', (string) ($blocked['text'] ?? ''), 'Resposta precisa orientar cancelar/confirmar antes de outra ordem.');
+
+    miauw_eval_reset_action_state();
+});
+
 miauw_eval_add('diagnostico_fase3_payload', static function (): void {
     miauw_diagnostics_ensure_review_columns();
     $data = miauw_diagnostics_panel_data(false);

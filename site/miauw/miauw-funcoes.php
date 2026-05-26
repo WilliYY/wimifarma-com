@@ -761,7 +761,7 @@ function miauw_agent_node_user_context(array $raw): array
     );
 }
 
-function miauw_agent_node_confirmation_text(string $name, array $args): string
+function miauw_agent_node_confirmation_text(string $name, array $args, ?array &$commandOut = null, ?string &$summaryOut = null): string
 {
     $command = $args;
     if ($name === 'criar_encomenda_cotacao') {
@@ -776,6 +776,8 @@ function miauw_agent_node_confirmation_text(string $name, array $args): string
     }
 
     $summary = miauw_confirmation_summary($name, $command);
+    $commandOut = $command;
+    $summaryOut = $summary;
 
     return "CONFIRMACAO_NECESSARIA\n"
         . "Resumo: " . $summary . "\n"
@@ -801,7 +803,9 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
 
     try {
         if (!empty($policy['requires_confirmation'])) {
-            $text = miauw_agent_node_confirmation_text($name, $args);
+            $confirmationCommand = array();
+            $confirmationSummary = '';
+            $text = miauw_agent_node_confirmation_text($name, $args, $confirmationCommand, $confirmationSummary);
             $durationMs = (int) round((microtime(true) - $started) * 1000);
             miauw_trace_record('miauw_agent_node_tool_bridge', 'confirmation_required', array(
                 'trace_id' => $traceId !== '' ? miauw_substr($traceId, 0, 80) : null,
@@ -823,6 +827,7 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
                 'tool' => $name,
                 'source' => 'php_tool_bridge',
                 'text' => $text,
+                'summary' => $confirmationSummary,
                 'duration_ms' => $durationMs,
                 'confirmation_required' => true,
                 'writes_enabled' => false,
@@ -2524,6 +2529,37 @@ function miauw_agent_shadow_maybe(
     ));
 }
 
+function miauw_agent_node_confirmation_from_events(array $events, ?int $userId = null): ?array
+{
+    foreach ($events as $event) {
+        if (!is_array($event)) {
+            continue;
+        }
+
+        $requiresConfirmation = !empty($event['confirmation_required']) || !empty($event['confirmationRequired']);
+        $tool = trim((string) ($event['tool'] ?? ''));
+        if (!$requiresConfirmation || $tool === '' || !miauw_tool_requires_confirmation($tool)) {
+            continue;
+        }
+
+        $args = is_array($event['args'] ?? null) ? $event['args'] : array();
+        $command = array();
+        $summary = '';
+        miauw_agent_node_confirmation_text($tool, $args, $command, $summary);
+        if ($summary === '') {
+            $summary = trim((string) ($event['summary'] ?? ''));
+        }
+
+        if (!isset($command['raw_message'])) {
+            $command['raw_message'] = 'node_agent_' . $tool;
+        }
+
+        return miauw_queue_confirmation($tool, $command, $summary !== '' ? $summary : null, $userId);
+    }
+
+    return null;
+}
+
 function miauw_agent_node_reply(int $conversationId, string $message, bool $widgetMode = false): array
 {
     $status = miauw_agent_shadow_status();
@@ -2539,6 +2575,17 @@ function miauw_agent_node_reply(int $conversationId, string $message, bool $widg
     $durationMs = (int) round((microtime(true) - $started) * 1000);
     $text = (string) ($data['text'] ?? '');
     $text = function_exists('miauw_sanitize_operator_reply') ? miauw_sanitize_operator_reply($text) : $text;
+    $user = function_exists('current_user') ? current_user() : null;
+    $confirmation = miauw_agent_node_confirmation_from_events(
+        is_array($data['tool_events'] ?? null) ? (array) $data['tool_events'] : array(),
+        is_array($user) ? (int) ($user['id'] ?? 0) : null
+    );
+
+    if (is_array($confirmation)) {
+        $text = "Antes de gravar, confirma essa acao?\n"
+            . (string) ($confirmation['summary'] ?? 'Acao operacional pendente.')
+            . "\nAperte Confirmar ou Cancelar. Sem confirmacao, eu nao mexo no dado.";
+    }
 
     if (trim($text) === '') {
         throw new RuntimeException('Servico agente Node retornou resposta vazia.');
@@ -2561,17 +2608,24 @@ function miauw_agent_node_reply(int $conversationId, string $message, bool $widg
             'migrated_read_tools' => array_values(array_slice((array) ($data['migrated_read_tools'] ?? array()), 0, 8)),
             'php_tool_bridge_enabled' => !empty($data['php_tool_bridge_enabled']),
             'migrated_tool_bridge_tools' => array_values(array_slice((array) ($data['migrated_tool_bridge_tools'] ?? array()), 0, 8)),
+            'requires_confirmation' => is_array($confirmation),
             'response_chars' => miauw_strlen($text),
         ),
     ));
 
-    return array(
+    $reply = array(
         'text' => $text,
         'fallback' => false,
         'model' => 'miauw-agent-node:' . (string) ($data['model'] ?? 'agent'),
         'engine' => 'node',
         'duration_ms' => $durationMs,
     );
+
+    if (is_array($confirmation)) {
+        $reply['confirmation'] = $confirmation;
+    }
+
+    return $reply;
 }
 
 function miauw_tools_requiring_confirmation(): array
