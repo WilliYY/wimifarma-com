@@ -64,7 +64,7 @@ Evolucao:
 
 ## Media prioridade
 
-### Miauby WhatsApp + Evolution API
+### Miauby WhatsApp + Evolution API ou Meta Cloud API
 
 Estado:
 
@@ -72,7 +72,8 @@ Estado:
 - O canal usa Postgres 17 dedicado (`wimifarma-miauw-whatsapp-db`) para webhook, fila, dedupe e outbox.
 - O repositorio nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`; no VPS o canal pode ser ativado por `.env`.
 - A Evolution API tem template em `ops/evolution/` e deve rodar separada em `/home/ubuntu/projetos/wimifarma-evolution-api`.
-- Ainda falta conectar o numero por QR/codigo de pareamento, preencher allowlist de remetentes autorizados e configurar o webhook da instancia.
+- O bridge tambem aceita `MIAUW_WHATSAPP_PROVIDER=meta` para Meta Cloud API oficial, sem stack extra no VPS.
+- Ainda falta concluir o transporte real: conectar numero na Evolution ou preencher credenciais Meta (`META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `META_WHATSAPP_APP_SECRET`), revisar allowlist e configurar webhook.
 
 Risco:
 
@@ -82,9 +83,9 @@ Risco:
 Evolucao:
 
 - Configurar `MIAUW_WHATSAPP_ALLOWED_SENDERS` com o numero remetente autorizado.
-- Validar `GET /miauw/whatsapp/health` no VPS com `evolution_configured=true` e `allowlist_count > 0`.
+- Validar `GET /miauw/whatsapp/health` no VPS com `transport_configured=true` e `allowlist_count > 0`.
 - Testar webhook com payload controlado antes de usar mensagem real.
-- Conectar o numero por QR na Evolution API e testar primeiro com prefixo `miauby`.
+- Conectar o numero por QR/codigo na Evolution API ou cadastrar numero na Meta Cloud API e testar primeiro com prefixo `miauby`.
 
 ### Cotacao V2 + Google Sheets
 

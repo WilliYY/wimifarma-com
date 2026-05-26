@@ -59,7 +59,7 @@ Containers:
 - `wimifarma-gestao-app`: Node.js 22 + TypeScript + Express para `/gestao/`.
 - `wimifarma-gestao-db`: Postgres 17, monta `./gestao-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-miauw-agent`: Node.js 22 + TypeScript + Agents SDK para `/miauw/agent/` em sombra/corte controlado.
-- `wimifarma-miauw-whatsapp`: Node.js 22 + TypeScript para `/miauw/whatsapp/`, recebendo webhooks da Evolution API, exibindo painel operacional seguro e processando fila/outbox.
+- `wimifarma-miauw-whatsapp`: Node.js 22 + TypeScript para `/miauw/whatsapp/`, recebendo webhooks da Evolution API ou Meta Cloud API, exibindo painel operacional seguro e processando fila/outbox.
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal WhatsApp do Miauby, monta `./miauw-whatsapp-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-evolution-api`: Evolution API v2 como transporte WhatsApp, em stack separada no VPS, ligada na rede `wimifarma-com-network` para o bridge chamar internamente.
 - `wimifarma-evolution-postgres` e `wimifarma-evolution-redis`: persistencia propria da Evolution API, fora dos bancos do Wimifarma.
@@ -102,7 +102,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Para futuras telas/cards com dominio proprio, escolher explicitamente o melhor desenho tecnico antes de implementar: linguagem/runtime, banco, schema, indices, permissoes, auditoria, healthcheck, deploy e integracoes. Preferir rota/app/servico separados em vez de transformar a Gestao em concentrador de subviews.
 - Cada modulo novo deve declarar sua fonte de verdade. Quando precisar alimentar outro dominio, integrar por tabelas/APIs estruturadas, nao por acoplamento visual ou reaproveitamento de tela.
 - Manter o Miauby agente sem escrita real; quando `MIAUW_ENGINE=node`, liberar primeiro apenas usuarios configurados e preservar rollback imediato para `php`.
-- Manter o Miauby WhatsApp como borda de transporte: Evolution API nao vira motor de IA, banco oficial nem executor de escrita forte. O servico usa Postgres dedicado, allowlist, dedupe, painel seguro e outbox; o repositorio fica desligado por padrao e cada ambiente liga por `.env`.
+- Manter o Miauby WhatsApp como borda de transporte: Evolution API ou Meta Cloud API nao viram motor de IA, banco oficial nem executor de escrita forte. O servico usa Postgres dedicado, allowlist, dedupe, painel seguro e outbox; o repositorio fica desligado por padrao e cada ambiente liga por `.env`.
 
 ## Decisoes tecnicas ja tomadas
 

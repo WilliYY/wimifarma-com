@@ -37,7 +37,7 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gest
 Criadas por `apps/miauw-whatsapp/src/server.ts`:
 
 - `miauw_whatsapp_contacts`: contatos vistos/autorizados, com telefone em hash e mascara, sem telefone cru.
-- `miauw_whatsapp_events`: webhooks recebidos da Evolution API, dedupe por provider/instancia/message id, status da fila, tentativas, metadados sanitizados em `JSONB`, hash/mascara e identificadores cifrados para resposta.
+- `miauw_whatsapp_events`: webhooks recebidos da Evolution API ou Meta Cloud API, dedupe por provider/instancia/message id, status da fila, tentativas, metadados sanitizados em `JSONB`, hash/mascara e identificadores cifrados para resposta.
 - `miauw_whatsapp_outbox`: respostas pendentes/enviadas, status de envio, tentativas e id retornado pelo provedor quando houver.
 
 O Postgres dedicado foi escolhido para esse dominio porque fila duravel, indices parciais, `JSONB`, locks transacionais e `FOR UPDATE SKIP LOCKED` reduzem risco de duplicidade e facilitam auditoria. Payload bruto externo, token, telefone cru, SQL e stack trace nao devem ser salvos.

@@ -388,7 +388,7 @@ Direcao de evolucao:
 - compilar treinos aprovados em perfil curto e responder localmente quando houver pergunta repetida/fortemente parecida, para reduzir custo e evitar conversa infinita por temas;
 - aplicar perfil de voz/tom versionado no contexto do Miauby;
 - permitir audio apenas pelo botao `Falar`, com microfone por clique, gravacao temporaria, transcricao revisavel e sem escrita operacional por voz;
-- manter o WhatsApp como canal de transporte controlado: Evolution API entrega webhooks ao `apps/miauw-whatsapp`, o bridge valida token/allowlist/prefixo/grupo, grava fila no Postgres dedicado, mostra status seguro em `/miauw/whatsapp/` e chama o agente para resposta curta, sem escrita forte direta pelo WhatsApp;
+- manter o WhatsApp como canal de transporte controlado: Evolution API ou Meta Cloud API entrega webhooks ao `apps/miauw-whatsapp`, o bridge valida token/assinatura/allowlist/prefixo/grupo, grava fila no Postgres dedicado, mostra status seguro em `/miauw/whatsapp/` e chama o agente para resposta curta, sem escrita forte direta pelo WhatsApp;
 - comandos de Gestao entram como tool controlada: leitura por resumo interno e escrita de conta a pagar com titulo, valor, categoria padrao `geral` quando o operador informar so nome + valor, endpoint interno tokenizado e confirmacao humana;
 - em comandos de Gestao, uma nova mensagem que comeca por `gestao` sempre substitui pendencia incompleta anterior; complementos so sao usados quando a resposta nao inicia novo comando, evitando juntar prompts antigos com novos lancamentos;
 - o formato de criacao aceita `gestao - titulo - 500 - categoria`, `gestao - 500 - titulo`, `gestao - titulo - 500`, `gestao titulo 500` e categoria antes/depois para reduzir erro operacional no celular;

@@ -113,7 +113,7 @@ Destino correto:
 
 ## Integracoes planejadas
 
-### WhatsApp / Miauby via Evolution API
+### WhatsApp / Miauby via Evolution API ou Meta Cloud API
 
 Objetivo:
 
@@ -127,20 +127,22 @@ Estado atual:
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
 - `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru;
 - `GET /miauw/whatsapp/health` mostra status seguro;
-- `POST /miauw/whatsapp/webhook` recebe eventos da Evolution API;
+- `GET /miauw/whatsapp/webhook` valida o desafio `hub.challenge` da Meta Cloud API quando `MIAUW_WHATSAPP_PROVIDER=meta`;
+- `POST /miauw/whatsapp/webhook` recebe eventos da Evolution API ou da Meta Cloud API;
 - `POST /miauw/whatsapp/worker/run` processa fila manualmente com token interno;
 - o repositorio nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`, mas o VPS pode ativar por `.env` quando token/cifragem estiverem configurados.
 
 Desenho:
 
 - Evolution API roda como servico separado no VPS, com banco/cache/instancias proprios e segredos apenas no `.env`;
-- o bridge chama a Evolution internamente por `http://wimifarma-evolution-api:8080`; a API nao deve ser exposta diretamente no Nginx Proxy Manager sem revisao;
-- uma instancia WhatsApp e conectada por QR Code/WhatsApp Web ou, em uma etapa mais formal, por WhatsApp Cloud API oficial;
-- a Evolution API envia eventos de mensagem recebida por webhook para `https://wimifarma.com/miauw/whatsapp/webhook`;
+- com `MIAUW_WHATSAPP_PROVIDER=evolution`, o bridge chama a Evolution internamente por `http://wimifarma-evolution-api:8080`; a API nao deve ser exposta diretamente no Nginx Proxy Manager sem revisao;
+- com `MIAUW_WHATSAPP_PROVIDER=meta`, o bridge recebe webhook oficial da Meta e envia texto por Graph API em `/{PHONE_NUMBER_ID}/messages`;
+- a Meta Cloud API exige numero cadastrado no WhatsApp Business Platform; numero ja ativo no WhatsApp/App Business comum pode precisar migracao/desvinculo antes de virar numero de API;
+- o transporte envia eventos de mensagem recebida por webhook para `https://wimifarma.com/miauw/whatsapp/webhook`;
 - o endpoint valida token secreto, origem/evento, instancia, numero remetente, prefixo e tipo de conversa antes de chamar o Miauby;
 - eventos aceitos entram em fila Postgres com dedupe por provider/instancia/message id;
-- o Miauby continua sendo o motor de resposta e de permissao; a Evolution API deve ser apenas transporte de entrada/saida;
-- a resposta volta pela API estruturada da Evolution API, por exemplo envio de texto para a mesma conversa.
+- o Miauby continua sendo o motor de resposta e de permissao; Evolution API ou Meta Cloud API devem ser apenas transporte de entrada/saida;
+- a resposta volta pela API estruturada do transporte escolhido, por exemplo envio de texto para a mesma conversa.
 
 Regras iniciais obrigatorias:
 
@@ -172,15 +174,22 @@ Variaveis:
 - `MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY`
+- `MIAUW_WHATSAPP_PROVIDER`
 - `EVOLUTION_API_BASE_URL`
 - `EVOLUTION_API_KEY`
 - `EVOLUTION_API_INSTANCE`
+- `META_WHATSAPP_ACCESS_TOKEN`
+- `META_WHATSAPP_PHONE_NUMBER_ID`
+- `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- `META_WHATSAPP_APP_SECRET`
+- `META_WHATSAPP_GRAPH_API_VERSION`
 
 Status:
 
-- backend do bridge criado, ativado no VPS por `.env` e protegido por token;
+- backend do bridge criado, ativado no VPS por `.env` e protegido por token/assinatura;
 - template da Evolution API criado em `ops/evolution/`;
-- ainda falta conectar o numero por QR/codigo de pareamento e preencher allowlist com remetentes autorizados.
+- suporte a Meta Cloud API oficial adicionado ao bridge;
+- ainda falta concluir um transporte real: conectar o numero por QR/codigo na Evolution ou cadastrar/configurar o numero na Meta, e manter allowlist com remetentes autorizados.
 
 ### Google Sheets / Cotacao
 

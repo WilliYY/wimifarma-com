@@ -210,9 +210,9 @@ Miauby ja possui:
   - o prompt, a base de conhecimento e o contexto enviado ao agente Node reforcam que o Miauby nao pode inventar ranking, nivel, foto, venda ou pontuacao sem dado do sistema ou do operador.
 - Planejamento WhatsApp:
   - o Miauby iniciou o backend dedicado para WhatsApp em `apps/miauw-whatsapp`, com Node.js 22 + TypeScript, Postgres 17 proprio, webhook, fila, dedupe, allowlist e outbox;
-  - o canal nasce desligado por `MIAUW_WHATSAPP_ENABLED=false` e so deve responder depois de configurar segredos, Evolution API, QR e allowlist no VPS;
-  - o Miauby pode evoluir para responder por WhatsApp usando Evolution API como transporte, recebendo eventos por webhook e enviando respostas pela API de mensagem;
-  - a Evolution API nao deve virar motor de IA nem dona de regra operacional; ela apenas entrega a mensagem ao Miauby e devolve a resposta autorizada;
+  - o canal nasce desligado por `MIAUW_WHATSAPP_ENABLED=false` e so deve responder depois de configurar segredos, transporte WhatsApp e allowlist no VPS;
+  - o Miauby pode responder por WhatsApp usando Evolution API ou Meta Cloud API como transporte, recebendo eventos por webhook e enviando respostas pela API de mensagem;
+  - o transporte WhatsApp nao deve virar motor de IA nem dono de regra operacional; ele apenas entrega a mensagem ao Miauby e devolve a resposta autorizada;
   - a primeira etapa deve ser restrita a numeros autorizados, preferencialmente com prefixo `miauby`, ignorando clientes e grupos;
   - usar o numero publico do Cashback exige cuidado extra, porque clientes poderiam conversar com um assistente interno se nao houver allowlist;
   - Gemini ou outro provedor pode ser avaliado como backend configuravel do Miauby, mas precisa passar pelos mesmos contratos de persona, guardrails, tools, confirmacoes e traces.
@@ -272,7 +272,7 @@ Integracoes:
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - ponte interna da Gestao (`/gestao/api/internal/...`) para resumo e criacao confirmada de conta a pagar;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
-- Evolution API como transporte do canal WhatsApp do Miauby, com webhook tokenizado, allowlist de remetentes e envio de resposta por API estruturada;
+- Evolution API ou Meta Cloud API como transporte do canal WhatsApp do Miauby, com webhook tokenizado/assinado, allowlist de remetentes e envio de resposta por API estruturada;
 - futuro Google Sheets para Cotacao.
 
 ## Regras de negocio que precisam ser preservadas

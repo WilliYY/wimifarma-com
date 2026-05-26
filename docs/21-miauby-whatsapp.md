@@ -2,7 +2,7 @@
 
 ## O que esta parte documenta
 
-Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
+Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API ou Meta Cloud API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
 
 ## Componentes
 
@@ -11,19 +11,19 @@ Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A impl
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal.
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`.
 - A home publica possui o card `Miauby Whatsapp`, apontando para `/miauw/whatsapp/`.
-- Evolution API fica fora do Compose principal, com template em `ops/evolution/` e servico separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`.
+- Evolution API fica fora do Compose principal, com template em `ops/evolution/` e servico separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`; Meta Cloud API usa o mesmo bridge, sem stack local extra.
 - `wimifarma-miauw-agent` continua sendo o motor de resposta do Miauby.
 
 Fluxo:
 
 ```text
 WhatsApp
-  -> Evolution API
+  -> Evolution API ou Meta Cloud API
   -> POST /miauw/whatsapp/webhook
   -> Postgres dedicado: evento + fila
   -> wimifarma-miauw-agent /miauw/agent/run
   -> outbox
-  -> Evolution API /message/sendText/{instance}
+  -> Evolution API /message/sendText/{instance} ou Meta /{phone_number_id}/messages
 ```
 
 ## Banco de dados
@@ -34,7 +34,7 @@ Tabelas criadas pelo servico:
 
 - `miauw_whatsapp_contacts`: contatos autorizados/vistos, com telefone em hash e mascara.
 - `miauw_whatsapp_events`: eventos recebidos, status da fila, dedupe por provider/instancia/message id, metadados sanitizados e identificadores cifrados.
-- `miauw_whatsapp_outbox`: respostas geradas e tentativas de envio pela Evolution API.
+- `miauw_whatsapp_outbox`: respostas geradas e tentativas de envio pelo transporte WhatsApp escolhido.
 
 O banco nao deve guardar payload bruto externo nem telefone cru. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder.
 
@@ -56,19 +56,26 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=6`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=120`
 - `MIAUW_WHATSAPP_AGENT_RUN_URL=http://wimifarma-miauw-agent:3100/miauw/agent/run`
+- `MIAUW_WHATSAPP_PROVIDER=evolution`
 - `EVOLUTION_API_BASE_URL`
 - `EVOLUTION_API_KEY`
 - `EVOLUTION_API_INSTANCE`
+- `META_WHATSAPP_ACCESS_TOKEN`
+- `META_WHATSAPP_PHONE_NUMBER_ID`
+- `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- `META_WHATSAPP_APP_SECRET`
+- `META_WHATSAPP_GRAPH_API_VERSION=v23.0`
 
 ## Endpoints
 
-- `GET /miauw/whatsapp/`: painel operacional seguro com canal, Evolution API, fila, outbox e eventos recentes, sem segredo ou telefone cru.
+- `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox e eventos recentes, sem segredo ou telefone cru.
 - `GET /miauw/whatsapp/health`: status seguro do servico.
 - `GET /miauw/whatsapp/status`: status seguro do servico.
-- `POST /miauw/whatsapp/webhook`: webhook da Evolution API.
+- `GET /miauw/whatsapp/webhook`: verificacao `hub.challenge` da Meta Cloud API.
+- `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
 
-O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X-Webhook-Token`, `X-Evolution-Webhook-Token` ou query `?token=...`, para compatibilidade com configuracoes diferentes da Evolution API.
+O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X-Webhook-Token`, `X-Evolution-Webhook-Token` ou query `?token=...`, para compatibilidade com configuracoes diferentes da Evolution API. No modo Meta, `GET` usa `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `POST` deve usar `X-Hub-Signature-256` com `META_WHATSAPP_APP_SECRET`.
 
 ## Regras iniciais
 
@@ -123,6 +130,34 @@ Na Evolution API `v2.3.7` validada no VPS, `POST /webhook/set/{instance}` aceito
 `webhookByEvents` deve ficar `false`, para a Evolution nao anexar o nome do evento ao caminho do webhook.
 
 O numero `+55 44 99739-4711` pode ser usado como teste se estiver sob controle da empresa, mas os remetentes autorizados ainda precisam entrar em `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
+
+## Meta Cloud API
+
+O mesmo bridge tambem aceita transporte oficial da Meta:
+
+```text
+MIAUW_WHATSAPP_PROVIDER=meta
+META_WHATSAPP_ACCESS_TOKEN=<token permanente ou temporario da Meta>
+META_WHATSAPP_PHONE_NUMBER_ID=<Phone Number ID>
+META_WHATSAPP_WEBHOOK_VERIFY_TOKEN=<token escolhido para verificacao>
+META_WHATSAPP_APP_SECRET=<App Secret para validar X-Hub-Signature-256>
+META_WHATSAPP_GRAPH_API_VERSION=v23.0
+```
+
+Callback URL na Meta:
+
+```text
+https://wimifarma.com/miauw/whatsapp/webhook
+```
+
+O `GET /miauw/whatsapp/webhook` responde o desafio `hub.challenge` quando o `hub.verify_token` confere com `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`. O `POST /miauw/whatsapp/webhook` processa payload `whatsapp_business_account`, extrai `messages[]`, aplica allowlist/prefixo/rate limit e envia resposta por `/{META_WHATSAPP_PHONE_NUMBER_ID}/messages`.
+
+Cuidados da Meta:
+
+- o token de acesso e segredo e deve ficar apenas no `.env`;
+- `META_WHATSAPP_APP_SECRET` deve ser preenchido para validar `X-Hub-Signature-256`;
+- mensagens livres so sao apropriadas dentro da janela de atendimento iniciada pelo usuario; fora dela, a Meta exige templates aprovados;
+- o numero precisa estar cadastrado no WhatsApp Business Platform/Cloud API. Numero ja usado no WhatsApp comum ou Business App pode precisar ser removido/migrado antes de funcionar como numero de API.
 
 ## Testes
 

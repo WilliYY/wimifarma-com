@@ -51,6 +51,13 @@ Riscos/cuidados:
 - O painel nao deve exibir token, payload bruto da Evolution nem telefone completo.
 - Com o canal ativo, manter allowlist e prefixo antes de apontar o webhook real da Evolution API.
 
+## 2026-05-26 - Miauby WhatsApp aceita Meta Cloud API
+
+- `apps/miauw-whatsapp` passou a escolher transporte por `MIAUW_WHATSAPP_PROVIDER=evolution|meta`.
+- Com `meta`, o endpoint `GET /miauw/whatsapp/webhook` valida `hub.challenge` da Meta e o `POST` processa payload `whatsapp_business_account`.
+- O envio de resposta usa Graph API `/{META_WHATSAPP_PHONE_NUMBER_ID}/messages`, mantendo allowlist, prefixo, fila, dedupe, outbox e auditoria do Miauby.
+- Segredos da Meta (`META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_APP_SECRET`) ficam apenas no `.env`; o repositorio nao versiona chaves.
+
 ## 2026-05-26 - Miauby WhatsApp usa backend dedicado e Postgres proprio
 
 Decisao:

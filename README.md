@@ -18,7 +18,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - XP para gamificar vendas dos atendentes com cadastro de funcionarios, fotos, pontos e niveis;
 - Tarefas internas;
 - Miauby, assistente interno com integracao OpenAI e recursos de diagnostico.
-- Miauby Whatsapp para acompanhar canal, webhook, fila, outbox e Evolution API.
+- Miauby Whatsapp para acompanhar canal, webhook, fila, outbox, Evolution API e Meta Cloud API.
 
 O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evoluir em uma VPS mais flexivel, com Docker, controle de versao, deploy rastreavel e espaco para novos modulos.
 
@@ -109,7 +109,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - Miauby ajustou a Fase 19 do agente operacional v2: o chat e o widget global usam botao `Falar` em fluxo estilo WhatsApp. O navegador grava audio temporario somente apos clique, o PHP transcreve com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`, a tela mostra um rascunho local com player/duracao/transcricao, o texto entra no campo para revisao e o usuario decide `Enviar`, `Refazer` ou `Descartar audio`. A chave nao vai para o navegador, audio nao e armazenado no banco e escrita operacional por voz continua bloqueada.
 - Miauby iniciou a Fase 20 do agente operacional v2: audio enviado aparece no chat/widget como player com ondas, sem mostrar a transcricao na bolha enviada; a transcricao segue internamente para contexto. Quando a mensagem veio por audio, o PHP gera resposta falada com `MIAUW_SPEECH_MODEL=gpt-4o-mini-tts` e `MIAUW_SPEECH_VOICE=marin`, sem armazenar audio. Audios curtos demais sao bloqueados para reduzir transcricao inventada.
 - Miauby iniciou a Fase 21 do agente operacional v2: o playback dos audios usa URL temporaria `blob:` permitida apenas em `media-src`, a resposta falada mostra o audio como principal e deixa a transcricao escondida por padrao, o TTS recebeu perfil de fala mais vivo e o diagnostico permite escolher voz base entre `marin`, `cedar`, `ash`, `coral` e `verse` sem mexer em segredo.
-- O canal WhatsApp do Miauby iniciou como backend dedicado em `apps/miauw-whatsapp`, usando Node.js 22 + TypeScript e Postgres 17 proprio. O servico publica `/miauw/whatsapp/` por proxy Apache, recebe webhooks da Evolution API, usa allowlist, prefixo opcional, fila duravel, dedupe, painel operacional seguro e outbox. O repositorio mantem default seguro `MIAUW_WHATSAPP_ENABLED=false`; em producao o canal pode ser ativado por `.env` quando tokens/cifragem estiverem configurados. A stack separada da Evolution API tem template em `ops/evolution/` e roda no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`.
+- O canal WhatsApp do Miauby iniciou como backend dedicado em `apps/miauw-whatsapp`, usando Node.js 22 + TypeScript e Postgres 17 proprio. O servico publica `/miauw/whatsapp/` por proxy Apache, recebe webhooks da Evolution API ou da Meta Cloud API oficial, usa allowlist, prefixo opcional, fila duravel, dedupe, painel operacional seguro e outbox. O repositorio mantem default seguro `MIAUW_WHATSAPP_ENABLED=false`; em producao o canal pode ser ativado por `.env` quando tokens/cifragem estiverem configurados. A stack separada da Evolution API tem template em `ops/evolution/` e roda no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`; para Meta, usar `MIAUW_WHATSAPP_PROVIDER=meta`.
 - Miauby tambem entende comandos controlados da Gestao: `gestao` aponta para `/gestao/`, e aceita ordens como `gestao - titulo - 500 - categoria`, `gestao - 500 - titulo`, `gestao titulo 500` e categoria antes/depois; quando houver so nome + valor, usa categoria `geral`. Toda criacao prepara confirmacao humana antes de gravar pelo endpoint interno tokenizado da Gestao. Se um comando incompleto pedir correcao, uma nova mensagem iniciada por `gestao` substitui a pendencia anterior em vez de juntar prompts antigos.
 - Miauby conhece o contexto do XP: `/xp/` e a trilha gamificada dos atendentes, R$ 1.000,00 em vendas gera 2.500 XP e "farmar aura no XP" e linguagem interna para incentivar venda real e lancamento correto, sem inventar ranking, nivel ou pontuacao.
 - O painel restrito `/miauw/diagnostico.php` mostra falhas internas recentes do Miauby com `trace_id`, erro sanitizado, hash e contexto curto da ferramenta/confirmacao, permitindo investigar falhas automaticas sem expor segredo, SQL bruto ou stack trace ao operador.
@@ -133,7 +133,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Node.js 22 + Express + Socket.IO para Cotacao V2
 - Node.js 22 + TypeScript + Express para Gestao e Pedidos
 - Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio por gravacao temporaria/transcricao confirmada, bolha/player de audio, resposta falada temporaria e seletor seguro de voz no diagnostico
-- Node.js 22 + TypeScript para o bridge WhatsApp do Miauby via Evolution API
+- Node.js 22 + TypeScript para o bridge WhatsApp do Miauby via Evolution API ou Meta Cloud API
 - PostgreSQL 17 para dados da Cotacao V2
 - PostgreSQL 17 dedicado para fila/eventos/outbox do Miauby WhatsApp
 - Redis 7 para sessoes e presenca da Cotacao V2
@@ -324,9 +324,15 @@ MIAUW_WHATSAPP_ALLOWED_SENDERS
 MIAUW_WHATSAPP_REQUIRE_PREFIX
 MIAUW_WHATSAPP_PREFIX
 MIAUW_WHATSAPP_GROUPS_ENABLED
+MIAUW_WHATSAPP_PROVIDER
 EVOLUTION_API_BASE_URL
 EVOLUTION_API_KEY
 EVOLUTION_API_INSTANCE
+META_WHATSAPP_ACCESS_TOKEN
+META_WHATSAPP_PHONE_NUMBER_ID
+META_WHATSAPP_WEBHOOK_VERIFY_TOKEN
+META_WHATSAPP_APP_SECRET
+META_WHATSAPP_GRAPH_API_VERSION
 COTACAO_INTERNAL_TOKEN
 COTACAO_INTERNAL_BASE_URL
 GESTAO_INTERNAL_TOKEN
@@ -398,7 +404,7 @@ Para corte acelerado do Miauby, use `MIAUW_MAINTENANCE_MODE=true`, `MIAUW_MAINTE
 
 Para audio do Miauby, `MIAUW_AUDIO_ENABLED=true` libera o botao de fala no chat e no widget global. O fluxo atual grava audio temporario no navegador, envia para o PHP transcrever com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`, mostra um rascunho local com player, duracao e transcricao, coloca o texto no campo e so manda ao Miauby quando o usuario apertar `Enviar`; depois de enviado, a bolha mostra o player/ondas e nao o texto transcrito. Quando a entrada veio por audio, o PHP pode gerar resposta falada com `MIAUW_SPEECH_MODEL=gpt-4o-mini-tts`; a voz base vem de `MIAUW_SPEECH_VOICE` ou do seletor restrito em `/miauw/diagnostico.php`. O player usa `blob:` temporario liberado apenas em `media-src`, a transcricao da resposta fica escondida por padrao e o audio nao e gravado no banco/disco. Gravacoes curtas demais sao bloqueadas e `Refazer`/`Descartar audio` continuam limpando o rascunho. `MIAUW_REALTIME_MODEL` e `MIAUW_REALTIME_VOICE` ficam preservados para evolucao futura de conversa realtime.
 
-Para o Miauby WhatsApp, `/miauw/whatsapp/` mostra o painel operacional seguro com canal, Evolution API, fila, outbox e eventos recentes. O default do repositorio continua `MIAUW_WHATSAPP_ENABLED=false`; no VPS, ligar `MIAUW_WHATSAPP_ENABLED=true` apenas quando `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, cifragem, allowlist e instancia Evolution estiverem revisados.
+Para o Miauby WhatsApp, `/miauw/whatsapp/` mostra o painel operacional seguro com canal, transporte, fila, outbox e eventos recentes. O default do repositorio continua `MIAUW_WHATSAPP_ENABLED=false`; no VPS, ligar `MIAUW_WHATSAPP_ENABLED=true` apenas quando token de webhook/verificacao, cifragem, allowlist e transporte (`evolution` ou `meta`) estiverem revisados.
 
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 

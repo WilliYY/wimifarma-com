@@ -5,9 +5,10 @@ import pg from 'pg';
 const { Pool } = pg;
 
 type JsonRecord = Record<string, unknown>;
+type WhatsappProvider = 'evolution' | 'meta';
 
 type IncomingMessage = {
-  provider: 'evolution';
+  provider: WhatsappProvider;
   instanceName: string;
   eventType: string;
   eventId: string;
@@ -74,9 +75,16 @@ const WEBHOOK_TOKEN = textEnv('MIAUW_WHATSAPP_WEBHOOK_TOKEN');
 const INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_INTERNAL_TOKEN') || textEnv('MIAUW_AGENT_INTERNAL_TOKEN') || textEnv('MIAUW_GUARDIAN_TOKEN');
 const CRYPTO_SECRET = textEnv('MIAUW_WHATSAPP_ENCRYPTION_KEY') || WEBHOOK_TOKEN || INTERNAL_TOKEN;
 const HASH_SALT = textEnv('MIAUW_WHATSAPP_HASH_SALT') || CRYPTO_SECRET || 'wimifarma-miauw-whatsapp-dev-salt';
+const WHATSAPP_PROVIDER = providerEnv();
 const EVOLUTION_API_BASE_URL = trimTrailingSlash(textEnv('EVOLUTION_API_BASE_URL'));
 const EVOLUTION_API_KEY = textEnv('EVOLUTION_API_KEY');
 const EVOLUTION_INSTANCE = textEnv('EVOLUTION_API_INSTANCE') || textEnv('MIAUW_WHATSAPP_EVOLUTION_INSTANCE') || 'wimifarma-cashback-test';
+const META_GRAPH_API_BASE_URL = trimTrailingSlash(textEnv('META_WHATSAPP_GRAPH_API_BASE_URL') || 'https://graph.facebook.com');
+const META_GRAPH_API_VERSION = textEnv('META_WHATSAPP_GRAPH_API_VERSION') || textEnv('META_WHATSAPP_API_VERSION') || 'v23.0';
+const META_ACCESS_TOKEN = textEnv('META_WHATSAPP_ACCESS_TOKEN') || textEnv('WHATSAPP_CLOUD_API_TOKEN');
+const META_PHONE_NUMBER_ID = textEnv('META_WHATSAPP_PHONE_NUMBER_ID') || textEnv('WHATSAPP_CLOUD_PHONE_NUMBER_ID');
+const META_WEBHOOK_VERIFY_TOKEN = textEnv('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN') || WEBHOOK_TOKEN;
+const META_APP_SECRET = textEnv('META_WHATSAPP_APP_SECRET');
 const AGENT_RUN_URL = textEnv('MIAUW_WHATSAPP_AGENT_RUN_URL')
   || `${trimTrailingSlash(textEnv('MIAUW_AGENT_INTERNAL_BASE_URL') || 'http://wimifarma-miauw-agent:3100/miauw/agent')}/run`;
 const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', true);
@@ -122,6 +130,11 @@ function numberEnv(name: string, fallback: number, min: number, max: number): nu
   const value = Number.parseInt(textEnv(name), 10);
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
+}
+
+function providerEnv(): WhatsappProvider {
+  const value = (textEnv('MIAUW_WHATSAPP_PROVIDER') || textEnv('WHATSAPP_PROVIDER') || 'evolution').toLowerCase();
+  return value === 'meta' ? 'meta' : 'evolution';
 }
 
 function trimTrailingSlash(value: string): string {
@@ -218,15 +231,32 @@ function authTokenFromRequest(req: Request): string {
   );
 }
 
-function requireWebhookToken(req: Request, res: Response, next: NextFunction) {
+function rawRequestBody(req: Request): Buffer {
+  const withRaw = req as Request & { rawBody?: Buffer };
+  return withRaw.rawBody || Buffer.alloc(0);
+}
+
+function metaSignatureValid(req: Request): boolean {
+  if (!META_APP_SECRET) return false;
+  const signature = safeText(req.get('x-hub-signature-256') || '', 200);
+  if (!signature.startsWith('sha256=')) return false;
+  const expected = `sha256=${crypto.createHmac('sha256', META_APP_SECRET).update(rawRequestBody(req)).digest('hex')}`;
+  return timingSafeStringEqual(signature, expected);
+}
+
+function requireWebhookAuth(req: Request, res: Response, next: NextFunction) {
   if (!ENABLED) {
     return next();
   }
-  if (!WEBHOOK_TOKEN) {
+  if (WHATSAPP_PROVIDER === 'meta' && metaSignatureValid(req)) {
+    return next();
+  }
+  if (!WEBHOOK_TOKEN && !(WHATSAPP_PROVIDER === 'meta' && META_WEBHOOK_VERIFY_TOKEN)) {
     return res.status(503).json({ ok: false, error: 'webhook_token_not_configured' });
   }
   const received = authTokenFromRequest(req);
-  if (!received || !timingSafeStringEqual(received, WEBHOOK_TOKEN)) {
+  const expected = WHATSAPP_PROVIDER === 'meta' ? (META_WEBHOOK_VERIFY_TOKEN || WEBHOOK_TOKEN) : WEBHOOK_TOKEN;
+  if (!received || !expected || !timingSafeStringEqual(received, expected)) {
     return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
   return next();
@@ -243,14 +273,14 @@ function requireInternalToken(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-function payloadSummary(payload: JsonRecord, data: JsonRecord, messageType: string): JsonRecord {
+function payloadSummary(payload: JsonRecord, data: JsonRecord, messageType: string, provider: WhatsappProvider): JsonRecord {
   return {
     event: safeText(payload.event || payload.type || '', 80),
     instance: safeText(payload.instance || data.instance || data.instanceName || '', 120),
     message_type: messageType,
     has_message: isRecord(data.message),
     has_key: isRecord(data.key),
-    source: 'evolution',
+    source: provider,
   };
 }
 
@@ -288,7 +318,84 @@ function firstMessageText(message: JsonRecord): { type: string; text: string } {
   return { type: keys[0] || 'unknown', text: '' };
 }
 
-function extractIncomingMessage(payload: unknown): IncomingMessage | null {
+function metaMessageText(message: JsonRecord): { type: string; text: string } {
+  const type = safeText(message.type || 'unknown', 80) || 'unknown';
+  const text = readNestedRecord(message, 'text');
+  const textBody = safeText(text.body, 4000);
+  if (textBody) return { type, text: textBody };
+
+  for (const key of ['image', 'video', 'document']) {
+    const media = readNestedRecord(message, key);
+    const caption = safeText(media.caption, 4000);
+    if (caption) return { type, text: caption };
+  }
+
+  const button = readNestedRecord(message, 'button');
+  const buttonText = safeText(button.text || button.payload, 4000);
+  if (buttonText) return { type, text: buttonText };
+
+  const interactive = readNestedRecord(message, 'interactive');
+  const buttonReply = readNestedRecord(interactive, 'button_reply');
+  const buttonReplyText = safeText(buttonReply.title || buttonReply.id, 4000);
+  if (buttonReplyText) return { type, text: buttonReplyText };
+  const listReply = readNestedRecord(interactive, 'list_reply');
+  const listReplyText = safeText(listReply.title || listReply.id, 4000);
+  if (listReplyText) return { type, text: listReplyText };
+
+  return { type, text: '' };
+}
+
+function firstArrayRecord(value: unknown): JsonRecord {
+  return Array.isArray(value) && isRecord(value[0]) ? value[0] : {};
+}
+
+function extractMetaIncomingMessage(payload: JsonRecord): IncomingMessage | null {
+  const entries = Array.isArray(payload.entry) ? payload.entry : [];
+  for (const entryRaw of entries) {
+    if (!isRecord(entryRaw)) continue;
+    const changes = Array.isArray(entryRaw.changes) ? entryRaw.changes : [];
+    for (const changeRaw of changes) {
+      if (!isRecord(changeRaw)) continue;
+      const value = readNestedRecord(changeRaw, 'value');
+      const message = firstArrayRecord(value.messages);
+      if (!Object.keys(message).length) continue;
+      const contact = firstArrayRecord(value.contacts);
+      const profile = readNestedRecord(contact, 'profile');
+      const metadata = readNestedRecord(value, 'metadata');
+      const messageInfo = metaMessageText(message);
+      const senderPhone = normalizePhone(message.from);
+      const phoneNumberId = safeText(metadata.phone_number_id || META_PHONE_NUMBER_ID || 'meta-cloud-api', 120);
+      const eventType = safeText(changeRaw.field || 'messages', 80) || 'messages';
+      const messageId = safeText(message.id || '', 180)
+        || crypto.createHash('sha1').update(JSON.stringify(message).slice(0, 4000)).digest('hex');
+      return {
+        provider: 'meta',
+        instanceName: phoneNumberId,
+        eventType,
+        eventId: `${phoneNumberId}:${eventType}:${messageId}`,
+        messageId,
+        remoteJid: senderPhone ? `${senderPhone}@s.whatsapp.net` : '',
+        senderPhone,
+        pushName: safeText(profile.name || contact.name || '', 120),
+        messageType: messageInfo.type,
+        bodyText: safeText(messageInfo.text, 4000),
+        fromMe: false,
+        isGroup: false,
+        payloadSummary: {
+          source: 'meta',
+          object: safeText(payload.object || '', 80),
+          field: eventType,
+          phone_number_id: phoneNumberId ? 'configured' : '',
+          message_type: messageInfo.type,
+          has_statuses: Array.isArray(value.statuses),
+        },
+      };
+    }
+  }
+  return null;
+}
+
+function extractEvolutionIncomingMessage(payload: JsonRecord): IncomingMessage | null {
   if (!isRecord(payload)) return null;
   const data = isRecord(payload.data) ? payload.data : payload;
   const key = readNestedRecord(data, 'key');
@@ -326,8 +433,16 @@ function extractIncomingMessage(payload: unknown): IncomingMessage | null {
     bodyText: safeText(messageInfo.text, 4000),
     fromMe,
     isGroup,
-    payloadSummary: payloadSummary(payload, data, messageInfo.type),
+    payloadSummary: payloadSummary(payload, data, messageInfo.type, 'evolution'),
   };
+}
+
+function extractIncomingMessage(payload: unknown): IncomingMessage | null {
+  if (!isRecord(payload)) return null;
+  if (payload.object === 'whatsapp_business_account' || Array.isArray(payload.entry)) {
+    return extractMetaIncomingMessage(payload);
+  }
+  return extractEvolutionIncomingMessage(payload);
 }
 
 function stripActivationPrefix(text: string): { accepted: boolean; text: string; reason: string } {
@@ -671,12 +786,12 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       `INSERT INTO miauw_whatsapp_outbox (
         id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
         recipient_phone_ciphertext, body_text, max_attempts, trace_id
-      ) VALUES ($1, $2, 'evolution', $3, $4, $5, $6, $7, $8, $9)`,
-      [outboxId, row.id, row.instance_name || EVOLUTION_INSTANCE, sha256(recipientPhone), maskPhone(recipientPhone), encryptText(recipientPhone), replyText, MAX_ATTEMPTS, row.trace_id],
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [outboxId, row.id, WHATSAPP_PROVIDER, row.instance_name || defaultInstanceName(), sha256(recipientPhone), maskPhone(recipientPhone), encryptText(recipientPhone), replyText, MAX_ATTEMPTS, row.trace_id],
     );
 
     await sleep(randomInt(MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS));
-    const providerMessageId = await sendEvolutionText(recipientPhone, replyText, row.instance_name || EVOLUTION_INSTANCE);
+    const providerMessageId = await sendProviderText(recipientPhone, replyText, row.instance_name || defaultInstanceName());
 
     await pgPool.query(
       `UPDATE miauw_whatsapp_outbox
@@ -699,6 +814,12 @@ async function processQueueRow(row: QueueRow): Promise<void> {
   } catch (error) {
     await markEventFailure(row, error);
   }
+}
+
+function defaultInstanceName(): string {
+  return WHATSAPP_PROVIDER === 'meta'
+    ? (META_PHONE_NUMBER_ID || 'meta-cloud-api')
+    : EVOLUTION_INSTANCE;
 }
 
 async function requestMiauwReply(message: string, traceId: string, senderMask: string): Promise<{ text: string }> {
@@ -785,22 +906,74 @@ async function sendEvolutionText(phone: string, text: string, instanceName: stri
   }
 }
 
+async function sendMetaText(phone: string, text: string): Promise<string> {
+  if (!META_ACCESS_TOKEN || !META_PHONE_NUMBER_ID) {
+    throw new Error('meta_not_configured');
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${META_GRAPH_API_BASE_URL}/${META_GRAPH_API_VERSION}/${encodeURIComponent(META_PHONE_NUMBER_ID)}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizePhone(phone),
+        type: 'text',
+        text: {
+          preview_url: false,
+          body: text,
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = isRecord(data.error) ? data.error : data;
+      throw new Error(safeText(isRecord(error) ? error.message || error.error_user_msg || error.error : '', 180) || `meta_http_${response.status}`);
+    }
+    const messages = isRecord(data) && Array.isArray(data.messages) ? data.messages : [];
+    const first = isRecord(messages[0]) ? messages[0] : {};
+    return safeText(first.id || '', 180);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function sendProviderText(phone: string, text: string, instanceName: string): Promise<string> {
+  if (WHATSAPP_PROVIDER === 'meta') {
+    return sendMetaText(phone, text);
+  }
+  return sendEvolutionText(phone, text, instanceName);
+}
+
 function publicStatus(): JsonRecord {
+  const evolutionConfigured = EVOLUTION_API_BASE_URL !== '' && EVOLUTION_API_KEY !== '' && EVOLUTION_INSTANCE !== '';
+  const metaConfigured = META_ACCESS_TOKEN !== '' && META_PHONE_NUMBER_ID !== '';
   return {
     ok: true,
     service: SERVICE_NAME,
     version: SERVICE_VERSION,
     base_path: BASE_PATH,
     enabled: ENABLED,
+    provider: WHATSAPP_PROVIDER,
     postgres: 'configured',
     webhook_token_configured: WEBHOOK_TOKEN !== '',
+    meta_webhook_verify_configured: META_WEBHOOK_VERIFY_TOKEN !== '',
+    meta_signature_configured: META_APP_SECRET !== '',
     encryption_configured: CRYPTO_SECRET !== '',
     allowlist_count: ALLOWED_SENDERS.size,
     require_prefix: REQUIRE_PREFIX,
     prefix: REQUIRE_PREFIX ? PREFIX : '',
     groups_enabled: GROUPS_ENABLED,
     agent_configured: INTERNAL_TOKEN !== '' && AGENT_RUN_URL !== '',
-    evolution_configured: EVOLUTION_API_BASE_URL !== '' && EVOLUTION_API_KEY !== '' && EVOLUTION_INSTANCE !== '',
+    transport_configured: WHATSAPP_PROVIDER === 'meta' ? metaConfigured : evolutionConfigured,
+    evolution_configured: evolutionConfigured,
+    meta_configured: metaConfigured,
     max_replies_per_inbound: MAX_REPLIES_PER_INBOUND,
     rate_limit_per_minute: USER_RATE_LIMIT_PER_MINUTE,
     rate_limit_per_day: USER_RATE_LIMIT_PER_DAY,
@@ -954,9 +1127,12 @@ function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
 function renderDashboard(summary: DashboardSummary): string {
   const status = summary.status;
   const enabled = boolStatus(status, 'enabled');
-  const evolutionConfigured = boolStatus(status, 'evolution_configured');
+  const provider = textStatus(status, 'provider') || 'evolution';
+  const transportConfigured = boolStatus(status, 'transport_configured');
   const agentConfigured = boolStatus(status, 'agent_configured');
   const webhookConfigured = boolStatus(status, 'webhook_token_configured');
+  const metaVerifyConfigured = boolStatus(status, 'meta_webhook_verify_configured');
+  const metaSignatureConfigured = boolStatus(status, 'meta_signature_configured');
   const encryptionConfigured = boolStatus(status, 'encryption_configured');
   const groupsEnabled = boolStatus(status, 'groups_enabled');
   const requirePrefix = boolStatus(status, 'require_prefix');
@@ -1045,7 +1221,7 @@ function renderDashboard(summary: DashboardSummary): string {
       <div>
         <p class="eyebrow">Wimifarma</p>
         <h1>Miauby Whatsapp</h1>
-        <p class="intro">Painel seguro do canal interno via Evolution API: mostra atividade, fila, outbox e configuracoes sem expor token, telefone cru ou payload bruto.</p>
+        <p class="intro">Painel seguro do canal interno via WhatsApp: mostra atividade, fila, outbox e configuracoes sem expor token, telefone cru ou payload bruto.</p>
       </div>
       <nav class="actions" aria-label="Atalhos">
         <a href="/">Home</a>
@@ -1071,9 +1247,9 @@ function renderDashboard(summary: DashboardSummary): string {
             <small>Ligado por MIAUW_WHATSAPP_ENABLED no ambiente.</small>
           </div>
           <div class="status-item">
-            <b>Evolution API</b>
-            ${renderPill(evolutionConfigured, 'Configurada', 'Pendente')}
-            <small>Instancia: ${htmlEscape(EVOLUTION_INSTANCE)}</small>
+            <b>Transporte</b>
+            ${renderPill(transportConfigured, provider === 'meta' ? 'Meta configurada' : 'Evolution configurada', 'Pendente')}
+            <small>Provider: ${htmlEscape(provider)} | Instancia: ${htmlEscape(defaultInstanceName())}</small>
           </div>
           <div class="status-item">
             <b>Agente Miauby</b>
@@ -1082,8 +1258,8 @@ function renderDashboard(summary: DashboardSummary): string {
           </div>
           <div class="status-item">
             <b>Seguranca</b>
-            ${renderPill(webhookConfigured && encryptionConfigured, 'Tokens ok', 'Revisar')}
-            <small>Grupos: ${groupsEnabled ? 'liberados' : 'bloqueados'} | Rate: ${numberStatus(status, 'rate_limit_per_minute')}/min.</small>
+            ${renderPill((webhookConfigured || metaVerifyConfigured) && encryptionConfigured, 'Tokens ok', 'Revisar')}
+            <small>Meta assinatura: ${metaSignatureConfigured ? 'ativa' : 'pendente'} | Grupos: ${groupsEnabled ? 'liberados' : 'bloqueados'} | Rate: ${numberStatus(status, 'rate_limit_per_minute')}/min.</small>
           </div>
         </div>
         <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>
@@ -1172,7 +1348,12 @@ function randomInt(min: number, max: number): number {
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({
+  limit: '256kb',
+  verify: (req, _res, buffer) => {
+    (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+  },
+}));
 app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (error instanceof SyntaxError) {
     res.status(400).json({ ok: false, error: 'invalid_json' });
@@ -1193,6 +1374,17 @@ async function dashboardHandler(_req: Request, res: Response): Promise<void> {
 app.get(BASE_PATH, dashboardHandler);
 app.get(`${BASE_PATH}/`, dashboardHandler);
 
+app.get(`${BASE_PATH}/webhook`, (req, res) => {
+  const mode = safeText(req.query['hub.mode'], 80);
+  const token = safeText(req.query['hub.verify_token'], 300);
+  const challenge = safeText(req.query['hub.challenge'], 300);
+  if (mode === 'subscribe' && META_WEBHOOK_VERIFY_TOKEN && token && timingSafeStringEqual(token, META_WEBHOOK_VERIFY_TOKEN)) {
+    res.status(200).type('text/plain').send(challenge);
+    return;
+  }
+  res.status(403).type('text/plain').send('forbidden');
+});
+
 app.get(`${BASE_PATH}/health`, async (_req, res) => {
   try {
     await pgPool.query('SELECT 1');
@@ -1206,7 +1398,7 @@ app.get(`${BASE_PATH}/status`, (_req, res) => {
   res.json(publicStatus());
 });
 
-app.post(`${BASE_PATH}/webhook`, requireWebhookToken, async (req, res) => {
+app.post(`${BASE_PATH}/webhook`, requireWebhookAuth, async (req, res) => {
   const result = await acceptWebhook(req.body);
   res.status(result.ok === false ? 503 : 200).json(result);
 });
