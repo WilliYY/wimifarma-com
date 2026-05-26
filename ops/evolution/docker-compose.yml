@@ -1,6 +1,6 @@
 services:
   wimifarma-evolution-api:
-    image: evoapicloud/evolution-api:v2.3.7
+    image: evoapicloud/evolution-api:v2.3.6
     container_name: wimifarma-evolution-api
     restart: unless-stopped
     depends_on:

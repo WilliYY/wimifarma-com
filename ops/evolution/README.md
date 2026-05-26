@@ -2,6 +2,8 @@
 
 Template operacional para subir a Evolution API como transporte externo do Miauby WhatsApp.
 
+Imagem atual do template: `evoapicloud/evolution-api:v2.3.6`. Em 2026-05-26, o VPS foi baixado de `v2.3.7` para `v2.3.6` para testar pareamento depois de falhas `401 Unauthorized` e `Invalid buffer` no Baileys.
+
 Regras:
 
 - nao versionar `.env`;
@@ -30,7 +32,7 @@ EVOLUTION_API_KEY=<AUTHENTICATION_API_KEY>
 EVOLUTION_API_INSTANCE=wimifarma-cashback-test
 ```
 
-Na Evolution API `v2.3.7`, o endpoint `POST /webhook/set/{instance}` aceitou o corpo com raiz `webhook`:
+Na Evolution API `v2.3.x`, o endpoint `POST /webhook/set/{instance}` aceitou o corpo com raiz `webhook`:
 
 ```json
 {

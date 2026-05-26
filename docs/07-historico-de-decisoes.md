@@ -6,7 +6,7 @@ Este documento registra decisoes tecnicas importantes. Sempre que uma decisao fo
 
 Decisao:
 
-- Criar template operacional em `ops/evolution/` para a Evolution API v2.3.7, com Postgres e Redis proprios.
+- Criar template operacional em `ops/evolution/` para a Evolution API v2, com Postgres e Redis proprios. Em 2026-05-26, o pin do template foi ajustado para `v2.3.6` para testar pareamento apos falhas `401 Unauthorized` e `Invalid buffer` observadas na `v2.3.7`.
 - No VPS, rodar a stack em `/home/ubuntu/projetos/wimifarma-evolution-api`, fora do Compose principal do Wimifarma.
 - Expor a API apenas em `127.0.0.1:8080` e na rede Docker `wimifarma-com-network`, usando `http://wimifarma-evolution-api:8080` como `EVOLUTION_API_BASE_URL` do bridge.
 
