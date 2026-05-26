@@ -34,6 +34,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/miauw/whatsapp/" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/"'; \
+        echo 'ProxyPassReverse "/miauw/whatsapp/" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/"'; \
+        echo 'ProxyPass "/miauw/whatsapp" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp"'; \
+        echo 'ProxyPassReverse "/miauw/whatsapp" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp"'; \
+    } > /etc/apache2/conf-available/wimifarma-miauw-whatsapp-proxy.conf \
+    && a2enconf wimifarma-miauw-whatsapp-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/gestao/" "http://wimifarma-gestao-app:3200/gestao/"'; \
         echo 'ProxyPassReverse "/gestao/" "http://wimifarma-gestao-app:3200/gestao/"'; \
         echo 'ProxyPass "/gestao" "http://wimifarma-gestao-app:3200/gestao"'; \

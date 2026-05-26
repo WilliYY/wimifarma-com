@@ -71,6 +71,7 @@ docker compose logs --tail=80 wimifarma-cotacao-redis
 docker compose logs --tail=80 wimifarma-gestao-app
 docker compose logs --tail=80 wimifarma-gestao-db
 docker compose logs --tail=80 wimifarma-miauw-agent
+docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
 
 ## Local - lint PHP
@@ -109,6 +110,19 @@ O `POST /miauw/agent/run` sem token deve recusar com 401 ou 503, dependendo da c
 O adaptador PHP compara respostas quando `MIAUW_AGENT_SHADOW_ON_SEND=true` ou quando `MIAUW_ENGINE=node_shadow` para usuario liberado. Para corte controlado, use `MIAUW_ENGINE=node` com `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm` e rollback para `MIAUW_ENGINE=php`.
 
 O perfil de voz atual pode ser ajustado por ambiente com `MIAUW_VOICE_PROFILE=miauby_padrao|miauby_curto|miauby_operacional`. O audio do chat usa `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`; microfone so abre pelo botao `Falar`, o audio temporario vira rascunho transcrito, e o usuario escolhe `Enviar` ou `Cancelar`.
+
+## Local - Miauby WhatsApp Bridge
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\miauw-whatsapp
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-miauw-whatsapp wimifarma-com-web
+curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
+```
+
+O bridge nasce com `MIAUW_WHATSAPP_ENABLED=false`. Antes de aceitar webhook real, configurar no `.env`: `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS`, `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`.
 
 ## Local - Gestao Node/Postgres
 
@@ -159,6 +173,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health
+curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/whatsapp/health
 curl.exe -sS http://127.0.0.1:3002/gestao/health
 curl.exe -sS http://127.0.0.1:3002/xp/health.php
 ```
@@ -184,6 +199,7 @@ A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por
 docker exec wimifarma-com-db sh -c "mysql -u`$MYSQL_USER -p`$MYSQL_PASSWORD -N -B -e 'SHOW TABLES FROM wimifarma_app; SHOW TABLES FROM wimifarma_wp;'"
 docker exec wimifarma-cotacao-db psql -U wimifarma_cotacao -d wimifarma_cotacao -c "\dt"
 docker exec wimifarma-gestao-db psql -U wimifarma_gestao -d wimifarma_gestao -c "\dt"
+docker exec wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "\dt"
 ```
 
 ## Git local
@@ -217,6 +233,17 @@ docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
 docker compose ps
 curl -I https://wimifarma.com/miauw/agent/health
 docker compose logs --tail=80 wimifarma-miauw-agent
+```
+
+Para mudancas no bridge WhatsApp do Miauby, usar rebuild direcionado:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+git pull origin main
+docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-miauw-whatsapp wimifarma-com-web
+docker compose ps
+curl -I https://wimifarma.com/miauw/whatsapp/health
+docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
 
 Para mudancas no PHP/Apache e na Cotacao V2 ao mesmo tempo, usar rebuild direcionado:

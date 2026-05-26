@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para Cotacao V2, Gestao e Miauby agente; os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2, Postgres da Gestao e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para Cotacao V2, Gestao, Miauby agente e Miauby WhatsApp; os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2, Postgres da Gestao, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
 ## Componentes envolvidos
 
@@ -16,10 +16,12 @@ Usuario/Navegador
       -> proxy /cotacao/ para wimifarma-cotacao-app:3000
       -> proxy /gestao/ para wimifarma-gestao-app:3200
       -> proxy /miauw/agent/ para wimifarma-miauw-agent:3100
+      -> proxy /miauw/whatsapp/ para wimifarma-miauw-whatsapp:3400
   -> wimifarma-com-db:3306 (MySQL)
   -> wimifarma-cotacao-db:5432 (Postgres)
   -> wimifarma-cotacao-redis:6379 (Redis)
   -> wimifarma-gestao-db:5432 (Postgres)
+  -> wimifarma-miauw-whatsapp-db:5432 (Postgres)
 ```
 
 Arquivos principais:
@@ -27,6 +29,7 @@ Arquivos principais:
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
 - `apps/miauw-agent/src/server.ts`
+- `apps/miauw-whatsapp/src/server.ts`
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
@@ -55,6 +58,8 @@ Containers:
 - `wimifarma-gestao-app`: Node.js 22 + TypeScript + Express para `/gestao/`.
 - `wimifarma-gestao-db`: Postgres 17, monta `./gestao-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-miauw-agent`: Node.js 22 + TypeScript + Agents SDK para `/miauw/agent/` em sombra/corte controlado.
+- `wimifarma-miauw-whatsapp`: Node.js 22 + TypeScript para `/miauw/whatsapp/`, recebendo webhooks da Evolution API e processando fila/outbox.
+- `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal WhatsApp do Miauby, monta `./miauw-whatsapp-data/postgres:/var/lib/postgresql/data`.
 
 Rede Docker:
 
@@ -70,10 +75,12 @@ Rede Docker:
 - Interno Cotacao V2: `wimifarma-cotacao-app:3000`
 - Interno Gestao: `wimifarma-gestao-app:3200`
 - Interno Miauby agente: `wimifarma-miauw-agent:3100`
+- Interno Miauby WhatsApp: `wimifarma-miauw-whatsapp:3400`
 
 O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cotacao-app`; o Apache ja publica `/cotacao/` e `/cotacao/socket.io/`.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-gestao-app`; o Apache publica `/gestao/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent`; o Apache publica `/miauw/agent/` internamente.
+Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whatsapp`; o Apache publica `/miauw/whatsapp/` internamente.
 
 ## Regras que precisam ser preservadas
 
@@ -83,6 +90,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Manter `mysql/` como volume persistente e ignorado pelo Git.
 - Manter `cotacao-data/` como volume persistente e ignorado pelo Git.
 - Manter `gestao-data/` como volume persistente e ignorado pelo Git.
+- Manter `miauw-whatsapp-data/` como volume persistente e ignorado pelo Git.
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
 - Manter a Gestao oficial em `/gestao/` via Node/Postgres; `site/gestao` e apenas legado/fallback historico.
 - Manter `Pedidos` como modulo separado em `/pedidos/`, usando `apps/pedidos`, container `wimifarma-pedidos-app:3300`, sessao propria `WFPEDIDOS`, CSRF proprio e proxy Apache dedicado. A URL antiga `/gestao/pedidos` deve apenas redirecionar para `/pedidos/`.
@@ -90,6 +98,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent
 - Para futuras telas/cards com dominio proprio, escolher explicitamente o melhor desenho tecnico antes de implementar: linguagem/runtime, banco, schema, indices, permissoes, auditoria, healthcheck, deploy e integracoes. Preferir rota/app/servico separados em vez de transformar a Gestao em concentrador de subviews.
 - Cada modulo novo deve declarar sua fonte de verdade. Quando precisar alimentar outro dominio, integrar por tabelas/APIs estruturadas, nao por acoplamento visual ou reaproveitamento de tela.
 - Manter o Miauby agente sem escrita real; quando `MIAUW_ENGINE=node`, liberar primeiro apenas usuarios configurados e preservar rollback imediato para `php`.
+- Manter o Miauby WhatsApp como borda de transporte: Evolution API nao vira motor de IA, banco oficial nem executor de escrita forte. O servico usa Postgres dedicado, allowlist, dedupe e outbox, desligado por padrao ate configuracao operacional.
 
 ## Decisoes tecnicas ja tomadas
 

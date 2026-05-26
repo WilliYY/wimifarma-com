@@ -27,6 +27,7 @@ services:
       - wimifarma-gestao-app
       - wimifarma-pedidos-app
       - wimifarma-miauw-agent
+      - wimifarma-miauw-whatsapp
     environment:
       WIMIFARMA_DB_HOST: wimifarma-com-db
       WIMIFARMA_DB_USER: wimifarma_user
@@ -53,6 +54,7 @@ services:
       MIAUW_SPEECH_VOICE: ${MIAUW_SPEECH_VOICE:-marin}
       MIAUW_REALTIME_MODEL: ${MIAUW_REALTIME_MODEL:-gpt-realtime}
       MIAUW_REALTIME_VOICE: ${MIAUW_REALTIME_VOICE:-marin}
+      MIAUW_WHATSAPP_ENABLED: ${MIAUW_WHATSAPP_ENABLED:-false}
       COTACAO_INTERNAL_TOKEN: ${COTACAO_INTERNAL_TOKEN:-}
       COTACAO_INTERNAL_BASE_URL: ${COTACAO_INTERNAL_BASE_URL:-http://wimifarma-cotacao-app:3000/cotacao}
       GESTAO_INTERNAL_TOKEN: ${GESTAO_INTERNAL_TOKEN:-}
@@ -97,6 +99,19 @@ services:
       POSTGRES_PASSWORD: ${GESTAO_POSTGRES_PASSWORD:-wimifarma_gestao_dev_pass}
     volumes:
       - ./gestao-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-miauw-whatsapp-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-miauw-whatsapp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_miauw_whatsapp
+      POSTGRES_USER: wimifarma_miauw_whatsapp
+      POSTGRES_PASSWORD: ${MIAUW_WHATSAPP_POSTGRES_PASSWORD:-wimifarma_miauw_whatsapp_dev_pass}
+    volumes:
+      - ./miauw-whatsapp-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -216,6 +231,47 @@ services:
       MIAUW_TRANSCRIPTION_MODEL: ${MIAUW_TRANSCRIPTION_MODEL:-gpt-4o-transcribe}
       MIAUW_REALTIME_MODEL: ${MIAUW_REALTIME_MODEL:-gpt-realtime}
       MIAUW_REALTIME_VOICE: ${MIAUW_REALTIME_VOICE:-marin}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-miauw-whatsapp:
+    build:
+      context: ./apps/miauw-whatsapp
+      dockerfile: Dockerfile
+    container_name: wimifarma-miauw-whatsapp
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-miauw-whatsapp-db
+      - wimifarma-miauw-agent
+    environment:
+      NODE_ENV: production
+      PORT: 3400
+      BASE_PATH: /miauw/whatsapp
+      POSTGRES_HOST: wimifarma-miauw-whatsapp-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_miauw_whatsapp
+      POSTGRES_USER: wimifarma_miauw_whatsapp
+      POSTGRES_PASSWORD: ${MIAUW_WHATSAPP_POSTGRES_PASSWORD:-wimifarma_miauw_whatsapp_dev_pass}
+      MIAUW_WHATSAPP_ENABLED: ${MIAUW_WHATSAPP_ENABLED:-false}
+      MIAUW_WHATSAPP_WEBHOOK_TOKEN: ${MIAUW_WHATSAPP_WEBHOOK_TOKEN:-}
+      MIAUW_WHATSAPP_INTERNAL_TOKEN: ${MIAUW_WHATSAPP_INTERNAL_TOKEN:-}
+      MIAUW_WHATSAPP_ENCRYPTION_KEY: ${MIAUW_WHATSAPP_ENCRYPTION_KEY:-}
+      MIAUW_WHATSAPP_HASH_SALT: ${MIAUW_WHATSAPP_HASH_SALT:-}
+      MIAUW_WHATSAPP_ALLOWED_SENDERS: ${MIAUW_WHATSAPP_ALLOWED_SENDERS:-}
+      MIAUW_WHATSAPP_REQUIRE_PREFIX: ${MIAUW_WHATSAPP_REQUIRE_PREFIX:-true}
+      MIAUW_WHATSAPP_PREFIX: ${MIAUW_WHATSAPP_PREFIX:-miauby}
+      MIAUW_WHATSAPP_GROUPS_ENABLED: ${MIAUW_WHATSAPP_GROUPS_ENABLED:-false}
+      MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND: ${MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND:-1}
+      MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE: ${MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE:-6}
+      MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY: ${MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY:-120}
+      MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS: ${MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS:-700}
+      MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS: ${MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS:-2200}
+      MIAUW_WHATSAPP_AGENT_RUN_URL: ${MIAUW_WHATSAPP_AGENT_RUN_URL:-http://wimifarma-miauw-agent:3100/miauw/agent/run}
+      MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      EVOLUTION_API_BASE_URL: ${EVOLUTION_API_BASE_URL:-}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_API_INSTANCE: ${EVOLUTION_API_INSTANCE:-wimifarma-cashback-test}
     networks:
       - wimifarma-com-network
 

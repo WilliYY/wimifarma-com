@@ -16,6 +16,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Arquivos `app.js` e `styles.css` por modulo.
 - Criacao/ajuste de tabelas por funcoes `*_ensure_schema()`.
 - Modulos criticos novos podem usar Node.js + TypeScript + Postgres dedicado, mantendo o Apache como proxy e o MySQL apenas para autenticacao/logs quando for o padrao do projeto.
+- Integracoes externas com webhook/fila, como Miauby WhatsApp, devem preferir servico dedicado e Postgres proprio quando precisarem de idempotencia, outbox, retry e isolamento de dados.
 
 ## Arquivos envolvidos
 
@@ -32,6 +33,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - `apps/gestao/src/server.ts`
 - `apps/gestao/public/app.js`
 - `apps/gestao/public/styles.css`
+- `apps/miauw-whatsapp/src/server.ts`
 - `site/financeiro/bootstrap.php`
 - `site/financeiro/financeiro-funcoes.php`
 - `site/gestao/bootstrap.php` (legado)
@@ -58,6 +60,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - O WordPress continua como raiz principal.
 - Segredos entram por ambiente ou `config.local.php`.
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
+- O Miauby WhatsApp adotou Node.js + TypeScript + Postgres dedicado para webhook/fila/outbox, evitando misturar eventos externos com MySQL legado ou com o banco da Gestao.
 - O XP adotou PHP procedural + MySQL por ser modulo interno manual, sem colaboracao em tempo real nem necessidade de runtime novo.
 
 ## Padroes para novas alteracoes
@@ -72,6 +75,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Uploads de novos modulos devem validar erro, tamanho, MIME real por imagem, extensao controlada, dimensoes minimas/maximas, nome aleatorio e pasta com execucao de script bloqueada.
 - Em modulos administrativos manuais, manter dados principais e itens/pagamentos com total derivado, status reversivel e historico preservado.
 - Em `apps/gestao`, salvar dinheiro em centavos inteiros, usar queries parametrizadas, criar indices por padrao de acesso, manter sessoes em Postgres e evitar dependencia direta de tabelas MySQL fora de `wf_users`/`wf_logs`/importacao legado.
+- Em `apps/miauw-whatsapp`, manter payload externo sanitizado, dedupe por provider/instancia/message id, hash/mascara/cifra para identificadores, indices parciais de fila e nenhuma escrita forte direta pelo WhatsApp.
 - Atualizar docs no mesmo commit da mudanca.
 - Criar novas abstracoes apenas quando reduzirem complexidade real.
 

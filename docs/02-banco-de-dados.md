@@ -16,6 +16,9 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gest
 - Container Gestao: `wimifarma-gestao-db`
 - Imagem Gestao: `postgres:17-alpine`
 - Volume Gestao: `gestao-data/postgres/`
+- Container Miauby WhatsApp: `wimifarma-miauw-whatsapp-db`
+- Imagem Miauby WhatsApp: `postgres:17-alpine`
+- Volume Miauby WhatsApp: `miauw-whatsapp-data/postgres/`
 - Init SQL: `docker/mysql/init/01-create-databases.sql`
 - Config web: `docker-compose.yml`
 - Config app: `site/cashback/config.php`
@@ -27,6 +30,17 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gest
 - `wimifarma_app`: modulos internos.
 - `wimifarma_cotacao`: Cotacao V2 em Postgres.
 - `wimifarma_gestao`: Gestao em Postgres.
+- `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
+
+## Tabelas do Miauby WhatsApp em Postgres
+
+Criadas por `apps/miauw-whatsapp/src/server.ts`:
+
+- `miauw_whatsapp_contacts`: contatos vistos/autorizados, com telefone em hash e mascara, sem telefone cru.
+- `miauw_whatsapp_events`: webhooks recebidos da Evolution API, dedupe por provider/instancia/message id, status da fila, tentativas, metadados sanitizados em `JSONB`, hash/mascara e identificadores cifrados para resposta.
+- `miauw_whatsapp_outbox`: respostas pendentes/enviadas, status de envio, tentativas e id retornado pelo provedor quando houver.
+
+O Postgres dedicado foi escolhido para esse dominio porque fila duravel, indices parciais, `JSONB`, locks transacionais e `FOR UPDATE SKIP LOCKED` reduzem risco de duplicidade e facilitam auditoria. Payload bruto externo, token, telefone cru, SQL e stack trace nao devem ser salvos.
 
 ## Tabelas da Cotacao V2 em Postgres
 
@@ -151,6 +165,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - XP: `site/xp/xp-funcoes.php`
 - Tarefas: `site/tarefa/tarefa-funcoes.php`
 - Miauby: `site/miauw/miauw-funcoes.php` e `site/miauw/miauw-intelligence.php`
+- Miauby WhatsApp: `apps/miauw-whatsapp/src/server.ts`
 
 Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migracoes versionadas.
 
@@ -205,6 +220,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `pedidos_orders.expected_arrival_at` alimenta o badge do card `Pedidos` na home via `/pedidos/api/badge`, contando somente pedidos aguardando chegada previstos para o dia local. No formulario de criacao, a previsao e informada como numero de dias (`2` = hoje + 2 dias); o backend grava somente a data calculada em `expected_arrival_at`.
 - Novos cards/modulos devem ter modelagem propria de banco antes da UI: entidade principal, tabela de historico/auditoria quando necessario, FKs, constraints, indices em joins/filtros, indices parciais para filas ou status ativos, e regra clara de qual tabela e fonte de verdade. Reaproveitar tabela de outro modulo so quando ela representar o mesmo fato de negocio; no caso de Pedidos, apenas o financeiro usa as tabelas da Gestao porque precisa alimentar `Boleto`.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
+- `miauw_whatsapp_*` no Postgres dedicado contem eventos de transporte do WhatsApp; tratar como sensivel, manter identificadores cifrados, hash/mascara para auditoria e nunca guardar payload bruto externo.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.
 - `miauw_tool_traces.payload_json` deve guardar somente contexto sanitizado e limitado; nao colocar chave, token, senha, SQL cru, payload bruto externo ou stack trace completo.
@@ -224,6 +240,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - O volume `mysql/` fica fora do Git.
 - O volume `cotacao-data/` fica fora do Git.
 - O volume `gestao-data/` fica fora do Git.
+- O volume `miauw-whatsapp-data/` fica fora do Git.
 - Dumps antigos ficam fora da raiz do projeto.
 - A senha real do banco vem de `.env`.
 - A Cotacao preserva regras antigas de formatacao no banco como historico, mas `cotacao_disable_legacy_category_trigger_rules()` desativa regras ativas por texto de categoria para `geral`/`urgente`/`encomenda`/`cotacao` durante `cotacao_ensure_schema()`.
@@ -239,6 +256,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Reativar gatilhos de categoria para `geral`/`urgente`/`encomenda`/`cotacao` pode voltar a causar mudanca invisivel de estado e lag na planilha.
 - Apagar `cotacao-data/` perde dados da Cotacao V2.
 - Apagar `gestao-data/` perde dados oficiais da Gestao.
+- Apagar `miauw-whatsapp-data/` perde fila, eventos e outbox do canal WhatsApp do Miauby.
 - Criar regras automáticas fora de `cotacao_v2_rules` reabre o bug de palavra-gatilho.
 
 ## Pendencias

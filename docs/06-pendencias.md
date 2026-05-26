@@ -64,6 +64,27 @@ Evolucao:
 
 ## Media prioridade
 
+### Miauby WhatsApp + Evolution API
+
+Estado:
+
+- O backend `apps/miauw-whatsapp` foi criado com Node.js 22 + TypeScript.
+- O canal usa Postgres 17 dedicado (`wimifarma-miauw-whatsapp-db`) para webhook, fila, dedupe e outbox.
+- O servico nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`.
+- Ainda falta configurar segredos reais no `.env`, subir/conectar a Evolution API separada, escanear o QR do numero de teste e configurar o webhook da instancia.
+
+Risco:
+
+- Ligar sem allowlist, token ou cifragem pode expor o assistente interno a remetentes indevidos.
+- Envio proativo/massa ou grupos aumentam risco operacional e devem continuar bloqueados nesta fase.
+
+Evolucao:
+
+- Configurar `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS`, `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`.
+- Validar `GET /miauw/whatsapp/health` no VPS.
+- Testar webhook com payload controlado antes de usar mensagem real.
+- Conectar o numero por QR na Evolution API e testar primeiro com prefixo `miauby`.
+
 ### Cotacao V2 + Google Sheets
 
 Estado:

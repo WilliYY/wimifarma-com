@@ -119,12 +119,23 @@ Objetivo:
 
 - permitir que o Miauby responda mensagens recebidas por WhatsApp, inicialmente como canal interno controlado para o usuario/equipe, sem abrir dados operacionais para clientes ou grupos.
 
-Desenho recomendado:
+Estado atual:
+
+- backend dedicado iniciado em `apps/miauw-whatsapp`, Node.js 22 + TypeScript;
+- Postgres 17 proprio em `wimifarma-miauw-whatsapp-db`, volume `miauw-whatsapp-data/`;
+- Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
+- `GET /miauw/whatsapp/health` mostra status seguro;
+- `POST /miauw/whatsapp/webhook` recebe eventos da Evolution API;
+- `POST /miauw/whatsapp/worker/run` processa fila manualmente com token interno;
+- o canal nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`.
+
+Desenho:
 
 - Evolution API roda como servico separado no VPS, com banco/cache proprios e segredos apenas no `.env`;
 - uma instancia WhatsApp e conectada por QR Code/WhatsApp Web ou, em uma etapa mais formal, por WhatsApp Cloud API oficial;
-- a Evolution API envia eventos de mensagem recebida por webhook para um endpoint proprio do projeto, por exemplo `site/miauw/whatsapp-webhook.php`;
-- o endpoint valida token secreto, origem/evento, instancia, numero remetente e tipo de conversa antes de chamar o Miauby;
+- a Evolution API envia eventos de mensagem recebida por webhook para `https://wimifarma.com/miauw/whatsapp/webhook`;
+- o endpoint valida token secreto, origem/evento, instancia, numero remetente, prefixo e tipo de conversa antes de chamar o Miauby;
+- eventos aceitos entram em fila Postgres com dedupe por provider/instancia/message id;
 - o Miauby continua sendo o motor de resposta e de permissao; a Evolution API deve ser apenas transporte de entrada/saida;
 - a resposta volta pela API estruturada da Evolution API, por exemplo envio de texto para a mesma conversa.
 
@@ -144,20 +155,28 @@ Cuidados sobre o numero:
 - no modo WhatsApp Web/Baileys, a sessao depende da conexao autorizada por QR Code e pode exigir manutencao operacional;
 - no modo WhatsApp Cloud API oficial, ha regras da Meta, configuracao propria e possivel custo por conversa.
 
-Variaveis futuras candidatas:
+Variaveis:
 
 - `MIAUW_WHATSAPP_ENABLED`
 - `MIAUW_WHATSAPP_WEBHOOK_TOKEN`
-- `MIAUW_WHATSAPP_ALLOWED_NUMBERS`
+- `MIAUW_WHATSAPP_INTERNAL_TOKEN`
+- `MIAUW_WHATSAPP_ENCRYPTION_KEY`
+- `MIAUW_WHATSAPP_HASH_SALT`
+- `MIAUW_WHATSAPP_ALLOWED_SENDERS`
 - `MIAUW_WHATSAPP_REQUIRE_PREFIX`
+- `MIAUW_WHATSAPP_PREFIX`
+- `MIAUW_WHATSAPP_GROUPS_ENABLED`
+- `MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND`
+- `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE`
+- `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY`
 - `EVOLUTION_API_BASE_URL`
 - `EVOLUTION_API_KEY`
 - `EVOLUTION_API_INSTANCE`
 
 Status:
 
-- planejado/documentado;
-- ainda nao ha endpoint de webhook, servico Evolution API no Compose, tabela propria de conversas WhatsApp nem deploy dessa integracao.
+- backend do bridge criado e desligado por padrao;
+- ainda falta configurar segredos reais, subir Evolution API separada, conectar QR da instancia e testar webhook real no VPS.
 
 ### Google Sheets / Cotacao
 

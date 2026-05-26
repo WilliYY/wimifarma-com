@@ -2,6 +2,35 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-26 - Miauby WhatsApp usa backend dedicado e Postgres proprio
+
+Decisao:
+
+- Criar `apps/miauw-whatsapp` em Node.js 22 + TypeScript para o canal WhatsApp do Miauby.
+- Usar Postgres 17 dedicado (`wimifarma-miauw-whatsapp-db`) como fonte de verdade de webhook, fila, dedupe, contatos mascarados/cifrados e outbox.
+- Publicar `/miauw/whatsapp/` por proxy Apache, mantendo a Evolution API como transporte externo separado.
+- Manter o canal desligado por padrao com `MIAUW_WHATSAPP_ENABLED=false`.
+
+Motivo:
+
+- O canal WhatsApp precisa de idempotencia, fila duravel, retry, auditoria e isolamento de dados. Postgres entrega isso melhor para o dominio do que reaproveitar MySQL legado ou misturar com o banco da Gestao.
+
+Impacto:
+
+- `apps/miauw-whatsapp/`
+- `docker-compose.yml`
+- `docker/php/Dockerfile`
+- `.env.example`
+- `README.md`
+- `AGENTS.md`
+- `docs/`
+
+Riscos/cuidados:
+
+- Nao ligar o canal sem `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, allowlist e Evolution API configurados.
+- Nao salvar payload bruto externo nem telefone cru.
+- A primeira versao responde curto e sem escrita forte direta pelo WhatsApp; acoes sensiveis continuam exigindo confirmacao no sistema.
+
 ## 2026-05-25 - XP remove selo textual amarelo do login
 
 Decisao:

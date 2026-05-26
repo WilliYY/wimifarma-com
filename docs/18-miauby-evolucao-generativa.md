@@ -209,6 +209,8 @@ Miauby ja possui:
   - "farmar aura no XP" fica liberado como linguagem interna motivacional para venda real e lancamento correto;
   - o prompt, a base de conhecimento e o contexto enviado ao agente Node reforcam que o Miauby nao pode inventar ranking, nivel, foto, venda ou pontuacao sem dado do sistema ou do operador.
 - Planejamento WhatsApp:
+  - o Miauby iniciou o backend dedicado para WhatsApp em `apps/miauw-whatsapp`, com Node.js 22 + TypeScript, Postgres 17 proprio, webhook, fila, dedupe, allowlist e outbox;
+  - o canal nasce desligado por `MIAUW_WHATSAPP_ENABLED=false` e so deve responder depois de configurar segredos, Evolution API, QR e allowlist no VPS;
   - o Miauby pode evoluir para responder por WhatsApp usando Evolution API como transporte, recebendo eventos por webhook e enviando respostas pela API de mensagem;
   - a Evolution API nao deve virar motor de IA nem dona de regra operacional; ela apenas entrega a mensagem ao Miauby e devolve a resposta autorizada;
   - a primeira etapa deve ser restrita a numeros autorizados, preferencialmente com prefixo `miauby`, ignorando clientes e grupos;
@@ -238,6 +240,9 @@ Arquivos:
 - `apps/miauw-agent/scripts/check-persona.mjs`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-agent/Dockerfile`
+- `apps/miauw-whatsapp/package.json`
+- `apps/miauw-whatsapp/src/server.ts`
+- `apps/miauw-whatsapp/Dockerfile`
 - `apps/gestao/src/server.ts`
 - `.env.example`
 - `docker-compose.yml`
@@ -254,6 +259,9 @@ Tabelas:
 - `miauw_configuracoes`
 - `miauw_tool_traces`
 - `miauw_treinos_respostas`
+- `miauw_whatsapp_contacts`
+- `miauw_whatsapp_events`
+- `miauw_whatsapp_outbox`
 
 Integracoes:
 
@@ -264,7 +272,7 @@ Integracoes:
 - Agents SDK no servico `wimifarma-miauw-agent`, ainda sem escrita real, com uso sombra ou corte controlado por `MIAUW_ENGINE` e leitura real via ponte PHP tokenizada;
 - ponte interna da Gestao (`/gestao/api/internal/...`) para resumo e criacao confirmada de conta a pagar;
 - rotinas locais dos modulos Cashback, Cotacao, Financeiro e Tarefas;
-- Evolution API como candidata futura para canal WhatsApp do Miauby, com webhook tokenizado, allowlist de remetentes e envio de resposta por API estruturada;
+- Evolution API como transporte do canal WhatsApp do Miauby, com webhook tokenizado, allowlist de remetentes e envio de resposta por API estruturada;
 - futuro Google Sheets para Cotacao.
 
 ## Regras de negocio que precisam ser preservadas

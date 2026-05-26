@@ -27,7 +27,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 
 - Projeto local em `C:\Projetos\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
@@ -108,6 +108,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - Miauby ajustou a Fase 19 do agente operacional v2: o chat e o widget global usam botao `Falar` em fluxo estilo WhatsApp. O navegador grava audio temporario somente apos clique, o PHP transcreve com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`, a tela mostra um rascunho local com player/duracao/transcricao, o texto entra no campo para revisao e o usuario decide `Enviar`, `Refazer` ou `Descartar audio`. A chave nao vai para o navegador, audio nao e armazenado no banco e escrita operacional por voz continua bloqueada.
 - Miauby iniciou a Fase 20 do agente operacional v2: audio enviado aparece no chat/widget como player com ondas, sem mostrar a transcricao na bolha enviada; a transcricao segue internamente para contexto. Quando a mensagem veio por audio, o PHP gera resposta falada com `MIAUW_SPEECH_MODEL=gpt-4o-mini-tts` e `MIAUW_SPEECH_VOICE=marin`, sem armazenar audio. Audios curtos demais sao bloqueados para reduzir transcricao inventada.
 - Miauby iniciou a Fase 21 do agente operacional v2: o playback dos audios usa URL temporaria `blob:` permitida apenas em `media-src`, a resposta falada mostra o audio como principal e deixa a transcricao escondida por padrao, o TTS recebeu perfil de fala mais vivo e o diagnostico permite escolher voz base entre `marin`, `cedar`, `ash`, `coral` e `verse` sem mexer em segredo.
+- O canal WhatsApp do Miauby iniciou como backend dedicado em `apps/miauw-whatsapp`, usando Node.js 22 + TypeScript e Postgres 17 proprio. O servico publica `/miauw/whatsapp/` por proxy Apache, recebe webhooks da Evolution API, usa allowlist, prefixo opcional, fila duravel, dedupe e outbox, mas nasce desligado por `MIAUW_WHATSAPP_ENABLED=false` ate configurar segredos, instancia e QR no VPS.
 - Miauby tambem entende comandos controlados da Gestao: `gestao` aponta para `/gestao/`, e aceita ordens como `gestao - titulo - 500 - categoria`, `gestao - 500 - titulo`, `gestao titulo 500` e categoria antes/depois; quando houver so nome + valor, usa categoria `geral`. Toda criacao prepara confirmacao humana antes de gravar pelo endpoint interno tokenizado da Gestao. Se um comando incompleto pedir correcao, uma nova mensagem iniciada por `gestao` substitui a pendencia anterior em vez de juntar prompts antigos.
 - Miauby conhece o contexto do XP: `/xp/` e a trilha gamificada dos atendentes, R$ 1.000,00 em vendas gera 2.500 XP e "farmar aura no XP" e linguagem interna para incentivar venda real e lancamento correto, sem inventar ranking, nivel ou pontuacao.
 - O painel restrito `/miauw/diagnostico.php` mostra falhas internas recentes do Miauby com `trace_id`, erro sanitizado, hash e contexto curto da ferramenta/confirmacao, permitindo investigar falhas automaticas sem expor segredo, SQL bruto ou stack trace ao operador.
@@ -131,7 +132,9 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Node.js 22 + Express + Socket.IO para Cotacao V2
 - Node.js 22 + TypeScript + Express para Gestao e Pedidos
 - Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio por gravacao temporaria/transcricao confirmada, bolha/player de audio, resposta falada temporaria e seletor seguro de voz no diagnostico
+- Node.js 22 + TypeScript para o bridge WhatsApp do Miauby via Evolution API
 - PostgreSQL 17 para dados da Cotacao V2
+- PostgreSQL 17 dedicado para fila/eventos/outbox do Miauby WhatsApp
 - Redis 7 para sessoes e presenca da Cotacao V2
 
 ## Instalar localmente
@@ -198,6 +201,7 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/miauw/diagnostico.php`
 - `http://127.0.0.1:3002/miauw/widget-status.php`
 - `http://127.0.0.1:3002/miauw/agent/health`
+- `http://127.0.0.1:3002/miauw/whatsapp/health`
 
 ## Comandos principais
 
@@ -208,6 +212,7 @@ docker compose logs --tail=80 wimifarma-com-db
 docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-pedidos-app
 docker compose logs --tail=80 wimifarma-miauw-agent
+docker compose logs --tail=80 wimifarma-miauw-whatsapp
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
 docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
 powershell -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
@@ -216,6 +221,7 @@ curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/gestao/login.php
 curl.exe -sS http://127.0.0.1:3002/pedidos/health
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
+curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/api/diagnostics
 curl.exe -sS http://127.0.0.1:3002/cotacao/api/google-sheets/status

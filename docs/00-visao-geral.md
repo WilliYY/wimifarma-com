@@ -15,7 +15,8 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Gestao: contas a pagar manuais, itens de composicao, pagamentos parciais e total pago por mes.
 - XP: cadastro de atendentes, foto, venda diaria, pontos e progressao visual de niveis.
 - Tarefas: tarefas simples internas.
-- Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; a Fase 13 possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada, contratos de tools enviados do PHP para o Node e tools reais de leitura baixa por ponte PHP interna, sem liberar escrita direta.
+- Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada, contratos de tools enviados do PHP para o Node e tools reais por ponte PHP interna, sem liberar escrita direta.
+- Miauby WhatsApp: bridge dedicado em Node.js/TypeScript com Postgres proprio, webhook da Evolution API, fila, dedupe, allowlist e outbox, publicado em `/miauw/whatsapp/` e desligado por padrao.
 - WordPress: site principal e conteudo publico.
 
 ## Arquivos, rotas e componentes envolvidos
@@ -31,6 +32,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Tarefas: `site/tarefa/`
 - Miauby: `site/miauw/`
 - Miauby agente: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
+- Miauby WhatsApp: `apps/miauw-whatsapp/`, publicado em `/miauw/whatsapp/` por proxy interno do Apache
 - Docker: `docker-compose.yml`, `docker/php/Dockerfile`
 - Banco: volume local `mysql/` ignorado pelo Git
 - Documentacao: `README.md`, `AGENTS.md`, `docs/`
@@ -51,6 +53,7 @@ Rotas principais:
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
 - `/miauw/agent/health`
+- `/miauw/whatsapp/health`
 
 ## Regras de negocio que precisam ser preservadas
 
@@ -62,6 +65,7 @@ Rotas principais:
 - XP deve preservar funcionarios, fotos validadas, vendas em centavos, XP inteiro, logs de alimentacao e progressao por total historico sem apagar lancamentos; cancelamentos devem ser logicos.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.
 - O servico Miauby agente nao deve executar escrita real. O adaptador PHP compara respostas por trace e o corte inicial fica limitado a usuarios liberados por `MIAUW_ENGINE`, com rollback por `.env`.
+- O bridge WhatsApp do Miauby deve manter Evolution API como transporte, usar allowlist, bloquear grupos por padrao, guardar apenas metadados sanitizados/hash/mascara/cifra no Postgres dedicado e nao executar escrita forte diretamente pelo WhatsApp.
 - WordPress deve continuar servindo o site principal enquanto os modulos internos ficam acessiveis por suas rotas.
 
 ## Decisoes tecnicas ja tomadas
@@ -75,6 +79,7 @@ Rotas principais:
 - A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o MySQL continua apenas para login interno, logs e legado importado.
 - O XP fica em PHP/MySQL porque e alimentado manualmente pela equipe, reaproveita `wf_users`, CSRF, `wf_logs` e nao precisa de runtime/proxy novo.
 - O Miauby agente dedicado foi iniciado em `apps/miauw-agent`; `site/miauw/api.php` continua dono de sessao, confirmacoes e escritas fortes mesmo quando `MIAUW_ENGINE=node`.
+- O Miauby WhatsApp foi iniciado em `apps/miauw-whatsapp` com Postgres 17 dedicado porque o canal precisa de fila duravel, idempotencia e outbox auditavel.
 
 ## Riscos ao alterar
 

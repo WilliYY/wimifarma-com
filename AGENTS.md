@@ -60,12 +60,13 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db` e `wimifarma-miauw-agent`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
 - Gestao em Node.js 22 + TypeScript + Express, com Postgres 17 dedicado para contas, itens, pagamentos, auditoria e sessoes.
 - Pedidos em Node.js 22 + TypeScript + Express, separado da Gestao em `/pedidos/`, com sessao propria e tabelas operacionais proprias no Postgres da Gestao para manter integracao financeira.
+- Miauby WhatsApp em Node.js 22 + TypeScript, separado em `/miauw/whatsapp/`, com Postgres 17 dedicado para webhook, fila, dedupe, contatos mascarados/cifrados e outbox da Evolution API.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro, logo animada propria sem fundo em `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma-home-animated.gif` e GIFs decorativos com o mesmo padrao de movimento dos logins.
 - A logo oficial atual e o SVG horizontal atualizado em 2026-05-21, sincronizado em `site/cashback/logo-wimifarma.svg`, `site/financeiro/logo-wimifarma.svg`, `site/tarefa/logo-wimifarma.svg`, `site/miauw/logo-wimifarma.svg`, `apps/cotacao/public/logo-wimifarma.svg` e `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma*.svg`; a home publica usa o GIF animado como variacao visual da marca, sem trocar os SVGs dos modulos internos.
@@ -77,7 +78,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - O card `XP` abre `/xp/`, modulo PHP/MySQL proprio para gamificacao dos atendentes por vendas lancadas manualmente, com cadastro de funcionarios, upload validado de foto, trilha horizontal em zigue-zague, progressao infinita de niveis e renderizacao em janela curta: niveis 1 a 20 no inicio e, depois disso, uma janela ao redor do nivel mais alto para preservar performance. Na aba `Configuracoes`, os cards de funcionarios devem mostrar barra amarela preenchida conforme o percentual real do nivel; na faixa inferior da `Trilha`, cada jogador tambem deve mostrar progresso amarelo proporcional; `Ultimos lancamentos` deve mostrar a observacao salva no lancamento e uma barra amarela compacta com o XP do lancamento.
 - Em 2026-05-25, o login do XP foi simplificado para mostrar apenas a logo oficial, o titulo `Entrar no XP`, a descricao e o formulario; o selo textual amarelo `Wimifarma XP` foi removido e nao deve voltar sem pedido explicito.
 - O Miauby conhece o contexto do XP e pode usar "farmar aura no XP" como linguagem interna de jogo para incentivar venda real e lancamento correto, sem inventar ranking, nivel ou pontuacao quando nao houver dado vindo do sistema ou do usuario.
-- Em 2026-05-26, foi documentado o desenho futuro para levar o Miauby ao WhatsApp por Evolution API: a Evolution deve ser apenas transporte por webhook/API, com allowlist de remetentes, token de webhook, bloqueio de grupos/clientes desconhecidos e acoes fortes ainda sujeitas a confirmacao/auditoria. O numero publico do Cashback (`+55 44 9739-4711`) nao deve ser conectado ao Miauby interno sem decisao operacional e filtros claros.
+- Em 2026-05-26, o Miauby WhatsApp iniciou como backend dedicado em `apps/miauw-whatsapp`, com Node.js 22 + TypeScript e Postgres 17 proprio para webhook, fila, dedupe, allowlist e outbox via Evolution API. A Evolution deve ser apenas transporte por webhook/API, o servico nasce desligado por `MIAUW_WHATSAPP_ENABLED=false`, grupos ficam bloqueados por padrao e acoes fortes seguem sujeitas a confirmacao/auditoria. O numero do Cashback (`+55 44 9739-4711`) pode ser usado em teste quando controlado pela empresa, mas remetentes autorizados devem entrar em allowlist.
 - Em 2026-05-24, foi aplicado hardening sem troca de segredos: logins PHP ganharam limitador persistente em `wf_login_rate_limits` alem do bloqueio por sessao, Cotacao V2 ganhou limitador de login e headers de seguranca, `xmlrpc.php` foi bloqueado por `.htaccess`, uploads versionados bloqueiam execucao de scripts e `scripts/check-secrets.ps1` virou a rotina local de varredura de segredos antes de push.
 - Em 2026-05-24, a home publica passou a usar a logo em GIF animado fornecida pelo usuario, com fundo transparente e sem sobrepor o SVG antigo; os outros modulos continuam usando o SVG oficial.
 - Pedidos controla fornecedores, chegada, vencimento de boleto por parcela, pagamentos parciais/totais, edicao auditada e historico em duas tabelas operacionais: `pedidos_orders` para pedidos registrados/aguardando chegada e `pedidos_confirmed_orders` para confirmados e historico. Na criacao, a previsao de chegada e digitada como numero de dias e gravada como data calculada em `expected_arrival_at`.
@@ -100,6 +101,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Banco do XP: tabelas MySQL `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` em `wimifarma_app`; a fonte de verdade dos funcionarios, vendas gamificadas e foto da moldura ADM fica nessas tabelas, com venda em centavos inteiros, XP inteiro e uploads validados em `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/`. O ADM tambem existe como player fixo de teste em `wf_xp_employees.system_key='adm'`, protegido contra edicao/exclusao comum e sincronizado com a foto da moldura ADM.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 - Banco da Gestao/Pedidos: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
+- Banco do Miauby WhatsApp: Postgres `wimifarma_miauw_whatsapp`, com dados persistidos em `miauw-whatsapp-data/postgres`; guarda `miauw_whatsapp_contacts`, `miauw_whatsapp_events` e `miauw_whatsapp_outbox`, sem payload bruto da Evolution nem telefone cru.
 - Pedidos usa Postgres `pedidos_orders` e `pedidos_confirmed_orders` ligados a `gestao_accounts`; os valores/parcelas ficam em `gestao_account_items`, incluindo `due_at` por parcela quando houver vencimento, e os pagamentos ficam em `gestao_account_payments`, preservando totais mensais, categoria `Boleto` e auditoria. O vencimento geral em `gestao_accounts.due_at` e derivado da menor data ativa das parcelas para ordenacao/resumo. A previsao de chegada entra pela UI como dias ate chegar, mas a fonte de verdade continua sendo a data em `pedidos_orders.expected_arrival_at`. Editar fornecedor/valores/vencimentos passa por auditoria, remover da tela usa cancelamento/arquivamento logico, e `gestao_supplier_orders` fica apenas como legado/compatibilidade e fonte de migracao para dados criados antes da separacao.
 - Para banco de dados novo, modelar entidades do dominio em tabelas proprias, usar FK/constraints, dinheiro em centavos inteiros, indices nos campos de filtro/join, indices parciais para filas/status, soft delete quando houver auditoria e documentar a fonte de verdade antes de escrever a tela.
 
@@ -114,6 +116,7 @@ Nao misturar portas:
 - `wimifarma-cotacao-app:3000`: destino interno do Apache para `/cotacao/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-gestao-app:3200`: destino interno do Apache para `/gestao/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-pedidos-app:3300`: destino interno do Apache para `/pedidos/`; nao publicar diretamente no Nginx Proxy Manager.
+- `wimifarma-miauw-whatsapp:3400`: destino interno do Apache para `/miauw/whatsapp/`; nao publicar diretamente no Nginx Proxy Manager.
 
 O Proxy Host de `wimifarma.com` e `www.wimifarma.com` deve apontar para:
 
@@ -180,6 +183,7 @@ Rotas internas:
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
 - `/miauw/agent/health`
+- `/miauw/whatsapp/health`
 
 ## Auditoria antes de encerrar alteracoes
 
@@ -196,6 +200,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-gestao-app
+docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
 
 Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualmente.

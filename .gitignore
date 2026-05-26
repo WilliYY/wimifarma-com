@@ -2,11 +2,13 @@
 /mysql/
 /cotacao-data/
 /gestao-data/
+/miauw-whatsapp-data/
 node_modules/
 **/node_modules/
 apps/miauw-agent/dist/
 apps/gestao/dist/
 apps/pedidos/dist/
+apps/miauw-whatsapp/dist/
 .env
 /site/miauw/config.local.php
 **/config.local.php
