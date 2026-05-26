@@ -28,3 +28,19 @@ EVOLUTION_API_BASE_URL=http://wimifarma-evolution-api:8080
 EVOLUTION_API_KEY=<AUTHENTICATION_API_KEY>
 EVOLUTION_API_INSTANCE=wimifarma-cashback-test
 ```
+
+Na Evolution API `v2.3.7`, o endpoint `POST /webhook/set/{instance}` aceitou o corpo com raiz `webhook`:
+
+```json
+{
+  "webhook": {
+    "enabled": true,
+    "url": "https://wimifarma.com/miauw/whatsapp/webhook?token=<token>",
+    "webhookByEvents": false,
+    "webhookBase64": false,
+    "events": ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"]
+  }
+}
+```
+
+Manter `webhookByEvents=false`, porque o bridge recebe todos os eventos em `/miauw/whatsapp/webhook`.

@@ -104,6 +104,22 @@ Depois de conectar o numero por QR/codigo de pareamento, configurar o webhook da
 https://wimifarma.com/miauw/whatsapp/webhook?token=<MIAUW_WHATSAPP_WEBHOOK_TOKEN>
 ```
 
+Na Evolution API `v2.3.7` validada no VPS, `POST /webhook/set/{instance}` aceitou o corpo com a raiz `webhook`, nao o formato plano:
+
+```json
+{
+  "webhook": {
+    "enabled": true,
+    "url": "https://wimifarma.com/miauw/whatsapp/webhook?token=<token>",
+    "webhookByEvents": false,
+    "webhookBase64": false,
+    "events": ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"]
+  }
+}
+```
+
+`webhookByEvents` deve ficar `false`, para a Evolution nao anexar o nome do evento ao caminho do webhook.
+
 O numero `+55 44 9739-4711` pode ser usado como teste se estiver sob controle da empresa, mas os remetentes autorizados ainda precisam entrar em `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
 
 ## Testes
