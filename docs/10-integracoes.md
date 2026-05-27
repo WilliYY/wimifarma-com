@@ -150,6 +150,7 @@ Regras iniciais obrigatorias:
 - comecar com allowlist de numeros autorizados, como o telefone do dono/equipe, e ignorar clientes, grupos e remetentes desconhecidos;
 - opcionalmente exigir prefixo como `miauby` para ativar resposta automatica no WhatsApp;
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
+- manter uma resposta por mensagem recebida, rate limit por remetente, rate limit global, intervalo minimo entre envios e pausa automatica quando o transporte responder timeout, `429` ou `5xx`;
 - manter acoes fortes bloqueadas ou retornando confirmacao humana auditada; WhatsApp nao deve virar atalho para sangria, contas, encomenda ou escrita sensivel sem fluxo proprio;
 - registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token; o painel operacional deve seguir a mesma regra;
 - se for usar Gemini ou outro provedor, encapsular como motor configuravel do Miauby, nao como resposta solta direto na Evolution API.
@@ -175,6 +176,11 @@ Variaveis:
 - `MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY`
+- `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS`
+- `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS`
+- `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE`
+- `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS`
+- `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS`
 - `MIAUW_WHATSAPP_PROVIDER`
 - `EVOLUTION_API_BASE_URL`
 - `EVOLUTION_API_KEY`

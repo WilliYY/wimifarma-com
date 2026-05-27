@@ -95,6 +95,9 @@ const USER_RATE_LIMIT_PER_MINUTE = numberEnv('MIAUW_WHATSAPP_USER_RATE_LIMIT_PER
 const USER_RATE_LIMIT_PER_DAY = numberEnv('MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY', 120, 1, 1000);
 const MIN_REPLY_DELAY_MS = numberEnv('MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS', 700, 0, 15000);
 const MAX_REPLY_DELAY_MS = Math.max(MIN_REPLY_DELAY_MS, numberEnv('MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS', 2200, 0, 30000));
+const GLOBAL_RATE_LIMIT_PER_MINUTE = numberEnv('MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE', 8, 1, 60);
+const SEND_MIN_INTERVAL_MS = numberEnv('MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS', 2500, 0, 60000);
+const PROVIDER_PAUSE_ON_ERROR_MS = numberEnv('MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS', 60000, 5000, 900000);
 const WORKER_INTERVAL_MS = numberEnv('MIAUW_WHATSAPP_WORKER_INTERVAL_MS', 5000, 1000, 60000);
 const WORKER_BATCH_SIZE = numberEnv('MIAUW_WHATSAPP_WORKER_BATCH_SIZE', 5, 1, 20);
 const MAX_ATTEMPTS = numberEnv('MIAUW_WHATSAPP_MAX_ATTEMPTS', 5, 1, 12);
@@ -105,6 +108,11 @@ const DASHBOARD_PASSWORD = textEnv('MIAUW_WHATSAPP_DASHBOARD_PASSWORD');
 const DASHBOARD_AUTH_ENABLED = DASHBOARD_USER !== '' && DASHBOARD_PASSWORD !== '';
 const DASHBOARD_COOKIE_NAME = 'MIAUW_WHATSAPP_DASH';
 const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES', 720, 5, 10080);
+const providerSendTimestamps: number[] = [];
+let providerSendChain: Promise<void> = Promise.resolve();
+let lastProviderSendAt = 0;
+let providerPausedUntil = 0;
+let providerPauseReason = '';
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -140,6 +148,18 @@ function numberEnv(name: string, fallback: number, min: number, max: number): nu
 function providerEnv(): WhatsappProvider {
   const value = (textEnv('MIAUW_WHATSAPP_PROVIDER') || textEnv('WHATSAPP_PROVIDER') || 'evolution').toLowerCase();
   return value === 'meta' ? 'meta' : 'evolution';
+}
+
+class ProviderHttpError extends Error {
+  provider: WhatsappProvider;
+  statusCode: number;
+
+  constructor(provider: WhatsappProvider, statusCode: number, message: string) {
+    super(message);
+    this.name = 'ProviderHttpError';
+    this.provider = provider;
+    this.statusCode = statusCode;
+  }
 }
 
 function trimTrailingSlash(value: string): string {
@@ -972,6 +992,78 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
   }
 }
 
+function pruneProviderSendWindow(now = Date.now()): void {
+  const oldestAllowed = now - 60000;
+  while (providerSendTimestamps.length > 0 && providerSendTimestamps[0] <= oldestAllowed) {
+    providerSendTimestamps.shift();
+  }
+}
+
+function providerPauseRemainingMs(): number {
+  const remaining = Math.max(0, providerPausedUntil - Date.now());
+  if (remaining === 0) providerPauseReason = '';
+  return remaining;
+}
+
+function shouldPauseProvider(error: unknown): boolean {
+  if (error instanceof ProviderHttpError) {
+    return error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500;
+  }
+  const message = safeError(error).toLowerCase();
+  return message.includes('too many') || message.includes('rate') || message.includes('timeout');
+}
+
+function maybePauseProvider(error: unknown): void {
+  if (!shouldPauseProvider(error)) return;
+  providerPausedUntil = Math.max(providerPausedUntil, Date.now() + PROVIDER_PAUSE_ON_ERROR_MS);
+  providerPauseReason = safeError(error);
+}
+
+async function waitForProviderSendGate(): Promise<void> {
+  while (true) {
+    const now = Date.now();
+    pruneProviderSendWindow(now);
+
+    let waitMs = providerPauseRemainingMs();
+    const minIntervalRemaining = SEND_MIN_INTERVAL_MS > 0 && lastProviderSendAt > 0
+      ? SEND_MIN_INTERVAL_MS - (now - lastProviderSendAt)
+      : 0;
+    if (minIntervalRemaining > waitMs) waitMs = minIntervalRemaining;
+
+    if (providerSendTimestamps.length >= GLOBAL_RATE_LIMIT_PER_MINUTE) {
+      const windowRemaining = providerSendTimestamps[0] + 60000 - now + 250;
+      if (windowRemaining > waitMs) waitMs = windowRemaining;
+    }
+
+    if (waitMs <= 0) return;
+    await sleep(Math.min(waitMs, 30000));
+  }
+}
+
+async function withProviderSendGate<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = providerSendChain;
+  let release: () => void = () => undefined;
+  providerSendChain = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous.catch(() => undefined);
+  try {
+    await waitForProviderSendGate();
+    const result = await operation();
+    const now = Date.now();
+    lastProviderSendAt = now;
+    providerSendTimestamps.push(now);
+    pruneProviderSendWindow(now);
+    return result;
+  } catch (error) {
+    maybePauseProvider(error);
+    throw error;
+  } finally {
+    release();
+  }
+}
+
 async function sendEvolutionText(phone: string, text: string, instanceName: string): Promise<string> {
   if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !instanceName) {
     throw new Error('evolution_not_configured');
@@ -993,7 +1085,8 @@ async function sendEvolutionText(phone: string, text: string, instanceName: stri
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 160) || `evolution_http_${response.status}`);
+      const message = safeText(isRecord(data) ? data.message || data.error : '', 160) || `evolution_http_${response.status}`;
+      throw new ProviderHttpError('evolution', response.status, message);
     }
     return safeText(isRecord(data) ? data.key && isRecord(data.key) ? data.key.id : data.id : '', 180);
   } finally {
@@ -1029,7 +1122,8 @@ async function sendMetaText(phone: string, text: string): Promise<string> {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = isRecord(data.error) ? data.error : data;
-      throw new Error(safeText(isRecord(error) ? error.message || error.error_user_msg || error.error : '', 180) || `meta_http_${response.status}`);
+      const message = safeText(isRecord(error) ? error.message || error.error_user_msg || error.error : '', 180) || `meta_http_${response.status}`;
+      throw new ProviderHttpError('meta', response.status, message);
     }
     const messages = isRecord(data) && Array.isArray(data.messages) ? data.messages : [];
     const first = isRecord(messages[0]) ? messages[0] : {};
@@ -1040,15 +1134,18 @@ async function sendMetaText(phone: string, text: string): Promise<string> {
 }
 
 async function sendProviderText(phone: string, text: string, instanceName: string): Promise<string> {
-  if (WHATSAPP_PROVIDER === 'meta') {
-    return sendMetaText(phone, text);
-  }
-  return sendEvolutionText(phone, text, instanceName);
+  return withProviderSendGate(() => (
+    WHATSAPP_PROVIDER === 'meta'
+      ? sendMetaText(phone, text)
+      : sendEvolutionText(phone, text, instanceName)
+  ));
 }
 
 function publicStatus(): JsonRecord {
   const evolutionConfigured = EVOLUTION_API_BASE_URL !== '' && EVOLUTION_API_KEY !== '' && EVOLUTION_INSTANCE !== '';
   const metaConfigured = META_ACCESS_TOKEN !== '' && META_PHONE_NUMBER_ID !== '';
+  const providerPauseMsRemaining = providerPauseRemainingMs();
+  pruneProviderSendWindow();
   return {
     ok: true,
     service: SERVICE_NAME,
@@ -1073,6 +1170,15 @@ function publicStatus(): JsonRecord {
     max_replies_per_inbound: MAX_REPLIES_PER_INBOUND,
     rate_limit_per_minute: USER_RATE_LIMIT_PER_MINUTE,
     rate_limit_per_day: USER_RATE_LIMIT_PER_DAY,
+    global_rate_limit_per_minute: GLOBAL_RATE_LIMIT_PER_MINUTE,
+    send_min_interval_ms: SEND_MIN_INTERVAL_MS,
+    min_reply_delay_ms: MIN_REPLY_DELAY_MS,
+    max_reply_delay_ms: MAX_REPLY_DELAY_MS,
+    provider_pause_on_error_ms: PROVIDER_PAUSE_ON_ERROR_MS,
+    provider_paused: providerPauseMsRemaining > 0,
+    provider_pause_ms_remaining: providerPauseMsRemaining,
+    provider_pause_reason: providerPauseReason,
+    provider_sent_in_window: providerSendTimestamps.length,
   };
 }
 
@@ -1333,6 +1439,12 @@ function renderDashboard(summary: DashboardSummary): string {
   const replied = countOf(summary.eventCounts, 'replied');
   const ignored = countOf(summary.eventCounts, 'ignored');
   const prefix = textStatus(status, 'prefix') || '-';
+  const providerPaused = boolStatus(status, 'provider_paused');
+  const providerPauseMs = numberStatus(status, 'provider_pause_ms_remaining');
+  const providerPauseReasonText = textStatus(status, 'provider_pause_reason');
+  const globalRate = numberStatus(status, 'global_rate_limit_per_minute');
+  const sendMinIntervalMs = numberStatus(status, 'send_min_interval_ms');
+  const providerPauseOnErrorMs = numberStatus(status, 'provider_pause_on_error_ms');
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -1455,6 +1567,11 @@ function renderDashboard(summary: DashboardSummary): string {
             <b>Seguranca</b>
             ${renderPill((webhookConfigured || metaVerifyConfigured) && encryptionConfigured, 'Tokens ok', 'Revisar')}
             <small>Painel: ${dashboardAuthConfigured ? 'login ativo' : 'aberto por ambiente'} | Meta assinatura: ${metaSignatureConfigured ? 'ativa' : 'pendente'} | Grupos: ${groupsEnabled ? 'liberados' : 'bloqueados'} | Rate: ${numberStatus(status, 'rate_limit_per_minute')}/min.</small>
+          </div>
+          <div class="status-item">
+            <b>Anti-flood</b>
+            ${renderPill(!providerPaused, 'Normal', 'Pausado')}
+            <small>Global: ${globalRate}/min | intervalo: ${Math.round(sendMinIntervalMs / 100) / 10}s | pausa erro: ${Math.round(providerPauseOnErrorMs / 1000)}s${providerPaused ? ` | volta em ${Math.ceil(providerPauseMs / 1000)}s` : ''}${providerPauseReasonText ? ` | ${providerPauseReasonText}` : ''}</small>
           </div>
         </div>
         <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>

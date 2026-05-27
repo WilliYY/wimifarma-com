@@ -58,6 +58,11 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND=1`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=6`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=120`
+- `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=700`
+- `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=2200`
+- `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=8`
+- `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=2500`
+- `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS=60000`
 - `MIAUW_WHATSAPP_AGENT_RUN_URL=http://wimifarma-miauw-agent:3100/miauw/agent/run`
 - `MIAUW_WHATSAPP_PROVIDER=evolution`
 - `EVOLUTION_API_BASE_URL`
@@ -94,14 +99,33 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Prefixo `miauby` fica exigido por padrao.
 - O canal responde no maximo uma vez por mensagem recebida.
 - Rate limit por remetente fica ativo por minuto e por dia.
+- Rate limit global de envio fica ativo por minuto, com intervalo minimo entre envios.
+- Se o transporte responder erro temporario, timeout, `429` ou `5xx`, o bridge pausa novos envios por `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS` antes de tentar de novo.
 - O agente responde curto e sem tools/escritas diretas nesta primeira versao.
 - Acoes fortes devem orientar confirmacao no sistema, nao executar por WhatsApp.
+
+## Anti-flood e risco de bloqueio
+
+Nao existe garantia tecnica de banimento zero, principalmente quando o transporte usa sessao WhatsApp Web/Baileys pela Evolution API. A postura operacional do Wimifarma deve ser conservadora:
+
+- usar apenas remetentes em allowlist e com consentimento operacional claro;
+- manter prefixo `miauby` exigido enquanto o canal estiver em estabilizacao;
+- bloquear grupos por padrao;
+- responder somente a mensagens iniciadas pelo usuario autorizado;
+- manter uma resposta por mensagem recebida;
+- usar respostas curtas, sem campanhas, disparos em massa ou mensagens repetidas;
+- respeitar pedidos para parar contato;
+- preferir Meta Cloud API oficial quando o objetivo deixar de ser uso interno controlado e virar atendimento amplo.
+
+Para o VPS em producao inicial, recomenda-se comecar ainda mais restrito que o default do repositorio: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=2500`, `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=5500` e `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=7000`. Esses limites podem subir depois de alguns dias sem erro, bloqueio, report ou queda de qualidade.
 
 ## Evolution API
 
 A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda como transporte separado no VPS, com segredos e estado proprios. O template versionado fica em `ops/evolution/`; a pasta real do VPS fica em `/home/ubuntu/projetos/wimifarma-evolution-api`, com `.env`, instancias, Postgres e Redis fora do Git.
 
 Em 2026-05-26, o template foi fixado em `evoapicloud/evolution-api:v2.3.0` para uma nova tentativa de pareamento. A `v2.3.7` retornou `401 Unauthorized` e `Invalid buffer`; a `v2.3.6` tambem falhou com `Invalid buffer` porque ignorou `CONFIG_SESSION_PHONE_VERSION`. A `v2.3.0` ainda usa o pin `CONFIG_SESSION_PHONE_VERSION` ao iniciar o Baileys.
+
+Em 2026-05-27, a instancia `wimifarma-business-no9-20260526190040` foi validada no VPS como `open`/conectada, com webhook apontando para `https://wimifarma.com/miauw/whatsapp/webhook?token=<MIAUW_WHATSAPP_WEBHOOK_TOKEN>` e eventos `QRCODE_UPDATED`, `CONNECTION_UPDATE` e `MESSAGES_UPSERT`.
 
 O manager operacional, quando necessario, deve ser acessado pelo manager embutido da API em `http://127.0.0.1:8080/manager` via acesso local/tunel. Nao manter container manager separado.
 
