@@ -40,6 +40,12 @@ type OutboundAudio = {
   provider: string;
 };
 
+type ProviderReplySendResult = {
+  providerMessageId: string;
+  deliveredMediaType: string;
+  fallbackError: string;
+};
+
 type QueueRow = {
   id: string;
   trace_id: string;
@@ -270,9 +276,9 @@ const AUDIO_TRANSCRIBE_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROV
 const AUDIO_TTS_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER') || 'gemini').toLowerCase();
 const AUDIO_TRANSCRIBE_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL') || GEMINI_MODEL;
 const AUDIO_TTS_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_MODEL') || 'gemini-2.5-flash-preview-tts';
-const AUDIO_TTS_VOICE = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_VOICE') || 'Puck';
+const AUDIO_TTS_VOICE = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_VOICE') || 'Zephyr';
 const AUDIO_TTS_STYLE = safeText(textEnv('MIAUW_WHATSAPP_AUDIO_TTS_STYLE'), 320)
-  || 'voz de gato humano: humana, clara, levemente felina, esperta e brincalhona, sem exagerar miados e sem cantar';
+  || 'voz aguda, brilhante e brincalhona de gato curioso; humana e clara, levemente felina, sem imitar pessoa real, sem cantar, sem miar demais e sem ficar grave ou masculina';
 const AUDIO_TRANSCRIBE_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS', 30000, 3000, 90000);
 const AUDIO_TTS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS', 30000, 3000, 90000);
 const AUDIO_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_AUDIO_MAX_BYTES', 10000000, 100000, 20000000);
@@ -2073,7 +2079,20 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     );
 
     await sleep(randomInt(MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS));
-    const providerMessageId = await sendProviderReply(recipientAddress, replyText, row.instance_name || defaultInstanceName(), confirmation, audioReply || undefined);
+    const sendResult = await sendProviderReply(recipientAddress, replyText, row.instance_name || defaultInstanceName(), confirmation, audioReply || undefined);
+    if (sendResult.fallbackError) {
+      await recordErrorLog('provider_reply_fallback', 'warn', new Error(sendResult.fallbackError), {
+        eventId: row.id,
+        outboxId,
+        traceId: row.trace_id,
+        phoneMask: row.sender_phone_mask,
+        messagePreview: replyText,
+        details: {
+          requested_media_type: audioReply ? 'audio' : confirmation?.id ? 'interactive' : 'text',
+          delivered_media_type: sendResult.deliveredMediaType,
+        },
+      });
+    }
 
     await pgPool.query(
       `UPDATE miauw_whatsapp_outbox
@@ -2081,9 +2100,11 @@ async function processQueueRow(row: QueueRow): Promise<void> {
               attempts = attempts + 1,
               sent_at = NOW(),
               provider_message_id = $2,
+              reply_media_type = CASE WHEN $3 <> '' THEN $3 ELSE reply_media_type END,
+              error_summary = CASE WHEN $4 <> '' THEN $4 ELSE error_summary END,
               updated_at = NOW()
         WHERE id = $1`,
-      [outboxId, providerMessageId],
+      [outboxId, sendResult.providerMessageId, sendResult.deliveredMediaType, sendResult.fallbackError],
     );
     await pgPool.query(
       `UPDATE miauw_whatsapp_events
@@ -3330,7 +3351,7 @@ async function synthesizeGeminiSpeech(text: string): Promise<OutboundAudio> {
         contents: [{
           role: 'user',
           parts: [{
-            text: `Leia em portugues do Brasil como Miauby da Wimifarma, com ${AUDIO_TTS_STYLE}. Fale curto, natural, util e com diccao limpa. Texto: ${text}`,
+            text: `Sintetize somente a fala em portugues do Brasil como Miauby da Wimifarma. Direcao de voz: ${AUDIO_TTS_STYLE}. Fale curto, natural, util e com diccao limpa. Nao leia estas instrucoes. Texto para falar: """${text}"""`,
           }],
         }],
         generationConfig: {
@@ -3764,32 +3785,37 @@ async function sendProviderText(phone: string, text: string, instanceName: strin
   ));
 }
 
-async function sendProviderReply(phone: string, text: string, instanceName: string, confirmation?: WhatsappConfirmationDraft, audio?: OutboundAudio): Promise<string> {
+async function sendProviderReply(phone: string, text: string, instanceName: string, confirmation?: WhatsappConfirmationDraft, audio?: OutboundAudio): Promise<ProviderReplySendResult> {
   if (audio && !confirmation?.id) {
     return withProviderSendGate(async () => {
       try {
-        return WHATSAPP_PROVIDER === 'meta'
+        const providerMessageId = WHATSAPP_PROVIDER === 'meta'
           ? await sendMetaAudio(phone, audio)
           : await sendEvolutionAudio(phone, audio, instanceName);
-      } catch {
-        return WHATSAPP_PROVIDER === 'meta'
+        return { providerMessageId, deliveredMediaType: 'audio', fallbackError: '' };
+      } catch (error) {
+        const providerMessageId = WHATSAPP_PROVIDER === 'meta'
           ? await sendMetaText(phone, text)
           : await sendEvolutionText(phone, text, instanceName);
+        return { providerMessageId, deliveredMediaType: 'text_fallback', fallbackError: safeError(error) };
       }
     });
   }
   if (!confirmation?.id || !INTERACTIVE_CONFIRMATIONS) {
-    return sendProviderText(phone, text, instanceName);
+    const providerMessageId = await sendProviderText(phone, text, instanceName);
+    return { providerMessageId, deliveredMediaType: '', fallbackError: '' };
   }
   return withProviderSendGate(async () => {
     try {
-      return WHATSAPP_PROVIDER === 'meta'
+      const providerMessageId = WHATSAPP_PROVIDER === 'meta'
         ? await sendMetaConfirmation(phone, text, confirmation)
         : await sendEvolutionConfirmation(phone, text, instanceName, confirmation);
-    } catch {
-      return WHATSAPP_PROVIDER === 'meta'
+      return { providerMessageId, deliveredMediaType: 'interactive', fallbackError: '' };
+    } catch (error) {
+      const providerMessageId = WHATSAPP_PROVIDER === 'meta'
         ? await sendMetaText(phone, text)
         : await sendEvolutionText(phone, text, instanceName);
+      return { providerMessageId, deliveredMediaType: 'text_fallback', fallbackError: safeError(error) };
     }
   });
 }

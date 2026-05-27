@@ -88,8 +88,8 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL=gemini-2.5-flash`
 - `MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER=gemini`
 - `MIAUW_WHATSAPP_AUDIO_TTS_MODEL=gemini-2.5-flash-preview-tts`
-- `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Puck`
-- `MIAUW_WHATSAPP_AUDIO_TTS_STYLE=voz de gato humano: humana, clara, levemente felina, esperta e brincalhona, sem exagerar miados e sem cantar`
+- `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Zephyr`
+- `MIAUW_WHATSAPP_AUDIO_TTS_STYLE=voz aguda, brilhante e brincalhona de gato curioso; humana e clara, levemente felina, sem imitar pessoa real, sem cantar, sem miar demais e sem ficar grave ou masculina`
 - `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS=30000`
 - `MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS=30000`
 - `MIAUW_WHATSAPP_AUDIO_MAX_BYTES=10000000`
@@ -148,7 +148,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Com o servico ligado, `MIAUW_WHATSAPP_WEBHOOK_TOKEN` e uma chave de cifragem precisam estar configurados.
 - O painel `/miauw/whatsapp/` deve ficar protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` nos ambientes operacionais. Health continua publico e sem segredo para smoke test.
 - Mesmo protegido por login, o painel nao deve exibir segredos nem payload bruto. Telefone completo so pode aparecer na edicao da allowlist, porque essa tela exige login do painel e CSRF; status publico, health, logs recentes e sincronias continuam com mascara/hash.
-- A allowlist fixa por `MIAUW_WHATSAPP_ALLOWED_SENDERS` continua sendo a base por ambiente. O painel tambem permite autorizar/bloquear contatos no Postgres; bloqueio salvo no Postgres vence sobre a allowlist fixa, e autorizacao salva no Postgres permite adicionar remetentes sem editar `.env`. A comparacao de numero aceita equivalencia operacional com/sem DDI `55` e com/sem o nono digito depois do DDD, para evitar bloqueio indevido quando Evolution/Baileys entrega formatos diferentes. O cadastro aceita formatos como `44997641531`, `44 99764 1531`, `997641531` e `97641531`; se faltar DDD, o bridge usa `MIAUW_WHATSAPP_DEFAULT_DDD`.
+- A allowlist fixa por `MIAUW_WHATSAPP_ALLOWED_SENDERS` continua sendo a base por ambiente. O painel tambem permite autorizar/bloquear contatos no Postgres; bloqueio salvo no Postgres vence sobre a allowlist fixa, e autorizacao salva no Postgres permite adicionar remetentes sem editar `.env`. A comparacao de numero aceita equivalencia operacional com/sem DDI brasileiro `55` e com/sem o nono digito depois do DDD, para evitar bloqueio indevido quando Evolution/Baileys entrega formatos diferentes. O cadastro aceita formatos como `44997641531`, `44 99764 1531`, `997641531` e `97641531`; se faltar DDD, o bridge usa `MIAUW_WHATSAPP_DEFAULT_DDD`, e se faltar DDI o bridge normaliza para `55` por padrao operacional do Brasil. Numeros de outro pais devem ser cadastrados completos.
 - Cada contato salvo no Postgres pode ter cards/modulos liberados. Ao pedir `miauby menu`, `miauby cards` ou equivalente, o bridge retorna apenas os cards autorizados para aquele telefone, considerando hash direto, alias da Evolution e equivalencia operacional com/sem DDI `55`. O bridge tambem bloqueia chamadas do core/tools quando o card detectado na mensagem ou na tool retornada nao esta liberado para o telefone.
 - Grupos ficam bloqueados por padrao.
 - Remetente fora da allowlist nao chama Gemini nem core Miauby. Quando envia texto individual, o bridge registra o evento como `ignored/sender_not_allowed` e manda no maximo um aviso curto a cada alguns minutos dizendo que o Miauby e interno e so responde numeros permitidos.
@@ -187,13 +187,13 @@ Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como 
 O audio do WhatsApp usa Gemini em duas etapas independentes:
 
 1. Entrada: o bridge guarda somente referencia sanitizada da midia recebida. No processamento da fila, ele baixa a midia via Evolution `/chat/getBase64FromMediaMessage/{instance}` ou via Media API da Meta, envia para `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL` e usa apenas a transcricao para seguir no roteador.
-2. Saida: se `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, a resposta textual ja validada vira fala por `MIAUW_WHATSAPP_AUDIO_TTS_MODEL`. `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` orienta uma voz humana clara com leve jeito de gato/Miauby, sem clonagem de voz. Quando o Gemini devolve PCM, o bridge empacota como WAV antes de enviar. Se envio de audio falhar, cai para texto pelo mesmo transporte.
+2. Saida: se `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, a resposta textual ja validada vira fala por `MIAUW_WHATSAPP_AUDIO_TTS_MODEL`. `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Zephyr` e `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` orientam uma voz mais aguda, brilhante e levemente felina para o Miauby, sem clonagem de voz ou imitacao de pessoa real. Quando o Gemini devolve PCM, o bridge empacota como WAV antes de enviar. Se envio de audio falhar, cai para texto pelo mesmo transporte e registra `provider_reply_fallback` em `miauw_whatsapp_error_logs`.
 
 O audio nao substitui guardrails. Escritas fortes seguem exigindo pendencia e confirmacao; mensagens de audio sem dados suficientes devem pedir o menor dado faltante; `sim/nao` por audio so tem efeito se a transcricao encontrar uma pendencia valida.
 
 O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota, latencia de geracao antes do envio e demora total entre recebimento do evento e envio pelo transporte. Essa telemetria fica na `miauw_whatsapp_outbox`/consulta com `miauw_whatsapp_events` e usa mascaras/hash fora da edicao da allowlist. O painel tambem mostra graficos simples de media/p95 por motor, uma visao de sincronia recente comparando mensagem recebida e resposta enviada, allowlist minimizada por padrao com telefone completo editavel, e uma area de erros abertos alimentada por `miauw_whatsapp_error_logs`.
 
-Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git.
+Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git. Exemplo: se o painel tem `5544984134971`, mas o evento chega como `234668507005157@lid`, configurar `234668507005157=5544984134971`.
 
 ## Anti-flood e risco de bloqueio
 
