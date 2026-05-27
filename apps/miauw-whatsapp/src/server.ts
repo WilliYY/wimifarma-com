@@ -265,7 +265,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.5';
+const SERVICE_VERSION = '0.5.6';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -3425,13 +3425,13 @@ function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[]): string 
     : baseContext;
 }
 
-function geminiTextFromResponse(data: JsonRecord): string {
+function geminiTextFromResponse(data: JsonRecord, partLimit = 1200): string {
   const candidates = Array.isArray(data.candidates) ? data.candidates : [];
   const first = isRecord(candidates[0]) ? candidates[0] : {};
   const content = isRecord(first.content) ? first.content : {};
   const parts = Array.isArray(content.parts) ? content.parts : [];
   const text = parts
-    .map((part) => (isRecord(part) ? safeText(part.text, 1200) : ''))
+    .map((part) => (isRecord(part) ? safeText(part.text, partLimit) : ''))
     .filter(Boolean)
     .join(' ')
     .trim();
@@ -4122,7 +4122,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
           role: 'user',
           parts: [
             {
-              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, raw_text compacto, confidence de 0 a 1 e missing como lista. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se nao for comprovante Pix, use is_pix_receipt false. Se o destino for diferente, retorne o destino real encontrado.`,
+              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, raw_text compacto com no maximo 700 caracteres, confidence de 0 a 1 e missing como lista. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se nao for comprovante Pix, use is_pix_receipt false. Se o destino for diferente, retorne o destino real encontrado.`,
             },
             {
               inlineData: {
@@ -4148,7 +4148,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
       const error = isRecord(data) && isRecord(data.error) ? data.error : data;
       throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_pix_receipt_http_${response.status}`);
     }
-    const text = geminiTextFromResponse(data);
+    const text = geminiTextFromResponse(data, 8000);
     const parsed = JSON.parse(extractJsonObjectText(text)) as unknown;
     if (!isRecord(parsed)) throw new Error('pix_receipt_json_invalid');
     return normalizePixReceiptExtraction(parsed);
