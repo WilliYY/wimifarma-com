@@ -140,12 +140,12 @@ Desenho:
 - com `MIAUW_WHATSAPP_PROVIDER=meta`, o bridge recebe webhook oficial da Meta e envia texto por Graph API em `/{PHONE_NUMBER_ID}/messages`;
 - a Meta Cloud API exige numero cadastrado no WhatsApp Business Platform; numero ja ativo no WhatsApp/App Business comum pode precisar migracao/desvinculo antes de virar numero de API;
 - o transporte envia eventos de mensagem recebida por webhook para `https://wimifarma.com/miauw/whatsapp/webhook`;
-- o endpoint valida token secreto, origem/evento, instancia, numero remetente, prefixo e tipo de conversa antes de chamar o Miauby;
+- o endpoint valida token secreto, origem/evento, instancia, numero remetente, politica de prefixo/ativacao e tipo de conversa antes de responder;
 - eventos aceitos entram em fila Postgres com dedupe por provider/instancia/message id;
 - o modo `MIAUW_WHATSAPP_AI_MODE=miauw` usa o core Miauby interno/OpenAI como motor de resposta;
 - o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
-- o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para mensagens simples quando `GEMINI_API_KEY` estiver configurada e roteia consultas internas para o core Miauby;
-- o bridge responde localmente `oi`, `teste`, `status` e `ajuda`, bloqueia dados sensiveis/escritas fortes antes da IA e registra motor/rota/latencia na outbox;
+- o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para mensagens sem `miauby` quando `GEMINI_API_KEY` estiver configurada e roteia mensagens com `miauby` em qualquer posicao para o core Miauby;
+- o bridge bloqueia dados sensiveis antes da IA e registra motor/rota/latencia na outbox;
 - Evolution API ou Meta Cloud API devem ser apenas transporte de entrada/saida;
 - a resposta volta pela API estruturada do transporte escolhido, por exemplo envio de texto para a mesma conversa.
 

@@ -107,14 +107,15 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Mesmo protegido por login, o painel nao deve exibir segredos, payload bruto ou telefone completo.
 - A primeira etapa usa allowlist por `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
 - Grupos ficam bloqueados por padrao.
-- Prefixo `miauby` fica exigido por padrao no repositorio. Em ambiente operacional com allowlist revisada, ele pode ser desligado por `MIAUW_WHATSAPP_REQUIRE_PREFIX=false`; nesse modo, perguntas soltas de remetente autorizado entram no roteador, e `miauby ...` continua aceito como prefixo opcional.
+- Prefixo `miauby` fica exigido por padrao no repositorio. Em ambiente operacional com allowlist revisada, ele pode ser desligado por `MIAUW_WHATSAPP_REQUIRE_PREFIX=false`; nesse modo, mensagens sem a palavra `miauby` vao somente para Gemini com personalidade/instrucoes seguras, e mensagens com `miauby` em qualquer posicao acionam o core Miauby/API.
 - O canal responde no maximo uma vez por mensagem recebida.
 - Rate limit por remetente fica ativo por minuto e por dia.
 - Rate limit global de envio fica ativo por minuto, com intervalo minimo entre envios.
 - Se o transporte responder erro temporario, timeout, `429` ou `5xx`, o bridge pausa novos envios por `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS` antes de tentar de novo.
-- O roteador responde localmente a mensagens simples como `oi`, `teste`, `status` e `ajuda`, sem chamar IA externa.
-- Consultas internas podem usar o core Miauby com tools somente de leitura.
-- Acoes fortes e dados sensiveis sao bloqueados localmente e devem orientar uso do sistema, nao executar por WhatsApp.
+- O roteador separa conversa solta de comando interno pela palavra `miauby`.
+- Sem `miauby`, conversa simples usa Gemini e nao chama API interna.
+- Com `miauby`, o core Miauby pode usar tools/ponte interna conforme guardrails; escritas fortes seguem dependentes de confirmacao/auditoria e nao devem ser tratadas como texto solto executavel.
+- Dados sensiveis continuam bloqueados localmente antes de chamar Gemini/core.
 
 ## Modo hibrido de IA
 
@@ -122,9 +123,9 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 
 - `miauw`: todas as respostas passam pelo `wimifarma-miauw-agent`, usando o core interno e a OpenAI configurada no Miauby.
 - `gemini`: conversa curta passa pelo Gemini; mensagens que parecem comando interno continuam protegidas e podem ser roteadas ao core Miauby quando ele estiver configurado.
-- `hybrid`: mensagens simples passam pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens que parecem consulta interna, como `financeiro`, `pedidos`, `gestao`, `cotacao`, `tarefa`, `cashback`, `resumo`, `boleto` ou `pagamento`, vao para o `wimifarma-miauw-agent` com rota de leitura. Pedidos de escrita, como pagar, excluir, registrar, lancar, confirmar chegada ou editar, sao bloqueados no bridge.
+- `hybrid`: mensagens sem `miauby` passam pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens com `miauby`, como `miauby faca sangria`, `miauby pedidos resumo` ou `sangria tal dia miauby`, vao para o `wimifarma-miauw-agent` com tools e guardrails.
 
-O usuario pode forcar a rota em teste com `miauby gemini ...` ou `miauby interno ...`. Mesmo rota forcada passa pelo bloqueio de dado sensivel/escrita forte. Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
+Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como fallback tecnico. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
 
 O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota e latencia de geracao antes do envio. Essa telemetria fica na `miauw_whatsapp_outbox` e usa apenas mascaras/hash.
 
@@ -135,7 +136,7 @@ Quando a Evolution/Baileys entregar remetente como LID/identificador longo em ve
 Nao existe garantia tecnica de banimento zero, principalmente quando o transporte usa sessao WhatsApp Web/Baileys pela Evolution API. A postura operacional do Wimifarma deve ser conservadora:
 
 - usar apenas remetentes em allowlist e com consentimento operacional claro;
-- manter prefixo `miauby` exigido enquanto o canal estiver em estabilizacao; se desligar prefixo, limitar a allowlist, manter grupos bloqueados e monitorar o painel;
+- manter prefixo `miauby` exigido enquanto o canal estiver em estabilizacao; se desligar prefixo, limitar a allowlist, manter grupos bloqueados e monitorar o painel para garantir que apenas mensagens com `miauby` acionem core/API;
 - bloquear grupos por padrao;
 - responder somente a mensagens iniciadas pelo usuario autorizado;
 - manter uma resposta por mensagem recebida;

@@ -8,7 +8,7 @@ type JsonRecord = Record<string, unknown>;
 type WhatsappProvider = 'evolution' | 'meta';
 type ReplyEngine = 'miauw' | 'gemini' | 'hybrid';
 type ReplyRuntimeEngine = 'local' | 'blocked' | 'miauw' | 'gemini' | 'gemini_cache';
-type ReplyIntent = 'local' | 'simple_chat' | 'internal_read' | 'internal_write' | 'sensitive' | 'forced_gemini' | 'forced_miauw';
+type ReplyIntent = 'local' | 'simple_chat' | 'internal_read' | 'internal_write' | 'sensitive' | 'forced_gemini' | 'forced_miauw' | 'activated_core';
 
 type IncomingMessage = {
   provider: WhatsappProvider;
@@ -643,6 +643,7 @@ function extractIncomingMessage(payload: unknown): IncomingMessage | null {
 
 function stripActivationPrefix(text: string): { accepted: boolean; text: string; reason: string } {
   const clean = text.trim();
+  if (!REQUIRE_PREFIX) return { accepted: true, text: clean, reason: '' };
   const lower = clean.toLowerCase();
   if (lower === PREFIX) {
     return { accepted: false, text: '', reason: 'empty_after_prefix' };
@@ -650,7 +651,6 @@ function stripActivationPrefix(text: string): { accepted: boolean; text: string;
   if (lower.startsWith(`${PREFIX} `) || lower.startsWith(`${PREFIX},`) || lower.startsWith(`${PREFIX}:`)) {
     return { accepted: true, text: clean.slice(PREFIX.length).replace(/^[\s,:-]+/, '').trim(), reason: '' };
   }
-  if (!REQUIRE_PREFIX) return { accepted: true, text: clean, reason: '' };
   return { accepted: false, text: '', reason: 'missing_prefix' };
 }
 
@@ -1081,6 +1081,20 @@ function hasAnyIntentTerm(message: string, terms: string[]): boolean {
   });
 }
 
+function activationMentioned(message: string): boolean {
+  return hasAnyIntentTerm(message, [PREFIX]);
+}
+
+function stripActivationWord(message: string): string {
+  const clean = message.trim();
+  const escaped = PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const stripped = clean
+    .replace(new RegExp(`(^|[\\s,:;.-])${escaped}([\\s,:;.-]|$)`, 'ig'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped || clean;
+}
+
 function localReplyFor(message: string): string {
   const clean = normalizeIntentText(message);
   if (!clean) return 'Manda a mensagem depois de "miauby".';
@@ -1208,16 +1222,6 @@ function forcedReplyRoute(message: string): ReplyRoute | null {
       cacheable: true,
     };
   }
-  if (/^(core|interno|openai|miauby\s+core)\b/i.test(clean)) {
-    const forcedMessage = stripLeadingCommand(clean, [/^(miauby\s+core|core|interno|openai)\b[\s,:-]*/i]);
-    return {
-      engine: 'miauw',
-      intent: 'forced_miauw',
-      message: forcedMessage,
-      reason: 'forced_miauw',
-      useTools: true,
-    };
-  }
   return null;
 }
 
@@ -1254,6 +1258,22 @@ function setCachedReply(message: string, text: string): void {
 }
 
 function routeWhatsappReply(message: string): ReplyRoute {
+  const activated = REQUIRE_PREFIX || activationMentioned(message);
+  const routedMessage = activated ? stripActivationWord(message) : message;
+
+  if (activated) {
+    if (looksLikeSensitiveRequest(routedMessage)) {
+      return { engine: 'blocked', intent: 'sensitive', message: routedMessage, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
+    }
+    return {
+      engine: 'miauw',
+      intent: 'activated_core',
+      message: routedMessage,
+      reason: 'activation_miauby',
+      useTools: true,
+    };
+  }
+
   const forced = forcedReplyRoute(message);
   if (forced) {
     if (looksLikeSensitiveRequest(forced.message)) {
@@ -1265,17 +1285,9 @@ function routeWhatsappReply(message: string): ReplyRoute {
     return forced;
   }
 
-  const localText = localReplyFor(message);
-  if (localText) return { engine: 'local', intent: 'local', message, reason: 'local_reply', localText };
-
   if (looksLikeSensitiveRequest(message)) {
     return { engine: 'blocked', intent: 'sensitive', message, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
   }
-  if (looksLikeStrongWriteCommand(message)) {
-    return { engine: 'blocked', intent: 'internal_write', message, reason: 'blocked_write', localText: blockedReplyFor('internal_write') };
-  }
-  const internalRead = looksLikeInternalReadCommand(message);
-  if (internalRead) return { engine: 'miauw', intent: 'internal_read', message, reason: 'internal_read', useTools: true };
 
   if (REPLY_ENGINE === 'miauw') return { engine: 'miauw', intent: 'simple_chat', message, reason: 'mode_miauw' };
 
@@ -1638,8 +1650,8 @@ function publicStatus(): JsonRecord {
     gemini_max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
     reply_cache_ttl_seconds: REPLY_CACHE_TTL_SECONDS,
     reply_cache_entries: replyCache.size,
-    local_replies_enabled: true,
-    whatsapp_write_actions: 'blocked',
+    local_replies_enabled: false,
+    whatsapp_write_actions: 'core_confirmation',
     internal_read_tools_enabled: true,
     recipient_alias_count: RECIPIENT_ALIASES.size,
     agent_configured: INTERNAL_TOKEN !== '' && AGENT_RUN_URL !== '',
@@ -2098,7 +2110,7 @@ function renderDashboard(summary: DashboardSummary): string {
           <div class="status-item">
             <b>Roteador</b>
             ${renderPill(true, 'Ativo', 'Pendente')}
-            <small>Local instantaneo ativo | escrita WhatsApp: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
+            <small>Sem miauby: Gemini | com miauby: core | escrita: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
           </div>
           ${renderEngineBreakdown(summary.replyEngines)}
         </div>
