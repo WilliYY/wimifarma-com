@@ -155,6 +155,34 @@ Nao existe garantia tecnica de banimento zero, principalmente quando o transport
 
 Para o VPS em producao inicial, recomenda-se comecar ainda mais restrito que o default do repositorio: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=2500`, `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=5500` e `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=7000`. Esses limites podem subir depois de alguns dias sem erro, bloqueio, report ou queda de qualidade.
 
+## Diagnostico rapido quando nao responde
+
+Se `/miauw/whatsapp/health` estiver OK, mas o WhatsApp nao responder, primeiro verifique se a mensagem entrou na fila:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+docker compose exec -T wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "SELECT created_at, event_type, status, ignore_reason, sender_phone_mask, left(body_text,80) FROM miauw_whatsapp_events ORDER BY created_at DESC LIMIT 8;"
+docker compose exec -T wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "SELECT created_at, sent_at, status, reply_engine, route_reason, reply_latency_ms FROM miauw_whatsapp_outbox ORDER BY created_at DESC LIMIT 8;"
+```
+
+Se aparecer apenas `connection.update` com `missing_sender` e nenhum `messages.upsert`, o bridge nao recebeu texto; normalmente a trava esta no transporte Evolution/Baileys, nao na IA. Conferir a conexao e webhook:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+# usar EVOLUTION_API_KEY e EVOLUTION_API_INSTANCE do .env local, sem colar segredo no terminal compartilhado
+curl -sS -H "apikey: $EVOLUTION_API_KEY" "http://127.0.0.1:8080/instance/connectionState/$EVOLUTION_API_INSTANCE"
+curl -sS -H "apikey: $EVOLUTION_API_KEY" "http://127.0.0.1:8080/webhook/find/$EVOLUTION_API_INSTANCE"
+```
+
+Em 2026-05-27 foi observado um caso em que a Evolution mostrava `state=open`, mas so enviava `connection.update` e nenhuma mensagem. Reiniciar apenas o container da Evolution preservou a sessao e destravou `messages.upsert`:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-evolution-api
+docker compose restart wimifarma-evolution-api
+```
+
+Depois do restart, mandar uma mensagem curta de teste e acompanhar a tabela `miauw_whatsapp_events`. Quando voltar a aparecer `messages.upsert` seguido de `replied` e outbox `sent`, o canal voltou.
+
 ## Evolution API
 
 A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda como transporte separado no VPS, com segredos e estado proprios. O template versionado fica em `ops/evolution/`; a pasta real do VPS fica em `/home/ubuntu/projetos/wimifarma-evolution-api`, com `.env`, instancias, Postgres e Redis fora do Git.
