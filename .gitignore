@@ -3,6 +3,8 @@
 /cotacao-data/
 /gestao-data/
 /miauw-whatsapp-data/
+/ops/n8n/n8n-data/
+/ops/n8n/n8n-postgres/
 node_modules/
 **/node_modules/
 apps/miauw-agent/dist/

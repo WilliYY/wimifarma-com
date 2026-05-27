@@ -160,6 +160,29 @@ EVOLUTION_API_INSTANCE=wimifarma-cashback-test
 
 `EVOLUTION_API_KEY` deve ser o mesmo valor de `AUTHENTICATION_API_KEY` da stack Evolution, sem versionar.
 
+## VPS - n8n automacoes
+
+Template versionado:
+
+```powershell
+ops\n8n\docker-compose.yml
+ops\n8n\.env.example
+```
+
+Instalacao em stack separada no VPS:
+
+```bash
+mkdir -p /home/ubuntu/projetos/wimifarma-n8n
+cd /home/ubuntu/projetos/wimifarma-n8n
+cp /home/ubuntu/projetos/wimifarma-com/ops/n8n/docker-compose.yml .
+cp /home/ubuntu/projetos/wimifarma-com/ops/n8n/.env.example .env
+# preencher N8N_POSTGRES_PASSWORD e N8N_ENCRYPTION_KEY antes de subir
+docker compose up -d
+curl -sS http://127.0.0.1:5678
+```
+
+O n8n deve chamar endpoints internos tokenizados do Wimifarma. Nao usar workflow n8n para escrita direta em banco de negocio.
+
 ## Local - Gestao Node/Postgres
 
 ```powershell

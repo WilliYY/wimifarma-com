@@ -40,6 +40,10 @@ type OutboundAudio = {
   provider: string;
 };
 
+type CachedAudioReply = OutboundAudio & {
+  expiresAt: number;
+};
+
 type ProviderReplySendResult = {
   providerMessageId: string;
   deliveredMediaType: string;
@@ -201,6 +205,12 @@ type DashboardErrorRow = {
   created_at: string;
 };
 
+type DashboardN8nRecipientRow = {
+  module_key: string;
+  allowed_count: string;
+  recipients: string[];
+};
+
 type ErrorLogContext = {
   eventId?: string;
   outboxId?: string;
@@ -225,6 +235,7 @@ type DashboardSummary = {
   recentOutbox: DashboardOutboxRow[];
   recentSync: DashboardSyncRow[];
   recentErrors: DashboardErrorRow[];
+  n8nRecipients: DashboardN8nRecipientRow[];
 };
 
 const env = process.env;
@@ -283,6 +294,7 @@ const AUDIO_TRANSCRIBE_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_T
 const AUDIO_TTS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS', 30000, 3000, 90000);
 const AUDIO_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_AUDIO_MAX_BYTES', 10000000, 100000, 20000000);
 const AUDIO_TTS_MAX_CHARS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS', 700, 80, 1800);
+const AUDIO_TTS_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS', 900, 0, 3600);
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
@@ -309,6 +321,10 @@ const DASHBOARD_PASSWORD = textEnv('MIAUW_WHATSAPP_DASHBOARD_PASSWORD');
 const DASHBOARD_AUTH_ENABLED = DASHBOARD_USER !== '' && DASHBOARD_PASSWORD !== '';
 const DASHBOARD_COOKIE_NAME = 'MIAUW_WHATSAPP_DASH';
 const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES', 720, 5, 10080);
+const N8N_ENABLED = boolEnv('MIAUW_WHATSAPP_N8N_ENABLED', false);
+const N8N_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_BASE_URL') || textEnv('N8N_BASE_URL'));
+const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL') || textEnv('N8N_WEBHOOK_URL'));
+const N8N_WEBHOOK_SECRET_CONFIGURED = textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET') !== '';
 const WHATSAPP_MODULE_CARDS: WhatsappModuleCard[] = [
   { key: 'cashback', label: 'Cashback', description: 'Clientes, compras, creditos e resgates.', command: 'miauby cashback' },
   { key: 'cotacao', label: 'Cotacao', description: 'Itens, precos, fornecedores e ganhadores.', command: 'miauby cotacao' },
@@ -343,9 +359,44 @@ const MODULE_TOOL_TERMS: Record<string, string[]> = {
   codigos: ['codigo', 'codigos', 'comissao'],
   miauw: ['miauw', 'miauby', 'contrato_tool'],
 };
+const N8N_WORKFLOW_CARDS = [
+  {
+    key: 'pedidos_boletos',
+    title: 'Pedidos e boletos',
+    schedule: 'Diario cedo',
+    moduleKey: 'pedidos',
+    description: 'Boletos vencendo, pedidos que chegam hoje e pedidos atrasados.',
+    safety: 'Somente leitura e alerta; pagamento continua no sistema/core com confirmacao.',
+  },
+  {
+    key: 'financeiro_alertas',
+    title: 'Financeiro',
+    schedule: 'Diario e fechamento',
+    moduleKey: 'financeiro',
+    description: 'Fechamento de caixa, sangria pendente, PIX/maquininha sem conferencia e divergencias.',
+    safety: 'Alerta primeiro; escrita forte exige pendencia auditada.',
+  },
+  {
+    key: 'deploy_checks',
+    title: 'Deploy/checks',
+    schedule: 'Apos deploy/manual',
+    moduleKey: 'miauw',
+    description: 'Smoke checks de rotas, health e logs para avisar falha antes da equipe perceber.',
+    safety: 'Nao altera dados; cria alerta/tarefa quando falha.',
+  },
+  {
+    key: 'miauby_webhooks',
+    title: 'Miauby + n8n',
+    schedule: 'Sob demanda',
+    moduleKey: 'miauw',
+    description: 'Webhooks controlados para relatorio do dia, boletos, tarefas de erro e rotinas externas.',
+    safety: 'n8n orquestra; backend Wimifarma decide permissao, dado e auditoria.',
+  },
+] as const;
 const UNAUTHORIZED_REPLY_TEXT = 'Eu sou o Miauby interno da Wimifarma. Este WhatsApp so responde numeros permitidos pela equipe. Se voce precisa de acesso, peca para um admin liberar seu numero no painel Miauby WhatsApp.';
 const providerSendTimestamps: number[] = [];
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
+const audioReplyCache = new Map<string, CachedAudioReply>();
 const sharedContextCache = new Map<string, { context: SharedMiauwContext; expiresAt: number }>();
 let providerSendChain: Promise<void> = Promise.resolve();
 let lastProviderSendAt = 0;
@@ -2370,8 +2421,8 @@ function stripActivationWord(message: string): string {
 function localReplyFor(message: string): string {
   const clean = normalizeIntentText(message);
   if (!clean) return 'Manda a mensagem depois de "miauby".';
-  const greetings = new Set(['oi', 'ola', 'opa', 'bom dia', 'boa tarde', 'boa noite', 'eai', 'e ai', 'eae']);
-  if (greetings.has(clean)) return 'To aqui. Manda "miauby ajuda" ou pede uma consulta curta.';
+  const greetings = new Set(['o', 'oo', 'oi', 'ola', 'opa', 'alo', 'bom dia', 'boa tarde', 'boa noite', 'eai', 'e ai', 'eae', 'miau', 'oh miau']);
+  if (greetings.has(clean)) return 'To aqui. Manda "miauby ajuda", "miauby menu" ou pede uma consulta curta.';
   if (['teste', 'ping', 'status', 'online', 'ta online', 'esta online'].includes(clean)) {
     return 'Online. WhatsApp ok. Conversa simples vai no Gemini; consulta interna vai no core Miauby.';
   }
@@ -2379,6 +2430,31 @@ function localReplyFor(message: string): string {
     return 'Use "miauby menu" para ver seus cards liberados. Comando operacional vira confirmacao; conversa simples fica no Gemini.';
   }
   return '';
+}
+
+function looksLikeN8nStatusRequest(message: string): boolean {
+  const clean = normalizeIntentText(stripActivationWord(message));
+  return clean === 'n8n'
+    || clean === 'automacoes'
+    || clean === 'automacao'
+    || hasAnyIntentTerm(clean, [
+      'n8n status',
+      'n8n automacoes',
+      'automacoes n8n',
+      'o que o n8n faz',
+      'rotinas n8n',
+      'webhook n8n',
+    ]);
+}
+
+function formatN8nWhatsappSummary(cards: WhatsappModuleCard[]): string {
+  const allowed = allowedModuleKeys(cards);
+  const lines = N8N_WORKFLOW_CARDS.map((workflow) => {
+    const enabledForSender = allowed.has(workflow.moduleKey);
+    const status = enabledForSender ? 'liberado para voce' : 'sem acesso neste numero';
+    return `- ${workflow.title}: ${workflow.description} (${status}).`;
+  });
+  return `n8n fica como automacao segura por tras do Miauby.\n${lines.join('\n')}\nEscrita forte nao roda cru no n8n: passa pelo backend e confirmacao.`;
 }
 
 function looksLikeModuleMenuRequest(message: string): boolean {
@@ -2569,6 +2645,45 @@ function setCachedReply(message: string, text: string): void {
   });
 }
 
+function audioReplyCacheKey(text: string): string {
+  return sha256(`audio-tts-cache:${AUDIO_TTS_MODEL}:${AUDIO_TTS_VOICE}:${AUDIO_TTS_STYLE}:${normalizeIntentText(text).slice(0, AUDIO_TTS_MAX_CHARS)}`);
+}
+
+function pruneAudioReplyCache(now = Date.now()): void {
+  for (const [key, cached] of audioReplyCache) {
+    if (cached.expiresAt <= now) audioReplyCache.delete(key);
+  }
+  while (audioReplyCache.size > 12) {
+    const firstKey = audioReplyCache.keys().next().value;
+    if (!firstKey) break;
+    audioReplyCache.delete(firstKey);
+  }
+}
+
+function cachedAudioReply(text: string): OutboundAudio | null {
+  if (AUDIO_TTS_CACHE_TTL_SECONDS <= 0) return null;
+  const now = Date.now();
+  pruneAudioReplyCache(now);
+  const cached = audioReplyCache.get(audioReplyCacheKey(text));
+  if (!cached || cached.expiresAt <= now) return null;
+  return {
+    base64: cached.base64,
+    mimeType: cached.mimeType,
+    sizeBytes: cached.sizeBytes,
+    provider: `${cached.provider}_cache`,
+  };
+}
+
+function setCachedAudioReply(text: string, audio: OutboundAudio): void {
+  if (AUDIO_TTS_CACHE_TTL_SECONDS <= 0 || !audio.base64) return;
+  const now = Date.now();
+  pruneAudioReplyCache(now);
+  audioReplyCache.set(audioReplyCacheKey(text), {
+    ...audio,
+    expiresAt: now + AUDIO_TTS_CACHE_TTL_SECONDS * 1000,
+  });
+}
+
 function safeStringList(value: unknown, limit = 12, itemLimit = 220): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -2717,6 +2832,10 @@ function routeWhatsappReply(message: string): ReplyRoute {
   const routedMessage = activated ? stripActivationWord(message) : message;
 
   if (activated) {
+    const localText = localReplyFor(routedMessage);
+    if (localText) {
+      return { engine: 'local', intent: 'local', message: routedMessage, reason: 'local_reply_activated', localText };
+    }
     if (looksLikeSensitiveRequest(routedMessage)) {
       return { engine: 'blocked', intent: 'sensitive', message: routedMessage, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
     }
@@ -2742,6 +2861,11 @@ function routeWhatsappReply(message: string): ReplyRoute {
 
   if (looksLikeSensitiveRequest(message)) {
     return { engine: 'blocked', intent: 'sensitive', message, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
+  }
+
+  const localText = localReplyFor(message);
+  if (localText) {
+    return { engine: 'local', intent: 'local', message, reason: 'local_reply', localText };
   }
 
   if (looksLikeStrongWriteCommand(message)) {
@@ -2906,6 +3030,13 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[]): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+  if (looksLikeN8nStatusRequest(message)) {
+    return {
+      text: formatN8nWhatsappSummary(allowedCards),
+      engine: 'local',
+      reason: 'n8n_status',
+    };
+  }
   if (looksLikeModuleMenuRequest(message)) {
     return {
       text: formatModuleMenu(allowedCards),
@@ -3310,7 +3441,11 @@ async function buildAudioReply(text: string, _row: QueueRow): Promise<OutboundAu
   if (!geminiConfigured()) throw new Error('gemini_not_configured_for_tts');
   const clean = safeText(text, AUDIO_TTS_MAX_CHARS);
   if (!clean) return null;
-  return synthesizeGeminiSpeech(clean);
+  const cached = cachedAudioReply(clean);
+  if (cached) return cached;
+  const audio = await synthesizeGeminiSpeech(clean);
+  setCachedAudioReply(clean, audio);
+  return audio;
 }
 
 function geminiInlineAudioFromResponse(data: JsonRecord): { base64: string; mimeType: string } {
@@ -3860,9 +3995,14 @@ function publicStatus(): JsonRecord {
     audio_tts_style: AUDIO_TTS_STYLE,
     audio_max_bytes: AUDIO_MAX_BYTES,
     audio_tts_max_chars: AUDIO_TTS_MAX_CHARS,
+    audio_tts_cache_ttl_seconds: AUDIO_TTS_CACHE_TTL_SECONDS,
+    audio_tts_cache_entries: audioReplyCache.size,
     reply_cache_ttl_seconds: REPLY_CACHE_TTL_SECONDS,
     reply_cache_entries: replyCache.size,
-    local_replies_enabled: false,
+    local_replies_enabled: true,
+    n8n_enabled: N8N_ENABLED,
+    n8n_base_configured: N8N_BASE_URL !== '',
+    n8n_webhook_configured: N8N_WEBHOOK_BASE_URL !== '' && N8N_WEBHOOK_SECRET_CONFIGURED,
     whatsapp_write_actions: 'core_confirmation',
     whatsapp_confirmations_enabled: CONFIRMATIONS_ENABLED,
     whatsapp_confirmed_actions_enabled: CONFIRMED_ACTIONS_ENABLED,
@@ -3919,6 +4059,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentOutboxResult,
     recentSyncResult,
     recentErrorsResult,
+    n8nRecipientsResult,
   ] = await Promise.all([
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
@@ -4081,6 +4222,22 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         ORDER BY created_at DESC
         LIMIT 12`,
     ),
+    pgPool.query<DashboardN8nRecipientRow>(
+      `SELECT m.module_key,
+              COUNT(DISTINCT c.phone_hash)::text AS allowed_count,
+              COALESCE(
+                ARRAY_AGG(DISTINCT COALESCE(NULLIF(c.display_name, ''), c.phone_mask) ORDER BY COALESCE(NULLIF(c.display_name, ''), c.phone_mask))
+                  FILTER (WHERE c.phone_hash IS NOT NULL),
+                ARRAY[]::text[]
+              ) AS recipients
+         FROM miauw_whatsapp_contact_modules m
+         JOIN miauw_whatsapp_contacts c ON c.phone_hash = m.phone_hash
+        WHERE m.enabled = TRUE
+          AND c.status = 'allowed'
+          AND m.module_key = ANY($1::text[])
+        GROUP BY m.module_key`,
+      [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.moduleKey))]],
+    ),
   ]);
   const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
 
@@ -4099,6 +4256,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentOutbox: recentOutboxResult.rows,
     recentSync: recentSyncResult.rows,
     recentErrors: recentErrorsResult.rows,
+    n8nRecipients: n8nRecipientsResult.rows,
   };
 }
 
@@ -4329,6 +4487,32 @@ function renderErrorRows(rows: DashboardErrorRow[], csrfToken: string): string {
     </tr>`).join('');
 }
 
+function n8nRecipientByModule(rows: DashboardN8nRecipientRow[]): Map<string, DashboardN8nRecipientRow> {
+  const map = new Map<string, DashboardN8nRecipientRow>();
+  for (const row of rows) map.set(row.module_key, row);
+  return map;
+}
+
+function renderN8nWorkflows(rows: DashboardN8nRecipientRow[]): string {
+  const recipients = n8nRecipientByModule(rows);
+  return N8N_WORKFLOW_CARDS.map((workflow) => {
+    const moduleRecipients = recipients.get(workflow.moduleKey);
+    const count = Number(moduleRecipients?.allowed_count || 0);
+    const names = (moduleRecipients?.recipients || []).slice(0, 5).join(', ') || 'ninguem liberado ainda';
+    const active = N8N_ENABLED && N8N_WEBHOOK_BASE_URL !== '' && N8N_WEBHOOK_SECRET_CONFIGURED;
+    return `
+      <div class="status-item n8n-card">
+        <div class="engine-head">
+          <b>${htmlEscape(workflow.title)}</b>
+          ${renderPill(active, 'Pronto', 'Planejado')}
+        </div>
+        <small><b>Quando:</b> ${htmlEscape(workflow.schedule)} | <b>Card:</b> ${htmlEscape(workflow.moduleKey)} | <b>Destino:</b> ${count} autorizados (${htmlEscape(names)})</small>
+        <small>${htmlEscape(workflow.description)}</small>
+        <small>${htmlEscape(workflow.safety)}</small>
+      </div>`;
+  }).join('');
+}
+
 function renderDashboardLogin(error: string): string {
   const errorHtml = error
     ? `<p class="error">${htmlEscape(error)}</p>`
@@ -4454,6 +4638,10 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const aliasCount = numberStatus(status, 'recipient_alias_count');
   const cacheTtl = numberStatus(status, 'reply_cache_ttl_seconds');
   const cacheEntries = numberStatus(status, 'reply_cache_entries');
+  const localRepliesEnabled = boolStatus(status, 'local_replies_enabled');
+  const n8nEnabled = boolStatus(status, 'n8n_enabled');
+  const n8nBaseConfigured = boolStatus(status, 'n8n_base_configured');
+  const n8nWebhookConfigured = boolStatus(status, 'n8n_webhook_configured');
   const writePolicy = textStatus(status, 'whatsapp_write_actions') || 'blocked';
   const envAllowlist = numberStatus(status, 'allowlist_env_count') || numberStatus(status, 'allowlist_count');
   const responseDelay = summary.responseDelay;
@@ -4524,6 +4712,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .engine-bars { display: grid; gap: 5px; margin: 8px 0; }
     .engine-bars span { display: block; width: var(--bar); min-width: 18px; height: 8px; border-radius: 999px; background: #b10647; }
     .engine-bars span + span { background: #f0a000; }
+    .n8n-card { display: grid; gap: 7px; }
+    .n8n-card small { display: block; }
     .pill { display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; }
     .pill.is-ok { background: #daf6e8; color: #097143; }
     .pill.is-warn { background: #fff2d2; color: #8c5a00; }
@@ -4680,7 +4870,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           <div class="status-item">
             <b>Roteador</b>
             ${renderPill(true, 'Ativo', 'Pendente')}
-            <small>Sem miauby: Gemini | com miauby: core | escrita: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
+            <small>Sem miauby: ${localRepliesEnabled ? 'local rapido/Gemini' : 'Gemini'} | com miauby: core | escrita: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
           </div>
           <div class="status-item">
             <b>Demora real</b>
@@ -4700,6 +4890,19 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           <div class="status-item"><b>Ignorados</b><span class="pill is-warn">${ignored}</span><small>Fora de allowlist, sem prefixo, grupo ou vazio.</small></div>
           <div class="status-item"><b>Problemas</b><span class="pill is-warn">${eventProblems + outboxProblems}</span><small>Falhas com retry ou dead-letter.</small></div>
         </div>
+      </article>
+
+      <article class="panel is-wide">
+        <h2>n8n automacoes</h2>
+        <div class="status-list">
+          <div class="status-item">
+            <b>Stack n8n</b>
+            ${renderPill(n8nEnabled && n8nBaseConfigured, 'Configurada', 'Planejada')}
+            <small>Base: ${n8nBaseConfigured ? 'configurada' : 'pendente'} | Webhook: ${n8nWebhookConfigured ? 'seguro' : 'pendente'} | n8n deve orquestrar rotinas, nao gravar dado direto.</small>
+          </div>
+          ${renderN8nWorkflows(summary.n8nRecipients)}
+        </div>
+        <p class="footnote">O destino das automacoes segue os cards liberados na allowlist. Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
       </article>
 
       <article class="panel is-wide">
