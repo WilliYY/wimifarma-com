@@ -7,6 +7,8 @@ const { Pool } = pg;
 type JsonRecord = Record<string, unknown>;
 type WhatsappProvider = 'evolution' | 'meta';
 type ReplyEngine = 'miauw' | 'gemini' | 'hybrid';
+type ReplyRuntimeEngine = 'local' | 'blocked' | 'miauw' | 'gemini' | 'gemini_cache';
+type ReplyIntent = 'local' | 'simple_chat' | 'internal_read' | 'internal_write' | 'sensitive' | 'forced_gemini' | 'forced_miauw';
 
 type IncomingMessage = {
   provider: WhatsappProvider;
@@ -39,8 +41,18 @@ type QueueRow = {
 
 type ReplyResult = {
   text: string;
-  engine: 'miauw' | 'gemini';
+  engine: ReplyRuntimeEngine;
   reason: string;
+};
+
+type ReplyRoute = {
+  engine: ReplyRuntimeEngine;
+  intent: ReplyIntent;
+  message: string;
+  reason: string;
+  localText?: string;
+  useTools?: boolean;
+  cacheable?: boolean;
 };
 
 type CountRow = {
@@ -60,15 +72,26 @@ type DashboardEventRow = {
 type DashboardOutboxRow = {
   status: string;
   recipient_phone_mask: string;
+  reply_engine: string;
+  route_reason: string;
+  reply_latency_ms: number;
   attempts: number;
   created_at: string;
   sent_at: string | null;
+};
+
+type DashboardEngineRow = {
+  reply_engine: string;
+  count: string;
+  sent_count: string;
+  avg_latency_ms: string;
 };
 
 type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
   outboxCounts: Record<string, number>;
+  replyEngines: DashboardEngineRow[];
   contactsTotal: number;
   recentEvents: DashboardEventRow[];
   recentOutbox: DashboardOutboxRow[];
@@ -103,6 +126,7 @@ const GEMINI_MODEL = textEnv('MIAUW_WHATSAPP_GEMINI_MODEL') || textEnv('GEMINI_M
 const GEMINI_MAX_OUTPUT_TOKENS = numberEnv('MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS', 180, 40, 1000);
 const GEMINI_TEMPERATURE = numberEnv('MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100', 35, 0, 100) / 100;
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
+const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
 const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', true);
 const PREFIX = (textEnv('MIAUW_WHATSAPP_PREFIX') || 'miauby').toLowerCase();
@@ -126,6 +150,7 @@ const DASHBOARD_AUTH_ENABLED = DASHBOARD_USER !== '' && DASHBOARD_PASSWORD !== '
 const DASHBOARD_COOKIE_NAME = 'MIAUW_WHATSAPP_DASH';
 const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES', 720, 5, 10080);
 const providerSendTimestamps: number[] = [];
+const replyCache = new Map<string, { text: string; expiresAt: number }>();
 let providerSendChain: Promise<void> = Promise.resolve();
 let lastProviderSendAt = 0;
 let providerPausedUntil = 0;
@@ -196,6 +221,16 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function safeText(value: unknown, limit = 500): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function normalizeIntentText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizePhone(value: unknown): string {
@@ -681,6 +716,9 @@ async function ensureSchema(): Promise<void> {
       recipient_phone_mask VARCHAR(40) NOT NULL,
       recipient_phone_ciphertext TEXT NOT NULL,
       body_text TEXT NOT NULL,
+      reply_engine VARCHAR(30) NOT NULL DEFAULT '',
+      route_reason VARCHAR(120) NOT NULL DEFAULT '',
+      reply_latency_ms INTEGER NOT NULL DEFAULT 0,
       status VARCHAR(30) NOT NULL DEFAULT 'pending',
       attempts INTEGER NOT NULL DEFAULT 0,
       max_attempts INTEGER NOT NULL DEFAULT 5,
@@ -701,6 +739,16 @@ async function ensureSchema(): Promise<void> {
       ON miauw_whatsapp_events (sender_phone_hash, created_at);
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_outbox_status
       ON miauw_whatsapp_outbox (status, next_attempt_at, created_at);
+  `);
+
+  await pgPool.query(`
+    ALTER TABLE miauw_whatsapp_outbox
+      ADD COLUMN IF NOT EXISTS reply_engine VARCHAR(30) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS route_reason VARCHAR(120) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS reply_latency_ms INTEGER NOT NULL DEFAULT 0;
+
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_outbox_engine_created
+      ON miauw_whatsapp_outbox (reply_engine, created_at);
   `);
 }
 
@@ -954,7 +1002,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
 
     const recipientPhone = decryptText(row.sender_phone_ciphertext);
     const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
+    const replyStartedAt = Date.now();
     const reply = await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask);
+    const replyLatencyMs = Date.now() - replyStartedAt;
     const replyText = safeText(reply.text, 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
 
@@ -962,9 +1012,23 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     await pgPool.query(
       `INSERT INTO miauw_whatsapp_outbox (
         id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
-        recipient_phone_ciphertext, body_text, max_attempts, trace_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [outboxId, row.id, WHATSAPP_PROVIDER, row.instance_name || defaultInstanceName(), sha256(recipientAddress), maskPhone(recipientAddress), encryptText(recipientAddress), replyText, MAX_ATTEMPTS, row.trace_id],
+        recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms, max_attempts, trace_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [
+        outboxId,
+        row.id,
+        WHATSAPP_PROVIDER,
+        row.instance_name || defaultInstanceName(),
+        sha256(recipientAddress),
+        maskPhone(recipientAddress),
+        encryptText(recipientAddress),
+        replyText,
+        reply.engine,
+        safeText(reply.reason, 120),
+        replyLatencyMs,
+        MAX_ATTEMPTS,
+        row.trace_id,
+      ],
     );
 
     await sleep(randomInt(MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS));
@@ -1007,28 +1071,90 @@ function stripLeadingCommand(value: string, patterns: RegExp[]): string {
   return text || value.trim();
 }
 
-function forcedReplyRoute(message: string): { engine: 'miauw' | 'gemini'; message: string; reason: string } | null {
-  const clean = message.trim();
-  if (/^(gemini|barato|simples)\b/i.test(clean)) {
-    return {
-      engine: 'gemini',
-      message: stripLeadingCommand(clean, [/^(gemini|barato|simples)\b[\s,:-]*/i]),
-      reason: 'forced_gemini',
-    };
-  }
-  if (/^(core|interno|openai|miauby\s+core)\b/i.test(clean)) {
-    return {
-      engine: 'miauw',
-      message: stripLeadingCommand(clean, [/^(miauby\s+core|core|interno|openai)\b[\s,:-]*/i]),
-      reason: 'forced_miauw',
-    };
-  }
-  return null;
+function hasAnyIntentTerm(message: string, terms: string[]): boolean {
+  const clean = normalizeIntentText(message);
+  return terms.some((term) => {
+    const normalized = normalizeIntentText(term);
+    if (!normalized) return false;
+    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    return new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(clean);
+  });
 }
 
-function looksLikeInternalCommand(message: string): boolean {
-  const clean = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const commandWords = [
+function localReplyFor(message: string): string {
+  const clean = normalizeIntentText(message);
+  if (!clean) return 'Manda a mensagem depois de "miauby".';
+  const greetings = new Set(['oi', 'ola', 'opa', 'bom dia', 'boa tarde', 'boa noite', 'eai', 'e ai', 'eae']);
+  if (greetings.has(clean)) return 'To aqui. Manda "miauby ajuda" ou pede uma consulta curta.';
+  if (['teste', 'ping', 'status', 'online', 'ta online', 'esta online'].includes(clean)) {
+    return 'Online. WhatsApp ok. Conversa simples vai no Gemini; consulta interna vai no core Miauby.';
+  }
+  if (/^(ajuda|help|comando|comandos)$/.test(clean)) {
+    return 'Use "miauby status", "miauby gemini ..." ou peca consulta de pedidos/financeiro. Escrita forte fica no sistema.';
+  }
+  return '';
+}
+
+function blockedReplyFor(intent: ReplyIntent): string {
+  if (intent === 'sensitive') {
+    return 'Esse pedido envolve dado sensivel. Nao mostro por WhatsApp. Use o sistema interno com login.';
+  }
+  return 'Por seguranca, nao gravo acao forte pelo WhatsApp. Para pagar, alterar, excluir ou confirmar chegada, use o sistema.';
+}
+
+function looksLikeSensitiveRequest(message: string): boolean {
+  return hasAnyIntentTerm(message, [
+    'senha',
+    'token',
+    'api key',
+    'chave api',
+    'segredo',
+    'secret',
+    'private key',
+    'sql',
+    'dump',
+    'cpf',
+    'cnpj',
+    'pix',
+    'cartao',
+  ]);
+}
+
+function looksLikeStrongWriteCommand(message: string): boolean {
+  return hasAnyIntentTerm(message, [
+    'pagar',
+    'pague',
+    'marcar como pago',
+    'marca como pago',
+    'dar baixa',
+    'quitar',
+    'quitado',
+    'confirmar chegada',
+    'confirma chegada',
+    'receber pedido',
+    'excluir',
+    'apagar',
+    'deletar',
+    'remover',
+    'cancelar',
+    'reabrir',
+    'alterar',
+    'editar',
+    'mudar valor',
+    'criar',
+    'registrar',
+    'lancar',
+    'cadastrar',
+    'aprovar',
+    'importar',
+    'restaurar',
+    'enviar mensagem',
+    'disparar',
+  ]);
+}
+
+function looksLikeInternalReadCommand(message: string): boolean {
+  return hasAnyIntentTerm(message, [
     'gestao',
     'pedido',
     'pedidos',
@@ -1054,56 +1180,147 @@ function looksLikeInternalCommand(message: string): boolean {
     'vencimento',
     'chegada',
     'encomenda',
-    'lancamento',
-    'lancar',
-    'registrar',
-    'criar',
     'consultar',
     'buscar',
     'mostrar',
-    'abrir',
-  ];
-  return commandWords.some((word) => new RegExp(`(^|\\W)${word}(\\W|$)`, 'i').test(clean));
+    'listar',
+    'ver',
+  ]);
+}
+
+function forcedReplyRoute(message: string): ReplyRoute | null {
+  const clean = message.trim();
+  if (/^(gemini|barato|simples)\b/i.test(clean)) {
+    const forcedMessage = stripLeadingCommand(clean, [/^(gemini|barato|simples)\b[\s,:-]*/i]);
+    if (!geminiConfigured()) {
+      return {
+        engine: 'miauw',
+        intent: 'forced_gemini',
+        message: forcedMessage,
+        reason: 'forced_gemini_not_configured_fallback',
+      };
+    }
+    return {
+      engine: 'gemini',
+      intent: 'forced_gemini',
+      message: forcedMessage,
+      reason: 'forced_gemini',
+      cacheable: true,
+    };
+  }
+  if (/^(core|interno|openai|miauby\s+core)\b/i.test(clean)) {
+    const forcedMessage = stripLeadingCommand(clean, [/^(miauby\s+core|core|interno|openai)\b[\s,:-]*/i]);
+    return {
+      engine: 'miauw',
+      intent: 'forced_miauw',
+      message: forcedMessage,
+      reason: 'forced_miauw',
+      useTools: true,
+    };
+  }
+  return null;
 }
 
 function geminiConfigured(): boolean {
   return GEMINI_API_KEY !== '' && GEMINI_API_BASE_URL !== '' && GEMINI_MODEL !== '';
 }
 
-function routeWhatsappReply(message: string): { engine: 'miauw' | 'gemini'; message: string; reason: string } {
+function replyCacheKey(message: string): string {
+  return sha256(`reply-cache:${GEMINI_MODEL}:${normalizeIntentText(message).slice(0, 600)}`);
+}
+
+function getCachedReply(message: string): string {
+  if (REPLY_CACHE_TTL_SECONDS <= 0) return '';
+  const key = replyCacheKey(message);
+  const cached = replyCache.get(key);
+  if (!cached) return '';
+  if (cached.expiresAt <= Date.now()) {
+    replyCache.delete(key);
+    return '';
+  }
+  return cached.text;
+}
+
+function setCachedReply(message: string, text: string): void {
+  if (REPLY_CACHE_TTL_SECONDS <= 0 || !text) return;
+  const now = Date.now();
+  for (const [key, cached] of replyCache) {
+    if (cached.expiresAt <= now) replyCache.delete(key);
+  }
+  replyCache.set(replyCacheKey(message), {
+    text,
+    expiresAt: now + REPLY_CACHE_TTL_SECONDS * 1000,
+  });
+}
+
+function routeWhatsappReply(message: string): ReplyRoute {
   const forced = forcedReplyRoute(message);
-  if (forced) return forced;
-
-  if (REPLY_ENGINE === 'miauw') return { engine: 'miauw', message, reason: 'mode_miauw' };
-  if (looksLikeInternalCommand(message)) return { engine: 'miauw', message, reason: 'internal_command' };
-
-  if (REPLY_ENGINE === 'gemini' || REPLY_ENGINE === 'hybrid') {
-    if (geminiConfigured()) return { engine: 'gemini', message, reason: REPLY_ENGINE === 'hybrid' ? 'hybrid_simple' : 'mode_gemini' };
-    return { engine: 'miauw', message, reason: 'gemini_not_configured_fallback' };
+  if (forced) {
+    if (looksLikeSensitiveRequest(forced.message)) {
+      return { engine: 'blocked', intent: 'sensitive', message: forced.message, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
+    }
+    if (looksLikeStrongWriteCommand(forced.message)) {
+      return { engine: 'blocked', intent: 'internal_write', message: forced.message, reason: 'blocked_write', localText: blockedReplyFor('internal_write') };
+    }
+    return forced;
   }
 
-  return { engine: 'miauw', message, reason: 'fallback_miauw' };
+  const localText = localReplyFor(message);
+  if (localText) return { engine: 'local', intent: 'local', message, reason: 'local_reply', localText };
+
+  if (looksLikeSensitiveRequest(message)) {
+    return { engine: 'blocked', intent: 'sensitive', message, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
+  }
+  if (looksLikeStrongWriteCommand(message)) {
+    return { engine: 'blocked', intent: 'internal_write', message, reason: 'blocked_write', localText: blockedReplyFor('internal_write') };
+  }
+  const internalRead = looksLikeInternalReadCommand(message);
+  if (internalRead) return { engine: 'miauw', intent: 'internal_read', message, reason: 'internal_read', useTools: true };
+
+  if (REPLY_ENGINE === 'miauw') return { engine: 'miauw', intent: 'simple_chat', message, reason: 'mode_miauw' };
+
+  if (REPLY_ENGINE === 'gemini' || REPLY_ENGINE === 'hybrid') {
+    if (geminiConfigured()) {
+      return {
+        engine: 'gemini',
+        intent: 'simple_chat',
+        message,
+        reason: REPLY_ENGINE === 'hybrid' ? 'hybrid_simple' : 'mode_gemini',
+        cacheable: true,
+      };
+    }
+    return { engine: 'miauw', intent: 'simple_chat', message, reason: 'gemini_not_configured_fallback' };
+  }
+
+  return { engine: 'miauw', intent: 'simple_chat', message, reason: 'fallback_miauw' };
 }
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string): Promise<ReplyResult> {
   const route = routeWhatsappReply(message);
+  if (route.engine === 'local' || route.engine === 'blocked') {
+    return { text: route.localText || route.message, engine: route.engine, reason: route.reason };
+  }
   if (route.engine === 'gemini') {
     try {
+      const cachedReply = route.cacheable ? getCachedReply(route.message) : '';
+      if (cachedReply) return { text: cachedReply, engine: 'gemini_cache', reason: `${route.reason}:cache_hit` };
       const geminiReply = await requestGeminiReply(route.message, traceId, senderMask);
+      if (route.cacheable) setCachedReply(route.message, geminiReply.text);
       return { text: geminiReply.text, engine: 'gemini', reason: route.reason };
     } catch (error) {
       if (REPLY_ENGINE === 'gemini') throw error;
-      const miauwReply = await requestMiauwReply(message, traceId, senderMask);
+      const miauwReply = await requestMiauwReply(message, traceId, senderMask, route);
       return { text: miauwReply.text, engine: 'miauw', reason: `gemini_failed_fallback:${safeError(error)}` };
     }
   }
 
-  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask);
+  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route);
   return { text: miauwReply.text, engine: 'miauw', reason: route.reason };
 }
 
-async function requestMiauwReply(message: string, traceId: string, senderMask: string): Promise<{ text: string }> {
+async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute): Promise<{ text: string }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
+  const useTools = route?.useTools === true;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -1123,19 +1340,23 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
         style_context: {
           version: 'miauby-whatsapp-bridge-2026-05-26',
           route: {
-            intent: 'whatsapp_interno',
+            intent: route?.intent || 'whatsapp_interno',
             label: 'WhatsApp interno',
-            budget_words: 90,
-            use_tools: false,
+            budget_words: useTools ? 70 : 55,
+            use_tools: useTools,
             local_reply: false,
             allow_lists: false,
             tone: 'Miauby curto, pratico e seguro para WhatsApp interno',
-            reason: 'Canal de mensagem curta com allowlist e sem escrita forte direta.',
+            reason: useTools
+              ? 'Canal WhatsApp somente leitura: consultar quando necessario, sem escrita operacional.'
+              : 'Canal de mensagem curta com allowlist e sem escrita forte direta.',
           },
           hard_rules: [
             'Responda como canal interno de WhatsApp, em texto curto.',
             'Nao exponha dados sensiveis, token, SQL, stack trace ou bastidor tecnico.',
             'Nao afirme que executou escrita operacional pelo WhatsApp.',
+            'Nao grave, altere, exclua, pague, envie ou confirme acao operacional pelo WhatsApp.',
+            'Use ferramentas somente para consulta/leitura quando a rota permitir.',
             'Se precisar de acao forte, diga que precisa confirmar no sistema.',
           ],
           anti_patterns: [
@@ -1415,6 +1636,11 @@ function publicStatus(): JsonRecord {
     gemini_configured: geminiConfigured(),
     gemini_model: GEMINI_MODEL,
     gemini_max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
+    reply_cache_ttl_seconds: REPLY_CACHE_TTL_SECONDS,
+    reply_cache_entries: replyCache.size,
+    local_replies_enabled: true,
+    whatsapp_write_actions: 'blocked',
+    internal_read_tools_enabled: true,
     recipient_alias_count: RECIPIENT_ALIASES.size,
     agent_configured: INTERNAL_TOKEN !== '' && AGENT_RUN_URL !== '',
     transport_configured: WHATSAPP_PROVIDER === 'meta' ? metaConfigured : evolutionConfigured,
@@ -1448,7 +1674,7 @@ function countOf(counts: Record<string, number>, status: string): number {
 }
 
 async function dashboardSummary(): Promise<DashboardSummary> {
-  const [eventsResult, outboxResult, contactsResult, recentEventsResult, recentOutboxResult] = await Promise.all([
+  const [eventsResult, outboxResult, replyEnginesResult, contactsResult, recentEventsResult, recentOutboxResult] = await Promise.all([
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
          FROM miauw_whatsapp_events
@@ -1460,6 +1686,16 @@ async function dashboardSummary(): Promise<DashboardSummary> {
          FROM miauw_whatsapp_outbox
         GROUP BY status
         ORDER BY status`,
+    ),
+    pgPool.query<DashboardEngineRow>(
+      `SELECT COALESCE(NULLIF(reply_engine, ''), 'legacy') AS reply_engine,
+              COUNT(*)::text AS count,
+              COUNT(*) FILTER (WHERE status = 'sent')::text AS sent_count,
+              COALESCE(ROUND(AVG(NULLIF(reply_latency_ms, 0)))::text, '0') AS avg_latency_ms
+         FROM miauw_whatsapp_outbox
+        WHERE created_at >= NOW() - INTERVAL '1 day'
+        GROUP BY 1
+        ORDER BY COUNT(*) DESC, reply_engine`,
     ),
     pgPool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
@@ -1479,6 +1715,9 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     pgPool.query<DashboardOutboxRow>(
       `SELECT status,
               recipient_phone_mask,
+              COALESCE(NULLIF(reply_engine, ''), 'legacy') AS reply_engine,
+              COALESCE(NULLIF(route_reason, ''), '-') AS route_reason,
+              reply_latency_ms,
               attempts,
               created_at::text AS created_at,
               sent_at::text AS sent_at
@@ -1492,6 +1731,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     status: publicStatus(),
     eventCounts: countsByStatus(eventsResult.rows),
     outboxCounts: countsByStatus(outboxResult.rows),
+    replyEngines: replyEnginesResult.rows,
     contactsTotal: Number(contactsResult.rows[0]?.count || 0),
     recentEvents: recentEventsResult.rows,
     recentOutbox: recentOutboxResult.rows,
@@ -1537,6 +1777,13 @@ function formatDate(value: string | null): string {
   }
 }
 
+function formatMs(value: number | string | null | undefined): string {
+  const numberValue = Number(value || 0);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return '-';
+  if (numberValue < 1000) return `${Math.round(numberValue)} ms`;
+  return `${Math.round(numberValue / 100) / 10}s`;
+}
+
 function renderPill(active: boolean, activeLabel: string, inactiveLabel: string): string {
   return `<span class="pill ${active ? 'is-ok' : 'is-warn'}">${htmlEscape(active ? activeLabel : inactiveLabel)}</span>`;
 }
@@ -1567,16 +1814,31 @@ function renderRecentEvents(rows: DashboardEventRow[]): string {
 
 function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
   if (!rows.length) {
-    return '<tr><td colspan="5" class="empty">Sem respostas na outbox ainda.</td></tr>';
+    return '<tr><td colspan="8" class="empty">Sem respostas na outbox ainda.</td></tr>';
   }
   return rows.map((row) => `
     <tr>
       <td>${htmlEscape(formatDate(row.created_at))}</td>
       <td>${htmlEscape(row.recipient_phone_mask || '-')}</td>
+      <td>${htmlEscape(row.reply_engine || '-')}</td>
+      <td>${htmlEscape(row.route_reason || '-')}</td>
+      <td>${htmlEscape(formatMs(row.reply_latency_ms))}</td>
       <td>${htmlEscape(row.status)}</td>
       <td>${htmlEscape(row.attempts)}</td>
       <td>${htmlEscape(formatDate(row.sent_at))}</td>
     </tr>`).join('');
+}
+
+function renderEngineBreakdown(rows: DashboardEngineRow[]): string {
+  if (!rows.length) {
+    return '<div class="status-item"><b>Rotas 24h</b><span class="pill is-warn">0</span><small>Nenhuma resposta recente.</small></div>';
+  }
+  return rows.map((row) => `
+    <div class="status-item">
+      <b>${htmlEscape(row.reply_engine || 'legacy')}</b>
+      <span class="pill is-ok">${htmlEscape(row.sent_count || 0)} enviadas</span>
+      <small>${htmlEscape(row.count || 0)} respostas em 24h | IA: ${htmlEscape(formatMs(row.avg_latency_ms))}</small>
+    </div>`).join('');
 }
 
 function renderDashboardLogin(error: string): string {
@@ -1702,6 +1964,9 @@ function renderDashboard(summary: DashboardSummary): string {
   const geminiReady = boolStatus(status, 'gemini_configured');
   const geminiModel = textStatus(status, 'gemini_model') || '-';
   const aliasCount = numberStatus(status, 'recipient_alias_count');
+  const cacheTtl = numberStatus(status, 'reply_cache_ttl_seconds');
+  const cacheEntries = numberStatus(status, 'reply_cache_entries');
+  const writePolicy = textStatus(status, 'whatsapp_write_actions') || 'blocked';
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -1763,7 +2028,7 @@ function renderDashboard(summary: DashboardSummary): string {
     .pill.is-ok { background: #daf6e8; color: #097143; }
     .pill.is-warn { background: #fff2d2; color: #8c5a00; }
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 620px; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 13px; }
     th, td { padding: 9px 8px; border-bottom: 1px solid #f0dbe4; text-align: left; vertical-align: top; }
     th { color: #8f0e42; font-size: 11px; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
     td { color: #2e2430; }
@@ -1830,6 +2095,12 @@ function renderDashboard(summary: DashboardSummary): string {
             ${renderPill(!providerPaused, 'Normal', 'Pausado')}
             <small>Global: ${globalRate}/min | intervalo: ${Math.round(sendMinIntervalMs / 100) / 10}s | pausa erro: ${Math.round(providerPauseOnErrorMs / 1000)}s${providerPaused ? ` | volta em ${Math.ceil(providerPauseMs / 1000)}s` : ''}${providerPauseReasonText ? ` | ${providerPauseReasonText}` : ''}</small>
           </div>
+          <div class="status-item">
+            <b>Roteador</b>
+            ${renderPill(true, 'Ativo', 'Pendente')}
+            <small>Local instantaneo ativo | escrita WhatsApp: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
+          </div>
+          ${renderEngineBreakdown(summary.replyEngines)}
         </div>
         <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>
       </article>
@@ -1858,7 +2129,7 @@ function renderDashboard(summary: DashboardSummary): string {
         <h2>Outbox recente</h2>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Quando</th><th>Destino</th><th>Status</th><th>Tent.</th><th>Enviado</th></tr></thead>
+            <thead><tr><th>Quando</th><th>Destino</th><th>Motor</th><th>Rota</th><th>IA</th><th>Status</th><th>Tent.</th><th>Enviado</th></tr></thead>
             <tbody>${renderRecentOutbox(summary.recentOutbox)}</tbody>
           </table>
         </div>

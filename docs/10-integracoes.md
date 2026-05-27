@@ -144,7 +144,8 @@ Desenho:
 - eventos aceitos entram em fila Postgres com dedupe por provider/instancia/message id;
 - o modo `MIAUW_WHATSAPP_AI_MODE=miauw` usa o core Miauby interno/OpenAI como motor de resposta;
 - o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
-- o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para mensagens simples quando `GEMINI_API_KEY` estiver configurada e roteia comandos internos para o core Miauby;
+- o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para mensagens simples quando `GEMINI_API_KEY` estiver configurada e roteia consultas internas para o core Miauby;
+- o bridge responde localmente `oi`, `teste`, `status` e `ajuda`, bloqueia dados sensiveis/escritas fortes antes da IA e registra motor/rota/latencia na outbox;
 - Evolution API ou Meta Cloud API devem ser apenas transporte de entrada/saida;
 - a resposta volta pela API estruturada do transporte escolhido, por exemplo envio de texto para a mesma conversa.
 
@@ -189,6 +190,7 @@ Variaveis:
 - `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS`
 - `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
+- `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`
 - `MIAUW_WHATSAPP_RECIPIENT_ALIASES`
 - `MIAUW_WHATSAPP_PROVIDER`
 - `GEMINI_API_KEY`
