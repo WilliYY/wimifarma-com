@@ -131,7 +131,7 @@ try {
         'ok' => true,
         'authenticated' => false,
         'csrf' => function_exists('csrf_token') ? csrf_token() : '',
-        'avatar' => function_exists('miauw_avatar_src') ? miauw_avatar_src() : '/miauw/miauw.png',
+        'avatar' => function_exists('miauw_avatar_src') ? miauw_avatar_src() : '/miauw/miauby-novo.jpeg',
         'login_url' => '/miauw/login.php',
         'api_ready' => function_exists('miauw_openai_key_configured') ? miauw_openai_key_configured() : defined('MIAUW_OPENAI_API_KEY') && trim((string) MIAUW_OPENAI_API_KEY) !== '',
         'api_status' => function_exists('miauw_openai_public_status') ? miauw_openai_public_status() : array(

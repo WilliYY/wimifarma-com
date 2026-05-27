@@ -3272,6 +3272,7 @@ function miauw_require_user(): array
 function miauw_avatar_src(): string
 {
     $candidates = array(
+        '/miauw/miauby-novo.jpeg' => __DIR__ . '/miauby-novo.jpeg',
         '/miauw/miauw.png' => __DIR__ . '/miauw.png',
         '/miauw/Miauw.png' => __DIR__ . '/Miauw.png',
         '/miauw/Miauby.png' => __DIR__ . '/Miauby.png',

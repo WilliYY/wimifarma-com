@@ -19,7 +19,7 @@
     open: false,
     authenticated: false,
     csrf: '',
-    avatar: '/miauw/miauw.png',
+    avatar: '/miauw/miauby-novo.jpeg',
     loading: false,
     alerts: [],
     alertCount: 0,
@@ -39,7 +39,7 @@
   root.className = 'miauw-widget';
   root.innerHTML = `
     <button class="miauw-widget-bubble" type="button" aria-label="Abrir Miauby" aria-expanded="false">
-      <img src="/miauw/miauw.png" alt="">
+      <img src="/miauw/miauby-novo.jpeg" alt="">
       <span>Miauby</span>
       <strong class="miauw-widget-alert-badge" data-miauw-alert-badge hidden>0</strong>
     </button>
@@ -47,7 +47,7 @@
     <div class="miauw-widget-panel" role="dialog" aria-label="Chat do Miauby" aria-hidden="true">
       <header class="miauw-widget-head">
         <div>
-          <img src="/miauw/miauw.png" alt="">
+          <img src="/miauw/miauby-novo.jpeg" alt="">
           <div>
             <strong>Miauby</strong>
             <small>Fiscal interno</small>

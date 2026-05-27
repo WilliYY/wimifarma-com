@@ -128,7 +128,7 @@ Estado atual:
 - Postgres 17 proprio em `wimifarma-miauw-whatsapp-db`, volume `miauw-whatsapp-data/`;
 - template da Evolution API em `ops/evolution/`, para deploy separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`;
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
-- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru, protegido por login do ambiente quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos; o painel tambem permite autorizar/bloquear remetentes no Postgres, editar nome/numero, liberar cards por contato, manter contatos minimizados, comparar mensagem recebida/resposta enviada, registrar/resolver erros abertos, mostrar a demora total de resposta em 24h e exibir graficos simples de media/p95 por motor;
+- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo nem payload bruto, protegido por login do ambiente quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos; o painel tambem permite autorizar/bloquear remetentes no Postgres, ver/editar o telefone completo somente na allowlist logada, editar nome, liberar cards por contato, manter contatos minimizados, comparar mensagem recebida/resposta enviada, registrar/resolver erros abertos, mostrar a demora total de resposta em 24h e exibir graficos simples de media/p95 por motor;
 - `GET /miauw/whatsapp/login` mostra o login proprio do painel;
 - `GET /miauw/whatsapp/health` mostra status seguro e permanece publico para smoke test;
 - `GET /miauw/whatsapp/webhook` valida o desafio `hub.challenge` da Meta Cloud API quando `MIAUW_WHATSAPP_PROVIDER=meta`;
@@ -156,7 +156,8 @@ Desenho:
 
 Regras iniciais obrigatorias:
 
-- comecar com allowlist de numeros autorizados, como o telefone do dono/equipe, e ignorar clientes, grupos e remetentes desconhecidos; ajustes operacionais podem ser feitos pelo painel, mantendo telefone completo fora do HTML;
+- comecar com allowlist de numeros autorizados, como o telefone do dono/equipe, e bloquear clientes, grupos e remetentes desconhecidos; o bridge pode responder um aviso curto para desconhecidos, sem chamar IA/core, e ajustes operacionais podem ser feitos pelo painel. Telefone completo aparece apenas na edicao da allowlist autenticada; status, health, logs e sincronias continuam mascarados;
+- comparar remetente com equivalencia brasileira de DDI `55` e nono digito movel, para aceitar o mesmo numero quando Evolution/Baileys entregar com ou sem o `9` depois do DDD;
 - usar cards liberados por contato como camada de permissao de WhatsApp: `miauby menu` deve mostrar apenas os modulos daquele numero, e cada consulta por modulo deve conferir essa permissao antes de chamar tools internas;
 - opcionalmente exigir prefixo como `miauby` para ativar resposta automatica no WhatsApp;
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;

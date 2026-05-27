@@ -123,6 +123,7 @@ type DashboardAllowlistRow = {
   id: string;
   phone_hash: string;
   phone_mask: string;
+  phone_ciphertext: string;
   display_name: string;
   status: string;
   module_keys: string[];
@@ -297,6 +298,7 @@ const MODULE_TOOL_TERMS: Record<string, string[]> = {
   codigos: ['codigo', 'codigos', 'comissao'],
   miauw: ['miauw', 'miauby', 'contrato_tool'],
 };
+const UNAUTHORIZED_REPLY_TEXT = 'Eu sou o Miauby interno da Wimifarma. Este WhatsApp so responde numeros permitidos pela equipe. Se voce precisa de acesso, peca para um admin liberar seu numero no painel Miauby WhatsApp.';
 const providerSendTimestamps: number[] = [];
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
 const sharedContextCache = new Map<string, { context: SharedMiauwContext; expiresAt: number }>();
@@ -386,17 +388,79 @@ function normalizePhone(value: unknown): string {
   return String(value ?? '').replace(/\D+/g, '');
 }
 
+function phoneVariants(value: unknown): string[] {
+  const variants: string[] = [];
+  const add = (digits: string) => {
+    const normalized = normalizePhone(digits);
+    if (normalized && !variants.includes(normalized)) variants.push(normalized);
+  };
+  const addBrazilMobileVariants = (digits: string) => {
+    const normalized = normalizePhone(digits);
+    const local = normalized.startsWith('55') && normalized.length > 11
+      ? normalized.slice(2)
+      : normalized;
+    if (!/^\d{10,11}$/.test(local)) return;
+    add(local);
+    add(`55${local}`);
+    const ddd = local.slice(0, 2);
+    const subscriber = local.slice(2);
+    if (local.length === 11 && subscriber.startsWith('9')) {
+      const withoutNinthDigit = `${ddd}${subscriber.slice(1)}`;
+      add(withoutNinthDigit);
+      add(`55${withoutNinthDigit}`);
+    }
+    if (local.length === 10) {
+      const withNinthDigit = `${ddd}9${subscriber}`;
+      add(withNinthDigit);
+      add(`55${withNinthDigit}`);
+    }
+  };
+
+  const normalized = normalizePhone(value);
+  add(normalized);
+  if (normalized.startsWith('55') && normalized.length > 11) {
+    add(normalized.slice(2));
+  } else if (/^\d{10,11}$/.test(normalized)) {
+    add(`55${normalized}`);
+  }
+  for (const candidate of [...variants]) {
+    addBrazilMobileVariants(candidate);
+  }
+  return variants;
+}
+
+function bestPhoneCandidate(...values: unknown[]): string {
+  let fallback = '';
+  for (const value of values) {
+    const digits = normalizePhone(value);
+    if (!digits) continue;
+    if (!fallback) fallback = digits;
+    const variants = phoneVariants(digits);
+    if (variants.some((variant) => /^\d{10,13}$/.test(variant) && (variant.startsWith('55') || variant.length <= 11))) {
+      return digits;
+    }
+  }
+  return fallback;
+}
+
 function maskPhone(phone: string): string {
   const digits = normalizePhone(phone);
   if (digits.length <= 4) return '****';
   return `***${digits.slice(-4)}`;
 }
 
+function displayPhone(phone: string): string {
+  const digits = normalizePhone(phone);
+  if (!digits) return '';
+  return digits.startsWith('55') ? `+${digits}` : digits;
+}
+
 function parseAllowedSenders(value: string): Set<string> {
   const set = new Set<string>();
   for (const item of value.split(/[,\s;]+/g)) {
-    const phone = normalizePhone(item);
-    if (phone) set.add(phone);
+    for (const phone of phoneVariants(item)) {
+      if (phone) set.add(phone);
+    }
   }
   return set;
 }
@@ -407,7 +471,11 @@ function parseRecipientAliases(value: string): Map<string, string> {
     const [sourceRaw, targetRaw] = item.split(/=>|->|=|:/);
     const source = normalizePhone(sourceRaw);
     const target = normalizePhone(targetRaw);
-    if (source && target) map.set(source, target);
+    if (!source || !target) continue;
+    const sources = phoneVariants(source);
+    for (const sourceVariant of sources.length ? sources : [source]) {
+      map.set(sourceVariant, target);
+    }
   }
   return map;
 }
@@ -481,11 +549,9 @@ function phoneHashCandidates(primaryHash: string, phone: string): string[] {
     if (clean && !hashes.includes(clean)) hashes.push(clean);
   };
   const addPhone = (digits: string) => {
-    const normalized = normalizePhone(digits);
-    if (!normalized) return;
-    addHash(sha256(normalized));
-    if (normalized.length === 11) addHash(sha256(`55${normalized}`));
-    if (normalized.startsWith('55') && normalized.length === 13) addHash(sha256(normalized.slice(2)));
+    for (const variant of phoneVariants(digits)) {
+      addHash(sha256(variant));
+    }
   };
 
   addHash(primaryHash);
@@ -498,10 +564,12 @@ function phoneHashCandidates(primaryHash: string, phone: string): string[] {
 function applyRecipientAlias(value: string): string {
   const normalized = normalizePhone(value);
   if (!normalized || RECIPIENT_ALIASES.size === 0) return value;
-  const direct = RECIPIENT_ALIASES.get(normalized);
-  if (direct) return direct;
+  for (const variant of phoneVariants(normalized)) {
+    const direct = RECIPIENT_ALIASES.get(variant);
+    if (direct) return direct;
+  }
   for (const [source, target] of RECIPIENT_ALIASES) {
-    if (normalized.endsWith(source) || source.endsWith(normalized)) return target;
+    if (phonesMatch(normalized, source)) return target;
   }
   return value;
 }
@@ -509,9 +577,12 @@ function applyRecipientAlias(value: string): string {
 function phonesMatch(left: string, right: string): boolean {
   const normalizedLeft = normalizePhone(left);
   const normalizedRight = normalizePhone(right);
+  const leftVariants = phoneVariants(normalizedLeft);
+  const rightVariants = phoneVariants(normalizedRight);
   return normalizedLeft !== ''
     && normalizedRight !== ''
-    && (normalizedLeft === normalizedRight
+    && (leftVariants.some((leftVariant) => rightVariants.includes(leftVariant))
+      || normalizedLeft === normalizedRight
       || normalizedLeft.endsWith(normalizedRight)
       || normalizedRight.endsWith(normalizedLeft));
 }
@@ -527,7 +598,7 @@ function envPhoneAllowed(normalizedPhone: string): boolean {
 
 async function databasePhonePolicy(normalizedPhone: string): Promise<'allowed' | 'blocked' | ''> {
   if (!normalizedPhone) return '';
-  const phoneHash = sha256(normalizedPhone);
+  const phoneHashes = new Set(phoneVariants(normalizedPhone).map((variant) => sha256(variant)));
   const result = await pgPool.query<{ status: string; phone_hash: string; phone_ciphertext: string }>(
     `SELECT status, phone_hash, COALESCE(phone_ciphertext, '') AS phone_ciphertext
        FROM miauw_whatsapp_contacts
@@ -538,7 +609,7 @@ async function databasePhonePolicy(normalizedPhone: string): Promise<'allowed' |
 
   let matchedAllowed = false;
   for (const row of result.rows) {
-    let matched = row.phone_hash === phoneHash;
+    let matched = phoneHashes.has(row.phone_hash);
     if (!matched && row.phone_ciphertext) {
       try {
         matched = phonesMatch(normalizedPhone, decryptText(row.phone_ciphertext));
@@ -895,7 +966,17 @@ function extractEvolutionIncomingMessage(payload: JsonRecord): IncomingMessage |
       || '',
     180,
   );
-  const senderPhone = normalizePhone(remoteJid || data.sender || data.from);
+  const senderPhone = bestPhoneCandidate(
+    data.senderPn,
+    data.sender_pn,
+    data.senderPhone,
+    data.sender_phone,
+    data.sender,
+    data.from,
+    key.participant,
+    data.participant,
+    remoteJid,
+  );
   const eventType = safeText(payload.event || payload.type || 'messages.upsert', 80);
   const instanceName = safeText(payload.instance || data.instance || data.instanceName || EVOLUTION_INSTANCE, 120) || EVOLUTION_INSTANCE;
   const rawMessageId = safeText(key.id || data.id || data.messageId || data.message_id || '', 180);
@@ -1114,6 +1195,79 @@ async function countRecentMessages(senderHash: string, interval: 'minute' | 'day
   return Number(result.rows[0]?.count || 0);
 }
 
+async function countRecentUnauthorizedNotices(senderHashes: string[]): Promise<number> {
+  const hashes = [...new Set(senderHashes.map((hash) => safeText(hash, 64)).filter(Boolean))];
+  if (!hashes.length) return 0;
+  const placeholders = hashes.map((_, index) => `$${index + 1}`).join(', ');
+  const result = await pgPool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM miauw_whatsapp_outbox o
+       JOIN miauw_whatsapp_events e ON e.id = o.event_id
+      WHERE e.sender_phone_hash IN (${placeholders})
+        AND o.route_reason = 'sender_not_allowed'
+        AND o.created_at >= NOW() - INTERVAL '10 minutes'`,
+    hashes,
+  );
+  return Number(result.rows[0]?.count || 0);
+}
+
+async function sendSystemReplyForEvent(message: IncomingMessage, eventId: string, text: string, reason: string): Promise<void> {
+  if (!eventId || !text) return;
+  const recipient = applyRecipientAlias(message.remoteJid || message.senderPhone);
+  if (!recipient) return;
+  const traceId = crypto.randomUUID().replace(/-/g, '');
+  const outboxId = crypto.randomUUID();
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_outbox (
+      id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
+      recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms, max_attempts, trace_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'blocked', $9, 0, 1, $10)`,
+    [
+      outboxId,
+      eventId,
+      WHATSAPP_PROVIDER,
+      message.instanceName || defaultInstanceName(),
+      sha256(recipient),
+      maskPhone(recipient),
+      encryptText(recipient),
+      safeText(text, 1800),
+      safeText(reason, 120),
+      traceId,
+    ],
+  );
+
+  try {
+    const providerMessageId = await sendProviderText(recipient, text, message.instanceName || defaultInstanceName());
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_outbox
+          SET status = 'sent',
+              attempts = attempts + 1,
+              sent_at = NOW(),
+              provider_message_id = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [outboxId, providerMessageId],
+    );
+  } catch (error) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_outbox
+          SET status = 'dead',
+              attempts = attempts + 1,
+              error_summary = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [outboxId, safeError(error)],
+    );
+    await recordErrorLog('unauthorized_notice', 'warn', error, {
+      eventId,
+      outboxId,
+      traceId,
+      phoneMask: maskPhone(message.senderPhone),
+      messagePreview: message.bodyText,
+    });
+  }
+}
+
 async function upsertContact(message: IncomingMessage): Promise<void> {
   const phoneHash = sha256(message.senderPhone);
   await pgPool.query(
@@ -1239,6 +1393,13 @@ async function updateAllowlistContact(id: string, phone: string, displayName: st
         WHERE id = $1`,
       [id, nextHash, maskPhone(normalized), encryptText(normalized), label],
     );
+    if (nextHash !== currentHash) {
+      await pgPool.query(
+        `DELETE FROM miauw_whatsapp_contact_modules
+          WHERE phone_hash = $1`,
+        [currentHash],
+      );
+    }
   } else {
     await pgPool.query(
       `UPDATE miauw_whatsapp_contacts
@@ -1346,7 +1507,8 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   }
 
   const ignoreReasons: string[] = [];
-  let bodyText = message.bodyText;
+  const originalBodyText = message.bodyText;
+  let bodyText = originalBodyText;
   if (message.fromMe) ignoreReasons.push('from_me');
   if (message.isGroup && !GROUPS_ENABLED) ignoreReasons.push('group_blocked');
   if (!message.senderPhone) ignoreReasons.push('missing_sender');
@@ -1380,6 +1542,22 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
     queueMicrotask(() => {
       processQueue(WORKER_BATCH_SIZE).catch((error) => console.error(redact(String(error))));
     });
+  } else if (
+    inserted.inserted
+    && ignoreReasons[0] === 'sender_not_allowed'
+    && originalBodyText
+    && message.senderPhone
+    && !message.fromMe
+    && !message.isGroup
+  ) {
+    const senderHashes = phoneHashCandidates(sha256(message.senderPhone), message.senderPhone);
+    const recentNotices = await countRecentUnauthorizedNotices(senderHashes);
+    if (recentNotices === 0) {
+      queueMicrotask(() => {
+        sendSystemReplyForEvent(message, inserted.id, UNAUTHORIZED_REPLY_TEXT, 'sender_not_allowed')
+          .catch((error) => console.error(redact(String(error))));
+      });
+    }
   }
 
   return {
@@ -2937,6 +3115,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
       `SELECT id::text AS id,
               phone_hash,
               phone_mask,
+              COALESCE(phone_ciphertext, '') AS phone_ciphertext,
               display_name,
               status,
               COALESCE(modules.module_keys, ARRAY[]::text[]) AS module_keys,
@@ -3184,6 +3363,15 @@ function moduleLabels(keys: string[]): string {
   return labels.length ? labels.join(', ') : 'Sem cards';
 }
 
+function fullPhoneForDashboard(row: DashboardAllowlistRow): string {
+  if (!row.phone_ciphertext) return '';
+  try {
+    return normalizePhone(decryptText(row.phone_ciphertext));
+  } catch {
+    return '';
+  }
+}
+
 function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): string {
   if (!rows.length) {
     return '<p class="empty">Nenhum contato salvo no Postgres ainda.</p>';
@@ -3193,12 +3381,14 @@ function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): 
     const nextAction = isAllowed ? 'block' : 'allow';
     const nextLabel = isAllowed ? 'Bloquear' : 'Autorizar';
     const selectedModules = moduleKeysForRow(row);
+    const fullPhone = fullPhoneForDashboard(row);
+    const phoneLabel = fullPhone ? displayPhone(fullPhone) : (row.phone_mask || '-');
     return `
       <details class="allowlist-row">
         <summary class="allowlist-head">
           <span>
             <b>${htmlEscape(row.display_name || 'Sem nome')}</b>
-            <small>${htmlEscape(row.phone_mask || '-')} | ${htmlEscape(formatDate(row.last_seen_at || row.created_at))} | ${htmlEscape(moduleLabels(selectedModules))}</small>
+            <small>${htmlEscape(phoneLabel)} | ${htmlEscape(formatDate(row.last_seen_at || row.created_at))} | ${htmlEscape(moduleLabels(selectedModules))}</small>
           </span>
           ${renderPill(isAllowed, 'Autorizado', 'Bloqueado')}
         </summary>
@@ -3208,8 +3398,8 @@ function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): 
           <label>Nome
             <input name="display_name" value="${htmlEscape(row.display_name || '')}" autocomplete="off">
           </label>
-          <label>Novo numero
-            <input name="phone" inputmode="tel" autocomplete="off" placeholder="Opcional: digite completo para trocar">
+          <label>Numero
+            <input name="phone" inputmode="tel" autocomplete="off" value="${htmlEscape(fullPhone)}" placeholder="Digite o numero completo">
           </label>
           <fieldset>
             <legend>Cards liberados</legend>
@@ -3341,7 +3531,7 @@ function renderDashboardLogin(error: string): string {
 </head>
 <body>
   <main>
-    <img class="mascot" src="/cashback/gato-hapy.gif" alt="Gato happy">
+    <img class="mascot" src="/miauw/miauby-novo.jpeg" alt="Miauby">
     <h1>Miauby Whatsapp</h1>
     <p>Acesso operacional do canal WhatsApp.</p>
     ${errorHtml}
@@ -3546,7 +3736,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       <div>
         <p class="eyebrow">Wimifarma</p>
         <h1>Miauby Whatsapp</h1>
-        <p class="intro">Painel seguro do canal interno via WhatsApp: mostra atividade, fila, outbox e configuracoes sem expor token, telefone cru ou payload bruto.</p>
+        <p class="intro">Painel seguro do canal interno via WhatsApp: mostra atividade, fila, outbox e configuracoes sem expor token ou payload bruto.</p>
       </div>
       <nav class="actions" aria-label="Atalhos">
         ${dashboardLogoutAction()}
@@ -3583,7 +3773,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <div class="allowlist-list">
           ${renderAllowlistRows(summary.allowlistRows, csrfToken)}
         </div>
-        <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres e nunca mostram telefone completo.</p>
+        <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres. O telefone completo aparece apenas nesta allowlist logada.</p>
       </article>
 
       <article class="panel">
