@@ -29,6 +29,8 @@ type QueueRow = {
   trace_id: string;
   instance_name: string;
   message_id: string;
+  remote_jid_ciphertext: string;
+  remote_jid_mask: string;
   sender_phone_ciphertext: string;
   sender_phone_mask: string;
   body_text: string;
@@ -837,7 +839,8 @@ async function nextQueueRow(): Promise<QueueRow | null> {
   try {
     await client.query('BEGIN');
     const result = await client.query<QueueRow>(
-      `SELECT id, trace_id, instance_name, message_id, sender_phone_ciphertext, sender_phone_mask, body_text, attempts
+      `SELECT id, trace_id, instance_name, message_id, remote_jid_ciphertext, remote_jid_mask,
+              sender_phone_ciphertext, sender_phone_mask, body_text, attempts
          FROM miauw_whatsapp_events
         WHERE status = 'queued'
           AND next_attempt_at <= NOW()
@@ -927,6 +930,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     }
 
     const recipientPhone = decryptText(row.sender_phone_ciphertext);
+    const recipientAddress = decryptText(row.remote_jid_ciphertext) || recipientPhone;
     const reply = await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask);
     const replyText = safeText(reply.text, 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
@@ -937,11 +941,11 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
         recipient_phone_ciphertext, body_text, max_attempts, trace_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [outboxId, row.id, WHATSAPP_PROVIDER, row.instance_name || defaultInstanceName(), sha256(recipientPhone), maskPhone(recipientPhone), encryptText(recipientPhone), replyText, MAX_ATTEMPTS, row.trace_id],
+      [outboxId, row.id, WHATSAPP_PROVIDER, row.instance_name || defaultInstanceName(), sha256(recipientAddress), maskPhone(recipientAddress), encryptText(recipientAddress), replyText, MAX_ATTEMPTS, row.trace_id],
     );
 
     await sleep(randomInt(MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS));
-    const providerMessageId = await sendProviderText(recipientPhone, replyText, row.instance_name || defaultInstanceName());
+    const providerMessageId = await sendProviderText(recipientAddress, replyText, row.instance_name || defaultInstanceName());
 
     await pgPool.query(
       `UPDATE miauw_whatsapp_outbox
@@ -1293,7 +1297,7 @@ async function sendEvolutionText(phone: string, text: string, instanceName: stri
         apikey: EVOLUTION_API_KEY,
       },
       body: JSON.stringify({
-        number: normalizePhone(phone),
+        number: evolutionRecipient(phone),
         text,
       }),
       signal: controller.signal,
@@ -1307,6 +1311,12 @@ async function sendEvolutionText(phone: string, text: string, instanceName: stri
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function evolutionRecipient(value: string): string {
+  const clean = String(value || '').trim();
+  if (clean.includes('@')) return clean;
+  return normalizePhone(clean);
 }
 
 async function sendMetaText(phone: string, text: string): Promise<string> {
