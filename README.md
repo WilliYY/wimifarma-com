@@ -110,6 +110,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - Miauby iniciou a Fase 20 do agente operacional v2: audio enviado aparece no chat/widget como player com ondas, sem mostrar a transcricao na bolha enviada; a transcricao segue internamente para contexto. Quando a mensagem veio por audio, o PHP gera resposta falada com `MIAUW_SPEECH_MODEL=gpt-4o-mini-tts` e `MIAUW_SPEECH_VOICE=marin`, sem armazenar audio. Audios curtos demais sao bloqueados para reduzir transcricao inventada.
 - Miauby iniciou a Fase 21 do agente operacional v2: o playback dos audios usa URL temporaria `blob:` permitida apenas em `media-src`, a resposta falada mostra o audio como principal e deixa a transcricao escondida por padrao, o TTS recebeu perfil de fala mais vivo e o diagnostico permite escolher voz base entre `marin`, `cedar`, `ash`, `coral` e `verse` sem mexer em segredo.
 - O canal WhatsApp do Miauby iniciou como backend dedicado em `apps/miauw-whatsapp`, usando Node.js 22 + TypeScript e Postgres 17 proprio. O servico publica `/miauw/whatsapp/` por proxy Apache, recebe webhooks da Evolution API ou da Meta Cloud API oficial, usa allowlist, prefixo opcional, fila duravel, dedupe, anti-flood por remetente e global, pausa em erro temporario do transporte, painel operacional com login opcional por `.env`, favicon proprio do Miauby e outbox. O painel permite autorizar/bloquear remetentes no Postgres, ver/editar telefone completo apenas na allowlist autenticada, editar nome, liberar cards por contato, comparar mensagem recebida com resposta enviada e acompanhar/resolver erros abertos; fora da allowlist, telefone continua mascarado. Contatos cadastrados aparecem minimizados para reduzir poluicao visual. Tambem exibe a demora total da resposta em 24h, latencia da IA e grafico simples de media/p95 por motor. O modo de IA pode ser `miauw`, `gemini` ou `hybrid`: no hibrido, mensagens sem `miauby` vao para Gemini com personalidade/instrucoes seguras, e mensagens com `miauby` em qualquer posicao vao para o core Miauby/OpenAI com tools e guardrails. O core WhatsApp bloqueia tool quando o card detectado nao esta liberado para o telefone. A allowlist compara DDI `55` e nono digito brasileiro para aceitar o mesmo numero com ou sem `9`; desconhecidos recebem apenas aviso interno, sem IA/core. Cache curto reduz repeticao; escritas fortes dependem de confirmacao/auditoria do core, nunca de texto solto do Gemini. O repositorio mantem default seguro `MIAUW_WHATSAPP_ENABLED=false`; em producao o canal pode ser ativado por `.env` quando tokens/cifragem estiverem configurados. A stack separada da Evolution API tem template em `ops/evolution/` e roda no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`; para Meta, usar `MIAUW_WHATSAPP_PROVIDER=meta`.
+- Desde 2026-05-27, o bridge WhatsApp pode transcrever audios autorizados com Gemini e responder em audio por Gemini TTS quando as flags de audio estiverem ligadas. O Git mantem audio desligado por padrao; o banco guarda metadados sanitizados e transcricao, nunca bytes de audio bruto.
 - O WhatsApp e o Miauby interno compartilham contexto pelo endpoint interno tokenizado `site/miauw/agent-context.php`: o bridge busca `style_context`, treino aprovado, perfil de voz e contratos de tools antes de chamar `wimifarma-miauw-agent`. Com isso, `miauby sangria ...` e comandos equivalentes usam o mesmo core do chat interno. Acoes fortes permitidas podem gerar uma pendencia no Postgres do bridge e uma confirmacao `Sim`/`Nao` no WhatsApp via `site/miauw/agent-actions.php`; a execucao vem desligada por padrao no repositorio e so deve ser ativada com allowlist e tools revisadas.
 - Miauby tambem entende comandos controlados da Gestao: `gestao` aponta para `/gestao/`, e aceita ordens como `gestao - titulo - 500 - categoria`, `gestao - 500 - titulo`, `gestao titulo 500` e categoria antes/depois; quando houver so nome + valor, usa categoria `geral`. Toda criacao prepara confirmacao humana antes de gravar pelo endpoint interno tokenizado da Gestao. Se um comando incompleto pedir correcao, uma nova mensagem iniciada por `gestao` substitui a pendencia anterior em vez de juntar prompts antigos.
 - Miauby conhece o contexto do XP: `/xp/` e a trilha gamificada dos atendentes, R$ 1.000,00 em vendas gera 2.500 XP e "farmar aura no XP" e linguagem interna para incentivar venda real e lancamento correto, sem inventar ranking, nivel ou pontuacao.
@@ -341,6 +342,18 @@ MIAUW_WHATSAPP_GEMINI_MODEL
 MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS
 MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100
 MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET
+MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED
+MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED
+MIAUW_WHATSAPP_AUDIO_REPLY_MODE
+MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROVIDER
+MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL
+MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER
+MIAUW_WHATSAPP_AUDIO_TTS_MODEL
+MIAUW_WHATSAPP_AUDIO_TTS_VOICE
+MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS
+MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS
+MIAUW_WHATSAPP_AUDIO_MAX_BYTES
+MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS
 MIAUW_WHATSAPP_CONTEXT_PACK
 MIAUW_WHATSAPP_CONTEXT_URL
 MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS

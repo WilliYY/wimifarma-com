@@ -9,6 +9,7 @@ type WhatsappProvider = 'evolution' | 'meta';
 type ReplyEngine = 'miauw' | 'gemini' | 'hybrid';
 type ReplyRuntimeEngine = 'local' | 'blocked' | 'miauw' | 'gemini' | 'gemini_cache';
 type ReplyIntent = 'local' | 'simple_chat' | 'internal_read' | 'internal_write' | 'sensitive' | 'forced_gemini' | 'forced_miauw' | 'activated_core';
+type AudioReplyMode = 'never' | 'voice_on_voice' | 'always';
 
 type IncomingMessage = {
   provider: WhatsappProvider;
@@ -26,6 +27,19 @@ type IncomingMessage = {
   payloadSummary: JsonRecord;
 };
 
+type AudioMedia = {
+  base64: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+type OutboundAudio = {
+  base64: string;
+  mimeType: string;
+  sizeBytes: number;
+  provider: string;
+};
+
 type QueueRow = {
   id: string;
   trace_id: string;
@@ -36,7 +50,9 @@ type QueueRow = {
   sender_phone_hash: string;
   sender_phone_ciphertext: string;
   sender_phone_mask: string;
+  message_type: string;
   body_text: string;
+  payload_summary: JsonRecord;
   attempts: number;
 };
 
@@ -200,7 +216,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.4.0';
+const SERVICE_VERSION = '0.5.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -240,6 +256,18 @@ const GEMINI_MODEL = textEnv('MIAUW_WHATSAPP_GEMINI_MODEL') || textEnv('GEMINI_M
 const GEMINI_MAX_OUTPUT_TOKENS = numberEnv('MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS', 220, 80, 1200);
 const GEMINI_TEMPERATURE = numberEnv('MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100', 35, 0, 100) / 100;
 const GEMINI_THINKING_BUDGET = numberEnv('MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET', 0, 0, 8192);
+const AUDIO_INPUT_ENABLED = boolEnv('MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED', false);
+const AUDIO_REPLY_ENABLED = boolEnv('MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED', false);
+const AUDIO_REPLY_MODE = audioReplyModeEnv();
+const AUDIO_TRANSCRIBE_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROVIDER') || 'gemini').toLowerCase();
+const AUDIO_TTS_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER') || 'gemini').toLowerCase();
+const AUDIO_TRANSCRIBE_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL') || GEMINI_MODEL;
+const AUDIO_TTS_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_MODEL') || 'gemini-2.5-flash-preview-tts';
+const AUDIO_TTS_VOICE = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_VOICE') || 'Puck';
+const AUDIO_TRANSCRIBE_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS', 30000, 3000, 90000);
+const AUDIO_TTS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS', 30000, 3000, 90000);
+const AUDIO_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_AUDIO_MAX_BYTES', 10000000, 100000, 20000000);
+const AUDIO_TTS_MAX_CHARS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS', 700, 80, 1800);
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
@@ -350,6 +378,13 @@ function replyEngineEnv(): ReplyEngine {
   return 'miauw';
 }
 
+function audioReplyModeEnv(): AudioReplyMode {
+  const value = (textEnv('MIAUW_WHATSAPP_AUDIO_REPLY_MODE') || 'voice_on_voice').toLowerCase();
+  if (value === 'always' || value === 'sempre') return 'always';
+  if (value === 'never' || value === 'off' || value === 'none' || value === 'nunca') return 'never';
+  return 'voice_on_voice';
+}
+
 class ProviderHttpError extends Error {
   provider: WhatsappProvider;
   statusCode: number;
@@ -372,6 +407,20 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function safeText(value: unknown, limit = 500): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function canonicalAudioMime(value: unknown): string {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'audio/ogg';
+  if (raw.includes('ogg')) return 'audio/ogg';
+  if (raw.includes('opus')) return 'audio/ogg';
+  if (raw.includes('mpeg') || raw.includes('mp3')) return 'audio/mpeg';
+  if (raw.includes('mp4') || raw.includes('m4a')) return 'audio/mp4';
+  if (raw.includes('wav') || raw.includes('wave')) return 'audio/wav';
+  if (raw.includes('webm')) return 'audio/webm';
+  if (raw.includes('amr')) return 'audio/amr';
+  if (raw.includes('l16') || raw.includes('pcm')) return 'audio/L16;codec=pcm;rate=24000';
+  return raw.split(';')[0] || 'audio/ogg';
 }
 
 function normalizeIntentText(value: string): string {
@@ -829,7 +878,7 @@ function dashboardLogoutAction(): string {
 }
 
 function payloadSummary(payload: JsonRecord, data: JsonRecord, messageType: string, provider: WhatsappProvider): JsonRecord {
-  return {
+  const summary: JsonRecord = {
     event: safeText(payload.event || payload.type || '', 80),
     instance: safeText(payload.instance || data.instance || data.instanceName || '', 120),
     message_type: messageType,
@@ -837,11 +886,65 @@ function payloadSummary(payload: JsonRecord, data: JsonRecord, messageType: stri
     has_key: isRecord(data.key),
     source: provider,
   };
+  const media = provider === 'meta'
+    ? metaMediaSummary(data, messageType)
+    : evolutionMediaSummary(data, messageType);
+  if (media) summary.media = media;
+  return summary;
 }
 
 function readNestedRecord(parent: JsonRecord, key: string): JsonRecord {
   const value = parent[key];
   return isRecord(value) ? value : {};
+}
+
+function numericSummary(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.trunc(number) : null;
+}
+
+function isAudioMessageType(value: string): boolean {
+  return normalizeIntentText(value).includes('audio');
+}
+
+function sanitizeEvolutionKey(key: JsonRecord): JsonRecord {
+  return {
+    id: safeText(key.id, 180),
+    remoteJid: safeText(key.remoteJid, 180),
+    fromMe: key.fromMe === true,
+    participant: safeText(key.participant, 180),
+  };
+}
+
+function evolutionMediaSummary(data: JsonRecord, messageType: string): JsonRecord | null {
+  if (!isAudioMessageType(messageType)) return null;
+  const message = readNestedRecord(data, 'message');
+  const audio = readNestedRecord(message, 'audioMessage');
+  if (!Object.keys(audio).length) return null;
+  const key = sanitizeEvolutionKey(readNestedRecord(data, 'key'));
+  return {
+    kind: 'audio',
+    provider: 'evolution',
+    key,
+    mimetype: canonicalAudioMime(safeText(audio.mimetype, 120) || 'audio/ogg'),
+    seconds: numericSummary(audio.seconds),
+    file_length: safeText(audio.fileLength, 40),
+    ptt: audio.ptt === true,
+    has_media_url: safeText(data.mediaUrl || audio.url || '', 260) !== '',
+  };
+}
+
+function metaMediaSummary(message: JsonRecord, messageType: string): JsonRecord | null {
+  if (!isAudioMessageType(messageType)) return null;
+  const audio = readNestedRecord(message, 'audio');
+  if (!Object.keys(audio).length) return null;
+  return {
+    kind: 'audio',
+    provider: 'meta',
+    media_id: safeText(audio.id, 220),
+    mimetype: canonicalAudioMime(safeText(audio.mime_type || audio.mimetype, 120) || 'audio/ogg'),
+    voice: audio.voice === true,
+  };
 }
 
 function firstMessageText(message: JsonRecord): { type: string; text: string } {
@@ -923,6 +1026,16 @@ function extractMetaIncomingMessage(payload: JsonRecord): IncomingMessage | null
       const eventType = safeText(changeRaw.field || 'messages', 80) || 'messages';
       const messageId = safeText(message.id || '', 180)
         || crypto.createHash('sha1').update(JSON.stringify(message).slice(0, 4000)).digest('hex');
+      const metaSummary: JsonRecord = {
+        source: 'meta',
+        object: safeText(payload.object || '', 80),
+        field: eventType,
+        phone_number_id: phoneNumberId ? 'configured' : '',
+        message_type: messageInfo.type,
+        has_statuses: Array.isArray(value.statuses),
+      };
+      const media = metaMediaSummary(message, messageInfo.type);
+      if (media) metaSummary.media = media;
       return {
         provider: 'meta',
         instanceName: phoneNumberId,
@@ -936,14 +1049,7 @@ function extractMetaIncomingMessage(payload: JsonRecord): IncomingMessage | null
         bodyText: safeText(messageInfo.text, 4000),
         fromMe: false,
         isGroup: false,
-        payloadSummary: {
-          source: 'meta',
-          object: safeText(payload.object || '', 80),
-          field: eventType,
-          phone_number_id: phoneNumberId ? 'configured' : '',
-          message_type: messageInfo.type,
-          has_statuses: Array.isArray(value.statuses),
-        },
+        payloadSummary: metaSummary,
       };
     }
   }
@@ -1089,6 +1195,9 @@ async function ensureSchema(): Promise<void> {
       reply_engine VARCHAR(30) NOT NULL DEFAULT '',
       route_reason VARCHAR(120) NOT NULL DEFAULT '',
       reply_latency_ms INTEGER NOT NULL DEFAULT 0,
+      reply_media_type VARCHAR(40) NOT NULL DEFAULT '',
+      reply_media_provider VARCHAR(40) NOT NULL DEFAULT '',
+      reply_media_size INTEGER NOT NULL DEFAULT 0,
       status VARCHAR(30) NOT NULL DEFAULT 'pending',
       attempts INTEGER NOT NULL DEFAULT 0,
       max_attempts INTEGER NOT NULL DEFAULT 5,
@@ -1175,7 +1284,10 @@ async function ensureSchema(): Promise<void> {
     ALTER TABLE miauw_whatsapp_outbox
       ADD COLUMN IF NOT EXISTS reply_engine VARCHAR(30) NOT NULL DEFAULT '',
       ADD COLUMN IF NOT EXISTS route_reason VARCHAR(120) NOT NULL DEFAULT '',
-      ADD COLUMN IF NOT EXISTS reply_latency_ms INTEGER NOT NULL DEFAULT 0;
+      ADD COLUMN IF NOT EXISTS reply_latency_ms INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS reply_media_type VARCHAR(40) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS reply_media_provider VARCHAR(40) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS reply_media_size INTEGER NOT NULL DEFAULT 0;
 
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_outbox_engine_created
       ON miauw_whatsapp_outbox (reply_engine, created_at);
@@ -1509,13 +1621,15 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   const ignoreReasons: string[] = [];
   const originalBodyText = message.bodyText;
   let bodyText = originalBodyText;
+  const isAudioMessage = isAudioMessageType(message.messageType);
   if (message.fromMe) ignoreReasons.push('from_me');
   if (message.isGroup && !GROUPS_ENABLED) ignoreReasons.push('group_blocked');
   if (!message.senderPhone) ignoreReasons.push('missing_sender');
   if (!(await phoneAllowed(message.senderPhone))) ignoreReasons.push('sender_not_allowed');
+  if (!bodyText && isAudioMessage && AUDIO_INPUT_ENABLED) bodyText = '[audio recebido]';
   if (!bodyText) ignoreReasons.push('empty_or_unsupported_message');
 
-  if (bodyText) {
+  if (bodyText && !(isAudioMessage && !originalBodyText)) {
     const prefix = stripActivationPrefix(bodyText);
     if (!prefix.accepted) {
       ignoreReasons.push(prefix.reason);
@@ -1576,7 +1690,8 @@ async function nextQueueRow(): Promise<QueueRow | null> {
     await client.query('BEGIN');
     const result = await client.query<QueueRow>(
       `SELECT id, trace_id, instance_name, message_id, remote_jid_ciphertext, remote_jid_mask,
-              sender_phone_hash, sender_phone_ciphertext, sender_phone_mask, body_text, attempts
+              sender_phone_hash, sender_phone_ciphertext, sender_phone_mask,
+              message_type, body_text, payload_summary, attempts
          FROM miauw_whatsapp_events
         WHERE status = 'queued'
           AND next_attempt_at <= NOW()
@@ -1714,21 +1829,90 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
     const senderModuleHashes = phoneHashCandidates(row.sender_phone_hash, recipientPhone);
     const replyStartedAt = Date.now();
+    const incomingAudio = isAudioMessageType(row.message_type);
+    let effectiveBodyText = row.body_text;
+    let replyAsAudio = incomingAudio && AUDIO_REPLY_MODE === 'voice_on_voice';
+    if (incomingAudio && AUDIO_INPUT_ENABLED) {
+      try {
+        const transcript = await transcribeQueuedAudio(row);
+        effectiveBodyText = transcript;
+        row.body_text = transcript;
+        await pgPool.query(
+          `UPDATE miauw_whatsapp_events
+              SET body_text = $2,
+                  body_size = $3,
+                  payload_summary = payload_summary || $4::jsonb,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [
+            row.id,
+            transcript,
+            transcript.length,
+            JSON.stringify({
+              audio_transcribed: true,
+              audio_transcribe_provider: AUDIO_TRANSCRIBE_PROVIDER,
+              audio_transcribe_model: AUDIO_TRANSCRIBE_MODEL,
+            }),
+          ],
+        );
+        if (REQUIRE_PREFIX) {
+          const prefix = stripActivationPrefix(transcript);
+          if (!prefix.accepted) {
+            effectiveBodyText = '';
+          } else {
+            effectiveBodyText = prefix.text;
+          }
+        }
+      } catch (error) {
+        await recordErrorLog('audio_transcription', 'warn', error, {
+          eventId: row.id,
+          traceId: row.trace_id,
+          phoneMask: row.sender_phone_mask,
+          messagePreview: row.body_text,
+          details: { message_type: row.message_type },
+        });
+        effectiveBodyText = '';
+      }
+    }
+
+    let audioFailureReply: ReplyResult | null = null;
+    if (incomingAudio && AUDIO_INPUT_ENABLED && !effectiveBodyText) {
+      audioFailureReply = {
+        text: REQUIRE_PREFIX
+          ? `Ouvi o audio, mas neste ambiente ele precisa comecar com "${PREFIX}". Exemplo: "${PREFIX} pedidos de hoje".`
+          : 'Nao consegui entender esse audio com seguranca. Manda de novo mais curto ou digita a mensagem.',
+        engine: 'blocked',
+        reason: 'audio_transcription_failed_or_missing_prefix',
+      };
+      replyAsAudio = false;
+    }
     const confirmationReply = await maybeHandleConfirmationReply(row);
-    const reply = confirmationReply || await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask, senderModuleHashes);
+    const reply = confirmationReply || audioFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
       : undefined;
     const replyText = safeText(formatReplyTextWithConfirmation(reply.text, confirmation), 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
+    const audioReply = shouldSendAudioReply(replyAsAudio, confirmation)
+      ? await buildAudioReply(replyText, row).catch(async (error) => {
+        await recordErrorLog('audio_tts', 'warn', error, {
+          eventId: row.id,
+          traceId: row.trace_id,
+          phoneMask: row.sender_phone_mask,
+          messagePreview: replyText,
+        });
+        return null;
+      })
+      : null;
 
     outboxId = crypto.randomUUID();
     await pgPool.query(
       `INSERT INTO miauw_whatsapp_outbox (
         id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
-        recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms, max_attempts, trace_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms,
+        reply_media_type, reply_media_provider, reply_media_size, max_attempts, trace_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         outboxId,
         row.id,
@@ -1741,13 +1925,16 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         reply.engine,
         safeText(reply.reason, 120),
         replyLatencyMs,
+        audioReply ? 'audio' : '',
+        audioReply?.provider || '',
+        audioReply?.sizeBytes || 0,
         MAX_ATTEMPTS,
         row.trace_id,
       ],
     );
 
     await sleep(randomInt(MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS));
-    const providerMessageId = await sendProviderReply(recipientAddress, replyText, row.instance_name || defaultInstanceName(), confirmation);
+    const providerMessageId = await sendProviderReply(recipientAddress, replyText, row.instance_name || defaultInstanceName(), confirmation, audioReply || undefined);
 
     await pgPool.query(
       `UPDATE miauw_whatsapp_outbox
@@ -2166,6 +2353,11 @@ function forcedReplyRoute(message: string): ReplyRoute | null {
 
 function geminiConfigured(): boolean {
   return GEMINI_API_KEY !== '' && GEMINI_API_BASE_URL !== '' && GEMINI_MODEL !== '';
+}
+
+function geminiModelPathFor(model: string): string {
+  const clean = safeText(model, 120).replace(/^models\//, '').trim();
+  return `models/${clean || GEMINI_MODEL.replace(/^models\//, '').trim()}`;
 }
 
 function replyCacheKey(message: string): string {
@@ -2621,8 +2813,7 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
 }
 
 function geminiModelPath(): string {
-  const clean = GEMINI_MODEL.replace(/^models\//, '').trim();
-  return `models/${clean}`;
+  return geminiModelPathFor(GEMINI_MODEL);
 }
 
 function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[]): string {
@@ -2704,6 +2895,343 @@ async function requestGeminiReply(message: string, _traceId: string, _senderMask
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function mediaSummaryFromPayload(summary: JsonRecord): JsonRecord {
+  const media = isRecord(summary.media) ? summary.media : {};
+  return media;
+}
+
+function audioProviderFromSummary(summary: JsonRecord): string {
+  return safeText(mediaSummaryFromPayload(summary).provider, 40);
+}
+
+function findBase64Field(value: unknown, depth = 0): string {
+  if (depth > 4) return '';
+  if (typeof value === 'string') {
+    const clean = value.trim();
+    if (/^[A-Za-z0-9+/=\r\n]+$/.test(clean) && clean.replace(/\s+/g, '').length > 80) {
+      return clean.replace(/\s+/g, '');
+    }
+    const match = clean.match(/^data:[^;]+;base64,(.+)$/);
+    if (match) return match[1].replace(/\s+/g, '');
+    return '';
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findBase64Field(item, depth + 1);
+      if (found) return found;
+    }
+    return '';
+  }
+  if (!isRecord(value)) return '';
+  for (const key of ['base64', 'media', 'data', 'file', 'buffer']) {
+    const found = findBase64Field(value[key], depth + 1);
+    if (found) return found;
+  }
+  for (const item of Object.values(value)) {
+    const found = findBase64Field(item, depth + 1);
+    if (found) return found;
+  }
+  return '';
+}
+
+function audioSizeFromBase64(base64: string): number {
+  try {
+    return Buffer.byteLength(base64, 'base64');
+  } catch {
+    return 0;
+  }
+}
+
+function assertAudioSize(sizeBytes: number): void {
+  if (sizeBytes <= 0) throw new Error('audio_empty');
+  if (sizeBytes > AUDIO_MAX_BYTES) throw new Error(`audio_too_large_${sizeBytes}`);
+}
+
+async function transcribeQueuedAudio(row: QueueRow): Promise<string> {
+  if (!AUDIO_INPUT_ENABLED) throw new Error('audio_input_disabled');
+  if (AUDIO_TRANSCRIBE_PROVIDER !== 'gemini') throw new Error('audio_transcribe_provider_unsupported');
+  const media = audioProviderFromSummary(row.payload_summary) === 'meta'
+    ? await fetchMetaAudioMedia(row)
+    : await fetchEvolutionAudioMedia(row);
+  const transcript = safeText(await requestGeminiAudioTranscript(media, row.trace_id), 4000);
+  if (!transcript) throw new Error('audio_empty_transcript');
+  return transcript;
+}
+
+async function fetchEvolutionAudioMedia(row: QueueRow): Promise<AudioMedia> {
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY) throw new Error('evolution_not_configured');
+  const media = mediaSummaryFromPayload(row.payload_summary);
+  const key = isRecord(media.key) ? media.key : {};
+  const messageId = safeText(key.id, 180);
+  if (!messageId) throw new Error('evolution_audio_key_missing');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUDIO_TRANSCRIBE_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${EVOLUTION_API_BASE_URL}/chat/getBase64FromMediaMessage/${encodeURIComponent(row.instance_name || defaultInstanceName())}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        message: { key },
+        convertToMp4: false,
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data)) {
+      const message = safeText(isRecord(data) ? data.message || data.error : '', 180) || `evolution_media_http_${response.status}`;
+      throw new ProviderHttpError('evolution', response.status, message);
+    }
+    const base64 = findBase64Field(data);
+    const sizeBytes = audioSizeFromBase64(base64);
+    assertAudioSize(sizeBytes);
+    const mimeType = canonicalAudioMime(data.mimetype || data.mimeType || media.mimetype || 'audio/ogg');
+    return { base64, mimeType, sizeBytes };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchMetaAudioMedia(row: QueueRow): Promise<AudioMedia> {
+  if (!META_ACCESS_TOKEN) throw new Error('meta_not_configured');
+  const media = mediaSummaryFromPayload(row.payload_summary);
+  const mediaId = safeText(media.media_id, 220);
+  if (!mediaId) throw new Error('meta_audio_media_id_missing');
+  const metadataController = new AbortController();
+  const metadataTimeout = setTimeout(() => metadataController.abort(), AUDIO_TRANSCRIBE_TIMEOUT_MS);
+  try {
+    const metadataResponse = await fetch(`${META_GRAPH_API_BASE_URL}/${META_GRAPH_API_VERSION}/${encodeURIComponent(mediaId)}`, {
+      headers: {
+        Authorization: `Bearer ${META_ACCESS_TOKEN}`,
+      },
+      signal: metadataController.signal,
+    });
+    const metadata = await metadataResponse.json().catch(() => ({}));
+    if (!metadataResponse.ok || !isRecord(metadata)) {
+      const error = isRecord(metadata.error) ? metadata.error : metadata;
+      const message = safeText(isRecord(error) ? error.message || error.error : '', 180) || `meta_media_http_${metadataResponse.status}`;
+      throw new ProviderHttpError('meta', metadataResponse.status, message);
+    }
+    const url = safeText(metadata.url, 1000);
+    if (!url) throw new Error('meta_audio_url_missing');
+    const mimeType = canonicalAudioMime(metadata.mime_type || media.mimetype || 'audio/ogg');
+    clearTimeout(metadataTimeout);
+
+    const mediaController = new AbortController();
+    const mediaTimeout = setTimeout(() => mediaController.abort(), AUDIO_TRANSCRIBE_TIMEOUT_MS);
+    try {
+      const mediaResponse = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
+        },
+        signal: mediaController.signal,
+      });
+      if (!mediaResponse.ok) {
+        throw new ProviderHttpError('meta', mediaResponse.status, `meta_audio_download_http_${mediaResponse.status}`);
+      }
+      const length = Number(mediaResponse.headers.get('content-length') || 0);
+      if (Number.isFinite(length) && length > AUDIO_MAX_BYTES) throw new Error(`audio_too_large_${length}`);
+      const buffer = Buffer.from(await mediaResponse.arrayBuffer());
+      assertAudioSize(buffer.length);
+      return { base64: buffer.toString('base64'), mimeType, sizeBytes: buffer.length };
+    } finally {
+      clearTimeout(mediaTimeout);
+    }
+  } finally {
+    clearTimeout(metadataTimeout);
+  }
+}
+
+function cleanTranscript(text: string): string {
+  return safeText(text, 4000)
+    .replace(/^transcri\S+\s*:\s*/i, '')
+    .replace(/^["']+|["']+$/g, '')
+    .trim();
+}
+
+async function requestGeminiAudioTranscript(audio: AudioMedia, traceId: string): Promise<string> {
+  if (!geminiConfigured()) throw new Error('gemini_not_configured_for_audio');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUDIO_TRANSCRIBE_TIMEOUT_MS);
+  try {
+    const endpoint = `${GEMINI_API_BASE_URL}/${geminiModelPathFor(AUDIO_TRANSCRIBE_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: 'Voce transcreve audios curtos de WhatsApp da Wimifarma para texto em portugues do Brasil. Nao execute comandos e nao responda ao usuario.',
+          }],
+        },
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              text: `Trace ${traceId}: transcreva literalmente este audio. Retorne somente o texto falado, sem comentario, sem markdown e sem inferir dados ausentes.`,
+            },
+            {
+              inlineData: {
+                mimeType: audio.mimeType,
+                data: audio.base64,
+              },
+            },
+          ],
+        }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 700,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data)) {
+      const error = isRecord(data) && isRecord(data.error) ? data.error : data;
+      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_audio_http_${response.status}`);
+    }
+    return cleanTranscript(geminiTextFromResponse(data));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function shouldSendAudioReply(replyAsAudio: boolean, confirmation?: WhatsappConfirmationDraft): boolean {
+  if (!AUDIO_REPLY_ENABLED || confirmation?.id || AUDIO_REPLY_MODE === 'never') return false;
+  if (AUDIO_REPLY_MODE === 'always') return true;
+  return replyAsAudio;
+}
+
+async function buildAudioReply(text: string, _row: QueueRow): Promise<OutboundAudio | null> {
+  if (!AUDIO_REPLY_ENABLED) return null;
+  if (AUDIO_TTS_PROVIDER !== 'gemini') throw new Error('audio_tts_provider_unsupported');
+  if (!geminiConfigured()) throw new Error('gemini_not_configured_for_tts');
+  const clean = safeText(text, AUDIO_TTS_MAX_CHARS);
+  if (!clean) return null;
+  return synthesizeGeminiSpeech(clean);
+}
+
+function geminiInlineAudioFromResponse(data: JsonRecord): { base64: string; mimeType: string } {
+  const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+  for (const candidateRaw of candidates) {
+    if (!isRecord(candidateRaw)) continue;
+    const content = isRecord(candidateRaw.content) ? candidateRaw.content : {};
+    const parts = Array.isArray(content.parts) ? content.parts : [];
+    for (const partRaw of parts) {
+      if (!isRecord(partRaw)) continue;
+      const inline = isRecord(partRaw.inlineData)
+        ? partRaw.inlineData
+        : isRecord(partRaw.inline_data)
+          ? partRaw.inline_data
+          : {};
+      const base64 = findBase64Field(inline.data);
+      if (!base64) continue;
+      return {
+        base64,
+        mimeType: canonicalAudioMime(inline.mimeType || inline.mime_type || 'audio/L16;codec=pcm;rate=24000'),
+      };
+    }
+  }
+  throw new Error('gemini_tts_empty_audio');
+}
+
+async function synthesizeGeminiSpeech(text: string): Promise<OutboundAudio> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUDIO_TTS_TIMEOUT_MS);
+  try {
+    const endpoint = `${GEMINI_API_BASE_URL}/${geminiModelPathFor(AUDIO_TTS_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [{
+            text: `Leia em portugues do Brasil, com voz curta, natural e util do Miauby da Wimifarma. Texto: ${text}`,
+          }],
+        }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: AUDIO_TTS_VOICE,
+              },
+            },
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data)) {
+      const error = isRecord(data) && isRecord(data.error) ? data.error : data;
+      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_tts_http_${response.status}`);
+    }
+    const inline = geminiInlineAudioFromResponse(data);
+    const normalized = normalizeOutboundAudio(inline.base64, inline.mimeType);
+    return { ...normalized, provider: 'gemini_tts' };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeOutboundAudio(base64: string, mimeType: string): Omit<OutboundAudio, 'provider'> {
+  const input = Buffer.from(base64, 'base64');
+  assertAudioSize(input.length);
+  const mime = canonicalAudioMime(mimeType);
+  if (mime.toLowerCase().includes('l16') || mime.toLowerCase().includes('pcm')) {
+    const sampleRate = sampleRateFromMime(mime) || 24000;
+    const wav = pcm16ToWav(input, sampleRate, 1);
+    return {
+      base64: wav.toString('base64'),
+      mimeType: 'audio/wav',
+      sizeBytes: wav.length,
+    };
+  }
+  return {
+    base64: input.toString('base64'),
+    mimeType: mime,
+    sizeBytes: input.length,
+  };
+}
+
+function sampleRateFromMime(mimeType: string): number {
+  const match = mimeType.match(/rate=(\d+)/i);
+  const rate = match ? Number(match[1]) : 0;
+  return Number.isFinite(rate) && rate > 0 ? rate : 0;
+}
+
+function pcm16ToWav(pcm: Buffer, sampleRate: number, channels: number): Buffer {
+  const bitsPerSample = 16;
+  const blockAlign = channels * bitsPerSample / 8;
+  const byteRate = sampleRate * blockAlign;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
 }
 
 function pruneProviderSendWindow(now = Date.now()): void {
@@ -2808,6 +3336,38 @@ async function sendEvolutionText(phone: string, text: string, instanceName: stri
   }
 }
 
+async function sendEvolutionAudio(phone: string, audio: OutboundAudio, instanceName: string): Promise<string> {
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !instanceName) {
+    throw new Error('evolution_not_configured');
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${EVOLUTION_API_BASE_URL}/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        number: evolutionRecipient(phone),
+        audio: audio.base64,
+        encoding: true,
+        delay: 800,
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = safeText(isRecord(data) ? data.message || data.error : '', 160) || `evolution_audio_http_${response.status}`;
+      throw new ProviderHttpError('evolution', response.status, message);
+    }
+    return safeText(isRecord(data) ? data.key && isRecord(data.key) ? data.key.id : data.id : '', 180);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function sendEvolutionConfirmation(phone: string, text: string, instanceName: string, confirmation: WhatsappConfirmationDraft): Promise<string> {
   if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !instanceName || !confirmation.id) {
     throw new Error('evolution_not_configured');
@@ -2889,6 +3449,95 @@ async function sendMetaText(phone: string, text: string): Promise<string> {
   }
 }
 
+function audioFileExtension(mimeType: string): string {
+  const mime = canonicalAudioMime(mimeType);
+  if (mime.includes('mpeg')) return 'mp3';
+  if (mime.includes('mp4')) return 'm4a';
+  if (mime.includes('wav')) return 'wav';
+  if (mime.includes('webm')) return 'webm';
+  if (mime.includes('amr')) return 'amr';
+  return 'ogg';
+}
+
+async function uploadMetaAudio(audio: OutboundAudio): Promise<string> {
+  if (!META_ACCESS_TOKEN || !META_PHONE_NUMBER_ID) {
+    throw new Error('meta_not_configured');
+  }
+  const buffer = Buffer.from(audio.base64, 'base64');
+  assertAudioSize(buffer.length);
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('type', audio.mimeType);
+  form.append(
+    'file',
+    new Blob([new Uint8Array(buffer)], { type: audio.mimeType }),
+    `miauby.${audioFileExtension(audio.mimeType)}`,
+  );
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${META_GRAPH_API_BASE_URL}/${META_GRAPH_API_VERSION}/${encodeURIComponent(META_PHONE_NUMBER_ID)}/media`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${META_ACCESS_TOKEN}`,
+      },
+      body: form,
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data)) {
+      const error = isRecord(data.error) ? data.error : data;
+      const message = safeText(isRecord(error) ? error.message || error.error_user_msg || error.error : '', 180) || `meta_audio_upload_http_${response.status}`;
+      throw new ProviderHttpError('meta', response.status, message);
+    }
+    const mediaId = safeText(data.id, 220);
+    if (!mediaId) throw new Error('meta_audio_upload_empty_id');
+    return mediaId;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function sendMetaAudio(phone: string, audio: OutboundAudio): Promise<string> {
+  if (!META_ACCESS_TOKEN || !META_PHONE_NUMBER_ID) {
+    throw new Error('meta_not_configured');
+  }
+  const mediaId = await uploadMetaAudio(audio);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${META_GRAPH_API_BASE_URL}/${META_GRAPH_API_VERSION}/${encodeURIComponent(META_PHONE_NUMBER_ID)}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizePhone(phone),
+        type: 'audio',
+        audio: {
+          id: mediaId,
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = isRecord(data.error) ? data.error : data;
+      const message = safeText(isRecord(error) ? error.message || error.error_user_msg || error.error : '', 180) || `meta_audio_http_${response.status}`;
+      throw new ProviderHttpError('meta', response.status, message);
+    }
+    const messages = isRecord(data) && Array.isArray(data.messages) ? data.messages : [];
+    const first = isRecord(messages[0]) ? messages[0] : {};
+    return safeText(first.id || '', 180);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function sendMetaConfirmation(phone: string, text: string, confirmation: WhatsappConfirmationDraft): Promise<string> {
   if (!META_ACCESS_TOKEN || !META_PHONE_NUMBER_ID || !confirmation.id) {
     throw new Error('meta_not_configured');
@@ -2943,7 +3592,20 @@ async function sendProviderText(phone: string, text: string, instanceName: strin
   ));
 }
 
-async function sendProviderReply(phone: string, text: string, instanceName: string, confirmation?: WhatsappConfirmationDraft): Promise<string> {
+async function sendProviderReply(phone: string, text: string, instanceName: string, confirmation?: WhatsappConfirmationDraft, audio?: OutboundAudio): Promise<string> {
+  if (audio && !confirmation?.id) {
+    return withProviderSendGate(async () => {
+      try {
+        return WHATSAPP_PROVIDER === 'meta'
+          ? await sendMetaAudio(phone, audio)
+          : await sendEvolutionAudio(phone, audio, instanceName);
+      } catch {
+        return WHATSAPP_PROVIDER === 'meta'
+          ? await sendMetaText(phone, text)
+          : await sendEvolutionText(phone, text, instanceName);
+      }
+    });
+  }
   if (!confirmation?.id || !INTERACTIVE_CONFIRMATIONS) {
     return sendProviderText(phone, text, instanceName);
   }
@@ -2987,6 +3649,16 @@ function publicStatus(): JsonRecord {
     gemini_configured: geminiConfigured(),
     gemini_model: GEMINI_MODEL,
     gemini_max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
+    audio_input_enabled: AUDIO_INPUT_ENABLED,
+    audio_reply_enabled: AUDIO_REPLY_ENABLED,
+    audio_reply_mode: AUDIO_REPLY_MODE,
+    audio_transcribe_provider: AUDIO_TRANSCRIBE_PROVIDER,
+    audio_transcribe_model: AUDIO_TRANSCRIBE_MODEL,
+    audio_tts_provider: AUDIO_TTS_PROVIDER,
+    audio_tts_model: AUDIO_TTS_MODEL,
+    audio_tts_voice: AUDIO_TTS_VOICE,
+    audio_max_bytes: AUDIO_MAX_BYTES,
+    audio_tts_max_chars: AUDIO_TTS_MAX_CHARS,
     reply_cache_ttl_seconds: REPLY_CACHE_TTL_SECONDS,
     reply_cache_entries: replyCache.size,
     local_replies_enabled: false,

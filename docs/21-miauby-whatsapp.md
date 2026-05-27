@@ -4,6 +4,8 @@
 
 Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API ou Meta Cloud API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
 
+Desde 2026-05-27, o bridge tambem pode receber audio de WhatsApp, transcrever com Gemini e, quando habilitado, responder com audio gerado por Gemini TTS. Audio bruto nao e salvo no banco: o evento guarda apenas metadados sanitizados e a transcricao textual usada pelo roteador.
+
 ## Componentes
 
 - `apps/miauw-whatsapp`: servico Node.js 22 + TypeScript.
@@ -21,13 +23,14 @@ WhatsApp
   -> Evolution API ou Meta Cloud API
   -> POST /miauw/whatsapp/webhook
   -> Postgres dedicado: evento + fila
+     -> se for audio autorizado: baixa midia do transporte, transcreve e descarta bytes
   -> roteador de IA do bridge
      -> Gemini para conversa simples, quando MIAUW_WHATSAPP_AI_MODE=hybrid e GEMINI_API_KEY existe
      -> site/miauw/agent-context.php para buscar treino/perfil/tools compartilhados do Miauby interno
      -> site/miauw/agent-actions.php para preparar/executar acoes confirmadas liberadas por allowlist
      -> wimifarma-miauw-agent /miauw/agent/run para comandos internos ou fallback
   -> outbox
-  -> Evolution API /message/sendText ou /sendButtons, ou Meta text/interactive buttons
+  -> Evolution API /message/sendText, /sendButtons ou /sendWhatsAppAudio, ou Meta text/interactive/audio
 ```
 
 ## Banco de dados
@@ -38,11 +41,11 @@ Tabelas criadas pelo servico:
 
 - `miauw_whatsapp_contacts`: contatos autorizados/vistos, com telefone em hash, mascara e numero cifrado quando necessario para comparar allowlist, inclusive variacoes brasileiras com/sem nono digito.
 - `miauw_whatsapp_events`: eventos recebidos, status da fila, dedupe por provider/instancia/message id, metadados sanitizados e identificadores cifrados.
-- `miauw_whatsapp_outbox`: respostas geradas e tentativas de envio pelo transporte WhatsApp escolhido.
+- `miauw_whatsapp_outbox`: respostas geradas e tentativas de envio pelo transporte WhatsApp escolhido, incluindo metadados sanitizados quando a resposta planejada foi audio.
 - `miauw_whatsapp_contact_modules`: cards/modulos liberados por contato autorizado, como Cashback, Cotacao, Pedidos, Financeiro, Gestao, Tarefas, XP, Codigos e Miauby.
 - `miauw_whatsapp_error_logs`: falhas sanitizadas de fila, envio e HTTP, com origem, severidade, trace curto, mascara do contato, resumo e contexto limpo para diagnostico.
 
-O banco nao deve guardar payload bruto externo nem telefone cru em texto aberto. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder; o painel logado pode decifrar o telefone apenas na area de edicao da allowlist.
+O banco nao deve guardar payload bruto externo, telefone cru em texto aberto ou bytes de audio. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder; o painel logado pode decifrar o telefone apenas na area de edicao da allowlist. Para audio, `payload_summary.media` guarda apenas tipo, provider, chave/id da midia e sinais como mime/duracao/tamanho quando disponiveis; a midia e baixada do transporte somente durante o processamento, enviada ao Gemini para transcricao e descartada em memoria.
 
 Confirmacoes por WhatsApp usam tambem `miauw_whatsapp_confirmations`, com remetente em hash/mascara, tool, resumo, `command_payload` sanitizado, status, expiracao e trace. Essa tabela guarda apenas a pendencia operacional necessaria para o botao `Sim`/`Nao`; payload bruto da Evolution/Meta continua fora do banco e telefone completo fica somente cifrado quando necessario.
 
@@ -76,6 +79,18 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS=220`
 - `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100=35`
 - `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0`
+- `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=false`
+- `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=false`
+- `MIAUW_WHATSAPP_AUDIO_REPLY_MODE=voice_on_voice`
+- `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROVIDER=gemini`
+- `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL=gemini-2.5-flash`
+- `MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER=gemini`
+- `MIAUW_WHATSAPP_AUDIO_TTS_MODEL=gemini-2.5-flash-preview-tts`
+- `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Puck`
+- `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS=30000`
+- `MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS=30000`
+- `MIAUW_WHATSAPP_AUDIO_MAX_BYTES=10000000`
+- `MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS=700`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
 - `MIAUW_WHATSAPP_CONTEXT_URL=http://wimifarma-com-web/miauw/agent-context.php`
 - `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS=60`
@@ -145,6 +160,8 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Antes de chamar o core, o bridge busca contexto compartilhado no PHP para usar o mesmo treino aprovado, perfil de voz, padroes e contratos de tools do Miauby interno. Se essa busca falhar, o bridge segue com contexto minimo e nao libera escrita direta.
 - Quando `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, o bridge pode preparar acoes fortes permitidas em `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST`, guardar uma pendencia por remetente, expirar pendencias antigas e enviar botoes `Sim`/`Nao`. Sem pendencia valida, `sim`, `nao`, `confirmar` ou `cancelar` sao apenas texto e nao executam escrita.
 - Dados sensiveis continuam bloqueados localmente antes de chamar Gemini/core.
+- Audio fica desligado por padrao no Git. Quando `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=true`, audio individual de remetente autorizado e baixado do transporte apenas no worker, limitado por `MIAUW_WHATSAPP_AUDIO_MAX_BYTES`, transcrito pelo Gemini e descartado. A transcricao segue o mesmo roteador: sem `miauby` vai para conversa simples, com `miauby` chama o core/tools conforme permissao.
+- Quando `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, o bridge pode gerar audio de resposta. O modo `voice_on_voice` responde em audio somente quando a entrada veio por audio; `always` tenta audio para toda resposta sem botao; `never` desliga. Confirmacoes continuam por botoes/texto, nao por audio.
 
 ## Modo hibrido de IA
 
@@ -161,6 +178,15 @@ Quando confirmacoes por WhatsApp estiverem ligadas no ambiente, o bridge tenta p
 Com `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=false`, o WhatsApp volta ao comportamento conservador: acoes fortes podem ser entendidas, mas a resposta orienta usar o Miauby interno/sistema para confirmar.
 
 Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como fallback tecnico. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. O prompt base do bridge preserva identidade/persona do Miauby, evita inventar horario, saldo, pedido ou dado operacional, pede somente o menor dado faltante e orienta `miauby menu`/card correto quando o assunto precisa do core. Para baixa latencia e respostas completas com Gemini 2.5, usar `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0` e `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS` suficiente. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
+
+## Audio no WhatsApp
+
+O audio do WhatsApp usa Gemini em duas etapas independentes:
+
+1. Entrada: o bridge guarda somente referencia sanitizada da midia recebida. No processamento da fila, ele baixa a midia via Evolution `/chat/getBase64FromMediaMessage/{instance}` ou via Media API da Meta, envia para `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL` e usa apenas a transcricao para seguir no roteador.
+2. Saida: se `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, a resposta textual ja validada vira fala por `MIAUW_WHATSAPP_AUDIO_TTS_MODEL`. Quando o Gemini devolve PCM, o bridge empacota como WAV antes de enviar. Se envio de audio falhar, cai para texto pelo mesmo transporte.
+
+O audio nao substitui guardrails. Escritas fortes seguem exigindo pendencia e confirmacao; mensagens de audio sem dados suficientes devem pedir o menor dado faltante; `sim/nao` por audio so tem efeito se a transcricao encontrar uma pendencia valida.
 
 O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota, latencia de geracao antes do envio e demora total entre recebimento do evento e envio pelo transporte. Essa telemetria fica na `miauw_whatsapp_outbox`/consulta com `miauw_whatsapp_events` e usa mascaras/hash fora da edicao da allowlist. O painel tambem mostra graficos simples de media/p95 por motor, uma visao de sincronia recente comparando mensagem recebida e resposta enviada, allowlist minimizada por padrao com telefone completo editavel, e uma area de erros abertos alimentada por `miauw_whatsapp_error_logs`.
 
