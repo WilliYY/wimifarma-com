@@ -41,6 +41,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - O bridge WhatsApp do Miauby (`apps/miauw-whatsapp`) nasce desligado no repositorio, exige token de webhook quando ligado, usa allowlist de remetentes, bloqueia grupos por padrao, limita respostas por mensagem, aplica rate limit por remetente e global, respeita intervalo minimo entre envios, pausa em erro temporario do transporte e guarda no Postgres apenas hash/mascara e identificadores cifrados para resposta, sem payload bruto da Evolution.
 - O modo hibrido do WhatsApp pode usar Gemini para conversa simples, mas comandos internos continuam roteados para o core Miauby com permissao/guardrail. Chaves Gemini devem ficar apenas no `.env`, e o contexto enviado ao Gemini deve ser sanitizado, sem telefone completo, token, payload bruto, dados financeiros/clientes ou credenciais.
 - `site/miauw/agent-context.php` e endpoint interno tokenizado para compartilhar com o WhatsApp o mesmo treino aprovado, perfil de voz e contratos de tools do Miauby interno. Ele aceita apenas POST com `X-Miauw-Agent-Token`/`X-Miauw-Internal-Token`, nao executa escrita e nao deve ser chamado sem token.
+- `site/miauw/agent-actions.php` e endpoint interno tokenizado para preparar e executar acoes confirmadas vindas do WhatsApp. A execucao depende de `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, allowlist de tools, allowlist de remetentes no bridge e pendencia vigente em `miauw_whatsapp_confirmations`; texto solto `sim/nao` sem pendencia nao executa nada.
 - O painel do bridge WhatsApp pode exigir login por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`; a sessao usa cookie `HttpOnly`, `SameSite=Lax`, assinatura HMAC e TTL configuravel, enquanto `/miauw/whatsapp/health` permanece publico e sem segredo para monitoramento.
 
 ## Arquivos envolvidos
@@ -52,6 +53,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
 - `site/miauw/agent-tools.php`
+- `site/miauw/agent-actions.php`
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/codigos/api.php`
@@ -95,6 +97,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - O webhook `/miauw/whatsapp/webhook` deve continuar protegido por `MIAUW_WHATSAPP_WEBHOOK_TOKEN` ou, no modo Meta, por `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e preferencialmente `META_WHATSAPP_APP_SECRET` com `X-Hub-Signature-256`; se o canal estiver ligado sem token/cifragem, deve recusar processamento.
 - Numeros publicos de atendimento, como o WhatsApp do Cashback, nao devem acionar o Miauby interno sem prefixo/allowlist. O canal WhatsApp nao pode expor dados de cliente, financeiro, cotacao ou gestao para remetente nao autenticado.
 - O Miauby WhatsApp deve bloquear no bridge dado sensivel antes de chamar Gemini/core. Escrita forte sem `miauby` continua bloqueada localmente; com `miauby`, o pedido pode ir ao core apenas para virar tool auditada/`confirmation_required`, sem gravacao direta pelo WhatsApp e sem aceitar `confirmar` por mensagem solta.
+- Confirmacoes por WhatsApp so podem executar acoes depois de pendencia criada pelo bridge, expirada automaticamente, vinculada ao hash do remetente e a uma tool liberada. O botao interativo e uma conveniencia de UI; a garantia real e a pendencia no banco + token interno + allowlist.
 - Payloads brutos da Evolution API ou WhatsApp nao devem ser persistidos em traces/logs; registrar apenas metadados sanitizados, telefone mascarado, status, latencia e erro resumido.
 - O painel `/miauw/whatsapp/` deve continuar limitado a status, contadores, motivos de ignorado e telefones mascarados; nunca adicionar token, payload bruto ou telefone completo ao HTML. Em producao, manter `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` preenchidos no `.env`.
 - O Apache do container web usa formato de access log sem query string (`%m %U %H`) para evitar gravar tokens de webhook passados por URL. Nao trocar de volta para `%r`/query completa sem sanitizacao.

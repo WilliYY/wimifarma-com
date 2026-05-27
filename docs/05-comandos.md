@@ -86,6 +86,7 @@ docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-diagnostics.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/diagnostico.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/treino.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-evals.php
+docker exec wimifarma-com-web php -l /var/www/html/miauw/agent-actions.php
 docker exec wimifarma-com-web php -l /var/www/html/xp/bootstrap.php
 docker exec wimifarma-com-web php -l /var/www/html/xp/xp-funcoes.php
 docker exec wimifarma-com-web php -l /var/www/html/xp/index.php
@@ -120,6 +121,7 @@ npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-miauw-whatsapp wimifarma-com-web
 docker exec wimifarma-com-web php -l /var/www/html/miauw/agent-context.php
+docker exec wimifarma-com-web php -l /var/www/html/miauw/agent-actions.php
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent-context.php -H "Content-Type: application/json" -d "{}"

@@ -24,9 +24,10 @@ WhatsApp
   -> roteador de IA do bridge
      -> Gemini para conversa simples, quando MIAUW_WHATSAPP_AI_MODE=hybrid e GEMINI_API_KEY existe
      -> site/miauw/agent-context.php para buscar treino/perfil/tools compartilhados do Miauby interno
+     -> site/miauw/agent-actions.php para preparar/executar acoes confirmadas liberadas por allowlist
      -> wimifarma-miauw-agent /miauw/agent/run para comandos internos ou fallback
   -> outbox
-  -> Evolution API /message/sendText/{instance} ou Meta /{phone_number_id}/messages
+  -> Evolution API /message/sendText ou /sendButtons, ou Meta text/interactive buttons
 ```
 
 ## Banco de dados
@@ -40,6 +41,8 @@ Tabelas criadas pelo servico:
 - `miauw_whatsapp_outbox`: respostas geradas e tentativas de envio pelo transporte WhatsApp escolhido.
 
 O banco nao deve guardar payload bruto externo nem telefone cru. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder.
+
+Confirmacoes por WhatsApp usam tambem `miauw_whatsapp_confirmations`, com remetente em hash/mascara, tool, resumo, `command_payload` sanitizado, status, expiracao e trace. Essa tabela guarda apenas a pendencia operacional necessaria para o botao `Sim`/`Nao`; payload bruto da Evolution/Meta e telefone completo continuam fora do banco.
 
 ## Variaveis
 
@@ -75,6 +78,14 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_CONTEXT_URL=http://wimifarma-com-web/miauw/agent-context.php`
 - `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS=60`
 - `MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS=3500`
+- `MIAUW_WHATSAPP_ACTIONS_URL=http://wimifarma-com-web/miauw/agent-actions.php`
+- `MIAUW_WHATSAPP_ACTIONS_TIMEOUT_MS=8000`
+- `MIAUW_WHATSAPP_CONFIRMATIONS_ENABLED=true`
+- `MIAUW_WHATSAPP_INTERACTIVE_CONFIRMATIONS=true`
+- `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=false`
+- `MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES=15`
+- `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST=registrar_sangria,criar_lancamento_financeiro,criar_conta_gestao`
+- `MIAUW_WHATSAPP_ACTOR_USER_ID=1`
 - `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS=90`
 - `MIAUW_WHATSAPP_RECIPIENT_ALIASES`
 - `MIAUW_WHATSAPP_AGENT_RUN_URL=http://wimifarma-miauw-agent:3100/miauw/agent/run`
@@ -102,6 +113,7 @@ Principais variaveis:
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
 - `POST /miauw/agent-context.php`: endpoint PHP interno, protegido por `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`, usado pelo bridge para exportar `style_context`, treino aprovado, perfil de voz e contratos de tools do Miauby interno antes de chamar o agent.
+- `POST /miauw/agent-actions.php`: endpoint PHP interno, protegido pelo mesmo token, usado pelo bridge para preparar acoes fortes permitidas e executar somente depois de confirmacao pendente no WhatsApp.
 
 O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X-Webhook-Token`, `X-Evolution-Webhook-Token` ou query `?token=...`, para compatibilidade com configuracoes diferentes da Evolution API. No modo Meta, `GET` usa `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `POST` deve usar `X-Hub-Signature-256` com `META_WHATSAPP_APP_SECRET`.
 
@@ -122,6 +134,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Sem `miauby`, conversa simples usa Gemini e nao chama API interna.
 - Com `miauby`, o core Miauby pode usar tools/ponte interna conforme guardrails; escritas fortes seguem dependentes de confirmacao/auditoria e nao devem ser tratadas como texto solto executavel.
 - Antes de chamar o core, o bridge busca contexto compartilhado no PHP para usar o mesmo treino aprovado, perfil de voz, padroes e contratos de tools do Miauby interno. Se essa busca falhar, o bridge segue com contexto minimo e nao libera escrita direta.
+- Quando `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, o bridge pode preparar acoes fortes permitidas em `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST`, guardar uma pendencia por remetente, expirar pendencias antigas e enviar botoes `Sim`/`Nao`. Sem pendencia valida, `sim`, `nao`, `confirmar` ou `cancelar` sao apenas texto e nao executam escrita.
 - Dados sensiveis continuam bloqueados localmente antes de chamar Gemini/core.
 
 ## Modo hibrido de IA
@@ -132,7 +145,11 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - `gemini`: conversa curta passa pelo Gemini; mensagens que parecem comando interno continuam protegidas e podem ser roteadas ao core Miauby quando ele estiver configurado.
 - `hybrid`: mensagens sem `miauby` passam pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens com `miauby`, como `miauby faca sangria`, `miauby pedidos resumo` ou `sangria tal dia miauby`, vao para o `wimifarma-miauw-agent` com tools e guardrails.
 
-No caminho do core, `apps/miauw-whatsapp` chama `site/miauw/agent-context.php` por POST interno tokenizado. O pacote retornado e cacheado por poucos segundos e inclui o mesmo `style_context` que o chat interno usa, com treino aprovado, perfil de voz e exemplos relevantes, alem de `tool_contracts` exportados do registry PHP. Isso evita dois Miaubys com personalidade/capacidades diferentes. Acoes fortes, como sangria, conta da Gestao e encomenda, podem ser entendidas pelo core e voltar como `confirmation_required`; o WhatsApp ainda nao grava a acao sozinho nem trata texto solto como confirmacao. A resposta deve orientar confirmacao no Miauby interno/sistema, nao pedir `confirmar` por WhatsApp.
+No caminho do core, `apps/miauw-whatsapp` chama `site/miauw/agent-context.php` por POST interno tokenizado. O pacote retornado e cacheado por poucos segundos e inclui o mesmo `style_context` que o chat interno usa, com treino aprovado, perfil de voz e exemplos relevantes, alem de `tool_contracts` exportados do registry PHP. Isso evita dois Miaubys com personalidade/capacidades diferentes.
+
+Quando confirmacoes por WhatsApp estiverem ligadas no ambiente, o bridge tenta primeiro `site/miauw/agent-actions.php` para comandos deterministas como financeiro/sangria e Gestao. Se o PHP preparar uma acao forte permitida, o bridge grava a pendencia em `miauw_whatsapp_confirmations` e envia botoes `Sim`/`Nao` por Evolution `/message/sendButtons/{instance}` ou Meta interactive buttons; se o transporte recusar botoes, cai para texto com codigo curto. Ao clicar `Sim` ou responder `sim` com uma pendencia ativa, o bridge chama `agent-actions.php` em modo `execute`; ao clicar `Nao` ou responder `nao`, cancela sem gravar. A execucao continua auditada pelo PHP, usando as mesmas funcoes de confirmacao do Miauby interno.
+
+Com `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=false`, o WhatsApp volta ao comportamento conservador: acoes fortes podem ser entendidas, mas a resposta orienta usar o Miauby interno/sistema para confirmar.
 
 Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como fallback tecnico. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. O prompt base do bridge sempre preserva identidade/persona do Miauby e impede inventar horario, saldo, pedido ou dado operacional. Para baixa latencia e respostas completas com Gemini 2.5, usar `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0` e `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS` suficiente. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
 

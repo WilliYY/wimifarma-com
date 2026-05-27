@@ -33,9 +33,28 @@ type QueueRow = {
   message_id: string;
   remote_jid_ciphertext: string;
   remote_jid_mask: string;
+  sender_phone_hash: string;
   sender_phone_ciphertext: string;
   sender_phone_mask: string;
   body_text: string;
+  attempts: number;
+};
+
+type WhatsappConfirmationDraft = {
+  id?: string;
+  tool: string;
+  summary: string;
+  risk: string;
+  command: JsonRecord;
+};
+
+type PendingConfirmationRow = {
+  id: string;
+  short_id: string;
+  tool: string;
+  summary: string;
+  risk: string;
+  command_payload: JsonRecord;
   attempts: number;
 };
 
@@ -43,6 +62,7 @@ type ReplyResult = {
   text: string;
   engine: ReplyRuntimeEngine;
   reason: string;
+  confirmation?: WhatsappConfirmationDraft;
 };
 
 type ReplyRoute = {
@@ -107,7 +127,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.3.0';
+const SERVICE_VERSION = '0.4.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -132,6 +152,14 @@ const AGENT_CONTEXT_URL = textEnv('MIAUW_WHATSAPP_CONTEXT_URL')
   || 'http://wimifarma-com-web/miauw/agent-context.php';
 const AGENT_CONTEXT_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS', 60, 0, 900);
 const AGENT_CONTEXT_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS', 3500, 500, 15000);
+const ACTIONS_URL = textEnv('MIAUW_WHATSAPP_ACTIONS_URL')
+  || textEnv('MIAUW_AGENT_ACTIONS_URL')
+  || 'http://wimifarma-com-web/miauw/agent-actions.php';
+const ACTIONS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_ACTIONS_TIMEOUT_MS', 8000, 1000, 30000);
+const CONFIRMATIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMATIONS_ENABLED', true);
+const INTERACTIVE_CONFIRMATIONS = boolEnv('MIAUW_WHATSAPP_INTERACTIVE_CONFIRMATIONS', true);
+const CONFIRMED_ACTIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED', false);
+const CONFIRMATION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES', 15, 1, 120);
 const REPLY_ENGINE = replyEngineEnv();
 const GEMINI_API_KEY = textEnv('GEMINI_API_KEY') || textEnv('GOOGLE_AI_API_KEY') || textEnv('GOOGLE_API_KEY') || textEnv('MIAUW_WHATSAPP_GEMINI_API_KEY');
 const GEMINI_API_BASE_URL = trimTrailingSlash(textEnv('GEMINI_API_BASE_URL') || textEnv('MIAUW_WHATSAPP_GEMINI_API_BASE_URL') || 'https://generativelanguage.googleapis.com/v1beta');
@@ -747,6 +775,30 @@ async function ensureSchema(): Promise<void> {
       CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'dead'))
     );
 
+    CREATE TABLE IF NOT EXISTS miauw_whatsapp_confirmations (
+      id UUID PRIMARY KEY,
+      short_id VARCHAR(12) NOT NULL UNIQUE,
+      event_id UUID NOT NULL REFERENCES miauw_whatsapp_events(id) ON DELETE CASCADE,
+      sender_phone_hash CHAR(64) NOT NULL,
+      sender_phone_mask VARCHAR(40) NOT NULL,
+      instance_name VARCHAR(120) NOT NULL,
+      tool VARCHAR(120) NOT NULL,
+      summary TEXT NOT NULL,
+      risk VARCHAR(40) NOT NULL DEFAULT 'alto',
+      command_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status VARCHAR(30) NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      expires_at TIMESTAMPTZ NOT NULL,
+      confirmed_at TIMESTAMPTZ NULL,
+      cancelled_at TIMESTAMPTZ NULL,
+      executed_at TIMESTAMPTZ NULL,
+      error_summary TEXT NOT NULL DEFAULT '',
+      trace_id CHAR(32) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (status IN ('pending', 'confirmed', 'cancelled', 'expired', 'executed', 'failed'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_events_queue
       ON miauw_whatsapp_events (next_attempt_at, created_at)
       WHERE status = 'queued';
@@ -754,6 +806,9 @@ async function ensureSchema(): Promise<void> {
       ON miauw_whatsapp_events (sender_phone_hash, created_at);
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_outbox_status
       ON miauw_whatsapp_outbox (status, next_attempt_at, created_at);
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_confirmations_pending
+      ON miauw_whatsapp_confirmations (sender_phone_hash, expires_at, created_at)
+      WHERE status = 'pending';
   `);
 
   await pgPool.query(`
@@ -926,7 +981,7 @@ async function nextQueueRow(): Promise<QueueRow | null> {
     await client.query('BEGIN');
     const result = await client.query<QueueRow>(
       `SELECT id, trace_id, instance_name, message_id, remote_jid_ciphertext, remote_jid_mask,
-              sender_phone_ciphertext, sender_phone_mask, body_text, attempts
+              sender_phone_hash, sender_phone_ciphertext, sender_phone_mask, body_text, attempts
          FROM miauw_whatsapp_events
         WHERE status = 'queued'
           AND next_attempt_at <= NOW()
@@ -1018,9 +1073,13 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const recipientPhone = decryptText(row.sender_phone_ciphertext);
     const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
     const replyStartedAt = Date.now();
-    const reply = await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask);
+    const confirmationReply = await maybeHandleConfirmationReply(row);
+    const reply = confirmationReply || await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask);
     const replyLatencyMs = Date.now() - replyStartedAt;
-    const replyText = safeText(reply.text, 1800);
+    const confirmation = reply.confirmation
+      ? await createPendingConfirmation(row, reply.confirmation)
+      : undefined;
+    const replyText = safeText(formatReplyTextWithConfirmation(reply.text, confirmation), 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
 
     const outboxId = crypto.randomUUID();
@@ -1047,7 +1106,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     );
 
     await sleep(randomInt(MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS));
-    const providerMessageId = await sendProviderText(recipientAddress, replyText, row.instance_name || defaultInstanceName());
+    const providerMessageId = await sendProviderReply(recipientAddress, replyText, row.instance_name || defaultInstanceName(), confirmation);
 
     await pgPool.query(
       `UPDATE miauw_whatsapp_outbox
@@ -1076,6 +1135,198 @@ function defaultInstanceName(): string {
   return WHATSAPP_PROVIDER === 'meta'
     ? (META_PHONE_NUMBER_ID || 'meta-cloud-api')
     : EVOLUTION_INSTANCE;
+}
+
+function whatsappConfirmationsReady(): boolean {
+  return CONFIRMATIONS_ENABLED
+    && CONFIRMED_ACTIONS_ENABLED
+    && ACTIONS_URL !== ''
+    && INTERNAL_TOKEN !== '';
+}
+
+function confirmationShortId(): string {
+  return crypto.randomBytes(4).toString('hex');
+}
+
+function formatReplyTextWithConfirmation(text: string, confirmation?: WhatsappConfirmationDraft): string {
+  if (!confirmation?.id) return text;
+  const clean = safeText(text, 1500);
+  if (clean.toLowerCase().includes(confirmation.id.toLowerCase())) return clean;
+  return `${clean}\n\nResponda pelos botoes ou mande SIM/NAO. Codigo: ${confirmation.id}`;
+}
+
+function parseConfirmationDecision(message: string): { action: 'confirm' | 'cancel'; shortId?: string } | null {
+  const raw = safeText(message, 220);
+  const lower = raw.toLowerCase();
+  const idMatch = lower.match(/\b[0-9a-f]{8}\b/i);
+  const buttonMatch = lower.match(/\bmiauw_confirm_(yes|no):([0-9a-f]{8})\b/i);
+  if (buttonMatch) {
+    return {
+      action: buttonMatch[1] === 'yes' ? 'confirm' : 'cancel',
+      shortId: buttonMatch[2],
+    };
+  }
+
+  const clean = normalizeIntentText(raw);
+  const wantsCancel = /^(nao|n|cancelar|cancela|cancelado|deixa|esquece|negativo)(\s|$)/.test(clean);
+  const wantsConfirm = /^(sim|s|confirmar|confirma|confirmo|pode|ok|positivo|feito)(\s|$)/.test(clean);
+  if (!wantsCancel && !wantsConfirm) return null;
+  return {
+    action: wantsCancel ? 'cancel' : 'confirm',
+    shortId: idMatch ? idMatch[0].toLowerCase() : undefined,
+  };
+}
+
+async function createPendingConfirmation(row: QueueRow, draft: WhatsappConfirmationDraft): Promise<WhatsappConfirmationDraft> {
+  if (!whatsappConfirmationsReady()) return draft;
+
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'expired',
+            error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_new_confirmation' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'`,
+    [row.sender_phone_hash],
+  );
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const shortId = confirmationShortId();
+    try {
+      await pgPool.query(
+        `INSERT INTO miauw_whatsapp_confirmations (
+          id, short_id, event_id, sender_phone_hash, sender_phone_mask, instance_name,
+          tool, summary, risk, command_payload, expires_at, trace_id
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10::jsonb, NOW() + ($11::int * INTERVAL '1 minute'), $12
+        )`,
+        [
+          crypto.randomUUID(),
+          shortId,
+          row.id,
+          row.sender_phone_hash,
+          row.sender_phone_mask,
+          row.instance_name || defaultInstanceName(),
+          safeText(draft.tool, 120),
+          safeText(draft.summary, 500),
+          safeText(draft.risk || 'alto', 40),
+          JSON.stringify(draft.command || {}),
+          CONFIRMATION_TTL_MINUTES,
+          row.trace_id,
+        ],
+      );
+      return { ...draft, id: shortId };
+    } catch (error) {
+      if (attempt >= 3) throw error;
+    }
+  }
+
+  return draft;
+}
+
+async function expireOldConfirmations(): Promise<void> {
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'expired',
+            error_summary = CASE WHEN error_summary = '' THEN 'confirmation_expired' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE status = 'pending'
+        AND expires_at <= NOW()`,
+  );
+}
+
+async function findPendingConfirmation(senderHash: string, shortId?: string): Promise<PendingConfirmationRow | null> {
+  await expireOldConfirmations();
+  const params: unknown[] = [senderHash];
+  let shortFilter = '';
+  if (shortId) {
+    params.push(shortId);
+    shortFilter = `AND short_id = $${params.length}`;
+  }
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'
+        ${shortFilter}
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    params,
+  );
+  return result.rows[0] || null;
+}
+
+async function maybeHandleConfirmationReply(row: QueueRow): Promise<ReplyResult | null> {
+  if (!whatsappConfirmationsReady()) return null;
+  const decision = parseConfirmationDecision(row.body_text);
+  if (!decision) return null;
+
+  const pending = await findPendingConfirmation(row.sender_phone_hash, decision.shortId);
+  if (!pending) {
+    return {
+      text: 'Nao achei acao pendente para confirmar agora. Manda o comando de novo com miauby.',
+      engine: 'local',
+      reason: 'confirmation_not_found',
+    };
+  }
+
+  if (decision.action === 'cancel') {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'cancelled',
+              cancelled_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id],
+    );
+    return {
+      text: 'Cancelado. Nada foi gravado.',
+      engine: 'local',
+      reason: 'confirmation_cancelled',
+    };
+  }
+
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'confirmed',
+            attempts = attempts + 1,
+            confirmed_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [pending.id],
+  );
+
+  try {
+    const executed = await executeWhatsappAction(pending, row.trace_id, row.sender_phone_mask);
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'executed',
+              executed_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id],
+    );
+    return {
+      text: executed,
+      engine: 'miauw',
+      reason: 'confirmation_executed',
+    };
+  } catch (error) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'failed',
+              error_summary = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id, safeError(error)],
+    );
+    return {
+      text: `Nao consegui executar essa acao agora. ${safeError(error)}`,
+      engine: 'miauw',
+      reason: 'confirmation_execution_failed',
+    };
+  }
 }
 
 function stripLeadingCommand(value: string, patterns: RegExp[]): string {
@@ -1376,8 +1627,10 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
     'Nao exponha dados sensiveis, token, SQL, stack trace ou bastidor tecnico.',
     'Use o treino, perfil de voz, padroes aprovados e contratos do Miauby interno quando recebidos.',
     'Pode usar ferramentas do core somente quando a rota permitir.',
-    'Se uma ferramenta forte retornar confirmation_required, explique o resumo e diga que precisa confirmar no Miauby interno ou no sistema.',
-    'Nao peca para confirmar acao forte por mensagem solta no WhatsApp.',
+    whatsappConfirmationsReady()
+      ? 'Se uma ferramenta forte retornar confirmation_required, devolva o resumo; o bridge cria botoes Sim/Nao e so executa apos pendencia auditada.'
+      : 'Se uma ferramenta forte retornar confirmation_required, explique o resumo e diga que precisa confirmar no Miauby interno ou no sistema.',
+    'Nao trate confirmacao solta como acao executada; precisa existir pendencia auditada.',
     'Nao afirme que gravou, pagou, confirmou, alterou ou excluiu dado pelo WhatsApp sem confirmacao auditada.',
   ];
 
@@ -1408,8 +1661,8 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
     anti_patterns: uniqueStringList([
       'tutorial longo',
       'lista de ferramentas',
-      'confirmacao de escrita sem sessao',
-      'pedir confirmar por WhatsApp',
+      'confirmacao de escrita sem pendencia',
+      'executar acao sem botao/pendencia',
       ...safeStringList(sharedStyle.anti_patterns ?? sharedStyle.antiPatterns, 8),
     ], 12),
   };
@@ -1465,8 +1718,130 @@ function routeWhatsappReply(message: string): ReplyRoute {
   return { engine: 'miauw', intent: 'simple_chat', message, reason: 'fallback_miauw' };
 }
 
+function confirmationDraftFromData(data: JsonRecord): WhatsappConfirmationDraft | null {
+  const confirmation = isRecord(data.confirmation) ? data.confirmation : data;
+  const tool = safeText(confirmation.tool, 120);
+  const command = isRecord(confirmation.command) ? confirmation.command : isRecord(confirmation.command_payload) ? confirmation.command_payload : {};
+  const summary = safeText(confirmation.summary, 500);
+  if (!tool || !summary || Object.keys(command).length === 0) return null;
+  return {
+    tool,
+    command,
+    summary,
+    risk: safeText(confirmation.risk, 40) || 'alto',
+  };
+}
+
+async function requestWhatsappActionPrepare(message: string, traceId: string, senderMask: string): Promise<ReplyResult | null> {
+  if (!whatsappConfirmationsReady()) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
+  try {
+    const response = await fetch(ACTIONS_URL, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Miauw-Agent-Token': INTERNAL_TOKEN,
+      },
+      body: JSON.stringify({
+        mode: 'prepare',
+        trace_id: traceId,
+        message,
+        user_context: {
+          username: `whatsapp:${senderMask}`,
+          role: 'whatsapp_interno',
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data) || data.ok !== true) return null;
+    const status = safeText(data.status, 80);
+    if (status === 'needs_input') {
+      return {
+        text: safeText(data.text, 1200) || 'Faltou dado para preparar essa acao.',
+        engine: 'miauw',
+        reason: 'whatsapp_action_needs_input',
+      };
+    }
+    if (status !== 'confirmation_required') return null;
+    const draft = confirmationDraftFromData(data);
+    if (!draft) return null;
+    return {
+      text: `Antes de gravar, confirma essa acao?\n${draft.summary}`,
+      engine: 'miauw',
+      reason: 'whatsapp_action_confirmation_required',
+      confirmation: draft,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: string, senderMask: string): Promise<string> {
+  if (!whatsappConfirmationsReady()) throw new Error('whatsapp_confirmations_not_enabled');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
+  try {
+    const response = await fetch(ACTIONS_URL, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Miauw-Agent-Token': INTERNAL_TOKEN,
+      },
+      body: JSON.stringify({
+        mode: 'execute',
+        trace_id: traceId,
+        confirmation_id: pending.short_id,
+        tool: pending.tool,
+        command: pending.command_payload,
+        summary: pending.summary,
+        user_context: {
+          username: `whatsapp:${senderMask}`,
+          role: 'whatsapp_interno',
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data) || data.ok !== true) {
+      throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `whatsapp_action_http_${response.status}`);
+    }
+    return safeText(data.text, 1800) || 'Acao confirmada.';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft | null {
+  if (!Array.isArray(events)) return null;
+  for (const event of events) {
+    if (!isRecord(event)) continue;
+    const requiresConfirmation = event.confirmation_required === true || event.confirmationRequired === true;
+    const tool = safeText(event.tool, 120);
+    const args = isRecord(event.args) ? event.args : {};
+    const summary = safeText(event.summary, 500);
+    if (!requiresConfirmation || !tool || Object.keys(args).length === 0) continue;
+    return {
+      tool,
+      command: args,
+      summary: summary || `Executar ${tool}.`,
+      risk: safeText(event.risk, 40) || 'alto',
+    };
+  }
+  return null;
+}
+
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string): Promise<ReplyResult> {
   const route = routeWhatsappReply(message);
+  if (route.useTools) {
+    const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask);
+    if (prepared) return prepared;
+  }
   if (route.engine === 'local' || route.engine === 'blocked') {
     return { text: route.localText || route.message, engine: route.engine, reason: route.reason };
   }
@@ -1480,15 +1855,15 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     } catch (error) {
       if (REPLY_ENGINE === 'gemini') throw error;
       const miauwReply = await requestMiauwReply(message, traceId, senderMask, route);
-      return { text: miauwReply.text, engine: 'miauw', reason: `gemini_failed_fallback:${safeError(error)}` };
+      return { text: miauwReply.text, engine: 'miauw', reason: `gemini_failed_fallback:${safeError(error)}`, confirmation: miauwReply.confirmation };
     }
   }
 
   const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route);
-  return { text: miauwReply.text, engine: 'miauw', reason: route.reason };
+  return { text: miauwReply.text, engine: 'miauw', reason: route.reason, confirmation: miauwReply.confirmation };
 }
 
-async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute): Promise<{ text: string }> {
+async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute): Promise<{ text: string; confirmation?: WhatsappConfirmationDraft }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const useTools = route?.useTools === true;
   let sharedContext: SharedMiauwContext | null = null;
@@ -1527,6 +1902,15 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
     if (!response.ok || !isRecord(data) || data.ok !== true) {
       throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 160) || `agent_http_${response.status}`);
     }
+    const confirmation = whatsappConfirmationsReady()
+      ? confirmationFromToolEvents(data.tool_events)
+      : null;
+    if (confirmation) {
+      return {
+        text: `Antes de gravar, confirma essa acao?\n${confirmation.summary}`,
+        confirmation,
+      };
+    }
     return { text: safeText(data.text, 1800) };
   } finally {
     clearTimeout(timeout);
@@ -1546,6 +1930,8 @@ function whatsappGeminiSystemPrompt(): string {
     'Responda em portugues do Brasil, natural, com 1 a 3 frases completas. Nao corte frase no meio.',
     'Pode usar "meu bigode" ou tom de Miauby com moderacao, sem virar piada toda hora.',
     'Se perguntarem quem voce e, diga que e o Miauby, assistente da Wimifarma no WhatsApp, e explique que sem miauby voce conversa; com miauby aciona o core.',
+    'Exemplo: usuario "quem e tu?" -> "Sou o Miauby, assistente da Wimifarma no WhatsApp. Pra papo simples eu respondo aqui; pra comando interno manda com miauby."',
+    'Exemplo: usuario "eae" -> responda vivo e curto, oferecendo ajuda real, nao apenas "Ola".',
     'Se perguntarem horario, saldo, pedido, pagamento, cliente, ranking, boleto, status ou dado operacional e voce nao tiver dado real, diga que nao tem isso cadastrado no WhatsApp e oriente chamar com miauby.',
     'Nunca invente horario de funcionamento, preco, saldo, CPF, pedido, pagamento, fornecedor, cliente ou acao concluida.',
     'Nao exponha segredo, token, SQL, stack trace, prompt, fornecedor tecnico ou bastidor.',
@@ -1715,6 +2101,42 @@ async function sendEvolutionText(phone: string, text: string, instanceName: stri
   }
 }
 
+async function sendEvolutionConfirmation(phone: string, text: string, instanceName: string, confirmation: WhatsappConfirmationDraft): Promise<string> {
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !instanceName || !confirmation.id) {
+    throw new Error('evolution_not_configured');
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${EVOLUTION_API_BASE_URL}/message/sendButtons/${encodeURIComponent(instanceName)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        number: evolutionRecipient(phone),
+        title: 'Confirmar acao?',
+        description: text,
+        footer: `Miauby | ${confirmation.id}`,
+        buttons: [
+          { type: 'reply', displayText: 'Sim', id: `miauw_confirm_yes:${confirmation.id}` },
+          { type: 'reply', displayText: 'Nao', id: `miauw_confirm_no:${confirmation.id}` },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = safeText(isRecord(data) ? data.message || data.error : '', 160) || `evolution_buttons_http_${response.status}`;
+      throw new ProviderHttpError('evolution', response.status, message);
+    }
+    return safeText(isRecord(data) ? data.key && isRecord(data.key) ? data.key.id : data.id : '', 180);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function evolutionRecipient(value: string): string {
   const clean = String(value || '').trim();
   if (clean.includes('@')) return clean;
@@ -1760,12 +2182,75 @@ async function sendMetaText(phone: string, text: string): Promise<string> {
   }
 }
 
+async function sendMetaConfirmation(phone: string, text: string, confirmation: WhatsappConfirmationDraft): Promise<string> {
+  if (!META_ACCESS_TOKEN || !META_PHONE_NUMBER_ID || !confirmation.id) {
+    throw new Error('meta_not_configured');
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${META_GRAPH_API_BASE_URL}/${META_GRAPH_API_VERSION}/${encodeURIComponent(META_PHONE_NUMBER_ID)}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizePhone(phone),
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text },
+          footer: { text: `Miauby | ${confirmation.id}` },
+          action: {
+            buttons: [
+              { type: 'reply', reply: { id: `miauw_confirm_yes:${confirmation.id}`, title: 'Sim' } },
+              { type: 'reply', reply: { id: `miauw_confirm_no:${confirmation.id}`, title: 'Nao' } },
+            ],
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = isRecord(data.error) ? data.error : data;
+      const message = safeText(isRecord(error) ? error.message || error.error_user_msg || error.error : '', 180) || `meta_buttons_http_${response.status}`;
+      throw new ProviderHttpError('meta', response.status, message);
+    }
+    const messages = isRecord(data) && Array.isArray(data.messages) ? data.messages : [];
+    const first = isRecord(messages[0]) ? messages[0] : {};
+    return safeText(first.id || '', 180);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function sendProviderText(phone: string, text: string, instanceName: string): Promise<string> {
   return withProviderSendGate(() => (
     WHATSAPP_PROVIDER === 'meta'
       ? sendMetaText(phone, text)
       : sendEvolutionText(phone, text, instanceName)
   ));
+}
+
+async function sendProviderReply(phone: string, text: string, instanceName: string, confirmation?: WhatsappConfirmationDraft): Promise<string> {
+  if (!confirmation?.id || !INTERACTIVE_CONFIRMATIONS) {
+    return sendProviderText(phone, text, instanceName);
+  }
+  return withProviderSendGate(async () => {
+    try {
+      return WHATSAPP_PROVIDER === 'meta'
+        ? await sendMetaConfirmation(phone, text, confirmation)
+        : await sendEvolutionConfirmation(phone, text, instanceName, confirmation);
+    } catch {
+      return WHATSAPP_PROVIDER === 'meta'
+        ? await sendMetaText(phone, text)
+        : await sendEvolutionText(phone, text, instanceName);
+    }
+  });
 }
 
 function publicStatus(): JsonRecord {
@@ -1798,6 +2283,11 @@ function publicStatus(): JsonRecord {
     reply_cache_entries: replyCache.size,
     local_replies_enabled: false,
     whatsapp_write_actions: 'core_confirmation',
+    whatsapp_confirmations_enabled: CONFIRMATIONS_ENABLED,
+    whatsapp_confirmed_actions_enabled: CONFIRMED_ACTIONS_ENABLED,
+    whatsapp_interactive_confirmations: INTERACTIVE_CONFIRMATIONS,
+    whatsapp_confirmation_ttl_minutes: CONFIRMATION_TTL_MINUTES,
+    whatsapp_actions_configured: ACTIONS_URL !== '' && INTERNAL_TOKEN !== '',
     internal_read_tools_enabled: true,
     shared_core_context_enabled: AGENT_CONTEXT_URL !== '' && INTERNAL_TOKEN !== '',
     shared_core_context_cache_ttl_seconds: AGENT_CONTEXT_CACHE_TTL_SECONDS,

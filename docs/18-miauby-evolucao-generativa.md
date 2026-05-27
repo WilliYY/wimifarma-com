@@ -214,6 +214,7 @@ Miauby ja possui:
   - o Miauby pode responder por WhatsApp usando Evolution API ou Meta Cloud API como transporte, recebendo eventos por webhook e enviando respostas pela API de mensagem;
   - o transporte WhatsApp nao deve virar motor de IA nem dono de regra operacional; ele apenas entrega a mensagem ao Miauby e devolve a resposta autorizada;
   - o bridge WhatsApp agora busca `site/miauw/agent-context.php` para reutilizar o mesmo treino aprovado, perfil de voz, exemplos relevantes e contratos de tools do Miauby interno antes de chamar o agent;
+  - `site/miauw/agent-actions.php` prepara comandos fortes permitidos do WhatsApp, como sangria e contas da Gestao, e o bridge guarda uma pendencia curta em Postgres para mostrar botoes `Sim`/`Nao`; a execucao so acontece com `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, tool na allowlist e pendencia valida;
   - a primeira etapa deve ser restrita a numeros autorizados, preferencialmente com prefixo `miauby`, ignorando clientes e grupos;
   - usar o numero publico do Cashback exige cuidado extra, porque clientes poderiam conversar com um assistente interno se nao houver allowlist;
   - Gemini ou outro provedor pode ser avaliado como backend configuravel do Miauby, mas precisa passar pelos mesmos contratos de persona, guardrails, tools, confirmacoes e traces.
@@ -225,6 +226,7 @@ Arquivos:
 - `site/miauw/api.php`
 - `site/miauw/app.js`
 - `site/miauw/agent-tools.php`
+- `site/miauw/agent-actions.php`
 - `site/miauw/diagnostico.php`
 - `site/miauw/treino.php`
 - `site/miauw/miauw-diagnostics.php`
@@ -285,6 +287,7 @@ Integracoes:
 - Treino de resposta tambem deve ser revisado antes de virar contexto aprovado; exemplo ruim, incompleto ou sensivel deve ficar pendente/rejeitado, nunca aprovado automaticamente para todos.
 - Revisar treino deve preservar versoes: quando algo aprovado muda, criar versao nova e marcar a anterior como `superado`, sem apagar a origem.
 - Treino aprovado do Miauby interno tambem alimenta o WhatsApp quando a mensagem aciona o core por `miauby`; Gemini sem `miauby` recebe apenas instrucoes curtas e sanitizadas, nao o pacote completo de treino/tools.
+- Confirmacoes por WhatsApp nao substituem a seguranca do Miauby interno: elas precisam de pendencia no bridge, remetente autorizado, tool permitida, expiracao curta e execucao pelo endpoint PHP tokenizado.
 - Respostas generativas devem separar fato real, inferencia e proximo passo.
 - Balões do widget devem ser curtos, sem codigo, e usar o comentario do alerta quando existir. Para encomendas da Cotacao, comentar apenas quando passou de 1 dia.
 - A autonomia deve ser gradual: primeiro diagnosticar, depois sugerir, depois executar apenas acoes pequenas com trilha de auditoria.

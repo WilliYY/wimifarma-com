@@ -195,6 +195,15 @@ if (!defined('MIAUW_AGENT_INTERNAL_TOKEN')) {
     define('MIAUW_AGENT_INTERNAL_TOKEN', $miauwAgentInternalToken);
 }
 
+if (!defined('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED')) {
+    define('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED', miauw_env_bool(array('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED'), false));
+}
+
+if (!defined('MIAUW_WHATSAPP_ACTOR_USER_ID')) {
+    $miauwWhatsappActorUserId = (int) miauw_env_string(array('MIAUW_WHATSAPP_ACTOR_USER_ID'));
+    define('MIAUW_WHATSAPP_ACTOR_USER_ID', $miauwWhatsappActorUserId > 0 ? $miauwWhatsappActorUserId : 1);
+}
+
 if (!defined('MIAUW_AGENT_INTERNAL_BASE_URL')) {
     $miauwAgentInternalBaseUrl = miauw_env_string(array('MIAUW_AGENT_INTERNAL_BASE_URL'));
     define('MIAUW_AGENT_INTERNAL_BASE_URL', $miauwAgentInternalBaseUrl !== '' ? $miauwAgentInternalBaseUrl : 'http://wimifarma-miauw-agent:3100/miauw/agent');
