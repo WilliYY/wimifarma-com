@@ -411,6 +411,27 @@ function moduleCardsForKeys(keys: string[]): WhatsappModuleCard[] {
   return WHATSAPP_MODULE_CARDS.filter((card) => selected.has(card.key));
 }
 
+function phoneHashCandidates(primaryHash: string, phone: string): string[] {
+  const hashes: string[] = [];
+  const addHash = (hash: string) => {
+    const clean = safeText(hash, 64);
+    if (clean && !hashes.includes(clean)) hashes.push(clean);
+  };
+  const addPhone = (digits: string) => {
+    const normalized = normalizePhone(digits);
+    if (!normalized) return;
+    addHash(sha256(normalized));
+    if (normalized.length === 11) addHash(sha256(`55${normalized}`));
+    if (normalized.startsWith('55') && normalized.length === 13) addHash(sha256(normalized.slice(2)));
+  };
+
+  addHash(primaryHash);
+  addPhone(phone);
+  const alias = applyRecipientAlias(phone);
+  if (alias !== phone) addPhone(alias);
+  return hashes;
+}
+
 function applyRecipientAlias(value: string): string {
   const normalized = normalizePhone(value);
   if (!normalized || RECIPIENT_ALIASES.size === 0) return value;
@@ -1167,14 +1188,17 @@ async function updateAllowlistContact(id: string, phone: string, displayName: st
   await setContactModulesByHash(nextHash, moduleKeys);
 }
 
-async function allowedModuleCardsForHash(phoneHash: string): Promise<WhatsappModuleCard[]> {
+async function allowedModuleCardsForHashes(phoneHashes: string[]): Promise<WhatsappModuleCard[]> {
+  const hashes = [...new Set(phoneHashes.map((hash) => safeText(hash, 64)).filter(Boolean))];
+  if (!hashes.length) return moduleCardsForKeys(defaultModuleKeys());
+  const placeholders = hashes.map((_, index) => `$${index + 1}`).join(', ');
   const result = await pgPool.query<{ module_key: string }>(
     `SELECT module_key
        FROM miauw_whatsapp_contact_modules
-      WHERE phone_hash = $1
+      WHERE phone_hash IN (${placeholders})
         AND enabled = TRUE
       ORDER BY module_key`,
-    [phoneHash],
+    hashes,
   );
   const keys = result.rows.map((row) => row.module_key);
   return moduleCardsForKeys(keys.length ? keys : defaultModuleKeys());
@@ -1435,9 +1459,10 @@ async function processQueueRow(row: QueueRow): Promise<void> {
 
     const recipientPhone = decryptText(row.sender_phone_ciphertext);
     const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
+    const senderModuleHashes = phoneHashCandidates(row.sender_phone_hash, recipientPhone);
     const replyStartedAt = Date.now();
     const confirmationReply = await maybeHandleConfirmationReply(row);
-    const reply = confirmationReply || await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask, row.sender_phone_hash);
+    const reply = confirmationReply || await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask, senderModuleHashes);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
@@ -2231,9 +2256,9 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
   return null;
 }
 
-async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHash: string): Promise<ReplyResult> {
+async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[]): Promise<ReplyResult> {
   if (looksLikeModuleMenuRequest(message)) {
-    const cards = await allowedModuleCardsForHash(senderHash);
+    const cards = await allowedModuleCardsForHashes(senderHashes);
     return {
       text: formatModuleMenu(cards),
       engine: 'local',
