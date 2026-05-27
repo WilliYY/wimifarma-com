@@ -142,7 +142,10 @@ Desenho:
 - o transporte envia eventos de mensagem recebida por webhook para `https://wimifarma.com/miauw/whatsapp/webhook`;
 - o endpoint valida token secreto, origem/evento, instancia, numero remetente, prefixo e tipo de conversa antes de chamar o Miauby;
 - eventos aceitos entram em fila Postgres com dedupe por provider/instancia/message id;
-- o Miauby continua sendo o motor de resposta e de permissao; Evolution API ou Meta Cloud API devem ser apenas transporte de entrada/saida;
+- o modo `MIAUW_WHATSAPP_AI_MODE=miauw` usa o core Miauby interno/OpenAI como motor de resposta;
+- o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
+- o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para mensagens simples quando `GEMINI_API_KEY` estiver configurada e roteia comandos internos para o core Miauby;
+- Evolution API ou Meta Cloud API devem ser apenas transporte de entrada/saida;
 - a resposta volta pela API estruturada do transporte escolhido, por exemplo envio de texto para a mesma conversa.
 
 Regras iniciais obrigatorias:
@@ -153,7 +156,7 @@ Regras iniciais obrigatorias:
 - manter uma resposta por mensagem recebida, rate limit por remetente, rate limit global, intervalo minimo entre envios e pausa automatica quando o transporte responder timeout, `429` ou `5xx`;
 - manter acoes fortes bloqueadas ou retornando confirmacao humana auditada; WhatsApp nao deve virar atalho para sangria, contas, encomenda ou escrita sensivel sem fluxo proprio;
 - registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token; o painel operacional deve seguir a mesma regra;
-- se for usar Gemini ou outro provedor, encapsular como motor configuravel do Miauby, nao como resposta solta direto na Evolution API.
+- se for usar Gemini ou outro provedor, encapsular como motor configuravel do bridge/Miauby, nao como resposta solta direto na Evolution API.
 
 Cuidados sobre o numero:
 
@@ -181,7 +184,14 @@ Variaveis:
 - `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE`
 - `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS`
 - `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS`
+- `MIAUW_WHATSAPP_AI_MODE`
+- `MIAUW_WHATSAPP_GEMINI_MODEL`
+- `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS`
+- `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100`
+- `MIAUW_WHATSAPP_CONTEXT_PACK`
 - `MIAUW_WHATSAPP_PROVIDER`
+- `GEMINI_API_KEY`
+- `GEMINI_API_BASE_URL`
 - `EVOLUTION_API_BASE_URL`
 - `EVOLUTION_API_KEY`
 - `EVOLUTION_API_INSTANCE`
