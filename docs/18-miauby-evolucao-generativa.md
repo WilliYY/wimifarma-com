@@ -213,6 +213,7 @@ Miauby ja possui:
   - o canal nasce desligado por `MIAUW_WHATSAPP_ENABLED=false` e so deve responder depois de configurar segredos, transporte WhatsApp e allowlist no VPS;
   - o Miauby pode responder por WhatsApp usando Evolution API ou Meta Cloud API como transporte, recebendo eventos por webhook e enviando respostas pela API de mensagem;
   - o transporte WhatsApp nao deve virar motor de IA nem dono de regra operacional; ele apenas entrega a mensagem ao Miauby e devolve a resposta autorizada;
+  - o bridge WhatsApp agora busca `site/miauw/agent-context.php` para reutilizar o mesmo treino aprovado, perfil de voz, exemplos relevantes e contratos de tools do Miauby interno antes de chamar o agent;
   - a primeira etapa deve ser restrita a numeros autorizados, preferencialmente com prefixo `miauby`, ignorando clientes e grupos;
   - usar o numero publico do Cashback exige cuidado extra, porque clientes poderiam conversar com um assistente interno se nao houver allowlist;
   - Gemini ou outro provedor pode ser avaliado como backend configuravel do Miauby, mas precisa passar pelos mesmos contratos de persona, guardrails, tools, confirmacoes e traces.
@@ -283,6 +284,7 @@ Integracoes:
 - Revisao de memorias e padroes deve marcar status e manter historico; nao apagar dado automaticamente por clique operacional.
 - Treino de resposta tambem deve ser revisado antes de virar contexto aprovado; exemplo ruim, incompleto ou sensivel deve ficar pendente/rejeitado, nunca aprovado automaticamente para todos.
 - Revisar treino deve preservar versoes: quando algo aprovado muda, criar versao nova e marcar a anterior como `superado`, sem apagar a origem.
+- Treino aprovado do Miauby interno tambem alimenta o WhatsApp quando a mensagem aciona o core por `miauby`; Gemini sem `miauby` recebe apenas instrucoes curtas e sanitizadas, nao o pacote completo de treino/tools.
 - Respostas generativas devem separar fato real, inferencia e proximo passo.
 - Balões do widget devem ser curtos, sem codigo, e usar o comentario do alerta quando existir. Para encomendas da Cotacao, comentar apenas quando passou de 1 dia.
 - A autonomia deve ser gradual: primeiro diagnosticar, depois sugerir, depois executar apenas acoes pequenas com trilha de auditoria.
@@ -308,7 +310,7 @@ Integracoes:
 - A tela de diagnostico usa o status publico (`configured`, `validated`, `status`) e nao chama a OpenAI automaticamente. Um teste online explicito ainda pode ser adicionado depois.
 - Preferir respostas operacionais e sem codigo para usuarios finais. Codigo, SQL, stack trace e comandos devem aparecer apenas em contexto tecnico autorizado.
 - Medir latencia do widget e da API antes de aumentar contexto, modelos ou autonomia. Primeiro otimizar consultas, cache e tools controladas.
-- Para WhatsApp, criar endpoint dedicado em `site/miauw/` em vez de reutilizar `api.php`, porque o fluxo nao tem sessao PHP/CSRF do operador e precisa de validacao propria de webhook.
+- Para WhatsApp, usar endpoints dedicados em `site/miauw/` em vez de reutilizar `api.php`, porque o fluxo nao tem sessao PHP/CSRF do operador e precisa de validacao propria. `agent-context.php` so exporta contexto tokenizado; `agent-tools.php` continua sendo a ponte auditada de tools.
 - Manter resposta WhatsApp inicialmente textual e curta; audio, anexos e comandos de escrita devem vir depois de auditoria, testes e politica de privacidade.
 
 ## Riscos ao alterar

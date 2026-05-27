@@ -23,6 +23,7 @@ WhatsApp
   -> Postgres dedicado: evento + fila
   -> roteador de IA do bridge
      -> Gemini para conversa simples, quando MIAUW_WHATSAPP_AI_MODE=hybrid e GEMINI_API_KEY existe
+     -> site/miauw/agent-context.php para buscar treino/perfil/tools compartilhados do Miauby interno
      -> wimifarma-miauw-agent /miauw/agent/run para comandos internos ou fallback
   -> outbox
   -> Evolution API /message/sendText/{instance} ou Meta /{phone_number_id}/messages
@@ -71,6 +72,9 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100=35`
 - `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
+- `MIAUW_WHATSAPP_CONTEXT_URL=http://wimifarma-com-web/miauw/agent-context.php`
+- `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS=60`
+- `MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS=3500`
 - `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS=90`
 - `MIAUW_WHATSAPP_RECIPIENT_ALIASES`
 - `MIAUW_WHATSAPP_AGENT_RUN_URL=http://wimifarma-miauw-agent:3100/miauw/agent/run`
@@ -97,6 +101,7 @@ Principais variaveis:
 - `GET /miauw/whatsapp/webhook`: verificacao `hub.challenge` da Meta Cloud API.
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
+- `POST /miauw/agent-context.php`: endpoint PHP interno, protegido por `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`, usado pelo bridge para exportar `style_context`, treino aprovado, perfil de voz e contratos de tools do Miauby interno antes de chamar o agent.
 
 O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X-Webhook-Token`, `X-Evolution-Webhook-Token` ou query `?token=...`, para compatibilidade com configuracoes diferentes da Evolution API. No modo Meta, `GET` usa `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `POST` deve usar `X-Hub-Signature-256` com `META_WHATSAPP_APP_SECRET`.
 
@@ -116,6 +121,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - O roteador separa conversa solta de comando interno pela palavra `miauby`.
 - Sem `miauby`, conversa simples usa Gemini e nao chama API interna.
 - Com `miauby`, o core Miauby pode usar tools/ponte interna conforme guardrails; escritas fortes seguem dependentes de confirmacao/auditoria e nao devem ser tratadas como texto solto executavel.
+- Antes de chamar o core, o bridge busca contexto compartilhado no PHP para usar o mesmo treino aprovado, perfil de voz, padroes e contratos de tools do Miauby interno. Se essa busca falhar, o bridge segue com contexto minimo e nao libera escrita direta.
 - Dados sensiveis continuam bloqueados localmente antes de chamar Gemini/core.
 
 ## Modo hibrido de IA
@@ -125,6 +131,8 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - `miauw`: todas as respostas passam pelo `wimifarma-miauw-agent`, usando o core interno e a OpenAI configurada no Miauby.
 - `gemini`: conversa curta passa pelo Gemini; mensagens que parecem comando interno continuam protegidas e podem ser roteadas ao core Miauby quando ele estiver configurado.
 - `hybrid`: mensagens sem `miauby` passam pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens com `miauby`, como `miauby faca sangria`, `miauby pedidos resumo` ou `sangria tal dia miauby`, vao para o `wimifarma-miauw-agent` com tools e guardrails.
+
+No caminho do core, `apps/miauw-whatsapp` chama `site/miauw/agent-context.php` por POST interno tokenizado. O pacote retornado e cacheado por poucos segundos e inclui o mesmo `style_context` que o chat interno usa, com treino aprovado, perfil de voz e exemplos relevantes, alem de `tool_contracts` exportados do registry PHP. Isso evita dois Miaubys com personalidade/capacidades diferentes. Acoes fortes, como sangria, conta da Gestao e encomenda, podem ser entendidas pelo core e voltar como `confirmation_required`; o WhatsApp ainda nao grava a acao sozinho nem trata texto solto como confirmacao.
 
 Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como fallback tecnico. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. O prompt base do bridge sempre preserva identidade/persona do Miauby e impede inventar horario, saldo, pedido ou dado operacional. Para baixa latencia e respostas completas com Gemini 2.5, usar `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0` e `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS` suficiente. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
 

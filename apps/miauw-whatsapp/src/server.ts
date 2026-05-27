@@ -55,6 +55,14 @@ type ReplyRoute = {
   cacheable?: boolean;
 };
 
+type SharedMiauwContext = {
+  source: string;
+  version: string;
+  styleContext: JsonRecord;
+  toolContracts: JsonRecord | null;
+  cachedAt: number;
+};
+
 type CountRow = {
   status: string;
   count: string;
@@ -99,7 +107,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.2.0';
+const SERVICE_VERSION = '0.3.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -119,6 +127,11 @@ const META_WEBHOOK_VERIFY_TOKEN = textEnv('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN') 
 const META_APP_SECRET = textEnv('META_WHATSAPP_APP_SECRET');
 const AGENT_RUN_URL = textEnv('MIAUW_WHATSAPP_AGENT_RUN_URL')
   || `${trimTrailingSlash(textEnv('MIAUW_AGENT_INTERNAL_BASE_URL') || 'http://wimifarma-miauw-agent:3100/miauw/agent')}/run`;
+const AGENT_CONTEXT_URL = textEnv('MIAUW_WHATSAPP_CONTEXT_URL')
+  || textEnv('MIAUW_AGENT_CONTEXT_URL')
+  || 'http://wimifarma-com-web/miauw/agent-context.php';
+const AGENT_CONTEXT_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS', 60, 0, 900);
+const AGENT_CONTEXT_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS', 3500, 500, 15000);
 const REPLY_ENGINE = replyEngineEnv();
 const GEMINI_API_KEY = textEnv('GEMINI_API_KEY') || textEnv('GOOGLE_AI_API_KEY') || textEnv('GOOGLE_API_KEY') || textEnv('MIAUW_WHATSAPP_GEMINI_API_KEY');
 const GEMINI_API_BASE_URL = trimTrailingSlash(textEnv('GEMINI_API_BASE_URL') || textEnv('MIAUW_WHATSAPP_GEMINI_API_BASE_URL') || 'https://generativelanguage.googleapis.com/v1beta');
@@ -152,6 +165,7 @@ const DASHBOARD_COOKIE_NAME = 'MIAUW_WHATSAPP_DASH';
 const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES', 720, 5, 10080);
 const providerSendTimestamps: number[] = [];
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
+const sharedContextCache = new Map<string, { context: SharedMiauwContext; expiresAt: number }>();
 let providerSendChain: Promise<void> = Promise.resolve();
 let lastProviderSendAt = 0;
 let providerPausedUntil = 0;
@@ -1258,6 +1272,147 @@ function setCachedReply(message: string, text: string): void {
   });
 }
 
+function safeStringList(value: unknown, limit = 12, itemLimit = 220): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => safeText(item, itemLimit))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function uniqueStringList(items: string[], limit = 16): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of items) {
+    const clean = safeText(item, 260);
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function sharedContextCacheKey(message: string, route?: ReplyRoute): string {
+  return sha256([
+    'shared-miauby-context',
+    route?.intent || 'whatsapp',
+    normalizeIntentText(message).slice(0, 700),
+  ].join(':'));
+}
+
+async function requestSharedMiauwContext(message: string, traceId: string, senderMask: string, route?: ReplyRoute): Promise<SharedMiauwContext | null> {
+  if (!INTERNAL_TOKEN || !AGENT_CONTEXT_URL) return null;
+  const key = sharedContextCacheKey(message, route);
+  const now = Date.now();
+  const cached = sharedContextCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.context;
+  if (cached) sharedContextCache.delete(key);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AGENT_CONTEXT_TIMEOUT_MS);
+  try {
+    const response = await fetch(AGENT_CONTEXT_URL, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Miauw-Agent-Token': INTERNAL_TOKEN,
+      },
+      body: JSON.stringify({
+        trace_id: traceId,
+        message,
+        page_context: 'whatsapp',
+        user_context: {
+          username: `whatsapp:${senderMask}`,
+          role: 'whatsapp_interno',
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data) || data.ok !== true) {
+      throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 160) || `context_http_${response.status}`);
+    }
+
+    const context: SharedMiauwContext = {
+      source: safeText(data.source, 80) || 'php_miauby_core',
+      version: safeText(data.version, 100) || 'miauby-shared-context',
+      styleContext: isRecord(data.style_context) ? data.style_context : {},
+      toolContracts: isRecord(data.tool_contracts) ? data.tool_contracts : null,
+      cachedAt: now,
+    };
+
+    if (AGENT_CONTEXT_CACHE_TTL_SECONDS > 0) {
+      for (const [cacheKey, item] of sharedContextCache) {
+        if (item.expiresAt <= now) sharedContextCache.delete(cacheKey);
+      }
+      sharedContextCache.set(key, {
+        context,
+        expiresAt: now + AGENT_CONTEXT_CACHE_TTL_SECONDS * 1000,
+      });
+    }
+
+    return context;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: ReplyRoute | undefined, useTools: boolean): JsonRecord {
+  const sharedStyle = isRecord(shared?.styleContext) ? shared.styleContext : {};
+  const sharedRoute = isRecord(sharedStyle.route) ? sharedStyle.route : {};
+  const sharedBudget = typeof sharedRoute.budget_words === 'number' && Number.isFinite(sharedRoute.budget_words)
+    ? Math.trunc(sharedRoute.budget_words)
+    : typeof sharedRoute.budgetWords === 'number' && Number.isFinite(sharedRoute.budgetWords)
+      ? Math.trunc(sharedRoute.budgetWords)
+      : 0;
+  const budgetWords = Math.max(30, Math.min(useTools ? 100 : 70, sharedBudget || (useTools ? 90 : 60)));
+  const sharedTone = safeText(sharedRoute.tone, 180);
+
+  const whatsappHardRules = [
+    'Responda como canal interno de WhatsApp, em texto curto.',
+    'Nao exponha dados sensiveis, token, SQL, stack trace ou bastidor tecnico.',
+    'Use o treino, perfil de voz, padroes aprovados e contratos do Miauby interno quando recebidos.',
+    'Pode usar ferramentas do core somente quando a rota permitir.',
+    'Se uma ferramenta forte retornar confirmation_required, explique o resumo e diga que precisa confirmar no sistema/fluxo seguro.',
+    'Nao afirme que gravou, pagou, confirmou, alterou ou excluiu dado pelo WhatsApp sem confirmacao auditada.',
+  ];
+
+  return {
+    ...sharedStyle,
+    version: shared
+      ? `${safeText(sharedStyle.version, 100) || shared.version}+whatsapp-bridge-2026-05-27`
+      : 'miauby-whatsapp-bridge-2026-05-27',
+    route: {
+      ...sharedRoute,
+      intent: route?.intent || safeText(sharedRoute.intent, 60) || 'whatsapp_interno',
+      label: 'WhatsApp interno',
+      budget_words: budgetWords,
+      use_tools: useTools || sharedRoute.use_tools === true,
+      local_reply: false,
+      allow_lists: false,
+      tone: sharedTone
+        ? `${sharedTone}; WhatsApp curto, pratico e seguro`
+        : 'Miauby curto, pratico e seguro para WhatsApp interno',
+      reason: useTools
+        ? 'Canal WhatsApp em allowlist acionou o core Miauby com treino/tools compartilhados; escrita forte vira confirmacao.'
+        : 'Canal de mensagem curta com allowlist, treino compartilhado e sem escrita forte direta.',
+    },
+    hard_rules: uniqueStringList([
+      ...whatsappHardRules,
+      ...safeStringList(sharedStyle.hard_rules ?? sharedStyle.hardRules, 8),
+    ], 14),
+    anti_patterns: uniqueStringList([
+      'tutorial longo',
+      'lista de ferramentas',
+      'confirmacao de escrita sem sessao',
+      ...safeStringList(sharedStyle.anti_patterns ?? sharedStyle.antiPatterns, 8),
+    ], 12),
+  };
+}
+
 function routeWhatsappReply(message: string): ReplyRoute {
   const activated = REQUIRE_PREFIX || activationMentioned(message);
   const routedMessage = activated ? stripActivationWord(message) : message;
@@ -1334,6 +1489,26 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
 async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute): Promise<{ text: string }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const useTools = route?.useTools === true;
+  let sharedContext: SharedMiauwContext | null = null;
+  try {
+    sharedContext = await requestSharedMiauwContext(message, traceId, senderMask, route);
+  } catch {
+    sharedContext = null;
+  }
+  const styleContext = buildWhatsappStyleContext(sharedContext, route, useTools);
+  const payload: JsonRecord = {
+    trace_id: traceId,
+    message,
+    user_context: {
+      username: `whatsapp:${senderMask}`,
+      role: 'whatsapp_interno',
+    },
+    style_context: styleContext,
+  };
+  if (useTools && sharedContext?.toolContracts) {
+    payload.tool_contracts = sharedContext.toolContracts;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -1343,42 +1518,7 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
         'Content-Type': 'application/json',
         'X-Miauw-Agent-Token': INTERNAL_TOKEN,
       },
-      body: JSON.stringify({
-        trace_id: traceId,
-        message,
-        user_context: {
-          username: `whatsapp:${senderMask}`,
-          role: 'whatsapp_interno',
-        },
-        style_context: {
-          version: 'miauby-whatsapp-bridge-2026-05-26',
-          route: {
-            intent: route?.intent || 'whatsapp_interno',
-            label: 'WhatsApp interno',
-            budget_words: useTools ? 70 : 55,
-            use_tools: useTools,
-            local_reply: false,
-            allow_lists: false,
-            tone: 'Miauby curto, pratico e seguro para WhatsApp interno',
-            reason: useTools
-              ? 'Canal WhatsApp somente leitura: consultar quando necessario, sem escrita operacional.'
-              : 'Canal de mensagem curta com allowlist e sem escrita forte direta.',
-          },
-          hard_rules: [
-            'Responda como canal interno de WhatsApp, em texto curto.',
-            'Nao exponha dados sensiveis, token, SQL, stack trace ou bastidor tecnico.',
-            'Nao afirme que executou escrita operacional pelo WhatsApp.',
-            'Nao grave, altere, exclua, pague, envie ou confirme acao operacional pelo WhatsApp.',
-            'Use ferramentas somente para consulta/leitura quando a rota permitir.',
-            'Se precisar de acao forte, diga que precisa confirmar no sistema.',
-          ],
-          anti_patterns: [
-            'tutorial longo',
-            'lista de ferramentas',
-            'confirmacao de escrita sem sessao',
-          ],
-        },
-      }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
@@ -1657,6 +1797,9 @@ function publicStatus(): JsonRecord {
     local_replies_enabled: false,
     whatsapp_write_actions: 'core_confirmation',
     internal_read_tools_enabled: true,
+    shared_core_context_enabled: AGENT_CONTEXT_URL !== '' && INTERNAL_TOKEN !== '',
+    shared_core_context_cache_ttl_seconds: AGENT_CONTEXT_CACHE_TTL_SECONDS,
+    shared_core_context_cache_entries: sharedContextCache.size,
     recipient_alias_count: RECIPIENT_ALIASES.size,
     agent_configured: INTERNAL_TOKEN !== '' && AGENT_RUN_URL !== '',
     transport_configured: WHATSAPP_PROVIDER === 'meta' ? metaConfigured : evolutionConfigured,

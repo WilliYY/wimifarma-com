@@ -14,6 +14,7 @@ Arquivos:
 - `site/miauw/bootstrap.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/api.php`
+- `site/miauw/agent-context.php`
 - `site/miauw/widget-status.php`
 - `apps/miauw-agent/src/server.ts`
 
@@ -67,6 +68,7 @@ Status operacional:
 - A Fase 17 adiciona o compilador de treino: o PHP seleciona exemplos aprovados por relevancia, gera `training_profile` compacto no `style_context` e pode responder localmente quando a pergunta bater forte com treino aprovado, sem chamada online.
 - A Fase 18 adiciona perfis de voz/tom e contrato seguro de audio: o PHP envia `voice_profile` e `audio_contract` ao Node, mas o modo segue `text_only`, com microfone, transcricao, TTS, playback e armazenamento desligados ate uma fase propria com botao e consentimento.
 - A Fase 19 usa audio estilo WhatsApp no chat principal e no widget global: o botao `Falar` captura microfone somente por clique, grava trecho temporario no navegador, envia para `site/miauw/api.php?action=audio_transcribe`, e o PHP chama `/v1/audio/transcriptions` com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`, sem expor chave no navegador. O texto transcrito fica no campo para revisar, `Enviar` ou `Cancelar`; o audio nao e armazenado e voz nao executa escrita operacional direta. O frontend tenta `getUserMedia()` antes de concluir bloqueio para evitar falso negativo de permissao antiga no Chrome.
+- `site/miauw/agent-context.php` exporta contexto compartilhado do Miauby interno para o bridge WhatsApp, protegido por token interno: `style_context`, treino aprovado, perfil de voz e contratos de tools. Ele nao executa escrita nem expõe segredo.
 
 Tabelas:
 
@@ -145,6 +147,7 @@ Desenho:
 - o modo `MIAUW_WHATSAPP_AI_MODE=miauw` usa o core Miauby interno/OpenAI como motor de resposta;
 - o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
 - o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para mensagens sem `miauby` quando `GEMINI_API_KEY` estiver configurada e roteia mensagens com `miauby` em qualquer posicao para o core Miauby;
+- antes de chamar o core, o bridge usa `MIAUW_WHATSAPP_CONTEXT_URL` para buscar no PHP o mesmo treino aprovado, perfil de voz e contratos de tools do Miauby interno;
 - o bridge bloqueia dados sensiveis antes da IA e registra motor/rota/latencia na outbox;
 - Evolution API ou Meta Cloud API devem ser apenas transporte de entrada/saida;
 - a resposta volta pela API estruturada do transporte escolhido, por exemplo envio de texto para a mesma conversa.
@@ -156,6 +159,7 @@ Regras iniciais obrigatorias:
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
 - manter uma resposta por mensagem recebida, rate limit por remetente, rate limit global, intervalo minimo entre envios e pausa automatica quando o transporte responder timeout, `429` ou `5xx`;
 - manter acoes fortes bloqueadas ou retornando confirmacao humana auditada; WhatsApp nao deve virar atalho para sangria, contas, encomenda ou escrita sensivel sem fluxo proprio;
+- comandos com `miauby`, inclusive sangria, podem ser interpretados pelo core e retornar `confirmation_required`; sem fluxo de confirmacao auditado no WhatsApp, nao gravar a acao diretamente;
 - registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token; o painel operacional deve seguir a mesma regra;
 - se for usar Gemini ou outro provedor, encapsular como motor configuravel do bridge/Miauby, nao como resposta solta direto na Evolution API.
 
@@ -191,6 +195,9 @@ Variaveis:
 - `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100`
 - `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
+- `MIAUW_WHATSAPP_CONTEXT_URL`
+- `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS`
+- `MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS`
 - `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`
 - `MIAUW_WHATSAPP_RECIPIENT_ALIASES`
 - `MIAUW_WHATSAPP_PROVIDER`
