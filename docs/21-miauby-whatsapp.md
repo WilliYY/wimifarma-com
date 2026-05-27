@@ -63,6 +63,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_DASHBOARD_USER`
 - `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`
 - `MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES=720`
+- `MIAUW_WHATSAPP_DEFAULT_DDD=44`
 - `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`
 - `MIAUW_WHATSAPP_PREFIX=miauby`
 - `MIAUW_WHATSAPP_GROUPS_ENABLED=false`
@@ -145,7 +146,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Com o servico ligado, `MIAUW_WHATSAPP_WEBHOOK_TOKEN` e uma chave de cifragem precisam estar configurados.
 - O painel `/miauw/whatsapp/` deve ficar protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` nos ambientes operacionais. Health continua publico e sem segredo para smoke test.
 - Mesmo protegido por login, o painel nao deve exibir segredos nem payload bruto. Telefone completo so pode aparecer na edicao da allowlist, porque essa tela exige login do painel e CSRF; status publico, health, logs recentes e sincronias continuam com mascara/hash.
-- A allowlist fixa por `MIAUW_WHATSAPP_ALLOWED_SENDERS` continua sendo a base por ambiente. O painel tambem permite autorizar/bloquear contatos no Postgres; bloqueio salvo no Postgres vence sobre a allowlist fixa, e autorizacao salva no Postgres permite adicionar remetentes sem editar `.env`. A comparacao de numero aceita equivalencia operacional com/sem DDI `55` e com/sem o nono digito depois do DDD, para evitar bloqueio indevido quando Evolution/Baileys entrega formatos diferentes.
+- A allowlist fixa por `MIAUW_WHATSAPP_ALLOWED_SENDERS` continua sendo a base por ambiente. O painel tambem permite autorizar/bloquear contatos no Postgres; bloqueio salvo no Postgres vence sobre a allowlist fixa, e autorizacao salva no Postgres permite adicionar remetentes sem editar `.env`. A comparacao de numero aceita equivalencia operacional com/sem DDI `55` e com/sem o nono digito depois do DDD, para evitar bloqueio indevido quando Evolution/Baileys entrega formatos diferentes. O cadastro aceita formatos como `44997641531`, `44 99764 1531`, `997641531` e `97641531`; se faltar DDD, o bridge usa `MIAUW_WHATSAPP_DEFAULT_DDD`.
 - Cada contato salvo no Postgres pode ter cards/modulos liberados. Ao pedir `miauby menu`, `miauby cards` ou equivalente, o bridge retorna apenas os cards autorizados para aquele telefone, considerando hash direto, alias da Evolution e equivalencia operacional com/sem DDI `55`. O bridge tambem bloqueia chamadas do core/tools quando o card detectado na mensagem ou na tool retornada nao esta liberado para o telefone.
 - Grupos ficam bloqueados por padrao.
 - Remetente fora da allowlist nao chama Gemini nem core Miauby. Quando envia texto individual, o bridge registra o evento como `ignored/sender_not_allowed` e manda no maximo um aviso curto a cada alguns minutos dizendo que o Miauby e interno e so responde numeros permitidos.

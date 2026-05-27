@@ -74,6 +74,13 @@ type PendingConfirmationRow = {
   attempts: number;
 };
 
+type ContactMatchRow = {
+  id: string;
+  phone_hash: string;
+  status: string;
+  phone_ciphertext: string;
+};
+
 type ReplyResult = {
   text: string;
   engine: ReplyRuntimeEngine;
@@ -216,7 +223,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.0';
+const SERVICE_VERSION = '0.5.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -273,6 +280,7 @@ const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECOND
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
 const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', true);
 const PREFIX = (textEnv('MIAUW_WHATSAPP_PREFIX') || 'miauby').toLowerCase();
+const DEFAULT_BRAZIL_AREA_CODE = normalizeBrazilAreaCode(textEnv('MIAUW_WHATSAPP_DEFAULT_DDD') || textEnv('MIAUW_WHATSAPP_DEFAULT_AREA_CODE') || '44');
 const GROUPS_ENABLED = boolEnv('MIAUW_WHATSAPP_GROUPS_ENABLED', false);
 const MAX_REPLIES_PER_INBOUND = numberEnv('MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND', 1, 0, 3);
 const USER_RATE_LIMIT_PER_MINUTE = numberEnv('MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE', 6, 1, 60);
@@ -437,11 +445,33 @@ function normalizePhone(value: unknown): string {
   return String(value ?? '').replace(/\D+/g, '');
 }
 
+function normalizeBrazilAreaCode(value: unknown): string {
+  const digits = normalizePhone(value);
+  return /^\d{2}$/.test(digits) ? digits : '';
+}
+
+function addPhoneVariant(variants: string[], value: string): void {
+  const normalized = normalizePhone(value);
+  if (normalized && !variants.includes(normalized)) variants.push(normalized);
+}
+
 function phoneVariants(value: unknown): string[] {
   const variants: string[] = [];
-  const add = (digits: string) => {
-    const normalized = normalizePhone(digits);
-    if (normalized && !variants.includes(normalized)) variants.push(normalized);
+  const add = (digits: string) => addPhoneVariant(variants, digits);
+  const addWithBrazilDdi = (digits: string) => {
+    add(digits);
+    if (!digits.startsWith('55')) add(`55${digits}`);
+  };
+  const addLocalBrazilMobileVariants = (digits: string, areaCode = '') => {
+    const subscriber = normalizePhone(digits);
+    if (!/^\d{8,9}$/.test(subscriber)) return;
+    const localVariants: string[] = [subscriber];
+    if (subscriber.length === 9 && subscriber.startsWith('9')) localVariants.push(subscriber.slice(1));
+    if (subscriber.length === 8) localVariants.push(`9${subscriber}`);
+    for (const local of localVariants) {
+      add(local);
+      if (areaCode) addWithBrazilDdi(`${areaCode}${local}`);
+    }
   };
   const addBrazilMobileVariants = (digits: string) => {
     const normalized = normalizePhone(digits);
@@ -472,10 +502,24 @@ function phoneVariants(value: unknown): string[] {
   } else if (/^\d{10,11}$/.test(normalized)) {
     add(`55${normalized}`);
   }
+  if (/^\d{8,9}$/.test(normalized)) {
+    addLocalBrazilMobileVariants(normalized, DEFAULT_BRAZIL_AREA_CODE);
+  }
   for (const candidate of [...variants]) {
     addBrazilMobileVariants(candidate);
+    if (/^\d{8,9}$/.test(candidate)) {
+      addLocalBrazilMobileVariants(candidate, DEFAULT_BRAZIL_AREA_CODE);
+    }
   }
   return variants;
+}
+
+function preferredPhoneForStorage(value: unknown): string {
+  const variants = phoneVariants(value);
+  return variants.find((variant) => variant.startsWith('55') && variant.length === 13)
+    || variants.find((variant) => /^\d{10,11}$/.test(variant))
+    || variants.find((variant) => /^\d{8,9}$/.test(variant))
+    || normalizePhone(value);
 }
 
 function bestPhoneCandidate(...values: unknown[]): string {
@@ -504,11 +548,27 @@ function displayPhone(phone: string): string {
   return digits.startsWith('55') ? `+${digits}` : digits;
 }
 
+function phoneListItems(value: string): string[] {
+  const items: string[] = [];
+  for (const raw of value.split(/[,\n;]+/g)) {
+    const item = raw.trim();
+    if (!item) continue;
+    const whitespaceParts = item.split(/\s+/g).filter((part) => normalizePhone(part).length >= 8);
+    const compact = normalizePhone(item);
+    if (whitespaceParts.length > 1 && compact.length > 14) {
+      items.push(...whitespaceParts);
+    } else {
+      items.push(item);
+    }
+  }
+  return items;
+}
+
 function parseAllowedSenders(value: string): Set<string> {
   const set = new Set<string>();
-  for (const item of value.split(/[,\s;]+/g)) {
+  for (const item of phoneListItems(value)) {
     for (const phone of phoneVariants(item)) {
-      if (phone) set.add(phone);
+      if (phone.length >= 8) set.add(phone);
     }
   }
   return set;
@@ -628,12 +688,12 @@ function phonesMatch(left: string, right: string): boolean {
   const normalizedRight = normalizePhone(right);
   const leftVariants = phoneVariants(normalizedLeft);
   const rightVariants = phoneVariants(normalizedRight);
+  const allowSuffixMatch = Math.min(normalizedLeft.length, normalizedRight.length) >= 8;
   return normalizedLeft !== ''
     && normalizedRight !== ''
     && (leftVariants.some((leftVariant) => rightVariants.includes(leftVariant))
       || normalizedLeft === normalizedRight
-      || normalizedLeft.endsWith(normalizedRight)
-      || normalizedRight.endsWith(normalizedLeft));
+      || (allowSuffixMatch && (normalizedLeft.endsWith(normalizedRight) || normalizedRight.endsWith(normalizedLeft))));
 }
 
 function envPhoneAllowed(normalizedPhone: string): boolean {
@@ -1380,8 +1440,59 @@ async function sendSystemReplyForEvent(message: IncomingMessage, eventId: string
   }
 }
 
+async function findContactByPhone(phone: string): Promise<ContactMatchRow | null> {
+  const normalized = normalizePhone(phone);
+  const variants = phoneVariants(normalized);
+  const hashes = [...new Set(variants.map((variant) => sha256(variant)))];
+  if (hashes.length) {
+    const placeholders = hashes.map((_, index) => `$${index + 1}`).join(', ');
+    const result = await pgPool.query<ContactMatchRow>(
+      `SELECT id::text AS id, phone_hash, status, COALESCE(phone_ciphertext, '') AS phone_ciphertext
+         FROM miauw_whatsapp_contacts
+        WHERE phone_hash IN (${placeholders})
+        ORDER BY status = 'allowed' DESC, updated_at DESC
+        LIMIT 1`,
+      hashes,
+    );
+    if (result.rows[0]) return result.rows[0];
+  }
+
+  const result = await pgPool.query<ContactMatchRow>(
+    `SELECT id::text AS id, phone_hash, status, COALESCE(phone_ciphertext, '') AS phone_ciphertext
+       FROM miauw_whatsapp_contacts
+      WHERE phone_ciphertext <> ''
+      ORDER BY updated_at DESC
+      LIMIT 300`,
+  );
+  for (const row of result.rows) {
+    try {
+      if (phonesMatch(normalized, decryptText(row.phone_ciphertext))) return row;
+    } catch {
+      // Ignore legacy/broken ciphertext and keep searching.
+    }
+  }
+  return null;
+}
+
 async function upsertContact(message: IncomingMessage): Promise<void> {
-  const phoneHash = sha256(message.senderPhone);
+  const normalized = preferredPhoneForStorage(message.senderPhone);
+  const existing = await findContactByPhone(normalized);
+  if (existing) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_contacts
+          SET phone_mask = $2,
+              phone_ciphertext = $3,
+              display_name = CASE WHEN $4 <> '' THEN $4 ELSE display_name END,
+              last_seen_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [existing.id, maskPhone(normalized), encryptText(normalized), safeText(message.pushName, 120)],
+    );
+    await ensureDefaultContactModules(existing.phone_hash);
+    return;
+  }
+
+  const phoneHash = sha256(normalized);
   await pgPool.query(
     `INSERT INTO miauw_whatsapp_contacts (id, phone_hash, phone_mask, phone_ciphertext, display_name, status)
      VALUES ($1, $2, $3, $4, $5, 'allowed')
@@ -1392,17 +1503,33 @@ async function upsertContact(message: IncomingMessage): Promise<void> {
        display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name ELSE miauw_whatsapp_contacts.display_name END,
        last_seen_at = NOW(),
        updated_at = NOW()`,
-    [crypto.randomUUID(), phoneHash, maskPhone(message.senderPhone), encryptText(normalizePhone(message.senderPhone)), message.pushName],
+    [crypto.randomUUID(), phoneHash, maskPhone(normalized), encryptText(normalized), safeText(message.pushName, 120)],
   );
   await ensureDefaultContactModules(phoneHash);
 }
 
 async function upsertAllowlistContact(phone: string, displayName: string, moduleKeys: string[] = defaultModuleKeys()): Promise<void> {
-  const normalized = normalizePhone(phone);
+  const normalized = preferredPhoneForStorage(phone);
   if (normalized.length < 8 || normalized.length > 20) {
     throw new Error('invalid_allowlist_phone');
   }
   const label = safeText(displayName, 120);
+  const existing = await findContactByPhone(normalized);
+  if (existing) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_contacts
+          SET phone_mask = $2,
+              phone_ciphertext = $3,
+              display_name = CASE WHEN $4 <> '' THEN $4 ELSE display_name END,
+              status = 'allowed',
+              updated_at = NOW()
+        WHERE id = $1`,
+      [existing.id, maskPhone(normalized), encryptText(normalized), label],
+    );
+    await setContactModulesByHash(existing.phone_hash, moduleKeys.length ? moduleKeys : defaultModuleKeys());
+    return;
+  }
+
   const phoneHash = sha256(normalized);
   await pgPool.query(
     `INSERT INTO miauw_whatsapp_contacts (id, phone_hash, phone_mask, phone_ciphertext, display_name, status)
@@ -1489,7 +1616,7 @@ async function setContactModulesByHash(phoneHash: string, moduleKeys: string[]):
 
 async function updateAllowlistContact(id: string, phone: string, displayName: string, moduleKeys: string[]): Promise<void> {
   const currentHash = await contactHashById(id);
-  const normalized = normalizePhone(phone);
+  const normalized = preferredPhoneForStorage(phone);
   const label = safeText(displayName, 120);
   let nextHash = currentHash;
   if (normalized) {
@@ -3642,6 +3769,7 @@ function publicStatus(): JsonRecord {
     dashboard_auth_configured: DASHBOARD_AUTH_ENABLED,
     allowlist_count: ALLOWED_SENDERS.size,
     allowlist_env_count: ALLOWED_SENDERS.size,
+    default_brazil_area_code: DEFAULT_BRAZIL_AREA_CODE,
     require_prefix: REQUIRE_PREFIX,
     prefix: REQUIRE_PREFIX ? PREFIX : '',
     groups_enabled: GROUPS_ENABLED,
@@ -4431,7 +4559,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <form class="allowlist-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
           <label>Numero
-            <input name="phone" inputmode="tel" autocomplete="off" placeholder="+55 44 99999-9999" required>
+            <input name="phone" inputmode="tel" autocomplete="off" placeholder="44 99999-9999 ou 99999-9999" required>
           </label>
           <label>Nome
             <input name="display_name" autocomplete="off" placeholder="Ex.: Willian">

@@ -159,6 +159,7 @@ Regras iniciais obrigatorias:
 
 - comecar com allowlist de numeros autorizados, como o telefone do dono/equipe, e bloquear clientes, grupos e remetentes desconhecidos; o bridge pode responder um aviso curto para desconhecidos, sem chamar IA/core, e ajustes operacionais podem ser feitos pelo painel. Telefone completo aparece apenas na edicao da allowlist autenticada; status, health, logs e sincronias continuam mascarados;
 - comparar remetente com equivalencia brasileira de DDI `55` e nono digito movel, para aceitar o mesmo numero quando Evolution/Baileys entregar com ou sem o `9` depois do DDD;
+- aceitar cadastro de allowlist com pontuacao/espacos, com DDD completo ou apenas numero local de 8/9 digitos; quando faltar DDD, usar `MIAUW_WHATSAPP_DEFAULT_DDD` e gerar variantes com/sem DDI `55` e com/sem nono digito;
 - usar cards liberados por contato como camada de permissao de WhatsApp: `miauby menu` deve mostrar apenas os modulos daquele numero, e cada consulta por modulo deve conferir essa permissao antes de chamar tools internas;
 - opcionalmente exigir prefixo como `miauby` para ativar resposta automatica no WhatsApp;
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
@@ -184,6 +185,7 @@ Variaveis:
 - `MIAUW_WHATSAPP_ENCRYPTION_KEY`
 - `MIAUW_WHATSAPP_HASH_SALT`
 - `MIAUW_WHATSAPP_ALLOWED_SENDERS`
+- `MIAUW_WHATSAPP_DEFAULT_DDD`
 - `MIAUW_WHATSAPP_REQUIRE_PREFIX`
 - `MIAUW_WHATSAPP_PREFIX`
 - `MIAUW_WHATSAPP_GROUPS_ENABLED`
