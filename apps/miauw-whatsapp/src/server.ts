@@ -643,7 +643,6 @@ function extractIncomingMessage(payload: unknown): IncomingMessage | null {
 
 function stripActivationPrefix(text: string): { accepted: boolean; text: string; reason: string } {
   const clean = text.trim();
-  if (!REQUIRE_PREFIX) return { accepted: true, text: clean, reason: '' };
   const lower = clean.toLowerCase();
   if (lower === PREFIX) {
     return { accepted: false, text: '', reason: 'empty_after_prefix' };
@@ -651,6 +650,7 @@ function stripActivationPrefix(text: string): { accepted: boolean; text: string;
   if (lower.startsWith(`${PREFIX} `) || lower.startsWith(`${PREFIX},`) || lower.startsWith(`${PREFIX}:`)) {
     return { accepted: true, text: clean.slice(PREFIX.length).replace(/^[\s,:-]+/, '').trim(), reason: '' };
   }
+  if (!REQUIRE_PREFIX) return { accepted: true, text: clean, reason: '' };
   return { accepted: false, text: '', reason: 'missing_prefix' };
 }
 

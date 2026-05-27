@@ -107,7 +107,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Mesmo protegido por login, o painel nao deve exibir segredos, payload bruto ou telefone completo.
 - A primeira etapa usa allowlist por `MIAUW_WHATSAPP_ALLOWED_SENDERS`.
 - Grupos ficam bloqueados por padrao.
-- Prefixo `miauby` fica exigido por padrao.
+- Prefixo `miauby` fica exigido por padrao no repositorio. Em ambiente operacional com allowlist revisada, ele pode ser desligado por `MIAUW_WHATSAPP_REQUIRE_PREFIX=false`; nesse modo, perguntas soltas de remetente autorizado entram no roteador, e `miauby ...` continua aceito como prefixo opcional.
 - O canal responde no maximo uma vez por mensagem recebida.
 - Rate limit por remetente fica ativo por minuto e por dia.
 - Rate limit global de envio fica ativo por minuto, com intervalo minimo entre envios.
@@ -135,7 +135,7 @@ Quando a Evolution/Baileys entregar remetente como LID/identificador longo em ve
 Nao existe garantia tecnica de banimento zero, principalmente quando o transporte usa sessao WhatsApp Web/Baileys pela Evolution API. A postura operacional do Wimifarma deve ser conservadora:
 
 - usar apenas remetentes em allowlist e com consentimento operacional claro;
-- manter prefixo `miauby` exigido enquanto o canal estiver em estabilizacao;
+- manter prefixo `miauby` exigido enquanto o canal estiver em estabilizacao; se desligar prefixo, limitar a allowlist, manter grupos bloqueados e monitorar o painel;
 - bloquear grupos por padrao;
 - responder somente a mensagens iniciadas pelo usuario autorizado;
 - manter uma resposta por mensagem recebida;
