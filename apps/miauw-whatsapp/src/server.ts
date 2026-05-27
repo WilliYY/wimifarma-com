@@ -118,9 +118,11 @@ type DashboardEngineRow = {
 
 type DashboardAllowlistRow = {
   id: string;
+  phone_hash: string;
   phone_mask: string;
   display_name: string;
   status: string;
+  module_keys: string[];
   last_seen_at: string;
   created_at: string;
 };
@@ -133,6 +135,47 @@ type DashboardResponseDelay = {
   last_total_ms: string;
 };
 
+type WhatsappModuleCard = {
+  key: string;
+  label: string;
+  description: string;
+  command: string;
+};
+
+type DashboardSyncRow = {
+  sender_phone_mask: string;
+  inbound_text: string;
+  event_status: string;
+  ignore_reason: string;
+  event_error: string;
+  reply_text: string;
+  outbox_status: string;
+  outbox_error: string;
+  reply_engine: string;
+  total_response_ms: number | null;
+  event_created_at: string;
+  sent_at: string | null;
+};
+
+type DashboardErrorRow = {
+  source: string;
+  severity: string;
+  phone_mask: string;
+  trace_id: string;
+  message_preview: string;
+  error_summary: string;
+  created_at: string;
+};
+
+type ErrorLogContext = {
+  eventId?: string;
+  outboxId?: string;
+  traceId?: string;
+  phoneMask?: string;
+  messagePreview?: string;
+  details?: JsonRecord;
+};
+
 type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
@@ -142,9 +185,12 @@ type DashboardSummary = {
   allowlistRows: DashboardAllowlistRow[];
   allowlistAllowed: number;
   allowlistBlocked: number;
+  errorCount24h: number;
   contactsTotal: number;
   recentEvents: DashboardEventRow[];
   recentOutbox: DashboardOutboxRow[];
+  recentSync: DashboardSyncRow[];
+  recentErrors: DashboardErrorRow[];
 };
 
 const env = process.env;
@@ -213,6 +259,18 @@ const DASHBOARD_PASSWORD = textEnv('MIAUW_WHATSAPP_DASHBOARD_PASSWORD');
 const DASHBOARD_AUTH_ENABLED = DASHBOARD_USER !== '' && DASHBOARD_PASSWORD !== '';
 const DASHBOARD_COOKIE_NAME = 'MIAUW_WHATSAPP_DASH';
 const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES', 720, 5, 10080);
+const WHATSAPP_MODULE_CARDS: WhatsappModuleCard[] = [
+  { key: 'cashback', label: 'Cashback', description: 'Clientes, compras, creditos e resgates.', command: 'miauby cashback' },
+  { key: 'cotacao', label: 'Cotacao', description: 'Itens, precos, fornecedores e ganhadores.', command: 'miauby cotacao' },
+  { key: 'pedidos', label: 'Pedidos', description: 'Chegadas, boletos, pagamentos e historico.', command: 'miauby pedidos' },
+  { key: 'financeiro', label: 'Financeiro', description: 'Caixa, sangrias, PIX e fechamento.', command: 'miauby financeiro' },
+  { key: 'gestao', label: 'Gestao', description: 'Contas a pagar e pagamentos administrativos.', command: 'miauby gestao' },
+  { key: 'tarefas', label: 'Tarefas', description: 'Prioridades, historico e conclusoes.', command: 'miauby tarefas' },
+  { key: 'xp', label: 'XP', description: 'Jogo dos atendentes, niveis e aura.', command: 'miauby xp' },
+  { key: 'codigos', label: 'Codigos', description: 'Comissoes especiais, EAN e precos.', command: 'miauby codigos' },
+  { key: 'miauw', label: 'Miauby', description: 'Chat interno, treino e apoio operacional.', command: 'miauby ajuda' },
+];
+const DEFAULT_MODULE_KEYS = ['miauw'];
 const providerSendTimestamps: number[] = [];
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
 const sharedContextCache = new Map<string, { context: SharedMiauwContext; expiresAt: number }>();
@@ -326,6 +384,31 @@ function parseRecipientAliases(value: string): Map<string, string> {
     if (source && target) map.set(source, target);
   }
   return map;
+}
+
+function validModuleKeys(): Set<string> {
+  return new Set(WHATSAPP_MODULE_CARDS.map((card) => card.key));
+}
+
+function normalizeModuleKeys(value: unknown): string[] {
+  const rawItems = Array.isArray(value) ? value : [value];
+  const allowed = validModuleKeys();
+  const selected: string[] = [];
+  for (const raw of rawItems) {
+    const clean = safeText(raw, 40).toLowerCase().replace(/[^a-z0-9_-]+/g, '');
+    if (!clean || !allowed.has(clean) || selected.includes(clean)) continue;
+    selected.push(clean);
+  }
+  return selected;
+}
+
+function defaultModuleKeys(): string[] {
+  return DEFAULT_MODULE_KEYS.filter((key) => validModuleKeys().has(key));
+}
+
+function moduleCardsForKeys(keys: string[]): WhatsappModuleCard[] {
+  const selected = new Set(keys);
+  return WHATSAPP_MODULE_CARDS.filter((card) => selected.has(card.key));
 }
 
 function applyRecipientAlias(value: string): string {
@@ -878,6 +961,31 @@ async function ensureSchema(): Promise<void> {
       CHECK (status IN ('pending', 'confirmed', 'cancelled', 'expired', 'executed', 'failed'))
     );
 
+    CREATE TABLE IF NOT EXISTS miauw_whatsapp_contact_modules (
+      phone_hash CHAR(64) NOT NULL REFERENCES miauw_whatsapp_contacts(phone_hash) ON UPDATE CASCADE ON DELETE CASCADE,
+      module_key VARCHAR(40) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (phone_hash, module_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS miauw_whatsapp_error_logs (
+      id UUID PRIMARY KEY,
+      source VARCHAR(80) NOT NULL,
+      severity VARCHAR(20) NOT NULL DEFAULT 'error',
+      event_id UUID NULL REFERENCES miauw_whatsapp_events(id) ON DELETE SET NULL,
+      outbox_id UUID NULL REFERENCES miauw_whatsapp_outbox(id) ON DELETE SET NULL,
+      trace_id CHAR(32) NOT NULL DEFAULT '',
+      phone_mask VARCHAR(40) NOT NULL DEFAULT '',
+      message_preview TEXT NOT NULL DEFAULT '',
+      error_summary TEXT NOT NULL DEFAULT '',
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      resolved_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (severity IN ('info', 'warn', 'error'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_events_queue
       ON miauw_whatsapp_events (next_attempt_at, created_at)
       WHERE status = 'queued';
@@ -888,6 +996,11 @@ async function ensureSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_confirmations_pending
       ON miauw_whatsapp_confirmations (sender_phone_hash, expires_at, created_at)
       WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_contact_modules_enabled
+      ON miauw_whatsapp_contact_modules (module_key, phone_hash)
+      WHERE enabled = TRUE;
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_error_logs_created
+      ON miauw_whatsapp_error_logs (created_at DESC);
   `);
 
   await pgPool.query(`
@@ -931,14 +1044,16 @@ async function upsertContact(message: IncomingMessage): Promise<void> {
        updated_at = NOW()`,
     [crypto.randomUUID(), phoneHash, maskPhone(message.senderPhone), encryptText(normalizePhone(message.senderPhone)), message.pushName],
   );
+  await ensureDefaultContactModules(phoneHash);
 }
 
-async function upsertAllowlistContact(phone: string, displayName: string): Promise<void> {
+async function upsertAllowlistContact(phone: string, displayName: string, moduleKeys: string[] = defaultModuleKeys()): Promise<void> {
   const normalized = normalizePhone(phone);
   if (normalized.length < 8 || normalized.length > 20) {
     throw new Error('invalid_allowlist_phone');
   }
   const label = safeText(displayName, 120);
+  const phoneHash = sha256(normalized);
   await pgPool.query(
     `INSERT INTO miauw_whatsapp_contacts (id, phone_hash, phone_mask, phone_ciphertext, display_name, status)
      VALUES ($1, $2, $3, $4, $5, 'allowed')
@@ -949,8 +1064,9 @@ async function upsertAllowlistContact(phone: string, displayName: string): Promi
        display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name ELSE miauw_whatsapp_contacts.display_name END,
        status = 'allowed',
        updated_at = NOW()`,
-    [crypto.randomUUID(), sha256(normalized), maskPhone(normalized), encryptText(normalized), label],
+    [crypto.randomUUID(), phoneHash, maskPhone(normalized), encryptText(normalized), label],
   );
+  await setContactModulesByHash(phoneHash, moduleKeys.length ? moduleKeys : defaultModuleKeys());
 }
 
 async function setAllowlistContactStatus(id: string, status: 'allowed' | 'blocked'): Promise<void> {
@@ -964,6 +1080,104 @@ async function setAllowlistContactStatus(id: string, status: 'allowed' | 'blocke
       WHERE id = $1`,
     [id, status],
   );
+}
+
+async function contactHashById(id: string): Promise<string> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error('invalid_allowlist_id');
+  }
+  const result = await pgPool.query<{ phone_hash: string }>(
+    `SELECT phone_hash
+       FROM miauw_whatsapp_contacts
+      WHERE id = $1
+      LIMIT 1`,
+    [id],
+  );
+  const phoneHash = result.rows[0]?.phone_hash || '';
+  if (!phoneHash) throw new Error('allowlist_contact_not_found');
+  return phoneHash;
+}
+
+async function ensureDefaultContactModules(phoneHash: string): Promise<void> {
+  const result = await pgPool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM miauw_whatsapp_contact_modules
+      WHERE phone_hash = $1`,
+    [phoneHash],
+  );
+  if (Number(result.rows[0]?.count || 0) > 0) return;
+  await setContactModulesByHash(phoneHash, defaultModuleKeys());
+}
+
+async function setContactModulesByHash(phoneHash: string, moduleKeys: string[]): Promise<void> {
+  const selected = normalizeModuleKeys(moduleKeys);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM miauw_whatsapp_contact_modules
+        WHERE phone_hash = $1`,
+      [phoneHash],
+    );
+    for (const key of selected) {
+      await client.query(
+        `INSERT INTO miauw_whatsapp_contact_modules (phone_hash, module_key, enabled)
+         VALUES ($1, $2, TRUE)
+         ON CONFLICT (phone_hash, module_key)
+         DO UPDATE SET enabled = TRUE, updated_at = NOW()`,
+        [phoneHash, key],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function updateAllowlistContact(id: string, phone: string, displayName: string, moduleKeys: string[]): Promise<void> {
+  const currentHash = await contactHashById(id);
+  const normalized = normalizePhone(phone);
+  const label = safeText(displayName, 120);
+  let nextHash = currentHash;
+  if (normalized) {
+    if (normalized.length < 8 || normalized.length > 20) throw new Error('invalid_allowlist_phone');
+    nextHash = sha256(normalized);
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_contacts
+          SET phone_hash = $2,
+              phone_mask = $3,
+              phone_ciphertext = $4,
+              display_name = $5,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [id, nextHash, maskPhone(normalized), encryptText(normalized), label],
+    );
+  } else {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_contacts
+          SET display_name = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [id, label],
+    );
+  }
+  await setContactModulesByHash(nextHash, moduleKeys);
+}
+
+async function allowedModuleCardsForHash(phoneHash: string): Promise<WhatsappModuleCard[]> {
+  const result = await pgPool.query<{ module_key: string }>(
+    `SELECT module_key
+       FROM miauw_whatsapp_contact_modules
+      WHERE phone_hash = $1
+        AND enabled = TRUE
+      ORDER BY module_key`,
+    [phoneHash],
+  );
+  const keys = result.rows.map((row) => row.module_key);
+  return moduleCardsForKeys(keys.length ? keys : defaultModuleKeys());
 }
 
 async function insertEvent(message: IncomingMessage, status: string, ignoreReason: string, bodyText: string): Promise<{ id: string; inserted: boolean }> {
@@ -1160,6 +1374,31 @@ function backoffExpression(attempts: number): string {
   return `${seconds} seconds`;
 }
 
+async function recordErrorLog(source: string, severity: 'info' | 'warn' | 'error', error: unknown, context: ErrorLogContext = {}): Promise<void> {
+  try {
+    await pgPool.query(
+      `INSERT INTO miauw_whatsapp_error_logs (
+        id, source, severity, event_id, outbox_id, trace_id, phone_mask,
+        message_preview, error_summary, details
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+      [
+        crypto.randomUUID(),
+        safeText(source, 80),
+        severity,
+        context.eventId || null,
+        context.outboxId || null,
+        safeText(context.traceId, 32),
+        safeText(context.phoneMask, 40),
+        safeText(context.messagePreview, 280),
+        safeError(error),
+        JSON.stringify(context.details || {}),
+      ],
+    );
+  } catch (logError) {
+    console.error(redact(`error_log_failed ${safeError(logError)}`));
+  }
+}
+
 async function markEventFailure(row: QueueRow, error: unknown): Promise<void> {
   const attempts = Number(row.attempts || 0) + 1;
   const dead = attempts >= MAX_ATTEMPTS;
@@ -1172,9 +1411,17 @@ async function markEventFailure(row: QueueRow, error: unknown): Promise<void> {
       WHERE id = $1`,
     [row.id, dead ? 'dead' : 'queued', safeError(error), backoffExpression(attempts)],
   );
+  await recordErrorLog('queue_event', dead ? 'error' : 'warn', error, {
+    eventId: row.id,
+    traceId: row.trace_id,
+    phoneMask: row.sender_phone_mask,
+    messagePreview: row.body_text,
+    details: { attempts, next_status: dead ? 'dead' : 'queued' },
+  });
 }
 
 async function processQueueRow(row: QueueRow): Promise<void> {
+  let outboxId = '';
   try {
     if (MAX_REPLIES_PER_INBOUND < 1) {
       await pgPool.query(
@@ -1190,7 +1437,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
     const replyStartedAt = Date.now();
     const confirmationReply = await maybeHandleConfirmationReply(row);
-    const reply = confirmationReply || await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask);
+    const reply = confirmationReply || await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask, row.sender_phone_hash);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
@@ -1198,7 +1445,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const replyText = safeText(formatReplyTextWithConfirmation(reply.text, confirmation), 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
 
-    const outboxId = crypto.randomUUID();
+    outboxId = crypto.randomUUID();
     await pgPool.query(
       `INSERT INTO miauw_whatsapp_outbox (
         id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
@@ -1243,6 +1490,24 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       [row.id],
     );
   } catch (error) {
+    if (outboxId) {
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_outbox
+            SET status = CASE WHEN attempts + 1 >= max_attempts THEN 'dead' ELSE 'failed' END,
+                attempts = attempts + 1,
+                error_summary = $2,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [outboxId, safeError(error)],
+      );
+      await recordErrorLog('outbox_send', 'error', error, {
+        eventId: row.id,
+        outboxId,
+        traceId: row.trace_id,
+        phoneMask: row.sender_phone_mask,
+        messagePreview: row.body_text,
+      });
+    }
     await markEventFailure(row, error);
   }
 }
@@ -1486,9 +1751,23 @@ function localReplyFor(message: string): string {
     return 'Online. WhatsApp ok. Conversa simples vai no Gemini; consulta interna vai no core Miauby.';
   }
   if (/^(ajuda|help|comando|comandos)$/.test(clean)) {
-    return 'Use "miauby status", "miauby gemini ..." ou peca consulta de pedidos/financeiro. Escrita forte fica no sistema.';
+    return 'Use "miauby menu" para ver seus cards liberados, "miauby status", "miauby gemini ..." ou peca consulta de pedidos/financeiro. Escrita forte fica no sistema.';
   }
   return '';
+}
+
+function looksLikeModuleMenuRequest(message: string): boolean {
+  const clean = normalizeIntentText(stripActivationWord(message));
+  return /^(menu|menus|card|cards|acesso|acessos|modulo|modulos|app|apps|aplicativo|aplicativos|whats|whatsapp|opcao|opcoes)$/.test(clean)
+    || hasAnyIntentTerm(clean, ['menu de cards', 'meus cards', 'meus acessos', 'cards liberados', 'modulos liberados']);
+}
+
+function formatModuleMenu(cards: WhatsappModuleCard[]): string {
+  if (!cards.length) {
+    return 'Esse numero esta autorizado, mas ainda nao tem cards liberados no painel do Miauby WhatsApp.';
+  }
+  const lines = cards.map((card, index) => `${index + 1}. ${card.label} - ${card.description}\n   Use: ${card.command}`);
+  return `Cards liberados para este WhatsApp:\n${lines.join('\n')}`;
 }
 
 function blockedReplyFor(intent: ReplyIntent): string {
@@ -1952,7 +2231,15 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
   return null;
 }
 
-async function requestWhatsappReply(message: string, traceId: string, senderMask: string): Promise<ReplyResult> {
+async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHash: string): Promise<ReplyResult> {
+  if (looksLikeModuleMenuRequest(message)) {
+    const cards = await allowedModuleCardsForHash(senderHash);
+    return {
+      text: formatModuleMenu(cards),
+      engine: 'local',
+      reason: 'module_menu',
+    };
+  }
   const route = routeWhatsappReply(message);
   if (route.useTools) {
     const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask);
@@ -2450,8 +2737,11 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     contactsResult,
     allowlistCountsResult,
     allowlistRowsResult,
+    errorCountResult,
     recentEventsResult,
     recentOutboxResult,
+    recentSyncResult,
+    recentErrorsResult,
   ] = await Promise.all([
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
@@ -2505,15 +2795,29 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     ),
     pgPool.query<DashboardAllowlistRow>(
       `SELECT id::text AS id,
+              phone_hash,
               phone_mask,
               display_name,
               status,
+              COALESCE(modules.module_keys, ARRAY[]::text[]) AS module_keys,
               last_seen_at::text AS last_seen_at,
               created_at::text AS created_at
          FROM miauw_whatsapp_contacts
+         LEFT JOIN LATERAL (
+           SELECT ARRAY_AGG(module_key ORDER BY module_key) AS module_keys
+             FROM miauw_whatsapp_contact_modules
+            WHERE phone_hash = miauw_whatsapp_contacts.phone_hash
+              AND enabled = TRUE
+         ) modules ON TRUE
         WHERE status IN ('allowed', 'blocked')
         ORDER BY status = 'blocked', last_seen_at DESC, created_at DESC
         LIMIT 40`,
+    ),
+    pgPool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM miauw_whatsapp_error_logs
+        WHERE created_at >= NOW() - INTERVAL '1 day'
+          AND resolved_at IS NULL`,
     ),
     pgPool.query<DashboardEventRow>(
       `SELECT status,
@@ -2544,6 +2848,46 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         ORDER BY o.created_at DESC
         LIMIT 10`,
     ),
+    pgPool.query<DashboardSyncRow>(
+      `SELECT e.sender_phone_mask,
+              LEFT(e.body_text, 260) AS inbound_text,
+              e.status AS event_status,
+              e.ignore_reason,
+              e.error_summary AS event_error,
+              COALESCE(LEFT(o.body_text, 260), '') AS reply_text,
+              COALESCE(o.status, '') AS outbox_status,
+              COALESCE(o.error_summary, '') AS outbox_error,
+              COALESCE(NULLIF(o.reply_engine, ''), '-') AS reply_engine,
+              CASE
+                WHEN o.sent_at IS NULL THEN NULL
+                ELSE GREATEST(0, ROUND(EXTRACT(EPOCH FROM (o.sent_at - e.created_at)) * 1000))::integer
+              END AS total_response_ms,
+              e.created_at::text AS event_created_at,
+              o.sent_at::text AS sent_at
+         FROM miauw_whatsapp_events e
+         LEFT JOIN LATERAL (
+           SELECT body_text, status, error_summary, reply_engine, sent_at
+             FROM miauw_whatsapp_outbox
+            WHERE event_id = e.id
+            ORDER BY created_at DESC
+            LIMIT 1
+         ) o ON TRUE
+        ORDER BY e.created_at DESC
+        LIMIT 12`,
+    ),
+    pgPool.query<DashboardErrorRow>(
+      `SELECT source,
+              severity,
+              phone_mask,
+              trace_id,
+              message_preview,
+              error_summary,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_error_logs
+        WHERE resolved_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 12`,
+    ),
   ]);
   const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
 
@@ -2556,9 +2900,12 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     allowlistRows: allowlistRowsResult.rows,
     allowlistAllowed: countOf(allowlistCounts, 'allowed'),
     allowlistBlocked: countOf(allowlistCounts, 'blocked'),
+    errorCount24h: Number(errorCountResult.rows[0]?.count || 0),
     contactsTotal: Number(contactsResult.rows[0]?.count || 0),
     recentEvents: recentEventsResult.rows,
     recentOutbox: recentOutboxResult.rows,
+    recentSync: recentSyncResult.rows,
+    recentErrors: recentErrorsResult.rows,
   };
 }
 
@@ -2666,29 +3013,97 @@ function renderEngineBreakdown(rows: DashboardEngineRow[]): string {
     </div>`).join('');
 }
 
+function moduleKeysForRow(row: DashboardAllowlistRow): string[] {
+  return row.module_keys && row.module_keys.length ? row.module_keys : defaultModuleKeys();
+}
+
+function renderModuleCheckboxes(selectedKeys: string[]): string {
+  const selected = new Set(selectedKeys);
+  return WHATSAPP_MODULE_CARDS.map((card) => `
+    <label class="module-option">
+      <input type="checkbox" name="modules" value="${htmlEscape(card.key)}"${selected.has(card.key) ? ' checked' : ''}>
+      <span>${htmlEscape(card.label)}</span>
+    </label>`).join('');
+}
+
+function moduleLabels(keys: string[]): string {
+  const labels = moduleCardsForKeys(keys).map((card) => card.label);
+  return labels.length ? labels.join(', ') : 'Sem cards';
+}
+
 function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): string {
   if (!rows.length) {
-    return '<tr><td colspan="5" class="empty">Nenhum contato salvo no Postgres ainda.</td></tr>';
+    return '<p class="empty">Nenhum contato salvo no Postgres ainda.</p>';
   }
   return rows.map((row) => {
     const isAllowed = row.status === 'allowed';
     const nextAction = isAllowed ? 'block' : 'allow';
     const nextLabel = isAllowed ? 'Bloquear' : 'Autorizar';
+    const selectedModules = moduleKeysForRow(row);
     return `
-      <tr>
-        <td>${htmlEscape(row.phone_mask || '-')}</td>
-        <td>${htmlEscape(row.display_name || '-')}</td>
-        <td>${renderPill(isAllowed, 'Autorizado', 'Bloqueado')}</td>
-        <td>${htmlEscape(formatDate(row.last_seen_at || row.created_at))}</td>
-        <td>
-          <form class="inline-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist/${nextAction}">
+      <article class="allowlist-row">
+        <div class="allowlist-head">
+          <div>
+            <b>${htmlEscape(row.display_name || 'Sem nome')}</b>
+            <small>${htmlEscape(row.phone_mask || '-')} | ${htmlEscape(formatDate(row.last_seen_at || row.created_at))}</small>
+          </div>
+          ${renderPill(isAllowed, 'Autorizado', 'Bloqueado')}
+        </div>
+        <form class="allowlist-edit" method="post" action="${htmlEscape(BASE_PATH)}/allowlist/update">
+          <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
+          <input type="hidden" name="id" value="${htmlEscape(row.id)}">
+          <label>Nome
+            <input name="display_name" value="${htmlEscape(row.display_name || '')}" autocomplete="off">
+          </label>
+          <label>Novo numero
+            <input name="phone" inputmode="tel" autocomplete="off" placeholder="Opcional: digite completo para trocar">
+          </label>
+          <fieldset>
+            <legend>Cards liberados</legend>
+            <div class="module-list">${renderModuleCheckboxes(selectedModules)}</div>
+            <small>${htmlEscape(moduleLabels(selectedModules))}</small>
+          </fieldset>
+          <button type="submit">Salvar</button>
+        </form>
+        <form class="inline-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist/${nextAction}">
             <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
             <input type="hidden" name="id" value="${htmlEscape(row.id)}">
             <button type="submit">${htmlEscape(nextLabel)}</button>
-          </form>
-        </td>
-      </tr>`;
+        </form>
+      </article>`;
   }).join('');
+}
+
+function renderSyncRows(rows: DashboardSyncRow[]): string {
+  if (!rows.length) {
+    return '<tr><td colspan="8" class="empty">Sem mensagens recentes para comparar.</td></tr>';
+  }
+  return rows.map((row) => `
+    <tr>
+      <td>${htmlEscape(formatDate(row.event_created_at))}</td>
+      <td>${htmlEscape(row.sender_phone_mask || '-')}</td>
+      <td class="text-cell">${htmlEscape(row.inbound_text || '-')}</td>
+      <td class="text-cell">${htmlEscape(row.reply_text || '-')}</td>
+      <td>${htmlEscape(row.event_status)}${row.ignore_reason ? `/${htmlEscape(row.ignore_reason)}` : ''}</td>
+      <td>${htmlEscape(row.outbox_status || '-')}</td>
+      <td>${htmlEscape(row.reply_engine || '-')}</td>
+      <td>${htmlEscape(formatMs(row.total_response_ms))}</td>
+    </tr>`).join('');
+}
+
+function renderErrorRows(rows: DashboardErrorRow[]): string {
+  if (!rows.length) {
+    return '<tr><td colspan="6" class="empty">Nenhum erro aberto registrado.</td></tr>';
+  }
+  return rows.map((row) => `
+    <tr>
+      <td>${htmlEscape(formatDate(row.created_at))}</td>
+      <td>${htmlEscape(row.source || '-')}</td>
+      <td>${renderPill(row.severity !== 'error', row.severity || 'info', row.severity || 'error')}</td>
+      <td>${htmlEscape(row.phone_mask || '-')}</td>
+      <td class="text-cell">${htmlEscape(row.error_summary || '-')}<br><small>${htmlEscape(row.message_preview || '')}</small></td>
+      <td>${htmlEscape(row.trace_id ? row.trace_id.slice(0, 8) : '-')}</td>
+    </tr>`).join('');
 }
 
 function renderDashboardLogin(error: string): string {
@@ -2841,7 +3256,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     a { color: inherit; text-decoration: none; }
-    .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 40px; }
+    .shell { width: min(1380px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 40px; }
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
     .eyebrow { margin: 0 0 6px; color: #9b174e; font-size: 12px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
     h1 { margin: 0; font-size: 46px; line-height: .95; letter-spacing: 0; color: #a70643; }
@@ -2862,7 +3277,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-family: inherit;
       cursor: pointer;
     }
-    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
     .metric, .panel {
       border: 1px solid #ead5df;
       border-radius: 8px;
@@ -2873,8 +3288,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .metric span, .panel h2 { color: #8d0f43; font-size: 12px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
     .metric strong { display: block; margin: 12px 0 7px; font-size: 30px; line-height: 1; color: #b10647; }
     .metric small { color: #645260; font-size: 12px; line-height: 1.35; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .panel { padding: 16px; overflow: hidden; }
+    .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-items: start; }
+    .panel { grid-column: span 6; padding: 16px; overflow: hidden; }
+    .panel.is-wide { grid-column: 1 / -1; }
     .panel h2 { margin: 0 0 12px; }
     .status-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .status-item { border: 1px solid #f1d8e3; border-radius: 8px; padding: 12px; background: #fffafb; }
@@ -2888,12 +3304,17 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     th, td { padding: 9px 8px; border-bottom: 1px solid #f0dbe4; text-align: left; vertical-align: top; }
     th { color: #8f0e42; font-size: 11px; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
     td { color: #2e2430; }
+    .text-cell { max-width: 360px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
     .empty { color: #6a5964; text-align: center; }
     .footnote { margin: 14px 0 0; color: #6a5964; font-size: 12px; line-height: 1.4; }
     .notice { margin: 0 0 14px; border: 1px solid #bdebd5; border-radius: 8px; background: #effcf6; padding: 10px 12px; color: #09613b; font-size: 13px; font-weight: 800; }
-    .allowlist-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 14px; }
-    .allowlist-form label { color: #8d0f43; font-size: 12px; font-weight: 900; text-transform: uppercase; }
-    .allowlist-form input {
+    .allowlist-form { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto; gap: 10px; align-items: end; margin-bottom: 14px; }
+    .allowlist-form > label,
+    .allowlist-form legend,
+    .allowlist-edit > label,
+    .allowlist-edit legend { color: #8d0f43; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+    .allowlist-form input,
+    .allowlist-edit input {
       width: 100%;
       min-height: 38px;
       margin-top: 5px;
@@ -2904,8 +3325,28 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font: inherit;
       outline: none;
     }
-    .allowlist-form input:focus { border-color: #b10647; box-shadow: 0 0 0 3px rgba(177, 6, 71, .12); }
-    .allowlist-form button, .inline-form button {
+    .allowlist-form input:focus,
+    .allowlist-edit input:focus { border-color: #b10647; box-shadow: 0 0 0 3px rgba(177, 6, 71, .12); }
+    .allowlist-form fieldset,
+    .allowlist-edit fieldset {
+      min-width: 0;
+      border: 1px solid #f0dbe4;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fffafb;
+    }
+    .allowlist-form fieldset { grid-column: 1 / -1; }
+    .allowlist-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .allowlist-row { border: 1px solid #f0dbe4; border-radius: 8px; background: #fffafb; padding: 12px; min-width: 0; }
+    .allowlist-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .allowlist-head b { display: block; color: #251827; font-size: 14px; }
+    .allowlist-head small { display: block; margin-top: 4px; color: #6a5964; font-size: 12px; overflow-wrap: anywhere; }
+    .allowlist-edit { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(220px, 1fr) auto; gap: 10px; align-items: end; margin-top: 12px; }
+    .allowlist-edit fieldset { grid-column: 1 / -1; }
+    .module-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
+    .module-option { min-height: 32px; display: flex; align-items: center; gap: 7px; border: 1px solid #f0dbe4; border-radius: 8px; background: #fff; padding: 0 9px; color: #2e2430; font-size: 12px; font-weight: 800; text-transform: none; }
+    .module-option input { width: auto; min-height: auto; margin: 0; }
+    .allowlist-form button, .allowlist-edit button, .inline-form button {
       min-height: 36px;
       border: 1px solid #d7aabe;
       border-radius: 8px;
@@ -2917,13 +3358,14 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-weight: 900;
       cursor: pointer;
     }
-    .inline-form { margin: 0; }
+    .inline-form { display: flex; justify-content: flex-end; margin: 10px 0 0; }
     .inline-form button { background: #fff; color: #8f0e42; }
     @media (max-width: 860px) {
       .topbar { display: block; }
       .actions { justify-content: flex-start; margin-top: 14px; }
       .metrics, .grid { grid-template-columns: 1fr; }
-      .allowlist-form { grid-template-columns: 1fr; }
+      .panel, .panel.is-wide { grid-column: auto; }
+      .allowlist-form, .allowlist-edit, .allowlist-list { grid-template-columns: 1fr; }
       .status-list { grid-template-columns: 1fr; }
       h1 { font-size: 36px; }
     }
@@ -2938,9 +3380,6 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <p class="intro">Painel seguro do canal interno via WhatsApp: mostra atividade, fila, outbox e configuracoes sem expor token, telefone cru ou payload bruto.</p>
       </div>
       <nav class="actions" aria-label="Atalhos">
-        <a href="/">Home</a>
-        <a href="${htmlEscape(BASE_PATH)}/health">Health</a>
-        <a href="${htmlEscape(BASE_PATH)}/status">Status JSON</a>
         ${dashboardLogoutAction()}
       </nav>
     </header>
@@ -2952,9 +3391,32 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       ${renderMetric('Outbox', pendingOutbox, `${countOf(summary.outboxCounts, 'sent')} enviadas | ${outboxProblems} problemas`)}
       ${renderMetric('Contatos', summary.contactsTotal, `${eventProblems} eventos com falha ou dead-letter`)}
       ${renderMetric('Resposta', formatMs(responseDelay.avg_total_ms), `24h: ${responseDelay.count} envios | p95 ${formatMs(responseDelay.p95_total_ms)} | ultima ${formatMs(responseDelay.last_total_ms)}`)}
+      ${renderMetric('Erros', summary.errorCount24h, 'Abertos nas ultimas 24h para correcao')}
     </section>
 
     <section class="grid" aria-label="Status operacional">
+      <article class="panel is-wide">
+        <h2>Allowlist</h2>
+        <form class="allowlist-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist">
+          <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
+          <label>Numero
+            <input name="phone" inputmode="tel" autocomplete="off" placeholder="+55 44 99999-9999" required>
+          </label>
+          <label>Nome
+            <input name="display_name" autocomplete="off" placeholder="Ex.: Willian">
+          </label>
+          <button type="submit">Autorizar</button>
+          <fieldset>
+            <legend>Cards liberados</legend>
+            <div class="module-list">${renderModuleCheckboxes(defaultModuleKeys())}</div>
+          </fieldset>
+        </form>
+        <div class="allowlist-list">
+          ${renderAllowlistRows(summary.allowlistRows, csrfToken)}
+        </div>
+        <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres e nunca mostram telefone completo.</p>
+      </article>
+
       <article class="panel">
         <h2>Configuracao</h2>
         <div class="status-list">
@@ -3008,25 +3470,26 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         </div>
       </article>
 
-      <article class="panel">
-        <h2>Allowlist</h2>
-        <form class="allowlist-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist">
-          <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
-          <label>Numero
-            <input name="phone" inputmode="tel" autocomplete="off" placeholder="+55 44 99999-9999" required>
-          </label>
-          <label>Nome
-            <input name="display_name" autocomplete="off" placeholder="Ex.: Willian">
-          </label>
-          <button type="submit">Autorizar</button>
-        </form>
+      <article class="panel is-wide">
+        <h2>Sincronia recente</h2>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Numero</th><th>Nome</th><th>Status</th><th>Ultimo visto</th><th>Acao</th></tr></thead>
-            <tbody>${renderAllowlistRows(summary.allowlistRows, csrfToken)}</tbody>
+            <thead><tr><th>Quando</th><th>Remetente</th><th>Mensagem recebida</th><th>Resposta enviada</th><th>Evento</th><th>Outbox</th><th>Motor</th><th>Total</th></tr></thead>
+            <tbody>${renderSyncRows(summary.recentSync)}</tbody>
           </table>
         </div>
-        <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres e nunca mostram telefone completo.</p>
+        <p class="footnote">Comparacao curta para conferir se a mensagem recebida gerou a resposta esperada. O telefone continua mascarado.</p>
+      </article>
+
+      <article class="panel is-wide">
+        <h2>Erros abertos</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Quando</th><th>Origem</th><th>Nivel</th><th>Contato</th><th>Erro</th><th>Trace</th></tr></thead>
+            <tbody>${renderErrorRows(summary.recentErrors)}</tbody>
+          </table>
+        </div>
+        <p class="footnote">Cada falha de fila, envio ou HTTP fica registrada com resumo limpo para facilitar correcao futura sem gravar segredo.</p>
       </article>
 
       <article class="panel">
@@ -3122,12 +3585,16 @@ function dashboardNotice(value: unknown): string {
   switch (safeText(value, 80)) {
     case 'allowlist_added':
       return 'Allowlist atualizada.';
+    case 'allowlist_updated':
+      return 'Contato atualizado.';
     case 'allowlist_blocked':
       return 'Contato bloqueado na allowlist.';
     case 'allowlist_allowed':
       return 'Contato autorizado na allowlist.';
     case 'allowlist_invalid':
       return 'Numero invalido para allowlist.';
+    case 'allowlist_duplicate':
+      return 'Esse numero ja existe na allowlist.';
     case 'csrf_invalid':
       return 'Sessao expirada. Recarregue o painel e tente de novo.';
     default:
@@ -3170,7 +3637,7 @@ app.post(`${BASE_PATH}/login`, (req, res) => {
 
 app.post(`${BASE_PATH}/logout`, (req, res) => {
   clearDashboardCookie(req, res);
-  res.redirect(303, `${BASE_PATH}/login`);
+  res.redirect(303, '/');
 });
 
 app.post(`${BASE_PATH}/allowlist`, requireDashboardAuth, async (req, res) => {
@@ -3179,11 +3646,37 @@ app.post(`${BASE_PATH}/allowlist`, requireDashboardAuth, async (req, res) => {
     return;
   }
   try {
-    await upsertAllowlistContact(req.body?.phone, req.body?.display_name);
+    await upsertAllowlistContact(req.body?.phone, req.body?.display_name, normalizeModuleKeys(req.body?.modules));
     res.redirect(303, `${BASE_PATH}?notice=allowlist_added`);
   } catch (error) {
     if (error instanceof Error && error.message === 'invalid_allowlist_phone') {
       res.redirect(303, `${BASE_PATH}?notice=allowlist_invalid`);
+      return;
+    }
+    res.status(503).type('html').send(renderDashboardError(error));
+  }
+});
+
+app.post(`${BASE_PATH}/allowlist/update`, requireDashboardAuth, async (req, res) => {
+  if (!dashboardCsrfValid(req)) {
+    res.redirect(303, `${BASE_PATH}?notice=csrf_invalid`);
+    return;
+  }
+  try {
+    await updateAllowlistContact(
+      safeText(req.body?.id, 80),
+      safeText(req.body?.phone, 80),
+      safeText(req.body?.display_name, 120),
+      normalizeModuleKeys(req.body?.modules),
+    );
+    res.redirect(303, `${BASE_PATH}?notice=allowlist_updated`);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'invalid_allowlist_phone') {
+      res.redirect(303, `${BASE_PATH}?notice=allowlist_invalid`);
+      return;
+    }
+    if (isRecord(error) && error.code === '23505') {
+      res.redirect(303, `${BASE_PATH}?notice=allowlist_duplicate`);
       return;
     }
     res.status(503).type('html').send(renderDashboardError(error));
@@ -3249,6 +3742,7 @@ app.get(`${BASE_PATH}/status`, requireDashboardAuth, async (_req, res) => {
       allowlist_database_allowed: summary.allowlistAllowed,
       allowlist_database_blocked: summary.allowlistBlocked,
       response_delay_24h: summary.responseDelay,
+      error_count_24h: summary.errorCount24h,
     });
   } catch (error) {
     res.status(503).json({ ...publicStatus(), ok: false, error: safeError(error) });
@@ -3272,6 +3766,7 @@ app.use((_req, res) => {
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(safeError(error));
+  recordErrorLog('http', 'error', error).catch((logError) => console.error(safeError(logError)));
   res.status(500).json({ ok: false, error: 'internal_error' });
 });
 

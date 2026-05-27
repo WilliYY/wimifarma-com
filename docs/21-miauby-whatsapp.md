@@ -39,6 +39,8 @@ Tabelas criadas pelo servico:
 - `miauw_whatsapp_contacts`: contatos autorizados/vistos, com telefone em hash, mascara e numero cifrado quando necessario para comparar allowlist sem guardar telefone cru.
 - `miauw_whatsapp_events`: eventos recebidos, status da fila, dedupe por provider/instancia/message id, metadados sanitizados e identificadores cifrados.
 - `miauw_whatsapp_outbox`: respostas geradas e tentativas de envio pelo transporte WhatsApp escolhido.
+- `miauw_whatsapp_contact_modules`: cards/modulos liberados por contato autorizado, como Cashback, Cotacao, Pedidos, Financeiro, Gestao, Tarefas, XP, Codigos e Miauby.
+- `miauw_whatsapp_error_logs`: falhas sanitizadas de fila, envio e HTTP, com origem, severidade, trace curto, mascara do contato, resumo e contexto limpo para diagnostico.
 
 O banco nao deve guardar payload bruto externo nem telefone cru. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder.
 
@@ -106,8 +108,9 @@ Principais variaveis:
 - `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox, allowlist, demora de resposta e eventos recentes, sem segredo ou telefone cru; quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos, exige login por cookie assinado.
 - `GET /miauw/whatsapp/login`: tela de login do painel, com o gato happy e favicon proprio do Miauby.
 - `POST /miauw/whatsapp/login`: autentica o painel com usuario/senha do ambiente.
-- `POST /miauw/whatsapp/logout`: encerra a sessao do painel.
-- `POST /miauw/whatsapp/allowlist`: autoriza um remetente no Postgres a partir do painel, salvando apenas hash/mascara/numero cifrado e nome curto opcional.
+- `POST /miauw/whatsapp/logout`: encerra a sessao do painel e volta para a home `/`.
+- `POST /miauw/whatsapp/allowlist`: autoriza um remetente no Postgres a partir do painel, salvando apenas hash/mascara/numero cifrado, nome curto opcional e cards liberados.
+- `POST /miauw/whatsapp/allowlist/update`: edita nome, troca numero digitado novamente e ajusta os cards liberados do contato.
 - `POST /miauw/whatsapp/allowlist/block`: bloqueia um contato salvo no Postgres e faz esse bloqueio vencer sobre a allowlist fixa do ambiente.
 - `POST /miauw/whatsapp/allowlist/allow`: reautoriza um contato salvo no Postgres.
 - `GET /miauw/whatsapp/health`: status seguro do servico.
@@ -127,6 +130,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - O painel `/miauw/whatsapp/` deve ficar protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` nos ambientes operacionais. Health continua publico e sem segredo para smoke test.
 - Mesmo protegido por login, o painel nao deve exibir segredos, payload bruto ou telefone completo.
 - A allowlist fixa por `MIAUW_WHATSAPP_ALLOWED_SENDERS` continua sendo a base por ambiente. O painel tambem permite autorizar/bloquear contatos no Postgres; bloqueio salvo no Postgres vence sobre a allowlist fixa, e autorizacao salva no Postgres permite adicionar remetentes sem editar `.env`.
+- Cada contato salvo no Postgres pode ter cards/modulos liberados. Ao pedir `miauby menu`, `miauby cards` ou equivalente, o bridge retorna apenas os cards autorizados para aquele hash de telefone. Isso prepara a integracao por permissao de WhatsApp antes de liberar consultas reais de cada modulo.
 - Grupos ficam bloqueados por padrao.
 - Prefixo `miauby` fica exigido por padrao no repositorio. Em ambiente operacional com allowlist revisada, ele pode ser desligado por `MIAUW_WHATSAPP_REQUIRE_PREFIX=false`; nesse modo, mensagens sem a palavra `miauby` vao somente para Gemini com personalidade/instrucoes seguras, e mensagens com `miauby` em qualquer posicao acionam o core Miauby/API.
 - O canal responde no maximo uma vez por mensagem recebida.
@@ -156,7 +160,7 @@ Com `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=false`, o WhatsApp volta ao compor
 
 Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como fallback tecnico. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. O prompt base do bridge sempre preserva identidade/persona do Miauby e impede inventar horario, saldo, pedido ou dado operacional. Para baixa latencia e respostas completas com Gemini 2.5, usar `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0` e `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS` suficiente. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
 
-O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota, latencia de geracao antes do envio e demora total entre recebimento do evento e envio pelo transporte. Essa telemetria fica na `miauw_whatsapp_outbox`/consulta com `miauw_whatsapp_events` e usa apenas mascaras/hash.
+O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota, latencia de geracao antes do envio e demora total entre recebimento do evento e envio pelo transporte. Essa telemetria fica na `miauw_whatsapp_outbox`/consulta com `miauw_whatsapp_events` e usa apenas mascaras/hash. O painel tambem mostra uma visao de sincronia recente, comparando mensagem recebida e resposta enviada, e uma area de erros abertos alimentada por `miauw_whatsapp_error_logs`.
 
 Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git.
 
@@ -183,6 +187,7 @@ Se `/miauw/whatsapp/health` estiver OK, mas o WhatsApp nao responder, primeiro v
 cd /home/ubuntu/projetos/wimifarma-com
 docker compose exec -T wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "SELECT created_at, event_type, status, ignore_reason, sender_phone_mask, left(body_text,80) FROM miauw_whatsapp_events ORDER BY created_at DESC LIMIT 8;"
 docker compose exec -T wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "SELECT o.created_at, o.sent_at, o.status, o.reply_engine, o.route_reason, o.reply_latency_ms, ROUND(EXTRACT(EPOCH FROM (o.sent_at - e.created_at)) * 1000)::int AS total_response_ms FROM miauw_whatsapp_outbox o JOIN miauw_whatsapp_events e ON e.id = o.event_id ORDER BY o.created_at DESC LIMIT 8;"
+docker compose exec -T wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "SELECT created_at, source, severity, phone_mask, left(error_summary,120), left(message_preview,120) FROM miauw_whatsapp_error_logs WHERE resolved_at IS NULL ORDER BY created_at DESC LIMIT 8;"
 ```
 
 Se aparecer apenas `connection.update` com `missing_sender` e nenhum `messages.upsert`, o bridge nao recebeu texto; normalmente a trava esta no transporte Evolution/Baileys, nao na IA. Conferir a conexao e webhook:
@@ -210,6 +215,8 @@ A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda 
 Em 2026-05-26, o template foi fixado em `evoapicloud/evolution-api:v2.3.0` para uma nova tentativa de pareamento. A `v2.3.7` retornou `401 Unauthorized` e `Invalid buffer`; a `v2.3.6` tambem falhou com `Invalid buffer` porque ignorou `CONFIG_SESSION_PHONE_VERSION`. A `v2.3.0` ainda usa o pin `CONFIG_SESSION_PHONE_VERSION` ao iniciar o Baileys.
 
 Em 2026-05-27, a instancia `wimifarma-business-no9-20260526190040` foi validada no VPS como `open`/conectada, com webhook apontando para `https://wimifarma.com/miauw/whatsapp/webhook?token=<MIAUW_WHATSAPP_WEBHOOK_TOKEN>` e eventos `QRCODE_UPDATED`, `CONNECTION_UPDATE` e `MESSAGES_UPSERT`.
+
+Nao atualizar a Evolution API em producao direto para `latest` ou release candidate. Qualquer upgrade deve ser feito primeiro em stack/pasta separada, com backup do Postgres/Redis/instancias, validando manager, `connectionState=open`, webhook, `MESSAGES_UPSERT`, envio de texto e botoes. So promover depois de teste real com o numero/instancia de teste.
 
 O manager operacional, quando necessario, deve ser acessado pelo manager embutido da API em `http://127.0.0.1:8080/manager` via acesso local/tunel. Nao manter container manager separado.
 
