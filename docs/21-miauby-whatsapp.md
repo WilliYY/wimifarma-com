@@ -65,6 +65,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES=720`
 - `MIAUW_WHATSAPP_DEFAULT_DDD=44`
 - `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`
+- `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=false`
 - `MIAUW_WHATSAPP_PREFIX=miauby`
 - `MIAUW_WHATSAPP_GROUPS_ENABLED=false`
 - `MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND=1`
@@ -88,6 +89,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER=gemini`
 - `MIAUW_WHATSAPP_AUDIO_TTS_MODEL=gemini-2.5-flash-preview-tts`
 - `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Puck`
+- `MIAUW_WHATSAPP_AUDIO_TTS_STYLE=voz de gato humano: humana, clara, levemente felina, esperta e brincalhona, sem exagerar miados e sem cantar`
 - `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS=30000`
 - `MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS=30000`
 - `MIAUW_WHATSAPP_AUDIO_MAX_BYTES=10000000`
@@ -150,18 +152,18 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Cada contato salvo no Postgres pode ter cards/modulos liberados. Ao pedir `miauby menu`, `miauby cards` ou equivalente, o bridge retorna apenas os cards autorizados para aquele telefone, considerando hash direto, alias da Evolution e equivalencia operacional com/sem DDI `55`. O bridge tambem bloqueia chamadas do core/tools quando o card detectado na mensagem ou na tool retornada nao esta liberado para o telefone.
 - Grupos ficam bloqueados por padrao.
 - Remetente fora da allowlist nao chama Gemini nem core Miauby. Quando envia texto individual, o bridge registra o evento como `ignored/sender_not_allowed` e manda no maximo um aviso curto a cada alguns minutos dizendo que o Miauby e interno e so responde numeros permitidos.
-- Prefixo `miauby` fica exigido por padrao no repositorio. Em ambiente operacional com allowlist revisada, ele pode ser desligado por `MIAUW_WHATSAPP_REQUIRE_PREFIX=false`; nesse modo, mensagens sem a palavra `miauby` vao somente para Gemini com personalidade/instrucoes seguras, e mensagens com `miauby` em qualquer posicao acionam o core Miauby/API.
+- Prefixo `miauby` fica exigido por padrao no repositorio. Em ambiente operacional com allowlist revisada, ele pode ser desligado por `MIAUW_WHATSAPP_REQUIRE_PREFIX=false`; nesse modo, conversa solta sem comando vai para Gemini com personalidade/instrucoes seguras. Se `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, comandos operacionais detectados, como `sangria 10 Will`, tambem acionam o core Miauby/API com tools e confirmacao. Mensagens com `miauby` em qualquer posicao continuam acionando o core.
 - O canal responde no maximo uma vez por mensagem recebida.
 - Rate limit por remetente fica ativo por minuto e por dia.
 - Rate limit global de envio fica ativo por minuto, com intervalo minimo entre envios.
 - Se o transporte responder erro temporario, timeout, `429` ou `5xx`, o bridge pausa novos envios por `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS` antes de tentar de novo.
 - O roteador separa conversa solta de comando interno pela palavra `miauby`.
-- Sem `miauby`, conversa simples usa Gemini e nao chama API interna.
+- Sem `miauby`, conversa simples usa Gemini e nao chama API interna. Comandos operacionais sem prefixo so chamam o core quando `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, o remetente esta em allowlist, o card esta liberado e a acao ainda exige pendencia/confirmacao.
 - Com `miauby`, o core Miauby pode usar tools/ponte interna conforme guardrails; escritas fortes seguem dependentes de confirmacao/auditoria e nao devem ser tratadas como texto solto executavel.
 - Antes de chamar o core, o bridge busca contexto compartilhado no PHP para usar o mesmo treino aprovado, perfil de voz, padroes e contratos de tools do Miauby interno. Se essa busca falhar, o bridge segue com contexto minimo e nao libera escrita direta.
 - Quando `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, o bridge pode preparar acoes fortes permitidas em `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST`, guardar uma pendencia por remetente, expirar pendencias antigas e enviar botoes `Sim`/`Nao`. Sem pendencia valida, `sim`, `nao`, `confirmar` ou `cancelar` sao apenas texto e nao executam escrita.
 - Dados sensiveis continuam bloqueados localmente antes de chamar Gemini/core.
-- Audio fica desligado por padrao no Git. Quando `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=true`, audio individual de remetente autorizado e baixado do transporte apenas no worker, limitado por `MIAUW_WHATSAPP_AUDIO_MAX_BYTES`, transcrito pelo Gemini e descartado. A transcricao segue o mesmo roteador: sem `miauby` vai para conversa simples, com `miauby` chama o core/tools conforme permissao.
+- Audio fica desligado por padrao no Git. Quando `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=true`, audio individual de remetente autorizado e baixado do transporte apenas no worker, limitado por `MIAUW_WHATSAPP_AUDIO_MAX_BYTES`, transcrito pelo Gemini e descartado. A transcricao segue o mesmo roteador: conversa simples vai para Gemini; comando operacional detectado chama o core/tools conforme permissao quando o ambiente permite comandos sem prefixo.
 - Quando `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, o bridge pode gerar audio de resposta. O modo `voice_on_voice` responde em audio somente quando a entrada veio por audio; `always` tenta audio para toda resposta sem botao; `never` desliga. Confirmacoes continuam por botoes/texto, nao por audio.
 
 ## Modo hibrido de IA
@@ -170,7 +172,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 
 - `miauw`: todas as respostas passam pelo `wimifarma-miauw-agent`, usando o core interno e a OpenAI configurada no Miauby.
 - `gemini`: conversa curta passa pelo Gemini; mensagens que parecem comando interno continuam protegidas e podem ser roteadas ao core Miauby quando ele estiver configurado.
-- `hybrid`: mensagens sem `miauby` passam pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens com `miauby`, como `miauby faca sangria`, `miauby pedidos resumo` ou `sangria tal dia miauby`, vao para o `wimifarma-miauw-agent` com tools e guardrails.
+- `hybrid`: conversa solta passa pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens com `miauby`, como `miauby faca sangria`, `miauby pedidos resumo` ou `sangria tal dia miauby`, vao para o `wimifarma-miauw-agent` com tools e guardrails. Quando `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, comandos operacionais detectados sem `miauby`, como `sangria 10 Will`, tambem vao para o core, sem pular card liberado nem confirmacao.
 
 No caminho do core, `apps/miauw-whatsapp` chama `site/miauw/agent-context.php` por POST interno tokenizado. O pacote retornado e cacheado por poucos segundos e inclui o mesmo `style_context` que o chat interno usa, com treino aprovado, perfil de voz e exemplos relevantes, alem de `tool_contracts` exportados do registry PHP. Isso evita dois Miaubys com personalidade/capacidades diferentes.
 
@@ -185,7 +187,7 @@ Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como 
 O audio do WhatsApp usa Gemini em duas etapas independentes:
 
 1. Entrada: o bridge guarda somente referencia sanitizada da midia recebida. No processamento da fila, ele baixa a midia via Evolution `/chat/getBase64FromMediaMessage/{instance}` ou via Media API da Meta, envia para `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL` e usa apenas a transcricao para seguir no roteador.
-2. Saida: se `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, a resposta textual ja validada vira fala por `MIAUW_WHATSAPP_AUDIO_TTS_MODEL`. Quando o Gemini devolve PCM, o bridge empacota como WAV antes de enviar. Se envio de audio falhar, cai para texto pelo mesmo transporte.
+2. Saida: se `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, a resposta textual ja validada vira fala por `MIAUW_WHATSAPP_AUDIO_TTS_MODEL`. `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` orienta uma voz humana clara com leve jeito de gato/Miauby, sem clonagem de voz. Quando o Gemini devolve PCM, o bridge empacota como WAV antes de enviar. Se envio de audio falhar, cai para texto pelo mesmo transporte.
 
 O audio nao substitui guardrails. Escritas fortes seguem exigindo pendencia e confirmacao; mensagens de audio sem dados suficientes devem pedir o menor dado faltante; `sim/nao` por audio so tem efeito se a transcricao encontrar uma pendencia valida.
 
@@ -198,7 +200,7 @@ Quando a Evolution/Baileys entregar remetente como LID/identificador longo em ve
 Nao existe garantia tecnica de banimento zero, principalmente quando o transporte usa sessao WhatsApp Web/Baileys pela Evolution API. A postura operacional do Wimifarma deve ser conservadora:
 
 - usar apenas remetentes em allowlist e com consentimento operacional claro;
-- manter prefixo `miauby` exigido enquanto o canal estiver em estabilizacao; se desligar prefixo, limitar a allowlist, manter grupos bloqueados e monitorar o painel para garantir que apenas mensagens com `miauby` acionem core/API;
+- manter prefixo `miauby` exigido enquanto o canal estiver em estabilizacao; se desligar prefixo e liberar comandos sem prefixo, limitar a allowlist, manter grupos bloqueados e monitorar o painel para garantir que apenas conversa solta va ao Gemini e comandos internos virem confirmacao auditada;
 - bloquear grupos por padrao;
 - responder somente a mensagens iniciadas pelo usuario autorizado;
 - manter uma resposta por mensagem recebida;

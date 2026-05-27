@@ -147,8 +147,8 @@ Desenho:
 - eventos aceitos entram em fila Postgres com dedupe por provider/instancia/message id;
 - o modo `MIAUW_WHATSAPP_AI_MODE=miauw` usa o core Miauby interno/OpenAI como motor de resposta;
 - o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
-- o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para mensagens sem `miauby` quando `GEMINI_API_KEY` estiver configurada e roteia mensagens com `miauby` em qualquer posicao para o core Miauby;
-- quando audio estiver habilitado, audio de remetente autorizado e baixado do transporte somente no worker, transcrito por Gemini, descartado em memoria e roteado como texto; resposta em audio usa Gemini TTS e cai para texto se o envio falhar;
+- o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para conversa solta quando `GEMINI_API_KEY` estiver configurada, roteia mensagens com `miauby` em qualquer posicao para o core Miauby e, quando `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, tambem roteia comandos operacionais detectados sem prefixo para o core;
+- quando audio estiver habilitado, audio de remetente autorizado e baixado do transporte somente no worker, transcrito por Gemini, descartado em memoria e roteado como texto; resposta em audio usa Gemini TTS, segue o estilo configuravel `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` e cai para texto se o envio falhar;
 - antes de chamar o core, o bridge usa `MIAUW_WHATSAPP_CONTEXT_URL` para buscar no PHP o mesmo treino aprovado, perfil de voz e contratos de tools do Miauby interno;
 - para acoes fortes permitidas, o bridge usa `MIAUW_WHATSAPP_ACTIONS_URL` para preparar uma pendencia auditada e, apos botao `Sim`, executar pela mesma camada PHP que o Miauby interno usa;
 - o bridge bloqueia dados sensiveis antes da IA e registra motor/rota/latencia na outbox;
@@ -165,7 +165,7 @@ Regras iniciais obrigatorias:
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
 - manter uma resposta por mensagem recebida, rate limit por remetente, rate limit global, intervalo minimo entre envios e pausa automatica quando o transporte responder timeout, `429` ou `5xx`;
 - manter acoes fortes bloqueadas ou retornando confirmacao humana auditada; WhatsApp so pode executar quando houver allowlist, pendencia vigente no bridge, tool permitida e confirmacao `Sim`/`Nao` vinculada a essa pendencia;
-- comandos com `miauby`, inclusive sangria, podem ser interpretados pelo core e retornar `confirmation_required`; com `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, o bridge grava a pendencia e envia botoes; sem pendencia valida, texto solto `sim/nao` nao executa nada;
+- comandos com `miauby`, inclusive sangria, podem ser interpretados pelo core e retornar `confirmation_required`; em ambiente revisado, `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true` permite que comandos operacionais claros sem prefixo, como `sangria 10 Will`, passem pelo mesmo caminho. Com `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, o bridge grava a pendencia e envia botoes; sem pendencia valida, texto solto `sim/nao` nao executa nada;
 - registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token; o painel operacional deve seguir a mesma regra;
 - para audio, registrar apenas metadados sanitizados e a transcricao; nao persistir bytes de audio bruto nem URL/token de midia;
 - se for usar Gemini ou outro provedor, encapsular como motor configuravel do bridge/Miauby, nao como resposta solta direto na Evolution API.
