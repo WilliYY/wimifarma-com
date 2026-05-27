@@ -152,6 +152,7 @@ Desenho:
 - quando leitura de comprovante Pix estiver habilitada, foto, print, imagem encaminhada ou PDF/documento de remetente autorizado e baixado somente no worker, extraido por Gemini, descartado em memoria e convertido em pendencia `Pix CNPJ` para o Financeiro apenas se o destino bater por CNPJ/chave Pix `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ` ou por nome correlato em `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES`;
 - antes de chamar o core, o bridge usa `MIAUW_WHATSAPP_CONTEXT_URL` para buscar no PHP o mesmo treino aprovado, perfil de voz e contratos de tools do Miauby interno;
 - para acoes fortes permitidas, o bridge usa `MIAUW_WHATSAPP_ACTIONS_URL` para preparar uma pendencia auditada e, apos botao `Sim`, executar pela mesma camada PHP que o Miauby interno usa;
+- com Evolution API, a confirmacao deve ser enviada como texto simples por padrao, porque botoes podem ser aceitos pela API e nao renderizar no WhatsApp normal; Meta Cloud API pode usar botoes interativos, e Evolution so deve usar botoes com `MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS=true` apos teste real;
 - o bridge bloqueia dados sensiveis antes da IA e registra motor/rota/latencia na outbox;
 - Evolution API ou Meta Cloud API devem ser apenas transporte de entrada/saida;
 - a resposta volta pela API estruturada do transporte escolhido, por exemplo envio de texto para a mesma conversa.

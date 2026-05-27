@@ -113,6 +113,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_ACTIONS_TIMEOUT_MS=8000`
 - `MIAUW_WHATSAPP_CONFIRMATIONS_ENABLED=true`
 - `MIAUW_WHATSAPP_INTERACTIVE_CONFIRMATIONS=true`
+- `MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS=false`
 - `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=false`
 - `MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES=15`
 - `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST=registrar_sangria,criar_lancamento_financeiro,criar_conta_gestao`
@@ -227,7 +228,7 @@ Para gravar, todos estes pontos precisam passar:
 - existem valor, pagador, data e horario com confianca suficiente;
 - `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true` no ambiente e `criar_lancamento_financeiro` esta na allowlist de tools confirmaveis.
 
-Quando passa, o bridge transforma a extracao em comando interno `pix cnpj R$ valor - pagador - obs ...`, chama `site/miauw/agent-actions.php` para preparar a acao e envia um box/botao `Sim`/`Nao`. `Sim` grava no Financeiro do dia extraido como lancamento `Pix CNPJ`; `Nao` cancela e orienta escrever os dados corrigidos no formato `pix cnpj 50,00 - Nome - obs data DD/MM/AAAA horario HH:MM`.
+Quando passa, o bridge transforma a extracao em comando interno `pix cnpj R$ valor - pagador - obs ...`, chama `site/miauw/agent-actions.php` para preparar a acao e envia uma confirmacao `Sim`/`Nao`. Com Meta Cloud API, botoes interativos podem ser usados. Com Evolution API, o padrao e texto simples (`Mande SIM para confirmar ou NAO para cancelar`) porque `sendButtons` pode retornar sucesso sem renderizar no WhatsApp normal/linked device; botoes na Evolution so devem ser ligados com `MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS=true` apos teste real. `Sim` grava no Financeiro do dia extraido como lancamento `Pix CNPJ`; `Nao` cancela e orienta escrever os dados corrigidos no formato `pix cnpj 50,00 - Nome - obs data DD/MM/AAAA horario HH:MM`.
 
 Midia de grupo continua bloqueada enquanto `MIAUW_WHATSAPP_GROUPS_ENABLED=false`. Se a rotina de comprovantes estiver em grupo, a postura recomendada e encaminhar o comprovante para o Miauby individual ou criar um numero/instancia separado, porque habilitar grupos amplia muito o risco de resposta indevida.
 

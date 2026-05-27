@@ -265,7 +265,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.6';
+const SERVICE_VERSION = '0.5.7';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -296,6 +296,7 @@ const ACTIONS_URL = textEnv('MIAUW_WHATSAPP_ACTIONS_URL')
 const ACTIONS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_ACTIONS_TIMEOUT_MS', 8000, 1000, 30000);
 const CONFIRMATIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMATIONS_ENABLED', true);
 const INTERACTIVE_CONFIRMATIONS = boolEnv('MIAUW_WHATSAPP_INTERACTIVE_CONFIRMATIONS', true);
+const EVOLUTION_INTERACTIVE_CONFIRMATIONS = boolEnv('MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS', false);
 const CONFIRMED_ACTIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED', false);
 const CONFIRMATION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES', 15, 1, 120);
 const REPLY_ENGINE = replyEngineEnv();
@@ -2458,7 +2459,7 @@ function formatReplyTextWithConfirmation(text: string, confirmation?: WhatsappCo
   if (!confirmation?.id) return text;
   const clean = safeText(text, 1500);
   if (clean.toLowerCase().includes(confirmation.id.toLowerCase())) return clean;
-  return `${clean}\n\nResponda pelos botoes ou mande SIM/NAO. Codigo: ${confirmation.id}`;
+  return `${clean}\n\nMande SIM para confirmar ou NAO para cancelar. Codigo: ${confirmation.id}`;
 }
 
 function parseConfirmationDecision(message: string): { action: 'confirm' | 'cancel'; shortId?: string } | null {
@@ -4645,7 +4646,10 @@ async function sendProviderReply(phone: string, text: string, instanceName: stri
       }
     });
   }
-  if (!confirmation?.id || !INTERACTIVE_CONFIRMATIONS) {
+  const useInteractiveConfirmation = confirmation?.id
+    && INTERACTIVE_CONFIRMATIONS
+    && (WHATSAPP_PROVIDER === 'meta' || EVOLUTION_INTERACTIVE_CONFIRMATIONS);
+  if (!useInteractiveConfirmation) {
     const providerMessageId = await sendProviderText(phone, text, instanceName);
     return { providerMessageId, deliveredMediaType: '', fallbackError: '' };
   }
@@ -4724,6 +4728,7 @@ function publicStatus(): JsonRecord {
     whatsapp_confirmations_enabled: CONFIRMATIONS_ENABLED,
     whatsapp_confirmed_actions_enabled: CONFIRMED_ACTIONS_ENABLED,
     whatsapp_interactive_confirmations: INTERACTIVE_CONFIRMATIONS,
+    whatsapp_evolution_interactive_confirmations: EVOLUTION_INTERACTIVE_CONFIRMATIONS,
     whatsapp_confirmation_ttl_minutes: CONFIRMATION_TTL_MINUTES,
     whatsapp_actions_configured: ACTIONS_URL !== '' && INTERNAL_TOKEN !== '',
     internal_read_tools_enabled: true,
