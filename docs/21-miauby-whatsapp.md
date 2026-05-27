@@ -67,8 +67,9 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS=60000`
 - `MIAUW_WHATSAPP_AI_MODE=miauw`
 - `MIAUW_WHATSAPP_GEMINI_MODEL=gemini-2.5-flash`
-- `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS=180`
+- `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS=220`
 - `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100=35`
+- `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
 - `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS=90`
 - `MIAUW_WHATSAPP_RECIPIENT_ALIASES`
@@ -125,7 +126,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - `gemini`: conversa curta passa pelo Gemini; mensagens que parecem comando interno continuam protegidas e podem ser roteadas ao core Miauby quando ele estiver configurado.
 - `hybrid`: mensagens sem `miauby` passam pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens com `miauby`, como `miauby faca sangria`, `miauby pedidos resumo` ou `sangria tal dia miauby`, vao para o `wimifarma-miauw-agent` com tools e guardrails.
 
-Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como fallback tecnico. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
+Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como fallback tecnico. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real. O prompt base do bridge sempre preserva identidade/persona do Miauby e impede inventar horario, saldo, pedido ou dado operacional. Para baixa latencia e respostas completas com Gemini 2.5, usar `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0` e `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS` suficiente. Respostas simples do Gemini podem ficar em cache curto por `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS`, sem payload bruto e sem dados operacionais.
 
 O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota e latencia de geracao antes do envio. Essa telemetria fica na `miauw_whatsapp_outbox` e usa apenas mascaras/hash.
 
