@@ -33,6 +33,19 @@ type AudioMedia = {
   sizeBytes: number;
 };
 
+type PixReceiptExtraction = {
+  isPixReceipt: boolean;
+  destinationCnpj: string;
+  destinationName: string;
+  payerName: string;
+  amount: number;
+  paidDate: string;
+  paidTime: string;
+  institution: string;
+  confidence: number;
+  missing: string[];
+};
+
 type OutboundAudio = {
   base64: string;
   mimeType: string;
@@ -240,7 +253,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.2';
+const SERVICE_VERSION = '0.5.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -295,6 +308,11 @@ const AUDIO_TTS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS', 30
 const AUDIO_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_AUDIO_MAX_BYTES', 10000000, 100000, 20000000);
 const AUDIO_TTS_MAX_CHARS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS', 700, 80, 1800);
 const AUDIO_TTS_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS', 900, 0, 3600);
+const PIX_RECEIPT_IMAGE_ENABLED = boolEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED', false);
+const PIX_RECEIPT_CNPJ = onlyDigits(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ') || '07676534000181');
+const PIX_RECEIPT_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL') || GEMINI_MODEL;
+const PIX_RECEIPT_IMAGE_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES', 10000000, 100000, 20000000);
+const PIX_RECEIPT_OCR_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS', 30000, 3000, 90000);
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
@@ -511,6 +529,10 @@ function normalizeIntentText(value: string): string {
 }
 
 function normalizePhone(value: unknown): string {
+  return String(value ?? '').replace(/\D+/g, '');
+}
+
+function onlyDigits(value: unknown): string {
   return String(value ?? '').replace(/\D+/g, '');
 }
 
@@ -1036,6 +1058,19 @@ function isAudioMessageType(value: string): boolean {
   return normalizeIntentText(value).includes('audio');
 }
 
+function isImageMessageType(value: string): boolean {
+  const clean = normalizeIntentText(value);
+  return clean.includes('image') || clean.includes('imagem') || clean.includes('photo') || clean.includes('foto');
+}
+
+function canonicalImageMime(raw: unknown): string {
+  const value = safeText(raw, 120).toLowerCase();
+  if (value.includes('png')) return 'image/png';
+  if (value.includes('webp')) return 'image/webp';
+  if (value.includes('jpeg') || value.includes('jpg')) return 'image/jpeg';
+  return 'image/jpeg';
+}
+
 function sanitizeEvolutionKey(key: JsonRecord): JsonRecord {
   return {
     id: safeText(key.id, 180),
@@ -1046,24 +1081,53 @@ function sanitizeEvolutionKey(key: JsonRecord): JsonRecord {
 }
 
 function evolutionMediaSummary(data: JsonRecord, messageType: string): JsonRecord | null {
-  if (!isAudioMessageType(messageType)) return null;
   const message = readNestedRecord(data, 'message');
-  const audio = readNestedRecord(message, 'audioMessage');
-  if (!Object.keys(audio).length) return null;
   const key = sanitizeEvolutionKey(readNestedRecord(data, 'key'));
-  return {
-    kind: 'audio',
-    provider: 'evolution',
-    key,
-    mimetype: canonicalAudioMime(safeText(audio.mimetype, 120) || 'audio/ogg'),
-    seconds: numericSummary(audio.seconds),
-    file_length: safeText(audio.fileLength, 40),
-    ptt: audio.ptt === true,
-    has_media_url: safeText(data.mediaUrl || audio.url || '', 260) !== '',
-  };
+  if (isAudioMessageType(messageType)) {
+    const audio = readNestedRecord(message, 'audioMessage');
+    if (!Object.keys(audio).length) return null;
+    return {
+      kind: 'audio',
+      provider: 'evolution',
+      key,
+      mimetype: canonicalAudioMime(safeText(audio.mimetype, 120) || 'audio/ogg'),
+      seconds: numericSummary(audio.seconds),
+      file_length: safeText(audio.fileLength, 40),
+      ptt: audio.ptt === true,
+      has_media_url: safeText(data.mediaUrl || audio.url || '', 260) !== '',
+    };
+  }
+
+  if (isImageMessageType(messageType)) {
+    const image = readNestedRecord(message, 'imageMessage');
+    if (!Object.keys(image).length) return null;
+    return {
+      kind: 'image',
+      provider: 'evolution',
+      key,
+      mimetype: canonicalImageMime(image.mimetype || 'image/jpeg'),
+      caption_present: safeText(image.caption, 200) !== '',
+      file_length: safeText(image.fileLength, 40),
+      has_media_url: safeText(data.mediaUrl || image.url || '', 260) !== '',
+    };
+  }
+
+  return null;
 }
 
 function metaMediaSummary(message: JsonRecord, messageType: string): JsonRecord | null {
+  if (isImageMessageType(messageType)) {
+    const image = readNestedRecord(message, 'image');
+    if (!Object.keys(image).length) return null;
+    return {
+      kind: 'image',
+      provider: 'meta',
+      media_id: safeText(image.id, 220),
+      mimetype: canonicalImageMime(image.mime_type || image.mimetype || 'image/jpeg'),
+      caption_present: safeText(image.caption, 200) !== '',
+    };
+  }
+
   if (!isAudioMessageType(messageType)) return null;
   const audio = readNestedRecord(message, 'audio');
   if (!Object.keys(audio).length) return null;
@@ -1818,14 +1882,16 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   const originalBodyText = message.bodyText;
   let bodyText = originalBodyText;
   const isAudioMessage = isAudioMessageType(message.messageType);
+  const isImageMessage = isImageMessageType(message.messageType);
   if (message.fromMe) ignoreReasons.push('from_me');
   if (message.isGroup && !GROUPS_ENABLED) ignoreReasons.push('group_blocked');
   if (!message.senderPhone) ignoreReasons.push('missing_sender');
   if (!(await phoneAllowed(message.senderPhone))) ignoreReasons.push('sender_not_allowed');
   if (!bodyText && isAudioMessage && AUDIO_INPUT_ENABLED) bodyText = '[audio recebido]';
+  if (!bodyText && isImageMessage && PIX_RECEIPT_IMAGE_ENABLED) bodyText = '[comprovante pix recebido]';
   if (!bodyText) ignoreReasons.push('empty_or_unsupported_message');
 
-  if (bodyText && !(isAudioMessage && !originalBodyText)) {
+  if (bodyText && !((isAudioMessage || isImageMessage) && !originalBodyText)) {
     const prefix = stripActivationPrefix(bodyText);
     if (!prefix.accepted) {
       ignoreReasons.push(prefix.reason);
@@ -2026,6 +2092,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const senderModuleHashes = phoneHashCandidates(row.sender_phone_hash, recipientPhone);
     const replyStartedAt = Date.now();
     const incomingAudio = isAudioMessageType(row.message_type);
+    const incomingImage = isImageMessageType(row.message_type);
     let effectiveBodyText = row.body_text;
     let replyAsAudio = incomingAudio && AUDIO_REPLY_MODE === 'voice_on_voice';
     if (incomingAudio && AUDIO_INPUT_ENABLED) {
@@ -2071,6 +2138,74 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       }
     }
 
+    let imageFailureReply: ReplyResult | null = null;
+    if (incomingImage && shouldAttemptPixReceiptImage(row.body_text)) {
+      try {
+        const extraction = await extractPixReceiptFromQueuedImage(row);
+        if (!extraction.isPixReceipt) {
+          imageFailureReply = {
+            text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda o comprovante ou escreve: pix cnpj valor - nome - obs data e horario.',
+            engine: 'blocked',
+            reason: 'pix_receipt_not_detected',
+          };
+          effectiveBodyText = '';
+        } else {
+          const missing = missingPixReceiptFields(extraction);
+          if (missing.length > 0) {
+            imageFailureReply = {
+              text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve os dados assim: pix cnpj valor - nome - obs data DD/MM/AAAA horario HH:MM.`,
+              engine: 'blocked',
+              reason: 'pix_receipt_missing_fields',
+            };
+            effectiveBodyText = '';
+          } else if (onlyDigits(extraction.destinationCnpj) !== PIX_RECEIPT_CNPJ) {
+            imageFailureReply = {
+              text: `Esse Pix parece ser de outro CNPJ (${maskDocument(extraction.destinationCnpj)}). Nao lancei. Se estiver errado, escreva os dados manualmente para eu confirmar.`,
+              engine: 'blocked',
+              reason: 'pix_receipt_cnpj_mismatch',
+            };
+            effectiveBodyText = '';
+          } else {
+            effectiveBodyText = pixReceiptCommandMessage(extraction);
+            row.body_text = effectiveBodyText;
+            await pgPool.query(
+              `UPDATE miauw_whatsapp_events
+                  SET body_text = $2,
+                      body_size = $3,
+                      payload_summary = payload_summary || $4::jsonb,
+                      updated_at = NOW()
+                WHERE id = $1`,
+              [
+                row.id,
+                effectiveBodyText,
+                effectiveBodyText.length,
+                JSON.stringify({
+                  pix_receipt_extracted: true,
+                  pix_receipt_cnpj_match: true,
+                  pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+                  pix_receipt_confidence: extraction.confidence,
+                }),
+              ],
+            );
+          }
+        }
+      } catch (error) {
+        await recordErrorLog('pix_receipt_ocr', 'warn', error, {
+          eventId: row.id,
+          traceId: row.trace_id,
+          phoneMask: row.sender_phone_mask,
+          messagePreview: row.body_text,
+          details: { message_type: row.message_type },
+        });
+        imageFailureReply = {
+          text: 'Nao consegui ler o comprovante com seguranca. Escreve: pix cnpj valor - nome - obs data DD/MM/AAAA horario HH:MM.',
+          engine: 'blocked',
+          reason: 'pix_receipt_ocr_failed',
+        };
+        effectiveBodyText = '';
+      }
+    }
+
     let audioFailureReply: ReplyResult | null = null;
     if (incomingAudio && AUDIO_INPUT_ENABLED && !effectiveBodyText) {
       audioFailureReply = {
@@ -2083,7 +2218,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       replyAsAudio = false;
     }
     const confirmationReply = await maybeHandleConfirmationReply(row);
-    const reply = confirmationReply || audioFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes);
+    const reply = confirmationReply || audioFailureReply || imageFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
@@ -2338,7 +2473,7 @@ async function maybeHandleConfirmationReply(row: QueueRow): Promise<ReplyResult 
       [pending.id],
     );
     return {
-      text: 'Cancelado. Nada foi gravado.',
+      text: cancellationReplyForPending(pending),
       engine: 'local',
       reason: 'confirmation_cancelled',
     };
@@ -2430,6 +2565,18 @@ function localReplyFor(message: string): string {
     return 'Use "miauby menu" para ver seus cards liberados. Comando operacional vira confirmacao; conversa simples fica no Gemini.';
   }
   return '';
+}
+
+function cancellationReplyForPending(pending: PendingConfirmationRow): string {
+  if (pending.tool === 'criar_lancamento_financeiro') {
+    const command = isRecord(pending.command_payload) ? pending.command_payload : {};
+    const category = normalizeIntentText(safeText(command.categoria, 80));
+    const summary = normalizeIntentText(pending.summary || '');
+    if (category === 'pix cnpj' || summary.includes('pix cnpj')) {
+      return 'Cancelado. Nada foi gravado. Escreve os dados corrigidos assim: pix cnpj 50,00 - Nome - obs data DD/MM/AAAA horario HH:MM.';
+    }
+  }
+  return 'Cancelado. Nada foi gravado.';
 }
 
 function looksLikeN8nStatusRequest(message: string): boolean {
@@ -3226,8 +3373,179 @@ function mediaSummaryFromPayload(summary: JsonRecord): JsonRecord {
   return media;
 }
 
-function audioProviderFromSummary(summary: JsonRecord): string {
+function mediaProviderFromSummary(summary: JsonRecord): string {
   return safeText(mediaSummaryFromPayload(summary).provider, 40);
+}
+
+function audioProviderFromSummary(summary: JsonRecord): string {
+  return mediaProviderFromSummary(summary);
+}
+
+function shouldAttemptPixReceiptImage(bodyText: string): boolean {
+  if (!PIX_RECEIPT_IMAGE_ENABLED || !geminiConfigured() || !PIX_RECEIPT_CNPJ) return false;
+  const clean = normalizeIntentText(bodyText);
+  return clean === ''
+    || clean === 'comprovante pix recebido'
+    || hasAnyIntentTerm(clean, ['pix', 'comprovante', 'cnpj', 'comprovante pix']);
+}
+
+function maskDocument(value: string): string {
+  const digits = onlyDigits(value);
+  if (digits.length === 14) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+  }
+  return digits ? `***${digits.slice(-4)}` : '';
+}
+
+function cleanReceiptPart(value: string, limit = 90): string {
+  return safeText(value, limit)
+    .replace(/\s+-\s+/g, ' ')
+    .replace(/[|`"<>]/g, '')
+    .trim();
+}
+
+function moneyForCommand(value: number): string {
+  return `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`;
+}
+
+function dateForCommand(value: string): string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function pixReceiptCommandMessage(extraction: PixReceiptExtraction): string {
+  const payer = cleanReceiptPart(extraction.payerName || 'Pagador nao informado', 70);
+  const destination = cleanReceiptPart(extraction.destinationName, 90);
+  const institution = cleanReceiptPart(extraction.institution, 90);
+  const date = dateForCommand(extraction.paidDate);
+  const details = [
+    'Comprovante Pix CNPJ lido por imagem.',
+    `CNPJ destino: ${PIX_RECEIPT_CNPJ}.`,
+    date ? `Data: ${date}.` : '',
+    extraction.paidTime ? `Horario: ${extraction.paidTime}.` : '',
+    payer ? `Pagador: ${payer}.` : '',
+    destination ? `Destino: ${destination}.` : '',
+    institution ? `Instituicao: ${institution}.` : '',
+  ].filter(Boolean).join(' ');
+  return `pix cnpj ${moneyForCommand(extraction.amount)} - ${payer} - obs ${details}`;
+}
+
+function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
+  const missing = new Set<string>();
+  if (!extraction.destinationCnpj) missing.add('CNPJ destino');
+  if (!extraction.amount || extraction.amount <= 0) missing.add('valor');
+  if (!extraction.payerName) missing.add('nome do pagador');
+  if (!extraction.paidDate) missing.add('data');
+  if (!extraction.paidTime) missing.add('horario');
+  for (const item of extraction.missing) {
+    const clean = safeText(item, 60);
+    if (clean) missing.add(clean);
+  }
+  if (extraction.confidence > 0 && extraction.confidence < 0.45) missing.add('confianca baixa na leitura');
+  return Array.from(missing).slice(0, 6);
+}
+
+async function extractPixReceiptFromQueuedImage(row: QueueRow): Promise<PixReceiptExtraction> {
+  const media = mediaProviderFromSummary(row.payload_summary) === 'meta'
+    ? await fetchMetaImageMedia(row)
+    : await fetchEvolutionImageMedia(row);
+  return requestGeminiPixReceiptExtraction(media, row.trace_id);
+}
+
+function extractJsonObjectText(text: string): string {
+  const clean = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  if (clean.startsWith('{') && clean.endsWith('}')) return clean;
+  const start = clean.indexOf('{');
+  const end = clean.lastIndexOf('}');
+  if (start >= 0 && end > start) return clean.slice(start, end + 1);
+  throw new Error('pix_receipt_json_missing');
+}
+
+function stringFromKeys(data: JsonRecord, keys: string[], limit = 180): string {
+  for (const key of keys) {
+    const value = safeText(data[key], limit);
+    if (value) return value;
+  }
+  return '';
+}
+
+function boolFromKeys(data: JsonRecord, keys: string[]): boolean {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'boolean') return value;
+    const clean = normalizeIntentText(safeText(value, 40));
+    if (['true', 'sim', 'yes', '1'].includes(clean)) return true;
+    if (['false', 'nao', 'no', '0'].includes(clean)) return false;
+  }
+  return false;
+}
+
+function numberFromReceiptValue(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.round(value * 100) / 100;
+  }
+  const text = safeText(value, 120);
+  if (!text) return 0;
+  const match = text.match(/-?\d[\d.,]*/);
+  if (!match) return 0;
+  const raw = match[0];
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw.replace(/,/g, '');
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
+}
+
+function dateFromReceiptValue(value: unknown): string {
+  const text = safeText(value, 80);
+  let match = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  match = text.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})\b/);
+  if (!match) return '';
+  const day = match[1].padStart(2, '0');
+  const month = match[2].padStart(2, '0');
+  const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+  return `${year}-${month}-${day}`;
+}
+
+function timeFromReceiptValue(value: unknown): string {
+  const text = safeText(value, 80);
+  const match = text.match(/\b([0-2]?\d)[:h]([0-5]\d)\b/i);
+  if (!match) return '';
+  const hour = Number(match[1]);
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return '';
+  return `${String(hour).padStart(2, '0')}:${match[2]}`;
+}
+
+function stringArrayFromValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => safeText(item, 80)).filter(Boolean);
+  }
+  const text = safeText(value, 300);
+  return text ? text.split(/[;,|]/).map((item) => safeText(item, 80)).filter(Boolean) : [];
+}
+
+function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
+  const amount = numberFromReceiptValue(data.amount_brl ?? data.amount ?? data.valor ?? data.value);
+  const rawConfidence = numberFromReceiptValue(data.confidence ?? data.confianca ?? 0);
+  const confidence = rawConfidence > 1 && rawConfidence <= 100 ? rawConfidence / 100 : rawConfidence;
+  return {
+    isPixReceipt: boolFromKeys(data, ['is_pix_receipt', 'isPixReceipt', 'comprovante_pix']),
+    destinationCnpj: onlyDigits(data.destination_cnpj_digits ?? data.destinationCnpj ?? data.cnpj_destino ?? data.destination_cnpj),
+    destinationName: stringFromKeys(data, ['destination_name', 'destinationName', 'nome_destino', 'destino']),
+    payerName: stringFromKeys(data, ['payer_name', 'payerName', 'nome_pagador', 'pagador', 'origin_name', 'origem']),
+    amount,
+    paidDate: dateFromReceiptValue(data.paid_at_date ?? data.paidDate ?? data.data_pagamento ?? data.data),
+    paidTime: timeFromReceiptValue(data.paid_at_time ?? data.paidTime ?? data.horario_pagamento ?? data.horario ?? data.hora),
+    institution: stringFromKeys(data, ['institution', 'instituicao', 'bank', 'banco']),
+    confidence: Math.max(0, Math.min(1, confidence)),
+    missing: stringArrayFromValue(data.missing ?? data.faltando),
+  };
 }
 
 function findBase64Field(value: unknown, depth = 0): string {
@@ -3273,6 +3591,11 @@ function assertAudioSize(sizeBytes: number): void {
   if (sizeBytes > AUDIO_MAX_BYTES) throw new Error(`audio_too_large_${sizeBytes}`);
 }
 
+function assertImageSize(sizeBytes: number): void {
+  if (sizeBytes <= 0) throw new Error('image_empty');
+  if (sizeBytes > PIX_RECEIPT_IMAGE_MAX_BYTES) throw new Error(`image_too_large_${sizeBytes}`);
+}
+
 async function transcribeQueuedAudio(row: QueueRow): Promise<string> {
   if (!AUDIO_INPUT_ENABLED) throw new Error('audio_input_disabled');
   if (AUDIO_TRANSCRIBE_PROVIDER !== 'gemini') throw new Error('audio_transcribe_provider_unsupported');
@@ -3314,6 +3637,42 @@ async function fetchEvolutionAudioMedia(row: QueueRow): Promise<AudioMedia> {
     const sizeBytes = audioSizeFromBase64(base64);
     assertAudioSize(sizeBytes);
     const mimeType = canonicalAudioMime(data.mimetype || data.mimeType || media.mimetype || 'audio/ogg');
+    return { base64, mimeType, sizeBytes };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchEvolutionImageMedia(row: QueueRow): Promise<AudioMedia> {
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY) throw new Error('evolution_not_configured');
+  const media = mediaSummaryFromPayload(row.payload_summary);
+  const key = isRecord(media.key) ? media.key : {};
+  const messageId = safeText(key.id, 180);
+  if (!messageId) throw new Error('evolution_image_key_missing');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${EVOLUTION_API_BASE_URL}/chat/getBase64FromMediaMessage/${encodeURIComponent(row.instance_name || defaultInstanceName())}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        message: { key },
+        convertToMp4: false,
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data)) {
+      const message = safeText(isRecord(data) ? data.message || data.error : '', 180) || `evolution_image_http_${response.status}`;
+      throw new ProviderHttpError('evolution', response.status, message);
+    }
+    const base64 = findBase64Field(data);
+    const sizeBytes = audioSizeFromBase64(base64);
+    assertImageSize(sizeBytes);
+    const mimeType = canonicalImageMime(data.mimetype || data.mimeType || media.mimetype || 'image/jpeg');
     return { base64, mimeType, sizeBytes };
   } finally {
     clearTimeout(timeout);
@@ -3446,6 +3805,111 @@ async function buildAudioReply(text: string, _row: QueueRow): Promise<OutboundAu
   const audio = await synthesizeGeminiSpeech(clean);
   setCachedAudioReply(clean, audio);
   return audio;
+}
+
+async function fetchMetaImageMedia(row: QueueRow): Promise<AudioMedia> {
+  if (!META_ACCESS_TOKEN) throw new Error('meta_not_configured');
+  const media = mediaSummaryFromPayload(row.payload_summary);
+  const mediaId = safeText(media.media_id, 220);
+  if (!mediaId) throw new Error('meta_image_media_id_missing');
+  const metadataController = new AbortController();
+  const metadataTimeout = setTimeout(() => metadataController.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
+  try {
+    const metadataResponse = await fetch(`${META_GRAPH_API_BASE_URL}/${META_GRAPH_API_VERSION}/${encodeURIComponent(mediaId)}`, {
+      headers: {
+        Authorization: `Bearer ${META_ACCESS_TOKEN}`,
+      },
+      signal: metadataController.signal,
+    });
+    const metadata = await metadataResponse.json().catch(() => ({}));
+    if (!metadataResponse.ok || !isRecord(metadata)) {
+      const error = isRecord(metadata.error) ? metadata.error : metadata;
+      const message = safeText(isRecord(error) ? error.message || error.error : '', 180) || `meta_image_http_${metadataResponse.status}`;
+      throw new ProviderHttpError('meta', metadataResponse.status, message);
+    }
+    const url = safeText(metadata.url, 1000);
+    if (!url) throw new Error('meta_image_url_missing');
+    const mimeType = canonicalImageMime(metadata.mime_type || media.mimetype || 'image/jpeg');
+    clearTimeout(metadataTimeout);
+
+    const mediaController = new AbortController();
+    const mediaTimeout = setTimeout(() => mediaController.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
+    try {
+      const mediaResponse = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${META_ACCESS_TOKEN}`,
+        },
+        signal: mediaController.signal,
+      });
+      if (!mediaResponse.ok) {
+        throw new ProviderHttpError('meta', mediaResponse.status, `meta_image_download_http_${mediaResponse.status}`);
+      }
+      const length = Number(mediaResponse.headers.get('content-length') || 0);
+      if (Number.isFinite(length) && length > PIX_RECEIPT_IMAGE_MAX_BYTES) throw new Error(`image_too_large_${length}`);
+      const buffer = Buffer.from(await mediaResponse.arrayBuffer());
+      assertImageSize(buffer.length);
+      return { base64: buffer.toString('base64'), mimeType, sizeBytes: buffer.length };
+    } finally {
+      clearTimeout(mediaTimeout);
+    }
+  } finally {
+    clearTimeout(metadataTimeout);
+  }
+}
+
+async function requestGeminiPixReceiptExtraction(image: AudioMedia, traceId: string): Promise<PixReceiptExtraction> {
+  if (!geminiConfigured()) throw new Error('gemini_not_configured_for_pix_receipt');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
+  try {
+    const endpoint = `${GEMINI_API_BASE_URL}/${geminiModelPathFor(PIX_RECEIPT_OCR_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: 'Voce extrai dados de comprovantes Pix brasileiros para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes.',
+          }],
+        },
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              text: `Trace ${traceId}. CNPJ esperado do destino: ${PIX_RECEIPT_CNPJ}. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, confidence de 0 a 1 e missing como lista. Se nao for comprovante Pix, use is_pix_receipt false. Se o CNPJ destino for diferente, retorne o CNPJ real encontrado.`,
+            },
+            {
+              inlineData: {
+                mimeType: image.mimeType,
+                data: image.base64,
+              },
+            },
+          ],
+        }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 700,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data)) {
+      const error = isRecord(data) && isRecord(data.error) ? data.error : data;
+      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_pix_receipt_http_${response.status}`);
+    }
+    const text = geminiTextFromResponse(data);
+    const parsed = JSON.parse(extractJsonObjectText(text)) as unknown;
+    if (!isRecord(parsed)) throw new Error('pix_receipt_json_invalid');
+    return normalizePixReceiptExtraction(parsed);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function geminiInlineAudioFromResponse(data: JsonRecord): { base64: string; mimeType: string } {
@@ -3997,6 +4461,10 @@ function publicStatus(): JsonRecord {
     audio_tts_max_chars: AUDIO_TTS_MAX_CHARS,
     audio_tts_cache_ttl_seconds: AUDIO_TTS_CACHE_TTL_SECONDS,
     audio_tts_cache_entries: audioReplyCache.size,
+    pix_receipt_image_enabled: PIX_RECEIPT_IMAGE_ENABLED,
+    pix_receipt_cnpj_configured: PIX_RECEIPT_CNPJ !== '',
+    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+    pix_receipt_image_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
     reply_cache_ttl_seconds: REPLY_CACHE_TTL_SECONDS,
     reply_cache_entries: replyCache.size,
     local_replies_enabled: true,
@@ -4642,6 +5110,10 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const n8nEnabled = boolStatus(status, 'n8n_enabled');
   const n8nBaseConfigured = boolStatus(status, 'n8n_base_configured');
   const n8nWebhookConfigured = boolStatus(status, 'n8n_webhook_configured');
+  const pixReceiptEnabled = boolStatus(status, 'pix_receipt_image_enabled');
+  const pixReceiptConfigured = boolStatus(status, 'pix_receipt_cnpj_configured');
+  const pixReceiptModel = textStatus(status, 'pix_receipt_ocr_model') || '-';
+  const pixReceiptMaxMb = Math.round(numberStatus(status, 'pix_receipt_image_max_bytes') / 1024 / 1024);
   const writePolicy = textStatus(status, 'whatsapp_write_actions') || 'blocked';
   const envAllowlist = numberStatus(status, 'allowlist_env_count') || numberStatus(status, 'allowlist_count');
   const responseDelay = summary.responseDelay;
@@ -4871,6 +5343,11 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             <b>Roteador</b>
             ${renderPill(true, 'Ativo', 'Pendente')}
             <small>Sem miauby: ${localRepliesEnabled ? 'local rapido/Gemini' : 'Gemini'} | com miauby: core | escrita: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
+          </div>
+          <div class="status-item">
+            <b>Pix CNPJ imagem</b>
+            ${renderPill(pixReceiptEnabled && pixReceiptConfigured, 'Ativo', pixReceiptConfigured ? 'Desligado' : 'Pendente')}
+            <small>OCR: ${htmlEscape(pixReceiptModel)} | limite: ${pixReceiptMaxMb} MB | grava so apos Financeiro liberado e confirmacao Sim/Nao.</small>
           </div>
           <div class="status-item">
             <b>Demora real</b>

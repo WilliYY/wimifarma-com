@@ -2677,8 +2677,34 @@ function miauw_confirmation_summary(string $tool, array $command): string
     }
 
     if ($tool === 'criar_lancamento_financeiro') {
+        $categoria = trim((string) ($command['categoria'] ?? 'categoria'));
+        if (strcasecmp($categoria, 'Pix CNPJ') === 0) {
+            $responsavel = trim((string) ($command['responsavel'] ?? 'nao informado'));
+            $dataRaw = trim((string) ($command['data'] ?? ''));
+            $dataTs = $dataRaw !== '' ? strtotime($dataRaw) : false;
+            $dataLabel = $dataTs ? date('d/m/Y', $dataTs) : 'data nao informada';
+            $observacao = (string) ($command['observacao'] ?? '') . ' ' . (string) ($command['observacao_usuario'] ?? '');
+            $horaLabel = '';
+            if (preg_match('/\b(?:horario|hora)\s*:\s*([0-2]?\d:[0-5]\d)/iu', $observacao, $matches)) {
+                $parts = explode(':', $matches[1]);
+                $horaLabel = str_pad((string) (int) ($parts[0] ?? 0), 2, '0', STR_PAD_LEFT) . ':' . ($parts[1] ?? '00');
+            }
+            $cnpjLabel = '';
+            if (preg_match('/\bCNPJ\s+destino\s*:\s*([0-9.\-\/]{11,22})/iu', $observacao, $matches)) {
+                $cnpjLabel = preg_replace('/\D+/', '', (string) $matches[1]);
+            }
+
+            return 'Registrar PIX CNPJ de '
+                . $money($command['valor'] ?? 0)
+                . ' em ' . $dataLabel
+                . ($horaLabel !== '' ? ' as ' . $horaLabel : '')
+                . ', pagador ' . ($responsavel !== '' ? $responsavel : 'nao informado')
+                . ($cnpjLabel !== '' ? ', CNPJ destino ' . $cnpjLabel : '')
+                . '.';
+        }
+
         return 'Criar lancamento financeiro: '
-            . trim((string) ($command['categoria'] ?? 'categoria')) . ', '
+            . $categoria . ', '
             . $money($command['valor'] ?? 0)
             . ', responsavel ' . trim((string) ($command['responsavel'] ?? 'nao informado')) . '.';
     }

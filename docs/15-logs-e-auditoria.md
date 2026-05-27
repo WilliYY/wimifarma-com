@@ -31,6 +31,8 @@ Tabelas de auditoria/log:
 - `miauw_whatsapp_contacts`
 - `miauw_whatsapp_events`
 - `miauw_whatsapp_outbox`
+- `miauw_whatsapp_confirmations`
+- `miauw_whatsapp_error_logs`
 - `wptl_loginizer_logs`
 
 Arquivos:
@@ -78,7 +80,7 @@ Arquivos:
 - Acoes fortes do Miauby devem gerar trace `pending_confirmation`, depois `confirmed`/`cancelled` e somente entao `ok`/`error` quando houver execucao real.
 - Falhas em acoes confirmadas do Miauby registram diagnostico invisivel automatico com `trace_id`, ferramenta, id da confirmacao, resumo sanitizado e chaves dos argumentos, alem do trace `error` em `miauw_tool_traces`. O painel `/miauw/diagnostico.php` mostra esses dados de forma resumida, sem token, SQL bruto, payload completo ou stack trace.
 - Mudancas automaticas por jobs devem registrar origem quando possivel.
-- O bridge WhatsApp deve registrar eventos externos em `miauw_whatsapp_events` com status, tentativa, motivo de ignorado, trace id e metadados sanitizados; a outbox registra envio/resposta sem telefone cru nem payload bruto.
+- O bridge WhatsApp deve registrar eventos externos em `miauw_whatsapp_events` com status, tentativa, motivo de ignorado, trace id e metadados sanitizados; a outbox registra envio/resposta sem telefone cru nem payload bruto. Audio e imagem de comprovante Pix devem guardar somente metadados/extracao sanitizada, nunca bytes ou URL/token de midia. Falhas de OCR Pix entram em `miauw_whatsapp_error_logs` com origem `pix_receipt_ocr` e resumo suficiente para correcao.
 
 ## Decisoes tecnicas ja tomadas
 

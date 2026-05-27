@@ -39,7 +39,7 @@ O inventario de dependencias MySQL e o plano de migracao gradual para Postgres f
 Criadas por `apps/miauw-whatsapp/src/server.ts`:
 
 - `miauw_whatsapp_contacts`: contatos vistos/autorizados, com telefone em hash e mascara, sem telefone cru.
-- `miauw_whatsapp_events`: webhooks recebidos da Evolution API ou Meta Cloud API, dedupe por provider/instancia/message id, status da fila, tentativas, metadados sanitizados em `JSONB`, hash/mascara e identificadores cifrados para resposta.
+- `miauw_whatsapp_events`: webhooks recebidos da Evolution API ou Meta Cloud API, dedupe por provider/instancia/message id, status da fila, tentativas, metadados sanitizados em `JSONB`, hash/mascara e identificadores cifrados para resposta. Midias como audio e imagem de comprovante Pix guardam somente referencia/metadados sanitizados, nunca bytes ou URL/token bruto.
 - `miauw_whatsapp_outbox`: respostas pendentes/enviadas, status de envio, tentativas e id retornado pelo provedor quando houver.
 
 O Postgres dedicado foi escolhido para esse dominio porque fila duravel, indices parciais, `JSONB`, locks transacionais e `FOR UPDATE SKIP LOCKED` reduzem risco de duplicidade e facilitam auditoria. Payload bruto externo, token, telefone cru, SQL e stack trace nao devem ser salvos.
@@ -202,6 +202,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - Em `financeiro_fechamentos`, `status='sem_movimento'` marca um dia sem venda/movimento e pode ser criado pelo Caixa ou pelo Relatorio. Esse status nao e bloqueio final: somente `fechado` e `divergente` travam edicao normal; quando o faturamento de um dia `sem_movimento` recebe valor positivo pelo Relatorio, o registro volta para `conferencia` e continua linkado ao Caixa.
+- Comprovante Pix CNPJ lido pelo Miauby WhatsApp nao cria tabela nova: apos confirmacao `Sim`, entra como `financeiro_lancamentos.categoria='Pix CNPJ'` no dia extraido, com observacao sanitizada contendo CNPJ destino, pagador, horario e origem da leitura. Confirmacao `Nao`, CNPJ divergente ou campos ausentes nao gravam nada.
 - `gestao_accounts.total_cents` deve ser a soma dos itens ativos em `gestao_account_items.amount_cents`; contas novas salvam `generated_at` automaticamente e pagamentos ativos entram em `gestao_account_payments` com `paid_at` proprio.
 - O total mensal pago da Gestao vem de `gestao_account_payments.amount_cents` ativo pelo intervalo de `paid_at`; `gestao_accounts.paid_at` representa a data de quitacao da conta inteira quando o saldo chega a zero.
 - A Gestao permite adicionar itens depois do lancamento, como juros ou diferencas; isso aumenta `total_cents` e pode reabrir uma conta paga se o saldo voltar a existir. Pagamentos parciais nunca alteram o valor lancado: eles entram apenas em `gestao_account_payments`, abatendo o saldo.
@@ -222,7 +223,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `pedidos_orders.expected_arrival_at` alimenta o badge do card `Pedidos` na home via `/pedidos/api/badge`, contando somente pedidos aguardando chegada previstos para o dia local. No formulario de criacao, a previsao e informada como numero de dias (`2` = hoje + 2 dias); o backend grava somente a data calculada em `expected_arrival_at`.
 - Novos cards/modulos devem ter modelagem propria de banco antes da UI: entidade principal, tabela de historico/auditoria quando necessario, FKs, constraints, indices em joins/filtros, indices parciais para filas ou status ativos, e regra clara de qual tabela e fonte de verdade. Reaproveitar tabela de outro modulo so quando ela representar o mesmo fato de negocio; no caso de Pedidos, apenas o financeiro usa as tabelas da Gestao porque precisa alimentar `Boleto`.
 - `miauw_*` pode conter dados de conversa, memoria e diagnostico; tratar como sensivel.
-- `miauw_whatsapp_*` no Postgres dedicado contem eventos de transporte do WhatsApp; tratar como sensivel, manter identificadores cifrados, hash/mascara para auditoria e nunca guardar payload bruto externo.
+- `miauw_whatsapp_*` no Postgres dedicado contem eventos de transporte do WhatsApp; tratar como sensivel, manter identificadores cifrados, hash/mascara para auditoria e nunca guardar payload bruto externo, bytes de audio/imagem ou URL/token de midia.
 - `miauw_memorias.revisao_status` e `miauw_padroes.revisao_status` controlam revisao no painel do Miauby com valores `pendente`, `aprovado` e `ignorado`; `reviewed_by` e `reviewed_at` preservam quem marcou a revisao e quando.
 - Aprovar ou ignorar memoria/padrao nao apaga dados; apenas marca revisao e registra evento em `wf_logs`.
 - `miauw_tool_traces.payload_json` deve guardar somente contexto sanitizado e limitado; nao colocar chave, token, senha, SQL cru, payload bruto externo ou stack trace completo.

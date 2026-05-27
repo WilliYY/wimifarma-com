@@ -6,6 +6,8 @@ Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A impl
 
 Desde 2026-05-27, o bridge tambem pode receber audio de WhatsApp, transcrever com Gemini e, quando habilitado, responder com audio gerado por Gemini TTS. Audio bruto nao e salvo no banco: o evento guarda apenas metadados sanitizados e a transcricao textual usada pelo roteador.
 
+Desde 2026-05-27, o bridge tambem pode ler imagem de comprovante Pix de remetente autorizado, validar o CNPJ de destino configurado e preparar um lancamento `Pix CNPJ` no Financeiro com confirmacao `Sim`/`Nao`. A imagem e baixada apenas em memoria no worker, enviada ao Gemini para extracao estruturada e descartada; o banco guarda somente metadados sanitizados e o comando/pendencia gerados.
+
 ## Componentes
 
 - `apps/miauw-whatsapp`: servico Node.js 22 + TypeScript.
@@ -24,6 +26,7 @@ WhatsApp
   -> POST /miauw/whatsapp/webhook
   -> Postgres dedicado: evento + fila
      -> se for audio autorizado: baixa midia do transporte, transcreve e descarta bytes
+     -> se for imagem de comprovante Pix autorizada: baixa midia, extrai campos e descarta bytes
   -> roteador de IA do bridge
      -> Gemini para conversa simples, quando MIAUW_WHATSAPP_AI_MODE=hybrid e GEMINI_API_KEY existe
      -> site/miauw/agent-context.php para buscar treino/perfil/tools compartilhados do Miauby interno
@@ -45,7 +48,7 @@ Tabelas criadas pelo servico:
 - `miauw_whatsapp_contact_modules`: cards/modulos liberados por contato autorizado, como Cashback, Cotacao, Pedidos, Financeiro, Gestao, Tarefas, XP, Codigos e Miauby.
 - `miauw_whatsapp_error_logs`: falhas sanitizadas de fila, envio e HTTP, com origem, severidade, trace curto, mascara do contato, resumo e contexto limpo para diagnostico.
 
-O banco nao deve guardar payload bruto externo, telefone cru em texto aberto ou bytes de audio. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder; o painel logado pode decifrar o telefone apenas na area de edicao da allowlist. Para audio, `payload_summary.media` guarda apenas tipo, provider, chave/id da midia e sinais como mime/duracao/tamanho quando disponiveis; a midia e baixada do transporte somente durante o processamento, enviada ao Gemini para transcricao e descartada em memoria.
+O banco nao deve guardar payload bruto externo, telefone cru em texto aberto ou bytes de audio/imagem. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder; o painel logado pode decifrar o telefone apenas na area de edicao da allowlist. Para audio e imagem, `payload_summary.media` guarda apenas tipo, provider, chave/id da midia e sinais como mime/duracao/tamanho quando disponiveis; a midia e baixada do transporte somente durante o processamento, enviada ao Gemini para transcricao/extracao e descartada em memoria.
 
 Confirmacoes por WhatsApp usam tambem `miauw_whatsapp_confirmations`, com remetente em hash/mascara, tool, resumo, `command_payload` sanitizado, status, expiracao e trace. Essa tabela guarda apenas a pendencia operacional necessaria para o botao `Sim`/`Nao`; payload bruto da Evolution/Meta continua fora do banco e telefone completo fica somente cifrado quando necessario.
 
@@ -95,6 +98,11 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_AUDIO_MAX_BYTES=10000000`
 - `MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS=700`
 - `MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS=900`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED=false`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ=07676534000181`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL=gemini-2.5-flash`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES=10000000`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS=30000`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
 - `MIAUW_WHATSAPP_CONTEXT_URL=http://wimifarma-com-web/miauw/agent-context.php`
 - `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS=60`
@@ -128,7 +136,7 @@ Principais variaveis:
 
 ## Endpoints
 
-- `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox, allowlist, n8n automacoes, demora de resposta e eventos recentes, sem segredo nem payload bruto; quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos, exige login por cookie assinado. A allowlist do painel logado mostra e edita o telefone completo decifrado para operacao.
+- `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox, allowlist, status de OCR Pix CNPJ, n8n automacoes, demora de resposta e eventos recentes, sem segredo nem payload bruto; quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos, exige login por cookie assinado. A allowlist do painel logado mostra e edita o telefone completo decifrado para operacao.
 - `GET /miauw/whatsapp/login`: tela de login do painel, com a foto atual do Miauby e favicon proprio.
 - `POST /miauw/whatsapp/login`: autentica o painel com usuario/senha do ambiente.
 - `POST /miauw/whatsapp/logout`: encerra a sessao do painel e volta para a home `/`.
@@ -171,6 +179,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Saudacoes simples como `oi`, `ola`, `teste`, `status` e `ajuda` respondem localmente sem chamar Gemini/core para reduzir latencia. O comando `miauby n8n` tambem responde localmente com as automacoes previstas e o que depende dos cards liberados para aquele numero.
 - Audio fica desligado por padrao no Git. Quando `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=true`, audio individual de remetente autorizado e baixado do transporte apenas no worker, limitado por `MIAUW_WHATSAPP_AUDIO_MAX_BYTES`, transcrito pelo Gemini e descartado. A transcricao segue o mesmo roteador: conversa simples vai para Gemini; comando operacional detectado chama o core/tools conforme permissao quando o ambiente permite comandos sem prefixo.
 - Quando `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, o bridge pode gerar audio de resposta. O modo `voice_on_voice` responde em audio somente quando a entrada veio por audio; `always` tenta audio para toda resposta sem botao; `never` desliga. Confirmacoes continuam por botoes/texto, nao por audio. Respostas faladas repetidas podem ser reaproveitadas em memoria por `MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS`.
+- Com `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED=true`, imagem individual de remetente autorizado pode ser tratada como comprovante Pix. O CNPJ de destino precisa bater com `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`, o contato precisa ter card `Financeiro` liberado e a gravacao continua exigindo pendencia `Sim`/`Nao`. Se faltar valor, pagador, data, horario ou CNPJ, ou se o CNPJ divergir, o bridge nao grava e pede os dados corrigidos por texto.
 
 ## Modo hibrido de IA
 
@@ -202,6 +211,23 @@ O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `g
 O painel tambem mostra `n8n automacoes`: Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados; n8n apenas orquestra/agendeia, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma.
 
 Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git. Exemplo: se o painel tem `5544984134971`, mas o evento chega como `234668507005157@lid`, configurar `234668507005157=5544984134971`.
+
+## Comprovante Pix CNPJ por imagem
+
+O fluxo de comprovante Pix por imagem e opcional e desligado no Git. Quando `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED=true`, o bridge aceita imagem de remetente em allowlist, baixa a midia somente no worker, envia ao Gemini configurado em `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL` e espera um JSON com comprovante Pix, CNPJ destino, pagador, valor, data, horario, instituicao e confianca.
+
+Para gravar, todos estes pontos precisam passar:
+
+- a mensagem veio de contato autorizado;
+- o contato tem card `Financeiro` liberado;
+- a imagem foi identificada como comprovante Pix;
+- o CNPJ destino extraido e igual a `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`;
+- existem valor, pagador, data e horario com confianca suficiente;
+- `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true` no ambiente e `criar_lancamento_financeiro` esta na allowlist de tools confirmaveis.
+
+Quando passa, o bridge transforma a extracao em comando interno `pix cnpj R$ valor - pagador - obs ...`, chama `site/miauw/agent-actions.php` para preparar a acao e envia um box/botao `Sim`/`Nao`. `Sim` grava no Financeiro do dia extraido como lancamento `Pix CNPJ`; `Nao` cancela e orienta escrever os dados corrigidos no formato `pix cnpj 50,00 - Nome - obs data DD/MM/AAAA horario HH:MM`.
+
+Imagem de grupo continua bloqueada enquanto `MIAUW_WHATSAPP_GROUPS_ENABLED=false`. Se a rotina de comprovantes estiver em grupo, a postura recomendada e encaminhar o comprovante para o Miauby individual ou criar um numero/instancia separado, porque habilitar grupos amplia muito o risco de resposta indevida.
 
 ## Anti-flood e risco de bloqueio
 

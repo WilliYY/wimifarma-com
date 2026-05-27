@@ -128,7 +128,7 @@ Estado atual:
 - Postgres 17 proprio em `wimifarma-miauw-whatsapp-db`, volume `miauw-whatsapp-data/`;
 - template da Evolution API em `ops/evolution/`, para deploy separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`;
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
-- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo nem payload bruto, protegido por login do ambiente quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos; o painel tambem permite autorizar/bloquear remetentes no Postgres, ver/editar o telefone completo somente na allowlist logada, editar nome, liberar cards por contato, manter contatos minimizados, comparar mensagem recebida/resposta enviada, registrar/resolver erros abertos, mostrar a demora total de resposta em 24h e exibir graficos simples de media/p95 por motor;
+- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo nem payload bruto, protegido por login do ambiente quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos; o painel tambem permite autorizar/bloquear remetentes no Postgres, ver/editar o telefone completo somente na allowlist logada, editar nome, liberar cards por contato, manter contatos minimizados, comparar mensagem recebida/resposta enviada, registrar/resolver erros abertos, mostrar status do OCR Pix CNPJ, mostrar a demora total de resposta em 24h e exibir graficos simples de media/p95 por motor;
 - `GET /miauw/whatsapp/login` mostra o login proprio do painel;
 - `GET /miauw/whatsapp/health` mostra status seguro e permanece publico para smoke test;
 - `GET /miauw/whatsapp/webhook` valida o desafio `hub.challenge` da Meta Cloud API quando `MIAUW_WHATSAPP_PROVIDER=meta`;
@@ -149,6 +149,7 @@ Desenho:
 - o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
 - o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para conversa solta quando `GEMINI_API_KEY` estiver configurada, roteia mensagens com `miauby` em qualquer posicao para o core Miauby e, quando `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, tambem roteia comandos operacionais detectados sem prefixo para o core;
 - quando audio estiver habilitado, audio de remetente autorizado e baixado do transporte somente no worker, transcrito por Gemini, descartado em memoria e roteado como texto; resposta em audio usa Gemini TTS, segue o estilo configuravel `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` e cai para texto se o envio falhar;
+- quando leitura de comprovante Pix estiver habilitada, imagem de remetente autorizado e baixada somente no worker, extraida por Gemini, descartada em memoria e convertida em pendencia `Pix CNPJ` para o Financeiro apenas se o CNPJ destino bater com `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`;
 - antes de chamar o core, o bridge usa `MIAUW_WHATSAPP_CONTEXT_URL` para buscar no PHP o mesmo treino aprovado, perfil de voz e contratos de tools do Miauby interno;
 - para acoes fortes permitidas, o bridge usa `MIAUW_WHATSAPP_ACTIONS_URL` para preparar uma pendencia auditada e, apos botao `Sim`, executar pela mesma camada PHP que o Miauby interno usa;
 - o bridge bloqueia dados sensiveis antes da IA e registra motor/rota/latencia na outbox;
@@ -168,6 +169,7 @@ Regras iniciais obrigatorias:
 - comandos com `miauby`, inclusive sangria, podem ser interpretados pelo core e retornar `confirmation_required`; em ambiente revisado, `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true` permite que comandos operacionais claros sem prefixo, como `sangria 10 Will`, passem pelo mesmo caminho. Com `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, o bridge grava a pendencia e envia botoes; sem pendencia valida, texto solto `sim/nao` nao executa nada;
 - registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token; o painel operacional deve seguir a mesma regra;
 - para audio, registrar apenas metadados sanitizados e a transcricao; nao persistir bytes de audio bruto nem URL/token de midia;
+- para comprovantes Pix por imagem, registrar apenas metadados sanitizados, resultado de extracao e pendencia; nao persistir bytes de imagem nem URL/token de midia;
 - se for usar Gemini ou outro provedor, encapsular como motor configuravel do bridge/Miauby, nao como resposta solta direto na Evolution API.
 
 Cuidados sobre o numero:
@@ -214,6 +216,12 @@ Variaveis:
 - `MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS`
 - `MIAUW_WHATSAPP_AUDIO_MAX_BYTES`
 - `MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS`
+- `MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
 - `MIAUW_WHATSAPP_CONTEXT_URL`
 - `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS`
