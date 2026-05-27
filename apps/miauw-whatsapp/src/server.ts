@@ -1376,7 +1376,8 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
     'Nao exponha dados sensiveis, token, SQL, stack trace ou bastidor tecnico.',
     'Use o treino, perfil de voz, padroes aprovados e contratos do Miauby interno quando recebidos.',
     'Pode usar ferramentas do core somente quando a rota permitir.',
-    'Se uma ferramenta forte retornar confirmation_required, explique o resumo e diga que precisa confirmar no sistema/fluxo seguro.',
+    'Se uma ferramenta forte retornar confirmation_required, explique o resumo e diga que precisa confirmar no Miauby interno ou no sistema.',
+    'Nao peca para confirmar acao forte por mensagem solta no WhatsApp.',
     'Nao afirme que gravou, pagou, confirmou, alterou ou excluiu dado pelo WhatsApp sem confirmacao auditada.',
   ];
 
@@ -1408,6 +1409,7 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
       'tutorial longo',
       'lista de ferramentas',
       'confirmacao de escrita sem sessao',
+      'pedir confirmar por WhatsApp',
       ...safeStringList(sharedStyle.anti_patterns ?? sharedStyle.antiPatterns, 8),
     ], 12),
   };

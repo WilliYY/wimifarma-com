@@ -159,7 +159,7 @@ Regras iniciais obrigatorias:
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
 - manter uma resposta por mensagem recebida, rate limit por remetente, rate limit global, intervalo minimo entre envios e pausa automatica quando o transporte responder timeout, `429` ou `5xx`;
 - manter acoes fortes bloqueadas ou retornando confirmacao humana auditada; WhatsApp nao deve virar atalho para sangria, contas, encomenda ou escrita sensivel sem fluxo proprio;
-- comandos com `miauby`, inclusive sangria, podem ser interpretados pelo core e retornar `confirmation_required`; sem fluxo de confirmacao auditado no WhatsApp, nao gravar a acao diretamente;
+- comandos com `miauby`, inclusive sangria, podem ser interpretados pelo core e retornar `confirmation_required`; sem fluxo de confirmacao auditado no WhatsApp, nao gravar a acao diretamente nem pedir confirmacao por texto solto no WhatsApp;
 - registrar trace sanitizado com telefone mascarado, instancia, evento, tamanho da mensagem, status e latencia, sem guardar payload bruto externo nem token; o painel operacional deve seguir a mesma regra;
 - se for usar Gemini ou outro provedor, encapsular como motor configuravel do bridge/Miauby, nao como resposta solta direto na Evolution API.
 
