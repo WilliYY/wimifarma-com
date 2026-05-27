@@ -265,7 +265,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.4';
+const SERVICE_VERSION = '0.5.5';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -1098,12 +1098,39 @@ function isImageMessageType(value: string): boolean {
   return clean.includes('image') || clean.includes('imagem') || clean.includes('photo') || clean.includes('foto');
 }
 
+function isDocumentMessageType(value: string): boolean {
+  const clean = normalizeIntentText(value);
+  return clean.includes('document') || clean.includes('arquivo') || clean.includes('pdf');
+}
+
+function isPixReceiptMediaMessageType(value: string): boolean {
+  return isImageMessageType(value) || isDocumentMessageType(value);
+}
+
 function canonicalImageMime(raw: unknown): string {
   const value = safeText(raw, 120).toLowerCase();
   if (value.includes('png')) return 'image/png';
   if (value.includes('webp')) return 'image/webp';
   if (value.includes('jpeg') || value.includes('jpg')) return 'image/jpeg';
   return 'image/jpeg';
+}
+
+function canonicalReceiptMime(raw: unknown): string {
+  const value = safeText(raw, 120).toLowerCase();
+  if (value.includes('pdf')) return 'application/pdf';
+  if (value.includes('heic')) return 'image/heic';
+  if (value.includes('heif')) return 'image/heif';
+  if (value.includes('png') || value.includes('webp') || value.includes('jpeg') || value.includes('jpg')) {
+    return canonicalImageMime(value);
+  }
+  if (value.startsWith('image/')) return 'image/jpeg';
+  return 'image/jpeg';
+}
+
+function receiptMediaKind(mimeType: string): string {
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType.startsWith('image/')) return 'image';
+  return 'document';
 }
 
 function sanitizeEvolutionKey(key: JsonRecord): JsonRecord {
@@ -1136,14 +1163,31 @@ function evolutionMediaSummary(data: JsonRecord, messageType: string): JsonRecor
   if (isImageMessageType(messageType)) {
     const image = readNestedRecord(message, 'imageMessage');
     if (!Object.keys(image).length) return null;
+    const mimetype = canonicalReceiptMime(image.mimetype || 'image/jpeg');
     return {
-      kind: 'image',
+      kind: receiptMediaKind(mimetype),
       provider: 'evolution',
       key,
-      mimetype: canonicalImageMime(image.mimetype || 'image/jpeg'),
+      mimetype,
       caption_present: safeText(image.caption, 200) !== '',
       file_length: safeText(image.fileLength, 40),
       has_media_url: safeText(data.mediaUrl || image.url || '', 260) !== '',
+    };
+  }
+
+  if (isDocumentMessageType(messageType)) {
+    const document = readNestedRecord(message, 'documentMessage');
+    if (!Object.keys(document).length) return null;
+    const mimetype = canonicalReceiptMime(document.mimetype || document.mimeType || document.fileName || document.title || 'application/pdf');
+    return {
+      kind: receiptMediaKind(mimetype),
+      provider: 'evolution',
+      key,
+      mimetype,
+      file_name: safeText(document.fileName || document.title || '', 180),
+      caption_present: safeText(document.caption, 200) !== '',
+      file_length: safeText(document.fileLength, 40),
+      has_media_url: safeText(data.mediaUrl || document.url || '', 260) !== '',
     };
   }
 
@@ -1154,12 +1198,27 @@ function metaMediaSummary(message: JsonRecord, messageType: string): JsonRecord 
   if (isImageMessageType(messageType)) {
     const image = readNestedRecord(message, 'image');
     if (!Object.keys(image).length) return null;
+    const mimetype = canonicalReceiptMime(image.mime_type || image.mimetype || 'image/jpeg');
     return {
-      kind: 'image',
+      kind: receiptMediaKind(mimetype),
       provider: 'meta',
       media_id: safeText(image.id, 220),
-      mimetype: canonicalImageMime(image.mime_type || image.mimetype || 'image/jpeg'),
+      mimetype,
       caption_present: safeText(image.caption, 200) !== '',
+    };
+  }
+
+  if (isDocumentMessageType(messageType)) {
+    const document = readNestedRecord(message, 'document');
+    if (!Object.keys(document).length) return null;
+    const mimetype = canonicalReceiptMime(document.mime_type || document.mimetype || document.filename || 'application/pdf');
+    return {
+      kind: receiptMediaKind(mimetype),
+      provider: 'meta',
+      media_id: safeText(document.id, 220),
+      mimetype,
+      file_name: safeText(document.filename || document.fileName || '', 180),
+      caption_present: safeText(document.caption, 200) !== '',
     };
   }
 
@@ -1186,6 +1245,10 @@ function firstMessageText(message: JsonRecord): { type: string; text: string } {
   const image = readNestedRecord(message, 'imageMessage');
   const imageCaption = safeText(image.caption, 4000);
   if (imageCaption) return { type: 'imageMessage', text: imageCaption };
+
+  const document = readNestedRecord(message, 'documentMessage');
+  const documentCaption = safeText(document.caption, 4000);
+  if (documentCaption) return { type: 'documentMessage', text: documentCaption };
 
   const video = readNestedRecord(message, 'videoMessage');
   const videoCaption = safeText(video.caption, 4000);
@@ -1917,16 +1980,16 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   const originalBodyText = message.bodyText;
   let bodyText = originalBodyText;
   const isAudioMessage = isAudioMessageType(message.messageType);
-  const isImageMessage = isImageMessageType(message.messageType);
+  const isPixReceiptMediaMessage = isPixReceiptMediaMessageType(message.messageType);
   if (message.fromMe) ignoreReasons.push('from_me');
   if (message.isGroup && !GROUPS_ENABLED) ignoreReasons.push('group_blocked');
   if (!message.senderPhone) ignoreReasons.push('missing_sender');
   if (!(await phoneAllowed(message.senderPhone))) ignoreReasons.push('sender_not_allowed');
   if (!bodyText && isAudioMessage && AUDIO_INPUT_ENABLED) bodyText = '[audio recebido]';
-  if (!bodyText && isImageMessage && PIX_RECEIPT_IMAGE_ENABLED) bodyText = '[comprovante pix recebido]';
+  if (!bodyText && isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED) bodyText = '[comprovante pix recebido]';
   if (!bodyText) ignoreReasons.push('empty_or_unsupported_message');
 
-  if (bodyText && !((isAudioMessage || isImageMessage) && !originalBodyText)) {
+  if (bodyText && !((isAudioMessage || isPixReceiptMediaMessage) && !originalBodyText)) {
     const prefix = stripActivationPrefix(bodyText);
     if (!prefix.accepted) {
       ignoreReasons.push(prefix.reason);
@@ -2127,7 +2190,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const senderModuleHashes = phoneHashCandidates(row.sender_phone_hash, recipientPhone);
     const replyStartedAt = Date.now();
     const incomingAudio = isAudioMessageType(row.message_type);
-    const incomingImage = isImageMessageType(row.message_type);
+    const incomingPixReceiptMedia = isPixReceiptMediaMessageType(row.message_type);
     let effectiveBodyText = row.body_text;
     let replyAsAudio = incomingAudio && AUDIO_REPLY_MODE === 'voice_on_voice';
     if (incomingAudio && AUDIO_INPUT_ENABLED) {
@@ -2173,13 +2236,13 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       }
     }
 
-    let imageFailureReply: ReplyResult | null = null;
-    if (incomingImage && shouldAttemptPixReceiptImage(row.body_text)) {
+    let mediaFailureReply: ReplyResult | null = null;
+    if (incomingPixReceiptMedia && shouldAttemptPixReceiptMedia(row.body_text)) {
       try {
-        const extraction = await extractPixReceiptFromQueuedImage(row);
+        const extraction = await extractPixReceiptFromQueuedMedia(row);
         if (!extraction.isPixReceipt) {
-          imageFailureReply = {
-            text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda o comprovante ou escreve: pix cnpj valor - nome - obs data e horario.',
+          mediaFailureReply = {
+            text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs data e horario.',
             engine: 'blocked',
             reason: 'pix_receipt_not_detected',
           };
@@ -2188,14 +2251,14 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           const targetMatch = pixReceiptTargetMatch(extraction);
           const missing = missingPixReceiptFields(extraction);
           if (missing.length > 0) {
-            imageFailureReply = {
+            mediaFailureReply = {
               text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve os dados assim: pix cnpj valor - nome - obs data DD/MM/AAAA horario HH:MM.`,
               engine: 'blocked',
               reason: 'pix_receipt_missing_fields',
             };
             effectiveBodyText = '';
           } else if (!targetMatch.ok) {
-            imageFailureReply = {
+            mediaFailureReply = {
               text: `Li o comprovante, mas nao consegui confirmar que o destino e a Wimifarma (${maskDocument(PIX_RECEIPT_CNPJ)} ou nome cadastrado). Nao lancei. Se estiver certo, escreva os dados manualmente para eu confirmar.`,
               engine: 'blocked',
               reason: 'pix_receipt_target_mismatch',
@@ -2232,15 +2295,24 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           }
         }
       } catch (error) {
+        if (isRetriablePixReceiptError(error, row)) throw error;
+        const media = mediaSummaryFromPayload(row.payload_summary);
         await recordErrorLog('pix_receipt_ocr', 'warn', error, {
           eventId: row.id,
           traceId: row.trace_id,
           phoneMask: row.sender_phone_mask,
           messagePreview: row.body_text,
-          details: { message_type: row.message_type },
+          details: {
+            message_type: row.message_type,
+            media_kind: safeText(media.kind, 40),
+            media_mimetype: safeText(media.mimetype, 80),
+            media_file_length: safeText(media.file_length, 40),
+            media_provider: safeText(media.provider, 40),
+            provider_status: error instanceof ProviderHttpError ? error.statusCode : 0,
+          },
         });
-        imageFailureReply = {
-          text: 'Nao consegui ler o comprovante com seguranca. Escreve: pix cnpj valor - nome - obs data DD/MM/AAAA horario HH:MM.',
+        mediaFailureReply = {
+          text: 'Nao consegui ler o comprovante com seguranca. Manda foto/print/PDF mais nitido ou escreve: pix cnpj valor - nome - obs data DD/MM/AAAA horario HH:MM.',
           engine: 'blocked',
           reason: 'pix_receipt_ocr_failed',
         };
@@ -2260,7 +2332,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       replyAsAudio = false;
     }
     const confirmationReply = await maybeHandleConfirmationReply(row);
-    const reply = confirmationReply || audioFailureReply || imageFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes);
+    const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
@@ -3423,7 +3495,7 @@ function audioProviderFromSummary(summary: JsonRecord): string {
   return mediaProviderFromSummary(summary);
 }
 
-function shouldAttemptPixReceiptImage(bodyText: string): boolean {
+function shouldAttemptPixReceiptMedia(bodyText: string): boolean {
   if (!PIX_RECEIPT_IMAGE_ENABLED || !geminiConfigured() || !PIX_RECEIPT_CNPJ) return false;
   const clean = normalizeIntentText(bodyText);
   return clean === ''
@@ -3563,7 +3635,7 @@ function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch:
   const institution = cleanReceiptPart(extraction.institution, 90);
   const date = dateForCommand(extraction.paidDate);
   const details = [
-    'Comprovante Pix CNPJ lido por imagem.',
+    'Comprovante Pix CNPJ lido por midia.',
     pixReceiptTargetDetails(targetMatch),
     date ? `Data: ${date}.` : '',
     extraction.paidTime ? `Horario: ${extraction.paidTime}.` : '',
@@ -3592,11 +3664,35 @@ function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
   return Array.from(missing).slice(0, 6);
 }
 
-async function extractPixReceiptFromQueuedImage(row: QueueRow): Promise<PixReceiptExtraction> {
+async function extractPixReceiptFromQueuedMedia(row: QueueRow): Promise<PixReceiptExtraction> {
   const media = mediaProviderFromSummary(row.payload_summary) === 'meta'
-    ? await fetchMetaImageMedia(row)
-    : await fetchEvolutionImageMedia(row);
+    ? await fetchMetaReceiptMedia(row)
+    : await fetchEvolutionReceiptMedia(row);
   return requestGeminiPixReceiptExtraction(media, row.trace_id);
+}
+
+function isRetriablePixReceiptError(error: unknown, row: QueueRow): boolean {
+  const attempts = Number(row.attempts || 0) + 1;
+  if (attempts >= Math.min(MAX_ATTEMPTS, 3)) return false;
+  if (error instanceof ProviderHttpError) {
+    return error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500;
+  }
+  const message = safeError(error).toLowerCase();
+  return message.includes('timeout')
+    || message.includes('abort')
+    || message.includes('rate')
+    || message.includes('overload')
+    || message.includes('temporar')
+    || message.includes('unavailable')
+    || message.includes('resource exhausted')
+    || message.includes('quota')
+    || message.includes('429')
+    || message.includes('500')
+    || message.includes('502')
+    || message.includes('503')
+    || message.includes('504')
+    || message.includes('gemini_pix_receipt_http_429')
+    || message.includes('gemini_pix_receipt_http_5');
 }
 
 function extractJsonObjectText(text: string): string {
@@ -3739,9 +3835,9 @@ function assertAudioSize(sizeBytes: number): void {
   if (sizeBytes > AUDIO_MAX_BYTES) throw new Error(`audio_too_large_${sizeBytes}`);
 }
 
-function assertImageSize(sizeBytes: number): void {
-  if (sizeBytes <= 0) throw new Error('image_empty');
-  if (sizeBytes > PIX_RECEIPT_IMAGE_MAX_BYTES) throw new Error(`image_too_large_${sizeBytes}`);
+function assertReceiptMediaSize(sizeBytes: number): void {
+  if (sizeBytes <= 0) throw new Error('receipt_media_empty');
+  if (sizeBytes > PIX_RECEIPT_IMAGE_MAX_BYTES) throw new Error(`receipt_media_too_large_${sizeBytes}`);
 }
 
 async function transcribeQueuedAudio(row: QueueRow): Promise<string> {
@@ -3791,12 +3887,12 @@ async function fetchEvolutionAudioMedia(row: QueueRow): Promise<AudioMedia> {
   }
 }
 
-async function fetchEvolutionImageMedia(row: QueueRow): Promise<AudioMedia> {
+async function fetchEvolutionReceiptMedia(row: QueueRow): Promise<AudioMedia> {
   if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY) throw new Error('evolution_not_configured');
   const media = mediaSummaryFromPayload(row.payload_summary);
   const key = isRecord(media.key) ? media.key : {};
   const messageId = safeText(key.id, 180);
-  if (!messageId) throw new Error('evolution_image_key_missing');
+  if (!messageId) throw new Error('evolution_receipt_media_key_missing');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
   try {
@@ -3814,13 +3910,13 @@ async function fetchEvolutionImageMedia(row: QueueRow): Promise<AudioMedia> {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !isRecord(data)) {
-      const message = safeText(isRecord(data) ? data.message || data.error : '', 180) || `evolution_image_http_${response.status}`;
+      const message = safeText(isRecord(data) ? data.message || data.error : '', 180) || `evolution_receipt_media_http_${response.status}`;
       throw new ProviderHttpError('evolution', response.status, message);
     }
     const base64 = findBase64Field(data);
     const sizeBytes = audioSizeFromBase64(base64);
-    assertImageSize(sizeBytes);
-    const mimeType = canonicalImageMime(data.mimetype || data.mimeType || media.mimetype || 'image/jpeg');
+    assertReceiptMediaSize(sizeBytes);
+    const mimeType = canonicalReceiptMime(data.mimetype || data.mimeType || media.mimetype || 'image/jpeg');
     return { base64, mimeType, sizeBytes };
   } finally {
     clearTimeout(timeout);
@@ -3955,11 +4051,11 @@ async function buildAudioReply(text: string, _row: QueueRow): Promise<OutboundAu
   return audio;
 }
 
-async function fetchMetaImageMedia(row: QueueRow): Promise<AudioMedia> {
+async function fetchMetaReceiptMedia(row: QueueRow): Promise<AudioMedia> {
   if (!META_ACCESS_TOKEN) throw new Error('meta_not_configured');
   const media = mediaSummaryFromPayload(row.payload_summary);
   const mediaId = safeText(media.media_id, 220);
-  if (!mediaId) throw new Error('meta_image_media_id_missing');
+  if (!mediaId) throw new Error('meta_receipt_media_id_missing');
   const metadataController = new AbortController();
   const metadataTimeout = setTimeout(() => metadataController.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
   try {
@@ -3972,12 +4068,12 @@ async function fetchMetaImageMedia(row: QueueRow): Promise<AudioMedia> {
     const metadata = await metadataResponse.json().catch(() => ({}));
     if (!metadataResponse.ok || !isRecord(metadata)) {
       const error = isRecord(metadata.error) ? metadata.error : metadata;
-      const message = safeText(isRecord(error) ? error.message || error.error : '', 180) || `meta_image_http_${metadataResponse.status}`;
+      const message = safeText(isRecord(error) ? error.message || error.error : '', 180) || `meta_receipt_media_http_${metadataResponse.status}`;
       throw new ProviderHttpError('meta', metadataResponse.status, message);
     }
     const url = safeText(metadata.url, 1000);
-    if (!url) throw new Error('meta_image_url_missing');
-    const mimeType = canonicalImageMime(metadata.mime_type || media.mimetype || 'image/jpeg');
+    if (!url) throw new Error('meta_receipt_media_url_missing');
+    const mimeType = canonicalReceiptMime(metadata.mime_type || media.mimetype || 'image/jpeg');
     clearTimeout(metadataTimeout);
 
     const mediaController = new AbortController();
@@ -3990,12 +4086,12 @@ async function fetchMetaImageMedia(row: QueueRow): Promise<AudioMedia> {
         signal: mediaController.signal,
       });
       if (!mediaResponse.ok) {
-        throw new ProviderHttpError('meta', mediaResponse.status, `meta_image_download_http_${mediaResponse.status}`);
+        throw new ProviderHttpError('meta', mediaResponse.status, `meta_receipt_media_download_http_${mediaResponse.status}`);
       }
       const length = Number(mediaResponse.headers.get('content-length') || 0);
-      if (Number.isFinite(length) && length > PIX_RECEIPT_IMAGE_MAX_BYTES) throw new Error(`image_too_large_${length}`);
+      if (Number.isFinite(length) && length > PIX_RECEIPT_IMAGE_MAX_BYTES) throw new Error(`receipt_media_too_large_${length}`);
       const buffer = Buffer.from(await mediaResponse.arrayBuffer());
-      assertImageSize(buffer.length);
+      assertReceiptMediaSize(buffer.length);
       return { base64: buffer.toString('base64'), mimeType, sizeBytes: buffer.length };
     } finally {
       clearTimeout(mediaTimeout);
@@ -4005,7 +4101,7 @@ async function fetchMetaImageMedia(row: QueueRow): Promise<AudioMedia> {
   }
 }
 
-async function requestGeminiPixReceiptExtraction(image: AudioMedia, traceId: string): Promise<PixReceiptExtraction> {
+async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: string): Promise<PixReceiptExtraction> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured_for_pix_receipt');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
@@ -4019,26 +4115,27 @@ async function requestGeminiPixReceiptExtraction(image: AudioMedia, traceId: str
       body: JSON.stringify({
         systemInstruction: {
           parts: [{
-            text: 'Voce extrai dados de comprovantes Pix brasileiros para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes.',
+            text: 'Voce extrai dados de comprovantes Pix brasileiros recebidos como foto, print, screenshot, imagem encaminhada ou PDF para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes.',
           }],
         },
         contents: [{
           role: 'user',
           parts: [
             {
-              text: `Trace ${traceId}. Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, raw_text compacto, confidence de 0 a 1 e missing como lista. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se nao for comprovante Pix, use is_pix_receipt false. Se o destino for diferente, retorne o destino real encontrado.`,
+              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, raw_text compacto, confidence de 0 a 1 e missing como lista. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se nao for comprovante Pix, use is_pix_receipt false. Se o destino for diferente, retorne o destino real encontrado.`,
             },
             {
               inlineData: {
-                mimeType: image.mimeType,
-                data: image.base64,
+                mimeType: media.mimeType,
+                data: media.base64,
               },
             },
           ],
         }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 700,
+          maxOutputTokens: 900,
+          responseMimeType: 'application/json',
           thinkingConfig: {
             thinkingBudget: 0,
           },
@@ -4610,9 +4707,11 @@ function publicStatus(): JsonRecord {
     audio_tts_cache_ttl_seconds: AUDIO_TTS_CACHE_TTL_SECONDS,
     audio_tts_cache_entries: audioReplyCache.size,
     pix_receipt_image_enabled: PIX_RECEIPT_IMAGE_ENABLED,
+    pix_receipt_media_enabled: PIX_RECEIPT_IMAGE_ENABLED,
     pix_receipt_cnpj_configured: PIX_RECEIPT_CNPJ !== '',
     pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
     pix_receipt_image_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
+    pix_receipt_media_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
     pix_receipt_destination_alias_count: PIX_RECEIPT_DESTINATION_ALIASES.length,
     pix_receipt_min_target_score: PIX_RECEIPT_MIN_TARGET_SCORE,
     reply_cache_ttl_seconds: REPLY_CACHE_TTL_SECONDS,
@@ -5497,9 +5596,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             <small>Sem miauby: ${localRepliesEnabled ? 'local rapido/Gemini' : 'Gemini'} | com miauby: core | escrita: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
           </div>
           <div class="status-item">
-            <b>Pix CNPJ imagem</b>
+            <b>Pix CNPJ midia</b>
             ${renderPill(pixReceiptEnabled && pixReceiptConfigured, 'Ativo', pixReceiptConfigured ? 'Desligado' : 'Pendente')}
-            <small>OCR: ${htmlEscape(pixReceiptModel)} | limite: ${pixReceiptMaxMb} MB | alvo: CNPJ/chave ou ${pixReceiptAliasCount} nomes (${pixReceiptMinScore}%).</small>
+            <small>Foto/print/PDF | OCR: ${htmlEscape(pixReceiptModel)} | limite: ${pixReceiptMaxMb} MB | alvo: CNPJ/chave ou ${pixReceiptAliasCount} nomes (${pixReceiptMinScore}%).</small>
           </div>
           <div class="status-item">
             <b>Demora real</b>
