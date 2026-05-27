@@ -103,6 +103,7 @@ type DashboardOutboxRow = {
   reply_engine: string;
   route_reason: string;
   reply_latency_ms: number;
+  total_response_ms: number | null;
   attempts: number;
   created_at: string;
   sent_at: string | null;
@@ -115,11 +116,32 @@ type DashboardEngineRow = {
   avg_latency_ms: string;
 };
 
+type DashboardAllowlistRow = {
+  id: string;
+  phone_mask: string;
+  display_name: string;
+  status: string;
+  last_seen_at: string;
+  created_at: string;
+};
+
+type DashboardResponseDelay = {
+  count: string;
+  avg_ai_ms: string;
+  avg_total_ms: string;
+  p95_total_ms: string;
+  last_total_ms: string;
+};
+
 type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
   outboxCounts: Record<string, number>;
   replyEngines: DashboardEngineRow[];
+  responseDelay: DashboardResponseDelay;
+  allowlistRows: DashboardAllowlistRow[];
+  allowlistAllowed: number;
+  allowlistBlocked: number;
   contactsTotal: number;
   recentEvents: DashboardEventRow[];
   recentOutbox: DashboardOutboxRow[];
@@ -317,14 +339,60 @@ function applyRecipientAlias(value: string): string {
   return value;
 }
 
-function phoneAllowed(phone: string): boolean {
-  const normalized = normalizePhone(phone);
-  if (!normalized || ALLOWED_SENDERS.size === 0) return false;
-  if (ALLOWED_SENDERS.has(normalized)) return true;
+function phonesMatch(left: string, right: string): boolean {
+  const normalizedLeft = normalizePhone(left);
+  const normalizedRight = normalizePhone(right);
+  return normalizedLeft !== ''
+    && normalizedRight !== ''
+    && (normalizedLeft === normalizedRight
+      || normalizedLeft.endsWith(normalizedRight)
+      || normalizedRight.endsWith(normalizedLeft));
+}
+
+function envPhoneAllowed(normalizedPhone: string): boolean {
+  if (!normalizedPhone || ALLOWED_SENDERS.size === 0) return false;
+  if (ALLOWED_SENDERS.has(normalizedPhone)) return true;
   for (const allowed of ALLOWED_SENDERS) {
-    if (normalized.endsWith(allowed) || allowed.endsWith(normalized)) return true;
+    if (phonesMatch(normalizedPhone, allowed)) return true;
   }
   return false;
+}
+
+async function databasePhonePolicy(normalizedPhone: string): Promise<'allowed' | 'blocked' | ''> {
+  if (!normalizedPhone) return '';
+  const phoneHash = sha256(normalizedPhone);
+  const result = await pgPool.query<{ status: string; phone_hash: string; phone_ciphertext: string }>(
+    `SELECT status, phone_hash, COALESCE(phone_ciphertext, '') AS phone_ciphertext
+       FROM miauw_whatsapp_contacts
+      WHERE status IN ('allowed', 'blocked')
+      ORDER BY updated_at DESC
+      LIMIT 300`,
+  );
+
+  let matchedAllowed = false;
+  for (const row of result.rows) {
+    let matched = row.phone_hash === phoneHash;
+    if (!matched && row.phone_ciphertext) {
+      try {
+        matched = phonesMatch(normalizedPhone, decryptText(row.phone_ciphertext));
+      } catch {
+        matched = false;
+      }
+    }
+    if (!matched) continue;
+    if (row.status === 'blocked') return 'blocked';
+    if (row.status === 'allowed') matchedAllowed = true;
+  }
+  return matchedAllowed ? 'allowed' : '';
+}
+
+async function phoneAllowed(phone: string): Promise<boolean> {
+  const normalized = normalizePhone(applyRecipientAlias(phone));
+  if (!normalized) return false;
+  const databasePolicy = await databasePhonePolicy(normalized);
+  if (databasePolicy === 'blocked') return false;
+  if (databasePolicy === 'allowed') return true;
+  return envPhoneAllowed(normalized);
 }
 
 function sha256(value: string): string {
@@ -465,6 +533,16 @@ function dashboardSessionValid(req: Request): boolean {
   } catch {
     return false;
   }
+}
+
+function dashboardCsrfToken(req: Request): string {
+  const sessionToken = cookieValue(req, DASHBOARD_COOKIE_NAME) || 'dashboard-open';
+  return signDashboardPayload(`csrf:${sessionToken}`);
+}
+
+function dashboardCsrfValid(req: Request): boolean {
+  const submitted = safeText(req.body?.csrf, 300);
+  return submitted !== '' && timingSafeStringEqual(submitted, dashboardCsrfToken(req));
 }
 
 function secureCookie(req: Request): boolean {
@@ -703,6 +781,7 @@ async function ensureSchema(): Promise<void> {
       id UUID PRIMARY KEY,
       phone_hash CHAR(64) NOT NULL UNIQUE,
       phone_mask VARCHAR(40) NOT NULL,
+      phone_ciphertext TEXT NOT NULL DEFAULT '',
       display_name VARCHAR(120) NOT NULL DEFAULT '',
       linked_user_id INTEGER NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'allowed',
@@ -812,6 +891,9 @@ async function ensureSchema(): Promise<void> {
   `);
 
   await pgPool.query(`
+    ALTER TABLE miauw_whatsapp_contacts
+      ADD COLUMN IF NOT EXISTS phone_ciphertext TEXT NOT NULL DEFAULT '';
+
     ALTER TABLE miauw_whatsapp_outbox
       ADD COLUMN IF NOT EXISTS reply_engine VARCHAR(30) NOT NULL DEFAULT '',
       ADD COLUMN IF NOT EXISTS route_reason VARCHAR(120) NOT NULL DEFAULT '',
@@ -838,15 +920,49 @@ async function countRecentMessages(senderHash: string, interval: 'minute' | 'day
 async function upsertContact(message: IncomingMessage): Promise<void> {
   const phoneHash = sha256(message.senderPhone);
   await pgPool.query(
-    `INSERT INTO miauw_whatsapp_contacts (id, phone_hash, phone_mask, display_name, status)
-     VALUES ($1, $2, $3, $4, 'allowed')
+    `INSERT INTO miauw_whatsapp_contacts (id, phone_hash, phone_mask, phone_ciphertext, display_name, status)
+     VALUES ($1, $2, $3, $4, $5, 'allowed')
      ON CONFLICT (phone_hash)
      DO UPDATE SET
        phone_mask = EXCLUDED.phone_mask,
+       phone_ciphertext = CASE WHEN EXCLUDED.phone_ciphertext <> '' THEN EXCLUDED.phone_ciphertext ELSE miauw_whatsapp_contacts.phone_ciphertext END,
        display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name ELSE miauw_whatsapp_contacts.display_name END,
        last_seen_at = NOW(),
        updated_at = NOW()`,
-    [crypto.randomUUID(), phoneHash, maskPhone(message.senderPhone), message.pushName],
+    [crypto.randomUUID(), phoneHash, maskPhone(message.senderPhone), encryptText(normalizePhone(message.senderPhone)), message.pushName],
+  );
+}
+
+async function upsertAllowlistContact(phone: string, displayName: string): Promise<void> {
+  const normalized = normalizePhone(phone);
+  if (normalized.length < 8 || normalized.length > 20) {
+    throw new Error('invalid_allowlist_phone');
+  }
+  const label = safeText(displayName, 120);
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_contacts (id, phone_hash, phone_mask, phone_ciphertext, display_name, status)
+     VALUES ($1, $2, $3, $4, $5, 'allowed')
+     ON CONFLICT (phone_hash)
+     DO UPDATE SET
+       phone_mask = EXCLUDED.phone_mask,
+       phone_ciphertext = EXCLUDED.phone_ciphertext,
+       display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name ELSE miauw_whatsapp_contacts.display_name END,
+       status = 'allowed',
+       updated_at = NOW()`,
+    [crypto.randomUUID(), sha256(normalized), maskPhone(normalized), encryptText(normalized), label],
+  );
+}
+
+async function setAllowlistContactStatus(id: string, status: 'allowed' | 'blocked'): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error('invalid_allowlist_id');
+  }
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_contacts
+        SET status = $2,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [id, status],
   );
 }
 
@@ -933,7 +1049,7 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   if (message.fromMe) ignoreReasons.push('from_me');
   if (message.isGroup && !GROUPS_ENABLED) ignoreReasons.push('group_blocked');
   if (!message.senderPhone) ignoreReasons.push('missing_sender');
-  if (!phoneAllowed(message.senderPhone)) ignoreReasons.push('sender_not_allowed');
+  if (!(await phoneAllowed(message.senderPhone))) ignoreReasons.push('sender_not_allowed');
   if (!bodyText) ignoreReasons.push('empty_or_unsupported_message');
 
   if (bodyText) {
@@ -2272,6 +2388,7 @@ function publicStatus(): JsonRecord {
     encryption_configured: CRYPTO_SECRET !== '',
     dashboard_auth_configured: DASHBOARD_AUTH_ENABLED,
     allowlist_count: ALLOWED_SENDERS.size,
+    allowlist_env_count: ALLOWED_SENDERS.size,
     require_prefix: REQUIRE_PREFIX,
     prefix: REQUIRE_PREFIX ? PREFIX : '',
     groups_enabled: GROUPS_ENABLED,
@@ -2325,7 +2442,17 @@ function countOf(counts: Record<string, number>, status: string): number {
 }
 
 async function dashboardSummary(): Promise<DashboardSummary> {
-  const [eventsResult, outboxResult, replyEnginesResult, contactsResult, recentEventsResult, recentOutboxResult] = await Promise.all([
+  const [
+    eventsResult,
+    outboxResult,
+    replyEnginesResult,
+    responseDelayResult,
+    contactsResult,
+    allowlistCountsResult,
+    allowlistRowsResult,
+    recentEventsResult,
+    recentOutboxResult,
+  ] = await Promise.all([
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
          FROM miauw_whatsapp_events
@@ -2348,9 +2475,45 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         GROUP BY 1
         ORDER BY COUNT(*) DESC, reply_engine`,
     ),
+    pgPool.query<DashboardResponseDelay>(
+      `WITH sent AS (
+         SELECT o.reply_latency_ms,
+                EXTRACT(EPOCH FROM (o.sent_at - e.created_at)) * 1000 AS total_ms,
+                o.sent_at
+           FROM miauw_whatsapp_outbox o
+           JOIN miauw_whatsapp_events e ON e.id = o.event_id
+          WHERE o.status = 'sent'
+            AND o.sent_at IS NOT NULL
+            AND o.created_at >= NOW() - INTERVAL '1 day'
+       )
+       SELECT COUNT(*)::text AS count,
+              COALESCE(ROUND(AVG(NULLIF(reply_latency_ms, 0)))::text, '0') AS avg_ai_ms,
+              COALESCE(ROUND(AVG(total_ms))::text, '0') AS avg_total_ms,
+              COALESCE(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY total_ms))::text, '0') AS p95_total_ms,
+              COALESCE((SELECT ROUND(total_ms)::text FROM sent ORDER BY sent_at DESC LIMIT 1), '0') AS last_total_ms
+         FROM sent`,
+    ),
     pgPool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
          FROM miauw_whatsapp_contacts`,
+    ),
+    pgPool.query<{ status: string; count: string }>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_contacts
+        WHERE status IN ('allowed', 'blocked')
+        GROUP BY status`,
+    ),
+    pgPool.query<DashboardAllowlistRow>(
+      `SELECT id::text AS id,
+              phone_mask,
+              display_name,
+              status,
+              last_seen_at::text AS last_seen_at,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_contacts
+        WHERE status IN ('allowed', 'blocked')
+        ORDER BY status = 'blocked', last_seen_at DESC, created_at DESC
+        LIMIT 40`,
     ),
     pgPool.query<DashboardEventRow>(
       `SELECT status,
@@ -2364,25 +2527,35 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         LIMIT 10`,
     ),
     pgPool.query<DashboardOutboxRow>(
-      `SELECT status,
-              recipient_phone_mask,
-              COALESCE(NULLIF(reply_engine, ''), 'legacy') AS reply_engine,
-              COALESCE(NULLIF(route_reason, ''), '-') AS route_reason,
-              reply_latency_ms,
-              attempts,
-              created_at::text AS created_at,
-              sent_at::text AS sent_at
-         FROM miauw_whatsapp_outbox
-        ORDER BY created_at DESC
+      `SELECT o.status,
+              o.recipient_phone_mask,
+              COALESCE(NULLIF(o.reply_engine, ''), 'legacy') AS reply_engine,
+              COALESCE(NULLIF(o.route_reason, ''), '-') AS route_reason,
+              o.reply_latency_ms,
+              CASE
+                WHEN o.sent_at IS NULL THEN NULL
+                ELSE GREATEST(0, ROUND(EXTRACT(EPOCH FROM (o.sent_at - e.created_at)) * 1000))::integer
+              END AS total_response_ms,
+              o.attempts,
+              o.created_at::text AS created_at,
+              o.sent_at::text AS sent_at
+         FROM miauw_whatsapp_outbox o
+         JOIN miauw_whatsapp_events e ON e.id = o.event_id
+        ORDER BY o.created_at DESC
         LIMIT 10`,
     ),
   ]);
+  const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
 
   return {
     status: publicStatus(),
     eventCounts: countsByStatus(eventsResult.rows),
     outboxCounts: countsByStatus(outboxResult.rows),
     replyEngines: replyEnginesResult.rows,
+    responseDelay: responseDelayResult.rows[0] || { count: '0', avg_ai_ms: '0', avg_total_ms: '0', p95_total_ms: '0', last_total_ms: '0' },
+    allowlistRows: allowlistRowsResult.rows,
+    allowlistAllowed: countOf(allowlistCounts, 'allowed'),
+    allowlistBlocked: countOf(allowlistCounts, 'blocked'),
     contactsTotal: Number(contactsResult.rows[0]?.count || 0),
     recentEvents: recentEventsResult.rows,
     recentOutbox: recentOutboxResult.rows,
@@ -2465,7 +2638,7 @@ function renderRecentEvents(rows: DashboardEventRow[]): string {
 
 function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
   if (!rows.length) {
-    return '<tr><td colspan="8" class="empty">Sem respostas na outbox ainda.</td></tr>';
+    return '<tr><td colspan="9" class="empty">Sem respostas na outbox ainda.</td></tr>';
   }
   return rows.map((row) => `
     <tr>
@@ -2474,6 +2647,7 @@ function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
       <td>${htmlEscape(row.reply_engine || '-')}</td>
       <td>${htmlEscape(row.route_reason || '-')}</td>
       <td>${htmlEscape(formatMs(row.reply_latency_ms))}</td>
+      <td>${htmlEscape(formatMs(row.total_response_ms))}</td>
       <td>${htmlEscape(row.status)}</td>
       <td>${htmlEscape(row.attempts)}</td>
       <td>${htmlEscape(formatDate(row.sent_at))}</td>
@@ -2490,6 +2664,31 @@ function renderEngineBreakdown(rows: DashboardEngineRow[]): string {
       <span class="pill is-ok">${htmlEscape(row.sent_count || 0)} enviadas</span>
       <small>${htmlEscape(row.count || 0)} respostas em 24h | IA: ${htmlEscape(formatMs(row.avg_latency_ms))}</small>
     </div>`).join('');
+}
+
+function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): string {
+  if (!rows.length) {
+    return '<tr><td colspan="5" class="empty">Nenhum contato salvo no Postgres ainda.</td></tr>';
+  }
+  return rows.map((row) => {
+    const isAllowed = row.status === 'allowed';
+    const nextAction = isAllowed ? 'block' : 'allow';
+    const nextLabel = isAllowed ? 'Bloquear' : 'Autorizar';
+    return `
+      <tr>
+        <td>${htmlEscape(row.phone_mask || '-')}</td>
+        <td>${htmlEscape(row.display_name || '-')}</td>
+        <td>${renderPill(isAllowed, 'Autorizado', 'Bloqueado')}</td>
+        <td>${htmlEscape(formatDate(row.last_seen_at || row.created_at))}</td>
+        <td>
+          <form class="inline-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist/${nextAction}">
+            <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
+            <input type="hidden" name="id" value="${htmlEscape(row.id)}">
+            <button type="submit">${htmlEscape(nextLabel)}</button>
+          </form>
+        </td>
+      </tr>`;
+  }).join('');
 }
 
 function renderDashboardLogin(error: string): string {
@@ -2585,7 +2784,7 @@ function renderDashboardLogin(error: string): string {
 </html>`;
 }
 
-function renderDashboard(summary: DashboardSummary): string {
+function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = ''): string {
   const status = summary.status;
   const enabled = boolStatus(status, 'enabled');
   const provider = textStatus(status, 'provider') || 'evolution';
@@ -2618,6 +2817,12 @@ function renderDashboard(summary: DashboardSummary): string {
   const cacheTtl = numberStatus(status, 'reply_cache_ttl_seconds');
   const cacheEntries = numberStatus(status, 'reply_cache_entries');
   const writePolicy = textStatus(status, 'whatsapp_write_actions') || 'blocked';
+  const envAllowlist = numberStatus(status, 'allowlist_env_count') || numberStatus(status, 'allowlist_count');
+  const responseDelay = summary.responseDelay;
+  const allowlistHint = `Env: ${envAllowlist} | Postgres: ${summary.allowlistAllowed} | bloqueados: ${summary.allowlistBlocked}`;
+  const noticeHtml = notice
+    ? `<p class="notice">${htmlEscape(notice)}</p>`
+    : '';
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -2657,7 +2862,7 @@ function renderDashboard(summary: DashboardSummary): string {
       font-family: inherit;
       cursor: pointer;
     }
-    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
     .metric, .panel {
       border: 1px solid #ead5df;
       border-radius: 8px;
@@ -2685,10 +2890,40 @@ function renderDashboard(summary: DashboardSummary): string {
     td { color: #2e2430; }
     .empty { color: #6a5964; text-align: center; }
     .footnote { margin: 14px 0 0; color: #6a5964; font-size: 12px; line-height: 1.4; }
+    .notice { margin: 0 0 14px; border: 1px solid #bdebd5; border-radius: 8px; background: #effcf6; padding: 10px 12px; color: #09613b; font-size: 13px; font-weight: 800; }
+    .allowlist-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 14px; }
+    .allowlist-form label { color: #8d0f43; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+    .allowlist-form input {
+      width: 100%;
+      min-height: 38px;
+      margin-top: 5px;
+      border: 1px solid #e3c6d4;
+      border-radius: 8px;
+      padding: 0 10px;
+      color: #211722;
+      font: inherit;
+      outline: none;
+    }
+    .allowlist-form input:focus { border-color: #b10647; box-shadow: 0 0 0 3px rgba(177, 6, 71, .12); }
+    .allowlist-form button, .inline-form button {
+      min-height: 36px;
+      border: 1px solid #d7aabe;
+      border-radius: 8px;
+      background: #b10647;
+      color: #fff;
+      padding: 0 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .inline-form { margin: 0; }
+    .inline-form button { background: #fff; color: #8f0e42; }
     @media (max-width: 860px) {
       .topbar { display: block; }
       .actions { justify-content: flex-start; margin-top: 14px; }
       .metrics, .grid { grid-template-columns: 1fr; }
+      .allowlist-form { grid-template-columns: 1fr; }
       .status-list { grid-template-columns: 1fr; }
       h1 { font-size: 36px; }
     }
@@ -2709,12 +2944,14 @@ function renderDashboard(summary: DashboardSummary): string {
         ${dashboardLogoutAction()}
       </nav>
     </header>
+    ${noticeHtml}
 
     <section class="metrics" aria-label="Resumo">
-      ${renderMetric('Canal', enabled ? 'Ativo' : 'Desligado', `Prefixo: ${requirePrefix ? prefix : 'sem prefixo'} | Allowlist: ${numberStatus(status, 'allowlist_count')}`)}
+      ${renderMetric('Canal', enabled ? 'Ativo' : 'Desligado', `Prefixo: ${requirePrefix ? prefix : 'sem prefixo'} | ${allowlistHint}`)}
       ${renderMetric('Fila', queued, `${replied} respondidas | ${ignored} ignoradas`)}
       ${renderMetric('Outbox', pendingOutbox, `${countOf(summary.outboxCounts, 'sent')} enviadas | ${outboxProblems} problemas`)}
       ${renderMetric('Contatos', summary.contactsTotal, `${eventProblems} eventos com falha ou dead-letter`)}
+      ${renderMetric('Resposta', formatMs(responseDelay.avg_total_ms), `24h: ${responseDelay.count} envios | p95 ${formatMs(responseDelay.p95_total_ms)} | ultima ${formatMs(responseDelay.last_total_ms)}`)}
     </section>
 
     <section class="grid" aria-label="Status operacional">
@@ -2751,6 +2988,11 @@ function renderDashboard(summary: DashboardSummary): string {
             ${renderPill(true, 'Ativo', 'Pendente')}
             <small>Sem miauby: Gemini | com miauby: core | escrita: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
           </div>
+          <div class="status-item">
+            <b>Demora real</b>
+            <span class="pill is-ok">${htmlEscape(formatMs(responseDelay.avg_total_ms))}</span>
+            <small>Media ate enviar em 24h | IA: ${htmlEscape(formatMs(responseDelay.avg_ai_ms))} | P95: ${htmlEscape(formatMs(responseDelay.p95_total_ms))} | ultima: ${htmlEscape(formatMs(responseDelay.last_total_ms))}</small>
+          </div>
           ${renderEngineBreakdown(summary.replyEngines)}
         </div>
         <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>
@@ -2767,6 +3009,27 @@ function renderDashboard(summary: DashboardSummary): string {
       </article>
 
       <article class="panel">
+        <h2>Allowlist</h2>
+        <form class="allowlist-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist">
+          <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
+          <label>Numero
+            <input name="phone" inputmode="tel" autocomplete="off" placeholder="+55 44 99999-9999" required>
+          </label>
+          <label>Nome
+            <input name="display_name" autocomplete="off" placeholder="Ex.: Willian">
+          </label>
+          <button type="submit">Autorizar</button>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Numero</th><th>Nome</th><th>Status</th><th>Ultimo visto</th><th>Acao</th></tr></thead>
+            <tbody>${renderAllowlistRows(summary.allowlistRows, csrfToken)}</tbody>
+          </table>
+        </div>
+        <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres e nunca mostram telefone completo.</p>
+      </article>
+
+      <article class="panel">
         <h2>Eventos recentes</h2>
         <div class="table-wrap">
           <table>
@@ -2780,7 +3043,7 @@ function renderDashboard(summary: DashboardSummary): string {
         <h2>Outbox recente</h2>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Quando</th><th>Destino</th><th>Motor</th><th>Rota</th><th>IA</th><th>Status</th><th>Tent.</th><th>Enviado</th></tr></thead>
+            <thead><tr><th>Quando</th><th>Destino</th><th>Motor</th><th>Rota</th><th>IA</th><th>Total</th><th>Status</th><th>Tent.</th><th>Enviado</th></tr></thead>
             <tbody>${renderRecentOutbox(summary.recentOutbox)}</tbody>
           </table>
         </div>
@@ -2855,10 +3118,27 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   next(error);
 });
 
-async function dashboardHandler(_req: Request, res: Response): Promise<void> {
+function dashboardNotice(value: unknown): string {
+  switch (safeText(value, 80)) {
+    case 'allowlist_added':
+      return 'Allowlist atualizada.';
+    case 'allowlist_blocked':
+      return 'Contato bloqueado na allowlist.';
+    case 'allowlist_allowed':
+      return 'Contato autorizado na allowlist.';
+    case 'allowlist_invalid':
+      return 'Numero invalido para allowlist.';
+    case 'csrf_invalid':
+      return 'Sessao expirada. Recarregue o painel e tente de novo.';
+    default:
+      return '';
+  }
+}
+
+async function dashboardHandler(req: Request, res: Response): Promise<void> {
   try {
     const summary = await dashboardSummary();
-    res.type('html').send(renderDashboard(summary));
+    res.type('html').send(renderDashboard(summary, dashboardCsrfToken(req), dashboardNotice(req.query.notice)));
   } catch (error) {
     res.status(503).type('html').send(renderDashboardError(error));
   }
@@ -2893,6 +3173,49 @@ app.post(`${BASE_PATH}/logout`, (req, res) => {
   res.redirect(303, `${BASE_PATH}/login`);
 });
 
+app.post(`${BASE_PATH}/allowlist`, requireDashboardAuth, async (req, res) => {
+  if (!dashboardCsrfValid(req)) {
+    res.redirect(303, `${BASE_PATH}?notice=csrf_invalid`);
+    return;
+  }
+  try {
+    await upsertAllowlistContact(req.body?.phone, req.body?.display_name);
+    res.redirect(303, `${BASE_PATH}?notice=allowlist_added`);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'invalid_allowlist_phone') {
+      res.redirect(303, `${BASE_PATH}?notice=allowlist_invalid`);
+      return;
+    }
+    res.status(503).type('html').send(renderDashboardError(error));
+  }
+});
+
+app.post(`${BASE_PATH}/allowlist/block`, requireDashboardAuth, async (req, res) => {
+  if (!dashboardCsrfValid(req)) {
+    res.redirect(303, `${BASE_PATH}?notice=csrf_invalid`);
+    return;
+  }
+  try {
+    await setAllowlistContactStatus(safeText(req.body?.id, 80), 'blocked');
+    res.redirect(303, `${BASE_PATH}?notice=allowlist_blocked`);
+  } catch (error) {
+    res.status(503).type('html').send(renderDashboardError(error));
+  }
+});
+
+app.post(`${BASE_PATH}/allowlist/allow`, requireDashboardAuth, async (req, res) => {
+  if (!dashboardCsrfValid(req)) {
+    res.redirect(303, `${BASE_PATH}?notice=csrf_invalid`);
+    return;
+  }
+  try {
+    await setAllowlistContactStatus(safeText(req.body?.id, 80), 'allowed');
+    res.redirect(303, `${BASE_PATH}?notice=allowlist_allowed`);
+  } catch (error) {
+    res.status(503).type('html').send(renderDashboardError(error));
+  }
+});
+
 app.get(BASE_PATH, requireDashboardAuth, dashboardHandler);
 app.get(`${BASE_PATH}/`, requireDashboardAuth, dashboardHandler);
 
@@ -2916,8 +3239,20 @@ app.get(`${BASE_PATH}/health`, async (_req, res) => {
   }
 });
 
-app.get(`${BASE_PATH}/status`, requireDashboardAuth, (_req, res) => {
-  res.json(publicStatus());
+app.get(`${BASE_PATH}/status`, requireDashboardAuth, async (_req, res) => {
+  try {
+    const summary = await dashboardSummary();
+    res.json({
+      ...summary.status,
+      event_counts: summary.eventCounts,
+      outbox_counts: summary.outboxCounts,
+      allowlist_database_allowed: summary.allowlistAllowed,
+      allowlist_database_blocked: summary.allowlistBlocked,
+      response_delay_24h: summary.responseDelay,
+    });
+  } catch (error) {
+    res.status(503).json({ ...publicStatus(), ok: false, error: safeError(error) });
+  }
 });
 
 app.post(`${BASE_PATH}/webhook`, requireWebhookAuth, async (req, res) => {
