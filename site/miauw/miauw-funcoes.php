@@ -2694,13 +2694,17 @@ function miauw_confirmation_summary(string $tool, array $command): string
                 $cnpjLabel = preg_replace('/\D+/', '', (string) $matches[1]);
             }
 
-            return 'Registrar PIX CNPJ de '
-                . $money($command['valor'] ?? 0)
-                . ' em ' . $dataLabel
-                . ($horaLabel !== '' ? ' as ' . $horaLabel : '')
-                . ', pagador ' . ($responsavel !== '' ? $responsavel : 'nao informado')
-                . ($cnpjLabel !== '' ? ', CNPJ destino ' . $cnpjLabel : '')
-                . '.';
+            $lines = array(
+                'PIX CNPJ',
+                'Valor: ' . $money($command['valor'] ?? 0),
+                'Pagador: ' . ($responsavel !== '' ? $responsavel : 'nao informado'),
+                'Data: ' . $dataLabel . ($horaLabel !== '' ? ' ' . $horaLabel : ''),
+            );
+            if ($cnpjLabel !== '') {
+                $lines[] = 'Destino: ' . $cnpjLabel;
+            }
+
+            return implode("\n", $lines);
         }
 
         return 'Criar lancamento financeiro: '

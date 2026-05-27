@@ -229,7 +229,7 @@ Interface:
 - o topo do Financeiro mostra apenas `Caixa`, `Relatorio` e `Sair`;
 - a view dedicada de Auditoria nao fica disponivel na navegacao operacional;
 - os registros em `financeiro_auditoria` continuam sendo gravados para suporte e rastreabilidade.
-- O Miauby WhatsApp pode preparar lancamento `Pix CNPJ` a partir de foto, print, imagem encaminhada ou PDF/documento de comprovante Pix quando a flag de OCR estiver ligada. O bridge valida remetente, card `Financeiro`, destino por CNPJ/chave Pix ou nome correlato, valor, pagador, data e horario; depois envia confirmacao `Sim`/`Nao`. Somente o `Sim` grava em `financeiro_lancamentos` no dia extraido, com categoria `Pix CNPJ` e observacao com dados do comprovante. `Nao`, destino divergente ou dado faltante nao gravam nada e pedem texto corrigido.
+- O Miauby WhatsApp pode preparar lancamento `Pix CNPJ` a partir de foto, print, imagem encaminhada ou PDF/documento de comprovante Pix quando a flag de OCR estiver ligada. O bridge valida remetente, card `Financeiro`, destino por CNPJ/chave Pix ou nome correlato, valor e pagador; data e horario sao usados quando a leitura trouxer, mas a correcao manual `pix cnpj valor - nome - obs opcional` tambem pode gravar usando o momento atual. Depois envia confirmacao `Sim`/`Nao`. Somente o `Sim` grava em `financeiro_lancamentos`, com categoria `Pix CNPJ` e observacao com dados do comprovante. `Nao`, destino divergente ou dado faltante nao gravam nada e pedem texto corrigido.
 
 ## Fluxo Gestao
 

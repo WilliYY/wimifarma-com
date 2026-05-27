@@ -265,7 +265,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.7';
+const SERVICE_VERSION = '0.5.8';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -523,6 +523,16 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function safeText(value: unknown, limit = 500): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function safeOutboundText(value: unknown, limit = 1800): string {
+  return String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t\f\v]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim()
+    .slice(0, limit);
 }
 
 function canonicalAudioMime(value: unknown): string {
@@ -2243,7 +2253,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         const extraction = await extractPixReceiptFromQueuedMedia(row);
         if (!extraction.isPixReceipt) {
           mediaFailureReply = {
-            text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs data e horario.',
+            text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
             engine: 'blocked',
             reason: 'pix_receipt_not_detected',
           };
@@ -2253,7 +2263,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           const missing = missingPixReceiptFields(extraction);
           if (missing.length > 0) {
             mediaFailureReply = {
-              text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve os dados assim: pix cnpj valor - nome - obs data DD/MM/AAAA horario HH:MM.`,
+              text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.`,
               engine: 'blocked',
               reason: 'pix_receipt_missing_fields',
             };
@@ -2313,7 +2323,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           },
         });
         mediaFailureReply = {
-          text: 'Nao consegui ler o comprovante com seguranca. Manda foto/print/PDF mais nitido ou escreve: pix cnpj valor - nome - obs data DD/MM/AAAA horario HH:MM.',
+          text: 'Nao consegui ler o comprovante com seguranca. Manda foto/print/PDF mais nitido ou escreve: pix cnpj valor - nome - obs opcional.',
           engine: 'blocked',
           reason: 'pix_receipt_ocr_failed',
         };
@@ -2338,7 +2348,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
       : undefined;
-    const replyText = safeText(formatReplyTextWithConfirmation(reply.text, confirmation), 1800);
+    const replyText = safeOutboundText(formatReplyTextWithConfirmation(reply.text, confirmation), 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
     const audioReply = shouldSendAudioReply(replyAsAudio, confirmation)
       ? await buildAudioReply(replyText, row).catch(async (error) => {
@@ -2457,9 +2467,9 @@ function confirmationShortId(): string {
 
 function formatReplyTextWithConfirmation(text: string, confirmation?: WhatsappConfirmationDraft): string {
   if (!confirmation?.id) return text;
-  const clean = safeText(text, 1500);
-  if (clean.toLowerCase().includes(confirmation.id.toLowerCase())) return clean;
-  return `${clean}\n\nMande SIM para confirmar ou NAO para cancelar. Codigo: ${confirmation.id}`;
+  const clean = safeOutboundText(text, 1500);
+  if (/\bresponda\s+sim\b/i.test(clean) || /\bmande\s+sim\b/i.test(clean)) return clean;
+  return `${clean}\n\nResponda SIM para gravar ou NAO para cancelar.`;
 }
 
 function parseConfirmationDecision(message: string): { action: 'confirm' | 'cancel'; shortId?: string } | null {
@@ -2516,7 +2526,7 @@ async function createPendingConfirmation(row: QueueRow, draft: WhatsappConfirmat
           row.sender_phone_mask,
           row.instance_name || defaultInstanceName(),
           safeText(draft.tool, 120),
-          safeText(draft.summary, 500),
+          safeOutboundText(draft.summary, 500),
           safeText(draft.risk || 'alto', 40),
           JSON.stringify(draft.command || {}),
           CONFIRMATION_TTL_MINUTES,
@@ -2688,7 +2698,7 @@ function cancellationReplyForPending(pending: PendingConfirmationRow): string {
     const category = normalizeIntentText(safeText(command.categoria, 80));
     const summary = normalizeIntentText(pending.summary || '');
     if (category === 'pix cnpj' || summary.includes('pix cnpj')) {
-      return 'Cancelado. Nada foi gravado. Escreve os dados corrigidos assim: pix cnpj 50,00 - Nome - obs data DD/MM/AAAA horario HH:MM.';
+      return 'Cancelado. Nada foi gravado. Se quiser corrigir, mande: pix cnpj 50,00 - Nome - obs opcional. Sem data/hora eu uso agora.';
     }
   }
   return 'Cancelado. Nada foi gravado.';
@@ -3048,7 +3058,7 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
     `Pode usar ferramentas do core somente quando a rota permitir e somente para estes cards do telefone: ${moduleLabels(allowedCards.map((card) => card.key))}.`,
     'Se o pedido pedir card nao liberado, responda bloqueando e oriente liberar no painel Miauby WhatsApp.',
     whatsappConfirmationsReady()
-      ? 'Se uma ferramenta forte retornar confirmation_required, devolva o resumo; o bridge cria botoes Sim/Nao e so executa apos pendencia auditada.'
+      ? 'Se uma ferramenta forte retornar confirmation_required, devolva o resumo; o bridge cria uma pendencia Sim/Nao e so executa apos confirmacao auditada.'
       : 'Se uma ferramenta forte retornar confirmation_required, explique o resumo e diga que precisa confirmar no Miauby interno ou no sistema.',
     'Nao trate confirmacao solta como acao executada; precisa existir pendencia auditada.',
     'Nao afirme que gravou, pagou, confirmou, alterou ou excluiu dado pelo WhatsApp sem confirmacao auditada.',
@@ -3171,7 +3181,7 @@ function confirmationDraftFromData(data: JsonRecord): WhatsappConfirmationDraft 
   const confirmation = isRecord(data.confirmation) ? data.confirmation : data;
   const tool = safeText(confirmation.tool, 120);
   const command = isRecord(confirmation.command) ? confirmation.command : isRecord(confirmation.command_payload) ? confirmation.command_payload : {};
-  const summary = safeText(confirmation.summary, 500);
+  const summary = safeOutboundText(confirmation.summary, 500);
   if (!tool || !summary || Object.keys(command).length === 0) return null;
   return {
     tool,
@@ -3388,7 +3398,7 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
         return { text: forbiddenModuleReply(moduleKey, allowedCards) };
       }
       return {
-        text: `Antes de gravar, confirma essa acao?\n${confirmation.summary}`,
+        text: `Confirmar lancamento?\n${confirmation.summary}`,
         confirmation,
       };
     }
@@ -3651,12 +3661,13 @@ function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
   const missing = new Set<string>();
   if (!extraction.amount || extraction.amount <= 0) missing.add('valor');
   if (!extraction.payerName) missing.add('nome do pagador');
-  if (!extraction.paidDate) missing.add('data');
-  if (!extraction.paidTime) missing.add('horario');
   for (const item of extraction.missing) {
     const clean = safeText(item, 60);
     const normalized = normalizeIntentText(clean);
     if (normalized.includes('cnpj') || normalized.includes('destino') || (normalized.includes('chave') && normalized.includes('pix'))) {
+      continue;
+    }
+    if (normalized.includes('data') || normalized.includes('hora') || normalized.includes('horario')) {
       continue;
     }
     if (clean) missing.add(clean);
@@ -4423,7 +4434,7 @@ async function sendEvolutionConfirmation(phone: string, text: string, instanceNa
         number: evolutionRecipient(phone),
         title: 'Confirmar acao?',
         description: text,
-        footer: `Miauby | ${confirmation.id}`,
+        footer: 'Miauby',
         buttons: [
           { type: 'reply', displayText: 'Sim', id: `miauw_confirm_yes:${confirmation.id}` },
           { type: 'reply', displayText: 'Nao', id: `miauw_confirm_no:${confirmation.id}` },
@@ -4597,7 +4608,7 @@ async function sendMetaConfirmation(phone: string, text: string, confirmation: W
         interactive: {
           type: 'button',
           body: { text },
-          footer: { text: `Miauby | ${confirmation.id}` },
+          footer: { text: 'Miauby' },
           action: {
             buttons: [
               { type: 'reply', reply: { id: `miauw_confirm_yes:${confirmation.id}`, title: 'Sim' } },

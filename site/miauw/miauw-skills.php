@@ -2922,7 +2922,7 @@ function miauw_skill_financeiro_item_words(): array
 function miauw_skill_financeiro_category_words(): array
 {
     return array(
-        'c', 'cd', 'cnpj', 'cart', 'cartao', 'credito', 'debito', 'dinheiro', 'fisico',
+        'c', 'cd', 'cnpj', 'cpnj', 'cart', 'cartao', 'credito', 'debito', 'dinheiro', 'fisico',
         'maquina', 'maquininha', 'maq', 'maqui', 'mpix', 'maqpix', 'out', 'outro',
         'outros', 'pix', 'pixcnpj', 'px', 'sang', 'sangria', 'sg'
     );
@@ -3202,7 +3202,7 @@ function miauw_skill_financeiro_category_from_message(string $message): ?string
 
     $aliasPatterns = array(
         '/\b(?:maqpix|mpix|maq\s*pix|maqui\s*pix|maquina\s*pix|maquininha\s*pix|pix\s*maq|pix\s*maquininha)\b/iu' => 'Maquininha Pix',
-        '/\b(?:pixcnpj|px\s*cnpj|px)\b/iu' => 'Pix CNPJ',
+        '/\b(?:pixcnpj|pix\s*cpnj|cpnj|px\s*cnpj|px\s*cpnj|px)\b/iu' => 'Pix CNPJ',
         '/\b(?:sang|sg)\b/iu' => 'Sangria',
         '/\b(?:out|outs)\b/iu' => 'Outros',
     );
@@ -3234,6 +3234,8 @@ function miauw_skill_financeiro_category_from_message(string $message): ?string
         'pix maquininha' => 'Maquininha Pix',
         'maquininha pix' => 'Maquininha Pix',
         'pix cnpj' => 'Pix CNPJ',
+        'pix cpnj' => 'Pix CNPJ',
+        'cpnj' => 'Pix CNPJ',
         'pix banco' => 'Pix CNPJ',
         'pix sem maquininha' => 'Pix CNPJ',
         'pix sem maquina' => 'Pix CNPJ',
@@ -3280,7 +3282,7 @@ function miauw_skill_financeiro_command_hint(string $message): ?string
         return null;
     }
 
-    $financeWords = array('pix', 'px', 'cnpj', 'maq', 'mpix', 'maqpix', 'maquininha', 'cart', 'cartao', 'credito', 'debito', 'sang', 'sg', 'sangria', 'dinheiro', 'caixa', 'out', 'outro', 'outros');
+    $financeWords = array('pix', 'px', 'cnpj', 'cpnj', 'maq', 'mpix', 'maqpix', 'maquininha', 'cart', 'cartao', 'credito', 'debito', 'sang', 'sg', 'sangria', 'dinheiro', 'caixa', 'out', 'outro', 'outros');
     if (!miauw_skill_has_any($message, $financeWords)) {
         return null;
     }
@@ -3427,7 +3429,7 @@ function miauw_skill_financeiro_compact_parts(string $message, ?string $category
         return $empty;
     }
 
-    if (!preg_match('/^\s*(pix(?:\s+cnpj)?|cnpj|maq\s+pix|maqui\s+pix|maquina\s+pix|maquininha\s+pix|pix\s+maq|pix\s+maquininha|cart(?:ao)?|cartão|credito|cr[eé]dito|debito|d[eé]bito|dinheiro(?:\s+fisico)?|sangria|outros?)\b/iu', $message)) {
+    if (!preg_match('/^\s*(pix(?:\s+(?:cnpj|cpnj))?|cnpj|cpnj|maq\s+pix|maqui\s+pix|maquina\s+pix|maquininha\s+pix|pix\s+maq|pix\s+maquininha|cart(?:ao)?|cartão|credito|cr[eé]dito|debito|d[eé]bito|dinheiro(?:\s+fisico)?|sangria|outros?)\b/iu', $message)) {
         return $empty;
     }
 
@@ -3605,7 +3607,7 @@ function miauw_skill_financeiro_command_from_message(string $message): ?array
         }
     }
 
-    if (!$intent && !miauw_skill_has_any($message, array('pix', 'px', 'cnpj', 'maq', 'mpix', 'maqpix', 'maquininha', 'cart', 'cartao', 'credito', 'debito', 'sang', 'sg', 'sangria', 'dinheiro', 'caixa', 'out', 'outro', 'outros'))) {
+    if (!$intent && !miauw_skill_has_any($message, array('pix', 'px', 'cnpj', 'cpnj', 'maq', 'mpix', 'maqpix', 'maquininha', 'cart', 'cartao', 'credito', 'debito', 'sang', 'sg', 'sangria', 'dinheiro', 'caixa', 'out', 'outro', 'outros'))) {
         return null;
     }
 
