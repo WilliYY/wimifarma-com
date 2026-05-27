@@ -103,6 +103,7 @@ const GEMINI_MODEL = textEnv('MIAUW_WHATSAPP_GEMINI_MODEL') || textEnv('GEMINI_M
 const GEMINI_MAX_OUTPUT_TOKENS = numberEnv('MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS', 180, 40, 1000);
 const GEMINI_TEMPERATURE = numberEnv('MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100', 35, 0, 100) / 100;
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
+const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
 const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', true);
 const PREFIX = (textEnv('MIAUW_WHATSAPP_PREFIX') || 'miauby').toLowerCase();
 const GROUPS_ENABLED = boolEnv('MIAUW_WHATSAPP_GROUPS_ENABLED', false);
@@ -214,6 +215,28 @@ function parseAllowedSenders(value: string): Set<string> {
     if (phone) set.add(phone);
   }
   return set;
+}
+
+function parseRecipientAliases(value: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const item of value.split(/[,\s;]+/g)) {
+    const [sourceRaw, targetRaw] = item.split(/=>|->|=|:/);
+    const source = normalizePhone(sourceRaw);
+    const target = normalizePhone(targetRaw);
+    if (source && target) map.set(source, target);
+  }
+  return map;
+}
+
+function applyRecipientAlias(value: string): string {
+  const normalized = normalizePhone(value);
+  if (!normalized || RECIPIENT_ALIASES.size === 0) return value;
+  const direct = RECIPIENT_ALIASES.get(normalized);
+  if (direct) return direct;
+  for (const [source, target] of RECIPIENT_ALIASES) {
+    if (normalized.endsWith(source) || source.endsWith(normalized)) return target;
+  }
+  return value;
 }
 
 function phoneAllowed(phone: string): boolean {
@@ -930,7 +953,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     }
 
     const recipientPhone = decryptText(row.sender_phone_ciphertext);
-    const recipientAddress = decryptText(row.remote_jid_ciphertext) || recipientPhone;
+    const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
     const reply = await requestWhatsappReply(row.body_text, row.trace_id, row.sender_phone_mask);
     const replyText = safeText(reply.text, 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
@@ -1392,6 +1415,7 @@ function publicStatus(): JsonRecord {
     gemini_configured: geminiConfigured(),
     gemini_model: GEMINI_MODEL,
     gemini_max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
+    recipient_alias_count: RECIPIENT_ALIASES.size,
     agent_configured: INTERNAL_TOKEN !== '' && AGENT_RUN_URL !== '',
     transport_configured: WHATSAPP_PROVIDER === 'meta' ? metaConfigured : evolutionConfigured,
     evolution_configured: evolutionConfigured,
@@ -1677,6 +1701,7 @@ function renderDashboard(summary: DashboardSummary): string {
   const aiMode = textStatus(status, 'ai_mode') || 'miauw';
   const geminiReady = boolStatus(status, 'gemini_configured');
   const geminiModel = textStatus(status, 'gemini_model') || '-';
+  const aliasCount = numberStatus(status, 'recipient_alias_count');
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -1793,7 +1818,7 @@ function renderDashboard(summary: DashboardSummary): string {
           <div class="status-item">
             <b>Agente Miauby</b>
             ${renderPill(agentConfigured || geminiReady, aiMode === 'hybrid' ? 'Hibrido' : aiMode, 'Pendente')}
-            <small>Modo IA: ${htmlEscape(aiMode)} | Gemini: ${geminiReady ? htmlEscape(geminiModel) : 'sem chave'} | Core: ${agentConfigured ? 'ok' : 'pendente'}</small>
+            <small>Modo IA: ${htmlEscape(aiMode)} | Gemini: ${geminiReady ? htmlEscape(geminiModel) : 'sem chave'} | Core: ${agentConfigured ? 'ok' : 'pendente'} | Alias: ${aliasCount}</small>
           </div>
           <div class="status-item">
             <b>Seguranca</b>

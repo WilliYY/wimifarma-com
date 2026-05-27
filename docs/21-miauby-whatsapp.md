@@ -70,6 +70,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS=180`
 - `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100=35`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
+- `MIAUW_WHATSAPP_RECIPIENT_ALIASES`
 - `MIAUW_WHATSAPP_AGENT_RUN_URL=http://wimifarma-miauw-agent:3100/miauw/agent/run`
 - `MIAUW_WHATSAPP_PROVIDER=evolution`
 - `GEMINI_API_KEY`
@@ -122,6 +123,8 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - `hybrid`: mensagens simples passam pelo Gemini quando `GEMINI_API_KEY` estiver preenchida; mensagens que parecem comando interno, como `financeiro`, `pedidos`, `gestao`, `cotacao`, `tarefa`, `cashback`, `criar`, `registrar`, `resumo`, `boleto` ou `pagamento`, vao para o `wimifarma-miauw-agent`.
 
 O usuario pode forcar a rota em teste com `miauby gemini ...` ou `miauby interno ...`. Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby. O contexto enviado ao Gemini deve ser curto e sanitizado; nao enviar telefone completo, payload bruto, token, dados de cliente ou financeiro real.
+
+Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git.
 
 ## Anti-flood e risco de bloqueio
 
