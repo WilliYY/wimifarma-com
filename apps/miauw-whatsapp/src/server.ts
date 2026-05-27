@@ -1429,7 +1429,7 @@ function geminiTextFromResponse(data: JsonRecord): string {
   throw new Error(finishReason ? `gemini_empty_${finishReason}` : 'gemini_empty_reply');
 }
 
-async function requestGeminiReply(message: string, traceId: string, senderMask: string): Promise<{ text: string }> {
+async function requestGeminiReply(message: string, _traceId: string, _senderMask: string): Promise<{ text: string }> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -1447,11 +1447,7 @@ async function requestGeminiReply(message: string, traceId: string, senderMask: 
         contents: [{
           role: 'user',
           parts: [{
-            text: [
-              `trace_id: ${traceId}`,
-              `remetente: whatsapp:${senderMask}`,
-              `mensagem: ${message}`,
-            ].join('\n'),
+            text: `Mensagem do usuario no WhatsApp: ${message}`,
           }],
         }],
         generationConfig: {
