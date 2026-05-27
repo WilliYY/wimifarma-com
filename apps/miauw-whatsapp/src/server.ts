@@ -871,6 +871,7 @@ async function nextQueueRow(): Promise<QueueRow | null> {
 
 async function processQueue(limit = WORKER_BATCH_SIZE): Promise<{ processed: number }> {
   if (!ENABLED) return { processed: 0 };
+  await recoverStaleProcessingEvents();
   let processed = 0;
   for (let index = 0; index < limit; index += 1) {
     const row = await nextQueueRow();
@@ -879,6 +880,19 @@ async function processQueue(limit = WORKER_BATCH_SIZE): Promise<{ processed: num
     await processQueueRow(row);
   }
   return { processed };
+}
+
+async function recoverStaleProcessingEvents(): Promise<void> {
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_events
+        SET status = 'queued',
+            locked_at = NULL,
+            next_attempt_at = NOW(),
+            error_summary = CASE WHEN error_summary = '' THEN 'stale_processing_recovered' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE status = 'processing'
+        AND locked_at < NOW() - INTERVAL '2 minutes'`,
+  );
 }
 
 function backoffExpression(attempts: number): string {
@@ -891,9 +905,9 @@ async function markEventFailure(row: QueueRow, error: unknown): Promise<void> {
   const dead = attempts >= MAX_ATTEMPTS;
   await pgPool.query(
     `UPDATE miauw_whatsapp_events
-        SET status = $2,
+        SET status = $2::varchar,
             error_summary = $3,
-            next_attempt_at = CASE WHEN $2 = 'queued' THEN NOW() + $4::interval ELSE next_attempt_at END,
+            next_attempt_at = CASE WHEN $2::text = 'queued' THEN NOW() + $4::interval ELSE next_attempt_at END,
             updated_at = NOW()
       WHERE id = $1`,
     [row.id, dead ? 'dead' : 'queued', safeError(error), backoffExpression(attempts)],
