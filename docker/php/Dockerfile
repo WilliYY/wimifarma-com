@@ -24,6 +24,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN { \
+        echo 'LogFormat "%h %l %u %t \"%m %U %H\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined'; \
+    } > /etc/apache2/conf-available/wimifarma-privacy-log.conf \
+    && a2enconf wimifarma-privacy-log
+
+RUN { \
         echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/miauw/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
         echo 'ProxyPassReverse "/miauw/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
