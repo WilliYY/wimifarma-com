@@ -149,7 +149,7 @@ Desenho:
 - o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
 - o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para conversa solta quando `GEMINI_API_KEY` estiver configurada, roteia mensagens com `miauby` em qualquer posicao para o core Miauby e, quando `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, tambem roteia comandos operacionais detectados sem prefixo para o core;
 - quando audio estiver habilitado, audio de remetente autorizado e baixado do transporte somente no worker, transcrito por Gemini, descartado em memoria e roteado como texto; resposta em audio usa Gemini TTS, segue o estilo configuravel `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` e cai para texto se o envio falhar;
-- quando leitura de comprovante Pix estiver habilitada, imagem de remetente autorizado e baixada somente no worker, extraida por Gemini, descartada em memoria e convertida em pendencia `Pix CNPJ` para o Financeiro apenas se o CNPJ destino bater com `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`;
+- quando leitura de comprovante Pix estiver habilitada, imagem de remetente autorizado e baixada somente no worker, extraida por Gemini, descartada em memoria e convertida em pendencia `Pix CNPJ` para o Financeiro apenas se o destino bater por CNPJ/chave Pix `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ` ou por nome correlato em `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES`;
 - antes de chamar o core, o bridge usa `MIAUW_WHATSAPP_CONTEXT_URL` para buscar no PHP o mesmo treino aprovado, perfil de voz e contratos de tools do Miauby interno;
 - para acoes fortes permitidas, o bridge usa `MIAUW_WHATSAPP_ACTIONS_URL` para preparar uma pendencia auditada e, apos botao `Sim`, executar pela mesma camada PHP que o Miauby interno usa;
 - o bridge bloqueia dados sensiveis antes da IA e registra motor/rota/latencia na outbox;
@@ -219,6 +219,8 @@ Variaveis:
 - `MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS`
