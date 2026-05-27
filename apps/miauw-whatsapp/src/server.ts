@@ -114,6 +114,9 @@ type DashboardEngineRow = {
   count: string;
   sent_count: string;
   avg_latency_ms: string;
+  p95_latency_ms: string;
+  avg_total_ms: string;
+  p95_total_ms: string;
 };
 
 type DashboardAllowlistRow = {
@@ -158,6 +161,7 @@ type DashboardSyncRow = {
 };
 
 type DashboardErrorRow = {
+  id: string;
   source: string;
   severity: string;
   phone_mask: string;
@@ -271,6 +275,28 @@ const WHATSAPP_MODULE_CARDS: WhatsappModuleCard[] = [
   { key: 'miauw', label: 'Miauby', description: 'Chat interno, treino e apoio operacional.', command: 'miauby ajuda' },
 ];
 const DEFAULT_MODULE_KEYS = ['miauw'];
+const MODULE_INTENT_TERMS: Record<string, string[]> = {
+  cashback: ['cashback', 'cash back', 'resgate', 'resgates', 'credito cliente', 'creditos cliente', 'cliente cashback'],
+  cotacao: ['cotacao', 'cotar', 'ean', 'produto', 'produtos', 'preco', 'precos', 'ganhador', 'ganhadores', 'encomenda'],
+  pedidos: ['pedido', 'pedidos', 'chegada', 'chegar', 'fornecedor', 'fornecedores', 'parcela', 'parcelas', 'boleto', 'boletos', 'vencimento'],
+  financeiro: ['financeiro', 'caixa', 'sangria', 'pix', 'maquininha', 'maquininhas', 'fechamento', 'faturamento', 'dinheiro'],
+  gestao: ['gestao', 'conta a pagar', 'contas a pagar', 'conta gestao', 'pagamento gestao', 'categoria'],
+  tarefas: ['tarefa', 'tarefas', 'prioridade', 'prioridades', 'concluir', 'conclusao'],
+  xp: ['xp', 'aura', 'ranking', 'nivel', 'niveis', 'venda', 'vendas', 'atendente', 'atendentes'],
+  codigos: ['codigo', 'codigos', 'comissao', 'comissoes', 'ean especial'],
+  miauw: ['miauby', 'miauw', 'ajuda', 'menu', 'status', 'treino'],
+};
+const MODULE_TOOL_TERMS: Record<string, string[]> = {
+  cashback: ['cashback', 'cliente'],
+  cotacao: ['cotacao', 'cotacao_v2', 'encomenda', 'produto'],
+  pedidos: ['pedido', 'pedidos', 'boleto', 'fornecedor'],
+  financeiro: ['financeiro', 'sangria', 'caixa', 'lancamento'],
+  gestao: ['gestao', 'conta_gestao', 'criar_conta'],
+  tarefas: ['tarefa', 'tarefas'],
+  xp: ['xp'],
+  codigos: ['codigo', 'codigos', 'comissao'],
+  miauw: ['miauw', 'miauby', 'contrato_tool'],
+};
 const providerSendTimestamps: number[] = [];
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
 const sharedContextCache = new Map<string, { context: SharedMiauwContext; expiresAt: number }>();
@@ -409,6 +435,43 @@ function defaultModuleKeys(): string[] {
 function moduleCardsForKeys(keys: string[]): WhatsappModuleCard[] {
   const selected = new Set(keys);
   return WHATSAPP_MODULE_CARDS.filter((card) => selected.has(card.key));
+}
+
+function moduleKeyForText(message: string): string {
+  const clean = normalizeIntentText(message);
+  if (!clean) return '';
+  const priority = ['financeiro', 'pedidos', 'gestao', 'cotacao', 'cashback', 'tarefas', 'xp', 'codigos', 'miauw'];
+  for (const key of priority) {
+    const terms = MODULE_INTENT_TERMS[key] || [key];
+    if (hasAnyIntentTerm(clean, terms)) return key;
+  }
+  return '';
+}
+
+function moduleKeyForTool(tool: string): string {
+  const clean = normalizeIntentText(tool);
+  if (!clean) return '';
+  const priority = ['financeiro', 'pedidos', 'gestao', 'cotacao', 'cashback', 'tarefas', 'xp', 'codigos', 'miauw'];
+  for (const key of priority) {
+    const terms = MODULE_TOOL_TERMS[key] || [key];
+    if (hasAnyIntentTerm(clean, terms)) return key;
+  }
+  return '';
+}
+
+function allowedModuleKeys(cards: WhatsappModuleCard[]): Set<string> {
+  return new Set(cards.map((card) => card.key));
+}
+
+function moduleAllowed(cards: WhatsappModuleCard[], moduleKey: string): boolean {
+  return !moduleKey || allowedModuleKeys(cards).has(moduleKey);
+}
+
+function forbiddenModuleReply(moduleKey: string, cards: WhatsappModuleCard[]): string {
+  const card = WHATSAPP_MODULE_CARDS.find((item) => item.key === moduleKey);
+  const label = card?.label || moduleKey || 'esse modulo';
+  const allowed = moduleLabels(cards.map((item) => item.key));
+  return `Esse WhatsApp nao tem acesso ao card ${label}. Cards liberados: ${allowed}. Para liberar, ajuste a allowlist no painel Miauby WhatsApp.`;
 }
 
 function phoneHashCandidates(primaryHash: string, phone: string): string[] {
@@ -1423,6 +1486,18 @@ async function recordErrorLog(source: string, severity: 'info' | 'warn' | 'error
   }
 }
 
+async function resolveErrorLog(id: string): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error('invalid_error_log_id');
+  }
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_error_logs
+        SET resolved_at = NOW()
+      WHERE id = $1`,
+    [id],
+  );
+}
+
 async function markEventFailure(row: QueueRow, error: unknown): Promise<void> {
   const attempts = Number(row.attempts || 0) + 1;
   const dead = attempts >= MAX_ATTEMPTS;
@@ -2031,7 +2106,7 @@ async function requestSharedMiauwContext(message: string, traceId: string, sende
   }
 }
 
-function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: ReplyRoute | undefined, useTools: boolean): JsonRecord {
+function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: ReplyRoute | undefined, useTools: boolean, allowedCards: WhatsappModuleCard[]): JsonRecord {
   const sharedStyle = isRecord(shared?.styleContext) ? shared.styleContext : {};
   const sharedRoute = isRecord(sharedStyle.route) ? sharedStyle.route : {};
   const sharedBudget = typeof sharedRoute.budget_words === 'number' && Number.isFinite(sharedRoute.budget_words)
@@ -2046,7 +2121,8 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
     'Responda como canal interno de WhatsApp, em texto curto.',
     'Nao exponha dados sensiveis, token, SQL, stack trace ou bastidor tecnico.',
     'Use o treino, perfil de voz, padroes aprovados e contratos do Miauby interno quando recebidos.',
-    'Pode usar ferramentas do core somente quando a rota permitir.',
+    `Pode usar ferramentas do core somente quando a rota permitir e somente para estes cards do telefone: ${moduleLabels(allowedCards.map((card) => card.key))}.`,
+    'Se o pedido pedir card nao liberado, responda bloqueando e oriente liberar no painel Miauby WhatsApp.',
     whatsappConfirmationsReady()
       ? 'Se uma ferramenta forte retornar confirmation_required, devolva o resumo; o bridge cria botoes Sim/Nao e so executa apos pendencia auditada.'
       : 'Se uma ferramenta forte retornar confirmation_required, explique o resumo e diga que precisa confirmar no Miauby interno ou no sistema.',
@@ -2063,6 +2139,7 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
       ...sharedRoute,
       intent: route?.intent || safeText(sharedRoute.intent, 60) || 'whatsapp_interno',
       label: 'WhatsApp interno',
+      allowed_cards: allowedCards.map((card) => card.key),
       budget_words: budgetWords,
       use_tools: useTools || sharedRoute.use_tools === true,
       local_reply: false,
@@ -2152,7 +2229,7 @@ function confirmationDraftFromData(data: JsonRecord): WhatsappConfirmationDraft 
   };
 }
 
-async function requestWhatsappActionPrepare(message: string, traceId: string, senderMask: string): Promise<ReplyResult | null> {
+async function requestWhatsappActionPrepare(message: string, traceId: string, senderMask: string, allowedCards: WhatsappModuleCard[]): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
@@ -2188,6 +2265,14 @@ async function requestWhatsappActionPrepare(message: string, traceId: string, se
     if (status !== 'confirmation_required') return null;
     const draft = confirmationDraftFromData(data);
     if (!draft) return null;
+    const moduleKey = moduleKeyForTool(draft.tool);
+    if (!moduleAllowed(allowedCards, moduleKey)) {
+      return {
+        text: forbiddenModuleReply(moduleKey, allowedCards),
+        engine: 'blocked',
+        reason: `blocked_module:${moduleKey || 'unknown_tool'}`,
+      };
+    }
     return {
       text: `Antes de gravar, confirma essa acao?\n${draft.summary}`,
       engine: 'miauw',
@@ -2257,17 +2342,25 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 }
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[]): Promise<ReplyResult> {
+  const allowedCards = await allowedModuleCardsForHashes(senderHashes);
   if (looksLikeModuleMenuRequest(message)) {
-    const cards = await allowedModuleCardsForHashes(senderHashes);
     return {
-      text: formatModuleMenu(cards),
+      text: formatModuleMenu(allowedCards),
       engine: 'local',
       reason: 'module_menu',
     };
   }
   const route = routeWhatsappReply(message);
+  const requestedModule = moduleKeyForText(route.message || message);
+  if (route.useTools && !moduleAllowed(allowedCards, requestedModule)) {
+    return {
+      text: forbiddenModuleReply(requestedModule, allowedCards),
+      engine: 'blocked',
+      reason: `blocked_module:${requestedModule}`,
+    };
+  }
   if (route.useTools) {
-    const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask);
+    const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask, allowedCards);
     if (prepared) return prepared;
   }
   if (route.engine === 'local' || route.engine === 'blocked') {
@@ -2277,21 +2370,21 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     try {
       const cachedReply = route.cacheable ? getCachedReply(route.message) : '';
       if (cachedReply) return { text: cachedReply, engine: 'gemini_cache', reason: `${route.reason}:cache_hit` };
-      const geminiReply = await requestGeminiReply(route.message, traceId, senderMask);
+      const geminiReply = await requestGeminiReply(route.message, traceId, senderMask, allowedCards);
       if (route.cacheable) setCachedReply(route.message, geminiReply.text);
       return { text: geminiReply.text, engine: 'gemini', reason: route.reason };
     } catch (error) {
       if (REPLY_ENGINE === 'gemini') throw error;
-      const miauwReply = await requestMiauwReply(message, traceId, senderMask, route);
+      const miauwReply = await requestMiauwReply(message, traceId, senderMask, route, allowedCards);
       return { text: miauwReply.text, engine: 'miauw', reason: `gemini_failed_fallback:${safeError(error)}`, confirmation: miauwReply.confirmation };
     }
   }
 
-  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route);
+  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route, allowedCards);
   return { text: miauwReply.text, engine: 'miauw', reason: route.reason, confirmation: miauwReply.confirmation };
 }
 
-async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute): Promise<{ text: string; confirmation?: WhatsappConfirmationDraft }> {
+async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute, allowedCards: WhatsappModuleCard[] = moduleCardsForKeys(defaultModuleKeys())): Promise<{ text: string; confirmation?: WhatsappConfirmationDraft }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const useTools = route?.useTools === true;
   let sharedContext: SharedMiauwContext | null = null;
@@ -2300,7 +2393,7 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
   } catch {
     sharedContext = null;
   }
-  const styleContext = buildWhatsappStyleContext(sharedContext, route, useTools);
+  const styleContext = buildWhatsappStyleContext(sharedContext, route, useTools, allowedCards);
   const payload: JsonRecord = {
     trace_id: traceId,
     message,
@@ -2334,6 +2427,10 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
       ? confirmationFromToolEvents(data.tool_events)
       : null;
     if (confirmation) {
+      const moduleKey = moduleKeyForTool(confirmation.tool);
+      if (!moduleAllowed(allowedCards, moduleKey)) {
+        return { text: forbiddenModuleReply(moduleKey, allowedCards) };
+      }
       return {
         text: `Antes de gravar, confirma essa acao?\n${confirmation.summary}`,
         confirmation,
@@ -2350,17 +2447,21 @@ function geminiModelPath(): string {
   return `models/${clean}`;
 }
 
-function whatsappGeminiSystemPrompt(): string {
+function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[]): string {
+  const cardsText = moduleLabels(allowedCards.map((card) => card.key));
   const baseContext = [
     'Voce e o Miauby WhatsApp da Wimifarma: assistente interno com personalidade de gato fiscal, direto, esperto e util.',
-    'Este caminho sem a palavra miauby e conversa leve via Gemini; nao consulte nem finja consultar sistemas internos.',
-    'Se a mensagem tiver a palavra miauby, outro roteador chama o core interno. Se o usuario quiser dados reais, peca para escrever com miauby.',
-    'Responda em portugues do Brasil, natural, com 1 a 3 frases completas. Nao corte frase no meio.',
-    'Pode usar "meu bigode" ou tom de Miauby com moderacao, sem virar piada toda hora.',
-    'Se perguntarem quem voce e, diga que e o Miauby, assistente da Wimifarma no WhatsApp, e explique que sem miauby voce conversa; com miauby aciona o core.',
-    'Exemplo: usuario "quem e tu?" -> "Sou o Miauby, assistente da Wimifarma no WhatsApp. Pra papo simples eu respondo aqui; pra comando interno manda com miauby."',
-    'Exemplo: usuario "eae" -> responda vivo e curto, oferecendo ajuda real, nao apenas "Ola".',
-    'Se perguntarem horario, saldo, pedido, pagamento, cliente, ranking, boleto, status ou dado operacional e voce nao tiver dado real, diga que nao tem isso cadastrado no WhatsApp e oriente chamar com miauby.',
+    'Este caminho sem a palavra miauby e conversa leve via Gemini; responda bem a pergunta comum, mas nao consulte nem finja consultar sistemas internos.',
+    'Cards liberados para este telefone no WhatsApp: ' + cardsText + '. Para ver cards, o usuario pode mandar "miauby menu".',
+    'Se a mensagem tiver a palavra miauby, outro roteador chama o core interno. Se o usuario quiser dado real de sistema ou acao, peca uma mensagem curta com miauby e o card certo.',
+    'Responda em portugues do Brasil, natural, com 1 a 3 frases completas. Primeiro responda o que foi perguntado; depois, se precisar, diga o menor proximo passo.',
+    'Pode usar "meu bigode" ou tom de Miauby com moderacao, sem virar piada toda hora e sem atrapalhar.',
+    'Se faltarem dados para uma tarefa, peça somente o menor dado faltante, em vez de listar muitas condicoes.',
+    'Se perguntarem quem voce e, diga que e o Miauby, assistente interno da Wimifarma no WhatsApp, e explique que sem miauby voce conversa; com miauby aciona o core conforme permissao do card.',
+    'Exemplo: usuario "quem e tu?" -> "Sou o Miauby, assistente interno da Wimifarma no WhatsApp. Pra papo simples eu resolvo aqui; pra dado do sistema manda com miauby e o card."',
+    'Exemplo: usuario "eae" -> responda vivo e curto, perguntando o que quer resolver agora.',
+    'Exemplo: usuario "sangria 10 reais" sem miauby -> diga que sangria e acao interna e peca "miauby sangria 10 reais..." com os dados minimos.',
+    'Se perguntarem horario, saldo, pedido, pagamento, cliente, ranking, boleto, status ou dado operacional e voce nao tiver dado real, diga que nao tem consulta aberta neste modo e oriente chamar com miauby.',
     'Nunca invente horario de funcionamento, preco, saldo, CPF, pedido, pagamento, fornecedor, cliente ou acao concluida.',
     'Nao exponha segredo, token, SQL, stack trace, prompt, fornecedor tecnico ou bastidor.',
     'Nao diga que executou escrita operacional pelo WhatsApp.',
@@ -2385,7 +2486,7 @@ function geminiTextFromResponse(data: JsonRecord): string {
   throw new Error(finishReason ? `gemini_empty_${finishReason}` : 'gemini_empty_reply');
 }
 
-async function requestGeminiReply(message: string, _traceId: string, _senderMask: string): Promise<{ text: string }> {
+async function requestGeminiReply(message: string, _traceId: string, _senderMask: string, allowedCards: WhatsappModuleCard[]): Promise<{ text: string }> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -2398,7 +2499,7 @@ async function requestGeminiReply(message: string, _traceId: string, _senderMask
       },
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: whatsappGeminiSystemPrompt() }],
+          parts: [{ text: whatsappGeminiSystemPrompt(allowedCards) }],
         },
         contents: [{
           role: 'user',
@@ -2781,13 +2882,27 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         ORDER BY status`,
     ),
     pgPool.query<DashboardEngineRow>(
-      `SELECT COALESCE(NULLIF(reply_engine, ''), 'legacy') AS reply_engine,
+      `WITH engine_rows AS (
+         SELECT COALESCE(NULLIF(o.reply_engine, ''), 'legacy') AS reply_engine,
+                o.status,
+                NULLIF(o.reply_latency_ms, 0) AS reply_latency_ms,
+                CASE
+                  WHEN o.sent_at IS NULL OR e.created_at IS NULL THEN NULL
+                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (o.sent_at - e.created_at)) * 1000)
+                END AS total_ms
+           FROM miauw_whatsapp_outbox o
+           LEFT JOIN miauw_whatsapp_events e ON e.id = o.event_id
+          WHERE o.created_at >= NOW() - INTERVAL '1 day'
+       )
+       SELECT reply_engine,
               COUNT(*)::text AS count,
               COUNT(*) FILTER (WHERE status = 'sent')::text AS sent_count,
-              COALESCE(ROUND(AVG(NULLIF(reply_latency_ms, 0)))::text, '0') AS avg_latency_ms
-         FROM miauw_whatsapp_outbox
-        WHERE created_at >= NOW() - INTERVAL '1 day'
-        GROUP BY 1
+              COALESCE(ROUND(AVG(reply_latency_ms))::text, '0') AS avg_latency_ms,
+              COALESCE(ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY reply_latency_ms))::numeric)::text, '0') AS p95_latency_ms,
+              COALESCE(ROUND(AVG(total_ms))::text, '0') AS avg_total_ms,
+              COALESCE(ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY total_ms))::numeric)::text, '0') AS p95_total_ms
+         FROM engine_rows
+        GROUP BY reply_engine
         ORDER BY COUNT(*) DESC, reply_engine`,
     ),
     pgPool.query<DashboardResponseDelay>(
@@ -2901,7 +3016,8 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         LIMIT 12`,
     ),
     pgPool.query<DashboardErrorRow>(
-      `SELECT source,
+      `SELECT id::text AS id,
+              source,
               severity,
               phone_mask,
               trace_id,
@@ -2980,6 +3096,11 @@ function formatMs(value: number | string | null | undefined): string {
   return `${Math.round(numberValue / 100) / 10}s`;
 }
 
+function numericValue(value: number | string | null | undefined): number {
+  const numberValue = Number(value || 0);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
+}
+
 function renderPill(active: boolean, activeLabel: string, inactiveLabel: string): string {
   return `<span class="pill ${active ? 'is-ok' : 'is-warn'}">${htmlEscape(active ? activeLabel : inactiveLabel)}</span>`;
 }
@@ -3030,11 +3151,18 @@ function renderEngineBreakdown(rows: DashboardEngineRow[]): string {
   if (!rows.length) {
     return '<div class="status-item"><b>Rotas 24h</b><span class="pill is-warn">0</span><small>Nenhuma resposta recente.</small></div>';
   }
+  const maxP95 = Math.max(1, ...rows.map((row) => numericValue(row.p95_total_ms || row.p95_latency_ms)));
   return rows.map((row) => `
-    <div class="status-item">
-      <b>${htmlEscape(row.reply_engine || 'legacy')}</b>
-      <span class="pill is-ok">${htmlEscape(row.sent_count || 0)} enviadas</span>
-      <small>${htmlEscape(row.count || 0)} respostas em 24h | IA: ${htmlEscape(formatMs(row.avg_latency_ms))}</small>
+    <div class="status-item engine-card">
+      <div class="engine-head">
+        <b>${htmlEscape(row.reply_engine || 'legacy')}</b>
+        <span class="pill is-ok">${htmlEscape(row.sent_count || 0)} enviadas</span>
+      </div>
+      <div class="engine-bars" aria-label="Latencia ${htmlEscape(row.reply_engine || 'legacy')}">
+        <span style="--bar:${Math.max(4, Math.min(100, Math.round((numericValue(row.avg_total_ms) / maxP95) * 100)))}%"></span>
+        <span style="--bar:${Math.max(4, Math.min(100, Math.round((numericValue(row.p95_total_ms) / maxP95) * 100)))}%"></span>
+      </div>
+      <small>${htmlEscape(row.count || 0)} respostas | IA media ${htmlEscape(formatMs(row.avg_latency_ms))} / p95 ${htmlEscape(formatMs(row.p95_latency_ms))} | total medio ${htmlEscape(formatMs(row.avg_total_ms))} / p95 ${htmlEscape(formatMs(row.p95_total_ms))}</small>
     </div>`).join('');
 }
 
@@ -3066,14 +3194,14 @@ function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): 
     const nextLabel = isAllowed ? 'Bloquear' : 'Autorizar';
     const selectedModules = moduleKeysForRow(row);
     return `
-      <article class="allowlist-row">
-        <div class="allowlist-head">
-          <div>
+      <details class="allowlist-row">
+        <summary class="allowlist-head">
+          <span>
             <b>${htmlEscape(row.display_name || 'Sem nome')}</b>
-            <small>${htmlEscape(row.phone_mask || '-')} | ${htmlEscape(formatDate(row.last_seen_at || row.created_at))}</small>
-          </div>
+            <small>${htmlEscape(row.phone_mask || '-')} | ${htmlEscape(formatDate(row.last_seen_at || row.created_at))} | ${htmlEscape(moduleLabels(selectedModules))}</small>
+          </span>
           ${renderPill(isAllowed, 'Autorizado', 'Bloqueado')}
-        </div>
+        </summary>
         <form class="allowlist-edit" method="post" action="${htmlEscape(BASE_PATH)}/allowlist/update">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
           <input type="hidden" name="id" value="${htmlEscape(row.id)}">
@@ -3095,7 +3223,7 @@ function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): 
             <input type="hidden" name="id" value="${htmlEscape(row.id)}">
             <button type="submit">${htmlEscape(nextLabel)}</button>
         </form>
-      </article>`;
+      </details>`;
   }).join('');
 }
 
@@ -3116,9 +3244,9 @@ function renderSyncRows(rows: DashboardSyncRow[]): string {
     </tr>`).join('');
 }
 
-function renderErrorRows(rows: DashboardErrorRow[]): string {
+function renderErrorRows(rows: DashboardErrorRow[], csrfToken: string): string {
   if (!rows.length) {
-    return '<tr><td colspan="6" class="empty">Nenhum erro aberto registrado.</td></tr>';
+    return '<tr><td colspan="7" class="empty">Nenhum erro aberto registrado.</td></tr>';
   }
   return rows.map((row) => `
     <tr>
@@ -3128,6 +3256,13 @@ function renderErrorRows(rows: DashboardErrorRow[]): string {
       <td>${htmlEscape(row.phone_mask || '-')}</td>
       <td class="text-cell">${htmlEscape(row.error_summary || '-')}<br><small>${htmlEscape(row.message_preview || '')}</small></td>
       <td>${htmlEscape(row.trace_id ? row.trace_id.slice(0, 8) : '-')}</td>
+      <td>
+        <form class="inline-form" method="post" action="${htmlEscape(BASE_PATH)}/errors/resolve">
+          <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
+          <input type="hidden" name="id" value="${htmlEscape(row.id)}">
+          <button type="submit">Resolver</button>
+        </form>
+      </td>
     </tr>`).join('');
 }
 
@@ -3321,6 +3456,11 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .status-item { border: 1px solid #f1d8e3; border-radius: 8px; padding: 12px; background: #fffafb; }
     .status-item b { display: block; margin-bottom: 8px; color: #251827; font-size: 14px; }
     .status-item small { color: #6a5964; font-size: 12px; line-height: 1.35; }
+    .engine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .engine-head b { margin: 0; }
+    .engine-bars { display: grid; gap: 5px; margin: 8px 0; }
+    .engine-bars span { display: block; width: var(--bar); min-width: 18px; height: 8px; border-radius: 999px; background: #b10647; }
+    .engine-bars span + span { background: #f0a000; }
     .pill { display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; }
     .pill.is-ok { background: #daf6e8; color: #097143; }
     .pill.is-warn { background: #fff2d2; color: #8c5a00; }
@@ -3362,11 +3502,14 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     }
     .allowlist-form fieldset { grid-column: 1 / -1; }
     .allowlist-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .allowlist-row { border: 1px solid #f0dbe4; border-radius: 8px; background: #fffafb; padding: 12px; min-width: 0; }
-    .allowlist-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .allowlist-row { border: 1px solid #f0dbe4; border-radius: 8px; background: #fffafb; padding: 0; min-width: 0; }
+    .allowlist-row[open] { padding-bottom: 12px; }
+    .allowlist-row summary { list-style: none; cursor: pointer; }
+    .allowlist-row summary::-webkit-details-marker { display: none; }
+    .allowlist-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px; }
     .allowlist-head b { display: block; color: #251827; font-size: 14px; }
     .allowlist-head small { display: block; margin-top: 4px; color: #6a5964; font-size: 12px; overflow-wrap: anywhere; }
-    .allowlist-edit { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(220px, 1fr) auto; gap: 10px; align-items: end; margin-top: 12px; }
+    .allowlist-edit { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(220px, 1fr) auto; gap: 10px; align-items: end; margin: 0 12px; }
     .allowlist-edit fieldset { grid-column: 1 / -1; }
     .module-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
     .module-option { min-height: 32px; display: flex; align-items: center; gap: 7px; border: 1px solid #f0dbe4; border-radius: 8px; background: #fff; padding: 0 9px; color: #2e2430; font-size: 12px; font-weight: 800; text-transform: none; }
@@ -3385,6 +3528,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     }
     .inline-form { display: flex; justify-content: flex-end; margin: 10px 0 0; }
     .inline-form button { background: #fff; color: #8f0e42; }
+    .allowlist-row > .inline-form { margin: 10px 12px 0; }
     @media (max-width: 860px) {
       .topbar { display: block; }
       .actions { justify-content: flex-start; margin-top: 14px; }
@@ -3510,8 +3654,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <h2>Erros abertos</h2>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Quando</th><th>Origem</th><th>Nivel</th><th>Contato</th><th>Erro</th><th>Trace</th></tr></thead>
-            <tbody>${renderErrorRows(summary.recentErrors)}</tbody>
+            <thead><tr><th>Quando</th><th>Origem</th><th>Nivel</th><th>Contato</th><th>Erro</th><th>Trace</th><th>Acao</th></tr></thead>
+            <tbody>${renderErrorRows(summary.recentErrors, csrfToken)}</tbody>
           </table>
         </div>
         <p class="footnote">Cada falha de fila, envio ou HTTP fica registrada com resumo limpo para facilitar correcao futura sem gravar segredo.</p>
@@ -3620,6 +3764,8 @@ function dashboardNotice(value: unknown): string {
       return 'Numero invalido para allowlist.';
     case 'allowlist_duplicate':
       return 'Esse numero ja existe na allowlist.';
+    case 'error_resolved':
+      return 'Erro marcado como resolvido.';
     case 'csrf_invalid':
       return 'Sessao expirada. Recarregue o painel e tente de novo.';
     default:
@@ -3734,6 +3880,19 @@ app.post(`${BASE_PATH}/allowlist/allow`, requireDashboardAuth, async (req, res) 
   }
 });
 
+app.post(`${BASE_PATH}/errors/resolve`, requireDashboardAuth, async (req, res) => {
+  if (!dashboardCsrfValid(req)) {
+    res.redirect(303, `${BASE_PATH}?notice=csrf_invalid`);
+    return;
+  }
+  try {
+    await resolveErrorLog(safeText(req.body?.id, 80));
+    res.redirect(303, `${BASE_PATH}?notice=error_resolved`);
+  } catch (error) {
+    res.status(503).type('html').send(renderDashboardError(error));
+  }
+});
+
 app.get(BASE_PATH, requireDashboardAuth, dashboardHandler);
 app.get(`${BASE_PATH}/`, requireDashboardAuth, dashboardHandler);
 
@@ -3767,6 +3926,7 @@ app.get(`${BASE_PATH}/status`, requireDashboardAuth, async (_req, res) => {
       allowlist_database_allowed: summary.allowlistAllowed,
       allowlist_database_blocked: summary.allowlistBlocked,
       response_delay_24h: summary.responseDelay,
+      reply_engines_24h: summary.replyEngines,
       error_count_24h: summary.errorCount24h,
     });
   } catch (error) {

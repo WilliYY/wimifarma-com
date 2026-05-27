@@ -128,7 +128,7 @@ Estado atual:
 - Postgres 17 proprio em `wimifarma-miauw-whatsapp-db`, volume `miauw-whatsapp-data/`;
 - template da Evolution API em `ops/evolution/`, para deploy separado no VPS em `/home/ubuntu/projetos/wimifarma-evolution-api`;
 - Apache publica `/miauw/whatsapp/` por proxy interno para `wimifarma-miauw-whatsapp:3400`;
-- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru, protegido por login do ambiente quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos; o painel tambem permite autorizar/bloquear remetentes no Postgres, editar nome/numero, liberar cards por contato, comparar mensagem recebida/resposta enviada, registrar erros abertos e mostrar a demora total de resposta em 24h;
+- `GET /miauw/whatsapp/` mostra painel operacional seguro sem segredo, payload bruto ou telefone cru, protegido por login do ambiente quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos; o painel tambem permite autorizar/bloquear remetentes no Postgres, editar nome/numero, liberar cards por contato, manter contatos minimizados, comparar mensagem recebida/resposta enviada, registrar/resolver erros abertos, mostrar a demora total de resposta em 24h e exibir graficos simples de media/p95 por motor;
 - `GET /miauw/whatsapp/login` mostra o login proprio do painel;
 - `GET /miauw/whatsapp/health` mostra status seguro e permanece publico para smoke test;
 - `GET /miauw/whatsapp/webhook` valida o desafio `hub.challenge` da Meta Cloud API quando `MIAUW_WHATSAPP_PROVIDER=meta`;
@@ -157,7 +157,7 @@ Desenho:
 Regras iniciais obrigatorias:
 
 - comecar com allowlist de numeros autorizados, como o telefone do dono/equipe, e ignorar clientes, grupos e remetentes desconhecidos; ajustes operacionais podem ser feitos pelo painel, mantendo telefone completo fora do HTML;
-- usar cards liberados por contato como camada de permissao de WhatsApp: `miauby menu` deve mostrar apenas os modulos daquele numero, e cada futura consulta por modulo deve conferir essa permissao antes de chamar tools internas;
+- usar cards liberados por contato como camada de permissao de WhatsApp: `miauby menu` deve mostrar apenas os modulos daquele numero, e cada consulta por modulo deve conferir essa permissao antes de chamar tools internas;
 - opcionalmente exigir prefixo como `miauby` para ativar resposta automatica no WhatsApp;
 - nao usar o numero publico de Cashback sem filtro, porque clientes poderiam acionar o assistente interno;
 - manter uma resposta por mensagem recebida, rate limit por remetente, rate limit global, intervalo minimo entre envios e pausa automatica quando o transporte responder timeout, `429` ou `5xx`;
