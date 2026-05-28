@@ -46,7 +46,7 @@ O script mostra:
 | Pedidos | Node.js + TypeScript + Postgres da Gestao | `mysql2` para login/log | Postgres puro + core auth/auditoria | 1 |
 | Tarefa | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
 | Codigos | PHP procedural + MySQL | `wf_codigos_comissao`, `wf_codigos_blocos` | `apps/codigos` Node.js + TypeScript + Postgres | 3 |
-| XP | PHP oficial + app Node/Postgres em sombra | `wf_xp_employees`, `wf_xp_sales`, `wf_xp_settings` | `apps/xp` Node.js + TypeScript + Postgres | 4 em sombra |
+| XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | PHP procedural + MySQL | `financeiro_*` | `apps/financeiro` Node.js + TypeScript + Postgres | 5 |
 | Cashback | PHP procedural + MySQL | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
 | Miauby interno | PHP + Node agent sombra | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
@@ -60,7 +60,7 @@ O script mostra:
 2. Cortar autenticacao desses tres modulos para `core_users`, mantendo rollback por `.env`.
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` e legado MySQL desligado por flags.
 4. Repetir o padrao em Codigos.
-5. Validar XP sombra com checksum de vendas/XP e preservacao de uploads antes de trocar `/xp/`.
+5. Observar XP em `/xp/` com health, login, upload e checksum antes de desligar flags legadas.
 6. Migrar Financeiro e Cashback com backup, checksums de totais e validacao por dia/cliente.
 7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
 8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
@@ -77,12 +77,13 @@ Tarefa ja foi cortado para `apps/tarefa` com Postgres dedicado:
 - auth oficial pode usar `core_users` por `TAREFA_AUTH_PROVIDER=core`;
 - legado MySQL pode ser desligado por `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false`.
 
-XP iniciou uma fatia sombra em `apps/xp`:
+XP foi cortado para `apps/xp`:
 
 - banco/schema alvo `wimifarma_xp`;
-- tabelas `xp_employees`, `xp_sales`, `xp_settings` e `xp_audit_events`;
+- tabelas `xp_employees`, `xp_sales`, `xp_settings`, `xp_audit_events` e `xp_sessions`;
 - importador idempotente de `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings`;
-- health interno em `wimifarma-xp-app:3600/xp/health`;
-- rota oficial `/xp/` ainda permanece no PHP ate paridade de dados e tela.
+- proxy Apache oficial em `/xp/`;
+- frontend preservado por CSS/JS/assets de `site/xp` e uploads compartilhados;
+- rollback por `XP_AUTH_PROVIDER=mysql` e flags `XP_LEGACY_MYSQL_*`.
 
-A proxima fatia segura e validar o XP sombra no VPS, comparar somatorios e so depois criar a renderizacao Node mantendo o mesmo frontend.
+A proxima fatia segura e observar XP no VPS e, depois de paridade estavel, desligar `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED`.

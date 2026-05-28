@@ -27,6 +27,7 @@ services:
       - wimifarma-gestao-app
       - wimifarma-pedidos-app
       - wimifarma-tarefa-app
+      - wimifarma-xp-app
       - wimifarma-miauw-agent
       - wimifarma-miauw-whatsapp
     environment:
@@ -300,6 +301,7 @@ services:
     restart: unless-stopped
     depends_on:
       - wimifarma-com-db
+      - wimifarma-core-db
       - wimifarma-xp-db
     environment:
       NODE_ENV: production
@@ -310,12 +312,28 @@ services:
       MYSQL_DATABASE: wimifarma_app
       MYSQL_USER: wimifarma_user
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
       POSTGRES_HOST: wimifarma-xp-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: wimifarma_xp
       POSTGRES_USER: wimifarma_xp
       POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
+      XP_SESSION_SECRET: ${XP_SESSION_SECRET:-wimifarma_xp_dev_secret_change_me}
+      XP_AUTH_PROVIDER: ${XP_AUTH_PROVIDER:-core}
       XP_LEGACY_MYSQL_IMPORT_ENABLED: ${XP_LEGACY_MYSQL_IMPORT_ENABLED:-true}
+      XP_LEGACY_MYSQL_MIRROR_ENABLED: ${XP_LEGACY_MYSQL_MIRROR_ENABLED:-true}
+      XP_LEGACY_MYSQL_LOGS_ENABLED: ${XP_LEGACY_MYSQL_LOGS_ENABLED:-true}
+      XP_UPLOAD_ROOT: /app/public/uploads
+    volumes:
+      - ./site/xp/styles.css:/app/public/styles.css:ro
+      - ./site/xp/app.js:/app/public/app.js:ro
+      - ./site/xp/login-runner.js:/app/public/login-runner.js:ro
+      - ./site/xp/assets:/app/public/assets:ro
+      - ./site/xp/uploads:/app/public/uploads
     networks:
       - wimifarma-com-network
 

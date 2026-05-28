@@ -72,7 +72,7 @@ rows=(
   "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres|mysql2 login/log|Postgres puro + core auth|1"
   "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres|MySQL legado opcional por flags|Postgres puro + core auth|2"
   "Codigos|site/codigos|PHP procedural + MySQL|wf_codigos_*|apps/codigos Node.js + TypeScript + Postgres|3"
-  "XP|site/xp;apps/xp|PHP oficial + Node/Postgres sombra|wf_xp_*|apps/xp Node.js + TypeScript + Postgres|4"
+  "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres|MySQL legado opcional por flags XP_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|4 em corte"
   "Financeiro|site/financeiro|PHP procedural + MySQL|financeiro_* e wf_users|apps/financeiro Node.js + TypeScript + Postgres|5"
   "Cashback|site/cashback|PHP procedural + MySQL|wf_clientes/compras/creditos/resgates|apps/cashback Node.js + TypeScript + Postgres|6"
   "Miauby interno|site/miauw|PHP + Node agent sombra|miauw_* em MySQL|apps/miauw-agent + Postgres wimifarma_miauw|7"
@@ -98,6 +98,6 @@ cat <<'EOF'
 Proximos passos recomendados:
 - Observar Cotacao/Gestao/Pedidos em sombra e cortar auth somente sem divergencias.
 - Validar Tarefa com core auth e legado MySQL desligado por flags.
-- Validar XP sombra antes de trocar /xp/; depois migrar Codigos, Financeiro, Cashback, Miauby interno.
+- Observar XP em /xp/ e desligar flags legadas depois de paridade estavel; depois migrar Codigos, Financeiro, Cashback, Miauby interno.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

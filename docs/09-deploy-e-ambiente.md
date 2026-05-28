@@ -73,7 +73,7 @@ Higiene de pastas no VPS:
 - `wimifarma-gestao-app:3200`: servico interno da Gestao, acessado pelo Apache por proxy reverso em `/gestao`.
 - `wimifarma-pedidos-app:3300`: servico interno de Pedidos, acessado pelo Apache por proxy reverso em `/pedidos`.
 - `wimifarma-tarefa-app:3500`: servico interno de Tarefa, acessado pelo Apache por proxy reverso em `/tarefa`.
-- `wimifarma-xp-app:3600`: servico interno sombra do XP para health/importacao; ainda nao e proxy oficial de `/xp`.
+- `wimifarma-xp-app:3600`: servico interno oficial do XP, acessado pelo Apache por proxy reverso em `/xp`.
 - `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra/corte controlado, acessado pelo Apache por proxy reverso em `/miauw/agent`.
 - `wimifarma-miauw-whatsapp:3400`: servico interno do bridge WhatsApp do Miauby, acessado pelo Apache por proxy reverso em `/miauw/whatsapp`.
 - `wimifarma-evolution-api:8080`: Evolution API interna para envio de mensagens do bridge, em stack separada; bind externo apenas em `127.0.0.1:8080`.
@@ -105,6 +105,7 @@ Higiene de pastas no VPS:
 - Manter o proxy Apache de `/pedidos/` para `wimifarma-pedidos-app:3300`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Pedidos e Gestao sao modulos separados. A rota antiga `/gestao/pedidos` e o endpoint antigo `/gestao/api/orders/badge` ficam somente como compatibilidade/redirecionamento para `/pedidos/` e `/pedidos/api/badge`.
 - Manter o proxy Apache de `/tarefa/` para `wimifarma-tarefa-app:3500`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/tarefa` nao deve voltar a ser fonte oficial sem rollback deliberado.
+- Manter o proxy Apache de `/xp/` para `wimifarma-xp-app:3600`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/xp` fica apenas como fallback historico/assets/uploads e nao deve voltar a ser fonte oficial sem rollback deliberado.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/miauw/whatsapp/` para `wimifarma-miauw-whatsapp:3400`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`, e o painel `/miauw/whatsapp/` deve mostrar apenas dados seguros.
 - Manter a Evolution API fora do Nginx Proxy Manager por padrao; usar API interna `http://wimifarma-evolution-api:8080` e porta local `127.0.0.1:8080` apenas para operacao controlada.
@@ -120,7 +121,7 @@ Higiene de pastas no VPS:
 - Definir `TAREFA_POSTGRES_PASSWORD` e `TAREFA_SESSION_SECRET` no `.env` de cada ambiente antes de subir Tarefa; se faltar, o servico usa fallback operacional, mas producao deve ter segredo proprio.
 - `TAREFA_AUTH_PROVIDER=core` corta o login oficial de Tarefa para `core_users`; rollback e voltar `TAREFA_AUTH_PROVIDER=mysql` e rebuildar apenas `wimifarma-tarefa-app`. `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` fica para validacao antes do corte e pode voltar a `false` depois.
 - `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED` controlam a janela MySQL de importacao, espelho de rollback e logs legados. Com as tres em `false` e `TAREFA_AUTH_PROVIDER=core`, o health do Tarefa nao deve depender de MySQL.
-- Para XP sombra, definir `XP_POSTGRES_PASSWORD` e subir `wimifarma-xp-db`/`wimifarma-xp-app`; `XP_LEGACY_MYSQL_IMPORT_ENABLED=true` importa `wf_xp_*` para Postgres. Nao apontar `/xp/` para `wimifarma-xp-app` antes da validacao de paridade e tela.
+- Para XP, definir `XP_POSTGRES_PASSWORD` e `XP_SESSION_SECRET` no `.env` de cada ambiente. `XP_AUTH_PROVIDER=core` usa `core_users` como login oficial e rollback e voltar `XP_AUTH_PROVIDER=mysql`. `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED` controlam importacao/espelho/log legado para rollback curto.
 - Para comandos da Gestao pelo Miauby, manter `GESTAO_INTERNAL_TOKEN` preenchido nos servicos web e Gestao, ou usar `MIAUW_GUARDIAN_TOKEN` como fallback; o PHP chama `GESTAO_INTERNAL_BASE_URL` internamente e a Gestao rejeita `/gestao/api/internal/...` sem token.
 - Para backup/restore da Cotacao V2, manter `COTACAO_BACKUP_DIR=/app/backups` e o volume `./cotacao-data/backups:/app/backups`.
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
@@ -154,7 +155,7 @@ Higiene de pastas no VPS:
 - O core de autenticacao em Postgres roda em modo sombra: `wimifarma-core-db` guarda `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users` sem cortar logins existentes. Cotacao, Gestao e Pedidos podem validar esse core por sombra com `COTACAO_CORE_AUTH_SHADOW_ENABLED=true`, `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` e `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true`, mantendo `auth.provider=mysql`.
 - A Gestao roda fora do PHP/WordPress: Apache faz proxy de `/gestao/` para Node, Node usa Postgres para contas, pagamentos, auditoria e sessoes, e MySQL somente para login/logs/importacao legado.
 - Tarefa roda fora do PHP/WordPress: Apache faz proxy de `/tarefa/` para Node, Node usa Postgres para tarefas, auditoria e sessoes, e pode usar `core_users` como login oficial. MySQL fica apenas como janela opcional de importacao/espelho/log legado quando as flags de legado estiverem ligadas.
-- XP ganhou app sombra em Node/Postgres (`wimifarma-xp-app` + `wimifarma-xp-db`) para schema, importacao e health, sem proxy Apache nem troca de frontend.
+- XP roda fora do PHP/WordPress: Apache faz proxy de `/xp/` para Node, Node usa Postgres para funcionarios, vendas, configuracoes, auditoria e sessoes, e MySQL somente para importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` estiverem ligadas.
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
 - A Fase 7/8/9/10/11/12/13/14/15/16/17/18/19 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools, roteador de estilo/memoria aprovada, treinador, perfis de voz e audio por transcricao confirmada. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
 - O bridge WhatsApp do Miauby adiciona `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`. Deploys desse canal devem rebuildar o bridge, garantir o Postgres dedicado e rebuildar `wimifarma-com-web` quando houver mudanca no proxy Apache.
@@ -185,7 +186,7 @@ Higiene de pastas no VPS:
 - Apagar `core-data/` remove a copia sombra de autenticacao/auditoria em Postgres. Enquanto nao houver corte, isso nao derruba login, mas perde validacoes e historico novo do core.
 - Apagar `gestao-data/` remove contas, itens, pagamentos, auditoria e sessoes da Gestao. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `tarefa-data/` remove tarefas, auditoria e sessoes do Tarefa Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
-- Apagar `xp-data/` remove a copia sombra Postgres do XP. Enquanto `/xp/` estiver no PHP, isso nao apaga o XP oficial, mas perde validacao de migracao e deve ser evitado sem motivo.
+- Apagar `xp-data/` remove funcionarios, vendas, configuracoes, auditoria e sessoes oficiais do XP Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Configurar credencial Google Sheets errada pode fazer import/export falhar ou atingir a planilha errada. Validar sempre com `/cotacao/api/google-sheets/status`.
 
 ## Pendencias

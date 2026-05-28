@@ -52,8 +52,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - A home publica mostra no maximo cinco cards por linha no desktop; `Pedidos` fica ao lado de `Cotacao` e mostra badge de pedidos previstos para chegar hoje, o card `XP` usa moldura propria como borda/cantos por `border-image`, sem cortar a arte nem cobrir o texto, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
 - O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com blocos por prefixo de EAN persistidos em `wf_codigos_blocos`, autosave de `Codigo`, `EAN` e `Preco`, botao `+` com prefixo manual para criar o bloco desejado, tabelas em faixa horizontal sem gerar rolagem vazia no documento, reordenacao por arrastar o numero da linha, criacao de novas linhas no rodape de cada grupo, exibicao integral de nomes longos na coluna `Codigo` com quebra de linha adaptativa, exclusao logica de itens apagados e exclusao protegida de tabelas nao padrao por senha de confirmacao.
 - O login de Codigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, preservando a autenticacao em `wf_users`.
-- O modulo `XP` fica em `site/xp`, usa PHP procedural com MySQL `wimifarma_app`, guarda funcionarios em `wf_xp_employees`, vendas em `wf_xp_sales` e configuracoes como a foto da moldura ADM em `wf_xp_settings`. Calcula XP inteiro pela regra R$ 1.000,00 = 2.500 XP, exige 30.000 XP para sair do nivel 1 e aumenta a dificuldade por formula progressiva. A tela principal mostra a trilha como mapa de jogo em zigue-zague, renderizando os niveis 1 a 20 enquanto a equipe estiver no inicio e depois uma janela curta ao redor do nivel mais alto para preservar performance; jogadores aparecem compactos na trilha e em uma faixa resumida clicavel, abrindo resumo sem controles de edicao e mostrando uma barra amarela proporcional na faixa inferior. A aba `Configuracoes` concentra cadastro/edicao e exclusao logica de usuarios/funcionarios, foto validada JPG/PNG/WEBP ate 3 MB, moldura ADM, filtro de mes e lancamentos diarios, exibindo resumo por XP em vez de totais de venda; os cards de funcionarios mostram barra amarela preenchida conforme o percentual real do nivel, e em `Ultimos lancamentos` a observacao salva aparece junto da data e o XP do lancamento aparece em uma barra amarela compacta. O login do XP mostra apenas a logo oficial, `Entrar no XP`, descricao e formulario, sem o selo textual amarelo `Wimifarma XP`. O ADM tambem aparece como player fixo de teste para receber XP com a foto da moldura ADM; somente `adm`, `admin` ou `gerente` alimentam dados.
-- A migracao do XP iniciou em `apps/xp` com Node.js/TypeScript/Postgres em modo sombra. Esse app ainda nao atende a rota oficial `/xp/`; ele cria `xp_employees`, `xp_sales`, `xp_settings` e `xp_audit_events`, importa `wf_xp_*` idempotentemente e expoe health interno para validar paridade antes do corte visual.
+- O modulo `XP` fica oficialmente em `apps/xp`, usa Node.js/TypeScript/Express com Postgres `wimifarma_xp`, sessao propria `WFXP`, login por `core_users` e proxy Apache em `/xp/`. A tela preserva o mesmo CSS/JS/assets de `site/xp`: calcula XP inteiro pela regra R$ 1.000,00 = 2.500 XP, exige 30.000 XP para sair do nivel 1 e aumenta a dificuldade por formula progressiva. A tela principal mostra a trilha como mapa de jogo em zigue-zague, renderizando os niveis 1 a 20 enquanto a equipe estiver no inicio e depois uma janela curta ao redor do nivel mais alto; jogadores aparecem compactos na trilha e em uma faixa resumida clicavel. A aba `Configuracoes` concentra cadastro/edicao e exclusao logica de usuarios/funcionarios, foto validada JPG/PNG/WEBP ate 3 MB, moldura ADM, filtro de mes e lancamentos diarios. `wf_xp_*` no MySQL fica como importacao/espelho temporario de rollback por flags `XP_LEGACY_MYSQL_*`.
 - O modulo `Gestao` foi elevado para Node.js + TypeScript + Postgres: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_accounts`, categoria livre com resumo lateral normalizado, lista operacional compacta, painel `Mensal` para contas com repeticao ativa e ordem manual salva, busca por nome/valor/categoria/datas com limite inicial de 10 e `Mostrar mais`, itens flexiveis em `gestao_account_items`, pagamentos parciais datados em `gestao_account_payments`, vencimento opcional por data com urgencia visual, status reversivel, extrato por conta com saldo/progresso, pagamento parcial por qualquer lancamento aberto, cancelamento/reabertura de lancamento sem apagar historico, exclusao da tela apenas por arquivamento de contas canceladas, reabertura de contas pagas, renomeacao por icone de lapis, repeticao do mes seguinte em ciclo liga/desliga sem copiar pagamentos, observacao editavel/minimizavel, detalhes abertos pelo botao `Abrir`, pagamentos/historico minimizaveis e bloco de notas lateral em `gestao_notepad_notes`, com auditoria em `gestao_audit_events` e espelho curto em `wf_logs`.
 - O modulo `Pedidos` controla fornecedores em `/pedidos/`, separado da tela de Gestao. Ele usa `pedidos_orders` para pedidos registrados/aguardando chegada e `pedidos_confirmed_orders` para confirmados/historico, sempre vinculando valores, parcelas e pagamentos a uma conta da categoria `Boleto` em `gestao_accounts`. Cada parcela em `gestao_account_items` pode ter vencimento proprio (`due_at`), e a conta usa a menor data ativa como vencimento geral para ordenacao/resumo. Contas de pedidos nao entram em recategorizacao em lote para preservar esse controle. A tela carrega o widget do Miauby; pedidos novos podem marcar `Ja foi pago, so falta chegar` ou `Ja chegou, so pagar`, levando o segundo caso direto para `Confirmados`. A previsao de chegada do novo pedido e digitada como numero de dias (`2` = dois dias a partir de hoje) e o backend grava a data calculada em `expected_arrival_at`. Cards em `Aguardando chegada` e `Confirmados` ficam minimizados por padrao ao clicar no resumo do card, mantendo status, saldo e a acao principal visiveis no modo reduzido (`Confirmar chegada` ou `Pago`), usam icone de lapis para editar fornecedor/valores/vencimentos e icone de excluir para arquivamento logico/auditoria; em 2026-05-25, esses cards e os cards-resumo do topo ficaram mais baixos/densos, com acao principal em botao curto alinhado a direita para caber mais pedidos por tela. Em 2026-05-26, o topo ganhou `Valor para chegar`, somando saldo aberto dos pedidos aguardando chegada, e `Valor boletos abertos`, somando o saldo aberto dos boletos confirmados. O vencimento do boleto e a data do pagamento parcial em Pedidos sao informados apenas por data, sem horario na interface. A URL antiga `/gestao/pedidos` redireciona para `/pedidos/`.
 - O Financeiro mostra no topo apenas `Caixa`, `Relatorio` e `Sair`; a tela dedicada de Auditoria saiu da navegacao da equipe, mas a tabela `financeiro_auditoria` continua registrando alteracoes internas. Caixa e Relatorio compartilham o mesmo fechamento diario: `Fechar sem movimento` no Relatorio marca `sem_movimento` como atalho do Caixa, sem bloquear a digitacao posterior de venda/faturamento.
@@ -144,11 +143,12 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Express para Gestao e Pedidos
+- Node.js 22 + TypeScript + Express para Gestao, Pedidos, Tarefa e XP
 - Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio por gravacao temporaria/transcricao confirmada, bolha/player de audio, resposta falada temporaria e seletor seguro de voz no diagnostico
 - Node.js 22 + TypeScript para o bridge WhatsApp do Miauby via Evolution API ou Meta Cloud API
 - PostgreSQL 17 para o core compartilhado de autenticacao em modo sombra
 - PostgreSQL 17 para dados da Cotacao V2
+- PostgreSQL 17 para dados do XP
 - PostgreSQL 17 dedicado para fila/eventos/outbox do Miauby WhatsApp
 - Redis 7 para sessoes e presenca da Cotacao V2
 
@@ -258,7 +258,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |   |-- gestao/              # Gestao Node.js/TypeScript/Postgres
 |   |-- pedidos/             # Pedidos Node.js/TypeScript, separado de Gestao
 |   |-- tarefa/              # Tarefa Node.js/TypeScript/Postgres
-|   |-- xp/                  # XP Node.js/TypeScript/Postgres em sombra
+|   |-- xp/                  # XP Node.js/TypeScript/Postgres oficial
 |   |-- miauw-agent/         # Miauby agente Node/TypeScript em sombra/corte controlado
 |   `-- miauw-whatsapp/      # Bridge WhatsApp Node/TypeScript com painel operacional
 |-- ops/
@@ -266,7 +266,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- cotacao-data/            # volumes Postgres/Redis ignorados pelo Git
 |-- gestao-data/             # volume Postgres da Gestao ignorado pelo Git
 |-- tarefa-data/             # volume Postgres do Tarefa ignorado pelo Git
-|-- xp-data/                 # volume Postgres sombra do XP ignorado pelo Git
+|-- xp-data/                 # volume Postgres do XP ignorado pelo Git
 |-- docker/
 |   |-- php/Dockerfile
 |   `-- mysql/init/
@@ -418,8 +418,17 @@ GESTAO_SESSION_SECRET
 PEDIDOS_SESSION_SECRET
 TAREFA_POSTGRES_PASSWORD
 TAREFA_SESSION_SECRET
+TAREFA_AUTH_PROVIDER
 TAREFA_CORE_AUTH_SHADOW_ENABLED
+TAREFA_LEGACY_MYSQL_IMPORT_ENABLED
 TAREFA_LEGACY_MYSQL_MIRROR_ENABLED
+TAREFA_LEGACY_MYSQL_LOGS_ENABLED
+XP_POSTGRES_PASSWORD
+XP_SESSION_SECRET
+XP_AUTH_PROVIDER
+XP_LEGACY_MYSQL_IMPORT_ENABLED
+XP_LEGACY_MYSQL_MIRROR_ENABLED
+XP_LEGACY_MYSQL_LOGS_ENABLED
 COTACAO_POSTGRES_PASSWORD
 COTACAO_SESSION_SECRET
 COTACAO_BACKUP_DIR
@@ -448,6 +457,7 @@ Nao versionar:
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
 - `tarefa-data/`
+- `xp-data/`
 - `node_modules/`
 
 ## Deploy no VPS
@@ -489,7 +499,7 @@ Para o Miauby WhatsApp, `/miauw/whatsapp/` mostra o painel operacional seguro co
 
 Para Tarefa, manter `TAREFA_POSTGRES_PASSWORD` e `TAREFA_SESSION_SECRET` no `.env` de cada ambiente. O corte oficial de `/tarefa/` usa `wimifarma-tarefa-app:3500` por proxy Apache; `TAREFA_AUTH_PROVIDER=core` usa `core_users` como login oficial e rollback rapido e voltar `TAREFA_AUTH_PROVIDER=mysql`. As flags `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED` controlam a janela MySQL.
 
-Para XP, `apps/xp` e `wimifarma-xp-app:3600` estao em sombra: criam schema Postgres, importam `wf_xp_*` e expoem health interno, mas a rota oficial `/xp/` continua no PHP ate validacao de paridade e tela.
+Para XP, `apps/xp` e `wimifarma-xp-app:3600` sao a rota oficial `/xp/` via proxy Apache. Manter `XP_POSTGRES_PASSWORD` e `XP_SESSION_SECRET` por ambiente; `XP_AUTH_PROVIDER=core` usa `core_users`, e rollback rapido de autenticacao e voltar `XP_AUTH_PROVIDER=mysql`. As flags `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED` controlam importacao/espelho/log legado para rollback curto.
 
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 
@@ -506,7 +516,7 @@ Portas importantes:
 
 - container/proxy interno: `wimifarma-com-web:80`
 - app interno Tarefa: `wimifarma-tarefa-app:3500`
-- app sombra XP: `wimifarma-xp-app:3600`
+- app interno XP: `wimifarma-xp-app:3600`
 - bind local do Compose: `127.0.0.1:3002`
 - tunel local do PuTTY usado em testes: `127.0.0.1:13002`
 - publico: `80/443` via Nginx Proxy Manager

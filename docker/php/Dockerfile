@@ -75,6 +75,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/xp/" "http://wimifarma-xp-app:3600/xp/"'; \
+        echo 'ProxyPassReverse "/xp/" "http://wimifarma-xp-app:3600/xp/"'; \
+        echo 'ProxyPass "/xp" "http://wimifarma-xp-app:3600/xp"'; \
+        echo 'ProxyPassReverse "/xp" "http://wimifarma-xp-app:3600/xp"'; \
+    } > /etc/apache2/conf-available/wimifarma-xp-proxy.conf \
+    && a2enconf wimifarma-xp-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

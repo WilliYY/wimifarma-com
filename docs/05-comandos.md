@@ -179,7 +179,7 @@ docker exec wimifarma-tarefa-db psql -U wimifarma_tarefa -d wimifarma_tarefa -c 
 
 A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico importa `wf_tarefas` para `tarefa_tasks` de forma idempotente e, por padrao, espelha novas escritas de volta no MySQL legado com `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` para rollback curto. A fonte oficial depois do corte e o Postgres `wimifarma_tarefa`.
 
-## Local - XP Node/Postgres sombra
+## Local - XP Node/Postgres
 
 ```powershell
 cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\xp
@@ -187,12 +187,14 @@ npm.cmd run check
 npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d wimifarma-xp-db
-docker compose up -d --no-deps --build wimifarma-xp-app
+docker compose up -d --no-deps --build wimifarma-xp-app wimifarma-com-web
 docker exec wimifarma-xp-app wget -qO- http://127.0.0.1:3600/xp/health
+curl.exe -sS http://127.0.0.1:3002/xp/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" http://127.0.0.1:3002/xp/login.php
 docker exec wimifarma-xp-db psql -U wimifarma_xp -d wimifarma_xp -c "\dt"
 ```
 
-O app `apps/xp` ainda nao atende a rota publica `/xp/`. Ele serve para criar schema Postgres, importar `wf_xp_*` de forma idempotente e comparar contagens/somatorios antes de qualquer troca de frontend/proxy.
+O app `apps/xp` atende a rota oficial `/xp/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_xp`; MySQL `wf_xp_*` fica como importacao/espelho/log legado por flags `XP_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `XP_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-xp-app`.
 
 ## Local - Inventario de modernizacao
 

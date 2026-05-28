@@ -99,11 +99,11 @@ $modules = @(
     @{
         Module = 'XP'
         Path = 'site/xp;apps/xp'
-        Current = 'PHP oficial + Node/Postgres sombra'
-        Legacy = 'wf_xp_employees, wf_xp_sales, wf_xp_settings'
-        Target = 'apps/xp em Node.js + TypeScript + Postgres'
-        Priority = '4 - sombra em validacao'
-        Next = 'Validar apps/xp com checksum de vendas/XP antes de trocar /xp/.'
+        Current = 'Node.js + TypeScript + Postgres'
+        Legacy = 'MySQL legado opcional por flags XP_LEGACY_MYSQL_*'
+        Target = 'Postgres puro + core auth/auditoria'
+        Priority = '4 - em corte'
+        Next = 'Observar /xp/ no VPS e desligar flags legadas depois de paridade estavel.'
     },
     @{
         Module = 'Financeiro'
