@@ -153,6 +153,8 @@ Para validar a Cotacao sem corte de login, ligar `COTACAO_CORE_AUTH_SHADOW_ENABL
 
 Para validar a Gestao sem corte de login, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-gestao-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
+Para validar Pedidos sem corte de login, ligar `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-pedidos-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+
 ## VPS - Evolution API para Miauby WhatsApp
 
 Template versionado:
