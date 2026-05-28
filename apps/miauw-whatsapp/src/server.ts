@@ -300,7 +300,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.11';
+const SERVICE_VERSION = '0.5.12';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -5026,7 +5026,7 @@ async function fetchTextWithTimeout(url: string, init: RequestInit = {}, timeout
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, { redirect: 'manual', ...init, signal: controller.signal });
     const text = await response.text().catch(() => '');
     return { status: response.status, text, ms: Date.now() - startedAt, error: '' };
   } catch (error) {
