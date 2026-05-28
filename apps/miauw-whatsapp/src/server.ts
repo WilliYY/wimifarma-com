@@ -311,7 +311,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.13';
+const SERVICE_VERSION = '0.5.14';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -5332,10 +5332,11 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
   }
 
   const outboxFailedResult = await pgPool.query<{ status: string; count: string; newest_at: string }>(
-    `SELECT status, COUNT(*)::text AS count, MAX(updated_at)::text AS newest_at
+      `SELECT status, COUNT(*)::text AS count, MAX(updated_at)::text AS newest_at
        FROM miauw_whatsapp_outbox
       WHERE status IN ('failed', 'dead')
         AND updated_at >= NOW() - ($1::text || ' minutes')::interval
+        AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
       GROUP BY status`,
     [String(WATCHDOG_LOOKBACK_MINUTES)],
   );
