@@ -70,6 +70,8 @@ docker compose logs --tail=80 wimifarma-cotacao-db
 docker compose logs --tail=80 wimifarma-cotacao-redis
 docker compose logs --tail=80 wimifarma-gestao-app
 docker compose logs --tail=80 wimifarma-gestao-db
+docker compose logs --tail=80 wimifarma-tarefa-app
+docker compose logs --tail=80 wimifarma-tarefa-db
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
@@ -154,6 +156,24 @@ Para validar a Cotacao sem corte de login, ligar `COTACAO_CORE_AUTH_SHADOW_ENABL
 Para validar a Gestao sem corte de login, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-gestao-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
 Para validar Pedidos sem corte de login, ligar `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-pedidos-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+
+Para validar Tarefa sem corte de login, ligar `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-tarefa-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+
+## Local - Tarefa Node/Postgres
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\tarefa
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-tarefa-db
+docker compose up -d --no-deps --build wimifarma-tarefa-app wimifarma-com-web
+curl.exe -sS http://127.0.0.1:3002/tarefa/health
+curl.exe -sS http://127.0.0.1:3002/tarefa/badge.php
+docker exec wimifarma-tarefa-db psql -U wimifarma_tarefa -d wimifarma_tarefa -c "\dt"
+```
+
+A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico importa `wf_tarefas` para `tarefa_tasks` de forma idempotente e, por padrao, espelha novas escritas de volta no MySQL legado com `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` para rollback curto. A fonte oficial depois do corte e o Postgres `wimifarma_tarefa`.
 
 ## Local - Inventario de modernizacao
 
@@ -272,6 +292,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/miauw/treino.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
+curl.exe -sS http://127.0.0.1:3002/tarefa/health
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/whatsapp/
@@ -285,6 +306,7 @@ curl.exe -sS http://127.0.0.1:3002/xp/health.php
 ```powershell
 curl.exe -I -H "Host: wimifarma.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:3002/
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
+curl.exe -sS http://127.0.0.1:3002/tarefa/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 curl.exe -I -sS http://127.0.0.1:3002/cotacao/login.php
 curl.exe -I -sS http://127.0.0.1:3002/cotacao/socket.io/socket.io.js

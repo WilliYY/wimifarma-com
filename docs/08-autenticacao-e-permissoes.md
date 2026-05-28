@@ -50,6 +50,8 @@ Tabelas:
 - Pedidos (`/pedidos/`) usa o servico Node separado `apps/pedidos`, autentica contra `wf_users`, cria sessao propria `WFPEDIDOS` no Postgres da Gestao e fica restrito a username `adm`, role `admin` ou role `gerente`; criar pedido, confirmar chegada, atualizar vencimento, adicionar juros/valor, registrar parcial e marcar pago usa CSRF.
 - Quando uma rota protegida de Pedidos envia o operador para `/pedidos/login.php`, o destino seguro original e preservado na sessao; entrar pelo card `Pedidos` deve voltar para `/pedidos/`, nao para a tela principal de Gestao.
 - O endpoint publico `/pedidos/api/badge` retorna somente a contagem de pedidos previstos para chegar hoje, sem detalhes financeiros ou nomes de fornecedores, para alimentar a bolinha do card `Pedidos` na home.
+- Tarefa (`/tarefa/`) usa o servico Node separado `apps/tarefa`, autentica contra `wf_users`, cria sessao propria `WFTAREFA` no Postgres `wimifarma_tarefa` e permite usuario interno ativo como o modulo PHP antigo; criar, editar, concluir, cancelar e reabrir tarefa usa CSRF. `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` compara o login valido com `core_users` sem bloquear.
+- O endpoint publico `/tarefa/badge.php` retorna somente a contagem de tarefas abertas, sem titulo/descricao, para alimentar a bolinha do card `Tarefas` na home.
 - XP (`/xp/`) reutiliza a sessao interna do PHP e autentica contra `wf_users`; visualizar exige usuario autenticado, enquanto cadastrar funcionario, trocar foto, atualizar foto da moldura ADM, lancar venda, cancelar venda ou excluir/remover usuario/funcionario exige username `adm`, role `admin` ou role `gerente` e CSRF.
 - Fotos do XP aceitam somente JPG, PNG ou WEBP validados no servidor, ate 3 MB, com caminho final limitado a `/xp/uploads/funcionarios/` ou `/xp/uploads/adm/`; as pastas precisam estar gravaveis pelo Apache/PHP no VPS.
 - O painel `/miauw/diagnostico.php` exige usuario interno autenticado e fica restrito a role `admin`, role `gerente` ou username `adm`; acoes de revisao usam CSRF.
@@ -63,7 +65,7 @@ Tabelas:
 
 - Sessao dos modulos internos e configurada em `site/cashback/config.php`.
 - Funcoes comuns ficam em `site/cashback/functions.php`.
-- Modulos como Cotacao, Financeiro, Tarefas e Miauby reaproveitam o contexto do Cashback.
+- Modulos PHP como Financeiro e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao e Pedidos usam sessoes Node proprias por rota.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 

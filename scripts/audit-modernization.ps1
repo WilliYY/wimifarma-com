@@ -72,12 +72,12 @@ $modules = @(
     },
     @{
         Module = 'Tarefa'
-        Path = 'site/tarefa'
-        Current = 'PHP procedural + MySQL'
-        Legacy = 'wf_tarefas, login wf_users e db() MySQL'
-        Target = 'apps/tarefa em Node.js + TypeScript + Postgres'
-        Priority = '2 - primeiro modulo PHP pequeno'
-        Next = 'Criar servico sombra read-only/importador idempotente antes de trocar /tarefa/.'
+        Path = 'apps/tarefa'
+        Current = 'Node.js + TypeScript + Express + Postgres'
+        Legacy = 'mysql2 para login wf_users, wf_logs, importacao e espelho curto'
+        Target = 'Node.js + TypeScript + Postgres puro'
+        Priority = '2 - observar corte'
+        Next = 'Validar TAREFA_CORE_AUTH_SHADOW_ENABLED, contagens e espelho antes de remover legado MySQL.'
     },
     @{
         Module = 'Codigos'

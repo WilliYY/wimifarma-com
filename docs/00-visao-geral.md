@@ -14,7 +14,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Financeiro: fechamentos, sangrias, PIX, maquininhas, lancamentos e auditoria.
 - Gestao: contas a pagar manuais, itens de composicao, pagamentos parciais e total pago por mes.
 - XP: cadastro de atendentes, foto, venda diaria, pontos e progressao visual de niveis.
-- Tarefas: tarefas simples internas.
+- Tarefas: tarefas simples internas em Node.js/TypeScript com Postgres dedicado.
 - Miauby: assistente interno com memoria, alertas, diagnostico, camada online e rotinas de Farmacia Popular; possui servico agente com modo sombra/corte controlado por `MIAUW_ENGINE`, personalidade versionada, contratos de tools enviados do PHP para o Node e tools reais por ponte PHP interna, sem liberar escrita direta.
 - Miauby WhatsApp: bridge dedicado em Node.js/TypeScript com Postgres proprio, webhook da Evolution API ou Meta Cloud API, fila, dedupe, allowlist, painel operacional e outbox, publicado em `/miauw/whatsapp/`; o repositorio fica desligado por padrao e cada ambiente liga por `.env`.
 - WordPress: site principal e conteudo publico.
@@ -29,7 +29,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Financeiro: `site/financeiro/`
 - Gestao: `apps/gestao/`, publicada em `/gestao/` por proxy interno do Apache; `site/gestao/` fica como legado.
 - XP: `site/xp/`
-- Tarefas: `site/tarefa/`
+- Tarefas: `apps/tarefa/`, publicada em `/tarefa/` por proxy interno do Apache; `site/tarefa/` fica como legado.
 - Miauby: `site/miauw/`
 - Miauby agente: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
 - Miauby WhatsApp: `apps/miauw-whatsapp/`, publicado em `/miauw/whatsapp/` por proxy interno do Apache
@@ -51,6 +51,7 @@ Rotas principais:
 - `/xp/login.php`
 - `/xp/health.php`
 - `/tarefa/login.php`
+- `/tarefa/health`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
 - `/miauw/agent/health`

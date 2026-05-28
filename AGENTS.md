@@ -60,21 +60,23 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
 - Gestao em Node.js 22 + TypeScript + Express, com Postgres 17 dedicado para contas, itens, pagamentos, auditoria e sessoes.
 - Pedidos em Node.js 22 + TypeScript + Express, separado da Gestao em `/pedidos/`, com sessao propria e tabelas operacionais proprias no Postgres da Gestao para manter integracao financeira.
+- Tarefa em Node.js 22 + TypeScript + Express, separado em `/tarefa/`, com sessao propria, Postgres 17 dedicado para tarefas/auditoria e importacao idempotente de `wf_tarefas`.
 - Miauby WhatsApp em Node.js 22 + TypeScript, separado em `/miauw/whatsapp/`, com painel operacional proprio, Postgres 17 dedicado para webhook, fila, dedupe, contatos mascarados/cifrados e outbox via Evolution API ou Meta Cloud API.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro, logo animada propria sem fundo em `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma-home-animated.gif` e GIFs decorativos com o mesmo padrao de movimento dos logins.
 - A logo oficial atual e o SVG horizontal atualizado em 2026-05-21, sincronizado em `site/cashback/logo-wimifarma.svg`, `site/financeiro/logo-wimifarma.svg`, `site/tarefa/logo-wimifarma.svg`, `site/miauw/logo-wimifarma.svg`, `apps/cotacao/public/logo-wimifarma.svg` e `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma*.svg`; a home publica usa o GIF animado como variacao visual da marca, sem trocar os SVGs dos modulos internos.
 - Em 2026-05-21, foi validado com navegador local e checks publicos que Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw carregam a logo nova tanto nas telas de login quanto nas telas internas autenticadas. O `/wp-login.php` continua sendo tela padrao do WordPress e pode mostrar o logo/cabecalho do WordPress; nao tratar isso como regressao dos modulos internos, salvo pedido explicito para customizar o login WordPress.
 - No mobile, a home publica deve manter os cards dos modulos em duas colunas compactas para mostrar mais acessos por tela; textos longos podem ser reduzidos/truncados visualmente, mas os links precisam continuar claros e tocaveis.
-- O card de Tarefas na home usa `site/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
+- O card de Tarefas na home usa `/tarefa/badge.php` para mostrar um badge vermelho com a quantidade de tarefas abertas.
 - O card `Gestao` abre o modulo administrativo em `/gestao/`, servido oficialmente por `apps/gestao` via proxy Apache, restrito a `adm`, `admin` ou `gerente`, com contas a pagar manuais, pagamentos parciais, total pago por mes, lista compacta de contas abertas e painel `Mensal` lateral para contas com repeticao ativa e ordem manual por arrastar.
 - O card `Pedidos` abre `/pedidos/`, servido oficialmente por `apps/pedidos` via proxy Apache, separado visual e estruturalmente da Gestao. A URL antiga `/gestao/pedidos` redireciona para `/pedidos/` apenas por compatibilidade.
+- O card `Tarefas` abre `/tarefa/`, servido oficialmente por `apps/tarefa` via proxy Apache, preservando a mesma interface visual do modulo antigo. A fonte oficial de tarefas e `tarefa_tasks` no Postgres `wimifarma_tarefa`; `wf_tarefas` fica como importacao legado e espelho temporario de rollback quando `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`.
 - O card `XP` abre `/xp/`, modulo PHP/MySQL proprio para gamificacao dos atendentes por vendas lancadas manualmente, com cadastro de funcionarios, upload validado de foto, trilha horizontal em zigue-zague, progressao infinita de niveis e renderizacao em janela curta: niveis 1 a 20 no inicio e, depois disso, uma janela ao redor do nivel mais alto para preservar performance. Na aba `Configuracoes`, os cards de funcionarios devem mostrar barra amarela preenchida conforme o percentual real do nivel; na faixa inferior da `Trilha`, cada jogador tambem deve mostrar progresso amarelo proporcional; `Ultimos lancamentos` deve mostrar a observacao salva no lancamento e uma barra amarela compacta com o XP do lancamento.
 - Em 2026-05-25, o login do XP foi simplificado para mostrar apenas a logo oficial, o titulo `Entrar no XP`, a descricao e o formulario; o selo textual amarelo `Wimifarma XP` foi removido e nao deve voltar sem pedido explicito.
 - O Miauby conhece o contexto do XP e pode usar "farmar aura no XP" como linguagem interna de jogo para incentivar venda real e lancamento correto, sem inventar ranking, nivel ou pontuacao quando nao houver dado vindo do sistema ou do usuario.
@@ -113,11 +115,11 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
   - `site/codigos`
   - `site/financeiro`
   - `site/xp`
-  - `site/tarefa`
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
 - A rota `/gestao/` e servida por proxy interno do Apache para `wimifarma-gestao-app:3200/gestao`; `site/gestao` fica apenas como legado/fallback de historico e nao e a fonte oficial da tela.
 - A rota `/pedidos/` e servida por proxy interno do Apache para `wimifarma-pedidos-app:3300/pedidos`; Pedidos nao deve voltar a ser implementado dentro de `/gestao/`.
+- A rota `/tarefa/` e servida por proxy interno do Apache para `wimifarma-tarefa-app:3500/tarefa`; `site/tarefa` fica como legado/fallback historico e fonte visual, mas nao e a fonte oficial da tela apos o corte.
 - A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela pode rodar em sombra ou corte controlado por `MIAUW_ENGINE`, enquanto o PHP preserva login, sessoes, confirmacoes e escrita forte.
 - A rota `/miauw/whatsapp/` e servida por proxy interno do Apache para `wimifarma-miauw-whatsapp:3400/miauw/whatsapp`; a home publica possui o card `Miauby Whatsapp` apontando para esse painel operacional.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
@@ -126,6 +128,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Banco do XP: tabelas MySQL `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` em `wimifarma_app`; a fonte de verdade dos funcionarios, vendas gamificadas e foto da moldura ADM fica nessas tabelas, com venda em centavos inteiros, XP inteiro e uploads validados em `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/`. O ADM tambem existe como player fixo de teste em `wf_xp_employees.system_key='adm'`, protegido contra edicao/exclusao comum e sincronizado com a foto da moldura ADM.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 - Banco da Gestao/Pedidos: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
+- Banco da Tarefa: Postgres `wimifarma_tarefa`, com dados persistidos em `tarefa-data/postgres`; guarda `tarefa_tasks`, `tarefa_audit_events` e `tarefa_sessions`. O MySQL `wf_tarefas` fica como legado/importacao e espelho temporario de rollback, nao como fonte oficial.
 - Banco do Miauby WhatsApp: Postgres `wimifarma_miauw_whatsapp`, com dados persistidos em `miauw-whatsapp-data/postgres`; guarda `miauw_whatsapp_contacts`, `miauw_whatsapp_contact_modules`, `miauw_whatsapp_events`, `miauw_whatsapp_outbox`, `miauw_whatsapp_confirmations` e `miauw_whatsapp_error_logs`, sem payload bruto do transporte WhatsApp nem telefone cru.
 - O inventario do uso restante de MySQL e o plano recomendado para migrar modulos internos para Postgres ficam em `docs/22-migracao-mysql-postgres.md`; WordPress deve ser tratado como excecao temporaria ou substituido/desacoplado se a meta for remover MySQL 100%.
 - O inventario operacional dos modulos antigos e modernos fica em `docs/24-modernizacao-modulos.md` e pode ser gerado por `scripts/audit-modernization.ps1` no Windows ou `scripts/audit-modernization.sh` no Linux/VPS; use esse script antes de escolher a proxima migracao PHP -> Node.js/TypeScript/Postgres.
@@ -133,6 +136,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Ainda em 2026-05-28, a Cotacao V2 ganhou validacao sombra opcional por `COTACAO_CORE_AUTH_SHADOW_ENABLED=true`: o login oficial continua MySQL, mas logins bem-sucedidos tambem testam `core_users` no Postgres em paralelo, registrando sucesso/divergencia sem bloquear usuario. `/cotacao/health` e diagnostico mostram `auth.provider=mysql`, estado da sombra e alcance do core; nao ativar corte real antes de observar essa sombra sem divergencias.
 - Ainda em 2026-05-28, a Gestao ganhou validacao sombra equivalente por `GESTAO_CORE_AUTH_SHADOW_ENABLED=true`: o login oficial continua MySQL/`wf_users`, a permissao `adm`/`admin`/`gerente` continua igual, e logins bem-sucedidos tambem testam `core_users` no Postgres em paralelo. `/gestao/health` mostra `auth.provider=mysql`, estado da sombra e alcance do core; divergencias nao bloqueiam usuario e devem ser resolvidas antes de qualquer corte real.
 - Ainda em 2026-05-28, Pedidos ganhou validacao sombra equivalente por `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true`: o login oficial continua MySQL/`wf_users`, a permissao `adm`/`admin`/`gerente` e a sessao `WFPEDIDOS` continuam iguais, e logins bem-sucedidos tambem testam `core_users` no Postgres em paralelo. `/pedidos/health` mostra `auth.provider=mysql`, estado da sombra e alcance do core; divergencias nao bloqueiam usuario e devem ser resolvidas antes de qualquer corte real.
+- Ainda em 2026-05-28, Tarefa foi migrado para `apps/tarefa` em Node.js 22 + TypeScript + Postgres, mantendo HTML/CSS/JS equivalentes ao modulo antigo. O login oficial continua em MySQL/`wf_users`, com sessao propria `WFTAREFA`; `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` permite comparar logins bem-sucedidos contra `core_users` sem bloquear. O importador de `wf_tarefas` para `tarefa_tasks` e idempotente, e novas escritas podem espelhar no MySQL enquanto `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` para rollback curto.
 - Pedidos usa Postgres `pedidos_orders` e `pedidos_confirmed_orders` ligados a `gestao_accounts`; os valores/parcelas ficam em `gestao_account_items`, incluindo `due_at` por parcela quando houver vencimento, e os pagamentos ficam em `gestao_account_payments`, preservando totais mensais, categoria `Boleto` e auditoria. O vencimento geral em `gestao_accounts.due_at` e derivado da menor data ativa das parcelas para ordenacao/resumo. A previsao de chegada entra pela UI como dias ate chegar, mas a fonte de verdade continua sendo a data em `pedidos_orders.expected_arrival_at`. Editar fornecedor/valores/vencimentos passa por auditoria, remover da tela usa cancelamento/arquivamento logico, e `gestao_supplier_orders` fica apenas como legado/compatibilidade e fonte de migracao para dados criados antes da separacao.
 - Para banco de dados novo, modelar entidades do dominio em tabelas proprias, usar FK/constraints, dinheiro em centavos inteiros, indices nos campos de filtro/join, indices parciais para filas/status, soft delete quando houver auditoria e documentar a fonte de verdade antes de escrever a tela.
 
@@ -147,6 +151,7 @@ Nao misturar portas:
 - `wimifarma-cotacao-app:3000`: destino interno do Apache para `/cotacao/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-gestao-app:3200`: destino interno do Apache para `/gestao/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-pedidos-app:3300`: destino interno do Apache para `/pedidos/`; nao publicar diretamente no Nginx Proxy Manager.
+- `wimifarma-tarefa-app:3500`: destino interno do Apache para `/tarefa/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-miauw-whatsapp:3400`: destino interno do Apache para `/miauw/whatsapp/`; nao publicar diretamente no Nginx Proxy Manager.
 
 O Proxy Host de `wimifarma.com` e `www.wimifarma.com` deve apontar para:
@@ -174,6 +179,7 @@ Nao versionar:
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
 - `cotacao-data/`
+- `tarefa-data/`
 - `node_modules/`
 
 Cache de pagina WordPress/SpeedyCache deve ficar opt-in durante a migracao:
@@ -211,6 +217,7 @@ Rotas internas:
 - `/xp/login.php`
 - `/xp/health.php`
 - `/tarefa/login.php`
+- `/tarefa/health`
 - `/miauw/login.php`
 - `/miauw/widget-status.php`
 - `/miauw/agent/health`

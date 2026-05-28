@@ -310,17 +310,21 @@ Modulo `Pedidos` em `/pedidos/`:
 
 ## Fluxo Tarefas
 
-Modulo simples de tarefas internas.
+Modulo simples de tarefas internas, servido por `apps/tarefa` em Node.js + TypeScript com Postgres dedicado.
 
 Arquivos:
 
-- `site/tarefa/index.php`
-- `site/tarefa/tarefa-funcoes.php`
-- `site/tarefa/app.js`
+- `apps/tarefa/src/server.ts`
+- `apps/tarefa/public/app.js`
+- `apps/tarefa/public/styles.css`
+- `site/tarefa/` como legado/fallback historico
 
-Tabela:
+Tabelas:
 
-- `wf_tarefas`
+- Postgres `tarefa_tasks`
+- Postgres `tarefa_audit_events`
+- Postgres `tarefa_sessions`
+- MySQL `wf_tarefas` como importacao/espelho temporario de rollback
 
 Estados conhecidos:
 
@@ -333,6 +337,13 @@ Prioridades conhecidas:
 - `alta`
 - `normal`
 - `baixa`
+
+Regras:
+
+- `/tarefa/badge.php` retorna apenas a contagem de tarefas abertas;
+- criar, editar, concluir, cancelar e reabrir usam CSRF e sessao `WFTAREFA`;
+- a tela visual deve continuar equivalente ao modulo antigo durante a migracao;
+- `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` espelha novas escritas em `wf_tarefas` apenas para rollback curto, sem mudar a fonte oficial de verdade do Postgres.
 
 ## Fluxo Miauby
 

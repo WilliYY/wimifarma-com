@@ -44,7 +44,7 @@ O script mostra:
 | Cotacao | Node.js + Express + Postgres/Redis | `mysql2` para login `wf_users` | TypeScript + core auth Postgres | 1 |
 | Gestao | Node.js + TypeScript + Postgres | `mysql2` para login/log/importacao | Postgres puro + core auth/auditoria | 1 |
 | Pedidos | Node.js + TypeScript + Postgres da Gestao | `mysql2` para login/log | Postgres puro + core auth/auditoria | 1 |
-| Tarefa | PHP procedural + MySQL | `wf_tarefas`, `wf_users`, `db()` | `apps/tarefa` Node.js + TypeScript + Postgres | 2 |
+| Tarefa | Node.js + TypeScript + Postgres | `mysql2` para login/log/importacao/espelho curto | Postgres puro + core auth/auditoria | 2 em validacao |
 | Codigos | PHP procedural + MySQL | `wf_codigos_comissao`, `wf_codigos_blocos` | `apps/codigos` Node.js + TypeScript + Postgres | 3 |
 | XP | PHP procedural + MySQL | `wf_xp_employees`, `wf_xp_sales`, `wf_xp_settings` | `apps/xp` Node.js + TypeScript + Postgres | 4 |
 | Financeiro | PHP procedural + MySQL | `financeiro_*` | `apps/financeiro` Node.js + TypeScript + Postgres | 5 |
@@ -58,23 +58,22 @@ O script mostra:
 
 1. Observar Cotacao/Gestao/Pedidos em modo sombra no core auth sem divergencias.
 2. Cortar autenticacao desses tres modulos para `core_users`, mantendo rollback por `.env`.
-3. Criar `apps/tarefa` em sombra, com importador idempotente de `wf_tarefas` para Postgres.
-4. Trocar `/tarefa/` para Node somente depois de contagem, amostras e smoke visual.
-5. Repetir o padrao em Codigos.
-6. Migrar XP com checksum de vendas/XP e preservacao de uploads.
-7. Migrar Financeiro e Cashback com backup, checksums de totais e validacao por dia/cliente.
-8. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
-9. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
+3. Observar Tarefa em Node/Postgres com contagens, badge, login, tela e espelho MySQL temporario.
+4. Repetir o padrao em Codigos.
+5. Migrar XP com checksum de vendas/XP e preservacao de uploads.
+6. Migrar Financeiro e Cashback com backup, checksums de totais e validacao por dia/cliente.
+7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
+8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
 ## Proxima fatia tecnica
 
-A fatia mais segura apos a sombra de autenticacao e preparar `Tarefa` sem trocar a rota:
+Tarefa ja foi cortado para `apps/tarefa` com Postgres dedicado:
 
-- criar banco/schema alvo `wimifarma_tarefa`;
-- criar tabelas Postgres equivalentes a `wf_tarefas`, com `legacy_mysql_id`;
-- criar importador idempotente MySQL -> Postgres;
-- criar health/read-only API em Node;
-- validar contagens e amostras;
-- so depois apontar `/tarefa/` para Node.
+- banco/schema alvo `wimifarma_tarefa`;
+- tabela `tarefa_tasks` com `legacy_mysql_id`;
+- importador idempotente MySQL -> Postgres;
+- health em `/tarefa/health`;
+- badge preservado em `/tarefa/badge.php`;
+- espelho MySQL temporario por `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`.
 
-Essa abordagem permite rollback simples: manter a rota PHP atual enquanto a nova base e o novo servico sao comparados.
+A proxima fatia segura e `Codigos`: criar `apps/codigos`, importar `wf_codigos_comissao` e `wf_codigos_blocos`, validar contagens/amostras e so entao trocar a rota.

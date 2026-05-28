@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gestao. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2 e Gestao usam Postgres separados para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gestao/Pedidos e da Tarefa. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2, Gestao/Pedidos, Tarefa e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -16,6 +16,9 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gest
 - Container Gestao: `wimifarma-gestao-db`
 - Imagem Gestao: `postgres:17-alpine`
 - Volume Gestao: `gestao-data/postgres/`
+- Container Tarefa: `wimifarma-tarefa-db`
+- Imagem Tarefa: `postgres:17-alpine`
+- Volume Tarefa: `tarefa-data/postgres/`
 - Container Miauby WhatsApp: `wimifarma-miauw-whatsapp-db`
 - Imagem Miauby WhatsApp: `postgres:17-alpine`
 - Volume Miauby WhatsApp: `miauw-whatsapp-data/postgres/`
@@ -30,6 +33,7 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2 e da Gest
 - `wimifarma_app`: modulos internos.
 - `wimifarma_cotacao`: Cotacao V2 em Postgres.
 - `wimifarma_gestao`: Gestao em Postgres.
+- `wimifarma_tarefa`: Tarefa em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 
 O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
@@ -76,6 +80,16 @@ Criadas por `apps/gestao/src/server.ts`:
 
 A Gestao autentica no MySQL `wf_users`, espelha resumo curto em `wf_logs` e importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
 
+## Tabelas da Tarefa em Postgres
+
+Criadas por `apps/tarefa/src/server.ts`:
+
+- `tarefa_tasks`: tarefas internas com prioridade, titulo, descricao, status, datas de criacao/atualizacao/conclusao/cancelamento e `legacy_mysql_id` para reconciliacao com `wf_tarefas`.
+- `tarefa_audit_events`: auditoria curta de criacao, edicao e mudanca de status.
+- `tarefa_sessions`: sessoes web do modulo Tarefa gerenciadas por `connect-pg-simple`.
+
+A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` permanece como importacao legado e espelho temporario quando `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder tarefas criadas durante a transicao.
+
 ## Tabelas em `wimifarma_app`
 
 Inventario real observado em 2026-05-10:
@@ -96,7 +110,7 @@ Inventario real observado em 2026-05-10:
 - `wf_xp_employees`: funcionarios/atendentes do modulo XP, com nome, caminho da foto validada, status, `system_key` opcional para players fixos do sistema e exclusao logica.
 - `wf_xp_sales`: vendas lancadas para o XP, com valor em centavos, pontos inteiros, data, funcionario, usuario criador, observacao opcional e cancelamento logico.
 - `wf_xp_settings`: configuracoes simples do XP, como a foto da moldura ADM.
-- `wf_tarefas`: tarefas internas.
+- `wf_tarefas`: legado/importacao/espelho temporario da Tarefa; a escrita oficial nova usa Postgres `tarefa_tasks`.
 - `cotacao_blocos`: blocos de cotacao.
 - `cotacao_fornecedores`: fornecedores por bloco.
 - `cotacao_categorias`: categorias por bloco.
@@ -165,7 +179,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Financeiro: `site/financeiro/financeiro-funcoes.php`
 - Gestao: `apps/gestao/src/server.ts`
 - XP: `site/xp/xp-funcoes.php`
-- Tarefas: `site/tarefa/tarefa-funcoes.php`
+- Tarefas: `apps/tarefa/src/server.ts`
 - Miauby: `site/miauw/miauw-funcoes.php` e `site/miauw/miauw-intelligence.php`
 - Miauby WhatsApp: `apps/miauw-whatsapp/src/server.ts`
 
@@ -201,6 +215,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
+- `tarefa_tasks.status` aceita apenas `aberta`, `concluida` e `cancelada`; `priority` aceita `alta`, `normal` e `baixa`. Concluir/cancelar/reabrir nao apaga tarefa; apenas muda status, datas e auditoria.
 - Em `financeiro_fechamentos`, `status='sem_movimento'` marca um dia sem venda/movimento e pode ser criado pelo Caixa ou pelo Relatorio. Esse status nao e bloqueio final: somente `fechado` e `divergente` travam edicao normal; quando o faturamento de um dia `sem_movimento` recebe valor positivo pelo Relatorio, o registro volta para `conferencia` e continua linkado ao Caixa.
 - Comprovante Pix CNPJ lido pelo Miauby WhatsApp nao cria tabela nova: apos confirmacao `Sim`, entra como `financeiro_lancamentos.categoria='Pix CNPJ'` no dia extraido, com observacao sanitizada contendo CNPJ destino, pagador, horario e origem da leitura. Confirmacao `Nao`, CNPJ divergente ou campos ausentes nao gravam nada.
 - `gestao_accounts.total_cents` deve ser a soma dos itens ativos em `gestao_account_items.amount_cents`; contas novas salvam `generated_at` automaticamente e pagamentos ativos entram em `gestao_account_payments` com `paid_at` proprio.

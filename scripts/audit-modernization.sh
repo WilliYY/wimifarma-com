@@ -59,7 +59,7 @@ rows=(
   "Cotacao|apps/cotacao|Node.js + Express + Postgres/Redis|mysql2 login wf_users|TypeScript + core auth Postgres|1"
   "Gestao|apps/gestao|Node.js + TypeScript + Postgres|mysql2 login/log/importacao|Postgres puro + core auth|1"
   "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres|mysql2 login/log|Postgres puro + core auth|1"
-  "Tarefa|site/tarefa|PHP procedural + MySQL|wf_tarefas, wf_users, db()|apps/tarefa Node.js + TypeScript + Postgres|2"
+  "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres|mysql2 login/log/importacao/espelho|Postgres puro + core auth|2"
   "Codigos|site/codigos|PHP procedural + MySQL|wf_codigos_*|apps/codigos Node.js + TypeScript + Postgres|3"
   "XP|site/xp|PHP procedural + MySQL|wf_xp_*|apps/xp Node.js + TypeScript + Postgres|4"
   "Financeiro|site/financeiro|PHP procedural + MySQL|financeiro_* e wf_users|apps/financeiro Node.js + TypeScript + Postgres|5"
@@ -86,7 +86,7 @@ cat <<'EOF'
 
 Proximos passos recomendados:
 - Observar Cotacao/Gestao/Pedidos em sombra e cortar auth somente sem divergencias.
-- Comecar PHP -> Node/Postgres por Tarefa, em servico sombra read-only/importador.
+- Observar Tarefa Node/Postgres e remover espelho MySQL depois de validacao.
 - Depois migrar Codigos, XP, Financeiro, Cashback, Miauby interno.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

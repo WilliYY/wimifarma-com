@@ -2,6 +2,32 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-28 - Tarefa migra para Node.js + TypeScript + Postgres
+
+Decisao:
+
+- Criar `apps/tarefa` como servico Node.js 22 + TypeScript + Express em `/tarefa/`.
+- Usar Postgres dedicado `wimifarma_tarefa` com `tarefa_tasks`, `tarefa_audit_events` e `tarefa_sessions`.
+- Preservar a mesma interface visual do modulo antigo e manter `/tarefa/badge.php`.
+- Importar `wf_tarefas` de forma idempotente e manter espelho MySQL temporario com `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` para rollback curto.
+
+Motivo:
+
+- Tarefa e o menor modulo PHP/MySQL e reduz risco para iniciar a migracao dos modulos internos para Node/Postgres sem mexer em Financeiro/Cashback ainda.
+
+Impacto:
+
+- `apps/tarefa/`
+- `docker-compose.yml`
+- `docker/php/Dockerfile`
+- `docs/`
+
+Riscos/cuidados:
+
+- Login oficial ainda usa `wf_users`; o corte para `core_users` deve vir depois de sombra sem divergencias.
+- Nao apagar `tarefa-data/` sem backup.
+- Se rollback para PHP for necessario, conferir se o espelho MySQL ficou ativo antes de voltar o proxy.
+
 ## 2026-05-26 - Evolution API fica em stack separada
 
 Decisao:

@@ -25,6 +25,8 @@ Rotas de smoke test:
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/tarefa/login.php`
+- `/tarefa/health` deve responder JSON 200 quando o servico de Tarefa e seu Postgres estiverem ativos
+- `/tarefa/badge.php` deve responder JSON sem segredo com a quantidade de tarefas abertas
 - `/gestao/login.php`
 - `/gestao/health`
 - `/pedidos/` deve exigir sessao e carregar o fluxo visual de pedidos quando autenticado

@@ -66,6 +66,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/tarefa/" "http://wimifarma-tarefa-app:3500/tarefa/"'; \
+        echo 'ProxyPassReverse "/tarefa/" "http://wimifarma-tarefa-app:3500/tarefa/"'; \
+        echo 'ProxyPass "/tarefa" "http://wimifarma-tarefa-app:3500/tarefa"'; \
+        echo 'ProxyPassReverse "/tarefa" "http://wimifarma-tarefa-app:3500/tarefa"'; \
+    } > /etc/apache2/conf-available/wimifarma-tarefa-proxy.conf \
+    && a2enconf wimifarma-tarefa-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

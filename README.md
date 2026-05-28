@@ -28,7 +28,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 
 - Projeto local em `C:\Projetos\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
@@ -37,6 +37,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - O login da Cotacao continua usando usuarios da tabela MySQL `wf_users`; quando `COTACAO_CORE_AUTH_SHADOW_ENABLED=true`, ela testa o core Postgres em paralelo apos login bem-sucedido e registra divergencias sem bloquear a operacao. Os dados novos da planilha ficam em Postgres no volume ignorado `cotacao-data/`.
 - A Gestao fica oficialmente em `apps/gestao`, usa Node.js/TypeScript/Express com Postgres dedicado `wimifarma_gestao`, e e publicada por proxy interno do Apache em `/gestao/`; o MySQL fica para autenticacao `wf_users`, logs e importacao de dados legados. Quando `GESTAO_CORE_AUTH_SHADOW_ENABLED=true`, a Gestao compara logins bem-sucedidos contra `core_users` em paralelo, sem trocar a fonte oficial nem bloquear usuario. A tela principal usa linhas compactas em `Categoria / Nome / Valor / Pagar / Abrir` e mostra o painel `Mensal` ao lado da lista principal, com as contas de repeticao ativa reordenaveis por arrastar.
 - Pedidos fica oficialmente em `apps/pedidos`, usa Node.js/TypeScript/Express, sessao propria `WFPEDIDOS` e rota/proxy separados em `/pedidos/`. Ele usa tabelas operacionais `pedidos_orders` e `pedidos_confirmed_orders` no Postgres da Gestao para manter a integracao financeira com `Boleto`, permite editar fornecedor/valores/vencimentos por parcela com auditoria e arquiva pedidos da tela sem apagar dados financeiros. Quando `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true`, Pedidos compara logins bem-sucedidos contra `core_users` em paralelo, sem trocar a fonte oficial nem bloquear usuario.
+- Tarefa fica oficialmente em `apps/tarefa`, usa Node.js/TypeScript/Express, sessao propria `WFTAREFA`, Postgres dedicado `wimifarma_tarefa` e rota/proxy separados em `/tarefa/`. A tela foi preservada visualmente; o servico importa `wf_tarefas` de forma idempotente para `tarefa_tasks`, mantem auditoria em `tarefa_audit_events`, pode espelhar escritas no MySQL para rollback curto e usa `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` apenas para validar `core_users` em paralelo.
 - A Cotacao PHP antiga foi removida; `site/cotacao` nao existe mais e os ativos da tela oficial ficam em `apps/cotacao/public`.
 - Rotas de login dos modulos responderam HTTP 200 na auditoria local.
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
@@ -47,7 +48,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, logo animada propria sem fundo, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 - A logo oficial foi atualizada em 2026-05-21 como SVG horizontal e esta sincronizada nos assets compartilhados de Cashback/Codigos/Gestao/Pedidos, Financeiro, Tarefa, Miauw e Cotacao V2. Em 2026-05-24, a home publica passou a usar `logo-wimifarma-home-animated.gif` como variacao animada sem fundo da marca.
 - Em 2026-05-21, Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw foram validados com navegador local e checks publicos: as telas de login e as telas internas autenticadas carregam a logo nova. O `/wp-login.php` permanece com o cabecalho padrao do WordPress, separado dos logins internos.
-- O card de Tarefas consulta `site/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
+- O card de Tarefas consulta `/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
 - A home publica mostra no maximo cinco cards por linha no desktop; `Pedidos` fica ao lado de `Cotacao` e mostra badge de pedidos previstos para chegar hoje, o card `XP` usa moldura propria como borda/cantos por `border-image`, sem cortar a arte nem cobrir o texto, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
 - O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com blocos por prefixo de EAN persistidos em `wf_codigos_blocos`, autosave de `Codigo`, `EAN` e `Preco`, botao `+` com prefixo manual para criar o bloco desejado, tabelas em faixa horizontal sem gerar rolagem vazia no documento, reordenacao por arrastar o numero da linha, criacao de novas linhas no rodape de cada grupo, exibicao integral de nomes longos na coluna `Codigo` com quebra de linha adaptativa, exclusao logica de itens apagados e exclusao protegida de tabelas nao padrao por senha de confirmacao.
 - O login de Codigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, preservando a autenticacao em `wf_users`.
@@ -209,6 +210,7 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/xp/login.php`
 - `http://127.0.0.1:3002/xp/health.php`
 - `http://127.0.0.1:3002/tarefa/login.php`
+- `http://127.0.0.1:3002/tarefa/health`
 - `http://127.0.0.1:3002/miauw/login.php`
 - `http://127.0.0.1:3002/miauw/treino.php`
 - `http://127.0.0.1:3002/miauw/diagnostico.php`
@@ -225,6 +227,7 @@ docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-com-db
 docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-pedidos-app
+docker compose logs --tail=80 wimifarma-tarefa-app
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
 docker exec wimifarma-com-web php -l /var/www/html/wp-config.php
@@ -234,6 +237,7 @@ cd apps/miauw-agent; npm.cmd run check:persona; cd ../..
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
 curl.exe -L --max-time 30 http://127.0.0.1:3002/gestao/login.php
 curl.exe -sS http://127.0.0.1:3002/pedidos/health
+curl.exe -sS http://127.0.0.1:3002/tarefa/health
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
@@ -252,12 +256,14 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |   |-- cotacao/             # Cotacao V2 Node.js/Socket.IO
 |   |-- gestao/              # Gestao Node.js/TypeScript/Postgres
 |   |-- pedidos/             # Pedidos Node.js/TypeScript, separado de Gestao
+|   |-- tarefa/              # Tarefa Node.js/TypeScript/Postgres
 |   |-- miauw-agent/         # Miauby agente Node/TypeScript em sombra/corte controlado
 |   `-- miauw-whatsapp/      # Bridge WhatsApp Node/TypeScript com painel operacional
 |-- ops/
 |   `-- evolution/           # Template da stack Evolution API separada
 |-- cotacao-data/            # volumes Postgres/Redis ignorados pelo Git
 |-- gestao-data/             # volume Postgres da Gestao ignorado pelo Git
+|-- tarefa-data/             # volume Postgres do Tarefa ignorado pelo Git
 |-- docker/
 |   |-- php/Dockerfile
 |   `-- mysql/init/
@@ -271,7 +277,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |   |-- gestao/               # legado PHP; rota oficial usa apps/gestao por proxy
 |   |-- miauw/
 |   |-- xp/                   # modulo XP dos atendentes, com fotos validadas e trilha de niveis
-|   |-- tarefa/
+|   |-- tarefa/               # legado PHP/assets historicos; rota oficial usa apps/tarefa por proxy
 |   |-- wp-admin/
 |   |-- wp-content/
 |   |-- wp-includes/
@@ -407,6 +413,10 @@ GESTAO_INTERNAL_BASE_URL
 GESTAO_POSTGRES_PASSWORD
 GESTAO_SESSION_SECRET
 PEDIDOS_SESSION_SECRET
+TAREFA_POSTGRES_PASSWORD
+TAREFA_SESSION_SECRET
+TAREFA_CORE_AUTH_SHADOW_ENABLED
+TAREFA_LEGACY_MYSQL_MIRROR_ENABLED
 COTACAO_POSTGRES_PASSWORD
 COTACAO_SESSION_SECRET
 COTACAO_BACKUP_DIR
@@ -434,6 +444,7 @@ Nao versionar:
 - plugins premium `*-pro`
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
+- `tarefa-data/`
 - `node_modules/`
 
 ## Deploy no VPS
@@ -473,6 +484,8 @@ Para audio do Miauby, `MIAUW_AUDIO_ENABLED=true` libera o botao de fala no chat 
 
 Para o Miauby WhatsApp, `/miauw/whatsapp/` mostra o painel operacional seguro com canal, transporte, fila, outbox, allowlist editavel/minimizada, cards liberados por contato, sincronia recente, status de OCR Pix CNPJ, erros abertos com acao de resolver, graficos simples de latencia por motor e eventos recentes. A allowlist logada pode mostrar o telefone completo para correcao; o restante do painel continua mascarado. Em producao, proteger o painel com `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`; `/miauw/whatsapp/health` continua publico e sem segredo. O default do repositorio continua `MIAUW_WHATSAPP_ENABLED=false`; no VPS, ligar `MIAUW_WHATSAPP_ENABLED=true` apenas quando token de webhook/verificacao, cifragem, allowlist e transporte (`evolution` ou `meta`) estiverem revisados. Para comandos operacionais sem prefixo, manter `MIAUW_WHATSAPP_REQUIRE_PREFIX=false` e `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true` somente com allowlist/cards liberados e confirmacoes ativas.
 
+Para Tarefa, manter `TAREFA_POSTGRES_PASSWORD` e `TAREFA_SESSION_SECRET` no `.env` de cada ambiente. O corte oficial de `/tarefa/` usa `wimifarma-tarefa-app:3500` por proxy Apache; rollback curto pode voltar o proxy para o PHP legado porque `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` espelha novas escritas em `wf_tarefas`.
+
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 
 Depois do deploy, a home publica deve provar que esta na versao certa:
@@ -487,6 +500,7 @@ O header esperado e `X-Served-By: wimifarma-static-home`. Se `home.php` der 404 
 Portas importantes:
 
 - container/proxy interno: `wimifarma-com-web:80`
+- app interno Tarefa: `wimifarma-tarefa-app:3500`
 - bind local do Compose: `127.0.0.1:3002`
 - tunel local do PuTTY usado em testes: `127.0.0.1:13002`
 - publico: `80/443` via Nginx Proxy Manager
