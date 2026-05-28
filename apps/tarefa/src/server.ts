@@ -16,6 +16,8 @@ type User = {
   role: string;
 };
 
+type AuthProvider = 'mysql' | 'core';
+
 type Flash = {
   type: 'success' | 'error' | '';
   message: string;
@@ -84,17 +86,23 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'tarefa';
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.1.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/tarefa');
 const PORT = Number.parseInt(env.PORT || '3500', 10);
 const SESSION_SECRET = env.TAREFA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const TZ = 'America/Sao_Paulo';
+const AUTH_PROVIDER = normalizeAuthProvider(env.TAREFA_AUTH_PROVIDER);
 const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_MIRROR_ENABLED ?? 'true');
+const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_IMPORT_ENABLED ?? 'true');
+const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_LOGS_ENABLED ?? 'true');
 const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.TAREFA_CORE_AUTH_SHADOW_ENABLED);
 const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   500,
   Math.min(10000, Number.parseInt(env.TAREFA_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500),
 );
+const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core' || CORE_AUTH_SHADOW_ENABLED;
+const LEGACY_MYSQL_REQUIRED =
+  AUTH_PROVIDER === 'mysql' || LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED || LEGACY_MYSQL_LOGS_ENABLED;
 
 const priorities: Record<TaskPriority, { label: string; rank: number }> = {
   alta: { label: 'Alta', rank: 3 },
@@ -117,19 +125,21 @@ const pgPool = new Pool({
   max: 10,
 });
 
-const mysqlPool = mysql.createPool({
-  host: env.MYSQL_HOST || '127.0.0.1',
-  port: Number(env.MYSQL_PORT || 3306),
-  database: env.MYSQL_DATABASE || 'wimifarma_app',
-  user: env.MYSQL_USER || 'wimifarma_user',
-  password: env.MYSQL_PASSWORD || '',
-  waitForConnections: true,
-  connectionLimit: 6,
-  charset: 'utf8mb4',
-  dateStrings: true,
-});
+const mysqlPool: mysql.Pool | null = LEGACY_MYSQL_REQUIRED
+  ? mysql.createPool({
+      host: env.MYSQL_HOST || '127.0.0.1',
+      port: Number(env.MYSQL_PORT || 3306),
+      database: env.MYSQL_DATABASE || 'wimifarma_app',
+      user: env.MYSQL_USER || 'wimifarma_user',
+      password: env.MYSQL_PASSWORD || '',
+      waitForConnections: true,
+      connectionLimit: 6,
+      charset: 'utf8mb4',
+      dateStrings: true,
+    })
+  : null;
 
-const corePgPool = CORE_AUTH_SHADOW_ENABLED
+const corePgPool = CORE_AUTH_REQUIRED
   ? new Pool({
       host: env.CORE_POSTGRES_HOST || '127.0.0.1',
       port: Number(env.CORE_POSTGRES_PORT || 5432),
@@ -187,6 +197,24 @@ function normalizeBasePath(value: string): string {
 
 function normalizeBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
+}
+
+function normalizeAuthProvider(value: unknown): AuthProvider {
+  return String(value || 'mysql').trim().toLowerCase() === 'core' ? 'core' : 'mysql';
+}
+
+function requireMysqlPool(feature: string): mysql.Pool {
+  if (!mysqlPool) {
+    throw new Error(`Legacy MySQL is disabled for ${feature}.`);
+  }
+  return mysqlPool;
+}
+
+function requireCorePgPool(feature: string): pg.Pool {
+  if (!corePgPool) {
+    throw new Error(`Core Postgres auth is disabled for ${feature}.`);
+  }
+  return corePgPool;
 }
 
 function e(value: unknown): string {
@@ -319,7 +347,11 @@ function clearLoginRateLimit(req: Request): void {
 }
 
 async function authenticate(username: string, password: string): Promise<User | null> {
-  const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
+  return AUTH_PROVIDER === 'core' ? authenticateCore(username, password) : authenticateMysql(username, password);
+}
+
+async function authenticateMysql(username: string, password: string): Promise<User | null> {
+  const [rows] = await requireMysqlPool('auth').query<mysql.RowDataPacket[]>(
     'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
     [username],
   );
@@ -339,7 +371,11 @@ async function authenticate(username: string, password: string): Promise<User | 
 
 async function currentUser(user: User | undefined): Promise<User | null> {
   if (!user) return null;
-  const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
+  return AUTH_PROVIDER === 'core' ? currentCoreUser(user) : currentMysqlUser(user);
+}
+
+async function currentMysqlUser(user: User): Promise<User | null> {
+  const [rows] = await requireMysqlPool('current user').query<mysql.RowDataPacket[]>(
     'SELECT id, username, role, active FROM wf_users WHERE id = ? AND active = 1 LIMIT 1',
     [user.id],
   );
@@ -347,9 +383,26 @@ async function currentUser(user: User | undefined): Promise<User | null> {
   return row ? userPublic(row) : null;
 }
 
+async function currentCoreUser(user: User): Promise<User | null> {
+  const result = await requireCorePgPool('current user').query<CoreUserRow>(
+    `SELECT id::text, username, password_hash, role, active
+       FROM core_users
+      WHERE id = $1 AND active = true
+      LIMIT 1`,
+    [user.id],
+  );
+  const row = result.rows[0];
+  return row
+    ? {
+        id: Number(row.id),
+        username: String(row.username),
+        role: String(row.role || 'user'),
+      }
+    : null;
+}
+
 async function authenticateCore(username: string, password: string): Promise<User | null> {
-  if (!corePgPool) return null;
-  const result = await corePgPool.query<CoreUserRow>(
+  const result = await requireCorePgPool('auth').query<CoreUserRow>(
     `SELECT id::text, username, password_hash, role, active
        FROM core_users
       WHERE username_normalized = $1 AND active = true
@@ -376,7 +429,7 @@ async function authenticateCore(username: string, password: string): Promise<Use
 }
 
 async function shadowCoreAuth(username: string, password: string, mysqlUser: User): Promise<void> {
-  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) return;
+  if (!CORE_AUTH_SHADOW_ENABLED || AUTH_PROVIDER !== 'mysql' || !corePgPool) return;
   const startedAt = Date.now();
   coreAuthShadow.attempts += 1;
   try {
@@ -421,11 +474,11 @@ async function shadowCoreAuth(username: string, password: string, mysqlUser: Use
 
 async function coreAuthHealth(): Promise<Record<string, unknown>> {
   const state = {
-    provider: 'mysql',
+    provider: AUTH_PROVIDER,
     shadowEnabled: CORE_AUTH_SHADOW_ENABLED,
     shadow: { ...coreAuthShadow },
   };
-  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) {
+  if (!CORE_AUTH_REQUIRED || !corePgPool) {
     return state;
   }
 
@@ -449,13 +502,34 @@ async function coreAuthHealth(): Promise<Record<string, unknown>> {
 }
 
 async function logMysql(userId: number | null, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
+  if (!LEGACY_MYSQL_LOGS_ENABLED) return;
   try {
-    await mysqlPool.query(
+    await requireMysqlPool('wf_logs').query(
       'INSERT INTO wf_logs (user_id, action, entity_type, entity_id, message) VALUES (?, ?, ?, ?, ?)',
       [userId, action, entityType, entityId, cleanText(message, 255)],
     );
   } catch (error) {
     console.warn('[tarefa] failed to write wf_logs', error);
+  }
+}
+
+async function logCoreAudit(
+  userId: number | null,
+  action: string,
+  entityType: string,
+  entityId: string | null,
+  detail: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  if (!corePgPool) return;
+  try {
+    await corePgPool.query(
+      `INSERT INTO core_audit_logs (actor_user_id, action, entity_type, entity_id, detail, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [userId, action, entityType, entityId, cleanText(detail, 255), JSON.stringify({ service: SERVICE_NAME, ...metadata })],
+    );
+  } catch (error) {
+    console.warn('[tarefa] failed to write core audit log', error);
   }
 }
 
@@ -537,7 +611,8 @@ function pgDateFromMysql(value: string | null | undefined): string | null {
 }
 
 async function ensureLegacyMysqlSchema(): Promise<void> {
-  await mysqlPool.query(`
+  if (!LEGACY_MYSQL_IMPORT_ENABLED && !LEGACY_MYSQL_MIRROR_ENABLED) return;
+  await requireMysqlPool('legacy schema').query(`
     CREATE TABLE IF NOT EXISTS wf_tarefas (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       prioridade ENUM('alta','normal','baixa') NOT NULL DEFAULT 'normal',
@@ -593,13 +668,17 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await pgPool.query('CREATE INDEX IF NOT EXISTS tarefa_audit_events_task_idx ON tarefa_audit_events (task_id, created_at DESC)');
-  await ensureLegacyMysqlSchema();
-  await migrateLegacyTasks();
+  if (LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED) {
+    await ensureLegacyMysqlSchema();
+  }
+  if (LEGACY_MYSQL_IMPORT_ENABLED) {
+    await migrateLegacyTasks();
+  }
 }
 
 async function migrateLegacyTasks(): Promise<void> {
   try {
-    const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
+    const [rows] = await requireMysqlPool('legacy import').query<mysql.RowDataPacket[]>(
       'SELECT id, prioridade, titulo, descricao, status, criado_por, criado_em, atualizado_em, concluido_em, cancelado_em FROM wf_tarefas ORDER BY id ASC',
     );
     let imported = 0;
@@ -647,7 +726,8 @@ async function taskCounts(): Promise<Record<TaskStatus, number>> {
 
 async function legacyTaskCounts(): Promise<Record<TaskStatus, number>> {
   const counts: Record<TaskStatus, number> = { aberta: 0, concluida: 0, cancelada: 0 };
-  const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>('SELECT status, COUNT(*) AS total FROM wf_tarefas GROUP BY status');
+  if (!LEGACY_MYSQL_IMPORT_ENABLED && !LEGACY_MYSQL_MIRROR_ENABLED) return counts;
+  const [rows] = await requireMysqlPool('legacy counts').query<mysql.RowDataPacket[]>('SELECT status, COUNT(*) AS total FROM wf_tarefas GROUP BY status');
   for (const row of rows as Array<{ status: string; total: number }>) {
     counts[validStatus(row.status)] = Number(row.total || 0);
   }
@@ -778,7 +858,7 @@ async function mirrorCreateToMysql(taskId: number): Promise<void> {
     const result = await pgPool.query<TaskRow>('SELECT * FROM tarefa_tasks WHERE id = $1 LIMIT 1', [taskId]);
     const task = result.rows[0];
     if (!task || task.legacy_mysql_id) return;
-    const [insert] = await mysqlPool.query<mysql.ResultSetHeader>(
+    const [insert] = await requireMysqlPool('legacy mirror create').query<mysql.ResultSetHeader>(
       'INSERT INTO wf_tarefas (prioridade, titulo, descricao, status, criado_por, criado_em, atualizado_em, concluido_em, cancelado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         task.priority,
@@ -801,7 +881,7 @@ async function mirrorCreateToMysql(taskId: number): Promise<void> {
 async function mirrorTaskToMysql(task: TaskRow): Promise<void> {
   if (!LEGACY_MYSQL_MIRROR_ENABLED || !task.legacy_mysql_id) return;
   try {
-    await mysqlPool.query(
+    await requireMysqlPool('legacy mirror update').query(
       'UPDATE wf_tarefas SET prioridade = ?, titulo = ?, descricao = ?, status = ?, atualizado_em = ?, concluido_em = ?, cancelado_em = ? WHERE id = ?',
       [
         task.priority,
@@ -1068,7 +1148,7 @@ app.use(
 
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');
-  await mysqlPool.query('SELECT 1');
+  if (LEGACY_MYSQL_REQUIRED) await requireMysqlPool('health').query('SELECT 1');
   const [counts, legacyCounts, auth] = await Promise.all([taskCounts(), legacyTaskCounts(), coreAuthHealth()]);
   res.json({
     ok: true,
@@ -1078,7 +1158,10 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
     storage: {
       provider: 'postgres',
       database: env.POSTGRES_DB || 'wimifarma_tarefa',
+      legacy_mysql_required: LEGACY_MYSQL_REQUIRED,
+      legacy_mysql_import_enabled: LEGACY_MYSQL_IMPORT_ENABLED,
       legacy_mysql_mirror_enabled: LEGACY_MYSQL_MIRROR_ENABLED,
+      legacy_mysql_logs_enabled: LEGACY_MYSQL_LOGS_ENABLED,
       migration: migrationState,
       counts,
       legacy_counts: legacyCounts,
@@ -1120,11 +1203,14 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const user = await authenticate(username, password);
   if (!user) {
     registerLoginFailure(req);
+    void logCoreAudit(null, 'login_tarefa_falha', 'user', null, `Tentativa de login Tarefas falhou para usuario: ${username}`, {
+      auth_provider: AUTH_PROVIDER,
+    });
     await logMysql(null, 'login_tarefa_falha', 'user', null, `Tentativa de login Tarefas falhou para usuario: ${username}`);
     return res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha incorretos.'));
   }
 
-  void shadowCoreAuth(username, password, user);
+  if (AUTH_PROVIDER === 'mysql') void shadowCoreAuth(username, password, user);
   const returnTo = safeTarefaReturnPath(req.session.returnTo) || `${BASE_PATH}/`;
   clearLoginRateLimit(req);
   req.session.regenerate((error) => {
@@ -1134,6 +1220,9 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     }
     req.session.user = user;
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
+    void logCoreAudit(user.id, 'login_tarefa', 'user', String(user.id), 'Login Tarefas Node realizado.', {
+      auth_provider: AUTH_PROVIDER,
+    });
     void logMysql(user.id, 'login_tarefa', 'user', user.id, 'Login Tarefas Node realizado.');
     return res.redirect(returnTo);
   });
@@ -1204,7 +1293,12 @@ async function withRetry(name: string, fn: () => Promise<unknown>, attempts = 20
 
 async function start() {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
-  await withRetry('mysql', () => mysqlPool.query('SELECT 1'));
+  if (LEGACY_MYSQL_REQUIRED) {
+    await withRetry('mysql', () => requireMysqlPool('startup').query('SELECT 1'));
+  }
+  if (CORE_AUTH_REQUIRED) {
+    await withRetry('core postgres', () => requireCorePgPool('startup').query('SELECT 1'));
+  }
   await ensureSchema();
   app.listen(PORT, () => {
     console.log(`[tarefa] listening on ${PORT} at ${BASE_PATH}`);

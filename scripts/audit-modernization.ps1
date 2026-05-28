@@ -13,24 +13,32 @@ function Resolve-RepoPath([string] $relativePath) {
 }
 
 function Get-ModuleFiles([string] $relativePath) {
-    $path = Resolve-RepoPath $relativePath
-    if (-not (Test-Path $path)) {
-        return @()
-    }
-
-    $item = Get-Item $path
-    if (-not $item.PSIsContainer) {
-        if ($scanExtensions -contains $item.Extension.ToLowerInvariant()) {
-            return @($item)
+    $allFiles = @()
+    foreach ($part in ($relativePath -split ';')) {
+        $part = $part.Trim()
+        if ($part -eq '') {
+            continue
         }
-        return @()
-    }
+        $path = Resolve-RepoPath $part
+        if (-not (Test-Path $path)) {
+            continue
+        }
 
-    return @(Get-ChildItem -Path $path -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object {
-            $scanExtensions -contains $_.Extension.ToLowerInvariant() -and
-            $_.FullName -notmatch '\\node_modules\\|\\vendor\\|\\dist\\|\\wp-admin\\|\\wp-includes\\'
-        })
+        $item = Get-Item $path
+        if (-not $item.PSIsContainer) {
+            if ($scanExtensions -contains $item.Extension.ToLowerInvariant()) {
+                $allFiles += $item
+            }
+            continue
+        }
+
+        $allFiles += @(Get-ChildItem -Path $path -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object {
+                $scanExtensions -contains $_.Extension.ToLowerInvariant() -and
+                $_.FullName -notmatch '\\node_modules\\|\\vendor\\|\\dist\\|\\wp-admin\\|\\wp-includes\\'
+            })
+    }
+    return @($allFiles)
 }
 
 function Count-LegacyRefs([array] $files) {
@@ -74,10 +82,10 @@ $modules = @(
         Module = 'Tarefa'
         Path = 'apps/tarefa'
         Current = 'Node.js + TypeScript + Express + Postgres'
-        Legacy = 'mysql2 para login wf_users, wf_logs, importacao e espelho curto'
+        Legacy = 'MySQL legado opcional por flags de rollback/import/log'
         Target = 'Node.js + TypeScript + Postgres puro'
-        Priority = '2 - observar corte'
-        Next = 'Validar TAREFA_CORE_AUTH_SHADOW_ENABLED, contagens e espelho antes de remover legado MySQL.'
+        Priority = '2 - validar corte core'
+        Next = 'Validar TAREFA_AUTH_PROVIDER=core e legado MySQL desligado por flags.'
     },
     @{
         Module = 'Codigos'
@@ -90,12 +98,12 @@ $modules = @(
     },
     @{
         Module = 'XP'
-        Path = 'site/xp'
-        Current = 'PHP procedural + MySQL'
+        Path = 'site/xp;apps/xp'
+        Current = 'PHP oficial + Node/Postgres sombra'
         Legacy = 'wf_xp_employees, wf_xp_sales, wf_xp_settings'
         Target = 'apps/xp em Node.js + TypeScript + Postgres'
-        Priority = '4 - medio risco'
-        Next = 'Migrar com checksum de vendas/XP e preservar uploads/system_key adm.'
+        Priority = '4 - sombra em validacao'
+        Next = 'Validar apps/xp com checksum de vendas/XP antes de trocar /xp/.'
     },
     @{
         Module = 'Financeiro'

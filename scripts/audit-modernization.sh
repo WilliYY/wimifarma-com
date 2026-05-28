@@ -6,48 +6,59 @@ legacy_pattern='(PDO[[:space:]]+mysql|mysqli|mysql2|wf_users|wf_logs|db\(\)|DB_H
 
 count_files() {
   local rel="$1"
-  local path="$repo_root/$rel"
-  if [ ! -e "$path" ]; then
-    echo 0
-    return
-  fi
-  if [ -f "$path" ]; then
-    case "$path" in
-      *.php|*.ts|*.js|*.json|*.yml|*.yaml|*.md) echo 1 ;;
-      *) echo 0 ;;
-    esac
-    return
-  fi
-  find "$path" -type f \
-    \( -name '*.php' -o -name '*.ts' -o -name '*.js' -o -name '*.json' -o -name '*.yml' -o -name '*.yaml' -o -name '*.md' \) \
-    ! -path '*/node_modules/*' \
-    ! -path '*/vendor/*' \
-    ! -path '*/dist/*' \
-    ! -path '*/wp-admin/*' \
-    ! -path '*/wp-includes/*' | wc -l | tr -d ' '
+  local total=0
+  local part path count
+  IFS=';' read -ra parts <<< "$rel"
+  for part in "${parts[@]}"; do
+    path="$repo_root/$part"
+    if [ ! -e "$path" ]; then
+      continue
+    fi
+    if [ -f "$path" ]; then
+      case "$path" in
+        *.php|*.ts|*.js|*.json|*.yml|*.yaml|*.md) total=$((total + 1)) ;;
+      esac
+      continue
+    fi
+    count="$(find "$path" -type f \
+      \( -name '*.php' -o -name '*.ts' -o -name '*.js' -o -name '*.json' -o -name '*.yml' -o -name '*.yaml' -o -name '*.md' \) \
+      ! -path '*/node_modules/*' \
+      ! -path '*/vendor/*' \
+      ! -path '*/dist/*' \
+      ! -path '*/wp-admin/*' \
+      ! -path '*/wp-includes/*' | wc -l | tr -d ' ')"
+    total=$((total + count))
+  done
+  echo "$total"
 }
 
 count_refs() {
   local rel="$1"
-  local path="$repo_root/$rel"
-  local matches
-  if [ ! -e "$path" ]; then
-    echo 0
-    return
-  fi
-  matches="$(grep -RInE "$legacy_pattern" "$path" \
-    --include='*.php' \
-    --include='*.ts' \
-    --include='*.js' \
-    --include='*.json' \
-    --include='*.yml' \
-    --include='*.yaml' \
-    --include='*.md' \
-    --exclude-dir='node_modules' \
-    --exclude-dir='vendor' \
-    --exclude-dir='dist' \
-    --exclude-dir='wp-admin' \
-    --exclude-dir='wp-includes' 2>/dev/null || true)"
+  local matches=''
+  local part path output
+  IFS=';' read -ra parts <<< "$rel"
+  for part in "${parts[@]}"; do
+    path="$repo_root/$part"
+    if [ ! -e "$path" ]; then
+      continue
+    fi
+    output="$(grep -RInE "$legacy_pattern" "$path" \
+      --include='*.php' \
+      --include='*.ts' \
+      --include='*.js' \
+      --include='*.json' \
+      --include='*.yml' \
+      --include='*.yaml' \
+      --include='*.md' \
+      --exclude-dir='node_modules' \
+      --exclude-dir='vendor' \
+      --exclude-dir='dist' \
+      --exclude-dir='wp-admin' \
+      --exclude-dir='wp-includes' 2>/dev/null || true)"
+    if [ -n "$output" ]; then
+      matches+=$'\n'"$output"
+    fi
+  done
   if [ -z "$matches" ]; then
     echo 0
     return
@@ -59,9 +70,9 @@ rows=(
   "Cotacao|apps/cotacao|Node.js + Express + Postgres/Redis|mysql2 login wf_users|TypeScript + core auth Postgres|1"
   "Gestao|apps/gestao|Node.js + TypeScript + Postgres|mysql2 login/log/importacao|Postgres puro + core auth|1"
   "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres|mysql2 login/log|Postgres puro + core auth|1"
-  "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres|mysql2 login/log/importacao/espelho|Postgres puro + core auth|2"
+  "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres|MySQL legado opcional por flags|Postgres puro + core auth|2"
   "Codigos|site/codigos|PHP procedural + MySQL|wf_codigos_*|apps/codigos Node.js + TypeScript + Postgres|3"
-  "XP|site/xp|PHP procedural + MySQL|wf_xp_*|apps/xp Node.js + TypeScript + Postgres|4"
+  "XP|site/xp;apps/xp|PHP oficial + Node/Postgres sombra|wf_xp_*|apps/xp Node.js + TypeScript + Postgres|4"
   "Financeiro|site/financeiro|PHP procedural + MySQL|financeiro_* e wf_users|apps/financeiro Node.js + TypeScript + Postgres|5"
   "Cashback|site/cashback|PHP procedural + MySQL|wf_clientes/compras/creditos/resgates|apps/cashback Node.js + TypeScript + Postgres|6"
   "Miauby interno|site/miauw|PHP + Node agent sombra|miauw_* em MySQL|apps/miauw-agent + Postgres wimifarma_miauw|7"
@@ -86,7 +97,7 @@ cat <<'EOF'
 
 Proximos passos recomendados:
 - Observar Cotacao/Gestao/Pedidos em sombra e cortar auth somente sem divergencias.
-- Observar Tarefa Node/Postgres e remover espelho MySQL depois de validacao.
-- Depois migrar Codigos, XP, Financeiro, Cashback, Miauby interno.
+- Validar Tarefa com core auth e legado MySQL desligado por flags.
+- Validar XP sombra antes de trocar /xp/; depois migrar Codigos, Financeiro, Cashback, Miauby interno.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

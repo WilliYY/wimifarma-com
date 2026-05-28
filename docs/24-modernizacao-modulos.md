@@ -44,9 +44,9 @@ O script mostra:
 | Cotacao | Node.js + Express + Postgres/Redis | `mysql2` para login `wf_users` | TypeScript + core auth Postgres | 1 |
 | Gestao | Node.js + TypeScript + Postgres | `mysql2` para login/log/importacao | Postgres puro + core auth/auditoria | 1 |
 | Pedidos | Node.js + TypeScript + Postgres da Gestao | `mysql2` para login/log | Postgres puro + core auth/auditoria | 1 |
-| Tarefa | Node.js + TypeScript + Postgres | `mysql2` para login/log/importacao/espelho curto | Postgres puro + core auth/auditoria | 2 em validacao |
+| Tarefa | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
 | Codigos | PHP procedural + MySQL | `wf_codigos_comissao`, `wf_codigos_blocos` | `apps/codigos` Node.js + TypeScript + Postgres | 3 |
-| XP | PHP procedural + MySQL | `wf_xp_employees`, `wf_xp_sales`, `wf_xp_settings` | `apps/xp` Node.js + TypeScript + Postgres | 4 |
+| XP | PHP oficial + app Node/Postgres em sombra | `wf_xp_employees`, `wf_xp_sales`, `wf_xp_settings` | `apps/xp` Node.js + TypeScript + Postgres | 4 em sombra |
 | Financeiro | PHP procedural + MySQL | `financeiro_*` | `apps/financeiro` Node.js + TypeScript + Postgres | 5 |
 | Cashback | PHP procedural + MySQL | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
 | Miauby interno | PHP + Node agent sombra | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
@@ -58,9 +58,9 @@ O script mostra:
 
 1. Observar Cotacao/Gestao/Pedidos em modo sombra no core auth sem divergencias.
 2. Cortar autenticacao desses tres modulos para `core_users`, mantendo rollback por `.env`.
-3. Observar Tarefa em Node/Postgres com contagens, badge, login, tela e espelho MySQL temporario.
+3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` e legado MySQL desligado por flags.
 4. Repetir o padrao em Codigos.
-5. Migrar XP com checksum de vendas/XP e preservacao de uploads.
+5. Validar XP sombra com checksum de vendas/XP e preservacao de uploads antes de trocar `/xp/`.
 6. Migrar Financeiro e Cashback com backup, checksums de totais e validacao por dia/cliente.
 7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
 8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
@@ -74,6 +74,15 @@ Tarefa ja foi cortado para `apps/tarefa` com Postgres dedicado:
 - importador idempotente MySQL -> Postgres;
 - health em `/tarefa/health`;
 - badge preservado em `/tarefa/badge.php`;
-- espelho MySQL temporario por `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`.
+- auth oficial pode usar `core_users` por `TAREFA_AUTH_PROVIDER=core`;
+- legado MySQL pode ser desligado por `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false`.
 
-A proxima fatia segura e `Codigos`: criar `apps/codigos`, importar `wf_codigos_comissao` e `wf_codigos_blocos`, validar contagens/amostras e so entao trocar a rota.
+XP iniciou uma fatia sombra em `apps/xp`:
+
+- banco/schema alvo `wimifarma_xp`;
+- tabelas `xp_employees`, `xp_sales`, `xp_settings` e `xp_audit_events`;
+- importador idempotente de `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings`;
+- health interno em `wimifarma-xp-app:3600/xp/health`;
+- rota oficial `/xp/` ainda permanece no PHP ate paridade de dados e tela.
+
+A proxima fatia segura e validar o XP sombra no VPS, comparar somatorios e so depois criar a renderizacao Node mantendo o mesmo frontend.

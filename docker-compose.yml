@@ -132,6 +132,19 @@ services:
     networks:
       - wimifarma-com-network
 
+  wimifarma-xp-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-xp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_xp
+      POSTGRES_USER: wimifarma_xp
+      POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
+    volumes:
+      - ./xp-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
   wimifarma-miauw-whatsapp-db:
     image: postgres:17-alpine
     container_name: wimifarma-miauw-whatsapp-db
@@ -264,6 +277,7 @@ services:
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      TAREFA_AUTH_PROVIDER: ${TAREFA_AUTH_PROVIDER:-mysql}
       TAREFA_CORE_AUTH_SHADOW_ENABLED: ${TAREFA_CORE_AUTH_SHADOW_ENABLED:-false}
       TAREFA_CORE_AUTH_SHADOW_TIMEOUT_MS: ${TAREFA_CORE_AUTH_SHADOW_TIMEOUT_MS:-1500}
       POSTGRES_HOST: wimifarma-tarefa-db
@@ -272,7 +286,36 @@ services:
       POSTGRES_USER: wimifarma_tarefa
       POSTGRES_PASSWORD: ${TAREFA_POSTGRES_PASSWORD:-wimifarma_tarefa_dev_pass}
       TAREFA_SESSION_SECRET: ${TAREFA_SESSION_SECRET:-wimifarma_tarefa_dev_secret_change_me}
+      TAREFA_LEGACY_MYSQL_IMPORT_ENABLED: ${TAREFA_LEGACY_MYSQL_IMPORT_ENABLED:-true}
       TAREFA_LEGACY_MYSQL_MIRROR_ENABLED: ${TAREFA_LEGACY_MYSQL_MIRROR_ENABLED:-true}
+      TAREFA_LEGACY_MYSQL_LOGS_ENABLED: ${TAREFA_LEGACY_MYSQL_LOGS_ENABLED:-true}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-xp-app:
+    build:
+      context: ./apps/xp
+      dockerfile: Dockerfile
+    container_name: wimifarma-xp-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-xp-db
+    environment:
+      NODE_ENV: production
+      PORT: 3600
+      BASE_PATH: /xp
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      POSTGRES_HOST: wimifarma-xp-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_xp
+      POSTGRES_USER: wimifarma_xp
+      POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
+      XP_LEGACY_MYSQL_IMPORT_ENABLED: ${XP_LEGACY_MYSQL_IMPORT_ENABLED:-true}
     networks:
       - wimifarma-com-network
 

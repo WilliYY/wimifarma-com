@@ -72,6 +72,8 @@ docker compose logs --tail=80 wimifarma-gestao-app
 docker compose logs --tail=80 wimifarma-gestao-db
 docker compose logs --tail=80 wimifarma-tarefa-app
 docker compose logs --tail=80 wimifarma-tarefa-db
+docker compose logs --tail=80 wimifarma-xp-app
+docker compose logs --tail=80 wimifarma-xp-db
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
@@ -159,6 +161,8 @@ Para validar Pedidos sem corte de login, ligar `PEDIDOS_CORE_AUTH_SHADOW_ENABLED
 
 Para validar Tarefa sem corte de login, ligar `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-tarefa-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
+Para cortar Tarefa para login oficial no core Postgres, usar `TAREFA_AUTH_PROVIDER=core` e rebuildar apenas `wimifarma-tarefa-app`. Depois do corte validado, a janela MySQL pode ser desligada com `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false`; nesse estado `/tarefa/health` deve mostrar `auth.provider=core` e `storage.legacy_mysql_required=false`. Rollback: voltar `TAREFA_AUTH_PROVIDER=mysql`, religar as flags legadas necessarias e rebuildar `wimifarma-tarefa-app`.
+
 ## Local - Tarefa Node/Postgres
 
 ```powershell
@@ -174,6 +178,21 @@ docker exec wimifarma-tarefa-db psql -U wimifarma_tarefa -d wimifarma_tarefa -c 
 ```
 
 A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico importa `wf_tarefas` para `tarefa_tasks` de forma idempotente e, por padrao, espelha novas escritas de volta no MySQL legado com `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` para rollback curto. A fonte oficial depois do corte e o Postgres `wimifarma_tarefa`.
+
+## Local - XP Node/Postgres sombra
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\xp
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-xp-db
+docker compose up -d --no-deps --build wimifarma-xp-app
+docker exec wimifarma-xp-app wget -qO- http://127.0.0.1:3600/xp/health
+docker exec wimifarma-xp-db psql -U wimifarma_xp -d wimifarma_xp -c "\dt"
+```
+
+O app `apps/xp` ainda nao atende a rota publica `/xp/`. Ele serve para criar schema Postgres, importar `wf_xp_*` de forma idempotente e comparar contagens/somatorios antes de qualquer troca de frontend/proxy.
 
 ## Local - Inventario de modernizacao
 

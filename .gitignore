@@ -4,6 +4,7 @@
 /gestao-data/
 /core-data/
 /tarefa-data/
+/xp-data/
 /miauw-whatsapp-data/
 /ops/n8n/n8n-data/
 /ops/n8n/n8n-postgres/
@@ -14,6 +15,7 @@ apps/core-auth/dist/
 apps/gestao/dist/
 apps/pedidos/dist/
 apps/tarefa/dist/
+apps/xp/dist/
 apps/miauw-whatsapp/dist/
 .env
 /site/miauw/config.local.php
