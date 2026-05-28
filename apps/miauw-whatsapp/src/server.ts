@@ -254,6 +254,7 @@ type DashboardSummary = {
   allowlistRows: DashboardAllowlistRow[];
   allowlistAllowed: number;
   allowlistBlocked: number;
+  protectedAliasCount: number;
   errorCount24h: number;
   contactsTotal: number;
   recentEvents: DashboardEventRow[];
@@ -265,7 +266,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.9';
+const SERVICE_VERSION = '0.5.10';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -337,6 +338,7 @@ const PIX_RECEIPT_MIN_TARGET_SCORE = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_MIN_T
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
+const RECIPIENT_ALIAS_SOURCE_HASHES = new Set(Array.from(RECIPIENT_ALIASES.keys()).map((source) => sha256(source)));
 const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', true);
 const PREFIX = (textEnv('MIAUW_WHATSAPP_PREFIX') || 'miauby').toLowerCase();
 const ALLOW_COMMANDS_WITHOUT_PREFIX = boolEnv('MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX', !REQUIRE_PREFIX);
@@ -805,6 +807,20 @@ function phoneHashCandidates(primaryHash: string, phone: string): string[] {
   const alias = applyRecipientAlias(phone);
   if (alias !== phone) addPhone(alias);
   return hashes;
+}
+
+function recipientAliasSourceHashList(): string[] {
+  return Array.from(RECIPIENT_ALIAS_SOURCE_HASHES);
+}
+
+function isRecipientAliasSourceHash(phoneHash: string): boolean {
+  return RECIPIENT_ALIAS_SOURCE_HASHES.has(safeText(phoneHash, 64));
+}
+
+function isRecipientAliasSourcePhone(phone: string): boolean {
+  const normalized = normalizePhone(phone);
+  if (!normalized || RECIPIENT_ALIASES.size === 0) return false;
+  return phoneVariants(normalized).some((variant) => RECIPIENT_ALIASES.has(variant));
 }
 
 function applyRecipientAlias(value: string): string {
@@ -1755,6 +1771,9 @@ async function upsertAllowlistContact(phone: string, displayName: string, module
   if (normalized.length < 8 || normalized.length > 20) {
     throw new Error('invalid_allowlist_phone');
   }
+  if (isRecipientAliasSourcePhone(normalized)) {
+    throw new Error('protected_alias_contact');
+  }
   const label = safeText(displayName, 120);
   const existing = await findContactByPhone(normalized);
   if (existing) {
@@ -1791,6 +1810,10 @@ async function upsertAllowlistContact(phone: string, displayName: string, module
 async function setAllowlistContactStatus(id: string, status: 'allowed' | 'blocked'): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
     throw new Error('invalid_allowlist_id');
+  }
+  const phoneHash = await contactHashById(id);
+  if (isRecipientAliasSourceHash(phoneHash)) {
+    throw new Error('protected_alias_contact');
   }
   await pgPool.query(
     `UPDATE miauw_whatsapp_contacts
@@ -1858,6 +1881,9 @@ async function setContactModulesByHash(phoneHash: string, moduleKeys: string[]):
 
 async function updateAllowlistContact(id: string, phone: string, displayName: string, moduleKeys: string[]): Promise<void> {
   const currentHash = await contactHashById(id);
+  if (isRecipientAliasSourceHash(currentHash)) {
+    throw new Error('protected_alias_contact');
+  }
   const normalized = preferredPhoneForStorage(phone);
   const label = safeText(displayName, 120);
   let nextHash = currentHash;
@@ -4784,6 +4810,7 @@ function countOf(counts: Record<string, number>, status: string): number {
 }
 
 async function dashboardSummary(): Promise<DashboardSummary> {
+  const protectedAliasHashes = recipientAliasSourceHashList();
   const [
     eventsResult,
     outboxResult,
@@ -4791,6 +4818,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     responseDelayResult,
     contactsResult,
     allowlistCountsResult,
+    protectedAliasesResult,
     allowlistRowsResult,
     errorCountResult,
     recentEventsResult,
@@ -4861,7 +4889,16 @@ async function dashboardSummary(): Promise<DashboardSummary> {
       `SELECT status, COUNT(*)::text AS count
          FROM miauw_whatsapp_contacts
         WHERE status IN ('allowed', 'blocked')
+          AND ($1::text[] = ARRAY[]::text[] OR phone_hash::text <> ALL($1::text[]))
         GROUP BY status`,
+      [protectedAliasHashes],
+    ),
+    pgPool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM miauw_whatsapp_contacts
+        WHERE status IN ('allowed', 'blocked')
+          AND phone_hash::text = ANY($1::text[])`,
+      [protectedAliasHashes],
     ),
     pgPool.query<DashboardAllowlistRow>(
       `SELECT id::text AS id,
@@ -4881,8 +4918,10 @@ async function dashboardSummary(): Promise<DashboardSummary> {
               AND enabled = TRUE
          ) modules ON TRUE
         WHERE status IN ('allowed', 'blocked')
+          AND ($1::text[] = ARRAY[]::text[] OR phone_hash::text <> ALL($1::text[]))
         ORDER BY status = 'blocked', last_seen_at DESC, created_at DESC
         LIMIT 40`,
+      [protectedAliasHashes],
     ),
     pgPool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
@@ -4972,9 +5011,10 @@ async function dashboardSummary(): Promise<DashboardSummary> {
          JOIN miauw_whatsapp_contacts c ON c.phone_hash = m.phone_hash
         WHERE m.enabled = TRUE
           AND c.status = 'allowed'
+          AND ($2::text[] = ARRAY[]::text[] OR c.phone_hash::text <> ALL($2::text[]))
           AND m.module_key = ANY($1::text[])
         GROUP BY m.module_key`,
-      [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.moduleKey))]],
+      [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.moduleKey))], protectedAliasHashes],
     ),
   ]);
   const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
@@ -4988,6 +5028,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     allowlistRows: allowlistRowsResult.rows,
     allowlistAllowed: countOf(allowlistCounts, 'allowed'),
     allowlistBlocked: countOf(allowlistCounts, 'blocked'),
+    protectedAliasCount: Number(protectedAliasesResult.rows[0]?.count || 0),
     errorCount24h: Number(errorCountResult.rows[0]?.count || 0),
     contactsTotal: Number(contactsResult.rows[0]?.count || 0),
     recentEvents: recentEventsResult.rows,
@@ -5389,7 +5430,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const writePolicy = textStatus(status, 'whatsapp_write_actions') || 'blocked';
   const envAllowlist = numberStatus(status, 'allowlist_env_count') || numberStatus(status, 'allowlist_count');
   const responseDelay = summary.responseDelay;
-  const allowlistHint = `Env: ${envAllowlist} | Postgres: ${summary.allowlistAllowed} | bloqueados: ${summary.allowlistBlocked}`;
+  const aliasHint = summary.protectedAliasCount > 0 ? ` | LIDs ocultos: ${summary.protectedAliasCount}` : '';
+  const allowlistHint = `Env: ${envAllowlist} | Postgres: ${summary.allowlistAllowed} | bloqueados: ${summary.allowlistBlocked}${aliasHint}`;
   const noticeHtml = notice
     ? `<p class="notice">${htmlEscape(notice)}</p>`
     : '';
@@ -5580,7 +5622,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <div class="allowlist-list">
           ${renderAllowlistRows(summary.allowlistRows, csrfToken)}
         </div>
-        <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres. O telefone completo aparece apenas nesta allowlist logada.</p>
+        <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres. LIDs da Evolution configurados como alias ficam ocultos e protegidos; edite apenas o numero real vinculado. O telefone completo aparece apenas nesta allowlist logada.</p>
       </article>
 
       <article class="panel">
@@ -5779,6 +5821,8 @@ function dashboardNotice(value: unknown): string {
       return 'Numero invalido para allowlist.';
     case 'allowlist_duplicate':
       return 'Esse numero ja existe na allowlist.';
+    case 'alias_protected':
+      return 'LID da Evolution fica oculto e protegido; edite o numero real vinculado.';
     case 'error_resolved':
       return 'Erro marcado como resolvido.';
     case 'csrf_invalid':
@@ -5839,6 +5883,10 @@ app.post(`${BASE_PATH}/allowlist`, requireDashboardAuth, async (req, res) => {
       res.redirect(303, `${BASE_PATH}?notice=allowlist_invalid`);
       return;
     }
+    if (error instanceof Error && error.message === 'protected_alias_contact') {
+      res.redirect(303, `${BASE_PATH}?notice=alias_protected`);
+      return;
+    }
     res.status(503).type('html').send(renderDashboardError(error));
   }
 });
@@ -5865,6 +5913,10 @@ app.post(`${BASE_PATH}/allowlist/update`, requireDashboardAuth, async (req, res)
       res.redirect(303, `${BASE_PATH}?notice=allowlist_duplicate`);
       return;
     }
+    if (error instanceof Error && error.message === 'protected_alias_contact') {
+      res.redirect(303, `${BASE_PATH}?notice=alias_protected`);
+      return;
+    }
     res.status(503).type('html').send(renderDashboardError(error));
   }
 });
@@ -5878,6 +5930,10 @@ app.post(`${BASE_PATH}/allowlist/block`, requireDashboardAuth, async (req, res) 
     await setAllowlistContactStatus(safeText(req.body?.id, 80), 'blocked');
     res.redirect(303, `${BASE_PATH}?notice=allowlist_blocked`);
   } catch (error) {
+    if (error instanceof Error && error.message === 'protected_alias_contact') {
+      res.redirect(303, `${BASE_PATH}?notice=alias_protected`);
+      return;
+    }
     res.status(503).type('html').send(renderDashboardError(error));
   }
 });
@@ -5891,6 +5947,10 @@ app.post(`${BASE_PATH}/allowlist/allow`, requireDashboardAuth, async (req, res) 
     await setAllowlistContactStatus(safeText(req.body?.id, 80), 'allowed');
     res.redirect(303, `${BASE_PATH}?notice=allowlist_allowed`);
   } catch (error) {
+    if (error instanceof Error && error.message === 'protected_alias_contact') {
+      res.redirect(303, `${BASE_PATH}?notice=alias_protected`);
+      return;
+    }
     res.status(503).type('html').send(renderDashboardError(error));
   }
 });
