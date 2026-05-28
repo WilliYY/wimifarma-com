@@ -125,6 +125,11 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_N8N_BASE_URL`
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL`
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET`
+- `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES=15`
+- `MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES=30`
+- `MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES=2`
+- `MIAUW_WHATSAPP_WATCHDOG_SLOW_TOTAL_MS=30000`
+- `MIAUW_WHATSAPP_SMOKE_CHECK_TIMEOUT_MS=6000`
 - `MIAUW_WHATSAPP_PROVIDER=evolution`
 - `GEMINI_API_KEY`
 - `GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta`
@@ -153,6 +158,8 @@ Principais variaveis:
 - `GET /miauw/whatsapp/webhook`: verificacao `hub.challenge` da Meta Cloud API.
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
+- `POST /miauw/whatsapp/internal/smoke-check`: endpoint interno tokenizado para n8n/pos-deploy. Roda checks de health do bridge, proxy Apache, core Miauby, Gestao, Pedidos, Cotacao, widget e conexao Evolution; aceita `notify=never|problems|always` no JSON ou query. Quando notifica, envia apenas para contatos reais autorizados com card `Miauby`, respeitando cooldown e bloqueando LIDs protegidos.
+- `POST /miauw/whatsapp/internal/watchdog`: endpoint interno tokenizado para n8n/monitoramento. Verifica fila travada, outbox `pending/sending`, falhas recentes, respostas lentas, envios `sent` sem id do provedor, pausa do transporte e conversas que receberam `sent` mas ficaram com nova mensagem sem resposta; aceita `notify=never|problems|always`.
 - `POST /miauw/agent-context.php`: endpoint PHP interno, protegido por `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`, usado pelo bridge para exportar `style_context`, treino aprovado, perfil de voz e contratos de tools do Miauby interno antes de chamar o agent.
 - `POST /miauw/agent-actions.php`: endpoint PHP interno, protegido pelo mesmo token, usado pelo bridge para preparar acoes fortes permitidas e executar somente depois de confirmacao pendente no WhatsApp.
 
@@ -211,7 +218,7 @@ O audio nao substitui guardrails. Escritas fortes seguem exigindo pendencia e co
 
 O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota, latencia de geracao antes do envio e demora total entre recebimento do evento e envio pelo transporte. Essa telemetria fica na `miauw_whatsapp_outbox`/consulta com `miauw_whatsapp_events` e usa mascaras/hash fora da edicao da allowlist. O painel tambem mostra graficos simples de media/p95 por motor, uma visao de sincronia recente comparando mensagem recebida e resposta enviada, allowlist minimizada por padrao com telefone completo editavel, e uma area de erros abertos alimentada por `miauw_whatsapp_error_logs`.
 
-O painel tambem mostra `n8n automacoes`: Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados reais; LIDs da Evolution protegidos por alias nao entram como destinatarios. n8n apenas orquestra/agendeia, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma.
+O painel tambem mostra `n8n automacoes`: Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados reais; LIDs da Evolution protegidos por alias nao entram como destinatarios. n8n apenas orquestra/agendeia, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma. Para operacao atual, n8n deve chamar os endpoints internos `smoke-check` e `watchdog`; o bridge calcula os destinatarios com card `Miauby`, manda alerta apenas quando `notify` permitir, registra auditoria em `miauw_whatsapp_error_logs` e aplica cooldown para nao floodar a equipe.
 
 Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git. Exemplo: se o painel tem `5544984134971`, mas o evento chega como `234668507005157@lid`, configurar `234668507005157=5544984134971`. A checagem de cards liberados deve considerar o identificador recebido e o telefone alias-resolvido, para que o mesmo contato mantenha permissoes de comandos internos no WhatsApp. No painel, esses LIDs ficam ocultos e protegidos contra edicao, bloqueio ou reautorizacao manual; o operador deve ajustar apenas o telefone real vinculado.
 

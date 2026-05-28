@@ -245,6 +245,40 @@ type ErrorLogContext = {
   details?: JsonRecord;
 };
 
+type AutomationNotifyMode = 'never' | 'problems' | 'always';
+
+type AutomationRecipient = {
+  phone: string;
+  phoneHash: string;
+  phoneMask: string;
+  displayName: string;
+};
+
+type AutomationSendResult = {
+  skipped: boolean;
+  cooldown: boolean;
+  recipients: number;
+  sent: number;
+  failed: number;
+  errors: string[];
+};
+
+type SmokeCheckResult = {
+  key: string;
+  label: string;
+  ok: boolean;
+  status: number;
+  ms: number;
+  detail: string;
+};
+
+type WatchdogIssue = {
+  type: string;
+  severity: 'info' | 'warn' | 'error';
+  count: number;
+  detail: string;
+};
+
 type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
@@ -266,7 +300,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.10';
+const SERVICE_VERSION = '0.5.11';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -366,6 +400,11 @@ const N8N_ENABLED = boolEnv('MIAUW_WHATSAPP_N8N_ENABLED', false);
 const N8N_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_BASE_URL') || textEnv('N8N_BASE_URL'));
 const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL') || textEnv('N8N_WEBHOOK_URL'));
 const N8N_WEBHOOK_SECRET_CONFIGURED = textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET') !== '';
+const AUTOMATION_NOTIFY_COOLDOWN_MINUTES = numberEnv('MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES', 15, 1, 240);
+const WATCHDOG_LOOKBACK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES', 30, 5, 240);
+const WATCHDOG_STUCK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES', 2, 1, 60);
+const WATCHDOG_SLOW_TOTAL_MS = numberEnv('MIAUW_WHATSAPP_WATCHDOG_SLOW_TOTAL_MS', 30000, 5000, 300000);
+const SMOKE_CHECK_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_SMOKE_CHECK_TIMEOUT_MS', 6000, 1000, 30000);
 const WHATSAPP_MODULE_CARDS: WhatsappModuleCard[] = [
   { key: 'cashback', label: 'Cashback', description: 'Clientes, compras, creditos e resgates.', command: 'miauby cashback' },
   { key: 'cotacao', label: 'Cotacao', description: 'Itens, precos, fornecedores e ganhadores.', command: 'miauby cotacao' },
@@ -983,7 +1022,13 @@ function requireInternalToken(req: Request, res: Response, next: NextFunction) {
   if (!INTERNAL_TOKEN) {
     return res.status(503).json({ ok: false, error: 'internal_token_not_configured' });
   }
-  const received = safeText(req.get('x-miauw-whatsapp-token') || req.get('x-miauw-agent-token') || req.get('x-miauw-internal-token') || '', 300);
+  const received = safeText(
+    authTokenFromRequest(req)
+      || req.get('x-miauw-agent-token')
+      || req.get('x-miauw-internal-token')
+      || '',
+    300,
+  );
   if (!received || !timingSafeStringEqual(received, INTERNAL_TOKEN)) {
     return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
@@ -4766,6 +4811,12 @@ function publicStatus(): JsonRecord {
     n8n_enabled: N8N_ENABLED,
     n8n_base_configured: N8N_BASE_URL !== '',
     n8n_webhook_configured: N8N_WEBHOOK_BASE_URL !== '' && N8N_WEBHOOK_SECRET_CONFIGURED,
+    n8n_internal_smoke_check: `${BASE_PATH}/internal/smoke-check`,
+    n8n_internal_watchdog: `${BASE_PATH}/internal/watchdog`,
+    automation_notify_cooldown_minutes: AUTOMATION_NOTIFY_COOLDOWN_MINUTES,
+    watchdog_lookback_minutes: WATCHDOG_LOOKBACK_MINUTES,
+    watchdog_stuck_minutes: WATCHDOG_STUCK_MINUTES,
+    watchdog_slow_total_ms: WATCHDOG_SLOW_TOTAL_MS,
     whatsapp_write_actions: 'core_confirmation',
     whatsapp_confirmations_enabled: CONFIRMATIONS_ENABLED,
     whatsapp_confirmed_actions_enabled: CONFIRMED_ACTIONS_ENABLED,
@@ -4807,6 +4858,442 @@ function countsByStatus(rows: CountRow[]): Record<string, number> {
 
 function countOf(counts: Record<string, number>, status: string): number {
   return counts[status] || 0;
+}
+
+function automationNotifyMode(value: unknown): AutomationNotifyMode {
+  const mode = safeText(value, 20).toLowerCase();
+  if (mode === 'never' || mode === 'always' || mode === 'problems') return mode;
+  return 'problems';
+}
+
+function shouldNotifyAutomation(mode: AutomationNotifyMode, hasProblems: boolean): boolean {
+  if (mode === 'never') return false;
+  if (mode === 'problems') return hasProblems;
+  return true;
+}
+
+function automationFingerprint(source: string, message: string): string {
+  return `${safeText(source, 40)}:${sha256(safeText(message, 1500)).slice(0, 24)}`;
+}
+
+function automationSeverity(issues: WatchdogIssue[], hasProblems: boolean): 'info' | 'warn' | 'error' {
+  if (issues.some((issue) => issue.severity === 'error')) return 'error';
+  if (issues.some((issue) => issue.severity === 'warn') || hasProblems) return 'warn';
+  return 'info';
+}
+
+async function automationRecentlyNotified(source: string, fingerprint: string): Promise<boolean> {
+  const result = await pgPool.query<{ found: string }>(
+    `SELECT '1' AS found
+       FROM miauw_whatsapp_error_logs
+      WHERE source = $1
+        AND message_preview = $2
+        AND created_at >= NOW() - ($3::text || ' minutes')::interval
+      LIMIT 1`,
+    [safeText(source, 80), safeText(fingerprint, 280), String(AUTOMATION_NOTIFY_COOLDOWN_MINUTES)],
+  );
+  return result.rows.length > 0;
+}
+
+async function automationRecipients(moduleKey = 'miauw'): Promise<AutomationRecipient[]> {
+  const protectedAliasHashes = recipientAliasSourceHashList();
+  const result = await pgPool.query<{
+    phone_hash: string;
+    phone_mask: string;
+    phone_ciphertext: string;
+    display_name: string;
+  }>(
+    `SELECT DISTINCT c.phone_hash,
+            c.phone_mask,
+            COALESCE(c.phone_ciphertext, '') AS phone_ciphertext,
+            COALESCE(NULLIF(c.display_name, ''), c.phone_mask) AS display_name
+       FROM miauw_whatsapp_contacts c
+       JOIN miauw_whatsapp_contact_modules m ON m.phone_hash = c.phone_hash
+      WHERE c.status = 'allowed'
+        AND m.enabled = TRUE
+        AND m.module_key = $1
+        AND c.phone_ciphertext <> ''
+        AND ($2::text[] = ARRAY[]::text[] OR c.phone_hash::text <> ALL($2::text[]))
+      ORDER BY display_name
+      LIMIT 20`,
+    [moduleKey, protectedAliasHashes],
+  );
+
+  const recipients: AutomationRecipient[] = [];
+  const seenPhones = new Set<string>();
+  for (const row of result.rows) {
+    let phone = '';
+    try {
+      phone = applyRecipientAlias(decryptText(row.phone_ciphertext));
+    } catch {
+      phone = '';
+    }
+    const normalized = normalizePhone(phone);
+    if (!normalized || isRecipientAliasSourcePhone(normalized) || seenPhones.has(normalized)) continue;
+    seenPhones.add(normalized);
+    recipients.push({
+      phone: normalized,
+      phoneHash: row.phone_hash,
+      phoneMask: row.phone_mask,
+      displayName: safeText(row.display_name || row.phone_mask, 120),
+    });
+  }
+  return recipients;
+}
+
+async function sendAutomationNotification(
+  source: string,
+  severity: 'info' | 'warn' | 'error',
+  text: string,
+  mode: AutomationNotifyMode,
+  hasProblems: boolean,
+): Promise<AutomationSendResult> {
+  const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, errors: [] };
+  const message = safeOutboundText(text, 1200);
+  if (!message || !shouldNotifyAutomation(mode, hasProblems)) {
+    return { ...result, skipped: true };
+  }
+
+  const fingerprint = automationFingerprint(source, message);
+  if (mode !== 'always' && await automationRecentlyNotified(source, fingerprint)) {
+    return { ...result, skipped: true, cooldown: true };
+  }
+
+  const status = publicStatus();
+  if (status.transport_configured !== true || status.enabled !== true) {
+    result.skipped = true;
+    result.errors.push('whatsapp_transport_unavailable');
+    await recordErrorLog(source, severity, new Error('automation_notification_transport_unavailable'), {
+      messagePreview: fingerprint,
+      details: { mode, hasProblems },
+    });
+    return result;
+  }
+
+  const pauseMs = providerPauseRemainingMs();
+  if (pauseMs > 0) {
+    result.skipped = true;
+    result.errors.push('provider_paused');
+    await recordErrorLog(source, severity, new Error('automation_notification_provider_paused'), {
+      messagePreview: fingerprint,
+      details: { mode, hasProblems, pause_ms: pauseMs },
+    });
+    return result;
+  }
+
+  const recipients = await automationRecipients('miauw');
+  result.recipients = recipients.length;
+  if (recipients.length === 0) {
+    result.skipped = true;
+    result.errors.push('no_miauby_recipients');
+    await recordErrorLog(source, severity, new Error('automation_notification_no_recipient'), {
+      messagePreview: fingerprint,
+      details: { mode, hasProblems },
+    });
+    return result;
+  }
+
+  for (const recipient of recipients) {
+    try {
+      await sendProviderText(recipient.phone, message, defaultInstanceName());
+      result.sent += 1;
+    } catch (error) {
+      result.failed += 1;
+      result.errors.push(safeError(error));
+      await recordErrorLog(`${source}_send`, 'warn', error, {
+        phoneMask: recipient.phoneMask,
+        messagePreview: fingerprint,
+        details: { display_name: recipient.displayName },
+      });
+    }
+  }
+
+  await recordErrorLog(source, severity, new Error('automation_notification_sent'), {
+    messagePreview: fingerprint,
+    details: {
+      mode,
+      has_problems: hasProblems,
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+    },
+  });
+  return result;
+}
+
+async function fetchTextWithTimeout(url: string, init: RequestInit = {}, timeoutMs = SMOKE_CHECK_TIMEOUT_MS): Promise<{ status: number; text: string; ms: number; error: string }> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const text = await response.text().catch(() => '');
+    return { status: response.status, text, ms: Date.now() - startedAt, error: '' };
+  } catch (error) {
+    return { status: 0, text: '', ms: Date.now() - startedAt, error: safeError(error) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function smokeHttpCheck(key: string, label: string, url: string, init: RequestInit = {}): Promise<SmokeCheckResult> {
+  const result = await fetchTextWithTimeout(url, init);
+  const ok = result.status >= 200 && result.status < 400;
+  const body = safeText(result.text, 140);
+  return {
+    key,
+    label,
+    ok,
+    status: result.status,
+    ms: result.ms,
+    detail: ok ? `HTTP ${result.status}` : (result.error || `HTTP ${result.status}${body ? ` ${body}` : ''}`),
+  };
+}
+
+async function smokeEvolutionCheck(): Promise<SmokeCheckResult> {
+  if (WHATSAPP_PROVIDER !== 'evolution') {
+    return { key: 'evolution_connection', label: 'Evolution conexao', ok: true, status: 200, ms: 0, detail: 'provider_meta' };
+  }
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE) {
+    return { key: 'evolution_connection', label: 'Evolution conexao', ok: false, status: 0, ms: 0, detail: 'evolution_not_configured' };
+  }
+
+  const url = `${EVOLUTION_API_BASE_URL}/instance/connectionState/${encodeURIComponent(EVOLUTION_INSTANCE)}`;
+  const result = await fetchTextWithTimeout(url, { headers: { apikey: EVOLUTION_API_KEY } });
+  let state = '';
+  try {
+    const parsed = JSON.parse(result.text) as unknown;
+    if (isRecord(parsed)) {
+      const instance = isRecord(parsed.instance) ? parsed.instance : {};
+      state = safeText(parsed.state || parsed.status || instance.state || instance.status, 40).toLowerCase();
+    }
+  } catch {
+    state = safeText(result.text, 80).toLowerCase();
+  }
+  const ok = result.status >= 200 && result.status < 400 && (state.includes('open') || state.includes('connected'));
+  return {
+    key: 'evolution_connection',
+    label: 'Evolution conexao',
+    ok,
+    status: result.status,
+    ms: result.ms,
+    detail: ok ? `state=${state || 'open'}` : (result.error || `state=${state || 'unknown'}`),
+  };
+}
+
+function smokeMessage(checks: SmokeCheckResult[]): string {
+  const failures = checks.filter((check) => !check.ok);
+  if (failures.length === 0) {
+    return `Miauby smoke check: tudo ok. ${checks.length} checks responderam; WhatsApp, core e rotas principais estao vivos.`;
+  }
+  const lines = failures.slice(0, 5).map((check) => `- ${check.label}: ${check.detail}`);
+  return `Alerta Miauby smoke check: ${failures.length}/${checks.length} check(s) falharam.\n${lines.join('\n')}`;
+}
+
+async function runSmokeCheck(mode: AutomationNotifyMode): Promise<JsonRecord> {
+  const checks: SmokeCheckResult[] = [];
+  const status = publicStatus();
+  checks.push({
+    key: 'whatsapp_config',
+    label: 'WhatsApp config',
+    ok: status.enabled === true && status.transport_configured === true && status.provider_paused !== true,
+    status: 200,
+    ms: 0,
+    detail: status.provider_paused === true ? `provider_paused ${status.provider_pause_ms_remaining || 0}ms` : 'config_ok',
+  });
+
+  checks.push(await smokeHttpCheck('whatsapp_health', 'WhatsApp health', `http://127.0.0.1:${PORT}${BASE_PATH}/health`));
+  checks.push(await smokeHttpCheck('whatsapp_proxy', 'WhatsApp proxy Apache', `http://wimifarma-com-web${BASE_PATH}/health`));
+  checks.push(await smokeHttpCheck('miauw_agent_health', 'Miauby agent', 'http://wimifarma-miauw-agent:3100/miauw/agent/health'));
+  checks.push(await smokeHttpCheck('gestao_health', 'Gestao', 'http://wimifarma-gestao-app:3200/gestao/health'));
+  checks.push(await smokeHttpCheck('pedidos_health', 'Pedidos', 'http://wimifarma-pedidos-app:3300/pedidos/health'));
+  checks.push(await smokeHttpCheck('cotacao_health', 'Cotacao', 'http://wimifarma-cotacao-app:3000/cotacao/health'));
+  checks.push(await smokeHttpCheck('miauw_widget', 'Miauby widget', 'http://wimifarma-com-web/miauw/widget-status.php'));
+  checks.push(await smokeEvolutionCheck());
+
+  const hasProblems = checks.some((check) => !check.ok);
+  const notification = await sendAutomationNotification(
+    'automation_smoke_check',
+    hasProblems ? 'warn' : 'info',
+    smokeMessage(checks),
+    mode,
+    hasProblems,
+  );
+
+  return {
+    ok: !hasProblems,
+    notify: mode,
+    checks,
+    notification,
+  };
+}
+
+function watchdogMessage(issues: WatchdogIssue[]): string {
+  if (issues.length === 0) {
+    return `Miauby watchdog: tudo ok nos ultimos ${WATCHDOG_LOOKBACK_MINUTES} min. Fila e outbox sem travas aparentes.`;
+  }
+  const lines = issues.slice(0, 6).map((issue) => `- ${issue.detail}`);
+  return `Alerta Miauby watchdog: ${issues.length} ponto(s) pedem atencao.\n${lines.join('\n')}`;
+}
+
+async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonRecord> {
+  const issues: WatchdogIssue[] = [];
+  const pauseMs = providerPauseRemainingMs();
+  if (pauseMs > 0) {
+    issues.push({
+      type: 'provider_paused',
+      severity: 'warn',
+      count: 1,
+      detail: `Transporte pausado por ${Math.ceil(pauseMs / 1000)}s: ${safeText(providerPauseReason, 120)}`,
+    });
+  }
+
+  const eventStuckResult = await pgPool.query<{ status: string; count: string; oldest_at: string }>(
+    `SELECT status, COUNT(*)::text AS count, MIN(created_at)::text AS oldest_at
+       FROM miauw_whatsapp_events
+      WHERE status IN ('queued', 'processing')
+        AND created_at < NOW() - ($1::text || ' minutes')::interval
+      GROUP BY status`,
+    [String(WATCHDOG_STUCK_MINUTES)],
+  );
+  for (const row of eventStuckResult.rows) {
+    issues.push({
+      type: `event_${row.status}_stuck`,
+      severity: row.status === 'processing' ? 'error' : 'warn',
+      count: Number(row.count || 0),
+      detail: `${row.count} evento(s) ${row.status} parados desde ${formatDate(row.oldest_at)}`,
+    });
+  }
+
+  const outboxStuckResult = await pgPool.query<{ status: string; count: string; oldest_at: string }>(
+    `SELECT status, COUNT(*)::text AS count, MIN(created_at)::text AS oldest_at
+       FROM miauw_whatsapp_outbox
+      WHERE status IN ('pending', 'sending')
+        AND created_at < NOW() - ($1::text || ' minutes')::interval
+      GROUP BY status`,
+    [String(WATCHDOG_STUCK_MINUTES)],
+  );
+  for (const row of outboxStuckResult.rows) {
+    issues.push({
+      type: `outbox_${row.status}_stuck`,
+      severity: row.status === 'sending' ? 'error' : 'warn',
+      count: Number(row.count || 0),
+      detail: `${row.count} envio(s) ${row.status} parados desde ${formatDate(row.oldest_at)}`,
+    });
+  }
+
+  const outboxFailedResult = await pgPool.query<{ status: string; count: string; newest_at: string }>(
+    `SELECT status, COUNT(*)::text AS count, MAX(updated_at)::text AS newest_at
+       FROM miauw_whatsapp_outbox
+      WHERE status IN ('failed', 'dead')
+        AND updated_at >= NOW() - ($1::text || ' minutes')::interval
+      GROUP BY status`,
+    [String(WATCHDOG_LOOKBACK_MINUTES)],
+  );
+  for (const row of outboxFailedResult.rows) {
+    issues.push({
+      type: `outbox_${row.status}_recent`,
+      severity: row.status === 'dead' ? 'error' : 'warn',
+      count: Number(row.count || 0),
+      detail: `${row.count} envio(s) ${row.status} nos ultimos ${WATCHDOG_LOOKBACK_MINUTES} min`,
+    });
+  }
+
+  const sentStats = await pgPool.query<{
+    no_provider_id: string;
+    slow_count: string;
+    sent_count: string;
+  }>(
+    `SELECT COUNT(*)::text AS sent_count,
+            COUNT(*) FILTER (WHERE COALESCE(provider_message_id, '') = '')::text AS no_provider_id,
+            COUNT(*) FILTER (
+              WHERE o.sent_at IS NOT NULL
+                AND e.created_at IS NOT NULL
+                AND EXTRACT(EPOCH FROM (o.sent_at - e.created_at)) * 1000 > $2::numeric
+            )::text AS slow_count
+       FROM miauw_whatsapp_outbox o
+       JOIN miauw_whatsapp_events e ON e.id = o.event_id
+      WHERE o.status = 'sent'
+        AND o.sent_at >= NOW() - ($1::text || ' minutes')::interval`,
+    [String(WATCHDOG_LOOKBACK_MINUTES), WATCHDOG_SLOW_TOTAL_MS],
+  );
+  const sentRow = sentStats.rows[0] || { no_provider_id: '0', slow_count: '0', sent_count: '0' };
+  if (Number(sentRow.no_provider_id || 0) > 0) {
+    issues.push({
+      type: 'sent_without_provider_id',
+      severity: 'warn',
+      count: Number(sentRow.no_provider_id || 0),
+      detail: `${sentRow.no_provider_id} envio(s) marcados como sent sem id do provedor`,
+    });
+  }
+  if (Number(sentRow.slow_count || 0) > 0) {
+    issues.push({
+      type: 'slow_sent_response',
+      severity: 'warn',
+      count: Number(sentRow.slow_count || 0),
+      detail: `${sentRow.slow_count} resposta(s) passaram de ${Math.round(WATCHDOG_SLOW_TOTAL_MS / 1000)}s ate enviar`,
+    });
+  }
+
+  const conversationStuck = await pgPool.query<{ sender_phone_mask: string; count: string; last_at: string }>(
+    `SELECT e.sender_phone_mask,
+            COUNT(*)::text AS count,
+            MAX(e.created_at)::text AS last_at
+       FROM miauw_whatsapp_events e
+      WHERE e.direction = 'inbound'
+        AND e.ignore_reason = ''
+        AND e.created_at >= NOW() - ($1::text || ' minutes')::interval
+        AND e.created_at < NOW() - ($2::text || ' minutes')::interval
+        AND EXISTS (
+          SELECT 1
+            FROM miauw_whatsapp_outbox previous_outbox
+            JOIN miauw_whatsapp_events previous_event ON previous_event.id = previous_outbox.event_id
+           WHERE previous_event.sender_phone_hash = e.sender_phone_hash
+             AND previous_outbox.status = 'sent'
+             AND previous_outbox.sent_at < e.created_at
+             AND previous_outbox.sent_at >= e.created_at - INTERVAL '10 minutes'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+            FROM miauw_whatsapp_outbox next_outbox
+            JOIN miauw_whatsapp_events next_event ON next_event.id = next_outbox.event_id
+           WHERE next_event.sender_phone_hash = e.sender_phone_hash
+             AND next_event.created_at >= e.created_at
+             AND next_outbox.status = 'sent'
+             AND next_outbox.sent_at > e.created_at
+        )
+      GROUP BY e.sender_phone_mask
+      ORDER BY MAX(e.created_at) DESC
+      LIMIT 5`,
+    [String(WATCHDOG_LOOKBACK_MINUTES), String(WATCHDOG_STUCK_MINUTES)],
+  );
+  for (const row of conversationStuck.rows) {
+    issues.push({
+      type: 'conversation_followup_unanswered',
+      severity: 'warn',
+      count: Number(row.count || 0),
+      detail: `${row.sender_phone_mask || 'contato'} mandou ${row.count} msg apos resposta sent e ainda nao houve novo sent`,
+    });
+  }
+
+  const hasProblems = issues.length > 0;
+  const notification = await sendAutomationNotification(
+    'automation_whatsapp_watchdog',
+    automationSeverity(issues, hasProblems),
+    watchdogMessage(issues),
+    mode,
+    hasProblems,
+  );
+
+  return {
+    ok: !hasProblems,
+    notify: mode,
+    lookback_minutes: WATCHDOG_LOOKBACK_MINUTES,
+    stuck_minutes: WATCHDOG_STUCK_MINUTES,
+    sent_count: Number(sentRow.sent_count || 0),
+    issues,
+    notification,
+  };
 }
 
 async function dashboardSummary(): Promise<DashboardSummary> {
@@ -6018,6 +6505,18 @@ app.post(`${BASE_PATH}/worker/run`, requireInternalToken, async (req, res) => {
   const limit = Math.max(1, Math.min(20, Number(req.body?.limit || WORKER_BATCH_SIZE)));
   const result = await processQueue(limit);
   res.json({ ok: true, ...result });
+});
+
+app.post(`${BASE_PATH}/internal/smoke-check`, requireInternalToken, async (req, res) => {
+  const mode = automationNotifyMode(req.body?.notify || req.query.notify);
+  const result = await runSmokeCheck(mode);
+  res.status(result.ok === false ? 503 : 200).json(result);
+});
+
+app.post(`${BASE_PATH}/internal/watchdog`, requireInternalToken, async (req, res) => {
+  const mode = automationNotifyMode(req.body?.notify || req.query.notify);
+  const result = await runWhatsappWatchdog(mode);
+  res.status(result.ok === false ? 503 : 200).json(result);
 });
 
 app.use((_req, res) => {

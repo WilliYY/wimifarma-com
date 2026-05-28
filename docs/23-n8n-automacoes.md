@@ -36,6 +36,46 @@ O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados 
 
 ## Rotinas iniciais
 
+### Smoke check pos-deploy
+
+Agenda: manual apos deploy ou chamado pelo proprio deploy.
+
+Destino: numeros autorizados com card `Miauby`.
+
+Endpoint interno:
+
+```text
+POST /miauw/whatsapp/internal/smoke-check
+```
+
+Payload sugerido:
+
+```json
+{ "notify": "problems" }
+```
+
+Use `notify=always` quando quiser uma mensagem de sucesso tambem, por exemplo em deploy importante. O backend roda health do bridge, proxy Apache, core Miauby, Gestao, Pedidos, Cotacao, widget e conexao Evolution. O n8n nao escolhe telefone: o bridge envia apenas para contatos reais com card `Miauby` e ignora LIDs protegidos por alias.
+
+### Watchdog do WhatsApp
+
+Agenda: a cada poucos minutos, com janela curta.
+
+Destino: numeros autorizados com card `Miauby`, somente quando houver problema por padrao.
+
+Endpoint interno:
+
+```text
+POST /miauw/whatsapp/internal/watchdog
+```
+
+Payload sugerido:
+
+```json
+{ "notify": "problems" }
+```
+
+O watchdog verifica fila travada, outbox `pending/sending`, falhas recentes, provider pausado, respostas lentas, `sent` sem id do provedor e o caso em que o WhatsApp marcou resposta como enviada mas o mesmo contato mandou nova mensagem e a conversa ficou sem novo `sent`. Alertas usam cooldown por `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES` para nao floodar.
+
 ### Pedidos e boletos
 
 Agenda: todo dia cedo.
