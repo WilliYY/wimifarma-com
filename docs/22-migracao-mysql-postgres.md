@@ -63,6 +63,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 - Modelar `core_users`, `core_audit_logs` e `core_login_rate_limits`.
 - Migrar `wf_users`, preservando hash de senha, role, status e ids antigos em coluna `legacy_mysql_id`.
 - Estado atual: `apps/core-auth` cria o schema em `wimifarma_core`, sincroniza usuarios de forma idempotente e possui validacao de contagem/campos. Esta etapa ainda e modo sombra.
+- Estado atual da Cotacao: `COTACAO_CORE_AUTH_SHADOW_ENABLED=true` permite comparar logins bem-sucedidos contra `core_users` em paralelo, mas `auth.provider` permanece `mysql`; divergencias devem ser resolvidas antes de qualquer corte real.
 - Atualizar Cotacao, Gestao e Pedidos para autenticar no core Postgres e parar de depender de `wf_users`/`wf_logs`.
 - So depois remover `mysql2` desses apps Node.
 

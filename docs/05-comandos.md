@@ -144,9 +144,12 @@ docker compose up -d wimifarma-core-db
 docker compose run --rm wimifarma-core-migrator npm run migrate:users
 docker compose run --rm wimifarma-core-migrator npm run validate:users
 docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
+curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
 Esta etapa apenas cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Enquanto o corte nao for feito, Cotacao, Gestao, Pedidos e modulos PHP continuam autenticando pelo caminho antigo.
+
+Para validar a Cotacao sem corte de login, ligar `COTACAO_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-cotacao-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
 ## VPS - Evolution API para Miauby WhatsApp
 

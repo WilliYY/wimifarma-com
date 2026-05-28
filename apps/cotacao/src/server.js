@@ -30,6 +30,11 @@ const GOOGLE_SHEETS_SPREADSHEET_ID = env.GOOGLE_SHEETS_SPREADSHEET_ID || '';
 const GOOGLE_SHEETS_RANGE = env.GOOGLE_SHEETS_RANGE || 'Cotacao!A1:Z500';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || '';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE || '';
+const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.COTACAO_CORE_AUTH_SHADOW_ENABLED);
+const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
+  500,
+  Math.min(10000, Number.parseInt(env.COTACAO_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500)
+);
 const PAINT_SWATCHES = [
   ['Vermelho escuro', '#7f1d1d'], ['Vermelho forte', '#b91c1c'], ['Vermelho', '#ef4444'], ['Vermelho medio', '#f87171'], ['Vermelho claro', '#fca5a5'], ['Vermelho pastel', '#fecaca'], ['Vermelho suave', '#fee2e2'],
   ['Marrom escuro', '#451a03'], ['Marrom forte', '#78350f'], ['Marrom', '#92400e'], ['Marrom medio', '#b45309'], ['Marrom claro', '#fdba74'], ['Marrom pastel', '#fed7aa'], ['Marrom suave', '#ffedd5'],
@@ -116,6 +121,29 @@ const mysqlPool = mysql.createPool({
   connectionLimit: 8,
   charset: 'utf8mb4'
 });
+const corePgPool = CORE_AUTH_SHADOW_ENABLED
+  ? new Pool({
+      host: env.CORE_POSTGRES_HOST || '127.0.0.1',
+      port: Number(env.CORE_POSTGRES_PORT || 5432),
+      database: env.CORE_POSTGRES_DB || 'wimifarma_core',
+      user: env.CORE_POSTGRES_USER || 'wimifarma_core',
+      password: env.CORE_POSTGRES_PASSWORD || '',
+      max: 4,
+      connectionTimeoutMillis: CORE_AUTH_SHADOW_TIMEOUT_MS,
+      statement_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS,
+      query_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS
+    })
+  : null;
+const coreAuthShadow = {
+  enabled: CORE_AUTH_SHADOW_ENABLED,
+  attempts: 0,
+  ok: 0,
+  mismatches: 0,
+  errors: 0,
+  lastStatus: 'idle',
+  lastLatencyMs: null,
+  lastCheckedAt: null
+};
 
 redis.on('error', (error) => {
   console.error('[cotacao] redis error', error);
@@ -337,6 +365,17 @@ function normalizeHash(hash) {
   return String(hash || '').replace(/^\$2y\$/, '$2a$');
 }
 
+function normalizeUsername(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function maskUsername(value) {
+  const username = normalizeUsername(value);
+  if (!username) return '';
+  if (username.length <= 2) return `${username[0] || '*'}*`;
+  return `${username.slice(0, 2)}***${username.slice(-1)}`;
+}
+
 function e(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -389,6 +428,98 @@ async function authenticate(username, password) {
   }
   const ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
   return ok ? userPublic(user) : null;
+}
+
+async function authenticateCore(username, password) {
+  if (!corePgPool) return null;
+  const result = await corePgPool.query(
+    `SELECT id::text, username, password_hash, role, active
+       FROM core_users
+      WHERE username_normalized = $1 AND active = true
+      LIMIT 1`,
+    [normalizeUsername(username)]
+  );
+  const user = result.rows[0];
+  if (!user || !user.password_hash) {
+    return null;
+  }
+  const ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
+  return ok ? userPublic({ ...user, id: Number(user.id) }) : null;
+}
+
+async function shadowCoreAuth(username, password, mysqlUser) {
+  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) return;
+  const startedAt = Date.now();
+  coreAuthShadow.attempts += 1;
+  try {
+    const coreUser = await authenticateCore(username, password);
+    const latencyMs = Date.now() - startedAt;
+    const sameUser = Boolean(
+      coreUser &&
+      Number(coreUser.id) === Number(mysqlUser.id) &&
+      normalizeUsername(coreUser.username) === normalizeUsername(mysqlUser.username) &&
+      String(coreUser.role || 'user') === String(mysqlUser.role || 'user')
+    );
+    coreAuthShadow.lastLatencyMs = latencyMs;
+    coreAuthShadow.lastCheckedAt = new Date().toISOString();
+    if (sameUser) {
+      coreAuthShadow.ok += 1;
+      coreAuthShadow.lastStatus = 'ok';
+      console.info('[cotacao] core auth shadow ok', {
+        username: maskUsername(username),
+        userId: mysqlUser.id,
+        latencyMs
+      });
+      return;
+    }
+    coreAuthShadow.mismatches += 1;
+    coreAuthShadow.lastStatus = 'mismatch';
+    console.warn('[cotacao] core auth shadow mismatch', {
+      username: maskUsername(username),
+      mysqlUserId: mysqlUser.id,
+      coreFound: Boolean(coreUser),
+      coreUserId: coreUser?.id || null,
+      latencyMs
+    });
+  } catch (error) {
+    coreAuthShadow.errors += 1;
+    coreAuthShadow.lastLatencyMs = Date.now() - startedAt;
+    coreAuthShadow.lastCheckedAt = new Date().toISOString();
+    coreAuthShadow.lastStatus = 'error';
+    console.warn('[cotacao] core auth shadow failed', {
+      username: maskUsername(username),
+      error: error.message,
+      latencyMs: coreAuthShadow.lastLatencyMs
+    });
+  }
+}
+
+async function coreAuthHealth() {
+  const state = {
+    provider: 'mysql',
+    shadowEnabled: CORE_AUTH_SHADOW_ENABLED,
+    shadow: { ...coreAuthShadow }
+  };
+  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) {
+    return state;
+  }
+  const startedAt = Date.now();
+  try {
+    const result = await corePgPool.query('SELECT EXISTS (SELECT 1 FROM core_users LIMIT 1) AS has_users');
+    return {
+      ...state,
+      coreReachable: true,
+      usersSynced: Boolean(result.rows[0]?.has_users),
+      coreLatencyMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      ...state,
+      coreReachable: false,
+      coreStatus: 'unreachable',
+      coreLatencyMs: Date.now() - startedAt
+    };
+  }
 }
 
 async function ensureSchema() {
@@ -1873,7 +2004,8 @@ function renderApp(req) {
 
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   const quote = await getOrCreateDefaultQuote();
-  res.json({ ok: true, service: 'cotacao-v2', quote_id: quote.id });
+  const auth = await coreAuthHealth();
+  res.json({ ok: true, service: 'cotacao-v2', quote_id: quote.id, auth });
 }));
 
 app.get(BASE_PATH, (req, res, next) => {
@@ -1900,6 +2032,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     registerLoginFailure(req, username);
     return res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha invalidos.'));
   }
+  void shadowCoreAuth(username, password, user);
   clearLoginRateLimit(req, username);
   await new Promise((resolve, reject) => {
     req.session.regenerate((error) => {
@@ -2853,7 +2986,7 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
     styles: sheet.styles,
     lastEventId: sheet.lastEventId
   });
-  const [eventCount, lastEvents, auditCount, redisPing, performanceIndexes] = await Promise.all([
+  const [eventCount, lastEvents, auditCount, redisPing, performanceIndexes, auth] = await Promise.all([
     pgPool.query('SELECT COUNT(*)::int AS total FROM cotacao_v2_events WHERE quote_id = $1', [sheet.quote.id]),
     pgPool.query(
       `SELECT id, type, row_id AS "rowId", column_key AS "columnKey", username, client_id AS "clientId", created_at AS "createdAt"
@@ -2865,7 +2998,8 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
     ),
     pgPool.query('SELECT COUNT(*)::int AS total FROM cotacao_v2_column_audit WHERE quote_id = $1', [sheet.quote.id]),
     redis.ping(),
-    listExpectedPerformanceIndexes()
+    listExpectedPerformanceIndexes(),
+    coreAuthHealth()
   ]);
   const presence = await activePresence(sheet.quote.id);
   res.json({
@@ -2884,6 +3018,7 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
     googleSheetsConfigured: Boolean(GOOGLE_SHEETS_SPREADSHEET_ID && (GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE)),
     backupDir: BACKUP_DIR,
     redis: redisPing,
+    auth,
     safety: {
       stage: 'etapa-5',
       bootstrapFallback: true,
