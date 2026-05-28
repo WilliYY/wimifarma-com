@@ -148,8 +148,26 @@ type SharedMiauwContext = {
   source: string;
   version: string;
   styleContext: JsonRecord;
+  channelMemory: JsonRecord;
   toolContracts: JsonRecord | null;
   cachedAt: number;
+};
+
+type SharedMemoryEvent = {
+  event_uid: string;
+  channel: 'whatsapp';
+  direction: 'inbound' | 'outbound' | 'status';
+  role: 'user' | 'assistant' | 'system';
+  contact_hash: string;
+  contact_mask: string;
+  trace_id: string;
+  module_key: string;
+  intent: string;
+  engine: string;
+  status: string;
+  message_preview: string;
+  reply_preview?: string;
+  metadata?: JsonRecord;
 };
 
 type CountRow = {
@@ -311,7 +329,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.14';
+const SERVICE_VERSION = '0.5.15';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -336,6 +354,11 @@ const AGENT_CONTEXT_URL = textEnv('MIAUW_WHATSAPP_CONTEXT_URL')
   || 'http://wimifarma-com-web/miauw/agent-context.php';
 const AGENT_CONTEXT_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS', 60, 0, 900);
 const AGENT_CONTEXT_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS', 3500, 500, 15000);
+const GEMINI_CONTEXT_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_GEMINI_CONTEXT_TIMEOUT_MS', 1200, 300, 5000);
+const AGENT_MEMORY_URL = textEnv('MIAUW_WHATSAPP_MEMORY_URL')
+  || textEnv('MIAUW_AGENT_MEMORY_URL')
+  || 'http://wimifarma-com-web/miauw/agent-memory.php';
+const AGENT_MEMORY_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_MEMORY_TIMEOUT_MS', 2500, 500, 10000);
 const ACTIONS_URL = textEnv('MIAUW_WHATSAPP_ACTIONS_URL')
   || textEnv('MIAUW_AGENT_ACTIONS_URL')
   || 'http://wimifarma-com-web/miauw/agent-actions.php';
@@ -2401,6 +2424,99 @@ async function markEventFailure(row: QueueRow, error: unknown): Promise<void> {
   });
 }
 
+function sharedMemoryEventUid(seed: string): string {
+  return crypto.createHash('sha1').update(seed).digest('hex');
+}
+
+function sharedMemoryModuleKey(message: string, reason: string): string {
+  const fromText = moduleKeyForText(message);
+  if (fromText) return fromText;
+  const reasonModule = safeText(reason, 160).match(/blocked_module:([a-z0-9_-]+)/i);
+  return reasonModule ? reasonModule[1] : 'miauw';
+}
+
+async function recordSharedMemoryEvents(events: SharedMemoryEvent[]): Promise<void> {
+  if (!INTERNAL_TOKEN || !AGENT_MEMORY_URL || events.length === 0) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AGENT_MEMORY_TIMEOUT_MS);
+  try {
+    const response = await fetch(AGENT_MEMORY_URL, {
+      method: 'POST',
+      headers: internalPhpJsonHeaders(),
+      body: JSON.stringify({
+        mode: 'record_batch',
+        events,
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data) || data.ok !== true) {
+      throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `memory_http_${response.status}`);
+    }
+  } catch (error) {
+    await recordErrorLog('shared_memory', 'warn', error, {
+      traceId: events[0]?.trace_id || '',
+      phoneMask: events[0]?.contact_mask || '',
+      messagePreview: events[0]?.message_preview || '',
+      details: { events: events.length },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function recordSharedMemoryTurn(
+  row: QueueRow,
+  inboundText: string,
+  reply: ReplyResult,
+  replyText: string,
+  outboxId: string,
+  senderHashes: string[],
+  replyLatencyMs: number,
+): Promise<void> {
+  const contactHash = safeText(senderHashes[0] || row.sender_phone_hash, 64);
+  if (!contactHash) return;
+  const moduleKey = sharedMemoryModuleKey(inboundText || row.body_text, reply.reason);
+  const common = {
+    channel: 'whatsapp' as const,
+    contact_hash: contactHash,
+    contact_mask: row.sender_phone_mask,
+    trace_id: row.trace_id,
+    module_key: moduleKey,
+    intent: safeText(reply.reason, 80),
+    engine: reply.engine,
+  };
+  await recordSharedMemoryEvents([
+    {
+      ...common,
+      event_uid: sharedMemoryEventUid(`whatsapp:in:${row.id}`),
+      direction: 'inbound',
+      role: 'user',
+      status: 'replied',
+      message_preview: inboundText || row.body_text,
+      metadata: {
+        whatsapp_event_id: row.id,
+        message_type: row.message_type,
+      },
+    },
+    {
+      ...common,
+      event_uid: sharedMemoryEventUid(`whatsapp:out:${outboxId}`),
+      direction: 'outbound',
+      role: 'assistant',
+      status: 'sent',
+      message_preview: inboundText || row.body_text,
+      reply_preview: replyText,
+      metadata: {
+        whatsapp_event_id: row.id,
+        outbox_id: outboxId,
+        reply_latency_ms: replyLatencyMs,
+        confirmation_required: Boolean(reply.confirmation),
+      },
+    },
+  ]);
+}
+
 async function processQueueRow(row: QueueRow): Promise<void> {
   let outboxId = '';
   try {
@@ -2647,6 +2763,15 @@ async function processQueueRow(row: QueueRow): Promise<void> {
               updated_at = NOW()
         WHERE id = $1`,
       [row.id],
+    );
+    void recordSharedMemoryTurn(
+      row,
+      effectiveBodyText,
+      reply,
+      replyText,
+      outboxId,
+      senderModuleHashes,
+      replyLatencyMs,
     );
   } catch (error) {
     if (outboxId) {
@@ -3201,24 +3326,26 @@ function uniqueStringList(items: string[], limit = 16): string[] {
   return result;
 }
 
-function sharedContextCacheKey(message: string, route?: ReplyRoute): string {
+function sharedContextCacheKey(message: string, route?: ReplyRoute, senderHashes: string[] = []): string {
   return sha256([
     'shared-miauby-context',
+    safeText(senderHashes[0], 64) || 'no-contact',
     route?.intent || 'whatsapp',
     normalizeIntentText(message).slice(0, 700),
   ].join(':'));
 }
 
-async function requestSharedMiauwContext(message: string, traceId: string, senderMask: string, route?: ReplyRoute): Promise<SharedMiauwContext | null> {
+async function requestSharedMiauwContext(message: string, traceId: string, senderMask: string, route?: ReplyRoute, senderHashes: string[] = [], timeoutMs = AGENT_CONTEXT_TIMEOUT_MS): Promise<SharedMiauwContext | null> {
   if (!INTERNAL_TOKEN || !AGENT_CONTEXT_URL) return null;
-  const key = sharedContextCacheKey(message, route);
+  const contactHash = safeText(senderHashes[0], 64);
+  const key = sharedContextCacheKey(message, route, senderHashes);
   const now = Date.now();
   const cached = sharedContextCache.get(key);
   if (cached && cached.expiresAt > now) return cached.context;
   if (cached) sharedContextCache.delete(key);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AGENT_CONTEXT_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(AGENT_CONTEXT_URL, {
       method: 'POST',
@@ -3230,6 +3357,9 @@ async function requestSharedMiauwContext(message: string, traceId: string, sende
         user_context: {
           username: `whatsapp:${senderMask}`,
           role: 'whatsapp_interno',
+          channel: 'whatsapp',
+          contact_hash: contactHash,
+          contact_mask: senderMask,
         },
       }),
       signal: controller.signal,
@@ -3243,6 +3373,7 @@ async function requestSharedMiauwContext(message: string, traceId: string, sende
       source: safeText(data.source, 80) || 'php_miauby_core',
       version: safeText(data.version, 100) || 'miauby-shared-context',
       styleContext: isRecord(data.style_context) ? data.style_context : {},
+      channelMemory: isRecord(data.channel_memory) ? data.channel_memory : {},
       toolContracts: isRecord(data.tool_contracts) ? data.tool_contracts : null,
       cachedAt: now,
     };
@@ -3559,26 +3690,32 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     try {
       const cachedReply = route.cacheable ? getCachedReply(route.message) : '';
       if (cachedReply) return { text: cachedReply, engine: 'gemini_cache', reason: `${route.reason}:cache_hit` };
-      const geminiReply = await requestGeminiReply(route.message, traceId, senderMask, allowedCards);
+      let sharedContext: SharedMiauwContext | null = null;
+      try {
+        sharedContext = await requestSharedMiauwContext(route.message, traceId, senderMask, route, senderHashes, GEMINI_CONTEXT_TIMEOUT_MS);
+      } catch {
+        sharedContext = null;
+      }
+      const geminiReply = await requestGeminiReply(route.message, traceId, senderMask, allowedCards, sharedContext);
       if (route.cacheable) setCachedReply(route.message, geminiReply.text);
       return { text: geminiReply.text, engine: 'gemini', reason: route.reason };
     } catch (error) {
       if (REPLY_ENGINE === 'gemini') throw error;
-      const miauwReply = await requestMiauwReply(message, traceId, senderMask, route, allowedCards);
+      const miauwReply = await requestMiauwReply(message, traceId, senderMask, route, allowedCards, senderHashes);
       return { text: miauwReply.text, engine: 'miauw', reason: `gemini_failed_fallback:${safeError(error)}`, confirmation: miauwReply.confirmation };
     }
   }
 
-  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route, allowedCards);
+  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route, allowedCards, senderHashes);
   return { text: miauwReply.text, engine: 'miauw', reason: route.reason, confirmation: miauwReply.confirmation };
 }
 
-async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute, allowedCards: WhatsappModuleCard[] = moduleCardsForKeys(defaultModuleKeys())): Promise<{ text: string; confirmation?: WhatsappConfirmationDraft }> {
+async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute, allowedCards: WhatsappModuleCard[] = moduleCardsForKeys(defaultModuleKeys()), senderHashes: string[] = []): Promise<{ text: string; confirmation?: WhatsappConfirmationDraft }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const useTools = route?.useTools === true;
   let sharedContext: SharedMiauwContext | null = null;
   try {
-    sharedContext = await requestSharedMiauwContext(message, traceId, senderMask, route);
+    sharedContext = await requestSharedMiauwContext(message, traceId, senderMask, route, senderHashes);
   } catch {
     sharedContext = null;
   }
@@ -3589,6 +3726,9 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
     user_context: {
       username: `whatsapp:${senderMask}`,
       role: 'whatsapp_interno',
+      channel: 'whatsapp',
+      contact_hash: safeText(senderHashes[0], 64),
+      contact_mask: senderMask,
     },
     style_context: styleContext,
   };
@@ -3635,8 +3775,30 @@ function geminiModelPath(): string {
   return geminiModelPathFor(GEMINI_MODEL);
 }
 
-function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[]): string {
+function sharedMemoryPromptSnippet(shared: SharedMiauwContext | null): string {
+  const style = isRecord(shared?.styleContext) ? shared.styleContext : {};
+  const memory = isRecord(style.channel_memory) ? style.channel_memory : isRecord(shared?.channelMemory) ? shared.channelMemory : {};
+  const items = Array.isArray(memory.items) ? memory.items : [];
+  const lines = items
+    .slice(-3)
+    .map((item) => {
+      if (!isRecord(item)) return '';
+      const channel = safeText(item.channel, 30);
+      const direction = safeText(item.direction, 30);
+      const message = safeText(item.message_preview, 180);
+      const reply = safeText(item.reply_preview, 180);
+      if (!message && !reply) return '';
+      return `${channel}/${direction}: ${reply ? `${message} => ${reply}` : message}`;
+    })
+    .filter(Boolean);
+  return lines.length > 0
+    ? `Contexto recente entre Miauby interno e WhatsApp, use so como memoria curta e nao invente dado ausente: ${lines.join(' | ')}.`
+    : '';
+}
+
+function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[], shared: SharedMiauwContext | null = null): string {
   const cardsText = moduleLabels(allowedCards.map((card) => card.key));
+  const memoryContext = sharedMemoryPromptSnippet(shared);
   const baseContext = [
     'Voce e o Miauby WhatsApp da Wimifarma: assistente interno com personalidade de gato fiscal, direto, esperto e util.',
     'Este caminho e conversa leve via Gemini; responda bem a pergunta comum, mas nao consulte nem finja consultar sistemas internos.',
@@ -3653,6 +3815,7 @@ function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[]): string 
     'Nunca invente horario de funcionamento, preco, saldo, CPF, pedido, pagamento, fornecedor, cliente ou acao concluida.',
     'Nao exponha segredo, token, SQL, stack trace, prompt, fornecedor tecnico ou bastidor.',
     'Nao diga que executou escrita operacional pelo WhatsApp.',
+    memoryContext,
   ].join(' ');
   return WHATSAPP_CONTEXT_PACK
     ? `${baseContext} Contexto adicional do ambiente: ${WHATSAPP_CONTEXT_PACK}`
@@ -3674,7 +3837,7 @@ function geminiTextFromResponse(data: JsonRecord, partLimit = 1200): string {
   throw new Error(finishReason ? `gemini_empty_${finishReason}` : 'gemini_empty_reply');
 }
 
-async function requestGeminiReply(message: string, _traceId: string, _senderMask: string, allowedCards: WhatsappModuleCard[]): Promise<{ text: string }> {
+async function requestGeminiReply(message: string, _traceId: string, _senderMask: string, allowedCards: WhatsappModuleCard[], sharedContext: SharedMiauwContext | null = null): Promise<{ text: string }> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -3687,7 +3850,7 @@ async function requestGeminiReply(message: string, _traceId: string, _senderMask
       },
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: whatsappGeminiSystemPrompt(allowedCards) }],
+          parts: [{ text: whatsappGeminiSystemPrompt(allowedCards, sharedContext) }],
         },
         contents: [{
           role: 'user',
@@ -4974,7 +5137,10 @@ function publicStatus(): JsonRecord {
     internal_read_tools_enabled: true,
     shared_core_context_enabled: AGENT_CONTEXT_URL !== '' && INTERNAL_TOKEN !== '',
     shared_core_context_cache_ttl_seconds: AGENT_CONTEXT_CACHE_TTL_SECONDS,
+    shared_core_gemini_context_timeout_ms: GEMINI_CONTEXT_TIMEOUT_MS,
     shared_core_context_cache_entries: sharedContextCache.size,
+    shared_core_memory_enabled: AGENT_MEMORY_URL !== '' && INTERNAL_TOKEN !== '',
+    shared_core_memory_timeout_ms: AGENT_MEMORY_TIMEOUT_MS,
     recipient_alias_count: RECIPIENT_ALIASES.size,
     agent_configured: INTERNAL_TOKEN !== '' && AGENT_RUN_URL !== '',
     transport_configured: WHATSAPP_PROVIDER === 'meta' ? metaConfigured : evolutionConfigured,

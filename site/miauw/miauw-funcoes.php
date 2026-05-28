@@ -328,6 +328,32 @@ function miauw_schema_statements(): array
             updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (chave)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS miauw_channel_events (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            event_uid CHAR(40) NOT NULL,
+            channel ENUM('internal', 'whatsapp', 'system') NOT NULL DEFAULT 'internal',
+            direction ENUM('inbound', 'outbound', 'tool', 'status') NOT NULL DEFAULT 'inbound',
+            role ENUM('user', 'assistant', 'system') NOT NULL DEFAULT 'user',
+            usuario_id INT UNSIGNED NULL,
+            conversation_id BIGINT UNSIGNED NULL,
+            contact_hash CHAR(64) NOT NULL DEFAULT '',
+            contact_mask VARCHAR(40) NOT NULL DEFAULT '',
+            trace_id CHAR(32) NOT NULL DEFAULT '',
+            module_key VARCHAR(40) NOT NULL DEFAULT 'miauw',
+            intent VARCHAR(80) NOT NULL DEFAULT '',
+            engine VARCHAR(40) NOT NULL DEFAULT '',
+            status VARCHAR(40) NOT NULL DEFAULT 'ok',
+            message_preview TEXT NOT NULL,
+            reply_preview TEXT NOT NULL,
+            metadata_json MEDIUMTEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_miauw_channel_event_uid (event_uid),
+            KEY idx_miauw_channel_channel (channel, created_at),
+            KEY idx_miauw_channel_contact (contact_hash, created_at),
+            KEY idx_miauw_channel_usuario (usuario_id, created_at),
+            KEY idx_miauw_channel_trace (trace_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         "CREATE TABLE IF NOT EXISTS miauw_farmacia_popular_valores (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             uf CHAR(2) NOT NULL DEFAULT 'PR',
@@ -1967,7 +1993,7 @@ function miauw_agent_voice_profile_contract(?string $requested = null): array
     );
 }
 
-function miauw_agent_style_context_export(string $message, ?int $userId = null, string $pageContext = ''): array
+function miauw_agent_style_context_export(string $message, ?int $userId = null, string $pageContext = '', array $channelContextOptions = array()): array
 {
     $contract = miauw_agent_style_contract();
     $route = miauw_agent_style_route($message, $pageContext);
@@ -1988,6 +2014,9 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
     }
     $trainingExamples = function_exists('miauw_training_context_examples') ? miauw_training_context_examples($message, 2) : array();
     $trainingProfile = function_exists('miauw_training_context_profile') ? miauw_training_context_profile($message, 2) : array();
+    $channelMemory = function_exists('miauw_channel_context_export')
+        ? miauw_channel_context_export($message, $userId, $pageContext, $channelContextOptions)
+        : array('items' => array());
     $voiceProfile = miauw_agent_voice_profile_contract();
     foreach ($trainingExamples as $example) {
         $question = (string) ($example['pergunta'] ?? '');
@@ -2014,15 +2043,16 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
         'approved_patterns' => miauw_agent_approved_style_patterns($message, $userId),
         'training_examples' => $trainingExamples,
         'training_profile' => $trainingProfile,
+        'channel_memory' => $channelMemory,
         'voice_profile' => $voiceProfile,
         'audio_contract' => $voiceProfile['audio'],
         'examples' => array_slice($exampleList, 0, 4),
     );
 }
 
-function miauw_agent_style_context_text(string $message, ?int $userId = null, string $pageContext = ''): string
+function miauw_agent_style_context_text(string $message, ?int $userId = null, string $pageContext = '', array $channelContextOptions = array()): string
 {
-    $context = miauw_agent_style_context_export($message, $userId, $pageContext);
+    $context = miauw_agent_style_context_export($message, $userId, $pageContext, $channelContextOptions);
     $route = is_array($context['route'] ?? null) ? $context['route'] : array();
     $lines = array(
         'CONTRATO DE ESTILO DO MIAUBY',
@@ -2059,6 +2089,20 @@ function miauw_agent_style_context_text(string $message, ?int $userId = null, st
 
     foreach (array_slice((array) ($context['examples'] ?? array()), 0, 2) as $example) {
         $lines[] = '- exemplo: ' . miauw_substr((string) $example, 0, 260);
+    }
+
+    $channelMemory = is_array($context['channel_memory'] ?? null) ? $context['channel_memory'] : array();
+    foreach (array_slice((array) ($channelMemory['items'] ?? array()), -3) as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $source = trim((string) ($item['channel'] ?? '') . '/' . (string) ($item['direction'] ?? ''));
+        $preview = (string) ($item['message_preview'] ?? '');
+        $replyPreview = (string) ($item['reply_preview'] ?? '');
+        $summary = $replyPreview !== '' ? $preview . ' => ' . $replyPreview : $preview;
+        if ($summary !== '') {
+            $lines[] = '- contexto multicanal ' . $source . ': ' . miauw_substr($summary, 0, 220);
+        }
     }
 
     return implode("\n", $lines);
@@ -3372,6 +3416,194 @@ function miauw_add_message(int $conversationId, ?int $userId, string $role, stri
     $stmt->execute(array($conversationId, $userId, $role, $content, $model, $fallback ? 1 : 0));
 
     return (int) db()->lastInsertId();
+}
+
+function miauw_channel_event_clean_text(string $text, int $limit = 500): string
+{
+    $clean = trim(strip_tags($text));
+    $clean = preg_replace('/\s+/u', ' ', $clean) ?? $clean;
+    if (function_exists('miauw_diagnostic_redact_string')) {
+        $clean = miauw_diagnostic_redact_string($clean);
+    } elseif (function_exists('miauw_redact_secret_fragments')) {
+        $clean = miauw_redact_secret_fragments($clean);
+    }
+
+    return miauw_substr(trim($clean), 0, max(1, $limit));
+}
+
+function miauw_channel_event_allowed(string $value, array $allowed, string $fallback): string
+{
+    $value = strtolower(trim($value));
+
+    return in_array($value, $allowed, true) ? $value : $fallback;
+}
+
+function miauw_channel_event_record(array $event): bool
+{
+    try {
+        if (function_exists('miauw_ensure_schema')) {
+            miauw_ensure_schema();
+        }
+
+        $channel = miauw_channel_event_allowed((string) ($event['channel'] ?? ''), array('internal', 'whatsapp', 'system'), 'internal');
+        $direction = miauw_channel_event_allowed((string) ($event['direction'] ?? ''), array('inbound', 'outbound', 'tool', 'status'), 'inbound');
+        $role = miauw_channel_event_allowed((string) ($event['role'] ?? ''), array('user', 'assistant', 'system'), 'user');
+        $eventUid = miauw_substr(trim((string) ($event['event_uid'] ?? '')), 0, 40);
+        if ($eventUid === '') {
+            $eventUid = sha1(implode('|', array(
+                $channel,
+                $direction,
+                $role,
+                (string) ($event['trace_id'] ?? ''),
+                (string) ($event['message_preview'] ?? ''),
+                (string) ($event['reply_preview'] ?? ''),
+                microtime(true),
+            )));
+        }
+
+        $metadata = $event['metadata'] ?? ($event['metadata_json'] ?? array());
+        if (!is_array($metadata)) {
+            $metadata = array('value' => miauw_channel_event_clean_text((string) $metadata, 300));
+        }
+
+        $stmt = db()->prepare(
+            "INSERT INTO miauw_channel_events (
+                event_uid, channel, direction, role, usuario_id, conversation_id,
+                contact_hash, contact_mask, trace_id, module_key, intent, engine,
+                status, message_preview, reply_preview, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                status = VALUES(status),
+                reply_preview = CASE WHEN VALUES(reply_preview) <> '' THEN VALUES(reply_preview) ELSE reply_preview END,
+                engine = CASE WHEN VALUES(engine) <> '' THEN VALUES(engine) ELSE engine END,
+                metadata_json = VALUES(metadata_json)"
+        );
+        $stmt->execute(array(
+            $eventUid,
+            $channel,
+            $direction,
+            $role,
+            isset($event['usuario_id']) ? (int) $event['usuario_id'] : (isset($event['user_id']) ? (int) $event['user_id'] : null),
+            isset($event['conversation_id']) ? (int) $event['conversation_id'] : null,
+            miauw_substr(trim((string) ($event['contact_hash'] ?? '')), 0, 64),
+            miauw_substr(trim((string) ($event['contact_mask'] ?? '')), 0, 40),
+            miauw_substr(trim((string) ($event['trace_id'] ?? '')), 0, 32),
+            miauw_substr(trim((string) ($event['module_key'] ?? 'miauw')), 0, 40) ?: 'miauw',
+            miauw_substr(trim((string) ($event['intent'] ?? '')), 0, 80),
+            miauw_substr(trim((string) ($event['engine'] ?? '')), 0, 40),
+            miauw_substr(trim((string) ($event['status'] ?? 'ok')), 0, 40) ?: 'ok',
+            miauw_channel_event_clean_text((string) ($event['message_preview'] ?? $event['message'] ?? ''), 600),
+            miauw_channel_event_clean_text((string) ($event['reply_preview'] ?? $event['reply'] ?? ''), 600),
+            json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
+        ));
+
+        return true;
+    } catch (Throwable $error) {
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('channel_memory', 'blocked', array(
+                'type' => 'memory',
+                'summary' => 'Memoria multicanal nao foi gravada.',
+                'error' => $error->getMessage(),
+            ));
+        }
+
+        return false;
+    }
+}
+
+function miauw_channel_context_export(string $message, ?int $userId = null, string $pageContext = '', array $options = array()): array
+{
+    try {
+        if (function_exists('miauw_ensure_schema')) {
+            miauw_ensure_schema();
+        }
+
+        $limit = max(1, min(8, (int) ($options['limit'] ?? 6)));
+        $contactHash = miauw_substr(trim((string) ($options['contact_hash'] ?? '')), 0, 64);
+        $rows = array();
+        if ($contactHash !== '') {
+            $stmt = db()->prepare(
+                "SELECT channel, direction, role, contact_mask, module_key, intent, engine, status,
+                        message_preview, reply_preview, created_at
+                 FROM miauw_channel_events
+                 WHERE contact_hash = ?
+                 ORDER BY id DESC
+                 LIMIT " . $limit
+            );
+            $stmt->execute(array($contactHash));
+            $rows = $stmt->fetchAll() ?: array();
+        }
+
+        if (count($rows) < $limit && $userId !== null && $userId > 0) {
+            $stmt = db()->prepare(
+                "SELECT channel, direction, role, contact_mask, module_key, intent, engine, status,
+                        message_preview, reply_preview, created_at
+                 FROM miauw_channel_events
+                 WHERE usuario_id = ?
+                 ORDER BY id DESC
+                 LIMIT " . ($limit - count($rows))
+            );
+            $stmt->execute(array($userId));
+            $rows = array_merge($rows, $stmt->fetchAll() ?: array());
+        }
+
+        if (count($rows) < $limit) {
+            $stmt = db()->query(
+                "SELECT channel, direction, role, contact_mask, module_key, intent, engine, status,
+                        message_preview, reply_preview, created_at
+                 FROM miauw_channel_events
+                 WHERE created_at >= DATE_SUB(NOW(), INTERVAL 2 DAY)
+                 ORDER BY id DESC
+                 LIMIT " . ($limit - count($rows))
+            );
+            $rows = array_merge($rows, $stmt ? ($stmt->fetchAll() ?: array()) : array());
+        }
+
+        $seen = array();
+        $items = array();
+        foreach ($rows as $row) {
+            $key = implode('|', array(
+                (string) ($row['channel'] ?? ''),
+                (string) ($row['direction'] ?? ''),
+                (string) ($row['message_preview'] ?? ''),
+                (string) ($row['reply_preview'] ?? ''),
+            ));
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $items[] = array(
+                'channel' => (string) ($row['channel'] ?? ''),
+                'direction' => (string) ($row['direction'] ?? ''),
+                'role' => (string) ($row['role'] ?? ''),
+                'contact_mask' => (string) ($row['contact_mask'] ?? ''),
+                'module_key' => (string) ($row['module_key'] ?? ''),
+                'intent' => (string) ($row['intent'] ?? ''),
+                'engine' => (string) ($row['engine'] ?? ''),
+                'status' => (string) ($row['status'] ?? ''),
+                'message_preview' => miauw_channel_event_clean_text((string) ($row['message_preview'] ?? ''), 240),
+                'reply_preview' => miauw_channel_event_clean_text((string) ($row['reply_preview'] ?? ''), 240),
+                'created_at' => (string) ($row['created_at'] ?? ''),
+            );
+            if (count($items) >= $limit) {
+                break;
+            }
+        }
+
+        return array(
+            'version' => 'miauw-channel-memory-2026-05-28',
+            'scope' => $contactHash !== '' ? 'contact' : ($userId !== null ? 'user' : 'recent'),
+            'page_context' => miauw_substr($pageContext, 0, 80),
+            'current_message_preview' => miauw_channel_event_clean_text($message, 220),
+            'items' => array_reverse($items),
+        );
+    } catch (Throwable $error) {
+        return array(
+            'version' => 'miauw-channel-memory-2026-05-28',
+            'scope' => 'unavailable',
+            'items' => array(),
+        );
+    }
 }
 
 function miauw_training_sanitize_text(string $text, int $limit = 1200): string

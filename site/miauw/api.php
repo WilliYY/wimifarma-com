@@ -259,6 +259,28 @@ try {
                 ),
             ));
         }
+        if (function_exists('miauw_channel_event_record')) {
+            miauw_channel_event_record(array(
+                'event_uid' => $userMessageId !== null ? 'internal:user:' . $userMessageId : 'internal:user:' . $traceId,
+                'channel' => 'internal',
+                'direction' => 'inbound',
+                'role' => 'user',
+                'usuario_id' => (int) $user['id'],
+                'conversation_id' => $conversationId,
+                'trace_id' => $traceId,
+                'module_key' => 'miauw',
+                'intent' => $widgetMode ? 'widget_chat' : 'internal_chat',
+                'engine' => 'miauw',
+                'status' => $silentConfirmation ? 'silent_confirmation' : 'received',
+                'message_preview' => $message,
+                'metadata' => array(
+                    'widget' => $widgetMode,
+                    'page_context' => $pageContext !== '',
+                    'input_mode' => $inputMode === 'audio' ? 'audio' : 'text',
+                    'voice_reply' => $voiceReplyRequested,
+                ),
+            ));
+        }
 
         $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
         if ($reply === null && $silentConfirmation) {
@@ -341,6 +363,29 @@ try {
                         'similarity' => isset($shadowCompare['similarity']) ? (float) $shadowCompare['similarity'] : null,
                         'duration_ms' => isset($shadowCompare['duration_ms']) ? (int) $shadowCompare['duration_ms'] : null,
                     ) : null,
+                ),
+            ));
+        }
+        if (function_exists('miauw_channel_event_record')) {
+            miauw_channel_event_record(array(
+                'event_uid' => 'internal:assistant:' . $assistantMessageId,
+                'channel' => 'internal',
+                'direction' => 'outbound',
+                'role' => 'assistant',
+                'usuario_id' => (int) $user['id'],
+                'conversation_id' => $conversationId,
+                'trace_id' => $traceId,
+                'module_key' => 'miauw',
+                'intent' => is_array($confirmation) ? 'confirmation_required' : ($widgetMode ? 'widget_chat' : 'internal_chat'),
+                'engine' => (string) ($reply['engine'] ?? $reply['model'] ?? 'miauw'),
+                'status' => (bool) ($reply['fallback'] ?? false) ? 'fallback' : 'ok',
+                'message_preview' => $message,
+                'reply_preview' => (string) ($reply['text'] ?? ''),
+                'metadata' => array(
+                    'model' => (string) ($reply['model'] ?? ''),
+                    'fallback' => (bool) ($reply['fallback'] ?? false),
+                    'requires_confirmation' => is_array($confirmation),
+                    'voice_reply_audio' => is_array($replyAudio),
                 ),
             ));
         }

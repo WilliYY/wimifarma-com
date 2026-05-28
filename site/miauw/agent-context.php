@@ -103,10 +103,18 @@ $message = miauw_substr(trim((string) ($body['message'] ?? '')), 0, 4000);
 $pageContext = miauw_substr(trim((string) ($body['page_context'] ?? $body['pageContext'] ?? 'whatsapp')), 0, 120);
 $userContext = is_array($body['user_context'] ?? null) ? $body['user_context'] : array();
 $userId = isset($userContext['id']) ? (int) $userContext['id'] : null;
+$channelContextOptions = array(
+    'contact_hash' => miauw_substr(trim((string) ($userContext['contact_hash'] ?? '')), 0, 64),
+    'contact_mask' => miauw_substr(trim((string) ($userContext['contact_mask'] ?? '')), 0, 40),
+    'channel' => miauw_substr(trim((string) ($userContext['channel'] ?? $pageContext)), 0, 40),
+);
 
 try {
+    if (function_exists('miauw_ensure_schema')) {
+        miauw_ensure_schema();
+    }
     $styleContext = function_exists('miauw_agent_style_context_export')
-        ? miauw_agent_style_context_export($message, $userId, $pageContext)
+        ? miauw_agent_style_context_export($message, $userId, $pageContext, $channelContextOptions)
         : array();
     $toolContracts = function_exists('miauw_agent_tool_contract_export')
         ? miauw_agent_tool_contract_export()
@@ -120,6 +128,7 @@ try {
         'source' => 'php_miauby_core',
         'version' => 'miauby-shared-context-2026-05-27',
         'style_context' => $styleContext,
+        'channel_memory' => is_array($styleContext['channel_memory'] ?? null) ? $styleContext['channel_memory'] : array('items' => array()),
         'tool_contracts' => $toolContracts,
         'personality' => $personality,
         'writes_enabled_in_node' => false,

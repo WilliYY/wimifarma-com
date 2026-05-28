@@ -139,7 +139,7 @@ Higiene de pastas no VPS:
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
 - A Fase 7/8/9/10/11/12/13/14/15/16/17/18/19 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools, roteador de estilo/memoria aprovada, treinador, perfis de voz e audio por transcricao confirmada. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
 - O bridge WhatsApp do Miauby adiciona `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`. Deploys desse canal devem rebuildar o bridge, garantir o Postgres dedicado e rebuildar `wimifarma-com-web` quando houver mudanca no proxy Apache.
-- Quando o WhatsApp depender de `site/miauw/agent-context.php`, deploy deve rebuildar `wimifarma-com-web` junto do bridge para o contexto compartilhado ficar na mesma versao do codigo TypeScript.
+- Quando o WhatsApp depender de `site/miauw/agent-context.php`, `site/miauw/agent-memory.php` ou `site/miauw/agent-actions.php`, deploy deve rebuildar `wimifarma-com-web` junto do bridge para contexto, memoria e confirmacoes ficarem na mesma versao do codigo TypeScript.
 
 ## Riscos ao alterar
 
