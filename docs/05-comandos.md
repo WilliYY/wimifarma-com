@@ -163,6 +163,13 @@ powershell -ExecutionPolicy Bypass -File scripts\audit-modernization.ps1
 powershell -ExecutionPolicy Bypass -File scripts\audit-modernization.ps1 -Json
 ```
 
+No VPS/Linux:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+bash scripts/audit-modernization.sh
+```
+
 Esse inventario mostra quais modulos ainda usam PHP/MySQL/WordPress, quais ja estao em Node/Postgres e qual e a proxima etapa segura para migrar para TypeScript + PostgreSQL.
 
 ## VPS - Evolution API para Miauby WhatsApp

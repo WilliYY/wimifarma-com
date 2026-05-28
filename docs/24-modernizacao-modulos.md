@@ -19,6 +19,13 @@ Para automacao ou comparacao:
 powershell -ExecutionPolicy Bypass -File scripts\audit-modernization.ps1 -Json
 ```
 
+No VPS/Linux:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+bash scripts/audit-modernization.sh
+```
+
 O script mostra:
 
 - modulo;
