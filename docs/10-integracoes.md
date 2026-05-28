@@ -69,14 +69,14 @@ Status operacional:
 - A Fase 18 adiciona perfis de voz/tom e contrato seguro de audio: o PHP envia `voice_profile` e `audio_contract` ao Node, mas o modo segue `text_only`, com microfone, transcricao, TTS, playback e armazenamento desligados ate uma fase propria com botao e consentimento.
 - A Fase 19 usa audio estilo WhatsApp no chat principal e no widget global: o botao `Falar` captura microfone somente por clique, grava trecho temporario no navegador, envia para `site/miauw/api.php?action=audio_transcribe`, e o PHP chama `/v1/audio/transcriptions` com `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`, sem expor chave no navegador. O texto transcrito fica no campo para revisar, `Enviar` ou `Cancelar`; o audio nao e armazenado e voz nao executa escrita operacional direta. O frontend tenta `getUserMedia()` antes de concluir bloqueio para evitar falso negativo de permissao antiga no Chrome.
 - `site/miauw/agent-context.php` exporta contexto compartilhado do Miauby interno para o bridge WhatsApp, protegido por token interno: `style_context`, treino aprovado, perfil de voz, memoria curta multicanal e contratos de tools. Ele nao executa escrita nem expõe segredo.
-- `site/miauw/agent-memory.php` grava/consulta memoria curta sanitizada entre Miauby interno e WhatsApp. Usa `miauw_channel_events`, hash/mascara do contato e resumos limpos; nao recebe nem persiste payload bruto, telefone cru, audio, midia ou token.
+- `POST /miauw/whatsapp/internal/memory` grava/consulta a memoria curta sanitizada entre Miauby interno e WhatsApp no Postgres do bridge (`miauw_whatsapp_channel_events`). O PHP usa essa ponte por `MIAUW_CHANNEL_MEMORY_BRIDGE_URL`; `site/miauw/agent-memory.php` e `miauw_channel_events` ficam como endpoint/tabela de compatibilidade caso o bridge esteja indisponivel. A memoria usa hash/mascara do contato e resumos limpos; nao recebe nem persiste payload bruto, telefone cru, audio, midia ou token.
 - `site/miauw/agent-actions.php` e a ponte interna tokenizada para o bridge WhatsApp preparar acoes fortes permitidas e executar somente depois de confirmacao pendente `Sim`/`Nao`. O repositorio deixa `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=false`; cada ambiente precisa ligar conscientemente e limitar `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST`.
 
 Tabelas:
 
 - `miauw_conversas`
 - `miauw_mensagens`
-- `miauw_channel_events`
+- `miauw_channel_events` (fallback MySQL da memoria multicanal; fonte principal atual fica no Postgres `miauw_whatsapp_channel_events`)
 - `miauw_memorias`
 - `miauw_conhecimentos`
 - `miauw_alertas`
@@ -153,7 +153,7 @@ Desenho:
 - quando audio estiver habilitado, audio de remetente autorizado e baixado do transporte somente no worker, transcrito por Gemini, descartado em memoria e roteado como texto; resposta em audio usa Gemini TTS, segue o estilo configuravel `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` e cai para texto se o envio falhar;
 - quando leitura de comprovante Pix estiver habilitada, foto, print, imagem encaminhada ou PDF/documento de remetente autorizado e baixado somente no worker, extraido por Gemini, descartado em memoria e convertido em pendencia `Pix CNPJ` para o Financeiro apenas se o destino bater por CNPJ/chave Pix `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ` ou por nome correlato em `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES`;
 - antes de chamar o core, o bridge usa `MIAUW_WHATSAPP_CONTEXT_URL` para buscar no PHP o mesmo treino aprovado, perfil de voz, memoria curta multicanal e contratos de tools do Miauby interno;
-- depois de enviar uma resposta, o worker WhatsApp chama `MIAUW_WHATSAPP_MEMORY_URL` de forma tolerante a falha para gravar entrada/saida em `miauw_channel_events`; falha nessa gravacao nao pode bloquear fila nem reenviar mensagem;
+- depois de enviar uma resposta, o worker WhatsApp grava a entrada/saida direto no Postgres do bridge em `miauw_whatsapp_channel_events`; falha nessa gravacao nao pode bloquear fila nem reenviar mensagem. O endpoint PHP `site/miauw/agent-memory.php` permanece para compatibilidade e consulta externa tokenizada;
 - para acoes fortes permitidas, o bridge usa `MIAUW_WHATSAPP_ACTIONS_URL` para preparar uma pendencia auditada e, apos botao `Sim`, executar pela mesma camada PHP que o Miauby interno usa;
 - com Evolution API, a confirmacao deve ser enviada como texto simples por padrao, sem codigo curto visivel, porque botoes podem ser aceitos pela API e nao renderizar no WhatsApp normal; Meta Cloud API pode usar botoes interativos, e Evolution so deve usar botoes com `MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS=true` apos teste real;
 - o bridge bloqueia dados sensiveis antes da IA e registra motor/rota/latencia na outbox;

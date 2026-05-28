@@ -125,12 +125,13 @@ docker exec wimifarma-com-web php -l /var/www/html/miauw/agent-memory.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/agent-actions.php
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
+curl.exe -i -X POST http://127.0.0.1:3002/miauw/whatsapp/internal/memory -H "Content-Type: application/json" -d "{}"
 curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent-context.php -H "Content-Type: application/json" -d "{}"
 curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent-memory.php -H "Content-Type: application/json" -d "{}"
 ```
 
 O bridge nasce com `MIAUW_WHATSAPP_ENABLED=false`. Antes de aceitar webhook real, configurar no `.env`: `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS` e `MIAUW_WHATSAPP_PROVIDER`. Para Evolution, preencher `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`. Para Meta Cloud API, preencher `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `META_WHATSAPP_APP_SECRET`.
-O `POST /miauw/agent-context.php` e `POST /miauw/agent-memory.php` sem token devem responder 401 ou 503; com token interno, entregam contexto/memoria compartilhada para o bridge e nao devem ser testados colando segredo em comandos versionados.
+O `POST /miauw/whatsapp/internal/memory`, `POST /miauw/agent-context.php` e `POST /miauw/agent-memory.php` sem token devem responder 401 ou 503; com token interno, entregam memoria/contexto compartilhado e nao devem ser testados colando segredo em comandos versionados. A fonte principal da memoria curta e o Postgres do bridge; o endpoint PHP fica como compatibilidade/fallback.
 
 ## VPS - Evolution API para Miauby WhatsApp
 

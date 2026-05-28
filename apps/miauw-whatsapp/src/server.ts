@@ -154,20 +154,42 @@ type SharedMiauwContext = {
 };
 
 type SharedMemoryEvent = {
-  event_uid: string;
-  channel: 'whatsapp';
-  direction: 'inbound' | 'outbound' | 'status';
-  role: 'user' | 'assistant' | 'system';
-  contact_hash: string;
+  event_uid?: string;
+  channel?: 'internal' | 'whatsapp' | 'system';
+  direction?: 'inbound' | 'outbound' | 'tool' | 'status';
+  role?: 'user' | 'assistant' | 'system';
+  usuario_id?: number;
+  user_id?: number;
+  conversation_id?: number;
+  contact_hash?: string;
+  contact_mask?: string;
+  trace_id?: string;
+  module_key?: string;
+  intent?: string;
+  engine?: string;
+  status?: string;
+  message_preview?: string;
+  message?: string;
+  reply_preview?: string;
+  reply?: string;
+  metadata?: JsonRecord;
+  metadata_json?: JsonRecord;
+};
+
+type SharedMemoryRow = {
+  channel: string;
+  direction: string;
+  role: string;
+  usuario_id: number | null;
+  conversation_id: number | null;
   contact_mask: string;
-  trace_id: string;
   module_key: string;
   intent: string;
   engine: string;
   status: string;
   message_preview: string;
-  reply_preview?: string;
-  metadata?: JsonRecord;
+  reply_preview: string;
+  created_at: Date | string;
 };
 
 type CountRow = {
@@ -329,7 +351,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.15';
+const SERVICE_VERSION = '0.5.16';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -355,10 +377,8 @@ const AGENT_CONTEXT_URL = textEnv('MIAUW_WHATSAPP_CONTEXT_URL')
 const AGENT_CONTEXT_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS', 60, 0, 900);
 const AGENT_CONTEXT_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS', 3500, 500, 15000);
 const GEMINI_CONTEXT_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_GEMINI_CONTEXT_TIMEOUT_MS', 1200, 300, 5000);
-const AGENT_MEMORY_URL = textEnv('MIAUW_WHATSAPP_MEMORY_URL')
-  || textEnv('MIAUW_AGENT_MEMORY_URL')
-  || 'http://wimifarma-com-web/miauw/agent-memory.php';
-const AGENT_MEMORY_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_MEMORY_TIMEOUT_MS', 2500, 500, 10000);
+const SHARED_MEMORY_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_MEMORY_TIMEOUT_MS', 2500, 500, 10000);
+const SHARED_MEMORY_RECENT_DAYS = numberEnv('MIAUW_WHATSAPP_MEMORY_RECENT_DAYS', 2, 1, 30);
 const ACTIONS_URL = textEnv('MIAUW_WHATSAPP_ACTIONS_URL')
   || textEnv('MIAUW_AGENT_ACTIONS_URL')
   || 'http://wimifarma-com-web/miauw/agent-actions.php';
@@ -1659,6 +1679,31 @@ async function ensureSchema(): Promise<void> {
       CHECK (severity IN ('info', 'warn', 'error'))
     );
 
+    CREATE TABLE IF NOT EXISTS miauw_whatsapp_channel_events (
+      id UUID PRIMARY KEY,
+      event_uid CHAR(40) NOT NULL UNIQUE,
+      channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
+      direction VARCHAR(20) NOT NULL DEFAULT 'inbound',
+      role VARCHAR(20) NOT NULL DEFAULT 'user',
+      usuario_id INTEGER NULL,
+      conversation_id BIGINT NULL,
+      contact_hash CHAR(64) NOT NULL DEFAULT '',
+      contact_mask VARCHAR(40) NOT NULL DEFAULT '',
+      trace_id CHAR(32) NOT NULL DEFAULT '',
+      module_key VARCHAR(40) NOT NULL DEFAULT 'miauw',
+      intent VARCHAR(80) NOT NULL DEFAULT '',
+      engine VARCHAR(40) NOT NULL DEFAULT '',
+      status VARCHAR(40) NOT NULL DEFAULT 'ok',
+      message_preview TEXT NOT NULL DEFAULT '',
+      reply_preview TEXT NOT NULL DEFAULT '',
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (channel IN ('internal', 'whatsapp', 'system')),
+      CHECK (direction IN ('inbound', 'outbound', 'tool', 'status')),
+      CHECK (role IN ('user', 'assistant', 'system'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_events_queue
       ON miauw_whatsapp_events (next_attempt_at, created_at)
       WHERE status = 'queued';
@@ -1674,6 +1719,17 @@ async function ensureSchema(): Promise<void> {
       WHERE enabled = TRUE;
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_error_logs_created
       ON miauw_whatsapp_error_logs (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_channel_contact
+      ON miauw_whatsapp_channel_events (contact_hash, created_at DESC)
+      WHERE contact_hash <> '';
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_channel_user
+      ON miauw_whatsapp_channel_events (usuario_id, created_at DESC)
+      WHERE usuario_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_channel_recent
+      ON miauw_whatsapp_channel_events (channel, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_channel_trace
+      ON miauw_whatsapp_channel_events (trace_id)
+      WHERE trace_id <> '';
   `);
 
   await pgPool.query(`
@@ -2428,6 +2484,11 @@ function sharedMemoryEventUid(seed: string): string {
   return crypto.createHash('sha1').update(seed).digest('hex');
 }
 
+function sharedMemoryAllowed<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  const clean = safeText(value, 60).toLowerCase();
+  return (allowed as readonly string[]).includes(clean) ? clean as T : fallback;
+}
+
 function sharedMemoryModuleKey(message: string, reason: string): string {
   const fromText = moduleKeyForText(message);
   if (fromText) return fromText;
@@ -2435,33 +2496,104 @@ function sharedMemoryModuleKey(message: string, reason: string): string {
   return reasonModule ? reasonModule[1] : 'miauw';
 }
 
-async function recordSharedMemoryEvents(events: SharedMemoryEvent[]): Promise<void> {
-  if (!INTERNAL_TOKEN || !AGENT_MEMORY_URL || events.length === 0) return;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AGENT_MEMORY_TIMEOUT_MS);
+function cleanSharedMemoryText(value: unknown, limit = 600): string {
+  return safeText(value, limit).replace(/[<>]/g, '').trim();
+}
+
+function normalizeSharedMemoryEvent(event: SharedMemoryEvent): Required<Omit<SharedMemoryEvent, 'metadata' | 'metadata_json' | 'message' | 'reply' | 'user_id'>> & { metadata: JsonRecord } {
+  const channel = sharedMemoryAllowed(event.channel, ['internal', 'whatsapp', 'system'] as const, 'whatsapp');
+  const direction = sharedMemoryAllowed(event.direction, ['inbound', 'outbound', 'tool', 'status'] as const, 'inbound');
+  const role = sharedMemoryAllowed(event.role, ['user', 'assistant', 'system'] as const, direction === 'outbound' ? 'assistant' : 'user');
+  const messagePreview = cleanSharedMemoryText(event.message_preview || event.message || '', 600);
+  const replyPreview = cleanSharedMemoryText(event.reply_preview || event.reply || '', 600);
+  const traceId = safeText(event.trace_id, 32);
+  const contactHash = safeText(event.contact_hash, 64);
+  const eventUid = safeText(event.event_uid, 40) || sharedMemoryEventUid([
+    channel,
+    direction,
+    role,
+    traceId,
+    contactHash,
+    messagePreview,
+    replyPreview,
+  ].join('|'));
+  const metadata = isRecord(event.metadata) ? event.metadata : isRecord(event.metadata_json) ? event.metadata_json : {};
+  const userId = Number(event.usuario_id ?? event.user_id ?? 0);
+  const conversationId = Number(event.conversation_id ?? 0);
+
+  return {
+    event_uid: eventUid,
+    channel,
+    direction,
+    role,
+    usuario_id: Number.isFinite(userId) && userId > 0 ? Math.trunc(userId) : 0,
+    conversation_id: Number.isFinite(conversationId) && conversationId > 0 ? Math.trunc(conversationId) : 0,
+    contact_hash: contactHash,
+    contact_mask: safeText(event.contact_mask, 40),
+    trace_id: traceId,
+    module_key: safeText(event.module_key, 40) || 'miauw',
+    intent: safeText(event.intent, 80),
+    engine: safeText(event.engine, 40),
+    status: safeText(event.status, 40) || 'ok',
+    message_preview: messagePreview,
+    reply_preview: replyPreview,
+    metadata,
+  };
+}
+
+async function recordSharedMemoryEvents(events: SharedMemoryEvent[]): Promise<number> {
+  if (events.length === 0) return 0;
+  const normalized = events
+    .map((event) => normalizeSharedMemoryEvent(event))
+    .filter((event) => event.event_uid && (event.message_preview || event.reply_preview || event.trace_id));
+  if (normalized.length === 0) return 0;
   try {
-    const response = await fetch(AGENT_MEMORY_URL, {
-      method: 'POST',
-      headers: internalPhpJsonHeaders(),
-      body: JSON.stringify({
-        mode: 'record_batch',
-        events,
-      }),
-      signal: controller.signal,
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !isRecord(data) || data.ok !== true) {
-      throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `memory_http_${response.status}`);
+    for (const event of normalized) {
+      await pgPool.query(
+        `INSERT INTO miauw_whatsapp_channel_events (
+          id, event_uid, channel, direction, role, usuario_id, conversation_id,
+          contact_hash, contact_mask, trace_id, module_key, intent, engine,
+          status, message_preview, reply_preview, metadata
+        ) VALUES (
+          $1, $2, $3, $4, $5, NULLIF($6, 0), NULLIF($7, 0),
+          $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb
+        )
+        ON CONFLICT (event_uid) DO UPDATE SET
+          status = EXCLUDED.status,
+          reply_preview = CASE WHEN EXCLUDED.reply_preview <> '' THEN EXCLUDED.reply_preview ELSE miauw_whatsapp_channel_events.reply_preview END,
+          engine = CASE WHEN EXCLUDED.engine <> '' THEN EXCLUDED.engine ELSE miauw_whatsapp_channel_events.engine END,
+          metadata = EXCLUDED.metadata,
+          updated_at = NOW()`,
+        [
+          crypto.randomUUID(),
+          event.event_uid,
+          event.channel,
+          event.direction,
+          event.role,
+          event.usuario_id,
+          event.conversation_id,
+          event.contact_hash,
+          event.contact_mask,
+          event.trace_id,
+          event.module_key,
+          event.intent,
+          event.engine,
+          event.status,
+          event.message_preview,
+          event.reply_preview,
+          JSON.stringify(event.metadata),
+        ],
+      );
     }
+    return normalized.length;
   } catch (error) {
     await recordErrorLog('shared_memory', 'warn', error, {
-      traceId: events[0]?.trace_id || '',
-      phoneMask: events[0]?.contact_mask || '',
-      messagePreview: events[0]?.message_preview || '',
-      details: { events: events.length },
+      traceId: normalized[0]?.trace_id || '',
+      phoneMask: normalized[0]?.contact_mask || '',
+      messagePreview: normalized[0]?.message_preview || '',
+      details: { events: normalized.length, backend: 'postgres' },
     });
-  } finally {
-    clearTimeout(timeout);
+    return 0;
   }
 }
 
@@ -2515,6 +2647,93 @@ async function recordSharedMemoryTurn(
       },
     },
   ]);
+}
+
+function sharedMemoryRowsToContext(rows: SharedMemoryRow[], message: string, scope: string): JsonRecord {
+  const seen = new Set<string>();
+  const items: JsonRecord[] = [];
+  for (const row of rows) {
+    const messagePreview = cleanSharedMemoryText(row.message_preview, 240);
+    const replyPreview = cleanSharedMemoryText(row.reply_preview, 240);
+    const key = [
+      safeText(row.channel, 20),
+      safeText(row.direction, 20),
+      messagePreview,
+      replyPreview,
+    ].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const created = row.created_at instanceof Date ? row.created_at.toISOString() : safeText(row.created_at, 80);
+    items.push({
+      channel: safeText(row.channel, 20),
+      direction: safeText(row.direction, 20),
+      role: safeText(row.role, 20),
+      contact_mask: safeText(row.contact_mask, 40),
+      module_key: safeText(row.module_key, 40),
+      intent: safeText(row.intent, 80),
+      engine: safeText(row.engine, 40),
+      status: safeText(row.status, 40),
+      message_preview: messagePreview,
+      reply_preview: replyPreview,
+      created_at: created,
+    });
+  }
+
+  return {
+    version: 'miauw-channel-memory-postgres-2026-05-28',
+    backend: 'postgres',
+    scope,
+    current_message_preview: cleanSharedMemoryText(message, 220),
+    items: items.reverse(),
+  };
+}
+
+async function fetchSharedMemoryContext(message: string, options: JsonRecord = {}): Promise<JsonRecord> {
+  const limit = Math.max(1, Math.min(8, Number(options.limit || 6)));
+  const contactHash = safeText(options.contact_hash, 64);
+  const userId = Number(options.usuario_id || options.user_id || 0);
+  const rows: SharedMemoryRow[] = [];
+
+  if (contactHash) {
+    const result = await pgPool.query<SharedMemoryRow>(
+      `SELECT channel, direction, role, usuario_id, conversation_id, contact_mask,
+              module_key, intent, engine, status, message_preview, reply_preview, created_at
+         FROM miauw_whatsapp_channel_events
+        WHERE contact_hash = $1
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2`,
+      [contactHash, limit],
+    );
+    rows.push(...result.rows);
+  }
+
+  if (rows.length < limit && Number.isFinite(userId) && userId > 0) {
+    const result = await pgPool.query<SharedMemoryRow>(
+      `SELECT channel, direction, role, usuario_id, conversation_id, contact_mask,
+              module_key, intent, engine, status, message_preview, reply_preview, created_at
+         FROM miauw_whatsapp_channel_events
+        WHERE usuario_id = $1
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2`,
+      [Math.trunc(userId), limit - rows.length],
+    );
+    rows.push(...result.rows);
+  }
+
+  if (rows.length < limit) {
+    const result = await pgPool.query<SharedMemoryRow>(
+      `SELECT channel, direction, role, usuario_id, conversation_id, contact_mask,
+              module_key, intent, engine, status, message_preview, reply_preview, created_at
+         FROM miauw_whatsapp_channel_events
+        WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2`,
+      [SHARED_MEMORY_RECENT_DAYS, limit - rows.length],
+    );
+    rows.push(...result.rows);
+  }
+
+  return sharedMemoryRowsToContext(rows, message, contactHash ? 'contact' : Number.isFinite(userId) && userId > 0 ? 'user' : 'recent');
 }
 
 async function processQueueRow(row: QueueRow): Promise<void> {
@@ -5139,8 +5358,11 @@ function publicStatus(): JsonRecord {
     shared_core_context_cache_ttl_seconds: AGENT_CONTEXT_CACHE_TTL_SECONDS,
     shared_core_gemini_context_timeout_ms: GEMINI_CONTEXT_TIMEOUT_MS,
     shared_core_context_cache_entries: sharedContextCache.size,
-    shared_core_memory_enabled: AGENT_MEMORY_URL !== '' && INTERNAL_TOKEN !== '',
-    shared_core_memory_timeout_ms: AGENT_MEMORY_TIMEOUT_MS,
+    shared_core_memory_enabled: true,
+    shared_core_memory_backend: 'postgres',
+    shared_core_memory_internal_endpoint: `${BASE_PATH}/internal/memory`,
+    shared_core_memory_timeout_ms: SHARED_MEMORY_TIMEOUT_MS,
+    shared_core_memory_recent_days: SHARED_MEMORY_RECENT_DAYS,
     recipient_alias_count: RECIPIENT_ALIASES.size,
     agent_configured: INTERNAL_TOKEN !== '' && AGENT_RUN_URL !== '',
     transport_configured: WHATSAPP_PROVIDER === 'meta' ? metaConfigured : evolutionConfigured,
@@ -6821,6 +7043,32 @@ app.post(`${BASE_PATH}/worker/run`, requireInternalToken, async (req, res) => {
   const limit = Math.max(1, Math.min(20, Number(req.body?.limit || WORKER_BATCH_SIZE)));
   const result = await processQueue(limit);
   res.json({ ok: true, ...result });
+});
+
+app.post(`${BASE_PATH}/internal/memory`, requireInternalToken, async (req, res) => {
+  const mode = safeText(req.body?.mode || 'record', 40).toLowerCase();
+  if (mode === 'recent') {
+    const userContext = isRecord(req.body?.user_context) ? req.body.user_context : {};
+    const options = isRecord(req.body?.options) ? { ...req.body.options } : {};
+    if (!options.contact_hash && userContext.contact_hash) options.contact_hash = userContext.contact_hash;
+    if (!options.usuario_id && userContext.id) options.usuario_id = userContext.id;
+    const memory = await fetchSharedMemoryContext(safeText(req.body?.message, 4000), options);
+    return res.json({ ok: true, source: 'postgres', memory });
+  }
+
+  const events: SharedMemoryEvent[] = [];
+  if (mode === 'record_batch') {
+    const rawEvents = Array.isArray(req.body?.events) ? req.body.events.slice(0, 12) : [];
+    for (const event of rawEvents) {
+      if (isRecord(event)) events.push(event as SharedMemoryEvent);
+    }
+  } else {
+    const event = isRecord(req.body?.event) ? req.body.event : isRecord(req.body) ? req.body : {};
+    if (isRecord(event)) events.push(event as SharedMemoryEvent);
+  }
+
+  const recorded = await recordSharedMemoryEvents(events);
+  return res.json({ ok: true, source: 'postgres', mode, recorded });
 });
 
 app.post(`${BASE_PATH}/internal/smoke-check`, requireInternalToken, async (req, res) => {

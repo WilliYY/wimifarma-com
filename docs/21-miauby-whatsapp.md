@@ -34,7 +34,7 @@ WhatsApp
      -> wimifarma-miauw-agent /miauw/agent/run para comandos internos ou fallback
   -> outbox
   -> Evolution API /message/sendText, /sendButtons ou /sendWhatsAppAudio, ou Meta text/interactive/audio
-  -> site/miauw/agent-memory.php registra memoria curta sanitizada sem bloquear a fila
+  -> Postgres do bridge registra memoria curta sanitizada sem bloquear a fila
 ```
 
 ## Banco de dados
@@ -48,12 +48,13 @@ Tabelas criadas pelo servico:
 - `miauw_whatsapp_outbox`: respostas geradas e tentativas de envio pelo transporte WhatsApp escolhido, incluindo metadados sanitizados quando a resposta planejada foi audio.
 - `miauw_whatsapp_contact_modules`: cards/modulos liberados por contato autorizado, como Cashback, Cotacao, Pedidos, Financeiro, Gestao, Tarefas, XP, Codigos e Miauby.
 - `miauw_whatsapp_error_logs`: falhas sanitizadas de fila, envio e HTTP, com origem, severidade, trace curto, mascara do contato, resumo e contexto limpo para diagnostico.
+- `miauw_whatsapp_channel_events`: memoria curta compartilhada entre Miauby interno e WhatsApp, com resumo sanitizado de entrada/saida, canal, motor, status, trace, hash/mascara do contato e metadados limpos.
 
 O banco nao deve guardar payload bruto externo, telefone cru em texto aberto ou bytes de audio/midia. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder; o painel logado pode decifrar o telefone apenas na area de edicao da allowlist. Para audio, foto, print, imagem e PDF/documento, `payload_summary.media` guarda apenas tipo, provider, chave/id da midia e sinais como mime/duracao/tamanho quando disponiveis; a midia e baixada do transporte somente durante o processamento, enviada ao Gemini para transcricao/extracao e descartada em memoria.
 
 Confirmacoes por WhatsApp usam tambem `miauw_whatsapp_confirmations`, com remetente em hash/mascara, tool, resumo, `command_payload` sanitizado, status, expiracao e trace. Essa tabela guarda apenas a pendencia operacional necessaria para o botao `Sim`/`Nao`; payload bruto da Evolution/Meta continua fora do banco e telefone completo fica somente cifrado quando necessario.
 
-O contexto compartilhado entre Miauby interno e WhatsApp usa a tabela MySQL `miauw_channel_events`. Ela guarda apenas resumo sanitizado de entrada/saida, canal, motor, status, trace, hash/mascara do contato e metadados limpos. O chat interno grava os turnos ao responder; o worker WhatsApp grava a ida/volta apos envio com timeout curto e sem bloquear a fila. Essa tabela nao deve guardar telefone cru, payload bruto do transporte, audio, midia, token ou SQL.
+O contexto compartilhado entre Miauby interno e WhatsApp usa como fonte principal a tabela Postgres `miauw_whatsapp_channel_events`, exposta pelo endpoint interno tokenizado `POST /miauw/whatsapp/internal/memory`. O PHP chama essa ponte por `MIAUW_CHANNEL_MEMORY_BRIDGE_URL`; se o bridge estiver indisponivel, `site/miauw/agent-memory.php` e a tabela MySQL `miauw_channel_events` seguem como fallback de compatibilidade. A memoria guarda apenas resumo sanitizado de entrada/saida, canal, motor, status, trace, hash/mascara do contato e metadados limpos. O chat interno grava os turnos ao responder; o worker WhatsApp grava a ida/volta apos envio sem bloquear a fila. Essa memoria nao deve guardar telefone cru, payload bruto do transporte, audio, midia, token ou SQL.
 
 ## Variaveis
 
@@ -113,8 +114,10 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS=60`
 - `MIAUW_WHATSAPP_CONTEXT_TIMEOUT_MS=3500`
 - `MIAUW_WHATSAPP_GEMINI_CONTEXT_TIMEOUT_MS=1200`
-- `MIAUW_WHATSAPP_MEMORY_URL=http://wimifarma-com-web/miauw/agent-memory.php`
 - `MIAUW_WHATSAPP_MEMORY_TIMEOUT_MS=2500`
+- `MIAUW_WHATSAPP_MEMORY_RECENT_DAYS=2`
+- `MIAUW_CHANNEL_MEMORY_BRIDGE_URL=http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/internal/memory`
+- `MIAUW_CHANNEL_MEMORY_BRIDGE_TIMEOUT_MS=650`
 - `MIAUW_WHATSAPP_ACTIONS_URL=http://wimifarma-com-web/miauw/agent-actions.php`
 - `MIAUW_WHATSAPP_ACTIONS_TIMEOUT_MS=8000`
 - `MIAUW_WHATSAPP_CONFIRMATIONS_ENABLED=true`
@@ -166,10 +169,11 @@ Principais variaveis:
 - `GET /miauw/whatsapp/webhook`: verificacao `hub.challenge` da Meta Cloud API.
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
+- `POST /miauw/whatsapp/internal/memory`: endpoint interno tokenizado da memoria curta compartilhada. Aceita `record`, `record_batch` e `recent`; grava/consulta `miauw_whatsapp_channel_events` no Postgres do bridge e deve receber somente texto resumido/sanitizado, hash/mascara e metadados limpos.
 - `POST /miauw/whatsapp/internal/smoke-check`: endpoint interno tokenizado para n8n/pos-deploy. Roda checks de health do bridge, proxy Apache, core Miauby, Gestao, Pedidos, Cotacao, widget e conexao Evolution; aceita `notify=never|problems|always` no JSON ou query. Quando notifica, envia apenas para contatos reais autorizados com card `Miauby`, respeitando cooldown e bloqueando LIDs protegidos.
 - `POST /miauw/whatsapp/internal/watchdog`: endpoint interno tokenizado para n8n/monitoramento. Verifica fila travada, outbox `pending/sending`, falhas recentes, respostas lentas, envios `sent` sem id do provedor, pausa do transporte e conversas que receberam `sent` mas ficaram com nova mensagem sem resposta; aceita `notify=never|problems|always`.
 - `POST /miauw/agent-context.php`: endpoint PHP interno, protegido por `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`, usado pelo bridge para exportar `style_context`, treino aprovado, perfil de voz, `channel_memory` e contratos de tools do Miauby interno antes de chamar o agent.
-- `POST /miauw/agent-memory.php`: endpoint PHP interno, protegido pelo mesmo token, usado pelo bridge para registrar/consultar memoria curta multicanal em `miauw_channel_events`. Aceita `record`, `record_batch` e `recent`; deve receber somente texto resumido/sanitizado, hash/mascara e metadados limpos.
+- `POST /miauw/agent-memory.php`: endpoint PHP interno de compatibilidade, protegido pelo mesmo token. Ele tenta usar a ponte Postgres do bridge e cai para `miauw_channel_events` no MySQL somente se a ponte estiver indisponivel. Aceita `record`, `record_batch` e `recent`; deve receber somente texto resumido/sanitizado, hash/mascara e metadados limpos.
 - `POST /miauw/agent-actions.php`: endpoint PHP interno, protegido pelo mesmo token, usado pelo bridge para preparar acoes fortes permitidas e executar somente depois de confirmacao pendente no WhatsApp.
 
 O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X-Webhook-Token`, `X-Evolution-Webhook-Token` ou query `?token=...`, para compatibilidade com configuracoes diferentes da Evolution API. No modo Meta, `GET` usa `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `POST` deve usar `X-Hub-Signature-256` com `META_WHATSAPP_APP_SECRET`.
@@ -193,7 +197,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Sem `miauby`, conversa simples usa Gemini e nao chama API interna. Comandos operacionais sem prefixo so chamam o core quando `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, o remetente esta em allowlist, o card esta liberado e a acao ainda exige pendencia/confirmacao.
 - Com `miauby`, o core Miauby pode usar tools/ponte interna conforme guardrails; escritas fortes seguem dependentes de confirmacao/auditoria e nao devem ser tratadas como texto solto executavel.
 - Antes de chamar o core, o bridge busca contexto compartilhado no PHP para usar o mesmo treino aprovado, perfil de voz, padroes, memoria curta multicanal e contratos de tools do Miauby interno. Se essa busca falhar, o bridge segue com contexto minimo e nao libera escrita direta.
-- Depois de enviar resposta no WhatsApp, o worker tenta gravar memoria curta por `agent-memory.php` em segundo plano. Erro ou timeout nessa etapa registra diagnostico, mas nao deixa mensagem travada nem cria reenvio.
+- Depois de enviar resposta no WhatsApp, o worker tenta gravar memoria curta direto no Postgres do bridge. Erro nessa etapa registra diagnostico, mas nao deixa mensagem travada nem cria reenvio.
 - Quando `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=true`, o bridge pode preparar acoes fortes permitidas em `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST`, guardar uma pendencia por remetente, expirar pendencias antigas e pedir `Sim`/`Nao` sem expor codigo curto ao usuario. Sem pendencia valida, `sim`, `nao`, `confirmar` ou `cancelar` sao apenas texto e nao executam escrita.
 - Dados sensiveis continuam bloqueados localmente antes de chamar Gemini/core.
 - Saudacoes simples como `oi`, `ola`, `teste`, `status` e `ajuda` respondem localmente sem chamar Gemini/core para reduzir latencia. O comando `miauby n8n` tambem responde localmente com as automacoes previstas e o que depende dos cards liberados para aquele numero.

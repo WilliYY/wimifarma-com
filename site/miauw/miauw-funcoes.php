@@ -209,6 +209,16 @@ if (!defined('MIAUW_AGENT_INTERNAL_BASE_URL')) {
     define('MIAUW_AGENT_INTERNAL_BASE_URL', $miauwAgentInternalBaseUrl !== '' ? $miauwAgentInternalBaseUrl : 'http://wimifarma-miauw-agent:3100/miauw/agent');
 }
 
+if (!defined('MIAUW_CHANNEL_MEMORY_BRIDGE_URL')) {
+    $miauwChannelMemoryBridgeUrl = miauw_env_string(array('MIAUW_CHANNEL_MEMORY_BRIDGE_URL', 'MIAUW_WHATSAPP_MEMORY_BRIDGE_URL'));
+    define('MIAUW_CHANNEL_MEMORY_BRIDGE_URL', $miauwChannelMemoryBridgeUrl !== '' ? $miauwChannelMemoryBridgeUrl : 'http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/internal/memory');
+}
+
+if (!defined('MIAUW_CHANNEL_MEMORY_BRIDGE_TIMEOUT_MS')) {
+    $miauwChannelMemoryBridgeTimeout = (int) miauw_env_string(array('MIAUW_CHANNEL_MEMORY_BRIDGE_TIMEOUT_MS'));
+    define('MIAUW_CHANNEL_MEMORY_BRIDGE_TIMEOUT_MS', max(250, min(5000, $miauwChannelMemoryBridgeTimeout > 0 ? $miauwChannelMemoryBridgeTimeout : 650)));
+}
+
 if (!defined('MIAUW_AGENT_SHADOW_ON_SEND')) {
     define('MIAUW_AGENT_SHADOW_ON_SEND', miauw_env_bool(array('MIAUW_AGENT_SHADOW_ON_SEND'), false));
 }
@@ -3438,9 +3448,64 @@ function miauw_channel_event_allowed(string $value, array $allowed, string $fall
     return in_array($value, $allowed, true) ? $value : $fallback;
 }
 
+function miauw_channel_memory_bridge_request(array $payload): ?array
+{
+    $url = miauw_constant_string('MIAUW_CHANNEL_MEMORY_BRIDGE_URL');
+    $token = miauw_constant_string('MIAUW_AGENT_INTERNAL_TOKEN');
+    if ($token === '') {
+        $token = miauw_constant_string('MIAUW_GUARDIAN_TOKEN');
+    }
+    if ($url === '' || $token === '' || !function_exists('curl_init')) {
+        return null;
+    }
+
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    if (!is_string($json)) {
+        return null;
+    }
+
+    $timeoutMs = max(250, min(5000, (int) miauw_constant_string('MIAUW_CHANNEL_MEMORY_BRIDGE_TIMEOUT_MS', '650')));
+    $ch = curl_init($url);
+    curl_setopt_array($ch, array(
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $json,
+        CURLOPT_HTTPHEADER => array(
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'X-Miauw-Agent-Token: ' . $token,
+        ),
+        CURLOPT_CONNECTTIMEOUT_MS => $timeoutMs,
+        CURLOPT_TIMEOUT_MS => $timeoutMs,
+    ));
+
+    $raw = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if (!is_string($raw) || $status < 200 || $status >= 300) {
+        return null;
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data) || empty($data['ok'])) {
+        return null;
+    }
+
+    return $data;
+}
+
 function miauw_channel_event_record(array $event): bool
 {
     try {
+        $bridge = miauw_channel_memory_bridge_request(array(
+            'mode' => 'record',
+            'event' => $event,
+        ));
+        if (is_array($bridge) && !empty($bridge['ok']) && (int) ($bridge['recorded'] ?? 0) > 0) {
+            return true;
+        }
+
         if (function_exists('miauw_ensure_schema')) {
             miauw_ensure_schema();
         }
@@ -3514,12 +3579,37 @@ function miauw_channel_event_record(array $event): bool
 function miauw_channel_context_export(string $message, ?int $userId = null, string $pageContext = '', array $options = array()): array
 {
     try {
+        $limit = max(1, min(8, (int) ($options['limit'] ?? 6)));
+        $contactHash = miauw_substr(trim((string) ($options['contact_hash'] ?? '')), 0, 64);
+        $contactMask = miauw_substr(trim((string) ($options['contact_mask'] ?? '')), 0, 40);
+        $bridge = miauw_channel_memory_bridge_request(array(
+            'mode' => 'recent',
+            'message' => $message,
+            'page_context' => $pageContext,
+            'user_context' => array(
+                'id' => $userId,
+                'contact_hash' => $contactHash,
+                'contact_mask' => $contactMask,
+            ),
+            'options' => array(
+                'contact_hash' => $contactHash,
+                'usuario_id' => $userId,
+                'limit' => $limit,
+            ),
+        ));
+        if (is_array($bridge) && !empty($bridge['ok']) && is_array($bridge['memory'] ?? null)) {
+            $memory = $bridge['memory'];
+            if (!isset($memory['page_context'])) {
+                $memory['page_context'] = miauw_substr($pageContext, 0, 80);
+            }
+
+            return $memory;
+        }
+
         if (function_exists('miauw_ensure_schema')) {
             miauw_ensure_schema();
         }
 
-        $limit = max(1, min(8, (int) ($options['limit'] ?? 6)));
-        $contactHash = miauw_substr(trim((string) ($options['contact_hash'] ?? '')), 0, 64);
         $rows = array();
         if ($contactHash !== '') {
             $stmt = db()->prepare(

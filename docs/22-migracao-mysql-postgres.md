@@ -11,7 +11,7 @@ Hoje o projeto ainda precisa de MySQL por dois motivos diferentes:
 - WordPress: banco `wimifarma_wp`, prefixo `wptl_`. WordPress foi feito para MySQL/MariaDB; trocar por Postgres nao e uma migracao simples nem recomendada como ajuste pequeno. Para remover MySQL 100%, a decisao tecnica correta e substituir/desacoplar a parte WordPress ou manter um MySQL isolado so para WordPress ate essa troca.
 - Apps internos: banco `wimifarma_app`, com usuarios, cashback, codigos, XP, financeiro, tarefas e Miauby PHP. Estes podem migrar por etapas para Postgres.
 
-Cotacao V2, Gestao, Pedidos e Miauby WhatsApp ja guardam seus dados principais em Postgres, mas Cotacao/Gestao/Pedidos ainda usam MySQL para autenticar em `wf_users` e, em alguns casos, registrar `wf_logs`.
+Cotacao V2, Gestao, Pedidos e Miauby WhatsApp ja guardam seus dados principais em Postgres, mas Cotacao/Gestao/Pedidos ainda usam MySQL para autenticar em `wf_users` e, em alguns casos, registrar `wf_logs`. A primeira fatia de migracao iniciada em 2026-05-28 moveu a memoria curta compartilhada do Miauby interno/WhatsApp para o Postgres do bridge (`miauw_whatsapp_channel_events`), mantendo MySQL apenas como fallback de compatibilidade.
 
 ## Uso atual de MySQL
 
@@ -35,7 +35,7 @@ PHP interno ainda ligado a MySQL:
 - `site/tarefa`: `wf_tarefas`.
 - `site/xp`: `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings`.
 - `site/financeiro`: `financeiro_fechamentos`, `financeiro_sangrias`, `financeiro_maquininhas`, `financeiro_pix`, `financeiro_lancamentos`, `financeiro_configuracoes` e `financeiro_auditoria`.
-- `site/miauw`: `miauw_conversas`, `miauw_mensagens`, `miauw_conhecimentos`, `miauw_memorias`, `miauw_configuracoes`, `miauw_alertas`, `miauw_alerta_eventos`, `miauw_padroes`, `miauw_tool_traces`, `miauw_treinos_respostas`, `miauw_farmacia_popular_valores` e `miauw_farmacia_popular_atualizacoes`.
+- `site/miauw`: `miauw_conversas`, `miauw_mensagens`, `miauw_conhecimentos`, `miauw_memorias`, `miauw_configuracoes`, `miauw_alertas`, `miauw_alerta_eventos`, `miauw_padroes`, `miauw_tool_traces`, `miauw_treinos_respostas`, `miauw_farmacia_popular_valores` e `miauw_farmacia_popular_atualizacoes`. A tabela `miauw_channel_events` fica como fallback temporario da memoria multicanal; a fonte principal nova e `miauw_whatsapp_channel_events` no Postgres do bridge.
 
 Legados MySQL que devem ser tratados como migracao/arquivo:
 
@@ -86,6 +86,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 5. Migrar Miauby PHP
 
 - Migrar conversas, mensagens, memoria, treino, alertas e traces.
+- Manter a memoria curta multicanal em `miauw_whatsapp_channel_events` como primeiro passo ja cortado para Postgres, removendo o fallback MySQL somente depois de observacao operacional.
 - Cuidar para nao copiar payload bruto, segredo, telefone completo ou stack trace que ja nao deveria existir.
 - Planejar corte junto com o `apps/miauw-agent`, porque parte do Miauby ja esta no Node.
 
