@@ -516,5 +516,7 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 - `docs/20-cotacao-v2.md`: arquitetura nova da Cotacao em Node.js, Postgres, Redis e WebSocket.
 - `docs/21-miauby-whatsapp.md`: canal WhatsApp do Miauby, Evolution API, Meta Cloud API, painel, fila e seguranca.
 - `docs/22-migracao-mysql-postgres.md`: inventario do uso restante de MySQL e plano gradual para migrar modulos internos para Postgres.
+- `docs/23-n8n-automacoes.md`: plano de automacoes n8n sem virar backend de regras.
+- `docs/24-modernizacao-modulos.md`: inventario dos modulos antigos e caminho para Node.js/TypeScript/Postgres.
 
 Leia `AGENTS.md` antes de qualquer alteracao.

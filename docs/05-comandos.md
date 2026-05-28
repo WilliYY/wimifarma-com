@@ -155,6 +155,16 @@ Para validar a Gestao sem corte de login, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED
 
 Para validar Pedidos sem corte de login, ligar `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-pedidos-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
+## Local - Inventario de modernizacao
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+powershell -ExecutionPolicy Bypass -File scripts\audit-modernization.ps1
+powershell -ExecutionPolicy Bypass -File scripts\audit-modernization.ps1 -Json
+```
+
+Esse inventario mostra quais modulos ainda usam PHP/MySQL/WordPress, quais ja estao em Node/Postgres e qual e a proxima etapa segura para migrar para TypeScript + PostgreSQL.
+
 ## VPS - Evolution API para Miauby WhatsApp
 
 Template versionado:

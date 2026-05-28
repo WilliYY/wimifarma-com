@@ -124,3 +124,5 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 9. Decisao sobre WordPress.
 
 Essa ordem reduz risco porque remove primeiro a dependencia compartilhada (`wf_users`) e depois migra dominios cada vez mais sensiveis.
+
+O inventario operacional da modernizacao fica em `docs/24-modernizacao-modulos.md` e pode ser gerado por `scripts/audit-modernization.ps1`.
