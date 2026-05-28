@@ -213,7 +213,7 @@ O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `g
 
 O painel tambem mostra `n8n automacoes`: Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados; n8n apenas orquestra/agendeia, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma.
 
-Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git. Exemplo: se o painel tem `5544984134971`, mas o evento chega como `234668507005157@lid`, configurar `234668507005157=5544984134971`.
+Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git. Exemplo: se o painel tem `5544984134971`, mas o evento chega como `234668507005157@lid`, configurar `234668507005157=5544984134971`. A checagem de cards liberados deve considerar o identificador recebido e o telefone alias-resolvido, para que o mesmo contato mantenha permissoes de comandos internos no WhatsApp.
 
 ## Comprovante Pix CNPJ por midia
 

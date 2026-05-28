@@ -265,7 +265,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.8';
+const SERVICE_VERSION = '0.5.9';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -2198,7 +2198,12 @@ async function processQueueRow(row: QueueRow): Promise<void> {
 
     const recipientPhone = decryptText(row.sender_phone_ciphertext);
     const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
-    const senderModuleHashes = phoneHashCandidates(row.sender_phone_hash, recipientPhone);
+    const senderModuleHashes = [
+      ...new Set([
+        ...phoneHashCandidates(row.sender_phone_hash, recipientPhone),
+        ...(recipientAddress ? phoneHashCandidates('', recipientAddress) : []),
+      ]),
+    ];
     const replyStartedAt = Date.now();
     const incomingAudio = isAudioMessageType(row.message_type);
     const incomingPixReceiptMedia = isPixReceiptMediaMessageType(row.message_type);
