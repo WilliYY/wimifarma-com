@@ -9,8 +9,11 @@ import multer from 'multer';
 import mysql from 'mysql2/promise';
 import path from 'path';
 import pg from 'pg';
+import { fileURLToPath } from 'url';
 
 const { Pool } = pg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 type AuthProvider = 'core' | 'mysql';
 
