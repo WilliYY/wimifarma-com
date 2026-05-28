@@ -35,6 +35,7 @@ Higiene de pastas no VPS:
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
 - `apps/cotacao/`
+- `apps/core-auth/`
 - `apps/gestao/`
 - `apps/pedidos/`
 - `apps/miauw-agent/`
@@ -55,6 +56,7 @@ Higiene de pastas no VPS:
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
 - `cotacao-data/`
+- `core-data/`
 - `gestao-data/`
 - `miauw-whatsapp-data/`
 - `/home/ubuntu/projetos/wimifarma-evolution-api` no VPS, com `.env`, Postgres, Redis e instancias da Evolution API fora do Git
@@ -103,6 +105,7 @@ Higiene de pastas no VPS:
 - Manter `.env` local em cada ambiente.
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
+- Definir `CORE_POSTGRES_PASSWORD` no `.env` de cada ambiente antes de usar o core de autenticacao em Postgres; enquanto ele estiver em modo sombra, nenhum modulo deve depender dele para login.
 - Definir `GESTAO_POSTGRES_PASSWORD` e `GESTAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Gestao Node/Postgres.
 - Definir `PEDIDOS_SESSION_SECRET` no `.env` de cada ambiente antes de subir Pedidos; se faltar, o servico usa fallback operacional, mas producao deve ter segredo proprio.
 - Para comandos da Gestao pelo Miauby, manter `GESTAO_INTERNAL_TOKEN` preenchido nos servicos web e Gestao, ou usar `MIAUW_GUARDIAN_TOKEN` como fallback; o PHP chama `GESTAO_INTERNAL_BASE_URL` internamente e a Gestao rejeita `/gestao/api/internal/...` sem token.
@@ -135,6 +138,7 @@ Higiene de pastas no VPS:
 - `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
+- O core de autenticacao em Postgres roda em modo sombra: `wimifarma-core-db` guarda `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users` sem cortar logins existentes.
 - A Gestao roda fora do PHP/WordPress: Apache faz proxy de `/gestao/` para Node, Node usa Postgres para contas, pagamentos, auditoria e sessoes, e MySQL somente para login/logs/importacao legado.
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
 - A Fase 7/8/9/10/11/12/13/14/15/16/17/18/19 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools, roteador de estilo/memoria aprovada, treinador, perfis de voz e audio por transcricao confirmada. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
@@ -163,6 +167,7 @@ Higiene de pastas no VPS:
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, nao investigar CSS primeiro; validar `git log`, rebuild do container e destino do Nginx Proxy Manager.
 - Se a rota publica ainda mostrar `wfwc-home-launchpad`, validar tambem se `site/wp-content/endurance-page-cache/` foi removido/ignorado no deploy.
 - Apagar `cotacao-data/` remove dados da Cotacao V2. Fazer backup antes de qualquer limpeza ou troca de volume.
+- Apagar `core-data/` remove a copia sombra de autenticacao/auditoria em Postgres. Enquanto nao houver corte, isso nao derruba login, mas perde validacoes e historico novo do core.
 - Apagar `gestao-data/` remove contas, itens, pagamentos, auditoria e sessoes da Gestao. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Configurar credencial Google Sheets errada pode fazer import/export falhar ou atingir a planilha errada. Validar sempre com `/cotacao/api/google-sheets/status`.
 

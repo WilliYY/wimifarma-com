@@ -11,7 +11,7 @@ Hoje o projeto ainda precisa de MySQL por dois motivos diferentes:
 - WordPress: banco `wimifarma_wp`, prefixo `wptl_`. WordPress foi feito para MySQL/MariaDB; trocar por Postgres nao e uma migracao simples nem recomendada como ajuste pequeno. Para remover MySQL 100%, a decisao tecnica correta e substituir/desacoplar a parte WordPress ou manter um MySQL isolado so para WordPress ate essa troca.
 - Apps internos: banco `wimifarma_app`, com usuarios, cashback, codigos, XP, financeiro, tarefas e Miauby PHP. Estes podem migrar por etapas para Postgres.
 
-Cotacao V2, Gestao, Pedidos e Miauby WhatsApp ja guardam seus dados principais em Postgres, mas Cotacao/Gestao/Pedidos ainda usam MySQL para autenticar em `wf_users` e, em alguns casos, registrar `wf_logs`. A primeira fatia de migracao iniciada em 2026-05-28 moveu a memoria curta compartilhada do Miauby interno/WhatsApp para o Postgres do bridge (`miauw_whatsapp_channel_events`), mantendo MySQL apenas como fallback de compatibilidade.
+Cotacao V2, Gestao, Pedidos e Miauby WhatsApp ja guardam seus dados principais em Postgres, mas Cotacao/Gestao/Pedidos ainda usam MySQL para autenticar em `wf_users` e, em alguns casos, registrar `wf_logs`. Em 2026-05-28, a migracao iniciou duas fatias seguras: a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em modo sombra com `wimifarma_core`, sincronizando `wf_users` para `core_users` sem alterar login, sessao, permissao, frontend ou backend operacional.
 
 ## Uso atual de MySQL
 
@@ -62,6 +62,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 - Modelar `core_users`, `core_audit_logs` e `core_login_rate_limits`.
 - Migrar `wf_users`, preservando hash de senha, role, status e ids antigos em coluna `legacy_mysql_id`.
+- Estado atual: `apps/core-auth` cria o schema em `wimifarma_core`, sincroniza usuarios de forma idempotente e possui validacao de contagem/campos. Esta etapa ainda e modo sombra.
 - Atualizar Cotacao, Gestao e Pedidos para autenticar no core Postgres e parar de depender de `wf_users`/`wf_logs`.
 - So depois remover `mysql2` desses apps Node.
 
@@ -109,8 +110,8 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 ## Ordem sugerida
 
-1. Core de autenticacao/auditoria em Postgres.
-2. Cotacao/Gestao/Pedidos param de usar MySQL para login/log.
+1. Core de autenticacao/auditoria em Postgres: iniciado em modo sombra com `wimifarma-core-db` e `apps/core-auth`.
+2. Cotacao/Gestao/Pedidos param de usar MySQL para login/log, somente depois de validacao repetida do core.
 3. Tarefas.
 4. Codigos.
 5. XP.

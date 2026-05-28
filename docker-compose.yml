@@ -105,6 +105,19 @@ services:
     networks:
       - wimifarma-com-network
 
+  wimifarma-core-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-core-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_core
+      POSTGRES_USER: wimifarma_core
+      POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+    volumes:
+      - ./core-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
   wimifarma-miauw-whatsapp-db:
     image: postgres:17-alpine
     container_name: wimifarma-miauw-whatsapp-db
@@ -115,6 +128,31 @@ services:
       POSTGRES_PASSWORD: ${MIAUW_WHATSAPP_POSTGRES_PASSWORD:-wimifarma_miauw_whatsapp_dev_pass}
     volumes:
       - ./miauw-whatsapp-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-core-migrator:
+    build:
+      context: ./apps/core-auth
+      dockerfile: Dockerfile
+    container_name: wimifarma-core-migrator
+    profiles:
+      - migration
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-core-db
+    environment:
+      NODE_ENV: production
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
     networks:
       - wimifarma-com-network
 

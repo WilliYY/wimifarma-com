@@ -60,7 +60,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-gestao-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
@@ -122,11 +122,13 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - A rota `/miauw/whatsapp/` e servida por proxy interno do Apache para `wimifarma-miauw-whatsapp:3400/miauw/whatsapp`; a home publica possui o card `Miauby Whatsapp` apontando para esse painel operacional.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
+- Banco core compartilhado: Postgres `wimifarma_core`, com dados persistidos em `core-data/postgres`; a primeira etapa guarda `core_users`, `core_audit_logs` e `core_login_rate_limits` em modo sombra, sincronizados de `wf_users` por `apps/core-auth`, sem trocar login de nenhum modulo ainda.
 - Banco do XP: tabelas MySQL `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` em `wimifarma_app`; a fonte de verdade dos funcionarios, vendas gamificadas e foto da moldura ADM fica nessas tabelas, com venda em centavos inteiros, XP inteiro e uploads validados em `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/`. O ADM tambem existe como player fixo de teste em `wf_xp_employees.system_key='adm'`, protegido contra edicao/exclusao comum e sincronizado com a foto da moldura ADM.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 - Banco da Gestao/Pedidos: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
 - Banco do Miauby WhatsApp: Postgres `wimifarma_miauw_whatsapp`, com dados persistidos em `miauw-whatsapp-data/postgres`; guarda `miauw_whatsapp_contacts`, `miauw_whatsapp_contact_modules`, `miauw_whatsapp_events`, `miauw_whatsapp_outbox`, `miauw_whatsapp_confirmations` e `miauw_whatsapp_error_logs`, sem payload bruto do transporte WhatsApp nem telefone cru.
 - O inventario do uso restante de MySQL e o plano recomendado para migrar modulos internos para Postgres ficam em `docs/22-migracao-mysql-postgres.md`; WordPress deve ser tratado como excecao temporaria ou substituido/desacoplado se a meta for remover MySQL 100%.
+- Em 2026-05-28, a migracao MySQL -> Postgres iniciou a etapa de core de autenticacao em modo sombra: `wimifarma-core-db` e `apps/core-auth` criam/sincronizam `core_users` a partir de `wf_users`, preservando `id`, `legacy_mysql_id`, hash de senha, role e active. Essa etapa nao altera frontend, login, sessao nem permissao dos modulos; o corte de Cotacao/Gestao/Pedidos para o core so deve ocorrer depois de validacao repetida de contagem e campos.
 - Pedidos usa Postgres `pedidos_orders` e `pedidos_confirmed_orders` ligados a `gestao_accounts`; os valores/parcelas ficam em `gestao_account_items`, incluindo `due_at` por parcela quando houver vencimento, e os pagamentos ficam em `gestao_account_payments`, preservando totais mensais, categoria `Boleto` e auditoria. O vencimento geral em `gestao_accounts.due_at` e derivado da menor data ativa das parcelas para ordenacao/resumo. A previsao de chegada entra pela UI como dias ate chegar, mas a fonte de verdade continua sendo a data em `pedidos_orders.expected_arrival_at`. Editar fornecedor/valores/vencimentos passa por auditoria, remover da tela usa cancelamento/arquivamento logico, e `gestao_supplier_orders` fica apenas como legado/compatibilidade e fonte de migracao para dados criados antes da separacao.
 - Para banco de dados novo, modelar entidades do dominio em tabelas proprias, usar FK/constraints, dinheiro em centavos inteiros, indices nos campos de filtro/join, indices parciais para filas/status, soft delete quando houver auditoria e documentar a fonte de verdade antes de escrever a tela.
 

@@ -2,12 +2,14 @@
 /mysql/
 /cotacao-data/
 /gestao-data/
+/core-data/
 /miauw-whatsapp-data/
 /ops/n8n/n8n-data/
 /ops/n8n/n8n-postgres/
 node_modules/
 **/node_modules/
 apps/miauw-agent/dist/
+apps/core-auth/dist/
 apps/gestao/dist/
 apps/pedidos/dist/
 apps/miauw-whatsapp/dist/

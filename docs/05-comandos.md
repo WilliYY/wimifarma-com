@@ -133,6 +133,21 @@ curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent-memory.php -H "Content-Typ
 O bridge nasce com `MIAUW_WHATSAPP_ENABLED=false`. Antes de aceitar webhook real, configurar no `.env`: `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS` e `MIAUW_WHATSAPP_PROVIDER`. Para Evolution, preencher `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`. Para Meta Cloud API, preencher `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `META_WHATSAPP_APP_SECRET`.
 O `POST /miauw/whatsapp/internal/memory`, `POST /miauw/agent-context.php` e `POST /miauw/agent-memory.php` sem token devem responder 401 ou 503; com token interno, entregam memoria/contexto compartilhado e nao devem ser testados colando segredo em comandos versionados. A fonte principal da memoria curta e o Postgres do bridge; o endpoint PHP fica como compatibilidade/fallback.
 
+## Local - Core auth Postgres em modo sombra
+
+```powershell
+cd C:\Projetos\wimifarma-com\apps\core-auth
+npm.cmd run check
+npm.cmd run build
+cd C:\Projetos\wimifarma-com
+docker compose up -d wimifarma-core-db
+docker compose run --rm wimifarma-core-migrator npm run migrate:users
+docker compose run --rm wimifarma-core-migrator npm run validate:users
+docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
+```
+
+Esta etapa apenas cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Enquanto o corte nao for feito, Cotacao, Gestao, Pedidos e modulos PHP continuam autenticando pelo caminho antigo.
+
 ## VPS - Evolution API para Miauby WhatsApp
 
 Template versionado:
@@ -261,6 +276,7 @@ A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por
 ```powershell
 docker exec wimifarma-com-db sh -c "mysql -u`$MYSQL_USER -p`$MYSQL_PASSWORD -N -B -e 'SHOW TABLES FROM wimifarma_app; SHOW TABLES FROM wimifarma_wp;'"
 docker exec wimifarma-cotacao-db psql -U wimifarma_cotacao -d wimifarma_cotacao -c "\dt"
+docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 docker exec wimifarma-gestao-db psql -U wimifarma_gestao -d wimifarma_gestao -c "\dt"
 docker exec wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "\dt"
 ```
