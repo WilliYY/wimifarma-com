@@ -34,7 +34,7 @@ Rotas de login:
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos PHP reaproveitam funcoes comuns do Cashback, especialmente sessao, usuario atual, CSRF, escape HTML e conexao PDO. A Cotacao V2 usa sessao propria em Redis, mas valida usuario/senha contra a mesma tabela `wf_users`.
+Os modulos PHP reaproveitam funcoes comuns do Cashback, especialmente sessao, usuario atual, CSRF, escape HTML e conexao PDO. Cotacao V2 usa sessao propria em Redis. Gestao, Pedidos, Tarefa, XP e Codigos usam sessoes proprias nos seus servicos Node/Postgres, com rollback de autenticacao por variaveis de ambiente quando aplicavel.
 
 Arquivos envolvidos:
 
@@ -79,24 +79,26 @@ Tabelas principais:
 
 ## Fluxo Codigos
 
-O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A tela principal funciona como planilha simples, com campos sempre editaveis para `Código`, `EAN` e `Preço`, salvando automaticamente as mudancas.
+O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A rota oficial `/codigos/` e servida por `apps/codigos` em Node.js + TypeScript com Postgres dedicado, preservando o mesmo frontend visual de `site/codigos`. A tela principal funciona como planilha simples, com campos sempre editaveis para `Codigo`, `EAN` e `Preco`, salvando automaticamente as mudancas.
 
-Para evitar confusao operacional, a tela separa os itens em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao. O botao `+` cria um novo bloco pelo backend em `wf_codigos_blocos` apenas quando o usuario informa manualmente o prefixo desejado, permitindo que o bloco continue existindo mesmo antes do primeiro item. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa faixa horizontal interna para criar tabelas lado a lado e aproveitar melhor as laterais do monitor, sem criar rolagem horizontal vazia no documento inteiro.
+Para evitar confusao operacional, a tela separa os itens em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao. O botao `+` cria um novo bloco pelo backend em `codigos_groups` apenas quando o usuario informa manualmente o prefixo desejado, permitindo que o bloco continue existindo mesmo antes do primeiro item. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa faixa horizontal interna para criar tabelas lado a lado e aproveitar melhor as laterais do monitor, sem criar rolagem horizontal vazia no documento inteiro.
 
-O login de Codigos segue o padrao visual vinho/rosa dos outros logins internos, mas preserva o fluxo proprio de sessao, CSRF e autenticacao em `wf_users`.
+O login de Codigos segue o padrao visual vinho/rosa dos outros logins internos, mas o fluxo novo usa sessao `WFCODIGOS`, CSRF e `core_users` por `CODIGOS_AUTH_PROVIDER=core`. Rollback rapido de autenticacao e voltar `CODIGOS_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-codigos-app`.
 
 Arquivos principais:
 
-- `site/codigos/index.php`
-- `site/codigos/api.php`
-- `site/codigos/codigos-funcoes.php`
+- `apps/codigos/src/server.ts`
 - `site/codigos/styles.css`
 - `site/codigos/app.js`
+- `site/codigos/login-runner.js`
 
-Tabela principal:
+Tabelas principais:
 
-- `wf_codigos_comissao`
-- `wf_codigos_blocos`
+- Postgres `codigos_items`
+- Postgres `codigos_groups`
+- Postgres `codigos_audit_events`
+- Postgres `codigos_sessions`
+- MySQL `wf_codigos_comissao` e `wf_codigos_blocos` apenas como importacao/espelho temporario de rollback por `CODIGOS_LEGACY_MYSQL_*`
 
 Regras a preservar:
 
@@ -109,7 +111,7 @@ Regras a preservar:
 - EANs com prefixos diferentes devem ficar em tabelas separadas na tela; `20` e `40` aparecem por padrao, e outros prefixos devem ser criados pelo botao `+` via `/codigos/api.php` usando o numero informado pelo usuario, sem sequencia automatica;
 - apagar pela tela deve fazer exclusao logica (`ativo=0`) para reduzir risco de perda acidental;
 - apagar uma tabela inteira so e permitido para blocos numericos nao padrao, exige card de confirmacao, CSRF, sessao ativa e senha operacional `wimifarma`, com suporte a override por `CODIGOS_GROUP_DELETE_PASSWORD`;
-- acoes de criar, editar e apagar registram `wf_logs`.
+- acoes de criar, editar, reordenar e apagar registram `codigos_audit_events`; `wf_logs` fica apenas como espelho legado quando `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED=true`.
 
 ## Fluxo XP
 

@@ -74,6 +74,8 @@ docker compose logs --tail=80 wimifarma-tarefa-app
 docker compose logs --tail=80 wimifarma-tarefa-db
 docker compose logs --tail=80 wimifarma-xp-app
 docker compose logs --tail=80 wimifarma-xp-db
+docker compose logs --tail=80 wimifarma-codigos-app
+docker compose logs --tail=80 wimifarma-codigos-db
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
@@ -151,7 +153,7 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa apenas cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Enquanto o corte nao for feito, Cotacao, Gestao, Pedidos e modulos PHP continuam autenticando pelo caminho antigo.
+Esta etapa apenas cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Enquanto o corte nao for feito em cada modulo, Cotacao, Gestao, Pedidos e modulos PHP continuam autenticando pelo caminho antigo. Tarefa, XP e Codigos podem usar `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core`.
 
 Para validar a Cotacao sem corte de login, ligar `COTACAO_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-cotacao-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
@@ -195,6 +197,24 @@ docker exec wimifarma-xp-db psql -U wimifarma_xp -d wimifarma_xp -c "\dt"
 ```
 
 O app `apps/xp` atende a rota oficial `/xp/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_xp`; MySQL `wf_xp_*` fica como importacao/espelho/log legado por flags `XP_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `XP_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-xp-app`.
+
+## Local - Codigos Node/Postgres
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\codigos
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-codigos-db
+docker compose up -d --no-deps --build wimifarma-codigos-app wimifarma-com-web
+docker exec wimifarma-codigos-app wget -qO- http://127.0.0.1:3700/codigos/health
+curl.exe -sS http://127.0.0.1:3002/codigos/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" http://127.0.0.1:3002/codigos/login.php
+curl.exe -i http://127.0.0.1:3002/codigos/api/internal/summary
+docker exec wimifarma-codigos-db psql -U wimifarma_codigos -d wimifarma_codigos -c "\dt"
+```
+
+O app `apps/codigos` atende a rota oficial `/codigos/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_codigos`; MySQL `wf_codigos_comissao` e `wf_codigos_blocos` ficam como importacao/espelho/log legado por flags `CODIGOS_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `CODIGOS_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-codigos-app`. O endpoint interno sem `X-Miauw-Internal-Token` deve responder 401 ou 503; nao colar token real em comando versionado.
 
 ## Local - Inventario de modernizacao
 

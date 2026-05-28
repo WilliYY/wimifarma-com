@@ -9,9 +9,9 @@ Este documento registra o inventario atual de uso de MySQL e o caminho seguro pa
 Hoje o projeto ainda precisa de MySQL por dois motivos diferentes:
 
 - WordPress: banco `wimifarma_wp`, prefixo `wptl_`. WordPress foi feito para MySQL/MariaDB; trocar por Postgres nao e uma migracao simples nem recomendada como ajuste pequeno. Para remover MySQL 100%, a decisao tecnica correta e substituir/desacoplar a parte WordPress ou manter um MySQL isolado so para WordPress ate essa troca.
-- Apps internos: banco `wimifarma_app`, com usuarios, cashback, codigos, XP, financeiro, tarefas e Miauby PHP. Estes podem migrar por etapas para Postgres.
+- Apps internos: banco `wimifarma_app`, com usuarios, cashback, financeiro, legados de Codigos/XP/Tarefa e Miauby PHP. Estes podem migrar por etapas para Postgres.
 
-Cotacao V2, Gestao, Pedidos, Tarefa, XP e Miauby WhatsApp ja guardam seus dados principais em Postgres, mas Cotacao/Gestao/Pedidos ainda usam MySQL para autenticar em `wf_users` e, em alguns casos, registrar `wf_logs`. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em modo sombra com `wimifarma_core`, sincronizando `wf_users` para `core_users`. Ainda em 2026-05-28, Tarefa foi cortado para `apps/tarefa` com Postgres `wimifarma_tarefa` e login oficial por `core_users`; XP foi cortado para `apps/xp` com Postgres `wimifarma_xp`, proxy `/xp/` e frontend visual preservado.
+Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos e Miauby WhatsApp ja guardam seus dados principais em Postgres, mas Cotacao/Gestao/Pedidos ainda usam MySQL para autenticar em `wf_users` e, em alguns casos, registrar `wf_logs`. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em modo sombra com `wimifarma_core`, sincronizando `wf_users` para `core_users`. Ainda em 2026-05-28, Tarefa foi cortado para `apps/tarefa` com Postgres `wimifarma_tarefa` e login oficial por `core_users`; XP foi cortado para `apps/xp` com Postgres `wimifarma_xp`, proxy `/xp/` e frontend visual preservado; Codigos foi cortado para `apps/codigos` com Postgres `wimifarma_codigos`, proxy `/codigos/` e frontend visual preservado.
 
 ## Uso atual de MySQL
 
@@ -29,11 +29,12 @@ Node/TypeScript ainda ligado a MySQL:
 - `apps/pedidos/src/server.ts`: usa `mysql2` para login em `wf_users` e espelho curto em `wf_logs`; dados oficiais ficam em Postgres da Gestao.
 - `apps/tarefa/src/server.ts`: usa Postgres `wimifarma_tarefa` para dados e pode usar `core_users` como login oficial; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `TAREFA_LEGACY_MYSQL_*` estiverem ligadas.
 - `apps/xp/src/server.ts`: usa Postgres `wimifarma_xp` para XP oficial e `core_users` para login; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` ou `XP_AUTH_PROVIDER=mysql` estiverem ligadas.
+- `apps/codigos/src/server.ts`: usa Postgres `wimifarma_codigos` para Codigos oficial e `core_users` para login; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `CODIGOS_LEGACY_MYSQL_*` ou `CODIGOS_AUTH_PROVIDER=mysql` estiverem ligadas.
 
 PHP interno ainda ligado a MySQL:
 
 - `site/cashback`: usuarios, clientes, compras, creditos, resgates, settings, logs e limitador de login.
-- `site/codigos`: `wf_codigos_comissao` e `wf_codigos_blocos`.
+- `site/codigos`: legado/fallback historico e fonte dos assets visuais; a rota oficial `/codigos/` usa `apps/codigos`.
 - `site/tarefa`: legado/fallback historico; a rota oficial `/tarefa/` usa `apps/tarefa`, e `wf_tarefas` fica como fonte de importacao/espelho temporario.
 - `site/xp`: legado/fallback historico e fonte dos assets/uploads compartilhados; a rota oficial `/xp/` usa `apps/xp`.
 - `site/financeiro`: `financeiro_fechamentos`, `financeiro_sangrias`, `financeiro_maquininhas`, `financeiro_pix`, `financeiro_lancamentos`, `financeiro_configuracoes` e `financeiro_auditoria`.
@@ -54,6 +55,7 @@ Nao criar um unico banco gigante para tudo. Manter separacao por dominio:
 - `wimifarma_financeiro`: caixa/financeiro PHP quando ele for migrado ou substituido.
 - `wimifarma_tarefa`: tarefas, auditoria e sessoes do modulo Tarefa.
 - `wimifarma_xp`: funcionarios, vendas XP e configuracoes.
+- `wimifarma_codigos`: itens de comissao diferente, blocos EAN, auditoria e sessoes do modulo Codigos.
 - `wimifarma_miauw`: chat, memoria, treino, alertas e traces do Miauby PHP.
 - manter `wimifarma_cotacao`, `wimifarma_gestao` e `wimifarma_miauw_whatsapp` como ja existem.
 
@@ -77,16 +79,16 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 - Tarefa ja foi migrado para `apps/tarefa` com Postgres dedicado e suporte a auth oficial pelo core Postgres, mantendo `site/tarefa` como legado/fallback historico.
 - XP foi migrado para `apps/xp`, Postgres dedicado, login por core e proxy `/xp/`, mantendo importador/espelho idempotente de `wf_xp_*` para rollback curto.
-- O proximo modulo pequeno recomendado e `site/codigos`, porque tem dominio menor.
-- Criar adaptador Postgres separado em vez de trocar `site/cashback/config.php` de uma vez.
-- Manter importador idempotente de MySQL para Postgres e uma janela de validacao por leitura comparada.
+- Codigos foi migrado para `apps/codigos`, Postgres dedicado, login por core, proxy `/codigos/` e endpoints internos tokenizados para o Miauby, mantendo importador/espelho idempotente de `wf_codigos_*` para rollback curto.
+- A proxima fatia pequena deve observar Codigos e XP no VPS e, depois, migrar Financeiro ou Cashback com backup/checksum.
 
-3. Migrar XP
+3. Validar cortes pequenos
 
-- Migrar `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings`.
 - Estado atual: `apps/xp` ja cria `xp_employees`, `xp_sales`, `xp_settings` e `xp_audit_events` e importa os dados de forma idempotente para validar paridade.
+- Estado atual: `apps/codigos` ja cria `codigos_items`, `codigos_groups` e `codigos_audit_events` e importa os dados de forma idempotente para validar paridade.
 - Preservar caminhos de uploads, soft delete, `system_key='adm'`, venda em centavos e XP inteiro.
-- Validar cards, trilha, configuracoes e ultimos lancamentos.
+- Preservar em Codigos autosave, blocos por prefixo de EAN, reordenacao, exclusao logica e senha de exclusao de tabela.
+- Validar cards, trilha, configuracoes, ultimos lancamentos, Codigos e leitura do Miauby por `CODIGOS_INTERNAL_TOKEN` antes de desligar flags legadas.
 
 4. Migrar Financeiro e Cashback
 
@@ -122,8 +124,8 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 1. Core de autenticacao/auditoria em Postgres: iniciado em modo sombra com `wimifarma-core-db` e `apps/core-auth`.
 2. Cotacao/Gestao/Pedidos param de usar MySQL para login/log, somente depois de validacao repetida do core.
-3. Tarefa e XP: ja cortados para Node/Postgres, com flags legadas de rollback.
-4. Codigos.
+3. Tarefa, XP e Codigos: ja cortados para Node/Postgres, com flags legadas de rollback.
+4. Observar Codigos/XP e desligar flags legadas depois de paridade estavel e leitura interna do Miauby validada.
 5. Financeiro.
 6. Cashback.
 7. Miauby PHP.

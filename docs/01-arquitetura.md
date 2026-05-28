@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para Cotacao V2, Gestao, Pedidos, Tarefa, Miauby agente e Miauby WhatsApp; os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Miauby agente e Miauby WhatsApp; os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
 ## Componentes envolvidos
 
@@ -17,6 +17,8 @@ Usuario/Navegador
       -> proxy /gestao/ para wimifarma-gestao-app:3200
       -> proxy /pedidos/ para wimifarma-pedidos-app:3300
       -> proxy /tarefa/ para wimifarma-tarefa-app:3500
+      -> proxy /xp/ para wimifarma-xp-app:3600
+      -> proxy /codigos/ para wimifarma-codigos-app:3700
       -> proxy /miauw/agent/ para wimifarma-miauw-agent:3100
       -> proxy /miauw/whatsapp/ para wimifarma-miauw-whatsapp:3400
   -> wimifarma-com-db:3306 (MySQL)
@@ -24,6 +26,8 @@ Usuario/Navegador
   -> wimifarma-cotacao-redis:6379 (Redis)
   -> wimifarma-gestao-db:5432 (Postgres)
   -> wimifarma-tarefa-db:5432 (Postgres)
+  -> wimifarma-xp-db:5432 (Postgres)
+  -> wimifarma-codigos-db:5432 (Postgres)
   -> wimifarma-miauw-whatsapp-db:5432 (Postgres)
 ```
 
@@ -44,14 +48,16 @@ Arquivos principais:
 - `apps/gestao/public/`
 - `apps/pedidos/src/server.ts`
 - `apps/tarefa/src/server.ts`
+- `apps/xp/src/server.ts`
+- `apps/codigos/src/server.ts`
 - `apps/tarefa/public/`
 - `docker/mysql/init/01-create-databases.sql`
 - `site/.htaccess`
 - `site/home.php`
 - `site/wp-config.php`
 - `site/cashback/config.php`
-- `site/codigos/`
-- `site/xp/`
+- `site/codigos/` (legado/assets; rota oficial usa `apps/codigos`)
+- `site/xp/` (legado/assets/uploads; rota oficial usa `apps/xp`)
 - `site/gestao/` (legado; rota oficial usa `apps/gestao`)
 - `.env.example`
 
@@ -67,6 +73,10 @@ Containers:
 - `wimifarma-pedidos-app`: Node.js 22 + TypeScript + Express para `/pedidos/`, usando o Postgres da Gestao.
 - `wimifarma-tarefa-app`: Node.js 22 + TypeScript + Express para `/tarefa/`.
 - `wimifarma-tarefa-db`: Postgres 17, monta `./tarefa-data/postgres:/var/lib/postgresql/data`.
+- `wimifarma-xp-app`: Node.js 22 + TypeScript + Express para `/xp/`.
+- `wimifarma-xp-db`: Postgres 17, monta `./xp-data/postgres:/var/lib/postgresql/data`.
+- `wimifarma-codigos-app`: Node.js 22 + TypeScript + Express para `/codigos/`.
+- `wimifarma-codigos-db`: Postgres 17, monta `./codigos-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-miauw-agent`: Node.js 22 + TypeScript + Agents SDK para `/miauw/agent/` em sombra/corte controlado.
 - `wimifarma-miauw-whatsapp`: Node.js 22 + TypeScript para `/miauw/whatsapp/`, recebendo webhooks da Evolution API ou Meta Cloud API, exibindo painel operacional seguro e processando fila/outbox.
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal WhatsApp do Miauby, monta `./miauw-whatsapp-data/postgres:/var/lib/postgresql/data`.
@@ -88,13 +98,15 @@ Rede Docker:
 - Interno Gestao: `wimifarma-gestao-app:3200`
 - Interno Pedidos: `wimifarma-pedidos-app:3300`
 - Interno Tarefa: `wimifarma-tarefa-app:3500`
+- Interno XP: `wimifarma-xp-app:3600`
+- Interno Codigos: `wimifarma-codigos-app:3700`
 - Interno Miauby agente: `wimifarma-miauw-agent:3100`
 - Interno Miauby WhatsApp: `wimifarma-miauw-whatsapp:3400`
 - Interno Evolution API para o bridge: `wimifarma-evolution-api:8080`
 
 O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cotacao-app`; o Apache ja publica `/cotacao/` e `/cotacao/socket.io/`.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-gestao-app`; o Apache publica `/gestao/` internamente.
-Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-pedidos-app` ou `wimifarma-tarefa-app`; o Apache publica `/pedidos/` e `/tarefa/` internamente.
+Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-xp-app` ou `wimifarma-codigos-app`; o Apache publica `/pedidos/`, `/tarefa/`, `/xp/` e `/codigos/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent`; o Apache publica `/miauw/agent/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whatsapp` nem para `wimifarma-evolution-api`; o Apache publica `/miauw/whatsapp/` internamente, e a Evolution API fica limitada a localhost/rede Docker ate decisao explicita.
 
@@ -107,12 +119,15 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Manter `cotacao-data/` como volume persistente e ignorado pelo Git.
 - Manter `gestao-data/` como volume persistente e ignorado pelo Git.
 - Manter `tarefa-data/` como volume persistente e ignorado pelo Git.
+- Manter `xp-data/` como volume persistente e ignorado pelo Git.
+- Manter `codigos-data/` como volume persistente e ignorado pelo Git.
 - Manter `miauw-whatsapp-data/` como volume persistente e ignorado pelo Git.
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
 - Manter a Gestao oficial em `/gestao/` via Node/Postgres; `site/gestao` e apenas legado/fallback historico.
 - Manter `Pedidos` como modulo separado em `/pedidos/`, usando `apps/pedidos`, container `wimifarma-pedidos-app:3300`, sessao propria `WFPEDIDOS`, CSRF proprio e proxy Apache dedicado. A URL antiga `/gestao/pedidos` deve apenas redirecionar para `/pedidos/`.
 - Manter `Tarefa` como modulo separado em `/tarefa/`, usando `apps/tarefa`, container `wimifarma-tarefa-app:3500`, sessao propria `WFTAREFA`, CSRF proprio e proxy Apache dedicado. `site/tarefa` fica legado/fallback historico.
-- Manter o XP como modulo proprio em `/xp/`, com PHP/MySQL, sessao interna compartilhada, CSRF, healthcheck e uploads validados; nao misturar a regra de gamificacao em Gestao ou Financeiro.
+- Manter o XP como modulo proprio em `/xp/`, usando `apps/xp`, container `wimifarma-xp-app:3600`, Postgres dedicado, sessao propria `WFXP`, CSRF proprio e proxy Apache dedicado; `site/xp` fica legado/assets/uploads.
+- Manter Codigos como modulo proprio em `/codigos/`, usando `apps/codigos`, container `wimifarma-codigos-app:3700`, Postgres dedicado, sessao propria `WFCODIGOS`, CSRF proprio e proxy Apache dedicado; `site/codigos` fica legado/assets.
 - Para futuras telas/cards com dominio proprio, escolher explicitamente o melhor desenho tecnico antes de implementar: linguagem/runtime, banco, schema, indices, permissoes, auditoria, healthcheck, deploy e integracoes. Preferir rota/app/servico separados em vez de transformar a Gestao em concentrador de subviews.
 - Cada modulo novo deve declarar sua fonte de verdade. Quando precisar alimentar outro dominio, integrar por tabelas/APIs estruturadas, nao por acoplamento visual ou reaproveitamento de tela.
 - Manter o Miauby agente sem escrita real; quando `MIAUW_ENGINE=node`, liberar primeiro apenas usuarios configurados e preservar rollback imediato para `php`.
@@ -130,7 +145,8 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - A Gestao foi separada em servico Node.js + TypeScript com Postgres dedicado porque e modulo administrativo critico; MySQL permanece para `wf_users`, `wf_logs` e importacao unica do legado.
 - Pedidos de fornecedores foi separado da Gestao em `apps/pedidos`, mas continua usando as tabelas financeiras `gestao_accounts`, `gestao_account_items` e `gestao_account_payments` para alimentar automaticamente os totais/categoria `Boleto` e reaproveitar o historico financeiro existente. A parte operacional fica em `pedidos_orders` e `pedidos_confirmed_orders`; vencimentos individuais de parcelas ficam em `gestao_account_items.due_at`, e `gestao_accounts.due_at` guarda a menor data ativa para resumo/ordenacao.
 - Tarefa foi separado em `apps/tarefa` com Node.js + TypeScript e Postgres dedicado `wimifarma_tarefa`. A tela visual foi preservada, `wf_tarefas` e importado de forma idempotente e pode receber espelho temporario de novas escritas para rollback curto.
-- XP foi criado em `site/xp` com PHP procedural e MySQL `wimifarma_app`, pois o fluxo e cadastro/lancamento manual diario e consegue reaproveitar a autenticacao `wf_users`, logs `wf_logs`, validacao de upload e deploy do container web sem novo servico.
+- XP foi migrado para `apps/xp` com Node.js + TypeScript e Postgres dedicado `wimifarma_xp`. A tela visual foi preservada por assets/uploads de `site/xp`, `wf_xp_*` e importado de forma idempotente e pode receber espelho temporario de novas escritas para rollback curto.
+- Codigos foi migrado para `apps/codigos` com Node.js + TypeScript e Postgres dedicado `wimifarma_codigos`. A tela visual foi preservada por assets de `site/codigos`, `wf_codigos_*` e importado de forma idempotente e pode receber espelho temporario de novas escritas para rollback curto.
 - O criterio para banco novo e: tabelas do dominio com FKs/constraints, dinheiro em centavos inteiros quando houver valor financeiro, indices em filtros/joins frequentes, indices parciais para filas/status, soft delete/arquivamento logico quando houver auditoria e migracao/compatibilidade documentada quando substituir tabela antiga.
 - A Fase 7/8/9 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK, adaptador PHP de comparacao e corte por `MIAUW_ENGINE`. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria.
 - A Fase 17 do Miauby mantem o PHP como dono de treino/revisao e envia ao Node apenas contexto aprovado, versionado e compilado por relevancia; o servico agente continua sem credencial de banco e sem escrita direta.
@@ -148,6 +164,8 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Recriar `cotacao-data/` sem backup perde dados da Cotacao V2.
 - Recriar `gestao-data/` sem backup perde contas, itens, pagamentos, auditoria e sessoes da Gestao.
 - Recriar `tarefa-data/` sem backup perde tarefas, auditoria e sessoes do Tarefa Node/Postgres.
+- Recriar `xp-data/` sem backup perde funcionarios, vendas, configuracoes, auditoria e sessoes do XP Node/Postgres.
+- Recriar `codigos-data/` sem backup perde itens, blocos, auditoria e sessoes de Codigos Node/Postgres.
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.
 - Recriar atalhos automaticos por nome de categoria na Cotacao pode conflitar com a formatacao condicional e causar saltos de linha/sync pesado.
 - Alterar o proxy de `/cotacao/socket.io/` sem validar pode quebrar presenca e edicao ao vivo.

@@ -28,7 +28,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 
 - Projeto local em `C:\Projetos\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
@@ -50,8 +50,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - Em 2026-05-21, Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw foram validados com navegador local e checks publicos: as telas de login e as telas internas autenticadas carregam a logo nova. O `/wp-login.php` permanece com o cabecalho padrao do WordPress, separado dos logins internos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
 - A home publica mostra no maximo cinco cards por linha no desktop; `Pedidos` fica ao lado de `Cotacao` e mostra badge de pedidos previstos para chegar hoje, o card `XP` usa moldura propria como borda/cantos por `border-image`, sem cortar a arte nem cobrir o texto, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
-- O modulo `site/codigos` guarda atalhos de comissao em `wf_codigos_comissao`, com blocos por prefixo de EAN persistidos em `wf_codigos_blocos`, autosave de `Codigo`, `EAN` e `Preco`, botao `+` com prefixo manual para criar o bloco desejado, tabelas em faixa horizontal sem gerar rolagem vazia no documento, reordenacao por arrastar o numero da linha, criacao de novas linhas no rodape de cada grupo, exibicao integral de nomes longos na coluna `Codigo` com quebra de linha adaptativa, exclusao logica de itens apagados e exclusao protegida de tabelas nao padrao por senha de confirmacao.
-- O login de Codigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, preservando a autenticacao em `wf_users`.
+- O modulo `Codigos` fica oficialmente em `apps/codigos`, usa Node.js/TypeScript/Express com Postgres `wimifarma_codigos`, sessao propria `WFCODIGOS`, login por `core_users` e proxy Apache em `/codigos/`. A tela preserva o mesmo CSS/JS de `site/codigos`: blocos por prefixo de EAN em `codigos_groups`, itens em `codigos_items`, autosave de `Codigo`, `EAN` e `Preco`, botao `+`, reordenacao por arrastar, criacao no rodape, exclusao logica e exclusao protegida de tabelas nao padrao por senha. `wf_codigos_*` no MySQL fica como importacao/espelho/log temporario por flags `CODIGOS_LEGACY_MYSQL_*`. O Miauby prefere `/codigos/api/internal/summary` e `/codigos/api/internal/search` com token interno para ler a fonte Postgres; sem token, usa o espelho legado enquanto estiver ativo.
 - O modulo `XP` fica oficialmente em `apps/xp`, usa Node.js/TypeScript/Express com Postgres `wimifarma_xp`, sessao propria `WFXP`, login por `core_users` e proxy Apache em `/xp/`. A tela preserva o mesmo CSS/JS/assets de `site/xp`: calcula XP inteiro pela regra R$ 1.000,00 = 2.500 XP, exige 30.000 XP para sair do nivel 1 e aumenta a dificuldade por formula progressiva. A tela principal mostra a trilha como mapa de jogo em zigue-zague, renderizando os niveis 1 a 20 enquanto a equipe estiver no inicio e depois uma janela curta ao redor do nivel mais alto; jogadores aparecem compactos na trilha e em uma faixa resumida clicavel. A aba `Configuracoes` concentra cadastro/edicao e exclusao logica de usuarios/funcionarios, foto validada JPG/PNG/WEBP ate 3 MB, moldura ADM, filtro de mes e lancamentos diarios. `wf_xp_*` no MySQL fica como importacao/espelho temporario de rollback por flags `XP_LEGACY_MYSQL_*`.
 - O modulo `Gestao` foi elevado para Node.js + TypeScript + Postgres: login restrito a `adm`, `admin` ou `gerente`, contas a pagar manuais em `gestao_accounts`, categoria livre com resumo lateral normalizado, lista operacional compacta, painel `Mensal` para contas com repeticao ativa e ordem manual salva, busca por nome/valor/categoria/datas com limite inicial de 10 e `Mostrar mais`, itens flexiveis em `gestao_account_items`, pagamentos parciais datados em `gestao_account_payments`, vencimento opcional por data com urgencia visual, status reversivel, extrato por conta com saldo/progresso, pagamento parcial por qualquer lancamento aberto, cancelamento/reabertura de lancamento sem apagar historico, exclusao da tela apenas por arquivamento de contas canceladas, reabertura de contas pagas, renomeacao por icone de lapis, repeticao do mes seguinte em ciclo liga/desliga sem copiar pagamentos, observacao editavel/minimizavel, detalhes abertos pelo botao `Abrir`, pagamentos/historico minimizaveis e bloco de notas lateral em `gestao_notepad_notes`, com auditoria em `gestao_audit_events` e espelho curto em `wf_logs`.
 - O modulo `Pedidos` controla fornecedores em `/pedidos/`, separado da tela de Gestao. Ele usa `pedidos_orders` para pedidos registrados/aguardando chegada e `pedidos_confirmed_orders` para confirmados/historico, sempre vinculando valores, parcelas e pagamentos a uma conta da categoria `Boleto` em `gestao_accounts`. Cada parcela em `gestao_account_items` pode ter vencimento proprio (`due_at`), e a conta usa a menor data ativa como vencimento geral para ordenacao/resumo. Contas de pedidos nao entram em recategorizacao em lote para preservar esse controle. A tela carrega o widget do Miauby; pedidos novos podem marcar `Ja foi pago, so falta chegar` ou `Ja chegou, so pagar`, levando o segundo caso direto para `Confirmados`. A previsao de chegada do novo pedido e digitada como numero de dias (`2` = dois dias a partir de hoje) e o backend grava a data calculada em `expected_arrival_at`. Cards em `Aguardando chegada` e `Confirmados` ficam minimizados por padrao ao clicar no resumo do card, mantendo status, saldo e a acao principal visiveis no modo reduzido (`Confirmar chegada` ou `Pago`), usam icone de lapis para editar fornecedor/valores/vencimentos e icone de excluir para arquivamento logico/auditoria; em 2026-05-25, esses cards e os cards-resumo do topo ficaram mais baixos/densos, com acao principal em botao curto alinhado a direita para caber mais pedidos por tela. Em 2026-05-26, o topo ganhou `Valor para chegar`, somando saldo aberto dos pedidos aguardando chegada, e `Valor boletos abertos`, somando o saldo aberto dos boletos confirmados. O vencimento do boleto e a data do pagamento parcial em Pedidos sao informados apenas por data, sem horario na interface. A URL antiga `/gestao/pedidos` redireciona para `/pedidos/`.
@@ -143,12 +142,13 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Express para Gestao, Pedidos, Tarefa e XP
+- Node.js 22 + TypeScript + Express para Gestao, Pedidos, Tarefa, XP e Codigos
 - Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio por gravacao temporaria/transcricao confirmada, bolha/player de audio, resposta falada temporaria e seletor seguro de voz no diagnostico
 - Node.js 22 + TypeScript para o bridge WhatsApp do Miauby via Evolution API ou Meta Cloud API
 - PostgreSQL 17 para o core compartilhado de autenticacao em modo sombra
 - PostgreSQL 17 para dados da Cotacao V2
 - PostgreSQL 17 para dados do XP
+- PostgreSQL 17 para dados de Codigos
 - PostgreSQL 17 dedicado para fila/eventos/outbox do Miauby WhatsApp
 - Redis 7 para sessoes e presenca da Cotacao V2
 
@@ -259,6 +259,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |   |-- pedidos/             # Pedidos Node.js/TypeScript, separado de Gestao
 |   |-- tarefa/              # Tarefa Node.js/TypeScript/Postgres
 |   |-- xp/                  # XP Node.js/TypeScript/Postgres oficial
+|   |-- codigos/             # Codigos Node.js/TypeScript/Postgres oficial
 |   |-- miauw-agent/         # Miauby agente Node/TypeScript em sombra/corte controlado
 |   `-- miauw-whatsapp/      # Bridge WhatsApp Node/TypeScript com painel operacional
 |-- ops/
@@ -267,6 +268,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- gestao-data/             # volume Postgres da Gestao ignorado pelo Git
 |-- tarefa-data/             # volume Postgres do Tarefa ignorado pelo Git
 |-- xp-data/                 # volume Postgres do XP ignorado pelo Git
+|-- codigos-data/            # volume Postgres de Codigos ignorado pelo Git
 |-- docker/
 |   |-- php/Dockerfile
 |   `-- mysql/init/
@@ -275,7 +277,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- site/
 |   |-- home.php              # home publica estavel, fora do bootstrap WordPress
 |   |-- cashback/
-|   |-- codigos/
+|   |-- codigos/              # legado/assets; rota oficial usa apps/codigos por proxy
 |   |-- financeiro/
 |   |-- gestao/               # legado PHP; rota oficial usa apps/gestao por proxy
 |   |-- miauw/
@@ -315,6 +317,14 @@ WP_NONCE_SALT
 WP_CACHE
 WIMIFARMA_PUBLIC_PAGE_CACHE
 CODIGOS_GROUP_DELETE_PASSWORD
+CODIGOS_POSTGRES_PASSWORD
+CODIGOS_SESSION_SECRET
+CODIGOS_AUTH_PROVIDER
+CODIGOS_INTERNAL_TOKEN
+CODIGOS_INTERNAL_BASE_URL
+CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED
+CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED
+CODIGOS_LEGACY_MYSQL_LOGS_ENABLED
 MIAUW_OPENAI_API_KEY
 MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
@@ -501,6 +511,8 @@ Para Tarefa, manter `TAREFA_POSTGRES_PASSWORD` e `TAREFA_SESSION_SECRET` no `.en
 
 Para XP, `apps/xp` e `wimifarma-xp-app:3600` sao a rota oficial `/xp/` via proxy Apache. Manter `XP_POSTGRES_PASSWORD` e `XP_SESSION_SECRET` por ambiente; `XP_AUTH_PROVIDER=core` usa `core_users`, e rollback rapido de autenticacao e voltar `XP_AUTH_PROVIDER=mysql`. As flags `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED` controlam importacao/espelho/log legado para rollback curto.
 
+Para Codigos, `apps/codigos` e `wimifarma-codigos-app:3700` sao a rota oficial `/codigos/` via proxy Apache. Manter `CODIGOS_POSTGRES_PASSWORD` e `CODIGOS_SESSION_SECRET` por ambiente; `CODIGOS_AUTH_PROVIDER=core` usa `core_users`, e rollback rapido de autenticacao e voltar `CODIGOS_AUTH_PROVIDER=mysql`. `CODIGOS_INTERNAL_TOKEN` pode ficar igual ao `MIAUW_GUARDIAN_TOKEN` para o Miauby ler Codigos direto do Postgres por endpoint interno. As flags `CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED`, `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED` e `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED` controlam importacao/espelho/log legado para rollback curto.
+
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 
 Depois do deploy, a home publica deve provar que esta na versao certa:
@@ -517,6 +529,7 @@ Portas importantes:
 - container/proxy interno: `wimifarma-com-web:80`
 - app interno Tarefa: `wimifarma-tarefa-app:3500`
 - app interno XP: `wimifarma-xp-app:3600`
+- app interno Codigos: `wimifarma-codigos-app:3700`
 - bind local do Compose: `127.0.0.1:3002`
 - tunel local do PuTTY usado em testes: `127.0.0.1:13002`
 - publico: `80/443` via Nginx Proxy Manager

@@ -28,6 +28,7 @@ services:
       - wimifarma-pedidos-app
       - wimifarma-tarefa-app
       - wimifarma-xp-app
+      - wimifarma-codigos-app
       - wimifarma-miauw-agent
       - wimifarma-miauw-whatsapp
     environment:
@@ -64,6 +65,8 @@ services:
       COTACAO_INTERNAL_BASE_URL: ${COTACAO_INTERNAL_BASE_URL:-http://wimifarma-cotacao-app:3000/cotacao}
       GESTAO_INTERNAL_TOKEN: ${GESTAO_INTERNAL_TOKEN:-}
       GESTAO_INTERNAL_BASE_URL: ${GESTAO_INTERNAL_BASE_URL:-http://wimifarma-gestao-app:3200/gestao}
+      CODIGOS_INTERNAL_TOKEN: ${CODIGOS_INTERNAL_TOKEN:-}
+      CODIGOS_INTERNAL_BASE_URL: ${CODIGOS_INTERNAL_BASE_URL:-http://wimifarma-codigos-app:3700/codigos}
     ports:
       - "127.0.0.1:3002:80"
     volumes:
@@ -143,6 +146,19 @@ services:
       POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
     volumes:
       - ./xp-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-codigos-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-codigos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_codigos
+      POSTGRES_USER: wimifarma_codigos
+      POSTGRES_PASSWORD: ${CODIGOS_POSTGRES_PASSWORD:-wimifarma_codigos_dev_pass}
+    volumes:
+      - ./codigos-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -334,6 +350,50 @@ services:
       - ./site/xp/login-runner.js:/app/public/login-runner.js:ro
       - ./site/xp/assets:/app/public/assets:ro
       - ./site/xp/uploads:/app/public/uploads
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-codigos-app:
+    build:
+      context: ./apps/codigos
+      dockerfile: Dockerfile
+    container_name: wimifarma-codigos-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-core-db
+      - wimifarma-codigos-db
+    environment:
+      NODE_ENV: production
+      PORT: 3700
+      BASE_PATH: /codigos
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      POSTGRES_HOST: wimifarma-codigos-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_codigos
+      POSTGRES_USER: wimifarma_codigos
+      POSTGRES_PASSWORD: ${CODIGOS_POSTGRES_PASSWORD:-wimifarma_codigos_dev_pass}
+      CODIGOS_SESSION_SECRET: ${CODIGOS_SESSION_SECRET:-wimifarma_codigos_dev_secret_change_me}
+      CODIGOS_AUTH_PROVIDER: ${CODIGOS_AUTH_PROVIDER:-core}
+      CODIGOS_GROUP_DELETE_PASSWORD: ${CODIGOS_GROUP_DELETE_PASSWORD:-wimifarma}
+      CODIGOS_INTERNAL_TOKEN: ${CODIGOS_INTERNAL_TOKEN:-}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED: ${CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED:-true}
+      CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED: ${CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED:-true}
+      CODIGOS_LEGACY_MYSQL_LOGS_ENABLED: ${CODIGOS_LEGACY_MYSQL_LOGS_ENABLED:-true}
+    volumes:
+      - ./site/codigos/styles.css:/app/public/styles.css:ro
+      - ./site/codigos/app.js:/app/public/app.js:ro
+      - ./site/codigos/login-runner.js:/app/public/login-runner.js:ro
     networks:
       - wimifarma-com-network
 

@@ -53,7 +53,7 @@ Miauby ja possui:
 - Fase 4 do agente operacional v2 iniciada:
   - `miauw_skill_core_tool_names()` define as tools core migradas;
   - registry cobre sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos;
-  - `resumo_codigos` e `buscar_codigo_comissao` consultam `wf_codigos_comissao`;
+  - `resumo_codigos` e `buscar_codigo_comissao` preferem o endpoint interno tokenizado de `apps/codigos` (`/codigos/api/internal/...`) e caem no espelho legado `wf_codigos_comissao` enquanto a janela de rollback estiver ativa;
   - `registrar_sangria` encapsula lancamento financeiro como categoria `Sangria`;
   - `criar_tarefa` tambem virou OpenAI tool controlada, alem da acao local ja existente;
   - consulta de Cotacao usa a Cotacao V2 por `GET /cotacao/api/internal/search`;
@@ -120,7 +120,7 @@ Miauby ja possui:
   - `MIAUW_AGENT_VERSION=2.0-fase13`;
   - o servico Node passou para `SERVICE_VERSION=0.7.0` e `PHASE=fase13-php-read-tool-bridge`;
   - `site/miauw/agent-tools.php` adiciona uma ponte interna tokenizada para tools reais de leitura baixa, chamada pelo Node com `X-Miauw-Agent-Token`;
-  - as primeiras tools migradas para execucao Node via ponte PHP sao `resumo_financeiro`, `resumo_cashback`, `resumo_codigos`, `buscar_codigo_comissao` e `buscar_cotacao`;
+  - as primeiras tools migradas para execucao Node via ponte PHP sao `resumo_financeiro`, `resumo_cashback`, `resumo_codigos`, `buscar_codigo_comissao` e `buscar_cotacao`; as tools de Codigos consultam a fonte Postgres do app Node quando `CODIGOS_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` esta configurado;
   - para pedidos claramente direcionados a essas leituras, o Node faz pre-leitura deterministica pela ponte antes da resposta, alem de manter as tools disponiveis ao Agents SDK;
   - `buscar_cliente` fica fora da primeira leva por privacidade, mesmo sendo leitura, e toda escrita forte continua no PHP com confirmacao humana;
   - a ponte registra `miauw_agent_node_read_tool` em `miauw_tool_traces` com tool, chaves de argumentos, duracao e `writes_enabled=false`, sem payload bruto externo ou token.

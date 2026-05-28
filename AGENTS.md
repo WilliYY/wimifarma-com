@@ -60,7 +60,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
@@ -68,6 +68,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Pedidos em Node.js 22 + TypeScript + Express, separado da Gestao em `/pedidos/`, com sessao propria e tabelas operacionais proprias no Postgres da Gestao para manter integracao financeira.
 - Tarefa em Node.js 22 + TypeScript + Express, separado em `/tarefa/`, com sessao propria, Postgres 17 dedicado para tarefas/auditoria e importacao idempotente de `wf_tarefas`.
 - XP em Node.js 22 + TypeScript + Express, separado em `/xp/`, com sessao propria, Postgres 17 dedicado para funcionarios, vendas, configuracoes e auditoria.
+- Codigos em Node.js 22 + TypeScript + Express, separado em `/codigos/`, com sessao propria, Postgres 17 dedicado para itens, blocos EAN e auditoria.
 - Miauby WhatsApp em Node.js 22 + TypeScript, separado em `/miauw/whatsapp/`, com painel operacional proprio, Postgres 17 dedicado para webhook, fila, dedupe, contatos mascarados/cifrados e outbox via Evolution API ou Meta Cloud API.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro, logo animada propria sem fundo em `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma-home-animated.gif` e GIFs decorativos com o mesmo padrao de movimento dos logins.
@@ -80,6 +81,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - O card `Tarefas` abre `/tarefa/`, servido oficialmente por `apps/tarefa` via proxy Apache, preservando a mesma interface visual do modulo antigo. A fonte oficial de tarefas e `tarefa_tasks` no Postgres `wimifarma_tarefa`; `wf_tarefas` fica como importacao legado e espelho temporario de rollback quando `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`.
 - O card `XP` abre `/xp/`, servido oficialmente por `apps/xp` via proxy Apache, com gamificacao dos atendentes por vendas lancadas manualmente, cadastro de funcionarios, upload validado de foto, trilha horizontal em zigue-zague, progressao infinita de niveis e renderizacao em janela curta: niveis 1 a 20 no inicio e, depois disso, uma janela ao redor do nivel mais alto para preservar performance. Na aba `Configuracoes`, os cards de funcionarios devem mostrar barra amarela preenchida conforme o percentual real do nivel; na faixa inferior da `Trilha`, cada jogador tambem deve mostrar progresso amarelo proporcional; `Ultimos lancamentos` deve mostrar a observacao salva no lancamento e uma barra amarela compacta com o XP do lancamento.
 - Em 2026-05-28, o XP foi cortado para `apps/xp` em Node.js 22 + TypeScript + Postgres `wimifarma_xp`, mantendo o mesmo frontend visual por `site/xp/styles.css`, `site/xp/app.js`, `site/xp/login-runner.js`, `site/xp/assets` e uploads compartilhados em `site/xp/uploads`. A fonte oficial passa a ser `xp_employees`, `xp_sales`, `xp_settings` e `xp_audit_events`; `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` ficam como importacao/espelho opcional de rollback por `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED`. O login oficial usa `core_users` por `XP_AUTH_PROVIDER=core`; rollback de autenticacao e voltar `XP_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-xp-app`.
+- Em 2026-05-28, Codigos foi cortado para `apps/codigos` em Node.js 22 + TypeScript + Postgres `wimifarma_codigos`, mantendo o mesmo frontend visual por `site/codigos/styles.css`, `site/codigos/app.js` e `site/codigos/login-runner.js`. A fonte oficial passa a ser `codigos_items`, `codigos_groups` e `codigos_audit_events`; `wf_codigos_comissao` e `wf_codigos_blocos` ficam como importacao/espelho/log opcional de rollback por `CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED`, `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED` e `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED`. O login oficial usa `core_users` por `CODIGOS_AUTH_PROVIDER=core`; rollback de autenticacao e voltar `CODIGOS_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-codigos-app`. O Miauby consulta Codigos por endpoints internos tokenizados do app Node (`/codigos/api/internal/summary` e `/codigos/api/internal/search`) quando `CODIGOS_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN` existe; sem token, cai no espelho MySQL legado enquanto ele estiver ligado.
 - Em 2026-05-25, o login do XP foi simplificado para mostrar apenas a logo oficial, o titulo `Entrar no XP`, a descricao e o formulario; o selo textual amarelo `Wimifarma XP` foi removido e nao deve voltar sem pedido explicito.
 - O Miauby conhece o contexto do XP e pode usar "farmar aura no XP" como linguagem interna de jogo para incentivar venda real e lancamento correto, sem inventar ranking, nivel ou pontuacao quando nao houver dado vindo do sistema ou do usuario.
 - Em 2026-05-26, o Miauby WhatsApp iniciou como backend dedicado em `apps/miauw-whatsapp`, com Node.js 22 + TypeScript e Postgres 17 proprio para webhook, fila, dedupe, allowlist, painel operacional e outbox. O transporte pode ser `evolution` ou `meta` por `MIAUW_WHATSAPP_PROVIDER`; Evolution e Meta Cloud API devem ser apenas transporte por webhook/API, enquanto permissoes, guardrails, fila e auditoria ficam no bridge/Miauby. O modo de IA do WhatsApp e controlado por `MIAUW_WHATSAPP_AI_MODE=miauw|gemini|hybrid`: `miauw` usa o core interno/OpenAI, `gemini` usa Gemini para conversa curta sem comandos, e `hybrid` envia conversa simples ao Gemini quando `GEMINI_API_KEY` existe, mas roteia comandos internos para o core Miauby. O repositorio continua com default seguro `MIAUW_WHATSAPP_ENABLED=false`, mas o VPS pode ativar o canal por `.env` quando token/cifragem estiverem configurados. O painel `/miauw/whatsapp/` pode ser protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`, usa favicon proprio do Miauby e deve manter `/miauw/whatsapp/health` publico sem segredo. Grupos ficam bloqueados por padrao, o canal usa anti-flood por remetente e global, intervalo minimo entre envios e pausa em erro temporario do transporte; acoes fortes seguem sujeitas a confirmacao/auditoria. O numero do Cashback (`+55 44 99739-4711`) pode ser usado em teste quando controlado pela empresa, mas remetentes autorizados devem entrar em allowlist.
@@ -114,7 +116,6 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Ao criar um novo card/modulo, decidir primeiro o melhor desenho tecnico para aquele dominio: linguagem/runtime, banco, tabelas, indices, sessoes, permissao, auditoria, health e deploy. Nao misturar em modulo existente apenas por conveniencia visual; se o card tiver regra de negocio propria, ele deve nascer com estrutura propria e integracoes explicitas.
 - Modulos internos PHP puro:
   - `site/cashback`
-  - `site/codigos`
   - `site/financeiro`
   - `site/miauw`
 - A rota `/cotacao/` e servida por proxy interno do Apache para `wimifarma-cotacao-app:3000`; a Cotacao PHP antiga em `site/cotacao` foi removida e os ativos usados pela V2 ficam em `apps/cotacao/public`.
@@ -123,10 +124,12 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - A rota `/tarefa/` e servida por proxy interno do Apache para `wimifarma-tarefa-app:3500/tarefa`; `site/tarefa` fica como legado/fallback historico e fonte visual, mas nao e a fonte oficial da tela apos o corte.
 - A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela pode rodar em sombra ou corte controlado por `MIAUW_ENGINE`, enquanto o PHP preserva login, sessoes, confirmacoes e escrita forte.
 - A rota `/miauw/whatsapp/` e servida por proxy interno do Apache para `wimifarma-miauw-whatsapp:3400/miauw/whatsapp`; a home publica possui o card `Miauby Whatsapp` apontando para esse painel operacional.
+- A rota `/codigos/` e servida por proxy interno do Apache para `wimifarma-codigos-app:3700/codigos`; `site/codigos` fica como legado/fallback historico e fonte visual dos assets, mas nao e a fonte oficial da tela apos o corte.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
 - Banco core compartilhado: Postgres `wimifarma_core`, com dados persistidos em `core-data/postgres`; a primeira etapa guarda `core_users`, `core_audit_logs` e `core_login_rate_limits` em modo sombra, sincronizados de `wf_users` por `apps/core-auth`, sem trocar login de nenhum modulo ainda.
 - Banco do XP: Postgres `wimifarma_xp`, com dados persistidos em `xp-data/postgres`; guarda `xp_employees`, `xp_sales`, `xp_settings`, `xp_audit_events` e sessoes `xp_sessions`. O MySQL `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` fica apenas como legado/importacao/espelho temporario de rollback quando as flags `XP_LEGACY_MYSQL_*` estiverem ligadas. O ADM tambem existe como player fixo de teste em `system_key='adm'`, protegido contra edicao/exclusao comum e sincronizado com a foto da moldura ADM.
+- Banco de Codigos: Postgres `wimifarma_codigos`, com dados persistidos em `codigos-data/postgres`; guarda `codigos_items`, `codigos_groups`, `codigos_audit_events` e sessoes `codigos_sessions`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` fica apenas como legado/importacao/espelho/log temporario quando as flags `CODIGOS_LEGACY_MYSQL_*` estiverem ligadas.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 - Banco da Gestao/Pedidos: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
 - Banco da Tarefa: Postgres `wimifarma_tarefa`, com dados persistidos em `tarefa-data/postgres`; guarda `tarefa_tasks`, `tarefa_audit_events` e `tarefa_sessions`. A partir do corte controlado, `TAREFA_AUTH_PROVIDER=core` usa `core_users` como login oficial; `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED` controlam a janela de legado/rollback com MySQL.
@@ -154,6 +157,7 @@ Nao misturar portas:
 - `wimifarma-pedidos-app:3300`: destino interno do Apache para `/pedidos/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-tarefa-app:3500`: destino interno do Apache para `/tarefa/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-xp-app:3600`: destino interno oficial do Apache para `/xp/`.
+- `wimifarma-codigos-app:3700`: destino interno oficial do Apache para `/codigos/`.
 - `wimifarma-miauw-whatsapp:3400`: destino interno do Apache para `/miauw/whatsapp/`; nao publicar diretamente no Nginx Proxy Manager.
 
 O Proxy Host de `wimifarma.com` e `www.wimifarma.com` deve apontar para:
@@ -183,6 +187,7 @@ Nao versionar:
 - `cotacao-data/`
 - `tarefa-data/`
 - `xp-data/`
+- `codigos-data/`
 - `node_modules/`
 
 Cache de pagina WordPress/SpeedyCache deve ficar opt-in durante a migracao:
@@ -213,6 +218,7 @@ Rotas internas:
 
 - `/cashback/login.php`
 - `/codigos/login.php`
+- `/codigos/health`
 - `/cotacao/login.php`
 - `/cotacao/health`
 - `/financeiro/login.php`
@@ -320,14 +326,14 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - O modal de formatacao condicional usa layout largo e compacto: criacao de regra em faixa unica, regras existentes em linhas alinhadas e acoes `Salvar`/`Apagar` lado a lado no desktop.
 - O botao `Sair` da Cotacao V2 encerra a sessao da Cotacao e redireciona para a home inicial `/`, nao para a tela de login.
 - A home publica ganhou o card `Códigos` como sexto card, abaixo do Cashback no grid desktop de no maximo cinco cards por linha; os cards foram posicionados mais acima para acomodar a segunda linha.
-- O modulo `site/codigos` controla atalhos de itens com comissao diferente em tabela simples editavel com `Código`, `EAN` e `Preço`; cria a tabela MySQL `wf_codigos_comissao`, permite adicionar, editar e apagar por exclusao logica.
+- O modulo `Codigos` controla atalhos de itens com comissao diferente em tabela simples editavel com `Código`, `EAN` e `Preço`; a rota oficial usa `apps/codigos` e Postgres, mantendo `site/codigos` como legado/assets.
 
 ## Estado validado em 2026-05-15
 
-- O modulo `site/codigos` passou a salvar automaticamente edicoes de `Código`, `EAN` e `Preço` por `/codigos/api.php`, com sessao e CSRF; o botao Salvar saiu do fluxo normal.
-- A tela de Códigos foi dividida em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao e permitindo criar novos blocos pelo botao `+`; os blocos sao persistidos no MySQL em `wf_codigos_blocos`, cada bloco tem linha nova no rodape para adicionar itens sem misturar os grupos, e o layout usa largura ampla para aproveitar melhor as laterais da tela.
-- Em Códigos, editar uma linha preserva a posicao atual quando o prefixo do EAN nao muda; reordenacao e feita arrastando o numero da linha dentro do mesmo grupo e persiste em `wf_codigos_comissao.ordem`.
-- Apagar codigo continua sendo acao explicita com confirmacao e exclusao logica em `wf_codigos_comissao`.
+- O modulo `Codigos` salva automaticamente edicoes de `Código`, `EAN` e `Preço` por `/codigos/api.php` no servico `apps/codigos`, com sessao `WFCODIGOS` e CSRF; o botao Salvar saiu do fluxo normal.
+- A tela de Códigos e dividida em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao e permitindo criar novos blocos pelo botao `+`; os blocos sao persistidos oficialmente no Postgres em `codigos_groups`, cada bloco tem linha nova no rodape para adicionar itens sem misturar os grupos, e o layout usa largura ampla para aproveitar melhor as laterais da tela.
+- Em Códigos, editar uma linha preserva a posicao atual quando o prefixo do EAN nao muda; reordenacao e feita arrastando o numero da linha dentro do mesmo grupo e persiste em `codigos_items.sort_order`.
+- Apagar codigo continua sendo acao explicita com confirmacao e exclusao logica em `codigos_items.deleted_at`.
 - O login de Códigos segue o mesmo padrao visual vinho/rosa dos outros logins internos, sem alterar sessao, CSRF ou autenticacao em `wf_users`.
 - Em Códigos, novos blocos de EAN sao criados com o prefixo digitado pelo usuario, sem sequencia automatica; as tabelas aparecem lado a lado em faixa horizontal, aproveitando mais a largura do monitor.
 - Em Códigos, tabelas inteiras de blocos numericos nao padrao podem ser excluidas por um botao no cabecalho do EAN, com card de confirmacao e senha operacional `wimifarma`; `EAN 20`, `EAN 40` e `Outros` sao protegidos.

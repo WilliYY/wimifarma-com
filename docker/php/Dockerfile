@@ -84,6 +84,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/codigos/" "http://wimifarma-codigos-app:3700/codigos/"'; \
+        echo 'ProxyPassReverse "/codigos/" "http://wimifarma-codigos-app:3700/codigos/"'; \
+        echo 'ProxyPass "/codigos" "http://wimifarma-codigos-app:3700/codigos"'; \
+        echo 'ProxyPassReverse "/codigos" "http://wimifarma-codigos-app:3700/codigos"'; \
+    } > /etc/apache2/conf-available/wimifarma-codigos-proxy.conf \
+    && a2enconf wimifarma-codigos-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

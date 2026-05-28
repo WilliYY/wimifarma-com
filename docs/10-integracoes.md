@@ -40,6 +40,8 @@ Variaveis/configuracoes:
 - `MIAUW_REALTIME_VOICE`
 - `COTACAO_INTERNAL_TOKEN`
 - `COTACAO_INTERNAL_BASE_URL`
+- `CODIGOS_INTERNAL_TOKEN`
+- `CODIGOS_INTERNAL_BASE_URL`
 - constantes opcionais em `site/miauw/config.local.php`
 
 Status operacional:
@@ -61,7 +63,7 @@ Status operacional:
 - A Fase 10 adiciona contrato versionado da personalidade do Miauby (`miauby-persona-2026-05-16`) no PHP e no Node. O servico `/miauw/agent/health` informa `personality_version`, e `npm run check:persona` valida o prompt Node sem chamar a camada online.
 - A Fase 11 adiciona contratos de tools exportados pelo PHP: `miauw_agent_tool_contract_export()` consolida registry, schemas, riscos e confirmacoes, e o adaptador envia `tool_contracts` ao servico Node. O Node usa isso como contexto, mas segue sem escrita direta e sem executar tools reais.
 - A Fase 12 libera a primeira tool real executada no Node, `consultar_contrato_tool_miauby`, apenas para leitura dos contratos seguros enviados pelo PHP. O Node pode consultar nome/modulo/risco de tools auditadas, mas `writes_enabled=false` permanece e qualquer escrita/confirmacao/auditoria continua no PHP.
-- A Fase 13 libera tools reais de leitura baixa no Node por ponte PHP interna tokenizada (`/miauw/agent-tools.php`). O Node chama Financeiro, Cashback, Codigos e Cotacao pelo PHP, com pre-leitura deterministica para pedidos claros e tools disponiveis ao Agents SDK; `buscar_cliente` e todas as escritas fortes continuam fora dessa primeira leva.
+- A Fase 13 libera tools reais de leitura baixa no Node por ponte PHP interna tokenizada (`/miauw/agent-tools.php`). O Node chama Financeiro, Cashback, Codigos e Cotacao pelo PHP, com pre-leitura deterministica para pedidos claros e tools disponiveis ao Agents SDK; `buscar_cliente` e todas as escritas fortes continuam fora dessa primeira leva. Para Codigos, o PHP prefere os endpoints internos do `apps/codigos` com `CODIGOS_INTERNAL_TOKEN` e usa o espelho MySQL apenas como fallback de transicao.
 - A Fase 14 libera a ponte PHP universal para o Node orquestrar todas as tools exportadas pelo registry, mantendo execucao/auditoria no PHP, escrita direta Node bloqueada e acoes fortes retornando `confirmation_required`.
 - A Fase 15 adiciona o roteador de estilo versionado: o PHP envia `style_context` ao Node com rota, limite de palavras, regras de voz, exemplos e memorias/padroes aprovados. Perguntas casuais, bastidor tecnico, saudacoes e ruido podem ser respondidos localmente sem chamada online nem tool, preservando a voz do Miauby e reduzindo custo/latencia.
 - A Fase 16 adiciona o Treinador do Miauby: feedback do chat e revisao em `/miauw/treino.php` salvam exemplos versionados em `miauw_treinos_respostas`; somente exemplos aprovados entram no `style_context` enviado ao Node, que continua sem escrita direta.

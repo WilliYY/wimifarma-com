@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gestao/Pedidos e da Tarefa. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2, Gestao/Pedidos, Tarefa e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP e de Codigos. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -19,6 +19,9 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gesta
 - Container Tarefa: `wimifarma-tarefa-db`
 - Imagem Tarefa: `postgres:17-alpine`
 - Volume Tarefa: `tarefa-data/postgres/`
+- Container Codigos: `wimifarma-codigos-db`
+- Imagem Codigos: `postgres:17-alpine`
+- Volume Codigos: `codigos-data/postgres/`
 - Container Miauby WhatsApp: `wimifarma-miauw-whatsapp-db`
 - Imagem Miauby WhatsApp: `postgres:17-alpine`
 - Volume Miauby WhatsApp: `miauw-whatsapp-data/postgres/`
@@ -34,6 +37,7 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gesta
 - `wimifarma_cotacao`: Cotacao V2 em Postgres.
 - `wimifarma_gestao`: Gestao em Postgres.
 - `wimifarma_tarefa`: Tarefa em Postgres.
+- `wimifarma_codigos`: Codigos em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 
 O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
@@ -90,6 +94,17 @@ Criadas por `apps/tarefa/src/server.ts`:
 
 A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` permanece como importacao legado e espelho temporario quando `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder tarefas criadas durante a transicao.
 
+## Tabelas de Codigos em Postgres
+
+Criadas por `apps/codigos/src/server.ts`:
+
+- `codigos_groups`: blocos visuais por prefixo de EAN, incluindo os padroes `20`, `40` e `outros`, com `legacy_mysql_id` para reconciliacao com `wf_codigos_blocos`.
+- `codigos_items`: atalhos de itens com comissao diferente, com codigo, EAN, preco em centavos, grupo visual, ordem, exclusao logica e `legacy_mysql_id` para reconciliacao com `wf_codigos_comissao`.
+- `codigos_audit_events`: auditoria curta de criacao, edicao, reordenacao, exclusao logica e exclusao de blocos.
+- `codigos_sessions`: sessoes web do modulo Codigos gerenciadas por `connect-pg-simple`.
+
+A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` permanece como importacao legado e espelho temporario quando `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder edicoes feitas durante a transicao.
+
 ## Tabelas em `wimifarma_app`
 
 Inventario real observado em 2026-05-10:
@@ -105,8 +120,8 @@ Inventario real observado em 2026-05-10:
 - `wf_logs`: logs/auditoria geral.
 - `wf_login_rate_limits`: limitador persistente dos logins PHP internos por hash de `IP + usuario`, com contagem de falhas, janela temporal e bloqueio temporario.
 - `wf_whatsapp_mensagens`: mensagens e campanhas.
-- `wf_codigos_comissao`: atalhos de itens com comissao diferente, com codigo, EAN, preco, ordem e exclusao logica.
-- `wf_codigos_blocos`: blocos visuais do modulo Codigos por prefixo de EAN, permitindo manter blocos vazios ate o primeiro item ser cadastrado.
+- `wf_codigos_comissao`: legado/importacao/espelho temporario de Codigos; a escrita oficial nova usa Postgres `codigos_items`.
+- `wf_codigos_blocos`: legado/importacao/espelho temporario dos blocos de Codigos; a escrita oficial nova usa Postgres `codigos_groups`.
 - `wf_xp_employees`: funcionarios/atendentes do modulo XP, com nome, caminho da foto validada, status, `system_key` opcional para players fixos do sistema e exclusao logica.
 - `wf_xp_sales`: vendas lancadas para o XP, com valor em centavos, pontos inteiros, data, funcionario, usuario criador, observacao opcional e cancelamento logico.
 - `wf_xp_settings`: configuracoes simples do XP, como a foto da moldura ADM.
@@ -178,8 +193,9 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `site/financeiro/financeiro-funcoes.php`
 - Gestao: `apps/gestao/src/server.ts`
-- XP: `site/xp/xp-funcoes.php`
+- XP: `apps/xp/src/server.ts`
 - Tarefas: `apps/tarefa/src/server.ts`
+- Codigos: `apps/codigos/src/server.ts`
 - Miauby: `site/miauw/miauw-funcoes.php` e `site/miauw/miauw-intelligence.php`
 - Miauby WhatsApp: `apps/miauw-whatsapp/src/server.ts`
 
@@ -190,7 +206,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_cashback_creditos` depende de cliente/compra e controla saldo restante.
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `wf_login_rate_limits` nao guarda usuario em texto puro; usa hashes para chave operacional do limitador, preserva o IP usado no bloqueio para diagnostico e pode ser limpo sem afetar usuarios, sessoes ou historico financeiro.
-- `wf_codigos_comissao` deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `wf_codigos_blocos` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa a coluna `ordem` dos itens dentro do grupo visual. Apagar pela tela marca `ativo=0` e `apagado_em`, preservando o registro para auditoria basica.
+- Codigos deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `codigos_groups` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa `sort_order` dos itens dentro do grupo visual. Apagar pela tela marca `deleted_at` no Postgres e, quando o espelho legado estiver ligado, marca `ativo=0`/`apagado_em` no MySQL.
 - `wf_xp_employees` e a fonte de verdade dos funcionarios na trilha XP; remover pela tela marca `status='inativo'` e `deleted_at`, sem apagar vendas antigas. O ADM usa `system_key='adm'`, aparece como player fixo de teste para receber XP, e nao deve ser editado/excluido pelos controles comuns de usuario.
 - `wf_xp_sales.amount_cents` guarda venda em centavos inteiros, `wf_xp_sales.xp_points` guarda o XP calculado no momento do lancamento e `wf_xp_sales.note` guarda a observacao opcional exibida em `Ultimos lancamentos`. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`. O schema do XP garante indice aditivo `idx_xp_sales_active_employee_date` para leituras por venda ativa, funcionario e mes.
 - Vendas XP canceladas preenchem `deleted_at`/`deleted_by` e saem dos totais, preservando historico e logs.
@@ -258,6 +274,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - O volume `mysql/` fica fora do Git.
 - O volume `cotacao-data/` fica fora do Git.
 - O volume `gestao-data/` fica fora do Git.
+- O volume `codigos-data/` fica fora do Git.
 - O volume `miauw-whatsapp-data/` fica fora do Git.
 - Dumps antigos ficam fora da raiz do projeto.
 - A senha real do banco vem de `.env`.
@@ -274,6 +291,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Reativar gatilhos de categoria para `geral`/`urgente`/`encomenda`/`cotacao` pode voltar a causar mudanca invisivel de estado e lag na planilha.
 - Apagar `cotacao-data/` perde dados da Cotacao V2.
 - Apagar `gestao-data/` perde dados oficiais da Gestao.
+- Apagar `codigos-data/` perde dados oficiais de Codigos.
 - Apagar `miauw-whatsapp-data/` perde fila, eventos e outbox do canal WhatsApp do Miauby.
 - Criar regras automáticas fora de `cotacao_v2_rules` reabre o bug de palavra-gatilho.
 

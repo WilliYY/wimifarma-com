@@ -11,6 +11,7 @@ Arquivos:
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/cashback/auth.php`
+- `apps/codigos/src/server.ts`
 - `site/*/login.php`
 - `site/*/logout.php`
 - `site/*/bootstrap.php`
@@ -35,6 +36,8 @@ Tabelas:
 
 - `wf_users`
 - `wf_logs`
+- `core_users`
+- `codigos_sessions`
 - `wptl_users`
 - `wptl_usermeta`
 
@@ -45,7 +48,7 @@ Tabelas:
 - Saida HTML deve usar escape.
 - Perfis/roles em `wf_users.role` devem ser respeitados quando a rota exigir permissao.
 - WordPress nao deve ser confundido com login dos modulos internos.
-- A exclusao de tabelas inteiras em `/codigos/` exige sessao interna ativa, CSRF e senha operacional `wimifarma`; essa senha pode ser alterada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
+- Codigos (`/codigos/`) usa o servico Node `apps/codigos`, sessao propria `WFCODIGOS` no Postgres `wimifarma_codigos` e autentica oficialmente contra `core_users` quando `CODIGOS_AUTH_PROVIDER=core`; rollback e voltar `CODIGOS_AUTH_PROVIDER=mysql`. Criar bloco, salvar linha, reordenar, excluir item e excluir tabela usa CSRF. A exclusao de tabelas inteiras exige senha operacional `wimifarma`, alteravel por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
 - A Gestao (`/gestao/`) usa o servico Node `apps/gestao`, autentica contra `wf_users`, cria sessao propria `WFGESTAO` no Postgres da Gestao e fica restrita a username `adm`, role `admin` ou role `gerente`; lancar conta, adicionar item/juros, registrar pagamento parcial, confirmar saldo, cancelar ou reabrir conta usa CSRF.
 - Pedidos (`/pedidos/`) usa o servico Node separado `apps/pedidos`, autentica contra `wf_users`, cria sessao propria `WFPEDIDOS` no Postgres da Gestao e fica restrito a username `adm`, role `admin` ou role `gerente`; criar pedido, confirmar chegada, atualizar vencimento, adicionar juros/valor, registrar parcial e marcar pago usa CSRF.
 - Quando uma rota protegida de Pedidos envia o operador para `/pedidos/login.php`, o destino seguro original e preservado na sessao; entrar pelo card `Pedidos` deve voltar para `/pedidos/`, nao para a tela principal de Gestao.
@@ -65,7 +68,7 @@ Tabelas:
 
 - Sessao dos modulos internos e configurada em `site/cashback/config.php`.
 - Funcoes comuns ficam em `site/cashback/functions.php`.
-- Modulos PHP como Financeiro e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao e Pedidos usam sessoes Node proprias por rota.
+- Modulos PHP como Financeiro e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao, Pedidos, XP e Codigos usam sessoes Node proprias por rota.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 

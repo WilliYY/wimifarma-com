@@ -703,6 +703,7 @@ function miauw_skill_core_migration_status(): array
         'executores_indisponiveis' => $unavailable,
         'cotacao_v2_internal_configurado' => function_exists('miauw_skill_cotacao_v2_internal_configured') ? miauw_skill_cotacao_v2_internal_configured() : false,
         'gestao_internal_configurado' => function_exists('miauw_skill_gestao_internal_configured') ? miauw_skill_gestao_internal_configured() : false,
+        'codigos_internal_configurado' => function_exists('miauw_skill_codigos_internal_configured') ? miauw_skill_codigos_internal_configured() : false,
         'tools' => $tools,
     );
 }
@@ -738,6 +739,7 @@ function miauw_skill_registry_diagnostics(): string
 
     $lines[] = 'Cotacao V2 interna para o Miauby: ' . (!empty($core['cotacao_v2_internal_configurado']) ? 'configurada por token interno.' : 'aguardando token interno no ambiente.');
     $lines[] = 'Gestao interna para o Miauby: ' . (!empty($core['gestao_internal_configurado']) ? 'configurada por token interno.' : 'aguardando token interno no ambiente.');
+    $lines[] = 'Codigos interno para o Miauby: ' . (!empty($core['codigos_internal_configurado']) ? 'configurado por token interno.' : 'aguardando token interno no ambiente.');
 
     $lines[] = 'Skills de escrita exigem dados claros. Se faltar produto, responsavel, valor, fornecedor ou categoria, perguntar antes.';
 
@@ -914,6 +916,49 @@ function miauw_skill_codigos_summary(array $period): array
 {
     unset($period);
 
+    if (miauw_skill_codigos_internal_configured()) {
+        try {
+            $response = miauw_skill_codigos_internal_request('GET', '/api/internal/summary');
+            if (is_array($response) && !empty($response['ok'])) {
+                $lines = array(
+                    'CODIGOS',
+                    'Ativos: ' . (int) ($response['total'] ?? 0),
+                );
+
+                $groups = isset($response['groups']) && is_array($response['groups']) ? $response['groups'] : array();
+                if ($groups) {
+                    $parts = array();
+                    foreach ($groups as $group) {
+                        if (!is_array($group)) {
+                            continue;
+                        }
+                        $parts[] = (string) ($group['label'] ?? 'Outros') . ': ' . (int) ($group['total'] ?? 0);
+                    }
+                    if ($parts) {
+                        $lines[] = 'Blocos: ' . implode('; ', $parts);
+                    }
+                }
+
+                $recent = isset($response['recent']) && is_array($response['recent']) ? $response['recent'] : array();
+                if ($recent) {
+                    $lines[] = 'Ultimos atualizados:';
+                    foreach ($recent as $item) {
+                        if (!is_array($item)) {
+                            continue;
+                        }
+                        $lines[] = '- ' . (string) ($item['codigo'] ?? '-')
+                            . ' | EAN: ' . (string) ($item['ean'] ?? '-')
+                            . ' | preco: R$ ' . (string) ($item['preco'] ?? '0,00');
+                    }
+                }
+
+                return $lines;
+            }
+        } catch (Throwable $error) {
+            // Fallback legado abaixo preserva resposta enquanto o espelho MySQL estiver ativo.
+        }
+    }
+
     if (!miauw_skill_table_exists('wf_codigos_comissao')) {
         return array();
     }
@@ -985,6 +1030,34 @@ function miauw_skill_codigos_lookup(string $message): array
     $terms = array_values(array_unique(array_slice($terms, 0, 5)));
     if (!$terms) {
         return array('CODIGOS: informe codigo, EAN ou nome do item para eu procurar.');
+    }
+
+    if (miauw_skill_codigos_internal_configured()) {
+        try {
+            $response = miauw_skill_codigos_internal_request('GET', '/api/internal/search', array(), array('q' => implode(' ', $terms)));
+            if (is_array($response) && !empty($response['ok'])) {
+                $items = isset($response['items']) && is_array($response['items']) ? $response['items'] : array();
+                if (!$items) {
+                    return array('CODIGOS: nenhum atalho encontrado para "' . implode(', ', $terms) . '".');
+                }
+
+                $lines = array('CODIGOS ENCONTRADOS');
+                foreach ($items as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $lines[] = '#' . (int) ($item['id'] ?? 0)
+                        . ' | bloco: ' . (string) ($item['group_label'] ?? 'Outros')
+                        . ' | codigo: ' . (string) ($item['codigo'] ?? '-')
+                        . ' | EAN: ' . (string) (($item['ean'] ?? '') !== '' ? $item['ean'] : '-')
+                        . ' | preco: R$ ' . (string) ($item['preco'] ?? '0,00');
+                }
+
+                return $lines;
+            }
+        } catch (Throwable $error) {
+            // Fallback legado abaixo preserva resposta enquanto o espelho MySQL estiver ativo.
+        }
     }
 
     $where = array();
@@ -1406,6 +1479,93 @@ function miauw_skill_env_value(array $names): string
     }
 
     return '';
+}
+
+function miauw_skill_codigos_internal_token(): string
+{
+    if (defined('CODIGOS_INTERNAL_TOKEN') && trim((string) CODIGOS_INTERNAL_TOKEN) !== '') {
+        return trim((string) CODIGOS_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('CODIGOS_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN'));
+}
+
+function miauw_skill_codigos_internal_base_url(): string
+{
+    $url = defined('CODIGOS_INTERNAL_BASE_URL') ? trim((string) CODIGOS_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('CODIGOS_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-codigos-app:3700/codigos', '/');
+}
+
+function miauw_skill_codigos_internal_configured(): bool
+{
+    return miauw_skill_codigos_internal_token() !== '';
+}
+
+function miauw_skill_codigos_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    $token = miauw_skill_codigos_internal_token();
+    if ($token === '') {
+        return null;
+    }
+
+    $url = miauw_skill_codigos_internal_base_url() . '/' . ltrim($path, '/');
+    if ($query) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    $method = strtoupper($method);
+    $headers = array(
+        'Accept: application/json',
+        'X-Miauw-Internal-Token: ' . $token,
+    );
+    $options = array(
+        'method' => $method,
+        'header' => implode("\r\n", $headers),
+        'timeout' => 5,
+        'ignore_errors' => true,
+    );
+
+    if ($method !== 'GET') {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $options['header'] .= "\r\nContent-Type: application/json";
+        $options['content'] = is_string($json) ? $json : '{}';
+    }
+
+    $context = stream_context_create(array('http' => $options));
+    $raw = @file_get_contents($url, false, $context);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+
+    $status = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d+)/', (string) $header, $match)) {
+                $status = (int) $match[1];
+                break;
+            }
+        }
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        return null;
+    }
+
+    if ($status >= 400) {
+        $message = isset($data['error']) ? (string) $data['error'] : 'Falha no Codigos interno.';
+        throw new RuntimeException($message);
+    }
+
+    return $data;
 }
 
 function miauw_skill_cotacao_v2_internal_token(): string

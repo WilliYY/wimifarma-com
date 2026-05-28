@@ -89,12 +89,12 @@ $modules = @(
     },
     @{
         Module = 'Codigos'
-        Path = 'site/codigos'
-        Current = 'PHP procedural + MySQL'
-        Legacy = 'wf_codigos_comissao e wf_codigos_blocos'
-        Target = 'apps/codigos em Node.js + TypeScript + Postgres'
-        Priority = '3 - modulo PHP pequeno'
-        Next = 'Migrar depois de Tarefa, preservando blocos, ordem e exclusao logica.'
+        Path = 'site/codigos;apps/codigos'
+        Current = 'Node.js + TypeScript + Postgres'
+        Legacy = 'MySQL legado opcional por flags CODIGOS_LEGACY_MYSQL_*'
+        Target = 'Postgres puro + core auth/auditoria'
+        Priority = '3 - em corte'
+        Next = 'Observar /codigos/ no VPS e validar Miauby por CODIGOS_INTERNAL_TOKEN antes de desligar flags legadas.'
     },
     @{
         Module = 'XP'

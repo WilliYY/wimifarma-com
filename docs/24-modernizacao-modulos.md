@@ -4,7 +4,7 @@
 
 Registrar quais partes ainda usam modelo antigo e qual caminho seguro leva para Node.js, TypeScript e PostgreSQL sem quebrar a operacao atual.
 
-Esta etapa e inventario/planejamento operacional. Ela nao troca rotas, nao remove PHP, nao corta MySQL e nao altera dados.
+Este documento e inventario/planejamento operacional. Atualizacoes de migracao devem registrar a rota oficial, a dependencia legada restante e o proximo passo seguro sem apagar rollback.
 
 ## Como ver o inventario
 
@@ -45,7 +45,7 @@ O script mostra:
 | Gestao | Node.js + TypeScript + Postgres | `mysql2` para login/log/importacao | Postgres puro + core auth/auditoria | 1 |
 | Pedidos | Node.js + TypeScript + Postgres da Gestao | `mysql2` para login/log | Postgres puro + core auth/auditoria | 1 |
 | Tarefa | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
-| Codigos | PHP procedural + MySQL | `wf_codigos_comissao`, `wf_codigos_blocos` | `apps/codigos` Node.js + TypeScript + Postgres | 3 |
+| Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | PHP procedural + MySQL | `financeiro_*` | `apps/financeiro` Node.js + TypeScript + Postgres | 5 |
 | Cashback | PHP procedural + MySQL | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
@@ -59,11 +59,10 @@ O script mostra:
 1. Observar Cotacao/Gestao/Pedidos em modo sombra no core auth sem divergencias.
 2. Cortar autenticacao desses tres modulos para `core_users`, mantendo rollback por `.env`.
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` e legado MySQL desligado por flags.
-4. Repetir o padrao em Codigos.
-5. Observar XP em `/xp/` com health, login, upload e checksum antes de desligar flags legadas.
-6. Migrar Financeiro e Cashback com backup, checksums de totais e validacao por dia/cliente.
-7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
-8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
+4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
+5. Migrar Financeiro e Cashback com backup, checksums de totais e validacao por dia/cliente.
+6. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
+7. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
 ## Proxima fatia tecnica
 
@@ -86,4 +85,14 @@ XP foi cortado para `apps/xp`:
 - frontend preservado por CSS/JS/assets de `site/xp` e uploads compartilhados;
 - rollback por `XP_AUTH_PROVIDER=mysql` e flags `XP_LEGACY_MYSQL_*`.
 
-A proxima fatia segura e observar XP no VPS e, depois de paridade estavel, desligar `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED`.
+Codigos foi cortado para `apps/codigos`:
+
+- banco/schema alvo `wimifarma_codigos`;
+- tabelas `codigos_items`, `codigos_groups`, `codigos_audit_events` e `codigos_sessions`;
+- importador idempotente de `wf_codigos_comissao` e `wf_codigos_blocos`;
+- proxy Apache oficial em `/codigos/`;
+- endpoints internos tokenizados para o Miauby ler a fonte Postgres;
+- frontend preservado por CSS/JS/login-runner de `site/codigos`;
+- rollback por `CODIGOS_AUTH_PROVIDER=mysql` e flags `CODIGOS_LEGACY_MYSQL_*`.
+
+A proxima fatia segura e observar XP/Codigos no VPS e, depois de paridade estavel e leitura interna do Miauby validada, desligar as flags legadas de cada modulo. Em seguida, migrar Financeiro, porque continua em PHP/MySQL e ja recebe escritas do Miauby WhatsApp para PIX CNPJ.

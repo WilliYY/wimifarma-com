@@ -13,7 +13,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
 - A ponte interna do Miauby para a Cotacao V2 exige `X-Miauw-Internal-Token` e fica indisponivel se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
-- `/codigos/api.php` reutiliza a sessao `WFWCASHBACK`, exige usuario autenticado e valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos.
+- `/codigos/api.php` e atendido pelo servico Node `apps/codigos`, usa sessao propria `WFCODIGOS`, autentica por `core_users` quando `CODIGOS_AUTH_PROVIDER=core`, valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos e grava auditoria em Postgres.
+- `/codigos/api/internal/summary` e `/codigos/api/internal/search` exigem `X-Miauw-Internal-Token` ou `X-Codigos-Internal-Token`; sem `CODIGOS_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` configurado, recusam com 503. Esses endpoints retornam apenas resumo/lista de codigos, sem segredo nem payload bruto.
 - `/xp/` usa sessao propria `WFXP` no servico Node, exige usuario autenticado para visualizar, restringe alimentacao de dados a `adm`, `admin` ou `gerente`, valida CSRF e valida fotos por tipo real, tamanho e dimensoes antes de salvar.
 - `/gestao/` usa sessao propria `WFGESTAO` persistida no Postgres da Gestao, autentica contra `wf_users`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa queries parametrizadas para lancar contas, adicionar itens/juros, registrar pagamentos parciais, confirmar saldo, cancelar ou reabrir contas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
@@ -54,13 +55,14 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `.dockerignore`
 - `.env.example`
 - `apps/cotacao/src/server.js`
+- `apps/codigos/src/server.ts`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
 - `site/miauw/agent-tools.php`
 - `site/miauw/agent-actions.php`
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
-- `site/codigos/api.php`
+- `site/codigos/api.php` (legado/fallback historico)
 - `apps/xp/src/server.ts`
 - `site/xp/xp-funcoes.php` (legado/fallback)
 - `site/xp/uploads/.htaccess`
@@ -89,6 +91,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Acoes fortes por Miauby devem permanecer pendentes ate confirmacao explicita do operador; cancelar deve limpar a acao pendente sem executar escrita.
 - Toda nova tool de escrita forte deve entrar no registry com risco correto e ganhar eval antes de ser liberada para uso generativo.
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
+- Nao versionar `CODIGOS_POSTGRES_PASSWORD`, `CODIGOS_SESSION_SECRET` nem volumes de `codigos-data/`.
+- Nao versionar `CODIGOS_INTERNAL_TOKEN`; se vazar, trocar junto do token interno usado pelo Miauby e reiniciar web/Codigos.
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.
 - Nao versionar `MIAUW_AGENT_INTERNAL_TOKEN`; se vazar, trocar no `.env` do VPS e reiniciar web/Miauby agente.
 - Nao versionar `MIAUW_OPENAI_API_KEY`; as rotas de audio usam a chave somente no PHP para transcrever audio temporario e gerar resposta falada sem expor segredo ao navegador.

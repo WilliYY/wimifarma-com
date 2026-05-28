@@ -24,11 +24,11 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Entrada web: `site/`
 - WordPress: `site/wp-admin`, `site/wp-content`, `site/wp-includes`, `site/wp-config.php`
 - Cashback: `site/cashback/`
-- Codigos: `site/codigos/`
+- Codigos: `apps/codigos/`, publicado em `/codigos/` por proxy interno do Apache; `site/codigos/` fica como legado/assets.
 - Cotacao V2: `apps/cotacao/`, publicada em `/cotacao/` por proxy interno do Apache
 - Financeiro: `site/financeiro/`
 - Gestao: `apps/gestao/`, publicada em `/gestao/` por proxy interno do Apache; `site/gestao/` fica como legado.
-- XP: `site/xp/`
+- XP: `apps/xp/`, publicado em `/xp/` por proxy interno do Apache; `site/xp/` fica como legado/assets/uploads.
 - Tarefas: `apps/tarefa/`, publicada em `/tarefa/` por proxy interno do Apache; `site/tarefa/` fica como legado.
 - Miauby: `site/miauw/`
 - Miauby agente: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
@@ -44,12 +44,13 @@ Rotas principais:
 - `/wp-login.php`
 - `/cashback/login.php`
 - `/codigos/login.php`
+- `/codigos/health`
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/gestao/login.php`
 - `/gestao/health`
 - `/xp/login.php`
-- `/xp/health.php`
+- `/xp/health`
 - `/tarefa/login.php`
 - `/tarefa/health`
 - `/miauw/login.php`
@@ -80,7 +81,8 @@ Rotas principais:
 - O Nginx Proxy Manager deve encaminhar o dominio publico para `wimifarma-com-web:80`, nao para a porta de tunel.
 - A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
 - A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o MySQL continua apenas para login interno, logs e legado importado.
-- O XP fica em PHP/MySQL porque e alimentado manualmente pela equipe, reaproveita `wf_users`, CSRF, `wf_logs` e nao precisa de runtime/proxy novo.
+- O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/xp` e rollback por flags legadas.
+- Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/codigos` e rollback por flags legadas.
 - O Miauby agente dedicado foi iniciado em `apps/miauw-agent`; `site/miauw/api.php` continua dono de sessao, confirmacoes e escritas fortes mesmo quando `MIAUW_ENGINE=node`.
 - O Miauby WhatsApp foi iniciado em `apps/miauw-whatsapp` com Postgres 17 dedicado porque o canal precisa de fila duravel, idempotencia e outbox auditavel.
 - A Evolution API fica fora da stack principal do Wimifarma, como transporte separado, com Postgres/Redis/instancias proprios e API acessivel internamente pelo bridge. A Meta Cloud API usa o mesmo bridge por `MIAUW_WHATSAPP_PROVIDER=meta`, sem stack extra no VPS.
