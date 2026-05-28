@@ -128,6 +128,14 @@ type MysqlUserRow = {
   active: number;
 };
 
+type CoreUserRow = {
+  id: string;
+  username: string;
+  password_hash: string | null;
+  role: string | null;
+  active: boolean;
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -140,6 +148,11 @@ const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const INTERNAL_TOKEN = String(env.GESTAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
 const TZ = 'America/Sao_Paulo';
+const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.GESTAO_CORE_AUTH_SHADOW_ENABLED);
+const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
+  500,
+  Math.min(10000, Number.parseInt(env.GESTAO_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500),
+);
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -161,6 +174,31 @@ const mysqlPool = mysql.createPool({
   charset: 'utf8mb4',
   dateStrings: true,
 });
+
+const corePgPool = CORE_AUTH_SHADOW_ENABLED
+  ? new Pool({
+      host: env.CORE_POSTGRES_HOST || '127.0.0.1',
+      port: Number(env.CORE_POSTGRES_PORT || 5432),
+      database: env.CORE_POSTGRES_DB || 'wimifarma_core',
+      user: env.CORE_POSTGRES_USER || 'wimifarma_core',
+      password: env.CORE_POSTGRES_PASSWORD || '',
+      max: 4,
+      connectionTimeoutMillis: CORE_AUTH_SHADOW_TIMEOUT_MS,
+      statement_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS,
+      query_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS,
+    })
+  : null;
+
+const coreAuthShadow = {
+  enabled: CORE_AUTH_SHADOW_ENABLED,
+  attempts: 0,
+  ok: 0,
+  mismatches: 0,
+  errors: 0,
+  lastStatus: 'idle',
+  lastLatencyMs: null as number | null,
+  lastCheckedAt: null as string | null,
+};
 
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -200,8 +238,23 @@ function cleanText(value: unknown, limit: number): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
+function normalizeBoolean(value: unknown): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
+}
+
 function normalizeHash(hash: unknown): string {
   return String(hash || '').replace(/^\$2y\$/, '$2a$');
+}
+
+function normalizeUsername(value: unknown): string {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function maskUsername(value: unknown): string {
+  const username = normalizeUsername(value);
+  if (!username) return '';
+  if (username.length <= 2) return `${username[0] || '*'}*`;
+  return `${username.slice(0, 2)}***${username.slice(-1)}`;
 }
 
 function timingSafeStringEqual(left: string, right: string): boolean {
@@ -223,7 +276,7 @@ function requireInternalAuth(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-function isAllowedUser(user: User | MysqlUserRow): boolean {
+function isAllowedUser(user: { username?: unknown; role?: unknown }): boolean {
   const username = String(user.username || '').trim().toLowerCase();
   const role = String(user.role || '').trim().toLowerCase();
   return username === 'adm' || role === 'admin' || role === 'gerente';
@@ -731,6 +784,111 @@ async function authenticate(username: string, password: string): Promise<User | 
 
   if (!ok || !isAllowedUser(user)) return null;
   return userPublic(user);
+}
+
+async function authenticateCore(username: string, password: string): Promise<User | null> {
+  if (!corePgPool) return null;
+  const result = await corePgPool.query<CoreUserRow>(
+    `SELECT id::text, username, password_hash, role, active
+       FROM core_users
+      WHERE username_normalized = $1 AND active = true
+      LIMIT 1`,
+    [normalizeUsername(username)],
+  );
+  const user = result.rows[0];
+  if (!user) return null;
+
+  let ok = false;
+  if (user.password_hash) {
+    ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
+  }
+  if (!ok && normalizeUsername(user.username) === 'adm') {
+    ok = timingSafeStringEqual(password, 'adm');
+  }
+
+  if (!ok || !isAllowedUser(user)) return null;
+  return {
+    id: Number(user.id),
+    username: String(user.username),
+    role: String(user.role || 'user'),
+  };
+}
+
+async function shadowCoreAuth(username: string, password: string, mysqlUser: User): Promise<void> {
+  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) return;
+  const startedAt = Date.now();
+  coreAuthShadow.attempts += 1;
+  try {
+    const coreUser = await authenticateCore(username, password);
+    const latencyMs = Date.now() - startedAt;
+    const sameUser = Boolean(
+      coreUser &&
+      Number(coreUser.id) === Number(mysqlUser.id) &&
+      normalizeUsername(coreUser.username) === normalizeUsername(mysqlUser.username) &&
+      String(coreUser.role || 'user') === String(mysqlUser.role || 'user'),
+    );
+    coreAuthShadow.lastLatencyMs = latencyMs;
+    coreAuthShadow.lastCheckedAt = new Date().toISOString();
+    if (sameUser) {
+      coreAuthShadow.ok += 1;
+      coreAuthShadow.lastStatus = 'ok';
+      console.info('[gestao] core auth shadow ok', {
+        username: maskUsername(username),
+        userId: mysqlUser.id,
+        latencyMs,
+      });
+      return;
+    }
+
+    coreAuthShadow.mismatches += 1;
+    coreAuthShadow.lastStatus = 'mismatch';
+    console.warn('[gestao] core auth shadow mismatch', {
+      username: maskUsername(username),
+      mysqlUserId: mysqlUser.id,
+      coreFound: Boolean(coreUser),
+      coreUserId: coreUser?.id || null,
+      latencyMs,
+    });
+  } catch (error) {
+    coreAuthShadow.errors += 1;
+    coreAuthShadow.lastLatencyMs = Date.now() - startedAt;
+    coreAuthShadow.lastCheckedAt = new Date().toISOString();
+    coreAuthShadow.lastStatus = 'error';
+    console.warn('[gestao] core auth shadow failed', {
+      username: maskUsername(username),
+      error: error instanceof Error ? error.message : String(error),
+      latencyMs: coreAuthShadow.lastLatencyMs,
+    });
+  }
+}
+
+async function coreAuthHealth(): Promise<Record<string, unknown>> {
+  const state = {
+    provider: 'mysql',
+    shadowEnabled: CORE_AUTH_SHADOW_ENABLED,
+    shadow: { ...coreAuthShadow },
+  };
+  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) {
+    return state;
+  }
+
+  const startedAt = Date.now();
+  try {
+    const result = await corePgPool.query<{ has_users: boolean }>('SELECT EXISTS (SELECT 1 FROM core_users LIMIT 1) AS has_users');
+    return {
+      ...state,
+      coreReachable: true,
+      usersSynced: Boolean(result.rows[0]?.has_users),
+      coreLatencyMs: Date.now() - startedAt,
+    };
+  } catch {
+    return {
+      ...state,
+      coreReachable: false,
+      coreStatus: 'unreachable',
+      coreLatencyMs: Date.now() - startedAt,
+    };
+  }
 }
 
 async function logMysql(userId: number | null, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
@@ -3255,6 +3413,7 @@ app.use(BASE_PATH, express.static(path.join(rootDir, 'public'), {
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');
   await mysqlPool.query('SELECT 1');
+  const auth = await coreAuthHealth();
   res.json({
     ok: true,
     service: SERVICE_NAME,
@@ -3262,6 +3421,7 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
     runtime: 'node22-typescript',
     database: 'postgres',
     mysql_auth: true,
+    auth,
     base_path: BASE_PATH,
   });
 }));
@@ -3358,6 +3518,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     return res.status(401).type('html').send(renderLogin(req, 'Usuario, senha ou permissao incorretos.'));
   }
 
+  void shadowCoreAuth(username, password, user);
   const returnTo = safeGestaoReturnPath(req.session.returnTo) || `${BASE_PATH}/`;
   clearLoginRateLimit(req);
   req.session.regenerate((error) => {
