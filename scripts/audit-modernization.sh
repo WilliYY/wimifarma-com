@@ -73,7 +73,7 @@ rows=(
   "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres|MySQL legado opcional por flags|Postgres puro + core auth|2"
   "Codigos|site/codigos;apps/codigos|Node.js + TypeScript + Postgres|MySQL legado opcional por flags CODIGOS_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|3 em corte"
   "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres|MySQL legado opcional por flags XP_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|4 em corte"
-  "Financeiro|site/financeiro|PHP procedural + MySQL|financeiro_* e wf_users|apps/financeiro Node.js + TypeScript + Postgres|5"
+  "Financeiro|site/financeiro;apps/financeiro|PHP oficial + Node.js/TypeScript sombra|financeiro_* ainda fonte da tela PHP|Cortar /financeiro/ para Node.js + TypeScript + Postgres|5 sombra"
   "Cashback|site/cashback|PHP procedural + MySQL|wf_clientes/compras/creditos/resgates|apps/cashback Node.js + TypeScript + Postgres|6"
   "Miauby interno|site/miauw|PHP + Node agent sombra|miauw_* em MySQL|apps/miauw-agent + Postgres wimifarma_miauw|7"
   "Miauby WhatsApp|apps/miauw-whatsapp|Node.js + TypeScript + Postgres|sem MySQL operacional|manter/evoluir|moderno"
@@ -98,6 +98,7 @@ cat <<'EOF'
 Proximos passos recomendados:
 - Observar Cotacao/Gestao/Pedidos em sombra e cortar auth somente sem divergencias.
 - Validar Tarefa com core auth e legado MySQL desligado por flags.
-- Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel; depois migrar Financeiro, Cashback e Miauby interno.
+- Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
+- Validar Financeiro sombra com health/checksums antes de trocar a rota; depois migrar Cashback e Miauby interno.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

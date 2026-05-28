@@ -67,6 +67,8 @@ services:
       GESTAO_INTERNAL_BASE_URL: ${GESTAO_INTERNAL_BASE_URL:-http://wimifarma-gestao-app:3200/gestao}
       CODIGOS_INTERNAL_TOKEN: ${CODIGOS_INTERNAL_TOKEN:-}
       CODIGOS_INTERNAL_BASE_URL: ${CODIGOS_INTERNAL_BASE_URL:-http://wimifarma-codigos-app:3700/codigos}
+      FINANCEIRO_INTERNAL_TOKEN: ${FINANCEIRO_INTERNAL_TOKEN:-}
+      FINANCEIRO_INTERNAL_BASE_URL: ${FINANCEIRO_INTERNAL_BASE_URL:-http://wimifarma-financeiro-app:3800/financeiro}
     ports:
       - "127.0.0.1:3002:80"
     volumes:
@@ -159,6 +161,19 @@ services:
       POSTGRES_PASSWORD: ${CODIGOS_POSTGRES_PASSWORD:-wimifarma_codigos_dev_pass}
     volumes:
       - ./codigos-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-financeiro-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-financeiro-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_financeiro
+      POSTGRES_USER: wimifarma_financeiro
+      POSTGRES_PASSWORD: ${FINANCEIRO_POSTGRES_PASSWORD:-wimifarma_financeiro_dev_pass}
+    volumes:
+      - ./financeiro-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -394,6 +409,35 @@ services:
       - ./site/codigos/styles.css:/app/public/styles.css:ro
       - ./site/codigos/app.js:/app/public/app.js:ro
       - ./site/codigos/login-runner.js:/app/public/login-runner.js:ro
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-financeiro-app:
+    build:
+      context: ./apps/financeiro
+      dockerfile: Dockerfile
+    container_name: wimifarma-financeiro-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-financeiro-db
+    environment:
+      NODE_ENV: production
+      PORT: 3800
+      BASE_PATH: /financeiro
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      POSTGRES_HOST: wimifarma-financeiro-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_financeiro
+      POSTGRES_USER: wimifarma_financeiro
+      POSTGRES_PASSWORD: ${FINANCEIRO_POSTGRES_PASSWORD:-wimifarma_financeiro_dev_pass}
+      FINANCEIRO_INTERNAL_TOKEN: ${FINANCEIRO_INTERNAL_TOKEN:-}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED: ${FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED:-true}
     networks:
       - wimifarma-com-network
 

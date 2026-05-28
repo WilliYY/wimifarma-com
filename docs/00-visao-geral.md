@@ -26,7 +26,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Cashback: `site/cashback/`
 - Codigos: `apps/codigos/`, publicado em `/codigos/` por proxy interno do Apache; `site/codigos/` fica como legado/assets.
 - Cotacao V2: `apps/cotacao/`, publicada em `/cotacao/` por proxy interno do Apache
-- Financeiro: `site/financeiro/`
+- Financeiro: `site/financeiro/` continua rota oficial PHP; `apps/financeiro/` roda em sombra Node.js/TypeScript/Postgres para importacao/checksum.
 - Gestao: `apps/gestao/`, publicada em `/gestao/` por proxy interno do Apache; `site/gestao/` fica como legado.
 - XP: `apps/xp/`, publicado em `/xp/` por proxy interno do Apache; `site/xp/` fica como legado/assets/uploads.
 - Tarefas: `apps/tarefa/`, publicada em `/tarefa/` por proxy interno do Apache; `site/tarefa/` fica como legado.
@@ -64,7 +64,7 @@ Rotas principais:
 - O Cashback depende de clientes, compras, creditos e resgates coerentes entre si.
 - Codigos de comissao devem preservar codigo, EAN, preco e historico basico por logs; a tela separa os EANs em blocos por prefixo de dois digitos, com `20` e `40` como padrao e botao `+` para criar outros blocos persistidos no backend, e a exclusao deve esconder o item sem apagar o registro fisico imediatamente.
 - Cotacao deve preservar ordem, categorias, fornecedores, precos, observacoes, cores/formatacao e status.
-- Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias.
+- Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias; a sombra Postgres nao pode virar rota oficial antes de checksums por dia/tipo e repeticao dos fluxos PHP.
 - Gestao deve preservar contas lancadas, itens que compoem o total, categoria livre, pagamentos parciais datados, data de geracao automatica, confirmacao de saldo e logs/auditoria sem apagar historico.
 - XP deve preservar funcionarios, fotos validadas, vendas em centavos, XP inteiro, logs de alimentacao e progressao por total historico sem apagar lancamentos; cancelamentos devem ser logicos.
 - Miauby deve operar sem expor chaves, tokens ou dados sensiveis em logs publicos.
@@ -83,6 +83,7 @@ Rotas principais:
 - A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o MySQL continua apenas para login interno, logs e legado importado.
 - O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/xp` e rollback por flags legadas.
 - Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/codigos` e rollback por flags legadas.
+- Financeiro iniciou sombra em `apps/financeiro` com Node.js, TypeScript e Postgres dedicado, mantendo `/financeiro/` no PHP enquanto importa `financeiro_*` para health, resumo e checksums internos.
 - O Miauby agente dedicado foi iniciado em `apps/miauw-agent`; `site/miauw/api.php` continua dono de sessao, confirmacoes e escritas fortes mesmo quando `MIAUW_ENGINE=node`.
 - O Miauby WhatsApp foi iniciado em `apps/miauw-whatsapp` com Postgres 17 dedicado porque o canal precisa de fila duravel, idempotencia e outbox auditavel.
 - A Evolution API fica fora da stack principal do Wimifarma, como transporte separado, com Postgres/Redis/instancias proprios e API acessivel internamente pelo bridge. A Meta Cloud API usa o mesmo bridge por `MIAUW_WHATSAPP_PROVIDER=meta`, sem stack extra no VPS.
@@ -92,6 +93,7 @@ Rotas principais:
 - Misturar portas de tunel, porta local e porta interna Docker pode quebrar proxy e WordPress.
 - Alterar WordPress/cache/plugins sem teste pode reintroduzir lentidao ou redirect errado.
 - Alterar schema automaticamente sem controle pode impactar dados importados do HostGator.
+- Apontar `/financeiro/` para a sombra Node antes da paridade validada pode quebrar fechamentos, PIX CNPJ do Miauby e auditoria financeira.
 - Versionar `.env`, dumps ou plugins premium pode expor segredos e licencas.
 
 ## Pendencias conhecidas

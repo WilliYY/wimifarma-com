@@ -49,8 +49,8 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - O usuario acessa o VPS por PuTTY e os arquivos por WinSCP.
 - O Codex tambem pode acessar o VPS diretamente por SSH/plink com a chave local autorizada; quando fizer deploy, deve executar os comandos no servidor e relatar o resultado, sem precisar enviar comando PuTTY equivalente ao usuario.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- O projeto local fica em `C:\Projetos\wimifarma-com`.
-- Em um computador novo, quando o usuario pedir para puxar o projeto do GitHub, o Codex deve preparar `C:\Projetos\wimifarma-com`: se a pasta nao existir, clonar `https://github.com/WilliYY/wimifarma-com.git`; se ja existir e for Git, rodar `git fetch origin`, verificar `git status --short --branch` e so fazer `git pull --ff-only origin main` se nao houver alteracoes locais pendentes. Se houver alteracoes locais, nao sobrescrever: relatar e pedir confirmacao.
+- O projeto local neste PC fica em `C:\Users\Thiesen\Desktop\wimifarma-com`.
+- Em um computador novo, quando o usuario pedir para puxar o projeto do GitHub, o Codex deve preparar `C:\Users\Thiesen\Desktop\wimifarma-com`: se a pasta nao existir, clonar `https://github.com/WilliYY/wimifarma-com.git`; se ja existir e for Git, rodar `git fetch origin`, verificar `git status --short --branch` e so fazer `git pull --ff-only origin main` se nao houver alteracoes locais pendentes. Se houver alteracoes locais, nao sobrescrever: relatar e pedir confirmacao.
 - Depois de clonar ou puxar em outro PC, antes de qualquer edicao, o Codex deve ler novamente `AGENTS.md`, `README.md` e `docs/05-comandos.md`; para tarefas especificas, ler tambem os docs relevantes. Se o usuario pediu apenas "puxe os arquivos", nao rodar build, nao alterar arquivo e nao mexer no VPS sem pedido adicional.
 - Deploy automatico a partir de outro PC so funciona se o acesso SSH/plink ao VPS estiver configurado nessa maquina. Se nao houver acesso, o Codex deve fazer commit/push local quando aplicavel e informar que o deploy precisa de SSH configurado.
 - No VPS, a pasta oficial do projeto e `/home/ubuntu/projetos/wimifarma-com`.
@@ -60,7 +60,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Stack e estrutura
 
-- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose com `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7.
@@ -69,6 +69,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - Tarefa em Node.js 22 + TypeScript + Express, separado em `/tarefa/`, com sessao propria, Postgres 17 dedicado para tarefas/auditoria e importacao idempotente de `wf_tarefas`.
 - XP em Node.js 22 + TypeScript + Express, separado em `/xp/`, com sessao propria, Postgres 17 dedicado para funcionarios, vendas, configuracoes e auditoria.
 - Codigos em Node.js 22 + TypeScript + Express, separado em `/codigos/`, com sessao propria, Postgres 17 dedicado para itens, blocos EAN e auditoria.
+- Financeiro em sombra em Node.js 22 + TypeScript + Express, separado em `apps/financeiro`, com Postgres 17 dedicado para importar e comparar `financeiro_*`; a rota oficial `/financeiro/` continua PHP ate o corte validado.
 - Miauby WhatsApp em Node.js 22 + TypeScript, separado em `/miauw/whatsapp/`, com painel operacional proprio, Postgres 17 dedicado para webhook, fila, dedupe, contatos mascarados/cifrados e outbox via Evolution API ou Meta Cloud API.
 - WordPress na raiz `site/`.
 - Home publica da raiz `/` servida por `site/home.php` via `site/.htaccess` durante a estabilizacao da migracao; a primeira tela usa fundo visual em tela inteira, cards inferiores elevados para abrir espaco futuro, logo animada propria sem fundo em `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma-home-animated.gif` e GIFs decorativos com o mesmo padrao de movimento dos logins.
@@ -82,6 +83,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - O card `XP` abre `/xp/`, servido oficialmente por `apps/xp` via proxy Apache, com gamificacao dos atendentes por vendas lancadas manualmente, cadastro de funcionarios, upload validado de foto, trilha horizontal em zigue-zague, progressao infinita de niveis e renderizacao em janela curta: niveis 1 a 20 no inicio e, depois disso, uma janela ao redor do nivel mais alto para preservar performance. Na aba `Configuracoes`, os cards de funcionarios devem mostrar barra amarela preenchida conforme o percentual real do nivel; na faixa inferior da `Trilha`, cada jogador tambem deve mostrar progresso amarelo proporcional; `Ultimos lancamentos` deve mostrar a observacao salva no lancamento e uma barra amarela compacta com o XP do lancamento.
 - Em 2026-05-28, o XP foi cortado para `apps/xp` em Node.js 22 + TypeScript + Postgres `wimifarma_xp`, mantendo o mesmo frontend visual por `site/xp/styles.css`, `site/xp/app.js`, `site/xp/login-runner.js`, `site/xp/assets` e uploads compartilhados em `site/xp/uploads`. A fonte oficial passa a ser `xp_employees`, `xp_sales`, `xp_settings` e `xp_audit_events`; `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` ficam como importacao/espelho opcional de rollback por `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED`. O login oficial usa `core_users` por `XP_AUTH_PROVIDER=core`; rollback de autenticacao e voltar `XP_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-xp-app`.
 - Em 2026-05-28, Codigos foi cortado para `apps/codigos` em Node.js 22 + TypeScript + Postgres `wimifarma_codigos`, mantendo o mesmo frontend visual por `site/codigos/styles.css`, `site/codigos/app.js` e `site/codigos/login-runner.js`. A fonte oficial passa a ser `codigos_items`, `codigos_groups` e `codigos_audit_events`; `wf_codigos_comissao` e `wf_codigos_blocos` ficam como importacao/espelho/log opcional de rollback por `CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED`, `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED` e `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED`. O login oficial usa `core_users` por `CODIGOS_AUTH_PROVIDER=core`; rollback de autenticacao e voltar `CODIGOS_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-codigos-app`. O Miauby consulta Codigos por endpoints internos tokenizados do app Node (`/codigos/api/internal/summary` e `/codigos/api/internal/search`) quando `CODIGOS_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN` existe; sem token, cai no espelho MySQL legado enquanto ele estiver ligado.
+- Em 2026-05-28, o Financeiro ganhou sombra em `apps/financeiro` com Node.js 22 + TypeScript + Postgres `wimifarma_financeiro`, importando idempotentemente `financeiro_fechamentos`, `financeiro_lancamentos`, `financeiro_sangrias`, `financeiro_maquininhas`, `financeiro_pix`, `financeiro_configuracoes` e `financeiro_auditoria` para health, resumo e checksums internos tokenizados. Esta etapa nao muda frontend, proxy, login, sessao nem escrita oficial; `/financeiro/` continua usando `site/financeiro` e MySQL ate validar paridade por data/totais.
 - Em 2026-05-25, o login do XP foi simplificado para mostrar apenas a logo oficial, o titulo `Entrar no XP`, a descricao e o formulario; o selo textual amarelo `Wimifarma XP` foi removido e nao deve voltar sem pedido explicito.
 - O Miauby conhece o contexto do XP e pode usar "farmar aura no XP" como linguagem interna de jogo para incentivar venda real e lancamento correto, sem inventar ranking, nivel ou pontuacao quando nao houver dado vindo do sistema ou do usuario.
 - Em 2026-05-26, o Miauby WhatsApp iniciou como backend dedicado em `apps/miauw-whatsapp`, com Node.js 22 + TypeScript e Postgres 17 proprio para webhook, fila, dedupe, allowlist, painel operacional e outbox. O transporte pode ser `evolution` ou `meta` por `MIAUW_WHATSAPP_PROVIDER`; Evolution e Meta Cloud API devem ser apenas transporte por webhook/API, enquanto permissoes, guardrails, fila e auditoria ficam no bridge/Miauby. O modo de IA do WhatsApp e controlado por `MIAUW_WHATSAPP_AI_MODE=miauw|gemini|hybrid`: `miauw` usa o core interno/OpenAI, `gemini` usa Gemini para conversa curta sem comandos, e `hybrid` envia conversa simples ao Gemini quando `GEMINI_API_KEY` existe, mas roteia comandos internos para o core Miauby. O repositorio continua com default seguro `MIAUW_WHATSAPP_ENABLED=false`, mas o VPS pode ativar o canal por `.env` quando token/cifragem estiverem configurados. O painel `/miauw/whatsapp/` pode ser protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`, usa favicon proprio do Miauby e deve manter `/miauw/whatsapp/health` publico sem segredo. Grupos ficam bloqueados por padrao, o canal usa anti-flood por remetente e global, intervalo minimo entre envios e pausa em erro temporario do transporte; acoes fortes seguem sujeitas a confirmacao/auditoria. O numero do Cashback (`+55 44 99739-4711`) pode ser usado em teste quando controlado pela empresa, mas remetentes autorizados devem entrar em allowlist.
@@ -125,11 +127,13 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - A rota `/miauw/agent/` e servida por proxy interno do Apache para `wimifarma-miauw-agent:3100/miauw/agent`; ela pode rodar em sombra ou corte controlado por `MIAUW_ENGINE`, enquanto o PHP preserva login, sessoes, confirmacoes e escrita forte.
 - A rota `/miauw/whatsapp/` e servida por proxy interno do Apache para `wimifarma-miauw-whatsapp:3400/miauw/whatsapp`; a home publica possui o card `Miauby Whatsapp` apontando para esse painel operacional.
 - A rota `/codigos/` e servida por proxy interno do Apache para `wimifarma-codigos-app:3700/codigos`; `site/codigos` fica como legado/fallback historico e fonte visual dos assets, mas nao e a fonte oficial da tela apos o corte.
+- A rota `/financeiro/` ainda e servida pelo PHP em `site/financeiro`; `wimifarma-financeiro-app:3800` fica somente como sombra interna para importacao/checksum, sem proxy Apache ate o corte validado.
 - Banco WordPress: `wimifarma_wp`, prefixo `wptl_`.
 - Banco dos apps: `wimifarma_app`.
 - Banco core compartilhado: Postgres `wimifarma_core`, com dados persistidos em `core-data/postgres`; a primeira etapa guarda `core_users`, `core_audit_logs` e `core_login_rate_limits` em modo sombra, sincronizados de `wf_users` por `apps/core-auth`, sem trocar login de nenhum modulo ainda.
 - Banco do XP: Postgres `wimifarma_xp`, com dados persistidos em `xp-data/postgres`; guarda `xp_employees`, `xp_sales`, `xp_settings`, `xp_audit_events` e sessoes `xp_sessions`. O MySQL `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings` fica apenas como legado/importacao/espelho temporario de rollback quando as flags `XP_LEGACY_MYSQL_*` estiverem ligadas. O ADM tambem existe como player fixo de teste em `system_key='adm'`, protegido contra edicao/exclusao comum e sincronizado com a foto da moldura ADM.
 - Banco de Codigos: Postgres `wimifarma_codigos`, com dados persistidos em `codigos-data/postgres`; guarda `codigos_items`, `codigos_groups`, `codigos_audit_events` e sessoes `codigos_sessions`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` fica apenas como legado/importacao/espelho/log temporario quando as flags `CODIGOS_LEGACY_MYSQL_*` estiverem ligadas.
+- Banco do Financeiro sombra: Postgres `wimifarma_financeiro`, com dados persistidos em `financeiro-data/postgres`; guarda `financeiro_closings`, `financeiro_entries`, `financeiro_sangrias`, `financeiro_card_entries`, `financeiro_pix_entries`, `financeiro_settings`, `financeiro_audit_events` e `financeiro_migration_runs`. Enquanto a rota PHP for oficial, MySQL `financeiro_*` continua fonte de verdade.
 - Banco da Cotacao V2: Postgres `wimifarma_cotacao`, com dados persistidos em `cotacao-data/postgres`.
 - Banco da Gestao/Pedidos: Postgres `wimifarma_gestao`, com dados persistidos em `gestao-data/postgres`; o MySQL `wimifarma_app` fica para login `wf_users`, `wf_logs` e importacao legado.
 - Banco da Tarefa: Postgres `wimifarma_tarefa`, com dados persistidos em `tarefa-data/postgres`; guarda `tarefa_tasks`, `tarefa_audit_events` e `tarefa_sessions`. A partir do corte controlado, `TAREFA_AUTH_PROVIDER=core` usa `core_users` como login oficial; `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED` controlam a janela de legado/rollback com MySQL.
@@ -158,6 +162,7 @@ Nao misturar portas:
 - `wimifarma-tarefa-app:3500`: destino interno do Apache para `/tarefa/`; nao publicar diretamente no Nginx Proxy Manager.
 - `wimifarma-xp-app:3600`: destino interno oficial do Apache para `/xp/`.
 - `wimifarma-codigos-app:3700`: destino interno oficial do Apache para `/codigos/`.
+- `wimifarma-financeiro-app:3800`: servico interno sombra de Financeiro; nao publicar nem apontar Apache/Nginx antes do corte validado.
 - `wimifarma-miauw-whatsapp:3400`: destino interno do Apache para `/miauw/whatsapp/`; nao publicar diretamente no Nginx Proxy Manager.
 
 O Proxy Host de `wimifarma.com` e `www.wimifarma.com` deve apontar para:
@@ -188,6 +193,7 @@ Nao versionar:
 - `tarefa-data/`
 - `xp-data/`
 - `codigos-data/`
+- `financeiro-data/`
 - `node_modules/`
 
 Cache de pagina WordPress/SpeedyCache deve ficar opt-in durante a migracao:
@@ -206,7 +212,7 @@ O Miauby pode carregar a chave por:
 ## Como rodar local
 
 ```powershell
-cd C:\Projetos\wimifarma-com
+cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --build
 ```
 

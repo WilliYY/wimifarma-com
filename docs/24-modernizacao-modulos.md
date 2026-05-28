@@ -47,7 +47,7 @@ O script mostra:
 | Tarefa | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
 | Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
-| Financeiro | PHP procedural + MySQL | `financeiro_*` | `apps/financeiro` Node.js + TypeScript + Postgres | 5 |
+| Financeiro | PHP oficial + Node.js/TypeScript/Postgres sombra | `financeiro_*` ainda fonte da tela PHP | Cortar `/financeiro/` para Node.js + TypeScript + Postgres apos paridade | 5 em sombra |
 | Cashback | PHP procedural + MySQL | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
 | Miauby interno | PHP + Node agent sombra | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
@@ -60,7 +60,7 @@ O script mostra:
 2. Cortar autenticacao desses tres modulos para `core_users`, mantendo rollback por `.env`.
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` e legado MySQL desligado por flags.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
-5. Migrar Financeiro e Cashback com backup, checksums de totais e validacao por dia/cliente.
+5. Validar Financeiro sombra com backup, checksums de totais e validacao por dia; depois cortar Financeiro ou iniciar Cashback.
 6. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
 7. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
@@ -95,4 +95,13 @@ Codigos foi cortado para `apps/codigos`:
 - frontend preservado por CSS/JS/login-runner de `site/codigos`;
 - rollback por `CODIGOS_AUTH_PROVIDER=mysql` e flags `CODIGOS_LEGACY_MYSQL_*`.
 
-A proxima fatia segura e observar XP/Codigos no VPS e, depois de paridade estavel e leitura interna do Miauby validada, desligar as flags legadas de cada modulo. Em seguida, migrar Financeiro, porque continua em PHP/MySQL e ja recebe escritas do Miauby WhatsApp para PIX CNPJ.
+Financeiro iniciou sombra em `apps/financeiro`:
+
+- banco/schema alvo `wimifarma_financeiro`;
+- tabelas `financeiro_closings`, `financeiro_entries`, `financeiro_sangrias`, `financeiro_card_entries`, `financeiro_pix_entries`, `financeiro_settings`, `financeiro_audit_events` e `financeiro_migration_runs`;
+- importador idempotente de `financeiro_fechamentos`, `financeiro_lancamentos`, `financeiro_sangrias`, `financeiro_maquininhas`, `financeiro_pix`, `financeiro_configuracoes` e `financeiro_auditoria`;
+- health em `wimifarma-financeiro-app:3800/financeiro/health`;
+- endpoints internos tokenizados para resumo, checksum e sync manual;
+- sem proxy Apache e sem troca de frontend enquanto a tela PHP for oficial.
+
+A proxima fatia segura e validar a sombra do Financeiro no VPS com checksums por data/tipo e smoke dos fluxos de Caixa/Relatorio/Pix CNPJ. So depois escolher entre cortar `/financeiro/` para Node/Postgres ou iniciar Cashback.

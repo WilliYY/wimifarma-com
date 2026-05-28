@@ -12,6 +12,8 @@ Logs de container:
 - `docker compose logs wimifarma-com-db`
 - `docker compose logs wimifarma-cotacao-app`
 - `docker compose logs wimifarma-codigos-app`
+- `docker compose logs wimifarma-financeiro-app`
+- `docker compose logs wimifarma-financeiro-db`
 - `docker compose logs wimifarma-miauw-agent`
 - `docker compose logs wimifarma-miauw-whatsapp`
 
@@ -20,6 +22,7 @@ Tabelas de auditoria/log:
 - `wf_logs`
 - `cotacao_auditoria`
 - `financeiro_auditoria`
+- `financeiro_audit_events`
 - `gestao_audit_events`
 - `gestao_supplier_orders`
 - `codigos_audit_events`
@@ -44,6 +47,7 @@ Arquivos:
 - `site/codigos/codigos-funcoes.php` (legado/fallback)
 - `site/xp/xp-funcoes.php`
 - `apps/cotacao/src/server.js`
+- `apps/financeiro/src/server.ts`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
 - `site/financeiro/financeiro-funcoes.php`
@@ -57,6 +61,7 @@ Arquivos:
 
 - Acoes financeiras e de cotacao devem manter auditoria.
 - O Financeiro nao exibe mais a aba/tela operacional de Auditoria no topo, mas deve continuar gravando `financeiro_auditoria`.
+- A sombra Node/Postgres do Financeiro replica auditoria em `financeiro_audit_events` apenas para validacao/checksum; enquanto a rota PHP for oficial, o registro operacional segue em `financeiro_auditoria`.
 - Logs nao devem gravar senhas, tokens ou chaves.
 - Gestao registra criacao de conta, criacao por Miauby, renomeacao, vencimento atualizado/removido, repeticao para o mes seguinte, ciclo de repeticao ligado/desligado, reordenacao manual do painel Mensal (`gestao_mensal_ordem_atualizada`), troca/cancelamento em lote por categoria, arquivamento de contas canceladas, adicao de item, ajuste de lancamento, registro/cancelamento de pagamento parcial, quitacao de item, cancelamento/reabertura de lancamento, reabertura/cancelamento de fatura, observacao editada e mudanca de status em `gestao_audit_events`, alem de espelhar resumo curto em `wf_logs`; login e falha de login continuam no log geral. O log deve guardar resumo curto, nunca senha, token, observacao sensivel completa ou detalhe financeiro alem do necessario.
 - Pedidos registra criacao, pagamento informado na criacao, chegada confirmada, finalizacao no historico, reabertura por novo valor/juros ou reabertura da conta, e cancelamento por categoria com eventos `pedidos_pedido_criado`, `pedidos_pedido_pago_criacao`, `pedidos_chegada_confirmada`, `pedidos_pedido_finalizado`, `pedidos_pedido_reaberto`, `pedidos_valor_adicionado`, `pedidos_pagamento_criado`, `pedidos_boleto_quitado` e compatibilidade `gestao_pedido_cancelado_categoria` quando cancelado a partir da Gestao. O pedido fica ligado a uma conta da categoria `Boleto`, entao pagamentos parciais/totais tambem seguem os eventos financeiros ja existentes.

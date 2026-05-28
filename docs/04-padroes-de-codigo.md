@@ -53,7 +53,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Alteracoes de banco precisam preservar dados importados.
 - Campos de auditoria devem continuar registrando usuario, acao, registro e data quando existirem.
 - Cotacao deve preservar estado visual e ordem.
-- Financeiro deve preservar justificativas e divergencias.
+- Financeiro deve preservar justificativas e divergencias; a sombra Node/Postgres so pode importar/comparar ate haver corte validado.
 - Gestao deve preservar conta, itens, pagamentos, auditoria e saldos em centavos, sem apagar historico.
 - XP deve preservar vendas em centavos, XP em inteiro, fotos validadas, remocao logica e logs de alimentacao.
 - Codigos deve preservar autosave, blocos por prefixo de EAN, reordenacao, exclusao logica e senha para excluir tabela nao padrao.
@@ -67,6 +67,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
 - A Tarefa adotou Node.js + TypeScript + Postgres dedicado para remover o primeiro modulo PHP pequeno do MySQL operacional, mantendo a tela visual e um espelho MySQL temporario para rollback curto.
 - Codigos adotou Node.js + TypeScript + Postgres dedicado, mantendo o CSS/JS de `site/codigos` e espelho MySQL temporario para rollback curto.
+- Financeiro iniciou Node.js + TypeScript + Postgres dedicado em modo sombra, mantendo `/financeiro/` no PHP e usando checksums antes de qualquer troca de rota.
 - O Miauby WhatsApp adotou Node.js + TypeScript + Postgres dedicado para webhook/fila/outbox, evitando misturar eventos externos com MySQL legado ou com o banco da Gestao.
 - O XP adotou Node.js + TypeScript + Postgres dedicado, mantendo assets/uploads de `site/xp` e espelho MySQL temporario para rollback curto.
 

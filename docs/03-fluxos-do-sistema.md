@@ -206,6 +206,7 @@ Arquivos principais:
 - `site/financeiro/exportar.php`
 - `site/financeiro/financeiro-funcoes.php`
 - `site/financeiro/app.js`
+- `apps/financeiro/src/server.ts` em modo sombra, sem servir a tela oficial.
 
 Tabelas principais:
 
@@ -232,6 +233,7 @@ Interface:
 - a view dedicada de Auditoria nao fica disponivel na navegacao operacional;
 - os registros em `financeiro_auditoria` continuam sendo gravados para suporte e rastreabilidade.
 - O Miauby WhatsApp pode preparar lancamento `Pix CNPJ` a partir de foto, print, imagem encaminhada ou PDF/documento de comprovante Pix quando a flag de OCR estiver ligada. O bridge valida remetente, card `Financeiro`, destino por CNPJ/chave Pix ou nome correlato, valor e pagador; data e horario sao usados quando a leitura trouxer, mas a correcao manual `pix cnpj valor - nome - obs opcional` tambem pode gravar usando o momento atual. Depois envia confirmacao `Sim`/`Nao`. Somente o `Sim` grava em `financeiro_lancamentos`, com categoria `Pix CNPJ` e observacao com dados do comprovante. `Nao`, destino divergente ou dado faltante nao gravam nada e pedem texto corrigido.
+- A sombra Node/Postgres do Financeiro apenas importa dados MySQL, expoe health/resumo/checksums internos e ajuda a validar a futura migracao. Ela nao altera fluxo, frontend, sessao, login nem escrita do Caixa/Relatorio enquanto `/financeiro/` continuar no PHP.
 
 ## Fluxo Gestao
 

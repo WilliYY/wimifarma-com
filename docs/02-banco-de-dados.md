@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP e de Codigos. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos e da sombra do Financeiro. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro sombra e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -22,6 +22,9 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gesta
 - Container Codigos: `wimifarma-codigos-db`
 - Imagem Codigos: `postgres:17-alpine`
 - Volume Codigos: `codigos-data/postgres/`
+- Container Financeiro sombra: `wimifarma-financeiro-db`
+- Imagem Financeiro sombra: `postgres:17-alpine`
+- Volume Financeiro sombra: `financeiro-data/postgres/`
 - Container Miauby WhatsApp: `wimifarma-miauw-whatsapp-db`
 - Imagem Miauby WhatsApp: `postgres:17-alpine`
 - Volume Miauby WhatsApp: `miauw-whatsapp-data/postgres/`
@@ -38,6 +41,7 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gesta
 - `wimifarma_gestao`: Gestao em Postgres.
 - `wimifarma_tarefa`: Tarefa em Postgres.
 - `wimifarma_codigos`: Codigos em Postgres.
+- `wimifarma_financeiro`: sombra do Financeiro em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 
 O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
@@ -104,6 +108,21 @@ Criadas por `apps/codigos/src/server.ts`:
 - `codigos_sessions`: sessoes web do modulo Codigos gerenciadas por `connect-pg-simple`.
 
 A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` permanece como importacao legado e espelho temporario quando `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder edicoes feitas durante a transicao.
+
+## Tabelas do Financeiro sombra em Postgres
+
+Criadas por `apps/financeiro/src/server.ts`:
+
+- `financeiro_closings`: copia reconciliavel de `financeiro_fechamentos`, com valores financeiros em centavos e `legacy_mysql_id`.
+- `financeiro_entries`: copia de `financeiro_lancamentos`, com categoria, valor, observacao, status e `legacy_mysql_id`.
+- `financeiro_sangrias`: copia de `financeiro_sangrias`, com valor, responsavel, observacao, status e `legacy_mysql_id`.
+- `financeiro_card_entries`: copia de `financeiro_maquininhas`, com bandeira/tipo, valor, status e `legacy_mysql_id`.
+- `financeiro_pix_entries`: copia de `financeiro_pix`, com valor, pagador/observacao, status e `legacy_mysql_id`.
+- `financeiro_settings`: configuracoes do modulo importadas de `financeiro_configuracoes`.
+- `financeiro_audit_events`: copia curta de `financeiro_auditoria`, com usuario, acao, resumo e dados sanitizados em JSONB.
+- `financeiro_migration_runs`: historico de importacoes/checksums da sombra.
+
+A fonte oficial continua o MySQL `financeiro_*` enquanto `/financeiro/` for servido por `site/financeiro`. O Postgres `wimifarma_financeiro` serve para validar contagem, totais e desenho de schema antes de qualquer troca de rota.
 
 ## Tabelas em `wimifarma_app`
 
@@ -191,7 +210,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 
 - Cashback: `site/cashback/functions.php`
 - Cotacao V2: `apps/cotacao/src/server.js`
-- Financeiro: `site/financeiro/financeiro-funcoes.php`
+- Financeiro: `site/financeiro/financeiro-funcoes.php`; sombra/checksum em `apps/financeiro/src/server.ts`
 - Gestao: `apps/gestao/src/server.ts`
 - XP: `apps/xp/src/server.ts`
 - Tarefas: `apps/tarefa/src/server.ts`
@@ -275,6 +294,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - O volume `cotacao-data/` fica fora do Git.
 - O volume `gestao-data/` fica fora do Git.
 - O volume `codigos-data/` fica fora do Git.
+- O volume `financeiro-data/` fica fora do Git.
 - O volume `miauw-whatsapp-data/` fica fora do Git.
 - Dumps antigos ficam fora da raiz do projeto.
 - A senha real do banco vem de `.env`.
@@ -292,6 +312,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Apagar `cotacao-data/` perde dados da Cotacao V2.
 - Apagar `gestao-data/` perde dados oficiais da Gestao.
 - Apagar `codigos-data/` perde dados oficiais de Codigos.
+- Apagar `financeiro-data/` perde a copia sombra e historico de importacao/checksum do Financeiro; enquanto a rota PHP for oficial, isso nao apaga o financeiro real no MySQL, mas remove a base de validacao da migracao.
 - Apagar `miauw-whatsapp-data/` perde fila, eventos e outbox do canal WhatsApp do Miauby.
 - Criar regras automáticas fora de `cotacao_v2_rules` reabre o bug de palavra-gatilho.
 

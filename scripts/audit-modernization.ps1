@@ -107,12 +107,12 @@ $modules = @(
     },
     @{
         Module = 'Financeiro'
-        Path = 'site/financeiro'
-        Current = 'PHP procedural + MySQL'
-        Legacy = 'financeiro_* e joins com wf_users'
-        Target = 'apps/financeiro em Node.js + TypeScript + Postgres'
-        Priority = '5 - critico financeiro'
-        Next = 'Migrar somente com backup, checksums de totais e validacao por dia.'
+        Path = 'site/financeiro;apps/financeiro'
+        Current = 'PHP oficial + Node.js/TypeScript sombra'
+        Legacy = 'financeiro_* ainda fonte da tela PHP'
+        Target = 'Cortar /financeiro/ para Node.js + TypeScript + Postgres'
+        Priority = '5 - sombra financeira'
+        Next = 'Validar health/checksums da sombra antes de trocar a rota.'
     },
     @{
         Module = 'Cashback'

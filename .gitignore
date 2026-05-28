@@ -6,6 +6,7 @@
 /tarefa-data/
 /xp-data/
 /codigos-data/
+/financeiro-data/
 /miauw-whatsapp-data/
 /ops/n8n/n8n-data/
 /ops/n8n/n8n-postgres/
@@ -18,6 +19,7 @@ apps/pedidos/dist/
 apps/tarefa/dist/
 apps/xp/dist/
 apps/codigos/dist/
+apps/financeiro/dist/
 apps/miauw-whatsapp/dist/
 .env
 /site/miauw/config.local.php

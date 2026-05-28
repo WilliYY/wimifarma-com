@@ -7,7 +7,7 @@ Comandos usados para operar, validar e auditar o projeto local e o VPS.
 ## Local - iniciar projeto
 
 ```powershell
-cd C:\Projetos\wimifarma-com
+cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --build
 ```
 
@@ -16,7 +16,7 @@ docker compose up -d --build
 Prompt minimo para continuar um chat quando o projeto ja esta neste PC:
 
 ```text
-Use C:\Projetos\wimifarma-com, siga o AGENTS.md e execute esta tarefa:
+Use C:\Users\Thiesen\Desktop\wimifarma-com, siga o AGENTS.md e execute esta tarefa:
 [ESCREVA A TAREFA]
 ```
 
@@ -25,7 +25,7 @@ Esse prompt e suficiente porque `AGENTS.md`, `README.md` e os documentos em `doc
 Prompt curto para iniciar em outro computador ou quando nao tiver certeza se a pasta existe:
 
 ```text
-Puxe o projeto Wimifarma do GitHub em C:\Projetos\wimifarma-com e siga o AGENTS.md.
+Puxe o projeto Wimifarma do GitHub em C:\Users\Thiesen\Desktop\wimifarma-com e siga o AGENTS.md.
 Repositorio: https://github.com/WilliYY/wimifarma-com.git
 Tarefa: [ESCREVA A TAREFA]
 ```
@@ -34,13 +34,13 @@ Fluxo esperado para o Codex:
 
 ```powershell
 New-Item -ItemType Directory -Force C:\Projetos | Out-Null
-if ((Test-Path C:\Projetos\wimifarma-com) -and -not (Test-Path C:\Projetos\wimifarma-com\.git)) {
-    throw "A pasta C:\Projetos\wimifarma-com ja existe, mas nao e um repositorio Git. Verifique antes de continuar."
+if ((Test-Path C:\Users\Thiesen\Desktop\wimifarma-com) -and -not (Test-Path C:\Users\Thiesen\Desktop\wimifarma-com\.git)) {
+    throw "A pasta C:\Users\Thiesen\Desktop\wimifarma-com ja existe, mas nao e um repositorio Git. Verifique antes de continuar."
 }
-if (-not (Test-Path C:\Projetos\wimifarma-com)) {
-    git clone https://github.com/WilliYY/wimifarma-com.git C:\Projetos\wimifarma-com
+if (-not (Test-Path C:\Users\Thiesen\Desktop\wimifarma-com)) {
+    git clone https://github.com/WilliYY/wimifarma-com.git C:\Users\Thiesen\Desktop\wimifarma-com
 } else {
-    cd C:\Projetos\wimifarma-com
+    cd C:\Users\Thiesen\Desktop\wimifarma-com
     git fetch origin
     $status = git status --short
     git status --short --branch
@@ -49,7 +49,7 @@ if (-not (Test-Path C:\Projetos\wimifarma-com)) {
     }
     git pull --ff-only origin main
 }
-cd C:\Projetos\wimifarma-com
+cd C:\Users\Thiesen\Desktop\wimifarma-com
 Get-Content AGENTS.md | Select-Object -First 220
 Get-Content README.md | Select-Object -First 220
 Get-Content docs\05-comandos.md | Select-Object -First 220
@@ -76,6 +76,8 @@ docker compose logs --tail=80 wimifarma-xp-app
 docker compose logs --tail=80 wimifarma-xp-db
 docker compose logs --tail=80 wimifarma-codigos-app
 docker compose logs --tail=80 wimifarma-codigos-db
+docker compose logs --tail=80 wimifarma-financeiro-app
+docker compose logs --tail=80 wimifarma-financeiro-db
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
@@ -103,10 +105,10 @@ docker exec wimifarma-com-web php -l /var/www/html/xp/health.php
 ## Local - Miauby agente Node
 
 ```powershell
-cd C:\Projetos\wimifarma-com\apps\miauw-agent
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\miauw-agent
 npm.cmd run check
 npm.cmd run build
-cd C:\Projetos\wimifarma-com
+cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
 curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent/run -H "Content-Type: application/json" -d "{\"message\":\"teste\"}"
@@ -142,10 +144,10 @@ O `POST /miauw/whatsapp/internal/memory`, `POST /miauw/agent-context.php` e `POS
 ## Local - Core auth Postgres em modo sombra
 
 ```powershell
-cd C:\Projetos\wimifarma-com\apps\core-auth
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\core-auth
 npm.cmd run check
 npm.cmd run build
-cd C:\Projetos\wimifarma-com
+cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d wimifarma-core-db
 docker compose run --rm wimifarma-core-migrator npm run migrate:users
 docker compose run --rm wimifarma-core-migrator npm run validate:users
@@ -215,6 +217,21 @@ docker exec wimifarma-codigos-db psql -U wimifarma_codigos -d wimifarma_codigos 
 ```
 
 O app `apps/codigos` atende a rota oficial `/codigos/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_codigos`; MySQL `wf_codigos_comissao` e `wf_codigos_blocos` ficam como importacao/espelho/log legado por flags `CODIGOS_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `CODIGOS_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-codigos-app`. O endpoint interno sem `X-Miauw-Internal-Token` deve responder 401 ou 503; nao colar token real em comando versionado.
+
+## Local - Financeiro sombra Node/Postgres
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\financeiro
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-financeiro-db
+docker compose up -d --no-deps --build wimifarma-financeiro-app
+docker exec wimifarma-financeiro-app wget -qO- http://127.0.0.1:3800/financeiro/health
+docker exec wimifarma-financeiro-db psql -U wimifarma_financeiro -d wimifarma_financeiro -c "\dt"
+```
+
+O app `apps/financeiro` ainda nao atende a rota publica `/financeiro/`; ele fica em sombra para importar `financeiro_*`, validar health, comparar totais e preparar o corte futuro. Endpoints `/financeiro/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
 
 ## Local - Inventario de modernizacao
 
@@ -289,10 +306,10 @@ O n8n deve chamar endpoints internos tokenizados do Wimifarma. Nao usar workflow
 ## Local - Gestao Node/Postgres
 
 ```powershell
-cd C:\Projetos\wimifarma-com\apps\gestao
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\gestao
 npm.cmd run check
 npm.cmd run build
-cd C:\Projetos\wimifarma-com
+cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-gestao-app wimifarma-com-web
 curl.exe -sS http://127.0.0.1:3002/gestao/health
 docker exec wimifarma-gestao-db psql -U wimifarma_gestao -d wimifarma_gestao -c "\dt"
