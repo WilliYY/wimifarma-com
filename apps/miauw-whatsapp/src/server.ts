@@ -91,6 +91,17 @@ type QueueRow = {
   attempts: number;
 };
 
+type OutboxRecoveryRow = {
+  id: string;
+  instance_name: string;
+  recipient_phone_mask: string;
+  recipient_phone_ciphertext: string;
+  body_text: string;
+  attempts: number;
+  max_attempts: number;
+  trace_id: string;
+};
+
 type WhatsappConfirmationDraft = {
   id?: string;
   tool: string;
@@ -300,7 +311,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.12';
+const SERVICE_VERSION = '0.5.13';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -389,6 +400,8 @@ const PROVIDER_PAUSE_ON_ERROR_MS = numberEnv('MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_E
 const WORKER_INTERVAL_MS = numberEnv('MIAUW_WHATSAPP_WORKER_INTERVAL_MS', 5000, 1000, 60000);
 const WORKER_BATCH_SIZE = numberEnv('MIAUW_WHATSAPP_WORKER_BATCH_SIZE', 5, 1, 20);
 const MAX_ATTEMPTS = numberEnv('MIAUW_WHATSAPP_MAX_ATTEMPTS', 5, 1, 12);
+const OUTBOX_RECOVERY_BATCH_SIZE = numberEnv('MIAUW_WHATSAPP_OUTBOX_RECOVERY_BATCH_SIZE', 3, 1, 20);
+const OUTBOX_RECOVERY_MAX_AGE_MINUTES = numberEnv('MIAUW_WHATSAPP_OUTBOX_RECOVERY_MAX_AGE_MINUTES', 30, 5, 1440);
 const REQUEST_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_REQUEST_TIMEOUT_MS', 18000, 3000, 60000);
 const ALLOWED_SENDERS = parseAllowedSenders(textEnv('MIAUW_WHATSAPP_ALLOWED_SENDERS') || textEnv('MIAUW_WHATSAPP_ALLOWED_NUMBERS'));
 const DASHBOARD_USER = textEnv('MIAUW_WHATSAPP_DASHBOARD_USER');
@@ -2165,9 +2178,12 @@ async function nextQueueRow(): Promise<QueueRow | null> {
   }
 }
 
-async function processQueue(limit = WORKER_BATCH_SIZE): Promise<{ processed: number }> {
-  if (!ENABLED) return { processed: 0 };
+async function processQueue(limit = WORKER_BATCH_SIZE): Promise<{ processed: number; outbox_processed: number; outbox_expired: number }> {
+  if (!ENABLED) return { processed: 0, outbox_processed: 0, outbox_expired: 0 };
   await recoverStaleProcessingEvents();
+  await requeueStaleSendingOutbox();
+  const outboxExpired = await expireOldPendingOutbox();
+  const outboxProcessed = await processPendingOutboxMessages(Math.min(OUTBOX_RECOVERY_BATCH_SIZE, limit));
   let processed = 0;
   for (let index = 0; index < limit; index += 1) {
     const row = await nextQueueRow();
@@ -2175,7 +2191,7 @@ async function processQueue(limit = WORKER_BATCH_SIZE): Promise<{ processed: num
     processed += 1;
     await processQueueRow(row);
   }
-  return { processed };
+  return { processed, outbox_processed: outboxProcessed, outbox_expired: outboxExpired };
 }
 
 async function recoverStaleProcessingEvents(): Promise<void> {
@@ -2189,6 +2205,137 @@ async function recoverStaleProcessingEvents(): Promise<void> {
       WHERE status = 'processing'
         AND locked_at < NOW() - INTERVAL '2 minutes'`,
   );
+}
+
+async function requeueStaleSendingOutbox(): Promise<void> {
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_outbox
+        SET status = 'pending',
+            next_attempt_at = NOW(),
+            error_summary = CASE WHEN error_summary = '' THEN 'stale_sending_recovered' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE status = 'sending'
+        AND updated_at < NOW() - INTERVAL '2 minutes'
+        AND attempts < max_attempts`,
+  );
+}
+
+async function expireOldPendingOutbox(): Promise<number> {
+  const result = await pgPool.query<{ count: string }>(
+    `WITH expired AS (
+       UPDATE miauw_whatsapp_outbox
+          SET status = 'dead',
+              error_summary = CASE WHEN error_summary = '' THEN 'stale_pending_expired' ELSE error_summary END,
+              updated_at = NOW()
+        WHERE status IN ('pending', 'sending')
+          AND created_at < NOW() - ($1::text || ' minutes')::interval
+        RETURNING id
+     )
+     SELECT COUNT(*)::text AS count FROM expired`,
+    [String(OUTBOX_RECOVERY_MAX_AGE_MINUTES)],
+  );
+  const count = Number(result.rows[0]?.count || 0);
+  if (count > 0) {
+    await recordErrorLog('outbox_recovery', 'warn', new Error('stale_pending_outbox_expired'), {
+      details: { count, max_age_minutes: OUTBOX_RECOVERY_MAX_AGE_MINUTES },
+    });
+  }
+  return count;
+}
+
+async function nextPendingOutboxRow(): Promise<OutboxRecoveryRow | null> {
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<OutboxRecoveryRow>(
+      `SELECT id,
+              instance_name,
+              recipient_phone_mask,
+              recipient_phone_ciphertext,
+              body_text,
+              attempts,
+              max_attempts,
+              trace_id
+         FROM miauw_whatsapp_outbox
+        WHERE status = 'pending'
+          AND next_attempt_at <= NOW()
+          AND attempts < max_attempts
+          AND created_at >= NOW() - ($1::text || ' minutes')::interval
+        ORDER BY created_at
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1`,
+      [String(OUTBOX_RECOVERY_MAX_AGE_MINUTES)],
+    );
+    const row = result.rows[0] || null;
+    if (!row) {
+      await client.query('COMMIT');
+      return null;
+    }
+    await client.query(
+      `UPDATE miauw_whatsapp_outbox
+          SET status = 'sending',
+              updated_at = NOW()
+        WHERE id = $1`,
+      [row.id],
+    );
+    await client.query('COMMIT');
+    return row;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function processPendingOutboxMessages(limit: number): Promise<number> {
+  let processed = 0;
+  for (let index = 0; index < limit; index += 1) {
+    const row = await nextPendingOutboxRow();
+    if (!row) break;
+    processed += 1;
+    await processPendingOutboxMessage(row);
+  }
+  return processed;
+}
+
+async function processPendingOutboxMessage(row: OutboxRecoveryRow): Promise<void> {
+  try {
+    const recipient = applyRecipientAlias(decryptText(row.recipient_phone_ciphertext));
+    if (!normalizePhone(recipient)) throw new Error('outbox_recipient_unavailable');
+    const providerMessageId = await sendProviderText(recipient, row.body_text, row.instance_name || defaultInstanceName());
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_outbox
+          SET status = 'sent',
+              attempts = attempts + 1,
+              sent_at = NOW(),
+              provider_message_id = $2,
+              error_summary = '',
+              updated_at = NOW()
+        WHERE id = $1`,
+      [row.id, providerMessageId],
+    );
+  } catch (error) {
+    const attempts = Number(row.attempts || 0) + 1;
+    const dead = attempts >= Number(row.max_attempts || MAX_ATTEMPTS);
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_outbox
+          SET status = $2::varchar,
+              attempts = attempts + 1,
+              error_summary = $3,
+              next_attempt_at = CASE WHEN $2::text = 'pending' THEN NOW() + $4::interval ELSE next_attempt_at END,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [row.id, dead ? 'dead' : 'pending', safeError(error), backoffExpression(attempts)],
+    );
+    await recordErrorLog('outbox_recovery_send', dead ? 'error' : 'warn', error, {
+      outboxId: row.id,
+      traceId: row.trace_id,
+      phoneMask: row.recipient_phone_mask,
+      messagePreview: row.body_text,
+      details: { attempts, next_status: dead ? 'dead' : 'pending' },
+    });
+  }
 }
 
 function backoffExpression(attempts: number): string {
@@ -4838,6 +4985,8 @@ function publicStatus(): JsonRecord {
     rate_limit_per_day: USER_RATE_LIMIT_PER_DAY,
     global_rate_limit_per_minute: GLOBAL_RATE_LIMIT_PER_MINUTE,
     send_min_interval_ms: SEND_MIN_INTERVAL_MS,
+    outbox_recovery_batch_size: OUTBOX_RECOVERY_BATCH_SIZE,
+    outbox_recovery_max_age_minutes: OUTBOX_RECOVERY_MAX_AGE_MINUTES,
     min_reply_delay_ms: MIN_REPLY_DELAY_MS,
     max_reply_delay_ms: MAX_REPLY_DELAY_MS,
     provider_pause_on_error_ms: PROVIDER_PAUSE_ON_ERROR_MS,

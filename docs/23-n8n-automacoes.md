@@ -74,7 +74,7 @@ Payload sugerido:
 { "notify": "problems" }
 ```
 
-O watchdog verifica fila travada, outbox `pending/sending`, falhas recentes, provider pausado, respostas lentas, `sent` sem id do provedor e o caso em que o WhatsApp marcou resposta como enviada mas o mesmo contato mandou nova mensagem e a conversa ficou sem novo `sent`. Alertas usam cooldown por `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES` para nao floodar.
+O watchdog verifica fila travada, outbox `pending/sending`, falhas recentes, provider pausado, respostas lentas, `sent` sem id do provedor e o caso em que o WhatsApp marcou resposta como enviada mas o mesmo contato mandou nova mensagem e a conversa ficou sem novo `sent`. Alertas usam cooldown por `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES` para nao floodar. O backend tenta recuperar outbox `pending` recente automaticamente e expira pendencias antigas para evitar envio atrasado demais.
 
 ### Pedidos e boletos
 

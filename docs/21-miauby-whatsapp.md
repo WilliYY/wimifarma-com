@@ -130,6 +130,8 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES=2`
 - `MIAUW_WHATSAPP_WATCHDOG_SLOW_TOTAL_MS=30000`
 - `MIAUW_WHATSAPP_SMOKE_CHECK_TIMEOUT_MS=6000`
+- `MIAUW_WHATSAPP_OUTBOX_RECOVERY_BATCH_SIZE=3`
+- `MIAUW_WHATSAPP_OUTBOX_RECOVERY_MAX_AGE_MINUTES=30`
 - `MIAUW_WHATSAPP_PROVIDER=evolution`
 - `GEMINI_API_KEY`
 - `GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta`
@@ -218,7 +220,7 @@ O audio nao substitui guardrails. Escritas fortes seguem exigindo pendencia e co
 
 O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota, latencia de geracao antes do envio e demora total entre recebimento do evento e envio pelo transporte. Essa telemetria fica na `miauw_whatsapp_outbox`/consulta com `miauw_whatsapp_events` e usa mascaras/hash fora da edicao da allowlist. O painel tambem mostra graficos simples de media/p95 por motor, uma visao de sincronia recente comparando mensagem recebida e resposta enviada, allowlist minimizada por padrao com telefone completo editavel, e uma area de erros abertos alimentada por `miauw_whatsapp_error_logs`.
 
-O painel tambem mostra `n8n automacoes`: Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados reais; LIDs da Evolution protegidos por alias nao entram como destinatarios. n8n apenas orquestra/agendeia, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma. Para operacao atual, n8n deve chamar os endpoints internos `smoke-check` e `watchdog`; o bridge calcula os destinatarios com card `Miauby`, manda alerta apenas quando `notify` permitir, registra auditoria em `miauw_whatsapp_error_logs` e aplica cooldown para nao floodar a equipe.
+O painel tambem mostra `n8n automacoes`: Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados reais; LIDs da Evolution protegidos por alias nao entram como destinatarios. n8n apenas orquestra/agendeia, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma. Para operacao atual, n8n deve chamar os endpoints internos `smoke-check` e `watchdog`; o bridge calcula os destinatarios com card `Miauby`, manda alerta apenas quando `notify` permitir, registra auditoria em `miauw_whatsapp_error_logs` e aplica cooldown para nao floodar a equipe. O worker tambem recupera outbox `pending` recente em lote pequeno e expira pendencias antigas por `MIAUW_WHATSAPP_OUTBOX_RECOVERY_MAX_AGE_MINUTES`, evitando mensagens velhas fora de contexto depois de queda/redeploy.
 
 Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git. Exemplo: se o painel tem `5544984134971`, mas o evento chega como `234668507005157@lid`, configurar `234668507005157=5544984134971`. A checagem de cards liberados deve considerar o identificador recebido e o telefone alias-resolvido, para que o mesmo contato mantenha permissoes de comandos internos no WhatsApp. No painel, esses LIDs ficam ocultos e protegidos contra edicao, bloqueio ou reautorizacao manual; o operador deve ajustar apenas o telefone real vinculado.
 
