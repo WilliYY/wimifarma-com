@@ -1528,17 +1528,21 @@ app.get(`${BASE_PATH}/api/internal/summary`, asyncRoute(async (req, res) => {
   const [total, groupsResult, recentResult] = await Promise.all([
     countActive(),
     pgPool.query<{ group_key: string; total: string }>(
-      `SELECT
-          CASE
-            WHEN regexp_replace(ean, '[^0-9]', '', 'g') ~ '^[0-9]{2}'
-              THEN substring(regexp_replace(ean, '[^0-9]', '', 'g') FROM 1 FOR 2)
-            ELSE 'outros'
-          END AS group_key,
-          COUNT(*)::text AS total
-         FROM codigos_items
-        WHERE active = true
-        GROUP BY group_key
-        ORDER BY CASE WHEN group_key = '20' THEN 1 WHEN group_key = '40' THEN 2 WHEN group_key = 'outros' THEN 99 ELSE 10 END, group_key ASC`,
+      `WITH grouped AS (
+          SELECT
+            CASE
+              WHEN regexp_replace(ean, '[^0-9]', '', 'g') ~ '^[0-9]{2}'
+                THEN substring(regexp_replace(ean, '[^0-9]', '', 'g') FROM 1 FOR 2)
+              ELSE 'outros'
+            END AS group_key,
+            COUNT(*)::text AS total
+           FROM codigos_items
+          WHERE active = true
+          GROUP BY 1
+        )
+        SELECT group_key, total
+          FROM grouped
+         ORDER BY CASE WHEN group_key = '20' THEN 1 WHEN group_key = '40' THEN 2 WHEN group_key = 'outros' THEN 99 ELSE 10 END, group_key ASC`,
     ),
     pgPool.query<CodeItemRow>(
       `SELECT id::text, legacy_mysql_id::text, codigo, ean, price_cents::text, sort_order, active, created_by, created_at::text, updated_at::text, deleted_at::text
