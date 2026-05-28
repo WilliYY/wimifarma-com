@@ -30,11 +30,12 @@ count_files() {
 count_refs() {
   local rel="$1"
   local path="$repo_root/$rel"
+  local matches
   if [ ! -e "$path" ]; then
     echo 0
     return
   fi
-  grep -RInE "$legacy_pattern" "$path" \
+  matches="$(grep -RInE "$legacy_pattern" "$path" \
     --include='*.php' \
     --include='*.ts' \
     --include='*.js' \
@@ -46,7 +47,12 @@ count_refs() {
     --exclude-dir='vendor' \
     --exclude-dir='dist' \
     --exclude-dir='wp-admin' \
-    --exclude-dir='wp-includes' 2>/dev/null | wc -l | tr -d ' '
+    --exclude-dir='wp-includes' 2>/dev/null || true)"
+  if [ -z "$matches" ]; then
+    echo 0
+    return
+  fi
+  printf '%s\n' "$matches" | wc -l | tr -d ' '
 }
 
 rows=(
