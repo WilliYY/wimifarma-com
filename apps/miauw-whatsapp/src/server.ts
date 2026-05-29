@@ -610,6 +610,16 @@ class ProviderHttpError extends Error {
   }
 }
 
+class ProviderPausedError extends Error {
+  remainingMs: number;
+
+  constructor(remainingMs: number, reason: string) {
+    super(`provider_paused:${remainingMs}:${safeText(reason, 160)}`);
+    this.name = 'ProviderPausedError';
+    this.remainingMs = remainingMs;
+  }
+}
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
@@ -4902,6 +4912,7 @@ function providerPauseRemainingMs(): number {
 }
 
 function shouldPauseProvider(error: unknown): boolean {
+  if (error instanceof ProviderPausedError) return false;
   if (error instanceof ProviderHttpError) {
     return error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500;
   }
@@ -4920,7 +4931,12 @@ async function waitForProviderSendGate(): Promise<void> {
     const now = Date.now();
     pruneProviderSendWindow(now);
 
-    let waitMs = providerPauseRemainingMs();
+    const pausedMs = providerPauseRemainingMs();
+    if (pausedMs > 0) {
+      throw new ProviderPausedError(pausedMs, providerPauseReason);
+    }
+
+    let waitMs = 0;
     const minIntervalRemaining = SEND_MIN_INTERVAL_MS > 0 && lastProviderSendAt > 0
       ? SEND_MIN_INTERVAL_MS - (now - lastProviderSendAt)
       : 0;
@@ -5639,14 +5655,17 @@ async function runSmokeCheck(mode: AutomationNotifyMode): Promise<JsonRecord> {
     detail: status.provider_paused === true ? `provider_paused ${status.provider_pause_ms_remaining || 0}ms` : 'config_ok',
   });
 
-  checks.push(await smokeHttpCheck('whatsapp_health', 'WhatsApp health', `http://127.0.0.1:${PORT}${BASE_PATH}/health`));
-  checks.push(await smokeHttpCheck('whatsapp_proxy', 'WhatsApp proxy Apache', `http://wimifarma-com-web${BASE_PATH}/health`));
-  checks.push(await smokeHttpCheck('miauw_agent_health', 'Miauby agent', 'http://wimifarma-miauw-agent:3100/miauw/agent/health'));
-  checks.push(await smokeHttpCheck('gestao_health', 'Gestao', 'http://wimifarma-gestao-app:3200/gestao/health'));
-  checks.push(await smokeHttpCheck('pedidos_health', 'Pedidos', 'http://wimifarma-pedidos-app:3300/pedidos/health'));
-  checks.push(await smokeHttpCheck('cotacao_health', 'Cotacao', 'http://wimifarma-cotacao-app:3000/cotacao/health'));
-  checks.push(await smokeHttpCheck('miauw_widget', 'Miauby widget', 'http://wimifarma-com-web/miauw/widget-status.php'));
-  checks.push(await smokeEvolutionCheck());
+  const smokeChecks = await Promise.all([
+    smokeHttpCheck('whatsapp_health', 'WhatsApp health', `http://127.0.0.1:${PORT}${BASE_PATH}/health`),
+    smokeHttpCheck('whatsapp_proxy', 'WhatsApp proxy Apache', `http://wimifarma-com-web${BASE_PATH}/health`),
+    smokeHttpCheck('miauw_agent_health', 'Miauby agent', 'http://wimifarma-miauw-agent:3100/miauw/agent/health'),
+    smokeHttpCheck('gestao_health', 'Gestao', 'http://wimifarma-gestao-app:3200/gestao/health'),
+    smokeHttpCheck('pedidos_health', 'Pedidos', 'http://wimifarma-pedidos-app:3300/pedidos/health'),
+    smokeHttpCheck('cotacao_health', 'Cotacao', 'http://wimifarma-cotacao-app:3000/cotacao/health'),
+    smokeHttpCheck('miauw_widget', 'Miauby widget', 'http://wimifarma-com-web/miauw/widget-status.php'),
+    smokeEvolutionCheck(),
+  ]);
+  checks.push(...smokeChecks);
 
   const hasProblems = checks.some((check) => !check.ok);
   const notification = await sendAutomationNotification(
@@ -5689,7 +5708,10 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
     `SELECT status, COUNT(*)::text AS count, MIN(created_at)::text AS oldest_at
        FROM miauw_whatsapp_events
       WHERE status IN ('queued', 'processing')
-        AND created_at < NOW() - ($1::text || ' minutes')::interval
+        AND (
+          (status = 'processing' AND COALESCE(locked_at, updated_at, created_at) < NOW() - ($1::text || ' minutes')::interval)
+          OR (status = 'queued' AND next_attempt_at <= NOW() AND created_at < NOW() - ($1::text || ' minutes')::interval)
+        )
       GROUP BY status`,
     [String(WATCHDOG_STUCK_MINUTES)],
   );
@@ -5706,7 +5728,10 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
     `SELECT status, COUNT(*)::text AS count, MIN(created_at)::text AS oldest_at
        FROM miauw_whatsapp_outbox
       WHERE status IN ('pending', 'sending')
-        AND created_at < NOW() - ($1::text || ' minutes')::interval
+        AND (
+          (status = 'sending' AND updated_at < NOW() - ($1::text || ' minutes')::interval)
+          OR (status = 'pending' AND next_attempt_at <= NOW() AND created_at < NOW() - ($1::text || ' minutes')::interval)
+        )
       GROUP BY status`,
     [String(WATCHDOG_STUCK_MINUTES)],
   );

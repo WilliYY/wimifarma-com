@@ -56,6 +56,8 @@ Payload sugerido:
 
 Use `notify=always` quando quiser uma mensagem de sucesso tambem, por exemplo em deploy importante. O backend roda health do bridge, proxy Apache, core Miauby, Gestao, Pedidos, Cotacao, widget e conexao Evolution. O n8n nao escolhe telefone: o bridge envia apenas para contatos reais com card `Miauby` e ignora LIDs protegidos por alias.
 
+Os checks sao executados em paralelo dentro do bridge para que uma rota lenta nao trave toda a rotina ate a soma dos timeouts. O n8n deve manter timeout proprio um pouco maior que `MIAUW_WHATSAPP_SMOKE_CHECK_TIMEOUT_MS` e chamar com `notify=problems` por padrao.
+
 ### Watchdog do WhatsApp
 
 Agenda: a cada poucos minutos, com janela curta.
@@ -75,6 +77,8 @@ Payload sugerido:
 ```
 
 O watchdog verifica fila travada, outbox `pending/sending`, falhas recentes, provider pausado, respostas lentas, `sent` sem id do provedor e o caso em que o WhatsApp marcou resposta como enviada mas o mesmo contato mandou nova mensagem e a conversa ficou sem novo `sent`. Alertas usam cooldown por `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES` para nao floodar. O backend tenta recuperar outbox `pending` recente automaticamente e expira pendencias antigas para evitar envio atrasado demais.
+
+O watchdog considera `next_attempt_at`: itens em backoff normal nao sao tratados como travados antes da hora de retry. Quando o provedor esta pausado por erro temporario, o worker nao fica segurando o processamento; ele devolve o envio para retry/backoff e deixa o watchdog avisar apenas a pausa do transporte.
 
 ### Pedidos e boletos
 
