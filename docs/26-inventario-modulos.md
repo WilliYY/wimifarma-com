@@ -190,7 +190,7 @@ Validar no VPS por dia/amostra: contagens, somatorios, fechamento, relatorio, ex
 
 ### Tabelas MySQL envolvidas
 
-MySQL e legado/importacao/espelho temporario:
+MySQL e legado historico. Desde 2026-05-29 nao ha importacao/espelho/log ativo por padrao no app Cashback; essas tabelas ficam apenas para reconciliacao/rollback manual:
 
 - `wf_atendentes`;
 - `wf_clientes`;
@@ -252,8 +252,8 @@ Hoje estes arquivos PHP sao legado/fonte visual/fallback historico. A rota ofici
 - Criar/editar/inativar/excluir atendente.
 - Atualizar configuracoes (`cashback_percent`, validade, manutencao e afins).
 - Autoteste cria dados dentro de transacao controlada.
-- Auditoria oficial em `cashback_audit_events`; espelho curto em `wf_logs` se `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=true`.
-- Importacao/espelho MySQL por `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED`.
+- Auditoria oficial em `cashback_audit_events`.
+- `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED` ficam desligadas por padrao; reativacao exige rollback manual e credenciais MySQL.
 
 ### Integracoes
 
@@ -267,13 +267,14 @@ Hoje estes arquivos PHP sao legado/fonte visual/fallback historico. A rota ofici
 
 - Compra, credito e resgate precisam ser transacionais para nao gerar saldo errado.
 - Excluir fisicamente cliente/atendente e mais arriscado que inativar; validar se ainda precisa existir na UI.
-- Espelho MySQL prolongado aumenta chance de divergencia.
+- Reativar espelho MySQL prolongado aumenta chance de divergencia; manter desligado salvo rollback controlado.
 - Telefone de cliente e mensagem WhatsApp sao dados sensiveis; nao expor em logs.
 - Mudancas em percentual/validade alteram regra de negocio historica.
+- Em 2026-05-29, a validacao de corte bateu 89 clientes, 4 atendentes, 45 compras, 45 creditos, 7 resgates, 7 itens de resgate, 7 settings e 171 mensagens entre Postgres e MySQL; somatorios de compras, creditos, saldo disponivel, resgates e itens fecharam em centavos; sequencias e integridade referencial ficaram OK. A diferenca de `wf_logs` era de 11 eventos de Pedidos/XP gravados depois da importacao, nao de Cashback.
 
 ### Proxima acao segura
 
-Validar `/cashback/health`, login, importacao, saldos por cliente, compra -> credito, resgate -> baixa, mensagens, CSV e autoteste no VPS. Depois, desligar espelho MySQL em janela pequena.
+Observar producao sem espelho MySQL. Se o objetivo for remover dependencia total de MySQL no codigo, fazer uma segunda limpeza removendo o caminho `mysql2` dormente depois de mais um ciclo de backup/observacao.
 
 ## Miauw interno
 

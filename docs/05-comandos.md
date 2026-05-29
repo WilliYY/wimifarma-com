@@ -156,7 +156,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" h
 docker exec wimifarma-cashback-db psql -U wimifarma_cashback -d wimifarma_cashback -c "\dt"
 ```
 
-O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; MySQL `wf_*` do Cashback fica como importacao/espelho/log legado por flags `CASHBACK_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `CASHBACK_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-cashback-app`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
+O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; desde 2026-05-29 `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED` ficam desligadas por padrao e o servico nao depende mais do MySQL em runtime. Rollback de autenticacao: `CASHBACK_AUTH_PROVIDER=mysql`, reintroduzir variaveis MySQL no servico e rebuild de `wimifarma-cashback-app`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
 
 ## Local - Core auth Postgres oficial
 

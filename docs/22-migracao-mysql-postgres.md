@@ -11,7 +11,7 @@ Hoje o projeto ainda precisa de MySQL por dois motivos diferentes:
 - WordPress: banco `wimifarma_wp`, prefixo `wptl_`. WordPress foi feito para MySQL/MariaDB; trocar por Postgres nao e uma migracao simples nem recomendada como ajuste pequeno. Para remover MySQL 100%, a decisao tecnica correta e substituir/desacoplar a parte WordPress ou manter um MySQL isolado so para WordPress ate essa troca.
 - Apps internos: banco `wimifarma_app`, com usuarios, cashback, financeiro, legados de Codigos/XP/Tarefa e Miauby PHP. Estes podem migrar por etapas para Postgres.
 
-Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Cashback e Miauby WhatsApp ja guardam seus dados principais em Postgres. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em Postgres `wimifarma_core`, sincronizando `wf_users` para `core_users`. Em 2026-05-29, a Cotacao removeu a dependencia MySQL do login e passou a usar somente `core_users`; Gestao/Pedidos continuam com core principal e fallback MySQL apenas como rollback opt-in; Tarefa passou a default `TAREFA_AUTH_PROVIDER=core`; Cashback foi cortado para `apps/cashback` com `CASHBACK_AUTH_PROVIDER=core`; Miauby PHP passou a `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. XP, Codigos e Financeiro tambem usam core como login oficial. Financeiro e Cashback mantem importacao/espelho MySQL apenas para rollback curto.
+Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Cashback e Miauby WhatsApp ja guardam seus dados principais em Postgres. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em Postgres `wimifarma_core`, sincronizando `wf_users` para `core_users`. Em 2026-05-29, a Cotacao removeu a dependencia MySQL do login e passou a usar somente `core_users`; Gestao/Pedidos continuam com core principal e fallback MySQL apenas como rollback opt-in; Tarefa passou a default `TAREFA_AUTH_PROVIDER=core`; Cashback foi cortado para `apps/cashback` com `CASHBACK_AUTH_PROVIDER=core` e, depois de validar paridade, desligou `CASHBACK_LEGACY_MYSQL_*` por padrao; Miauby PHP passou a `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. XP, Codigos e Financeiro tambem usam core como login oficial. Financeiro ainda mantem espelho MySQL temporario; Cashback nao depende mais de MySQL em runtime por padrao.
 
 ## Uso atual de MySQL
 
@@ -31,11 +31,11 @@ Node/TypeScript ainda ligado a MySQL:
 - `apps/xp/src/server.ts`: usa Postgres `wimifarma_xp` para XP oficial e `core_users` para login; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` ou `XP_AUTH_PROVIDER=mysql` estiverem ligadas.
 - `apps/codigos/src/server.ts`: usa Postgres `wimifarma_codigos` para Codigos oficial e `core_users` para login; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `CODIGOS_LEGACY_MYSQL_*` ou `CODIGOS_AUTH_PROVIDER=mysql` estiverem ligadas.
 - `apps/financeiro/src/server.ts`: usa Postgres `wimifarma_financeiro` como fonte oficial de `/financeiro/`, `core_users` para login, endpoints internos tokenizados para Miauby/WhatsApp e `mysql2` apenas para importacao/espelho `FINANCEIRO_LEGACY_MYSQL_*`.
-- `apps/cashback/src/server.ts`: usa Postgres `wimifarma_cashback` como fonte oficial de `/cashback/`, `core_users` para login, endpoints internos tokenizados e `mysql2` apenas para importacao/espelho/log `CASHBACK_LEGACY_MYSQL_*`.
+- `apps/cashback/src/server.ts`: usa Postgres `wimifarma_cashback` como fonte oficial de `/cashback/`, `core_users` para login e endpoints internos tokenizados. O caminho `mysql2` de importacao/espelho/log existe apenas como rollback manual; `CASHBACK_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta mais credenciais MySQL no app.
 
 PHP interno ainda ligado a MySQL:
 
-- `site/cashback`: fonte de assets visuais e helpers PHP ainda chamados pelo Miauby (`config.php`/`functions.php`); a rota oficial `/cashback/` usa `apps/cashback`, e `wf_*` do Cashback no MySQL fica como importacao/espelho temporario. O financeiro antigo dentro de Cashback foi arquivado em `site/_legacy-disabled/2026-05-29/cashback-financeiro-php/`.
+- `site/cashback`: fonte de assets visuais e helpers PHP ainda chamados pelo Miauby (`config.php`/`functions.php`); a rota oficial `/cashback/` usa `apps/cashback`, e `wf_*` do Cashback no MySQL fica somente como referencia historica/rollback manual. O financeiro antigo dentro de Cashback foi arquivado em `site/_legacy-disabled/2026-05-29/cashback-financeiro-php/`.
 - `site/codigos`: somente fonte dos assets visuais; a rota oficial `/codigos/` usa `apps/codigos` e o PHP antigo foi arquivado em `site/_legacy-disabled/2026-05-29/codigos-php/`.
 - `site/tarefa`: legado/fallback historico; a rota oficial `/tarefa/` usa `apps/tarefa`, e `wf_tarefas` fica como fonte de importacao/espelho temporario.
 - `site/xp`: somente fonte dos assets/uploads compartilhados; a rota oficial `/xp/` usa `apps/xp` e o PHP antigo foi arquivado em `site/_legacy-disabled/2026-05-29/xp-php/`.
@@ -83,7 +83,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 - XP foi migrado para `apps/xp`, Postgres dedicado, login por core e proxy `/xp/`, mantendo importador/espelho idempotente de `wf_xp_*` para rollback curto.
 - Codigos foi migrado para `apps/codigos`, Postgres dedicado, login por core, proxy `/codigos/` e endpoints internos tokenizados para o Miauby, mantendo importador/espelho idempotente de `wf_codigos_*` para rollback curto.
 - Financeiro foi cortado para `apps/financeiro`, com proxy `/financeiro/`, sessao `WFFINANCEIRO`, login por `core_users`, frontend preservado pelos assets de `site/financeiro`, endpoints internos tokenizados e espelho MySQL temporario para rollback.
-- A proxima fatia pequena deve observar Codigos/XP/Financeiro/Cashback no VPS, validar contagens/saldos/checksums e so depois desligar flags legadas.
+- A proxima fatia pequena deve observar Codigos/XP/Financeiro no VPS, validar contagens/saldos/checksums e so depois desligar flags legadas. Cashback ja teve as flags legadas desligadas em 2026-05-29 apos paridade.
 
 3. Validar cortes pequenos
 
@@ -98,7 +98,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 4. Validar Financeiro e Cashback
 
 - Financeiro ja esta em Node/Postgres; manter backup, checksum de totais por dia/tipo e validacao de saldos antes de remover o espelho MySQL.
-- Cashback ja esta em Node/Postgres; manter importacao idempotente de `wf_clientes`, `wf_atendentes`, `wf_compras`, `wf_cashback_creditos`, `wf_resgates`, `wf_resgate_itens`, `wf_settings`, `wf_whatsapp_mensagens` e `wf_logs`, validar relacao compra -> credito -> resgate, saldos por cliente, exportacao CSV, mensagens e autoteste com rollback antes de desligar espelho MySQL.
+- Cashback ja esta em Node/Postgres; em 2026-05-29 foram validados contagens, relacao compra -> credito -> resgate, somatorios em centavos, saldo disponivel, mensagens WhatsApp, ids legados, sequencias e integridade referencial. Depois dessa validacao, `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED` passaram a `false` por padrao.
 - Para Financeiro, preservar fechamentos, divergencias, sangrias, maquininhas, PIX e auditoria.
 
 5. Migrar dados e motor do Miauby PHP
@@ -131,7 +131,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 2. Cotacao ja usa `core_users` sem fallback MySQL; Gestao/Pedidos, Tarefa, Cashback Node e Miauby PHP usam core por default e fallback MySQL apenas como rollback opt-in onde ainda existir.
 3. Tarefa, XP e Codigos: ja cortados para Node/Postgres e login core por default, com flags legadas de rollback de dados onde ainda existirem.
 4. Observar Codigos/XP e desligar flags legadas depois de paridade estavel e leitura interna do Miauby validada.
-5. Financeiro e Cashback: Node/Postgres oficiais; proximo passo e validar checksums/contagens/saldos, fluxos e Miauby antes de desligar espelhos MySQL.
+5. Financeiro: Node/Postgres oficial; proximo passo e validar checksums/contagens/saldos, fluxos e Miauby antes de desligar espelhos MySQL. Cashback ja esta com espelho MySQL desligado por default desde 2026-05-29.
 6. Miauby PHP.
 7. Decisao sobre WordPress.
 

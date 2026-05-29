@@ -505,18 +505,12 @@ services:
     container_name: wimifarma-cashback-app
     restart: unless-stopped
     depends_on:
-      - wimifarma-com-db
       - wimifarma-core-db
       - wimifarma-cashback-db
     environment:
       NODE_ENV: production
       PORT: 4000
       BASE_PATH: /cashback
-      MYSQL_HOST: wimifarma-com-db
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: wimifarma_app
-      MYSQL_USER: wimifarma_user
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
       CORE_POSTGRES_HOST: wimifarma-core-db
       CORE_POSTGRES_PORT: 5432
       CORE_POSTGRES_DB: wimifarma_core
@@ -531,9 +525,9 @@ services:
       CASHBACK_AUTH_PROVIDER: ${CASHBACK_AUTH_PROVIDER:-core}
       CASHBACK_INTERNAL_TOKEN: ${CASHBACK_INTERNAL_TOKEN:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
-      CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED: ${CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED:-true}
-      CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED: ${CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED:-true}
-      CASHBACK_LEGACY_MYSQL_LOGS_ENABLED: ${CASHBACK_LEGACY_MYSQL_LOGS_ENABLED:-true}
+      CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED: ${CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED:-false}
+      CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED: ${CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED:-false}
+      CASHBACK_LEGACY_MYSQL_LOGS_ENABLED: ${CASHBACK_LEGACY_MYSQL_LOGS_ENABLED:-false}
     volumes:
       - ./site/cashback/styles.css:/app/public/styles.css:ro
       - ./site/cashback/app.js:/app/public/app.js:ro
