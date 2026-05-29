@@ -44,6 +44,17 @@ type XpEmployeeRow = {
   system_key: string | null;
 };
 
+type LinkedXpProfileRow = {
+  id: string;
+  name: string;
+  photo_path: string | null;
+  system_key: string | null;
+  updated_at: string | null;
+  total_xp: string | number | null;
+  month_xp: string | number | null;
+  rank: string | number;
+};
+
 type AuditRow = {
   id: string;
   actor_username: string | null;
@@ -76,6 +87,8 @@ const SERVICE_VERSION = '1.0.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const XP_FIRST_LEVEL_REQUIREMENT = 30000;
+const XP_ADMIN_SYSTEM_KEY = 'adm';
 
 const MODULES: ModuleDefinition[] = [
   { key: 'cashback', label: 'Cashback', href: '/cashback/' },
@@ -150,8 +163,59 @@ function cleanText(value: unknown, limit: number): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
+function numeric(value: unknown): number {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function normalizeUsername(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function requiredForNextLevel(level: number): number {
+  const normalized = Math.max(1, Math.floor(level));
+  const extra = Math.pow(Math.max(0, normalized - 1), 1.55) * 14000;
+  return Math.max(XP_FIRST_LEVEL_REQUIREMENT, Math.round(XP_FIRST_LEVEL_REQUIREMENT + extra));
+}
+
+function progressFromTotal(totalXp: number): Record<string, number> {
+  let level = 1;
+  let levelStart = 0;
+  let remaining = Math.max(0, Math.floor(totalXp));
+  while (remaining >= requiredForNextLevel(level) && level < 10000) {
+    const required = requiredForNextLevel(level);
+    remaining -= required;
+    levelStart += required;
+    level += 1;
+  }
+  const required = requiredForNextLevel(level);
+  return {
+    level,
+    next_level: level + 1,
+    progress_xp: remaining,
+    required_xp: required,
+    percent: required > 0 ? Math.min(100, Math.round((remaining / required) * 10000) / 100) : 0,
+  };
+}
+
+function xpPhotoUrl(value: unknown): string {
+  const text = String(value || '');
+  return /^\/xp\/uploads\/(funcionarios|adm)\/[a-zA-Z0-9._-]+\.(jpg|jpeg|png|webp)$/.test(text) ? text : '';
+}
+
+function currentMonthBounds(): { start: string; end: string } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const year = Number(parts.find((part) => part.type === 'year')?.value || new Date().getFullYear());
+  const month = Number(parts.find((part) => part.type === 'month')?.value || new Date().getMonth() + 1);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    start: `${year}-${String(month).padStart(2, '0')}-01`,
+    end: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+  };
 }
 
 function normalizeRole(value: unknown): string {
@@ -421,7 +485,7 @@ async function authenticateCore(username: string, password: string): Promise<Use
   return canManageUsers(publicUser) ? publicUser : null;
 }
 
-async function currentUser(sessionUser: User | undefined): Promise<User | null> {
+async function currentSessionUser(sessionUser: User | undefined): Promise<User | null> {
   if (!sessionUser) return null;
   const result = await corePgPool.query<CoreUserRow>(
     `SELECT id::text, legacy_mysql_id::text, username, username_normalized, password_hash, role, active, source, created_at, updated_at
@@ -432,7 +496,11 @@ async function currentUser(sessionUser: User | undefined): Promise<User | null> 
   );
   const user = result.rows[0];
   if (!user) return null;
-  const publicUser = userPublic(user);
+  return userPublic(user);
+}
+
+async function currentUser(sessionUser: User | undefined): Promise<User | null> {
+  const publicUser = await currentSessionUser(sessionUser);
   return canManageUsers(publicUser) ? publicUser : null;
 }
 
@@ -643,6 +711,71 @@ async function saveXpLink(
        updated_at = NOW()`,
     [targetUserId, Number(employee.id), employee.system_key === 'adm' ? 'ADM' : cleanText(employee.name, 180), actorUserId],
   );
+}
+
+async function linkedXpProfile(userId: number): Promise<Record<string, unknown> | null> {
+  const link = await corePgPool.query<{ xp_employee_id: string | null; xp_employee_name: string | null }>(
+    `SELECT xp_employee_id::text, xp_employee_name
+       FROM core_user_xp_links
+      WHERE user_id = $1
+      LIMIT 1`,
+    [userId],
+  );
+  const employeeId = Number(link.rows[0]?.xp_employee_id || 0);
+  if (employeeId <= 0) return null;
+
+  const month = currentMonthBounds();
+  const result = await xpPgPool.query<LinkedXpProfileRow>(
+    `WITH totals AS (
+        SELECT employee_id, COALESCE(SUM(xp_points), 0) AS total_xp
+          FROM xp_sales
+         WHERE deleted_at IS NULL
+         GROUP BY employee_id
+      ),
+      month_totals AS (
+        SELECT employee_id, COALESCE(SUM(xp_points), 0) AS month_xp
+          FROM xp_sales
+         WHERE deleted_at IS NULL AND sale_date BETWEEN $1::date AND $2::date
+         GROUP BY employee_id
+      ),
+      ranked AS (
+        SELECT
+          e.id,
+          e.name,
+          e.photo_path,
+          e.system_key,
+          e.updated_at,
+          COALESCE(t.total_xp, 0) AS total_xp,
+          COALESCE(m.month_xp, 0) AS month_xp,
+          ROW_NUMBER() OVER (ORDER BY COALESCE(t.total_xp, 0) DESC, (e.system_key = $3) ASC, e.name ASC) AS rank
+        FROM xp_employees e
+        LEFT JOIN totals t ON t.employee_id = e.id
+        LEFT JOIN month_totals m ON m.employee_id = e.id
+        WHERE e.status = 'ativo' AND e.deleted_at IS NULL
+      )
+      SELECT id::text, name, photo_path, system_key, updated_at::text, total_xp, month_xp, rank::text
+        FROM ranked
+       WHERE id = $4
+       LIMIT 1`,
+    [month.start, month.end, XP_ADMIN_SYSTEM_KEY, employeeId],
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+  const totalXp = numeric(row.total_xp);
+  const isAdmin = row.system_key === XP_ADMIN_SYSTEM_KEY;
+  return {
+    id: Number(row.id),
+    name: cleanText(row.name, 180) || (isAdmin ? 'ADM' : 'Funcionario'),
+    photo_url: xpPhotoUrl(row.photo_path),
+    is_admin: isAdmin,
+    rank: Number(row.rank || 0),
+    month_xp: numeric(row.month_xp),
+    total_xp: totalXp,
+    progress: progressFromTotal(totalXp),
+    linked_name: link.rows[0]?.xp_employee_name || null,
+    updated_at: row.updated_at || null,
+  };
 }
 
 async function createUser(req: Request, actor: User): Promise<void> {
@@ -1043,6 +1176,23 @@ app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_r
       latency_ms: Date.now() - xpStartedAt,
     },
     stats,
+  });
+}));
+
+app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
+  const user = await currentSessionUser(req.session.user);
+  if (!user) {
+    res.status(401).json({ ok: false, authenticated: false, xp: null });
+    return;
+  }
+
+  const xp = await linkedXpProfile(user.id);
+  res.json({
+    ok: true,
+    authenticated: true,
+    source: SERVICE_NAME,
+    user: { id: user.id, username: user.username },
+    xp,
   });
 }));
 

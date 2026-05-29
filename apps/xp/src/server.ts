@@ -61,6 +61,17 @@ type EmployeeRow = {
   month_xp?: string | number | null;
 };
 
+type LinkedXpProfileRow = {
+  id: string;
+  name: string;
+  photo_path: string | null;
+  system_key: string | null;
+  updated_at: string | null;
+  total_xp: string | number | null;
+  month_xp: string | number | null;
+  rank: string | number;
+};
+
 type EmployeeView = {
   id: number;
   legacy_mysql_id: number | null;
@@ -1102,6 +1113,72 @@ function summary(employees: EmployeeView[]): { employee_count: number; month_amo
   };
 }
 
+async function linkedXpProfile(userId: number): Promise<Record<string, unknown> | null> {
+  if (!corePgPool) return null;
+  const link = await corePgPool.query<{ xp_employee_id: string | null; xp_employee_name: string | null }>(
+    `SELECT xp_employee_id::text, xp_employee_name
+       FROM core_user_xp_links
+      WHERE user_id = $1
+      LIMIT 1`,
+    [userId],
+  );
+  const employeeId = Number(link.rows[0]?.xp_employee_id || 0);
+  if (employeeId <= 0) return null;
+
+  const context = monthContext(null);
+  const result = await pgPool.query<LinkedXpProfileRow>(
+    `WITH totals AS (
+        SELECT employee_id, COALESCE(SUM(xp_points), 0) AS total_xp
+          FROM xp_sales
+         WHERE deleted_at IS NULL
+         GROUP BY employee_id
+      ),
+      month_totals AS (
+        SELECT employee_id, COALESCE(SUM(xp_points), 0) AS month_xp
+          FROM xp_sales
+         WHERE deleted_at IS NULL AND sale_date BETWEEN $1::date AND $2::date
+         GROUP BY employee_id
+      ),
+      ranked AS (
+        SELECT
+          e.id,
+          e.name,
+          e.photo_path,
+          e.system_key,
+          e.updated_at,
+          COALESCE(t.total_xp, 0) AS total_xp,
+          COALESCE(m.month_xp, 0) AS month_xp,
+          ROW_NUMBER() OVER (ORDER BY COALESCE(t.total_xp, 0) DESC, (e.system_key = $3) ASC, e.name ASC) AS rank
+        FROM xp_employees e
+        LEFT JOIN totals t ON t.employee_id = e.id
+        LEFT JOIN month_totals m ON m.employee_id = e.id
+        WHERE e.status = 'ativo' AND e.deleted_at IS NULL
+      )
+      SELECT id::text, name, photo_path, system_key, updated_at::text, total_xp, month_xp, rank::text
+        FROM ranked
+       WHERE id = $4
+       LIMIT 1`,
+    [context.start, context.end, XP_ADMIN_SYSTEM_KEY, employeeId],
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+  const totalXp = numeric(row.total_xp);
+  const isAdmin = row.system_key === XP_ADMIN_SYSTEM_KEY;
+  return {
+    id: Number(row.id),
+    name: cleanText(row.name, 180) || (isAdmin ? 'ADM' : 'Funcionario'),
+    photo_url: photoUrl(row.photo_path),
+    is_admin: isAdmin,
+    rank: Number(row.rank || 0),
+    month_xp: numeric(row.month_xp),
+    total_xp: totalXp,
+    progress: progressFromTotal(totalXp),
+    linked_name: link.rows[0]?.xp_employee_name || null,
+    updated_at: row.updated_at || null,
+  };
+}
+
 async function uploadPhoto(file: Express.Multer.File | undefined, userId: number, folder = 'funcionarios', prefix = 'funcionario'): Promise<string | null> {
   if (!file) return null;
   if (file.size <= 0 || file.size > XP_UPLOAD_MAX_BYTES) {
@@ -1682,6 +1759,23 @@ app.get(`${BASE_PATH}/internal/migration-status`, asyncRoute(async (_req, res) =
     migration: migrationState,
     postgres: await postgresStats(),
     legacy: await legacyStats(),
+  });
+}));
+
+app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
+  const user = await currentUser(req.session.user);
+  if (!user) {
+    res.status(401).json({ ok: false, authenticated: false, xp: null });
+    return;
+  }
+
+  const xp = await linkedXpProfile(user.id);
+  res.json({
+    ok: true,
+    authenticated: true,
+    source: SERVICE_NAME,
+    user: { id: user.id, username: user.username },
+    xp,
   });
 }));
 

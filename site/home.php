@@ -221,6 +221,130 @@ $modules = array(
             filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.22));
         }
 
+        .wf-user-xp {
+            display: flex;
+            justify-content: flex-end;
+            margin: 0 0 14px;
+        }
+
+        .wf-user-xp[hidden] {
+            display: none;
+        }
+
+        .wf-user-xp-card {
+            width: min(430px, 100%);
+            min-height: 104px;
+            display: grid;
+            grid-template-columns: 74px minmax(0, 1fr);
+            gap: 13px;
+            align-items: center;
+            padding: 12px 14px;
+            border: 1px solid rgba(255, 211, 84, 0.76);
+            border-radius: 8px;
+            background:
+                linear-gradient(135deg, rgba(44, 24, 92, 0.92), rgba(17, 24, 39, 0.88)),
+                rgba(17, 24, 39, 0.88);
+            color: #ffffff;
+            text-decoration: none;
+            box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
+            backdrop-filter: blur(6px);
+        }
+
+        .wf-user-xp-avatar {
+            width: 64px;
+            height: 64px;
+            display: grid;
+            place-items: center;
+            border: 2px solid #facc15;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #fef3c7;
+            font-size: 0.85rem;
+            font-weight: 950;
+            overflow: hidden;
+            box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.16);
+        }
+
+        .wf-user-xp-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .wf-user-xp-main {
+            min-width: 0;
+        }
+
+        .wf-user-xp-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .wf-user-xp-top strong {
+            min-width: 0;
+            overflow: hidden;
+            color: #ffffff;
+            font-size: 1.04rem;
+            font-weight: 950;
+            line-height: 1.1;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .wf-user-xp-rank {
+            flex: 0 0 auto;
+            border-radius: 999px;
+            padding: 5px 9px;
+            background: #facc15;
+            color: #431407;
+            font-size: 0.76rem;
+            font-weight: 950;
+            line-height: 1;
+        }
+
+        .wf-user-xp-level {
+            display: block;
+            margin-top: 3px;
+            color: #dbeafe;
+            font-size: 0.8rem;
+            font-weight: 850;
+            line-height: 1.25;
+        }
+
+        .wf-user-xp-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+            margin-top: 8px;
+            color: #fff7ed;
+            font-size: 0.78rem;
+            font-weight: 850;
+        }
+
+        .wf-user-xp-stats span {
+            white-space: nowrap;
+        }
+
+        .wf-user-xp-bar {
+            height: 10px;
+            margin-top: 10px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.18);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+        }
+
+        .wf-user-xp-fill {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #f59e0b, #fde047);
+            box-shadow: 0 0 12px rgba(250, 204, 21, 0.45);
+        }
+
         .wf-main {
             position: relative;
             z-index: 2;
@@ -434,6 +558,10 @@ $modules = array(
             .wf-modules {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+
+            .wf-user-xp {
+                justify-content: center;
+            }
         }
 
         @media (max-width: 640px) {
@@ -460,6 +588,28 @@ $modules = array(
             .wf-modules {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 10px;
+            }
+
+            .wf-user-xp-card {
+                grid-template-columns: 58px minmax(0, 1fr);
+                gap: 10px;
+                min-height: 92px;
+                padding: 10px 11px;
+            }
+
+            .wf-user-xp-avatar {
+                width: 52px;
+                height: 52px;
+                border-radius: 15px;
+            }
+
+            .wf-user-xp-top strong {
+                font-size: 0.94rem;
+            }
+
+            .wf-user-xp-stats {
+                gap: 4px 10px;
+                font-size: 0.72rem;
             }
 
             .wf-card {
@@ -579,6 +729,8 @@ $modules = array(
     <main class="wf-main">
         <div class="wf-shell">
             <h1 class="wf-visually-hidden">Wimifarma</h1>
+
+            <section class="wf-user-xp" data-wf-xp-profile hidden aria-live="polite"></section>
 
             <section class="wf-modules" aria-label="Sistemas Wimifarma">
                 <?php foreach ($modules as $module): ?>
@@ -796,14 +948,139 @@ $modules = array(
             });
         }
 
+        function initXpProfileCard() {
+            var holder = document.querySelector('[data-wf-xp-profile]');
+
+            if (!holder || !window.fetch) {
+                return;
+            }
+
+            var endpoints = [
+                '<?php echo wf_home_e(wf_home_url('/xp/api/me/xp-card')); ?>',
+                '<?php echo wf_home_e(wf_home_url('/usuarios/api/me/xp-card')); ?>'
+            ];
+            var loading = false;
+
+            function escapeHtml(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function formatNumber(value) {
+                var number = Number(value || 0);
+                if (!Number.isFinite(number)) {
+                    number = 0;
+                }
+                return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(number);
+            }
+
+            function initials(name, fallback) {
+                var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+                if (!parts.length) {
+                    return fallback || 'XP';
+                }
+                return (parts[0].charAt(0) + (parts.length > 1 ? parts[parts.length - 1].charAt(0) : '')).toUpperCase();
+            }
+
+            function hide() {
+                holder.hidden = true;
+                holder.innerHTML = '';
+            }
+
+            function render(payload) {
+                var xp = payload && payload.xp;
+                if (!xp) {
+                    hide();
+                    return;
+                }
+
+                var progress = xp.progress || {};
+                var percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+                var name = String(xp.name || (xp.is_admin ? 'ADM' : 'Funcionario'));
+                var rank = xp.is_admin ? 'ADM' : '#' + formatNumber(xp.rank || 0);
+                var photo = /^\/xp\/uploads\/(funcionarios|adm)\/[a-zA-Z0-9._-]+\.(jpg|jpeg|png|webp)$/.test(String(xp.photo_url || ''))
+                    ? String(xp.photo_url)
+                    : '';
+                var avatar = photo
+                    ? '<img src="' + escapeHtml(photo) + '" alt="' + escapeHtml(name) + '" loading="lazy" decoding="async">'
+                    : '<span>' + escapeHtml(xp.is_admin ? 'ADM' : initials(name, 'XP')) + '</span>';
+
+                holder.innerHTML =
+                    '<a class="wf-user-xp-card" href="<?php echo wf_home_e(wf_home_url('/xp/')); ?>" aria-label="Abrir XP de ' + escapeHtml(name) + '">' +
+                        '<div class="wf-user-xp-avatar">' + avatar + '</div>' +
+                        '<div class="wf-user-xp-main">' +
+                            '<div class="wf-user-xp-top"><strong>' + escapeHtml(name) + '</strong><span class="wf-user-xp-rank">' + escapeHtml(rank) + '</span></div>' +
+                            '<span class="wf-user-xp-level">Nivel ' + escapeHtml(progress.level || 1) + ' -> ' + escapeHtml(progress.next_level || 2) + ' · ' + escapeHtml(percent.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) + '%</span>' +
+                            '<div class="wf-user-xp-stats"><span>Mes ' + escapeHtml(formatNumber(xp.month_xp)) + '</span><span>Total ' + escapeHtml(formatNumber(xp.total_xp)) + ' XP</span></div>' +
+                            '<div class="wf-user-xp-bar" aria-hidden="true"><i class="wf-user-xp-fill" style="width: ' + escapeHtml(percent.toFixed(2)) + '%"></i></div>' +
+                        '</div>' +
+                    '</a>';
+                holder.hidden = false;
+            }
+
+            function fetchEndpoint(index) {
+                if (index >= endpoints.length) {
+                    hide();
+                    return Promise.resolve();
+                }
+
+                return fetch(endpoints[index], {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { 'Accept': 'application/json' }
+                }).then(function (response) {
+                    if (response.status === 401 || response.status === 403 || response.status === 404) {
+                        return fetchEndpoint(index + 1);
+                    }
+                    if (!response.ok) {
+                        throw new Error('xp profile unavailable');
+                    }
+                    return response.json().then(function (payload) {
+                        if (payload && payload.xp) {
+                            render(payload);
+                            return undefined;
+                        }
+                        return fetchEndpoint(index + 1);
+                    });
+                }).catch(function () {
+                    return fetchEndpoint(index + 1);
+                });
+            }
+
+            function load() {
+                if (loading) {
+                    return;
+                }
+                loading = true;
+                fetchEndpoint(0).finally(function () {
+                    loading = false;
+                });
+            }
+
+            load();
+            window.setInterval(load, 20000);
+            window.addEventListener('focus', load);
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) {
+                    load();
+                }
+            });
+        }
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function () {
                 initTaskBadge();
                 initOrderBadge();
+                initXpProfileCard();
             });
         } else {
             initTaskBadge();
             initOrderBadge();
+            initXpProfileCard();
         }
     }());
 </script>

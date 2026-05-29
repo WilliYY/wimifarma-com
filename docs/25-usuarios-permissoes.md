@@ -30,6 +30,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - O usuario `adm` nao pode ser desativado.
 - Deve existir pelo menos um administrador ativo.
 - O vinculo com XP nao copia vendas nem pontos; apenas referencia `xp_employees.id` e guarda o nome como snapshot.
+- A home consulta `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` para mostrar o mini-card XP do usuario logado quando houver vinculo. Os totais continuam vindo de `xp_sales`, entao lancamentos de XP aparecem na home sem copiar pontuacao para o core.
 - Linhas ausentes em `core_user_module_permissions` preservam acesso legado ate cada modulo ser cortado para enforcement.
 
 ## Ordem de implantacao
@@ -37,7 +38,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 1. Subir `/usuarios/` com schema, painel, health e auditoria.
 2. Validar login admin, criacao/desativacao, permissao por modulo e vinculo XP.
 3. Aplicar enforcement por modulo em etapas pequenas, com rollback por modulo.
-4. Atualizar a home/perfis para mostrar dados do XP do usuario quando o vinculo estiver confiavel.
+4. Atualizar a home/perfis para mostrar dados do XP do usuario quando o vinculo estiver confiavel. A primeira entrega mostra o mini-card na home para sessoes ativas de XP/Usuarios.
 5. Evoluir tarefas individuais usando o vinculo usuario/permissao como base.
 
 ## Validacao
