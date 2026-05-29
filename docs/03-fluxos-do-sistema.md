@@ -25,7 +25,7 @@ Rotas de login:
 
 - `/cashback/login.php`
 - `/codigos/login.php`
-- `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando em `wf_users`)
+- `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando em `core_users` com fallback temporario `wf_users`)
 - `/financeiro/login.php`
 - `/gestao/login.php`
 - `/pedidos/`
@@ -130,11 +130,11 @@ Arquivos principais:
 
 Tabelas principais:
 
-- `wf_xp_employees`
-- `wf_xp_sales`
-- `wf_xp_settings`
-- `wf_users` para login
-- `wf_logs` para auditoria
+- Postgres `xp_employees`
+- Postgres `xp_sales`
+- Postgres `xp_settings`
+- Postgres `core_users` para login
+- Postgres `xp_audit_events` para auditoria
 
 Regras a preservar:
 
@@ -145,7 +145,7 @@ Regras a preservar:
 - a Trilha exibe jogadores em avatares compactos nos niveis e em uma faixa resumida, sem acoes de editar/excluir; clicar em um jogador abre apenas o resumo de XP;
 - a aba `Configuracoes` prioriza leitura de XP e nao exibe cards de total de venda; valores monetarios ficam como entrada operacional para gerar XP;
 - os cards de funcionarios em `Configuracoes` e a faixa inferior de jogadores na `Trilha` devem exibir barra amarela preenchida conforme o percentual real para o proximo nivel;
-- em `Ultimos lancamentos`, a observacao opcional salva em `wf_xp_sales.note` deve aparecer no lancamento, e o XP do lancamento deve ser destacado por uma barra amarela compacta;
+- em `Ultimos lancamentos`, a observacao opcional salva em `xp_sales.note` deve aparecer no lancamento, e o XP do lancamento deve ser destacado por uma barra amarela compacta;
 - formularios usam CSRF e prepared statements;
 - fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;
 - a moldura ADM e usada no perfil/admin do XP, com foto propria salva separada dos funcionarios, e o ADM tambem aparece como player fixo de teste para receber XP;
@@ -178,7 +178,7 @@ Tabelas principais:
 - Postgres `cotacao_v2_rows`
 - Postgres `cotacao_v2_events`
 - Postgres `cotacao_v2_rules`
-- MySQL `wf_users` para login
+- Postgres `core_users` para login, com fallback temporario MySQL `wf_users`
 
 Regras a preservar:
 

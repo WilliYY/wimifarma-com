@@ -26,7 +26,8 @@ Servicos:
 - `wimifarma-cotacao-db`: Postgres 17.
 - `wimifarma-cotacao-redis`: Redis 7.
 - `wimifarma-com-web`: Apache/PHP, faz proxy de `/cotacao/` e `/cotacao/socket.io/`.
-- `wimifarma-com-db`: MySQL, usado pela Cotacao V2 somente para autenticar `wf_users`.
+- `wimifarma-core-db`: Postgres do core auth, usado pela Cotacao V2 para autenticar `core_users`.
+- `wimifarma-com-db`: MySQL, mantido pela Cotacao V2 apenas como fallback temporario de autenticacao em `wf_users`.
 
 Rotas:
 
@@ -81,9 +82,13 @@ Redis:
 - sessoes web da Cotacao V2;
 - presenca temporaria por usuario/aba/celula.
 
+Core Postgres `wimifarma_core`:
+
+- `core_users` e a origem principal de usuario/senha por `COTACAO_AUTH_PROVIDER=core`.
+
 MySQL `wimifarma_app`:
 
-- `wf_users` continua sendo a origem de usuario/senha para manter o login existente.
+- `wf_users` fica como fallback temporario quando `COTACAO_AUTH_MYSQL_FALLBACK_ENABLED=true`.
 
 ## Regras de negocio que precisam ser preservadas
 
@@ -113,7 +118,7 @@ MySQL `wimifarma_app`:
 - Quando outro usuario esta em uma celula visivel, a grade deve mostrar contorno colorido, etiqueta do animal e tooltip com coluna/linha; esse indicador nao bloqueia escrita.
 - O botao `Historico`, ao lado do contador de linhas com dados, abre as alteracoes da celula selecionada a partir de `cotacao_v2_events` e permite restaurar o valor anterior por um save normal.
 - O modal de formatacao condicional deve manter leitura operacional: criacao de regra em uma faixa compacta, lista de regras em linhas alinhadas e acoes visiveis sem quebrar o layout.
-- Login deve continuar aceitando os usuarios internos existentes de `wf_users`.
+- Login deve continuar aceitando os usuarios internos sincronizados para `core_users`; durante a janela de corte, `wf_users` segue como fallback temporario.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.
 - Import/export Google Sheets deve preservar `cotacao_row_id` para manter linha estavel e evitar duplicacao silenciosa.
 - Acoes de import e restore precisam de permissao clara antes de uso amplo; apagar distribuidora permanece no fluxo normal com desfazer na mesma sessao.

@@ -16,7 +16,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/codigos/api.php` e atendido pelo servico Node `apps/codigos`, usa sessao propria `WFCODIGOS`, autentica por `core_users` quando `CODIGOS_AUTH_PROVIDER=core`, valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos e grava auditoria em Postgres.
 - `/codigos/api/internal/summary` e `/codigos/api/internal/search` exigem `X-Miauw-Internal-Token` ou `X-Codigos-Internal-Token`; sem `CODIGOS_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` configurado, recusam com 503. Esses endpoints retornam apenas resumo/lista de codigos, sem segredo nem payload bruto.
 - `/xp/` usa sessao propria `WFXP` no servico Node, exige usuario autenticado para visualizar, restringe alimentacao de dados a `adm`, `admin` ou `gerente`, valida CSRF e valida fotos por tipo real, tamanho e dimensoes antes de salvar.
-- `/gestao/` usa sessao propria `WFGESTAO` persistida no Postgres da Gestao, autentica contra `wf_users`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa queries parametrizadas para lancar contas, adicionar itens/juros, registrar pagamentos parciais, confirmar saldo, cancelar ou reabrir contas.
+- `/gestao/` usa sessao propria `WFGESTAO` persistida no Postgres da Gestao, autentica contra `core_users` por `GESTAO_AUTH_PROVIDER=core` com fallback temporario `wf_users`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa queries parametrizadas para lancar contas, adicionar itens/juros, registrar pagamentos parciais, confirmar saldo, cancelar ou reabrir contas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - `Permissions-Policy` bloqueia camera e geolocalizacao; microfone fica liberado apenas para a propria origem (`microphone=(self)`) para permitir o botao de audio do Miauby, que ainda exige clique explicito do usuario.
 - Os logins PHP internos usam limitador por sessao e por chave `IP + usuario` persistida em `wf_login_rate_limits`, com bloqueio temporario apos falhas repetidas.
@@ -122,7 +122,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Repositorio tratado como publico.
 - SSL via Nginx Proxy Manager, nao diretamente no Apache do container.
 - `WP_CACHE` e cache publico ficam desligados por padrao durante migracao para evitar HTML antigo, mixed content e comportamento inesperado.
-- A Cotacao V2 reutiliza usuarios de `wf_users`, mas guarda a sessao no Redis do modulo e os dados da planilha no Postgres isolado.
+- A Cotacao V2 autentica contra `core_users` por `COTACAO_AUTH_PROVIDER=core`, com fallback temporario `wf_users`, mas guarda a sessao no Redis do modulo e os dados da planilha no Postgres isolado.
 - A Cotacao V2 rejeita API sem sessao e sem CSRF; Socket.IO tambem exige sessao autenticada.
 
 ## Riscos ao alterar

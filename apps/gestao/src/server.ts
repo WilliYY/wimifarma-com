@@ -16,6 +16,8 @@ type User = {
   role: string;
 };
 
+type AuthProvider = 'mysql' | 'core';
+
 type Flash = {
   type: 'success' | 'error' | '';
   message: string;
@@ -148,11 +150,14 @@ const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const INTERNAL_TOKEN = String(env.GESTAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
 const TZ = 'America/Sao_Paulo';
+const AUTH_PROVIDER = normalizeAuthProvider(env.GESTAO_AUTH_PROVIDER || 'core');
+const MYSQL_AUTH_FALLBACK_ENABLED = normalizeBoolean(env.GESTAO_AUTH_MYSQL_FALLBACK_ENABLED ?? 'true');
 const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.GESTAO_CORE_AUTH_SHADOW_ENABLED);
 const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   500,
   Math.min(10000, Number.parseInt(env.GESTAO_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500),
 );
+const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core' || CORE_AUTH_SHADOW_ENABLED;
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -173,9 +178,10 @@ const mysqlPool = mysql.createPool({
   connectionLimit: 8,
   charset: 'utf8mb4',
   dateStrings: true,
+  connectTimeout: Number(env.MYSQL_CONNECT_TIMEOUT_MS || 3000),
 });
 
-const corePgPool = CORE_AUTH_SHADOW_ENABLED
+const corePgPool = CORE_AUTH_REQUIRED
   ? new Pool({
       host: env.CORE_POSTGRES_HOST || '127.0.0.1',
       port: Number(env.CORE_POSTGRES_PORT || 5432),
@@ -240,6 +246,10 @@ function cleanText(value: unknown, limit: number): string {
 
 function normalizeBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
+}
+
+function normalizeAuthProvider(value: unknown): AuthProvider {
+  return String(value || 'mysql').trim().toLowerCase() === 'core' ? 'core' : 'mysql';
 }
 
 function normalizeHash(hash: unknown): string {
@@ -767,6 +777,33 @@ function clearLoginRateLimit(req: Request): void {
 }
 
 async function authenticate(username: string, password: string): Promise<User | null> {
+  if (AUTH_PROVIDER === 'core') {
+    try {
+      const coreUser = await authenticateCore(username, password);
+      if (coreUser) return coreUser;
+    } catch (error) {
+      console.warn('[gestao] core auth failed', {
+        username: maskUsername(username),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (!MYSQL_AUTH_FALLBACK_ENABLED) return null;
+    try {
+      return await authenticateMysql(username, password);
+    } catch (error) {
+      console.warn('[gestao] mysql auth fallback failed', {
+        username: maskUsername(username),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  return authenticateMysql(username, password);
+}
+
+async function authenticateMysql(username: string, password: string): Promise<User | null> {
   const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
     'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
     [username],
@@ -815,7 +852,7 @@ async function authenticateCore(username: string, password: string): Promise<Use
 }
 
 async function shadowCoreAuth(username: string, password: string, mysqlUser: User): Promise<void> {
-  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) return;
+  if (!CORE_AUTH_SHADOW_ENABLED || AUTH_PROVIDER !== 'mysql' || !corePgPool) return;
   const startedAt = Date.now();
   coreAuthShadow.attempts += 1;
   try {
@@ -864,11 +901,12 @@ async function shadowCoreAuth(username: string, password: string, mysqlUser: Use
 
 async function coreAuthHealth(): Promise<Record<string, unknown>> {
   const state = {
-    provider: 'mysql',
+    provider: AUTH_PROVIDER,
+    mysqlFallbackEnabled: MYSQL_AUTH_FALLBACK_ENABLED,
     shadowEnabled: CORE_AUTH_SHADOW_ENABLED,
     shadow: { ...coreAuthShadow },
   };
-  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) {
+  if (!CORE_AUTH_REQUIRED || !corePgPool) {
     return state;
   }
 
@@ -892,6 +930,7 @@ async function coreAuthHealth(): Promise<Record<string, unknown>> {
 }
 
 async function logMysql(userId: number | null, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
+  await logCoreAudit(userId, action, entityType || 'legacy_log', entityId === null ? null : String(entityId), message);
   try {
     await mysqlPool.query(
       'INSERT INTO wf_logs (user_id, action, entity_type, entity_id, message) VALUES (?, ?, ?, ?, ?)',
@@ -899,6 +938,26 @@ async function logMysql(userId: number | null, action: string, entityType: strin
     );
   } catch (error) {
     console.warn('[gestao] wf_logs failed', error);
+  }
+}
+
+async function logCoreAudit(userId: number | null, action: string, entityType: string, entityId: string | null, detail: string): Promise<void> {
+  if (!corePgPool) return;
+  try {
+    await corePgPool.query(
+      `INSERT INTO core_audit_logs (actor_user_id, action, entity_type, entity_id, detail, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [
+        userId,
+        cleanText(action, 80),
+        cleanText(entityType, 80) || 'legacy_log',
+        entityId,
+        cleanText(detail, 255),
+        JSON.stringify({ service: SERVICE_NAME }),
+      ],
+    );
+  } catch (error) {
+    console.warn('[gestao] failed to write core audit log', error);
   }
 }
 
@@ -3412,7 +3471,18 @@ app.use(BASE_PATH, express.static(path.join(rootDir, 'public'), {
 
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');
-  await mysqlPool.query('SELECT 1');
+  let mysqlReachable = false;
+  if (AUTH_PROVIDER === 'mysql') {
+    await mysqlPool.query('SELECT 1');
+    mysqlReachable = true;
+  } else if (MYSQL_AUTH_FALLBACK_ENABLED) {
+    try {
+      await mysqlPool.query('SELECT 1');
+      mysqlReachable = true;
+    } catch {
+      mysqlReachable = false;
+    }
+  }
   const auth = await coreAuthHealth();
   res.json({
     ok: true,
@@ -3420,7 +3490,9 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
     version: SERVICE_VERSION,
     runtime: 'node22-typescript',
     database: 'postgres',
-    mysql_auth: true,
+    mysql_auth: AUTH_PROVIDER === 'mysql',
+    mysql_auth_fallback: MYSQL_AUTH_FALLBACK_ENABLED,
+    mysql_reachable: mysqlReachable,
     auth,
     base_path: BASE_PATH,
   });
@@ -3518,7 +3590,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     return res.status(401).type('html').send(renderLogin(req, 'Usuario, senha ou permissao incorretos.'));
   }
 
-  void shadowCoreAuth(username, password, user);
+  if (AUTH_PROVIDER === 'mysql') void shadowCoreAuth(username, password, user);
   const returnTo = safeGestaoReturnPath(req.session.returnTo) || `${BASE_PATH}/`;
   clearLoginRateLimit(req);
   req.session.regenerate((error) => {
@@ -3643,9 +3715,18 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 async function start() {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
-  await withRetry('mysql', () => mysqlPool.query('SELECT 1'));
+  if (CORE_AUTH_REQUIRED) {
+    await withRetry('core-postgres', () => corePgPool?.query('SELECT 1') || Promise.reject(new Error('core auth disabled')));
+  }
+  if (AUTH_PROVIDER === 'mysql') {
+    await withRetry('mysql', () => mysqlPool.query('SELECT 1'));
+  }
   await ensureSchema();
-  await importMysqlGestaoOnce();
+  try {
+    await importMysqlGestaoOnce();
+  } catch (error) {
+    console.warn('[gestao] mysql legacy import skipped', error);
+  }
   app.listen(PORT, () => {
     console.log(`[gestao] listening on ${PORT}${BASE_PATH}`);
   });

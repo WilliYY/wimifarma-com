@@ -30,11 +30,14 @@ const GOOGLE_SHEETS_SPREADSHEET_ID = env.GOOGLE_SHEETS_SPREADSHEET_ID || '';
 const GOOGLE_SHEETS_RANGE = env.GOOGLE_SHEETS_RANGE || 'Cotacao!A1:Z500';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON || '';
 const GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE = env.GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE || '';
+const AUTH_PROVIDER = normalizeAuthProvider(env.COTACAO_AUTH_PROVIDER || 'core');
+const MYSQL_AUTH_FALLBACK_ENABLED = normalizeBoolean(env.COTACAO_AUTH_MYSQL_FALLBACK_ENABLED ?? 'true');
 const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.COTACAO_CORE_AUTH_SHADOW_ENABLED);
 const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   500,
   Math.min(10000, Number.parseInt(env.COTACAO_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500)
 );
+const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core' || CORE_AUTH_SHADOW_ENABLED;
 const PAINT_SWATCHES = [
   ['Vermelho escuro', '#7f1d1d'], ['Vermelho forte', '#b91c1c'], ['Vermelho', '#ef4444'], ['Vermelho medio', '#f87171'], ['Vermelho claro', '#fca5a5'], ['Vermelho pastel', '#fecaca'], ['Vermelho suave', '#fee2e2'],
   ['Marrom escuro', '#451a03'], ['Marrom forte', '#78350f'], ['Marrom', '#92400e'], ['Marrom medio', '#b45309'], ['Marrom claro', '#fdba74'], ['Marrom pastel', '#fed7aa'], ['Marrom suave', '#ffedd5'],
@@ -119,9 +122,10 @@ const mysqlPool = mysql.createPool({
   password: env.MYSQL_PASSWORD || '',
   waitForConnections: true,
   connectionLimit: 8,
-  charset: 'utf8mb4'
+  charset: 'utf8mb4',
+  connectTimeout: Number(env.MYSQL_CONNECT_TIMEOUT_MS || 3000)
 });
-const corePgPool = CORE_AUTH_SHADOW_ENABLED
+const corePgPool = CORE_AUTH_REQUIRED
   ? new Pool({
       host: env.CORE_POSTGRES_HOST || '127.0.0.1',
       port: Number(env.CORE_POSTGRES_PORT || 5432),
@@ -405,6 +409,10 @@ function normalizeBoolean(value) {
   return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
 }
 
+function normalizeAuthProvider(value) {
+  return String(value || 'mysql').trim().toLowerCase() === 'core' ? 'core' : 'mysql';
+}
+
 function userPublic(user) {
   return {
     id: user.id,
@@ -418,6 +426,33 @@ function asyncRoute(handler) {
 }
 
 async function authenticate(username, password) {
+  if (AUTH_PROVIDER === 'core') {
+    try {
+      const coreUser = await authenticateCore(username, password);
+      if (coreUser) return coreUser;
+    } catch (error) {
+      console.warn('[cotacao] core auth failed', {
+        username: maskUsername(username),
+        error: error.message
+      });
+    }
+
+    if (!MYSQL_AUTH_FALLBACK_ENABLED) return null;
+    try {
+      return await authenticateMysql(username, password);
+    } catch (error) {
+      console.warn('[cotacao] mysql auth fallback failed', {
+        username: maskUsername(username),
+        error: error.message
+      });
+      return null;
+    }
+  }
+
+  return authenticateMysql(username, password);
+}
+
+async function authenticateMysql(username, password) {
   const [rows] = await mysqlPool.query(
     'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
     [username]
@@ -448,7 +483,7 @@ async function authenticateCore(username, password) {
 }
 
 async function shadowCoreAuth(username, password, mysqlUser) {
-  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) return;
+  if (!CORE_AUTH_SHADOW_ENABLED || AUTH_PROVIDER !== 'mysql' || !corePgPool) return;
   const startedAt = Date.now();
   coreAuthShadow.attempts += 1;
   try {
@@ -496,11 +531,12 @@ async function shadowCoreAuth(username, password, mysqlUser) {
 
 async function coreAuthHealth() {
   const state = {
-    provider: 'mysql',
+    provider: AUTH_PROVIDER,
+    mysqlFallbackEnabled: MYSQL_AUTH_FALLBACK_ENABLED,
     shadowEnabled: CORE_AUTH_SHADOW_ENABLED,
     shadow: { ...coreAuthShadow }
   };
-  if (!CORE_AUTH_SHADOW_ENABLED || !corePgPool) {
+  if (!CORE_AUTH_REQUIRED || !corePgPool) {
     return state;
   }
   const startedAt = Date.now();
@@ -2003,9 +2039,29 @@ function renderApp(req) {
 }
 
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
+  let mysqlReachable = false;
+  if (AUTH_PROVIDER === 'mysql') {
+    await mysqlPool.query('SELECT 1');
+    mysqlReachable = true;
+  } else if (MYSQL_AUTH_FALLBACK_ENABLED) {
+    try {
+      await mysqlPool.query('SELECT 1');
+      mysqlReachable = true;
+    } catch {
+      mysqlReachable = false;
+    }
+  }
   const quote = await getOrCreateDefaultQuote();
   const auth = await coreAuthHealth();
-  res.json({ ok: true, service: 'cotacao-v2', quote_id: quote.id, auth });
+  res.json({
+    ok: true,
+    service: 'cotacao-v2',
+    quote_id: quote.id,
+    mysql_auth: AUTH_PROVIDER === 'mysql',
+    mysql_auth_fallback: MYSQL_AUTH_FALLBACK_ENABLED,
+    mysql_reachable: mysqlReachable,
+    auth
+  });
 }));
 
 app.get(BASE_PATH, (req, res, next) => {
@@ -2032,7 +2088,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     registerLoginFailure(req, username);
     return res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha invalidos.'));
   }
-  void shadowCoreAuth(username, password, user);
+  if (AUTH_PROVIDER === 'mysql') void shadowCoreAuth(username, password, user);
   clearLoginRateLimit(req, username);
   await new Promise((resolve, reject) => {
     req.session.regenerate((error) => {
@@ -3175,7 +3231,12 @@ app.use((error, _req, res, _next) => {
 async function start() {
   await withRetry('redis', () => redis.connect());
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
-  await withRetry('mysql', () => mysqlPool.query('SELECT 1'));
+  if (CORE_AUTH_REQUIRED) {
+    await withRetry('core-postgres', () => corePgPool?.query('SELECT 1') || Promise.reject(new Error('core auth disabled')));
+  }
+  if (AUTH_PROVIDER === 'mysql') {
+    await withRetry('mysql', () => mysqlPool.query('SELECT 1'));
+  }
   await ensureSchema();
   server.listen(PORT, () => {
     console.log(`[cotacao] listening on ${PORT}${BASE_PATH}`);

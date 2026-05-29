@@ -11,7 +11,7 @@ Hoje o projeto ainda precisa de MySQL por dois motivos diferentes:
 - WordPress: banco `wimifarma_wp`, prefixo `wptl_`. WordPress foi feito para MySQL/MariaDB; trocar por Postgres nao e uma migracao simples nem recomendada como ajuste pequeno. Para remover MySQL 100%, a decisao tecnica correta e substituir/desacoplar a parte WordPress ou manter um MySQL isolado so para WordPress ate essa troca.
 - Apps internos: banco `wimifarma_app`, com usuarios, cashback, financeiro, legados de Codigos/XP/Tarefa e Miauby PHP. Estes podem migrar por etapas para Postgres.
 
-Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos e Miauby WhatsApp ja guardam seus dados principais em Postgres, e o Financeiro iniciou uma sombra Postgres para importacao/checksum, mas Cotacao/Gestao/Pedidos ainda usam MySQL para autenticar em `wf_users` e, em alguns casos, registrar `wf_logs`. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em modo sombra com `wimifarma_core`, sincronizando `wf_users` para `core_users`. Ainda em 2026-05-28, Tarefa foi cortado para `apps/tarefa` com Postgres `wimifarma_tarefa` e login oficial por `core_users`; XP foi cortado para `apps/xp` com Postgres `wimifarma_xp`, proxy `/xp/` e frontend visual preservado; Codigos foi cortado para `apps/codigos` com Postgres `wimifarma_codigos`, proxy `/codigos/` e frontend visual preservado; Financeiro iniciou `apps/financeiro` com Postgres `wimifarma_financeiro` em modo sombra, sem trocar `/financeiro/`.
+Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos e Miauby WhatsApp ja guardam seus dados principais em Postgres, e o Financeiro iniciou uma sombra Postgres para importacao/checksum. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em Postgres `wimifarma_core`, sincronizando `wf_users` para `core_users`. Cotacao/Gestao/Pedidos passaram a usar `core_users` como login principal com fallback MySQL temporario; Tarefa, XP e Codigos tambem usam core como login oficial. Financeiro iniciou `apps/financeiro` com Postgres `wimifarma_financeiro` em modo sombra, sem trocar `/financeiro/`.
 
 ## Uso atual de MySQL
 
@@ -24,9 +24,9 @@ Infraestrutura:
 
 Node/TypeScript ainda ligado a MySQL:
 
-- `apps/cotacao/src/server.js`: usa `mysql2` para login em `wf_users`; dados da planilha ficam em Postgres.
-- `apps/gestao/src/server.ts`: usa `mysql2` para login em `wf_users` e espelho curto em `wf_logs`; dados oficiais ficam em Postgres.
-- `apps/pedidos/src/server.ts`: usa `mysql2` para login em `wf_users` e espelho curto em `wf_logs`; dados oficiais ficam em Postgres da Gestao.
+- `apps/cotacao/src/server.js`: usa `core_users` como login principal; `mysql2` fica como fallback temporario em `wf_users`; dados da planilha ficam em Postgres.
+- `apps/gestao/src/server.ts`: usa `core_users` como login principal e `core_audit_logs` para auditoria curta; `mysql2` fica como fallback temporario em `wf_users`/`wf_logs` e importacao legado; dados oficiais ficam em Postgres.
+- `apps/pedidos/src/server.ts`: usa `core_users` como login principal e `core_audit_logs` para auditoria curta; `mysql2` fica como fallback temporario em `wf_users`/`wf_logs`; dados oficiais ficam em Postgres da Gestao.
 - `apps/tarefa/src/server.ts`: usa Postgres `wimifarma_tarefa` para dados e pode usar `core_users` como login oficial; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `TAREFA_LEGACY_MYSQL_*` estiverem ligadas.
 - `apps/xp/src/server.ts`: usa Postgres `wimifarma_xp` para XP oficial e `core_users` para login; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` ou `XP_AUTH_PROVIDER=mysql` estiverem ligadas.
 - `apps/codigos/src/server.ts`: usa Postgres `wimifarma_codigos` para Codigos oficial e `core_users` para login; `mysql2` fica apenas para rollback/importacao/espelho/log legado quando as flags `CODIGOS_LEGACY_MYSQL_*` ou `CODIGOS_AUTH_PROVIDER=mysql` estiverem ligadas.
@@ -68,13 +68,13 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 - Modelar `core_users`, `core_audit_logs` e `core_login_rate_limits`.
 - Migrar `wf_users`, preservando hash de senha, role, status e ids antigos em coluna `legacy_mysql_id`.
-- Estado atual: `apps/core-auth` cria o schema em `wimifarma_core`, sincroniza usuarios de forma idempotente e possui validacao de contagem/campos. Esta etapa ainda e modo sombra.
-- Estado atual da Cotacao: `COTACAO_CORE_AUTH_SHADOW_ENABLED=true` permite comparar logins bem-sucedidos contra `core_users` em paralelo, mas `auth.provider` permanece `mysql`; divergencias devem ser resolvidas antes de qualquer corte real.
-- Estado atual da Gestao: `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` permite comparar logins bem-sucedidos contra `core_users` em paralelo, preservando a regra de permissao `adm`/`admin`/`gerente`, mas `auth.provider` permanece `mysql`; divergencias devem ser resolvidas antes de qualquer corte real.
-- Estado atual de Pedidos: `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true` permite comparar logins bem-sucedidos contra `core_users` em paralelo, preservando a regra de permissao `adm`/`admin`/`gerente` e a sessao `WFPEDIDOS`, mas `auth.provider` permanece `mysql`; divergencias devem ser resolvidas antes de qualquer corte real.
+- Estado atual: `apps/core-auth` cria o schema em `wimifarma_core`, sincroniza usuarios de forma idempotente e possui validacao de contagem/campos.
+- Estado atual da Cotacao: `COTACAO_AUTH_PROVIDER=core` usa `core_users` como login principal, com fallback `wf_users` por `COTACAO_AUTH_MYSQL_FALLBACK_ENABLED=true`.
+- Estado atual da Gestao: `GESTAO_AUTH_PROVIDER=core` usa `core_users` como login principal, preservando a regra de permissao `adm`/`admin`/`gerente`, com fallback `wf_users` por `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`.
+- Estado atual de Pedidos: `PEDIDOS_AUTH_PROVIDER=core` usa `core_users` como login principal, preservando a regra de permissao `adm`/`admin`/`gerente` e a sessao `WFPEDIDOS`, com fallback `wf_users` por `PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED=true`.
 - Estado atual de Tarefa: `TAREFA_AUTH_PROVIDER=core` pode cortar o login oficial para `core_users`, preservando a sessao `WFTAREFA` e a mesma tela. `TAREFA_AUTH_PROVIDER=mysql` e rollback direto; `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` continua disponivel para comparacao antes de cortes em outros ambientes.
-- Atualizar Cotacao, Gestao e Pedidos para autenticar no core Postgres e parar de depender de `wf_users`/`wf_logs`.
-- So depois remover `mysql2` desses apps Node.
+- Observar Cotacao, Gestao e Pedidos em producao com `auth.provider=core`, corrigindo qualquer uso real do fallback MySQL.
+- So depois remover `mysql2` desses apps Node e desligar os espelhos `wf_logs` onde nao forem mais necessarios.
 
 2. Migrar modulos PHP pequenos primeiro
 
@@ -126,8 +126,8 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 ## Ordem sugerida
 
-1. Core de autenticacao/auditoria em Postgres: iniciado em modo sombra com `wimifarma-core-db` e `apps/core-auth`.
-2. Cotacao/Gestao/Pedidos param de usar MySQL para login/log, somente depois de validacao repetida do core.
+1. Core de autenticacao/auditoria em Postgres: ativo com `wimifarma-core-db` e `apps/core-auth`.
+2. Cotacao/Gestao/Pedidos usam `core_users` como login principal, mantendo fallback MySQL temporario ate observacao em producao.
 3. Tarefa, XP e Codigos: ja cortados para Node/Postgres, com flags legadas de rollback.
 4. Observar Codigos/XP e desligar flags legadas depois de paridade estavel e leitura interna do Miauby validada.
 5. Financeiro: sombra Node/Postgres ativa; proximo passo e validar checksums e fluxos antes de corte.

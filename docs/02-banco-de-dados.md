@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos e da sombra do Financeiro. A migracao trouxe dados do HostGator para MySQL local em Docker; Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro sombra e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos e da sombra do Financeiro. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro sombra e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -13,12 +13,18 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gesta
 - Imagem Cotacao V2: `postgres:17-alpine`
 - Volume Cotacao V2: `cotacao-data/postgres/`
 - Redis Cotacao V2: `wimifarma-cotacao-redis`, volume `cotacao-data/redis/`
+- Container Core auth: `wimifarma-core-db`
+- Imagem Core auth: `postgres:17-alpine`
+- Volume Core auth: `core-data/postgres/`
 - Container Gestao: `wimifarma-gestao-db`
 - Imagem Gestao: `postgres:17-alpine`
 - Volume Gestao: `gestao-data/postgres/`
 - Container Tarefa: `wimifarma-tarefa-db`
 - Imagem Tarefa: `postgres:17-alpine`
 - Volume Tarefa: `tarefa-data/postgres/`
+- Container XP: `wimifarma-xp-db`
+- Imagem XP: `postgres:17-alpine`
+- Volume XP: `xp-data/postgres/`
 - Container Codigos: `wimifarma-codigos-db`
 - Imagem Codigos: `postgres:17-alpine`
 - Volume Codigos: `codigos-data/postgres/`
@@ -37,14 +43,26 @@ O banco guarda dados do WordPress, dos modulos internos, da Cotacao V2, da Gesta
 
 - `wimifarma_wp`: WordPress, prefixo `wptl_`.
 - `wimifarma_app`: modulos internos.
+- `wimifarma_core`: autenticacao/auditoria compartilhada em Postgres.
 - `wimifarma_cotacao`: Cotacao V2 em Postgres.
 - `wimifarma_gestao`: Gestao em Postgres.
 - `wimifarma_tarefa`: Tarefa em Postgres.
+- `wimifarma_xp`: XP em Postgres.
 - `wimifarma_codigos`: Codigos em Postgres.
 - `wimifarma_financeiro`: sombra do Financeiro em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 
 O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
+
+## Tabelas do core de autenticacao em Postgres
+
+Criadas por `apps/core-auth/src/sync-users.ts`:
+
+- `core_users`: usuarios internos sincronizados de `wf_users`, preservando hash, role, status, `legacy_mysql_id` e ids antigos.
+- `core_audit_logs`: auditoria compartilhada curta para eventos de login/acoes dos apps Node.
+- `core_login_rate_limits`: base compartilhada para limitadores de login quando os modulos forem removendo o legado PHP/MySQL.
+
+Cotacao, Gestao e Pedidos usam `core_users` como fonte principal de login por `*_AUTH_PROVIDER=core`, mantendo fallback temporario em `wf_users` por `*_AUTH_MYSQL_FALLBACK_ENABLED=true` durante a janela de corte.
 
 ## Tabelas do Miauby WhatsApp em Postgres
 
@@ -68,7 +86,7 @@ Criadas por `apps/cotacao/src/server.js`:
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula.
 - `cotacao_v2_column_audit`: historico de renomeacao/reordenacao de distribuidoras.
 
-A Cotacao V2 autentica no MySQL `wf_users`, mas os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
+A Cotacao V2 autentica primeiro no core `core_users`; `wf_users` no MySQL fica apenas como fallback temporario enquanto `COTACAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
 
 ## Tabelas da Gestao em Postgres
 
@@ -86,7 +104,7 @@ Criadas por `apps/gestao/src/server.ts`:
 - `pedidos_confirmed_orders`: pedidos que ja tiveram chegada confirmada, com `lifecycle` `confirmado`, `historico` ou `cancelado`, datas de confirmacao/finalizacao e usuario responsavel por cada etapa.
 - `gestao_supplier_orders`: tabela legada de pedidos criados antes da separacao; fica preservada como compatibilidade/fonte de migracao para `pedidos_orders` e `pedidos_confirmed_orders`, nao como fonte nova da tela.
 
-A Gestao autentica no MySQL `wf_users`, espelha resumo curto em `wf_logs` e importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
+A Gestao autentica primeiro no core `core_users`, grava auditoria curta em `core_audit_logs`, espelha resumo temporario em `wf_logs` e usa `wf_users` como fallback enquanto `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Tambem importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
 
 ## Tabelas da Tarefa em Postgres
 
@@ -141,9 +159,9 @@ Inventario real observado em 2026-05-10:
 - `wf_whatsapp_mensagens`: mensagens e campanhas.
 - `wf_codigos_comissao`: legado/importacao/espelho temporario de Codigos; a escrita oficial nova usa Postgres `codigos_items`.
 - `wf_codigos_blocos`: legado/importacao/espelho temporario dos blocos de Codigos; a escrita oficial nova usa Postgres `codigos_groups`.
-- `wf_xp_employees`: funcionarios/atendentes do modulo XP, com nome, caminho da foto validada, status, `system_key` opcional para players fixos do sistema e exclusao logica.
-- `wf_xp_sales`: vendas lancadas para o XP, com valor em centavos, pontos inteiros, data, funcionario, usuario criador, observacao opcional e cancelamento logico.
-- `wf_xp_settings`: configuracoes simples do XP, como a foto da moldura ADM.
+- `wf_xp_employees`: legado/importacao/espelho temporario de funcionarios do XP; a escrita oficial nova usa Postgres `xp_employees`.
+- `wf_xp_sales`: legado/importacao/espelho temporario de vendas do XP; a escrita oficial nova usa Postgres `xp_sales`.
+- `wf_xp_settings`: legado/importacao/espelho temporario de configuracoes do XP; a escrita oficial nova usa Postgres `xp_settings`.
 - `wf_tarefas`: legado/importacao/espelho temporario da Tarefa; a escrita oficial nova usa Postgres `tarefa_tasks`.
 - `cotacao_blocos`: blocos de cotacao.
 - `cotacao_fornecedores`: fornecedores por bloco.
@@ -226,11 +244,11 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `wf_login_rate_limits` nao guarda usuario em texto puro; usa hashes para chave operacional do limitador, preserva o IP usado no bloqueio para diagnostico e pode ser limpo sem afetar usuarios, sessoes ou historico financeiro.
 - Codigos deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `codigos_groups` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa `sort_order` dos itens dentro do grupo visual. Apagar pela tela marca `deleted_at` no Postgres e, quando o espelho legado estiver ligado, marca `ativo=0`/`apagado_em` no MySQL.
-- `wf_xp_employees` e a fonte de verdade dos funcionarios na trilha XP; remover pela tela marca `status='inativo'` e `deleted_at`, sem apagar vendas antigas. O ADM usa `system_key='adm'`, aparece como player fixo de teste para receber XP, e nao deve ser editado/excluido pelos controles comuns de usuario.
-- `wf_xp_sales.amount_cents` guarda venda em centavos inteiros, `wf_xp_sales.xp_points` guarda o XP calculado no momento do lancamento e `wf_xp_sales.note` guarda a observacao opcional exibida em `Ultimos lancamentos`. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`. O schema do XP garante indice aditivo `idx_xp_sales_active_employee_date` para leituras por venda ativa, funcionario e mes.
+- `xp_employees` e a fonte de verdade dos funcionarios na trilha XP; remover pela tela marca `status='inativo'` e `deleted_at`, sem apagar vendas antigas. O ADM usa `system_key='adm'`, aparece como player fixo de teste para receber XP, e nao deve ser editado/excluido pelos controles comuns de usuario.
+- `xp_sales.amount_cents` guarda venda em centavos inteiros, `xp_sales.xp_points` guarda o XP calculado no momento do lancamento e `xp_sales.note` guarda a observacao opcional exibida em `Ultimos lancamentos`. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`. O schema do XP garante indice para leituras por venda ativa, funcionario e mes.
 - Vendas XP canceladas preenchem `deleted_at`/`deleted_by` e saem dos totais, preservando historico e logs.
 - Fotos do XP ficam fora do banco em `site/xp/uploads/funcionarios/` ou `site/xp/uploads/adm/`; o banco guarda somente caminho relativo validado.
-- `wf_xp_settings.adm_photo_path` guarda a foto da moldura ADM, separada das fotos dos funcionarios.
+- `xp_settings.adm_photo_path` guarda a foto da moldura ADM, separada das fotos dos funcionarios.
 - `cotacao_precos` depende de item e fornecedor.
 - As tabelas antigas `cotacao_*` em MySQL ficam como legado historico da Cotacao PHP e nao devem receber nova logica de planilha.
 - `cotacao_v2_rows.id` e o ID estavel de linha da Cotacao V2.

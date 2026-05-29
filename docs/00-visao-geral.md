@@ -80,7 +80,7 @@ Rotas principais:
 - O repositorio deve ser tratado como publico ate decisao contraria.
 - O Nginx Proxy Manager deve encaminhar o dominio publico para `wimifarma-com-web:80`, nao para a porta de tunel.
 - A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
-- A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o MySQL continua apenas para login interno, logs e legado importado.
+- A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o login principal usa o core Postgres, e o MySQL continua apenas como fallback temporario, logs/espelho e legado importado.
 - O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/xp` e rollback por flags legadas.
 - Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/codigos` e rollback por flags legadas.
 - Financeiro iniciou sombra em `apps/financeiro` com Node.js, TypeScript e Postgres dedicado, mantendo `/financeiro/` no PHP enquanto importa `financeiro_*` para health, resumo e checksums internos.

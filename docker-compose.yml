@@ -223,6 +223,7 @@ services:
     restart: unless-stopped
     depends_on:
       - wimifarma-com-db
+      - wimifarma-core-db
       - wimifarma-gestao-db
     environment:
       NODE_ENV: production
@@ -238,6 +239,8 @@ services:
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      GESTAO_AUTH_PROVIDER: ${GESTAO_AUTH_PROVIDER:-core}
+      GESTAO_AUTH_MYSQL_FALLBACK_ENABLED: ${GESTAO_AUTH_MYSQL_FALLBACK_ENABLED:-true}
       GESTAO_CORE_AUTH_SHADOW_ENABLED: ${GESTAO_CORE_AUTH_SHADOW_ENABLED:-false}
       GESTAO_CORE_AUTH_SHADOW_TIMEOUT_MS: ${GESTAO_CORE_AUTH_SHADOW_TIMEOUT_MS:-1500}
       POSTGRES_HOST: wimifarma-gestao-db
@@ -259,6 +262,7 @@ services:
     restart: unless-stopped
     depends_on:
       - wimifarma-com-db
+      - wimifarma-core-db
       - wimifarma-gestao-db
     environment:
       NODE_ENV: production
@@ -274,6 +278,8 @@ services:
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      PEDIDOS_AUTH_PROVIDER: ${PEDIDOS_AUTH_PROVIDER:-core}
+      PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED: ${PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED:-true}
       PEDIDOS_CORE_AUTH_SHADOW_ENABLED: ${PEDIDOS_CORE_AUTH_SHADOW_ENABLED:-false}
       PEDIDOS_CORE_AUTH_SHADOW_TIMEOUT_MS: ${PEDIDOS_CORE_AUTH_SHADOW_TIMEOUT_MS:-1500}
       POSTGRES_HOST: wimifarma-gestao-db
@@ -449,6 +455,7 @@ services:
     restart: unless-stopped
     depends_on:
       - wimifarma-com-db
+      - wimifarma-core-db
       - wimifarma-cotacao-db
       - wimifarma-cotacao-redis
     environment:
@@ -465,6 +472,8 @@ services:
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      COTACAO_AUTH_PROVIDER: ${COTACAO_AUTH_PROVIDER:-core}
+      COTACAO_AUTH_MYSQL_FALLBACK_ENABLED: ${COTACAO_AUTH_MYSQL_FALLBACK_ENABLED:-true}
       COTACAO_CORE_AUTH_SHADOW_ENABLED: ${COTACAO_CORE_AUTH_SHADOW_ENABLED:-false}
       COTACAO_CORE_AUTH_SHADOW_TIMEOUT_MS: ${COTACAO_CORE_AUTH_SHADOW_TIMEOUT_MS:-1500}
       POSTGRES_HOST: wimifarma-cotacao-db

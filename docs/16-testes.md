@@ -28,9 +28,9 @@ Rotas de smoke test:
 - `/tarefa/health` deve responder JSON 200 quando o servico de Tarefa e seu Postgres estiverem ativos
 - `/tarefa/badge.php` deve responder JSON sem segredo com a quantidade de tarefas abertas
 - `/gestao/login.php`
-- `/gestao/health`
+- `/gestao/health` deve mostrar `auth.provider=core` quando `GESTAO_AUTH_PROVIDER=core`, com `coreReachable=true` apos o migrador do core
 - `/pedidos/` deve exigir sessao e carregar o fluxo visual de pedidos quando autenticado
-- `/pedidos/health` deve responder JSON 200 quando o servico de Pedidos estiver ativo
+- `/pedidos/health` deve responder JSON 200 quando o servico de Pedidos estiver ativo e mostrar `auth.provider=core` quando `PEDIDOS_AUTH_PROVIDER=core`
 - `/pedidos/api/badge` deve responder JSON sem segredo com a quantidade de pedidos previstos para chegar hoje
 - `/gestao/pedidos` deve redirecionar para `/pedidos/` por compatibilidade, sem renderizar a tela da Gestao
 - `/xp/login.php` deve responder 200 e carregar a tela de login do XP
@@ -45,7 +45,7 @@ Rotas de smoke test:
 - `http://127.0.0.1:8080` deve responder quando a Evolution API separada estiver ativa no VPS
 - `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
 - `/miauw/agent-tools.php` deve recusar sem token interno e aceitar somente tools de leitura baixa quando chamado pelo servico agente
-- `/cotacao/health` deve responder JSON 200 pela Cotacao V2
+- `/cotacao/health` deve responder JSON 200 pela Cotacao V2 e mostrar `auth.provider=core` quando `COTACAO_AUTH_PROVIDER=core`
 - `/cotacao/api/bootstrap` deve exigir sessao e redirecionar/recusar quando nao autenticado
 
 Comandos estao em `docs/05-comandos.md`.
