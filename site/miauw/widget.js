@@ -11,7 +11,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260521a';
+    link.href = '/miauw/widget.css?v=20260529a';
     document.head.appendChild(link);
   }
 

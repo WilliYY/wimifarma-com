@@ -3363,9 +3363,9 @@ async function renderApp(req: Request): Promise<string> {
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260524-compact-monthly">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260521a">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
   <script src="${BASE_PATH}/app.js?v=20260523-compact-monthly" defer></script>
-  <script src="/miauw/widget.js?v=20260521a" defer></script>
+  <script src="/miauw/widget.js?v=20260529a" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">
   <header class="gestao-topbar">

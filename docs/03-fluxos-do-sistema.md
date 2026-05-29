@@ -402,6 +402,8 @@ Miauby e o assistente interno. Ele guarda conversas, memorias, conhecimentos, al
 
 A navegacao superior do Miauby deve ficar focada no proprio modulo: Chat, Treino, Diagnostico e Sair conforme a tela/permissao. Nao recolocar atalhos diretos para Cashback, Cotacao ou Financeiro nesse topo sem pedido explicito.
 
+A foto atual do Miauby e `site/miauw/miauby-novo.jpeg`; no chat interno, widget global e login do painel WhatsApp ela deve preencher melhor o avatar circular por CSS, preservando a imagem original e evitando miniatura pequena demais dentro da moldura.
+
 Arquivos principais:
 
 - `site/miauw/index.php`

@@ -235,9 +235,9 @@ function gestao_render_account(array $account, string $selectedMonth): void
     <title>Gestao - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
     <link rel="stylesheet" href="/gestao/styles.css?v=20260518b">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
     <script src="/gestao/app.js?v=20260518b" defer></script>
-    <script src="/miauw/widget.js?v=20260517j" defer></script>
+    <script src="/miauw/widget.js?v=20260529a" defer></script>
 </head>
 <body class="gestao-app-body">
     <header class="gestao-topbar">

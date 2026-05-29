@@ -1511,9 +1511,9 @@ function renderMain(req: Request, user: User, data: { employees: EmployeeView[];
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
     <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260525c">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
     <script src="${BASE_PATH}/app.js?v=20260523d" defer></script>
-    <script src="/miauw/widget.js?v=20260517k" defer></script>
+    <script src="/miauw/widget.js?v=20260529a" defer></script>
 </head>
 <body class="xp-app-body ${activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'}">
     <header class="xp-topbar">

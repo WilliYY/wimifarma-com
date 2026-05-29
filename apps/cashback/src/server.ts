@@ -1425,7 +1425,7 @@ ${body}
   <link rel="icon" type="image/png" href="${asset('favicon.png')}">
   <link rel="apple-touch-icon" href="${asset('apple-touch-icon.png')}">
   <link rel="stylesheet" href="${asset('styles.css')}">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
 </head>
 <body>
 <img class="cashback-screen-runner" src="${asset('mario.gif')}" alt="" aria-hidden="true" data-cashback-runner>
@@ -1455,7 +1455,7 @@ ${body}
 </main>
 <footer class="footer"><span>Wimifarma Cashback v${SERVICE_VERSION}</span><span>Operacao Wimifarma Cashback.</span></footer>
 <script src="${asset('app.js')}"></script>
-<script src="/miauw/widget.js?v=20260517j" defer></script>
+<script src="/miauw/widget.js?v=20260529a" defer></script>
 </body>
 </html>`;
 }

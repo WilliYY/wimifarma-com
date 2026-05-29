@@ -114,9 +114,9 @@ $today = date('Y-m-d');
     <title>XP - Wimifarma</title>
     <link rel="icon" type="image/png" href="/cashback/favicon.png">
     <link rel="stylesheet" href="/xp/styles.css?v=20260525c">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260517k">
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
     <script src="/xp/app.js?v=20260523d" defer></script>
-    <script src="/miauw/widget.js?v=20260517k" defer></script>
+    <script src="/miauw/widget.js?v=20260529a" defer></script>
 </head>
 <body class="xp-app-body <?php echo $activeTab === 'trilha' ? 'is-trail-view' : 'is-settings-view'; ?>">
     <header class="xp-topbar">

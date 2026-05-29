@@ -55,7 +55,7 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260523a');
+    define('MIAUW_VERSION', '20260529a');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {

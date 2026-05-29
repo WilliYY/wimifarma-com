@@ -7127,11 +7127,16 @@ function renderDashboardLogin(error: string): string {
       box-shadow: 0 18px 42px rgba(89, 27, 57, .14);
     }
     .mascot {
-      width: 76px;
-      height: 76px;
-      object-fit: contain;
+      width: 92px;
+      height: 92px;
+      border: 3px solid #ffffff;
+      border-radius: 999px;
+      object-fit: cover;
+      object-position: 50% 54%;
+      background: #ffffff;
       display: block;
       margin: 0 auto 12px;
+      box-shadow: 0 16px 34px rgba(89, 27, 57, .16);
     }
     h1 { margin: 0; color: #a70643; font-size: 30px; line-height: 1; text-align: center; letter-spacing: 0; }
     p { margin: 10px 0 18px; color: #5e4b59; font-size: 14px; line-height: 1.4; text-align: center; }

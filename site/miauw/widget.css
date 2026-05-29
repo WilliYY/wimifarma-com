@@ -43,15 +43,15 @@
 
 @keyframes miaubyWidgetWatch {
     0%, 100% {
-        transform: rotate(0deg) scale(1);
+        transform: translate(-50%, -50%) rotate(0deg) scale(1);
     }
 
     38% {
-        transform: rotate(-5deg) scale(1.035);
+        transform: translate(-50%, -50%) rotate(-5deg) scale(1.035);
     }
 
     70% {
-        transform: rotate(4deg) scale(1.02);
+        transform: translate(-50%, -50%) rotate(4deg) scale(1.02);
     }
 }
 
@@ -111,10 +111,18 @@
 }
 
 .miauw-widget-bubble img {
-    width: 68px;
-    height: 68px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 92px;
+    height: 92px;
     border-radius: 999px;
     object-fit: cover;
+    object-position: 50% 54%;
+    background: #fff;
+    clip-path: circle(43px at 50% 50%);
+    transform: translate(-50%, -50%);
+    z-index: 0;
 }
 
 .miauw-widget-bubble span {
@@ -148,6 +156,7 @@
     font-weight: 1000;
     line-height: 1;
     box-shadow: 0 10px 22px rgba(225, 29, 72, 0.28);
+    z-index: 3;
 }
 
 .miauw-widget-alert-badge[hidden] {
@@ -268,6 +277,8 @@
     border: 2px solid rgba(255, 255, 255, .85);
     border-radius: 14px;
     object-fit: cover;
+    object-position: 50% 54%;
+    background: #fff;
 }
 
 .miauw-widget-head strong,
@@ -540,6 +551,8 @@
     height: 30px;
     border-radius: 11px;
     object-fit: cover;
+    object-position: 50% 54%;
+    background: #fff;
     align-self: flex-end;
     box-shadow: 0 8px 18px rgba(97, 5, 29, .12);
 }
@@ -1429,8 +1442,9 @@
     }
 
     .miauw-widget-bubble img {
-        width: 60px;
-        height: 60px;
+        width: 82px;
+        height: 82px;
+        clip-path: circle(38px at 50% 50%);
     }
 
     .miauw-widget-bubble span {

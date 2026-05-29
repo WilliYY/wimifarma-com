@@ -165,6 +165,7 @@ a {
     height: 68px;
     border-radius: 20px;
     object-fit: cover;
+    object-position: 50% 54%;
     background: var(--pink);
     border: 2px solid #fff;
     box-shadow: 0 12px 24px rgba(159, 16, 56, 0.16);
@@ -249,6 +250,8 @@ a {
     height: 42px;
     border-radius: 14px;
     object-fit: cover;
+    object-position: 50% 54%;
+    background: #fff;
     flex: 0 0 auto;
 }
 
