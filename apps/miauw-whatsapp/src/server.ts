@@ -6220,33 +6220,46 @@ function renderRecentEvents(rows: DashboardEventRow[]): string {
   if (!rows.length) {
     return '<tr><td colspan="6" class="empty">Sem eventos recebidos ainda.</td></tr>';
   }
-  return rows.map((row) => `
-    <tr>
-      <td>${htmlEscape(formatDate(row.created_at))}</td>
-      <td>${htmlEscape(row.sender_phone_mask || '-')}</td>
-      <td>${htmlEscape(row.status)}</td>
-      <td>${htmlEscape(row.ignore_reason || '-')}</td>
-      <td>${htmlEscape(row.message_type || '-')}</td>
-      <td>${htmlEscape(row.attempts)}</td>
-    </tr>`).join('');
+  return rows.map((row) => {
+    const statusTone = syncBadgeTone(row.status || row.ignore_reason);
+    const rowTone = statusTone === 'bad' ? 'bad' : statusTone === 'warn' ? 'warn' : 'ok';
+    return `
+    <tr class="ops-row ops-row-${rowTone}">
+      <td class="ops-time"><b>${htmlEscape(formatDate(row.created_at))}</b><small>evento recebido</small></td>
+      <td><span class="ops-sender">${htmlEscape(row.sender_phone_mask || '-')}</span></td>
+      <td>${renderOpsChip(row.status || '-', statusTone)}</td>
+      <td>${renderOpsTextBlock('Motivo', row.ignore_reason || 'sem motivo')}</td>
+      <td>${renderOpsChip(row.message_type || '-', row.message_type === 'unknown' ? 'muted' : 'ok')}</td>
+      <td>${renderOpsChip(String(row.attempts), Number(row.attempts) > 1 ? 'warn' : 'muted')}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
   if (!rows.length) {
     return '<tr><td colspan="9" class="empty">Sem respostas na outbox ainda.</td></tr>';
   }
-  return rows.map((row) => `
-    <tr>
-      <td>${htmlEscape(formatDate(row.created_at))}</td>
-      <td>${htmlEscape(row.recipient_phone_mask || '-')}</td>
-      <td>${htmlEscape(row.reply_engine || '-')}</td>
-      <td>${htmlEscape(row.route_reason || '-')}</td>
-      <td>${htmlEscape(formatMs(row.reply_latency_ms))}</td>
-      <td>${htmlEscape(formatMs(row.total_response_ms))}</td>
-      <td>${htmlEscape(row.status)}</td>
-      <td>${htmlEscape(row.attempts)}</td>
-      <td>${htmlEscape(formatDate(row.sent_at))}</td>
-    </tr>`).join('');
+  return rows.map((row) => {
+    const statusTone = syncBadgeTone(row.status);
+    const totalTone = responseTimeTone(row.total_response_ms);
+    const rowTone = statusTone === 'bad'
+      ? 'bad'
+      : statusTone === 'warn' || totalTone === 'warn' || totalTone === 'bad'
+        ? 'warn'
+        : 'ok';
+    return `
+    <tr class="ops-row ops-row-${rowTone}">
+      <td class="ops-time"><b>${htmlEscape(formatDate(row.created_at))}</b><small>${row.sent_at ? `enviado ${htmlEscape(formatDate(row.sent_at))}` : 'aguardando envio'}</small></td>
+      <td><span class="ops-sender">${htmlEscape(row.recipient_phone_mask || '-')}</span></td>
+      <td>${renderOpsChip(row.reply_engine || '-', syncEngineTone(row.reply_engine))}</td>
+      <td>${renderOpsTextBlock('Rota', row.route_reason || '-')}</td>
+      <td>${renderOpsChip(formatMs(row.reply_latency_ms), responseTimeTone(row.reply_latency_ms))}</td>
+      <td>${renderOpsChip(formatMs(row.total_response_ms), totalTone)}</td>
+      <td>${renderOpsChip(row.status || '-', statusTone)}</td>
+      <td>${renderOpsChip(String(row.attempts), Number(row.attempts) > 1 ? 'warn' : 'muted')}</td>
+      <td>${renderOpsChip(row.sent_at ? 'enviado' : '-', row.sent_at ? 'ok' : 'muted')}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderEngineBreakdown(rows: DashboardEngineRow[]): string {
@@ -6385,8 +6398,8 @@ function syncBadgeTone(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
   const clean = (value || '').toLowerCase();
   if (!clean || clean === '-') return 'muted';
   if (clean.includes('error') || clean.includes('failed') || clean.includes('dead')) return 'bad';
-  if (clean.includes('ignored') || clean.includes('pending') || clean.includes('queued') || clean.includes('sending')) return 'warn';
-  if (clean.includes('replied') || clean.includes('sent') || clean.includes('received')) return 'ok';
+  if (clean.includes('warn') || clean.includes('ignored') || clean.includes('pending') || clean.includes('queued') || clean.includes('sending')) return 'warn';
+  if (clean.includes('info') || clean.includes('replied') || clean.includes('sent') || clean.includes('received')) return 'ok';
   return 'muted';
 }
 
@@ -6403,18 +6416,39 @@ function renderSyncBadge(label: string, tone: 'ok' | 'warn' | 'bad' | 'muted'): 
   return `<span class="sync-badge is-${tone}">${htmlEscape(label || '-')}</span>`;
 }
 
+function responseTimeTone(value: number | string | null | undefined): 'ok' | 'warn' | 'bad' | 'muted' {
+  const ms = numericValue(value);
+  if (!ms) return 'muted';
+  if (ms > 30000) return 'bad';
+  if (ms > 5000) return 'warn';
+  return 'ok';
+}
+
+function renderOpsChip(label: string, tone: 'ok' | 'warn' | 'bad' | 'muted'): string {
+  return `<span class="ops-chip is-${tone}">${htmlEscape(label || '-')}</span>`;
+}
+
+function renderOpsTextBlock(label: string, text: string): string {
+  const value = text && text.trim() ? text : '-';
+  const empty = value === '-' || value === 'sem motivo';
+  return `<div class="ops-text${empty ? ' is-muted' : ''}"><span>${htmlEscape(label)}</span><p>${htmlEscape(value)}</p></div>`;
+}
+
 function renderErrorRows(rows: DashboardErrorRow[], csrfToken: string): string {
   if (!rows.length) {
     return '<tr><td colspan="7" class="empty">Nenhum erro aberto registrado.</td></tr>';
   }
-  return rows.map((row) => `
-    <tr>
-      <td>${htmlEscape(formatDate(row.created_at))}</td>
-      <td>${htmlEscape(row.source || '-')}</td>
-      <td>${renderPill(row.severity !== 'error', row.severity || 'info', row.severity || 'error')}</td>
-      <td>${htmlEscape(row.phone_mask || '-')}</td>
-      <td class="text-cell">${htmlEscape(row.error_summary || '-')}<br><small>${htmlEscape(row.message_preview || '')}</small></td>
-      <td>${htmlEscape(row.trace_id ? row.trace_id.slice(0, 8) : '-')}</td>
+  return rows.map((row) => {
+    const severityTone = syncBadgeTone(row.severity);
+    const rowTone = severityTone === 'bad' ? 'bad' : severityTone === 'warn' ? 'warn' : 'ok';
+    return `
+    <tr class="ops-row ops-row-${rowTone}">
+      <td class="ops-time"><b>${htmlEscape(formatDate(row.created_at))}</b><small>falha aberta</small></td>
+      <td>${renderOpsChip(row.source || '-', 'muted')}</td>
+      <td>${renderOpsChip(row.severity || 'info', severityTone)}</td>
+      <td><span class="ops-sender">${htmlEscape(row.phone_mask || '-')}</span></td>
+      <td class="ops-error-cell">${renderOpsError(row.error_summary || '-', row.message_preview || '')}</td>
+      <td>${renderOpsChip(row.trace_id ? row.trace_id.slice(0, 8) : '-', row.trace_id ? 'muted' : 'warn')}</td>
       <td>
         <form class="inline-form" method="post" action="${htmlEscape(BASE_PATH)}/errors/resolve">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
@@ -6422,7 +6456,14 @@ function renderErrorRows(rows: DashboardErrorRow[], csrfToken: string): string {
           <button type="submit">Resolver</button>
         </form>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
+}
+
+function renderOpsError(summary: string, preview: string): string {
+  const cleanSummary = summary && summary.trim() ? summary : '-';
+  const cleanPreview = preview && preview.trim() ? preview : '';
+  return `<div class="ops-error"><span>Erro</span><p>${htmlEscape(cleanSummary)}</p>${cleanPreview ? `<small>${htmlEscape(cleanPreview)}</small>` : ''}</div>`;
 }
 
 function n8nRecipientByModule(rows: DashboardN8nRecipientRow[]): Map<string, DashboardN8nRecipientRow> {
@@ -6879,6 +6920,123 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .sync-badge.is-warn { background: #fff2d2; color: #8c5a00; }
     .sync-badge.is-bad { background: #ffe1e8; color: #a30f2e; }
     .sync-badge.is-muted { background: #f2edf0; color: #6d5a66; }
+    .ops-panel { background: #fffdfd; }
+    .ops-panel .table-wrap {
+      border: 1px solid #f1d8e3;
+      border-radius: 8px;
+      background: #fffafb;
+      padding: 0 10px 10px;
+    }
+    .ops-table {
+      border-collapse: separate;
+      border-spacing: 0 8px;
+    }
+    .ops-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      border-bottom: 1px solid #ecd0dc;
+      background: #fffafb;
+      padding-top: 12px;
+      padding-bottom: 4px;
+    }
+    .ops-table td {
+      border-bottom: 0;
+      background: #fff;
+      padding: 10px 8px;
+    }
+    .ops-table tbody tr td:first-child {
+      border-left: 4px solid #d8c8d0;
+      border-radius: 8px 0 0 8px;
+    }
+    .ops-table tbody tr td:last-child { border-radius: 0 8px 8px 0; }
+    .ops-row-ok td:first-child { border-left-color: #21a66b; }
+    .ops-row-warn td:first-child { border-left-color: #f0a000; }
+    .ops-row-bad td:first-child { border-left-color: #d33b57; }
+    .ops-errors-table { min-width: 980px; }
+    .ops-events-table { min-width: 700px; }
+    .ops-outbox-table { min-width: 980px; }
+    .ops-time { min-width: 120px; }
+    .ops-time b { display: block; color: #251827; font-size: 12px; line-height: 1.25; }
+    .ops-time small { display: block; margin-top: 4px; color: #786672; font-size: 11px; line-height: 1.25; }
+    .ops-sender {
+      display: inline-flex;
+      min-height: 26px;
+      align-items: center;
+      border: 1px solid #efd4df;
+      border-radius: 999px;
+      background: #fff5f9;
+      padding: 0 10px;
+      color: #7c1944;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .ops-chip {
+      display: inline-flex;
+      min-height: 25px;
+      max-width: 160px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 0 9px;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1.15;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-align: center;
+    }
+    .ops-chip.is-ok { background: #daf6e8; color: #097143; }
+    .ops-chip.is-warn { background: #fff2d2; color: #8c5a00; }
+    .ops-chip.is-bad { background: #ffe1e8; color: #a30f2e; }
+    .ops-chip.is-muted { background: #f2edf0; color: #6d5a66; }
+    .ops-text,
+    .ops-error {
+      min-width: 0;
+      border: 1px solid #f0dbe4;
+      border-radius: 8px;
+      background: #fff;
+      padding: 9px 10px;
+      box-shadow: inset 3px 0 0 #b10647;
+    }
+    .ops-text.is-muted {
+      background: #fbf7f9;
+      box-shadow: inset 3px 0 0 #d8c8d0;
+    }
+    .ops-text span,
+    .ops-error span {
+      display: block;
+      margin-bottom: 5px;
+      color: #8d0f43;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .ops-text p,
+    .ops-error p {
+      margin: 0;
+      color: #2e2430;
+      font-size: 12px;
+      line-height: 1.42;
+      overflow-wrap: anywhere;
+    }
+    .ops-text.is-muted p { color: #8a7682; font-style: italic; }
+    .ops-error { max-width: 560px; background: #fff; }
+    .ops-error p {
+      max-height: 82px;
+      overflow: auto;
+      scrollbar-width: thin;
+    }
+    .ops-error small {
+      display: block;
+      margin-top: 6px;
+      color: #6a5964;
+      font-size: 11px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .ops-table .inline-form { justify-content: flex-start; margin: 0; }
     .empty { color: #6a5964; text-align: center; }
     .footnote { margin: 14px 0 0; color: #6a5964; font-size: 12px; line-height: 1.4; }
     .notice { margin: 0 0 14px; border: 1px solid #bdebd5; border-radius: 8px; background: #effcf6; padding: 10px 12px; color: #09613b; font-size: 13px; font-weight: 800; }
@@ -7092,10 +7250,10 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <p class="footnote">Comparacao curta para conferir se a mensagem recebida gerou a resposta esperada. O telefone continua mascarado.</p>
       </article>
 
-      <article class="panel is-wide">
+      <article class="panel is-wide ops-panel">
         <h2>Erros abertos</h2>
         <div class="table-wrap">
-          <table>
+          <table class="ops-table ops-errors-table">
             <thead><tr><th>Quando</th><th>Origem</th><th>Nivel</th><th>Contato</th><th>Erro</th><th>Trace</th><th>Acao</th></tr></thead>
             <tbody>${renderErrorRows(summary.recentErrors, csrfToken)}</tbody>
           </table>
@@ -7103,20 +7261,20 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <p class="footnote">Cada falha de fila, envio ou HTTP fica registrada com resumo limpo para facilitar correcao futura sem gravar segredo.</p>
       </article>
 
-      <article class="panel">
+      <article class="panel ops-panel">
         <h2>Eventos recentes</h2>
         <div class="table-wrap">
-          <table>
+          <table class="ops-table ops-events-table">
             <thead><tr><th>Quando</th><th>Remetente</th><th>Status</th><th>Motivo</th><th>Tipo</th><th>Tent.</th></tr></thead>
             <tbody>${renderRecentEvents(summary.recentEvents)}</tbody>
           </table>
         </div>
       </article>
 
-      <article class="panel">
+      <article class="panel ops-panel">
         <h2>Outbox recente</h2>
         <div class="table-wrap">
-          <table>
+          <table class="ops-table ops-outbox-table">
             <thead><tr><th>Quando</th><th>Destino</th><th>Motor</th><th>Rota</th><th>IA</th><th>Total</th><th>Status</th><th>Tent.</th><th>Enviado</th></tr></thead>
             <tbody>${renderRecentOutbox(summary.recentOutbox)}</tbody>
           </table>
