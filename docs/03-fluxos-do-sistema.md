@@ -270,6 +270,7 @@ Regras a preservar:
 - justificativas;
 - auditoria interna.
 - Caixa e Relatorio usam a mesma linha em `financeiro_closings` para cada dia. O botao `Fechar sem movimento` do Relatorio e apenas um atalho para marcar `status='sem_movimento'`, igual ao Caixa, e nao deve travar a digitacao posterior de venda/faturamento. Se depois for informado faturamento em um dia sem movimento, o dia volta para `conferencia` e fica editavel no Caixa.
+- O endpoint interno `GET /financeiro/api/internal/cash-closing-status` informa ao Miauby/n8n se o caixa do dia esta fechado. Para alerta das 18h, `fechado`, `divergente` e `sem_movimento` contam como fechado e nao geram WhatsApp; sem registro, `aberto` ou `conferencia` geram lembrete para contatos com card `Financeiro`.
 
 Interface:
 

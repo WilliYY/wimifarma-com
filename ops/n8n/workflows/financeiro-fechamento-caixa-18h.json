@@ -1,0 +1,79 @@
+{
+  "id": "financeiro-fechamento-caixa-18h",
+  "name": "Wimifarma - Financeiro fechamento caixa 18h",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-financeiro-fechamento-18h",
+      "name": "Todos os dias 18h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.WIMIFARMA_INTERNAL_BASE_URL + \"/miauw/whatsapp/internal/financeiro-cash-closing-reminder\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Miauw-Internal-Token",
+              "value": "={{$env.MIAUW_GUARDIAN_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{ \"notify\": \"always\" }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "post-miauby-financeiro-fechamento",
+      "name": "Miauby lembra caixa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Todos os dias 18h": {
+      "main": [
+        [
+          {
+            "node": "Miauby lembra caixa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}

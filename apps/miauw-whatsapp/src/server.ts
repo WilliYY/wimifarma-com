@@ -351,6 +351,20 @@ type PedidosArrivalOrder = {
   remaining_label: string;
 };
 
+type FinanceiroCashClosingStatus = {
+  date: string;
+  closing_exists: boolean;
+  status: string;
+  status_label: string;
+  closed: boolean;
+  should_notify: boolean;
+  closed_at: string | null;
+  responsible: string;
+  total_checked: string;
+  system_total: string;
+  difference: string;
+};
+
 type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
@@ -373,7 +387,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.18';
+const SERVICE_VERSION = '0.5.19';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -479,7 +493,9 @@ const N8N_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_BASE_URL') ||
 const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL') || textEnv('N8N_WEBHOOK_URL'));
 const N8N_WEBHOOK_SECRET_CONFIGURED = textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET') !== '';
 const PEDIDOS_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL') || 'http://wimifarma-pedidos-app:3300/pedidos');
+const FINANCEIRO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL') || textEnv('FINANCEIRO_INTERNAL_BASE_URL') || 'http://wimifarma-financeiro-app:3800/financeiro');
 const PEDIDOS_ARRIVAL_AUTOMATION_KEY = 'pedidos_chegada_17h';
+const FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY = 'financeiro_fechamento_caixa_18h';
 const AUTOMATION_NOTIFY_COOLDOWN_MINUTES = numberEnv('MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES', 15, 1, 240);
 const WATCHDOG_LOOKBACK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES', 30, 5, 240);
 const WATCHDOG_STUCK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES', 2, 1, 60);
@@ -528,6 +544,15 @@ const N8N_WORKFLOW_CARDS = [
     description: 'Envia a lista de pedidos em Aguardando chegada e aceita respostas como "cimed chegou".',
     safety: 'Confirma somente chegada; pagamento continua em Confirmados/Pedidos.',
     settingsKey: PEDIDOS_ARRIVAL_AUTOMATION_KEY,
+  },
+  {
+    key: FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
+    title: 'Fechamento de caixa',
+    schedule: 'Todo dia 18:00',
+    moduleKey: 'financeiro',
+    description: 'Lembra a Farmacia de fechar o caixa quando o dia ainda esta aberto.',
+    safety: 'So alerta se o Financeiro disser que o caixa do dia nao foi fechado.',
+    settingsKey: FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
   },
   {
     key: 'pedidos_boletos',
@@ -1841,6 +1866,13 @@ async function ensureSchema(): Promise<void> {
     'Chegada de pedidos',
     'pedidos',
     'Todo dia 17:00',
+    true,
+  );
+  await ensureAutomationSetting(
+    FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
+    'Fechamento de caixa',
+    'financeiro',
+    'Todo dia 18:00',
     true,
   );
 }
@@ -5573,7 +5605,9 @@ function publicStatus(): JsonRecord {
     n8n_internal_smoke_check: `${BASE_PATH}/internal/smoke-check`,
     n8n_internal_watchdog: `${BASE_PATH}/internal/watchdog`,
     n8n_internal_pedidos_arrival_check: `${BASE_PATH}/internal/pedidos-arrival-check`,
+    n8n_internal_financeiro_cash_closing_reminder: `${BASE_PATH}/internal/financeiro-cash-closing-reminder`,
     pedidos_internal_base_configured: PEDIDOS_INTERNAL_BASE_URL !== '',
+    financeiro_internal_base_configured: FINANCEIRO_INTERNAL_BASE_URL !== '',
     automation_notify_cooldown_minutes: AUTOMATION_NOTIFY_COOLDOWN_MINUTES,
     watchdog_lookback_minutes: WATCHDOG_LOOKBACK_MINUTES,
     watchdog_stuck_minutes: WATCHDOG_STUCK_MINUTES,
@@ -5879,6 +5913,7 @@ async function runSmokeCheck(mode: AutomationNotifyMode): Promise<JsonRecord> {
     smokeHttpCheck('miauw_agent_health', 'Miauby agent', 'http://wimifarma-miauw-agent:3100/miauw/agent/health'),
     smokeHttpCheck('gestao_health', 'Gestao', 'http://wimifarma-gestao-app:3200/gestao/health'),
     smokeHttpCheck('pedidos_health', 'Pedidos', 'http://wimifarma-pedidos-app:3300/pedidos/health'),
+    smokeHttpCheck('financeiro_health', 'Financeiro', 'http://wimifarma-financeiro-app:3800/financeiro/health'),
     smokeHttpCheck('cotacao_health', 'Cotacao', 'http://wimifarma-cotacao-app:3000/cotacao/health'),
     smokeHttpCheck('miauw_widget', 'Miauby widget', 'http://wimifarma-com-web/miauw/widget-status.php'),
     smokeEvolutionCheck(),
@@ -6162,6 +6197,105 @@ async function runPedidosArrivalCheck(mode: AutomationNotifyMode, dryRun: boolea
     ok: notification.failed === 0,
     enabled,
     count: summary.count,
+    notify: mode,
+    notification,
+  };
+}
+
+function brDateOnlyFromStatusDate(value: string): string {
+  const formatted = brDateOnlyFromIso(value);
+  return formatted === 'sem previsao' ? 'hoje' : formatted;
+}
+
+function reminderVariantIndex(date: string): number {
+  const hash = sha256(`financeiro-cash-closing:${date}`);
+  return Number.parseInt(hash.slice(0, 8), 16);
+}
+
+function financeiroCashClosingReminderMessage(status: FinanceiroCashClosingStatus): string {
+  const dateLabel = brDateOnlyFromStatusDate(status.date);
+  const variants = [
+    `Miauby ta na hora de fechar o caixa de ${dateLabel}!`,
+    `Miauby passando no Financeiro: fecha o caixa de ${dateLabel} antes de encerrar o dia.`,
+    `Miauby lembrou do caixa: ${dateLabel} ainda esta aberto, bora fechar.`,
+    `Miauby de olho: 18h chegou e o caixa de ${dateLabel} ainda precisa ser fechado.`,
+    `Miauby no alarme do caixa: confere e fecha o dia ${dateLabel}.`,
+  ];
+  const selected = variants[reminderVariantIndex(status.date) % variants.length];
+  const statusLine = `Status atual: ${status.status_label || status.status || 'Aberto'}.`;
+  return `${selected}\n${statusLine}\nAbra o modulo Financeiro e finalize o fechamento do caixa.`;
+}
+
+async function fetchFinanceiroCashClosingStatus(date?: string): Promise<FinanceiroCashClosingStatus> {
+  if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  const url = `${FINANCEIRO_INTERNAL_BASE_URL}/api/internal/cash-closing-status${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, { headers: internalPhpJsonHeaders() });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    throw new Error(safeText(isRecord(data) ? data.error || data.message : '', 180) || `financeiro_cash_status_http_${response.status}`);
+  }
+  return {
+    date: safeText(data.date, 20),
+    closing_exists: data.closing_exists === true,
+    status: safeText(data.status, 40) || 'aberto',
+    status_label: safeText(data.status_label, 80) || 'Aberto',
+    closed: data.closed === true,
+    should_notify: data.should_notify !== false,
+    closed_at: safeText(data.closed_at, 80) || null,
+    responsible: safeText(data.responsible, 160),
+    total_checked: safeText(data.total_checked, 40),
+    system_total: safeText(data.system_total, 40),
+    difference: safeText(data.difference, 40),
+  };
+}
+
+async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryRun: boolean, date?: string): Promise<JsonRecord> {
+  const enabled = await automationSettingEnabled(FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY, true);
+  if (!enabled) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'automation_disabled',
+      enabled,
+    };
+  }
+  const status = await fetchFinanceiroCashClosingStatus(date);
+  const message = financeiroCashClosingReminderMessage(status);
+  if (!status.should_notify || status.closed) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'cash_already_closed',
+      enabled,
+      status,
+      preview: message,
+    };
+  }
+  if (dryRun) {
+    const recipients = await automationRecipients('financeiro');
+    return {
+      ok: true,
+      dry_run: true,
+      enabled,
+      status,
+      recipients: recipients.length,
+      preview: message,
+    };
+  }
+  const notification = await sendAutomationNotification(
+    'automation_financeiro_fechamento_caixa_18h',
+    'info',
+    message,
+    mode,
+    true,
+    'financeiro',
+  );
+  return {
+    ok: notification.failed === 0,
+    enabled,
+    status,
     notify: mode,
     notification,
   };
@@ -8132,6 +8266,14 @@ app.post(`${BASE_PATH}/internal/pedidos-arrival-check`, requireInternalToken, as
   const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
   const dryRun = req.body?.dry_run === true || req.body?.dryRun === true || req.query.dry_run === '1';
   const result = await runPedidosArrivalCheck(mode, dryRun);
+  res.status(result.ok === false ? 503 : 200).json(result);
+});
+
+app.post(`${BASE_PATH}/internal/financeiro-cash-closing-reminder`, requireInternalToken, async (req, res) => {
+  const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
+  const dryRun = req.body?.dry_run === true || req.body?.dryRun === true || req.query.dry_run === '1';
+  const date = safeText(req.body?.date || req.body?.data || req.query.date || req.query.data, 20);
+  const result = await runFinanceiroCashClosingReminder(mode, dryRun, date);
   res.status(result.ok === false ? 503 : 200).json(result);
 });
 

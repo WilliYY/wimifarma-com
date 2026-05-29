@@ -31,7 +31,7 @@ declare module 'express-session' {
 const env = process.env;
 const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
-const SERVICE_VERSION = '0.2.0';
+const SERVICE_VERSION = '0.2.1';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -43,7 +43,7 @@ const LEGACY_MIRROR_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABL
 const LEGACY_MYSQL_REQUIRED = LEGACY_IMPORT_ENABLED || LEGACY_MIRROR_ENABLED || AUTH_PROVIDER === 'mysql';
 const SESSION_SECRET = env.FINANCEIRO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const REOPEN_PASSWORD = env.FINANCEIRO_REOPEN_PASSWORD || 'wimifarma';
-const INTERNAL_TOKEN = env.FINANCEIRO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '';
+const INTERNAL_TOKEN = env.FINANCEIRO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || env.MIAUW_WHATSAPP_INTERNAL_TOKEN || env.MIAUW_AGENT_INTERNAL_TOKEN || '';
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -1308,6 +1308,10 @@ function isLocked(closing: AnyRow): boolean {
   return ['fechado', 'divergente'].includes(String(closing.status || ''));
 }
 
+function isFinishedClosingStatus(status: unknown): boolean {
+  return ['fechado', 'divergente', 'sem_movimento'].includes(String(status || ''));
+}
+
 async function auditEvent(
   action: string,
   entityTable: string,
@@ -2272,6 +2276,7 @@ async function healthPayload(): Promise<Record<string, unknown>> {
     auth: {
       provider: AUTH_PROVIDER,
       core_required: AUTH_PROVIDER === 'core',
+      internal_token_configured: INTERNAL_TOKEN !== '',
     },
     storage: {
       provider: 'postgres',
@@ -2685,6 +2690,32 @@ async function dayPayload(date: string): Promise<Record<string, unknown>> {
   };
 }
 
+async function cashClosingStatusPayload(dateValue?: unknown): Promise<Record<string, unknown>> {
+  const date = validFinanceDate(dateValue, todayDate());
+  const savedClosing = await fetchClosingByDate(date);
+  const closing = savedClosing || defaultClosing(date);
+  const status = String(closing.status || 'aberto');
+  const closed = isFinishedClosingStatus(status);
+  return {
+    ok: true,
+    source: 'postgres',
+    date,
+    closing_exists: Boolean(savedClosing?.id),
+    status,
+    status_label: statusLabel(status),
+    closed,
+    should_notify: !closed,
+    closed_at: closing.fechado_em || null,
+    responsible: cleanText(closing.responsavel_nome || closing.responsavel_texto, 160),
+    total_checked_cents: moneyTextToCents(closing.total_conferido),
+    total_checked: brMoneyFromDecimal(closing.total_conferido),
+    system_total_cents: moneyTextToCents(closing.abertura_sistema),
+    system_total: brMoneyFromDecimal(closing.abertura_sistema),
+    difference_cents: moneyTextToCents(closing.sobra_falta),
+    difference: brMoneyFromDecimal(closing.sobra_falta),
+  };
+}
+
 async function recentAuditPayload(limitValue: unknown): Promise<Record<string, unknown>> {
   const limit = Math.max(1, Math.min(80, Number(limitValue || 20)));
   const result = await pgPool.query<AnyRow>(
@@ -2821,6 +2852,16 @@ app.get(`${BASE_PATH}/api/internal/summary`, asyncRoute(async (req, res) => {
 app.get(`${BASE_PATH}/api/internal/day`, asyncRoute(async (req, res) => {
   if (!requireInternalToken(req, res)) return;
   res.json(await dayPayload(validFinanceDate(req.query.data || req.query.date, todayDate())));
+}));
+
+app.get(`${BASE_PATH}/internal/cash-closing-status`, asyncRoute(async (req, res) => {
+  if (!requireInternalToken(req, res)) return;
+  res.json(await cashClosingStatusPayload(req.query.data || req.query.date));
+}));
+
+app.get(`${BASE_PATH}/api/internal/cash-closing-status`, asyncRoute(async (req, res) => {
+  if (!requireInternalToken(req, res)) return;
+  res.json(await cashClosingStatusPayload(req.query.data || req.query.date));
 }));
 
 app.get(`${BASE_PATH}/api/internal/checksums`, asyncRoute(async (req, res) => {

@@ -17,6 +17,7 @@ Template versionado:
 - `ops/n8n/docker-compose.yml`
 - `ops/n8n/.env.example`
 - `ops/n8n/workflows/pedidos-chegada-17h.json`
+- `ops/n8n/workflows/financeiro-fechamento-caixa-18h.json`
 
 O n8n deve rodar separado do Compose principal, com Postgres proprio, porta publicada apenas em `127.0.0.1:5678` e acesso publico somente por proxy/autenticacao quando estiver pronto.
 
@@ -32,11 +33,13 @@ docker compose up -d
 sudo chown -R 1000:1000 n8n-data workflows
 docker compose up -d --force-recreate wimifarma-n8n
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pedidos-chegada-17h.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/financeiro-fechamento-caixa-18h.json
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=pedidos-chegada-17h --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=financeiro-fechamento-caixa-18h --active=true
 docker compose restart wimifarma-n8n
 ```
 
-O workflow `pedidos-chegada-17h` possui ID estavel para importacao idempotente. Em n8n 2.22 no modo simples, a importacao por CLI desativa o workflow e a ativacao precisa ser aplicada depois pelo comando `update:workflow`/`publish:workflow`, seguida de restart para o agendador carregar o cron.
+Os workflows possuem ID estavel para importacao idempotente. Em n8n 2.22 no modo simples, a importacao por CLI desativa o workflow e a ativacao precisa ser aplicada depois pelo comando `update:workflow`/`publish:workflow`, seguida de restart para o agendador carregar o cron.
 
 No Windows deste PC, o n8n tambem foi instalado via npm global para uso local, sem iniciar servico por padrao:
 
@@ -51,6 +54,7 @@ n8n --version
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL`
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET`
 - `MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL`
+- `MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL`
 
 O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino e Limite. O publico continua calculado pelos cards da allowlist.
 
@@ -165,6 +169,42 @@ Alertas:
 - divergencia de total.
 
 O n8n pode lembrar e abrir alerta. Registrar sangria, faturamento ou baixa continua passando por confirmacao/auditoria.
+
+### Fechamento de caixa as 18h
+
+Agenda: todo dia as 18:00, timezone `America/Sao_Paulo`.
+
+Workflow versionado:
+
+```text
+ops/n8n/workflows/financeiro-fechamento-caixa-18h.json
+```
+
+Endpoint interno chamado pelo n8n:
+
+```text
+POST /miauw/whatsapp/internal/financeiro-cash-closing-reminder
+```
+
+Payload:
+
+```json
+{ "notify": "always" }
+```
+
+Fluxo:
+
+1. n8n dispara o horario e envia o token interno no header `X-Miauw-Internal-Token`.
+2. Miauby WhatsApp confere se a rotina `financeiro_fechamento_caixa_18h` esta ativa no painel.
+3. O bridge consulta `GET /financeiro/api/internal/cash-closing-status` no app Financeiro.
+4. Se o status do dia for `fechado`, `divergente` ou `sem_movimento`, nada e enviado.
+5. Se o caixa estiver aberto/em conferencia/sem registro, Miauby envia uma frase curta com variacao para contatos reais autorizados com card `Financeiro`.
+
+Controle operacional:
+
+- O card `Fechamento de caixa` aparece em `/miauw/whatsapp/` dentro de `n8n automacoes`.
+- O botao `Desativar`/`Ativar` muda somente a execucao do backend; o workflow pode continuar agendado no n8n.
+- O endpoint aceita `dry_run=true` para validar status, destinatarios e previa sem enviar WhatsApp.
 
 ### Deploy/checks
 
