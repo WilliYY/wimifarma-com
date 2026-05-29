@@ -60,13 +60,13 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 
 - `core_users`: usuarios internos sincronizados de `wf_users`, preservando hash, role, status, `legacy_mysql_id` e ids antigos.
 - `core_audit_logs`: auditoria compartilhada curta para eventos de login/acoes dos apps Node.
-- `core_login_rate_limits`: base compartilhada para limitadores de login quando os modulos forem removendo o legado PHP/MySQL.
+- `core_login_rate_limits`: base compartilhada para limitadores de login dos modulos que usam `core_users`.
 - `core_user_module_permissions`: permissoes por modulo administradas em `/usuarios/`.
 - `core_user_xp_links`: vinculo logico entre login interno e funcionario em `xp_employees`, sem FK entre bancos.
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao usa `core_users` como fonte unica de login. Gestao e Pedidos usam `core_users` como fonte principal por `*_AUTH_PROVIDER=core`, mantendo fallback temporario em `wf_users` por `*_AUTH_MYSQL_FALLBACK_ENABLED=true` durante a janela de corte. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao usa `core_users` como fonte unica de login. Gestao, Pedidos, Tarefa, Cashback PHP e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Miauby WhatsApp em Postgres
 
@@ -108,7 +108,7 @@ Criadas por `apps/gestao/src/server.ts`:
 - `pedidos_confirmed_orders`: pedidos que ja tiveram chegada confirmada, com `lifecycle` `confirmado`, `historico` ou `cancelado`, datas de confirmacao/finalizacao e usuario responsavel por cada etapa.
 - `gestao_supplier_orders`: tabela legada de pedidos criados antes da separacao; fica preservada como compatibilidade/fonte de migracao para `pedidos_orders` e `pedidos_confirmed_orders`, nao como fonte nova da tela.
 
-A Gestao autentica primeiro no core `core_users`, grava auditoria curta em `core_audit_logs`, espelha resumo temporario em `wf_logs` e usa `wf_users` como fallback enquanto `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Tambem importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
+A Gestao autentica primeiro no core `core_users`, grava auditoria curta em `core_audit_logs`, espelha resumo temporario em `wf_logs` e usa `wf_users` como fallback apenas quando `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true` for ligado explicitamente. Tambem importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
 
 ## Tabelas da Tarefa em Postgres
 
@@ -161,7 +161,7 @@ Inventario real observado em 2026-05-10:
 - `wf_resgate_itens`: relacao entre resgate e credito.
 - `wf_settings`: configuracoes do Cashback.
 - `wf_logs`: logs/auditoria geral.
-- `wf_login_rate_limits`: limitador persistente dos logins PHP internos por hash de `IP + usuario`, com contagem de falhas, janela temporal e bloqueio temporario.
+- `wf_login_rate_limits`: limitador persistente legado dos logins PHP internos, mantido apenas para rollback MySQL; com `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`, o limitador oficial usa `core_login_rate_limits` no Postgres.
 - `wf_whatsapp_mensagens`: mensagens e campanhas.
 - `wf_codigos_comissao`: legado/importacao/espelho temporario de Codigos; a escrita oficial nova usa Postgres `codigos_items`.
 - `wf_codigos_blocos`: legado/importacao/espelho temporario dos blocos de Codigos; a escrita oficial nova usa Postgres `codigos_groups`.
@@ -249,7 +249,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 
 - `wf_cashback_creditos` depende de cliente/compra e controla saldo restante.
 - `wf_resgate_itens` liga resgates a creditos consumidos.
-- `wf_login_rate_limits` nao guarda usuario em texto puro; usa hashes para chave operacional do limitador, preserva o IP usado no bloqueio para diagnostico e pode ser limpo sem afetar usuarios, sessoes ou historico financeiro.
+- `core_login_rate_limits` e o limitador oficial dos logins PHP internos quando o auth core esta ativo; `wf_login_rate_limits` fica como rollback legado. Essas tabelas nao guardam usuario em texto puro na chave operacional, usam hashes para bloqueio e podem ser limpas sem afetar usuarios, sessoes ou historico financeiro.
 - Codigos deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `codigos_groups` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa `sort_order` dos itens dentro do grupo visual. Apagar pela tela marca `deleted_at` no Postgres e, quando o espelho legado estiver ligado, marca `ativo=0`/`apagado_em` no MySQL.
 - `xp_employees` e a fonte de verdade dos funcionarios na trilha XP; remover pela tela marca `status='inativo'` e `deleted_at`, sem apagar vendas antigas. O ADM usa `system_key='adm'`, aparece como perfil protegido para receber XP, pode ter nome/foto editados e nao pode ser excluido pelos controles comuns de usuario.
 - `xp_sales.amount_cents` guarda venda em centavos inteiros, `xp_sales.xp_points` guarda o XP calculado no momento do lancamento e `xp_sales.note` guarda a observacao opcional exibida em `Ultimos lancamentos`. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`. O schema do XP garante indice para leituras por venda ativa, funcionario e mes.

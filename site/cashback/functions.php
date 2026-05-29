@@ -127,10 +127,141 @@ function login_rate_limit_identity(?string $username = null): array
     );
 }
 
+function internal_auth_uses_core(): bool
+{
+    return defined('INTERNAL_AUTH_PROVIDER') && INTERNAL_AUTH_PROVIDER === 'core';
+}
+
+function internal_auth_mysql_fallback_enabled(): bool
+{
+    return defined('INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED') && INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED === true;
+}
+
+function internal_auth_normalize_user(array $user, string $source): array
+{
+    return array(
+        'id' => (int) $user['id'],
+        'username' => (string) $user['username'],
+        'role' => (string) ($user['role'] ?? 'user'),
+        'active' => !empty($user['active']) && $user['active'] !== 'f',
+        'auth_source' => $source,
+    );
+}
+
+function internal_auth_password_ok(?array $user, string $password): bool
+{
+    if (!$user) {
+        return false;
+    }
+
+    $hash = (string) ($user['password_hash'] ?? '');
+    return $hash !== '' && password_verify($password, $hash);
+}
+
+function internal_auth_fetch_core_by_username(string $username): ?array
+{
+    $stmt = core_auth_db()->prepare(
+        'SELECT id, username, password_hash, role, active
+           FROM core_users
+          WHERE username_normalized = ?
+            AND active = true
+          LIMIT 1'
+    );
+    $stmt->execute(array(strtolower(trim($username))));
+    $user = $stmt->fetch();
+
+    return is_array($user) ? $user : null;
+}
+
+function internal_auth_fetch_core_by_id(int $id): ?array
+{
+    $stmt = core_auth_db()->prepare(
+        'SELECT id, username, role, active
+           FROM core_users
+          WHERE id = ?
+            AND active = true
+          LIMIT 1'
+    );
+    $stmt->execute(array($id));
+    $user = $stmt->fetch();
+
+    return is_array($user) ? $user : null;
+}
+
+function internal_auth_fetch_mysql_by_username(string $username): ?array
+{
+    $stmt = db()->prepare('SELECT * FROM wf_users WHERE username = ? AND active = 1 LIMIT 1');
+    $stmt->execute(array($username));
+    $user = $stmt->fetch();
+
+    return is_array($user) ? $user : null;
+}
+
+function internal_auth_fetch_mysql_by_id(int $id): ?array
+{
+    $stmt = db()->prepare('SELECT id, username, role, active FROM wf_users WHERE id = ? AND active = 1 LIMIT 1');
+    $stmt->execute(array($id));
+    $user = $stmt->fetch();
+
+    return is_array($user) ? $user : null;
+}
+
+function internal_authenticate_user(string $username, string $password): ?array
+{
+    if (internal_auth_uses_core()) {
+        try {
+            $user = internal_auth_fetch_core_by_username($username);
+            if ($user && internal_auth_password_ok($user, $password)) {
+                return internal_auth_normalize_user($user, 'core');
+            }
+        } catch (Throwable $error) {
+            if (!internal_auth_mysql_fallback_enabled()) {
+                throw $error;
+            }
+        }
+
+        if (!internal_auth_mysql_fallback_enabled()) {
+            return null;
+        }
+    }
+
+    $user = internal_auth_fetch_mysql_by_username($username);
+    if ($user && internal_auth_password_ok($user, $password)) {
+        return internal_auth_normalize_user($user, 'mysql');
+    }
+
+    return null;
+}
+
 function login_rate_limit_wait_seconds(?string $username = null): int
 {
     $blockedUntil = (int) ($_SESSION['login_blocked_until'] ?? 0);
     $sessionWait = max(0, $blockedUntil - time());
+
+    if (internal_auth_uses_core()) {
+        try {
+            $identity = login_rate_limit_identity($username);
+            $stmt = core_auth_db()->prepare(
+                'SELECT blocked_until
+                   FROM core_login_rate_limits
+                  WHERE rate_key = ?
+                  LIMIT 1'
+            );
+            $stmt->execute(array($identity['identity_hash']));
+            $blockedAt = $stmt->fetchColumn();
+
+            if ($blockedAt) {
+                $databaseWait = max(0, strtotime((string) $blockedAt) - time());
+                return max($sessionWait, $databaseWait);
+            }
+
+            return $sessionWait;
+        } catch (Throwable $error) {
+            if (!internal_auth_mysql_fallback_enabled()) {
+                return $sessionWait;
+            }
+        }
+    }
 
     try {
         $identity = login_rate_limit_identity($username);
@@ -170,6 +301,49 @@ function register_login_failure(?string $username = null): void
         $_SESSION['login_blocked_until'] = $now + 600;
     }
 
+    if (internal_auth_uses_core()) {
+        try {
+            $identity = login_rate_limit_identity($username);
+            $stmt = core_auth_db()->prepare(
+                "INSERT INTO core_login_rate_limits
+                    (rate_key, username_normalized, ip_hash, attempts_count, window_started_at, blocked_until, updated_at)
+                 VALUES
+                    (?, ?, ?, 1, NOW(), NULL, NOW())
+                 ON CONFLICT (rate_key) DO UPDATE SET
+                    username_normalized = EXCLUDED.username_normalized,
+                    ip_hash = EXCLUDED.ip_hash,
+                    attempts_count = CASE
+                        WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN 1
+                        ELSE core_login_rate_limits.attempts_count + 1
+                    END,
+                    window_started_at = CASE
+                        WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN NOW()
+                        ELSE core_login_rate_limits.window_started_at
+                    END,
+                    blocked_until = CASE
+                        WHEN (
+                            CASE
+                                WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN 1
+                                ELSE core_login_rate_limits.attempts_count + 1
+                            END
+                        ) >= 5 THEN NOW() + INTERVAL '10 minutes'
+                        ELSE core_login_rate_limits.blocked_until
+                    END,
+                    updated_at = NOW()"
+            );
+            $stmt->execute(array(
+                $identity['identity_hash'],
+                login_rate_limit_username($username),
+                hash('sha256', $identity['ip_address']),
+            ));
+            return;
+        } catch (Throwable $error) {
+            if (!internal_auth_mysql_fallback_enabled()) {
+                return;
+            }
+        }
+    }
+
     try {
         $identity = login_rate_limit_identity($username);
         $stmt = db()->prepare(
@@ -204,6 +378,19 @@ function clear_login_rate_limit(?string $username = null): void
 {
     unset($_SESSION['login_attempts'], $_SESSION['login_blocked_until']);
 
+    if (internal_auth_uses_core()) {
+        try {
+            $identity = login_rate_limit_identity($username);
+            $stmt = core_auth_db()->prepare('DELETE FROM core_login_rate_limits WHERE rate_key = ?');
+            $stmt->execute(array($identity['identity_hash']));
+            return;
+        } catch (Throwable $error) {
+            if (!internal_auth_mysql_fallback_enabled()) {
+                return;
+            }
+        }
+    }
+
     try {
         $identity = login_rate_limit_identity($username);
         $stmt = db()->prepare('DELETE FROM wf_login_rate_limits WHERE scope = ? AND identity_hash = ?');
@@ -219,11 +406,21 @@ function current_user(): ?array
         return null;
     }
 
-    $stmt = db()->prepare('SELECT id, username, role, active FROM wf_users WHERE id = ? AND active = 1 LIMIT 1');
-    $stmt->execute(array((int) $_SESSION['user_id']));
-    $user = $stmt->fetch();
+    $userId = (int) $_SESSION['user_id'];
 
-    return $user ?: null;
+    if (internal_auth_uses_core()) {
+        try {
+            $user = internal_auth_fetch_core_by_id($userId);
+            return $user ? internal_auth_normalize_user($user, 'core') : null;
+        } catch (Throwable $error) {
+            if (!internal_auth_mysql_fallback_enabled()) {
+                return null;
+            }
+        }
+    }
+
+    $user = internal_auth_fetch_mysql_by_id($userId);
+    return $user ? internal_auth_normalize_user($user, 'mysql') : null;
 }
 
 function require_sensitive_area_access(string $title): void

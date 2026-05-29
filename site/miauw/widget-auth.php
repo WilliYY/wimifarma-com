@@ -43,28 +43,26 @@ try {
         miauw_widget_auth_json(array('ok' => false, 'message' => 'Informe usuario e senha para abrir o Miauby.'), 422);
     }
 
-    $stmt = db()->prepare('SELECT * FROM wf_users WHERE username = ? AND active = 1 LIMIT 1');
-    $stmt->execute(array($username));
-    $user = $stmt->fetch();
-    $passwordOk = $user ? miauw_password_matches($user, $password) : false;
-    $waitSeconds = login_rate_limit_wait_seconds();
+    $user = internal_authenticate_user($username, $password);
+    $waitSeconds = login_rate_limit_wait_seconds($username);
 
-    if ($waitSeconds > 0 && !$passwordOk) {
+    if ($waitSeconds > 0 && !$user) {
         miauw_widget_auth_json(array(
             'ok' => false,
             'message' => 'Muitas tentativas. Aguarde ' . max(1, (int) ceil($waitSeconds / 60)) . ' minuto(s). O gato tambem sabe bloquear bagunca.',
         ), 429);
     }
 
-    if (!$user || !$passwordOk) {
-        register_login_failure();
+    if (!$user) {
+        register_login_failure($username);
         miauw_widget_auth_json(array('ok' => false, 'message' => 'Usuario ou senha incorretos. O bigode detectou erro humano.'), 401);
     }
 
-    clear_login_rate_limit();
+    clear_login_rate_limit($username);
     session_regenerate_id(true);
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['username'] = $user['username'];
+    $_SESSION['auth_provider'] = $user['auth_source'] ?? INTERNAL_AUTH_PROVIDER;
     log_action('login_miauw_widget', 'user', (int) $user['id'], 'Login Miauby widget realizado.');
     $schemaWarning = false;
     try {

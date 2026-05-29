@@ -69,12 +69,12 @@ Tabelas:
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.
 - O audio do Miauby (`api.php?action=audio_transcribe`) exige a mesma sessao interna e CSRF do chat; o browser envia audio temporario para transcricao e nunca recebe chave de API.
 - O painel Miauby WhatsApp (`/miauw/whatsapp/`) usa login proprio por variaveis de ambiente `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` quando preenchidas; a sessao e cookie assinado do servico Node, separado de `wf_users` e do WordPress.
-- Logins PHP internos usam limitador compartilhado por sessao e por `IP + usuario` em `wf_login_rate_limits`; Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
+- Logins PHP internos de Cashback e Miauby usam `core_users` e `core_login_rate_limits` no Postgres por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`; rollback MySQL fica opt-in por `WIMIFARMA_INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED=true`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
 
 ## Decisoes tecnicas ja tomadas
 
-- Sessao dos modulos internos e configurada em `site/cashback/config.php`.
-- Funcoes comuns ficam em `site/cashback/functions.php`.
+- Sessao dos modulos internos PHP e configurada em `site/cashback/config.php`.
+- Funcoes comuns ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam o core Postgres por padrao.
 - Modulos PHP remanescentes como Cashback e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
@@ -89,7 +89,7 @@ Tabelas:
 ## Pendencias
 
 - Mapear perfis existentes e permissoes por modulo.
-- Remover ou substituir os fallbacks legados restantes de login nos modulos PHP e manter fallback MySQL dos modulos Node apenas como rollback opt-in.
+- Manter fallbacks MySQL de login apenas como rollback opt-in e retirar codigo legado quando houver janela segura.
 - Revisar fluxo de desbloqueio de areas sensiveis.
 - Aplicar `core_user_module_permissions` nos modulos existentes em etapas, com rollback e teste por modulo, para evitar bloquear a equipe sem plano de recuperacao.
 - Mapear formalmente quais usuarios alem de `admin`/`gerente` devem acessar diagnosticos do Miauby.

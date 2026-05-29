@@ -126,7 +126,7 @@ $modules = @(
     @{
         Module = 'Cashback'
         Path = 'site/cashback'
-        Current = 'PHP procedural + MySQL'
+        Current = 'PHP procedural + MySQL de dados + core auth'
         Legacy = 'wf_clientes, wf_compras, creditos, resgates, settings'
         Target = 'apps/cashback em Node.js + TypeScript + Postgres'
         Priority = '6 - critico cliente/saldo'
@@ -135,7 +135,7 @@ $modules = @(
     @{
         Module = 'Miauby interno'
         Path = 'site/miauw'
-        Current = 'PHP procedural + Node agent sombra'
+        Current = 'PHP procedural + Node agent sombra + core auth'
         Legacy = 'miauw_* em MySQL; memoria curta ja tem ponte Postgres'
         Target = 'apps/miauw-agent + Postgres wimifarma_miauw'
         Priority = '7 - acoplado ao agente'

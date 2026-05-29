@@ -20,7 +20,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/gestao/` usa sessao propria `WFGESTAO` persistida no Postgres da Gestao, autentica contra `core_users` por `GESTAO_AUTH_PROVIDER=core` com fallback temporario `wf_users`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa queries parametrizadas para lancar contas, adicionar itens/juros, registrar pagamentos parciais, confirmar saldo, cancelar ou reabrir contas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - `Permissions-Policy` bloqueia camera e geolocalizacao; microfone fica liberado apenas para a propria origem (`microphone=(self)`) para permitir o botao de audio do Miauby, que ainda exige clique explicito do usuario.
-- Os logins PHP internos usam limitador por sessao e por chave `IP + usuario` persistida em `wf_login_rate_limits`, com bloqueio temporario apos falhas repetidas.
+- Os logins PHP internos de Cashback e Miauby usam `core_users` e `core_login_rate_limits` no Postgres por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`, alem do bloqueio por sessao; `wf_users`/`wf_login_rate_limits` ficam apenas como rollback MySQL opt-in.
 - A Cotacao V2 tambem limita tentativas de login por sessao e por chave em memoria `IP + usuario`, regenera a sessao apos login valido e envia headers de seguranca equivalentes aos modulos Node administrativos.
 - `xmlrpc.php` do WordPress fica bloqueado por `.htaccess` enquanto nao houver uso operacional confirmado de XML-RPC.
 - `site/wp-content/uploads/.htaccess` e `site/xp/uploads/.htaccess` bloqueiam listagem e execucao de scripts em pastas de upload versionadas.

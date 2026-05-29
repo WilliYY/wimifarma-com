@@ -6,11 +6,12 @@ RUN apt-get update \
         libfreetype6-dev \
         libjpeg-dev \
         libpng-dev \
+        libpq-dev \
         libzip-dev \
         unzip \
         zip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" gd mysqli pdo_mysql zip \
+    && docker-php-ext-install -j"$(nproc)" gd mysqli pdo_mysql pdo_pgsql zip \
     && a2enmod rewrite headers expires proxy proxy_http proxy_wstunnel \
     && echo 'ServerName localhost' > /etc/apache2/conf-available/wimifarma-servername.conf \
     && { \

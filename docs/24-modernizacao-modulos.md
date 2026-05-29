@@ -49,8 +49,8 @@ O script mostra:
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL opcional para importacao/espelho de rollback | Postgres puro + core auth/auditoria apos paridade | 5 em corte |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
-| Cashback | PHP procedural + MySQL | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
-| Miauby interno | PHP + Node agent sombra | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
+| Cashback | PHP procedural + MySQL de dados + core auth | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
+| Miauby interno | PHP + Node agent sombra + core auth | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
 | Home publica | PHP desacoplado do WordPress | PHP simples, sem banco direto | manter ou trocar depois | baixo |
 | WordPress | WordPress + MySQL | dependencia natural do WP | substituir/desacoplar se quiser zero MySQL | ultimo |

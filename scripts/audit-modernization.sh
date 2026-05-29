@@ -75,8 +75,8 @@ rows=(
   "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres|MySQL legado opcional por flags XP_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|4 em corte"
   "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|MySQL opcional por FINANCEIRO_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|5 validar"
   "Usuarios|apps/usuarios|Node.js + TypeScript + Express + Postgres core|sem MySQL operacional para usuarios novos|enforcement gradual por modulo|moderno"
-  "Cashback|site/cashback|PHP procedural + MySQL|wf_clientes/compras/creditos/resgates|apps/cashback Node.js + TypeScript + Postgres|6"
-  "Miauby interno|site/miauw|PHP + Node agent sombra|miauw_* em MySQL|apps/miauw-agent + Postgres wimifarma_miauw|7"
+  "Cashback|site/cashback|PHP procedural + MySQL dados + core auth|wf_clientes/compras/creditos/resgates|apps/cashback Node.js + TypeScript + Postgres|6"
+  "Miauby interno|site/miauw|PHP + Node agent sombra + core auth|miauw_* em MySQL|apps/miauw-agent + Postgres wimifarma_miauw|7"
   "Miauby WhatsApp|apps/miauw-whatsapp|Node.js + TypeScript + Postgres|sem MySQL operacional|manter/evoluir|moderno"
   "Home publica|site/home.php|PHP desacoplado|sem banco direto|manter ou trocar depois|baixo"
   "WordPress|site/wp-config.php|WordPress + PHP + MySQL|dependencia natural do WP|substituir/desacoplar|ultimo"
@@ -102,6 +102,6 @@ Proximos passos recomendados:
 - Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
 - Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.
-- Depois migrar Cashback e Miauby interno.
+- Depois migrar dados do Cashback e Miauby interno.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

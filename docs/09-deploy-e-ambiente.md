@@ -166,7 +166,7 @@ Higiene de pastas no VPS:
 - `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
-- O core de autenticacao em Postgres usa `wimifarma-core-db` para `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users`. Cotacao usa core sem fallback MySQL; Gestao, Pedidos e Tarefa usam `auth.provider=core` por padrao, com fallback MySQL apenas como rollback opt-in.
+- O core de autenticacao em Postgres usa `wimifarma-core-db` para `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users`. Cotacao usa core sem fallback MySQL; Gestao, Pedidos, Tarefa, Cashback PHP e Miauby PHP usam core por padrao, com fallback MySQL apenas como rollback opt-in.
 - A Gestao roda fora do PHP/WordPress: Apache faz proxy de `/gestao/` para Node, Node usa Postgres para contas, pagamentos, auditoria e sessoes, e MySQL somente para login/logs/importacao legado.
 - Tarefa roda fora do PHP/WordPress: Apache faz proxy de `/tarefa/` para Node, Node usa Postgres para tarefas, auditoria e sessoes, e usa `core_users` como login oficial por padrao. MySQL fica apenas como janela opcional de rollback/importacao/espelho/log legado quando o provider ou as flags de legado estiverem ligadas.
 - XP roda fora do PHP/WordPress: Apache faz proxy de `/xp/` para Node, Node usa Postgres para funcionarios, vendas, configuracoes, auditoria e sessoes, e MySQL somente para importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` estiverem ligadas.
@@ -201,7 +201,7 @@ Higiene de pastas no VPS:
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, nao investigar CSS primeiro; validar `git log`, rebuild do container e destino do Nginx Proxy Manager.
 - Se a rota publica ainda mostrar `wfwc-home-launchpad`, validar tambem se `site/wp-content/endurance-page-cache/` foi removido/ignorado no deploy.
 - Apagar `cotacao-data/` remove dados da Cotacao V2. Fazer backup antes de qualquer limpeza ou troca de volume.
-- Apagar `core-data/` remove a autenticacao/auditoria compartilhada em Postgres. A Cotacao nao tem mais fallback MySQL e para de autenticar; Gestao/Pedidos/Tarefa so ficam operaveis se rollback MySQL estiver ligado explicitamente e saudavel.
+- Apagar `core-data/` remove a autenticacao/auditoria compartilhada em Postgres. Cotacao, Cashback/Miauby PHP e os modulos Node com auth core param de autenticar; Gestao/Pedidos/Tarefa so ficam operaveis se rollback MySQL estiver ligado explicitamente e saudavel.
 - Apagar `gestao-data/` remove contas, itens, pagamentos, auditoria e sessoes da Gestao. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `tarefa-data/` remove tarefas, auditoria e sessoes do Tarefa Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `xp-data/` remove funcionarios, vendas, configuracoes, auditoria e sessoes oficiais do XP Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.

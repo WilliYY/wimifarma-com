@@ -28,27 +28,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($username === '' || $password === '') {
             $error = 'Informe usuario e senha.';
         } else {
-            $stmt = db()->prepare('SELECT * FROM wf_users WHERE username = ? AND active = 1 LIMIT 1');
-            $stmt->execute(array($username));
-            $user = $stmt->fetch();
-            $passwordOk = $user ? miauw_password_matches($user, $password) : false;
-            $waitSeconds = login_rate_limit_wait_seconds();
+            $user = internal_authenticate_user($username, $password);
+            $waitSeconds = login_rate_limit_wait_seconds($username);
 
-            if ($waitSeconds > 0 && !$passwordOk) {
+            if ($waitSeconds > 0 && !$user) {
                 $error = 'Muitas tentativas de login. Aguarde cerca de ' . max(1, (int) ceil($waitSeconds / 60)) . ' minuto(s).';
-            } elseif ($user && $passwordOk) {
-                clear_login_rate_limit();
+            } elseif ($user) {
+                clear_login_rate_limit($username);
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = (int) $user['id'];
                 $_SESSION['username'] = $user['username'];
+                $_SESSION['auth_provider'] = $user['auth_source'] ?? INTERNAL_AUTH_PROVIDER;
                 log_action('login_miauw', 'user', (int) $user['id'], 'Login Miauby realizado.');
                 header('Location: /miauw/');
                 exit;
+            } else {
+                register_login_failure($username);
+                log_action('login_miauw_falha', 'user', null, 'Tentativa de login Miauby falhou para usuario: ' . $username);
+                $error = 'Usuario ou senha incorretos.';
             }
-
-            register_login_failure();
-            log_action('login_miauw_falha', 'user', null, 'Tentativa de login Miauby falhou para usuario: ' . $username);
-            $error = 'Usuario ou senha incorretos.';
         }
     } catch (Throwable $exception) {
         $error = $exception instanceof RuntimeException

@@ -14,30 +14,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $username = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
-    $waitSeconds = login_rate_limit_wait_seconds();
+    $waitSeconds = login_rate_limit_wait_seconds($username);
 
     if ($waitSeconds > 0) {
         $error = 'Muitas tentativas de login. Aguarde cerca de ' . max(1, (int) ceil($waitSeconds / 60)) . ' minuto(s).';
     } else {
         try {
-            $stmt = db()->prepare('SELECT * FROM wf_users WHERE username = ? AND active = 1 LIMIT 1');
-            $stmt->execute(array($username));
-            $user = $stmt->fetch();
+            $user = internal_authenticate_user($username, $password);
 
-            if ($user && password_verify($password, $user['password_hash'])) {
-                clear_login_rate_limit();
+            if ($user) {
+                clear_login_rate_limit($username);
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = (int) $user['id'];
                 $_SESSION['username'] = $user['username'];
+                $_SESSION['auth_provider'] = $user['auth_source'] ?? INTERNAL_AUTH_PROVIDER;
                 log_action('login', 'user', (int) $user['id'], 'Login realizado com sucesso.');
                 redirect_to('dashboard.php#busca');
             }
 
-            register_login_failure();
+            register_login_failure($username);
             log_action('login_falha', 'user', null, 'Tentativa de login falhou para usuario: ' . $username);
             $error = 'Usuario ou senha incorretos.';
         } catch (Throwable $exception) {
-            $error = 'Nao foi possivel conectar ao banco. Confira config.php e database.sql.';
+            $error = 'Nao foi possivel conectar ao login interno. Confira o core de usuarios.';
         }
     }
 }
