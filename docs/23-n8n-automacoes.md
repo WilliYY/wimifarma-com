@@ -20,6 +20,24 @@ Template versionado:
 
 O n8n deve rodar separado do Compose principal, com Postgres proprio, porta publicada apenas em `127.0.0.1:5678` e acesso publico somente por proxy/autenticacao quando estiver pronto.
 
+Primeira instalacao/atualizacao no VPS:
+
+```bash
+mkdir -p /home/ubuntu/projetos/wimifarma-n8n/workflows
+cp /home/ubuntu/projetos/wimifarma-com/ops/n8n/docker-compose.yml /home/ubuntu/projetos/wimifarma-n8n/docker-compose.yml
+cp /home/ubuntu/projetos/wimifarma-com/ops/n8n/workflows/*.json /home/ubuntu/projetos/wimifarma-n8n/workflows/
+cd /home/ubuntu/projetos/wimifarma-n8n
+docker compose config --quiet
+docker compose up -d
+sudo chown -R 1000:1000 n8n-data workflows
+docker compose up -d --force-recreate wimifarma-n8n
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pedidos-chegada-17h.json
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=pedidos-chegada-17h --active=true
+docker compose restart wimifarma-n8n
+```
+
+O workflow `pedidos-chegada-17h` possui ID estavel para importacao idempotente. Em n8n 2.22 no modo simples, a importacao por CLI desativa o workflow e a ativacao precisa ser aplicada depois pelo comando `update:workflow`/`publish:workflow`, seguida de restart para o agendador carregar o cron.
+
 No Windows deste PC, o n8n tambem foi instalado via npm global para uso local, sem iniciar servico por padrao:
 
 ```powershell
