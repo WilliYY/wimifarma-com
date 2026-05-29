@@ -6391,16 +6391,21 @@ function renderN8nWorkflows(rows: DashboardN8nRecipientRow[]): string {
     const moduleRecipients = recipients.get(workflow.moduleKey);
     const count = Number(moduleRecipients?.allowed_count || 0);
     const names = (moduleRecipients?.recipients || []).slice(0, 5).join(', ') || 'ninguem liberado ainda';
+    const recipientLabel = count === 1 ? '1 autorizado' : `${count} autorizados`;
     const active = N8N_ENABLED && N8N_WEBHOOK_BASE_URL !== '' && N8N_WEBHOOK_SECRET_CONFIGURED;
     return `
-      <div class="status-item n8n-card">
+      <div class="n8n-card">
         <div class="engine-head">
           <b>${htmlEscape(workflow.title)}</b>
           ${renderPill(active, 'Pronto', 'Planejado')}
         </div>
-        <small><b>Quando:</b> ${htmlEscape(workflow.schedule)} | <b>Card:</b> ${htmlEscape(workflow.moduleKey)} | <b>Destino:</b> ${count} autorizados (${htmlEscape(names)})</small>
-        <small>${htmlEscape(workflow.description)}</small>
-        <small>${htmlEscape(workflow.safety)}</small>
+        <div class="n8n-detail-grid">
+          <span><b>Quando</b><em>${htmlEscape(workflow.schedule)}</em></span>
+          <span><b>Card</b><em>${htmlEscape(workflow.moduleKey)}</em></span>
+          <span><b>Destino</b><em>${htmlEscape(recipientLabel)}</em><small>${htmlEscape(names)}</small></span>
+        </div>
+        <p>${htmlEscape(workflow.description)}</p>
+        <div class="n8n-guardrail"><b>Limite</b><span>${htmlEscape(workflow.safety)}</span></div>
       </div>`;
   }).join('');
 }
@@ -6611,8 +6616,113 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .engine-bars { display: grid; gap: 5px; margin: 8px 0; }
     .engine-bars span { display: block; width: var(--bar); min-width: 18px; height: 8px; border-radius: 999px; background: #b10647; }
     .engine-bars span + span { background: #f0a000; }
-    .n8n-card { display: grid; gap: 7px; }
-    .n8n-card small { display: block; }
+    .n8n-panel { background: #fffdfd; }
+    .n8n-summary { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(320px, 1fr); gap: 12px; margin-bottom: 12px; }
+    .n8n-stack-card {
+      border: 1px solid #f0d2df;
+      border-left: 4px solid #b10647;
+      border-radius: 8px;
+      background: #fff8fb;
+      padding: 14px;
+      min-width: 0;
+    }
+    .n8n-stack-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .n8n-stack-grid span,
+    .n8n-detail-grid span {
+      display: block;
+      min-width: 0;
+      border: 1px solid #f1d8e3;
+      border-radius: 8px;
+      background: #fff;
+      padding: 9px;
+    }
+    .n8n-stack-grid b,
+    .n8n-detail-grid b {
+      display: block;
+      margin: 0 0 4px;
+      color: #8d0f43;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    .n8n-stack-grid em,
+    .n8n-detail-grid em {
+      display: block;
+      color: #251827;
+      font-style: normal;
+      font-size: 13px;
+      font-weight: 900;
+      overflow-wrap: anywhere;
+    }
+    .n8n-stack-card small,
+    .n8n-detail-grid small {
+      display: block;
+      margin-top: 4px;
+      color: #6a5964;
+      font-size: 11px;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+    }
+    .n8n-flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      align-content: stretch;
+    }
+    .n8n-flow-step {
+      min-width: 0;
+      border: 1px solid #f1d8e3;
+      border-radius: 8px;
+      background: #fff;
+      padding: 11px 12px 11px 42px;
+      position: relative;
+    }
+    .n8n-flow-step span {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: #b10647;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .n8n-flow-step b { display: block; color: #251827; font-size: 13px; line-height: 1.2; }
+    .n8n-flow-step small { display: block; margin-top: 4px; color: #6a5964; font-size: 11px; line-height: 1.3; }
+    .n8n-workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .n8n-card {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      border: 1px solid #f1d8e3;
+      border-radius: 8px;
+      background: #fffafb;
+      padding: 13px;
+      box-shadow: 0 12px 26px rgba(89, 27, 57, .06);
+    }
+    .n8n-card .engine-head { margin-bottom: 0; }
+    .n8n-card .engine-head b { color: #251827; font-size: 15px; line-height: 1.2; }
+    .n8n-detail-grid { display: grid; grid-template-columns: .9fr .8fr 1.3fr; gap: 8px; }
+    .n8n-card p { margin: 0; color: #4f4050; font-size: 12px; line-height: 1.42; }
+    .n8n-guardrail {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      border: 1px solid #ffe0a3;
+      border-radius: 8px;
+      background: #fff9ec;
+      padding: 9px 10px;
+      color: #6b4a05;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .n8n-guardrail b { color: #8c5a00; font-size: 11px; text-transform: uppercase; white-space: nowrap; }
+    .n8n-guardrail span { min-width: 0; }
     .pill { display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; }
     .pill.is-ok { background: #daf6e8; color: #097143; }
     .pill.is-warn { background: #fff2d2; color: #8c5a00; }
@@ -6688,6 +6798,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       .panel, .panel.is-wide { grid-column: auto; }
       .allowlist-form, .allowlist-edit, .allowlist-list { grid-template-columns: 1fr; }
       .status-list { grid-template-columns: 1fr; }
+      .n8n-summary, .n8n-flow, .n8n-stack-grid, .n8n-workflow-grid, .n8n-detail-grid { grid-template-columns: 1fr; }
       h1 { font-size: 36px; }
     }
   </style>
@@ -6796,17 +6907,31 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         </div>
       </article>
 
-      <article class="panel is-wide">
+      <article class="panel is-wide n8n-panel">
         <h2>n8n automacoes</h2>
-        <div class="status-list">
-          <div class="status-item">
-            <b>Stack n8n</b>
-            ${renderPill(n8nEnabled && n8nBaseConfigured, 'Configurada', 'Planejada')}
-            <small>Base: ${n8nBaseConfigured ? 'configurada' : 'pendente'} | Webhook: ${n8nWebhookConfigured ? 'seguro' : 'pendente'} | n8n deve orquestrar rotinas, nao gravar dado direto.</small>
+        <div class="n8n-summary">
+          <div class="n8n-stack-card">
+            <div class="engine-head">
+              <b>Stack n8n</b>
+              ${renderPill(n8nEnabled && n8nBaseConfigured && n8nWebhookConfigured, 'Pronta', 'Planejada')}
+            </div>
+            <small>Automacoes ficam como orquestracao. Dado, permissao, confirmacao e auditoria continuam no backend Wimifarma.</small>
+            <div class="n8n-stack-grid">
+              <span><b>Base</b><em>${n8nBaseConfigured ? 'configurada' : 'pendente'}</em></span>
+              <span><b>Webhook</b><em>${n8nWebhookConfigured ? 'seguro' : 'pendente'}</em></span>
+              <span><b>Regra</b><em>nao grava direto</em></span>
+            </div>
           </div>
+          <div class="n8n-flow">
+            <div class="n8n-flow-step"><span>1</span><b>n8n agenda</b><small>Horario, deploy ou webhook dispara a rotina.</small></div>
+            <div class="n8n-flow-step"><span>2</span><b>Backend valida</b><small>Token interno, card liberado, cooldown e auditoria.</small></div>
+            <div class="n8n-flow-step"><span>3</span><b>WhatsApp avisa</b><small>Destino vem da allowlist real, sem LID protegido.</small></div>
+          </div>
+        </div>
+        <div class="n8n-workflow-grid">
           ${renderN8nWorkflows(summary.n8nRecipients)}
         </div>
-        <p class="footnote">O destino das automacoes segue os cards liberados na allowlist. Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
+        <p class="footnote">Destino por card liberado: Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
       </article>
 
       <article class="panel is-wide">

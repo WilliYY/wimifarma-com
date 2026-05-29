@@ -32,7 +32,7 @@ n8n --version
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL`
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET`
 
-O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados e lista as rotinas n8n planejadas com o publico calculado por cards da allowlist.
+O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino e Limite. O publico continua calculado pelos cards da allowlist.
 
 ## Rotinas iniciais
 
