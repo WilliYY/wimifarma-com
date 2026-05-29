@@ -568,6 +568,63 @@
     return map;
   }
 
+  function styleForHistory(style) {
+    const normalized = normalizeStyleRequest(style, style?.background);
+    if (!normalized?.styleKey || !normalizeColorValue(normalized.background)) return null;
+    return {
+      styleKey: normalized.styleKey,
+      scope: normalized.scope,
+      rowId: normalized.rowId,
+      columnKey: normalized.columnKey,
+      background: normalizeColorValue(normalized.background),
+      color: normalizeColorValue(style?.color)
+    };
+  }
+
+  function uniqueHistoryStyles(styles = []) {
+    const unique = new Map();
+    styles.forEach((style) => {
+      const record = styleForHistory(style);
+      if (record) unique.set(record.styleKey, record);
+    });
+    return Array.from(unique.values());
+  }
+
+  function historyStylesForTargets(targets = []) {
+    const styles = styleMap();
+    const keys = new Set();
+    targets.forEach((target) => {
+      const normalized = normalizeStyleRequest(target, target?.background);
+      if (normalized?.styleKey) keys.add(normalized.styleKey);
+    });
+    return Array.from(keys)
+      .map((key) => styleForHistory(styles.get(key)))
+      .filter(Boolean);
+  }
+
+  function historyStyleSignature(styles = []) {
+    return uniqueHistoryStyles(styles)
+      .map((style) => `${style.styleKey}|${style.background}|${style.color || ''}`)
+      .sort()
+      .join('\n');
+  }
+
+  function styleHistoryAction(before = [], after = []) {
+    const beforeStyles = uniqueHistoryStyles(before);
+    const afterStyles = uniqueHistoryStyles(after);
+    if (historyStyleSignature(beforeStyles) === historyStyleSignature(afterStyles)) return null;
+    return { type: 'styles', before: beforeStyles, after: afterStyles };
+  }
+
+  function styleTargetsFromKeys(keys = []) {
+    return Array.from(new Set(keys))
+      .map((key) => {
+        const [scope, rowId = '', columnKey = ''] = String(key || '').split(':');
+        return normalizeStyleRequest({ scope, rowId: rowId || null, columnKey: columnKey || null });
+      })
+      .filter(Boolean);
+  }
+
   function ruleStyle(row, column) {
     for (const rule of state.rules.filter((item) => item.enabled !== false)) {
       const ruleColumnKey = rule.column_key || rule.columnKey;
@@ -2098,24 +2155,43 @@
     }
   }
 
-  async function undo() {
-    const action = state.history.pop();
-    if (!action) return;
+  async function applyHistoryAction(action, direction) {
     if (action.type === 'batch') {
       await saveCellsBatch(action.changes.map((change) => ({
         rowId: change.rowId,
         columnKey: change.columnKey,
-        value: change.before
+        value: direction === 'undo' ? change.before : change.after
       })), { history: false, optimistic: true, render: 'rows' });
     } else if (action.type === 'column-delete') {
-      await restoreDeletedColumn(action.columnKey);
+      if (direction === 'undo') await restoreDeletedColumn(action.columnKey);
+      else await deleteColumn(action.columnKey, { history: false });
     } else if (action.type === 'filter') {
-      applyFilterValue(action.columnKey, action.before, action.beforeColor);
+      applyFilterValue(
+        action.columnKey,
+        direction === 'undo' ? action.before : action.after,
+        direction === 'undo' ? action.beforeColor : action.afterColor
+      );
     } else if (action.type === 'search') {
-      applySearchValue(action.before);
+      applySearchValue(direction === 'undo' ? action.before : action.after);
+    } else if (action.type === 'styles') {
+      await restoreStylesFromHistory(
+        direction === 'undo' ? action.before : action.after,
+        direction === 'undo' ? action.after : action.before
+      );
     } else {
-      await setCellValue(action.rowId, action.columnKey, action.before, { history: false });
+      await setCellValue(
+        action.rowId,
+        action.columnKey,
+        direction === 'undo' ? action.before : action.after,
+        { history: false }
+      );
     }
+  }
+
+  async function undo() {
+    const action = state.history.pop();
+    if (!action) return;
+    await applyHistoryAction(action, 'undo');
     state.future.push(action);
     updateUndoButtons();
   }
@@ -2123,21 +2199,7 @@
   async function redo() {
     const action = state.future.pop();
     if (!action) return;
-    if (action.type === 'batch') {
-      await saveCellsBatch(action.changes.map((change) => ({
-        rowId: change.rowId,
-        columnKey: change.columnKey,
-        value: change.after
-      })), { history: false, optimistic: true, render: 'rows' });
-    } else if (action.type === 'column-delete') {
-      await deleteColumn(action.columnKey, { history: false });
-    } else if (action.type === 'filter') {
-      applyFilterValue(action.columnKey, action.after, action.afterColor);
-    } else if (action.type === 'search') {
-      applySearchValue(action.after);
-    } else {
-      await setCellValue(action.rowId, action.columnKey, action.after, { history: false });
-    }
+    await applyHistoryAction(action, 'redo');
     state.history.push(action);
     updateUndoButtons();
   }
@@ -2222,18 +2284,33 @@
     );
   }
 
-  async function setStyle(target, background) {
-    const body = { ...target, background, clientId };
+  async function setStyle(target, background, options = {}) {
+    const normalized = normalizeStyleRequest(target, background);
+    if (!normalized) return null;
+    const before = options.history === false ? [] : historyStylesForTargets([normalized]);
+    const body = { ...normalized, clientId };
     const data = await api('/api/styles', { method: 'PUT', body: JSON.stringify(body) });
-    state.styles = state.styles.filter((item) => item.styleKey !== data.style.styleKey);
-    state.styles.push(data.style);
+    applyRemoteStyleUpdated(data.style);
     rememberEventId(data.eventId);
+    if (options.history !== false) {
+      const action = styleHistoryAction(before, [data.style]);
+      if (action) pushHistory(action);
+    }
+    return data.style;
   }
 
-  async function deleteStyle(target) {
-    const data = await api('/api/styles', { method: 'DELETE', body: JSON.stringify({ ...target, clientId }) });
-    state.styles = state.styles.filter((item) => item.styleKey !== data.styleKey);
+  async function deleteStyle(target, options = {}) {
+    const normalized = normalizeStyleRequest(target);
+    if (!normalized) return null;
+    const before = options.history === false ? [] : historyStylesForTargets([normalized]);
+    const data = await api('/api/styles', { method: 'DELETE', body: JSON.stringify({ ...normalized, clientId }) });
+    applyRemoteStyleDeleted(data.styleKey);
     rememberEventId(data.eventId);
+    if (options.history !== false) {
+      const action = styleHistoryAction(before, []);
+      if (action) pushHistory(action);
+    }
+    return data.styleKey;
   }
 
   function styleKeyForTarget(target) {
@@ -2246,23 +2323,27 @@
       scope: target.scope,
       rowId: target.rowId || null,
       columnKey: target.columnKey || null,
-      background
+      background: String(background || '').trim().toLowerCase(),
+      color: normalizeColorValue(target.color)
     };
     if (style.scope === 'row' && !style.rowId) return null;
     if (style.scope === 'column' && !style.columnKey) return null;
     if (style.scope === 'cell' && (!style.rowId || !style.columnKey)) return null;
+    style.styleKey = styleKeyForTarget(style);
     return style;
   }
 
-  async function setStylesBatch(targets, background) {
+  async function saveStylesBatch(stylesToSave, options = {}) {
     const unique = new Map();
-    (targets || []).forEach((target) => {
-      const style = normalizeStyleRequest(target, background);
+    (stylesToSave || []).forEach((target) => {
+      const style = normalizeStyleRequest(target, target?.background);
       if (!style) return;
+      if (!normalizeColorValue(style.background)) return;
       unique.set(styleKeyForTarget(style), style);
     });
     const styles = Array.from(unique.values());
     if (!styles.length) return [];
+    const before = options.history === false ? [] : historyStylesForTargets(styles);
     state.pendingBatchSaves += 1;
     updatePendingSaveStatus();
     try {
@@ -2272,6 +2353,10 @@
       });
       applyRemoteStylesUpdated(data.styles || []);
       rememberEventId(data.eventId);
+      if (options.history !== false) {
+        const action = styleHistoryAction(before, data.styles || []);
+        if (action) pushHistory(action);
+      }
       return data.styles || [];
     } catch (error) {
       status(error.message || 'Erro ao salvar cores', 'error');
@@ -2282,7 +2367,16 @@
     }
   }
 
-  async function deleteStylesBatch(targets) {
+  async function setStylesBatch(targets, background, options = {}) {
+    const styles = [];
+    (targets || []).forEach((target) => {
+      const style = normalizeStyleRequest(target, background);
+      if (style) styles.push(style);
+    });
+    return saveStylesBatch(styles, options);
+  }
+
+  async function deleteStylesBatch(targets, options = {}) {
     const unique = new Map();
     (targets || []).forEach((target) => {
       const normalized = normalizeStyleRequest(target);
@@ -2291,6 +2385,7 @@
     });
     const normalizedTargets = Array.from(unique.values());
     if (!normalizedTargets.length) return [];
+    const before = options.history === false ? [] : historyStylesForTargets(normalizedTargets);
     state.pendingBatchSaves += 1;
     updatePendingSaveStatus();
     try {
@@ -2300,6 +2395,11 @@
       });
       applyRemoteStylesDeleted(data.styleKeys || []);
       rememberEventId(data.eventId);
+      if (options.history !== false) {
+        const deletedKeys = new Set(data.styleKeys || []);
+        const action = styleHistoryAction(before.filter((style) => deletedKeys.has(style.styleKey)), []);
+        if (action) pushHistory(action);
+      }
       return data.styleKeys || [];
     } catch (error) {
       status(error.message || 'Erro ao apagar cores', 'error');
@@ -2308,6 +2408,19 @@
       state.pendingBatchSaves = Math.max(0, state.pendingBatchSaves - 1);
       updatePendingSaveStatus();
     }
+  }
+
+  async function restoreStylesFromHistory(targetStyles = [], replacedStyles = []) {
+    const desired = uniqueHistoryStyles(targetStyles);
+    const desiredKeys = new Set(desired.map((style) => style.styleKey));
+    const keysToRemove = new Set(uniqueHistoryStyles(replacedStyles).map((style) => style.styleKey));
+    desiredKeys.forEach((key) => keysToRemove.delete(key));
+    const deleteTargets = styleTargetsFromKeys(keysToRemove);
+    if (deleteTargets.length) await deleteStylesBatch(deleteTargets, { history: false });
+    if (desired.length) await saveStylesBatch(desired, { history: false });
+    const affected = rowsForStyleChanges(desired, Array.from(keysToRemove));
+    if (affected.needsFullRender) renderTable();
+    else refreshRenderedRows(affected.rowIds);
   }
 
   async function applyColorToSelection(color) {
@@ -2478,6 +2591,8 @@
     if (changes.length) await saveCellsBatch(changes, { optimistic: true, render: 'rows' });
     if (stylesToApply.length) {
       const affectedRows = new Set(stylesToApply.map((target) => target.rowId));
+      const styleHistoryTargets = stylesToApply.map((target) => ({ scope: 'cell', rowId: target.rowId, columnKey: target.columnKey }));
+      const beforeStyles = historyStylesForTargets(styleHistoryTargets);
       const stylesByColor = new Map();
       stylesToApply.forEach((target) => {
         const targets = stylesByColor.get(target.background) || [];
@@ -2485,8 +2600,10 @@
         stylesByColor.set(target.background, targets);
       });
       for (const [background, targets] of stylesByColor.entries()) {
-        await setStylesBatch(targets, background);
+        await setStylesBatch(targets, background, { history: false });
       }
+      const action = styleHistoryAction(beforeStyles, historyStylesForTargets(styleHistoryTargets));
+      if (action) pushHistory(action);
       refreshRenderedRows(affectedRows);
     }
     status('Sincronizado');

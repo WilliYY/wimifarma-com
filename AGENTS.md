@@ -290,7 +290,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - A grade da Cotacao V2 agora permite texto quebrar linha e aumentar a altura da celula, redimensionar largura de colunas pelos titulos, selecionar coluna pelo cabecalho, selecionar linha pelo numero, renomear distribuidora com duplo clique no cabecalho e adicionar 20 linhas no fim da rolagem.
 - Apagar distribuidora fica liberado no fluxo normal da equipe; a coluna e ocultada e pode voltar por `Ctrl+Z`/desfazer na mesma sessao.
 - `Ctrl+C` copia a selecao como matriz TSV e `Ctrl+V` cola matriz normalizando texto e numeros/precos para o padrao da Cotacao.
-- `Ctrl+Z`/desfazer tambem cobre filtros locais, alem de edicoes de celula, colagens, estilos e colunas.
+- `Ctrl+Z`/desfazer tambem cobre filtros locais, alem de edicoes de celula, colagens, pintura manual/borracha de estilos e colunas; `Ctrl+Y`/`Ctrl+Shift+Z` refaz a mesma acao local.
 - A formatacao condicional explicita pinta somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para preservar legibilidade.
 - Regras de formatacao condicional podem ser editadas e apagadas no modal da propria Cotacao V2.
 - A paleta de cores abre por botao no topo ou por `Cores` no menu de contexto, sempre flutuando acima da grade para nao ficar escondida atras das celulas, com tons do mais forte ao mais claro.
