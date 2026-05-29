@@ -44,6 +44,7 @@ textarea {
     top: 0;
     z-index: 20;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 18px;
@@ -58,12 +59,25 @@ textarea {
 .gestao-nav {
     display: inline-flex;
     align-items: center;
+    min-width: 0;
     gap: 12px;
 }
 
 .gestao-brand {
     text-decoration: none;
     font-weight: 950;
+}
+
+.gestao-brand span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-nav {
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .gestao-brand img {
@@ -329,6 +343,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-orders-summary div {
+    min-width: 0;
     min-height: 58px;
     display: flex;
     align-items: center;
@@ -339,6 +354,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-orders-summary span {
+    min-width: 0;
     color: #7b4058;
     font-size: 0.68rem;
     font-weight: 950;
@@ -348,11 +364,14 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-orders-summary strong {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
     color: var(--wine);
-    font-size: 1.42rem;
+    font-size: clamp(1.04rem, 1.35vw, 1.42rem);
     line-height: 1;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    text-align: right;
+    white-space: normal;
 }
 
 .gestao-orders-layout {
@@ -1998,6 +2017,53 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     filter: drop-shadow(0 18px 26px rgba(127, 9, 46, 0.2));
     transform: translate3d(var(--login-runner-x, 14vw), var(--login-runner-y, 62vh), 0) scaleX(var(--login-runner-dir, 1));
     will-change: transform;
+}
+
+@media (max-width: 1320px) {
+    .gestao-orders-layout {
+        grid-template-columns: minmax(270px, 0.72fr) minmax(0, 1fr);
+        grid-template-areas:
+            "form waiting"
+            "confirmed confirmed"
+            "history history";
+    }
+
+    .gestao-orders-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .gestao-orders-waiting-stack {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-head {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle,
+    .gestao-order-card.is-order-collapsed .gestao-order-summary-static {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 5px;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle > strong,
+    .gestao-order-card.is-order-collapsed .gestao-order-summary-static > strong {
+        justify-self: start;
+        white-space: normal;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-compact-meta {
+        flex-wrap: wrap;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-head-side {
+        justify-items: start;
+    }
+
+    .gestao-order-card.is-order-collapsed .gestao-order-head-tools {
+        justify-content: flex-start;
+    }
 }
 
 @media (max-width: 1050px) {

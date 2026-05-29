@@ -2048,7 +2048,7 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260526-open-ticket-value">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529-zoom-safe">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260517j">
   <script src="${BASE_PATH}/app.js?v=20260521-parcelas" defer></script>
 </head>
