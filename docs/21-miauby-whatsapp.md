@@ -285,6 +285,8 @@ docker compose exec -T wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whats
 
 Se o evento aparecer como `ignored/sender_not_allowed`, o numero nao passou na allowlist. O bridge compara hash direto, numero cifrado, alias da Evolution e variacoes brasileiras com/sem `55` e com/sem nono digito; se ainda bloquear, editar o telefone completo no painel e conferir se os cards necessarios estao liberados para aquele contato.
 
+Quando a Evolution entrega o remetente como `@lid` configurado em `MIAUW_WHATSAPP_RECIPIENT_ALIASES`, o painel, allowlist, permissoes e auditoria usam o telefone real resolvido. O envio da resposta, porem, deve usar o endereco original do chat quando ele for um alias/LID, para evitar que a Evolution marque a outbox como `sent` mas a resposta apareca em outro chat ou nao apareca para quem mandou `oi`.
+
 Se aparecer apenas `connection.update` com `missing_sender` e nenhum `messages.upsert`, o bridge nao recebeu texto; normalmente a trava esta no transporte Evolution/Baileys, nao na IA. Conferir a conexao e webhook:
 
 ```bash

@@ -356,7 +356,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.16';
+const SERVICE_VERSION = '0.5.17';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -944,6 +944,14 @@ function applyRecipientAlias(value: string): string {
     if (phonesMatch(normalized, source)) return target;
   }
   return value;
+}
+
+function replyAddressForProvider(originalAddress: string, displayAddress: string): string {
+  const original = safeText(originalAddress, 180);
+  if (WHATSAPP_PROVIDER === 'evolution' && original.includes('@') && applyRecipientAlias(original) !== original) {
+    return original;
+  }
+  return displayAddress || original;
 }
 
 function canonicalIncomingMessage(message: IncomingMessage): IncomingMessage {
@@ -1819,8 +1827,10 @@ async function countRecentUnauthorizedNotices(senderHashes: string[]): Promise<n
 
 async function sendSystemReplyForEvent(message: IncomingMessage, eventId: string, text: string, reason: string): Promise<void> {
   if (!eventId || !text) return;
-  const recipient = applyRecipientAlias(message.remoteJid || message.senderPhone);
-  if (!recipient) return;
+  const originalRecipient = message.remoteJid || message.senderPhone;
+  const displayRecipient = applyRecipientAlias(originalRecipient);
+  const providerRecipient = replyAddressForProvider(originalRecipient, displayRecipient);
+  if (!providerRecipient) return;
   const traceId = crypto.randomUUID().replace(/-/g, '');
   const outboxId = crypto.randomUUID();
   await pgPool.query(
@@ -1833,9 +1843,9 @@ async function sendSystemReplyForEvent(message: IncomingMessage, eventId: string
       eventId,
       WHATSAPP_PROVIDER,
       message.instanceName || defaultInstanceName(),
-      sha256(recipient),
-      maskPhone(recipient),
-      encryptText(recipient),
+      sha256(displayRecipient),
+      maskPhone(displayRecipient),
+      encryptText(providerRecipient),
       safeText(text, 1800),
       safeText(reason, 120),
       traceId,
@@ -1843,7 +1853,7 @@ async function sendSystemReplyForEvent(message: IncomingMessage, eventId: string
   );
 
   try {
-    const providerMessageId = await sendProviderText(recipient, text, message.instanceName || defaultInstanceName());
+    const providerMessageId = await sendProviderText(providerRecipient, text, message.instanceName || defaultInstanceName());
     await pgPool.query(
       `UPDATE miauw_whatsapp_outbox
           SET status = 'sent',
@@ -2420,8 +2430,8 @@ async function processPendingOutboxMessages(limit: number): Promise<number> {
 
 async function processPendingOutboxMessage(row: OutboxRecoveryRow): Promise<void> {
   try {
-    const recipient = applyRecipientAlias(decryptText(row.recipient_phone_ciphertext));
-    if (!normalizePhone(recipient)) throw new Error('outbox_recipient_unavailable');
+    const recipient = decryptText(row.recipient_phone_ciphertext);
+    if (!recipient.includes('@') && !normalizePhone(recipient)) throw new Error('outbox_recipient_unavailable');
     const providerMessageId = await sendProviderText(recipient, row.body_text, row.instance_name || defaultInstanceName());
     await pgPool.query(
       `UPDATE miauw_whatsapp_outbox
@@ -2790,7 +2800,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     }
 
     const recipientPhone = decryptText(row.sender_phone_ciphertext);
-    const recipientAddress = applyRecipientAlias(decryptText(row.remote_jid_ciphertext) || recipientPhone);
+    const originalRecipientAddress = decryptText(row.remote_jid_ciphertext) || recipientPhone;
+    const recipientAddress = applyRecipientAlias(originalRecipientAddress);
+    const providerRecipientAddress = replyAddressForProvider(originalRecipientAddress, recipientAddress);
     const senderModuleHashes = [
       ...new Set([
         ...phoneHashCandidates(row.sender_phone_hash, recipientPhone),
@@ -2974,7 +2986,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         row.instance_name || defaultInstanceName(),
         sha256(recipientAddress),
         maskPhone(recipientAddress),
-        encryptText(recipientAddress),
+        encryptText(providerRecipientAddress),
         replyText,
         reply.engine,
         safeText(reply.reason, 120),
@@ -2988,7 +3000,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     );
 
     await sleep(randomInt(MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS));
-    const sendResult = await sendProviderReply(recipientAddress, replyText, row.instance_name || defaultInstanceName(), confirmation, audioReply || undefined);
+    const sendResult = await sendProviderReply(providerRecipientAddress, replyText, row.instance_name || defaultInstanceName(), confirmation, audioReply || undefined);
     if (sendResult.fallbackError) {
       await recordErrorLog('provider_reply_fallback', 'warn', new Error(sendResult.fallbackError), {
         eventId: row.id,
