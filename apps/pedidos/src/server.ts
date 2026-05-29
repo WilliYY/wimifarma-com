@@ -140,7 +140,13 @@ const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   Math.min(10000, Number.parseInt(env.PEDIDOS_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500),
 );
 const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core' || CORE_AUTH_SHADOW_ENABLED;
-const INTERNAL_TOKEN = String(env.PEDIDOS_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
+const INTERNAL_TOKEN = String(
+  env.PEDIDOS_INTERNAL_TOKEN
+    || env.MIAUW_GUARDIAN_TOKEN
+    || env.MIAUW_AGENT_INTERNAL_TOKEN
+    || env.MIAUW_WHATSAPP_INTERNAL_TOKEN
+    || '',
+).trim();
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',

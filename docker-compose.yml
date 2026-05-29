@@ -313,6 +313,8 @@ services:
       PEDIDOS_SESSION_SECRET: ${PEDIDOS_SESSION_SECRET:-wimifarma_pedidos_dev_secret_change_me}
       GESTAO_SESSION_SECRET: ${GESTAO_SESSION_SECRET:-wimifarma_gestao_dev_secret_change_me}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
+      MIAUW_WHATSAPP_INTERNAL_TOKEN: ${MIAUW_WHATSAPP_INTERNAL_TOKEN:-}
       PEDIDOS_INTERNAL_TOKEN: ${PEDIDOS_INTERNAL_TOKEN:-}
     networks:
       - wimifarma-com-network
