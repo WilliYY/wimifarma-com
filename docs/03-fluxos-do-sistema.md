@@ -85,6 +85,8 @@ O modulo Usuarios administra os logins internos em `/usuarios/`. Ele e servido p
 
 A tela permite criar usuario com senha, perfil e status, desativar usuario sem apagar fisicamente, escolher quais modulos ficam liberados, associar o login a um funcionario do XP e consultar o historico central de mudancas. A associacao com XP usa `core_user_xp_links` apontando logicamente para `xp_employees.id`; a fonte oficial de XP continua sendo o modulo XP.
 
+O painel de Usuarios deve deixar claro que a fonte oficial e o Postgres core; quando um login veio de `wf_users`, a tela mostra isso como origem importada do MySQL em vez de expor o identificador tecnico cru.
+
 O login de Usuarios usa o happy cat zanzando pela tela e fugindo do cursor como detalhe visual, sem interferir no formulario ou na sessao.
 
 Tabelas principais:

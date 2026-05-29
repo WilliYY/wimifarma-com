@@ -72,7 +72,7 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'usuarios';
-const SERVICE_VERSION = '1.0.2';
+const SERVICE_VERSION = '1.0.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -195,6 +195,14 @@ function brDateTime(value: unknown): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+function userSourceLabel(source: unknown): string {
+  const value = String(source || '').trim();
+  if (value === 'mysql:wf_users') return 'Importado do MySQL';
+  if (value === 'usuarios:core') return 'Criado no Postgres';
+  if (value.includes('core')) return 'Postgres core';
+  return value || 'Postgres core';
 }
 
 function safeReturnPath(value: unknown): string {
@@ -795,8 +803,8 @@ function renderLogin(req: Request, message = ''): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Usuarios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529c">
+  <title>Usu&aacute;rios - Wimifarma</title>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529d">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -848,8 +856,8 @@ function renderDashboard(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Usuarios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529c">
+  <title>Usu&aacute;rios - Wimifarma</title>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529d">
 </head>
 <body>
   <header class="users-topbar">
@@ -866,8 +874,13 @@ function renderDashboard(
     <div class="users-shell">
       <div class="users-page-title">
         <div>
+          <span class="users-kicker">Core Postgres</span>
           <h1>Usu&aacute;rios</h1>
-          <p>${e(user.username)} conectado</p>
+          <p>${e(user.username)} conectado. Logins individuais, permiss&otilde;es por m&oacute;dulo, XP e auditoria central.</p>
+        </div>
+        <div class="users-storage-note">
+          <strong>Fonte oficial</strong>
+          <span>Postgres core_users; legado MySQL aparece apenas como origem importada.</span>
         </div>
       </div>
       ${flash.message ? `<div class="users-alert ${e(flash.type)}">${e(flash.message)}</div>` : ''}
@@ -880,21 +893,21 @@ function renderDashboard(
       <div class="users-layout">
         <aside>
           <section class="users-section">
-            <h2>Novo usuario</h2>
+            <h2>Novo usu&aacute;rio</h2>
             <form method="post" action="${BASE_PATH}/" class="users-create-form">
               ${csrfField(req)}
               <input type="hidden" name="action" value="create_user">
-              <label class="users-label"><span>Usuario</span><input class="users-input" type="text" name="username" maxlength="60" autocomplete="off" required></label>
+              <label class="users-label"><span>Usu&aacute;rio</span><input class="users-input" type="text" name="username" maxlength="60" autocomplete="off" required></label>
               <label class="users-label"><span>Senha</span><input class="users-input" type="password" name="password" minlength="6" autocomplete="new-password" required></label>
               <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select></label>
               <label class="users-check"><input type="checkbox" name="active" value="1" checked>Ativo</label>
               <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, null)}</select></label>
-              <fieldset class="users-fieldset"><legend>Modulos</legend>${renderModuleChecks('modules', defaultModules)}</fieldset>
+              <fieldset class="users-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', defaultModules)}</fieldset>
               <button class="users-button" type="submit">Criar</button>
             </form>
           </section>
           <section class="users-section">
-            <h2>Historico</h2>
+            <h2>Hist&oacute;rico</h2>
             ${renderAudit(audit)}
           </section>
         </aside>
@@ -913,18 +926,20 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
   const enabledModules = MODULES.filter((module) => permissions[module.key]).map((module) => module.label);
   const userId = Number(row.id);
   const isAdm = normalizeUsername(row.username) === 'adm';
+  const sourceLabel = userSourceLabel(row.source);
   return `<article class="users-user">
     <div class="users-user-head">
       <div class="users-name">
         <strong>${e(row.username)}</strong>
-        <span>${e(row.source)} &middot; ${e(brDateTime(row.created_at))}</span>
+        <span><b>${e(sourceLabel)}</b> &middot; ${e(brDateTime(row.created_at))}</span>
       </div>
       <div class="users-pills">
         <span class="users-pill ${row.active ? 'ok' : 'off'}">${row.active ? 'Ativo' : 'Inativo'}</span>
         <span class="users-pill">${e(row.role || 'user')}</span>
+        <span class="users-pill data">Postgres</span>
         ${row.xp_employee_name ? `<span class="users-pill ok">XP: ${e(row.xp_employee_name)}</span>` : '<span class="users-pill off">Sem XP</span>'}
       </div>
-      <div class="users-meta"><span>${e(enabledModules.length)} modulos</span></div>
+      <div class="users-meta"><span>${e(enabledModules.length)} m&oacute;dulos</span></div>
     </div>
     <details>
       <summary>Editar</summary>
@@ -940,7 +955,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         ${isAdm ? `<input type="hidden" name="role" value="${e(row.role)}">` : ''}
         <label class="users-check"><input type="checkbox" name="active" value="1"${row.active ? ' checked' : ''}${isAdm ? ' disabled' : ''}>Ativo</label>
         ${isAdm ? '<input type="hidden" name="active" value="1">' : ''}
-        <fieldset class="users-fieldset"><legend>Modulos</legend>${renderModuleChecks('modules', permissions)}</fieldset>
+        <fieldset class="users-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', permissions)}</fieldset>
         <div class="users-actions">
           <button class="users-button" type="submit">Salvar</button>
         </div>
