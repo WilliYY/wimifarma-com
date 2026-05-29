@@ -63,29 +63,29 @@ $modules = @(
     @{
         Module = 'Gestao'
         Path = 'apps/gestao'
-        Current = 'Node.js + TypeScript + Express + Postgres'
-        Legacy = 'mysql2 para login, wf_logs e importacao legada'
+        Current = 'Node.js + TypeScript + Express + Postgres + core auth'
+        Legacy = 'mysql2 para rollback opt-in de login, wf_logs e importacao legada'
         Target = 'Node.js + TypeScript + Postgres puro'
-        Priority = '1 - cortar auth depois da sombra'
-        Next = 'Observar GESTAO_CORE_AUTH_SHADOW_ENABLED e migrar wf_logs para core_audit_logs.'
+        Priority = '1 - remover legado restante'
+        Next = 'Manter GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=false e migrar wf_logs/importacao legada para core_audit_logs.'
     },
     @{
         Module = 'Pedidos'
         Path = 'apps/pedidos'
-        Current = 'Node.js + TypeScript + Express + Postgres da Gestao'
-        Legacy = 'mysql2 para login e wf_logs'
+        Current = 'Node.js + TypeScript + Express + Postgres da Gestao + core auth'
+        Legacy = 'mysql2 para rollback opt-in de login e wf_logs'
         Target = 'Node.js + TypeScript + Postgres puro'
-        Priority = '1 - cortar auth depois da sombra'
-        Next = 'Observar PEDIDOS_CORE_AUTH_SHADOW_ENABLED e migrar log curto para auditoria Postgres.'
+        Priority = '1 - remover legado restante'
+        Next = 'Manter PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED=false e migrar log curto para auditoria Postgres.'
     },
     @{
         Module = 'Tarefa'
         Path = 'apps/tarefa'
-        Current = 'Node.js + TypeScript + Express + Postgres'
+        Current = 'Node.js + TypeScript + Express + Postgres + core auth'
         Legacy = 'MySQL legado opcional por flags de rollback/import/log'
         Target = 'Node.js + TypeScript + Postgres puro'
         Priority = '2 - validar corte core'
-        Next = 'Validar TAREFA_AUTH_PROVIDER=core e legado MySQL desligado por flags.'
+        Next = 'Validar TAREFA_AUTH_PROVIDER=core como default e desligar legado MySQL de dados por flags apos paridade.'
     },
     @{
         Module = 'Codigos'

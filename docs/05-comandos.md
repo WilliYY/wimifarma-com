@@ -156,15 +156,15 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao usa somente `core_users`; Tarefa, XP, Codigos e Financeiro podem usar `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core`. Gestao/Pedidos continuam com fallback MySQL temporario enquanto o rollback ainda for necessario.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao usa somente `core_users`; Gestao, Pedidos, Tarefa, XP, Codigos e Financeiro usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
-Para validar a Gestao sem corte de login, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-gestao-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+Gestao usa `GESTAO_AUTH_PROVIDER=core` por padrao. O fallback de login em `wf_users` fica desligado e so deve ser ligado como rollback temporario com `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Para comparar um ambiente ainda em MySQL antes do corte, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
-Para validar Pedidos sem corte de login, ligar `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-pedidos-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+Pedidos usa `PEDIDOS_AUTH_PROVIDER=core` por padrao. O fallback de login em `wf_users` fica desligado e so deve ser ligado como rollback temporario com `PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED=true`. Para comparar um ambiente ainda em MySQL antes do corte, ligar `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
-Para validar Tarefa sem corte de login, ligar `TAREFA_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-tarefa-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+Tarefa usa `TAREFA_AUTH_PROVIDER=core` por padrao. Para comparar um ambiente ainda em MySQL antes do corte, ligar `TAREFA_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
-Para cortar Tarefa para login oficial no core Postgres, usar `TAREFA_AUTH_PROVIDER=core` e rebuildar apenas `wimifarma-tarefa-app`. Depois do corte validado, a janela MySQL pode ser desligada com `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false`; nesse estado `/tarefa/health` deve mostrar `auth.provider=core` e `storage.legacy_mysql_required=false`. Rollback: voltar `TAREFA_AUTH_PROVIDER=mysql`, religar as flags legadas necessarias e rebuildar `wimifarma-tarefa-app`.
+Depois do corte validado, a janela MySQL de dados da Tarefa pode ser desligada com `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false`; nesse estado `/tarefa/health` deve mostrar `auth.provider=core` e `storage.legacy_mysql_required=false`. Rollback de autenticacao: voltar `TAREFA_AUTH_PROVIDER=mysql`, religar as flags legadas necessarias e rebuildar `wimifarma-tarefa-app`.
 
 ## Local - Tarefa Node/Postgres
 
@@ -180,7 +180,7 @@ curl.exe -sS http://127.0.0.1:3002/tarefa/badge.php
 docker exec wimifarma-tarefa-db psql -U wimifarma_tarefa -d wimifarma_tarefa -c "\dt"
 ```
 
-A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico importa `wf_tarefas` para `tarefa_tasks` de forma idempotente e, por padrao, espelha novas escritas de volta no MySQL legado com `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` para rollback curto. A fonte oficial depois do corte e o Postgres `wimifarma_tarefa`.
+A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico autentica por `core_users` e importa `wf_tarefas` para `tarefa_tasks` de forma idempotente; enquanto `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`, novas escritas tambem espelham no MySQL legado para rollback curto. A fonte oficial depois do corte e o Postgres `wimifarma_tarefa`.
 
 ## Local - XP Node/Postgres
 

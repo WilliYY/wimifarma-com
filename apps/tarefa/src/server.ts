@@ -86,12 +86,12 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'tarefa';
-const SERVICE_VERSION = '1.1.0';
+const SERVICE_VERSION = '1.1.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/tarefa');
 const PORT = Number.parseInt(env.PORT || '3500', 10);
 const SESSION_SECRET = env.TAREFA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const TZ = 'America/Sao_Paulo';
-const AUTH_PROVIDER = normalizeAuthProvider(env.TAREFA_AUTH_PROVIDER);
+const AUTH_PROVIDER = normalizeAuthProvider(env.TAREFA_AUTH_PROVIDER || 'core');
 const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_MIRROR_ENABLED ?? 'true');
 const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_IMPORT_ENABLED ?? 'true');
 const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_LOGS_ENABLED ?? 'true');
@@ -200,7 +200,7 @@ function normalizeBoolean(value: unknown): boolean {
 }
 
 function normalizeAuthProvider(value: unknown): AuthProvider {
-  return String(value || 'mysql').trim().toLowerCase() === 'core' ? 'core' : 'mysql';
+  return String(value || 'core').trim().toLowerCase() === 'mysql' ? 'mysql' : 'core';
 }
 
 function requireMysqlPool(feature: string): mysql.Pool {

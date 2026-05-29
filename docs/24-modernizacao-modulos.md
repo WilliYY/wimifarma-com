@@ -42,9 +42,9 @@ O script mostra:
 | Modulo | Estado atual | Legado principal | Alvo recomendado | Prioridade |
 | --- | --- | --- | --- | --- |
 | Cotacao | Node.js + Express + Postgres/Redis + core auth | sem dependencia MySQL no app | evoluir TypeScript quando houver janela segura | moderno |
-| Gestao | Node.js + TypeScript + Postgres | `mysql2` para login/log/importacao | Postgres puro + core auth/auditoria | 1 |
-| Pedidos | Node.js + TypeScript + Postgres da Gestao | `mysql2` para login/log | Postgres puro + core auth/auditoria | 1 |
-| Tarefa | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
+| Gestao | Node.js + TypeScript + Postgres + core auth | `mysql2` para rollback opt-in de login, log e importacao | Postgres puro + core auth/auditoria | 1 |
+| Pedidos | Node.js + TypeScript + Postgres da Gestao + core auth | `mysql2` para rollback opt-in de login e log | Postgres puro + core auth/auditoria | 1 |
+| Tarefa | Node.js + TypeScript + Postgres + core auth | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
 | Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL opcional para importacao/espelho de rollback | Postgres puro + core auth/auditoria apos paridade | 5 em corte |
@@ -57,10 +57,10 @@ O script mostra:
 
 ## Ordem segura
 
-1. Observar Gestao/Pedidos em modo sombra/fallback no core auth sem divergencias; Cotacao ja usa apenas `core_users`.
-2. Cortar autenticacao restante para `core_users`, mantendo rollback por `.env` onde ainda existir fallback.
+1. Observar Gestao/Pedidos com `core_users` como login padrao e fallback MySQL desligado; Cotacao ja usa apenas `core_users`.
+2. Manter rollback por `.env` onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login.
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
-3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` e legado MySQL desligado por flags.
+3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` como default e desligar legado MySQL de dados por flags depois de paridade.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
 5. Validar Financeiro Node/Postgres em `/financeiro/` com backup, checksums por dia/tipo, smoke de Caixa/Relatorio/exportacao e contrato Pix CNPJ do Miauby antes de desligar espelho MySQL.
 6. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
@@ -75,7 +75,7 @@ Tarefa ja foi cortado para `apps/tarefa` com Postgres dedicado:
 - importador idempotente MySQL -> Postgres;
 - health em `/tarefa/health`;
 - badge preservado em `/tarefa/badge.php`;
-- auth oficial pode usar `core_users` por `TAREFA_AUTH_PROVIDER=core`;
+- auth oficial usa `core_users` por `TAREFA_AUTH_PROVIDER=core` por padrao;
 - legado MySQL pode ser desligado por `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false`.
 
 XP foi cortado para `apps/xp`:

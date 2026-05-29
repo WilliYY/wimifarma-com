@@ -68,9 +68,9 @@ count_refs() {
 
 rows=(
   "Cotacao|apps/cotacao|Node.js + Express + Postgres/Redis + core auth|sem dependencia MySQL no app|evoluir TypeScript em janela segura|moderno"
-  "Gestao|apps/gestao|Node.js + TypeScript + Postgres|mysql2 login/log/importacao|Postgres puro + core auth|1"
-  "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres|mysql2 login/log|Postgres puro + core auth|1"
-  "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres|MySQL legado opcional por flags|Postgres puro + core auth|2"
+  "Gestao|apps/gestao|Node.js + TypeScript + Postgres + core auth|mysql2 rollback opt-in login/log/importacao|Postgres puro + core auth|1"
+  "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres + core auth|mysql2 rollback opt-in login/log|Postgres puro + core auth|1"
+  "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres + core auth|MySQL legado opcional por flags|Postgres puro + core auth|2"
   "Codigos|site/codigos;apps/codigos|Node.js + TypeScript + Postgres|MySQL legado opcional por flags CODIGOS_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|3 em corte"
   "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres|MySQL legado opcional por flags XP_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|4 em corte"
   "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|MySQL opcional por FINANCEIRO_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|5 validar"
@@ -97,8 +97,8 @@ done
 cat <<'EOF'
 
 Proximos passos recomendados:
-- Observar Gestao/Pedidos em sombra/fallback; Cotacao ja usa core auth sem MySQL.
-- Validar Tarefa com core auth e legado MySQL desligado por flags.
+- Observar Gestao/Pedidos com core auth e fallback MySQL desligado por default; Cotacao ja usa core auth sem MySQL.
+- Validar Tarefa com core auth default e desligar legado MySQL de dados por flags apos paridade.
 - Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
 - Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.

@@ -116,13 +116,13 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'pedidos';
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.0.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/pedidos');
 const PORT = Number.parseInt(env.PORT || '3300', 10);
 const SESSION_SECRET = env.PEDIDOS_SESSION_SECRET || env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const TZ = 'America/Sao_Paulo';
 const AUTH_PROVIDER = normalizeAuthProvider(env.PEDIDOS_AUTH_PROVIDER || 'core');
-const MYSQL_AUTH_FALLBACK_ENABLED = normalizeBoolean(env.PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED ?? 'true');
+const MYSQL_AUTH_FALLBACK_ENABLED = normalizeBoolean(env.PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED ?? 'false');
 const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.PEDIDOS_CORE_AUTH_SHADOW_ENABLED);
 const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   500,

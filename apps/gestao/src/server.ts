@@ -144,14 +144,14 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.6.0';
+const SERVICE_VERSION = '1.6.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const INTERNAL_TOKEN = String(env.GESTAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
 const TZ = 'America/Sao_Paulo';
 const AUTH_PROVIDER = normalizeAuthProvider(env.GESTAO_AUTH_PROVIDER || 'core');
-const MYSQL_AUTH_FALLBACK_ENABLED = normalizeBoolean(env.GESTAO_AUTH_MYSQL_FALLBACK_ENABLED ?? 'true');
+const MYSQL_AUTH_FALLBACK_ENABLED = normalizeBoolean(env.GESTAO_AUTH_MYSQL_FALLBACK_ENABLED ?? 'false');
 const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.GESTAO_CORE_AUTH_SHADOW_ENABLED);
 const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   500,
