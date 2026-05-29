@@ -354,6 +354,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-orders-summary span {
+    flex: 1 1 auto;
     min-width: 0;
     color: #7b4058;
     font-size: 0.68rem;
@@ -364,14 +365,27 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-orders-summary strong {
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
+    min-width: max-content;
     color: var(--wine);
-    font-size: clamp(1.04rem, 1.35vw, 1.42rem);
+    font-size: clamp(1rem, 1.16vw, 1.34rem);
+    font-variant-numeric: tabular-nums;
     line-height: 1;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
     text-align: right;
-    white-space: normal;
+    white-space: nowrap;
+}
+
+.gestao-orders-summary div:nth-child(3),
+.gestao-orders-summary div:nth-child(5),
+.gestao-orders-summary div:nth-child(6) {
+    gap: 8px;
+}
+
+.gestao-orders-summary div:nth-child(3) strong,
+.gestao-orders-summary div:nth-child(5) strong,
+.gestao-orders-summary div:nth-child(6) strong {
+    font-size: clamp(0.98rem, 1.05vw, 1.26rem);
 }
 
 .gestao-orders-layout {
