@@ -46,7 +46,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
 - DNS GoDaddy e Nginx Proxy Manager estavam em configuracao para `wimifarma.com`.
 - Cache de pagina WordPress/SpeedyCache esta opt-in durante a migracao para evitar HTML publico antigo com assets `http://`.
-- A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em tela inteira, logo animada propria sem fundo, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
+- A rota publica `/` e servida por `site/home.php`, uma home independente do bootstrap do WordPress, com fundo visual em video em tela inteira preservando as cores originais sem overlay branco de clareamento, logo animada propria sem fundo, GIFs decorativos com movimento igual aos logins e cards inferiores de acesso aos modulos.
 - A logo oficial foi atualizada em 2026-05-21 como SVG horizontal e esta sincronizada nos assets compartilhados de Cashback/Codigos/Gestao/Pedidos, Financeiro, Tarefa, Miauw e Cotacao V2. Em 2026-05-24, a home publica passou a usar `logo-wimifarma-home-animated.gif` como variacao animada sem fundo da marca.
 - Em 2026-05-21, Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw foram validados com navegador local e checks publicos: as telas de login e as telas internas autenticadas carregam a logo nova. O `/wp-login.php` permanece com o cabecalho padrao do WordPress, separado dos logins internos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.

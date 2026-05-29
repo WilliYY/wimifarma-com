@@ -42,6 +42,9 @@ Atualizacao 2026-05-05:
 Atualizacao 2026-05-21:
 - Logo oficial trocada pelo SVG horizontal novo em assets/img/logo-wimifarma.svg, assets/img/logo-wimifarma-official.svg e assets/img/logo-wimifarma-compact.svg, preservando fundo transparente e nomes de arquivo.
 
+Atualizacao 2026-05-29:
+- Fundo em video da home preserva as cores originais do looping, sem overlay branco de clareamento por cima.
+
 Medida recomendada da logo:
 - Canva: 1200 x 360 px.
 - Fundo transparente.

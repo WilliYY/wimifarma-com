@@ -172,17 +172,15 @@ $modules = array(
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.78;
-            filter: saturate(1.06);
+            opacity: 1;
+            filter: none;
         }
 
         .wf-backdrop::after {
             content: "";
             position: absolute;
             inset: 0;
-            background:
-                linear-gradient(180deg, rgba(246, 248, 251, 0.2), rgba(246, 248, 251, 0.9) 68%, rgba(246, 248, 251, 0.96)),
-                linear-gradient(90deg, rgba(246, 248, 251, 0.76), rgba(246, 248, 251, 0.18) 48%, rgba(246, 248, 251, 0.76));
+            pointer-events: none;
         }
 
         .wf-header {
