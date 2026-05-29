@@ -903,7 +903,8 @@ async function coreAuthHealth(): Promise<Record<string, unknown>> {
   const state = {
     provider: AUTH_PROVIDER,
     mysqlFallbackEnabled: MYSQL_AUTH_FALLBACK_ENABLED,
-    shadowEnabled: CORE_AUTH_SHADOW_ENABLED,
+    shadowConfigured: CORE_AUTH_SHADOW_ENABLED,
+    shadowEnabled: CORE_AUTH_SHADOW_ENABLED && AUTH_PROVIDER === 'mysql',
     shadow: { ...coreAuthShadow },
   };
   if (!CORE_AUTH_REQUIRED || !corePgPool) {
