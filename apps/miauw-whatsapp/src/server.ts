@@ -282,6 +282,8 @@ type DashboardErrorRow = {
   created_at: string;
 };
 
+type DashboardTone = 'ok' | 'warn' | 'bad' | 'muted';
+
 type DashboardN8nRecipientRow = {
   module_key: string;
   allowed_count: string;
@@ -6235,6 +6237,28 @@ function renderRecentEvents(rows: DashboardEventRow[]): string {
   }).join('');
 }
 
+function renderConfigCard(title: string, tone: DashboardTone, statusLabel: string, details: Array<[string, string | number]>): string {
+  return `
+    <div class="status-item config-card is-${tone}">
+      <div class="config-head">
+        <b>${htmlEscape(title)}</b>
+        <span class="config-chip is-${tone}">${htmlEscape(statusLabel)}</span>
+      </div>
+      <div class="config-details">
+        ${details.map(([label, value]) => `<span><b>${htmlEscape(label)}</b><em>${htmlEscape(value)}</em></span>`).join('')}
+      </div>
+    </div>`;
+}
+
+function renderStateCard(title: string, value: number | string, detail: string, tone: DashboardTone): string {
+  return `
+    <div class="status-item state-card is-${tone}">
+      <span class="state-label">${htmlEscape(title)}</span>
+      <strong>${htmlEscape(value)}</strong>
+      <small>${htmlEscape(detail)}</small>
+    </div>`;
+}
+
 function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
   if (!rows.length) {
     return '<tr><td colspan="9" class="empty">Sem respostas na outbox ainda.</td></tr>';
@@ -6264,20 +6288,26 @@ function renderRecentOutbox(rows: DashboardOutboxRow[]): string {
 
 function renderEngineBreakdown(rows: DashboardEngineRow[]): string {
   if (!rows.length) {
-    return '<div class="status-item"><b>Rotas 24h</b><span class="pill is-warn">0</span><small>Nenhuma resposta recente.</small></div>';
+    return renderConfigCard('Rotas 24h', 'warn', '0 enviadas', [['Status', 'nenhuma resposta recente']]);
   }
   const maxP95 = Math.max(1, ...rows.map((row) => numericValue(row.p95_total_ms || row.p95_latency_ms)));
   return rows.map((row) => `
-    <div class="status-item engine-card">
+    <div class="status-item config-card engine-card is-ok">
       <div class="engine-head">
         <b>${htmlEscape(row.reply_engine || 'legacy')}</b>
-        <span class="pill is-ok">${htmlEscape(row.sent_count || 0)} enviadas</span>
+        <span class="config-chip is-ok">${htmlEscape(row.sent_count || 0)} enviadas</span>
       </div>
       <div class="engine-bars" aria-label="Latencia ${htmlEscape(row.reply_engine || 'legacy')}">
         <span style="--bar:${Math.max(4, Math.min(100, Math.round((numericValue(row.avg_total_ms) / maxP95) * 100)))}%"></span>
         <span style="--bar:${Math.max(4, Math.min(100, Math.round((numericValue(row.p95_total_ms) / maxP95) * 100)))}%"></span>
       </div>
-      <small>${htmlEscape(row.count || 0)} respostas | IA media ${htmlEscape(formatMs(row.avg_latency_ms))} / p95 ${htmlEscape(formatMs(row.p95_latency_ms))} | total medio ${htmlEscape(formatMs(row.avg_total_ms))} / p95 ${htmlEscape(formatMs(row.p95_total_ms))}</small>
+      <div class="config-details">
+        <span><b>Respostas</b><em>${htmlEscape(row.count || 0)}</em></span>
+        <span><b>IA media</b><em>${htmlEscape(formatMs(row.avg_latency_ms))}</em></span>
+        <span><b>IA p95</b><em>${htmlEscape(formatMs(row.p95_latency_ms))}</em></span>
+        <span><b>Total medio</b><em>${htmlEscape(formatMs(row.avg_total_ms))}</em></span>
+        <span><b>Total p95</b><em>${htmlEscape(formatMs(row.p95_total_ms))}</em></span>
+      </div>
     </div>`).join('');
 }
 
@@ -6394,7 +6424,7 @@ function renderSyncMessage(label: string, text: string): string {
   return `<div class="sync-message${empty ? ' is-empty' : ''}"><span>${htmlEscape(label)}</span><p>${htmlEscape(empty ? 'sem texto' : value)}</p></div>`;
 }
 
-function syncBadgeTone(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
+function syncBadgeTone(value: string): DashboardTone {
   const clean = (value || '').toLowerCase();
   if (!clean || clean === '-') return 'muted';
   if (clean.includes('error') || clean.includes('failed') || clean.includes('dead')) return 'bad';
@@ -6403,7 +6433,7 @@ function syncBadgeTone(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
   return 'muted';
 }
 
-function syncEngineTone(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
+function syncEngineTone(value: string): DashboardTone {
   const clean = (value || '').toLowerCase();
   if (!clean || clean === '-') return 'muted';
   if (clean.includes('blocked')) return 'warn';
@@ -6412,11 +6442,11 @@ function syncEngineTone(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
   return 'muted';
 }
 
-function renderSyncBadge(label: string, tone: 'ok' | 'warn' | 'bad' | 'muted'): string {
+function renderSyncBadge(label: string, tone: DashboardTone): string {
   return `<span class="sync-badge is-${tone}">${htmlEscape(label || '-')}</span>`;
 }
 
-function responseTimeTone(value: number | string | null | undefined): 'ok' | 'warn' | 'bad' | 'muted' {
+function responseTimeTone(value: number | string | null | undefined): DashboardTone {
   const ms = numericValue(value);
   if (!ms) return 'muted';
   if (ms > 30000) return 'bad';
@@ -6424,7 +6454,7 @@ function responseTimeTone(value: number | string | null | undefined): 'ok' | 'wa
   return 'ok';
 }
 
-function renderOpsChip(label: string, tone: 'ok' | 'warn' | 'bad' | 'muted'): string {
+function renderOpsChip(label: string, tone: DashboardTone): string {
   return `<span class="ops-chip is-${tone}">${htmlEscape(label || '-')}</span>`;
 }
 
@@ -6698,6 +6728,107 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .status-item { border: 1px solid #f1d8e3; border-radius: 8px; padding: 12px; background: #fffafb; }
     .status-item b { display: block; margin-bottom: 8px; color: #251827; font-size: 14px; }
     .status-item small { color: #6a5964; font-size: 12px; line-height: 1.35; }
+    .config-panel,
+    .state-panel { background: #fffdfd; }
+    .config-card,
+    .state-card {
+      min-width: 0;
+      border-left: 4px solid #d8c8d0;
+      background: #fff;
+      box-shadow: 0 12px 26px rgba(89, 27, 57, .05);
+    }
+    .config-card.is-ok,
+    .state-card.is-ok { border-left-color: #21a66b; }
+    .config-card.is-warn,
+    .state-card.is-warn { border-left-color: #f0a000; }
+    .config-card.is-bad,
+    .state-card.is-bad { border-left-color: #d33b57; }
+    .config-card.is-muted,
+    .state-card.is-muted { border-left-color: #d8c8d0; }
+    .config-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 9px;
+    }
+    .config-head b,
+    .config-card .engine-head b { margin: 0; color: #251827; font-size: 14px; line-height: 1.2; }
+    .config-chip {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0 9px;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .config-chip.is-ok { background: #daf6e8; color: #097143; }
+    .config-chip.is-warn { background: #fff2d2; color: #8c5a00; }
+    .config-chip.is-bad { background: #ffe1e8; color: #a30f2e; }
+    .config-chip.is-muted { background: #f2edf0; color: #6d5a66; }
+    .config-details {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+    }
+    .engine-card .config-details { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .config-details span {
+      min-width: 0;
+      border: 1px solid #f2dce5;
+      border-radius: 8px;
+      background: #fffafb;
+      padding: 7px 8px;
+    }
+    .config-details b {
+      display: block;
+      margin: 0 0 3px;
+      color: #8d0f43;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .config-details em {
+      display: block;
+      color: #3f3340;
+      font-style: normal;
+      font-size: 12px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+    .state-card {
+      min-height: 104px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-areas: "value label" "value text";
+      column-gap: 10px;
+      align-items: center;
+    }
+    .state-card strong {
+      grid-area: value;
+      min-width: 50px;
+      min-height: 50px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: #fff2d2;
+      color: #8c5a00;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .state-card.is-ok strong { background: #daf6e8; color: #097143; }
+    .state-card.is-warn strong { background: #fff2d2; color: #8c5a00; }
+    .state-card.is-bad strong { background: #ffe1e8; color: #a30f2e; }
+    .state-card.is-muted strong { background: #f2edf0; color: #6d5a66; }
+    .state-card .state-label {
+      grid-area: label;
+      color: #251827;
+      font-size: 14px;
+      font-weight: 900;
+      line-height: 1.15;
+    }
+    .state-card small { grid-area: text; margin-top: 4px; }
     .engine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
     .engine-head b { margin: 0; }
     .engine-bars { display: grid; gap: 5px; margin: 8px 0; }
@@ -7103,6 +7234,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       .panel, .panel.is-wide { grid-column: auto; }
       .allowlist-form, .allowlist-edit, .allowlist-list { grid-template-columns: 1fr; }
       .status-list { grid-template-columns: 1fr; }
+      .config-details,
+      .engine-card .config-details { grid-template-columns: 1fr; }
       .n8n-summary, .n8n-flow, .n8n-stack-grid, .n8n-workflow-grid, .n8n-detail-grid { grid-template-columns: 1fr; }
       h1 { font-size: 36px; }
     }
@@ -7154,61 +7287,66 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres. LIDs da Evolution configurados como alias ficam ocultos e protegidos; edite apenas o numero real vinculado. O telefone completo aparece apenas nesta allowlist logada.</p>
       </article>
 
-      <article class="panel">
+      <article class="panel config-panel">
         <h2>Configuracao</h2>
         <div class="status-list">
-          <div class="status-item">
-            <b>Canal</b>
-            ${renderPill(enabled, 'Ativo', 'Desligado')}
-            <small>Ligado por MIAUW_WHATSAPP_ENABLED no ambiente.</small>
-          </div>
-          <div class="status-item">
-            <b>Transporte</b>
-            ${renderPill(transportConfigured, provider === 'meta' ? 'Meta configurada' : 'Evolution configurada', 'Pendente')}
-            <small>Provider: ${htmlEscape(provider)} | Instancia: ${htmlEscape(defaultInstanceName())}</small>
-          </div>
-          <div class="status-item">
-            <b>Agente Miauby</b>
-            ${renderPill(agentConfigured || geminiReady, aiMode === 'hybrid' ? 'Hibrido' : aiMode, 'Pendente')}
-            <small>Modo IA: ${htmlEscape(aiMode)} | Gemini: ${geminiReady ? htmlEscape(geminiModel) : 'sem chave'} | Core: ${agentConfigured ? 'ok' : 'pendente'} | Alias: ${aliasCount}</small>
-          </div>
-          <div class="status-item">
-            <b>Seguranca</b>
-            ${renderPill((webhookConfigured || metaVerifyConfigured) && encryptionConfigured, 'Tokens ok', 'Revisar')}
-            <small>Painel: ${dashboardAuthConfigured ? 'login ativo' : 'aberto por ambiente'} | Meta assinatura: ${metaSignatureConfigured ? 'ativa' : 'pendente'} | Grupos: ${groupsEnabled ? 'liberados' : 'bloqueados'} | Rate: ${numberStatus(status, 'rate_limit_per_minute')}/min.</small>
-          </div>
-          <div class="status-item">
-            <b>Anti-flood</b>
-            ${renderPill(!providerPaused, 'Normal', 'Pausado')}
-            <small>Global: ${globalRate}/min | intervalo: ${Math.round(sendMinIntervalMs / 100) / 10}s | pausa erro: ${Math.round(providerPauseOnErrorMs / 1000)}s${providerPaused ? ` | volta em ${Math.ceil(providerPauseMs / 1000)}s` : ''}${providerPauseReasonText ? ` | ${providerPauseReasonText}` : ''}</small>
-          </div>
-          <div class="status-item">
-            <b>Roteador</b>
-            ${renderPill(true, 'Ativo', 'Pendente')}
-            <small>Sem miauby: ${localRepliesEnabled ? 'local rapido/Gemini' : 'Gemini'} | com miauby: core | escrita: ${htmlEscape(writePolicy)} | cache: ${cacheTtl}s/${cacheEntries} entradas</small>
-          </div>
-          <div class="status-item">
-            <b>Pix CNPJ midia</b>
-            ${renderPill(pixReceiptEnabled && pixReceiptConfigured, 'Ativo', pixReceiptConfigured ? 'Desligado' : 'Pendente')}
-            <small>Foto/print/PDF | OCR: ${htmlEscape(pixReceiptModel)} | limite: ${pixReceiptMaxMb} MB | alvo: CNPJ/chave ou ${pixReceiptAliasCount} nomes (${pixReceiptMinScore}%).</small>
-          </div>
-          <div class="status-item">
-            <b>Demora real</b>
-            <span class="pill is-ok">${htmlEscape(formatMs(responseDelay.avg_total_ms))}</span>
-            <small>Media ate enviar em 24h | IA: ${htmlEscape(formatMs(responseDelay.avg_ai_ms))} | P95: ${htmlEscape(formatMs(responseDelay.p95_total_ms))} | ultima: ${htmlEscape(formatMs(responseDelay.last_total_ms))}</small>
-          </div>
+          ${renderConfigCard('Canal', enabled ? 'ok' : 'warn', enabled ? 'Ativo' : 'Desligado', [
+            ['Ambiente', 'MIAUW_WHATSAPP_ENABLED'],
+            ['Status', enabled ? 'ligado' : 'desligado'],
+          ])}
+          ${renderConfigCard('Transporte', transportConfigured ? 'ok' : 'warn', transportConfigured ? (provider === 'meta' ? 'Meta configurada' : 'Evolution configurada') : 'Pendente', [
+            ['Provider', provider],
+            ['Instancia', defaultInstanceName()],
+          ])}
+          ${renderConfigCard('Agente Miauby', (agentConfigured || geminiReady) ? 'ok' : 'warn', (agentConfigured || geminiReady) ? (aiMode === 'hybrid' ? 'Hibrido' : aiMode) : 'Pendente', [
+            ['Modo IA', aiMode],
+            ['Gemini', geminiReady ? geminiModel : 'sem chave'],
+            ['Core', agentConfigured ? 'ok' : 'pendente'],
+            ['Alias', aliasCount],
+          ])}
+          ${renderConfigCard('Seguranca', ((webhookConfigured || metaVerifyConfigured) && encryptionConfigured) ? 'ok' : 'warn', ((webhookConfigured || metaVerifyConfigured) && encryptionConfigured) ? 'Tokens ok' : 'Revisar', [
+            ['Painel', dashboardAuthConfigured ? 'login ativo' : 'aberto por ambiente'],
+            ['Meta assinatura', metaSignatureConfigured ? 'ativa' : 'pendente'],
+            ['Grupos', groupsEnabled ? 'liberados' : 'bloqueados'],
+            ['Rate', `${numberStatus(status, 'rate_limit_per_minute')}/min`],
+          ])}
+          ${renderConfigCard('Anti-flood', providerPaused ? 'warn' : 'ok', providerPaused ? 'Pausado' : 'Normal', [
+            ['Global', `${globalRate}/min`],
+            ['Intervalo', `${Math.round(sendMinIntervalMs / 100) / 10}s`],
+            ['Pausa erro', `${Math.round(providerPauseOnErrorMs / 1000)}s`],
+            ['Retorno', providerPaused ? `${Math.ceil(providerPauseMs / 1000)}s` : 'normal'],
+            ...(providerPauseReasonText ? [['Motivo', providerPauseReasonText] as [string, string]] : []),
+          ])}
+          ${renderConfigCard('Roteador', 'ok', 'Ativo', [
+            ['Sem miauby', localRepliesEnabled ? 'local rapido/Gemini' : 'Gemini'],
+            ['Com miauby', 'core'],
+            ['Escrita', writePolicy],
+            ['Cache', `${cacheTtl}s/${cacheEntries}`],
+          ])}
+          ${renderConfigCard('Pix CNPJ midia', (pixReceiptEnabled && pixReceiptConfigured) ? 'ok' : pixReceiptConfigured ? 'muted' : 'warn', (pixReceiptEnabled && pixReceiptConfigured) ? 'Ativo' : pixReceiptConfigured ? 'Desligado' : 'Pendente', [
+            ['Midia', 'foto/print/PDF'],
+            ['OCR', pixReceiptModel],
+            ['Limite', `${pixReceiptMaxMb} MB`],
+            ['Alvo', `CNPJ/chave ou ${pixReceiptAliasCount} nomes (${pixReceiptMinScore}%)`],
+          ])}
+          ${renderConfigCard('Demora real', responseTimeTone(responseDelay.avg_total_ms), formatMs(responseDelay.avg_total_ms), [
+            ['Janela', '24h'],
+            ['IA', formatMs(responseDelay.avg_ai_ms)],
+            ['P95', formatMs(responseDelay.p95_total_ms)],
+            ['Ultima', formatMs(responseDelay.last_total_ms)],
+          ])}
           ${renderEngineBreakdown(summary.replyEngines)}
         </div>
         <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>
       </article>
 
-      <article class="panel">
+      <article class="panel state-panel">
         <h2>Estados</h2>
         <div class="status-list">
-          <div class="status-item"><b>Recebidos</b><span class="pill is-ok">${countOf(summary.eventCounts, 'received')}</span><small>Eventos brutos aceitos antes da decisao.</small></div>
-          <div class="status-item"><b>Na fila</b><span class="pill is-warn">${queued}</span><small>Eventos aguardando processamento.</small></div>
-          <div class="status-item"><b>Ignorados</b><span class="pill is-warn">${ignored}</span><small>Fora de allowlist, sem prefixo, grupo ou vazio.</small></div>
-          <div class="status-item"><b>Problemas</b><span class="pill is-warn">${eventProblems + outboxProblems}</span><small>Falhas com retry ou dead-letter.</small></div>
+          ${renderStateCard('Recebidos', countOf(summary.eventCounts, 'received'), 'Eventos brutos aceitos antes da decisao.', 'ok')}
+          ${renderStateCard('Na fila', queued, 'Eventos aguardando processamento.', queued > 0 ? 'warn' : 'ok')}
+          ${renderStateCard('Ignorados', ignored, 'Fora de allowlist, sem prefixo, grupo ou vazio.', ignored > 0 ? 'warn' : 'muted')}
+          ${renderStateCard('Problemas', eventProblems + outboxProblems, 'Falhas com retry ou dead-letter.', eventProblems + outboxProblems > 0 ? 'bad' : 'ok')}
         </div>
       </article>
 
