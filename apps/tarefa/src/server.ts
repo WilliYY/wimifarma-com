@@ -50,6 +50,10 @@ type TaskRow = {
   description: string | null;
   status: TaskStatus;
   created_by: number | null;
+  assigned_core_user_id: string | number | null;
+  assigned_username_snapshot: string | null;
+  delegated_by: number | null;
+  delegated_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string | null;
   completed_at: Date | string | null;
@@ -86,10 +90,14 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'tarefa';
-const SERVICE_VERSION = '1.1.1';
+const SERVICE_VERSION = '1.1.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/tarefa');
 const PORT = Number.parseInt(env.PORT || '3500', 10);
 const SESSION_SECRET = env.TAREFA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const INTERNAL_TOKEN = cleanEnv('TAREFA_INTERNAL_TOKEN')
+  || cleanEnv('MIAUW_GUARDIAN_TOKEN')
+  || cleanEnv('MIAUW_AGENT_INTERNAL_TOKEN')
+  || cleanEnv('MIAUW_WHATSAPP_INTERNAL_TOKEN');
 const TZ = 'America/Sao_Paulo';
 const AUTH_PROVIDER = normalizeAuthProvider(env.TAREFA_AUTH_PROVIDER || 'core');
 const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_MIRROR_ENABLED ?? 'true');
@@ -199,6 +207,10 @@ function normalizeBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
 }
 
+function cleanEnv(name: string): string {
+  return String(env[name] || '').trim();
+}
+
 function normalizeAuthProvider(value: unknown): AuthProvider {
   return String(value || 'core').trim().toLowerCase() === 'mysql' ? 'mysql' : 'core';
 }
@@ -290,6 +302,18 @@ function ensureCsrf(req: Request): string {
 
 function csrfField(req: Request): string {
   return `<input type="hidden" name="csrf_token" value="${e(ensureCsrf(req))}">`;
+}
+
+function internalTokenFromRequest(req: Request): string {
+  const auth = String(req.get('authorization') || '');
+  if (/^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, '').trim();
+  return cleanText(
+    req.get('x-tarefa-internal-token')
+      || req.get('x-miauw-internal-token')
+      || req.get('x-miauw-agent-token')
+      || '',
+    300,
+  );
 }
 
 function setFlash(req: Request, type: Flash['type'], message: string): void {
@@ -555,6 +579,17 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
     .catch(next);
 }
 
+function requireInternalToken(req: Request, res: Response, next: NextFunction) {
+  if (!INTERNAL_TOKEN) {
+    return res.status(503).json({ ok: false, error: 'internal_token_not_configured' });
+  }
+  const received = internalTokenFromRequest(req);
+  if (!received || !timingSafeStringEqual(received, INTERNAL_TOKEN)) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+  return next();
+}
+
 function verifyCsrf(req: Request, res: Response, next: NextFunction) {
   const expected = req.session.csrfToken || '';
   const received = String(req.body?.csrf_token || req.get('x-csrf-token') || '');
@@ -658,6 +693,23 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('CREATE INDEX IF NOT EXISTS tarefa_tasks_status_priority_created_idx ON tarefa_tasks (status, priority, created_at)');
   await pgPool.query("CREATE INDEX IF NOT EXISTS tarefa_tasks_open_idx ON tarefa_tasks (priority, created_at, id) WHERE status = 'aberta'");
   await pgPool.query(`
+    ALTER TABLE tarefa_tasks
+      ADD COLUMN IF NOT EXISTS assigned_core_user_id BIGINT NULL,
+      ADD COLUMN IF NOT EXISTS assigned_username_snapshot VARCHAR(120) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS delegated_by INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS delegated_at TIMESTAMPTZ NULL
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS tarefa_tasks_assigned_user_status_idx
+      ON tarefa_tasks (assigned_core_user_id, status, priority, created_at)
+      WHERE assigned_core_user_id IS NOT NULL
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS tarefa_tasks_public_open_idx
+      ON tarefa_tasks (priority, created_at, id)
+      WHERE status = 'aberta' AND assigned_core_user_id IS NULL
+  `);
+  await pgPool.query(`
     CREATE TABLE IF NOT EXISTS tarefa_audit_events (
       id bigserial PRIMARY KEY,
       task_id bigint REFERENCES tarefa_tasks(id) ON DELETE SET NULL,
@@ -715,9 +767,19 @@ async function migrateLegacyTasks(): Promise<void> {
   }
 }
 
-async function taskCounts(): Promise<Record<TaskStatus, number>> {
+function visibleTasksWhere(userId: number): string {
+  return userId > 0 ? 'WHERE assigned_core_user_id IS NULL OR assigned_core_user_id = $1' : '';
+}
+
+async function taskCounts(userId = 0): Promise<Record<TaskStatus, number>> {
   const counts: Record<TaskStatus, number> = { aberta: 0, concluida: 0, cancelada: 0 };
-  const result = await pgPool.query<{ status: TaskStatus; total: string }>('SELECT status, COUNT(*) AS total FROM tarefa_tasks GROUP BY status');
+  const result = await pgPool.query<{ status: TaskStatus; total: string }>(
+    `SELECT status, COUNT(*) AS total
+       FROM tarefa_tasks
+       ${visibleTasksWhere(userId)}
+      GROUP BY status`,
+    userId > 0 ? [userId] : [],
+  );
   for (const row of result.rows) {
     counts[validStatus(row.status)] = Number(row.total || 0);
   }
@@ -734,31 +796,35 @@ async function legacyTaskCounts(): Promise<Record<TaskStatus, number>> {
   return counts;
 }
 
-async function countOpen(): Promise<number> {
-  const result = await pgPool.query<{ total: string }>("SELECT COUNT(*) AS total FROM tarefa_tasks WHERE status = 'aberta'");
+async function countOpenPublic(): Promise<number> {
+  const result = await pgPool.query<{ total: string }>("SELECT COUNT(*) AS total FROM tarefa_tasks WHERE status = 'aberta' AND assigned_core_user_id IS NULL");
   return Number(result.rows[0]?.total || 0);
 }
 
-async function openTasks(): Promise<TaskRow[]> {
+async function openTasks(userId: number): Promise<TaskRow[]> {
   const result = await pgPool.query<TaskRow>(
     `SELECT *
        FROM tarefa_tasks
-      WHERE status = 'aberta'
-      ORDER BY
-        CASE priority WHEN 'alta' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC,
-        created_at ASC,
-        id ASC`,
+       WHERE status = 'aberta'
+         AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $1)
+       ORDER BY
+         CASE priority WHEN 'alta' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC,
+         created_at ASC,
+         id ASC`,
+    [userId],
   );
   return result.rows;
 }
 
-async function historyTasks(): Promise<TaskRow[]> {
+async function historyTasks(userId: number): Promise<TaskRow[]> {
   const result = await pgPool.query<TaskRow>(
     `SELECT *
        FROM tarefa_tasks
-      WHERE status IN ('concluida', 'cancelada')
-      ORDER BY COALESCE(completed_at, canceled_at, updated_at, created_at) DESC, id DESC
-      LIMIT 120`,
+       WHERE status IN ('concluida', 'cancelada')
+         AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $1)
+       ORDER BY COALESCE(completed_at, canceled_at, updated_at, created_at) DESC, id DESC
+       LIMIT 120`,
+    [userId],
   );
   return result.rows;
 }
@@ -793,12 +859,60 @@ async function createTask(req: Request): Promise<number> {
   }
 }
 
+async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
+  const priority = validPriority(req.body?.priority || req.body?.prioridade);
+  const title = trimText(req.body?.title || req.body?.titulo, 180);
+  const description = String(req.body?.description || req.body?.descricao || '').trim();
+  const assignedUserId = Number(req.body?.assigned_core_user_id || req.body?.user_id || 0);
+  const assignedUsername = cleanText(req.body?.assigned_username || req.body?.username || '', 120);
+  const actorUserId = Number(req.body?.actor_user_id || 0) || null;
+  const actorUsername = cleanText(req.body?.actor_username || '', 120);
+  if (!title) throw new Error('Informe o titulo da tarefa.');
+  if (!Number.isSafeInteger(assignedUserId) || assignedUserId <= 0) {
+    throw new Error('Usuario de destino invalido.');
+  }
+
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<TaskRow>(
+      `INSERT INTO tarefa_tasks (
+         priority, title, description, status, created_by,
+         assigned_core_user_id, assigned_username_snapshot, delegated_by, delegated_at
+       )
+       VALUES ($1, $2, $3, 'aberta', $4, $5, $6, $7, NOW())
+       RETURNING *`,
+      [priority, title, description, actorUserId, assignedUserId, assignedUsername, actorUserId],
+    );
+    const task = result.rows[0];
+    await auditPg(
+      client,
+      Number(task.id),
+      actorUserId,
+      'tarefa_privada_delegada',
+      `Tarefa privada delegada para ${assignedUsername || assignedUserId}: ${title}`,
+    );
+    await client.query('COMMIT');
+    void logCoreAudit(actorUserId, 'tarefa_privada_delegada', 'task', String(task.id), `Tarefa privada delegada por ${actorUsername || 'sistema'}.`, {
+      assigned_core_user_id: assignedUserId,
+      assigned_username: assignedUsername || null,
+    });
+    return task;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function updateTask(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   const priority = validPriority(req.body.prioridade);
   const title = trimText(req.body.titulo, 180);
   const description = String(req.body.descricao || '').trim();
   if (!id || !title) throw new Error('Tarefa invalida.');
+  const userId = req.session.user?.id || 0;
 
   const client = await pgPool.connect();
   try {
@@ -806,12 +920,13 @@ async function updateTask(req: Request): Promise<void> {
     const result = await client.query<TaskRow>(
       `UPDATE tarefa_tasks
           SET priority = $1,
-              title = $2,
-              description = $3,
-              updated_at = now()
-        WHERE id = $4
-        RETURNING *`,
-      [priority, title, description, id],
+               title = $2,
+               description = $3,
+               updated_at = now()
+         WHERE id = $4
+           AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $5)
+         RETURNING *`,
+      [priority, title, description, id, userId],
     );
     const task = result.rows[0];
     if (!task) throw new Error('Tarefa invalida.');
@@ -830,17 +945,19 @@ async function updateTask(req: Request): Promise<void> {
 async function setTaskStatus(req: Request, status: TaskStatus): Promise<void> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Tarefa invalida.');
+  const userId = req.session.user?.id || 0;
   const completedAt = status === 'concluida' ? 'now()' : 'NULL';
   const canceledAt = status === 'cancelada' ? 'now()' : 'NULL';
   const result = await pgPool.query<TaskRow>(
     `UPDATE tarefa_tasks
         SET status = $1,
             completed_at = ${completedAt},
-            canceled_at = ${canceledAt},
-            updated_at = now()
-      WHERE id = $2
-      RETURNING *`,
-    [status, id],
+             canceled_at = ${canceledAt},
+             updated_at = now()
+       WHERE id = $2
+         AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $3)
+       RETURNING *`,
+    [status, id, userId],
   );
   const task = result.rows[0];
   if (!task) throw new Error('Tarefa invalida.');
@@ -858,6 +975,7 @@ async function mirrorCreateToMysql(taskId: number): Promise<void> {
     const result = await pgPool.query<TaskRow>('SELECT * FROM tarefa_tasks WHERE id = $1 LIMIT 1', [taskId]);
     const task = result.rows[0];
     if (!task || task.legacy_mysql_id) return;
+    if (task.assigned_core_user_id) return;
     const [insert] = await requireMysqlPool('legacy mirror create').query<mysql.ResultSetHeader>(
       'INSERT INTO wf_tarefas (prioridade, titulo, descricao, status, criado_por, criado_em, atualizado_em, concluido_em, cancelado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
@@ -880,6 +998,7 @@ async function mirrorCreateToMysql(taskId: number): Promise<void> {
 
 async function mirrorTaskToMysql(task: TaskRow): Promise<void> {
   if (!LEGACY_MYSQL_MIRROR_ENABLED || !task.legacy_mysql_id) return;
+  if (task.assigned_core_user_id) return;
   try {
     await requireMysqlPool('legacy mirror update').query(
       'UPDATE wf_tarefas SET prioridade = ?, titulo = ?, descricao = ?, status = ?, atualizado_em = ?, concluido_em = ?, cancelado_em = ? WHERE id = ?',
@@ -907,6 +1026,8 @@ function renderTask(req: Request, task: TaskRow, history = false): string {
   const description = String(task.description || '').trim();
   const date = brDate(task.created_at, true);
   const finishDate = status === 'concluida' ? brDate(task.completed_at, true) : brDate(task.canceled_at, true);
+  const assignedUserId = Number(task.assigned_core_user_id || 0);
+  const assignedLabel = cleanText(task.assigned_username_snapshot, 80);
   const priorityOptions = (Object.entries(priorities) as Array<[TaskPriority, { label: string }]>)
     .map(([key, item]) => `<option value="${e(key)}" ${key === priority ? 'selected' : ''}>${e(item.label)}</option>`)
     .join('');
@@ -915,6 +1036,7 @@ function renderTask(req: Request, task: TaskRow, history = false): string {
     <article class="task-row priority-${e(priority)} status-${e(status)}" data-task-row>
         <div class="task-priority">
             <span class="priority-pill">${e(priorityLabel(priority))}</span>
+            ${assignedUserId > 0 ? `<span class="task-private-pill">Privada${assignedLabel ? `: ${e(assignedLabel)}` : ''}</span>` : ''}
             <small>${e(status === 'aberta' ? date : finishDate)}</small>
         </div>
         <div class="task-main">
@@ -1020,15 +1142,16 @@ function renderLogin(req: Request, error = ''): string {
 
 async function renderApp(req: Request): Promise<string> {
   const flash = takeFlash(req);
+  const viewerId = req.session.user?.id || 0;
   let counts: Record<TaskStatus, number> = { aberta: 0, concluida: 0, cancelada: 0 };
   let open: TaskRow[] = [];
   let history: TaskRow[] = [];
   let loadError = '';
 
   try {
-    counts = await taskCounts();
-    open = await openTasks();
-    history = await historyTasks();
+    counts = await taskCounts(viewerId);
+    open = await openTasks(viewerId);
+    history = await historyTasks(viewerId);
   } catch {
     loadError = 'Nao consegui carregar as tarefas agora.';
   }
@@ -1172,7 +1295,7 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
 
 app.get([`${BASE_PATH}/api/badge`, `${BASE_PATH}/badge.php`], asyncRoute(async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.json({ ok: true, open: await countOpen() });
+  res.json({ ok: true, open: await countOpenPublic(), scope: 'public' });
 }));
 
 app.get(`${BASE_PATH}/login`, (req, res) => {
@@ -1270,9 +1393,28 @@ async function handlePost(req: Request, res: Response): Promise<void> {
 
 app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(handlePost));
 
+app.post(`${BASE_PATH}/api/internal/tasks/private`, requireInternalToken, asyncRoute(async (req, res) => {
+  const task = await createPrivateTaskFromInternal(req);
+  res.json({
+    ok: true,
+    task: {
+      id: Number(task.id),
+      status: task.status,
+      priority: task.priority,
+      title: task.title,
+      assigned_core_user_id: Number(task.assigned_core_user_id || 0),
+      assigned_username: task.assigned_username_snapshot || '',
+    },
+  });
+}));
+
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[tarefa] request failed', error);
   if (res.headersSent) return;
+  if (_req.path.includes('/api/internal/')) {
+    res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'internal_error' });
+    return;
+  }
   res.status(500).type('html').send('Tarefas indisponivel agora.');
 });
 

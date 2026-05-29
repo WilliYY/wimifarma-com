@@ -469,6 +469,15 @@ a {
   gap: 12px;
 }
 
+.users-form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.users-textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
 .users-fieldset {
   min-width: 0;
   overflow: hidden;
@@ -546,11 +555,105 @@ a {
   font-weight: 800;
 }
 
+.users-empty.compact {
+  border: 1px dashed #dbe3ee;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--wf-surface-soft);
+  font-size: 0.9rem;
+}
+
+.users-integrations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.users-subsection {
+  min-width: 0;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(248, 250, 252, 0.84);
+}
+
+.users-subsection h3 {
+  margin: 0;
+  color: #243044;
+  font-size: 1rem;
+}
+
+.users-subsection p {
+  margin: 6px 0 12px;
+  color: var(--wf-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.users-inline-form {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.users-whatsapp-links {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.users-whatsapp-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.users-whatsapp-link strong,
+.users-whatsapp-link span,
+.users-whatsapp-link small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.users-whatsapp-link strong {
+  color: #243044;
+}
+
+.users-whatsapp-link span,
+.users-whatsapp-link small {
+  color: var(--wf-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.users-mini-danger {
+  min-height: 34px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: #fff1f2;
+  color: #991b1b;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 @media (max-width: 1060px) {
   .users-layout,
   .users-summary,
   .users-user-head,
-  .users-form-grid {
+  .users-form-grid,
+  .users-form-grid.two,
+  .users-integrations {
     grid-template-columns: 1fr;
   }
 

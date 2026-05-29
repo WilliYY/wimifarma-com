@@ -67,6 +67,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_login_rate_limits`: base compartilhada para limitadores de login dos modulos que usam `core_users`.
 - `core_user_module_permissions`: permissoes por modulo administradas em `/usuarios/`.
 - `core_user_xp_links`: vinculo logico entre login interno e funcionario em `xp_employees`, sem FK entre bancos.
+- `core_user_whatsapp_links`: vinculo seguro entre login interno e contatos da allowlist do Miauby WhatsApp, guardando `contact_id`, mascara, nome, status e cards liberados, sem telefone cru.
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
@@ -94,7 +95,7 @@ A fonte oficial apos o corte e o Postgres `wimifarma_cashback`. O MySQL `wf_*` r
 
 Criadas por `apps/miauw-whatsapp/src/server.ts`:
 
-- `miauw_whatsapp_contacts`: contatos vistos/autorizados, com telefone em hash e mascara, sem telefone cru.
+- `miauw_whatsapp_contacts`: contatos vistos/autorizados, com telefone em hash, mascara e numero cifrado quando necessario para envio/edicao logada, sem telefone cru em texto aberto. Tambem guarda vinculo opcional com `core_users` por `linked_user_id`, `linked_username_snapshot`, `linked_by`, `linked_at` e `link_updated_at`.
 - `miauw_whatsapp_events`: webhooks recebidos da Evolution API ou Meta Cloud API, dedupe por provider/instancia/message id, status da fila, tentativas, metadados sanitizados em `JSONB`, hash/mascara e identificadores cifrados para resposta. Midias como audio e imagem de comprovante Pix guardam somente referencia/metadados sanitizados, nunca bytes ou URL/token bruto.
 - `miauw_whatsapp_outbox`: respostas pendentes/enviadas, status de envio, tentativas e id retornado pelo provedor quando houver.
 
@@ -136,11 +137,11 @@ A Gestao autentica primeiro no core `core_users`, grava auditoria curta em `core
 
 Criadas por `apps/tarefa/src/server.ts`:
 
-- `tarefa_tasks`: tarefas internas com prioridade, titulo, descricao, status, datas de criacao/atualizacao/conclusao/cancelamento e `legacy_mysql_id` para reconciliacao com `wf_tarefas`.
+- `tarefa_tasks`: tarefas internas com prioridade, titulo, descricao, status, datas de criacao/atualizacao/conclusao/cancelamento e `legacy_mysql_id` para reconciliacao com `wf_tarefas`. Tarefas privadas usam `assigned_core_user_id`, `assigned_username_snapshot`, `delegated_by` e `delegated_at` para aparecer somente ao usuario delegado.
 - `tarefa_audit_events`: auditoria curta de criacao, edicao e mudanca de status.
 - `tarefa_sessions`: sessoes web do modulo Tarefa gerenciadas por `connect-pg-simple`.
 
-A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` permanece como importacao legado e espelho temporario quando `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder tarefas criadas durante a transicao.
+A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` permanece como importacao legado e espelho temporario quando `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder tarefas comuns criadas durante a transicao. Tarefas privadas nao sao espelhadas para `wf_tarefas`, porque o legado nao possui escopo por usuario.
 
 ## Tabelas de Codigos em Postgres
 

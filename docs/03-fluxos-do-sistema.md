@@ -98,17 +98,20 @@ Regras importantes:
 
 O modulo Usuarios administra os logins internos em `/usuarios/`. Ele e servido por `apps/usuarios` em Node.js + TypeScript, usa sessao propria `WFUSUARIOS`, autentica no Postgres core `core_users` e fica restrito a username `adm` ou role `admin`.
 
-A tela permite criar usuario com senha, perfil e status, desativar usuario sem apagar fisicamente, escolher quais modulos ficam liberados, associar o login a um funcionario do XP e consultar o historico central de mudancas. A associacao com XP usa `core_user_xp_links` apontando logicamente para `xp_employees.id`; a fonte oficial de XP continua sendo o modulo XP. Os endpoints `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` retornam somente o mini-card XP do usuario autenticado naquele app, consultando o vinculo no core e os totais diretamente no Postgres do XP.
+A tela permite criar usuario com senha, perfil e status, desativar usuario sem apagar fisicamente, escolher quais modulos ficam liberados, associar o login a um funcionario do XP, delegar tarefa privada para aquele login, vincular numeros da allowlist do Miauby WhatsApp e consultar o historico central de mudancas. A associacao com XP usa `core_user_xp_links` apontando logicamente para `xp_employees.id`; a fonte oficial de XP continua sendo o modulo XP. Os endpoints `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` retornam somente o mini-card XP do usuario autenticado naquele app, consultando o vinculo no core e os totais diretamente no Postgres do XP.
 
 O painel de Usuarios deve deixar claro que a fonte oficial e o Postgres core; quando um login veio de `wf_users`, a tela mostra isso como origem importada do MySQL em vez de expor o identificador tecnico cru.
 
 O login de Usuarios usa o happy cat zanzando pela tela e fugindo do cursor como detalhe visual, sem interferir no formulario ou na sessao.
+
+Tarefas privadas criadas por Usuarios sao gravadas no app Tarefa por endpoint interno tokenizado e aparecem somente para o login indicado. Tarefas criadas diretamente no modulo Tarefa continuam publicas para todos. Numeros do WhatsApp vinculados pelo painel ficam com telefone completo apenas no bridge do Miauby WhatsApp; o core guarda somente `contact_id`, mascara, status e cards liberados.
 
 Tabelas principais:
 
 - `core_users`
 - `core_user_module_permissions`
 - `core_user_xp_links`
+- `core_user_whatsapp_links`
 - `core_user_audit_events`
 - `usuarios_sessions`
 
@@ -118,6 +121,8 @@ Regras importantes:
 - O usuario `adm` nao pode ser desativado pelo painel.
 - Deve existir pelo menos um administrador ativo.
 - Linhas ausentes em `core_user_module_permissions` preservam acesso legado; usuarios criados pelo painel ja recebem permissoes explicitas.
+- Um usuario pode ter mais de um numero WhatsApp vinculado, mas cada contato deve ter um unico dono operacional.
+- Remover WhatsApp pelo painel Usuarios bloqueia o contato na allowlist do bridge para impedir disparo individual indevido.
 
 ## Fluxo Codigos
 
@@ -391,8 +396,9 @@ Prioridades conhecidas:
 
 Regras:
 
-- `/tarefa/badge.php` retorna apenas a contagem de tarefas abertas;
+- `/tarefa/badge.php` retorna apenas a contagem de tarefas publicas abertas, para a home nao vazar volume de tarefas privadas;
 - criar, editar, concluir, cancelar e reabrir usam CSRF e sessao `WFTAREFA`;
+- tarefas com `assigned_core_user_id` aparecem somente para o usuario indicado e nao entram no espelho MySQL legado;
 - a tela visual deve continuar equivalente ao modulo antigo durante a migracao;
 - `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` espelha novas escritas em `wf_tarefas` apenas para rollback curto, sem mudar a fonte oficial de verdade do Postgres.
 
@@ -456,6 +462,7 @@ Direcao de evolucao:
 - aplicar perfil de voz/tom versionado no contexto do Miauby;
 - permitir audio apenas pelo botao `Falar`, com microfone por clique, gravacao temporaria, transcricao revisavel e sem escrita operacional por voz;
 - manter o WhatsApp como canal de transporte controlado: Evolution API ou Meta Cloud API entrega webhooks ao `apps/miauw-whatsapp`, o bridge valida token/assinatura/allowlist/prefixo/grupo, grava fila no Postgres dedicado, mostra status seguro em `/miauw/whatsapp/` e chama o agente para resposta curta, sem escrita forte direta pelo WhatsApp;
+- permitir que o painel Usuarios vincule contatos da allowlist a `core_users`, mantendo telefone completo cifrado apenas no bridge e usando o vinculo para futuros avisos individuais por funcionario;
 - comandos de Gestao entram como tool controlada: leitura por resumo interno e escrita de conta a pagar com titulo, valor, categoria padrao `geral` quando o operador informar so nome + valor, endpoint interno tokenizado e confirmacao humana;
 - em comandos de Gestao, uma nova mensagem que comeca por `gestao` sempre substitui pendencia incompleta anterior; complementos so sao usados quando a resposta nao inicia novo comando, evitando juntar prompts antigos com novos lancamentos;
 - o formato de criacao aceita `gestao - titulo - 500 - categoria`, `gestao - 500 - titulo`, `gestao - titulo - 500`, `gestao titulo 500` e categoria antes/depois para reduzir erro operacional no celular;

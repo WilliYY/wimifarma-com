@@ -495,6 +495,18 @@ a {
     font-weight: 900;
 }
 
+.task-private-pill {
+    max-width: 116px;
+    border-radius: 999px;
+    padding: 6px 9px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.72rem;
+    font-weight: 950;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+}
+
 .priority-alta .priority-pill {
     background: #ffe5eb;
     color: var(--danger);

@@ -133,6 +133,17 @@ type ContactMatchRow = {
   phone_ciphertext: string;
 };
 
+type AllowlistContactSnapshot = {
+  id: string;
+  phone_hash: string;
+  phone_mask: string;
+  display_name: string;
+  status: string;
+  module_keys: string[];
+  linked_user_id: string | null;
+  linked_username_snapshot: string;
+};
+
 type ReplyResult = {
   text: string;
   engine: ReplyRuntimeEngine;
@@ -243,6 +254,8 @@ type DashboardAllowlistRow = {
   display_name: string;
   status: string;
   module_keys: string[];
+  linked_user_id: string | null;
+  linked_username_snapshot: string;
   last_seen_at: string;
   created_at: string;
 };
@@ -1218,6 +1231,29 @@ function requireInternalToken(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
+function internalHeaderToken(req: Request): string {
+  const auth = safeText(req.get('authorization') || '', 300);
+  if (/^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, '').trim();
+  return safeText(
+    req.get('x-miauw-internal-token')
+      || req.get('x-miauw-agent-token')
+      || req.get('x-miauw-whatsapp-token')
+      || '',
+    300,
+  );
+}
+
+function requireInternalHeaderToken(req: Request, res: Response, next: NextFunction) {
+  if (!INTERNAL_TOKEN) {
+    return res.status(503).json({ ok: false, error: 'internal_token_not_configured' });
+  }
+  const received = internalHeaderToken(req);
+  if (!received || !timingSafeStringEqual(received, INTERNAL_TOKEN)) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+  return next();
+}
+
 function cookieValue(req: Request, name: string): string {
   const raw = String(req.get('cookie') || '');
   for (const part of raw.split(';')) {
@@ -1687,7 +1723,11 @@ async function ensureSchema(): Promise<void> {
       phone_mask VARCHAR(40) NOT NULL,
       phone_ciphertext TEXT NOT NULL DEFAULT '',
       display_name VARCHAR(120) NOT NULL DEFAULT '',
-      linked_user_id INTEGER NULL,
+      linked_user_id BIGINT NULL,
+      linked_username_snapshot VARCHAR(120) NOT NULL DEFAULT '',
+      linked_by VARCHAR(120) NOT NULL DEFAULT '',
+      linked_at TIMESTAMPTZ NULL,
+      link_updated_at TIMESTAMPTZ NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'allowed',
       first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1877,7 +1917,15 @@ async function ensureSchema(): Promise<void> {
 
   await pgPool.query(`
     ALTER TABLE miauw_whatsapp_contacts
-      ADD COLUMN IF NOT EXISTS phone_ciphertext TEXT NOT NULL DEFAULT '';
+      ADD COLUMN IF NOT EXISTS phone_ciphertext TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS linked_user_id BIGINT NULL,
+      ADD COLUMN IF NOT EXISTS linked_username_snapshot VARCHAR(120) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS linked_by VARCHAR(120) NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS linked_at TIMESTAMPTZ NULL,
+      ADD COLUMN IF NOT EXISTS link_updated_at TIMESTAMPTZ NULL;
+
+    ALTER TABLE miauw_whatsapp_contacts
+      ALTER COLUMN linked_user_id TYPE BIGINT USING linked_user_id::bigint;
 
     ALTER TABLE miauw_whatsapp_outbox
       ADD COLUMN IF NOT EXISTS reply_engine VARCHAR(30) NOT NULL DEFAULT '',
@@ -1889,6 +1937,9 @@ async function ensureSchema(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_outbox_engine_created
       ON miauw_whatsapp_outbox (reply_engine, created_at);
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_contacts_linked_user
+      ON miauw_whatsapp_contacts (linked_user_id, updated_at DESC)
+      WHERE linked_user_id IS NOT NULL;
   `);
 
   await ensureAutomationSetting(
@@ -2106,7 +2157,38 @@ async function upsertContact(message: IncomingMessage): Promise<void> {
   await ensureDefaultContactModules(phoneHash);
 }
 
-async function upsertAllowlistContact(phone: string, displayName: string, moduleKeys: string[] = defaultModuleKeys()): Promise<void> {
+async function allowlistContactSnapshotByHash(phoneHash: string): Promise<AllowlistContactSnapshot> {
+  const result = await pgPool.query<AllowlistContactSnapshot>(
+    `SELECT id::text AS id,
+            phone_hash,
+            phone_mask,
+            display_name,
+            status,
+            COALESCE(modules.module_keys, ARRAY[]::text[]) AS module_keys,
+            linked_user_id::text AS linked_user_id,
+            linked_username_snapshot
+       FROM miauw_whatsapp_contacts
+       LEFT JOIN LATERAL (
+         SELECT ARRAY_AGG(module_key ORDER BY module_key) AS module_keys
+           FROM miauw_whatsapp_contact_modules
+          WHERE phone_hash = miauw_whatsapp_contacts.phone_hash
+            AND enabled = TRUE
+       ) modules ON TRUE
+      WHERE phone_hash = $1
+      LIMIT 1`,
+    [phoneHash],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error('allowlist_contact_not_found');
+  return row;
+}
+
+async function allowlistContactSnapshotById(id: string): Promise<AllowlistContactSnapshot> {
+  const phoneHash = await contactHashById(id);
+  return allowlistContactSnapshotByHash(phoneHash);
+}
+
+async function upsertAllowlistContact(phone: string, displayName: string, moduleKeys: string[] = defaultModuleKeys()): Promise<AllowlistContactSnapshot> {
   const normalized = preferredPhoneForStorage(phone);
   if (normalized.length < 8 || normalized.length > 20) {
     throw new Error('invalid_allowlist_phone');
@@ -2123,12 +2205,12 @@ async function upsertAllowlistContact(phone: string, displayName: string, module
               phone_ciphertext = $3,
               display_name = CASE WHEN $4 <> '' THEN $4 ELSE display_name END,
               status = 'allowed',
-              updated_at = NOW()
+        updated_at = NOW()
         WHERE id = $1`,
       [existing.id, maskPhone(normalized), encryptText(normalized), label],
     );
     await setContactModulesByHash(existing.phone_hash, moduleKeys.length ? moduleKeys : defaultModuleKeys());
-    return;
+    return allowlistContactSnapshotByHash(existing.phone_hash);
   }
 
   const phoneHash = sha256(normalized);
@@ -2145,6 +2227,82 @@ async function upsertAllowlistContact(phone: string, displayName: string, module
     [crypto.randomUUID(), phoneHash, maskPhone(normalized), encryptText(normalized), label],
   );
   await setContactModulesByHash(phoneHash, moduleKeys.length ? moduleKeys : defaultModuleKeys());
+  return allowlistContactSnapshotByHash(phoneHash);
+}
+
+async function linkAllowlistContactToUser(
+  phone: string,
+  displayName: string,
+  moduleKeys: string[],
+  userId: number,
+  username: string,
+  actorUsername: string,
+): Promise<AllowlistContactSnapshot> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    throw new Error('invalid_user_id');
+  }
+  const contact = await upsertAllowlistContact(phone, displayName || username, moduleKeys.length ? moduleKeys : defaultModuleKeys());
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_contacts
+        SET linked_user_id = $2,
+            linked_username_snapshot = $3,
+            linked_by = $4,
+            linked_at = COALESCE(linked_at, NOW()),
+            link_updated_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [contact.id, userId, safeText(username, 120), safeText(actorUsername, 120)],
+  );
+  return allowlistContactSnapshotById(contact.id);
+}
+
+async function unlinkAllowlistContactFromUser(id: string, userId: number, actorUsername: string): Promise<AllowlistContactSnapshot> {
+  const currentHash = await contactHashById(id);
+  if (isRecipientAliasSourceHash(currentHash)) {
+    throw new Error('protected_alias_contact');
+  }
+  const snapshot = await allowlistContactSnapshotByHash(currentHash);
+  if (userId > 0 && Number(snapshot.linked_user_id || 0) !== userId) {
+    throw new Error('allowlist_user_mismatch');
+  }
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_contacts
+        SET linked_user_id = NULL,
+            linked_username_snapshot = '',
+            linked_by = $2,
+            link_updated_at = NOW(),
+            status = 'blocked',
+            updated_at = NOW()
+      WHERE id = $1`,
+    [id, safeText(actorUsername, 120)],
+  );
+  return allowlistContactSnapshotById(id);
+}
+
+async function listAllowlistContactsByUser(userId: number): Promise<AllowlistContactSnapshot[]> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) return [];
+  const result = await pgPool.query<AllowlistContactSnapshot>(
+    `SELECT id::text AS id,
+            phone_hash,
+            phone_mask,
+            display_name,
+            status,
+            COALESCE(modules.module_keys, ARRAY[]::text[]) AS module_keys,
+            linked_user_id::text AS linked_user_id,
+            linked_username_snapshot
+       FROM miauw_whatsapp_contacts
+       LEFT JOIN LATERAL (
+         SELECT ARRAY_AGG(module_key ORDER BY module_key) AS module_keys
+           FROM miauw_whatsapp_contact_modules
+          WHERE phone_hash = miauw_whatsapp_contacts.phone_hash
+            AND enabled = TRUE
+       ) modules ON TRUE
+      WHERE linked_user_id = $1
+      ORDER BY status = 'blocked', updated_at DESC
+      LIMIT 20`,
+    [userId],
+  );
+  return result.rows;
 }
 
 async function setAllowlistContactStatus(id: string, status: 'allowed' | 'blocked'): Promise<void> {
@@ -6571,11 +6729,13 @@ async function dashboardSummary(): Promise<DashboardSummary> {
       `SELECT id::text AS id,
               phone_hash,
               phone_mask,
-              COALESCE(phone_ciphertext, '') AS phone_ciphertext,
-              display_name,
-              status,
-              COALESCE(modules.module_keys, ARRAY[]::text[]) AS module_keys,
-              last_seen_at::text AS last_seen_at,
+               COALESCE(phone_ciphertext, '') AS phone_ciphertext,
+               display_name,
+               status,
+               linked_user_id::text AS linked_user_id,
+               linked_username_snapshot,
+               COALESCE(modules.module_keys, ARRAY[]::text[]) AS module_keys,
+               last_seen_at::text AS last_seen_at,
               created_at::text AS created_at
          FROM miauw_whatsapp_contacts
          LEFT JOIN LATERAL (
@@ -6891,6 +7051,18 @@ function moduleLabels(keys: string[]): string {
   return labels.length ? labels.join(', ') : 'Sem cards';
 }
 
+function publicAllowlistContact(contact: AllowlistContactSnapshot): JsonRecord {
+  return {
+    id: contact.id,
+    phone_mask: contact.phone_mask,
+    display_name: contact.display_name,
+    status: contact.status,
+    module_keys: normalizeModuleKeys(contact.module_keys),
+    linked_user_id: contact.linked_user_id ? Number(contact.linked_user_id) : null,
+    linked_username: contact.linked_username_snapshot || '',
+  };
+}
+
 function fullPhoneForDashboard(row: DashboardAllowlistRow): string {
   if (!row.phone_ciphertext) return '';
   try {
@@ -6911,12 +7083,17 @@ function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): 
     const selectedModules = moduleKeysForRow(row);
     const fullPhone = fullPhoneForDashboard(row);
     const phoneLabel = fullPhone ? displayPhone(fullPhone) : (row.phone_mask || '-');
+    const linkedUserLabel = row.linked_username_snapshot
+      ? ` | Usuario: ${row.linked_username_snapshot}`
+      : row.linked_user_id
+        ? ` | Usuario #${row.linked_user_id}`
+        : '';
     return `
       <details class="allowlist-row">
         <summary class="allowlist-head">
           <span>
             <b>${htmlEscape(row.display_name || 'Sem nome')}</b>
-            <small>${htmlEscape(phoneLabel)} | ${htmlEscape(formatDate(row.last_seen_at || row.created_at))} | ${htmlEscape(moduleLabels(selectedModules))}</small>
+            <small>${htmlEscape(phoneLabel)} | ${htmlEscape(formatDate(row.last_seen_at || row.created_at))}${htmlEscape(linkedUserLabel)} | ${htmlEscape(moduleLabels(selectedModules))}</small>
           </span>
           ${renderPill(isAllowed, 'Autorizado', 'Bloqueado')}
         </summary>
@@ -8616,6 +8793,54 @@ app.post(`${BASE_PATH}/internal/memory`, requireInternalToken, async (req, res) 
 
   const recorded = await recordSharedMemoryEvents(events);
   return res.json({ ok: true, source: 'postgres', mode, recorded });
+});
+
+app.get(`${BASE_PATH}/internal/allowlist/by-user`, requireInternalHeaderToken, async (req, res) => {
+  try {
+    const userId = Number(req.query.user_id || req.query.userId || 0);
+    const contacts = await listAllowlistContactsByUser(userId);
+    res.json({ ok: true, contacts: contacts.map(publicAllowlistContact) });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: safeText(error instanceof Error ? error.message : 'allowlist_list_failed', 180) });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/allowlist/link-user`, requireInternalHeaderToken, async (req, res) => {
+  try {
+    const userId = Number(req.body?.user_id || req.body?.userId || 0);
+    const username = safeText(req.body?.username || req.body?.user_username, 120);
+    const actorUsername = safeText(req.body?.actor_username || req.body?.actor || 'usuarios', 120);
+    const contact = await linkAllowlistContactToUser(
+      safeText(req.body?.phone || req.body?.numero, 80),
+      safeText(req.body?.display_name || req.body?.name || username, 120),
+      normalizeModuleKeys(req.body?.modules || req.body?.module_keys),
+      userId,
+      username,
+      actorUsername,
+    );
+    res.json({ ok: true, contact: publicAllowlistContact(contact) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'allowlist_link_failed';
+    const status = ['invalid_allowlist_phone', 'invalid_user_id', 'protected_alias_contact'].includes(message) ? 400 : 500;
+    res.status(status).json({ ok: false, error: safeText(message, 180) });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/allowlist/unlink-user`, requireInternalHeaderToken, async (req, res) => {
+  try {
+    const userId = Number(req.body?.user_id || req.body?.userId || 0);
+    const actorUsername = safeText(req.body?.actor_username || req.body?.actor || 'usuarios', 120);
+    const contact = await unlinkAllowlistContactFromUser(
+      safeText(req.body?.contact_id || req.body?.id, 80),
+      userId,
+      actorUsername,
+    );
+    res.json({ ok: true, contact: publicAllowlistContact(contact) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'allowlist_unlink_failed';
+    const status = ['invalid_allowlist_id', 'allowlist_contact_not_found', 'allowlist_user_mismatch', 'protected_alias_contact'].includes(message) ? 400 : 500;
+    res.status(status).json({ ok: false, error: safeText(message, 180) });
+  }
 });
 
 app.post(`${BASE_PATH}/internal/smoke-check`, requireInternalToken, async (req, res) => {
