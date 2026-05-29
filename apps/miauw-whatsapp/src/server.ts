@@ -6344,17 +6344,63 @@ function renderSyncRows(rows: DashboardSyncRow[]): string {
   if (!rows.length) {
     return '<tr><td colspan="8" class="empty">Sem mensagens recentes para comparar.</td></tr>';
   }
-  return rows.map((row) => `
-    <tr>
-      <td>${htmlEscape(formatDate(row.event_created_at))}</td>
-      <td>${htmlEscape(row.sender_phone_mask || '-')}</td>
-      <td class="text-cell">${htmlEscape(row.inbound_text || '-')}</td>
-      <td class="text-cell">${htmlEscape(row.reply_text || '-')}</td>
-      <td>${htmlEscape(row.event_status)}${row.ignore_reason ? `/${htmlEscape(row.ignore_reason)}` : ''}</td>
-      <td>${htmlEscape(row.outbox_status || '-')}</td>
-      <td>${htmlEscape(row.reply_engine || '-')}</td>
-      <td>${htmlEscape(formatMs(row.total_response_ms))}</td>
-    </tr>`).join('');
+  return rows.map((row) => {
+    const eventLabel = `${row.event_status || '-'}${row.ignore_reason ? `/${row.ignore_reason}` : ''}`;
+    const eventTone = syncBadgeTone(row.event_status || row.ignore_reason);
+    const outboxTone = syncBadgeTone(row.outbox_status);
+    const engineTone = syncEngineTone(row.reply_engine);
+    const totalTone = row.total_response_ms === null
+      ? 'muted'
+      : row.total_response_ms > 30000
+        ? 'bad'
+        : row.total_response_ms > 5000
+          ? 'warn'
+          : 'ok';
+    const rowTone = eventTone === 'bad' || outboxTone === 'bad'
+      ? 'bad'
+      : eventTone === 'warn' || outboxTone === 'warn'
+        ? 'warn'
+        : 'ok';
+    return `
+    <tr class="sync-row sync-row-${rowTone}">
+      <td class="sync-time"><b>${htmlEscape(formatDate(row.event_created_at))}</b><small>${row.sent_at ? `enviado ${htmlEscape(formatDate(row.sent_at))}` : 'sem envio'}</small></td>
+      <td><span class="sync-sender">${htmlEscape(row.sender_phone_mask || '-')}</span></td>
+      <td class="sync-message-cell">${renderSyncMessage('Recebida', row.inbound_text)}</td>
+      <td class="sync-message-cell">${renderSyncMessage('Resposta', row.reply_text)}</td>
+      <td>${renderSyncBadge(eventLabel, eventTone)}</td>
+      <td>${renderSyncBadge(row.outbox_status || '-', outboxTone)}</td>
+      <td>${renderSyncBadge(row.reply_engine || '-', engineTone)}</td>
+      <td>${renderSyncBadge(formatMs(row.total_response_ms), totalTone)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSyncMessage(label: string, text: string): string {
+  const value = text && text.trim() ? text : '-';
+  const empty = value === '-';
+  return `<div class="sync-message${empty ? ' is-empty' : ''}"><span>${htmlEscape(label)}</span><p>${htmlEscape(empty ? 'sem texto' : value)}</p></div>`;
+}
+
+function syncBadgeTone(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
+  const clean = (value || '').toLowerCase();
+  if (!clean || clean === '-') return 'muted';
+  if (clean.includes('error') || clean.includes('failed') || clean.includes('dead')) return 'bad';
+  if (clean.includes('ignored') || clean.includes('pending') || clean.includes('queued') || clean.includes('sending')) return 'warn';
+  if (clean.includes('replied') || clean.includes('sent') || clean.includes('received')) return 'ok';
+  return 'muted';
+}
+
+function syncEngineTone(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
+  const clean = (value || '').toLowerCase();
+  if (!clean || clean === '-') return 'muted';
+  if (clean.includes('blocked')) return 'warn';
+  if (clean.includes('error')) return 'bad';
+  if (clean.includes('miauw') || clean.includes('gemini') || clean.includes('local')) return 'ok';
+  return 'muted';
+}
+
+function renderSyncBadge(label: string, tone: 'ok' | 'warn' | 'bad' | 'muted'): string {
+  return `<span class="sync-badge is-${tone}">${htmlEscape(label || '-')}</span>`;
 }
 
 function renderErrorRows(rows: DashboardErrorRow[], csrfToken: string): string {
@@ -6732,6 +6778,107 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     th { color: #8f0e42; font-size: 11px; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
     td { color: #2e2430; }
     .text-cell { max-width: 360px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+    .sync-panel { background: #fffdfd; }
+    .sync-panel .table-wrap {
+      border: 1px solid #f1d8e3;
+      border-radius: 8px;
+      background: #fffafb;
+      padding: 0 10px 10px;
+    }
+    .sync-table {
+      min-width: 1120px;
+      border-collapse: separate;
+      border-spacing: 0 8px;
+    }
+    .sync-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      border-bottom: 1px solid #ecd0dc;
+      background: #fffafb;
+      padding-top: 12px;
+      padding-bottom: 4px;
+    }
+    .sync-table td {
+      border-bottom: 0;
+      background: #fff;
+      padding: 10px 8px;
+    }
+    .sync-table tbody tr td:first-child {
+      border-left: 4px solid #d8c8d0;
+      border-radius: 8px 0 0 8px;
+    }
+    .sync-table tbody tr td:last-child { border-radius: 0 8px 8px 0; }
+    .sync-row-ok td:first-child { border-left-color: #21a66b; }
+    .sync-row-warn td:first-child { border-left-color: #f0a000; }
+    .sync-row-bad td:first-child { border-left-color: #d33b57; }
+    .sync-time { min-width: 124px; }
+    .sync-time b { display: block; color: #251827; font-size: 12px; line-height: 1.25; }
+    .sync-time small { display: block; margin-top: 4px; color: #786672; font-size: 11px; line-height: 1.25; }
+    .sync-sender {
+      display: inline-flex;
+      min-height: 26px;
+      align-items: center;
+      border: 1px solid #efd4df;
+      border-radius: 999px;
+      background: #fff5f9;
+      padding: 0 10px;
+      color: #7c1944;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .sync-message-cell { min-width: 270px; max-width: 390px; }
+    .sync-message {
+      min-height: 68px;
+      border: 1px solid #f0dbe4;
+      border-radius: 8px;
+      background: #fff;
+      padding: 9px 10px;
+      box-shadow: inset 3px 0 0 #b10647;
+    }
+    .sync-message span {
+      display: block;
+      margin-bottom: 5px;
+      color: #8d0f43;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .sync-message p {
+      max-height: 96px;
+      margin: 0;
+      overflow: auto;
+      color: #2e2430;
+      font-size: 12px;
+      line-height: 1.42;
+      overflow-wrap: anywhere;
+      scrollbar-width: thin;
+    }
+    .sync-message.is-empty {
+      background: #fbf7f9;
+      box-shadow: inset 3px 0 0 #d8c8d0;
+    }
+    .sync-message.is-empty p { color: #8a7682; font-style: italic; }
+    .sync-badge {
+      display: inline-flex;
+      min-height: 25px;
+      max-width: 150px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 0 9px;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1.15;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-align: center;
+    }
+    .sync-badge.is-ok { background: #daf6e8; color: #097143; }
+    .sync-badge.is-warn { background: #fff2d2; color: #8c5a00; }
+    .sync-badge.is-bad { background: #ffe1e8; color: #a30f2e; }
+    .sync-badge.is-muted { background: #f2edf0; color: #6d5a66; }
     .empty { color: #6a5964; text-align: center; }
     .footnote { margin: 14px 0 0; color: #6a5964; font-size: 12px; line-height: 1.4; }
     .notice { margin: 0 0 14px; border: 1px solid #bdebd5; border-radius: 8px; background: #effcf6; padding: 10px 12px; color: #09613b; font-size: 13px; font-weight: 800; }
@@ -6934,10 +7081,10 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <p class="footnote">Destino por card liberado: Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
       </article>
 
-      <article class="panel is-wide">
+      <article class="panel is-wide sync-panel">
         <h2>Sincronia recente</h2>
         <div class="table-wrap">
-          <table>
+          <table class="sync-table">
             <thead><tr><th>Quando</th><th>Remetente</th><th>Mensagem recebida</th><th>Resposta enviada</th><th>Evento</th><th>Outbox</th><th>Motor</th><th>Total</th></tr></thead>
             <tbody>${renderSyncRows(summary.recentSync)}</tbody>
           </table>
