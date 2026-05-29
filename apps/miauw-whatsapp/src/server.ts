@@ -58,6 +58,12 @@ type PixReceiptTargetMatch = {
   nameMatch: boolean;
 };
 
+type PixReceiptExtractionHints = {
+  caption: string;
+  mediaKind: string;
+  fileName: string;
+};
+
 type OutboundAudio = {
   base64: string;
   mimeType: string;
@@ -2329,6 +2335,7 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   let bodyText = originalBodyText;
   const isAudioMessage = isAudioMessageType(message.messageType);
   const isPixReceiptMediaMessage = isPixReceiptMediaMessageType(message.messageType);
+  const isConfirmationDecision = bodyText ? parseConfirmationDecision(bodyText) !== null : false;
   if (message.fromMe) ignoreReasons.push('from_me');
   if (message.isGroup && !GROUPS_ENABLED) ignoreReasons.push('group_blocked');
   if (!message.senderPhone) ignoreReasons.push('missing_sender');
@@ -2337,7 +2344,12 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   if (!bodyText && isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED) bodyText = '[comprovante pix recebido]';
   if (!bodyText) ignoreReasons.push('empty_or_unsupported_message');
 
-  if (bodyText && !((isAudioMessage || isPixReceiptMediaMessage) && !originalBodyText)) {
+  if (
+    bodyText
+    && !isConfirmationDecision
+    && !(isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED)
+    && !((isAudioMessage || isPixReceiptMediaMessage) && !originalBodyText)
+  ) {
     const prefix = stripActivationPrefix(bodyText);
     if (!prefix.accepted) {
       ignoreReasons.push(prefix.reason);
@@ -2933,6 +2945,13 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         ...(recipientAddress ? phoneHashCandidates('', recipientAddress) : []),
       ]),
     ];
+    let allowedCardsCache: WhatsappModuleCard[] | null = null;
+    const allowedCardsForSender = async () => {
+      if (!allowedCardsCache) {
+        allowedCardsCache = await allowedModuleCardsForHashes(senderModuleHashes);
+      }
+      return allowedCardsCache;
+    };
     const replyStartedAt = Date.now();
     const incomingAudio = isAudioMessageType(row.message_type);
     const incomingPixReceiptMedia = isPixReceiptMediaMessageType(row.message_type);
@@ -2982,61 +3001,71 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     }
 
     let mediaFailureReply: ReplyResult | null = null;
-    if (incomingPixReceiptMedia && shouldAttemptPixReceiptMedia(row.body_text)) {
+    if (incomingPixReceiptMedia && shouldAttemptPixReceiptMedia(row.body_text, true)) {
       try {
-        const extraction = await extractPixReceiptFromQueuedMedia(row);
-        if (!extraction.isPixReceipt) {
+        const allowedCards = await allowedCardsForSender();
+        if (!moduleAllowed(allowedCards, 'financeiro')) {
           mediaFailureReply = {
-            text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
+            text: forbiddenModuleReply('financeiro', allowedCards),
             engine: 'blocked',
-            reason: 'pix_receipt_not_detected',
+            reason: 'pix_receipt_module_blocked',
           };
           effectiveBodyText = '';
         } else {
-          const targetMatch = pixReceiptTargetMatch(extraction);
-          const missing = missingPixReceiptFields(extraction);
-          if (missing.length > 0) {
+          const extraction = await extractPixReceiptFromQueuedMedia(row);
+          if (!extraction.isPixReceipt) {
             mediaFailureReply = {
-              text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.`,
+              text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
               engine: 'blocked',
-              reason: 'pix_receipt_missing_fields',
-            };
-            effectiveBodyText = '';
-          } else if (!targetMatch.ok) {
-            mediaFailureReply = {
-              text: `Li o comprovante, mas nao consegui confirmar que o destino e a Wimifarma (${maskDocument(PIX_RECEIPT_CNPJ)} ou nome cadastrado). Nao lancei. Se estiver certo, escreva os dados manualmente para eu confirmar.`,
-              engine: 'blocked',
-              reason: 'pix_receipt_target_mismatch',
+              reason: 'pix_receipt_not_detected',
             };
             effectiveBodyText = '';
           } else {
-            effectiveBodyText = pixReceiptCommandMessage(extraction, targetMatch);
-            row.body_text = effectiveBodyText;
-            await pgPool.query(
-              `UPDATE miauw_whatsapp_events
-                  SET body_text = $2,
-                      body_size = $3,
-                      payload_summary = payload_summary || $4::jsonb,
-                      updated_at = NOW()
-                WHERE id = $1`,
-              [
-                row.id,
-                effectiveBodyText,
-                effectiveBodyText.length,
-                JSON.stringify({
-                  pix_receipt_extracted: true,
-                  pix_receipt_target_match: true,
-                  pix_receipt_target_reason: targetMatch.reason,
-                  pix_receipt_target_score: targetMatch.score,
-                  pix_receipt_target_label: targetMatch.matched,
-                  pix_receipt_cnpj_match: targetMatch.cnpjMatch,
-                  pix_receipt_key_match: targetMatch.keyMatch,
-                  pix_receipt_name_match: targetMatch.nameMatch,
-                  pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
-                  pix_receipt_confidence: extraction.confidence,
-                }),
-              ],
-            );
+            const targetMatch = pixReceiptTargetMatch(extraction);
+            const missing = missingPixReceiptFields(extraction);
+            if (missing.length > 0) {
+              mediaFailureReply = {
+                text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.`,
+                engine: 'blocked',
+                reason: 'pix_receipt_missing_fields',
+              };
+              effectiveBodyText = '';
+            } else if (!targetMatch.ok) {
+              mediaFailureReply = {
+                text: `Li o comprovante, mas nao consegui confirmar que o destino e a Wimifarma (${maskDocument(PIX_RECEIPT_CNPJ)} ou nome cadastrado). Nao lancei. Se estiver certo, escreva os dados manualmente para eu confirmar.`,
+                engine: 'blocked',
+                reason: 'pix_receipt_target_mismatch',
+              };
+              effectiveBodyText = '';
+            } else {
+              effectiveBodyText = pixReceiptCommandMessage(extraction, targetMatch);
+              row.body_text = effectiveBodyText;
+              await pgPool.query(
+                `UPDATE miauw_whatsapp_events
+                    SET body_text = $2,
+                        body_size = $3,
+                        payload_summary = payload_summary || $4::jsonb,
+                        updated_at = NOW()
+                  WHERE id = $1`,
+                [
+                  row.id,
+                  effectiveBodyText,
+                  effectiveBodyText.length,
+                  JSON.stringify({
+                    pix_receipt_extracted: true,
+                    pix_receipt_target_match: true,
+                    pix_receipt_target_reason: targetMatch.reason,
+                    pix_receipt_target_score: targetMatch.score,
+                    pix_receipt_target_label: targetMatch.matched,
+                    pix_receipt_cnpj_match: targetMatch.cnpjMatch,
+                    pix_receipt_key_match: targetMatch.keyMatch,
+                    pix_receipt_name_match: targetMatch.nameMatch,
+                    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+                    pix_receipt_confidence: extraction.confidence,
+                  }),
+                ],
+              );
+            }
           }
         }
       } catch (error) {
@@ -3082,7 +3111,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
       : undefined;
-    const replyText = safeOutboundText(formatReplyTextWithConfirmation(reply.text, confirmation), 1800);
+    const replyText = safeOutboundText(formatReplyTextWithConfirmation(reply.text, confirmation, canSendInteractiveConfirmation(confirmation)), 1800);
     if (!replyText) throw new Error('miauby_empty_reply');
     const audioReply = shouldSendAudioReply(replyAsAudio, confirmation)
       ? await buildAudioReply(replyText, row).catch(async (error) => {
@@ -3208,11 +3237,22 @@ function confirmationShortId(): string {
   return crypto.randomBytes(4).toString('hex');
 }
 
-function formatReplyTextWithConfirmation(text: string, confirmation?: WhatsappConfirmationDraft): string {
+function canSendInteractiveConfirmation(confirmation?: WhatsappConfirmationDraft): boolean {
+  return Boolean(
+    confirmation?.id
+    && INTERACTIVE_CONFIRMATIONS
+    && (WHATSAPP_PROVIDER === 'meta' || EVOLUTION_INTERACTIVE_CONFIRMATIONS),
+  );
+}
+
+function formatReplyTextWithConfirmation(text: string, confirmation?: WhatsappConfirmationDraft, interactive = false): string {
   if (!confirmation?.id) return text;
   const clean = safeOutboundText(text, 1500);
-  if (/\bresponda\s+sim\b/i.test(clean) || /\bmande\s+sim\b/i.test(clean)) return clean;
-  return `${clean}\n\nResponda SIM para gravar ou NAO para cancelar.`;
+  if (/\bresponda\s+sim\b/i.test(clean) || /\bmande\s+sim\b/i.test(clean) || /\btoque\s+em\s+sim\b/i.test(clean)) return clean;
+  const instruction = interactive
+    ? 'Toque em Sim ou Nao para gravar. Se os botoes nao aparecerem, responda SIM ou NAO.'
+    : 'Responda SIM para gravar ou NAO para cancelar.';
+  return `${clean}\n\n${instruction}`;
 }
 
 function parseConfirmationDecision(message: string): { action: 'confirm' | 'cancel'; shortId?: string } | null {
@@ -4367,8 +4407,9 @@ function audioProviderFromSummary(summary: JsonRecord): string {
   return mediaProviderFromSummary(summary);
 }
 
-function shouldAttemptPixReceiptMedia(bodyText: string): boolean {
+function shouldAttemptPixReceiptMedia(bodyText: string, hasMedia = false): boolean {
   if (!PIX_RECEIPT_IMAGE_ENABLED || !geminiConfigured() || !PIX_RECEIPT_CNPJ) return false;
+  if (hasMedia) return true;
   const clean = normalizeIntentText(bodyText);
   return clean === ''
     || clean === 'comprovante pix recebido'
@@ -4537,11 +4578,21 @@ function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
   return Array.from(missing).slice(0, 6);
 }
 
+function pixReceiptExtractionHints(row: QueueRow): PixReceiptExtractionHints {
+  const media = mediaSummaryFromPayload(row.payload_summary);
+  const caption = row.body_text === '[comprovante pix recebido]' ? '' : row.body_text;
+  return {
+    caption: safeText(caption, 500),
+    mediaKind: safeText(media.kind, 40),
+    fileName: safeText(media.file_name, 180),
+  };
+}
+
 async function extractPixReceiptFromQueuedMedia(row: QueueRow): Promise<PixReceiptExtraction> {
   const media = mediaProviderFromSummary(row.payload_summary) === 'meta'
     ? await fetchMetaReceiptMedia(row)
     : await fetchEvolutionReceiptMedia(row);
-  return requestGeminiPixReceiptExtraction(media, row.trace_id);
+  return requestGeminiPixReceiptExtraction(media, row.trace_id, pixReceiptExtractionHints(row));
 }
 
 function isRetriablePixReceiptError(error: unknown, row: QueueRow): boolean {
@@ -4616,6 +4667,30 @@ function numberFromReceiptValue(value: unknown): number {
   return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
 }
 
+function amountFromReceiptRawText(value: unknown): number {
+  const text = safeOutboundText(value, 2000);
+  if (!text) return 0;
+  const lines = text.split(/[|\n;]/g).map((line) => safeText(line, 220)).filter(Boolean);
+  const candidates: Array<{ amount: number; score: number }> = [];
+  const amountPattern = /(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+[,.]\d{2})/gi;
+  for (const line of lines.length ? lines : [text]) {
+    const normalizedLine = normalizeIntentText(line);
+    const isLikelyAmountLine = hasAnyIntentTerm(normalizedLine, ['valor', 'pago', 'pagamento', 'transferido', 'pix', 'total']);
+    const isBadContext = hasAnyIntentTerm(normalizedLine, ['saldo', 'limite', 'tarifa', 'taxa', 'agencia', 'conta', 'cnpj', 'cpf']);
+    for (const match of line.matchAll(amountPattern)) {
+      const amount = numberFromReceiptValue(match[1]);
+      if (!amount || amount <= 0 || amount > 1000000) continue;
+      let score = 1;
+      if (isLikelyAmountLine) score += 2;
+      if (/r\$/i.test(match[0])) score += 1;
+      if (isBadContext) score -= 2;
+      if (score > 0) candidates.push({ amount, score });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  return candidates[0]?.amount || 0;
+}
+
 function dateFromReceiptValue(value: unknown): string {
   const text = safeText(value, 80);
   let match = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
@@ -4646,7 +4721,9 @@ function stringArrayFromValue(value: unknown): string[] {
 }
 
 function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
-  const amount = numberFromReceiptValue(data.amount_brl ?? data.amount ?? data.valor ?? data.value);
+  const rawText = stringFromKeys(data, ['raw_text', 'rawText', 'texto_bruto', 'ocr_text'], 2000);
+  const amount = numberFromReceiptValue(data.amount_brl ?? data.amount ?? data.valor ?? data.value)
+    || amountFromReceiptRawText(rawText);
   const rawConfidence = numberFromReceiptValue(data.confidence ?? data.confianca ?? 0);
   const confidence = rawConfidence > 1 && rawConfidence <= 100 ? rawConfidence / 100 : rawConfidence;
   return {
@@ -4656,10 +4733,10 @@ function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
     destinationName: stringFromKeys(data, ['destination_name', 'destinationName', 'nome_destino', 'destino']),
     payerName: stringFromKeys(data, ['payer_name', 'payerName', 'nome_pagador', 'pagador', 'origin_name', 'origem']),
     amount,
-    paidDate: dateFromReceiptValue(data.paid_at_date ?? data.paidDate ?? data.data_pagamento ?? data.data),
-    paidTime: timeFromReceiptValue(data.paid_at_time ?? data.paidTime ?? data.horario_pagamento ?? data.horario ?? data.hora),
+    paidDate: dateFromReceiptValue(data.paid_at_date ?? data.paidDate ?? data.data_pagamento ?? data.data) || dateFromReceiptValue(rawText),
+    paidTime: timeFromReceiptValue(data.paid_at_time ?? data.paidTime ?? data.horario_pagamento ?? data.horario ?? data.hora) || timeFromReceiptValue(rawText),
     institution: stringFromKeys(data, ['institution', 'instituicao', 'bank', 'banco']),
-    rawText: stringFromKeys(data, ['raw_text', 'rawText', 'texto_bruto', 'ocr_text'], 2000),
+    rawText,
     confidence: Math.max(0, Math.min(1, confidence)),
     missing: stringArrayFromValue(data.missing ?? data.faltando),
   };
@@ -4974,12 +5051,17 @@ async function fetchMetaReceiptMedia(row: QueueRow): Promise<AudioMedia> {
   }
 }
 
-async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: string): Promise<PixReceiptExtraction> {
+async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured_for_pix_receipt');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
   try {
     const endpoint = `${GEMINI_API_BASE_URL}/${geminiModelPathFor(PIX_RECEIPT_OCR_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const hintText = [
+      hints.caption ? `Legenda/mensagem enviada junto: ${hints.caption}.` : '',
+      hints.fileName ? `Nome do arquivo: ${hints.fileName}.` : '',
+      hints.mediaKind ? `Tipo operacional: ${hints.mediaKind}.` : '',
+    ].filter(Boolean).join(' ');
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -4988,14 +5070,14 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
       body: JSON.stringify({
         systemInstruction: {
           parts: [{
-            text: 'Voce extrai dados de comprovantes Pix brasileiros recebidos como foto, print, screenshot, imagem encaminhada ou PDF para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes.',
+            text: 'Voce extrai dados de comprovantes Pix brasileiros recebidos como foto, print, screenshot, imagem encaminhada ou PDF para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes e nao use saldo, limite, agencia, conta, tarifa ou comprovantes de outra operacao como valor pago.',
           }],
         },
         contents: [{
           role: 'user',
           parts: [
             {
-              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, raw_text compacto com no maximo 700 caracteres, confidence de 0 a 1 e missing como lista. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se nao for comprovante Pix, use is_pix_receipt false. Se o destino for diferente, retorne o destino real encontrado.`,
+              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se nao for comprovante Pix, use is_pix_receipt false. Se o destino for diferente, retorne o destino real encontrado.`,
             },
             {
               inlineData: {
@@ -5007,7 +5089,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
         }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 900,
+          maxOutputTokens: 1200,
           responseMimeType: 'application/json',
           thinkingConfig: {
             thinkingBudget: 0,
@@ -5525,8 +5607,7 @@ async function sendProviderReply(phone: string, text: string, instanceName: stri
     });
   }
   const useInteractiveConfirmation = confirmation?.id
-    && INTERACTIVE_CONFIRMATIONS
-    && (WHATSAPP_PROVIDER === 'meta' || EVOLUTION_INTERACTIVE_CONFIRMATIONS);
+    && canSendInteractiveConfirmation(confirmation);
   if (!useInteractiveConfirmation) {
     const providerMessageId = await sendProviderText(phone, text, instanceName);
     return { providerMessageId, deliveredMediaType: '', fallbackError: '' };
