@@ -42,9 +42,9 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 ## Integracoes internas
 
 - `USUARIOS_TAREFA_INTERNAL_BASE_URL`: base interna do app Tarefa, por padrao `http://wimifarma-tarefa-app:3500/tarefa`.
-- `USUARIOS_TAREFA_INTERNAL_TOKEN`: token para criar tarefa privada; pode reaproveitar `TAREFA_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`.
+- `USUARIOS_TAREFA_INTERNAL_TOKEN`: token para criar tarefa privada; pode reaproveitar `TAREFA_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN`, `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_WHATSAPP_INTERNAL_TOKEN`.
 - `USUARIOS_MIAUW_WHATSAPP_INTERNAL_BASE_URL`: base interna do bridge WhatsApp, por padrao `http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp`.
-- `USUARIOS_MIAUW_WHATSAPP_INTERNAL_TOKEN`: token para gerenciar allowlist por usuario; pode reaproveitar `MIAUW_WHATSAPP_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`.
+- `USUARIOS_MIAUW_WHATSAPP_INTERNAL_TOKEN`: token para gerenciar allowlist por usuario; pode reaproveitar `MIAUW_WHATSAPP_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`.
 - `USUARIOS_INTERNAL_HTTP_TIMEOUT_MS`: timeout curto das chamadas internas, default `4500`.
 
 ## Ordem de implantacao
