@@ -72,13 +72,6 @@ $modules = array(
         'task_badge' => true,
     ),
     array(
-        'name' => 'Usuários',
-        'label' => 'Acessos e auditoria',
-        'description' => 'Logins, permissoes, XP e historico.',
-        'href' => '/usuarios/',
-        'accent' => 'blue',
-    ),
-    array(
         'name' => 'Códigos',
         'label' => 'Comissoes especiais',
         'description' => 'Codigo, EAN e preco em lista rapida.',
@@ -113,6 +106,15 @@ $modules = array(
         'description' => 'Webhook, Evolution, eventos e outbox.',
         'href' => '/miauw/whatsapp/',
         'accent' => 'teal',
+        'home_class' => 'is-whatsapp-card',
+    ),
+    array(
+        'name' => 'Usuários',
+        'label' => 'Acessos e auditoria',
+        'description' => 'Logins, permissoes, XP e historico.',
+        'href' => '/usuarios/',
+        'accent' => 'blue',
+        'home_class' => 'is-users-card',
     ),
 );
 ?>
@@ -424,6 +426,18 @@ $modules = array(
             box-shadow: 0 10px 22px rgba(22, 163, 74, 0.22);
         }
 
+        @media (min-width: 1041px) {
+            .wf-card.is-whatsapp-card {
+                grid-column: 1;
+                grid-row: 3;
+            }
+
+            .wf-card.is-users-card {
+                grid-column: 2;
+                grid-row: 3;
+            }
+        }
+
         @media (max-width: 1040px) {
             .wf-header-inner {
                 justify-content: center;
@@ -580,7 +594,16 @@ $modules = array(
 
             <section class="wf-modules" aria-label="Sistemas Wimifarma">
                 <?php foreach ($modules as $module): ?>
-                    <a class="wf-card<?php echo !empty($module['xp_frame']) ? ' is-xp-card' : ''; ?>" href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>" data-accent="<?php echo wf_home_e($module['accent']); ?>">
+                    <?php
+                    $cardClasses = array('wf-card');
+                    if (!empty($module['xp_frame'])) {
+                        $cardClasses[] = 'is-xp-card';
+                    }
+                    if (!empty($module['home_class'])) {
+                        $cardClasses[] = (string) $module['home_class'];
+                    }
+                    ?>
+                    <a class="<?php echo wf_home_e(implode(' ', $cardClasses)); ?>" href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>" data-accent="<?php echo wf_home_e($module['accent']); ?>">
                         <i class="wf-card-mark" aria-hidden="true"></i>
                         <?php if (!empty($module['task_badge'])): ?>
                             <em class="wf-card-badge" data-wf-task-badge hidden aria-label="Tarefas abertas"></em>

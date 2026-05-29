@@ -14,7 +14,7 @@ Entrada publica:
 - O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card como `border-image` de borda/cantos para destacar a entrada sem cortar a arte nem cobrir o texto.
 - O card `Usuarios` abre `/usuarios/` para administrar logins, modulos, vinculo XP e historico central.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
-- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Usuarios`, `Codigos`, `XP`, `Gestao`, `Miauby` e `Miauby Whatsapp`. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
+- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `XP`, `Gestao`, `Miauby`, `Miauby Whatsapp` e `Usuarios`, com `Usuarios` ao lado de `Miauby Whatsapp` no desktop. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 
 Identidade visual validada em 2026-05-21:
 
