@@ -8,6 +8,8 @@ Desde 2026-05-27, o bridge tambem pode receber audio de WhatsApp, transcrever co
 
 Desde 2026-05-27, o bridge tambem pode ler foto, print, imagem encaminhada ou PDF/documento de comprovante Pix de remetente autorizado, validar o destino por CNPJ/chave Pix ou nome correlato configurado e preparar um lancamento `Pix CNPJ` no Financeiro com confirmacao `Sim`/`Nao`. A midia e baixada apenas em memoria no worker, enviada ao Gemini para extracao estruturada e descartada; o banco guarda somente metadados sanitizados e o comando/pendencia gerados. Correcoes manuais podem usar `pix cnpj valor - nome - obs opcional` sem data/hora.
 
+Desde 2026-05-29, o painel operacional reorganiza `n8n automacoes` e `Sincronia recente` em grids responsivos com quebra segura de texto, para que numeros, eventos, motores e mensagens longas fiquem legiveis sem estourar os cards.
+
 ## Componentes
 
 - `apps/miauw-whatsapp`: servico Node.js 22 + TypeScript.

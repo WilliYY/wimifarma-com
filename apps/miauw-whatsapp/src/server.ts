@@ -6923,7 +6923,7 @@ function renderAllowlistRows(rows: DashboardAllowlistRow[], csrfToken: string): 
 
 function renderSyncRows(rows: DashboardSyncRow[]): string {
   if (!rows.length) {
-    return '<tr><td colspan="8" class="empty">Sem mensagens recentes para comparar.</td></tr>';
+    return '<div class="sync-empty empty">Sem mensagens recentes para comparar.</div>';
   }
   return rows.map((row) => {
     const eventLabel = `${row.event_status || '-'}${row.ignore_reason ? `/${row.ignore_reason}` : ''}`;
@@ -6943,16 +6943,25 @@ function renderSyncRows(rows: DashboardSyncRow[]): string {
         ? 'warn'
         : 'ok';
     return `
-    <tr class="sync-row sync-row-${rowTone}">
-      <td class="sync-time"><b>${htmlEscape(formatDate(row.event_created_at))}</b><small>${row.sent_at ? `enviado ${htmlEscape(formatDate(row.sent_at))}` : 'sem envio'}</small></td>
-      <td><span class="sync-sender">${htmlEscape(syncSenderLabel(row))}</span></td>
-      <td class="sync-message-cell">${renderSyncMessage('Recebida', row.inbound_text)}</td>
-      <td class="sync-message-cell">${renderSyncMessage('Resposta', row.reply_text)}</td>
-      <td>${renderSyncBadge(eventLabel, eventTone)}</td>
-      <td>${renderSyncBadge(row.outbox_status || '-', outboxTone)}</td>
-      <td>${renderSyncBadge(row.reply_engine || '-', engineTone)}</td>
-      <td>${renderSyncBadge(formatMs(row.total_response_ms), totalTone)}</td>
-    </tr>`;
+    <article class="sync-row sync-row-${rowTone}">
+      <div class="sync-time">
+        <span class="sync-field-label">Quando</span>
+        <b>${htmlEscape(formatDate(row.event_created_at))}</b>
+        <small>${row.sent_at ? `enviado ${htmlEscape(formatDate(row.sent_at))}` : 'sem envio'}</small>
+      </div>
+      <div class="sync-sender-cell">
+        <span class="sync-field-label">Remetente</span>
+        <span class="sync-sender">${htmlEscape(syncSenderLabel(row))}</span>
+      </div>
+      <div class="sync-message-cell">${renderSyncMessage('Recebida', row.inbound_text)}</div>
+      <div class="sync-message-cell">${renderSyncMessage('Resposta', row.reply_text)}</div>
+      <div class="sync-meta">
+        <span><em>Evento</em>${renderSyncBadge(eventLabel, eventTone)}</span>
+        <span><em>Outbox</em>${renderSyncBadge(row.outbox_status || '-', outboxTone)}</span>
+        <span><em>Motor</em>${renderSyncBadge(row.reply_engine || '-', engineTone)}</span>
+        <span><em>Total</em>${renderSyncBadge(formatMs(row.total_response_ms), totalTone)}</span>
+      </div>
+    </article>`;
   }).join('');
 }
 
@@ -7408,9 +7417,17 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .engine-bars { display: grid; gap: 5px; margin: 8px 0; }
     .engine-bars span { display: block; width: var(--bar); min-width: 18px; height: 8px; border-radius: 999px; background: #b10647; }
     .engine-bars span + span { background: #f0a000; }
-    .n8n-panel { background: #fffdfd; }
-    .n8n-summary { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(320px, 1fr); gap: 12px; margin-bottom: 12px; }
+    .n8n-panel { background: #fffdfd; overflow: hidden; }
+    .n8n-summary {
+      display: grid;
+      grid-template-columns: minmax(280px, .82fr) minmax(360px, 1fr);
+      gap: 12px;
+      margin-bottom: 12px;
+      min-width: 0;
+    }
     .n8n-stack-card {
+      display: grid;
+      gap: 10px;
       border: 1px solid #f0d2df;
       border-left: 4px solid #b10647;
       border-radius: 8px;
@@ -7418,7 +7435,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       padding: 14px;
       min-width: 0;
     }
-    .n8n-stack-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .n8n-stack-card .engine-head { margin-bottom: 0; }
+    .n8n-stack-grid { display: grid; grid-template-columns: repeat(3, minmax(86px, 1fr)); gap: 8px; min-width: 0; }
     .n8n-stack-grid span,
     .n8n-detail-grid span {
       display: block;
@@ -7446,6 +7464,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-size: 13px;
       font-weight: 900;
       overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .n8n-stack-card small,
     .n8n-detail-grid small {
@@ -7455,20 +7474,26 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-size: 11px;
       line-height: 1.3;
       overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .n8n-flow {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
       gap: 8px;
       align-content: stretch;
+      min-width: 0;
     }
     .n8n-flow-step {
+      display: grid;
+      align-content: start;
       min-width: 0;
+      min-height: 86px;
       border: 1px solid #f1d8e3;
       border-radius: 8px;
       background: #fff;
-      padding: 11px 12px 11px 42px;
+      padding: 12px 12px 12px 44px;
       position: relative;
+      overflow: hidden;
     }
     .n8n-flow-step span {
       position: absolute;
@@ -7484,9 +7509,24 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-size: 11px;
       font-weight: 900;
     }
-    .n8n-flow-step b { display: block; color: #251827; font-size: 13px; line-height: 1.2; }
-    .n8n-flow-step small { display: block; margin-top: 4px; color: #6a5964; font-size: 11px; line-height: 1.3; }
-    .n8n-workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .n8n-flow-step b {
+      display: block;
+      min-width: 0;
+      color: #251827;
+      font-size: 13px;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .n8n-flow-step small {
+      display: block;
+      min-width: 0;
+      margin-top: 4px;
+      color: #6a5964;
+      font-size: 11px;
+      line-height: 1.32;
+      overflow-wrap: anywhere;
+    }
+    .n8n-workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 10px; min-width: 0; }
     .n8n-card {
       display: grid;
       gap: 10px;
@@ -7496,13 +7536,29 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       background: #fffafb;
       padding: 13px;
       box-shadow: 0 12px 26px rgba(89, 27, 57, .06);
+      overflow: hidden;
     }
     .n8n-card .engine-head { margin-bottom: 0; }
-    .n8n-card .engine-head b { color: #251827; font-size: 15px; line-height: 1.2; }
-    .n8n-detail-grid { display: grid; grid-template-columns: .9fr .8fr 1.3fr; gap: 8px; }
-    .n8n-card p { margin: 0; color: #4f4050; font-size: 12px; line-height: 1.42; }
+    .n8n-card .engine-head b {
+      min-width: 0;
+      color: #251827;
+      font-size: 15px;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .n8n-detail-grid { display: grid; grid-template-columns: minmax(96px, .9fr) minmax(82px, .75fr) minmax(132px, 1.25fr); gap: 8px; min-width: 0; }
+    .n8n-card p {
+      min-width: 0;
+      margin: 0;
+      color: #4f4050;
+      font-size: 12px;
+      line-height: 1.42;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .n8n-guardrail {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
       gap: 8px;
       align-items: flex-start;
       border: 1px solid #ffe0a3;
@@ -7512,9 +7568,10 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       color: #6b4a05;
       font-size: 12px;
       line-height: 1.35;
+      min-width: 0;
     }
     .n8n-guardrail b { color: #8c5a00; font-size: 11px; text-transform: uppercase; white-space: nowrap; }
-    .n8n-guardrail span { min-width: 0; }
+    .n8n-guardrail span { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .n8n-toggle { margin-top: 2px; display: flex; justify-content: flex-end; }
     .n8n-toggle button {
       border: 1px solid #f1a6c1;
@@ -7526,7 +7583,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       cursor: pointer;
     }
     .n8n-toggle button:hover { background: #fff3f7; }
-    .pill { display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; }
+    .pill { display: inline-flex; min-height: 24px; max-width: 100%; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; white-space: normal; overflow-wrap: anywhere; text-align: center; }
     .pill.is-ok { background: #daf6e8; color: #097143; }
     .pill.is-warn { background: #fff2d2; color: #8c5a00; }
     .table-wrap { overflow-x: auto; }
@@ -7535,64 +7592,101 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     th { color: #8f0e42; font-size: 11px; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
     td { color: #2e2430; }
     .text-cell { max-width: 360px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
-    .sync-panel { background: #fffdfd; }
-    .sync-panel .table-wrap {
+    .sync-panel { background: #fffdfd; overflow: hidden; }
+    .sync-list {
+      display: grid;
+      gap: 10px;
       border: 1px solid #f1d8e3;
       border-radius: 8px;
       background: #fffafb;
-      padding: 0 10px 10px;
+      padding: 12px;
+      min-width: 0;
+      overflow: hidden;
     }
-    .sync-table {
-      min-width: 1120px;
-      border-collapse: separate;
-      border-spacing: 0 8px;
+    .sync-list-head,
+    .sync-row {
+      display: grid;
+      grid-template-columns: minmax(112px, .72fr) minmax(122px, .76fr) minmax(180px, 1.16fr) minmax(220px, 1.38fr) minmax(210px, 1fr);
+      gap: 9px;
+      min-width: 0;
+      align-items: stretch;
     }
-    .sync-table th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      border-bottom: 1px solid #ecd0dc;
-      background: #fffafb;
-      padding-top: 12px;
-      padding-bottom: 4px;
+    .sync-list-head {
+      padding: 0 6px 2px;
+      color: #8f0e42;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-transform: uppercase;
     }
-    .sync-table td {
-      border-bottom: 0;
-      background: #fff;
-      padding: 10px 8px;
-    }
-    .sync-table tbody tr td:first-child {
+    .sync-list-head span { min-width: 0; overflow-wrap: anywhere; }
+    .sync-row {
+      border: 1px solid #f0dbe4;
       border-left: 4px solid #d8c8d0;
-      border-radius: 8px 0 0 8px;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      box-shadow: 0 8px 18px rgba(89, 27, 57, .04);
     }
-    .sync-table tbody tr td:last-child { border-radius: 0 8px 8px 0; }
-    .sync-row-ok td:first-child { border-left-color: #21a66b; }
-    .sync-row-warn td:first-child { border-left-color: #f0a000; }
-    .sync-row-bad td:first-child { border-left-color: #d33b57; }
-    .sync-time { min-width: 124px; }
+    .sync-row-ok { border-left-color: #21a66b; }
+    .sync-row-warn { border-left-color: #f0a000; }
+    .sync-row-bad { border-left-color: #d33b57; }
+    .sync-field-label {
+      display: none;
+      margin: 0 0 5px;
+      color: #8d0f43;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .sync-time,
+    .sync-sender-cell,
+    .sync-message-cell,
+    .sync-meta {
+      min-width: 0;
+    }
+    .sync-time {
+      border-radius: 8px;
+      background: #fff8fb;
+      padding: 9px;
+    }
     .sync-time b { display: block; color: #251827; font-size: 12px; line-height: 1.25; }
     .sync-time small { display: block; margin-top: 4px; color: #786672; font-size: 11px; line-height: 1.25; }
+    .sync-sender-cell {
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      border-radius: 8px;
+      background: #fff8fb;
+      padding: 9px;
+    }
     .sync-sender {
       display: inline-flex;
       min-height: 26px;
+      max-width: 100%;
       align-items: center;
       border: 1px solid #efd4df;
-      border-radius: 999px;
+      border-radius: 8px;
       background: #fff5f9;
-      padding: 0 10px;
+      padding: 6px 9px;
       color: #7c1944;
       font-size: 12px;
       font-weight: 900;
-      white-space: nowrap;
+      line-height: 1.2;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
-    .sync-message-cell { min-width: 270px; max-width: 390px; }
     .sync-message {
-      min-height: 68px;
+      height: 100%;
+      min-height: 86px;
+      min-width: 0;
       border: 1px solid #f0dbe4;
       border-radius: 8px;
       background: #fff;
       padding: 9px 10px;
       box-shadow: inset 3px 0 0 #b10647;
+      overflow: hidden;
     }
     .sync-message span {
       display: block;
@@ -7603,33 +7697,57 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       text-transform: uppercase;
     }
     .sync-message p {
-      max-height: 96px;
       margin: 0;
-      overflow: auto;
       color: #2e2430;
       font-size: 12px;
       line-height: 1.42;
       overflow-wrap: anywhere;
-      scrollbar-width: thin;
+      word-break: break-word;
     }
     .sync-message.is-empty {
       background: #fbf7f9;
       box-shadow: inset 3px 0 0 #d8c8d0;
     }
     .sync-message.is-empty p { color: #8a7682; font-style: italic; }
+    .sync-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      align-content: start;
+    }
+    .sync-meta > span {
+      display: grid;
+      min-width: 0;
+      gap: 5px;
+      border: 1px solid #f0dbe4;
+      border-radius: 8px;
+      background: #fff8fb;
+      padding: 8px;
+    }
+    .sync-meta em {
+      display: block;
+      color: #8d0f43;
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 900;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
     .sync-badge {
       display: inline-flex;
       min-height: 25px;
-      max-width: 150px;
+      width: 100%;
+      max-width: 100%;
       align-items: center;
       justify-content: center;
-      border-radius: 999px;
-      padding: 0 9px;
+      border-radius: 8px;
+      padding: 6px 8px;
       font-size: 11px;
       font-weight: 900;
       line-height: 1.15;
       white-space: normal;
       overflow-wrap: anywhere;
+      word-break: break-word;
       text-align: center;
     }
     .sync-badge.is-ok { background: #daf6e8; color: #097143; }
@@ -7812,6 +7930,16 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .inline-form { display: flex; justify-content: flex-end; margin: 10px 0 0; }
     .inline-form button { background: #fff; color: #8f0e42; }
     .allowlist-row > .inline-form { margin: 10px 12px 0; }
+    @media (max-width: 1120px) {
+      .n8n-summary { grid-template-columns: 1fr; }
+      .n8n-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .sync-list-head { display: none; }
+      .sync-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .sync-message-cell,
+      .sync-meta { grid-column: 1 / -1; }
+      .sync-field-label { display: block; }
+      .sync-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
     @media (max-width: 860px) {
       .topbar { display: block; }
       .actions { justify-content: flex-start; margin-top: 14px; }
@@ -7822,6 +7950,12 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       .config-details,
       .engine-card .config-details { grid-template-columns: 1fr; }
       .n8n-summary, .n8n-flow, .n8n-stack-grid, .n8n-workflow-grid, .n8n-detail-grid { grid-template-columns: 1fr; }
+      .sync-row,
+      .sync-meta { grid-template-columns: 1fr; }
+      .sync-time,
+      .sync-sender-cell,
+      .sync-message,
+      .sync-meta > span { padding: 8px; }
       h1 { font-size: 36px; }
     }
   </style>
@@ -7964,11 +8098,15 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
 
       <article class="panel is-wide sync-panel">
         <h2>Sincronia recente</h2>
-        <div class="table-wrap">
-          <table class="sync-table">
-            <thead><tr><th>Quando</th><th>Remetente</th><th>Mensagem recebida</th><th>Resposta enviada</th><th>Evento</th><th>Outbox</th><th>Motor</th><th>Total</th></tr></thead>
-            <tbody>${renderSyncRows(summary.recentSync)}</tbody>
-          </table>
+        <div class="sync-list" role="list">
+          <div class="sync-list-head" aria-hidden="true">
+            <span>Quando</span>
+            <span>Remetente</span>
+            <span>Mensagem recebida</span>
+            <span>Resposta enviada</span>
+            <span>Entrega</span>
+          </div>
+          ${renderSyncRows(summary.recentSync)}
         </div>
         <p class="footnote">Comparacao curta para conferir se a mensagem recebida gerou a resposta esperada. O telefone continua mascarado.</p>
       </article>
