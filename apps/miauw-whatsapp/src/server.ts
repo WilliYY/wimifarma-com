@@ -548,7 +548,11 @@ const N8N_WORKFLOW_CARDS = [
     schedule: 'Todo dia 17:00',
     moduleKey: 'pedidos',
     description: 'Envia a lista de pedidos em Aguardando chegada e aceita respostas como "cimed chegou".',
+    n8nAction: 'As 17:00 o n8n chama o endpoint interno de chegada. O backend consulta Pedidos e monta a lista atual de fornecedores aguardando.',
+    miaubyAction: 'Miauby envia uma mensagem informal para os contatos com card Pedidos, perguntando quais pedidos chegaram. Se alguem responder "cimed chegou", ele confirma essa chegada no modulo Pedidos.',
+    messagePreview: 'Ex.: "Miauby passando: estes pedidos ainda estao aguardando chegada. Se algum chegou, me responde tipo cimed chegou."',
     safety: 'Confirma somente chegada; pagamento continua em Confirmados/Pedidos.',
+    controlNote: 'Desligar aqui faz o endpoint ignorar o disparo mesmo que o n8n continue agendado.',
     settingsKey: PEDIDOS_ARRIVAL_AUTOMATION_KEY,
   },
   {
@@ -557,7 +561,11 @@ const N8N_WORKFLOW_CARDS = [
     schedule: 'Todo dia 18:00',
     moduleKey: 'financeiro',
     description: 'Lembra a Farmacia de fechar o caixa quando o dia ainda esta aberto.',
+    n8nAction: 'As 18:00 o n8n chama o endpoint interno do Financeiro. O backend consulta se o caixa do dia ja foi fechado, ficou sem movimento ou ainda esta aberto.',
+    miaubyAction: 'Se o caixa ainda precisar de fechamento, Miauby manda um lembrete curto e variado para os contatos com card Financeiro. Se o caixa ja estiver fechado, nao envia nada.',
+    messagePreview: 'Ex.: "Miauby na ronda: esta na hora de fechar o caixa de hoje."',
     safety: 'So alerta se o Financeiro disser que o caixa do dia nao foi fechado.',
+    controlNote: 'Desligar aqui pausa apenas o lembrete do backend; nao altera dados financeiros.',
     settingsKey: FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
   },
   {
@@ -566,7 +574,11 @@ const N8N_WORKFLOW_CARDS = [
     schedule: 'Diario cedo',
     moduleKey: 'pedidos',
     description: 'Boletos vencendo, pedidos que chegam hoje e pedidos atrasados.',
+    n8nAction: 'Rotina planejada para o n8n chamar um resumo diario de Pedidos/Gestao logo cedo.',
+    miaubyAction: 'Miauby deve avisar contatos com card Pedidos sobre boletos vencendo, pedidos previstos para hoje e atrasos. Baixa ou pagamento continuam no sistema com confirmacao.',
+    messagePreview: 'Ex.: "Resumo do Miauby: hoje tem pedidos para chegar e boletos para conferir."',
     safety: 'Somente leitura e alerta; pagamento continua no sistema/core com confirmacao.',
+    controlNote: 'Planejado: quando o workflow for ativado, o controle deve seguir esta mesma regra de painel.',
   },
   {
     key: 'financeiro_alertas',
@@ -574,7 +586,11 @@ const N8N_WORKFLOW_CARDS = [
     schedule: 'Diario e fechamento',
     moduleKey: 'financeiro',
     description: 'Fechamento de caixa, sangria pendente, PIX/maquininha sem conferencia e divergencias.',
+    n8nAction: 'Rotina planejada para chamadas diarias e reforcos perto do fechamento, sempre por endpoint interno tokenizado.',
+    miaubyAction: 'Miauby deve avisar somente contatos com card Financeiro quando houver sangria pendente, Pix/maquininha sem conferencia, caixa aberto ou divergencia.',
+    messagePreview: 'Ex.: "Miauby viu pendencia no financeiro: confere sangria, Pix ou maquininha antes de fechar."',
     safety: 'Alerta primeiro; escrita forte exige pendencia auditada.',
+    controlNote: 'Planejado: n8n nao deve gravar nada direto; backend decide e audita.',
   },
   {
     key: 'deploy_checks',
@@ -582,7 +598,11 @@ const N8N_WORKFLOW_CARDS = [
     schedule: 'Apos deploy/manual',
     moduleKey: 'miauw',
     description: 'Smoke checks de rotas, health e logs para avisar falha antes da equipe perceber.',
+    n8nAction: 'Depois de deploy ou em modo manual, o n8n chama smoke-check/watchdog para conferir rotas, health do Miauby, apps internos e transporte WhatsApp.',
+    miaubyAction: 'Miauby avisa contatos com card Miauby somente quando encontrar problema, ou quando o n8n pedir sucesso tambem com notify=always.',
+    messagePreview: 'Ex.: "Miauby checou o deploy e encontrou uma rota com falha."',
     safety: 'Nao altera dados; cria alerta/tarefa quando falha.',
+    controlNote: 'Controle operacional fica no workflow n8n e no modo notify; alertas respeitam cooldown.',
   },
   {
     key: 'miauby_webhooks',
@@ -590,7 +610,11 @@ const N8N_WORKFLOW_CARDS = [
     schedule: 'Sob demanda',
     moduleKey: 'miauw',
     description: 'Webhooks controlados para relatorio do dia, boletos, tarefas de erro e rotinas externas.',
+    n8nAction: 'Webhooks sob demanda podem pedir relatorio, abrir tarefas de erro, avisar boletos ou rodar checks sem acessar banco direto.',
+    miaubyAction: 'Miauby recebe o pedido ja filtrado, confere permissao/card e responde ou cria pendencia quando a acao tiver risco.',
+    messagePreview: 'Ex.: "Miauby recebeu uma rotina externa e vai avisar so quem tem o card liberado."',
     safety: 'n8n orquestra; backend Wimifarma decide permissao, dado e auditoria.',
+    controlNote: 'Controle por workflow externo; escrita forte continua dependendo de confirmacao do Miauby.',
   },
 ] as const;
 const UNAUTHORIZED_REPLY_TEXT = 'Eu sou o Miauby interno da Wimifarma. Este WhatsApp so responde numeros permitidos pela equipe. Se voce precisa de acesso, peca para um admin liberar seu numero no painel Miauby WhatsApp.';
@@ -7075,18 +7099,32 @@ function renderN8nWorkflows(rows: DashboardN8nRecipientRow[], settingsRows: Dash
   return N8N_WORKFLOW_CARDS.map((workflow) => {
     const moduleRecipients = recipients.get(workflow.moduleKey);
     const count = Number(moduleRecipients?.allowed_count || 0);
-    const names = (moduleRecipients?.recipients || []).slice(0, 5).join(', ') || 'ninguem liberado ainda';
+    const names = (moduleRecipients?.recipients || []).join(', ') || 'ninguem liberado ainda';
     const recipientLabel = count === 1 ? '1 autorizado' : `${count} autorizados`;
     const active = N8N_ENABLED && N8N_WEBHOOK_BASE_URL !== '' && N8N_WEBHOOK_SECRET_CONFIGURED;
     const setting = settings.get(workflow.key);
     const enabled = setting?.enabled ?? true;
-    const toggleHtml = ('settingsKey' in workflow && workflow.settingsKey) ? `
-        <form class="n8n-toggle" method="post" action="${htmlEscape(BASE_PATH)}/automations/toggle">
+    const hasPanelToggle = 'settingsKey' in workflow && workflow.settingsKey;
+    const toggleHtml = hasPanelToggle ? `
+        <form class="n8n-control-box is-${enabled ? 'on' : 'off'}" method="post" action="${htmlEscape(BASE_PATH)}/automations/toggle">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
           <input type="hidden" name="key" value="${htmlEscape(workflow.key)}">
           <input type="hidden" name="enabled" value="${enabled ? '0' : '1'}">
-          <button type="submit">${enabled ? 'Desativar' : 'Ativar'}</button>
-        </form>` : '';
+          <span>
+            <b>${enabled ? 'Ligado no backend' : 'Desligado no backend'}</b>
+            <small>${htmlEscape(workflow.controlNote)}</small>
+          </span>
+          <button type="submit" aria-pressed="${enabled ? 'true' : 'false'}">
+            <span>${enabled ? 'ON' : 'OFF'}</span>
+            ${enabled ? 'Desativar' : 'Ativar'}
+          </button>
+        </form>` : `
+        <div class="n8n-control-box is-planned">
+          <span>
+            <b>Controle pelo workflow</b>
+            <small>${htmlEscape(workflow.controlNote)}</small>
+          </span>
+        </div>`;
     return `
       <div class="n8n-card">
         <div class="engine-head">
@@ -7098,6 +7136,17 @@ function renderN8nWorkflows(rows: DashboardN8nRecipientRow[], settingsRows: Dash
           <span><b>Card</b><em>${htmlEscape(workflow.moduleKey)}</em></span>
           <span><b>Destino</b><em>${htmlEscape(recipientLabel)}</em><small>${htmlEscape(names)}</small></span>
         </div>
+        <div class="n8n-explain-grid">
+          <div class="n8n-explain-block">
+            <b>O que o n8n faz</b>
+            <p>${htmlEscape(workflow.n8nAction)}</p>
+          </div>
+          <div class="n8n-explain-block">
+            <b>O que o Miauby faz</b>
+            <p>${htmlEscape(workflow.miaubyAction)}</p>
+          </div>
+        </div>
+        <div class="n8n-message-preview"><b>Mensagem/estilo</b><span>${htmlEscape(workflow.messagePreview)}</span></div>
         <p>${htmlEscape(workflow.description)}</p>
         <div class="n8n-guardrail"><b>Limite</b><span>${htmlEscape(workflow.safety)}</span></div>
         ${toggleHtml}
@@ -7556,6 +7605,46 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       overflow-wrap: anywhere;
       word-break: break-word;
     }
+    .n8n-explain-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      min-width: 0;
+    }
+    .n8n-explain-block,
+    .n8n-message-preview {
+      min-width: 0;
+      border: 1px solid #f0dbe4;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      box-shadow: inset 3px 0 0 #b10647;
+    }
+    .n8n-explain-block b,
+    .n8n-message-preview b {
+      display: block;
+      margin: 0 0 5px;
+      color: #8d0f43;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1.15;
+      text-transform: uppercase;
+    }
+    .n8n-explain-block p,
+    .n8n-message-preview span {
+      display: block;
+      min-width: 0;
+      margin: 0;
+      color: #2e2430;
+      font-size: 12px;
+      line-height: 1.42;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .n8n-message-preview {
+      background: #fff8fb;
+      box-shadow: inset 3px 0 0 #f0a000;
+    }
     .n8n-guardrail {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
@@ -7572,16 +7661,70 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     }
     .n8n-guardrail b { color: #8c5a00; font-size: 11px; text-transform: uppercase; white-space: nowrap; }
     .n8n-guardrail span { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
-    .n8n-toggle { margin-top: 2px; display: flex; justify-content: flex-end; }
+    .n8n-control-box {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+      border: 1px solid #f0dbe4;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+    }
+    .n8n-control-box.is-on { border-color: #bfead2; background: #f5fff9; }
+    .n8n-control-box.is-off { border-color: #ffc6d1; background: #fff4f7; }
+    .n8n-control-box.is-planned { background: #fbf7f9; }
+    .n8n-control-box span {
+      display: block;
+      min-width: 0;
+    }
+    .n8n-control-box b {
+      display: block;
+      color: #251827;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+    .n8n-control-box small {
+      display: block;
+      margin-top: 4px;
+      color: #5f4e59;
+      font-size: 11px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .n8n-control-box button,
     .n8n-toggle button {
       border: 1px solid #f1a6c1;
       border-radius: 999px;
       background: #fff;
       color: #ad0b47;
       font-weight: 900;
-      padding: 8px 14px;
+      padding: 8px 13px;
       cursor: pointer;
+      white-space: nowrap;
     }
+    .n8n-control-box button span {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      min-height: 18px;
+      margin-right: 6px;
+      border-radius: 999px;
+      background: #daf6e8;
+      color: #097143;
+      font-size: 10px;
+      font-weight: 900;
+    }
+    .n8n-control-box.is-off button span {
+      background: #ffe1e8;
+      color: #a30f2e;
+    }
+    .n8n-control-box button:hover,
     .n8n-toggle button:hover { background: #fff3f7; }
     .pill { display: inline-flex; min-height: 24px; max-width: 100%; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; white-space: normal; overflow-wrap: anywhere; text-align: center; }
     .pill.is-ok { background: #daf6e8; color: #097143; }
@@ -7949,7 +8092,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       .status-list { grid-template-columns: 1fr; }
       .config-details,
       .engine-card .config-details { grid-template-columns: 1fr; }
-      .n8n-summary, .n8n-flow, .n8n-stack-grid, .n8n-workflow-grid, .n8n-detail-grid { grid-template-columns: 1fr; }
+      .n8n-summary, .n8n-flow, .n8n-stack-grid, .n8n-workflow-grid, .n8n-detail-grid, .n8n-explain-grid, .n8n-control-box { grid-template-columns: 1fr; }
+      .n8n-control-box button { justify-self: start; }
       .sync-row,
       .sync-meta { grid-template-columns: 1fr; }
       .sync-time,

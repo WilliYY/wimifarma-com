@@ -56,7 +56,7 @@ n8n --version
 - `MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL`
 - `MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL`
 
-O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino e Limite. O publico continua calculado pelos cards da allowlist.
+O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos` e `Fechamento de caixa`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron do n8n continue ativo.
 
 ## Rotinas iniciais
 
