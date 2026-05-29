@@ -8270,11 +8270,19 @@ app.post(`${BASE_PATH}/internal/pedidos-arrival-check`, requireInternalToken, as
 });
 
 app.post(`${BASE_PATH}/internal/financeiro-cash-closing-reminder`, requireInternalToken, async (req, res) => {
-  const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
-  const dryRun = req.body?.dry_run === true || req.body?.dryRun === true || req.query.dry_run === '1';
-  const date = safeText(req.body?.date || req.body?.data || req.query.date || req.query.data, 20);
-  const result = await runFinanceiroCashClosingReminder(mode, dryRun, date);
-  res.status(result.ok === false ? 503 : 200).json(result);
+  try {
+    const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
+    const dryRun = req.body?.dry_run === true || req.body?.dryRun === true || req.query.dry_run === '1';
+    const date = safeText(req.body?.date || req.body?.data || req.query.date || req.query.data, 20);
+    const result = await runFinanceiroCashClosingReminder(mode, dryRun, date);
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    await recordErrorLog('automation_financeiro_fechamento_caixa_18h', 'error', error);
+    res.status(500).json({
+      ok: false,
+      error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',
+    });
+  }
 });
 
 app.use((_req, res) => {

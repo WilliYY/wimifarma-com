@@ -43,7 +43,12 @@ const LEGACY_MIRROR_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABL
 const LEGACY_MYSQL_REQUIRED = LEGACY_IMPORT_ENABLED || LEGACY_MIRROR_ENABLED || AUTH_PROVIDER === 'mysql';
 const SESSION_SECRET = env.FINANCEIRO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const REOPEN_PASSWORD = env.FINANCEIRO_REOPEN_PASSWORD || 'wimifarma';
-const INTERNAL_TOKEN = env.FINANCEIRO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || env.MIAUW_WHATSAPP_INTERNAL_TOKEN || env.MIAUW_AGENT_INTERNAL_TOKEN || '';
+const INTERNAL_TOKENS = [
+  env.FINANCEIRO_INTERNAL_TOKEN,
+  env.MIAUW_GUARDIAN_TOKEN,
+  env.MIAUW_WHATSAPP_INTERNAL_TOKEN,
+  env.MIAUW_AGENT_INTERNAL_TOKEN,
+].map((value) => String(value || '').trim()).filter(Boolean);
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -406,12 +411,12 @@ function selectedView(req: Request): 'caixa' | 'relatorio' {
 }
 
 function requireInternalToken(req: Request, res: Response): boolean {
-  if (!INTERNAL_TOKEN) {
+  if (INTERNAL_TOKENS.length === 0) {
     res.status(503).json({ ok: false, message: 'financeiro_internal_token_not_configured' });
     return false;
   }
   const provided = String(req.header('x-miauw-internal-token') || req.header('x-financeiro-internal-token') || '');
-  if (provided !== INTERNAL_TOKEN) {
+  if (!provided || !INTERNAL_TOKENS.some((token) => timingSafeStringEqual(provided, token))) {
     res.status(401).json({ ok: false, message: 'unauthorized' });
     return false;
   }
@@ -2276,7 +2281,7 @@ async function healthPayload(): Promise<Record<string, unknown>> {
     auth: {
       provider: AUTH_PROVIDER,
       core_required: AUTH_PROVIDER === 'core',
-      internal_token_configured: INTERNAL_TOKEN !== '',
+      internal_token_configured: INTERNAL_TOKENS.length > 0,
     },
     storage: {
       provider: 'postgres',
