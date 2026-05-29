@@ -454,7 +454,6 @@ services:
     container_name: wimifarma-cotacao-app
     restart: unless-stopped
     depends_on:
-      - wimifarma-com-db
       - wimifarma-core-db
       - wimifarma-cotacao-db
       - wimifarma-cotacao-redis
@@ -462,20 +461,12 @@ services:
       NODE_ENV: production
       PORT: 3000
       BASE_PATH: /cotacao
-      MYSQL_HOST: wimifarma-com-db
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: wimifarma_app
-      MYSQL_USER: wimifarma_user
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
       CORE_POSTGRES_HOST: wimifarma-core-db
       CORE_POSTGRES_PORT: 5432
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
-      COTACAO_AUTH_PROVIDER: ${COTACAO_AUTH_PROVIDER:-core}
-      COTACAO_AUTH_MYSQL_FALLBACK_ENABLED: ${COTACAO_AUTH_MYSQL_FALLBACK_ENABLED:-true}
-      COTACAO_CORE_AUTH_SHADOW_ENABLED: ${COTACAO_CORE_AUTH_SHADOW_ENABLED:-false}
-      COTACAO_CORE_AUTH_SHADOW_TIMEOUT_MS: ${COTACAO_CORE_AUTH_SHADOW_TIMEOUT_MS:-1500}
+      COTACAO_CORE_AUTH_TIMEOUT_MS: ${COTACAO_CORE_AUTH_TIMEOUT_MS:-1500}
       POSTGRES_HOST: wimifarma-cotacao-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: wimifarma_cotacao

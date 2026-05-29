@@ -62,7 +62,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_audit_logs`: auditoria compartilhada curta para eventos de login/acoes dos apps Node.
 - `core_login_rate_limits`: base compartilhada para limitadores de login quando os modulos forem removendo o legado PHP/MySQL.
 
-Cotacao, Gestao e Pedidos usam `core_users` como fonte principal de login por `*_AUTH_PROVIDER=core`, mantendo fallback temporario em `wf_users` por `*_AUTH_MYSQL_FALLBACK_ENABLED=true` durante a janela de corte.
+Cotacao usa `core_users` como fonte unica de login. Gestao e Pedidos usam `core_users` como fonte principal por `*_AUTH_PROVIDER=core`, mantendo fallback temporario em `wf_users` por `*_AUTH_MYSQL_FALLBACK_ENABLED=true` durante a janela de corte.
 
 ## Tabelas do Miauby WhatsApp em Postgres
 
@@ -86,7 +86,7 @@ Criadas por `apps/cotacao/src/server.js`:
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula.
 - `cotacao_v2_column_audit`: historico de renomeacao/reordenacao de distribuidoras.
 
-A Cotacao V2 autentica primeiro no core `core_users`; `wf_users` no MySQL fica apenas como fallback temporario enquanto `COTACAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
+A Cotacao V2 autentica somente no core `core_users`, sem abrir conexao MySQL e sem fallback `wf_users`. Os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
 
 ## Tabelas da Gestao em Postgres
 

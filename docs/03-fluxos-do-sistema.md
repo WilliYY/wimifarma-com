@@ -25,7 +25,7 @@ Rotas de login:
 
 - `/cashback/login.php`
 - `/codigos/login.php`
-- `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando em `core_users` com fallback temporario `wf_users`)
+- `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando somente em `core_users`)
 - `/financeiro/login.php`
 - `/gestao/login.php`
 - `/pedidos/`
@@ -178,7 +178,7 @@ Tabelas principais:
 - Postgres `cotacao_v2_rows`
 - Postgres `cotacao_v2_events`
 - Postgres `cotacao_v2_rules`
-- Postgres `core_users` para login, com fallback temporario MySQL `wf_users`
+- Postgres `core_users` para login
 
 Regras a preservar:
 

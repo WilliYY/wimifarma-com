@@ -45,7 +45,7 @@ Rotas de smoke test:
 - `http://127.0.0.1:8080` deve responder quando a Evolution API separada estiver ativa no VPS
 - `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
 - `/miauw/agent-tools.php` deve recusar sem token interno e aceitar somente tools de leitura baixa quando chamado pelo servico agente
-- `/cotacao/health` deve responder JSON 200 pela Cotacao V2 e mostrar `auth.provider=core` quando `COTACAO_AUTH_PROVIDER=core`
+- `/cotacao/health` deve responder JSON 200 pela Cotacao V2, mostrar `auth.provider=core`, `auth.mysqlDependency=false`, `mysql_auth=false` e `mysql_auth_fallback=false`
 - `/cotacao/api/bootstrap` deve exigir sessao e redirecionar/recusar quando nao autenticado
 
 Comandos estao em `docs/05-comandos.md`.

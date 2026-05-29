@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Miauby agente e Miauby WhatsApp; o Financeiro ainda roda em PHP na rota oficial, com uma sombra Node/Postgres separada para importacao/checksum. Os dados ficam separados entre MySQL legado/apps, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres sombra do Financeiro, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos e faz proxy para Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Miauby agente e Miauby WhatsApp; o Financeiro ainda roda em PHP na rota oficial, com uma sombra Node/Postgres separada para importacao/checksum. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres sombra do Financeiro, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
 ## Componentes envolvidos
 
@@ -22,6 +22,7 @@ Usuario/Navegador
       -> proxy /miauw/agent/ para wimifarma-miauw-agent:3100
       -> proxy /miauw/whatsapp/ para wimifarma-miauw-whatsapp:3400
   -> wimifarma-com-db:3306 (MySQL)
+  -> wimifarma-core-db:5432 (Postgres core auth)
   -> wimifarma-cotacao-db:5432 (Postgres)
   -> wimifarma-cotacao-redis:6379 (Redis)
   -> wimifarma-gestao-db:5432 (Postgres)

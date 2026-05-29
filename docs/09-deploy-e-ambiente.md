@@ -121,7 +121,7 @@ Higiene de pastas no VPS:
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
 - Definir `CORE_POSTGRES_PASSWORD` no `.env` de cada ambiente antes de usar o core de autenticacao em Postgres. Antes de subir apps com provider `core`, rodar o migrador `wimifarma-core-migrator` para sincronizar `wf_users`.
-- `COTACAO_AUTH_PROVIDER=core` usa `core_users` como login oficial da Cotacao; rollback e voltar `COTACAO_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-cotacao-app`. `COTACAO_AUTH_MYSQL_FALLBACK_ENABLED=true` mantem fallback temporario em `wf_users`; `COTACAO_CORE_AUTH_SHADOW_ENABLED=true` fica para comparacao somente quando o provider estiver em `mysql`.
+- A Cotacao usa `core_users` como login unico desde 2026-05-29; o servico nao recebe mais variaveis MySQL nem `COTACAO_AUTH_PROVIDER`. Para rollback desse corte, voltar o commit ou imagem anterior e rebuildar `wimifarma-cotacao-app`, nao apenas trocar `.env`. `COTACAO_CORE_AUTH_TIMEOUT_MS` controla o timeout do Postgres do core.
 - Definir `GESTAO_POSTGRES_PASSWORD` e `GESTAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Gestao Node/Postgres.
 - `GESTAO_AUTH_PROVIDER=core` usa `core_users` como login oficial da Gestao; rollback e voltar `GESTAO_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-gestao-app`. `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true` mantem fallback temporario em `wf_users`; `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` fica para comparacao somente quando o provider estiver em `mysql`.
 - Definir `PEDIDOS_SESSION_SECRET` no `.env` de cada ambiente antes de subir Pedidos; se faltar, o servico usa fallback operacional, mas producao deve ter segredo proprio.
@@ -162,7 +162,7 @@ Higiene de pastas no VPS:
 - `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
-- O core de autenticacao em Postgres usa `wimifarma-core-db` para `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users`. Cotacao, Gestao e Pedidos usam `auth.provider=core` por padrao, com fallback MySQL temporario para rollback operacional.
+- O core de autenticacao em Postgres usa `wimifarma-core-db` para `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users`. Cotacao usa core sem fallback MySQL; Gestao e Pedidos usam `auth.provider=core` por padrao, com fallback MySQL temporario para rollback operacional.
 - A Gestao roda fora do PHP/WordPress: Apache faz proxy de `/gestao/` para Node, Node usa Postgres para contas, pagamentos, auditoria e sessoes, e MySQL somente para login/logs/importacao legado.
 - Tarefa roda fora do PHP/WordPress: Apache faz proxy de `/tarefa/` para Node, Node usa Postgres para tarefas, auditoria e sessoes, e pode usar `core_users` como login oficial. MySQL fica apenas como janela opcional de importacao/espelho/log legado quando as flags de legado estiverem ligadas.
 - XP roda fora do PHP/WordPress: Apache faz proxy de `/xp/` para Node, Node usa Postgres para funcionarios, vendas, configuracoes, auditoria e sessoes, e MySQL somente para importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` estiverem ligadas.
@@ -196,7 +196,7 @@ Higiene de pastas no VPS:
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, nao investigar CSS primeiro; validar `git log`, rebuild do container e destino do Nginx Proxy Manager.
 - Se a rota publica ainda mostrar `wfwc-home-launchpad`, validar tambem se `site/wp-content/endurance-page-cache/` foi removido/ignorado no deploy.
 - Apagar `cotacao-data/` remove dados da Cotacao V2. Fazer backup antes de qualquer limpeza ou troca de volume.
-- Apagar `core-data/` remove a autenticacao/auditoria compartilhada em Postgres. Com Cotacao/Gestao/Pedidos em `AUTH_PROVIDER=core`, isso derruba o provider principal e so fica operavel se o fallback MySQL estiver ligado e saudavel.
+- Apagar `core-data/` remove a autenticacao/auditoria compartilhada em Postgres. A Cotacao nao tem mais fallback MySQL e para de autenticar; Gestao/Pedidos so ficam operaveis se o fallback MySQL temporario estiver ligado e saudavel.
 - Apagar `gestao-data/` remove contas, itens, pagamentos, auditoria e sessoes da Gestao. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `tarefa-data/` remove tarefas, auditoria e sessoes do Tarefa Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `xp-data/` remove funcionarios, vendas, configuracoes, auditoria e sessoes oficiais do XP Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.

@@ -14,7 +14,7 @@ A V2 usa:
 - Socket.IO para presenca e eventos ao vivo;
 - Postgres `wimifarma_cotacao` para linhas, colunas, eventos e regras;
 - Redis para sessao e presenca temporaria;
-- Core Postgres `core_users` para login principal; MySQL `wf_users` fica apenas como fallback temporario.
+- Core Postgres `core_users` para login unico.
 
 As notas abaixo sobre polling PHP/MySQL ficam como historico da Cotacao legada. O documento principal da nova arquitetura e `docs/20-cotacao-v2.md`.
 
@@ -127,7 +127,7 @@ Tabelas:
 - Postgres `cotacao_v2_rules`
 - Postgres `cotacao_v2_styles`
 - Redis para sessoes e presenca temporaria
-- Core Postgres `core_users` para login, com fallback temporario MySQL `wf_users`
+- Core Postgres `core_users` para login
 
 ## Regras de negocio que precisam ser preservadas
 

@@ -27,7 +27,6 @@ Servicos:
 - `wimifarma-cotacao-redis`: Redis 7.
 - `wimifarma-com-web`: Apache/PHP, faz proxy de `/cotacao/` e `/cotacao/socket.io/`.
 - `wimifarma-core-db`: Postgres do core auth, usado pela Cotacao V2 para autenticar `core_users`.
-- `wimifarma-com-db`: MySQL, mantido pela Cotacao V2 apenas como fallback temporario de autenticacao em `wf_users`.
 
 Rotas:
 
@@ -84,11 +83,7 @@ Redis:
 
 Core Postgres `wimifarma_core`:
 
-- `core_users` e a origem principal de usuario/senha por `COTACAO_AUTH_PROVIDER=core`.
-
-MySQL `wimifarma_app`:
-
-- `wf_users` fica como fallback temporario quando `COTACAO_AUTH_MYSQL_FALLBACK_ENABLED=true`.
+- `core_users` e a origem unica de usuario/senha da Cotacao V2.
 
 ## Regras de negocio que precisam ser preservadas
 
@@ -118,7 +113,7 @@ MySQL `wimifarma_app`:
 - Quando outro usuario esta em uma celula visivel, a grade deve mostrar contorno colorido, etiqueta do animal e tooltip com coluna/linha; esse indicador nao bloqueia escrita.
 - O botao `Historico`, ao lado do contador de linhas com dados, abre as alteracoes da celula selecionada a partir de `cotacao_v2_events` e permite restaurar o valor anterior por um save normal.
 - O modal de formatacao condicional deve manter leitura operacional: criacao de regra em uma faixa compacta, lista de regras em linhas alinhadas e acoes visiveis sem quebrar o layout.
-- Login deve continuar aceitando os usuarios internos sincronizados para `core_users`; durante a janela de corte, `wf_users` segue como fallback temporario.
+- Login deve continuar aceitando os usuarios internos sincronizados para `core_users`; se um usuario existir apenas em `wf_users`, rodar o migrador do core antes de liberar o acesso.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.
 - Import/export Google Sheets deve preservar `cotacao_row_id` para manter linha estavel e evitar duplicacao silenciosa.
 - Acoes de import e restore precisam de permissao clara antes de uso amplo; apagar distribuidora permanece no fluxo normal com desfazer na mesma sessao.
@@ -130,6 +125,7 @@ MySQL `wimifarma_app`:
 - A Cotacao V2 usa Node.js + Socket.IO para suportar tempo real sem polling pesado.
 - Postgres foi escolhido para linhas JSONB, eventos, historico por celula e evolucao segura do sync.
 - Redis foi escolhido para sessoes e presenca efemera.
+- Em 2026-05-29, a Cotacao V2 removeu `mysql2`, pool MySQL, fallback `wf_users` e `depends_on` de `wimifarma-com-db`; o health mantem campos `mysql_*` apenas como compatibilidade, sempre indicando que MySQL nao e usado.
 - O Nginx Proxy Manager continua apontando para `wimifarma-com-web:80`; o Apache faz proxy interno para a Cotacao V2.
 - A tela principal segue um visual denso de planilha operacional, parecido com a experiencia anterior aprovada pelo usuario, com topo compacto, abas locais, contador de linhas com dados, presenca ao vivo e exportacao CSV no navegador.
 - A grade inicial usa colunas fixas de farmacia: `EAN`, `PRODUTO`, `QUANTIDADE`, `CATEGORIA`, `Anb`, `Profarma`, `mauro`, `arthur`, `Santa`, `tom`, `cimed` e `Ganhador`.
