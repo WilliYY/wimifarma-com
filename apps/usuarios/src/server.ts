@@ -72,7 +72,7 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'usuarios';
-const SERVICE_VERSION = '1.0.1';
+const SERVICE_VERSION = '1.0.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -796,7 +796,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usuarios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529b">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529c">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -830,7 +830,7 @@ function renderXpOptions(employees: XpEmployeeRow[], selectedId: string | null):
 }
 
 function renderModuleChecks(name: string, permissions: Record<string, boolean>): string {
-  return `<div class="users-modules">${MODULES.map((module) => `<label class="users-check"><input type="checkbox" name="${e(name)}" value="${e(module.key)}"${permissions[module.key] ? ' checked' : ''}>${e(module.label)}</label>`).join('')}</div>`;
+  return `<div class="users-modules">${MODULES.map((module) => `<label class="users-check"><input type="checkbox" name="${e(name)}" value="${e(module.key)}"${permissions[module.key] ? ' checked' : ''}><span>${e(module.label)}</span></label>`).join('')}</div>`;
 }
 
 function renderDashboard(
@@ -849,7 +849,7 @@ function renderDashboard(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usuarios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529b">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529c">
 </head>
 <body>
   <header class="users-topbar">
