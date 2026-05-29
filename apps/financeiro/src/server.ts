@@ -2923,7 +2923,7 @@ async function start(): Promise<void> {
     await runLegacyImport();
   }
   app.listen(PORT, () => {
-    console.log(`[financeiro] shadow service listening on ${PORT} at ${BASE_PATH}`);
+    console.log(`[financeiro] official service listening on ${PORT} at ${BASE_PATH}`);
   });
 }
 
