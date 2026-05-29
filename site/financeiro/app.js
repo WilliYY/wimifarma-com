@@ -169,6 +169,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function financeiroPostBody(formData) {
+        var body = new URLSearchParams();
+        formData.forEach(function (value, key) {
+            body.append(key, value);
+        });
+
+        return body;
+    }
+
     function formatDailyRevenueInput(input) {
         if (String(input.value || '').trim() === '') {
             input.value = '';
@@ -208,7 +217,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch('/financeiro/', {
             method: 'POST',
             headers: { 'Accept': 'application/json' },
-            body: body
+            body: financeiroPostBody(body)
         }).then(function (response) {
             return parseJsonResponse(response, 'Nao foi possivel salvar o faturamento.');
         }).then(function (json) {
@@ -238,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch('/financeiro/', {
             method: 'POST',
             headers: { 'Accept': 'application/json' },
-            body: body
+            body: financeiroPostBody(body)
         }).then(function (response) {
             return parseJsonResponse(response, 'Nao foi possivel salvar o dia.');
         }).then(function (json) {
@@ -387,7 +396,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch('/financeiro/', {
             method: 'POST',
             headers: { 'Accept': 'application/json' },
-            body: body
+            body: financeiroPostBody(body)
         }).then(function (response) {
             return parseJsonResponse(response, 'Nao foi possivel fechar o dia.');
         }).then(function () {

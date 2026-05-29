@@ -805,6 +805,46 @@ function miauw_skill_period_from_message(string $message): array
 
 function miauw_skill_financeiro_summary(array $period): array
 {
+    if (miauw_skill_financeiro_internal_configured()) {
+        try {
+            $response = miauw_skill_financeiro_internal_request('GET', '/api/internal/summary', array(), array(
+                'mes' => sprintf('%04d-%02d', (int) $period['year'], (int) $period['month']),
+            ));
+            if (is_array($response) && !empty($response['ok'])) {
+                $summary = is_array($response['summary'] ?? null) ? $response['summary'] : array();
+                $lines = array(
+                    'FINANCEIRO ' . $period['label'],
+                    'Dias registrados: ' . (int) ($summary['registered_days'] ?? 0),
+                    'Fechados: ' . (int) ($summary['closed_days'] ?? 0) . ', divergentes: ' . (int) ($summary['divergences'] ?? 0),
+                    'Total lancado/conferido: ' . (string) ($summary['total_checked'] ?? miauw_skill_money(((int) ($summary['total_checked_cents'] ?? 0)) / 100)),
+                    'Total sistema: ' . (string) ($summary['system_total'] ?? miauw_skill_money(((int) ($summary['system_total_cents'] ?? 0)) / 100)),
+                    'Faturamento diario: ' . (string) ($summary['daily_revenue'] ?? miauw_skill_money(((int) ($summary['daily_revenue_cents'] ?? 0)) / 100)),
+                    'Sobra/Falta acumulada: ' . (string) ($summary['difference'] ?? miauw_skill_money(((int) ($summary['difference_cents'] ?? 0)) / 100)),
+                );
+                $categories = is_array($response['categories'] ?? null) ? $response['categories'] : array();
+                if ($categories) {
+                    $parts = array();
+                    foreach (array_slice($categories, 0, 8) as $entry) {
+                        if (!is_array($entry)) {
+                            continue;
+                        }
+                        $parts[] = (string) ($entry['category'] ?? '-')
+                            . ': ' . (int) ($entry['quantity'] ?? 0) . ' lanc., '
+                            . (string) ($entry['amount'] ?? miauw_skill_money(((int) ($entry['amount_cents'] ?? 0)) / 100));
+                    }
+                    if ($parts) {
+                        $lines[] = 'Categorias lancadas: ' . implode('; ', $parts);
+                    }
+                }
+
+                return $lines;
+            }
+        } catch (Throwable $error) {
+            error_log('Miauby Financeiro internal summary failed: ' . $error->getMessage());
+            return array('FINANCEIRO: nao consegui consultar o Postgres agora. Confira /financeiro/.');
+        }
+    }
+
     if (!miauw_skill_table_exists('financeiro_fechamentos')) {
         return array();
     }
@@ -1479,6 +1519,93 @@ function miauw_skill_env_value(array $names): string
     }
 
     return '';
+}
+
+function miauw_skill_financeiro_internal_token(): string
+{
+    if (defined('FINANCEIRO_INTERNAL_TOKEN') && trim((string) FINANCEIRO_INTERNAL_TOKEN) !== '') {
+        return trim((string) FINANCEIRO_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('FINANCEIRO_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN'));
+}
+
+function miauw_skill_financeiro_internal_base_url(): string
+{
+    $url = defined('FINANCEIRO_INTERNAL_BASE_URL') ? trim((string) FINANCEIRO_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('FINANCEIRO_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-financeiro-app:3800/financeiro', '/');
+}
+
+function miauw_skill_financeiro_internal_configured(): bool
+{
+    return miauw_skill_financeiro_internal_token() !== '';
+}
+
+function miauw_skill_financeiro_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    $token = miauw_skill_financeiro_internal_token();
+    if ($token === '') {
+        return null;
+    }
+
+    $url = miauw_skill_financeiro_internal_base_url() . '/' . ltrim($path, '/');
+    if ($query) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    $method = strtoupper($method);
+    $headers = array(
+        'Accept: application/json',
+        'X-Miauw-Internal-Token: ' . $token,
+    );
+    $options = array(
+        'method' => $method,
+        'header' => implode("\r\n", $headers),
+        'timeout' => 6,
+        'ignore_errors' => true,
+    );
+
+    if ($method !== 'GET') {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $options['header'] .= "\r\nContent-Type: application/json";
+        $options['content'] = is_string($json) ? $json : '{}';
+    }
+
+    $context = stream_context_create(array('http' => $options));
+    $raw = @file_get_contents($url, false, $context);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+
+    $status = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d+)/', (string) $header, $match)) {
+                $status = (int) $match[1];
+                break;
+            }
+        }
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        return null;
+    }
+
+    if ($status >= 400) {
+        $message = isset($data['message']) ? (string) $data['message'] : 'Falha no Financeiro interno.';
+        throw new RuntimeException($message);
+    }
+
+    return $data;
 }
 
 function miauw_skill_codigos_internal_token(): string
@@ -3783,10 +3910,6 @@ function miauw_skill_financeiro_command_from_message(string $message): ?array
 
 function miauw_skill_create_financeiro_lancamento(string $category, float $value, string $observation = '', ?string $date = null, string $responsible = ''): array
 {
-    if (!miauw_skill_financeiro_functions_loaded()) {
-        throw new RuntimeException('Financeiro indisponivel para o Miauby.');
-    }
-
     $category = miauw_skill_clean_category($category);
     if ($category === '') {
         throw new RuntimeException('Categoria vazia. Sem categoria, sem magia.');
@@ -3801,7 +3924,43 @@ function miauw_skill_create_financeiro_lancamento(string $category, float $value
         throw new RuntimeException('Informe quem fez ou quem e o responsavel antes de gravar no financeiro.');
     }
 
-    $date = function_exists('financeiro_valid_date') ? financeiro_valid_date((string) ($date ?? ''), date('Y-m-d')) : date('Y-m-d');
+    $date = $date !== null && trim((string) $date) !== '' ? (string) $date : date('Y-m-d');
+
+    if (miauw_skill_financeiro_internal_configured()) {
+        try {
+            $response = miauw_skill_financeiro_internal_request('POST', '/api/internal/lancamentos', array(
+                'categoria' => $category,
+                'valor' => $value,
+                'data' => $date,
+                'responsavel' => $responsible,
+                'observacao' => $observation,
+                'actor_user_id' => (int) ($_SESSION['user_id'] ?? 0),
+                'idempotency_key' => hash('sha256', implode('|', array($category, (string) $value, $date, $responsible, $observation))),
+            ));
+            if (is_array($response) && !empty($response['ok'])) {
+                return array(
+                    'id' => (int) ($response['id'] ?? 0),
+                    'data' => (string) ($response['data'] ?? $date),
+                    'categoria' => (string) ($response['categoria'] ?? $category),
+                    'valor' => (float) ($response['valor'] ?? $value),
+                    'responsavel' => (string) ($response['responsavel'] ?? $responsible),
+                    'observacao' => (string) ($response['observacao'] ?? $observation),
+                    'total_conferido' => (float) ($response['total_conferido'] ?? 0),
+                    'sobra_falta' => (float) ($response['sobra_falta'] ?? 0),
+                );
+            }
+        } catch (Throwable $error) {
+            throw new RuntimeException('Financeiro Postgres indisponivel para gravar agora: ' . $error->getMessage());
+        }
+
+        throw new RuntimeException('Financeiro Postgres nao confirmou o lancamento.');
+    }
+
+    if (!miauw_skill_financeiro_functions_loaded()) {
+        throw new RuntimeException('Financeiro indisponivel para o Miauby.');
+    }
+
+    $date = function_exists('financeiro_valid_date') ? financeiro_valid_date($date, date('Y-m-d')) : date('Y-m-d');
     $closing = financeiro_get_or_create_closing($date);
 
     if (financeiro_is_locked($closing)) {
@@ -3949,11 +4108,28 @@ function miauw_skill_financeiro_daily_revenue_command_from_message(string $messa
 
 function miauw_skill_create_financeiro_faturamentos(array $command, ?int $userId = null): array
 {
+    $entries = is_array($command['entries'] ?? null) ? $command['entries'] : array();
+
+    if (miauw_skill_financeiro_internal_configured()) {
+        try {
+            $response = miauw_skill_financeiro_internal_request('POST', '/api/internal/faturamentos', array(
+                'entries' => $entries,
+                'actor_user_id' => $userId,
+            ));
+            if (is_array($response) && !empty($response['ok'])) {
+                return array('salvos' => is_array($response['salvos'] ?? null) ? $response['salvos'] : array());
+            }
+        } catch (Throwable $error) {
+            throw new RuntimeException('Financeiro Postgres indisponivel para salvar faturamento: ' . $error->getMessage());
+        }
+
+        throw new RuntimeException('Financeiro Postgres nao confirmou o faturamento diario.');
+    }
+
     if (!miauw_skill_financeiro_functions_loaded() || !function_exists('financeiro_save_faturamento_dia')) {
         throw new RuntimeException('Financeiro indisponivel para salvar faturamento diario.');
     }
 
-    $entries = is_array($command['entries'] ?? null) ? $command['entries'] : array();
     $saved = array();
 
     foreach ($entries as $entry) {

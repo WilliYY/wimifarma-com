@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos e da sombra do Financeiro. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro sombra e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos e do Financeiro. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -28,9 +28,9 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - Container Codigos: `wimifarma-codigos-db`
 - Imagem Codigos: `postgres:17-alpine`
 - Volume Codigos: `codigos-data/postgres/`
-- Container Financeiro sombra: `wimifarma-financeiro-db`
-- Imagem Financeiro sombra: `postgres:17-alpine`
-- Volume Financeiro sombra: `financeiro-data/postgres/`
+- Container Financeiro: `wimifarma-financeiro-db`
+- Imagem Financeiro: `postgres:17-alpine`
+- Volume Financeiro: `financeiro-data/postgres/`
 - Container Miauby WhatsApp: `wimifarma-miauw-whatsapp-db`
 - Imagem Miauby WhatsApp: `postgres:17-alpine`
 - Volume Miauby WhatsApp: `miauw-whatsapp-data/postgres/`
@@ -49,7 +49,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_tarefa`: Tarefa em Postgres.
 - `wimifarma_xp`: XP em Postgres.
 - `wimifarma_codigos`: Codigos em Postgres.
-- `wimifarma_financeiro`: sombra do Financeiro em Postgres.
+- `wimifarma_financeiro`: Financeiro oficial em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 
 O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
@@ -127,20 +127,22 @@ Criadas por `apps/codigos/src/server.ts`:
 
 A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` permanece como importacao legado e espelho temporario quando `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder edicoes feitas durante a transicao.
 
-## Tabelas do Financeiro sombra em Postgres
+## Tabelas do Financeiro em Postgres
 
 Criadas por `apps/financeiro/src/server.ts`:
 
-- `financeiro_closings`: copia reconciliavel de `financeiro_fechamentos`, com valores financeiros em centavos e `legacy_mysql_id`.
-- `financeiro_entries`: copia de `financeiro_lancamentos`, com categoria, valor, observacao, status e `legacy_mysql_id`.
-- `financeiro_sangrias`: copia de `financeiro_sangrias`, com valor, responsavel, observacao, status e `legacy_mysql_id`.
-- `financeiro_card_entries`: copia de `financeiro_maquininhas`, com bandeira/tipo, valor, status e `legacy_mysql_id`.
-- `financeiro_pix_entries`: copia de `financeiro_pix`, com valor, pagador/observacao, status e `legacy_mysql_id`.
+- `financeiro_closings`: fonte oficial de fechamentos diarios, reconciliavel com `financeiro_fechamentos`, com valores financeiros em centavos e `legacy_mysql_id`.
+- `financeiro_entries`: fonte oficial de lancamentos gerais, reconciliavel com `financeiro_lancamentos`, com categoria, valor, observacao, status e `legacy_mysql_id`.
+- `financeiro_sangrias`: sangrias importadas/reconciliaveis de `financeiro_sangrias`, mantidas para paridade historica e relatorios.
+- `financeiro_card_entries`: maquininha importada/reconciliavel de `financeiro_maquininhas`, mantida para paridade historica e relatorios.
+- `financeiro_pix_entries`: PIX importado/reconciliavel de `financeiro_pix`, mantido para paridade historica e relatorios.
 - `financeiro_settings`: configuracoes do modulo importadas de `financeiro_configuracoes`.
-- `financeiro_audit_events`: copia curta de `financeiro_auditoria`, com usuario, acao, resumo e dados sanitizados em JSONB.
-- `financeiro_migration_runs`: historico de importacoes/checksums da sombra.
+- `financeiro_audit_events`: auditoria oficial do Financeiro Node/Postgres, com usuario, acao, resumo e dados sanitizados em JSONB, reconciliavel com `financeiro_auditoria`.
+- `financeiro_migration_runs`: historico de importacoes/checksums.
+- `financeiro_internal_idempotency`: idempotencia de chamadas internas do Miauby/WhatsApp.
+- `financeiro_sessions`: sessoes do app Node (`WFFINANCEIRO`).
 
-A fonte oficial continua o MySQL `financeiro_*` enquanto `/financeiro/` for servido por `site/financeiro`. O Postgres `wimifarma_financeiro` serve para validar contagem, totais e desenho de schema antes de qualquer troca de rota.
+A fonte oficial do Financeiro e o Postgres `wimifarma_financeiro`. O MySQL `financeiro_*` fica como legado/importacao/espelho temporario enquanto `FINANCEIRO_LEGACY_MYSQL_*` estiver ligado.
 
 ## Tabelas em `wimifarma_app`
 
@@ -228,7 +230,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 
 - Cashback: `site/cashback/functions.php`
 - Cotacao V2: `apps/cotacao/src/server.js`
-- Financeiro: `site/financeiro/financeiro-funcoes.php`; sombra/checksum em `apps/financeiro/src/server.ts`
+- Financeiro: `apps/financeiro/src/server.ts`; `site/financeiro` fica como legado/assets visuais.
 - Gestao: `apps/gestao/src/server.ts`
 - XP: `apps/xp/src/server.ts`
 - Tarefas: `apps/tarefa/src/server.ts`
@@ -270,7 +272,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `tarefa_tasks.status` aceita apenas `aberta`, `concluida` e `cancelada`; `priority` aceita `alta`, `normal` e `baixa`. Concluir/cancelar/reabrir nao apaga tarefa; apenas muda status, datas e auditoria.
 - Em `financeiro_fechamentos`, `status='sem_movimento'` marca um dia sem venda/movimento e pode ser criado pelo Caixa ou pelo Relatorio. Esse status nao e bloqueio final: somente `fechado` e `divergente` travam edicao normal; quando o faturamento de um dia `sem_movimento` recebe valor positivo pelo Relatorio, o registro volta para `conferencia` e continua linkado ao Caixa.
-- Comprovante Pix CNPJ lido pelo Miauby WhatsApp nao cria tabela nova: apos confirmacao `Sim`, entra como `financeiro_lancamentos.categoria='Pix CNPJ'` no dia extraido, com observacao sanitizada contendo CNPJ destino, pagador, horario e origem da leitura. Confirmacao `Nao`, CNPJ divergente ou campos ausentes nao gravam nada.
+- Comprovante Pix CNPJ lido pelo Miauby WhatsApp nao cria tabela nova: apos confirmacao `Sim`, entra por endpoint interno tokenizado do Financeiro Node como `financeiro_entries.category='Pix CNPJ'` no dia extraido, com observacao sanitizada contendo destino, pagador, horario e origem da leitura. Confirmacao `Nao`, destino divergente ou campos ausentes nao gravam nada.
 - `gestao_accounts.total_cents` deve ser a soma dos itens ativos em `gestao_account_items.amount_cents`; contas novas salvam `generated_at` automaticamente e pagamentos ativos entram em `gestao_account_payments` com `paid_at` proprio.
 - O total mensal pago da Gestao vem de `gestao_account_payments.amount_cents` ativo pelo intervalo de `paid_at`; `gestao_accounts.paid_at` representa a data de quitacao da conta inteira quando o saldo chega a zero.
 - A Gestao permite adicionar itens depois do lancamento, como juros ou diferencas; isso aumenta `total_cents` e pode reabrir uma conta paga se o saldo voltar a existir. Pagamentos parciais nunca alteram o valor lancado: eles entram apenas em `gestao_account_payments`, abatendo o saldo.
@@ -330,7 +332,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Apagar `cotacao-data/` perde dados da Cotacao V2.
 - Apagar `gestao-data/` perde dados oficiais da Gestao.
 - Apagar `codigos-data/` perde dados oficiais de Codigos.
-- Apagar `financeiro-data/` perde a copia sombra e historico de importacao/checksum do Financeiro; enquanto a rota PHP for oficial, isso nao apaga o financeiro real no MySQL, mas remove a base de validacao da migracao.
+- Apagar `financeiro-data/` perde a fonte oficial atual do Financeiro em Postgres e o historico de importacao/checksum. Antes de qualquer limpeza, fazer backup e confirmar rollback.
 - Apagar `miauw-whatsapp-data/` perde fila, eventos e outbox do canal WhatsApp do Miauby.
 - Criar regras automáticas fora de `cotacao_v2_rules` reabre o bug de palavra-gatilho.
 

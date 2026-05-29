@@ -155,9 +155,7 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa apenas cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Enquanto o corte nao for feito em cada modulo, Cotacao, Gestao, Pedidos e modulos PHP continuam autenticando pelo caminho antigo. Tarefa, XP e Codigos podem usar `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core`.
-
-Para validar a Cotacao sem corte de login, ligar `COTACAO_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-cotacao-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao usa somente `core_users`; Tarefa, XP, Codigos e Financeiro podem usar `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core`. Gestao/Pedidos continuam com fallback MySQL temporario enquanto o rollback ainda for necessario.
 
 Para validar a Gestao sem corte de login, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` no `.env` do ambiente e rebuildar apenas `wimifarma-gestao-app`. O campo `auth.provider` deve continuar `mysql`; `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
@@ -218,7 +216,7 @@ docker exec wimifarma-codigos-db psql -U wimifarma_codigos -d wimifarma_codigos 
 
 O app `apps/codigos` atende a rota oficial `/codigos/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_codigos`; MySQL `wf_codigos_comissao` e `wf_codigos_blocos` ficam como importacao/espelho/log legado por flags `CODIGOS_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `CODIGOS_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-codigos-app`. O endpoint interno sem `X-Miauw-Internal-Token` deve responder 401 ou 503; nao colar token real em comando versionado.
 
-## Local - Financeiro sombra Node/Postgres
+## Local - Financeiro Node/Postgres
 
 ```powershell
 cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\financeiro
@@ -226,12 +224,14 @@ npm.cmd run check
 npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d wimifarma-financeiro-db
-docker compose up -d --no-deps --build wimifarma-financeiro-app
+docker compose up -d --no-deps --build wimifarma-financeiro-app wimifarma-com-web
 docker exec wimifarma-financeiro-app wget -qO- http://127.0.0.1:3800/financeiro/health
+curl.exe -sS http://127.0.0.1:3002/financeiro/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" http://127.0.0.1:3002/financeiro/login.php
 docker exec wimifarma-financeiro-db psql -U wimifarma_financeiro -d wimifarma_financeiro -c "\dt"
 ```
 
-O app `apps/financeiro` ainda nao atende a rota publica `/financeiro/`; ele fica em sombra para importar `financeiro_*`, validar health, comparar totais e preparar o corte futuro. Endpoints `/financeiro/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
+O app `apps/financeiro` atende a rota oficial `/financeiro/` via proxy Apache, usa `core_users` por `FINANCEIRO_AUTH_PROVIDER=core` e grava em Postgres `wimifarma_financeiro`. `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario em MySQL para rollback curto. Endpoints `/financeiro/internal/*` e `/financeiro/api/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
 
 ## Local - Inventario de modernizacao
 
@@ -453,6 +453,20 @@ docker compose up -d --no-deps --build wimifarma-gestao-app wimifarma-com-web
 docker compose ps
 curl -sS http://127.0.0.1:3002/gestao/health
 docker compose logs --tail=80 wimifarma-gestao-app
+docker compose logs --tail=80 wimifarma-com-web
+```
+
+Para mudancas no servico Financeiro, usar rebuild direcionado e preservar `financeiro-data/` e `mysql/`:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+git pull --ff-only origin main
+docker compose up -d wimifarma-financeiro-db
+docker compose up -d --no-deps --build wimifarma-financeiro-app wimifarma-com-web
+docker compose ps
+curl -sS http://127.0.0.1:3002/financeiro/health
+curl -I http://127.0.0.1:3002/financeiro/login.php
+docker compose logs --tail=80 wimifarma-financeiro-app
 docker compose logs --tail=80 wimifarma-com-web
 ```
 

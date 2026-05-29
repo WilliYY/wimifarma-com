@@ -93,6 +93,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/financeiro/" "http://wimifarma-financeiro-app:3800/financeiro/"'; \
+        echo 'ProxyPassReverse "/financeiro/" "http://wimifarma-financeiro-app:3800/financeiro/"'; \
+        echo 'ProxyPass "/financeiro" "http://wimifarma-financeiro-app:3800/financeiro"'; \
+        echo 'ProxyPassReverse "/financeiro" "http://wimifarma-financeiro-app:3800/financeiro"'; \
+    } > /etc/apache2/conf-available/wimifarma-financeiro-proxy.conf \
+    && a2enconf wimifarma-financeiro-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

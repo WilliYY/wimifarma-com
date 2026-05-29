@@ -41,13 +41,13 @@ O script mostra:
 
 | Modulo | Estado atual | Legado principal | Alvo recomendado | Prioridade |
 | --- | --- | --- | --- | --- |
-| Cotacao | Node.js + Express + Postgres/Redis | `mysql2` para login `wf_users` | TypeScript + core auth Postgres | 1 |
+| Cotacao | Node.js + Express + Postgres/Redis + core auth | sem dependencia MySQL no app | evoluir TypeScript quando houver janela segura | moderno |
 | Gestao | Node.js + TypeScript + Postgres | `mysql2` para login/log/importacao | Postgres puro + core auth/auditoria | 1 |
 | Pedidos | Node.js + TypeScript + Postgres da Gestao | `mysql2` para login/log | Postgres puro + core auth/auditoria | 1 |
 | Tarefa | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
 | Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
-| Financeiro | PHP oficial + Node.js/TypeScript/Postgres sombra | `financeiro_*` ainda fonte da tela PHP | Cortar `/financeiro/` para Node.js + TypeScript + Postgres apos paridade | 5 em sombra |
+| Financeiro | Node.js + TypeScript + Postgres oficial | MySQL opcional para importacao/espelho de rollback | Postgres puro + core auth/auditoria apos paridade | 5 em corte |
 | Cashback | PHP procedural + MySQL | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
 | Miauby interno | PHP + Node agent sombra | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
@@ -56,11 +56,11 @@ O script mostra:
 
 ## Ordem segura
 
-1. Observar Cotacao/Gestao/Pedidos em modo sombra no core auth sem divergencias.
-2. Cortar autenticacao desses tres modulos para `core_users`, mantendo rollback por `.env`.
+1. Observar Gestao/Pedidos em modo sombra/fallback no core auth sem divergencias; Cotacao ja usa apenas `core_users`.
+2. Cortar autenticacao restante para `core_users`, mantendo rollback por `.env` onde ainda existir fallback.
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` e legado MySQL desligado por flags.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
-5. Validar Financeiro sombra com backup, checksums de totais e validacao por dia; depois cortar Financeiro ou iniciar Cashback.
+5. Validar Financeiro Node/Postgres em `/financeiro/` com backup, checksums por dia/tipo, smoke de Caixa/Relatorio/exportacao e contrato Pix CNPJ do Miauby antes de desligar espelho MySQL.
 6. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
 7. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
@@ -95,13 +95,16 @@ Codigos foi cortado para `apps/codigos`:
 - frontend preservado por CSS/JS/login-runner de `site/codigos`;
 - rollback por `CODIGOS_AUTH_PROVIDER=mysql` e flags `CODIGOS_LEGACY_MYSQL_*`.
 
-Financeiro iniciou sombra em `apps/financeiro`:
+Financeiro foi cortado para `apps/financeiro`:
 
 - banco/schema alvo `wimifarma_financeiro`;
-- tabelas `financeiro_closings`, `financeiro_entries`, `financeiro_sangrias`, `financeiro_card_entries`, `financeiro_pix_entries`, `financeiro_settings`, `financeiro_audit_events` e `financeiro_migration_runs`;
+- tabelas `financeiro_closings`, `financeiro_entries`, `financeiro_sangrias`, `financeiro_card_entries`, `financeiro_pix_entries`, `financeiro_settings`, `financeiro_audit_events`, `financeiro_migration_runs`, `financeiro_internal_idempotency` e sessoes `financeiro_sessions`;
 - importador idempotente de `financeiro_fechamentos`, `financeiro_lancamentos`, `financeiro_sangrias`, `financeiro_maquininhas`, `financeiro_pix`, `financeiro_configuracoes` e `financeiro_auditoria`;
 - health em `wimifarma-financeiro-app:3800/financeiro/health`;
-- endpoints internos tokenizados para resumo, checksum e sync manual;
-- sem proxy Apache e sem troca de frontend enquanto a tela PHP for oficial.
+- proxy Apache oficial em `/financeiro/`;
+- frontend preservado por `site/financeiro/styles.css`, `site/financeiro/app.js`, `site/financeiro/login-runner.js`, logo/favicon e assets montados no container Node;
+- login oficial por `core_users` com `FINANCEIRO_AUTH_PROVIDER=core`;
+- endpoints internos tokenizados para resumo, dia, checksums por dia/tipo, auditoria recente, lancamentos, faturamentos e sync manual;
+- `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario em MySQL para rollback.
 
-A proxima fatia segura e validar a sombra do Financeiro no VPS com checksums por data/tipo e smoke dos fluxos de Caixa/Relatorio/Pix CNPJ. So depois escolher entre cortar `/financeiro/` para Node/Postgres ou iniciar Cashback.
+A proxima fatia segura e validar o corte do Financeiro no VPS com `/financeiro/health`, checksums por data/tipo, login, autosave do Caixa, lancamento/cancelamento, Relatorio, CSV e Pix CNPJ via Miauby/WhatsApp. So depois desligar flags legadas ou iniciar Cashback.

@@ -120,7 +120,7 @@ Miauby ja possui:
   - `MIAUW_AGENT_VERSION=2.0-fase13`;
   - o servico Node passou para `SERVICE_VERSION=0.7.0` e `PHASE=fase13-php-read-tool-bridge`;
   - `site/miauw/agent-tools.php` adiciona uma ponte interna tokenizada para tools reais de leitura baixa, chamada pelo Node com `X-Miauw-Agent-Token`;
-  - as primeiras tools migradas para execucao Node via ponte PHP sao `resumo_financeiro`, `resumo_cashback`, `resumo_codigos`, `buscar_codigo_comissao` e `buscar_cotacao`; as tools de Codigos consultam a fonte Postgres do app Node quando `CODIGOS_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` esta configurado;
+  - as primeiras tools migradas para execucao Node via ponte PHP sao `resumo_financeiro`, `resumo_cashback`, `resumo_codigos`, `buscar_codigo_comissao` e `buscar_cotacao`; as tools de Financeiro e Codigos consultam a fonte Postgres dos apps Node quando `FINANCEIRO_INTERNAL_TOKEN`/`CODIGOS_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN` esta configurado;
   - para pedidos claramente direcionados a essas leituras, o Node faz pre-leitura deterministica pela ponte antes da resposta, alem de manter as tools disponiveis ao Agents SDK;
   - `buscar_cliente` fica fora da primeira leva por privacidade, mesmo sendo leitura, e toda escrita forte continua no PHP com confirmacao humana;
   - a ponte registra `miauw_agent_node_read_tool` em `miauw_tool_traces` com tool, chaves de argumentos, duracao e `writes_enabled=false`, sem payload bruto externo ou token.
@@ -131,7 +131,7 @@ Miauby ja possui:
   - o Node monta tools do Agents SDK dinamicamente a partir de `miauw_agent_tool_contract_export()`, evitando duplicar schema/risco/confirmacao no TypeScript;
   - leituras, diagnosticos, pesquisa controlada, Farmacia Popular e `buscar_cliente` mascarado podem ser orquestrados pelo Node, sempre executando no PHP;
   - `criar_tarefa` e a unica escrita de baixo risco liberada pela ponte PHP com usuario logado no payload interno;
-  - sangria, lancamentos financeiros, encomendas e demais acoes fortes retornam `confirmation_required` pela ponte universal e nao gravam nada fora do fluxo de confirmacao da sessao PHP;
+  - sangria, lancamentos financeiros, encomendas e demais acoes fortes retornam `confirmation_required` pela ponte universal e nao gravam nada fora do fluxo de confirmacao da sessao PHP; apos confirmacao, o Financeiro grava por endpoint interno Node/Postgres quando o token interno esta configurado;
   - a ponte registra `miauw_agent_node_tool_bridge` em `miauw_tool_traces` com tool, chaves de argumentos, modo, risco, duracao e status, sem token, SQL, payload bruto externo ou stack trace.
 - Fase 15 do agente operacional v2 iniciada:
   - `MIAUW_AGENT_VERSION=2.0-fase15`;

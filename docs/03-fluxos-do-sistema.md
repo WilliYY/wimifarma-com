@@ -202,21 +202,23 @@ O Financeiro organiza fechamento diario e conciliacao interna.
 
 Arquivos principais:
 
-- `site/financeiro/index.php`
-- `site/financeiro/exportar.php`
-- `site/financeiro/financeiro-funcoes.php`
+- `apps/financeiro/src/server.ts`
 - `site/financeiro/app.js`
-- `apps/financeiro/src/server.ts` em modo sombra, sem servir a tela oficial.
+- `site/financeiro/styles.css`
+- `site/financeiro/login-runner.js`
+- `site/financeiro` como legado/assets visuais.
 
 Tabelas principais:
 
-- `financeiro_fechamentos`
+- `financeiro_closings`
+- `financeiro_entries`
 - `financeiro_sangrias`
-- `financeiro_maquininhas`
-- `financeiro_pix`
-- `financeiro_lancamentos`
-- `financeiro_configuracoes`
-- `financeiro_auditoria`
+- `financeiro_card_entries`
+- `financeiro_pix_entries`
+- `financeiro_settings`
+- `financeiro_audit_events`
+- `financeiro_internal_idempotency`
+- MySQL `financeiro_*` apenas como importacao/espelho temporario de rollback.
 
 Regras a preservar:
 
@@ -225,15 +227,15 @@ Regras a preservar:
 - divergencias/sobra/falta;
 - justificativas;
 - auditoria interna.
-- Caixa e Relatorio usam a mesma linha em `financeiro_fechamentos` para cada dia. O botao `Fechar sem movimento` do Relatorio e apenas um atalho para marcar `status='sem_movimento'`, igual ao Caixa, e nao deve travar a digitacao posterior de venda/faturamento. Se depois for informado faturamento em um dia sem movimento, o dia volta para `conferencia` e fica editavel no Caixa.
+- Caixa e Relatorio usam a mesma linha em `financeiro_closings` para cada dia. O botao `Fechar sem movimento` do Relatorio e apenas um atalho para marcar `status='sem_movimento'`, igual ao Caixa, e nao deve travar a digitacao posterior de venda/faturamento. Se depois for informado faturamento em um dia sem movimento, o dia volta para `conferencia` e fica editavel no Caixa.
 
 Interface:
 
 - o topo do Financeiro mostra apenas `Caixa`, `Relatorio` e `Sair`;
 - a view dedicada de Auditoria nao fica disponivel na navegacao operacional;
-- os registros em `financeiro_auditoria` continuam sendo gravados para suporte e rastreabilidade.
-- O Miauby WhatsApp pode preparar lancamento `Pix CNPJ` a partir de foto, print, imagem encaminhada ou PDF/documento de comprovante Pix quando a flag de OCR estiver ligada. O bridge valida remetente, card `Financeiro`, destino por CNPJ/chave Pix ou nome correlato, valor e pagador; data e horario sao usados quando a leitura trouxer, mas a correcao manual `pix cnpj valor - nome - obs opcional` tambem pode gravar usando o momento atual. Depois envia confirmacao `Sim`/`Nao`. Somente o `Sim` grava em `financeiro_lancamentos`, com categoria `Pix CNPJ` e observacao com dados do comprovante. `Nao`, destino divergente ou dado faltante nao gravam nada e pedem texto corrigido.
-- A sombra Node/Postgres do Financeiro apenas importa dados MySQL, expoe health/resumo/checksums internos e ajuda a validar a futura migracao. Ela nao altera fluxo, frontend, sessao, login nem escrita do Caixa/Relatorio enquanto `/financeiro/` continuar no PHP.
+- os registros em `financeiro_audit_events` continuam sendo gravados no Postgres para suporte e rastreabilidade; `financeiro_auditoria` fica apenas como espelho legado quando o mirror MySQL estiver ligado.
+- O Miauby WhatsApp pode preparar lancamento `Pix CNPJ` a partir de foto, print, imagem encaminhada ou PDF/documento de comprovante Pix quando a flag de OCR estiver ligada. O bridge valida remetente, card `Financeiro`, destino por CNPJ/chave Pix ou nome correlato, valor e pagador; data e horario sao usados quando a leitura trouxer, mas a correcao manual `pix cnpj valor - nome - obs opcional` tambem pode gravar usando o momento atual. Depois envia confirmacao `Sim`/`Nao`. Somente o `Sim` grava no Financeiro Node por endpoint interno tokenizado, com categoria `Pix CNPJ` e observacao sanitizada. `Nao`, destino divergente ou dado faltante nao gravam nada e pedem texto corrigido.
+- O Financeiro Node/Postgres atende `/financeiro/`, preserva o frontend visual, expoe health/resumo/checksums internos e mantem MySQL apenas como importacao/espelho temporario durante a validacao do corte.
 
 ## Fluxo Gestao
 

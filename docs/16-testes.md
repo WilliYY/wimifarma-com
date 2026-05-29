@@ -24,6 +24,7 @@ Rotas de smoke test:
 - `/cashback/login.php`
 - `/cotacao/login.php`
 - `/financeiro/login.php`
+- `/financeiro/health` deve responder JSON 200 quando o servico Financeiro e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core` quando `FINANCEIRO_AUTH_PROVIDER=core` e `storage.provider=postgres`
 - `/tarefa/login.php`
 - `/tarefa/health` deve responder JSON 200 quando o servico de Tarefa e seu Postgres estiverem ativos
 - `/tarefa/badge.php` deve responder JSON sem segredo com a quantidade de tarefas abertas

@@ -68,7 +68,7 @@ Tabelas:
 
 - Sessao dos modulos internos e configurada em `site/cashback/config.php`.
 - Funcoes comuns ficam em `site/cashback/functions.php`.
-- Modulos PHP como Financeiro e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao, Pedidos, XP e Codigos usam sessoes Node proprias por rota.
+- Modulos PHP remanescentes como Cashback e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos e Financeiro usam sessoes Node proprias por rota.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 

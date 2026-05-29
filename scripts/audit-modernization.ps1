@@ -54,11 +54,11 @@ $modules = @(
     @{
         Module = 'Cotacao'
         Path = 'apps/cotacao'
-        Current = 'Node.js + Express + Socket.IO + Postgres/Redis'
-        Legacy = 'mysql2 somente para login em wf_users'
-        Target = 'TypeScript + core auth Postgres'
-        Priority = '1 - cortar auth depois da sombra'
-        Next = 'Observar COTACAO_CORE_AUTH_SHADOW_ENABLED sem divergencias e trocar auth oficial.'
+        Current = 'Node.js + Express + Socket.IO + Postgres/Redis + core auth'
+        Legacy = 'sem dependencia MySQL no app'
+        Target = 'evoluir TypeScript em janela segura'
+        Priority = 'moderno'
+        Next = 'Manter health/login core e evoluir performance/UX; nao reintroduzir mysql2.'
     },
     @{
         Module = 'Gestao'
@@ -108,11 +108,11 @@ $modules = @(
     @{
         Module = 'Financeiro'
         Path = 'site/financeiro;apps/financeiro'
-        Current = 'PHP oficial + Node.js/TypeScript sombra'
-        Legacy = 'financeiro_* ainda fonte da tela PHP'
-        Target = 'Cortar /financeiro/ para Node.js + TypeScript + Postgres'
-        Priority = '5 - sombra financeira'
-        Next = 'Validar health/checksums da sombra antes de trocar a rota.'
+        Current = 'Node.js + TypeScript + Express + Postgres oficial'
+        Legacy = 'MySQL opcional para importacao/espelho FINANCEIRO_LEGACY_MYSQL_*'
+        Target = 'Postgres puro + core auth/auditoria'
+        Priority = '5 - validar corte'
+        Next = 'Validar /financeiro/ no VPS, checksums por dia/tipo e Pix CNPJ via Miauby antes de desligar espelho MySQL.'
     },
     @{
         Module = 'Cashback'

@@ -67,13 +67,13 @@ count_refs() {
 }
 
 rows=(
-  "Cotacao|apps/cotacao|Node.js + Express + Postgres/Redis|mysql2 login wf_users|TypeScript + core auth Postgres|1"
+  "Cotacao|apps/cotacao|Node.js + Express + Postgres/Redis + core auth|sem dependencia MySQL no app|evoluir TypeScript em janela segura|moderno"
   "Gestao|apps/gestao|Node.js + TypeScript + Postgres|mysql2 login/log/importacao|Postgres puro + core auth|1"
   "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres|mysql2 login/log|Postgres puro + core auth|1"
   "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres|MySQL legado opcional por flags|Postgres puro + core auth|2"
   "Codigos|site/codigos;apps/codigos|Node.js + TypeScript + Postgres|MySQL legado opcional por flags CODIGOS_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|3 em corte"
   "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres|MySQL legado opcional por flags XP_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|4 em corte"
-  "Financeiro|site/financeiro;apps/financeiro|PHP oficial + Node.js/TypeScript sombra|financeiro_* ainda fonte da tela PHP|Cortar /financeiro/ para Node.js + TypeScript + Postgres|5 sombra"
+  "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|MySQL opcional por FINANCEIRO_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|5 validar"
   "Cashback|site/cashback|PHP procedural + MySQL|wf_clientes/compras/creditos/resgates|apps/cashback Node.js + TypeScript + Postgres|6"
   "Miauby interno|site/miauw|PHP + Node agent sombra|miauw_* em MySQL|apps/miauw-agent + Postgres wimifarma_miauw|7"
   "Miauby WhatsApp|apps/miauw-whatsapp|Node.js + TypeScript + Postgres|sem MySQL operacional|manter/evoluir|moderno"
@@ -96,9 +96,9 @@ done
 cat <<'EOF'
 
 Proximos passos recomendados:
-- Observar Cotacao/Gestao/Pedidos em sombra e cortar auth somente sem divergencias.
+- Observar Gestao/Pedidos em sombra/fallback; Cotacao ja usa core auth sem MySQL.
 - Validar Tarefa com core auth e legado MySQL desligado por flags.
 - Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
-- Validar Financeiro sombra com health/checksums antes de trocar a rota; depois migrar Cashback e Miauby interno.
+- Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL; depois migrar Cashback e Miauby interno.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF
