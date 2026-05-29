@@ -286,7 +286,7 @@ Integracoes:
 - Revisao de memorias e padroes deve marcar status e manter historico; nao apagar dado automaticamente por clique operacional.
 - Treino de resposta tambem deve ser revisado antes de virar contexto aprovado; exemplo ruim, incompleto ou sensivel deve ficar pendente/rejeitado, nunca aprovado automaticamente para todos.
 - Revisar treino deve preservar versoes: quando algo aprovado muda, criar versao nova e marcar a anterior como `superado`, sem apagar a origem.
-- Treino aprovado do Miauby interno tambem alimenta o WhatsApp quando a mensagem aciona o core por `miauby`; Gemini sem `miauby` recebe apenas instrucoes curtas e sanitizadas, nao o pacote completo de treino/tools.
+- Treino aprovado do Miauby interno tambem alimenta o WhatsApp quando a mensagem aciona o core por `miauby`; no caminho Gemini sem `miauby`, o bridge pode enviar apenas personalidade, perfil de voz, regras compiladas de treino, exemplos curtos aprovados e memoria curta sanitizada. O Gemini nao recebe pacote completo de tools nem dado operacional, e pedidos aleatorios fora da operacao devem ser recusados de forma curta em vez de virar resposta generica.
 - Confirmacoes por WhatsApp nao substituem a seguranca do Miauby interno: elas precisam de pendencia no bridge, remetente autorizado, tool permitida, expiracao curta e execucao pelo endpoint PHP tokenizado.
 - Respostas generativas devem separar fato real, inferencia e proximo passo.
 - Balões do widget devem ser curtos, sem codigo, e usar o comentario do alerta quando existir. Para encomendas da Cotacao, comentar apenas quando passou de 1 dia.
