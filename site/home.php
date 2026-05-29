@@ -426,18 +426,6 @@ $modules = array(
             box-shadow: 0 10px 22px rgba(22, 163, 74, 0.22);
         }
 
-        @media (min-width: 1041px) {
-            .wf-card.is-whatsapp-card {
-                grid-column: 1;
-                grid-row: 3;
-            }
-
-            .wf-card.is-users-card {
-                grid-column: 2;
-                grid-row: 3;
-            }
-        }
-
         @media (max-width: 1040px) {
             .wf-header-inner {
                 justify-content: center;
