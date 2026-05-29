@@ -171,7 +171,7 @@ Regras a preservar:
 - em `Ultimos lancamentos`, a observacao opcional salva em `xp_sales.note` deve aparecer no lancamento, e o XP do lancamento deve ser destacado por uma barra amarela compacta;
 - formularios usam CSRF e prepared statements;
 - fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;
-- a moldura ADM e usada no perfil/admin do XP, com foto propria salva separada dos funcionarios, e o ADM tambem aparece como player fixo de teste para receber XP;
+- a moldura ADM e usada no perfil/admin do XP, com foto propria salva separada dos funcionarios; o ADM aparece como perfil protegido, pode ter nome/foto editados, pode receber XP e nao pode ser excluido pela tela;
 - as molduras visiveis dos avatares do XP devem usar assets com transparencia real, sem canvas branco ao redor da arte;
 - as pastas `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/` precisam existir e ficar gravaveis pelo Apache/PHP no VPS;
 - a pasta de uploads bloqueia listagem e execucao de scripts por `.htaccess`;

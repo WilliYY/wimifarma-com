@@ -962,38 +962,43 @@ async function syncAdminEmployee(photoPath: string | null, userId: number | null
   const safePhoto = photoUrl(photoPath) || null;
   const existing = await pgPool.query<EmployeeRow>('SELECT * FROM xp_employees WHERE system_key = $1 LIMIT 1', [XP_ADMIN_SYSTEM_KEY]);
   let id = Number(existing.rows[0]?.id || 0);
+  let adminName = cleanText(existing.rows[0]?.name, 180) || 'ADM';
+  let adminPhoto = safePhoto || photoUrl(existing.rows[0]?.photo_path) || null;
   if (!id) {
     const namedAdm = await pgPool.query<EmployeeRow>("SELECT * FROM xp_employees WHERE UPPER(name) = 'ADM' ORDER BY id ASC LIMIT 1");
     id = Number(namedAdm.rows[0]?.id || 0);
+    adminName = cleanText(namedAdm.rows[0]?.name, 180) || adminName;
+    adminPhoto = safePhoto || photoUrl(namedAdm.rows[0]?.photo_path) || adminPhoto;
   }
   if (id > 0) {
     await pgPool.query(
       `UPDATE xp_employees
-          SET name = 'ADM',
+          SET name = $4,
               photo_path = $1,
               status = 'ativo',
               system_key = $2,
               deleted_at = NULL,
               updated_at = NOW()
         WHERE id = $3`,
-      [safePhoto, XP_ADMIN_SYSTEM_KEY, id],
+      [adminPhoto, XP_ADMIN_SYSTEM_KEY, id, adminName],
     );
   } else {
     const inserted = await pgPool.query<{ id: string }>(
-      "INSERT INTO xp_employees (name, photo_path, status, system_key, created_by) VALUES ('ADM', $1, 'ativo', $2, $3) RETURNING id",
-      [safePhoto, XP_ADMIN_SYSTEM_KEY, userId],
+      "INSERT INTO xp_employees (name, photo_path, status, system_key, created_by) VALUES ($1, $2, 'ativo', $3, $4) RETURNING id",
+      [adminName, adminPhoto, XP_ADMIN_SYSTEM_KEY, userId],
     );
     id = Number(inserted.rows[0].id);
   }
   if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await mirrorAdminEmployee(id, safePhoto, userId);
+    await mirrorAdminEmployee(id, adminPhoto, userId, adminName);
   }
   return id;
 }
 
-async function mirrorAdminEmployee(pgId: number, safePhoto: string | null, userId: number | null): Promise<void> {
+async function mirrorAdminEmployee(pgId: number, safePhoto: string | null, userId: number | null, nameValue?: string): Promise<void> {
   try {
     const db = requireMysqlPool('admin mirror');
+    const adminName = cleanText(nameValue, 180) || 'ADM';
     const [rows] = await db.query<mysql.RowDataPacket[]>('SELECT id FROM wf_xp_employees WHERE system_key = ? LIMIT 1', [XP_ADMIN_SYSTEM_KEY]);
     let legacyId = Number(rows[0]?.id || 0);
     if (!legacyId) {
@@ -1002,13 +1007,13 @@ async function mirrorAdminEmployee(pgId: number, safePhoto: string | null, userI
     }
     if (legacyId) {
       await db.query(
-        "UPDATE wf_xp_employees SET name = 'ADM', photo_path = ?, status = 'ativo', system_key = ?, deleted_at = NULL WHERE id = ?",
-        [safePhoto, XP_ADMIN_SYSTEM_KEY, legacyId],
+        "UPDATE wf_xp_employees SET name = ?, photo_path = ?, status = 'ativo', system_key = ?, deleted_at = NULL WHERE id = ?",
+        [adminName, safePhoto, XP_ADMIN_SYSTEM_KEY, legacyId],
       );
     } else {
       const [insert] = await db.query<mysql.ResultSetHeader>(
-        "INSERT INTO wf_xp_employees (name, photo_path, status, system_key, created_by) VALUES ('ADM', ?, 'ativo', ?, ?)",
-        [safePhoto, XP_ADMIN_SYSTEM_KEY, userId],
+        "INSERT INTO wf_xp_employees (name, photo_path, status, system_key, created_by) VALUES (?, ?, 'ativo', ?, ?)",
+        [adminName, safePhoto, XP_ADMIN_SYSTEM_KEY, userId],
       );
       legacyId = Number(insert.insertId);
     }
@@ -1051,7 +1056,7 @@ async function listEmployees(context: MonthContext): Promise<EmployeeView[]> {
     return {
       id: Number(row.id),
       legacy_mysql_id: row.legacy_mysql_id ? Number(row.legacy_mysql_id) : null,
-      name: isAdmin ? 'ADM' : row.name,
+      name: cleanText(row.name, 180) || (isAdmin ? 'ADM' : 'Funcionario'),
       photo_path: photoUrl(row.photo_path),
       is_admin: isAdmin,
       rank: index + 1,
@@ -1132,21 +1137,28 @@ async function uploadPhoto(file: Express.Multer.File | undefined, userId: number
   return `${BASE_PATH}/uploads/${folder}/${fileName}`;
 }
 
-async function updateAdminProfile(file: Express.Multer.File | undefined, userId: number): Promise<void> {
+async function updateAdminProfile(nameValue: unknown, file: Express.Multer.File | undefined, userId: number): Promise<void> {
+  const name = cleanText(nameValue, 180);
+  if (!name) throw new Error('Informe o nome do ADM.');
   const uploaded = await uploadPhoto(file, userId, 'adm', 'adm');
-  if (!uploaded) {
-    throw new Error('Escolha a sua foto para a moldura ADM.');
+  if (uploaded) {
+    await settingSet('adm_photo_path', uploaded, userId);
   }
-  await settingSet('adm_photo_path', uploaded, userId);
-  await syncAdminEmployee(uploaded, userId);
-  await auditPg('xp_adm_foto_atualizada', 'xp_settings', null, 'Foto da moldura ADM do XP atualizada.', userId);
-  void logMysql(userId, 'xp_adm_foto_atualizada', 'xp_settings', null, 'Foto da moldura ADM do XP atualizada.');
+  const adminId = await syncAdminEmployee(uploaded || (await settingGet('adm_photo_path', '')), userId);
+  const current = await findEmployee(adminId);
+  const photoPath = uploaded || photoUrl(current?.photo_path) || null;
+  await pgPool.query('UPDATE xp_employees SET name = $1, photo_path = $2, updated_at = NOW() WHERE id = $3', [name, photoPath, adminId]);
+  await auditPg('xp_adm_perfil_atualizado', 'xp_employee', String(adminId), `Perfil ADM do XP atualizado: ${name}.`, userId);
+  void logMysql(userId, 'xp_adm_perfil_atualizado', 'xp_employee', adminId, `Perfil ADM do XP atualizado: ${name}.`);
+  if (LEGACY_MYSQL_MIRROR_ENABLED) {
+    await mirrorAdminEmployee(adminId, photoPath, userId, name);
+  }
 }
 
 async function createEmployee(nameValue: unknown, file: Express.Multer.File | undefined, userId: number): Promise<number> {
   const name = cleanText(nameValue, 180);
   if (!name) throw new Error('Informe o nome do funcionario.');
-  if (name.toUpperCase() === 'ADM') throw new Error('ADM ja existe como player de teste.');
+  if (name.toUpperCase() === 'ADM') throw new Error('ADM ja existe como perfil reservado.');
   const photoPath = await uploadPhoto(file, userId);
   const inserted = await pgPool.query<{ id: string }>(
     'INSERT INTO xp_employees (name, photo_path, created_by) VALUES ($1, $2, $3) RETURNING id',
@@ -1178,19 +1190,29 @@ async function mirrorEmployeeCreate(id: number): Promise<void> {
 async function updateEmployee(id: number, nameValue: unknown, file: Express.Multer.File | undefined, userId: number): Promise<void> {
   const employee = await findEmployee(id);
   if (!employee) throw new Error('Funcionario nao encontrado.');
-  if (employee.system_key === XP_ADMIN_SYSTEM_KEY) throw new Error('A foto e o nome do ADM sao controlados pela moldura ADM.');
+  const isAdmin = employee.system_key === XP_ADMIN_SYSTEM_KEY;
   const name = cleanText(nameValue, 180);
   if (!name) throw new Error('Informe o nome do funcionario.');
-  const photoPath = await uploadPhoto(file, userId);
+  const photoPath = await uploadPhoto(file, userId, isAdmin ? 'adm' : 'funcionarios', isAdmin ? 'adm' : 'funcionario');
+  if (isAdmin && photoPath) {
+    await settingSet('adm_photo_path', photoPath, userId);
+  }
   if (photoPath) {
     await pgPool.query('UPDATE xp_employees SET name = $1, photo_path = $2, updated_at = NOW() WHERE id = $3', [name, photoPath, id]);
   } else {
     await pgPool.query('UPDATE xp_employees SET name = $1, updated_at = NOW() WHERE id = $2', [name, id]);
   }
-  await auditPg('xp_funcionario_editado', 'xp_employee', String(id), `Funcionario XP editado: ${name}`, userId);
-  void logMysql(userId, 'xp_funcionario_editado', 'xp_employee', id, `Funcionario XP editado: ${name}`);
+  const action = isAdmin ? 'xp_adm_perfil_atualizado' : 'xp_funcionario_editado';
+  const description = isAdmin ? `Perfil ADM do XP atualizado: ${name}.` : `Funcionario XP editado: ${name}`;
+  await auditPg(action, 'xp_employee', String(id), description, userId);
+  void logMysql(userId, action, 'xp_employee', id, description);
   if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await mirrorEmployeeUpdate(id);
+    if (isAdmin) {
+      const current = await findEmployee(id);
+      await mirrorAdminEmployee(id, photoUrl(current?.photo_path) || null, userId, name);
+    } else {
+      await mirrorEmployeeUpdate(id);
+    }
   }
 }
 
@@ -1210,7 +1232,7 @@ async function mirrorEmployeeUpdate(id: number): Promise<void> {
 async function deactivateEmployee(id: number, userId: number): Promise<void> {
   const employee = await findEmployee(id);
   if (!employee) throw new Error('Funcionario nao encontrado.');
-  if (employee.system_key === XP_ADMIN_SYSTEM_KEY) throw new Error('O ADM e um player fixo de teste e nao pode ser excluido.');
+  if (employee.system_key === XP_ADMIN_SYSTEM_KEY) throw new Error('O ADM e um perfil protegido e nao pode ser excluido.');
   await pgPool.query("UPDATE xp_employees SET status = 'inativo', deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'ativo' AND deleted_at IS NULL", [id]);
   await auditPg('xp_funcionario_inativado', 'xp_employee', String(id), `Funcionario XP inativado: ${employee.name}`, userId);
   void logMysql(userId, 'xp_funcionario_inativado', 'xp_employee', id, `Funcionario XP inativado: ${employee.name}`);
@@ -1460,6 +1482,8 @@ function renderMain(req: Request, user: User, data: { employees: EmployeeView[];
 }
 
 function renderAdmin(req: Request, employees: EmployeeView[], adminProfile: { photo_path: string }): string {
+  const adminEmployee = employees.find((employee) => employee.is_admin);
+  const adminName = adminEmployee?.name || 'ADM';
   return `<section class="xp-admin-grid xp-settings-only" aria-label="Administracao XP">
     <article class="xp-admin-card xp-admin-profile-card">
       <h2>Moldura ADM</h2>
@@ -1467,9 +1491,10 @@ function renderAdmin(req: Request, employees: EmployeeView[], adminProfile: { ph
       <form method="post" enctype="multipart/form-data" class="xp-form">
         ${csrfField(req)}
         <input type="hidden" name="action" value="update_admin_profile">
-        <label><span>Sua foto</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input required><small>Essa foto usa a moldura ADM.</small></label>
+        <label><span>Seu nome</span><input type="text" name="name" maxlength="180" value="${e(adminName)}" required></label>
+        <label><span>Sua foto</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input><small>Essa foto usa a moldura ADM.</small></label>
         <div class="xp-photo-preview" hidden data-xp-photo-preview></div>
-        <button type="submit" class="xp-btn xp-btn-primary">Atualizar ADM</button>
+        <button type="submit" class="xp-btn xp-btn-primary">Salvar ADM</button>
       </form>
     </article>
     <article class="xp-admin-card">
@@ -1489,7 +1514,10 @@ function renderAdmin(req: Request, employees: EmployeeView[], adminProfile: { ph
         ${csrfField(req)}
         <input type="hidden" name="action" value="create_sale">
         <label><span>Funcionario</span><select name="employee_id" required><option value="">Escolha</option>${employees
-          .map((employee) => `<option value="${e(employee.id)}">${employee.is_admin ? 'ADM - teste' : e(employee.name)}</option>`)
+          .map((employee) => {
+            const label = employee.is_admin ? `${employee.name} (ADM)` : employee.name;
+            return `<option value="${e(employee.id)}">${e(label)}</option>`;
+          })
           .join('')}</select></label>
         <label><span>Data</span><input type="date" name="sale_date" value="${e(todayDate())}" required></label>
         <label><span>Valor em R$</span><input type="text" name="amount" inputmode="decimal" required placeholder="1.000,00"></label>
@@ -1543,6 +1571,12 @@ function renderEmployees(req: Request, employees: EmployeeView[], canManage: boo
 function renderEmployee(req: Request, employee: EmployeeView, canManage: boolean): string {
   const progress = employee.progress;
   const photo = photoUrl(employee.photo_path);
+  const deleteAction = canManage && !employee.is_admin
+    ? `<div class="xp-employee-actions" aria-label="Acoes do usuario"><form method="post" class="xp-delete-user-form">${csrfField(req)}<input type="hidden" name="action" value="deactivate_employee"><input type="hidden" name="employee_id" value="${e(employee.id)}"><button type="submit" class="xp-btn xp-btn-danger" aria-label="Excluir usuario ${e(employee.name)} do XP" data-xp-confirm="Excluir este usuario do XP? Ele sai da trilha e da lista, mas os lancamentos antigos ficam preservados.">Excluir usuario</button></form></div>`
+    : '';
+  const editAction = canManage
+    ? `<details class="xp-edit-details"><summary>Editar usuario</summary><form method="post" enctype="multipart/form-data" class="xp-form xp-form-edit">${csrfField(req)}<input type="hidden" name="action" value="update_employee"><input type="hidden" name="employee_id" value="${e(employee.id)}"><label><span>Nome</span><input type="text" name="name" maxlength="180" value="${e(employee.name)}" required></label><label><span>Nova foto</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input></label><button type="submit" class="xp-btn">Salvar</button></form></details>`
+    : '';
   return `<article class="xp-employee-card ${employee.is_admin ? 'is-adm' : ''}" data-xp-employee-card="${e(employee.id)}" data-xp-employee-level="${e(progress.level)}">
     <div class="xp-employee-main">
       <div class="xp-avatar-frame ${employee.is_admin ? 'is-adm' : ''}">${photo ? `<img src="${e(photo)}" alt="${e(employee.name)}" loading="lazy" decoding="async">` : `<span>${employee.is_admin ? 'ADM' : e(employeeInitials(employee.name))}</span>`}</div>
@@ -1550,14 +1584,14 @@ function renderEmployee(req: Request, employee: EmployeeView, canManage: boolean
         <span class="xp-rank">${employee.is_admin ? 'ADM' : `#${e(employee.rank)}`}</span>
         <h2>${e(employee.name)}</h2>
         <p>Nivel ${e(progress.level)} -> ${e(progress.next_level)}</p>
-        ${employee.is_admin ? '<small class="xp-admin-player-note">Player de teste para lancar XP no proprio ADM.</small>' : ''}
+        ${employee.is_admin ? '<small class="xp-admin-player-note">Perfil ADM para receber XP do proprio administrador.</small>' : ''}
         <dl><div><dt>XP do mes</dt><dd>${e(formatNumber(employee.month_xp))}</dd></div><div><dt>XP total</dt><dd>${e(formatNumber(employee.total_xp))}</dd></div></dl>
       </div>
       <div class="xp-liquid-bar ${e(progressFillClass(progress))}"><i aria-hidden="true"></i><span>${e(formatNumber(progress.progress_xp))}/${e(formatNumber(progress.required_xp))} XP</span></div>
     </div>
     <div class="xp-progress-line ${e(progressFillClass(progress))}" aria-label="Progresso para o proximo nivel"><i></i><span>${e(formatPercent(progress.percent))}</span></div>
-    ${canManage && !employee.is_admin ? `<div class="xp-employee-actions" aria-label="Acoes do usuario"><form method="post" class="xp-delete-user-form">${csrfField(req)}<input type="hidden" name="action" value="deactivate_employee"><input type="hidden" name="employee_id" value="${e(employee.id)}"><button type="submit" class="xp-btn xp-btn-danger" aria-label="Excluir usuario ${e(employee.name)} do XP" data-xp-confirm="Excluir este usuario do XP? Ele sai da trilha e da lista, mas os lancamentos antigos ficam preservados.">Excluir usuario</button></form></div>
-    <details class="xp-edit-details"><summary>Editar usuario</summary><form method="post" enctype="multipart/form-data" class="xp-form xp-form-edit">${csrfField(req)}<input type="hidden" name="action" value="update_employee"><input type="hidden" name="employee_id" value="${e(employee.id)}"><label><span>Nome</span><input type="text" name="name" maxlength="180" value="${e(employee.name)}" required></label><label><span>Nova foto</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-xp-photo-input></label><button type="submit" class="xp-btn">Salvar</button></form></details>` : ''}
+    ${deleteAction}
+    ${editAction}
   </article>`;
 }
 
@@ -1734,8 +1768,8 @@ app.post([`${BASE_PATH}/`, `${BASE_PATH}/index.php`, BASE_PATH], photoUpload, as
       await createEmployee(req.body.name, file, user.id);
       setFlash(req, 'success', 'Funcionario cadastrado no XP.');
     } else if (action === 'update_admin_profile') {
-      await updateAdminProfile(file, user.id);
-      setFlash(req, 'success', 'Foto da moldura ADM atualizada.');
+      await updateAdminProfile(req.body.name, file, user.id);
+      setFlash(req, 'success', 'Perfil ADM atualizado.');
     } else if (action === 'update_employee') {
       await updateEmployee(Number(req.body.employee_id || 0), req.body.name, file, user.id);
       setFlash(req, 'success', 'Funcionario atualizado.');
