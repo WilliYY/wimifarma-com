@@ -102,6 +102,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/usuarios/" "http://wimifarma-usuarios-app:3900/usuarios/"'; \
+        echo 'ProxyPassReverse "/usuarios/" "http://wimifarma-usuarios-app:3900/usuarios/"'; \
+        echo 'ProxyPass "/usuarios" "http://wimifarma-usuarios-app:3900/usuarios"'; \
+        echo 'ProxyPassReverse "/usuarios" "http://wimifarma-usuarios-app:3900/usuarios"'; \
+    } > /etc/apache2/conf-available/wimifarma-usuarios-proxy.conf \
+    && a2enconf wimifarma-usuarios-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \

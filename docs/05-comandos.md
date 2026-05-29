@@ -78,6 +78,7 @@ docker compose logs --tail=80 wimifarma-codigos-app
 docker compose logs --tail=80 wimifarma-codigos-db
 docker compose logs --tail=80 wimifarma-financeiro-app
 docker compose logs --tail=80 wimifarma-financeiro-db
+docker compose logs --tail=80 wimifarma-usuarios-app
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
 ```
@@ -215,6 +216,21 @@ docker exec wimifarma-codigos-db psql -U wimifarma_codigos -d wimifarma_codigos 
 ```
 
 O app `apps/codigos` atende a rota oficial `/codigos/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_codigos`; MySQL `wf_codigos_comissao` e `wf_codigos_blocos` ficam como importacao/espelho/log legado por flags `CODIGOS_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `CODIGOS_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-codigos-app`. O endpoint interno sem `X-Miauw-Internal-Token` deve responder 401 ou 503; nao colar token real em comando versionado.
+
+## Local - Usuarios Node/Postgres core
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\usuarios
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d --no-deps --build wimifarma-usuarios-app wimifarma-com-web
+docker exec wimifarma-usuarios-app wget -qO- http://127.0.0.1:3900/usuarios/health
+curl.exe -sS http://127.0.0.1:3002/usuarios/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" http://127.0.0.1:3002/usuarios/login.php
+```
+
+O app `apps/usuarios` atende `/usuarios/` via proxy Apache, usa `wimifarma_core` como fonte de verdade e consulta `wimifarma_xp` apenas para vinculo com funcionarios XP. Nao apagar fisicamente usuarios; o painel usa `active=false`.
 
 ## Local - Financeiro Node/Postgres
 

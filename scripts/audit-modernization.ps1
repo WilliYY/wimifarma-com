@@ -115,6 +115,15 @@ $modules = @(
         Next = 'Validar /financeiro/ no VPS, checksums por dia/tipo e Pix CNPJ via Miauby antes de desligar espelho MySQL.'
     },
     @{
+        Module = 'Usuarios'
+        Path = 'apps/usuarios'
+        Current = 'Node.js + TypeScript + Express + Postgres core'
+        Legacy = 'sem MySQL operacional para usuarios novos'
+        Target = 'enforcement gradual por modulo'
+        Priority = 'moderno'
+        Next = 'Validar /usuarios/health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.'
+    },
+    @{
         Module = 'Cashback'
         Path = 'site/cashback'
         Current = 'PHP procedural + MySQL'

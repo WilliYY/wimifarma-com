@@ -12,8 +12,9 @@ Entrada publica:
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
 - O card `Pedidos` abre `/pedidos/`, ao lado de `Cotacao`, com badge de pedidos previstos para chegar hoje.
 - O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card como `border-image` de borda/cantos para destacar a entrada sem cortar a arte nem cobrir o texto.
+- O card `Usuarios` abre `/usuarios/` para administrar logins, modulos, vinculo XP e historico central.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
-- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `XP`, `Gestao`, `Miauby` e `Miauby Whatsapp`. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
+- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Usuarios`, `Codigos`, `XP`, `Gestao`, `Miauby` e `Miauby Whatsapp`. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 
 Identidade visual validada em 2026-05-21:
 
@@ -27,6 +28,7 @@ Rotas de login:
 - `/codigos/login.php`
 - `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando somente em `core_users`)
 - `/financeiro/login.php`
+- `/usuarios/login.php`
 - `/gestao/login.php`
 - `/pedidos/`
 - `/xp/login.php`
@@ -34,7 +36,7 @@ Rotas de login:
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos PHP reaproveitam funcoes comuns do Cashback, especialmente sessao, usuario atual, CSRF, escape HTML e conexao PDO. Cotacao V2 usa sessao propria em Redis. Gestao, Pedidos, Tarefa, XP e Codigos usam sessoes proprias nos seus servicos Node/Postgres, com rollback de autenticacao por variaveis de ambiente quando aplicavel.
+Os modulos PHP reaproveitam funcoes comuns do Cashback, especialmente sessao, usuario atual, CSRF, escape HTML e conexao PDO. Cotacao V2 usa sessao propria em Redis. Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres, com rollback de autenticacao por variaveis de ambiente quando aplicavel.
 
 Arquivos envolvidos:
 
@@ -76,6 +78,27 @@ Tabelas principais:
 - `wf_resgate_itens`
 - `wf_settings`
 - `wf_logs`
+
+## Fluxo Usuarios
+
+O modulo Usuarios administra os logins internos em `/usuarios/`. Ele e servido por `apps/usuarios` em Node.js + TypeScript, usa sessao propria `WFUSUARIOS`, autentica no Postgres core `core_users` e fica restrito a username `adm` ou role `admin`.
+
+A tela permite criar usuario com senha, perfil e status, desativar usuario sem apagar fisicamente, escolher quais modulos ficam liberados, associar o login a um funcionario do XP e consultar o historico central de mudancas. A associacao com XP usa `core_user_xp_links` apontando logicamente para `xp_employees.id`; a fonte oficial de XP continua sendo o modulo XP.
+
+Tabelas principais:
+
+- `core_users`
+- `core_user_module_permissions`
+- `core_user_xp_links`
+- `core_user_audit_events`
+- `usuarios_sessions`
+
+Regras importantes:
+
+- `Excluir` no painel preenche `core_users.active=false`, preservando auditoria.
+- O usuario `adm` nao pode ser desativado pelo painel.
+- Deve existir pelo menos um administrador ativo.
+- Linhas ausentes em `core_user_module_permissions` preservam acesso legado; usuarios criados pelo painel ja recebem permissoes explicitas.
 
 ## Fluxo Codigos
 

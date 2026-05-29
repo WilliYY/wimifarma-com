@@ -48,6 +48,7 @@ O script mostra:
 | Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL opcional para importacao/espelho de rollback | Postgres puro + core auth/auditoria apos paridade | 5 em corte |
+| Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
 | Cashback | PHP procedural + MySQL | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
 | Miauby interno | PHP + Node agent sombra | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
@@ -58,6 +59,7 @@ O script mostra:
 
 1. Observar Gestao/Pedidos em modo sombra/fallback no core auth sem divergencias; Cotacao ja usa apenas `core_users`.
 2. Cortar autenticacao restante para `core_users`, mantendo rollback por `.env` onde ainda existir fallback.
+2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` e legado MySQL desligado por flags.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
 5. Validar Financeiro Node/Postgres em `/financeiro/` com backup, checksums por dia/tipo, smoke de Caixa/Relatorio/exportacao e contrato Pix CNPJ do Miauby antes de desligar espelho MySQL.
@@ -107,4 +109,14 @@ Financeiro foi cortado para `apps/financeiro`:
 - endpoints internos tokenizados para resumo, dia, checksums por dia/tipo, auditoria recente, lancamentos, faturamentos e sync manual;
 - `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario em MySQL para rollback.
 
-A proxima fatia segura e validar o corte do Financeiro no VPS com `/financeiro/health`, checksums por data/tipo, login, autosave do Caixa, lancamento/cancelamento, Relatorio, CSV e Pix CNPJ via Miauby/WhatsApp. So depois desligar flags legadas ou iniciar Cashback.
+Usuarios foi criado em `apps/usuarios`:
+
+- rota/proxy oficial em `/usuarios/`;
+- app Node.js 22 + TypeScript + Express;
+- usa o Postgres core `wimifarma_core`;
+- tabelas `core_user_module_permissions`, `core_user_xp_links`, `core_user_audit_events` e sessoes `usuarios_sessions`;
+- login restrito a `adm` ou role `admin`;
+- cria logins core novos com `legacy_mysql_id` negativo para nao conflitar com usuarios importados de `wf_users`;
+- consulta `xp_employees` para vinculo logico entre login e funcionario XP.
+
+A proxima fatia segura e validar Usuarios no VPS com `/usuarios/health`, login admin, criacao/desativacao controlada, vinculo XP e auditoria. Depois, aplicar `core_user_module_permissions` em cada modulo existente por etapa, sem bloquear todos de uma vez.

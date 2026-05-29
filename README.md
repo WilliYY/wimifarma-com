@@ -14,6 +14,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Cotacao para controle de itens, fornecedores, precos e status de compras;
 - Pedidos para recebimento de fornecedores, vencimento de boletos, pagamentos parciais e historico;
 - Financeiro para fechamento, sangrias, PIX, maquininhas e rastreabilidade interna;
+- Usuarios para logins individuais, permissoes por modulo, vinculo com XP e historico central;
 - Gestao para contas a pagar manuais, itens de composicao, pagamentos parciais, vencimentos, categorias livres e total pago por mes;
 - XP para gamificar vendas dos atendentes com cadastro de funcionarios, fotos, pontos e niveis;
 - Tarefas internas;
@@ -28,11 +29,11 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 
 - Projeto local em `C:\Users\Thiesen\Desktop\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-usuarios-app`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
-- O core compartilhado de autenticacao fica em Postgres `wimifarma_core`: `apps/core-auth` sincroniza `wf_users` para `core_users`, preservando id legado, hash, role e status. Cotacao usa esse core como login unico, sem dependencia MySQL; Gestao e Pedidos usam esse core como login principal, com fallback MySQL temporario para preservar rollback.
+- O core compartilhado de autenticacao fica em Postgres `wimifarma_core`: `apps/core-auth` sincroniza `wf_users` para `core_users`, preservando id legado, hash, role e status. `apps/usuarios` usa esse mesmo core para criar logins novos, permissoes por modulo, vinculo com XP e auditoria central. Cotacao usa esse core como login unico, sem dependencia MySQL; Gestao e Pedidos usam esse core como login principal, com fallback MySQL temporario para preservar rollback.
 - A Cotacao V2 fica em `apps/cotacao`, usa Node.js/Express/Socket.IO, Postgres e Redis, e e publicada por proxy interno do Apache em `/cotacao/`.
 - O login da Cotacao usa somente `core_users` no Postgres do core; o app nao possui mais `mysql2`, pool MySQL nem fallback `wf_users`. Os dados novos da planilha ficam em Postgres no volume ignorado `cotacao-data/`.
 - A Gestao fica oficialmente em `apps/gestao`, usa Node.js/TypeScript/Express com Postgres dedicado `wimifarma_gestao`, e e publicada por proxy interno do Apache em `/gestao/`; o login usa `core_users` por `GESTAO_AUTH_PROVIDER=core`, com fallback `wf_users` e espelho temporario `wf_logs`. A tela principal usa linhas compactas em `Categoria / Nome / Valor / Pagar / Abrir` e mostra o painel `Mensal` ao lado da lista principal, com as contas de repeticao ativa reordenaveis por arrastar.
@@ -49,7 +50,8 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - A logo oficial foi atualizada em 2026-05-21 como SVG horizontal e esta sincronizada nos assets compartilhados de Cashback/Codigos/Gestao/Pedidos, Financeiro, Tarefa, Miauw e Cotacao V2. Em 2026-05-24, a home publica passou a usar `logo-wimifarma-home-animated.gif` como variacao animada sem fundo da marca.
 - Em 2026-05-21, Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw foram validados com navegador local e checks publicos: as telas de login e as telas internas autenticadas carregam a logo nova. O `/wp-login.php` permanece com o cabecalho padrao do WordPress, separado dos logins internos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
-- A home publica mostra no maximo cinco cards por linha no desktop, na ordem `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `XP`, `Gestao`, `Miauby` e `Miauby Whatsapp`; `Pedidos` mostra badge de pedidos previstos para chegar hoje, o card `XP` usa moldura propria como borda/cantos por `border-image`, sem cortar a arte nem cobrir o texto, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
+- A home publica mostra no maximo cinco cards por linha no desktop, na ordem `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Usuarios`, `Codigos`, `XP`, `Gestao`, `Miauby` e `Miauby Whatsapp`; `Pedidos` mostra badge de pedidos previstos para chegar hoje, o card `XP` usa moldura propria como borda/cantos por `border-image`, sem cortar a arte nem cobrir o texto, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
+- O modulo `Usuarios` fica oficialmente em `apps/usuarios`, usa Node.js/TypeScript/Express com Postgres core `wimifarma_core`, sessao propria `WFUSUARIOS`, login restrito a `adm` ou role `admin`, proxy Apache em `/usuarios/`, cria/desativa usuarios internos, registra permissoes por modulo em `core_user_module_permissions`, vincula login a funcionario XP em `core_user_xp_links` e mostra historico por `core_user_audit_events`.
 - O modulo `Codigos` fica oficialmente em `apps/codigos`, usa Node.js/TypeScript/Express com Postgres `wimifarma_codigos`, sessao propria `WFCODIGOS`, login por `core_users` e proxy Apache em `/codigos/`. A tela preserva o mesmo CSS/JS de `site/codigos`: blocos por prefixo de EAN em `codigos_groups`, itens em `codigos_items`, autosave de `Codigo`, `EAN` e `Preco`, botao `+`, reordenacao por arrastar, criacao no rodape, exclusao logica e exclusao protegida de tabelas nao padrao por senha. `wf_codigos_*` no MySQL fica como importacao/espelho/log temporario por flags `CODIGOS_LEGACY_MYSQL_*`. O Miauby prefere `/codigos/api/internal/summary` e `/codigos/api/internal/search` com token interno para ler a fonte Postgres; sem token, usa o espelho legado enquanto estiver ativo.
 - O modulo `XP` fica oficialmente em `apps/xp`, usa Node.js/TypeScript/Express com Postgres `wimifarma_xp`, sessao propria `WFXP`, login por `core_users` e proxy Apache em `/xp/`. A tela preserva o mesmo CSS/JS/assets de `site/xp`: calcula XP inteiro pela regra R$ 1.000,00 = 2.500 XP, exige 30.000 XP para sair do nivel 1 e aumenta a dificuldade por formula progressiva. A tela principal mostra a trilha como mapa de jogo em zigue-zague, renderizando os niveis 1 a 20 enquanto a equipe estiver no inicio e depois uma janela curta ao redor do nivel mais alto; jogadores aparecem compactos na trilha e em uma faixa resumida clicavel. A aba `Configuracoes` concentra cadastro/edicao e exclusao logica de usuarios/funcionarios, foto validada JPG/PNG/WEBP ate 3 MB, moldura ADM, filtro de mes e lancamentos diarios. `wf_xp_*` no MySQL fica como importacao/espelho temporario de rollback por flags `XP_LEGACY_MYSQL_*`.
 - O modulo `Financeiro` fica oficialmente em `apps/financeiro`, usa Node.js/TypeScript/Express com Postgres `wimifarma_financeiro`, sessao propria `WFFINANCEIRO`, login por `core_users` e proxy Apache em `/financeiro/`. A tela preserva o CSS/JS/assets de `site/financeiro`; `financeiro_*` no MySQL fica como importacao/espelho temporario por `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED`.
@@ -206,6 +208,8 @@ Rotas internas principais:
 - `http://127.0.0.1:3002/codigos/login.php`
 - `http://127.0.0.1:3002/cotacao/login.php`
 - `http://127.0.0.1:3002/financeiro/login.php`
+- `http://127.0.0.1:3002/usuarios/login.php`
+- `http://127.0.0.1:3002/usuarios/health`
 - `http://127.0.0.1:3002/gestao/login.php`
 - `http://127.0.0.1:3002/gestao/health`
 - `http://127.0.0.1:3002/pedidos/`
@@ -244,6 +248,7 @@ curl.exe -sS http://127.0.0.1:3002/tarefa/health
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/health
+curl.exe -sS http://127.0.0.1:3002/usuarios/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 curl.exe -sS http://127.0.0.1:3002/cotacao/api/diagnostics
 curl.exe -sS http://127.0.0.1:3002/cotacao/api/google-sheets/status
@@ -263,6 +268,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |   |-- xp/                  # XP Node.js/TypeScript/Postgres oficial
 |   |-- codigos/             # Codigos Node.js/TypeScript/Postgres oficial
 |   |-- financeiro/          # Financeiro Node.js/TypeScript/Postgres oficial
+|   |-- usuarios/            # Usuarios Node.js/TypeScript no core Postgres
 |   |-- miauw-agent/         # Miauby agente Node/TypeScript em sombra/corte controlado
 |   `-- miauw-whatsapp/      # Bridge WhatsApp Node/TypeScript com painel operacional
 |-- ops/
@@ -429,6 +435,7 @@ GESTAO_INTERNAL_TOKEN
 GESTAO_INTERNAL_BASE_URL
 GESTAO_POSTGRES_PASSWORD
 GESTAO_SESSION_SECRET
+USUARIOS_SESSION_SECRET
 PEDIDOS_SESSION_SECRET
 TAREFA_POSTGRES_PASSWORD
 TAREFA_SESSION_SECRET
@@ -519,6 +526,8 @@ Para Codigos, `apps/codigos` e `wimifarma-codigos-app:3700` sao a rota oficial `
 
 Para Financeiro, `apps/financeiro` e `wimifarma-financeiro-app:3800` sao a rota oficial `/financeiro/` via proxy Apache. Manter `FINANCEIRO_POSTGRES_PASSWORD`, `FINANCEIRO_SESSION_SECRET` e, se quiser trocar a senha de reabertura, `FINANCEIRO_REOPEN_PASSWORD` por ambiente. `FINANCEIRO_AUTH_PROVIDER=core` usa `core_users`; rollback rapido de autenticacao e voltar `FINANCEIRO_AUTH_PROVIDER=mysql`. `FINANCEIRO_INTERNAL_TOKEN` pode ficar igual ao `MIAUW_GUARDIAN_TOKEN` para o Miauby/WhatsApp gravar `Pix CNPJ` e faturamento por endpoints internos Node/Postgres. `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario em MySQL para rollback curto.
 
+Para Usuarios, `apps/usuarios` e `wimifarma-usuarios-app:3900` sao a rota oficial `/usuarios/` via proxy Apache. Manter `USUARIOS_SESSION_SECRET` por ambiente; o app usa `CORE_POSTGRES_PASSWORD` e consulta o Postgres do XP para associar logins a funcionarios. O painel fica restrito a `adm` ou role `admin`.
+
 Para usar import/export real com Google Sheets, preencher tambem `GOOGLE_SHEETS_SPREADSHEET_ID` e uma credencial de service account em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Sem essas variaveis, a tela mostra o status como nao configurado e nao tenta sincronizar.
 
 Depois do deploy, a home publica deve provar que esta na versao certa:
@@ -537,6 +546,7 @@ Portas importantes:
 - app interno XP: `wimifarma-xp-app:3600`
 - app interno Codigos: `wimifarma-codigos-app:3700`
 - app interno Financeiro oficial: `wimifarma-financeiro-app:3800`
+- app interno Usuarios: `wimifarma-usuarios-app:3900`
 - bind local do Compose: `127.0.0.1:3002`
 - tunel local do PuTTY usado em testes: `127.0.0.1:13002`
 - publico: `80/443` via Nginx Proxy Manager
@@ -568,5 +578,6 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 - `docs/22-migracao-mysql-postgres.md`: inventario do uso restante de MySQL e plano gradual para migrar modulos internos para Postgres.
 - `docs/23-n8n-automacoes.md`: plano de automacoes n8n sem virar backend de regras.
 - `docs/24-modernizacao-modulos.md`: inventario dos modulos antigos e caminho para Node.js/TypeScript/Postgres.
+- `docs/25-usuarios-permissoes.md`: modulo Usuarios, permissoes centrais, vinculo XP e caminho de enforcement.
 
 Leia `AGENTS.md` antes de qualquer alteracao.

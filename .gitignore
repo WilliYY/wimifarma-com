@@ -20,6 +20,7 @@ apps/tarefa/dist/
 apps/xp/dist/
 apps/codigos/dist/
 apps/financeiro/dist/
+apps/usuarios/dist/
 apps/miauw-whatsapp/dist/
 .env
 /site/miauw/config.local.php

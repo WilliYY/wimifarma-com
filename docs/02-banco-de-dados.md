@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos e do Financeiro. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro e Miauby WhatsApp usam Postgres separados para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Financeiro e de Usuarios. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -61,8 +61,12 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_users`: usuarios internos sincronizados de `wf_users`, preservando hash, role, status, `legacy_mysql_id` e ids antigos.
 - `core_audit_logs`: auditoria compartilhada curta para eventos de login/acoes dos apps Node.
 - `core_login_rate_limits`: base compartilhada para limitadores de login quando os modulos forem removendo o legado PHP/MySQL.
+- `core_user_module_permissions`: permissoes por modulo administradas em `/usuarios/`.
+- `core_user_xp_links`: vinculo logico entre login interno e funcionario em `xp_employees`, sem FK entre bancos.
+- `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
+- `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao usa `core_users` como fonte unica de login. Gestao e Pedidos usam `core_users` como fonte principal por `*_AUTH_PROVIDER=core`, mantendo fallback temporario em `wf_users` por `*_AUTH_MYSQL_FALLBACK_ENABLED=true` durante a janela de corte.
+Cotacao usa `core_users` como fonte unica de login. Gestao e Pedidos usam `core_users` como fonte principal por `*_AUTH_PROVIDER=core`, mantendo fallback temporario em `wf_users` por `*_AUTH_MYSQL_FALLBACK_ENABLED=true` durante a janela de corte. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Miauby WhatsApp em Postgres
 
@@ -231,6 +235,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Cashback: `site/cashback/functions.php`
 - Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `apps/financeiro/src/server.ts`; `site/financeiro` fica como legado/assets visuais.
+- Usuarios: `apps/usuarios/src/server.ts`
 - Gestao: `apps/gestao/src/server.ts`
 - XP: `apps/xp/src/server.ts`
 - Tarefas: `apps/tarefa/src/server.ts`
@@ -270,6 +275,9 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
+- `core_user_module_permissions` e a fonte central para liberar ou bloquear cards/modulos por usuario. Na primeira fase, linhas ausentes significam acesso legado preservado; usuarios criados pelo painel ja recebem linhas explicitas por modulo.
+- `core_user_xp_links.xp_employee_id` aponta logicamente para `xp_employees.id`; nao criar FK entre bancos. O nome do funcionario fica como snapshot operacional para auditoria e leitura rapida.
+- `core_user_audit_events` deve registrar mudancas de usuarios sem senha, token ou payload bruto. Excluir usuario no painel significa desativar (`active=false`), nao apagar fisicamente.
 - `tarefa_tasks.status` aceita apenas `aberta`, `concluida` e `cancelada`; `priority` aceita `alta`, `normal` e `baixa`. Concluir/cancelar/reabrir nao apaga tarefa; apenas muda status, datas e auditoria.
 - Em `financeiro_fechamentos`, `status='sem_movimento'` marca um dia sem venda/movimento e pode ser criado pelo Caixa ou pelo Relatorio. Esse status nao e bloqueio final: somente `fechado` e `divergente` travam edicao normal; quando o faturamento de um dia `sem_movimento` recebe valor positivo pelo Relatorio, o registro volta para `conferencia` e continua linkado ao Caixa.
 - Comprovante Pix CNPJ lido pelo Miauby WhatsApp nao cria tabela nova: apos confirmacao `Sim`, entra por endpoint interno tokenizado do Financeiro Node como `financeiro_entries.category='Pix CNPJ'` no dia extraido, com observacao sanitizada contendo destino, pagador, horario e origem da leitura. Confirmacao `Nao`, destino divergente ou campos ausentes nao gravam nada.

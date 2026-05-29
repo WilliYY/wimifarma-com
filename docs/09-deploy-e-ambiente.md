@@ -41,6 +41,7 @@ Higiene de pastas no VPS:
 - `apps/tarefa/`
 - `apps/codigos/`
 - `apps/financeiro/`
+- `apps/usuarios/`
 - `apps/miauw-agent/`
 - `apps/miauw-whatsapp/`
 - `ops/evolution/`
@@ -80,6 +81,7 @@ Higiene de pastas no VPS:
 - `wimifarma-xp-app:3600`: servico interno oficial do XP, acessado pelo Apache por proxy reverso em `/xp`.
 - `wimifarma-codigos-app:3700`: servico interno oficial de Codigos, acessado pelo Apache por proxy reverso em `/codigos`.
 - `wimifarma-financeiro-app:3800`: servico interno oficial do Financeiro, acessado pelo Apache por proxy reverso em `/financeiro`.
+- `wimifarma-usuarios-app:3900`: servico interno oficial de Usuarios, acessado pelo Apache por proxy reverso em `/usuarios`.
 - `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra/corte controlado, acessado pelo Apache por proxy reverso em `/miauw/agent`.
 - `wimifarma-miauw-whatsapp:3400`: servico interno do bridge WhatsApp do Miauby, acessado pelo Apache por proxy reverso em `/miauw/whatsapp`.
 - `wimifarma-evolution-api:8080`: Evolution API interna para envio de mensagens do bridge, em stack separada; bind externo apenas em `127.0.0.1:8080`.
@@ -114,6 +116,7 @@ Higiene de pastas no VPS:
 - Manter o proxy Apache de `/xp/` para `wimifarma-xp-app:3600`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/xp` fica apenas como fallback historico/assets/uploads e nao deve voltar a ser fonte oficial sem rollback deliberado.
 - Manter o proxy Apache de `/codigos/` para `wimifarma-codigos-app:3700`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/codigos` fica apenas como fallback historico/assets e nao deve voltar a ser fonte oficial sem rollback deliberado.
 - Manter o proxy Apache de `/financeiro/` para `wimifarma-financeiro-app:3800`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/financeiro` fica apenas como fallback historico/assets e nao deve voltar a ser fonte oficial sem rollback deliberado.
+- Manter o proxy Apache de `/usuarios/` para `wimifarma-usuarios-app:3900`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O modulo usa `wimifarma_core` e nao deve ser publicado direto fora do Apache.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/miauw/whatsapp/` para `wimifarma-miauw-whatsapp:3400`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`, e o painel `/miauw/whatsapp/` deve mostrar apenas dados seguros.
 - Manter a Evolution API fora do Nginx Proxy Manager por padrao; usar API interna `http://wimifarma-evolution-api:8080` e porta local `127.0.0.1:8080` apenas para operacao controlada.
@@ -132,6 +135,7 @@ Higiene de pastas no VPS:
 - Para XP, definir `XP_POSTGRES_PASSWORD` e `XP_SESSION_SECRET` no `.env` de cada ambiente. `XP_AUTH_PROVIDER=core` usa `core_users` como login oficial e rollback e voltar `XP_AUTH_PROVIDER=mysql`. `XP_LEGACY_MYSQL_IMPORT_ENABLED`, `XP_LEGACY_MYSQL_MIRROR_ENABLED` e `XP_LEGACY_MYSQL_LOGS_ENABLED` controlam importacao/espelho/log legado para rollback curto.
 - Para Codigos, definir `CODIGOS_POSTGRES_PASSWORD` e `CODIGOS_SESSION_SECRET` no `.env` de cada ambiente. `CODIGOS_AUTH_PROVIDER=core` usa `core_users` como login oficial e rollback e voltar `CODIGOS_AUTH_PROVIDER=mysql`. `CODIGOS_INTERNAL_TOKEN` pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby consultar `/codigos/api/internal/summary` e `/codigos/api/internal/search` direto no Postgres; sem token, essas rotas recusam. `CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED`, `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED` e `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED` controlam importacao/espelho/log legado para rollback curto.
 - Para Financeiro, definir `FINANCEIRO_POSTGRES_PASSWORD`, `FINANCEIRO_SESSION_SECRET` e, quando necessario, `FINANCEIRO_REOPEN_PASSWORD` no `.env` de cada ambiente. `FINANCEIRO_AUTH_PROVIDER=core` usa `core_users` como login oficial e rollback e voltar `FINANCEIRO_AUTH_PROVIDER=mysql`. `FINANCEIRO_INTERNAL_TOKEN` pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby/WhatsApp gravar por endpoints internos Node/Postgres; sem token, `/financeiro/api/internal/*` e `/financeiro/internal/*` devem recusar. `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario para rollback curto.
+- Para Usuarios, definir `USUARIOS_SESSION_SECRET` no `.env` de cada ambiente. O app usa `CORE_POSTGRES_PASSWORD` para gravar `core_users`, `core_user_module_permissions`, `core_user_xp_links`, `core_user_audit_events` e `usuarios_sessions`, e usa `XP_POSTGRES_PASSWORD` para listar funcionarios do XP no vinculo.
 - Para comandos da Gestao pelo Miauby, manter `GESTAO_INTERNAL_TOKEN` preenchido nos servicos web e Gestao, ou usar `MIAUW_GUARDIAN_TOKEN` como fallback; o PHP chama `GESTAO_INTERNAL_BASE_URL` internamente e a Gestao rejeita `/gestao/api/internal/...` sem token.
 - Para backup/restore da Cotacao V2, manter `COTACAO_BACKUP_DIR=/app/backups` e o volume `./cotacao-data/backups:/app/backups`.
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
@@ -145,7 +149,7 @@ Higiene de pastas no VPS:
 - Para corte acelerado do Miauby, definir `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`, `MIAUW_MAINTENANCE_MODE=true` e `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`. Rollback: `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
 - Para audio do Miauby, manter `MIAUW_OPENAI_API_KEY` somente no `.env`, usar `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`. O botao depende de HTTPS/navegador com microfone e o PHP transcreve o audio temporario sem expor chave no browser; `MIAUW_REALTIME_MODEL`/`MIAUW_REALTIME_VOICE` ficam reservados para evolucao futura de playback/voz.
 - Antes de deploy, fazer commit e push da alteracao. Por regra operacional atual, toda alteracao de arquivo deve ser commitada, enviada ao GitHub e publicada no VPS quando houver deploy aplicavel, salvo pedido explicito para nao publicar ou bloqueio tecnico relatado.
-- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health`, `http://127.0.0.1:3002/pedidos/health`, `http://127.0.0.1:3002/pedidos/api/badge`, `http://127.0.0.1:3002/tarefa/health`, `http://127.0.0.1:3002/tarefa/badge.php`, `http://127.0.0.1:3002/xp/health`, `http://127.0.0.1:3002/codigos/health`, `http://127.0.0.1:3002/financeiro/health` e `http://127.0.0.1:3002/financeiro/login.php`.
+- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health`, `http://127.0.0.1:3002/pedidos/health`, `http://127.0.0.1:3002/pedidos/api/badge`, `http://127.0.0.1:3002/tarefa/health`, `http://127.0.0.1:3002/tarefa/badge.php`, `http://127.0.0.1:3002/xp/health`, `http://127.0.0.1:3002/codigos/health`, `http://127.0.0.1:3002/financeiro/health`, `http://127.0.0.1:3002/usuarios/health` e `http://127.0.0.1:3002/financeiro/login.php`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
 
 ## Decisoes tecnicas ja tomadas
@@ -168,6 +172,7 @@ Higiene de pastas no VPS:
 - XP roda fora do PHP/WordPress: Apache faz proxy de `/xp/` para Node, Node usa Postgres para funcionarios, vendas, configuracoes, auditoria e sessoes, e MySQL somente para importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` estiverem ligadas.
 - Codigos roda fora do PHP/WordPress: Apache faz proxy de `/codigos/` para Node, Node usa Postgres para itens, blocos EAN, auditoria e sessoes, e MySQL somente para importacao/espelho/log legado quando as flags `CODIGOS_LEGACY_MYSQL_*` estiverem ligadas.
 - Financeiro roda fora do PHP/WordPress: Apache faz proxy de `/financeiro/` para Node, Node usa Postgres para fechamentos, lancamentos, auditoria, idempotencia interna e sessoes, e MySQL somente para importacao/espelho temporario quando as flags `FINANCEIRO_LEGACY_MYSQL_*` estiverem ligadas.
+- Usuarios roda fora do PHP/WordPress: Apache faz proxy de `/usuarios/` para Node, Node usa Postgres core para usuarios, permissoes, vinculo XP, auditoria e sessoes, e consulta o Postgres do XP apenas para listar funcionarios ativos.
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
 - A Fase 7/8/9/10/11/12/13/14/15/16/17/18/19 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools, roteador de estilo/memoria aprovada, treinador, perfis de voz e audio por transcricao confirmada. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
 - O bridge WhatsApp do Miauby adiciona `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`. Deploys desse canal devem rebuildar o bridge, garantir o Postgres dedicado e rebuildar `wimifarma-com-web` quando houver mudanca no proxy Apache.

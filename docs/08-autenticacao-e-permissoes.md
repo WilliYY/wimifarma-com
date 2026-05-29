@@ -12,6 +12,7 @@ Arquivos:
 - `site/cashback/functions.php`
 - `site/cashback/auth.php`
 - `apps/codigos/src/server.ts`
+- `apps/usuarios/src/server.ts`
 - `site/*/login.php`
 - `site/*/logout.php`
 - `site/*/bootstrap.php`
@@ -22,6 +23,7 @@ Rotas:
 - `/codigos/login.php`
 - `/cotacao/login.php`
 - `/financeiro/login.php`
+- `/usuarios/login.php`
 - `/gestao/login.php`
 - `/pedidos/`
 - `/xp/login.php`
@@ -37,6 +39,10 @@ Tabelas:
 - `wf_users`
 - `wf_logs`
 - `core_users`
+- `core_user_module_permissions`
+- `core_user_xp_links`
+- `core_user_audit_events`
+- `usuarios_sessions`
 - `codigos_sessions`
 - `wptl_users`
 - `wptl_usermeta`
@@ -57,6 +63,7 @@ Tabelas:
 - O endpoint publico `/tarefa/badge.php` retorna somente a contagem de tarefas abertas, sem titulo/descricao, para alimentar a bolinha do card `Tarefas` na home.
 - XP (`/xp/`) usa o servico Node `apps/xp`, sessao propria `WFXP` no Postgres do XP e autentica oficialmente contra `core_users` quando `XP_AUTH_PROVIDER=core`; rollback e voltar `XP_AUTH_PROVIDER=mysql`. Visualizar exige usuario autenticado, enquanto cadastrar funcionario, trocar foto, atualizar foto da moldura ADM, lancar venda, cancelar venda ou excluir/remover usuario/funcionario exige username `adm`, role `admin` ou role `gerente` e CSRF.
 - Fotos do XP aceitam somente JPG, PNG ou WEBP validados no servidor, ate 3 MB, com caminho final limitado a `/xp/uploads/funcionarios/` ou `/xp/uploads/adm/`; as pastas continuam em `site/xp/uploads`, compartilhadas como volume pelo app Node para preservar arquivos e rollback.
+- Usuarios (`/usuarios/`) usa o servico Node `apps/usuarios`, sessao propria `WFUSUARIOS` no Postgres core e autentica contra `core_users`. O painel fica restrito a username `adm` ou role `admin`; criar, atualizar, vincular XP, alterar permissoes e desativar usuario usa CSRF e registra `core_user_audit_events`/`core_audit_logs`.
 - O painel `/miauw/diagnostico.php` exige usuario interno autenticado e fica restrito a role `admin`, role `gerente` ou username `adm`; acoes de revisao usam CSRF.
 - O painel `/miauw/treino.php` segue a mesma restricao de diagnostico (`admin`, `gerente` ou `adm`); revisar/aprovar/rejeitar treino usa CSRF e nao apaga historico.
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.
@@ -68,7 +75,7 @@ Tabelas:
 
 - Sessao dos modulos internos e configurada em `site/cashback/config.php`.
 - Funcoes comuns ficam em `site/cashback/functions.php`.
-- Modulos PHP remanescentes como Cashback e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos e Financeiro usam sessoes Node proprias por rota.
+- Modulos PHP remanescentes como Cashback e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 
@@ -84,14 +91,14 @@ Tabelas:
 - Mapear perfis existentes e permissoes por modulo.
 - Remover ou substituir fallbacks legados de login.
 - Revisar fluxo de desbloqueio de areas sensiveis.
-- Criar tela/rotina segura para administracao de usuarios internos.
+- Aplicar `core_user_module_permissions` nos modulos existentes em etapas, com rollback e teste por modulo, para evitar bloquear a equipe sem plano de recuperacao.
 - Mapear formalmente quais usuarios alem de `admin`/`gerente` devem acessar diagnosticos do Miauby.
 - Definir politica de corte para o Miauby agente, usando traces do adaptador PHP e mantendo confirmacao humana antes de qualquer escrita forte.
 - Documentar politica de senha e recuperacao de acesso.
 
 ## Evolucao futura
 
-- Criar RBAC simples por permissao, nao apenas por role textual.
+- Evoluir o RBAC central criado em `/usuarios/` para enforcement nos modulos existentes, mantendo linhas ausentes como compatibilidade legado ate o corte de cada rota.
 - Adicionar auditoria central de login/logout/falhas.
 - Evoluir o limite de tentativas para painel de monitoramento/alerta, preservando os bloqueios atuais.
 - Criar testes automatizados para login, logout, CSRF e acesso negado.

@@ -72,6 +72,13 @@ $modules = array(
         'task_badge' => true,
     ),
     array(
+        'name' => 'Usuários',
+        'label' => 'Acessos e auditoria',
+        'description' => 'Logins, permissoes, XP e historico.',
+        'href' => '/usuarios/',
+        'accent' => 'blue',
+    ),
+    array(
         'name' => 'Códigos',
         'label' => 'Comissoes especiais',
         'description' => 'Codigo, EAN e preco em lista rapida.',

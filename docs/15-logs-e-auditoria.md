@@ -14,6 +14,7 @@ Logs de container:
 - `docker compose logs wimifarma-codigos-app`
 - `docker compose logs wimifarma-financeiro-app`
 - `docker compose logs wimifarma-financeiro-db`
+- `docker compose logs wimifarma-usuarios-app`
 - `docker compose logs wimifarma-miauw-agent`
 - `docker compose logs wimifarma-miauw-whatsapp`
 
@@ -23,6 +24,8 @@ Tabelas de auditoria/log:
 - `cotacao_auditoria`
 - `financeiro_auditoria`
 - `financeiro_audit_events`
+- `core_user_audit_events`
+- `core_user_module_permissions`
 - `gestao_audit_events`
 - `gestao_supplier_orders`
 - `codigos_audit_events`
@@ -48,6 +51,7 @@ Arquivos:
 - `site/xp/xp-funcoes.php`
 - `apps/cotacao/src/server.js`
 - `apps/financeiro/src/server.ts`
+- `apps/usuarios/src/server.ts`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
 - `site/financeiro/financeiro-funcoes.php`
@@ -67,6 +71,7 @@ Arquivos:
 - Pedidos registra criacao, pagamento informado na criacao, chegada confirmada, finalizacao no historico, reabertura por novo valor/juros ou reabertura da conta, e cancelamento por categoria com eventos `pedidos_pedido_criado`, `pedidos_pedido_pago_criacao`, `pedidos_chegada_confirmada`, `pedidos_pedido_finalizado`, `pedidos_pedido_reaberto`, `pedidos_valor_adicionado`, `pedidos_pagamento_criado`, `pedidos_boleto_quitado` e compatibilidade `gestao_pedido_cancelado_categoria` quando cancelado a partir da Gestao. O pedido fica ligado a uma conta da categoria `Boleto`, entao pagamentos parciais/totais tambem seguem os eventos financeiros ja existentes.
 - Codigos registra criacao de blocos, criacao de itens, edicao, reordenacao, exclusao logica e exclusao de tabela em `codigos_audit_events`; `wf_logs` fica apenas como espelho legado quando `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED=true`. Autosave pode gerar mais eventos de edicao, entao logs devem continuar curtos e sem segredos.
 - XP registra login/falha/logout e alimentacao em `wf_logs`: `login_xp`, `login_xp_falha`, `logout_xp`, `xp_adm_foto_atualizada`, `xp_funcionario_criado`, `xp_funcionario_editado`, `xp_funcionario_inativado`, `xp_venda_lancada` e `xp_venda_cancelada`. Logs devem guardar resumo curto, sem arquivo original, senha ou dado sensivel.
+- Usuarios registra login/falha, criacao, atualizacao, desativacao, permissoes e vinculo XP em `core_user_audit_events` e espelha resumo curto em `core_audit_logs`. Nunca registrar senha nova/antiga, token, hash de senha, payload bruto ou dados sensiveis desnecessarios.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
 - Guardrails do Miauby v2 que reescrevem resposta por vazamento de bastidor devem registrar diagnostico invisivel com termos detectados, origem, versao do agente e versao da politica, sem salvar a resposta completa nem segredo.
 - O painel `/miauw/diagnostico.php` mostra diagnosticos internos recentes em forma resumida e sanitizada, sem payload bruto nem stack trace.
