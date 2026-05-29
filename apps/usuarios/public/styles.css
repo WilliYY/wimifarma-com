@@ -102,12 +102,16 @@ a {
 }
 
 .users-login-body {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow: hidden;
 }
 
 .users-login {
+  position: relative;
+  z-index: 2;
   width: min(430px, 100%);
   display: grid;
   gap: 20px;
@@ -116,6 +120,19 @@ a {
   border-radius: 8px;
   background: var(--wf-surface);
   box-shadow: var(--wf-shadow);
+}
+
+.login-screen-runner {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: min(154px, 24vw);
+  height: auto;
+  pointer-events: none;
+  filter: drop-shadow(0 18px 25px rgba(127, 11, 47, 0.18));
+  transform: translate3d(var(--login-runner-x, 15vw), var(--login-runner-y, 60vh), 0) scaleX(var(--login-runner-dir, 1));
+  will-change: transform;
 }
 
 .users-login img {
@@ -451,7 +468,17 @@ a {
     padding: 22px;
   }
 
+  .login-screen-runner {
+    width: min(132px, 32vw);
+  }
+
   .users-modules {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-screen-runner {
+    display: none;
   }
 }

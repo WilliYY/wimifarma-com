@@ -72,7 +72,7 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'usuarios';
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.0.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -796,7 +796,8 @@ function renderLogin(req: Request, message = ''): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usuarios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529a">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529b">
+  <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
   <main class="users-login">
@@ -810,6 +811,7 @@ function renderLogin(req: Request, message = ''): string {
       <button class="users-button" type="submit">Entrar</button>
     </form>
   </main>
+  <img class="login-screen-runner login-cat-runner" src="${BASE_PATH}/assets/gato-hapy.gif?v=20260529a" alt="" aria-hidden="true" data-login-runner>
 </body>
 </html>`;
 }
@@ -847,7 +849,7 @@ function renderDashboard(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usuarios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529a">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529b">
 </head>
 <body>
   <header class="users-topbar">
