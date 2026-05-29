@@ -39,7 +39,8 @@ Rotas de smoke test:
 - `/pedidos/api/badge` deve responder JSON sem segredo com a quantidade de pedidos previstos para chegar hoje
 - `/gestao/pedidos` deve redirecionar para `/pedidos/` por compatibilidade, sem renderizar a tela da Gestao
 - `/xp/login.php` deve responder 200 e carregar a tela de login do XP
-- `/xp/health.php` deve responder JSON 200 quando o schema do XP puder ser preparado
+- `/xp/health` deve responder JSON 200 quando o schema do XP puder ser preparado
+- `/_legacy-disabled/README.md` deve responder 403, confirmando que a quarentena de legado nao fica navegavel
 - `/miauw/login.php`
 - `/miauw/treino.php` deve exigir sessao e perfil autorizado
 - `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
@@ -104,7 +105,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em banco, testar pelo menos login/status e logs.
 - Se mexer em `apps/cashback`, rodar `npm run check`, `npm run build`, validar `/cashback/health`, `/cashback/login.php`, contagens importadas, exportacao CSV e, quando autenticado, `/cashback/autoteste.php`; se mexer no proxy, rebuildar tambem `wimifarma-com-web`.
 - Se mexer em Gestao/Pedidos, rodar `npm run check` e `npm run build` nos apps Node afetados, health de `/gestao/health` e/ou `/pedidos/health`, smoke de `/gestao/login.php` e `/pedidos/`, badge `/pedidos/api/badge`, validacao visual da tela afetada e, quando mexer em acesso, confirmar que entrar pelo card `Pedidos` volta para `/pedidos/` apos login.
-- Se mexer em XP, rodar `php -l` nos arquivos de `site/xp`, validar `/xp/login.php`, `/xp/health.php`, home com card XP e, quando possivel, validar visualmente a moldura do card, trilha e upload de foto.
+- Se mexer em XP, rodar `npm run check` e `npm run build` em `apps/xp`, validar `/xp/login.php`, `/xp/health`, home com card XP e, quando possivel, validar visualmente a moldura do card, trilha e upload de foto. Os PHPs antigos de XP ficam em `site/_legacy-disabled/2026-05-29/xp-php/` e nao fazem parte do smoke operacional.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
 - Se mexer em `apps/miauw-agent`, rodar `npm run check`, `npm run check:persona`, build do servico e validar `/miauw/agent/health`.

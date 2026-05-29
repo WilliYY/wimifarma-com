@@ -52,8 +52,7 @@ Arquivos:
 - `site/cashback/functions.php`
 - `apps/cashback/src/server.ts`
 - `apps/codigos/src/server.ts`
-- `site/codigos/codigos-funcoes.php` (legado/fallback)
-- `site/xp/xp-funcoes.php`
+- `apps/xp/src/server.ts`
 - `apps/cotacao/src/server.js`
 - `apps/financeiro/src/server.ts`
 - `apps/usuarios/src/server.ts`
@@ -62,7 +61,7 @@ Arquivos:
 - `site/financeiro/financeiro-funcoes.php`
 - `apps/gestao/src/server.ts`
 - `apps/pedidos/src/server.ts`
-- `site/gestao/gestao-funcoes.php` (legado)
+- `site/_legacy-disabled/2026-05-29/` (legado PHP arquivado, sem escrita ativa)
 - `site/miauw/miauw-intelligence.php`
 - `site/miauw/miauw-funcoes.php`
 

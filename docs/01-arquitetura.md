@@ -63,10 +63,13 @@ Arquivos principais:
 - `site/.htaccess`
 - `site/home.php`
 - `site/wp-config.php`
-- `site/cashback/` (legado/assets; rota oficial usa `apps/cashback`)
-- `site/codigos/` (legado/assets; rota oficial usa `apps/codigos`)
-- `site/xp/` (legado/assets/uploads; rota oficial usa `apps/xp`)
-- `site/gestao/` (legado; rota oficial usa `apps/gestao`)
+- `site/cashback/` (assets e helpers PHP ainda chamados pelo Miauby; rota oficial usa `apps/cashback`)
+- `site/codigos/` (somente assets; rota oficial usa `apps/codigos`; PHP antigo arquivado)
+- `site/xp/` (somente assets/uploads; rota oficial usa `apps/xp`; PHP antigo arquivado)
+- `site/_legacy-disabled/2026-05-29/gestao/` (Gestao PHP antiga arquivada)
+- `site/_legacy-disabled/2026-05-29/codigos-php/` (Codigos PHP antigo arquivado)
+- `site/_legacy-disabled/2026-05-29/xp-php/` (XP PHP antigo arquivado)
+- `site/_legacy-disabled/2026-05-29/cashback-financeiro-php/` (Financeiro antigo dentro de Cashback arquivado)
 - `.env.example`
 
 Containers:
@@ -142,11 +145,11 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Manter `miauw-whatsapp-data/` como volume persistente e ignorado pelo Git.
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
 - Manter o Cashback oficial em `/cashback/` via Node/Postgres; `site/cashback` e apenas legado/assets historico.
-- Manter a Gestao oficial em `/gestao/` via Node/Postgres; `site/gestao` e apenas legado/fallback historico.
+- Manter a Gestao oficial em `/gestao/` via Node/Postgres; o legado PHP de `site/gestao` esta arquivado em `site/_legacy-disabled/2026-05-29/gestao`.
 - Manter `Pedidos` como modulo separado em `/pedidos/`, usando `apps/pedidos`, container `wimifarma-pedidos-app:3300`, sessao propria `WFPEDIDOS`, CSRF proprio e proxy Apache dedicado. A URL antiga `/gestao/pedidos` deve apenas redirecionar para `/pedidos/`.
 - Manter `Tarefa` como modulo separado em `/tarefa/`, usando `apps/tarefa`, container `wimifarma-tarefa-app:3500`, sessao propria `WFTAREFA`, CSRF proprio e proxy Apache dedicado. `site/tarefa` fica legado/fallback historico.
-- Manter o XP como modulo proprio em `/xp/`, usando `apps/xp`, container `wimifarma-xp-app:3600`, Postgres dedicado, sessao propria `WFXP`, CSRF proprio e proxy Apache dedicado; `site/xp` fica legado/assets/uploads.
-- Manter Codigos como modulo proprio em `/codigos/`, usando `apps/codigos`, container `wimifarma-codigos-app:3700`, Postgres dedicado, sessao propria `WFCODIGOS`, CSRF proprio e proxy Apache dedicado; `site/codigos` fica legado/assets.
+- Manter o XP como modulo proprio em `/xp/`, usando `apps/xp`, container `wimifarma-xp-app:3600`, Postgres dedicado, sessao propria `WFXP`, CSRF proprio e proxy Apache dedicado; `site/xp` fica somente para assets/uploads.
+- Manter Codigos como modulo proprio em `/codigos/`, usando `apps/codigos`, container `wimifarma-codigos-app:3700`, Postgres dedicado, sessao propria `WFCODIGOS`, CSRF proprio e proxy Apache dedicado; `site/codigos` fica somente para assets.
 - Manter `/financeiro/` pelo proxy Apache para `apps/financeiro`; antes de desligar o espelho MySQL, validar paridade por checksum, login/sessao, fluxo de caixa/relatorio, CSV, Miauby Pix CNPJ e rollback documentado.
 - Manter `/usuarios/` pelo proxy Apache para `apps/usuarios`; o modulo deve usar `wimifarma_core` como fonte de verdade, restringir administracao a `adm`/`admin`, guardar permissoes por modulo em tabela propria e vincular XP sem copiar dados do XP para outro banco.
 - Para futuras telas/cards com dominio proprio, escolher explicitamente o melhor desenho tecnico antes de implementar: linguagem/runtime, banco, schema, indices, permissoes, auditoria, healthcheck, deploy e integracoes. Preferir rota/app/servico separados em vez de transformar a Gestao em concentrador de subviews.
@@ -167,8 +170,8 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - A Gestao foi separada em servico Node.js + TypeScript com Postgres dedicado porque e modulo administrativo critico; o login principal usa o core Postgres `core_users`, e MySQL permanece apenas para fallback temporario `wf_users`, espelho `wf_logs` e importacao unica do legado.
 - Pedidos de fornecedores foi separado da Gestao em `apps/pedidos`, mas continua usando as tabelas financeiras `gestao_accounts`, `gestao_account_items` e `gestao_account_payments` para alimentar automaticamente os totais/categoria `Boleto` e reaproveitar o historico financeiro existente. A parte operacional fica em `pedidos_orders` e `pedidos_confirmed_orders`; vencimentos individuais de parcelas ficam em `gestao_account_items.due_at`, e `gestao_accounts.due_at` guarda a menor data ativa para resumo/ordenacao.
 - Tarefa foi separado em `apps/tarefa` com Node.js + TypeScript e Postgres dedicado `wimifarma_tarefa`. A tela visual foi preservada, `wf_tarefas` e importado de forma idempotente e pode receber espelho temporario de novas escritas para rollback curto.
-- XP foi migrado para `apps/xp` com Node.js + TypeScript e Postgres dedicado `wimifarma_xp`. A tela visual foi preservada por assets/uploads de `site/xp`, `wf_xp_*` e importado de forma idempotente e pode receber espelho temporario de novas escritas para rollback curto.
-- Codigos foi migrado para `apps/codigos` com Node.js + TypeScript e Postgres dedicado `wimifarma_codigos`. A tela visual foi preservada por assets de `site/codigos`, `wf_codigos_*` e importado de forma idempotente e pode receber espelho temporario de novas escritas para rollback curto.
+- XP foi migrado para `apps/xp` com Node.js + TypeScript e Postgres dedicado `wimifarma_xp`. A tela visual foi preservada por assets/uploads de `site/xp`; o PHP antigo fica em `site/_legacy-disabled/2026-05-29/xp-php`.
+- Codigos foi migrado para `apps/codigos` com Node.js + TypeScript e Postgres dedicado `wimifarma_codigos`. A tela visual foi preservada por assets de `site/codigos`; o PHP antigo fica em `site/_legacy-disabled/2026-05-29/codigos-php`.
 - Financeiro foi cortado para `apps/financeiro` com Node.js + TypeScript e Postgres dedicado `wimifarma_financeiro`. A tela preserva os assets de `site/financeiro`, o app importa `financeiro_*` de forma idempotente, expoe health/resumo/checksums internos e mantem espelho MySQL temporario para rollback curto.
 - Usuarios foi criado em `apps/usuarios` com Node.js + TypeScript, sessao `WFUSUARIOS` e Postgres core `wimifarma_core`. O app nasce como painel central de criacao/desativacao de logins, permissoes por modulo, vinculo logico com `xp_employees` e historico em `core_user_audit_events`.
 - O criterio para banco novo e: tabelas do dominio com FKs/constraints, dinheiro em centavos inteiros quando houver valor financeiro, indices em filtros/joins frequentes, indices parciais para filas/status, soft delete/arquivamento logico quando houver auditoria e migracao/compatibilidade documentada quando substituir tabela antiga.

@@ -111,14 +111,14 @@ Higiene de pastas no VPS:
 - `https://wimifarma.com/home.php` nao pode retornar 404 depois do deploy; se retornar, o commit com `site/home.php` nao chegou ao destino publico ou o proxy aponta para outra copia.
 - `site/wp-content/endurance-page-cache/` e cache legado de HostGator e nao deve ser versionado nem preservado como fonte da home.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
-- Manter o proxy Apache de `/cashback/` para `wimifarma-cashback-app:4000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/cashback` fica apenas como fallback historico/assets e nao deve voltar a ser fonte oficial sem rollback deliberado.
+- Manter o proxy Apache de `/cashback/` para `wimifarma-cashback-app:4000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. `site/cashback` preserva assets e helpers PHP ainda usados pelo Miauby; financeiro antigo dentro de Cashback fica arquivado em `site/_legacy-disabled/2026-05-29/cashback-financeiro-php/`.
 - Manter o proxy Apache de `/cotacao/` para `wimifarma-cotacao-app:3000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/gestao/` para `wimifarma-gestao-app:3200`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/pedidos/` para `wimifarma-pedidos-app:3300`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Pedidos e Gestao sao modulos separados. A rota antiga `/gestao/pedidos` e o endpoint antigo `/gestao/api/orders/badge` ficam somente como compatibilidade/redirecionamento para `/pedidos/` e `/pedidos/api/badge`.
 - Manter o proxy Apache de `/tarefa/` para `wimifarma-tarefa-app:3500`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/tarefa` nao deve voltar a ser fonte oficial sem rollback deliberado.
-- Manter o proxy Apache de `/xp/` para `wimifarma-xp-app:3600`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/xp` fica apenas como fallback historico/assets/uploads e nao deve voltar a ser fonte oficial sem rollback deliberado.
-- Manter o proxy Apache de `/codigos/` para `wimifarma-codigos-app:3700`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/codigos` fica apenas como fallback historico/assets e nao deve voltar a ser fonte oficial sem rollback deliberado.
+- Manter o proxy Apache de `/xp/` para `wimifarma-xp-app:3600`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. `site/xp` fica apenas como assets/uploads; o PHP antigo fica em `site/_legacy-disabled/2026-05-29/xp-php/`.
+- Manter o proxy Apache de `/codigos/` para `wimifarma-codigos-app:3700`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. `site/codigos` fica apenas como assets; o PHP antigo fica em `site/_legacy-disabled/2026-05-29/codigos-php/`.
 - Manter o proxy Apache de `/financeiro/` para `wimifarma-financeiro-app:3800`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/financeiro` fica apenas como fallback historico/assets e nao deve voltar a ser fonte oficial sem rollback deliberado.
 - Manter o proxy Apache de `/usuarios/` para `wimifarma-usuarios-app:3900`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O modulo usa `wimifarma_core` e nao deve ser publicado direto fora do Apache.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
@@ -195,8 +195,8 @@ Higiene de pastas no VPS:
 - Se o MySQL do VPS entrar em restart com `Failed to find valid data directory`, nao recriar volume vazio. Conferir se existe `ibdata1` no `mysql/` oficial e procurar copias preservadas antes de qualquer acao.
 - Trocar nomes de container quebra proxy.
 - Remover o proxy Apache de `/cotacao/` derruba a Cotacao oficial, porque nao existe mais fallback PHP legado.
-- Remover o proxy Apache de `/gestao/` derruba a Gestao oficial; `site/gestao` nao deve ser tratado como fonte oficial depois da migracao Node/Postgres.
-- Remover o proxy Apache de `/codigos/` derruba Codigos oficial; `site/codigos` nao deve ser tratado como fonte oficial depois da migracao Node/Postgres sem rollback deliberado.
+- Remover o proxy Apache de `/gestao/` derruba a Gestao oficial; o legado `site/gestao` foi arquivado em `site/_legacy-disabled/2026-05-29/gestao` e nao e fallback operacional.
+- Remover o proxy Apache de `/codigos/` derruba Codigos oficial; o PHP antigo esta arquivado e `site/codigos` guarda apenas assets.
 - Remover o proxy Apache de `/miauw/agent/` nao derruba o chat PHP atual quando `MIAUW_ENGINE=php`, mas impede validar o agente Node do Miauby e quebra o motor `node`.
 - Trocar DNS antes do app estar saudavel derruba o site.
 - Ativar SSL forcado antes do certificado funcionar bloqueia acesso.

@@ -68,14 +68,13 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `site/miauw/agent-actions.php`
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
-- `site/codigos/api.php` (legado/fallback historico)
 - `apps/xp/src/server.ts`
-- `site/xp/xp-funcoes.php` (legado/fallback)
 - `site/xp/uploads/.htaccess`
 - `site/wp-content/uploads/.htaccess`
 - `apps/gestao/src/server.ts`
 - `apps/cotacao/src/server.js`
-- `site/gestao/gestao-funcoes.php` (legado)
+- `site/_legacy-disabled/.htaccess`
+- `site/_legacy-disabled/2026-05-29/` (quarentena de legado PHP sem acesso web)
 - `site/wp-config.php`
 - `site/miauw/miauw-funcoes.php`
 - `site/miauw/config.local.example.php`

@@ -16,6 +16,10 @@ Este documento registra o inventario operacional antes de novas migracoes ou cor
 
 Use este inventario junto com `docs/22-migracao-mysql-postgres.md` e `docs/24-modernizacao-modulos.md`. Quando um modulo mudar de rota, banco, auth, escrita ou integracao, atualize este documento.
 
+## Limpeza de legado em 2026-05-29
+
+Legados comprovadamente fora das rotas oficiais foram movidos para `site/_legacy-disabled/2026-05-29/` e bloqueados por `.htaccess`: Gestao PHP antiga, PHP antigo de Codigos, PHP antigo de XP e financeiro antigo dentro de Cashback. Continuam ativos WordPress, Miauby PHP, helpers PHP ainda chamados pelo Miauby, `site/tarefa` e assets montados pelos apps Node. O inventario da limpeza fica em `docs/27-limpeza-legado.md`.
+
 ## Modelo de ficha
 
 ```text

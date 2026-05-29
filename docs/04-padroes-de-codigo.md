@@ -26,10 +26,11 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - `apps/codigos/src/server.ts`
 - `site/codigos/styles.css`
 - `site/codigos/app.js`
-- `site/xp/bootstrap.php`
-- `site/xp/xp-funcoes.php`
-- `site/xp/index.php`
 - `apps/xp/src/server.ts`
+- `site/xp/styles.css`
+- `site/xp/app.js`
+- `site/xp/assets/`
+- `site/xp/uploads/`
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/public/app.js`
 - `apps/gestao/src/server.ts`
@@ -41,8 +42,9 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - `apps/miauw-whatsapp/src/server.ts`
 - `site/financeiro/bootstrap.php`
 - `site/financeiro/financeiro-funcoes.php`
-- `site/gestao/bootstrap.php` (legado)
-- `site/gestao/gestao-funcoes.php` (legado)
+- `site/_legacy-disabled/2026-05-29/gestao/` (legado PHP arquivado)
+- `site/_legacy-disabled/2026-05-29/codigos-php/` (legado PHP arquivado)
+- `site/_legacy-disabled/2026-05-29/xp-php/` (legado PHP arquivado)
 - `site/tarefa/bootstrap.php` (legado)
 - `site/tarefa/tarefa-funcoes.php` (legado)
 - `site/miauw/bootstrap.php`

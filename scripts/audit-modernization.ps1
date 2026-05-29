@@ -89,7 +89,7 @@ $modules = @(
     },
     @{
         Module = 'Codigos'
-        Path = 'site/codigos;apps/codigos'
+        Path = 'site/codigos assets;apps/codigos'
         Current = 'Node.js + TypeScript + Postgres'
         Legacy = 'MySQL legado opcional por flags CODIGOS_LEGACY_MYSQL_*'
         Target = 'Postgres puro + core auth/auditoria'
@@ -98,7 +98,7 @@ $modules = @(
     },
     @{
         Module = 'XP'
-        Path = 'site/xp;apps/xp'
+        Path = 'site/xp assets/uploads;apps/xp'
         Current = 'Node.js + TypeScript + Postgres'
         Legacy = 'MySQL legado opcional por flags XP_LEGACY_MYSQL_*'
         Target = 'Postgres puro + core auth/auditoria'

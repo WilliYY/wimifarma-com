@@ -126,7 +126,7 @@ Regras importantes:
 
 ## Fluxo Codigos
 
-O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A rota oficial `/codigos/` e servida por `apps/codigos` em Node.js + TypeScript com Postgres dedicado, preservando o mesmo frontend visual de `site/codigos`. A tela principal funciona como planilha simples, com campos sempre editaveis para `Codigo`, `EAN` e `Preco`, salvando automaticamente as mudancas.
+O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. A rota oficial `/codigos/` e servida por `apps/codigos` em Node.js + TypeScript com Postgres dedicado, preservando o mesmo frontend visual pelos assets de `site/codigos`. O PHP antigo fica arquivado em `site/_legacy-disabled/2026-05-29/codigos-php/`. A tela principal funciona como planilha simples, com campos sempre editaveis para `Codigo`, `EAN` e `Preco`, salvando automaticamente as mudancas.
 
 Para evitar confusao operacional, a tela separa os itens em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao. O botao `+` cria um novo bloco pelo backend em `codigos_groups` apenas quando o usuario informa manualmente o prefixo desejado, permitindo que o bloco continue existindo mesmo antes do primeiro item. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa faixa horizontal interna para criar tabelas lado a lado e aproveitar melhor as laterais do monitor, sem criar rolagem horizontal vazia no documento inteiro.
 
@@ -166,14 +166,14 @@ O modulo XP gamifica vendas dos atendentes. A tela principal fica como mapa de j
 
 Arquivos principais:
 
-- `site/xp/index.php`
-- `site/xp/login.php`
-- `site/xp/xp-funcoes.php`
+- `apps/xp/src/server.ts`
 - `site/xp/styles.css`
 - `site/xp/app.js`
+- `site/xp/login-runner.js`
 - `site/xp/assets/`
 - `site/xp/uploads/funcionarios/`
 - `site/xp/uploads/adm/`
+- `site/_legacy-disabled/2026-05-29/xp-php/` (PHP antigo arquivado)
 
 Tabelas principais:
 
@@ -197,7 +197,7 @@ Regras a preservar:
 - fotos aceitam apenas JPG, PNG ou WEBP, ate 3 MB, com dimensoes entre 80x80 e 6000x6000 px;
 - a moldura ADM e usada no perfil/admin do XP, com foto propria salva separada dos funcionarios; o ADM aparece como perfil protegido, pode ter nome/foto editados, pode receber XP e nao pode ser excluido pela tela;
 - as molduras visiveis dos avatares do XP devem usar assets com transparencia real, sem canvas branco ao redor da arte;
-- as pastas `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/` precisam existir e ficar gravaveis pelo Apache/PHP no VPS;
+- as pastas `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/` precisam existir e ficar gravaveis pelo app XP no VPS;
 - a pasta de uploads bloqueia listagem e execucao de scripts por `.htaccess`;
 - R$ 1.000,00 em vendas gera 2.500 XP, gravado como inteiro no lancamento;
 - o nivel 1 exige 30.000 XP para passar; os niveis seguintes ficam progressivamente mais dificeis e nao possuem limite fixo;
@@ -295,7 +295,7 @@ Arquivos principais:
 - `apps/gestao/public/styles.css`
 - `apps/gestao/public/app.js`
 - `apps/gestao/public/login-runner.js`
-- `site/gestao/` (legado PHP; rota oficial passa pelo proxy Apache para o Node)
+- `site/_legacy-disabled/2026-05-29/gestao/` (legado PHP arquivado; rota oficial passa pelo proxy Apache para o Node)
 
 Tabelas principais:
 

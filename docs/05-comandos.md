@@ -98,12 +98,9 @@ docker exec wimifarma-com-web php -l /var/www/html/miauw/diagnostico.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/treino.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/miauw-evals.php
 docker exec wimifarma-com-web php -l /var/www/html/miauw/agent-actions.php
-docker exec wimifarma-com-web php -l /var/www/html/xp/bootstrap.php
-docker exec wimifarma-com-web php -l /var/www/html/xp/xp-funcoes.php
-docker exec wimifarma-com-web php -l /var/www/html/xp/index.php
-docker exec wimifarma-com-web php -l /var/www/html/xp/login.php
-docker exec wimifarma-com-web php -l /var/www/html/xp/health.php
 ```
+
+Os PHPs antigos de XP, Codigos, Gestao e financeiro antigo dentro de Cashback ficam arquivados em `site/_legacy-disabled/2026-05-29/` e nao entram mais no lint operacional.
 
 ## Local - Miauby agente Node
 
@@ -415,7 +412,8 @@ curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/agent/health
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/whatsapp/
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/whatsapp/health
 curl.exe -sS http://127.0.0.1:3002/gestao/health
-curl.exe -sS http://127.0.0.1:3002/xp/health.php
+curl.exe -sS http://127.0.0.1:3002/xp/health
+curl.exe -o NUL -sS -w "legacy_disabled=%{http_code}`n" http://127.0.0.1:3002/_legacy-disabled/README.md
 ```
 
 ## Local - home e Cotacao tempo real

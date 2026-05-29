@@ -24,13 +24,13 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 
 - Entrada web: `site/`
 - WordPress: `site/wp-admin`, `site/wp-content`, `site/wp-includes`, `site/wp-config.php`
-- Cashback: `site/cashback/`
-- Codigos: `apps/codigos/`, publicado em `/codigos/` por proxy interno do Apache; `site/codigos/` fica como legado/assets.
+- Cashback: `apps/cashback/`, publicado em `/cashback/` por proxy interno do Apache; `site/cashback/` preserva assets e helpers PHP ainda chamados pelo Miauby.
+- Codigos: `apps/codigos/`, publicado em `/codigos/` por proxy interno do Apache; `site/codigos/` fica somente com assets e o PHP antigo esta em `site/_legacy-disabled/2026-05-29/codigos-php/`.
 - Cotacao V2: `apps/cotacao/`, publicada em `/cotacao/` por proxy interno do Apache
 - Financeiro: `apps/financeiro/`, publicado em `/financeiro/` por proxy interno do Apache; `site/financeiro/` fica como legado/assets.
 - Usuarios: `apps/usuarios/`, publicado em `/usuarios/` por proxy interno do Apache, usando o Postgres core.
-- Gestao: `apps/gestao/`, publicada em `/gestao/` por proxy interno do Apache; `site/gestao/` fica como legado.
-- XP: `apps/xp/`, publicado em `/xp/` por proxy interno do Apache; `site/xp/` fica como legado/assets/uploads.
+- Gestao: `apps/gestao/`, publicada em `/gestao/` por proxy interno do Apache; o PHP antigo esta em `site/_legacy-disabled/2026-05-29/gestao/`.
+- XP: `apps/xp/`, publicado em `/xp/` por proxy interno do Apache; `site/xp/` fica somente com assets/uploads e o PHP antigo esta em `site/_legacy-disabled/2026-05-29/xp-php/`.
 - Tarefas: `apps/tarefa/`, publicada em `/tarefa/` por proxy interno do Apache; `site/tarefa/` fica como legado.
 - Miauby: `site/miauw/`
 - Miauby agente: `apps/miauw-agent/`, publicado em `/miauw/agent/` por proxy interno do Apache
@@ -39,6 +39,7 @@ O projeto combina o site WordPress da Wimifarma com ferramentas internas para op
 - Docker: `docker-compose.yml`, `docker/php/Dockerfile`
 - Banco: volume local `mysql/` ignorado pelo Git
 - Documentacao: `README.md`, `AGENTS.md`, `docs/`
+- Quarentena de legado desativado: `site/_legacy-disabled/`, bloqueada por `.htaccess`
 
 Rotas principais:
 
@@ -85,9 +86,10 @@ Rotas principais:
 - O repositorio deve ser tratado como publico ate decisao contraria.
 - O Nginx Proxy Manager deve encaminhar o dominio publico para `wimifarma-com-web:80`, nao para a porta de tunel.
 - A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
+- Em 2026-05-29, legados comprovadamente inativos foram movidos para `site/_legacy-disabled/2026-05-29/`; detalhes e cuidados ficam em `docs/27-limpeza-legado.md`.
 - A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o login principal usa o core Postgres, e o MySQL continua apenas como fallback temporario, logs/espelho e legado importado.
-- O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/xp` e rollback por flags legadas.
-- Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo frontend/assets de `site/codigos` e rollback por flags legadas.
+- O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets/uploads de `site/xp` e rollback por flags legadas.
+- Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets de `site/codigos` e rollback por flags legadas.
 - Financeiro foi cortado para `apps/financeiro` com Node.js, TypeScript e Postgres dedicado, mantendo espelho MySQL temporario para rollback curto.
 - Usuarios foi criado em `apps/usuarios` com Node.js, TypeScript e Postgres core para administrar logins, permissoes por modulo, vinculo XP e auditoria central.
 - O Miauby agente dedicado foi iniciado em `apps/miauw-agent`; `site/miauw/api.php` continua dono de sessao, confirmacoes e escritas fortes mesmo quando `MIAUW_ENGINE=node`.
