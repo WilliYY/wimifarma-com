@@ -379,6 +379,8 @@ Regras:
 
 Miauby e o assistente interno. Ele guarda conversas, memorias, conhecimentos, alertas, padroes e rotinas de Farmacia Popular.
 
+A navegacao superior do Miauby deve ficar focada no proprio modulo: Chat, Treino, Diagnostico e Sair conforme a tela/permissao. Nao recolocar atalhos diretos para Cashback, Cotacao ou Financeiro nesse topo sem pedido explicito.
+
 Arquivos principais:
 
 - `site/miauw/index.php`

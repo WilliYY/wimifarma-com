@@ -83,8 +83,6 @@ function miauw_training_date_label(string $date): string
         <nav class="topbar-actions" aria-label="Menu Miauby">
             <a href="/miauw/">Chat</a>
             <a href="/miauw/diagnostico.php">Diagnostico</a>
-            <a href="/cashback/">Cashback</a>
-            <a href="/cotacao/">Cotacao</a>
             <a class="soft" href="/miauw/logout.php">Sair</a>
         </nav>
     </header>

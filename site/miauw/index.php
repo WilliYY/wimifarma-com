@@ -54,9 +54,6 @@ try {
             <strong>Miauby</strong>
         </a>
         <nav class="topbar-actions" aria-label="Menu Miauby">
-            <a href="/cashback/">Cashback</a>
-            <a href="/cotacao/">Cotacao</a>
-            <a href="/financeiro/">Financeiro</a>
             <?php if ($canOpenDiagnostics) : ?>
                 <a href="/miauw/treino.php">Treino</a>
                 <a href="/miauw/diagnostico.php">Diagnostico</a>
