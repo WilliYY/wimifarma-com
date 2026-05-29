@@ -601,5 +601,6 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 - `docs/23-n8n-automacoes.md`: plano de automacoes n8n sem virar backend de regras.
 - `docs/24-modernizacao-modulos.md`: inventario dos modulos antigos e caminho para Node.js/TypeScript/Postgres.
 - `docs/25-usuarios-permissoes.md`: modulo Usuarios, permissoes centrais, vinculo XP e caminho de enforcement.
+- `docs/26-inventario-modulos.md`: ficha detalhada por modulo com rota, telas, permissoes, tabelas, escritas, integracoes e riscos.
 
 Leia `AGENTS.md` antes de qualquer alteracao.

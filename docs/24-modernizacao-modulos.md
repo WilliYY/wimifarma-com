@@ -6,6 +6,8 @@ Registrar quais partes ainda usam modelo antigo e qual caminho seguro leva para 
 
 Este documento e inventario/planejamento operacional. Atualizacoes de migracao devem registrar a rota oficial, a dependencia legada restante e o proximo passo seguro sem apagar rollback.
 
+Para uma ficha mais profunda por modulo, com rotas, telas, permissoes, tabelas MySQL, arquivos PHP, fluxos de escrita, integracoes e riscos, use tambem `docs/26-inventario-modulos.md`.
+
 ## Como ver o inventario
 
 ```powershell
