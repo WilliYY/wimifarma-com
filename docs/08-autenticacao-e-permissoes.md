@@ -11,6 +11,7 @@ Arquivos:
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/cashback/auth.php`
+- `apps/cashback/src/server.ts`
 - `apps/codigos/src/server.ts`
 - `apps/usuarios/src/server.ts`
 - `site/*/login.php`
@@ -43,6 +44,7 @@ Tabelas:
 - `core_user_xp_links`
 - `core_user_audit_events`
 - `usuarios_sessions`
+- `cashback_sessions`
 - `codigos_sessions`
 - `wptl_users`
 - `wptl_usermeta`
@@ -54,6 +56,7 @@ Tabelas:
 - Saida HTML deve usar escape.
 - Perfis/roles em `core_users.role` devem ser respeitados quando a rota usa `*_AUTH_PROVIDER=core`; em rollback/fallback MySQL, preservar a mesma regra vindo de `wf_users.role`.
 - WordPress nao deve ser confundido com login dos modulos internos.
+- Cashback (`/cashback/`) usa o servico Node `apps/cashback`, sessao propria `WFCASHBACK` no Postgres `wimifarma_cashback` e autentica oficialmente contra `core_users` quando `CASHBACK_AUTH_PROVIDER=core`; rollback e voltar `CASHBACK_AUTH_PROVIDER=mysql`. Criar cliente, registrar compra, usar cashback, atualizar configuracoes, editar atendentes e marcar WhatsApp usam CSRF. Areas sensiveis como relatorio/exportacao/diagnostico continuam com senha operacional.
 - Codigos (`/codigos/`) usa o servico Node `apps/codigos`, sessao propria `WFCODIGOS` no Postgres `wimifarma_codigos` e autentica oficialmente contra `core_users` quando `CODIGOS_AUTH_PROVIDER=core`; rollback e voltar `CODIGOS_AUTH_PROVIDER=mysql`. Criar bloco, salvar linha, reordenar, excluir item e excluir tabela usa CSRF. A exclusao de tabelas inteiras exige senha operacional `wimifarma`, alteravel por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
 - A Gestao (`/gestao/`) usa o servico Node `apps/gestao`, autentica oficialmente contra `core_users` por `GESTAO_AUTH_PROVIDER=core`, cria sessao propria `WFGESTAO` no Postgres da Gestao e fica restrita a username `adm`, role `admin` ou role `gerente`; `wf_users` fica desligado por padrao e so volta como rollback opt-in quando `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Lancar conta, adicionar item/juros, registrar pagamento parcial, confirmar saldo, cancelar ou reabrir conta usa CSRF.
 - Pedidos (`/pedidos/`) usa o servico Node separado `apps/pedidos`, autentica oficialmente contra `core_users` por `PEDIDOS_AUTH_PROVIDER=core`, cria sessao propria `WFPEDIDOS` no Postgres da Gestao e fica restrito a username `adm`, role `admin` ou role `gerente`; `wf_users` fica desligado por padrao e so volta como rollback opt-in quando `PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED=true`. Criar pedido, confirmar chegada, atualizar vencimento, adicionar juros/valor, registrar parcial e marcar pago usa CSRF.
@@ -69,13 +72,13 @@ Tabelas:
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.
 - O audio do Miauby (`api.php?action=audio_transcribe`) exige a mesma sessao interna e CSRF do chat; o browser envia audio temporario para transcricao e nunca recebe chave de API.
 - O painel Miauby WhatsApp (`/miauw/whatsapp/`) usa login proprio por variaveis de ambiente `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` quando preenchidas; a sessao e cookie assinado do servico Node, separado de `wf_users` e do WordPress.
-- Logins PHP internos de Cashback e Miauby usam `core_users` e `core_login_rate_limits` no Postgres por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`; rollback MySQL fica opt-in por `WIMIFARMA_INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED=true`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
+- Login PHP interno do Miauby usa `core_users` e `core_login_rate_limits` no Postgres por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`; rollback MySQL fica opt-in por `WIMIFARMA_INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED=true`. Cashback agora usa `CASHBACK_AUTH_PROVIDER=core` no app Node, com limitador persistente em `core_login_rate_limits`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
 
 ## Decisoes tecnicas ja tomadas
 
 - Sessao dos modulos internos PHP e configurada em `site/cashback/config.php`.
-- Funcoes comuns ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam o core Postgres por padrao.
-- Modulos PHP remanescentes como Cashback e Miauby reaproveitam o contexto do Cashback. Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota.
+- Funcoes comuns legadas ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam o core Postgres por padrao quando um modulo PHP remanescente usa esse caminho.
+- Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota. Miauby PHP continua no caminho PHP ate seu corte.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 

@@ -36,7 +36,7 @@ Rotas de login:
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos PHP reaproveitam funcoes comuns do Cashback, especialmente sessao, usuario atual, CSRF, escape HTML e conexao PDO. Cotacao V2 usa sessao propria em Redis. Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres, com rollback de autenticacao por variaveis de ambiente quando aplicavel.
+Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres, com rollback de autenticacao por variaveis de ambiente quando aplicavel. Cotacao V2 usa sessao propria em Redis.
 
 Arquivos envolvidos:
 
@@ -61,23 +61,38 @@ O Cashback cobre:
 
 Arquivos principais:
 
-- `site/cashback/index.php`
-- `site/cashback/dashboard.php`
-- `site/cashback/clientes.php`
-- `site/cashback/compras.php`
-- `site/cashback/resgates.php`
-- `site/cashback/relatorio.php`
-- `site/cashback/functions.php`
+- `apps/cashback/src/server.ts`
+- `site/cashback/styles.css`
+- `site/cashback/app.js`
+- `site/cashback/login-runner.js`
+- `site/cashback/logo-wimifarma.svg`
+- `site/cashback/gato-hapy.gif`
+- `site/cashback/mario.gif`
 
 Tabelas principais:
 
-- `wf_clientes`
-- `wf_compras`
-- `wf_cashback_creditos`
-- `wf_resgates`
-- `wf_resgate_itens`
-- `wf_settings`
-- `wf_logs`
+- Postgres `cashback_clients`
+- Postgres `cashback_attendants`
+- Postgres `cashback_purchases`
+- Postgres `cashback_credits`
+- Postgres `cashback_redemptions`
+- Postgres `cashback_redemption_items`
+- Postgres `cashback_settings`
+- Postgres `cashback_whatsapp_messages`
+- Postgres `cashback_audit_events`
+- Postgres `cashback_sessions`
+- MySQL `wf_*` do Cashback apenas como importacao/espelho temporario de rollback por `CASHBACK_LEGACY_MYSQL_*`
+
+Regras importantes:
+
+- a rota oficial `/cashback/` e servida por `apps/cashback` via proxy Apache;
+- o frontend visual permanece o mesmo de `site/cashback`, montado como assets no container Node;
+- dinheiro fica em centavos inteiros no Postgres, exportado em CSV como valor decimal;
+- a relacao compra -> credito -> resgate deve continuar preservada com consumo FIFO dos creditos;
+- o resgate roda em transacao Postgres e bloqueia creditos ativos do cliente para evitar saldo duplicado;
+- `/cashback/health` mostra storage Postgres, auth core e contagens de migracao;
+- `/cashback/autoteste.php` cria compra/credito/resgate em transacao e desfaz tudo com rollback;
+- `atendentes.php` redireciona para `relatorio.php#atendentes`, como no legado.
 
 ## Fluxo Usuarios
 

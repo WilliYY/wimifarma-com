@@ -65,6 +65,8 @@ Esse fluxo so puxa o codigo. Ele nao cria `.env`, nao copia `config.local.php`, 
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-com-db
+docker compose logs --tail=80 wimifarma-cashback-app
+docker compose logs --tail=80 wimifarma-cashback-db
 docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-cotacao-db
 docker compose logs --tail=80 wimifarma-cotacao-redis
@@ -142,6 +144,23 @@ curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent-memory.php -H "Content-Typ
 O bridge nasce com `MIAUW_WHATSAPP_ENABLED=false`. Antes de aceitar webhook real, configurar no `.env`: `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS` e `MIAUW_WHATSAPP_PROVIDER`. Para Evolution, preencher `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`. Para Meta Cloud API, preencher `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `META_WHATSAPP_APP_SECRET`.
 O `POST /miauw/whatsapp/internal/memory`, `POST /miauw/agent-context.php` e `POST /miauw/agent-memory.php` sem token devem responder 401 ou 503; com token interno, entregam memoria/contexto compartilhado e nao devem ser testados colando segredo em comandos versionados. A fonte principal da memoria curta e o Postgres do bridge; o endpoint PHP fica como compatibilidade/fallback.
 
+## Local - Cashback Node/Postgres
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\cashback
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-cashback-db
+docker compose up -d --no-deps --build wimifarma-cashback-app wimifarma-com-web
+docker exec wimifarma-cashback-app wget -qO- http://127.0.0.1:4000/cashback/health
+curl.exe -sS http://127.0.0.1:3002/cashback/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" http://127.0.0.1:3002/cashback/login.php
+docker exec wimifarma-cashback-db psql -U wimifarma_cashback -d wimifarma_cashback -c "\dt"
+```
+
+O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; MySQL `wf_*` do Cashback fica como importacao/espelho/log legado por flags `CASHBACK_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `CASHBACK_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-cashback-app`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
+
 ## Local - Core auth Postgres oficial
 
 ```powershell
@@ -156,7 +175,7 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao usa somente `core_users`; Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Cashback PHP e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao usa somente `core_users`; Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
 Gestao usa `GESTAO_AUTH_PROVIDER=core` por padrao. O fallback de login em `wf_users` fica desligado e so deve ser ligado como rollback temporario com `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Para comparar um ambiente ainda em MySQL antes do corte, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
@@ -358,6 +377,7 @@ O `xmlrpc.php` e a listagem de `wp-content/uploads/` devem responder 403 enquant
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/wp-login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cashback/login.php
+curl.exe -sS http://127.0.0.1:3002/cashback/health
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cotacao/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/financeiro/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/gestao/login.php

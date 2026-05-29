@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
 ## Componentes envolvidos
 
@@ -13,6 +13,7 @@ Usuario/Navegador
   -> Nginx Proxy Manager (80/443)
   -> wimifarma-com-web:80 (Apache/PHP)
       -> WordPress e modulos PHP
+      -> proxy /cashback/ para wimifarma-cashback-app:4000
       -> proxy /cotacao/ para wimifarma-cotacao-app:3000
       -> proxy /gestao/ para wimifarma-gestao-app:3200
       -> proxy /pedidos/ para wimifarma-pedidos-app:3300
@@ -24,6 +25,7 @@ Usuario/Navegador
       -> proxy /miauw/whatsapp/ para wimifarma-miauw-whatsapp:3400
   -> wimifarma-com-db:3306 (MySQL)
   -> wimifarma-core-db:5432 (Postgres core auth)
+  -> wimifarma-cashback-db:5432 (Postgres)
   -> wimifarma-cotacao-db:5432 (Postgres)
   -> wimifarma-cotacao-redis:6379 (Redis)
   -> wimifarma-gestao-db:5432 (Postgres)
@@ -42,6 +44,7 @@ Arquivos principais:
 - `apps/miauw-whatsapp/src/server.ts`
 - `ops/evolution/docker-compose.yml`
 - `apps/cotacao/src/server.js`
+- `apps/cashback/src/server.ts`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
 - `apps/cotacao/public/assets/`
@@ -60,7 +63,7 @@ Arquivos principais:
 - `site/.htaccess`
 - `site/home.php`
 - `site/wp-config.php`
-- `site/cashback/config.php`
+- `site/cashback/` (legado/assets; rota oficial usa `apps/cashback`)
 - `site/codigos/` (legado/assets; rota oficial usa `apps/codigos`)
 - `site/xp/` (legado/assets/uploads; rota oficial usa `apps/xp`)
 - `site/gestao/` (legado; rota oficial usa `apps/gestao`)
@@ -70,6 +73,8 @@ Containers:
 
 - `wimifarma-com-web`: PHP 8.3 + Apache, monta `./site:/var/www/html`.
 - `wimifarma-com-db`: MySQL 8.0, monta `./mysql:/var/lib/mysql`.
+- `wimifarma-cashback-app`: Node.js 22 + TypeScript + Express oficial para `/cashback/`, `/cashback/health` e `/cashback/api/internal/*`.
+- `wimifarma-cashback-db`: Postgres 17, monta `./cashback-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-cotacao-app`: Node.js 22 + Express + Socket.IO para `/cotacao/`.
 - `wimifarma-cotacao-db`: Postgres 17, monta `./cotacao-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-cotacao-redis`: Redis 7, monta `./cotacao-data/redis:/data`.
@@ -102,6 +107,7 @@ Rede Docker:
 - Tunel PuTTY usado no Windows: `127.0.0.1:13002`
 - Publico: `80/443` pelo Nginx Proxy Manager
 - Nginx Proxy Manager admin observado no VPS: porta `81`
+- Interno Cashback: `wimifarma-cashback-app:4000`
 - Interno Cotacao V2: `wimifarma-cotacao-app:3000`
 - Interno Gestao: `wimifarma-gestao-app:3200`
 - Interno Pedidos: `wimifarma-pedidos-app:3300`
@@ -114,7 +120,7 @@ Rede Docker:
 - Interno Miauby WhatsApp: `wimifarma-miauw-whatsapp:3400`
 - Interno Evolution API para o bridge: `wimifarma-evolution-api:8080`
 
-O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cotacao-app`; o Apache ja publica `/cotacao/` e `/cotacao/socket.io/`.
+O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cashback-app` ou `wimifarma-cotacao-app`; o Apache ja publica `/cashback/`, `/cotacao/` e `/cotacao/socket.io/`.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-gestao-app`; o Apache publica `/gestao/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-xp-app`, `wimifarma-codigos-app`, `wimifarma-financeiro-app` ou `wimifarma-usuarios-app`; o Apache publica `/pedidos/`, `/tarefa/`, `/xp/`, `/codigos/`, `/financeiro/` e `/usuarios/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent`; o Apache publica `/miauw/agent/` internamente.
@@ -126,6 +132,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Nao mudar a porta `3002` sem atualizar docs, proxy local e comandos de auditoria.
 - Nao configurar Nginx Proxy Manager apontando para `127.0.0.1:13002`; essa porta e apenas tunel local.
 - Manter `mysql/` como volume persistente e ignorado pelo Git.
+- Manter `cashback-data/` como volume persistente e ignorado pelo Git.
 - Manter `cotacao-data/` como volume persistente e ignorado pelo Git.
 - Manter `gestao-data/` como volume persistente e ignorado pelo Git.
 - Manter `tarefa-data/` como volume persistente e ignorado pelo Git.
@@ -134,6 +141,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Manter `financeiro-data/` como volume persistente e ignorado pelo Git.
 - Manter `miauw-whatsapp-data/` como volume persistente e ignorado pelo Git.
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
+- Manter o Cashback oficial em `/cashback/` via Node/Postgres; `site/cashback` e apenas legado/assets historico.
 - Manter a Gestao oficial em `/gestao/` via Node/Postgres; `site/gestao` e apenas legado/fallback historico.
 - Manter `Pedidos` como modulo separado em `/pedidos/`, usando `apps/pedidos`, container `wimifarma-pedidos-app:3300`, sessao propria `WFPEDIDOS`, CSRF proprio e proxy Apache dedicado. A URL antiga `/gestao/pedidos` deve apenas redirecionar para `/pedidos/`.
 - Manter `Tarefa` como modulo separado em `/tarefa/`, usando `apps/tarefa`, container `wimifarma-tarefa-app:3500`, sessao propria `WFTAREFA`, CSRF proprio e proxy Apache dedicado. `site/tarefa` fica legado/fallback historico.
@@ -155,6 +163,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - A rota publica `/` e servida por `site/home.php` via `.htaccess`, sem carregar WordPress, para estabilizar a primeira tela enquanto plugins/cache/tema do WordPress sao investigados.
 - A logo oficial da marca fica versionada como SVG horizontal nos assets compartilhados dos modulos; a atualizacao de 2026-05-21 usa os mesmos nomes de arquivo para preservar rotas e cache controlado. A home publica usa uma variacao animada propria e sem fundo em `assets/img/logo-wimifarma-home-animated.gif`, sem substituir os SVGs dos modulos internos.
 - A Cotacao V2 foi separada em servico Node.js para permitir WebSocket, Postgres, Redis e evolucao mais proxima do Google Sheets sem continuar remendando a planilha PHP antiga.
+- Cashback foi cortado para `apps/cashback` com Node.js + TypeScript e Postgres dedicado `wimifarma_cashback`. A tela visual foi preservada por assets de `site/cashback`, `wf_*` do Cashback e importado de forma idempotente e pode receber espelho temporario de novas escritas/logs para rollback curto.
 - A Gestao foi separada em servico Node.js + TypeScript com Postgres dedicado porque e modulo administrativo critico; o login principal usa o core Postgres `core_users`, e MySQL permanece apenas para fallback temporario `wf_users`, espelho `wf_logs` e importacao unica do legado.
 - Pedidos de fornecedores foi separado da Gestao em `apps/pedidos`, mas continua usando as tabelas financeiras `gestao_accounts`, `gestao_account_items` e `gestao_account_payments` para alimentar automaticamente os totais/categoria `Boleto` e reaproveitar o historico financeiro existente. A parte operacional fica em `pedidos_orders` e `pedidos_confirmed_orders`; vencimentos individuais de parcelas ficam em `gestao_account_items.due_at`, e `gestao_accounts.due_at` guarda a menor data ativa para resumo/ordenacao.
 - Tarefa foi separado em `apps/tarefa` com Node.js + TypeScript e Postgres dedicado `wimifarma_tarefa`. A tela visual foi preservada, `wf_tarefas` e importado de forma idempotente e pode receber espelho temporario de novas escritas para rollback curto.
@@ -176,6 +185,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Reativar cache de pagina antes de limpar `advanced-cache.php` e caches antigos pode servir HTML velho com assets `http://`.
 - Remover a regra de `site/home.php` antes de validar a home WordPress pode trazer de volta a tela publica sem CSS/estrutura.
 - Recriar o volume `mysql/` sem backup perde dados importados.
+- Recriar `cashback-data/` sem backup perde clientes, compras, creditos, resgates, mensagens, auditoria e sessoes oficiais do Cashback Node/Postgres.
 - Recriar `cotacao-data/` sem backup perde dados da Cotacao V2.
 - Recriar `gestao-data/` sem backup perde contas, itens, pagamentos, auditoria e sessoes da Gestao.
 - Recriar `tarefa-data/` sem backup perde tarefas, auditoria e sessoes do Tarefa Node/Postgres.
@@ -187,6 +197,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Recriar atalhos automaticos por nome de categoria na Cotacao pode conflitar com a formatacao condicional e causar saltos de linha/sync pesado.
 - Alterar o proxy de `/cotacao/socket.io/` sem validar pode quebrar presenca e edicao ao vivo.
 - Como nao existe mais fallback PHP legado para Cotacao, qualquer falha em `/cotacao/` deve ser tratada no proxy Apache/Node/Postgres/Redis da V2.
+- Cashback depende do proxy Apache para `wimifarma-cashback-app`; falhas em `/cashback/` devem ser diagnosticadas no Node, Postgres do Cashback, core auth, MySQL legado apenas se flags estiverem ligadas e proxy, nao no PHP legado.
 - A Gestao depende do proxy Apache para `wimifarma-gestao-app`; falhas em `/gestao/` devem ser diagnosticadas no Node, Postgres da Gestao, MySQL de login e proxy, nao no PHP legado.
 - Tarefa depende do proxy Apache para `wimifarma-tarefa-app`; falhas em `/tarefa/` devem ser diagnosticadas no Node, Postgres da Tarefa, MySQL de login e proxy, nao no PHP legado.
 - Trocar o chat do Miauby para o servico sombra sem evals/comparacoes pode perder confirmacoes, traces ou permissoes atuais.

@@ -30,6 +30,7 @@ services:
       - wimifarma-xp-app
       - wimifarma-codigos-app
       - wimifarma-financeiro-app
+      - wimifarma-cashback-app
       - wimifarma-usuarios-app
       - wimifarma-miauw-agent
       - wimifarma-miauw-whatsapp
@@ -183,6 +184,19 @@ services:
       POSTGRES_PASSWORD: ${FINANCEIRO_POSTGRES_PASSWORD:-wimifarma_financeiro_dev_pass}
     volumes:
       - ./financeiro-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-cashback-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-cashback-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_cashback
+      POSTGRES_USER: wimifarma_cashback
+      POSTGRES_PASSWORD: ${CASHBACK_POSTGRES_PASSWORD:-wimifarma_cashback_dev_pass}
+    volumes:
+      - ./cashback-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -471,6 +485,56 @@ services:
       - ./site/financeiro/favicon.svg:/app/public/favicon.svg:ro
       - ./site/financeiro/favicon.png:/app/public/favicon.png:ro
       - ./site/financeiro/assets:/app/public/assets:ro
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-cashback-app:
+    build:
+      context: ./apps/cashback
+      dockerfile: Dockerfile
+    container_name: wimifarma-cashback-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-core-db
+      - wimifarma-cashback-db
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      BASE_PATH: /cashback
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      POSTGRES_HOST: wimifarma-cashback-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_cashback
+      POSTGRES_USER: wimifarma_cashback
+      POSTGRES_PASSWORD: ${CASHBACK_POSTGRES_PASSWORD:-wimifarma_cashback_dev_pass}
+      CASHBACK_SESSION_SECRET: ${CASHBACK_SESSION_SECRET:-wimifarma_cashback_dev_secret_change_me}
+      CASHBACK_AUTH_PROVIDER: ${CASHBACK_AUTH_PROVIDER:-core}
+      CASHBACK_INTERNAL_TOKEN: ${CASHBACK_INTERNAL_TOKEN:-}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED: ${CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED:-true}
+      CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED: ${CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED:-true}
+      CASHBACK_LEGACY_MYSQL_LOGS_ENABLED: ${CASHBACK_LEGACY_MYSQL_LOGS_ENABLED:-true}
+    volumes:
+      - ./site/cashback/styles.css:/app/public/styles.css:ro
+      - ./site/cashback/app.js:/app/public/app.js:ro
+      - ./site/cashback/login-runner.js:/app/public/login-runner.js:ro
+      - ./site/cashback/logo-wimifarma.svg:/app/public/logo-wimifarma.svg:ro
+      - ./site/cashback/logo-wimifarma.png:/app/public/logo-wimifarma.png:ro
+      - ./site/cashback/favicon.png:/app/public/favicon.png:ro
+      - ./site/cashback/apple-touch-icon.png:/app/public/apple-touch-icon.png:ro
+      - ./site/cashback/site-icon-512.png:/app/public/site-icon-512.png:ro
+      - ./site/cashback/gato-hapy.gif:/app/public/gato-hapy.gif:ro
+      - ./site/cashback/mario.gif:/app/public/mario.gif:ro
     networks:
       - wimifarma-com-network
 

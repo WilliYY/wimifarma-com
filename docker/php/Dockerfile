@@ -103,6 +103,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
+        echo 'ProxyPassReverse "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
+        echo 'ProxyPass "/cashback" "http://wimifarma-cashback-app:4000/cashback"'; \
+        echo 'ProxyPassReverse "/cashback" "http://wimifarma-cashback-app:4000/cashback"'; \
+    } > /etc/apache2/conf-available/wimifarma-cashback-proxy.conf \
+    && a2enconf wimifarma-cashback-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/usuarios/" "http://wimifarma-usuarios-app:3900/usuarios/"'; \
         echo 'ProxyPassReverse "/usuarios/" "http://wimifarma-usuarios-app:3900/usuarios/"'; \
         echo 'ProxyPass "/usuarios" "http://wimifarma-usuarios-app:3900/usuarios"'; \

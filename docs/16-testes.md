@@ -22,6 +22,8 @@ Rotas de smoke test:
 - `/`
 - `/wp-login.php`
 - `/cashback/login.php`
+- `/cashback/health` deve responder JSON 200 quando o servico Cashback e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core` quando `CASHBACK_AUTH_PROVIDER=core`, `storage.provider=postgres` e contagens de importacao.
+- `/cashback/autoteste.php` deve exigir sessao/senha sensivel e executar criacao de cliente/compra/credito/resgate em transacao com rollback, sem deixar dado persistido.
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/financeiro/health` deve responder JSON 200 quando o servico Financeiro e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core` quando `FINANCEIRO_AUTH_PROVIDER=core` e `storage.provider=postgres`
@@ -100,6 +102,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Rodar validacoes proporcionais ao risco.
 - Se mexer em helper comum, testar todos os modulos.
 - Se mexer em banco, testar pelo menos login/status e logs.
+- Se mexer em `apps/cashback`, rodar `npm run check`, `npm run build`, validar `/cashback/health`, `/cashback/login.php`, contagens importadas, exportacao CSV e, quando autenticado, `/cashback/autoteste.php`; se mexer no proxy, rebuildar tambem `wimifarma-com-web`.
 - Se mexer em Gestao/Pedidos, rodar `npm run check` e `npm run build` nos apps Node afetados, health de `/gestao/health` e/ou `/pedidos/health`, smoke de `/gestao/login.php` e `/pedidos/`, badge `/pedidos/api/badge`, validacao visual da tela afetada e, quando mexer em acesso, confirmar que entrar pelo card `Pedidos` volta para `/pedidos/` apos login.
 - Se mexer em XP, rodar `php -l` nos arquivos de `site/xp`, validar `/xp/login.php`, `/xp/health.php`, home com card XP e, quando possivel, validar visualmente a moldura do card, trilha e upload de foto.
 - Se mexer em front-end, validar visualmente.

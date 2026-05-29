@@ -49,7 +49,7 @@ O script mostra:
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL opcional para importacao/espelho de rollback | Postgres puro + core auth/auditoria apos paridade | 5 em corte |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
-| Cashback | PHP procedural + MySQL de dados + core auth | clientes, compras, creditos, resgates | `apps/cashback` Node.js + TypeScript + Postgres | 6 |
+| Cashback | Node.js + TypeScript + Postgres + core auth | MySQL legado opcional por flags de importacao/espelho/log | Postgres puro + core auth/auditoria | 6 em corte |
 | Miauby interno | PHP + Node agent sombra + core auth | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
 | Home publica | PHP desacoplado do WordPress | PHP simples, sem banco direto | manter ou trocar depois | baixo |
@@ -63,8 +63,9 @@ O script mostra:
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` como default e desligar legado MySQL de dados por flags depois de paridade.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
 5. Validar Financeiro Node/Postgres em `/financeiro/` com backup, checksums por dia/tipo, smoke de Caixa/Relatorio/exportacao e contrato Pix CNPJ do Miauby antes de desligar espelho MySQL.
-6. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
-7. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
+6. Validar Cashback em `/cashback/`, saldos por cliente, CSV, mensagens e autoteste antes de desligar espelho MySQL.
+7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
+8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
 ## Proxima fatia tecnica
 
@@ -109,6 +110,17 @@ Financeiro foi cortado para `apps/financeiro`:
 - endpoints internos tokenizados para resumo, dia, checksums por dia/tipo, auditoria recente, lancamentos, faturamentos e sync manual;
 - `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario em MySQL para rollback.
 
+Cashback foi cortado para `apps/cashback`:
+
+- banco/schema alvo `wimifarma_cashback`;
+- tabelas `cashback_attendants`, `cashback_clients`, `cashback_purchases`, `cashback_credits`, `cashback_redemptions`, `cashback_redemption_items`, `cashback_settings`, `cashback_whatsapp_messages`, `cashback_audit_events`, `cashback_migration_runs` e `cashback_sessions`;
+- importador idempotente de `wf_atendentes`, `wf_clientes`, `wf_compras`, `wf_cashback_creditos`, `wf_resgates`, `wf_resgate_itens`, `wf_settings`, `wf_whatsapp_mensagens` e `wf_logs`;
+- proxy Apache oficial em `/cashback/`;
+- frontend preservado por `site/cashback/styles.css`, `site/cashback/app.js`, `site/cashback/login-runner.js`, logo/favicon e GIFs montados no container Node;
+- login oficial por `core_users` com `CASHBACK_AUTH_PROVIDER=core`;
+- endpoints internos tokenizados para resumo/status por `CASHBACK_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`;
+- `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=true` espelha logs para rollback curto.
+
 Usuarios foi criado em `apps/usuarios`:
 
 - rota/proxy oficial em `/usuarios/`;
@@ -119,4 +131,4 @@ Usuarios foi criado em `apps/usuarios`:
 - cria logins core novos com `legacy_mysql_id` negativo para nao conflitar com usuarios importados de `wf_users`;
 - consulta `xp_employees` para vinculo logico entre login e funcionario XP.
 
-A proxima fatia segura e validar Usuarios no VPS com `/usuarios/health`, login admin, criacao/desativacao controlada, vinculo XP e auditoria. Depois, aplicar `core_user_module_permissions` em cada modulo existente por etapa, sem bloquear todos de uma vez.
+A proxima fatia segura e validar Cashback no VPS com `/cashback/health`, login, contagens importadas, saldos, compras, resgates, exportacao e mensagens. Em paralelo, validar Usuarios com `/usuarios/health`, login admin, criacao/desativacao controlada, vinculo XP e auditoria. Depois, aplicar `core_user_module_permissions` em cada modulo existente por etapa, sem bloquear todos de uma vez.

@@ -13,6 +13,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
 - A ponte interna do Miauby para a Cotacao V2 exige `X-Miauw-Internal-Token` e fica indisponivel se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
+- `/cashback/` e atendido pelo servico Node `apps/cashback`, usa sessao propria `WFCASHBACK`, autentica por `core_users` quando `CASHBACK_AUTH_PROVIDER=core`, valida CSRF antes de criar cliente, compra, resgate, configuracao, atendente ou status de WhatsApp, e grava auditoria em Postgres.
+- `/cashback/internal/migration-status` e `/cashback/api/internal/summary` exigem `X-Miauw-Internal-Token` ou `X-Cashback-Internal-Token`; sem `CASHBACK_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` configurado, recusam com 503. Esses endpoints retornam resumo/contagem operacional, sem segredo nem payload bruto.
 - `/codigos/api.php` e atendido pelo servico Node `apps/codigos`, usa sessao propria `WFCODIGOS`, autentica por `core_users` quando `CODIGOS_AUTH_PROVIDER=core`, valida CSRF antes de criar blocos de EAN, criar, editar, reordenar ou apagar codigos e grava auditoria em Postgres.
 - `/codigos/api/internal/summary` e `/codigos/api/internal/search` exigem `X-Miauw-Internal-Token` ou `X-Codigos-Internal-Token`; sem `CODIGOS_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` configurado, recusam com 503. Esses endpoints retornam apenas resumo/lista de codigos, sem segredo nem payload bruto.
 - `/xp/` usa sessao propria `WFXP` no servico Node, exige usuario autenticado para visualizar, restringe alimentacao de dados a `adm`, `admin` ou `gerente`, valida CSRF e valida fotos por tipo real, tamanho e dimensoes antes de salvar.
@@ -20,7 +22,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/gestao/` usa sessao propria `WFGESTAO` persistida no Postgres da Gestao, autentica contra `core_users` por `GESTAO_AUTH_PROVIDER=core` com fallback temporario `wf_users`, restringe acesso a `adm`, `admin` ou `gerente`, valida CSRF nas acoes e usa queries parametrizadas para lancar contas, adicionar itens/juros, registrar pagamentos parciais, confirmar saldo, cancelar ou reabrir contas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
 - `Permissions-Policy` bloqueia camera e geolocalizacao; microfone fica liberado apenas para a propria origem (`microphone=(self)`) para permitir o botao de audio do Miauby, que ainda exige clique explicito do usuario.
-- Os logins PHP internos de Cashback e Miauby usam `core_users` e `core_login_rate_limits` no Postgres por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`, alem do bloqueio por sessao; `wf_users`/`wf_login_rate_limits` ficam apenas como rollback MySQL opt-in.
+- O login Node do Cashback e o login PHP do Miauby usam `core_users` e `core_login_rate_limits` no Postgres, alem do bloqueio por sessao; `wf_users`/`wf_login_rate_limits` ficam apenas como rollback MySQL opt-in onde ainda existir.
 - A Cotacao V2 tambem limita tentativas de login por sessao e por chave em memoria `IP + usuario`, regenera a sessao apos login valido e envia headers de seguranca equivalentes aos modulos Node administrativos.
 - `xmlrpc.php` do WordPress fica bloqueado por `.htaccess` enquanto nao houver uso operacional confirmado de XML-RPC.
 - `site/wp-content/uploads/.htaccess` e `site/xp/uploads/.htaccess` bloqueiam listagem e execucao de scripts em pastas de upload versionadas.
@@ -55,6 +57,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `.gitignore`
 - `.dockerignore`
 - `.env.example`
+- `apps/cashback/src/server.ts`
 - `apps/cotacao/src/server.js`
 - `apps/codigos/src/server.ts`
 - `apps/miauw-agent/src/server.ts`
@@ -92,6 +95,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Acoes fortes por Miauby devem permanecer pendentes ate confirmacao explicita do operador; cancelar deve limpar a acao pendente sem executar escrita.
 - Toda nova tool de escrita forte deve entrar no registry com risco correto e ganhar eval antes de ser liberada para uso generativo.
 - Nao versionar `COTACAO_POSTGRES_PASSWORD`, `COTACAO_SESSION_SECRET` nem volumes de `cotacao-data/`.
+- Nao versionar `CASHBACK_POSTGRES_PASSWORD`, `CASHBACK_SESSION_SECRET`, `CASHBACK_INTERNAL_TOKEN` nem volumes de `cashback-data/`.
 - Nao versionar `CODIGOS_POSTGRES_PASSWORD`, `CODIGOS_SESSION_SECRET` nem volumes de `codigos-data/`.
 - Nao versionar `CODIGOS_INTERNAL_TOKEN`; se vazar, trocar junto do token interno usado pelo Miauby e reiniciar web/Codigos.
 - Nao versionar `COTACAO_INTERNAL_TOKEN` nem `MIAUW_GUARDIAN_TOKEN`; se um deles vazar, trocar no `.env` do VPS e reiniciar web/Cotacao.

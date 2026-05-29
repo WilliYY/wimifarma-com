@@ -34,6 +34,7 @@ Higiene de pastas no VPS:
 
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
+- `apps/cashback/`
 - `apps/cotacao/`
 - `apps/core-auth/`
 - `apps/gestao/`
@@ -60,6 +61,7 @@ Higiene de pastas no VPS:
 - `site/wp-content/cache/`
 - `site/wp-content/speedycache-config/`
 - `cotacao-data/`
+- `cashback-data/`
 - `core-data/`
 - `gestao-data/`
 - `tarefa-data/`
@@ -74,6 +76,7 @@ Higiene de pastas no VPS:
 ## Portas
 
 - `wimifarma-com-web:80`: porta interna correta para o proxy Docker.
+- `wimifarma-cashback-app:4000`: servico interno oficial do Cashback, acessado pelo Apache por proxy reverso em `/cashback`.
 - `wimifarma-cotacao-app:3000`: servico interno da Cotacao V2, acessado pelo Apache por proxy reverso em `/cotacao`.
 - `wimifarma-gestao-app:3200`: servico interno da Gestao, acessado pelo Apache por proxy reverso em `/gestao`.
 - `wimifarma-pedidos-app:3300`: servico interno de Pedidos, acessado pelo Apache por proxy reverso em `/pedidos`.
@@ -108,6 +111,7 @@ Higiene de pastas no VPS:
 - `https://wimifarma.com/home.php` nao pode retornar 404 depois do deploy; se retornar, o commit com `site/home.php` nao chegou ao destino publico ou o proxy aponta para outra copia.
 - `site/wp-content/endurance-page-cache/` e cache legado de HostGator e nao deve ser versionado nem preservado como fonte da home.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
+- Manter o proxy Apache de `/cashback/` para `wimifarma-cashback-app:4000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/cashback` fica apenas como fallback historico/assets e nao deve voltar a ser fonte oficial sem rollback deliberado.
 - Manter o proxy Apache de `/cotacao/` para `wimifarma-cotacao-app:3000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/gestao/` para `wimifarma-gestao-app:3200`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/pedidos/` para `wimifarma-pedidos-app:3300`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
@@ -124,6 +128,7 @@ Higiene de pastas no VPS:
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
 - Definir `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Cotacao V2.
 - Definir `CORE_POSTGRES_PASSWORD` no `.env` de cada ambiente antes de usar o core de autenticacao em Postgres. Antes de subir apps com provider `core`, rodar o migrador `wimifarma-core-migrator` para sincronizar `wf_users`.
+- Para Cashback, definir `CASHBACK_POSTGRES_PASSWORD` e `CASHBACK_SESSION_SECRET` no `.env` de cada ambiente. `CASHBACK_AUTH_PROVIDER=core` usa `core_users` como login oficial e rollback e voltar `CASHBACK_AUTH_PROVIDER=mysql`. `CASHBACK_INTERNAL_TOKEN` pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby consultar endpoints internos; sem token, `/cashback/internal/*` e `/cashback/api/internal/*` devem recusar. `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario para rollback curto e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=true` espelha logs.
 - A Cotacao usa `core_users` como login unico desde 2026-05-29; o servico nao recebe mais variaveis MySQL nem `COTACAO_AUTH_PROVIDER`. Para rollback desse corte, voltar o commit ou imagem anterior e rebuildar `wimifarma-cotacao-app`, nao apenas trocar `.env`. `COTACAO_CORE_AUTH_TIMEOUT_MS` controla o timeout do Postgres do core.
 - Definir `GESTAO_POSTGRES_PASSWORD` e `GESTAO_SESSION_SECRET` no `.env` de cada ambiente antes de subir a Gestao Node/Postgres.
 - `GESTAO_AUTH_PROVIDER=core` usa `core_users` como login oficial da Gestao; rollback e voltar `GESTAO_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-gestao-app`. `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=false` e o default; ligar `true` apenas como rollback temporario em `wf_users`. `GESTAO_CORE_AUTH_SHADOW_ENABLED=true` fica para comparacao somente quando o provider estiver em `mysql`.
@@ -149,7 +154,7 @@ Higiene de pastas no VPS:
 - Para corte acelerado do Miauby, definir `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`, `MIAUW_MAINTENANCE_MODE=true` e `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`. Rollback: `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
 - Para audio do Miauby, manter `MIAUW_OPENAI_API_KEY` somente no `.env`, usar `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`. O botao depende de HTTPS/navegador com microfone e o PHP transcreve o audio temporario sem expor chave no browser; `MIAUW_REALTIME_MODEL`/`MIAUW_REALTIME_VOICE` ficam reservados para evolucao futura de playback/voz.
 - Antes de deploy, fazer commit e push da alteracao. Por regra operacional atual, toda alteracao de arquivo deve ser commitada, enviada ao GitHub e publicada no VPS quando houver deploy aplicavel, salvo pedido explicito para nao publicar ou bloqueio tecnico relatado.
-- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health`, `http://127.0.0.1:3002/pedidos/health`, `http://127.0.0.1:3002/pedidos/api/badge`, `http://127.0.0.1:3002/tarefa/health`, `http://127.0.0.1:3002/tarefa/badge.php`, `http://127.0.0.1:3002/xp/health`, `http://127.0.0.1:3002/codigos/health`, `http://127.0.0.1:3002/financeiro/health`, `http://127.0.0.1:3002/usuarios/health` e `http://127.0.0.1:3002/financeiro/login.php`.
+- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cashback/health`, `http://127.0.0.1:3002/cashback/login.php`, `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health`, `http://127.0.0.1:3002/pedidos/health`, `http://127.0.0.1:3002/pedidos/api/badge`, `http://127.0.0.1:3002/tarefa/health`, `http://127.0.0.1:3002/tarefa/badge.php`, `http://127.0.0.1:3002/xp/health`, `http://127.0.0.1:3002/codigos/health`, `http://127.0.0.1:3002/financeiro/health`, `http://127.0.0.1:3002/usuarios/health` e `http://127.0.0.1:3002/financeiro/login.php`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
 
 ## Decisoes tecnicas ja tomadas
@@ -166,7 +171,8 @@ Higiene de pastas no VPS:
 - `WP_CACHE` e `advanced-cache.php` ficam opt-in durante a migracao. Em `wimifarma.com`/`www.wimifarma.com`, `site/wp-config.php` ignora `WP_CACHE=true` e so permite cache de pagina se `WIMIFARMA_PUBLIC_PAGE_CACHE=true`.
 - O tema `wimifarma-cashback-theme` tambem normaliza URLs publicas para HTTPS, gera assets da home com helper proprio e usa buffer de saida no frontend publico como segunda camada contra mixed content.
 - A Cotacao V2 roda fora do PHP/WordPress: Apache faz proxy de `/cotacao/` para Node, Node usa Postgres para dados vivos e Redis para sessoes/presenca.
-- O core de autenticacao em Postgres usa `wimifarma-core-db` para `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users`. Cotacao usa core sem fallback MySQL; Gestao, Pedidos, Tarefa, Cashback PHP e Miauby PHP usam core por padrao, com fallback MySQL apenas como rollback opt-in.
+- O core de autenticacao em Postgres usa `wimifarma-core-db` para `core_users`, `core_audit_logs` e `core_login_rate_limits`, e `wimifarma-core-migrator` sincroniza `wf_users`. Cotacao usa core sem fallback MySQL; Cashback Node, Gestao, Pedidos, Tarefa e Miauby PHP usam core por padrao, com fallback MySQL apenas como rollback opt-in onde existir.
+- Cashback roda fora do PHP/WordPress: Apache faz proxy de `/cashback/` para Node, Node usa Postgres para clientes, atendentes, compras, creditos, resgates, mensagens, auditoria e sessoes, e MySQL somente para importacao/espelho/log legado quando as flags `CASHBACK_LEGACY_MYSQL_*` estiverem ligadas.
 - A Gestao roda fora do PHP/WordPress: Apache faz proxy de `/gestao/` para Node, Node usa Postgres para contas, pagamentos, auditoria e sessoes, e MySQL somente para login/logs/importacao legado.
 - Tarefa roda fora do PHP/WordPress: Apache faz proxy de `/tarefa/` para Node, Node usa Postgres para tarefas, auditoria e sessoes, e usa `core_users` como login oficial por padrao. MySQL fica apenas como janela opcional de rollback/importacao/espelho/log legado quando o provider ou as flags de legado estiverem ligadas.
 - XP roda fora do PHP/WordPress: Apache faz proxy de `/xp/` para Node, Node usa Postgres para funcionarios, vendas, configuracoes, auditoria e sessoes, e MySQL somente para importacao/espelho/log legado quando as flags `XP_LEGACY_MYSQL_*` estiverem ligadas.
@@ -201,7 +207,8 @@ Higiene de pastas no VPS:
 - Se `X-Served-By: wimifarma-static-home` nao aparecer na rota `/`, nao investigar CSS primeiro; validar `git log`, rebuild do container e destino do Nginx Proxy Manager.
 - Se a rota publica ainda mostrar `wfwc-home-launchpad`, validar tambem se `site/wp-content/endurance-page-cache/` foi removido/ignorado no deploy.
 - Apagar `cotacao-data/` remove dados da Cotacao V2. Fazer backup antes de qualquer limpeza ou troca de volume.
-- Apagar `core-data/` remove a autenticacao/auditoria compartilhada em Postgres. Cotacao, Cashback/Miauby PHP e os modulos Node com auth core param de autenticar; Gestao/Pedidos/Tarefa so ficam operaveis se rollback MySQL estiver ligado explicitamente e saudavel.
+- Apagar `core-data/` remove a autenticacao/auditoria compartilhada em Postgres. Cotacao, Cashback, Miauby PHP e os modulos Node com auth core param de autenticar; Gestao/Pedidos/Tarefa so ficam operaveis se rollback MySQL estiver ligado explicitamente e saudavel.
+- Apagar `cashback-data/` remove clientes, compras, creditos, resgates, mensagens, auditoria e sessoes oficiais do Cashback Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume; o MySQL `wf_*` e apenas rollback enquanto o espelho estiver ligado.
 - Apagar `gestao-data/` remove contas, itens, pagamentos, auditoria e sessoes da Gestao. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `tarefa-data/` remove tarefas, auditoria e sessoes do Tarefa Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `xp-data/` remove funcionarios, vendas, configuracoes, auditoria e sessoes oficiais do XP Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.

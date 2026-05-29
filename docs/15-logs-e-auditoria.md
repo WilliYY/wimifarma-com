@@ -10,6 +10,8 @@ Logs de container:
 
 - `docker compose logs wimifarma-com-web`
 - `docker compose logs wimifarma-com-db`
+- `docker compose logs wimifarma-cashback-app`
+- `docker compose logs wimifarma-cashback-db`
 - `docker compose logs wimifarma-cotacao-app`
 - `docker compose logs wimifarma-codigos-app`
 - `docker compose logs wimifarma-financeiro-app`
@@ -21,6 +23,8 @@ Logs de container:
 Tabelas de auditoria/log:
 
 - `wf_logs`
+- `cashback_audit_events`
+- `cashback_migration_runs`
 - `cotacao_auditoria`
 - `financeiro_auditoria`
 - `financeiro_audit_events`
@@ -46,6 +50,7 @@ Tabelas de auditoria/log:
 Arquivos:
 
 - `site/cashback/functions.php`
+- `apps/cashback/src/server.ts`
 - `apps/codigos/src/server.ts`
 - `site/codigos/codigos-funcoes.php` (legado/fallback)
 - `site/xp/xp-funcoes.php`
@@ -64,6 +69,7 @@ Arquivos:
 ## Regras que precisam ser preservadas
 
 - Acoes financeiras e de cotacao devem manter auditoria.
+- Cashback registra login/falha/logout, criacao/edicao de cliente, compra, resgate, mensagens, atendentes, configuracoes e manutencao em `cashback_audit_events`; enquanto `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=true`, espelha resumo curto em `wf_logs` para rollback. Importacoes idempotentes entram em `cashback_migration_runs`.
 - O Financeiro nao exibe mais a aba/tela operacional de Auditoria no topo, mas deve continuar gravando `financeiro_audit_events` no Postgres.
 - Durante o rollback curto, o Financeiro Node/Postgres pode espelhar auditoria em `financeiro_auditoria` no MySQL quando `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true`; o registro operacional oficial fica em `financeiro_audit_events`.
 - Logs nao devem gravar senhas, tokens ou chaves.

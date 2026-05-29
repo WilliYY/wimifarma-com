@@ -125,12 +125,12 @@ $modules = @(
     },
     @{
         Module = 'Cashback'
-        Path = 'site/cashback'
-        Current = 'PHP procedural + MySQL de dados + core auth'
-        Legacy = 'wf_clientes, wf_compras, creditos, resgates, settings'
-        Target = 'apps/cashback em Node.js + TypeScript + Postgres'
-        Priority = '6 - critico cliente/saldo'
-        Next = 'Migrar depois de Financeiro, preservando compra -> credito -> resgate.'
+        Path = 'site/cashback;apps/cashback'
+        Current = 'Node.js + TypeScript + Express + Postgres + core auth'
+        Legacy = 'MySQL legado opcional por flags CASHBACK_LEGACY_MYSQL_*'
+        Target = 'Postgres puro + core auth/auditoria'
+        Priority = '6 - validar corte'
+        Next = 'Validar /cashback/ no VPS, contagens, saldos por cliente, CSV, mensagens e autoteste antes de desligar espelho MySQL.'
     },
     @{
         Module = 'Miauby interno'

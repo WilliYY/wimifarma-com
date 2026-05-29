@@ -7,6 +7,7 @@
 /xp-data/
 /codigos-data/
 /financeiro-data/
+/cashback-data/
 /miauw-whatsapp-data/
 /ops/n8n/n8n-data/
 /ops/n8n/n8n-postgres/
@@ -20,6 +21,7 @@ apps/tarefa/dist/
 apps/xp/dist/
 apps/codigos/dist/
 apps/financeiro/dist/
+apps/cashback/dist/
 apps/usuarios/dist/
 apps/miauw-whatsapp/dist/
 .env

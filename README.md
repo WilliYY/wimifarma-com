@@ -29,11 +29,11 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 
 - Projeto local em `C:\Users\Thiesen\Desktop\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-usuarios-app`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cashback-app`, `wimifarma-cashback-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-usuarios-app`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
-- O core compartilhado de autenticacao fica em Postgres `wimifarma_core`: `apps/core-auth` sincroniza `wf_users` para `core_users`, preservando id legado, hash, role e status. `apps/usuarios` usa esse mesmo core para criar logins novos, permissoes por modulo, vinculo com XP e auditoria central. Cotacao usa esse core como login unico, sem dependencia MySQL; Gestao, Pedidos, Tarefa, Cashback PHP e Miauby PHP usam esse core como login principal, com fallback MySQL apenas como rollback opt-in onde ainda existir.
+- O core compartilhado de autenticacao fica em Postgres `wimifarma_core`: `apps/core-auth` sincroniza `wf_users` para `core_users`, preservando id legado, hash, role e status. `apps/usuarios` usa esse mesmo core para criar logins novos, permissoes por modulo, vinculo com XP e auditoria central. Cotacao usa esse core como login unico, sem dependencia MySQL; Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam esse core como login principal, com fallback MySQL apenas como rollback opt-in onde ainda existir.
 - A Cotacao V2 fica em `apps/cotacao`, usa Node.js/Express/Socket.IO, Postgres e Redis, e e publicada por proxy interno do Apache em `/cotacao/`.
 - O login da Cotacao usa somente `core_users` no Postgres do core; o app nao possui mais `mysql2`, pool MySQL nem fallback `wf_users`. Os dados novos da planilha ficam em Postgres no volume ignorado `cotacao-data/`.
 - A Gestao fica oficialmente em `apps/gestao`, usa Node.js/TypeScript/Express com Postgres dedicado `wimifarma_gestao`, e e publicada por proxy interno do Apache em `/gestao/`; o login usa `core_users` por `GESTAO_AUTH_PROVIDER=core`, com fallback `wf_users` desligado por padrao e disponivel apenas como rollback opt-in, alem de espelho temporario `wf_logs`. A tela principal usa linhas compactas em `Categoria / Nome / Valor / Pagar / Abrir` e mostra o painel `Mensal` ao lado da lista principal, com as contas de repeticao ativa reordenaveis por arrastar.
@@ -51,6 +51,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - Em 2026-05-21, Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw foram validados com navegador local e checks publicos: as telas de login e as telas internas autenticadas carregam a logo nova. O `/wp-login.php` permanece com o cabecalho padrao do WordPress, separado dos logins internos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe contador vermelho de tarefas abertas quando houver pendencias.
 - A home publica mostra no maximo cinco cards por linha no desktop, na ordem `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `XP`, `Gestao`, `Miauby`, `Miauby Whatsapp` e `Usuarios`, com `Usuarios` ao lado de `Miauby Whatsapp`; `Pedidos` mostra badge de pedidos previstos para chegar hoje, o card `XP` usa moldura propria como borda/cantos por `border-image`, sem cortar a arte nem cobrir o texto, enquanto os demais cards seguem em grade compacta. No mobile os cards ficam em duas colunas para caber mais acessos por tela.
+- O modulo `Cashback` fica oficialmente em `apps/cashback`, usa Node.js/TypeScript/Express com Postgres `wimifarma_cashback`, sessao propria `WFCASHBACK`, login por `core_users` e proxy Apache em `/cashback/`. A tela preserva o CSS/JS/assets de `site/cashback`; `wf_clientes`, `wf_atendentes`, `wf_compras`, `wf_cashback_creditos`, `wf_resgates`, `wf_resgate_itens`, `wf_settings`, `wf_whatsapp_mensagens` e `wf_logs` no MySQL ficam como importacao/espelho temporario por `CASHBACK_LEGACY_MYSQL_*`.
 - O modulo `Usuarios` fica oficialmente em `apps/usuarios`, usa Node.js/TypeScript/Express com Postgres core `wimifarma_core`, sessao propria `WFUSUARIOS`, login restrito a `adm` ou role `admin`, proxy Apache em `/usuarios/`, cria/desativa usuarios internos, registra permissoes por modulo em `core_user_module_permissions`, vincula login a funcionario XP em `core_user_xp_links` e mostra historico por `core_user_audit_events`.
 - O modulo `Codigos` fica oficialmente em `apps/codigos`, usa Node.js/TypeScript/Express com Postgres `wimifarma_codigos`, sessao propria `WFCODIGOS`, login por `core_users` e proxy Apache em `/codigos/`. A tela preserva o mesmo CSS/JS de `site/codigos`: blocos por prefixo de EAN em `codigos_groups`, itens em `codigos_items`, autosave de `Codigo`, `EAN` e `Preco`, botao `+`, reordenacao por arrastar, criacao no rodape, exclusao logica e exclusao protegida de tabelas nao padrao por senha. `wf_codigos_*` no MySQL fica como importacao/espelho/log temporario por flags `CODIGOS_LEGACY_MYSQL_*`. O Miauby prefere `/codigos/api/internal/summary` e `/codigos/api/internal/search` com token interno para ler a fonte Postgres; sem token, usa o espelho legado enquanto estiver ativo.
 - O modulo `XP` fica oficialmente em `apps/xp`, usa Node.js/TypeScript/Express com Postgres `wimifarma_xp`, sessao propria `WFXP`, login por `core_users` e proxy Apache em `/xp/`. A tela preserva o mesmo CSS/JS/assets de `site/xp`: calcula XP inteiro pela regra R$ 1.000,00 = 2.500 XP, exige 30.000 XP para sair do nivel 1 e aumenta a dificuldade por formula progressiva. A tela principal mostra a trilha como mapa de jogo em zigue-zague, renderizando os niveis 1 a 20 enquanto a equipe estiver no inicio e depois uma janela curta ao redor do nivel mais alto; jogadores aparecem compactos na trilha e em uma faixa resumida clicavel. A aba `Configuracoes` concentra cadastro/edicao e exclusao logica de usuarios/funcionarios, foto validada JPG/PNG/WEBP ate 3 MB, moldura ADM com nome/foto editaveis, filtro de mes e lancamentos diarios; o ADM pode receber XP, mas nao pode ser excluido. `wf_xp_*` no MySQL fica como importacao/espelho temporario de rollback por flags `XP_LEGACY_MYSQL_*`.
@@ -142,15 +143,16 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - PHP 8.3 com Apache
 - MySQL 8.0
 - WordPress na raiz publica `site/`
-- Modulos internos em PHP procedural
+- Modulos internos PHP remanescentes para Miauby e WordPress/tema; os modulos de operacao principais estao sendo cortados para Node.js/TypeScript/Postgres por dominio.
 - Docker Compose
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Express para Gestao, Pedidos, Tarefa, XP, Codigos e Financeiro
+- Node.js 22 + TypeScript + Express para Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios
 - Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio por gravacao temporaria/transcricao confirmada, bolha/player de audio, resposta falada temporaria e seletor seguro de voz no diagnostico
 - Node.js 22 + TypeScript para o bridge WhatsApp do Miauby via Evolution API ou Meta Cloud API
 - PostgreSQL 17 para o core compartilhado de autenticacao
+- PostgreSQL 17 para dados do Cashback
 - PostgreSQL 17 para dados da Cotacao V2
 - PostgreSQL 17 para dados do XP
 - PostgreSQL 17 para dados de Codigos
@@ -207,6 +209,7 @@ URL local principal:
 Rotas internas principais:
 
 - `http://127.0.0.1:3002/cashback/login.php`
+- `http://127.0.0.1:3002/cashback/health`
 - `http://127.0.0.1:3002/codigos/login.php`
 - `http://127.0.0.1:3002/cotacao/login.php`
 - `http://127.0.0.1:3002/financeiro/login.php`
@@ -234,6 +237,7 @@ Rotas internas principais:
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-com-db
+docker compose logs --tail=80 wimifarma-cashback-app
 docker compose logs --tail=80 wimifarma-cotacao-app
 docker compose logs --tail=80 wimifarma-pedidos-app
 docker compose logs --tail=80 wimifarma-tarefa-app
@@ -244,6 +248,7 @@ docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
 powershell -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
 cd apps/miauw-agent; npm.cmd run check:persona; cd ../..
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
+curl.exe -sS http://127.0.0.1:3002/cashback/health
 curl.exe -L --max-time 30 http://127.0.0.1:3002/gestao/login.php
 curl.exe -sS http://127.0.0.1:3002/pedidos/health
 curl.exe -sS http://127.0.0.1:3002/tarefa/health
@@ -263,6 +268,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 ```text
 .
 |-- apps/
+|   |-- cashback/            # Cashback Node.js/TypeScript/Postgres oficial
 |   |-- cotacao/             # Cotacao V2 Node.js/Socket.IO
 |   |-- gestao/              # Gestao Node.js/TypeScript/Postgres
 |   |-- pedidos/             # Pedidos Node.js/TypeScript, separado de Gestao
@@ -276,6 +282,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- ops/
 |   `-- evolution/           # Template da stack Evolution API separada
 |-- cotacao-data/            # volumes Postgres/Redis ignorados pelo Git
+|-- cashback-data/           # volume Postgres do Cashback ignorado pelo Git
 |-- gestao-data/             # volume Postgres da Gestao ignorado pelo Git
 |-- tarefa-data/             # volume Postgres do Tarefa ignorado pelo Git
 |-- xp-data/                 # volume Postgres do XP ignorado pelo Git
@@ -288,7 +295,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- mysql/                  # volume local ignorado pelo Git
 |-- site/
 |   |-- home.php              # home publica estavel, fora do bootstrap WordPress
-|   |-- cashback/
+|   |-- cashback/             # legado/assets; rota oficial usa apps/cashback por proxy
 |   |-- codigos/              # legado/assets; rota oficial usa apps/codigos por proxy
 |   |-- financeiro/
 |   |-- gestao/               # legado PHP; rota oficial usa apps/gestao por proxy
@@ -337,6 +344,14 @@ CODIGOS_INTERNAL_BASE_URL
 CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED
 CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED
 CODIGOS_LEGACY_MYSQL_LOGS_ENABLED
+CASHBACK_POSTGRES_PASSWORD
+CASHBACK_SESSION_SECRET
+CASHBACK_AUTH_PROVIDER
+CASHBACK_INTERNAL_TOKEN
+CASHBACK_INTERNAL_BASE_URL
+CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED
+CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED
+CASHBACK_LEGACY_MYSQL_LOGS_ENABLED
 MIAUW_OPENAI_API_KEY
 MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
@@ -480,6 +495,7 @@ Nao versionar:
 - `site/wp-content/plugins/loginizer-security`
 - relatorios gerados em `site/miauw/relatorios/`
 - `tarefa-data/`
+- `cashback-data/`
 - `xp-data/`
 - `node_modules/`
 
@@ -505,6 +521,8 @@ docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-cotacao-app
 ```
+
+Antes do primeiro deploy do Cashback Node/Postgres no VPS, adicionar valores reais no `.env` para `CASHBACK_POSTGRES_PASSWORD`, `CASHBACK_SESSION_SECRET` e, se o Miauby for consultar resumo interno, `CASHBACK_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`. O app importa o legado MySQL de forma idempotente e mantem espelho temporario quando `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED=true`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED=true` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=true`.
 
 Antes do primeiro deploy da Cotacao V2 no VPS, adicionar valores reais no `.env` para `COTACAO_POSTGRES_PASSWORD` e `COTACAO_SESSION_SECRET`.
 
