@@ -258,6 +258,8 @@ type WhatsappModuleCard = {
 
 type DashboardSyncRow = {
   sender_phone_mask: string;
+  sender_phone_ciphertext: string;
+  remote_jid_ciphertext: string;
   inbound_text: string;
   event_status: string;
   ignore_reason: string;
@@ -944,6 +946,26 @@ function applyRecipientAlias(value: string): string {
   return value;
 }
 
+function canonicalIncomingMessage(message: IncomingMessage): IncomingMessage {
+  const aliasTarget = applyRecipientAlias(message.senderPhone);
+  const aliasResolved = normalizePhone(aliasTarget) !== normalizePhone(message.senderPhone);
+  const resolvedSender = preferredPhoneForStorage(aliasTarget);
+  if (!resolvedSender || resolvedSender === message.senderPhone) return message;
+  const payloadSummary = aliasResolved
+    ? {
+        ...message.payloadSummary,
+        sender_alias_resolved: true,
+        sender_alias_source_mask: maskPhone(message.senderPhone),
+        sender_alias_target_mask: maskPhone(resolvedSender),
+      }
+    : message.payloadSummary;
+  return {
+    ...message,
+    senderPhone: resolvedSender,
+    payloadSummary,
+  };
+}
+
 function phonesMatch(left: string, right: string): boolean {
   const normalizedLeft = normalizePhone(left);
   const normalizedRight = normalizePhone(right);
@@ -1505,6 +1527,10 @@ function extractEvolutionIncomingMessage(payload: JsonRecord): IncomingMessage |
     180,
   );
   const senderPhone = bestPhoneCandidate(
+    key.senderPn,
+    key.sender_pn,
+    key.senderPhone,
+    key.sender_phone,
     data.senderPn,
     data.sender_pn,
     data.senderPhone,
@@ -2158,10 +2184,11 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
     return { ok: false, accepted: false, reason: 'encryption_not_configured' };
   }
 
-  const message = extractIncomingMessage(payload);
+  let message = extractIncomingMessage(payload);
   if (!message) {
     return { ok: true, accepted: false, reason: 'unsupported_payload' };
   }
+  message = canonicalIncomingMessage(message);
 
   const ignoreReasons: string[] = [];
   const originalBodyText = message.bodyText;
@@ -6075,6 +6102,8 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     ),
     pgPool.query<DashboardSyncRow>(
       `SELECT e.sender_phone_mask,
+              COALESCE(e.sender_phone_ciphertext, '') AS sender_phone_ciphertext,
+              COALESCE(e.remote_jid_ciphertext, '') AS remote_jid_ciphertext,
               LEFT(e.body_text, 260) AS inbound_text,
               e.status AS event_status,
               e.ignore_reason,
@@ -6407,7 +6436,7 @@ function renderSyncRows(rows: DashboardSyncRow[]): string {
     return `
     <tr class="sync-row sync-row-${rowTone}">
       <td class="sync-time"><b>${htmlEscape(formatDate(row.event_created_at))}</b><small>${row.sent_at ? `enviado ${htmlEscape(formatDate(row.sent_at))}` : 'sem envio'}</small></td>
-      <td><span class="sync-sender">${htmlEscape(row.sender_phone_mask || '-')}</span></td>
+      <td><span class="sync-sender">${htmlEscape(syncSenderLabel(row))}</span></td>
       <td class="sync-message-cell">${renderSyncMessage('Recebida', row.inbound_text)}</td>
       <td class="sync-message-cell">${renderSyncMessage('Resposta', row.reply_text)}</td>
       <td>${renderSyncBadge(eventLabel, eventTone)}</td>
@@ -6416,6 +6445,26 @@ function renderSyncRows(rows: DashboardSyncRow[]): string {
       <td>${renderSyncBadge(formatMs(row.total_response_ms), totalTone)}</td>
     </tr>`;
   }).join('');
+}
+
+function syncSenderLabel(row: DashboardSyncRow): string {
+  const candidates: string[] = [];
+  const addCipher = (ciphertext: string) => {
+    if (!ciphertext) return;
+    try {
+      const decrypted = decryptText(ciphertext);
+      if (decrypted) candidates.push(decrypted);
+    } catch {
+      // Keep the dashboard resilient if an old ciphertext is unreadable.
+    }
+  };
+  addCipher(row.sender_phone_ciphertext);
+  addCipher(row.remote_jid_ciphertext);
+  for (const candidate of candidates) {
+    const resolved = preferredPhoneForStorage(applyRecipientAlias(candidate));
+    if (resolved.length >= 8 && resolved.length <= 20) return displayPhone(resolved);
+  }
+  return row.sender_phone_mask || '-';
 }
 
 function renderSyncMessage(label: string, text: string): string {
