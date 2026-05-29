@@ -292,6 +292,12 @@ type DashboardN8nRecipientRow = {
   recipients: string[];
 };
 
+type DashboardAutomationSettingRow = {
+  key: string;
+  enabled: boolean;
+  updated_at: string;
+};
+
 type ErrorLogContext = {
   eventId?: string;
   outboxId?: string;
@@ -335,6 +341,16 @@ type WatchdogIssue = {
   detail: string;
 };
 
+type PedidosArrivalOrder = {
+  id: number;
+  supplier_name: string;
+  expected_arrival_at: string | null;
+  total_cents: number;
+  remaining_cents: number;
+  total_label: string;
+  remaining_label: string;
+};
+
 type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
@@ -352,11 +368,12 @@ type DashboardSummary = {
   recentSync: DashboardSyncRow[];
   recentErrors: DashboardErrorRow[];
   n8nRecipients: DashboardN8nRecipientRow[];
+  automationSettings: DashboardAutomationSettingRow[];
 };
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.17';
+const SERVICE_VERSION = '0.5.18';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -461,6 +478,8 @@ const N8N_ENABLED = boolEnv('MIAUW_WHATSAPP_N8N_ENABLED', false);
 const N8N_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_BASE_URL') || textEnv('N8N_BASE_URL'));
 const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL') || textEnv('N8N_WEBHOOK_URL'));
 const N8N_WEBHOOK_SECRET_CONFIGURED = textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET') !== '';
+const PEDIDOS_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL') || 'http://wimifarma-pedidos-app:3300/pedidos');
+const PEDIDOS_ARRIVAL_AUTOMATION_KEY = 'pedidos_chegada_17h';
 const AUTOMATION_NOTIFY_COOLDOWN_MINUTES = numberEnv('MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES', 15, 1, 240);
 const WATCHDOG_LOOKBACK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES', 30, 5, 240);
 const WATCHDOG_STUCK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES', 2, 1, 60);
@@ -501,6 +520,15 @@ const MODULE_TOOL_TERMS: Record<string, string[]> = {
   miauw: ['miauw', 'miauby', 'contrato_tool'],
 };
 const N8N_WORKFLOW_CARDS = [
+  {
+    key: PEDIDOS_ARRIVAL_AUTOMATION_KEY,
+    title: 'Chegada de pedidos',
+    schedule: 'Todo dia 17:00',
+    moduleKey: 'pedidos',
+    description: 'Envia a lista de pedidos em Aguardando chegada e aceita respostas como "cimed chegou".',
+    safety: 'Confirma somente chegada; pagamento continua em Confirmados/Pedidos.',
+    settingsKey: PEDIDOS_ARRIVAL_AUTOMATION_KEY,
+  },
   {
     key: 'pedidos_boletos',
     title: 'Pedidos e boletos',
@@ -580,6 +608,7 @@ function internalPhpJsonHeaders(): Record<string, string> {
     Accept: 'application/json',
     'Content-Type': 'application/json',
     'X-Miauw-Agent-Token': INTERNAL_TOKEN,
+    'X-Miauw-Internal-Token': INTERNAL_TOKEN,
     'X-Forwarded-Proto': 'https',
   };
 }
@@ -1726,6 +1755,16 @@ async function ensureSchema(): Promise<void> {
       CHECK (severity IN ('info', 'warn', 'error'))
     );
 
+    CREATE TABLE IF NOT EXISTS miauw_whatsapp_automation_settings (
+      key VARCHAR(80) PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      title VARCHAR(120) NOT NULL DEFAULT '',
+      module_key VARCHAR(40) NOT NULL DEFAULT '',
+      schedule_label VARCHAR(80) NOT NULL DEFAULT '',
+      updated_by VARCHAR(120) NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS miauw_whatsapp_channel_events (
       id UUID PRIMARY KEY,
       event_uid CHAR(40) NOT NULL UNIQUE,
@@ -1766,6 +1805,8 @@ async function ensureSchema(): Promise<void> {
       WHERE enabled = TRUE;
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_error_logs_created
       ON miauw_whatsapp_error_logs (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_automation_settings_enabled
+      ON miauw_whatsapp_automation_settings (enabled, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_channel_contact
       ON miauw_whatsapp_channel_events (contact_hash, created_at DESC)
       WHERE contact_hash <> '';
@@ -1794,6 +1835,57 @@ async function ensureSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_outbox_engine_created
       ON miauw_whatsapp_outbox (reply_engine, created_at);
   `);
+
+  await ensureAutomationSetting(
+    PEDIDOS_ARRIVAL_AUTOMATION_KEY,
+    'Chegada de pedidos',
+    'pedidos',
+    'Todo dia 17:00',
+    true,
+  );
+}
+
+async function ensureAutomationSetting(key: string, title: string, moduleKey: string, scheduleLabel: string, enabled: boolean): Promise<void> {
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_automation_settings (key, enabled, title, module_key, schedule_label)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (key) DO UPDATE
+     SET title = EXCLUDED.title,
+         module_key = EXCLUDED.module_key,
+         schedule_label = EXCLUDED.schedule_label`,
+    [safeText(key, 80), enabled, safeText(title, 120), safeText(moduleKey, 40), safeText(scheduleLabel, 80)],
+  );
+}
+
+async function automationSettingEnabled(key: string, fallback = true): Promise<boolean> {
+  const result = await pgPool.query<{ enabled: boolean }>(
+    'SELECT enabled FROM miauw_whatsapp_automation_settings WHERE key = $1 LIMIT 1',
+    [safeText(key, 80)],
+  );
+  return result.rows[0]?.enabled ?? fallback;
+}
+
+async function updateAutomationSetting(key: string, enabled: boolean, updatedBy: string): Promise<void> {
+  const workflow = N8N_WORKFLOW_CARDS.find((card) => card.key === key);
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_automation_settings (key, enabled, title, module_key, schedule_label, updated_by, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     ON CONFLICT (key) DO UPDATE
+     SET enabled = EXCLUDED.enabled,
+         title = EXCLUDED.title,
+         module_key = EXCLUDED.module_key,
+         schedule_label = EXCLUDED.schedule_label,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()`,
+    [
+      safeText(key, 80),
+      enabled,
+      safeText(workflow?.title || key, 120),
+      safeText(workflow?.moduleKey || '', 40),
+      safeText(workflow?.schedule || '', 80),
+      safeText(updatedBy, 120),
+    ],
+  );
 }
 
 async function countRecentMessages(senderHash: string, interval: 'minute' | 'day'): Promise<number> {
@@ -3952,6 +4044,24 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[]): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+  const arrivalReply = parsePedidosArrivalReply(message);
+  if (arrivalReply) {
+    if (!moduleAllowed(allowedCards, 'pedidos')) {
+      return {
+        text: forbiddenModuleReply('pedidos', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:pedidos_arrival',
+      };
+    }
+    if (arrivalReply.none) {
+      return {
+        text: 'Combinado. Nao confirmei nenhum pedido agora.',
+        engine: 'local',
+        reason: 'pedidos_arrival_none',
+      };
+    }
+    return confirmPedidosArrivalFromWhatsapp(arrivalReply.supplier, traceId, senderMask);
+  }
   if (looksLikeN8nStatusRequest(message)) {
     return {
       text: formatN8nWhatsappSummary(allowedCards),
@@ -5462,6 +5572,8 @@ function publicStatus(): JsonRecord {
     n8n_webhook_configured: N8N_WEBHOOK_BASE_URL !== '' && N8N_WEBHOOK_SECRET_CONFIGURED,
     n8n_internal_smoke_check: `${BASE_PATH}/internal/smoke-check`,
     n8n_internal_watchdog: `${BASE_PATH}/internal/watchdog`,
+    n8n_internal_pedidos_arrival_check: `${BASE_PATH}/internal/pedidos-arrival-check`,
+    pedidos_internal_base_configured: PEDIDOS_INTERNAL_BASE_URL !== '',
     automation_notify_cooldown_minutes: AUTOMATION_NOTIFY_COOLDOWN_MINUTES,
     watchdog_lookback_minutes: WATCHDOG_LOOKBACK_MINUTES,
     watchdog_stuck_minutes: WATCHDOG_STUCK_MINUTES,
@@ -5604,6 +5716,7 @@ async function sendAutomationNotification(
   text: string,
   mode: AutomationNotifyMode,
   hasProblems: boolean,
+  moduleKey = 'miauw',
 ): Promise<AutomationSendResult> {
   const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, errors: [] };
   const message = safeOutboundText(text, 1200);
@@ -5638,14 +5751,14 @@ async function sendAutomationNotification(
     return result;
   }
 
-  const recipients = await automationRecipients('miauw');
+  const recipients = await automationRecipients(moduleKey);
   result.recipients = recipients.length;
   if (recipients.length === 0) {
     result.skipped = true;
-    result.errors.push('no_miauby_recipients');
+    result.errors.push(`no_${moduleKey}_recipients`);
     await recordErrorLog(source, severity, new Error('automation_notification_no_recipient'), {
       messagePreview: fingerprint,
-      details: { mode, hasProblems },
+      details: { mode, hasProblems, module_key: moduleKey },
     });
     return result;
   }
@@ -5660,7 +5773,7 @@ async function sendAutomationNotification(
       await recordErrorLog(`${source}_send`, 'warn', error, {
         phoneMask: recipient.phoneMask,
         messagePreview: fingerprint,
-        details: { display_name: recipient.displayName },
+        details: { display_name: recipient.displayName, module_key: moduleKey },
       });
     }
   }
@@ -5670,6 +5783,7 @@ async function sendAutomationNotification(
     details: {
       mode,
       has_problems: hasProblems,
+      module_key: moduleKey,
       recipients: result.recipients,
       sent: result.sent,
       failed: result.failed,
@@ -5963,6 +6077,165 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
   };
 }
 
+function brDateOnlyFromIso(value: string | null | undefined): string {
+  const text = safeText(value, 20);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return 'sem previsao';
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function pedidosArrivalMessage(orders: PedidosArrivalOrder[], totalLabel: string): string {
+  if (!orders.length) {
+    return 'Pedidos 17h: nenhum pedido aguardando chegada agora.';
+  }
+  const lines = orders.slice(0, 10).map((order, index) => {
+    const date = brDateOnlyFromIso(order.expected_arrival_at);
+    const value = order.remaining_label || order.total_label || '';
+    return `${index + 1}. ${order.supplier_name} - ${value} - ${date}`;
+  });
+  const extra = orders.length > 10 ? `\n+ ${orders.length - 10} pedido(s) no painel.` : '';
+  return `Pedidos aguardando chegada (${orders.length} / ${totalLabel}).\n${lines.join('\n')}${extra}\n\nSe algum chegou, responda com o titulo: "cimed chegou". Se nenhum chegou, responda: "nenhum chegou".`;
+}
+
+async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: PedidosArrivalOrder[]; totalLabel: string; count: number }> {
+  if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
+  const url = `${PEDIDOS_INTERNAL_BASE_URL}/api/internal/arrival-summary?limit=${encodeURIComponent(String(limit))}`;
+  const response = await fetch(url, { headers: internalPhpJsonHeaders() });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    throw new Error(safeText(isRecord(data) ? data.error || data.message : '', 180) || `pedidos_arrival_summary_http_${response.status}`);
+  }
+  const rawOrders = Array.isArray(data.orders) ? data.orders : [];
+  const orders = rawOrders
+    .filter(isRecord)
+    .map((order) => ({
+      id: Number(order.id || 0),
+      supplier_name: safeText(order.supplier_name, 180),
+      expected_arrival_at: safeText(order.expected_arrival_at, 20) || null,
+      total_cents: Number(order.total_cents || 0),
+      remaining_cents: Number(order.remaining_cents || 0),
+      total_label: safeText(order.total_label, 40),
+      remaining_label: safeText(order.remaining_label, 40),
+    }))
+    .filter((order) => order.id > 0 && order.supplier_name);
+  return {
+    orders,
+    totalLabel: safeText(data.total_label, 60) || `${orders.length} pedido(s)`,
+    count: Number(data.count || orders.length),
+  };
+}
+
+async function runPedidosArrivalCheck(mode: AutomationNotifyMode, dryRun: boolean): Promise<JsonRecord> {
+  const enabled = await automationSettingEnabled(PEDIDOS_ARRIVAL_AUTOMATION_KEY, true);
+  const summary = await fetchPedidosArrivalSummary();
+  const message = pedidosArrivalMessage(summary.orders, summary.totalLabel);
+  if (!enabled) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'automation_disabled',
+      enabled,
+      count: summary.count,
+      preview: message,
+    };
+  }
+  if (dryRun) {
+    const recipients = await automationRecipients('pedidos');
+    return {
+      ok: true,
+      dry_run: true,
+      enabled,
+      count: summary.count,
+      recipients: recipients.length,
+      preview: message,
+    };
+  }
+  const notification = await sendAutomationNotification(
+    'automation_pedidos_chegada_17h',
+    'info',
+    message,
+    mode,
+    false,
+    'pedidos',
+  );
+  return {
+    ok: notification.failed === 0,
+    enabled,
+    count: summary.count,
+    notify: mode,
+    notification,
+  };
+}
+
+function parsePedidosArrivalReply(message: string): { none: boolean; supplier: string } | null {
+  const raw = safeText(stripActivationWord(message), 180).replace(/[?!.,;:]+$/g, '').trim();
+  const clean = normalizeIntentText(raw);
+  if (!clean) return null;
+  if (/^(nenhum|nenhuma|nada|nao)( pedido| titulo| fornecedor)? chegou$/.test(clean)) {
+    return { none: true, supplier: '' };
+  }
+  if (clean.includes('confirmar chegada') || clean.includes('confirma chegada')) return null;
+  if (!/(^|\s)(chegou|chegaram|recebido|recebida|recebemos)$/.test(clean)) return null;
+  const supplier = raw
+    .replace(/\b(chegou|chegaram|recebido|recebida|recebemos)\b\s*$/i, '')
+    .replace(/^(?:o|a|os|as|pedido|fornecedor|titulo)\s+/i, '')
+    .trim();
+  if (normalizeIntentText(supplier).length < 2) return null;
+  return { none: false, supplier };
+}
+
+function pedidosArrivalOptionsText(options: unknown): string {
+  if (!Array.isArray(options) || options.length === 0) return '';
+  const lines = options
+    .filter(isRecord)
+    .slice(0, 8)
+    .map((option, index) => {
+      const title = safeText(option.supplier_name, 120);
+      const value = safeText(option.remaining_label || option.total_label, 40);
+      return title ? `${index + 1}. ${title}${value ? ` - ${value}` : ''}` : '';
+    })
+    .filter(Boolean);
+  return lines.length ? `\nTitulos em aberto:\n${lines.join('\n')}` : '';
+}
+
+async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: string, senderMask: string): Promise<ReplyResult> {
+  if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
+  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/confirm-arrival`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(),
+    body: JSON.stringify({
+      supplier_name: supplier,
+      actor: `Miauby WhatsApp ${senderMask}`,
+      trace_id: traceId,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!isRecord(data)) throw new Error(`pedidos_confirm_arrival_http_${response.status}`);
+  if (response.ok && data.ok === true) {
+    return {
+      text: safeText(data.message, 500) || 'Chegada confirmada. O pedido ficou em Confirmados para pagar.',
+      engine: 'local',
+      reason: 'pedidos_arrival_confirmed',
+    };
+  }
+  const status = safeText(data.status || data.error, 60);
+  if (status === 'ambiguous') {
+    return {
+      text: `${safeText(data.message, 300) || 'Achei mais de um pedido parecido.'}${pedidosArrivalOptionsText(data.options)}`,
+      engine: 'local',
+      reason: 'pedidos_arrival_ambiguous',
+    };
+  }
+  if (status === 'not_found') {
+    return {
+      text: `${safeText(data.message, 300) || 'Nao achei esse titulo em Aguardando chegada.'}${pedidosArrivalOptionsText(data.options)}`,
+      engine: 'local',
+      reason: 'pedidos_arrival_not_found',
+    };
+  }
+  throw new Error(safeText(data.message || data.error, 180) || `pedidos_confirm_arrival_http_${response.status}`);
+}
+
 async function dashboardSummary(): Promise<DashboardSummary> {
   const protectedAliasHashes = recipientAliasSourceHashList();
   const [
@@ -5980,6 +6253,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentSyncResult,
     recentErrorsResult,
     n8nRecipientsResult,
+    automationSettingsResult,
   ] = await Promise.all([
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
@@ -6172,6 +6446,13 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         GROUP BY m.module_key`,
       [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.moduleKey))], protectedAliasHashes],
     ),
+    pgPool.query<DashboardAutomationSettingRow>(
+      `SELECT key, enabled, updated_at::text AS updated_at
+         FROM miauw_whatsapp_automation_settings
+        WHERE key = ANY($1::text[])
+        ORDER BY key`,
+      [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.key))]],
+    ),
   ]);
   const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
 
@@ -6192,6 +6473,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentSync: recentSyncResult.rows,
     recentErrors: recentErrorsResult.rows,
     n8nRecipients: n8nRecipientsResult.rows,
+    automationSettings: automationSettingsResult.rows,
   };
 }
 
@@ -6563,19 +6845,29 @@ function n8nRecipientByModule(rows: DashboardN8nRecipientRow[]): Map<string, Das
   return map;
 }
 
-function renderN8nWorkflows(rows: DashboardN8nRecipientRow[]): string {
+function renderN8nWorkflows(rows: DashboardN8nRecipientRow[], settingsRows: DashboardAutomationSettingRow[], csrfToken: string): string {
   const recipients = n8nRecipientByModule(rows);
+  const settings = new Map(settingsRows.map((row) => [row.key, row]));
   return N8N_WORKFLOW_CARDS.map((workflow) => {
     const moduleRecipients = recipients.get(workflow.moduleKey);
     const count = Number(moduleRecipients?.allowed_count || 0);
     const names = (moduleRecipients?.recipients || []).slice(0, 5).join(', ') || 'ninguem liberado ainda';
     const recipientLabel = count === 1 ? '1 autorizado' : `${count} autorizados`;
     const active = N8N_ENABLED && N8N_WEBHOOK_BASE_URL !== '' && N8N_WEBHOOK_SECRET_CONFIGURED;
+    const setting = settings.get(workflow.key);
+    const enabled = setting?.enabled ?? true;
+    const toggleHtml = ('settingsKey' in workflow && workflow.settingsKey) ? `
+        <form class="n8n-toggle" method="post" action="${htmlEscape(BASE_PATH)}/automations/toggle">
+          <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
+          <input type="hidden" name="key" value="${htmlEscape(workflow.key)}">
+          <input type="hidden" name="enabled" value="${enabled ? '0' : '1'}">
+          <button type="submit">${enabled ? 'Desativar' : 'Ativar'}</button>
+        </form>` : '';
     return `
       <div class="n8n-card">
         <div class="engine-head">
           <b>${htmlEscape(workflow.title)}</b>
-          ${renderPill(active, 'Pronto', 'Planejado')}
+          ${renderPill(active && enabled, enabled ? 'Pronto' : 'Pausado', enabled ? 'Planejado' : 'Pausado')}
         </div>
         <div class="n8n-detail-grid">
           <span><b>Quando</b><em>${htmlEscape(workflow.schedule)}</em></span>
@@ -6584,6 +6876,7 @@ function renderN8nWorkflows(rows: DashboardN8nRecipientRow[]): string {
         </div>
         <p>${htmlEscape(workflow.description)}</p>
         <div class="n8n-guardrail"><b>Limite</b><span>${htmlEscape(workflow.safety)}</span></div>
+        ${toggleHtml}
       </div>`;
   }).join('');
 }
@@ -7002,6 +7295,17 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     }
     .n8n-guardrail b { color: #8c5a00; font-size: 11px; text-transform: uppercase; white-space: nowrap; }
     .n8n-guardrail span { min-width: 0; }
+    .n8n-toggle { margin-top: 2px; display: flex; justify-content: flex-end; }
+    .n8n-toggle button {
+      border: 1px solid #f1a6c1;
+      border-radius: 999px;
+      background: #fff;
+      color: #ad0b47;
+      font-weight: 900;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+    .n8n-toggle button:hover { background: #fff3f7; }
     .pill { display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 900; }
     .pill.is-ok { background: #daf6e8; color: #097143; }
     .pill.is-warn { background: #fff2d2; color: #8c5a00; }
@@ -7433,7 +7737,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           </div>
         </div>
         <div class="n8n-workflow-grid">
-          ${renderN8nWorkflows(summary.n8nRecipients)}
+          ${renderN8nWorkflows(summary.n8nRecipients, summary.automationSettings, csrfToken)}
         </div>
         <p class="footnote">Destino por card liberado: Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
       </article>
@@ -7567,6 +7871,10 @@ function dashboardNotice(value: unknown): string {
       return 'LID da Evolution fica oculto e protegido; edite o numero real vinculado.';
     case 'error_resolved':
       return 'Erro marcado como resolvido.';
+    case 'automation_enabled':
+      return 'Automacao ativada.';
+    case 'automation_disabled':
+      return 'Automacao pausada.';
     case 'csrf_invalid':
       return 'Sessao expirada. Recarregue o painel e tente de novo.';
     default:
@@ -7710,6 +8018,26 @@ app.post(`${BASE_PATH}/errors/resolve`, requireDashboardAuth, async (req, res) =
   }
 });
 
+app.post(`${BASE_PATH}/automations/toggle`, requireDashboardAuth, async (req, res) => {
+  if (!dashboardCsrfValid(req)) {
+    res.redirect(303, `${BASE_PATH}?notice=csrf_invalid`);
+    return;
+  }
+  const key = safeText(req.body?.key, 80);
+  const allowedKeys = new Set<string>(N8N_WORKFLOW_CARDS.filter((workflow) => 'settingsKey' in workflow).map((workflow) => workflow.key));
+  if (!allowedKeys.has(key)) {
+    res.redirect(303, BASE_PATH);
+    return;
+  }
+  const enabled = req.body?.enabled === '1' || req.body?.enabled === 'true' || req.body?.enabled === 'on';
+  try {
+    await updateAutomationSetting(key, enabled, DASHBOARD_USER || 'dashboard');
+    res.redirect(303, `${BASE_PATH}?notice=${enabled ? 'automation_enabled' : 'automation_disabled'}`);
+  } catch (error) {
+    res.status(503).type('html').send(renderDashboardError(error));
+  }
+});
+
 app.get(BASE_PATH, requireDashboardAuth, dashboardHandler);
 app.get(`${BASE_PATH}/`, requireDashboardAuth, dashboardHandler);
 
@@ -7797,6 +8125,13 @@ app.post(`${BASE_PATH}/internal/smoke-check`, requireInternalToken, async (req, 
 app.post(`${BASE_PATH}/internal/watchdog`, requireInternalToken, async (req, res) => {
   const mode = automationNotifyMode(req.body?.notify || req.query.notify);
   const result = await runWhatsappWatchdog(mode);
+  res.status(result.ok === false ? 503 : 200).json(result);
+});
+
+app.post(`${BASE_PATH}/internal/pedidos-arrival-check`, requireInternalToken, async (req, res) => {
+  const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
+  const dryRun = req.body?.dry_run === true || req.body?.dryRun === true || req.query.dry_run === '1';
+  const result = await runPedidosArrivalCheck(mode, dryRun);
   res.status(result.ok === false ? 503 : 200).json(result);
 });
 

@@ -105,6 +105,17 @@ type PaymentRow = {
   created_at: Date | string;
 };
 
+type ArrivalInternalOrder = {
+  id: string;
+  account_id: string;
+  supplier_name: string;
+  expected_arrival_at: Date | string | null;
+  account_status: 'pendente' | 'pago' | 'cancelado';
+  total_cents: string;
+  paid_cents: string;
+  remaining_cents: string;
+};
+
 type RenderOrder = OrderRow & {
   items: ItemRow[];
   payments: PaymentRow[];
@@ -129,6 +140,7 @@ const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   Math.min(10000, Number.parseInt(env.PEDIDOS_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500),
 );
 const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core' || CORE_AUTH_SHADOW_ENABLED;
+const INTERNAL_TOKEN = String(env.PEDIDOS_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -215,6 +227,15 @@ function cleanText(value: unknown, limit: number): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
+function normalizeLookupText(value: unknown): string {
+  return cleanText(value, 180)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function normalizeBoolean(value: unknown): boolean {
   return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
 }
@@ -287,6 +308,17 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
     const returnTo = safePedidosReturnPath(req.originalUrl);
     if (returnTo) req.session.returnTo = returnTo;
     return res.redirect(`${BASE_PATH}/login.php`);
+  }
+  return next();
+}
+
+function requireInternalToken(req: Request, res: Response, next: NextFunction) {
+  if (!INTERNAL_TOKEN) {
+    return res.status(503).json({ ok: false, error: 'internal_token_not_configured' });
+  }
+  const received = String(req.get('x-pedidos-internal-token') || req.get('x-miauw-internal-token') || req.query.token || '').trim();
+  if (!received || !timingSafeStringEqual(received, INTERNAL_TOKEN)) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
   }
   return next();
 }
@@ -1171,14 +1203,13 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
   return { paidNow, arrivedNow };
 }
 
-async function confirmArrival(req: Request): Promise<void> {
-  const id = Number(req.body.order_id || 0);
+async function confirmArrivalByOrderId(id: number, userId: number | null, sourceLabel = 'sistema'): Promise<{ supplierName: string; movedToHistory: boolean; accountId: number }> {
   if (!id) throw new Error('Pedido invalido.');
 
-  const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
   let accountId = 0;
   let movedToHistory = false;
+  let supplierName = '';
   try {
     await client.query('BEGIN');
     const orderResult = await client.query<{
@@ -1197,6 +1228,7 @@ async function confirmArrival(req: Request): Promise<void> {
     const order = orderResult.rows[0];
     if (!order) throw new Error('Pedido nao encontrado ou ja confirmado.');
     accountId = Number(order.account_id);
+    supplierName = order.supplier_name;
 
     const accountResult = await client.query<{ status: 'pendente' | 'pago' | 'cancelado' }>(
       'SELECT status FROM gestao_accounts WHERE id = $1 FOR UPDATE',
@@ -1231,7 +1263,7 @@ async function confirmArrival(req: Request): Promise<void> {
       [id, accountId, order.supplier_name, movedToHistory ? 'historico' : 'confirmado', order.expected_arrival_at, userId, order.created_by, order.created_at],
     );
     await client.query('UPDATE pedidos_orders SET moved_to_confirmed_at = now() WHERE id = $1', [id]);
-    await auditPg(client, accountId, userId, 'pedidos_chegada_confirmada', `Chegada confirmada: ${order.supplier_name}`);
+    await auditPg(client, accountId, userId, 'pedidos_chegada_confirmada', `Chegada confirmada: ${order.supplier_name} (${sourceLabel})`);
     if (movedToHistory) {
       await auditPg(client, accountId, userId, 'pedidos_pedido_finalizado', 'Pedido ja estava pago; movido para historico apos chegada.');
     }
@@ -1243,6 +1275,13 @@ async function confirmArrival(req: Request): Promise<void> {
     client.release();
   }
   await logMysql(userId, 'pedidos_chegada_confirmada', 'pedidos_pedido', id, movedToHistory ? 'Pedido recebido e finalizado.' : 'Pedido recebido e aguardando pagamento.');
+  return { supplierName, movedToHistory, accountId };
+}
+
+async function confirmArrival(req: Request): Promise<void> {
+  const id = Number(req.body.order_id || 0);
+  const userId = req.session.user?.id || null;
+  await confirmArrivalByOrderId(id, userId, 'painel Pedidos');
 }
 
 async function addItem(req: Request): Promise<void> {
@@ -1786,6 +1825,103 @@ async function ordersBadge(): Promise<number> {
   return Number(result.rows[0]?.count || 0);
 }
 
+async function listWaitingArrivalInternal(limit = 80): Promise<ArrivalInternalOrder[]> {
+  await migrateLegacyOrders();
+  const result = await pgPool.query<ArrivalInternalOrder>(
+    `SELECT o.id,
+            o.account_id,
+            o.supplier_name,
+            o.expected_arrival_at,
+            a.status AS account_status,
+            a.total_cents::bigint::text AS total_cents,
+            COALESCE(p.paid_cents, 0)::bigint::text AS paid_cents,
+            GREATEST(a.total_cents - COALESCE(p.paid_cents, 0), 0)::bigint::text AS remaining_cents
+       FROM pedidos_orders o
+       JOIN gestao_accounts a ON a.id = o.account_id
+       LEFT JOIN (
+         SELECT account_id, SUM(amount_cents) AS paid_cents
+         FROM gestao_account_payments
+         WHERE status = 'ativo'
+         GROUP BY account_id
+       ) p ON p.account_id = a.id
+      WHERE o.moved_to_confirmed_at IS NULL
+        AND o.canceled_at IS NULL
+        AND a.archived_at IS NULL
+        AND a.status <> 'cancelado'
+      ORDER BY o.expected_arrival_at ASC NULLS LAST, o.id DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(200, Math.trunc(limit)))],
+  );
+  return result.rows;
+}
+
+function arrivalOrderPublic(order: ArrivalInternalOrder): Record<string, unknown> {
+  return {
+    id: Number(order.id),
+    account_id: Number(order.account_id),
+    supplier_name: order.supplier_name,
+    expected_arrival_at: order.expected_arrival_at ? dateInputValue(order.expected_arrival_at) : null,
+    account_status: order.account_status,
+    total_cents: Number(order.total_cents || 0),
+    paid_cents: Number(order.paid_cents || 0),
+    remaining_cents: Number(order.remaining_cents || 0),
+    total_label: formatMoney(order.total_cents),
+    remaining_label: formatMoney(order.remaining_cents),
+  };
+}
+
+function matchArrivalOrders(orders: ArrivalInternalOrder[], supplierInput: unknown): ArrivalInternalOrder[] {
+  const target = normalizeLookupText(supplierInput)
+    .replace(/\b(pedido|fornecedor|titulo|chegou|chegaram|recebido|recebida|recebemos)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (target.length < 2) return [];
+  const exact = orders.filter((order) => normalizeLookupText(order.supplier_name) === target);
+  if (exact.length) return exact;
+  return orders.filter((order) => {
+    const supplier = normalizeLookupText(order.supplier_name);
+    const words = supplier.split(' ').filter(Boolean);
+    return supplier.startsWith(`${target} `)
+      || supplier.endsWith(` ${target}`)
+      || supplier.includes(` ${target} `)
+      || (target.length >= 4 && supplier.includes(target))
+      || (target.split(' ').length === 1 && words.includes(target));
+  });
+}
+
+async function confirmArrivalBySupplier(supplierInput: unknown, actorLabel: string): Promise<Record<string, unknown>> {
+  const orders = await listWaitingArrivalInternal(120);
+  const matches = matchArrivalOrders(orders, supplierInput);
+  const options = orders.slice(0, 12).map((order) => arrivalOrderPublic(order));
+  if (matches.length === 0) {
+    return {
+      ok: false,
+      status: 'not_found',
+      message: 'Nao achei esse titulo em Aguardando chegada.',
+      options,
+    };
+  }
+  if (matches.length > 1) {
+    return {
+      ok: false,
+      status: 'ambiguous',
+      message: 'Achei mais de um pedido parecido. Responda com o titulo mais exato.',
+      options: matches.slice(0, 12).map((order) => arrivalOrderPublic(order)),
+    };
+  }
+
+  const order = matches[0];
+  const confirmed = await confirmArrivalByOrderId(Number(order.id), null, actorLabel);
+  return {
+    ok: true,
+    status: confirmed.movedToHistory ? 'historico' : 'confirmado',
+    order: arrivalOrderPublic(order),
+    message: confirmed.movedToHistory
+      ? `${confirmed.supplierName} chegou e foi para Historico porque ja estava pago.`
+      : `${confirmed.supplierName} chegou e ficou em Confirmados para pagar.`,
+  };
+}
+
 async function paidThisMonth(month: string): Promise<number> {
   const bounds = monthBounds(month);
   const result = await pgPool.query<{ paid_cents: string }>(
@@ -2197,12 +2333,45 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
     mysql_auth: AUTH_PROVIDER === 'mysql',
     mysql_auth_fallback: MYSQL_AUTH_FALLBACK_ENABLED,
     mysql_reachable: mysqlReachable,
+    internal_token_configured: INTERNAL_TOKEN !== '',
     auth,
   });
 }));
 
 app.get(`${BASE_PATH}/api/badge`, asyncRoute(async (_req, res) => {
   res.json({ ok: true, arriving_today: await ordersBadge() });
+}));
+
+app.get(`${BASE_PATH}/api/internal/arrival-summary`, requireInternalToken, asyncRoute(async (req, res) => {
+  const limit = Math.max(1, Math.min(120, Number(req.query.limit || 80) || 80));
+  const orders = await listWaitingArrivalInternal(limit);
+  const totalCents = orders.reduce((sum, order) => sum + Number(order.remaining_cents || order.total_cents || 0), 0);
+  res.json({
+    ok: true,
+    source: 'postgres',
+    count: orders.length,
+    total_cents: totalCents,
+    total_label: formatMoney(totalCents),
+    orders: orders.map((order) => arrivalOrderPublic(order)),
+  });
+}));
+
+app.post(`${BASE_PATH}/api/internal/confirm-arrival`, requireInternalToken, asyncRoute(async (req, res) => {
+  const orderId = Number(req.body?.order_id || 0);
+  const actorLabel = cleanText(req.body?.actor || 'Miauby WhatsApp', 80) || 'Miauby WhatsApp';
+  if (orderId > 0) {
+    const confirmed = await confirmArrivalByOrderId(orderId, null, actorLabel);
+    res.json({
+      ok: true,
+      status: confirmed.movedToHistory ? 'historico' : 'confirmado',
+      message: confirmed.movedToHistory
+        ? `${confirmed.supplierName} chegou e foi para Historico porque ja estava pago.`
+        : `${confirmed.supplierName} chegou e ficou em Confirmados para pagar.`,
+    });
+    return;
+  }
+  const result = await confirmArrivalBySupplier(req.body?.supplier_name || req.body?.title || req.body?.message, actorLabel);
+  res.status(result.ok === false ? 409 : 200).json(result);
 }));
 
 app.get(`${BASE_PATH}/login`, (req, res) => {

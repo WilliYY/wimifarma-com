@@ -1,0 +1,78 @@
+{
+  "name": "Wimifarma - Pedidos chegada 17h",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 17 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-pedidos-chegada-17h",
+      "name": "Todos os dias 17h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.WIMIFARMA_INTERNAL_BASE_URL + \"/miauw/whatsapp/internal/pedidos-arrival-check\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Miauw-Internal-Token",
+              "value": "={{$env.MIAUW_GUARDIAN_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{ \"notify\": \"always\" }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "post-miauby-pedidos-chegada",
+      "name": "Miauby envia lista",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Todos os dias 17h": {
+      "main": [
+        [
+          {
+            "node": "Miauby envia lista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}

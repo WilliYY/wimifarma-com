@@ -322,6 +322,7 @@ Template versionado:
 ```powershell
 ops\n8n\docker-compose.yml
 ops\n8n\.env.example
+ops\n8n\workflows\pedidos-chegada-17h.json
 ```
 
 Instalacao em stack separada no VPS:
@@ -331,12 +332,28 @@ mkdir -p /home/ubuntu/projetos/wimifarma-n8n
 cd /home/ubuntu/projetos/wimifarma-n8n
 cp /home/ubuntu/projetos/wimifarma-com/ops/n8n/docker-compose.yml .
 cp /home/ubuntu/projetos/wimifarma-com/ops/n8n/.env.example .env
-# preencher N8N_POSTGRES_PASSWORD e N8N_ENCRYPTION_KEY antes de subir
+mkdir -p workflows
+cp /home/ubuntu/projetos/wimifarma-com/ops/n8n/workflows/*.json workflows/
+# preencher N8N_POSTGRES_PASSWORD, N8N_ENCRYPTION_KEY e MIAUW_GUARDIAN_TOKEN antes de subir
 docker compose up -d
 curl -sS http://127.0.0.1:5678
 ```
 
 O n8n deve chamar endpoints internos tokenizados do Wimifarma. Nao usar workflow n8n para escrita direta em banco de negocio.
+
+Importar/ativar a rotina diaria de chegada de Pedidos:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-n8n
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pedidos-chegada-17h.json
+```
+
+Validar o backend sem enviar WhatsApp:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+docker compose exec -T wimifarma-miauw-whatsapp node -e "fetch('http://127.0.0.1:3400/miauw/whatsapp/internal/pedidos-arrival-check',{method:'POST',headers:{'content-type':'application/json','x-miauw-internal-token':process.env.MIAUW_GUARDIAN_TOKEN||process.env.MIAUW_WHATSAPP_INTERNAL_TOKEN},body:JSON.stringify({notify:'always',dry_run:true})}).then(r=>r.text()).then(t=>console.log(t))"
+```
 
 ## Local - Gestao Node/Postgres
 

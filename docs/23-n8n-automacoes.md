@@ -16,6 +16,7 @@ Template versionado:
 
 - `ops/n8n/docker-compose.yml`
 - `ops/n8n/.env.example`
+- `ops/n8n/workflows/pedidos-chegada-17h.json`
 
 O n8n deve rodar separado do Compose principal, com Postgres proprio, porta publicada apenas em `127.0.0.1:5678` e acesso publico somente por proxy/autenticacao quando estiver pronto.
 
@@ -31,6 +32,7 @@ n8n --version
 - `MIAUW_WHATSAPP_N8N_BASE_URL`
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL`
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET`
+- `MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL`
 
 O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino e Limite. O publico continua calculado pelos cards da allowlist.
 
@@ -92,6 +94,44 @@ Fluxo:
 2. Backend calcula boletos vencendo, pedidos que chegam hoje e pedidos atrasados.
 3. Miauby WhatsApp envia resumo curto para destinatarios autorizados.
 4. Pagamento ou baixa continua exigindo sistema/core com confirmacao.
+
+### Chegada de pedidos as 17h
+
+Agenda: todo dia as 17:00, timezone `America/Sao_Paulo`.
+
+Workflow versionado:
+
+```text
+ops/n8n/workflows/pedidos-chegada-17h.json
+```
+
+Endpoint interno chamado pelo n8n:
+
+```text
+POST /miauw/whatsapp/internal/pedidos-arrival-check
+```
+
+Payload:
+
+```json
+{ "notify": "always" }
+```
+
+Fluxo:
+
+1. n8n dispara o horario e envia o token interno no header `X-Miauw-Internal-Token`.
+2. Miauby WhatsApp confere se a rotina `pedidos_chegada_17h` esta ativa no painel.
+3. O bridge consulta `GET /pedidos/api/internal/arrival-summary` no app Pedidos.
+4. A mensagem vai somente para contatos reais autorizados com card `Pedidos`.
+5. O operador responde com o titulo, por exemplo `cimed chegou`, ou `nenhum chegou`.
+6. O bridge valida o card `Pedidos` e chama `POST /pedidos/api/internal/confirm-arrival`.
+7. Pedidos move a chegada para `Confirmados` ou `Historico` se ja estava pago; pagamento continua no fluxo normal da tela.
+
+Controle operacional:
+
+- O card `Chegada de pedidos` aparece em `/miauw/whatsapp/` dentro de `n8n automacoes`.
+- O botao `Desativar`/`Ativar` muda somente a execucao do backend; o workflow pode continuar agendado no n8n.
+- O endpoint aceita `dry_run=true` para validar destinatarios e previa sem enviar WhatsApp.
 
 ### Financeiro
 
