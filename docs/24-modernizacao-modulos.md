@@ -51,7 +51,7 @@ O script mostra:
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL legado desligado por padrao; rollback manual | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
-| Cashback | Node.js + TypeScript + Postgres + core auth | MySQL legado opcional por flags de importacao/espelho/log | Postgres puro + core auth/auditoria | 6 em corte |
+| Cashback | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Miauby interno | PHP + Node agent sombra + core auth | `miauw_*` em MySQL e prefixo tecnico legado | Node/TypeScript + Postgres `wimifarma_miauby`, com alias/fallback `miauw` ate corte | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
 | Home publica | PHP desacoplado do WordPress | PHP simples, sem banco direto | manter ou trocar depois | baixo |
@@ -65,7 +65,7 @@ O script mostra:
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` como default e desligar legado MySQL de dados por flags depois de paridade.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
 5. Observar Financeiro em `/financeiro/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir checksums por dia/tipo, Caixa, Relatorio, exportacao e contrato Pix CNPJ do Miauby.
-6. Observar Cashback em `/cashback/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir saldos por cliente, CSV, mensagens e autoteste.
+6. Cashback esta em `/cashback/` sem `mysql2`, importador, espelho ou fallback MySQL; rollback exige restaurar commit/imagem anterior e backup, depois repetir saldos por cliente, CSV, mensagens e autoteste.
 7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`, usando `Miauby` como nome canonico e mantendo `miauw` como compatibilidade tecnica ate validacao.
 8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
@@ -116,12 +116,11 @@ Cashback foi cortado para `apps/cashback`:
 
 - banco/schema alvo `wimifarma_cashback`;
 - tabelas `cashback_attendants`, `cashback_clients`, `cashback_purchases`, `cashback_credits`, `cashback_redemptions`, `cashback_redemption_items`, `cashback_settings`, `cashback_whatsapp_messages`, `cashback_audit_events`, `cashback_migration_runs` e `cashback_sessions`;
-- importador idempotente de `wf_atendentes`, `wf_clientes`, `wf_compras`, `wf_cashback_creditos`, `wf_resgates`, `wf_resgate_itens`, `wf_settings`, `wf_whatsapp_mensagens` e `wf_logs`;
 - proxy Apache oficial em `/cashback/`;
 - frontend preservado por `site/cashback/styles.css`, `site/cashback/app.js`, `site/cashback/login-runner.js`, logo/favicon e GIFs montados no container Node;
-- login oficial por `core_users` com `CASHBACK_AUTH_PROVIDER=core`;
+- login unico por `core_users`;
 - endpoints internos tokenizados para resumo/status por `CASHBACK_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`;
-- `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED=false`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED=false` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=false` sao o padrao desde 2026-05-29; rollback MySQL exige religar flags e reintroduzir credenciais explicitamente.
+- sem `mysql2`, flags legadas de Cashback, importador, espelho ou fallback MySQL desde 2026-05-30; rollback MySQL exige restaurar commit/imagem anterior e backup.
 
 Usuarios foi criado em `apps/usuarios`:
 

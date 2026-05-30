@@ -127,10 +127,10 @@ $modules = @(
         Module = 'Cashback'
         Path = 'site/cashback;apps/cashback'
         Current = 'Node.js + TypeScript + Express + Postgres + core auth'
-        Legacy = 'MySQL desligado por padrao; rollback manual por flags/credenciais'
+        Legacy = 'sem dependencia MySQL no app; rollback por restauracao de versao'
         Target = 'Postgres puro + core auth/auditoria'
         Priority = 'moderno'
-        Next = 'Validar /cashback/health e saldos sem reativar flags legadas.'
+        Next = 'Validar /cashback/health, login, saldos, CSV, mensagens e autoteste.'
     },
     @{
         Module = 'Miauby interno'

@@ -3,7 +3,6 @@ import connectPgSimple from 'connect-pg-simple';
 import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
-import mysql from 'mysql2/promise';
 import path from 'path';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
@@ -12,7 +11,6 @@ const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-type AuthProvider = 'core' | 'mysql';
 type FlashType = 'success' | 'error' | 'info' | '';
 type DbRow = Record<string, unknown>;
 
@@ -69,16 +67,8 @@ const SERVICE_VERSION = '1.0.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const AUTH_PROVIDER = normalizeAuthProvider(env.CASHBACK_AUTH_PROVIDER || 'core');
+const AUTH_PROVIDER = 'core';
 const INTERNAL_TOKEN = env.CASHBACK_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '';
-const LEGACY_MYSQL_IMPORT_ENABLED = parseBool(env.CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED ?? 'false');
-const LEGACY_MYSQL_MIRROR_ENABLED = parseBool(env.CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED ?? 'false');
-const LEGACY_MYSQL_LOGS_ENABLED = parseBool(env.CASHBACK_LEGACY_MYSQL_LOGS_ENABLED ?? 'false');
-const LEGACY_MYSQL_REQUIRED =
-  AUTH_PROVIDER === 'mysql' ||
-  LEGACY_MYSQL_IMPORT_ENABLED ||
-  LEGACY_MYSQL_MIRROR_ENABLED ||
-  LEGACY_MYSQL_LOGS_ENABLED;
 
 const migrationStats: MigrationStats = {
   lastRunAt: null,
@@ -103,25 +93,6 @@ const corePgPool = new Pool({
   password: env.CORE_POSTGRES_PASSWORD || '',
   max: 4,
 });
-
-let mysqlPool: mysql.Pool | null = null;
-
-function mysqlDb(): mysql.Pool {
-  if (!mysqlPool) {
-    mysqlPool = mysql.createPool({
-      host: env.MYSQL_HOST || '127.0.0.1',
-      port: Number.parseInt(env.MYSQL_PORT || '3306', 10),
-      database: env.MYSQL_DATABASE || 'wimifarma_app',
-      user: env.MYSQL_USER || 'wimifarma_user',
-      password: env.MYSQL_PASSWORD || '',
-      waitForConnections: true,
-      connectionLimit: 4,
-      charset: 'utf8mb4',
-      dateStrings: true,
-    });
-  }
-  return mysqlPool;
-}
 
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -169,7 +140,6 @@ app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], async (_req: Request
   try {
     await ensureSchema();
     const pgCounts = await tableCounts();
-    const legacyCounts = LEGACY_MYSQL_REQUIRED ? await legacyTableCounts().catch(() => null) : null;
     const coreReachable = await corePgPool
       .query('SELECT 1')
       .then(() => true)
@@ -182,10 +152,10 @@ app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], async (_req: Request
       auth: { provider: AUTH_PROVIDER, coreReachable },
       storage: { provider: 'postgres', database: env.POSTGRES_DB || 'wimifarma_cashback' },
       legacy: {
-        mysqlImport: LEGACY_MYSQL_IMPORT_ENABLED,
-        mysqlMirror: LEGACY_MYSQL_MIRROR_ENABLED,
-        mysqlLogs: LEGACY_MYSQL_LOGS_ENABLED,
-        counts: legacyCounts,
+        mysqlImport: false,
+        mysqlMirror: false,
+        mysqlLogs: false,
+        counts: null,
       },
       counts: pgCounts,
       migration: migrationStats,
@@ -436,14 +406,6 @@ function normalizeBasePath(value: string): string {
   return clean.startsWith('/') ? clean || '/cashback' : `/${clean || 'cashback'}`;
 }
 
-function parseBool(value: unknown): boolean {
-  return ['1', 'true', 'yes', 'sim', 'on'].includes(String(value || '').trim().toLowerCase());
-}
-
-function normalizeAuthProvider(value: unknown): AuthProvider {
-  return String(value || 'core').trim().toLowerCase() === 'mysql' ? 'mysql' : 'core';
-}
-
 function normalizeUsername(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
@@ -687,22 +649,11 @@ function requireInternalToken(req: Request, res: Response, next: NextFunction): 
 
 async function authenticateUser(username: string, password: string): Promise<User | null> {
   if (!username || !password) return null;
-  if (AUTH_PROVIDER === 'core') {
-    const result = await corePgPool.query(
-      'SELECT id, username, password_hash, role, active FROM core_users WHERE username_normalized = $1 AND active = true LIMIT 1',
-      [username],
-    );
-    const row = result.rows[0] as DbRow | undefined;
-    if (row && (await bcrypt.compare(password, normalizeHash(row.password_hash)))) {
-      return { id: num(row.id), username: String(row.username || username), role: String(row.role || 'user') };
-    }
-    return null;
-  }
-  const [rows] = await mysqlDb().query<mysql.RowDataPacket[]>(
-    'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
+  const result = await corePgPool.query(
+    'SELECT id, username, password_hash, role, active FROM core_users WHERE username_normalized = $1 AND active = true LIMIT 1',
     [username],
   );
-  const row = rows[0] as DbRow | undefined;
+  const row = result.rows[0] as DbRow | undefined;
   if (row && (await bcrypt.compare(password, normalizeHash(row.password_hash)))) {
     return { id: num(row.id), username: String(row.username || username), role: String(row.role || 'user') };
   }
@@ -711,7 +662,6 @@ async function authenticateUser(username: string, password: string): Promise<Use
 
 async function loginRateLimitWaitSeconds(req: Request, username: string): Promise<number> {
   const sessionWait = Math.max(0, Math.ceil((Number(req.session.loginBlockedUntil || 0) - Date.now()) / 1000));
-  if (AUTH_PROVIDER !== 'core') return sessionWait;
   try {
     const rateKey = loginRateKey(req, username);
     const result = await corePgPool.query('SELECT blocked_until FROM core_login_rate_limits WHERE rate_key = $1 LIMIT 1', [rateKey.identityHash]);
@@ -730,7 +680,6 @@ async function registerLoginFailure(req: Request, username: string): Promise<voi
   attempts.push(now);
   req.session.loginAttempts = attempts;
   if (attempts.length >= 5) req.session.loginBlockedUntil = now + 10 * 60 * 1000;
-  if (AUTH_PROVIDER !== 'core') return;
   try {
     const rateKey = loginRateKey(req, username);
     await corePgPool.query(
@@ -768,7 +717,6 @@ async function registerLoginFailure(req: Request, username: string): Promise<voi
 async function clearLoginRateLimit(req: Request, username: string): Promise<void> {
   delete req.session.loginAttempts;
   delete req.session.loginBlockedUntil;
-  if (AUTH_PROVIDER !== 'core') return;
   try {
     const rateKey = loginRateKey(req, username);
     await corePgPool.query('DELETE FROM core_login_rate_limits WHERE rate_key = $1', [rateKey.identityHash]);
@@ -928,289 +876,6 @@ async function ensureSchema(): Promise<void> {
   `);
 }
 
-async function importLegacy(): Promise<void> {
-  if (!LEGACY_MYSQL_IMPORT_ENABLED) return;
-  const startedAt = new Date().toISOString();
-  const imported: Record<string, number> = {};
-  const run = await pgPool.query(
-    `INSERT INTO cashback_migration_runs (source, status, started_at)
-     VALUES ('mysql:wf_cashback', 'running', NOW())
-     RETURNING id`,
-  );
-  const runId = num(run.rows[0]?.id);
-
-  try {
-    await importTable('wf_atendentes', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_attendants (id, legacy_mysql_id, name, status, notes, created_at, updated_at)
-         VALUES ($1, $1, $2, $3, $4, COALESCE($5::timestamptz, NOW()), $6::timestamptz)
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           name = EXCLUDED.name,
-           status = EXCLUDED.status,
-           notes = EXCLUDED.notes,
-           created_at = EXCLUDED.created_at,
-           updated_at = EXCLUDED.updated_at`,
-        [num(row.id), row.nome, row.status || 'ativo', row.observacoes || null, row.created_at || null, row.updated_at || null],
-      );
-    });
-
-    await importTable('wf_clientes', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_clients (id, legacy_mysql_id, name, phone, birth_date, notes, status, attendant_id, created_at, updated_at)
-         VALUES ($1, $1, $2, $3, $4::date, $5, $6, $7, COALESCE($8::timestamptz, NOW()), $9::timestamptz)
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           name = EXCLUDED.name,
-           phone = EXCLUDED.phone,
-           birth_date = EXCLUDED.birth_date,
-           notes = EXCLUDED.notes,
-           status = EXCLUDED.status,
-           attendant_id = EXCLUDED.attendant_id,
-           created_at = EXCLUDED.created_at,
-           updated_at = EXCLUDED.updated_at`,
-        [
-          num(row.id),
-          row.nome,
-          digitsOnly(row.telefone) || null,
-          isoDate(row.nascimento) || null,
-          row.observacoes || null,
-          row.status || 'ativo',
-          intOrNull(row.atendente_id),
-          row.created_at || null,
-          row.updated_at || null,
-        ],
-      );
-    });
-
-    await importTable('wf_resgates', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_redemptions (id, legacy_mysql_id, client_id, attendant_id, purchase_cents, redeemed_cents, redeemed_at, notes, created_by, created_at)
-         VALUES ($1, $1, $2, $3, $4, $5, COALESCE($6::timestamptz, NOW()), $7, $8, COALESCE($9::timestamptz, NOW()))
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           client_id = EXCLUDED.client_id,
-           attendant_id = EXCLUDED.attendant_id,
-           purchase_cents = EXCLUDED.purchase_cents,
-           redeemed_cents = EXCLUDED.redeemed_cents,
-           redeemed_at = EXCLUDED.redeemed_at,
-           notes = EXCLUDED.notes,
-           created_by = EXCLUDED.created_by,
-           created_at = EXCLUDED.created_at`,
-        [
-          num(row.id),
-          num(row.cliente_id),
-          intOrNull(row.atendente_id),
-          moneyToCents(row.valor_compra),
-          moneyToCents(row.valor_resgatado),
-          row.data_resgate || null,
-          row.observacoes || null,
-          intOrNull(row.created_by),
-          row.created_at || null,
-        ],
-      );
-    });
-
-    await importTable('wf_compras', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_purchases
-          (id, legacy_mysql_id, client_id, attendant_id, gross_cents, cashback_discount_cents, charged_cents, redemption_id,
-           cashback_percent_bps, cashback_generated_cents, purchased_at, notes, created_by, created_at)
-         VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, $12, COALESCE($13::timestamptz, NOW()))
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           client_id = EXCLUDED.client_id,
-           attendant_id = EXCLUDED.attendant_id,
-           gross_cents = EXCLUDED.gross_cents,
-           cashback_discount_cents = EXCLUDED.cashback_discount_cents,
-           charged_cents = EXCLUDED.charged_cents,
-           redemption_id = EXCLUDED.redemption_id,
-           cashback_percent_bps = EXCLUDED.cashback_percent_bps,
-           cashback_generated_cents = EXCLUDED.cashback_generated_cents,
-           purchased_at = EXCLUDED.purchased_at,
-           notes = EXCLUDED.notes,
-           created_by = EXCLUDED.created_by,
-           created_at = EXCLUDED.created_at`,
-        [
-          num(row.id),
-          num(row.cliente_id),
-          intOrNull(row.atendente_id),
-          moneyToCents(row.valor_bruto ?? row.valor_total),
-          moneyToCents(row.desconto_cashback),
-          moneyToCents(row.valor_cobrado ?? row.valor_total),
-          intOrNull(row.resgate_id),
-          percentToBps(row.percentual_cashback),
-          moneyToCents(row.cashback_gerado),
-          row.data_compra || null,
-          row.observacoes || null,
-          intOrNull(row.created_by),
-          row.created_at || null,
-        ],
-      );
-    });
-
-    await importTable('wf_cashback_creditos', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_credits (id, legacy_mysql_id, client_id, purchase_id, original_cents, remaining_cents, expires_at, status, created_at, updated_at)
-         VALUES ($1, $1, $2, $3, $4, $5, $6::date, $7, COALESCE($8::timestamptz, NOW()), $9::timestamptz)
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           client_id = EXCLUDED.client_id,
-           purchase_id = EXCLUDED.purchase_id,
-           original_cents = EXCLUDED.original_cents,
-           remaining_cents = EXCLUDED.remaining_cents,
-           expires_at = EXCLUDED.expires_at,
-           status = EXCLUDED.status,
-           created_at = EXCLUDED.created_at,
-           updated_at = EXCLUDED.updated_at`,
-        [
-          num(row.id),
-          num(row.cliente_id),
-          num(row.compra_id),
-          moneyToCents(row.valor_original),
-          moneyToCents(row.valor_restante),
-          isoDate(row.expires_at),
-          row.status || 'ativo',
-          row.created_at || null,
-          row.updated_at || null,
-        ],
-      );
-    });
-
-    await importTable('wf_resgate_itens', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_redemption_items (id, legacy_mysql_id, redemption_id, credit_id, used_cents, created_at)
-         VALUES ($1, $1, $2, $3, $4, COALESCE($5::timestamptz, NOW()))
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           redemption_id = EXCLUDED.redemption_id,
-           credit_id = EXCLUDED.credit_id,
-           used_cents = EXCLUDED.used_cents,
-           created_at = EXCLUDED.created_at`,
-        [num(row.id), num(row.resgate_id), num(row.credito_id), moneyToCents(row.valor_utilizado), row.created_at || null],
-      );
-    });
-
-    await importTable('wf_settings', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_settings (key, value, updated_at)
-         VALUES ($1, $2, $3::timestamptz)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
-        [String(row.chave || ''), String(row.valor ?? ''), row.updated_at || null],
-      );
-    });
-
-    await importTable('wf_whatsapp_mensagens', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_whatsapp_messages
-          (id, legacy_mysql_id, client_id, purchase_id, credit_id, campaign, dedupe_key, client_name, phone, message,
-           status, due_date, opened_at, copied_at, sent_at, user_id, created_at, updated_at)
-         VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::date, $12::timestamptz, $13::timestamptz, $14::timestamptz, $15, COALESCE($16::timestamptz, NOW()), $17::timestamptz)
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           client_id = EXCLUDED.client_id,
-           purchase_id = EXCLUDED.purchase_id,
-           credit_id = EXCLUDED.credit_id,
-           campaign = EXCLUDED.campaign,
-           dedupe_key = EXCLUDED.dedupe_key,
-           client_name = EXCLUDED.client_name,
-           phone = EXCLUDED.phone,
-           message = EXCLUDED.message,
-           status = EXCLUDED.status,
-           due_date = EXCLUDED.due_date,
-           opened_at = EXCLUDED.opened_at,
-           copied_at = EXCLUDED.copied_at,
-           sent_at = EXCLUDED.sent_at,
-           user_id = EXCLUDED.user_id,
-           created_at = EXCLUDED.created_at,
-           updated_at = EXCLUDED.updated_at`,
-        [
-          num(row.id),
-          intOrNull(row.cliente_id),
-          intOrNull(row.compra_id),
-          intOrNull(row.credito_id),
-          row.campanha,
-          row.dedupe_key,
-          row.cliente_nome,
-          digitsOnly(row.telefone) || null,
-          row.mensagem,
-          row.status || 'pendente',
-          isoDate(row.due_date) || null,
-          row.opened_at || null,
-          row.copied_at || null,
-          row.sent_at || null,
-          intOrNull(row.user_id),
-          row.created_at || null,
-          row.updated_at || null,
-        ],
-      );
-    });
-
-    await importTable('wf_logs', imported, async (row: DbRow) => {
-      await pgPool.query(
-        `INSERT INTO cashback_audit_events (id, legacy_mysql_id, user_id, action, entity_type, entity_id, message, created_at)
-         VALUES ($1, $1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, NOW()))
-         ON CONFLICT (id) DO UPDATE SET
-           legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-           user_id = EXCLUDED.user_id,
-           action = EXCLUDED.action,
-           entity_type = EXCLUDED.entity_type,
-           entity_id = EXCLUDED.entity_id,
-           message = EXCLUDED.message,
-           created_at = EXCLUDED.created_at`,
-        [num(row.id), intOrNull(row.user_id), row.action, row.entity_type || null, intOrNull(row.entity_id), row.message || null, row.created_at || null],
-      );
-    });
-
-    await resetSequences();
-    await pgPool.query(
-      `UPDATE cashback_migration_runs
-       SET status = 'ok', summary = $1::jsonb, finished_at = NOW()
-       WHERE id = $2`,
-      [JSON.stringify(imported), runId],
-    );
-    migrationStats.lastRunAt = startedAt;
-    migrationStats.lastError = null;
-    migrationStats.imported = imported;
-  } catch (error) {
-    migrationStats.lastRunAt = startedAt;
-    migrationStats.lastError = errorMessage(error);
-    await pgPool.query('UPDATE cashback_migration_runs SET status = $1, error = $2, finished_at = NOW() WHERE id = $3', [
-      'error',
-      migrationStats.lastError,
-      runId,
-    ]);
-    throw error;
-  }
-}
-
-async function importTable(table: string, imported: Record<string, number>, handler: (row: DbRow) => Promise<void>): Promise<void> {
-  const [rows] = await mysqlDb().query<mysql.RowDataPacket[]>(`SELECT * FROM ${table}`);
-  for (const row of rows as DbRow[]) {
-    await handler(row);
-  }
-  imported[table] = rows.length;
-}
-
-async function resetSequences(): Promise<void> {
-  const tables = [
-    'cashback_attendants',
-    'cashback_clients',
-    'cashback_redemptions',
-    'cashback_purchases',
-    'cashback_credits',
-    'cashback_redemption_items',
-    'cashback_whatsapp_messages',
-    'cashback_audit_events',
-  ];
-  for (const table of tables) {
-    await pgPool.query(
-      `SELECT setval(pg_get_serial_sequence($1, 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM ${table}), 0), 1), true)`,
-      [table],
-    );
-  }
-}
-
 async function tableCounts(): Promise<Record<string, number>> {
   const tables = [
     'cashback_clients',
@@ -1231,26 +896,6 @@ async function tableCounts(): Promise<Record<string, number>> {
   return counts;
 }
 
-async function legacyTableCounts(): Promise<Record<string, number>> {
-  const tables = [
-    'wf_clientes',
-    'wf_atendentes',
-    'wf_compras',
-    'wf_cashback_creditos',
-    'wf_resgates',
-    'wf_resgate_itens',
-    'wf_settings',
-    'wf_whatsapp_mensagens',
-    'wf_logs',
-  ];
-  const counts: Record<string, number> = {};
-  for (const table of tables) {
-    const [rows] = await mysqlDb().query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS count FROM ${table}`);
-    counts[table] = num((rows[0] as DbRow | undefined)?.count);
-  }
-  return counts;
-}
-
 async function getSetting(key: string, fallback: string): Promise<string> {
   const result = await pgPool.query('SELECT value FROM cashback_settings WHERE key = $1 LIMIT 1', [key]);
   return String(result.rows[0]?.value ?? fallback);
@@ -1263,14 +908,6 @@ async function setSetting(key: string, value: string): Promise<void> {
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
     [key, value],
   );
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    void mirrorMysql(
-      `INSERT INTO wf_settings (chave, valor, updated_at)
-       VALUES (?, ?, NOW())
-       ON DUPLICATE KEY UPDATE valor = VALUES(valor), updated_at = NOW()`,
-      [key, value],
-    );
-  }
 }
 
 async function loadSettings(): Promise<Settings> {
@@ -1363,25 +1000,6 @@ async function logAction(req: Request, action: string, entityType: string | null
     );
   } catch {
     // Audit logging must not block the cashier flow.
-  }
-  if (LEGACY_MYSQL_LOGS_ENABLED) {
-    void mirrorMysql('INSERT INTO wf_logs (user_id, action, entity_type, entity_id, message) VALUES (?, ?, ?, ?, ?)', [
-      userId,
-      action,
-      entityType,
-      entityId,
-      message,
-    ]);
-  }
-}
-
-async function mirrorMysql(sql: string, values: unknown[]): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED && !LEGACY_MYSQL_LOGS_ENABLED) return;
-  try {
-    const params = values.map((value) => (value === undefined ? null : value)) as mysql.ExecuteValues[];
-    await mysqlDb().execute(sql, params);
-  } catch (error) {
-    console.warn('[cashback] MySQL mirror failed:', errorMessage(error));
   }
 }
 
@@ -1613,8 +1231,6 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
       )}.`;
     }
     await client.query('COMMIT');
-    await mirrorClient(clientId, name, phone, birthDate || null, notes || null, 'ativo', attendantId);
-    if (purchase) await mirrorPurchaseAndCreditFromPg(purchase.id);
     await logAction(req, 'cliente_criado', 'cliente', clientId, `Cliente criado pela operacao de balcao: ${name}`);
     setFlash(req, 'success', message);
     res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
@@ -1660,7 +1276,6 @@ async function createPurchaseFromDashboard(req: Request, res: Response): Promise
         userId: req.session.user?.id ?? null,
       });
       await client.query('COMMIT');
-      await mirrorPurchaseAndCreditFromPg(purchase.id);
       await logAction(req, 'compra_criada', 'compra', purchase.id, `Compra registrada no balcao com cashback de ${brMoneyCents(purchase.cashbackCents)}`);
       setFlash(req, 'success', `Compra registrada. Cashback gerado: ${brMoneyCents(purchase.cashbackCents)} com validade ate ${brDate(purchase.expiresAt)}.`);
       res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
@@ -1734,8 +1349,6 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
         userId: req.session.user?.id ?? null,
       });
       await client.query('COMMIT');
-      if (redemptionId) await mirrorRedemptionFromPg(redemptionId);
-      await mirrorPurchaseAndCreditFromPg(purchase.id);
       if (redemptionId) await logAction(req, 'resgate_criado', 'resgate', redemptionId, `Resgate registrado no balcao: ${brMoneyCents(redeemedCents)}`);
       await logAction(req, 'compra_cashback_criada', 'compra', purchase.id, `Valor cobrado ${brMoneyCents(purchase.chargedCents)} e novo cashback ${brMoneyCents(purchase.cashbackCents)}`);
       const flash =
@@ -1931,7 +1544,6 @@ async function saveWhatsappMessage(input: {
   const client = await pgPool.connect();
   try {
     const row = await saveWhatsappMessageWithClient(client, input);
-    await mirrorWhatsappMessage(num(row.id));
     return row;
   } finally {
     client.release();
@@ -2257,7 +1869,6 @@ async function handleClientsPost(req: Request, res: Response): Promise<void> {
         setFlash(req, 'success', 'Cliente cadastrado com sucesso.');
         await logAction(req, 'cliente_criado', 'cliente', clientId, `Cliente criado: ${name}`);
       }
-      await mirrorClient(clientId, name, phone, birthDate || null, notes || null, status, attendantId);
       res.redirect(`${BASE_PATH}/cliente-detalhe.php?id=${clientId}`);
     } catch (error) {
       setFlash(req, 'error', errorMessage(error));
@@ -2276,12 +1887,10 @@ async function handleClientsPost(req: Request, res: Response): Promise<void> {
     );
     if (num(history.rows[0]?.total) > 0) {
       await pgPool.query("UPDATE cashback_clients SET status = 'inativo', updated_at = NOW() WHERE id = $1", [id]);
-      await mirrorMysql("UPDATE wf_clientes SET status = 'inativo' WHERE id = ?", [id]);
       await logAction(req, 'cliente_inativado', 'cliente', id, 'Cliente inativado por possuir historico.');
       setFlash(req, 'success', 'Cliente possui historico e foi inativado para preservar os dados.');
     } else {
       await pgPool.query('DELETE FROM cashback_clients WHERE id = $1', [id]);
-      await mirrorMysql('DELETE FROM wf_clientes WHERE id = ?', [id]);
       await logAction(req, 'cliente_excluido', 'cliente', id, 'Cliente excluido sem historico.');
       setFlash(req, 'success', 'Cliente excluido.');
     }
@@ -2425,7 +2034,6 @@ async function handleManualRedemptionPost(req: Request, res: Response): Promise<
       );
       await consumeCredits(client, credits.rows as DbRow[], redemptionId, redeemedCents);
       await client.query('COMMIT');
-      await mirrorRedemptionFromPg(redemptionId);
       await logAction(req, 'resgate_criado', 'resgate', redemptionId, `Resgate de ${brMoneyCents(redeemedCents)} registrado.`);
       setFlash(req, 'success', `Resgate registrado: ${brMoneyCents(redeemedCents)}.`);
       res.redirect(`${BASE_PATH}/cliente-detalhe.php?id=${clientId}`);
@@ -2657,7 +2265,6 @@ async function handleWhatsappStatus(req: Request, res: Response): Promise<void> 
       id,
     ]);
   }
-  await mirrorWhatsappMessage(id);
   await logAction(req, `whatsapp_${event}`, 'whatsapp', id, `Mensagem WhatsApp marcada como ${target.status}.`);
   res.json({ ok: true, status: target.status });
 }
@@ -2743,7 +2350,6 @@ async function handleReportPost(req: Request, res: Response): Promise<void> {
       await logAction(req, 'atendente_alterado', 'atendente', attendantId, `Atendente alterado em Configuracao e Relatorio: ${name}`);
       setFlash(req, 'success', `Atendente atualizado: ${name}.`);
     }
-    await mirrorAttendant(attendantId, name, status, notes || null);
     res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
     return;
   }
@@ -2758,12 +2364,10 @@ async function handleReportPost(req: Request, res: Response): Promise<void> {
     );
     if (num(usage.rows[0]?.total) > 0) {
       await pgPool.query("UPDATE cashback_attendants SET status = 'inativo', updated_at = NOW() WHERE id = $1", [id]);
-      await mirrorMysql("UPDATE wf_atendentes SET status = 'inativo' WHERE id = ?", [id]);
       await logAction(req, 'atendente_inativado', 'atendente', id, 'Atendente inativado porque possui historico vinculado.');
       setFlash(req, 'success', 'Atendente possui historico e foi inativado para preservar os dados.');
     } else {
       await pgPool.query('DELETE FROM cashback_attendants WHERE id = $1', [id]);
-      await mirrorMysql('DELETE FROM wf_atendentes WHERE id = ?', [id]);
       await logAction(req, 'atendente_excluido', 'atendente', id, 'Atendente excluido sem historico vinculado.');
       setFlash(req, 'success', 'Atendente excluido.');
     }
@@ -2794,19 +2398,13 @@ async function renderDiagnostics(req: Request): Promise<string> {
   for (const [table, count] of Object.entries(await tableCounts())) {
     checks.push({ name: `Tabela ${table}`, ok: true, message: `${count} registro(s).` });
   }
-  if (LEGACY_MYSQL_REQUIRED) {
-    await check('MySQL legado', async () => {
-      const counts = await legacyTableCounts();
-      return `${counts.wf_clientes || 0} clientes legados; espelho temporario ativo conforme .env.`;
-    });
-  }
   const rows = checks
     .map((checkItem) => `<tr><td>${e(checkItem.name)}</td><td><span class="badge ${checkItem.ok ? 'ativo' : 'expirado'}">${checkItem.ok ? 'OK' : 'ERRO'}</span></td><td>${e(checkItem.message)}</td></tr>`)
     .join('');
   return htmlShell(
     req,
     'Diagnostico',
-    `<section class="panel"><h2>Status da integracao frontend + banco</h2><p>Esta tela confirma o app Node, o Postgres oficial, o core de usuarios e o espelho temporario MySQL.</p><div class="table-wrap"><table><thead><tr><th>Item</th><th>Status</th><th>Mensagem</th></tr></thead><tbody>${rows}</tbody></table></div></section>`,
+    `<section class="panel"><h2>Status da integracao frontend + banco</h2><p>Esta tela confirma o app Node, o Postgres oficial e o core de usuarios.</p><div class="table-wrap"><table><thead><tr><th>Item</th><th>Status</th><th>Mensagem</th></tr></thead><tbody>${rows}</tbody></table></div></section>`,
   );
 }
 
@@ -2989,152 +2587,8 @@ function exportValue(value: unknown): string {
   return String(value ?? '');
 }
 
-async function mirrorClient(id: number, name: string, phone: string | null, birthDate: string | null, notes: string | null, status: string, attendantId: number | null): Promise<void> {
-  await mirrorMysql(
-    `INSERT INTO wf_clientes (id, nome, telefone, nascimento, observacoes, status, atendente_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE nome = VALUES(nome), telefone = VALUES(telefone), nascimento = VALUES(nascimento), observacoes = VALUES(observacoes), status = VALUES(status), atendente_id = VALUES(atendente_id)`,
-    [id, name, phone, birthDate, notes, status, attendantId],
-  );
-}
-
-async function mirrorAttendant(id: number, name: string, status: string, notes: string | null): Promise<void> {
-  await mirrorMysql(
-    `INSERT INTO wf_atendentes (id, nome, status, observacoes)
-     VALUES (?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE nome = VALUES(nome), status = VALUES(status), observacoes = VALUES(observacoes)`,
-    [id, name, status, notes],
-  );
-}
-
-async function mirrorPurchaseAndCreditFromPg(purchaseId: number): Promise<void> {
-  const purchase = await pgPool.query('SELECT * FROM cashback_purchases WHERE id = $1 LIMIT 1', [purchaseId]);
-  const row = purchase.rows[0] as DbRow | undefined;
-  if (!row) return;
-  await mirrorMysql(
-    `INSERT INTO wf_compras
-      (id, cliente_id, atendente_id, valor_bruto, desconto_cashback, valor_cobrado, resgate_id, valor_total, percentual_cashback, cashback_gerado, data_compra, observacoes, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       cliente_id = VALUES(cliente_id), atendente_id = VALUES(atendente_id), valor_bruto = VALUES(valor_bruto),
-       desconto_cashback = VALUES(desconto_cashback), valor_cobrado = VALUES(valor_cobrado), resgate_id = VALUES(resgate_id),
-       valor_total = VALUES(valor_total), percentual_cashback = VALUES(percentual_cashback), cashback_gerado = VALUES(cashback_gerado),
-       data_compra = VALUES(data_compra), observacoes = VALUES(observacoes), created_by = VALUES(created_by)`,
-    [
-      num(row.id),
-      num(row.client_id),
-      intOrNull(row.attendant_id),
-      centsToMoney(num(row.gross_cents)),
-      centsToMoney(num(row.cashback_discount_cents)),
-      centsToMoney(num(row.charged_cents)),
-      intOrNull(row.redemption_id),
-      centsToMoney(num(row.charged_cents)),
-      bpsToPercent(num(row.cashback_percent_bps)),
-      centsToMoney(num(row.cashback_generated_cents)),
-      row.purchased_at,
-      row.notes || null,
-      intOrNull(row.created_by),
-      row.created_at,
-    ],
-  );
-  const credits = await pgPool.query('SELECT * FROM cashback_credits WHERE purchase_id = $1', [purchaseId]);
-  for (const credit of credits.rows as DbRow[]) {
-    await mirrorMysql(
-      `INSERT INTO wf_cashback_creditos (id, cliente_id, compra_id, valor_original, valor_restante, expires_at, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE cliente_id = VALUES(cliente_id), compra_id = VALUES(compra_id), valor_original = VALUES(valor_original), valor_restante = VALUES(valor_restante), expires_at = VALUES(expires_at), status = VALUES(status)`,
-      [
-        num(credit.id),
-        num(credit.client_id),
-        num(credit.purchase_id),
-        centsToMoney(num(credit.original_cents)),
-        centsToMoney(num(credit.remaining_cents)),
-        isoDate(credit.expires_at),
-        credit.status,
-        credit.created_at,
-      ],
-    );
-  }
-  const messages = await pgPool.query('SELECT id FROM cashback_whatsapp_messages WHERE purchase_id = $1', [purchaseId]);
-  for (const message of messages.rows as DbRow[]) await mirrorWhatsappMessage(num(message.id));
-}
-
-async function mirrorRedemptionFromPg(redemptionId: number): Promise<void> {
-  const redemption = await pgPool.query('SELECT * FROM cashback_redemptions WHERE id = $1 LIMIT 1', [redemptionId]);
-  const row = redemption.rows[0] as DbRow | undefined;
-  if (!row) return;
-  await mirrorMysql(
-    `INSERT INTO wf_resgates (id, cliente_id, atendente_id, valor_compra, valor_resgatado, data_resgate, observacoes, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE cliente_id = VALUES(cliente_id), atendente_id = VALUES(atendente_id), valor_compra = VALUES(valor_compra), valor_resgatado = VALUES(valor_resgatado), data_resgate = VALUES(data_resgate), observacoes = VALUES(observacoes), created_by = VALUES(created_by)`,
-    [
-      num(row.id),
-      num(row.client_id),
-      intOrNull(row.attendant_id),
-      centsToMoney(num(row.purchase_cents)),
-      centsToMoney(num(row.redeemed_cents)),
-      row.redeemed_at,
-      row.notes || null,
-      intOrNull(row.created_by),
-      row.created_at,
-    ],
-  );
-  const items = await pgPool.query('SELECT * FROM cashback_redemption_items WHERE redemption_id = $1', [redemptionId]);
-  for (const item of items.rows as DbRow[]) {
-    await mirrorMysql(
-      `INSERT INTO wf_resgate_itens (id, resgate_id, credito_id, valor_utilizado, created_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE resgate_id = VALUES(resgate_id), credito_id = VALUES(credito_id), valor_utilizado = VALUES(valor_utilizado)`,
-      [num(item.id), num(item.redemption_id), num(item.credit_id), centsToMoney(num(item.used_cents)), item.created_at],
-    );
-  }
-  const credits = await pgPool.query(
-    'SELECT cr.* FROM cashback_credits cr INNER JOIN cashback_redemption_items ri ON ri.credit_id = cr.id WHERE ri.redemption_id = $1',
-    [redemptionId],
-  );
-  for (const credit of credits.rows as DbRow[]) {
-    await mirrorMysql('UPDATE wf_cashback_creditos SET valor_restante = ?, status = ? WHERE id = ?', [
-      centsToMoney(num(credit.remaining_cents)),
-      credit.status,
-      num(credit.id),
-    ]);
-  }
-}
-
-async function mirrorWhatsappMessage(id: number): Promise<void> {
-  const result = await pgPool.query('SELECT * FROM cashback_whatsapp_messages WHERE id = $1 LIMIT 1', [id]);
-  const row = result.rows[0] as DbRow | undefined;
-  if (!row) return;
-  await mirrorMysql(
-    `INSERT INTO wf_whatsapp_mensagens
-      (id, cliente_id, compra_id, credito_id, campanha, dedupe_key, cliente_nome, telefone, mensagem, status, due_date, opened_at, copied_at, sent_at, user_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE cliente_id = VALUES(cliente_id), compra_id = VALUES(compra_id), credito_id = VALUES(credito_id), campanha = VALUES(campanha), cliente_nome = VALUES(cliente_nome), telefone = VALUES(telefone), mensagem = VALUES(mensagem), status = VALUES(status), due_date = VALUES(due_date), opened_at = VALUES(opened_at), copied_at = VALUES(copied_at), sent_at = VALUES(sent_at), user_id = VALUES(user_id)`,
-    [
-      num(row.id),
-      intOrNull(row.client_id),
-      intOrNull(row.purchase_id),
-      intOrNull(row.credit_id),
-      row.campaign,
-      row.dedupe_key,
-      row.client_name,
-      row.phone || null,
-      row.message,
-      row.status,
-      isoDate(row.due_date) || null,
-      row.opened_at || null,
-      row.copied_at || null,
-      row.sent_at || null,
-      intOrNull(row.user_id),
-      row.created_at,
-      row.updated_at || null,
-    ],
-  );
-}
-
 async function main(): Promise<void> {
   await ensureSchema();
-  await importLegacy();
   await refreshExpiredCredits();
   app.listen(PORT, () => {
     console.log(`[cashback] listening on ${PORT}${BASE_PATH}`);

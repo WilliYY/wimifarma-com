@@ -75,7 +75,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao e Pedidos usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Cashback, Gestao, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao, Pedidos e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Gestao, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -93,7 +93,7 @@ Criadas por `apps/cashback/src/server.ts`:
 - `cashback_migration_runs`: historico da importacao idempotente MySQL -> Postgres.
 - `cashback_sessions`: sessoes web do app Node (`WFCASHBACK`).
 
-A fonte oficial apos o corte e o Postgres `wimifarma_cashback`. O MySQL `wf_*` relacionado ao Cashback permanece como importacao/espelho/log temporario quando `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED` estiverem ligados.
+A fonte oficial apos o corte e o Postgres `wimifarma_cashback`. Desde 2026-05-30, o app Cashback nao possui `mysql2`, importador, espelho, log ou fallback MySQL; `wf_*` relacionado ao Cashback permanece apenas como referencia historica/backup para rollback por restauracao de versao anterior.
 
 ## Tabelas do Miauby WhatsApp em Postgres
 
@@ -180,16 +180,16 @@ A fonte oficial do Financeiro e o Postgres `wimifarma_financeiro`. Desde a valid
 Inventario real observado em 2026-05-10:
 
 - `wf_users`: usuarios internos.
-- `wf_clientes`: legado/importacao/espelho temporario de clientes do Cashback; a escrita oficial nova usa Postgres `cashback_clients`.
-- `wf_atendentes`: legado/importacao/espelho temporario de atendentes do Cashback; a escrita oficial nova usa Postgres `cashback_attendants`.
-- `wf_compras`: legado/importacao/espelho temporario de compras do Cashback; a escrita oficial nova usa Postgres `cashback_purchases`.
-- `wf_cashback_creditos`: legado/importacao/espelho temporario de creditos; a escrita oficial nova usa Postgres `cashback_credits`.
-- `wf_resgates`: legado/importacao/espelho temporario de resgates; a escrita oficial nova usa Postgres `cashback_redemptions`.
-- `wf_resgate_itens`: legado/importacao/espelho temporario da relacao entre resgate e credito; a escrita oficial nova usa Postgres `cashback_redemption_items`.
-- `wf_settings`: legado/importacao/espelho temporario de configuracoes do Cashback; a escrita oficial nova usa Postgres `cashback_settings`.
+- `wf_clientes`: historico/importacao antiga de clientes do Cashback; a escrita oficial nova usa Postgres `cashback_clients`.
+- `wf_atendentes`: historico/importacao antiga de atendentes do Cashback; a escrita oficial nova usa Postgres `cashback_attendants`.
+- `wf_compras`: historico/importacao antiga de compras do Cashback; a escrita oficial nova usa Postgres `cashback_purchases`.
+- `wf_cashback_creditos`: historico/importacao antiga de creditos; a escrita oficial nova usa Postgres `cashback_credits`.
+- `wf_resgates`: historico/importacao antiga de resgates; a escrita oficial nova usa Postgres `cashback_redemptions`.
+- `wf_resgate_itens`: historico/importacao antiga da relacao entre resgate e credito; a escrita oficial nova usa Postgres `cashback_redemption_items`.
+- `wf_settings`: historico/importacao antiga de configuracoes do Cashback; a escrita oficial nova usa Postgres `cashback_settings`.
 - `wf_logs`: logs/auditoria geral e espelho temporario de modulos em corte.
 - `wf_login_rate_limits`: limitador persistente legado dos logins PHP internos, mantido apenas para rollback MySQL; com `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`, o limitador oficial usa `core_login_rate_limits` no Postgres.
-- `wf_whatsapp_mensagens`: legado/importacao/espelho temporario de mensagens e campanhas do Cashback; a escrita oficial nova usa Postgres `cashback_whatsapp_messages`.
+- `wf_whatsapp_mensagens`: historico/importacao antiga de mensagens e campanhas do Cashback; a escrita oficial nova usa Postgres `cashback_whatsapp_messages`.
 - `wf_codigos_comissao`: legado/importacao/espelho temporario de Codigos; a escrita oficial nova usa Postgres `codigos_items`.
 - `wf_codigos_blocos`: legado/importacao/espelho temporario dos blocos de Codigos; a escrita oficial nova usa Postgres `codigos_groups`.
 - `wf_xp_employees`: legado/importacao/espelho temporario de funcionarios do XP; a escrita oficial nova usa Postgres `xp_employees`.

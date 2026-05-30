@@ -68,7 +68,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - O codigo segue estrutura simples por pasta/modulo.
 - O WordPress continua como raiz principal.
 - Segredos entram por ambiente ou `config.local.php`.
-- Cashback adotou Node.js + TypeScript + Postgres dedicado, mantendo CSS/JS/assets de `site/cashback`, login core e sessoes `WFCASHBACK`; depois da paridade de 2026-05-29, MySQL fica desligado por padrao e so volta em rollback manual.
+- Cashback adotou Node.js + TypeScript + Postgres dedicado, mantendo CSS/JS/assets de `site/cashback`, login core e sessoes `WFCASHBACK`; depois da paridade de 2026-05-29, o caminho `mysql2` foi removido em 2026-05-30 e rollback MySQL exige restaurar versao anterior.
 - Pedidos adotou Node.js + TypeScript + Postgres da Gestao com login unico em `core_users`; depois da limpeza de 2026-05-29, nao deve reintroduzir `mysql2`, pool MySQL, fallback `wf_users` nem espelho `wf_logs` sem rollback planejado.
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
 - A Tarefa adotou Node.js + TypeScript + Postgres dedicado para remover o primeiro modulo PHP pequeno do MySQL operacional, mantendo a tela visual. O caminho MySQL de rollback fica dormente e desligado por padrao.

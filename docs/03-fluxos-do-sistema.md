@@ -36,7 +36,7 @@ Rotas de login:
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres, com rollback de autenticacao por variaveis de ambiente quando aplicavel. Cotacao V2 usa sessao propria em Redis.
+Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Pedidos e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
 
 Arquivos envolvidos:
 
@@ -81,7 +81,7 @@ Tabelas principais:
 - Postgres `cashback_whatsapp_messages`
 - Postgres `cashback_audit_events`
 - Postgres `cashback_sessions`
-- MySQL `wf_*` do Cashback apenas como importacao/espelho temporario de rollback por `CASHBACK_LEGACY_MYSQL_*`
+- MySQL `wf_*` do Cashback apenas como referencia historica/backup; o app atual nao possui importacao/espelho por flags
 
 Regras importantes:
 

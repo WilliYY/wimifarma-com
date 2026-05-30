@@ -68,7 +68,7 @@ Arquivos:
 ## Regras que precisam ser preservadas
 
 - Acoes financeiras e de cotacao devem manter auditoria.
-- Cashback registra login/falha/logout, criacao/edicao de cliente, compra, resgate, mensagens, atendentes, configuracoes e manutencao em `cashback_audit_events`; enquanto `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=true`, espelha resumo curto em `wf_logs` para rollback. Importacoes idempotentes entram em `cashback_migration_runs`.
+- Cashback registra login/falha/logout, criacao/edicao de cliente, compra, resgate, mensagens, atendentes, configuracoes e manutencao em `cashback_audit_events`; desde 2026-05-30 nao espelha mais logs em `wf_logs` e nao possui caminho `mysql2`. Historico antigo de importacoes permanece em `cashback_migration_runs`.
 - O Financeiro nao exibe mais a aba/tela operacional de Auditoria no topo, mas deve continuar gravando `financeiro_audit_events` no Postgres.
 - O Financeiro Node/Postgres registra auditoria oficial em `financeiro_audit_events`. O espelho para `financeiro_auditoria` no MySQL nao e runtime normal desde 2026-05-29; se houver rollback manual com `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true`, validar novamente a paridade dos eventos.
 - Logs nao devem gravar senhas, tokens ou chaves.

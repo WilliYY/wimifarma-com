@@ -181,8 +181,8 @@ Validar no VPS por dia/amostra: contagens, somatorios, fechamento, relatorio, ex
 ### Permissoes e sessao
 
 - Sessao propria `WFCASHBACK`.
-- Login oficial por `core_users` quando `CASHBACK_AUTH_PROVIDER=core`.
-- Rollback por MySQL existe com `CASHBACK_AUTH_PROVIDER=mysql`.
+- Login unico por `core_users`.
+- Nao ha fallback MySQL de autenticacao no app desde 2026-05-30.
 - Rotas operacionais exigem usuario autenticado.
 - Escritas usam CSRF.
 - Areas sensiveis como relatorio, exportacao e diagnostico usam senha operacional alem da sessao.
@@ -190,7 +190,7 @@ Validar no VPS por dia/amostra: contagens, somatorios, fechamento, relatorio, ex
 
 ### Tabelas MySQL envolvidas
 
-MySQL e legado historico. Desde 2026-05-29 nao ha importacao/espelho/log ativo por padrao no app Cashback; essas tabelas ficam apenas para reconciliacao/rollback manual:
+MySQL e legado historico. Desde 2026-05-30 nao ha importacao, espelho, log, fallback de auth nem dependencia `mysql2` no app Cashback; essas tabelas ficam apenas para reconciliacao/backup e rollback por restauracao de versao anterior:
 
 - `wf_atendentes`;
 - `wf_clientes`;
@@ -201,7 +201,7 @@ MySQL e legado historico. Desde 2026-05-29 nao ha importacao/espelho/log ativo p
 - `wf_settings`;
 - `wf_whatsapp_mensagens`;
 - `wf_logs`;
-- `wf_users`, somente para rollback de auth.
+- `wf_users`, apenas como origem historica do core auth.
 
 ### Tabelas Postgres oficiais
 
@@ -253,7 +253,7 @@ Hoje estes arquivos PHP sao legado/fonte visual/fallback historico. A rota ofici
 - Atualizar configuracoes (`cashback_percent`, validade, manutencao e afins).
 - Autoteste cria dados dentro de transacao controlada.
 - Auditoria oficial em `cashback_audit_events`.
-- `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED` ficam desligadas por padrao; reativacao exige rollback manual e credenciais MySQL.
+- Escritas nao sao espelhadas em MySQL; a trilha oficial fica em Postgres.
 
 ### Integracoes
 
@@ -267,14 +267,14 @@ Hoje estes arquivos PHP sao legado/fonte visual/fallback historico. A rota ofici
 
 - Compra, credito e resgate precisam ser transacionais para nao gerar saldo errado.
 - Excluir fisicamente cliente/atendente e mais arriscado que inativar; validar se ainda precisa existir na UI.
-- Reativar espelho MySQL prolongado aumenta chance de divergencia; manter desligado salvo rollback controlado.
+- Rollback para MySQL exige restaurar commit/imagem anterior e backup; nao existe mais chave de `.env` que religue o caminho no Cashback atual.
 - Telefone de cliente e mensagem WhatsApp sao dados sensiveis; nao expor em logs.
 - Mudancas em percentual/validade alteram regra de negocio historica.
 - Em 2026-05-29, a validacao de corte bateu 89 clientes, 4 atendentes, 45 compras, 45 creditos, 7 resgates, 7 itens de resgate, 7 settings e 171 mensagens entre Postgres e MySQL; somatorios de compras, creditos, saldo disponivel, resgates e itens fecharam em centavos; sequencias e integridade referencial ficaram OK. A diferenca de `wf_logs` era de 11 eventos de Pedidos/XP gravados depois da importacao, nao de Cashback.
 
 ### Proxima acao segura
 
-Observar producao sem espelho MySQL. Se o objetivo for remover dependencia total de MySQL no codigo, fazer uma segunda limpeza removendo o caminho `mysql2` dormente depois de mais um ciclo de backup/observacao.
+Concluido em 2026-05-30: caminho `mysql2` dormente removido do Cashback. Proxima acao e manter backup/health, validar login, saldos, compras, resgates, mensagens e CSV apos deploy.
 
 ## Gestao
 

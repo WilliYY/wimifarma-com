@@ -75,7 +75,7 @@ rows=(
   "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
   "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
   "Usuarios|apps/usuarios|Node.js + TypeScript + Express + Postgres core|sem MySQL operacional para usuarios novos|enforcement gradual por modulo|moderno"
-  "Cashback|site/cashback;apps/cashback|Node.js + TypeScript + Express + Postgres + core auth|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
+  "Cashback|site/cashback;apps/cashback|Node.js + TypeScript + Express + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
   "Miauby interno|site/miauw|PHP + Node agent sombra + core auth|miauw_* em MySQL; prefixo legado|apps/miauby + Postgres wimifarma_miauby com fallback miauw|7"
   "Miauby WhatsApp|apps/miauw-whatsapp|Node.js + TypeScript + Postgres|sem MySQL operacional|manter/evoluir|moderno"
   "Home publica|site/home.php|PHP desacoplado|sem banco direto|manter ou trocar depois|baixo"
@@ -102,7 +102,7 @@ Proximos passos recomendados:
 - Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
 - Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.
-- Validar Cashback em /cashback/ com contagens, saldos, CSV, mensagens e autoteste antes de desligar espelho MySQL.
+- Validar Cashback em /cashback/ com health, login, saldos, CSV, mensagens e autoteste apos remocao do caminho mysql2.
 - Depois migrar Miauby interno seguindo docs/28-miauby-migracao.md, com alias/fallback antes de renomear runtime.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

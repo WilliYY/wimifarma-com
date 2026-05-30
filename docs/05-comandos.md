@@ -156,7 +156,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" h
 docker exec wimifarma-cashback-db psql -U wimifarma_cashback -d wimifarma_cashback -c "\dt"
 ```
 
-O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; desde 2026-05-29 `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED` ficam desligadas por padrao e o servico nao depende mais do MySQL em runtime. Rollback de autenticacao: `CASHBACK_AUTH_PROVIDER=mysql`, reintroduzir variaveis MySQL no servico e rebuild de `wimifarma-cashback-app`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
+O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; desde 2026-05-30 o servico nao possui `mysql2`, importador, espelho, logs ou fallback MySQL. Rollback para MySQL exige restaurar commit/imagem anterior e backup validado, nao trocar `.env`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
 
 ## Local - Core auth Postgres oficial
 
@@ -172,7 +172,7 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao e Pedidos usam somente `core_users`; Cashback, Gestao, Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Pedidos e Cashback usam somente `core_users`; Gestao, Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
 Gestao usa `GESTAO_AUTH_PROVIDER=core` por padrao. O fallback de login em `wf_users` fica desligado e so deve ser ligado como rollback temporario com `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Para comparar um ambiente ainda em MySQL antes do corte, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
