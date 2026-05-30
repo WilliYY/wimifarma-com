@@ -139,7 +139,7 @@ Primeira versao do `wimifarma_miauby`:
 Implementacao inicial de 2026-05-30:
 
 - `apps/miauby/src/shadow-migrate.ts` cria `miauby_schema_migrations`, `miauby_migration_runs` e as tabelas `miauby_*` listadas acima.
-- Cada tabela sombra recebe `legacy_mysql_id`, `source_table`, campos auxiliares de usuario/conversa/status, `content_preview`, `payload_sanitized`, `source_checksum`, `created_at`, `updated_at` e `migrated_at`.
+- Cada tabela sombra recebe `legacy_mysql_id`, `legacy_source_key`, `source_table`, campos auxiliares de usuario/conversa/status, `content_preview`, `payload_sanitized`, `source_checksum`, `created_at`, `updated_at` e `migrated_at`; tabelas fonte sem `id` usam um identificador sintetico estavel para permitir upsert idempotente.
 - O migrador redige chaves, tokens, senhas, payload bruto, SQL bruto, stack trace, telefone, WhatsApp, audio e midia antes de gravar no Postgres.
 - A fonte oficial continua em `site/miauw`/MySQL ate validacao de paridade; esta fase nao muda rota, frontend, widget, treino, diagnostico ou engine.
 

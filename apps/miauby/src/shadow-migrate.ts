@@ -186,6 +186,26 @@ function checksum(payload: Record<string, unknown>): string {
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
+function stableJson(value: Record<string, unknown>): string {
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = value[key];
+  }
+  return JSON.stringify(sorted);
+}
+
+function syntheticLegacyId(source: string, row: Record<string, unknown>): { id: number; sourceKey: string } {
+  const preferredKey = ['chave', 'key', 'nome', 'name', 'codigo', 'code'].find((field) => {
+    const value = row[field];
+    return value !== null && value !== undefined && String(value).trim() !== '';
+  });
+  const sourceKey = preferredKey
+    ? `${source}:${preferredKey}:${String(row[preferredKey]).trim()}`
+    : `${source}:row:${stableJson(sanitizeRow(row))}`;
+  const id = Number.parseInt(crypto.createHash('sha256').update(sourceKey).digest('hex').slice(0, 12), 16);
+  return { id, sourceKey };
+}
+
 async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS miauby_schema_migrations (
@@ -210,6 +230,7 @@ async function ensureSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS ${pgIdent(table.target)} (
         id BIGSERIAL PRIMARY KEY,
         legacy_mysql_id BIGINT NOT NULL UNIQUE,
+        legacy_source_key TEXT NOT NULL,
         source_table TEXT NOT NULL,
         user_legacy_id BIGINT,
         conversation_legacy_id BIGINT,
@@ -223,6 +244,13 @@ async function ensureSchema(): Promise<void> {
         migrated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await pgPool.query(`ALTER TABLE ${pgIdent(table.target)} ADD COLUMN IF NOT EXISTS legacy_source_key TEXT`);
+    await pgPool.query(`
+      UPDATE ${pgIdent(table.target)}
+         SET legacy_source_key = CONCAT(source_table, ':id:', legacy_mysql_id)
+       WHERE legacy_source_key IS NULL OR legacy_source_key = ''
+    `);
+    await pgPool.query(`ALTER TABLE ${pgIdent(table.target)} ALTER COLUMN legacy_source_key SET NOT NULL`);
     await pgPool.query(`
       CREATE INDEX IF NOT EXISTS ${pgIdent(`idx_${table.target}_source_created`)}
         ON ${pgIdent(table.target)} (source_table, created_at DESC)
@@ -256,8 +284,8 @@ async function sourceCount(source: string): Promise<number> {
   return Number(rows[0]?.total || 0);
 }
 
-async function targetCount(target: string, source: string): Promise<number> {
-  const result = await pgPool.query<{ total: string }>(
+async function targetCount(client: PoolClient, target: string, source: string): Promise<number> {
+  const result = await client.query<{ total: string }>(
     `SELECT COUNT(*)::bigint AS total FROM ${pgIdent(target)} WHERE source_table = $1`,
     [source],
   );
@@ -273,6 +301,7 @@ async function readRows(source: string, columns: string[]): Promise<MysqlRow[]> 
 
 function rowProjection(row: MysqlRow, table: SourceTable): {
   legacy_mysql_id: number | null;
+  legacy_source_key: string;
   user_legacy_id: number | null;
   conversation_legacy_id: number | null;
   role: string | null;
@@ -284,9 +313,12 @@ function rowProjection(row: MysqlRow, table: SourceTable): {
   updated_at: string | null;
 } {
   const payload = sanitizeRow(row);
-  const legacyId = pickNumber(row, ['id', 'legacy_mysql_id']);
+  const mysqlLegacyId = pickNumber(row, ['id', 'legacy_mysql_id']);
+  const synthetic = mysqlLegacyId === null ? syntheticLegacyId(table.source, row) : null;
+  const legacyId = mysqlLegacyId ?? synthetic?.id ?? null;
   return {
     legacy_mysql_id: legacyId,
+    legacy_source_key: synthetic?.sourceKey ?? `${table.source}:id:${legacyId}`,
     user_legacy_id: pickNumber(row, ['user_id', 'usuario_id', 'created_by', 'autor_id']),
     conversation_legacy_id: pickNumber(row, ['conversa_id', 'conversation_id', 'chat_id']),
     role: pickText(row, ['role', 'papel', 'remetente', 'sender']),
@@ -314,19 +346,12 @@ async function migrateTable(client: PoolClient, table: SourceTable): Promise<Tab
   summary.exists = await tableExists(table.source);
   if (!summary.exists) {
     summary.issues.push('source_table_missing');
-    summary.target_count = await targetCount(table.target, table.source);
+    summary.target_count = await targetCount(client, table.target, table.source);
     return summary;
   }
 
   const columns = await tableColumns(table.source);
   summary.source_count = await sourceCount(table.source);
-
-  if (!columns.includes('id')) {
-    summary.issues.push('source_table_without_id_skipped');
-    summary.skipped = summary.source_count;
-    summary.target_count = await targetCount(table.target, table.source);
-    return summary;
-  }
 
   if (migrate) {
     for (const row of await readRows(table.source, columns)) {
@@ -337,15 +362,16 @@ async function migrateTable(client: PoolClient, table: SourceTable): Promise<Tab
       }
       await client.query(
         `INSERT INTO ${pgIdent(table.target)} (
-           legacy_mysql_id, source_table, user_legacy_id, conversation_legacy_id,
+           legacy_mysql_id, legacy_source_key, source_table, user_legacy_id, conversation_legacy_id,
            role, status, content_preview, payload_sanitized, source_checksum,
            created_at, updated_at, migrated_at
          ) VALUES (
-           $1, $2, $3, $4,
-           $5, $6, $7, $8::jsonb, $9,
-           COALESCE($10::timestamptz, NOW()), COALESCE($11::timestamptz, NOW()), NOW()
+           $1, $2, $3, $4, $5,
+           $6, $7, $8, $9::jsonb, $10,
+           COALESCE($11::timestamptz, NOW()), COALESCE($12::timestamptz, NOW()), NOW()
          )
          ON CONFLICT (legacy_mysql_id) DO UPDATE SET
+           legacy_source_key = EXCLUDED.legacy_source_key,
            user_legacy_id = EXCLUDED.user_legacy_id,
            conversation_legacy_id = EXCLUDED.conversation_legacy_id,
            role = EXCLUDED.role,
@@ -358,6 +384,7 @@ async function migrateTable(client: PoolClient, table: SourceTable): Promise<Tab
            migrated_at = NOW()`,
         [
           projected.legacy_mysql_id,
+          projected.legacy_source_key,
           table.source,
           projected.user_legacy_id,
           projected.conversation_legacy_id,
@@ -374,7 +401,7 @@ async function migrateTable(client: PoolClient, table: SourceTable): Promise<Tab
     }
   }
 
-  summary.target_count = await targetCount(table.target, table.source);
+  summary.target_count = await targetCount(client, table.target, table.source);
   if (limit <= 0 && summary.target_count < summary.source_count) {
     summary.issues.push(`target_count_lower_than_source:${summary.target_count}/${summary.source_count}`);
   }

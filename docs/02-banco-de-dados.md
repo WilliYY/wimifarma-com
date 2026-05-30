@@ -124,7 +124,7 @@ Criadas por `apps/miauby/src/shadow-migrate.ts` no banco `wimifarma_miauby`:
 - `miauby_farmacia_popular_values`: copia sanitizada de `miauw_farmacia_popular_valores`.
 - `miauby_farmacia_popular_updates`: copia sanitizada de `miauw_farmacia_popular_atualizacoes`.
 
-Essa fase preserva `legacy_mysql_id`, campos auxiliares de usuario/conversa/status, checksum e `payload_sanitized` em `JSONB`. O migrador redige chaves, tokens, senhas, payload bruto, SQL bruto, stack trace, telefone e midia. O PHP continua fonte oficial de `/miauw/` ate existir paridade validada.
+Essa fase preserva `legacy_mysql_id`, `legacy_source_key`, campos auxiliares de usuario/conversa/status, checksum e `payload_sanitized` em `JSONB`. Quando uma tabela fonte nao tem `id`, o migrador usa um identificador sintetico estavel derivado de chave/nome ou da linha sanitizada. O migrador redige chaves, tokens, senhas, payload bruto, SQL bruto, stack trace, telefone e midia. O PHP continua fonte oficial de `/miauw/` ate existir paridade validada.
 
 ## Tabelas da Cotacao V2 em Postgres
 
