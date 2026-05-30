@@ -440,7 +440,8 @@ const ACTIONS_URL = textEnv('MIAUW_WHATSAPP_ACTIONS_URL')
 const ACTIONS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_ACTIONS_TIMEOUT_MS', 8000, 1000, 30000);
 const CONFIRMATIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMATIONS_ENABLED', true);
 const INTERACTIVE_CONFIRMATIONS = boolEnv('MIAUW_WHATSAPP_INTERACTIVE_CONFIRMATIONS', true);
-const EVOLUTION_INTERACTIVE_CONFIRMATIONS = boolEnv('MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS', false);
+const EVOLUTION_INTERACTIVE_CONFIRMATIONS_REQUESTED = boolEnv('MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS', false);
+const EVOLUTION_INTERACTIVE_CONFIRMATIONS = false;
 const CONFIRMED_ACTIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED', false);
 const CONFIRMATION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES', 15, 1, 120);
 const REPLY_ENGINE = replyEngineEnv();
@@ -3420,10 +3421,12 @@ function confirmationShortId(): string {
 }
 
 function canSendInteractiveConfirmation(confirmation?: WhatsappConfirmationDraft): boolean {
+  // Evolution/Baileys pode aceitar sendButtons e ainda renderizar "Nao foi possivel carregar a mensagem".
+  // Por isso, confirmacoes fortes na Evolution ficam sempre em texto SIM/NAO.
   return Boolean(
     confirmation?.id
     && INTERACTIVE_CONFIRMATIONS
-    && (WHATSAPP_PROVIDER === 'meta' || EVOLUTION_INTERACTIVE_CONFIRMATIONS),
+    && WHATSAPP_PROVIDER === 'meta',
   );
 }
 
@@ -5548,42 +5551,6 @@ async function sendEvolutionAudio(phone: string, audio: OutboundAudio, instanceN
   }
 }
 
-async function sendEvolutionConfirmation(phone: string, text: string, instanceName: string, confirmation: WhatsappConfirmationDraft): Promise<string> {
-  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !instanceName || !confirmation.id) {
-    throw new Error('evolution_not_configured');
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${EVOLUTION_API_BASE_URL}/message/sendButtons/${encodeURIComponent(instanceName)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: EVOLUTION_API_KEY,
-      },
-      body: JSON.stringify({
-        number: evolutionRecipient(phone),
-        title: 'Confirmar acao?',
-        description: text,
-        footer: 'Miauby',
-        buttons: [
-          { type: 'reply', displayText: 'Sim', id: `miauw_confirm_yes:${confirmation.id}` },
-          { type: 'reply', displayText: 'Nao', id: `miauw_confirm_no:${confirmation.id}` },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message = safeText(isRecord(data) ? data.message || data.error : '', 160) || `evolution_buttons_http_${response.status}`;
-      throw new ProviderHttpError('evolution', response.status, message);
-    }
-    return safeText(isRecord(data) ? data.key && isRecord(data.key) ? data.key.id : data.id : '', 180);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 function evolutionRecipient(value: string): string {
   const clean = String(value || '').trim();
   if (clean.includes('@')) return clean;
@@ -5796,9 +5763,7 @@ async function sendProviderReply(phone: string, text: string, instanceName: stri
   }
   return withProviderSendGate(async () => {
     try {
-      const providerMessageId = WHATSAPP_PROVIDER === 'meta'
-        ? await sendMetaConfirmation(phone, text, confirmation)
-        : await sendEvolutionConfirmation(phone, text, instanceName, confirmation);
+      const providerMessageId = await sendMetaConfirmation(phone, text, confirmation);
       return { providerMessageId, deliveredMediaType: 'interactive', fallbackError: '' };
     } catch (error) {
       const providerMessageId = WHATSAPP_PROVIDER === 'meta'
@@ -5880,6 +5845,7 @@ function publicStatus(): JsonRecord {
     whatsapp_confirmed_actions_enabled: CONFIRMED_ACTIONS_ENABLED,
     whatsapp_interactive_confirmations: INTERACTIVE_CONFIRMATIONS,
     whatsapp_evolution_interactive_confirmations: EVOLUTION_INTERACTIVE_CONFIRMATIONS,
+    whatsapp_evolution_interactive_confirmations_requested: EVOLUTION_INTERACTIVE_CONFIRMATIONS_REQUESTED,
     whatsapp_confirmation_ttl_minutes: CONFIRMATION_TTL_MINUTES,
     whatsapp_actions_configured: ACTIONS_URL !== '' && INTERNAL_TOKEN !== '',
     internal_read_tools_enabled: true,
