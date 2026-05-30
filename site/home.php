@@ -430,7 +430,7 @@ if (!$homeAuthenticated):
             width: min(210px, 72vw);
             height: auto;
             display: block;
-            filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
+            filter: brightness(0) invert(1) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
         }
 
         .wf-login-whatsapp {
