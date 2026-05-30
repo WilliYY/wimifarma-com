@@ -616,7 +616,7 @@ Validar ranking, lancamentos, fotos, mini-card e vinculos em Usuarios; depois de
 - Proxy Apache: `docker/php/Dockerfile` envia `/codigos/` para `wimifarma-codigos-app:3700/codigos/`.
 - App oficial: `apps/codigos`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres `wimifarma_codigos`.
-- MySQL `wf_codigos_*` fica apenas como referencia historica/rollback manual; flags legadas ficam desligadas por padrao.
+- MySQL `wf_codigos_*` fica apenas como referencia historica/backup. Desde 2026-05-30 o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `CODIGOS_AUTH_PROVIDER` nem flags `CODIGOS_LEGACY_MYSQL_*`.
 
 ### Telas e endpoints
 
@@ -626,14 +626,14 @@ Validar ranking, lancamentos, fotos, mini-card e vinculos em Usuarios; depois de
 - `/codigos/health`: health com Postgres/core/legado.
 - `/codigos/api/internal/summary`: resumo interno tokenizado.
 - `/codigos/api/internal/search`: busca interna tokenizada para Miauby.
-- `/codigos/internal/migration-status`: status de migracao.
+- `/codigos/internal/migration-status`: status/health de compatibilidade.
 - `/codigos/api.php`: compatibilidade de post do frontend.
 
 ### Permissoes e sessao
 
 - Sessao propria `WFCODIGOS`.
-- Login oficial por `core_users` com `CODIGOS_AUTH_PROVIDER=core`.
-- Rollback por MySQL existe com `CODIGOS_AUTH_PROVIDER=mysql`.
+- Login oficial somente por `core_users`.
+- Rollback por MySQL exige restaurar versao anterior e backup validado.
 - Escritas de tela usam CSRF.
 - Endpoints internos exigem token por `X-Codigos-Internal-Token` ou `X-Miauw-Internal-Token`.
 
@@ -643,8 +643,8 @@ Legado/rollback:
 
 - `wf_codigos_comissao`;
 - `wf_codigos_blocos`;
-- `wf_users`, apenas se auth rollback for ligado;
-- `wf_logs`, se `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED=true`.
+- `wf_users`, apenas como origem historica sincronizada para `core_users`;
+- `wf_logs`, apenas historico antigo.
 
 ### Tabelas Postgres oficiais
 
@@ -666,7 +666,6 @@ Legado/rollback:
 - Criar bloco/grupo.
 - Criar, editar, apagar logicamente e reordenar codigo.
 - Apagar bloco e seus codigos por soft delete.
-- Espelhar criacao/edicao/remocao para MySQL apenas quando flag de mirror estiver ligada.
 - Auditoria oficial em `codigos_audit_events`.
 
 ### Integracoes
@@ -677,14 +676,14 @@ Legado/rollback:
 
 ### Riscos
 
-- Busca do Miauby deve usar Postgres oficial; fallback MySQL so durante rollback.
+- Busca do Miauby deve usar Postgres oficial; se endpoint/token falhar, responder indisponibilidade em vez de cair no MySQL legado.
 - Reordenacao e exclusao de bloco precisam preservar dados para auditoria.
 - EAN/codigo/preco nao podem ser truncados visualmente nem no banco.
-- Espelho legado prolongado aumenta chance de divergencia.
+- Rollback agora depende de restaurar versao anterior e backup, entao validar VPS antes de seguir para outro corte.
 
 ### Proxima acao segura
 
-Validar leitura do Miauby via token, busca, reordenacao e health; depois desligar `CODIGOS_LEGACY_MYSQL_*` e remover `mysql2`.
+Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e reordenacao. Depois repetir o mesmo corte cuidadoso em XP.
 
 ## Usuarios
 
@@ -1009,6 +1008,6 @@ Inventarios detalhados ja registrados neste documento:
 
 Proxima rodada segura:
 
-1. Validar no VPS Gestao e Tarefa sem `mysql2`/fallback/espelho, incluindo health, login, fluxos principais e Miauby. Depois repetir a remocao cuidadosa de flags legadas e `mysql2` em XP e Codigos.
+1. Validar no VPS Gestao, Tarefa e Codigos sem `mysql2`/fallback/espelho, incluindo health, login, fluxos principais e Miauby. Depois repetir a remocao cuidadosa de flags legadas e `mysql2` em XP.
 2. Iniciar `docs/28-miauby-migracao.md` como trilha oficial para criar `wimifarma_miauby` e `apps/miauby` sem quebrar `/miauw/`.
 3. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.

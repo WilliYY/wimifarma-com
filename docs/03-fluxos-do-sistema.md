@@ -37,7 +37,7 @@ Rotas de login:
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos, Tarefa e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
+Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos, Tarefa, Codigos e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
 
 Arquivos envolvidos:
 
@@ -131,7 +131,7 @@ O modulo Codigos guarda atalhos operacionais para itens com comissao diferente. 
 
 Para evitar confusao operacional, a tela separa os itens em blocos por prefixo de EAN, mantendo `EAN 20` e `EAN 40` como blocos padrao. O botao `+` cria um novo bloco pelo backend em `codigos_groups` apenas quando o usuario informa manualmente o prefixo desejado, permitindo que o bloco continue existindo mesmo antes do primeiro item. Cada tabela possui uma linha nova no rodape; quando os tres campos estao preenchidos, o item e criado automaticamente no grupo correspondente. A tela usa faixa horizontal interna para criar tabelas lado a lado e aproveitar melhor as laterais do monitor, sem criar rolagem horizontal vazia no documento inteiro.
 
-O login de Codigos segue o padrao visual vinho/rosa dos outros logins internos, mas o fluxo novo usa sessao `WFCODIGOS`, CSRF e `core_users` por `CODIGOS_AUTH_PROVIDER=core`. Rollback rapido de autenticacao e voltar `CODIGOS_AUTH_PROVIDER=mysql` e rebuildar `wimifarma-codigos-app`.
+O login de Codigos segue o padrao visual vinho/rosa dos outros logins internos, mas o fluxo novo usa sessao `WFCODIGOS`, CSRF e somente `core_users` desde 2026-05-30. Rollback MySQL exige restaurar versao anterior e backup validado.
 
 Arquivos principais:
 
@@ -146,7 +146,7 @@ Tabelas principais:
 - Postgres `codigos_groups`
 - Postgres `codigos_audit_events`
 - Postgres `codigos_sessions`
-- MySQL `wf_codigos_comissao` e `wf_codigos_blocos` apenas como importacao/espelho temporario de rollback por `CODIGOS_LEGACY_MYSQL_*`
+- MySQL `wf_codigos_comissao` e `wf_codigos_blocos` apenas como referencia historica/backup
 
 Regras a preservar:
 
@@ -159,7 +159,7 @@ Regras a preservar:
 - EANs com prefixos diferentes devem ficar em tabelas separadas na tela; `20` e `40` aparecem por padrao, e outros prefixos devem ser criados pelo botao `+` via `/codigos/api.php` usando o numero informado pelo usuario, sem sequencia automatica;
 - apagar pela tela deve fazer exclusao logica (`ativo=0`) para reduzir risco de perda acidental;
 - apagar uma tabela inteira so e permitido para blocos numericos nao padrao, exige card de confirmacao, CSRF, sessao ativa e senha operacional `wimifarma`, com suporte a override por `CODIGOS_GROUP_DELETE_PASSWORD`;
-- acoes de criar, editar, reordenar e apagar registram `codigos_audit_events`; `wf_logs` fica apenas como espelho legado quando `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED=true`.
+- acoes de criar, editar, reordenar e apagar registram `codigos_audit_events` e `core_audit_logs`, sem espelho em `wf_logs`.
 
 ## Fluxo XP
 

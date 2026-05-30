@@ -3,7 +3,6 @@ import connectPgSimple from 'connect-pg-simple';
 import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
-import mysql from 'mysql2/promise';
 import path from 'path';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
@@ -11,8 +10,6 @@ import { fileURLToPath } from 'url';
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-type AuthProvider = 'core' | 'mysql';
 
 type User = {
   id: number;
@@ -31,14 +28,6 @@ type CoreUserRow = {
   password_hash: string | null;
   role: string;
   active: boolean;
-};
-
-type MysqlUserRow = {
-  id: number;
-  username: string;
-  password_hash: string | null;
-  role: string | null;
-  active: number;
 };
 
 type CodeItemRow = {
@@ -73,13 +62,6 @@ type GroupRow = {
   active: boolean;
 };
 
-type MigrationStats = {
-  groupsImported: number;
-  itemsImported: number;
-  lastRunAt: string | null;
-  lastError: string | null;
-};
-
 declare module 'express-session' {
   interface SessionData {
     csrfToken?: string;
@@ -96,27 +78,10 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/codigos');
 const PORT = Number.parseInt(env.PORT || '3700', 10);
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.1.0';
 const SESSION_SECRET = env.CODIGOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const AUTH_PROVIDER = normalizeAuthProvider(env.CODIGOS_AUTH_PROVIDER || 'core');
 const GROUP_DELETE_PASSWORD = env.CODIGOS_GROUP_DELETE_PASSWORD || 'wimifarma';
 const INTERNAL_TOKEN = env.CODIGOS_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '';
-const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED ?? 'false');
-const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED ?? 'false');
-const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.CODIGOS_LEGACY_MYSQL_LOGS_ENABLED ?? 'false');
-const LEGACY_MYSQL_REQUIRED =
-  AUTH_PROVIDER === 'mysql' ||
-  LEGACY_MYSQL_IMPORT_ENABLED ||
-  LEGACY_MYSQL_MIRROR_ENABLED ||
-  LEGACY_MYSQL_LOGS_ENABLED;
-const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core';
-
-const migrationStats: MigrationStats = {
-  groupsImported: 0,
-  itemsImported: 0,
-  lastRunAt: null,
-  lastError: null,
-};
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -135,25 +100,6 @@ const corePgPool = new Pool({
   password: env.CORE_POSTGRES_PASSWORD || '',
   max: 4,
 });
-
-let mysqlPool: mysql.Pool | null = null;
-
-function mysqlDb(): mysql.Pool {
-  if (!mysqlPool) {
-    mysqlPool = mysql.createPool({
-      host: env.MYSQL_HOST || '127.0.0.1',
-      port: Number.parseInt(env.MYSQL_PORT || '3306', 10),
-      database: env.MYSQL_DATABASE || 'wimifarma_app',
-      user: env.MYSQL_USER || 'wimifarma_user',
-      password: env.MYSQL_PASSWORD || '',
-      waitForConnections: true,
-      connectionLimit: 4,
-      charset: 'utf8mb4',
-      dateStrings: true,
-    });
-  }
-  return mysqlPool;
-}
 
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -178,14 +124,6 @@ const sessionMiddleware = session({
 function normalizeBasePath(value: string): string {
   const clean = value.trim().replace(/\/+$/, '');
   return clean.startsWith('/') ? clean || '/codigos' : `/${clean || 'codigos'}`;
-}
-
-function normalizeBoolean(value: unknown): boolean {
-  return ['1', 'true', 'yes', 'sim', 'on'].includes(String(value || '').trim().toLowerCase());
-}
-
-function normalizeAuthProvider(value: unknown): AuthProvider {
-  return String(value || 'core').trim().toLowerCase() === 'mysql' ? 'mysql' : 'core';
 }
 
 function normalizeUsername(value: unknown): string {
@@ -389,7 +327,7 @@ function loginRedirectTarget(req: Request): string {
 }
 
 async function authenticate(username: string, password: string): Promise<User | null> {
-  return AUTH_PROVIDER === 'mysql' ? authenticateMysql(username, password) : authenticateCore(username, password);
+  return authenticateCore(username, password);
 }
 
 async function authenticateCore(username: string, password: string): Promise<User | null> {
@@ -407,28 +345,8 @@ async function authenticateCore(username: string, password: string): Promise<Use
   return { id: toNumber(row.id), username: row.username, role: row.role || 'user' };
 }
 
-async function authenticateMysql(username: string, password: string): Promise<User | null> {
-  const [rows] = await mysqlDb().query<mysql.RowDataPacket[]>(
-    'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
-    [username],
-  );
-  const row = rows[0] as MysqlUserRow | undefined;
-  if (!row?.password_hash) return null;
-  const valid = await bcrypt.compare(password, row.password_hash);
-  if (!valid) return null;
-  return { id: toNumber(row.id), username: String(row.username || ''), role: String(row.role || 'user') };
-}
-
 async function currentUser(user?: User): Promise<User | null> {
   if (!user) return null;
-  if (AUTH_PROVIDER === 'mysql') {
-    const [rows] = await mysqlDb().query<mysql.RowDataPacket[]>(
-      'SELECT id, username, role, active FROM wf_users WHERE id = ? AND active = 1 LIMIT 1',
-      [user.id],
-    );
-    const row = rows[0] as MysqlUserRow | undefined;
-    return row ? { id: toNumber(row.id), username: String(row.username || ''), role: String(row.role || 'user') } : null;
-  }
   const result = await corePgPool.query<CoreUserRow>(
     `SELECT id::text, username, password_hash, role, active
        FROM core_users
@@ -466,24 +384,6 @@ async function logCoreAudit(
     );
   } catch (error) {
     console.error('[codigos] core audit failed', error);
-  }
-}
-
-async function logMysql(
-  userId: number | null,
-  action: string,
-  entityType: string | null,
-  entityId: number | string | null,
-  message: string,
-): Promise<void> {
-  if (!LEGACY_MYSQL_LOGS_ENABLED) return;
-  try {
-    await mysqlDb().query(
-      'INSERT INTO wf_logs (user_id, action, entity_type, entity_id, message) VALUES (?, ?, ?, ?, ?)',
-      [userId, action, entityType, entityId === null ? null : Number(entityId) || null, cleanText(message, 500)],
-    );
-  } catch (error) {
-    console.error('[codigos] legacy log failed', error);
   }
 }
 
@@ -548,53 +448,9 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_codigos_items_ean ON codigos_items (ean)');
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_codigos_audit_created ON codigos_audit_events (created_at DESC)');
 
-  if (LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED) {
-    await ensureLegacyMysqlSchema();
-  }
-  if (LEGACY_MYSQL_IMPORT_ENABLED) {
-    await migrateLegacyData();
-  }
   await seedDefaultGroups();
   await seedPgDefaultsIfEmpty();
   await syncGroupsFromItems();
-}
-
-async function ensureLegacyMysqlSchema(): Promise<void> {
-  const db = mysqlDb();
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS wf_codigos_comissao (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      codigo VARCHAR(180) NOT NULL,
-      ean VARCHAR(80) NOT NULL,
-      preco DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-      ordem INT UNSIGNED NOT NULL DEFAULT 0,
-      ativo TINYINT(1) NOT NULL DEFAULT 1,
-      criado_por INT UNSIGNED NULL,
-      criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      atualizado_em DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-      apagado_em DATETIME NULL,
-      PRIMARY KEY (id),
-      KEY idx_codigos_comissao_ativo_ordem (ativo, ordem, id),
-      KEY idx_codigos_comissao_codigo (codigo),
-      KEY idx_codigos_comissao_ean (ean)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS wf_codigos_blocos (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      group_key VARCHAR(16) NOT NULL,
-      label VARCHAR(80) NOT NULL,
-      ordem INT UNSIGNED NOT NULL DEFAULT 0,
-      ativo TINYINT(1) NOT NULL DEFAULT 1,
-      criado_por INT UNSIGNED NULL,
-      criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      atualizado_em DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (id),
-      UNIQUE KEY uq_codigos_blocos_group_key (group_key),
-      KEY idx_codigos_blocos_ativo_ordem (ativo, ordem, group_key)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await seedLegacyDefaultsIfEmpty();
 }
 
 const defaultItems: Array<[string, string, number]> = [
@@ -624,25 +480,6 @@ const defaultItems: Array<[string, string, number]> = [
   ['WIMI COMPLEX B', '40 002', 59.9],
 ];
 
-async function seedLegacyDefaultsIfEmpty(): Promise<void> {
-  const db = mysqlDb();
-  const [countRows] = await db.query<mysql.RowDataPacket[]>('SELECT COUNT(*) AS total FROM wf_codigos_comissao');
-  if (toNumber(countRows[0]?.total) < 1) {
-    const stmt = 'INSERT INTO wf_codigos_comissao (codigo, ean, preco, ordem, criado_por) VALUES (?, ?, ?, ?, NULL)';
-    for (const [index, row] of defaultItems.entries()) {
-      await db.query(stmt, [row[0], row[1], row[2], (index + 1) * 10]);
-    }
-  }
-  for (const [group, order] of [['20', 10], ['40', 20]] as Array<[string, number]>) {
-    await db.query(
-      `INSERT INTO wf_codigos_blocos (group_key, label, ordem, criado_por)
-       VALUES (?, ?, ?, NULL)
-       ON DUPLICATE KEY UPDATE label = VALUES(label), ativo = 1`,
-      [group, groupLabel(group), order],
-    );
-  }
-}
-
 async function seedDefaultGroups(): Promise<void> {
   for (const [group, order] of [['20', 10], ['40', 20]] as Array<[string, number]>) {
     await pgPool.query(
@@ -663,99 +500,6 @@ async function seedPgDefaultsIfEmpty(): Promise<void> {
        VALUES ($1, $2, $3, $4, true)`,
       [item[0], item[1], priceToCents(item[2]), (index + 1) * 10],
     );
-  }
-}
-
-async function migrateLegacyData(): Promise<void> {
-  const startedAt = new Date().toISOString();
-  try {
-    const db = mysqlDb();
-    const [groups] = await db.query<mysql.RowDataPacket[]>(
-      'SELECT id, group_key, label, ordem, ativo, criado_por, criado_em, atualizado_em FROM wf_codigos_blocos ORDER BY ordem ASC, id ASC',
-    );
-    const [items] = await db.query<mysql.RowDataPacket[]>(
-      'SELECT id, codigo, ean, preco, ordem, ativo, criado_por, criado_em, atualizado_em, apagado_em FROM wf_codigos_comissao ORDER BY id ASC',
-    );
-
-    let groupsImported = 0;
-    let itemsImported = 0;
-    const client = await pgPool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const row of groups) {
-        const group = cleanText(row.group_key, 16);
-        if (!/^\d{2}$/.test(group)) continue;
-        await client.query(
-          `INSERT INTO codigos_groups (
-             legacy_mysql_id, group_key, label, sort_order, active, created_by,
-             created_at, updated_at, deleted_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, NOW()), $8::timestamptz, CASE WHEN $5 THEN NULL ELSE NOW() END)
-           ON CONFLICT (group_key) DO UPDATE SET
-             legacy_mysql_id = COALESCE(codigos_groups.legacy_mysql_id, EXCLUDED.legacy_mysql_id),
-             label = EXCLUDED.label,
-             sort_order = EXCLUDED.sort_order,
-             active = EXCLUDED.active,
-             updated_at = NOW(),
-             deleted_at = CASE WHEN EXCLUDED.active THEN NULL ELSE COALESCE(codigos_groups.deleted_at, NOW()) END`,
-          [
-            toNumber(row.id),
-            group,
-            cleanText(row.label || groupLabel(group), 80),
-            toNumber(row.ordem),
-            toNumber(row.ativo) === 1,
-            row.criado_por ? toNumber(row.criado_por) : null,
-            row.criado_em || null,
-            row.atualizado_em || null,
-          ],
-        );
-        groupsImported += 1;
-      }
-      for (const row of items) {
-        await client.query(
-          `INSERT INTO codigos_items (
-             legacy_mysql_id, codigo, ean, price_cents, sort_order, active,
-             created_by, created_at, updated_at, deleted_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamptz, NOW()), $9::timestamptz, $10::timestamptz)
-           ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-             codigo = EXCLUDED.codigo,
-             ean = EXCLUDED.ean,
-             price_cents = EXCLUDED.price_cents,
-             sort_order = EXCLUDED.sort_order,
-             active = EXCLUDED.active,
-             updated_at = NOW(),
-             deleted_at = EXCLUDED.deleted_at`,
-          [
-            toNumber(row.id),
-            cleanText(row.codigo, 180),
-            cleanText(row.ean, 80),
-            priceToCents(row.preco),
-            toNumber(row.ordem),
-            toNumber(row.ativo) === 1,
-            row.criado_por ? toNumber(row.criado_por) : null,
-            row.criado_em || null,
-            row.atualizado_em || null,
-            row.apagado_em || null,
-          ],
-        );
-        itemsImported += 1;
-      }
-      await client.query(`SELECT setval(pg_get_serial_sequence('codigos_groups', 'id'), GREATEST((SELECT COALESCE(MAX(id), 1) FROM codigos_groups), 1), true)`);
-      await client.query(`SELECT setval(pg_get_serial_sequence('codigos_items', 'id'), GREATEST((SELECT COALESCE(MAX(id), 1) FROM codigos_items), 1), true)`);
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-    migrationStats.groupsImported = groupsImported;
-    migrationStats.itemsImported = itemsImported;
-    migrationStats.lastRunAt = startedAt;
-    migrationStats.lastError = null;
-  } catch (error) {
-    migrationStats.lastRunAt = startedAt;
-    migrationStats.lastError = error instanceof Error ? error.message : String(error);
-    throw error;
   }
 }
 
@@ -887,8 +631,6 @@ async function saveGroup(groupValue: string, userId: number | null, shouldLog: b
   if (shouldLog) {
     await auditPg('codigo_bloco_criado', 'codigo', group, userId, `Bloco ${groupLabel(group)} criado.`);
     void logCoreAudit(userId, 'codigo_bloco_criado', 'codigo', group, `Bloco ${groupLabel(group)} criado.`);
-    void logMysql(userId, 'codigo_bloco_criado', 'codigo', null, `Bloco ${groupLabel(group)} criado.`);
-    void mirrorGroupToMysql(group, userId);
   }
   return group;
 }
@@ -944,8 +686,6 @@ async function createItem(codigoValue: unknown, eanValue: unknown, precoValue: u
   const id = toNumber(result.rows[0]?.id);
   await auditPg('codigo_comissao_criado', 'codigo', id, userId, `Codigo criado: ${payload.codigo} / ${payload.ean}`);
   void logCoreAudit(userId, 'codigo_comissao_criado', 'codigo', id, `Codigo criado: ${payload.codigo} / ${payload.ean}`);
-  void logMysql(userId, 'codigo_comissao_criado', 'codigo', id, `Codigo criado: ${payload.codigo} / ${payload.ean}`);
-  void mirrorItemToMysql(id, userId);
   return id;
 }
 
@@ -962,8 +702,6 @@ async function updateItem(id: number, codigoValue: unknown, eanValue: unknown, p
   if ((result.rowCount || 0) < 1) throw new Error('Codigo nao encontrado.');
   await auditPg('codigo_comissao_editado', 'codigo', id, userId, `Codigo editado: ${payload.codigo} / ${payload.ean}`);
   void logCoreAudit(userId, 'codigo_comissao_editado', 'codigo', id, `Codigo editado: ${payload.codigo} / ${payload.ean}`);
-  void logMysql(userId, 'codigo_comissao_editado', 'codigo', id, `Codigo editado: ${payload.codigo} / ${payload.ean}`);
-  void mirrorItemToMysql(id, userId);
 }
 
 async function deleteItem(id: number, userId: number | null): Promise<void> {
@@ -977,8 +715,6 @@ async function deleteItem(id: number, userId: number | null): Promise<void> {
   if ((result.rowCount || 0) < 1) throw new Error('Codigo nao encontrado.');
   await auditPg('codigo_comissao_apagado', 'codigo', id, userId, 'Codigo apagado da lista operacional.');
   void logCoreAudit(userId, 'codigo_comissao_apagado', 'codigo', id, 'Codigo apagado da lista operacional.');
-  void logMysql(userId, 'codigo_comissao_apagado', 'codigo', id, 'Codigo apagado da lista operacional.');
-  void mirrorItemDeleteToMysql(id);
 }
 
 async function reorderGroup(group: string, orderedIds: unknown[], userId: number | null): Promise<void> {
@@ -1016,8 +752,6 @@ async function reorderGroup(group: string, orderedIds: unknown[], userId: number
   }
   await auditPg('codigo_comissao_reordenado', 'codigo', group, userId, `Grupo ${group} reordenado.`);
   void logCoreAudit(userId, 'codigo_comissao_reordenado', 'codigo', group, `Grupo ${group} reordenado.`);
-  void logMysql(userId, 'codigo_comissao_reordenado', 'codigo', null, `Grupo ${group} reordenado.`);
-  void mirrorGroupOrderToMysql(finalIds);
 }
 
 async function deleteGroup(groupValue: string, password: string, userId: number | null): Promise<number> {
@@ -1046,86 +780,7 @@ async function deleteGroup(groupValue: string, password: string, userId: number 
   }
   await auditPg('codigo_bloco_apagado', 'codigo', group, userId, `Bloco ${groupLabel(group)} apagado com ${groupItemIds.length} codigo(s).`);
   void logCoreAudit(userId, 'codigo_bloco_apagado', 'codigo', group, `Bloco ${groupLabel(group)} apagado com ${groupItemIds.length} codigo(s).`);
-  void logMysql(userId, 'codigo_bloco_apagado', 'codigo', null, `Bloco ${groupLabel(group)} apagado com ${groupItemIds.length} codigo(s).`);
-  void mirrorGroupDeleteToMysql(group, groupItemIds);
   return groupItemIds.length;
-}
-
-async function mirrorGroupToMysql(group: string, userId: number | null): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED) return;
-  try {
-    await mysqlDb().query(
-      `INSERT INTO wf_codigos_blocos (group_key, label, ordem, criado_por)
-       VALUES (?, ?, (SELECT COALESCE(MAX(ordem), 20) + 10 FROM (SELECT ordem FROM wf_codigos_blocos) AS x), ?)
-       ON DUPLICATE KEY UPDATE label = VALUES(label), ativo = 1`,
-      [group, groupLabel(group), userId],
-    );
-  } catch (error) {
-    console.error('[codigos] group mirror failed', error);
-  }
-}
-
-async function mirrorItemToMysql(id: number, userId: number | null): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED) return;
-  try {
-    const item = await findItem(id);
-    if (!item) return;
-    const preco = (item.price_cents / 100).toFixed(2);
-    if (item.legacy_mysql_id) {
-      await mysqlDb().query(
-        'UPDATE wf_codigos_comissao SET codigo = ?, ean = ?, preco = ?, ordem = ?, ativo = 1 WHERE id = ?',
-        [item.codigo, item.ean, preco, item.sort_order, item.legacy_mysql_id],
-      );
-      return;
-    }
-    const [result] = await mysqlDb().query<mysql.ResultSetHeader>(
-      'INSERT INTO wf_codigos_comissao (codigo, ean, preco, ordem, criado_por) VALUES (?, ?, ?, ?, ?)',
-      [item.codigo, item.ean, preco, item.sort_order, userId],
-    );
-    await pgPool.query('UPDATE codigos_items SET legacy_mysql_id = $1 WHERE id = $2 AND legacy_mysql_id IS NULL', [result.insertId, id]);
-  } catch (error) {
-    console.error('[codigos] item mirror failed', error);
-  }
-}
-
-async function mirrorItemDeleteToMysql(id: number): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED) return;
-  try {
-    const result = await pgPool.query<{ legacy_mysql_id: string | null }>('SELECT legacy_mysql_id::text FROM codigos_items WHERE id = $1 LIMIT 1', [id]);
-    const legacyId = toNumber(result.rows[0]?.legacy_mysql_id);
-    if (legacyId > 0) {
-      await mysqlDb().query('UPDATE wf_codigos_comissao SET ativo = 0, apagado_em = NOW() WHERE id = ? AND ativo = 1', [legacyId]);
-    }
-  } catch (error) {
-    console.error('[codigos] item delete mirror failed', error);
-  }
-}
-
-async function mirrorGroupOrderToMysql(ids: number[]): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED) return;
-  try {
-    for (const [index, id] of ids.entries()) {
-      const result = await pgPool.query<{ legacy_mysql_id: string | null }>('SELECT legacy_mysql_id::text FROM codigos_items WHERE id = $1 LIMIT 1', [id]);
-      const legacyId = toNumber(result.rows[0]?.legacy_mysql_id);
-      if (legacyId > 0) {
-        await mysqlDb().query('UPDATE wf_codigos_comissao SET ordem = ? WHERE id = ? AND ativo = 1', [(index + 1) * 10, legacyId]);
-      }
-    }
-  } catch (error) {
-    console.error('[codigos] reorder mirror failed', error);
-  }
-}
-
-async function mirrorGroupDeleteToMysql(group: string, ids: number[]): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED) return;
-  try {
-    await mysqlDb().query('UPDATE wf_codigos_blocos SET ativo = 0 WHERE group_key = ? AND ativo = 1', [group]);
-    for (const id of ids) {
-      await mirrorItemDeleteToMysql(id);
-    }
-  } catch (error) {
-    console.error('[codigos] group delete mirror failed', error);
-  }
 }
 
 function groupTitleHtml(group: string, count: number): string {
@@ -1353,7 +1008,7 @@ function renderLogin(req: Request, error = ''): string {
 }
 
 async function healthPayload() {
-  const [postgresStats, legacyStats, coreStats] = await Promise.all([postgresHealth(), legacyHealth(), coreHealth()]);
+  const [postgresStats, coreStats] = await Promise.all([postgresHealth(), coreHealth()]);
   return {
     ok: true,
     service: 'codigos',
@@ -1362,16 +1017,11 @@ async function healthPayload() {
     storage: {
       provider: 'postgres',
       database: env.POSTGRES_DB || 'wimifarma_codigos',
-      legacy_mysql_required: LEGACY_MYSQL_REQUIRED,
-      legacy_mysql_import_enabled: LEGACY_MYSQL_IMPORT_ENABLED,
-      legacy_mysql_mirror_enabled: LEGACY_MYSQL_MIRROR_ENABLED,
-      legacy_mysql_logs_enabled: LEGACY_MYSQL_LOGS_ENABLED,
-      migration: migrationStats,
+      legacy_mysql_required: false,
       postgres: postgresStats,
-      legacy: legacyStats,
     },
     auth: {
-      provider: AUTH_PROVIDER,
+      provider: 'core',
       ...coreStats,
     },
     rules: {
@@ -1397,22 +1047,7 @@ async function postgresHealth() {
   return result.rows[0];
 }
 
-async function legacyHealth() {
-  if (!LEGACY_MYSQL_REQUIRED) return null;
-  const [rows] = await mysqlDb().query<mysql.RowDataPacket[]>(`
-    SELECT
-      (SELECT COUNT(*) FROM wf_codigos_comissao) AS items_total,
-      (SELECT COUNT(*) FROM wf_codigos_comissao WHERE ativo = 1) AS items_active,
-      (SELECT COUNT(*) FROM wf_codigos_blocos) AS groups_total,
-      (SELECT COUNT(*) FROM wf_codigos_blocos WHERE ativo = 1) AS groups_active
-  `);
-  return rows[0] || null;
-}
-
 async function coreHealth() {
-  if (!CORE_AUTH_REQUIRED) {
-    return { coreReachable: false, users: null, coreLatencyMs: null };
-  }
   const started = Date.now();
   const result = await corePgPool.query<{ users: string }>('SELECT COUNT(*)::text AS users FROM core_users WHERE active = true');
   return { coreReachable: true, users: toNumber(result.rows[0]?.users), coreLatencyMs: Date.now() - started };
@@ -1604,7 +1239,6 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   if (!user) {
     registerLoginFailure(req);
     void logCoreAudit(null, 'login_codigos_falha', 'user', null, `Tentativa de login Codigos falhou para usuario: ${username}`);
-    void logMysql(null, 'login_codigos_falha', 'user', null, `Tentativa de login Codigos falhou para usuario: ${username}`);
     res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha incorretos.'));
     return;
   }
@@ -1618,7 +1252,6 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     req.session.user = user;
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
     void logCoreAudit(user.id, 'login_codigos', 'user', user.id, 'Login Codigos realizado.');
-    void logMysql(user.id, 'login_codigos', 'user', user.id, 'Login Codigos realizado.');
     res.redirect(returnTo);
   });
 }));
@@ -1627,7 +1260,6 @@ app.get(`${BASE_PATH}/logout.php`, (req, res) => {
   const user = req.session.user;
   if (user) {
     void logCoreAudit(user.id, 'logout_codigos', 'user', user.id, 'Logout Codigos realizado.');
-    void logMysql(user.id, 'logout_codigos', 'user', user.id, 'Logout Codigos realizado.');
   }
   req.session.destroy(() => res.redirect('/'));
 });
@@ -1678,12 +1310,7 @@ async function withRetry(label: string, action: () => Promise<unknown>, attempts
 
 async function start(): Promise<void> {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
-  if (CORE_AUTH_REQUIRED) {
-    await withRetry('core postgres', () => corePgPool.query('SELECT COUNT(*) FROM core_users'));
-  }
-  if (LEGACY_MYSQL_REQUIRED) {
-    await withRetry('mysql', () => mysqlDb().query('SELECT 1'));
-  }
+  await withRetry('core postgres', () => corePgPool.query('SELECT COUNT(*) FROM core_users'));
   await ensureSchema();
   app.listen(PORT, () => {
     console.log(`[codigos] listening on ${PORT} at ${BASE_PATH}`);

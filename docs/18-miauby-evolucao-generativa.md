@@ -55,7 +55,7 @@ Nota de nomenclatura/migracao: `Miauby` e o nome canonico de produto. O prefixo 
 - Fase 4 do agente operacional v2 iniciada:
   - `miauw_skill_core_tool_names()` define as tools core migradas;
   - registry cobre sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos;
-  - `resumo_codigos` e `buscar_codigo_comissao` preferem o endpoint interno tokenizado de `apps/codigos` (`/codigos/api/internal/...`) e caem no espelho legado `wf_codigos_comissao` enquanto a janela de rollback estiver ativa;
+  - `resumo_codigos` e `buscar_codigo_comissao` usam o endpoint interno tokenizado de `apps/codigos` (`/codigos/api/internal/...`) e nao caem mais no legado `wf_codigos_comissao`;
   - `registrar_sangria` encapsula lancamento financeiro como categoria `Sangria`;
   - `criar_tarefa` tambem virou OpenAI tool controlada, alem da acao local ja existente;
   - consulta de Cotacao usa a Cotacao V2 por `GET /cotacao/api/internal/search`;

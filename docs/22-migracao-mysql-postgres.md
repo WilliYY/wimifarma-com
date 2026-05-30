@@ -11,7 +11,7 @@ Hoje o projeto ainda precisa de MySQL por dois motivos diferentes:
 - WordPress: banco `wimifarma_wp`, prefixo `wptl_`. WordPress foi feito para MySQL/MariaDB; trocar por Postgres nao e uma migracao simples nem recomendada como ajuste pequeno. Para remover MySQL 100%, a decisao tecnica correta e substituir/desacoplar a parte WordPress ou manter um MySQL isolado so para WordPress ate essa troca.
 - Apps internos: banco `wimifarma_app`, com usuarios, cashback, financeiro, legados de Codigos/XP/Tarefa e Miauby PHP. Estes podem migrar por etapas para Postgres.
 
-Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Cashback e Miauby WhatsApp ja guardam seus dados principais em Postgres. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em Postgres `wimifarma_core`, sincronizando `wf_users` para `core_users`. Em 2026-05-29, a Cotacao e Pedidos removeram a dependencia MySQL do login e passaram a usar somente `core_users`; Tarefa passou a usar core auth por default. Em 2026-05-30, Cashback, Gestao e Tarefa removeram `mysql2`, fallback `wf_users`, espelho/log MySQL, importador MySQL e variaveis/flags MySQL do runtime. Miauby PHP passou a `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. XP, Codigos e Financeiro tambem usam core como login oficial. Financeiro teve paridade validada e `FINANCEIRO_LEGACY_MYSQL_*` fica desligado por padrao; WordPress segue MySQL por enquanto.
+Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Cashback e Miauby WhatsApp ja guardam seus dados principais em Postgres. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em Postgres `wimifarma_core`, sincronizando `wf_users` para `core_users`. Em 2026-05-29, a Cotacao e Pedidos removeram a dependencia MySQL do login e passaram a usar somente `core_users`; Tarefa passou a usar core auth por default. Em 2026-05-30, Cashback, Gestao, Tarefa e Codigos removeram `mysql2`, fallback `wf_users`, espelho/log MySQL, importador MySQL e variaveis/flags MySQL do runtime. Miauby PHP passou a `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. XP e Financeiro tambem usam core como login oficial. Financeiro teve paridade validada e `FINANCEIRO_LEGACY_MYSQL_*` fica desligado por padrao; WordPress segue MySQL por enquanto.
 
 ## Uso atual de MySQL
 
@@ -33,7 +33,7 @@ Node/TypeScript com MySQL removido do runtime ou somente rollback manual:
 - Ponte Miauby -> Gestao: a consulta/criacao de contas usa somente endpoints internos tokenizados da Gestao (`/gestao/api/internal/*`); o contrato `criar_conta_gestao` audita em `gestao_audit_events`, `core_audit_logs` e `miauw_tool_traces`, sem `wf_logs`.
 - `apps/tarefa/src/server.ts`: usa Postgres `wimifarma_tarefa` para dados, `core_users` como login unico e auditoria em Postgres; desde 2026-05-30 nao possui `mysql2`, importador, espelho, fallback `wf_users`, `TAREFA_AUTH_PROVIDER` nem flags `TAREFA_LEGACY_MYSQL_*`.
 - `apps/xp/src/server.ts`: usa Postgres `wimifarma_xp` para XP oficial e `core_users` para login; `mysql2` fica dormente para rollback manual, mas `XP_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta credenciais MySQL no app.
-- `apps/codigos/src/server.ts`: usa Postgres `wimifarma_codigos` para Codigos oficial e `core_users` para login; `mysql2` fica dormente para rollback manual, mas `CODIGOS_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta credenciais MySQL no app.
+- `apps/codigos/src/server.ts`: usa Postgres `wimifarma_codigos` para Codigos oficial, `core_users` para login unico e auditoria em Postgres/core; desde 2026-05-30 nao possui `mysql2`, importador, espelho, fallback `wf_users`, `CODIGOS_AUTH_PROVIDER` nem flags `CODIGOS_LEGACY_MYSQL_*`.
 - `apps/financeiro/src/server.ts`: usa Postgres `wimifarma_financeiro` como fonte oficial de `/financeiro/`, `core_users` para login e endpoints internos tokenizados para Miauby/WhatsApp. O caminho `mysql2` fica dormente para rollback manual; `FINANCEIRO_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta credenciais MySQL no app.
 - `apps/cashback/src/server.ts`: usa Postgres `wimifarma_cashback` como fonte oficial de `/cashback/`, `core_users` para login unico e endpoints internos tokenizados. Desde 2026-05-30 nao possui `mysql2`, importador, espelho, logs nem fallback MySQL; o Compose nao injeta flags ou credenciais MySQL no app.
 
@@ -84,9 +84,9 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 - Tarefa ja foi migrado para `apps/tarefa` com Postgres dedicado e suporte a auth oficial pelo core Postgres, mantendo `site/tarefa` como legado/fallback historico.
 - XP foi migrado para `apps/xp`, Postgres dedicado, login por core e proxy `/xp/`, mantendo importador/espelho idempotente de `wf_xp_*` para rollback curto.
-- Codigos foi migrado para `apps/codigos`, Postgres dedicado, login por core, proxy `/codigos/` e endpoints internos tokenizados para o Miauby, mantendo importador/espelho idempotente de `wf_codigos_*` para rollback curto.
+- Codigos foi migrado para `apps/codigos`, Postgres dedicado, login unico por core, proxy `/codigos/` e endpoints internos tokenizados para o Miauby. Em 2026-05-30, o importador/espelho idempotente de `wf_codigos_*` foi removido do runtime depois do corte para Postgres.
 - Financeiro foi cortado para `apps/financeiro`, com proxy `/financeiro/`, sessao `WFFINANCEIRO`, login por `core_users`, frontend preservado pelos assets de `site/financeiro` e endpoints internos tokenizados. A paridade com MySQL foi validada e o espelho/import fica desligado por padrao.
-- Em 2026-05-30, Tarefa removeu o caminho MySQL do codigo, pacote, `.env.example` e Compose. XP e Codigos mantem flags legadas desligadas por padrao e sem credenciais MySQL no Compose; rollback MySQL nesses dois ainda exige religar flags/provedor e reintroduzir variaveis MySQL explicitamente.
+- Em 2026-05-30, Tarefa e Codigos removeram o caminho MySQL do codigo, pacote, `.env.example` e Compose. XP mantem flags legadas desligadas por padrao e sem credenciais MySQL no Compose; rollback MySQL no XP ainda exige religar flags/provedor e reintroduzir variaveis MySQL explicitamente.
 
 3. Validar cortes pequenos
 
@@ -132,8 +132,8 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 ## Ordem sugerida
 
 1. Core de autenticacao/auditoria em Postgres: ativo com `wimifarma-core-db` e `apps/core-auth`.
-2. Cotacao, Gestao, Pedidos, Tarefa e Cashback ja usam `core_users` sem fallback MySQL; Miauby PHP usa core por default e fallback MySQL apenas como rollback opt-in onde ainda existir.
-3. Tarefa ja esta em Node/Postgres sem dependencia MySQL; XP e Codigos estao em Node/Postgres com login core por default, flags legadas desligadas e sem credenciais MySQL no Compose.
+2. Cotacao, Gestao, Pedidos, Tarefa, Codigos e Cashback ja usam `core_users` sem fallback MySQL; Miauby PHP usa core por default e fallback MySQL apenas como rollback opt-in onde ainda existir.
+3. Tarefa e Codigos ja estao em Node/Postgres sem dependencia MySQL; XP esta em Node/Postgres com login core por default, flags legadas desligadas e sem credenciais MySQL no Compose.
 4. Gestao: Node/Postgres oficial sem `mysql2`/espelho/fallback desde 2026-05-30; rollback exige restaurar commit/imagem anterior e backup.
 5. Financeiro: Node/Postgres oficial com espelho MySQL desligado por default desde 2026-05-29 apos paridade validada.
 5.1. Cashback: Node/Postgres oficial sem `mysql2`/espelho/fallback desde 2026-05-30; rollback exige restaurar commit/imagem anterior e backup.

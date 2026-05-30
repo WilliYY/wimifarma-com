@@ -398,13 +398,9 @@ services:
       POSTGRES_USER: wimifarma_codigos
       POSTGRES_PASSWORD: ${CODIGOS_POSTGRES_PASSWORD:-wimifarma_codigos_dev_pass}
       CODIGOS_SESSION_SECRET: ${CODIGOS_SESSION_SECRET:-wimifarma_codigos_dev_secret_change_me}
-      CODIGOS_AUTH_PROVIDER: ${CODIGOS_AUTH_PROVIDER:-core}
       CODIGOS_GROUP_DELETE_PASSWORD: ${CODIGOS_GROUP_DELETE_PASSWORD:-wimifarma}
       CODIGOS_INTERNAL_TOKEN: ${CODIGOS_INTERNAL_TOKEN:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
-      CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED: ${CODIGOS_LEGACY_MYSQL_IMPORT_ENABLED:-false}
-      CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED: ${CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED:-false}
-      CODIGOS_LEGACY_MYSQL_LOGS_ENABLED: ${CODIGOS_LEGACY_MYSQL_LOGS_ENABLED:-false}
     volumes:
       - ./site/codigos/styles.css:/app/public/styles.css:ro
       - ./site/codigos/app.js:/app/public/app.js:ro

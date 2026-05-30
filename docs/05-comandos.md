@@ -172,7 +172,7 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos, Tarefa e Cashback usam somente `core_users`; XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos, Tarefa, Codigos e Cashback usam somente `core_users`; XP, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
 Gestao usa somente `core_users` desde 2026-05-30. O servico nao possui mais `GESTAO_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2`, espelho `wf_logs` nem variaveis `MYSQL_*` no Compose; `/gestao/health` deve mostrar `auth.provider=core`, `mysql_auth=false`, `mysql_auth_fallback=false` e `mysql_reachable=false`.
 
@@ -229,7 +229,7 @@ curl.exe -i http://127.0.0.1:3002/codigos/api/internal/summary
 docker exec wimifarma-codigos-db psql -U wimifarma_codigos -d wimifarma_codigos -c "\dt"
 ```
 
-O app `apps/codigos` atende a rota oficial `/codigos/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_codigos`; MySQL `wf_codigos_comissao` e `wf_codigos_blocos` ficam como importacao/espelho/log legado por flags `CODIGOS_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `CODIGOS_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-codigos-app`. O endpoint interno sem `X-Miauw-Internal-Token` deve responder 401 ou 503; nao colar token real em comando versionado.
+O app `apps/codigos` atende a rota oficial `/codigos/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_codigos`; desde 2026-05-30 o servico nao possui `mysql2`, importador, espelho, logs ou fallback MySQL. Rollback MySQL exige restaurar versao anterior e backup validado. O endpoint interno sem `X-Miauw-Internal-Token` deve responder 401 ou 503; nao colar token real em comando versionado.
 
 ## Local - Usuarios Node/Postgres core
 

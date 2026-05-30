@@ -90,11 +90,11 @@ $modules = @(
     @{
         Module = 'Codigos'
         Path = 'site/codigos;apps/codigos'
-        Current = 'Node.js + TypeScript + Postgres'
-        Legacy = 'MySQL desligado por padrao; rollback manual por flags/provedor/credenciais'
+        Current = 'Node.js + TypeScript + Postgres + core auth'
+        Legacy = 'sem dependencia MySQL no app; rollback por restauracao'
         Target = 'Postgres puro + core auth/auditoria'
         Priority = 'moderno'
-        Next = 'Validar Miauby por CODIGOS_INTERNAL_TOKEN e manter flags legadas desligadas.'
+        Next = 'Validar health, login, busca, reordenacao e Miauby sem reintroduzir mysql2.'
     },
     @{
         Module = 'XP'

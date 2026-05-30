@@ -47,7 +47,7 @@ O script mostra:
 | Gestao | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Pedidos | Node.js + TypeScript + Postgres da Gestao + core auth | sem dependencia MySQL no app | manter health/auditoria e validar rotinas n8n/Miauby | moderno |
 | Tarefa | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
-| Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
+| Codigos | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL legado desligado por padrao; rollback manual | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
@@ -59,11 +59,11 @@ O script mostra:
 
 ## Ordem segura
 
-1. Cotacao, Gestao, Pedidos, Tarefa e Cashback ja usam apenas `core_users`, sem fallback MySQL no codigo.
+1. Cotacao, Gestao, Pedidos, Tarefa, Codigos e Cashback ja usam apenas `core_users`, sem fallback MySQL no codigo.
 2. Manter rollback por `.env` onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos e Gestao nao tem mais fallback MySQL no codigo.
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa em Postgres puro no VPS: `/tarefa/health`, login, tarefas publicas/privadas, badge da home e Miauby sem `mysql2`.
-4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de remover flags legadas e `mysql2`.
+4. Observar XP em `/xp/` com health, login e checks de paridade antes de remover flags legadas e `mysql2`; Codigos ja foi limpo em 2026-05-30.
 5. Observar Financeiro em `/financeiro/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir checksums por dia/tipo, Caixa, Relatorio, exportacao e contrato Pix CNPJ do Miauby.
 6. Cashback esta em `/cashback/` sem `mysql2`, importador, espelho ou fallback MySQL; rollback exige restaurar commit/imagem anterior e backup, depois repetir saldos por cliente, CSV, mensagens e autoteste.
 7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`, usando `Miauby` como nome canonico e mantendo `miauw` como compatibilidade tecnica ate validacao.
@@ -93,11 +93,10 @@ Codigos foi cortado para `apps/codigos`:
 
 - banco/schema alvo `wimifarma_codigos`;
 - tabelas `codigos_items`, `codigos_groups`, `codigos_audit_events` e `codigos_sessions`;
-- importador idempotente de `wf_codigos_comissao` e `wf_codigos_blocos`;
 - proxy Apache oficial em `/codigos/`;
 - endpoints internos tokenizados para o Miauby ler a fonte Postgres;
 - frontend preservado por CSS/JS/login-runner de `site/codigos`;
-- `CODIGOS_LEGACY_MYSQL_*` fica desligado por padrao desde 2026-05-30; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente.
+- sem `mysql2`, importador, espelho, fallback `wf_users`, `CODIGOS_AUTH_PROVIDER` ou flags `CODIGOS_LEGACY_MYSQL_*` desde 2026-05-30.
 
 Financeiro foi cortado para `apps/financeiro`:
 

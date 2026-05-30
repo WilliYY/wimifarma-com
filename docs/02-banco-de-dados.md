@@ -75,7 +75,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao, Gestao, Pedidos, Tarefa e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao, Gestao, Pedidos, Tarefa, Codigos e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. XP, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -156,7 +156,7 @@ Criadas por `apps/codigos/src/server.ts`:
 - `codigos_audit_events`: auditoria curta de criacao, edicao, reordenacao, exclusao logica e exclusao de blocos.
 - `codigos_sessions`: sessoes web do modulo Codigos gerenciadas por `connect-pg-simple`.
 
-A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` fica apenas como referencia historica/rollback manual; desde 2026-05-30, `CODIGOS_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta credenciais MySQL no app.
+A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` fica apenas como referencia historica/backup; desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `CODIGOS_AUTH_PROVIDER` nem flags `CODIGOS_LEGACY_MYSQL_*`.
 
 ## Tabelas do Financeiro em Postgres
 
@@ -190,8 +190,8 @@ Inventario real observado em 2026-05-10:
 - `wf_logs`: logs/auditoria geral e espelho temporario de modulos em corte.
 - `wf_login_rate_limits`: limitador persistente legado dos logins PHP internos, mantido apenas para rollback MySQL; com `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`, o limitador oficial usa `core_login_rate_limits` no Postgres.
 - `wf_whatsapp_mensagens`: historico/importacao antiga de mensagens e campanhas do Cashback; a escrita oficial nova usa Postgres `cashback_whatsapp_messages`.
-- `wf_codigos_comissao`: legado/importacao/espelho temporario de Codigos; a escrita oficial nova usa Postgres `codigos_items`.
-- `wf_codigos_blocos`: legado/importacao/espelho temporario dos blocos de Codigos; a escrita oficial nova usa Postgres `codigos_groups`.
+- `wf_codigos_comissao`: legado historico/backup de Codigos; a escrita oficial nova usa Postgres `codigos_items`.
+- `wf_codigos_blocos`: legado historico/backup dos blocos de Codigos; a escrita oficial nova usa Postgres `codigos_groups`.
 - `wf_xp_employees`: legado/importacao/espelho temporario de funcionarios do XP; a escrita oficial nova usa Postgres `xp_employees`.
 - `wf_xp_sales`: legado/importacao/espelho temporario de vendas do XP; a escrita oficial nova usa Postgres `xp_sales`.
 - `wf_xp_settings`: legado/importacao/espelho temporario de configuracoes do XP; a escrita oficial nova usa Postgres `xp_settings`.
@@ -277,7 +277,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `wf_cashback_creditos` depende de cliente/compra e controla saldo restante.
 - `wf_resgate_itens` liga resgates a creditos consumidos.
 - `core_login_rate_limits` e o limitador oficial dos logins PHP internos quando o auth core esta ativo; `wf_login_rate_limits` fica como rollback legado. Essas tabelas nao guardam usuario em texto puro na chave operacional, usam hashes para bloqueio e podem ser limpas sem afetar usuarios, sessoes ou historico financeiro.
-- Codigos deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `codigos_groups` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa `sort_order` dos itens dentro do grupo visual. Apagar pela tela marca `deleted_at` no Postgres e, quando o espelho legado estiver ligado, marca `ativo=0`/`apagado_em` no MySQL.
+- Codigos deve manter `codigo`, `ean` e `preco` editaveis por autosave; a separacao visual em blocos de EAN vem do prefixo de dois digitos do campo `ean`. `codigos_groups` guarda os blocos criados pela tela, inclusive vazios, com `EAN 20` e `EAN 40` como padrao. A reordenacao por arrastar usa `sort_order` dos itens dentro do grupo visual. Apagar pela tela marca `deleted_at` no Postgres e nao espelha mais para MySQL.
 - `xp_employees` e a fonte de verdade dos funcionarios na trilha XP; remover pela tela marca `status='inativo'` e `deleted_at`, sem apagar vendas antigas. O ADM usa `system_key='adm'`, aparece como perfil protegido para receber XP, pode ter nome/foto editados e nao pode ser excluido pelos controles comuns de usuario.
 - `xp_sales.amount_cents` guarda venda em centavos inteiros, `xp_sales.xp_points` guarda o XP calculado no momento do lancamento e `xp_sales.note` guarda a observacao opcional exibida em `Ultimos lancamentos`. A regra atual e R$ 1.000,00 = 2.500 XP; o nivel 1 exige 30.000 XP para passar e os niveis seguintes usam progressao crescente por `xp_required_for_next_level()`. O schema do XP garante indice para leituras por venda ativa, funcionario e mes.
 - Vendas XP canceladas preenchem `deleted_at`/`deleted_by` e saem dos totais, preservando historico e logs.

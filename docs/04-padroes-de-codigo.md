@@ -72,7 +72,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Pedidos adotou Node.js + TypeScript + Postgres da Gestao com login unico em `core_users`; depois da limpeza de 2026-05-29, nao deve reintroduzir `mysql2`, pool MySQL, fallback `wf_users` nem espelho `wf_logs` sem rollback planejado.
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
 - A Tarefa adotou Node.js + TypeScript + Postgres dedicado para remover o primeiro modulo PHP pequeno do MySQL operacional, mantendo a tela visual. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
-- Codigos adotou Node.js + TypeScript + Postgres dedicado, mantendo o CSS/JS de `site/codigos`. O caminho MySQL de rollback fica dormente e desligado por padrao.
+- Codigos adotou Node.js + TypeScript + Postgres dedicado, mantendo o CSS/JS de `site/codigos`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
 - Financeiro adotou Node.js + TypeScript + Postgres dedicado como rota oficial `/financeiro/`, preservando assets de `site/financeiro`; depois da paridade de 2026-05-29, MySQL fica desligado por padrao e so volta em rollback manual.
 - O Miauby WhatsApp adotou Node.js + TypeScript + Postgres dedicado para webhook/fila/outbox, evitando misturar eventos externos com MySQL legado ou com o banco da Gestao.
 - O XP adotou Node.js + TypeScript + Postgres dedicado, mantendo assets/uploads de `site/xp`. O caminho MySQL de rollback fica dormente e desligado por padrao.
@@ -91,7 +91,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Em `apps/gestao`, salvar dinheiro em centavos inteiros, usar queries parametrizadas, criar indices por padrao de acesso, manter sessoes em Postgres e nao reintroduzir `mysql2`, fallback `wf_users`, espelho `wf_logs` ou importacao MySQL sem rollback planejado. Em `apps/pedidos`, manter dados, sessoes e auditoria em Postgres/core sem dependencia MySQL.
 - Em `apps/cashback`, salvar dinheiro em centavos inteiros, percentual em basis points, usar transacao para resgate, manter `legacy_mysql_id`, preservar rotas PHP antigas e nao deixar exportacao CSV sair em centavos crus.
 - Em `apps/tarefa`, preservar a interface visual, status/prioridades existentes, CSRF, sessao `WFTAREFA`, health/badge e importacao idempotente de `wf_tarefas`.
-- Em `apps/codigos`, preservar a interface visual, autosave, grupos EAN, CSRF, sessao `WFCODIGOS`, health e importacao idempotente de `wf_codigos_*`.
+- Em `apps/codigos`, preservar a interface visual, autosave, grupos EAN, CSRF, sessao `WFCODIGOS`, health e Postgres como fonte unica; `wf_codigos_*` fica apenas como historico/backup.
 - Em `apps/miauw-whatsapp`, manter payload externo sanitizado, dedupe por provider/instancia/message id, hash/mascara/cifra para identificadores, indices parciais de fila e nenhuma escrita forte direta pelo WhatsApp.
 - Atualizar docs no mesmo commit da mudanca.
 - Criar novas abstracoes apenas quando reduzirem complexidade real.

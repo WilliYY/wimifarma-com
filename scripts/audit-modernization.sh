@@ -71,7 +71,7 @@ rows=(
   "Gestao|apps/gestao|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth|moderno"
     "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app|manter health/auditoria e rotinas n8n/Miauby|moderno"
   "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth|moderno"
-  "Codigos|site/codigos;apps/codigos|Node.js + TypeScript + Postgres|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
+  "Codigos|site/codigos;apps/codigos|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
   "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
   "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
   "Usuarios|apps/usuarios|Node.js + TypeScript + Express + Postgres core|sem MySQL operacional para usuarios novos|enforcement gradual por modulo|moderno"
@@ -99,7 +99,7 @@ cat <<'EOF'
 Proximos passos recomendados:
 - Validar Gestao com core auth unico, sem mysql2/fallback/espelho; Cotacao e Pedidos ja usam core auth sem MySQL.
 - Validar Tarefa com Postgres puro, login core, tarefas privadas, badge e Miauby sem reintroduzir mysql2.
-- Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
+- Observar XP em /xp/ antes de remover flags legadas; Codigos ja esta sem dependencia MySQL e deve ser validado com health, busca, reordenacao e Miauby.
 - Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.
 - Validar Cashback em /cashback/ com health, login, saldos, CSV, mensagens e autoteste apos remocao do caminho mysql2.
