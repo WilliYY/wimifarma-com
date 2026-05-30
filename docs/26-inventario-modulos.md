@@ -126,7 +126,7 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 - `cancel_lancamento`, `cancel_sangria`, `cancel_maquininha`, `cancel_pix`: cancelamentos logicos.
 - `POST /api/internal/lancamentos`: escrita interna usada por Miauby/WhatsApp para `Pix CNPJ`, sangria e lancamentos controlados.
 - `POST /api/internal/faturamentos`: escrita interna para faturamento diario.
-- Importacao e espelho MySQL sao controlados por `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED`.
+- Desde 2026-05-29, `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=false` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=false` sao o padrao depois da paridade validada. Importacao/espelho MySQL agora e rollback manual com credenciais explicitas, nao fluxo normal.
 
 ### Integracoes
 
@@ -410,7 +410,7 @@ Criar `wimifarma_miauw`/`apps/miauw` em fases: primeiro schema Postgres e migrad
 ## Ordem recomendada para proximos inventarios
 
 1. Gestao e Pedidos, por terem acoplamento financeiro e regras de boleto.
-2. Tarefa, XP e Codigos, para documentar desligamento final dos espelhos MySQL.
+2. Tarefa, XP e Codigos, para documentar desligamento final dos espelhos MySQL restantes.
 3. Usuarios, para amarrar permissoes por modulo.
 4. Cotacao, para registrar Google Sheets, tempo real e risco de sync.
 5. WordPress/Home, se a meta virar remover MySQL por completo.

@@ -456,18 +456,12 @@ services:
     container_name: wimifarma-financeiro-app
     restart: unless-stopped
     depends_on:
-      - wimifarma-com-db
       - wimifarma-core-db
       - wimifarma-financeiro-db
     environment:
       NODE_ENV: production
       PORT: 3800
       BASE_PATH: /financeiro
-      MYSQL_HOST: wimifarma-com-db
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: wimifarma_app
-      MYSQL_USER: wimifarma_user
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
       CORE_POSTGRES_HOST: wimifarma-core-db
       CORE_POSTGRES_PORT: 5432
       CORE_POSTGRES_DB: wimifarma_core
@@ -485,8 +479,8 @@ services:
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
       MIAUW_WHATSAPP_INTERNAL_TOKEN: ${MIAUW_WHATSAPP_INTERNAL_TOKEN:-}
       MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
-      FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED: ${FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED:-true}
-      FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED: ${FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED:-true}
+      FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED: ${FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED:-false}
+      FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED: ${FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED:-false}
     volumes:
       - ./site/financeiro/styles.css:/app/public/styles.css:ro
       - ./site/financeiro/app.js:/app/public/app.js:ro

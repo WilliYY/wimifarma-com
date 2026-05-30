@@ -49,7 +49,7 @@ O script mostra:
 | Tarefa | Node.js + TypeScript + Postgres + core auth | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
 | Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
 | XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
-| Financeiro | Node.js + TypeScript + Postgres oficial | MySQL opcional para importacao/espelho de rollback | Postgres puro + core auth/auditoria apos paridade | 5 em corte |
+| Financeiro | Node.js + TypeScript + Postgres oficial | MySQL legado desligado por padrao; rollback manual | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
 | Cashback | Node.js + TypeScript + Postgres + core auth | MySQL legado opcional por flags de importacao/espelho/log | Postgres puro + core auth/auditoria | 6 em corte |
 | Miauby interno | PHP + Node agent sombra + core auth | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
@@ -64,8 +64,8 @@ O script mostra:
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` como default e desligar legado MySQL de dados por flags depois de paridade.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
-5. Validar Financeiro Node/Postgres em `/financeiro/` com backup, checksums por dia/tipo, smoke de Caixa/Relatorio/exportacao e contrato Pix CNPJ do Miauby antes de desligar espelho MySQL.
-6. Validar Cashback em `/cashback/`, saldos por cliente, CSV, mensagens e autoteste antes de desligar espelho MySQL.
+5. Observar Financeiro em `/financeiro/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir checksums por dia/tipo, Caixa, Relatorio, exportacao e contrato Pix CNPJ do Miauby.
+6. Observar Cashback em `/cashback/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir saldos por cliente, CSV, mensagens e autoteste.
 7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
 8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
@@ -110,7 +110,7 @@ Financeiro foi cortado para `apps/financeiro`:
 - frontend preservado por `site/financeiro/styles.css`, `site/financeiro/app.js`, `site/financeiro/login-runner.js`, logo/favicon e assets montados no container Node;
 - login oficial por `core_users` com `FINANCEIRO_AUTH_PROVIDER=core`;
 - endpoints internos tokenizados para resumo, dia, checksums por dia/tipo, auditoria recente, lancamentos, faturamentos e sync manual;
-- `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario em MySQL para rollback.
+- `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=false` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=false` por padrao desde 2026-05-29 apos paridade validada; import/espelho MySQL so deve voltar em rollback manual com credenciais explicitas.
 
 Cashback foi cortado para `apps/cashback`:
 

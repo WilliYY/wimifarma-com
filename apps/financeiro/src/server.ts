@@ -38,8 +38,8 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 
 const AUTH_PROVIDER = normalizeAuthProvider(env.FINANCEIRO_AUTH_PROVIDER || 'core');
-const LEGACY_IMPORT_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED, true);
-const LEGACY_MIRROR_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED, true);
+const LEGACY_IMPORT_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED, false);
+const LEGACY_MIRROR_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED, false);
 const LEGACY_MYSQL_REQUIRED = LEGACY_IMPORT_ENABLED || LEGACY_MIRROR_ENABLED || AUTH_PROVIDER === 'mysql';
 const SESSION_SECRET = env.FINANCEIRO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const REOPEN_PASSWORD = env.FINANCEIRO_REOPEN_PASSWORD || 'wimifarma';

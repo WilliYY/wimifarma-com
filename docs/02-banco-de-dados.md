@@ -169,7 +169,7 @@ Criadas por `apps/financeiro/src/server.ts`:
 - `financeiro_internal_idempotency`: idempotencia de chamadas internas do Miauby/WhatsApp.
 - `financeiro_sessions`: sessoes do app Node (`WFFINANCEIRO`).
 
-A fonte oficial do Financeiro e o Postgres `wimifarma_financeiro`. O MySQL `financeiro_*` fica como legado/importacao/espelho temporario enquanto `FINANCEIRO_LEGACY_MYSQL_*` estiver ligado.
+A fonte oficial do Financeiro e o Postgres `wimifarma_financeiro`. Desde a validacao de 2026-05-29, o MySQL `financeiro_*` fica como referencia historica/rollback manual; `FINANCEIRO_LEGACY_MYSQL_*` fica desligado por padrao e so deve voltar com credenciais MySQL explicitas.
 
 ## Tabelas em `wimifarma_app`
 

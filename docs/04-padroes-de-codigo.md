@@ -68,11 +68,11 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - O codigo segue estrutura simples por pasta/modulo.
 - O WordPress continua como raiz principal.
 - Segredos entram por ambiente ou `config.local.php`.
-- Cashback adotou Node.js + TypeScript + Postgres dedicado, mantendo CSS/JS/assets de `site/cashback`, login core, sessoes `WFCASHBACK`, importacao idempotente e espelho MySQL temporario para rollback curto.
+- Cashback adotou Node.js + TypeScript + Postgres dedicado, mantendo CSS/JS/assets de `site/cashback`, login core e sessoes `WFCASHBACK`; depois da paridade de 2026-05-29, MySQL fica desligado por padrao e so volta em rollback manual.
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
 - A Tarefa adotou Node.js + TypeScript + Postgres dedicado para remover o primeiro modulo PHP pequeno do MySQL operacional, mantendo a tela visual e um espelho MySQL temporario para rollback curto.
 - Codigos adotou Node.js + TypeScript + Postgres dedicado, mantendo o CSS/JS de `site/codigos` e espelho MySQL temporario para rollback curto.
-- Financeiro iniciou Node.js + TypeScript + Postgres dedicado em modo sombra, mantendo `/financeiro/` no PHP e usando checksums antes de qualquer troca de rota.
+- Financeiro adotou Node.js + TypeScript + Postgres dedicado como rota oficial `/financeiro/`, preservando assets de `site/financeiro`; depois da paridade de 2026-05-29, MySQL fica desligado por padrao e so volta em rollback manual.
 - O Miauby WhatsApp adotou Node.js + TypeScript + Postgres dedicado para webhook/fila/outbox, evitando misturar eventos externos com MySQL legado ou com o banco da Gestao.
 - O XP adotou Node.js + TypeScript + Postgres dedicado, mantendo assets/uploads de `site/xp` e espelho MySQL temporario para rollback curto.
 

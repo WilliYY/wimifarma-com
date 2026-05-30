@@ -265,7 +265,7 @@ Tabelas principais:
 - `financeiro_settings`
 - `financeiro_audit_events`
 - `financeiro_internal_idempotency`
-- MySQL `financeiro_*` apenas como importacao/espelho temporario de rollback.
+- MySQL `financeiro_*` apenas como referencia historica/rollback manual; importacao/espelho fica desligado por padrao desde 2026-05-29.
 
 Regras a preservar:
 
@@ -281,9 +281,9 @@ Interface:
 
 - o topo do Financeiro mostra apenas `Caixa`, `Relatorio` e `Sair`;
 - a view dedicada de Auditoria nao fica disponivel na navegacao operacional;
-- os registros em `financeiro_audit_events` continuam sendo gravados no Postgres para suporte e rastreabilidade; `financeiro_auditoria` fica apenas como espelho legado quando o mirror MySQL estiver ligado.
+- os registros em `financeiro_audit_events` continuam sendo gravados no Postgres para suporte e rastreabilidade; `financeiro_auditoria` no MySQL fica apenas como rollback manual quando o mirror for religado explicitamente.
 - O Miauby WhatsApp pode preparar lancamento `Pix CNPJ` a partir de foto, print, imagem encaminhada ou PDF/documento de comprovante Pix quando a flag de OCR estiver ligada. O bridge valida remetente, card `Financeiro`, destino por CNPJ/chave Pix ou nome correlato, valor e pagador; data e horario sao usados quando a leitura trouxer, mas a correcao manual `pix cnpj valor - nome - obs opcional` tambem pode gravar usando o momento atual. Depois envia confirmacao `Sim`/`Nao`. Somente o `Sim` grava no Financeiro Node por endpoint interno tokenizado, com categoria `Pix CNPJ` e observacao sanitizada. `Nao`, destino divergente ou dado faltante nao gravam nada e pedem texto corrigido.
-- O Financeiro Node/Postgres atende `/financeiro/`, preserva o frontend visual, expoe health/resumo/checksums internos e mantem MySQL apenas como importacao/espelho temporario durante a validacao do corte.
+- O Financeiro Node/Postgres atende `/financeiro/`, preserva o frontend visual, expoe health/resumo/checksums internos e roda sem import/espelho MySQL por padrao desde a validacao de 2026-05-29.
 
 ## Fluxo Gestao
 

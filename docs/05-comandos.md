@@ -263,7 +263,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" h
 docker exec wimifarma-financeiro-db psql -U wimifarma_financeiro -d wimifarma_financeiro -c "\dt"
 ```
 
-O app `apps/financeiro` atende a rota oficial `/financeiro/` via proxy Apache, usa `core_users` por `FINANCEIRO_AUTH_PROVIDER=core` e grava em Postgres `wimifarma_financeiro`. `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario em MySQL para rollback curto. Endpoints `/financeiro/internal/*` e `/financeiro/api/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
+O app `apps/financeiro` atende a rota oficial `/financeiro/` via proxy Apache, usa `core_users` por `FINANCEIRO_AUTH_PROVIDER=core` e grava em Postgres `wimifarma_financeiro`. Desde a validacao de 2026-05-29, `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=false` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=false` sao o padrao; rollback MySQL exige religar flags e credenciais explicitamente. Endpoints `/financeiro/internal/*` e `/financeiro/api/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
 
 ## Local - Inventario de modernizacao
 
