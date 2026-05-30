@@ -906,6 +906,51 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
   }
 }
 
+async function createPublicTaskFromInternal(req: Request): Promise<TaskRow> {
+  const priority = validPriority(req.body?.priority || req.body?.prioridade);
+  const title = trimText(req.body?.title || req.body?.titulo, 180);
+  const description = String(req.body?.description || req.body?.descricao || '').trim();
+  const actorUserId = Number(req.body?.actor_user_id || req.body?.usuario_id || 0) || null;
+  const actorUsername = cleanText(req.body?.actor_username || req.body?.username || 'Miauby', 120);
+  if (!title) throw new Error('Informe o titulo da tarefa.');
+
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<TaskRow>(
+      `INSERT INTO tarefa_tasks (priority, title, description, status, created_by)
+       VALUES ($1, $2, $3, 'aberta', $4)
+       RETURNING *`,
+      [priority, title, description, actorUserId],
+    );
+    const task = result.rows[0];
+    await auditPg(client, Number(task.id), actorUserId, 'tarefa_criada_miauby', `Tarefa criada pelo Miauby: ${title}`);
+    await client.query('COMMIT');
+    void logCoreAudit(actorUserId, 'tarefa_criada_miauby', 'task', String(task.id), `Tarefa criada pelo Miauby por ${actorUsername}.`, {
+      source: 'miauby_internal_tool',
+    });
+    return task;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function publicTaskPayload(task: TaskRow): Record<string, unknown> {
+  return {
+    id: Number(task.id),
+    status: task.status,
+    priority: task.priority,
+    title: task.title,
+    description: task.description || '',
+    created_by: task.created_by === null ? null : Number(task.created_by),
+    created_at: task.created_at,
+    updated_at: task.updated_at,
+  };
+}
+
 async function updateTask(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   const priority = validPriority(req.body.prioridade);
@@ -1392,6 +1437,70 @@ async function handlePost(req: Request, res: Response): Promise<void> {
 }
 
 app.post(`${BASE_PATH}/`, requireAuth, verifyCsrf, asyncRoute(handlePost));
+
+app.get(`${BASE_PATH}/api/internal/summary`, requireInternalToken, asyncRoute(async (req, res) => {
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.start || '')) ? String(req.query.start) : '';
+  const endExclusive = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.end_exclusive || '')) ? String(req.query.end_exclusive) : '';
+  const params: unknown[] = [];
+  const periodWhere = start && endExclusive
+    ? "created_at >= $1::date AND created_at < $2::date AND assigned_core_user_id IS NULL"
+    : 'assigned_core_user_id IS NULL';
+  if (start && endExclusive) {
+    params.push(start, endExclusive);
+  }
+  const periodCounts = await pgPool.query<{
+    total: string;
+    abertas: string;
+    concluidas: string;
+    canceladas: string;
+    altas_abertas: string;
+  }>(
+    `SELECT
+       COUNT(*)::bigint AS total,
+       COALESCE(SUM(CASE WHEN status = 'aberta' THEN 1 ELSE 0 END), 0)::bigint AS abertas,
+       COALESCE(SUM(CASE WHEN status = 'concluida' THEN 1 ELSE 0 END), 0)::bigint AS concluidas,
+       COALESCE(SUM(CASE WHEN status = 'cancelada' THEN 1 ELSE 0 END), 0)::bigint AS canceladas,
+       COALESCE(SUM(CASE WHEN status = 'aberta' AND priority = 'alta' THEN 1 ELSE 0 END), 0)::bigint AS altas_abertas
+     FROM tarefa_tasks
+     WHERE ${periodWhere}`,
+    params,
+  );
+  const open = await pgPool.query<TaskRow>(
+    `SELECT *
+       FROM tarefa_tasks
+       WHERE status = 'aberta'
+         AND assigned_core_user_id IS NULL
+       ORDER BY
+         CASE priority WHEN 'alta' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC,
+         created_at ASC,
+         id ASC
+       LIMIT 8`,
+  );
+  const row = periodCounts.rows[0];
+  res.json({
+    ok: true,
+    source: 'postgres',
+    scope: 'public',
+    period: { start: start || null, end_exclusive: endExclusive || null },
+    counts: {
+      total: Number(row?.total || 0),
+      abertas: Number(row?.abertas || 0),
+      concluidas: Number(row?.concluidas || 0),
+      canceladas: Number(row?.canceladas || 0),
+      altas_abertas: Number(row?.altas_abertas || 0),
+    },
+    open: open.rows.map(publicTaskPayload),
+  });
+}));
+
+app.post(`${BASE_PATH}/api/internal/tasks`, requireInternalToken, asyncRoute(async (req, res) => {
+  const task = await createPublicTaskFromInternal(req);
+  res.json({
+    ok: true,
+    source: 'postgres',
+    task: publicTaskPayload(task),
+  });
+}));
 
 app.post(`${BASE_PATH}/api/internal/tasks/private`, requireInternalToken, asyncRoute(async (req, res) => {
   const task = await createPrivateTaskFromInternal(req);

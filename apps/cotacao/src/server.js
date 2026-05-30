@@ -1984,6 +1984,113 @@ app.get(`${BASE_PATH}/logout.php`, (req, res) => {
 app.get(`${BASE_PATH}/index.php`, requireAuth, (_req, res) => res.redirect(`${BASE_PATH}/`));
 app.get(`${BASE_PATH}/`, requireAuth, (req, res) => res.type('html').send(renderApp(req)));
 
+function internalActor(body) {
+  const userId = Number.parseInt(String(body?.usuario_id || body?.user_id || ''), 10);
+  return {
+    id: Number.isSafeInteger(userId) && userId > 0 ? userId : null,
+    username: normalizeInternalText(body?.username || body?.usuario || 'Miauby', 80) || 'Miauby'
+  };
+}
+
+function internalMoneyCell(value) {
+  const number = typeof value === 'number'
+    ? value
+    : Number(String(value ?? '').replace(/\./g, '').replace(',', '.'));
+  if (!Number.isFinite(number) || number <= 0) return '';
+  return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function findDistributorColumnByName(columns, name) {
+  const target = normalizeInternalSearch(name);
+  if (!target) return null;
+  return columns.find((column) => isDistributorColumn(column) && normalizeInternalSearch(column.label) === target) || null;
+}
+
+async function ensureInternalDistributorColumn(quoteId, supplierName, actor) {
+  let columns = await visibleColumns(quoteId);
+  let column = findDistributorColumnByName(columns, supplierName);
+  if (column) {
+    return { column, columns, created: false, eventId: null };
+  }
+
+  const distributors = columns.filter(isDistributorColumn);
+  const anchorKey = distributors.length ? distributors[distributors.length - 1].key : '';
+  column = await addDistributorColumn(quoteId, anchorKey, 'after', supplierName);
+  columns = await visibleColumns(quoteId);
+  const visibleColumn = columns.find((item) => item.key === column.key) || column;
+  await logColumnAudit({
+    quoteId,
+    columnKey: visibleColumn.key,
+    action: 'create_internal',
+    after: visibleColumn,
+    user: actor,
+    clientId: INTERNAL_CLIENT_ID
+  });
+  const event = await appendEvent({
+    quoteId,
+    type: 'column_created',
+    columnKey: visibleColumn.key,
+    payload: { column: visibleColumn, columns, source: 'miauby_cotacao_rapida' },
+    user: actor,
+    clientId: INTERNAL_CLIENT_ID
+  });
+  io.to(`quote:${quoteId}`).emit('columns:changed', {
+    type: 'column_created',
+    column: visibleColumn,
+    columns,
+    eventId: Number(event.id),
+    clientId: INTERNAL_CLIENT_ID
+  });
+  return { column: visibleColumn, columns, created: true, eventId: Number(event.id) };
+}
+
+app.get(`${BASE_PATH}/api/internal/summary`, requireInternalToken, asyncRoute(async (_req, res) => {
+  const sheet = await loadSheet();
+  const counts = {
+    total: sheet.rows.length,
+    urgentes: 0,
+    encomendas: 0,
+    com_vencedor: 0,
+    sem_vencedor: 0
+  };
+  for (const row of sheet.rows) {
+    const category = normalizeInternalSearch(row.values?.categoria || '');
+    const winner = computeWinnerForRow(row, sheet.columns);
+    if (category.includes('urgente')) counts.urgentes += 1;
+    if (category.includes('encomenda')) counts.encomendas += 1;
+    if (winner && winner !== 'Sem vencedor') counts.com_vencedor += 1;
+  }
+  counts.sem_vencedor = Math.max(0, counts.total - counts.com_vencedor);
+  const distributors = sheet.columns.filter(isDistributorColumn).map((column) => ({
+    key: column.key,
+    label: column.label
+  }));
+  const recent = [...sheet.rows]
+    .sort((left, right) => new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime())
+    .slice(0, 8)
+    .map((row) => ({
+      rowId: row.id,
+      position: row.position,
+      ean: String(row.values?.ean ?? ''),
+      produto: String(row.values?.produto ?? ''),
+      quantidade: String(row.values?.quantidade ?? ''),
+      categoria: String(row.values?.categoria ?? ''),
+      ganhador: computeWinnerForRow(row, sheet.columns),
+      updatedAt: row.updatedAt
+    }));
+
+  res.json({
+    ok: true,
+    source: 'postgres',
+    quoteId: sheet.quote.id,
+    quoteName: sheet.quote.name,
+    counts,
+    distributors,
+    recent,
+    lastEventId: sheet.lastEventId
+  });
+}));
+
 app.get(`${BASE_PATH}/api/internal/search`, requireInternalToken, asyncRoute(async (req, res) => {
   const query = normalizeInternalText(req.query.q, 140);
   const terms = normalizeInternalSearch(query)
@@ -2087,6 +2194,122 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
       registrada_em: event.created_at,
       observacao
     },
+    rows,
+    eventId: Number(event.id)
+  });
+}));
+
+app.post(`${BASE_PATH}/api/internal/urgentes`, requireInternalToken, asyncRoute(async (req, res) => {
+  const produto = normalizeInternalText(req.body?.produto, 220);
+  const categoria = normalizeInternalText(req.body?.categoria || 'urgente geral', 120) || 'urgente geral';
+  const observacao = normalizeInternalText(req.body?.observacao, 180);
+  if (!produto) {
+    return res.status(422).json({ ok: false, error: 'Informe o produto urgente.' });
+  }
+
+  const quote = await getOrCreateDefaultQuote();
+  const rowValues = {
+    produto,
+    quantidade: '1',
+    categoria
+  };
+  const rows = await addRows(quote.id, 1, [rowValues]);
+  const actor = internalActor(req.body);
+  const event = await appendEvent({
+    quoteId: quote.id,
+    type: 'rows_added',
+    payload: {
+      rows,
+      source: 'miauby_urgente',
+      produto,
+      observacao
+    },
+    user: actor,
+    clientId: INTERNAL_CLIENT_ID
+  });
+  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId: INTERNAL_CLIENT_ID });
+
+  return res.json({
+    ok: true,
+    item: {
+      id: rows[0]?.id || '',
+      rowId: rows[0]?.id || '',
+      position: rows[0]?.position || 0,
+      produto,
+      categoria,
+      status: 'aberta',
+      registrada_em: event.created_at,
+      observacao
+    },
+    rows,
+    eventId: Number(event.id)
+  });
+}));
+
+app.post(`${BASE_PATH}/api/internal/cotacoes-rapidas`, requireInternalToken, asyncRoute(async (req, res) => {
+  const fornecedor = normalizeInternalText(req.body?.fornecedor, 60);
+  const items = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  if (!fornecedor) {
+    return res.status(422).json({ ok: false, error: 'Informe a distribuidora da cotacao rapida.' });
+  }
+  if (!items.length) {
+    return res.status(422).json({ ok: false, error: 'Informe ao menos um item da cotacao rapida.' });
+  }
+
+  const quote = await getOrCreateDefaultQuote();
+  const actor = internalActor(req.body);
+  const ensured = await ensureInternalDistributorColumn(quote.id, fornecedor, actor);
+  const rowValues = items
+    .slice(0, 30)
+    .map((item) => {
+      const produto = normalizeInternalText(item?.produto, 180);
+      if (!produto) return null;
+      const categoria = normalizeInternalText(item?.categoria || 'cotacao rapida', 100) || 'cotacao rapida';
+      const values = {
+        produto,
+        quantidade: '1',
+        categoria
+      };
+      const price = internalMoneyCell(item?.preco);
+      if (price) values[ensured.column.key] = price;
+      return values;
+    })
+    .filter(Boolean);
+
+  if (!rowValues.length) {
+    return res.status(422).json({ ok: false, error: 'Nenhum produto valido na cotacao rapida.' });
+  }
+
+  const rows = await addRows(quote.id, rowValues.length, rowValues);
+  const event = await appendEvent({
+    quoteId: quote.id,
+    type: 'rows_added',
+    payload: {
+      rows,
+      source: 'miauby_cotacao_rapida',
+      fornecedor,
+      columnKey: ensured.column.key
+    },
+    user: actor,
+    clientId: INTERNAL_CLIENT_ID
+  });
+  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId: INTERNAL_CLIENT_ID });
+
+  return res.json({
+    ok: true,
+    fornecedor,
+    fornecedor_coluna: ensured.column,
+    coluna_criada: ensured.created,
+    columnEventId: ensured.eventId,
+    itens: rows.map((row, index) => ({
+      id: row.id,
+      rowId: row.id,
+      position: row.position,
+      produto: String(row.values?.produto || ''),
+      preco: row.values?.[ensured.column.key] || '',
+      categoria: String(row.values?.categoria || ''),
+      source_index: index
+    })),
     rows,
     eventId: Number(event.id)
   });

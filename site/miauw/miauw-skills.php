@@ -399,7 +399,7 @@ function miauw_skill_registry(): array
             'parametros_obrigatorios' => array('titulo'),
             'entrada' => array('titulo', 'descricao', 'prioridade'),
             'saida' => 'Tarefa criada com status aberta.',
-            'auditoria' => array('wf_tarefas', 'wf_logs'),
+            'auditoria' => array('tarefa_tasks', 'tarefa_audit_events', 'core_audit_logs', 'miauw_tool_traces'),
             'efeitos' => array('cria_registro'),
         ),
         'criar_encomenda_cotacao' => array(
@@ -418,7 +418,7 @@ function miauw_skill_registry(): array
             'parametros_obrigatorios' => array('produto', 'responsavel'),
             'entrada' => array('produto', 'responsavel', 'observacao'),
             'saida' => 'Item de encomenda criado na Cotacao Geral.',
-            'auditoria' => array('cotacao_v2_events', 'wf_logs'),
+            'auditoria' => array('cotacao_v2_rows', 'cotacao_v2_events', 'miauw_tool_traces'),
             'efeitos' => array('cria_item_cotacao_v2'),
         ),
         'criar_cotacao_urgente' => array(
@@ -433,8 +433,8 @@ function miauw_skill_registry(): array
             'local_action' => true,
             'entrada' => array('produto'),
             'saida' => 'Item urgente criado na Cotacao Geral.',
-            'auditoria' => array('cotacao_itens', 'cotacao_auditoria', 'miauw_alertas', 'wf_logs'),
-            'efeitos' => array('cria_item_cotacao', 'cria_alerta'),
+            'auditoria' => array('cotacao_v2_rows', 'cotacao_v2_events', 'miauw_alertas', 'miauw_tool_traces'),
+            'efeitos' => array('cria_item_cotacao_v2', 'cria_alerta'),
         ),
         'criar_cotacao_rapida' => array(
             'nome' => 'criar_cotacao_rapida',
@@ -448,8 +448,8 @@ function miauw_skill_registry(): array
             'local_action' => true,
             'entrada' => array('fornecedor', 'itens'),
             'saida' => 'Fornecedor e itens com preco criados/atualizados.',
-            'auditoria' => array('cotacao_fornecedores', 'cotacao_itens', 'cotacao_precos', 'cotacao_auditoria'),
-            'efeitos' => array('cria_fornecedor_quando_claro', 'cria_itens_precos'),
+            'auditoria' => array('cotacao_v2_columns', 'cotacao_v2_rows', 'cotacao_v2_events', 'miauw_tool_traces'),
+            'efeitos' => array('cria_distribuidora_v2_quando_claro', 'cria_itens_precos_v2'),
         ),
         'criar_planilha_cotacao' => array(
             'nome' => 'criar_planilha_cotacao',
@@ -462,9 +462,9 @@ function miauw_skill_registry(): array
             'openai_tool' => false,
             'local_action' => true,
             'entrada' => array('nome'),
-            'saida' => 'Novo bloco de cotacao criado pelo modelo existente.',
-            'auditoria' => array('cotacao_blocos', 'cotacao_auditoria'),
-            'efeitos' => array('cria_bloco_cotacao'),
+            'saida' => 'Bloqueado ate existir endpoint moderno na Cotacao V2.',
+            'auditoria' => array('miauw_tool_traces'),
+            'efeitos' => array('nao_altera_dados_operacionais'),
         ),
         'criar_lancamento_financeiro' => array(
             'nome' => 'criar_lancamento_financeiro',
@@ -482,7 +482,7 @@ function miauw_skill_registry(): array
             'parametros_obrigatorios' => array('categoria', 'valor', 'responsavel'),
             'entrada' => array('categoria', 'valor', 'responsavel', 'observacao', 'data'),
             'saida' => 'Lancamento financeiro criado com auditoria.',
-            'auditoria' => array('financeiro_lancamentos', 'financeiro_auditoria', 'miauw_padroes'),
+            'auditoria' => array('financeiro_entries', 'financeiro_audit_events', 'core_audit_logs', 'miauw_tool_traces', 'miauw_padroes'),
             'efeitos' => array('cria_lancamento_financeiro', 'aprende_padrao_comando'),
         ),
         'registrar_sangria' => array(
@@ -501,7 +501,7 @@ function miauw_skill_registry(): array
             'parametros_obrigatorios' => array('valor', 'responsavel'),
             'entrada' => array('valor', 'responsavel', 'observacao', 'data'),
             'saida' => 'Sangria registrada no financeiro com auditoria.',
-            'auditoria' => array('financeiro_lancamentos', 'financeiro_auditoria', 'wf_logs'),
+            'auditoria' => array('financeiro_entries', 'financeiro_audit_events', 'core_audit_logs', 'miauw_tool_traces'),
             'efeitos' => array('cria_lancamento_financeiro_sangria'),
         ),
         'registrar_faturamento_diario' => array(
@@ -520,7 +520,7 @@ function miauw_skill_registry(): array
             'parametros_obrigatorios' => array('entries'),
             'entrada' => array('entries'),
             'saida' => 'Faturamento diario salvo no fechamento financeiro.',
-            'auditoria' => array('financeiro_fechamentos', 'financeiro_auditoria'),
+            'auditoria' => array('financeiro_closings', 'financeiro_audit_events', 'core_audit_logs', 'miauw_tool_traces'),
             'efeitos' => array('atualiza_faturamento_diario'),
         ),
         'registrar_memoria' => array(
@@ -845,111 +845,43 @@ function miauw_skill_financeiro_summary(array $period): array
         }
     }
 
-    if (!miauw_skill_table_exists('financeiro_fechamentos')) {
-        return array();
-    }
-
-    $stmt = db()->prepare(
-        "SELECT
-            COUNT(*) AS dias_registrados,
-            COALESCE(SUM(status = 'fechado'), 0) AS fechados,
-            COALESCE(SUM(status = 'divergente'), 0) AS divergentes,
-            COALESCE(SUM(status = 'conferencia'), 0) AS em_conferencia,
-            COALESCE(SUM(status = 'aberto'), 0) AS abertos,
-            COALESCE(SUM(total_conferido), 0) AS total_lancado,
-            COALESCE(SUM(abertura_sistema), 0) AS total_sistema,
-            COALESCE(SUM(sobra_falta), 0) AS sobra_falta
-         FROM financeiro_fechamentos
-         WHERE data_fechamento >= ? AND data_fechamento < ?"
-    );
-    $stmt->execute(array($period['start'], $period['end_exclusive']));
-    $row = $stmt->fetch() ?: array();
-
-    $lines = array(
-        'FINANCEIRO ' . $period['label'],
-        'Dias registrados: ' . (int) ($row['dias_registrados'] ?? 0),
-        'Fechados: ' . (int) ($row['fechados'] ?? 0) . ', divergentes: ' . (int) ($row['divergentes'] ?? 0) . ', em conferencia: ' . (int) ($row['em_conferencia'] ?? 0) . ', abertos: ' . (int) ($row['abertos'] ?? 0),
-        'Total lancado/conferido: ' . miauw_skill_money($row['total_lancado'] ?? 0),
-        'Total sistema: ' . miauw_skill_money($row['total_sistema'] ?? 0),
-        'Sobra/Falta acumulada: ' . miauw_skill_money($row['sobra_falta'] ?? 0),
-    );
-
-    if (miauw_skill_table_exists('financeiro_lancamentos')) {
-        $stmt = db()->prepare(
-            "SELECT categoria, COUNT(*) AS qtd, COALESCE(SUM(valor), 0) AS total
-             FROM financeiro_lancamentos
-             WHERE data >= ? AND data < ? AND status = 'lancado'
-             GROUP BY categoria
-             ORDER BY total DESC
-             LIMIT 8"
-        );
-        $stmt->execute(array($period['start'], $period['end_exclusive']));
-        $entries = $stmt->fetchAll();
-
-        if ($entries) {
-            $parts = array();
-            foreach ($entries as $entry) {
-                $parts[] = (string) $entry['categoria'] . ': ' . (int) $entry['qtd'] . ' lanc., ' . miauw_skill_money($entry['total']);
-            }
-
-            $lines[] = 'Categorias lancadas: ' . implode('; ', $parts);
-        }
-    }
-
-    return $lines;
+    return array('FINANCEIRO: ponte interna moderna sem token. Confira /financeiro/ enquanto isso.');
 }
 
 function miauw_skill_cashback_summary(array $period): array
 {
-    if (!miauw_skill_table_exists('wf_compras')) {
-        return array();
+    if (!miauw_skill_cashback_internal_configured()) {
+        return array('CASHBACK: ponte interna moderna sem token. Confira /cashback/ enquanto isso.');
     }
 
-    $stmt = db()->prepare(
-        "SELECT
-            COUNT(*) AS compras,
-            COALESCE(SUM(valor_total), 0) AS total_vendido,
-            COALESCE(SUM(valor_cobrado), 0) AS total_cobrado,
-            COALESCE(SUM(cashback_gerado), 0) AS cashback_gerado
-         FROM wf_compras
-         WHERE data_compra >= ? AND data_compra < ?"
+    try {
+        $response = miauw_skill_cashback_internal_request('GET', '/api/internal/summary', array(), array(
+            'start' => (string) ($period['start'] ?? ''),
+            'end_exclusive' => (string) ($period['end_exclusive'] ?? ''),
+        ));
+    } catch (Throwable $error) {
+        error_log('Miauby Cashback summary failed: ' . $error->getMessage());
+        return array('CASHBACK: nao consegui consultar o Postgres do modulo agora. Nao vou cair no legado.');
+    }
+
+    if (!is_array($response) || empty($response['ok'])) {
+        return array('CASHBACK: resumo interno indisponivel agora. Confira /cashback/.');
+    }
+
+    $counts = is_array($response['counts'] ?? null) ? $response['counts'] : array();
+    $totals = is_array($response['totals'] ?? null) ? $response['totals'] : array();
+
+    return array(
+        'CASHBACK/VENDAS ' . (string) ($period['label'] ?? 'atual'),
+        'Clientes ativos/cadastrados: ' . (int) ($counts['cashback_clients'] ?? 0),
+        'Compras no periodo: ' . (int) ($totals['purchases'] ?? 0),
+        'Total vendido registrado: ' . miauw_skill_money((float) ($totals['total'] ?? 0)),
+        'Total cobrado registrado: ' . miauw_skill_money((float) ($totals['charged'] ?? 0)),
+        'Cashback gerado: ' . miauw_skill_money((float) ($totals['generated'] ?? 0)),
+        'Resgates registrados: ' . (int) ($counts['cashback_redemptions'] ?? 0) . ', total resgatado: ' . miauw_skill_money((float) ($totals['redeemed'] ?? 0)),
+        'Saldo ativo atual de cashback: ' . miauw_skill_money((float) ($totals['available'] ?? 0)) . '.',
+        'Fonte: Cashback Node/Postgres.',
     );
-    $stmt->execute(array($period['start'] . ' 00:00:00', $period['end_exclusive'] . ' 00:00:00'));
-    $row = $stmt->fetch() ?: array();
-
-    $lines = array(
-        'CASHBACK/VENDAS ' . $period['label'],
-        'Compras registradas: ' . (int) ($row['compras'] ?? 0),
-        'Total vendido registrado: ' . miauw_skill_money($row['total_vendido'] ?? 0),
-        'Total cobrado registrado: ' . miauw_skill_money($row['total_cobrado'] ?? 0),
-        'Cashback gerado: ' . miauw_skill_money($row['cashback_gerado'] ?? 0),
-        'Observacao: o cashback registra compras e valores; nao ha item/produto vendido por unidade nessa tabela.',
-    );
-
-    if (miauw_skill_table_exists('wf_resgates')) {
-        $stmt = db()->prepare(
-            'SELECT COUNT(*) AS resgates, COALESCE(SUM(valor_resgatado), 0) AS total_resgatado
-             FROM wf_resgates
-             WHERE data_resgate >= ? AND data_resgate < ?'
-        );
-        $stmt->execute(array($period['start'] . ' 00:00:00', $period['end_exclusive'] . ' 00:00:00'));
-        $resgate = $stmt->fetch() ?: array();
-        $lines[] = 'Resgates no periodo: ' . (int) ($resgate['resgates'] ?? 0) . ', total resgatado: ' . miauw_skill_money($resgate['total_resgatado'] ?? 0);
-    }
-
-    if (miauw_skill_table_exists('wf_cashback_creditos')) {
-        $stmt = db()->query(
-            "SELECT
-                COUNT(*) AS creditos_ativos,
-                COALESCE(SUM(valor_restante), 0) AS saldo_ativo
-             FROM wf_cashback_creditos
-             WHERE status = 'ativo'"
-        );
-        $credito = $stmt->fetch() ?: array();
-        $lines[] = 'Saldo ativo atual de cashback: ' . miauw_skill_money($credito['saldo_ativo'] ?? 0) . ' em ' . (int) ($credito['creditos_ativos'] ?? 0) . ' credito(s).';
-    }
-
-    return $lines;
 }
 
 function miauw_skill_codigos_summary(array $period): array
@@ -993,70 +925,17 @@ function miauw_skill_codigos_summary(array $period): array
                 }
 
                 return $lines;
-            }
-        } catch (Throwable $error) {
-            // Fallback legado abaixo preserva resposta enquanto o espelho MySQL estiver ativo.
+        }
+    } catch (Throwable $error) {
+            error_log('Miauby Codigos summary failed: ' . $error->getMessage());
         }
     }
 
-    if (!miauw_skill_table_exists('wf_codigos_comissao')) {
-        return array();
-    }
-
-    $total = (int) db()->query('SELECT COUNT(*) FROM wf_codigos_comissao WHERE ativo = 1')->fetchColumn();
-    $lines = array(
-        'CODIGOS',
-        'Ativos: ' . $total,
-    );
-
-    $stmt = db()->query(
-        "SELECT
-            CASE
-                WHEN ean REGEXP '^[0-9][0-9]' THEN LEFT(ean, 2)
-                ELSE 'outros'
-            END AS grupo,
-            COUNT(*) AS total
-         FROM wf_codigos_comissao
-         WHERE ativo = 1
-         GROUP BY grupo
-         ORDER BY CASE WHEN grupo = '20' THEN 1 WHEN grupo = '40' THEN 2 WHEN grupo = 'outros' THEN 99 ELSE 10 END, grupo ASC"
-    );
-    $groups = $stmt ? $stmt->fetchAll() : array();
-    if ($groups) {
-        $parts = array();
-        foreach ($groups as $group) {
-            $label = (string) ($group['grupo'] ?? 'outros');
-            $parts[] = ($label === 'outros' ? 'Outros' : 'EAN ' . $label) . ': ' . (int) ($group['total'] ?? 0);
-        }
-        $lines[] = 'Blocos: ' . implode('; ', $parts);
-    }
-
-    $stmt = db()->query(
-        'SELECT codigo, ean, preco
-         FROM wf_codigos_comissao
-         WHERE ativo = 1
-         ORDER BY atualizado_em DESC, id DESC
-         LIMIT 5'
-    );
-    $recent = $stmt ? $stmt->fetchAll() : array();
-    if ($recent) {
-        $lines[] = 'Ultimos atualizados:';
-        foreach ($recent as $item) {
-            $lines[] = '- ' . (string) ($item['codigo'] ?? '-')
-                . ' | EAN: ' . (string) ($item['ean'] ?? '-')
-                . ' | preco: ' . miauw_skill_money($item['preco'] ?? 0);
-        }
-    }
-
-    return $lines;
+    return array('CODIGOS: consulta interna moderna indisponivel agora. Nao vou cair no legado.');
 }
 
 function miauw_skill_codigos_lookup(string $message): array
 {
-    if (!miauw_skill_table_exists('wf_codigos_comissao')) {
-        return array();
-    }
-
     $terms = array_values(array_filter(miauw_skill_search_terms($message), static function ($term): bool {
         return !in_array((string) $term, array('codigo', 'codigos', 'comissao', 'preco', 'precos'), true);
     }));
@@ -1096,86 +975,48 @@ function miauw_skill_codigos_lookup(string $message): array
                 return $lines;
             }
         } catch (Throwable $error) {
-            // Fallback legado abaixo preserva resposta enquanto o espelho MySQL estiver ativo.
+            error_log('Miauby Codigos lookup failed: ' . $error->getMessage());
         }
     }
 
-    $where = array();
-    $params = array();
-    foreach ($terms as $term) {
-        $where[] = '(codigo LIKE ? OR ean LIKE ?)';
-        $params[] = '%' . $term . '%';
-        $params[] = '%' . $term . '%';
-    }
-
-    $stmt = db()->prepare(
-        'SELECT id, codigo, ean, preco
-         FROM wf_codigos_comissao
-         WHERE ativo = 1
-           AND (' . implode(' OR ', $where) . ')
-         ORDER BY ordem ASC, id ASC
-         LIMIT 8'
-    );
-    $stmt->execute($params);
-    $items = $stmt->fetchAll();
-
-    if (!$items) {
-        return array('CODIGOS: nenhum atalho encontrado para "' . implode(', ', $terms) . '".');
-    }
-
-    $lines = array('CODIGOS ENCONTRADOS');
-    foreach ($items as $item) {
-        $ean = (string) ($item['ean'] ?? '');
-        $group = preg_match('/^[0-9]{2}/', $ean, $match) ? (string) $match[0] : 'outros';
-        $lines[] = '#' . (int) ($item['id'] ?? 0)
-            . ' | bloco: ' . ($group === 'outros' ? 'Outros' : 'EAN ' . $group)
-            . ' | codigo: ' . (string) ($item['codigo'] ?? '-')
-            . ' | EAN: ' . ($ean !== '' ? $ean : '-')
-            . ' | preco: ' . miauw_skill_money($item['preco'] ?? 0);
-    }
-
-    return $lines;
+    return array('CODIGOS: consulta interna moderna indisponivel agora. Nao vou cair no legado.');
 }
 
 function miauw_skill_tarefa_summary(array $period): array
 {
-    if (!miauw_skill_table_exists('wf_tarefas')) {
-        return array();
+    if (!miauw_skill_tarefa_internal_configured()) {
+        return array('TAREFAS: ponte interna moderna sem token. Confira /tarefa/ enquanto isso.');
     }
 
-    $stmt = db()->prepare(
-        "SELECT
-            COUNT(*) AS total,
-            COALESCE(SUM(status = 'aberta'), 0) AS abertas,
-            COALESCE(SUM(status = 'concluida'), 0) AS concluidas,
-            COALESCE(SUM(status = 'cancelada'), 0) AS canceladas,
-            COALESCE(SUM(status = 'aberta' AND prioridade = 'alta'), 0) AS altas_abertas
-         FROM wf_tarefas
-         WHERE criado_em >= ? AND criado_em < ?"
-    );
-    $stmt->execute(array($period['start'] . ' 00:00:00', $period['end_exclusive'] . ' 00:00:00'));
-    $row = $stmt->fetch() ?: array();
+    try {
+        $response = miauw_skill_tarefa_internal_request('GET', '/api/internal/summary', array(), array(
+            'start' => (string) ($period['start'] ?? ''),
+            'end_exclusive' => (string) ($period['end_exclusive'] ?? ''),
+        ));
+    } catch (Throwable $error) {
+        error_log('Miauby Tarefa summary failed: ' . $error->getMessage());
+        return array('TAREFAS: nao consegui consultar o Postgres do modulo agora. Nao vou cair no legado.');
+    }
 
+    if (!is_array($response) || empty($response['ok'])) {
+        return array('TAREFAS: resumo interno indisponivel agora. Confira /tarefa/.');
+    }
+
+    $row = is_array($response['counts'] ?? null) ? $response['counts'] : array();
     $lines = array(
-        'TAREFAS ' . $period['label'],
+        'TAREFAS ' . (string) ($period['label'] ?? 'atual'),
         'Criadas no periodo: ' . (int) ($row['total'] ?? 0),
         'Abertas: ' . (int) ($row['abertas'] ?? 0) . ', concluidas: ' . (int) ($row['concluidas'] ?? 0) . ', canceladas: ' . (int) ($row['canceladas'] ?? 0),
         'Alta prioridade ainda aberta: ' . (int) ($row['altas_abertas'] ?? 0),
+        'Fonte: Tarefa Node/Postgres.',
     );
 
-    $stmt = db()->query(
-        "SELECT prioridade, titulo, criado_em
-         FROM wf_tarefas
-         WHERE status = 'aberta'
-         ORDER BY CASE prioridade WHEN 'alta' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC, criado_em ASC, id ASC
-         LIMIT 6"
-    );
-    $open = $stmt ? $stmt->fetchAll() : array();
+    $open = is_array($response['open'] ?? null) ? $response['open'] : array();
 
     if ($open) {
         $lines[] = 'Abertas primeiro por prioridade:';
         foreach ($open as $task) {
-            $lines[] = '- ' . strtoupper((string) ($task['prioridade'] ?? 'normal')) . ' | ' . (string) ($task['titulo'] ?? '-') . ' | criada em ' . br_date($task['criado_em'] ?? '', true);
+            $lines[] = '- ' . strtoupper((string) ($task['priority'] ?? 'normal')) . ' | ' . (string) ($task['title'] ?? '-') . ' | criada em ' . br_date($task['created_at'] ?? '', true);
         }
     }
 
@@ -1273,37 +1114,11 @@ function miauw_skill_tarefa_command_from_message(string $message): ?array
 
 function miauw_skill_ensure_tarefa_schema(): void
 {
-    static $done = false;
-
-    if ($done) {
-        return;
-    }
-
-    db()->exec(
-        "CREATE TABLE IF NOT EXISTS wf_tarefas (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            prioridade ENUM('alta','normal','baixa') NOT NULL DEFAULT 'normal',
-            titulo VARCHAR(180) NOT NULL,
-            descricao TEXT NULL,
-            status ENUM('aberta','concluida','cancelada') NOT NULL DEFAULT 'aberta',
-            criado_por INT UNSIGNED NULL,
-            criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            atualizado_em DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-            concluido_em DATETIME NULL,
-            cancelado_em DATETIME NULL,
-            PRIMARY KEY (id),
-            KEY idx_tarefa_status_prioridade (status, prioridade, criado_em),
-            KEY idx_tarefa_criado (criado_em)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-    );
-
-    $done = true;
+    throw new RuntimeException('A criacao de tarefa pelo Miauby agora usa somente o app Tarefa Node/Postgres.');
 }
 
 function miauw_skill_create_tarefa(array $command, ?int $userId): array
 {
-    miauw_skill_ensure_tarefa_schema();
-
     $title = trim((string) ($command['titulo'] ?? ''));
     $description = trim((string) ($command['descricao'] ?? ''));
     $priority = (string) ($command['prioridade'] ?? 'normal');
@@ -1316,21 +1131,28 @@ function miauw_skill_create_tarefa(array $command, ?int $userId): array
         throw new RuntimeException('Titulo da tarefa nao informado.');
     }
 
-    $stmt = db()->prepare(
-        'INSERT INTO wf_tarefas (prioridade, titulo, descricao, status, criado_por) VALUES (?, ?, ?, ?, ?)'
-    );
-    $stmt->execute(array($priority, miauw_substr($title, 0, 180), $description, 'aberta', $userId));
-    $id = (int) db()->lastInsertId();
-
-    if (function_exists('log_action')) {
-        log_action('miauw_tarefa_criada', 'task', $id, 'Tarefa criada pelo Miauby: ' . $title);
+    if (!miauw_skill_tarefa_internal_configured()) {
+        throw new RuntimeException('Tarefa moderna indisponivel: token interno nao configurado.');
     }
 
-    return array(
-        'id' => $id,
-        'prioridade' => $priority,
-        'titulo' => $title,
+    $payload = array(
+        'titulo' => miauw_substr($title, 0, 180),
         'descricao' => $description,
+        'prioridade' => $priority,
+        'usuario_id' => $userId,
+        'username' => (string) ($command['username'] ?? 'Miauby'),
+    );
+    $response = miauw_skill_tarefa_internal_request('POST', '/api/internal/tasks', $payload);
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['task'] ?? null)) {
+        throw new RuntimeException('Nao consegui criar a tarefa no Postgres agora.');
+    }
+
+    $task = $response['task'];
+    return array(
+        'id' => (int) ($task['id'] ?? 0),
+        'prioridade' => (string) ($task['priority'] ?? $priority),
+        'titulo' => (string) ($task['title'] ?? $title),
+        'descricao' => (string) ($task['description'] ?? $description),
     );
 }
 
@@ -1358,52 +1180,43 @@ function miauw_skill_tarefa_missing_reply(array $command): string
 
 function miauw_skill_cotacao_summary(array $period): array
 {
-    if (!miauw_skill_table_exists('cotacao_itens') || !miauw_skill_table_exists('cotacao_blocos')) {
-        return array();
+    unset($period);
+
+    if (!miauw_skill_cotacao_v2_internal_configured()) {
+        return array('COTACAO: ponte interna da V2 sem token. Confira /cotacao/.');
     }
 
-    $stmt = db()->prepare(
-        "SELECT
-            COUNT(*) AS total,
-            COALESCE(SUM(i.status = 'aberta'), 0) AS abertas,
-            COALESCE(SUM(i.status = 'cotada'), 0) AS cotadas,
-            COALESCE(SUM(i.status = 'pedido'), 0) AS pedidos,
-            COALESCE(SUM(i.status = 'cancelada'), 0) AS canceladas,
-            COALESCE(SUM(i.prioridade = 'urgente'), 0) AS urgentes,
-            COALESCE(SUM(i.prioridade = 'encomenda'), 0) AS encomendas,
-            COALESCE(SUM(i.vencedor_fornecedor_id IS NOT NULL), 0) AS com_vencedor
-         FROM cotacao_itens i
-         WHERE COALESCE(i.updated_at, i.created_at) >= ? AND COALESCE(i.updated_at, i.created_at) < ?"
-    );
-    $stmt->execute(array($period['start'] . ' 00:00:00', $period['end_exclusive'] . ' 00:00:00'));
-    $row = $stmt->fetch() ?: array();
+    try {
+        $response = miauw_skill_cotacao_v2_internal_request('GET', '/api/internal/summary');
+    } catch (Throwable $error) {
+        error_log('Miauby Cotacao summary failed: ' . $error->getMessage());
+        return array('COTACAO: nao consegui consultar o Postgres da V2 agora. Nao vou cair no legado.');
+    }
 
+    if (!is_array($response) || empty($response['ok'])) {
+        return array('COTACAO: resumo interno indisponivel agora. Confira /cotacao/.');
+    }
+
+    $counts = is_array($response['counts'] ?? null) ? $response['counts'] : array();
     $lines = array(
-        'COTACAO ' . $period['label'],
-        'Itens movimentados no periodo: ' . (int) ($row['total'] ?? 0),
-        'Abertas: ' . (int) ($row['abertas'] ?? 0) . ', cotadas: ' . (int) ($row['cotadas'] ?? 0) . ', pedidos: ' . (int) ($row['pedidos'] ?? 0) . ', canceladas: ' . (int) ($row['canceladas'] ?? 0),
-        'Com vencedor definido: ' . (int) ($row['com_vencedor'] ?? 0),
-        'Prioridade urgente: ' . (int) ($row['urgentes'] ?? 0) . ', prioridade encomenda: ' . (int) ($row['encomendas'] ?? 0),
+        'COTACAO V2',
+        'Itens ativos: ' . (int) ($counts['total'] ?? 0),
+        'Urgentes: ' . (int) ($counts['urgentes'] ?? 0) . ', encomendas: ' . (int) ($counts['encomendas'] ?? 0),
+        'Com vencedor definido: ' . (int) ($counts['com_vencedor'] ?? 0) . ', sem vencedor: ' . (int) ($counts['sem_vencedor'] ?? 0),
+        'Fonte: Cotacao Node/Postgres.',
     );
 
-    $stmt = db()->query(
-        "SELECT b.nome, COUNT(i.id) AS itens
-         FROM cotacao_blocos b
-         LEFT JOIN cotacao_itens i ON i.bloco_id = b.id
-         WHERE b.ativo = 1
-         GROUP BY b.id, b.nome
-         ORDER BY b.ordem ASC, b.nome ASC
-         LIMIT 8"
-    );
-    $blocks = $stmt->fetchAll();
-
-    if ($blocks) {
+    $distributors = is_array($response['distributors'] ?? null) ? $response['distributors'] : array();
+    if ($distributors) {
         $parts = array();
-        foreach ($blocks as $block) {
-            $parts[] = (string) $block['nome'] . ': ' . (int) $block['itens'] . ' item(ns)';
+        foreach (array_slice($distributors, 0, 8) as $column) {
+            if (is_array($column)) {
+                $parts[] = (string) ($column['label'] ?? '-');
+            }
         }
-
-        $lines[] = 'Blocos ativos: ' . implode('; ', $parts);
+        if ($parts) {
+            $lines[] = 'Distribuidoras visiveis: ' . implode('; ', $parts);
+        }
     }
 
     return $lines;
@@ -1450,32 +1263,26 @@ function miauw_skill_mask_phone(string $phone): string
 
 function miauw_skill_client_lookup(string $message): array
 {
-    if (!miauw_skill_table_exists('wf_clientes')) {
-        return array();
-    }
-
     $terms = miauw_skill_search_terms($message);
     if (!$terms) {
         return array('CLIENTES: informe nome ou telefone parcial para eu procurar sem invocar neblina administrativa.');
     }
 
-    $where = array();
-    $params = array();
-    foreach ($terms as $term) {
-        $where[] = '(nome LIKE ? OR telefone LIKE ?)';
-        $params[] = '%' . $term . '%';
-        $params[] = '%' . $term . '%';
+    if (!miauw_skill_cashback_internal_configured()) {
+        return array('CLIENTES: ponte interna do Cashback sem token. Confira /cashback/clientes.php.');
     }
 
-    $stmt = db()->prepare(
-        'SELECT id, nome, telefone, status, created_at
-         FROM wf_clientes
-         WHERE ' . implode(' OR ', $where) . '
-         ORDER BY updated_at DESC, id DESC
-         LIMIT 5'
-    );
-    $stmt->execute($params);
-    $clients = $stmt->fetchAll();
+    try {
+        $response = miauw_skill_cashback_internal_request('GET', '/api/internal/clients/search', array(), array(
+            'q' => implode(' ', $terms),
+            'limit' => 5,
+        ));
+    } catch (Throwable $error) {
+        error_log('Miauby Cashback client lookup failed: ' . $error->getMessage());
+        return array('CLIENTES: nao consegui consultar o Postgres do Cashback agora. Nao vou cair no legado.');
+    }
+
+    $clients = is_array($response['clients'] ?? null) ? $response['clients'] : array();
 
     if (!$clients) {
         return array('CLIENTES: nenhum cliente encontrado para "' . implode(', ', $terms) . '". Sem dado, sem milagre.');
@@ -1483,21 +1290,15 @@ function miauw_skill_client_lookup(string $message): array
 
     $lines = array('CLIENTES ENCONTRADOS');
     foreach ($clients as $client) {
-        $saldo = null;
-        if (function_exists('balance_for_client')) {
-            try {
-                $saldo = balance_for_client((int) $client['id']);
-            } catch (Throwable $error) {
-                $saldo = null;
-            }
+        if (!is_array($client)) {
+            continue;
         }
 
-        $line = '#' . (int) $client['id'] . ' - ' . (string) $client['nome'];
-        $line .= ' | telefone: ' . miauw_skill_mask_phone((string) ($client['telefone'] ?? ''));
+        $line = '#' . (int) ($client['id'] ?? 0) . ' - ' . (string) ($client['name'] ?? '-');
+        $line .= ' | telefone: ' . miauw_skill_mask_phone((string) ($client['phone'] ?? ''));
         $line .= ' | status: ' . (string) ($client['status'] ?? '-');
-        if ($saldo !== null) {
-            $line .= ' | saldo cashback: ' . miauw_skill_money($saldo);
-        }
+        $line .= ' | saldo cashback: ' . miauw_skill_money((float) ($client['available'] ?? 0));
+        $line .= ' | compras: ' . (int) ($client['purchase_count'] ?? 0);
         $lines[] = $line;
     }
 
@@ -1519,6 +1320,146 @@ function miauw_skill_env_value(array $names): string
     }
 
     return '';
+}
+
+function miauw_skill_internal_json_request(string $token, string $baseUrl, string $method, string $path, array $payload = array(), array $query = array(), int $timeout = 5): ?array
+{
+    if ($token === '') {
+        return null;
+    }
+
+    $url = rtrim($baseUrl, '/') . '/' . ltrim($path, '/');
+    if ($query) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    $method = strtoupper($method);
+    $headers = array(
+        'Accept: application/json',
+        'X-Miauw-Internal-Token: ' . $token,
+    );
+    $options = array(
+        'method' => $method,
+        'header' => implode("\r\n", $headers),
+        'timeout' => $timeout,
+        'ignore_errors' => true,
+    );
+
+    if ($method !== 'GET') {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $options['header'] .= "\r\nContent-Type: application/json";
+        $options['content'] = is_string($json) ? $json : '{}';
+    }
+
+    $context = stream_context_create(array('http' => $options));
+    $raw = @file_get_contents($url, false, $context);
+    if (!is_string($raw) || trim($raw) === '') {
+        return null;
+    }
+
+    $status = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d+)/', (string) $header, $match)) {
+                $status = (int) $match[1];
+                break;
+            }
+        }
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        return null;
+    }
+
+    if ($status >= 400) {
+        $message = isset($data['error']) ? (string) $data['error'] : (isset($data['message']) ? (string) $data['message'] : 'Falha em endpoint interno.');
+        throw new RuntimeException($message);
+    }
+
+    return $data;
+}
+
+function miauw_skill_cashback_internal_token(): string
+{
+    if (defined('CASHBACK_INTERNAL_TOKEN') && trim((string) CASHBACK_INTERNAL_TOKEN) !== '') {
+        return trim((string) CASHBACK_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('CASHBACK_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN'));
+}
+
+function miauw_skill_cashback_internal_base_url(): string
+{
+    $url = defined('CASHBACK_INTERNAL_BASE_URL') ? trim((string) CASHBACK_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('CASHBACK_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-cashback-app:4000/cashback', '/');
+}
+
+function miauw_skill_cashback_internal_configured(): bool
+{
+    return miauw_skill_cashback_internal_token() !== '';
+}
+
+function miauw_skill_cashback_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    return miauw_skill_internal_json_request(
+        miauw_skill_cashback_internal_token(),
+        miauw_skill_cashback_internal_base_url(),
+        $method,
+        $path,
+        $payload,
+        $query,
+        5
+    );
+}
+
+function miauw_skill_tarefa_internal_token(): string
+{
+    if (defined('TAREFA_INTERNAL_TOKEN') && trim((string) TAREFA_INTERNAL_TOKEN) !== '') {
+        return trim((string) TAREFA_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('TAREFA_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN'));
+}
+
+function miauw_skill_tarefa_internal_base_url(): string
+{
+    $url = defined('TAREFA_INTERNAL_BASE_URL') ? trim((string) TAREFA_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('TAREFA_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-tarefa-app:3500/tarefa', '/');
+}
+
+function miauw_skill_tarefa_internal_configured(): bool
+{
+    return miauw_skill_tarefa_internal_token() !== '';
+}
+
+function miauw_skill_tarefa_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    return miauw_skill_internal_json_request(
+        miauw_skill_tarefa_internal_token(),
+        miauw_skill_tarefa_internal_base_url(),
+        $method,
+        $path,
+        $payload,
+        $query,
+        5
+    );
 }
 
 function miauw_skill_financeiro_internal_token(): string
@@ -2256,68 +2197,12 @@ function miauw_skill_cotacao_lookup(string $message): array
         return $v2Lines;
     }
 
-    if (!miauw_skill_table_exists('cotacao_itens') || !miauw_skill_table_exists('cotacao_blocos') || !miauw_skill_table_exists('cotacao_fornecedores')) {
-        $terms = miauw_skill_search_terms($message);
-        if (!$terms) {
-            return array('COTACAO: informe EAN, produto ou categoria para eu achar a linha certa.');
-        }
-
-        return array('COTACAO: consulta interna da V2 indisponivel agora. Confira /cotacao/ e tente novamente.');
-    }
-
     $terms = miauw_skill_search_terms($message);
     if (!$terms) {
-        return array('COTACAO: informe EAN, produto ou categoria para eu achar a linha certa. A planilha nao le pensamento, infelizmente.');
+        return array('COTACAO: informe EAN, produto ou categoria para eu achar a linha certa.');
     }
 
-    $where = array();
-    $params = array();
-    foreach ($terms as $term) {
-        $where[] = '(i.ean LIKE ? OR i.produto LIKE ? OR i.categoria LIKE ?)';
-        $params[] = '%' . $term . '%';
-        $params[] = '%' . $term . '%';
-        $params[] = '%' . $term . '%';
-    }
-
-    $orderDateSelect = miauw_skill_column_exists('cotacao_itens', 'encomenda_registrada_em')
-        ? ', i.encomenda_registrada_em'
-        : ", NULL AS encomenda_registrada_em";
-    $stmt = db()->prepare(
-        'SELECT i.id, i.ean, i.produto, i.quantidade, i.categoria, i.prioridade, i.status, i.vencedor_preco
-                ' . $orderDateSelect . ',
-                b.nome AS bloco_nome, f.nome AS vencedor_nome
-         FROM cotacao_itens i
-         LEFT JOIN cotacao_blocos b ON b.id = i.bloco_id
-         LEFT JOIN cotacao_fornecedores f ON f.id = i.vencedor_fornecedor_id
-         WHERE ' . implode(' OR ', $where) . '
-         ORDER BY i.updated_at DESC, i.id DESC
-         LIMIT 6'
-    );
-    $stmt->execute($params);
-    $items = $stmt->fetchAll();
-
-    if (!$items) {
-        return array('COTACAO: nenhum item encontrado para "' . implode(', ', $terms) . '". Ou nao existe, ou foi cadastrado com nome de criatura mitologica.');
-    }
-
-    $lines = array('ITENS DE COTACAO ENCONTRADOS');
-    foreach ($items as $item) {
-        $winner = !empty($item['vencedor_nome']) ? (string) $item['vencedor_nome'] . ' por ' . miauw_skill_money($item['vencedor_preco']) : 'sem vencedor';
-        $line = '#' . (int) $item['id']
-            . ' | bloco: ' . (string) ($item['bloco_nome'] ?? '-')
-            . ' | EAN: ' . (string) ($item['ean'] ?? '-')
-            . ' | produto: ' . (string) ($item['produto'] ?? '-')
-            . ' | qtd: ' . (string) ($item['quantidade'] ?? '-')
-            . ' | categoria: ' . (string) ($item['categoria'] ?? '-')
-            . ' | status: ' . (string) ($item['status'] ?? '-')
-            . ' | vencedor: ' . $winner;
-        if ((string) ($item['prioridade'] ?? '') === 'encomenda' && !empty($item['encomenda_registrada_em'])) {
-            $line .= ' | registrada: ' . date('d/m/Y H:i', strtotime((string) $item['encomenda_registrada_em']));
-        }
-        $lines[] = $line;
-    }
-
-    return $lines;
+    return array('COTACAO: consulta interna da V2 indisponivel agora. Confira /cotacao/ e tente novamente.');
 }
 
 function miauw_skill_clean_encomenda_part(string $text, int $maxLength): string
@@ -2540,50 +2425,7 @@ function miauw_skill_create_cotacao_encomenda(array $command): array
         return $v2Result;
     }
 
-    $blockId = miauw_skill_cotacao_default_block_id();
-    $category = miauw_substr(trim('encomenda ' . $responsible . ($categoryExtra !== '' ? ' ' . $categoryExtra : '')), 0, 80);
-    $observation = 'Encomenda criada pelo Miauby. Responsavel/cliente: ' . $responsible . '.';
-    if ($note !== '') {
-        $observation .= ' Obs: ' . $note . '.';
-    }
-    $raw = miauw_skill_clean_encomenda_part((string) ($command['raw_message'] ?? ''), 160);
-    if ($raw !== '') {
-        $observation .= ' Comando: "' . $raw . '".';
-    }
-
-    $itemId = cotacao_save_item($blockId, array(
-        'produto' => $product,
-        'quantidade' => '1',
-        'categoria' => $category,
-        'prioridade' => 'encomenda',
-        'status' => 'aberta',
-        'observacao' => $observation,
-    ), array());
-
-    $item = function_exists('cotacao_item') ? cotacao_item($blockId, $itemId) : null;
-
-    if (function_exists('log_action')) {
-        log_action(
-            'miauw_cotacao_encomenda_criada',
-            'cotacao_itens',
-            $itemId,
-            json_encode(array(
-                'produto' => $product,
-                'responsavel' => $responsible,
-                'observacao' => $note,
-            ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Encomenda criada pelo Miauby.'
-        );
-    }
-
-    return array(
-        'id' => $itemId,
-        'produto' => $product,
-        'responsavel' => $responsible,
-        'categoria' => is_array($item) ? (string) ($item['categoria'] ?? ('encomenda ' . $responsible)) : 'encomenda ' . $responsible,
-        'status' => is_array($item) ? (string) ($item['status'] ?? 'aberta') : 'aberta',
-        'registrada_em' => is_array($item) ? (string) ($item['encomenda_registrada_em'] ?? '') : '',
-        'observacao' => $observation,
-    );
+    throw new RuntimeException('Cotacao V2 interna indisponivel. Nao gravei no legado para evitar divergencia.');
 }
 
 function miauw_skill_cotacao_encomenda_action_reply(array $result): string
@@ -2692,6 +2534,40 @@ function miauw_skill_product_operational_category(string $product, string $mode 
     return $base;
 }
 
+function miauw_skill_create_cotacao_urgente_v2(array $command, string $product, string $category, string $observation): ?array
+{
+    if (!miauw_skill_cotacao_v2_internal_configured()) {
+        return null;
+    }
+
+    $payload = array(
+        'produto' => $product,
+        'categoria' => $category,
+        'observacao' => $observation,
+    );
+
+    if (isset($command['usuario_id'])) {
+        $payload['usuario_id'] = (int) $command['usuario_id'];
+    }
+
+    if (isset($command['username'])) {
+        $payload['username'] = (string) $command['username'];
+    }
+
+    $response = miauw_skill_cotacao_v2_internal_request('POST', '/api/internal/urgentes', $payload);
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['item'] ?? null)) {
+        return null;
+    }
+
+    $item = $response['item'];
+    return array(
+        'id' => (string) ($item['rowId'] ?? $item['id'] ?? ''),
+        'produto' => $product,
+        'categoria' => (string) ($item['categoria'] ?? $category),
+        'status' => (string) ($item['status'] ?? 'aberta'),
+    );
+}
+
 function miauw_skill_create_cotacao_urgente(array $command): array
 {
     $product = miauw_skill_clean_encomenda_part((string) ($command['produto'] ?? ''), 220);
@@ -2699,7 +2575,6 @@ function miauw_skill_create_cotacao_urgente(array $command): array
         throw new RuntimeException('Informe o medicamento/produto em falta.');
     }
 
-    $blockId = miauw_skill_cotacao_default_block_id();
     $category = miauw_skill_product_operational_category($product, 'urgente');
     $observation = 'Urgente criado pelo Miauby por falta na loja.';
     $raw = miauw_skill_clean_encomenda_part((string) ($command['raw_message'] ?? ''), 160);
@@ -2707,14 +2582,10 @@ function miauw_skill_create_cotacao_urgente(array $command): array
         $observation .= ' Comando: "' . $raw . '".';
     }
 
-    $itemId = cotacao_save_item($blockId, array(
-        'produto' => $product,
-        'quantidade' => '1',
-        'categoria' => $category,
-        'prioridade' => 'urgente',
-        'status' => 'aberta',
-        'observacao' => $observation,
-    ), array());
+    $result = miauw_skill_create_cotacao_urgente_v2($command, $product, $category, $observation);
+    if (!is_array($result)) {
+        throw new RuntimeException('Cotacao V2 interna indisponivel. Nao gravei urgente no legado para evitar divergencia.');
+    }
 
     if (function_exists('miauw_intelligence_upsert_alert')) {
         miauw_intelligence_upsert_alert(
@@ -2724,9 +2595,9 @@ function miauw_skill_create_cotacao_urgente(array $command): array
             'Urgente criado pelo Miauby',
             'Medicamento em falta registrado como urgente: ' . $product . '.',
             array(
-                'subject' => 'cotacao_urgente_comando_' . $itemId,
-                'table' => 'cotacao_itens',
-                'record_id' => $itemId,
+                'subject' => 'cotacao_urgente_comando_' . (string) ($result['id'] ?? ''),
+                'table' => 'cotacao_v2_rows',
+                'record_id' => (string) ($result['id'] ?? ''),
                 'produto' => $product,
                 'origem' => 'miauby',
             )
@@ -2734,15 +2605,10 @@ function miauw_skill_create_cotacao_urgente(array $command): array
     }
 
     if (function_exists('log_action')) {
-        log_action('miauw_cotacao_urgente_criado', 'cotacao_itens', $itemId, $observation);
+        log_action('miauw_cotacao_v2_urgente_criado', 'cotacao_v2_rows', null, $observation);
     }
 
-    return array(
-        'id' => $itemId,
-        'produto' => $product,
-        'categoria' => $category,
-        'status' => 'aberta',
-    );
+    return $result;
 }
 
 function miauw_skill_cotacao_urgente_action_reply(array $result): string
@@ -2868,23 +2734,15 @@ function miauw_skill_create_cotacao_rapida(array $command): array
         throw new RuntimeException('Informe distribuidora e produtos da cotacao rapida.');
     }
 
-    $blockId = miauw_skill_cotacao_default_block_id();
-    $supplier = cotacao_add_supplier($blockId, $supplierName);
-    $supplierId = (int) ($supplier['id'] ?? 0);
-    if ($supplierId <= 0) {
-        throw new RuntimeException('Nao consegui criar/localizar a distribuidora da cotacao rapida.');
+    if (!miauw_skill_cotacao_v2_internal_configured()) {
+        throw new RuntimeException('Cotacao V2 interna indisponivel. Nao gravei cotacao rapida no legado para evitar divergencia.');
     }
 
-    $created = array();
+    $payloadItems = array();
     foreach ($items as $item) {
         $product = miauw_skill_clean_encomenda_part((string) ($item['produto'] ?? ''), 180);
         if ($product === '') {
             continue;
-        }
-
-        $prices = array();
-        if (isset($item['preco']) && $item['preco'] !== null && (float) $item['preco'] > 0) {
-            $prices[$supplierId] = (string) $item['preco'];
         }
 
         $category = miauw_skill_product_operational_category($product, 'cotacao rapida');
@@ -2892,39 +2750,58 @@ function miauw_skill_create_cotacao_rapida(array $command): array
             $category = miauw_skill_clean_encomenda_part((string) $item['categoria'], 80);
         }
 
-        $itemId = cotacao_save_item($blockId, array(
-            'produto' => $product,
-            'quantidade' => '1',
-            'categoria' => $category,
-            'prioridade' => 'normal',
-            'status' => 'aberta',
-            'observacao' => 'Cotacao rapida criada pelo Miauby. Fornecedor: ' . $supplierName . '.',
-        ), $prices);
-
-        $created[] = array(
-            'id' => $itemId,
+        $payloadItems[] = array(
             'produto' => $product,
             'preco' => isset($item['preco']) ? $item['preco'] : null,
             'categoria' => $category,
         );
     }
 
-    if (!$created) {
+    if (!$payloadItems) {
         throw new RuntimeException('Nenhum produto valido na cotacao rapida.');
+    }
+
+    $payload = array(
+        'fornecedor' => $supplierName,
+        'itens' => $payloadItems,
+    );
+    if (isset($command['usuario_id'])) {
+        $payload['usuario_id'] = (int) $command['usuario_id'];
+    }
+    if (isset($command['username'])) {
+        $payload['username'] = (string) $command['username'];
+    }
+
+    $response = miauw_skill_cotacao_v2_internal_request('POST', '/api/internal/cotacoes-rapidas', $payload);
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['itens'] ?? null)) {
+        throw new RuntimeException('Nao consegui criar a cotacao rapida na V2 agora.');
+    }
+
+    $created = array();
+    foreach ($response['itens'] as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $created[] = array(
+            'id' => (string) ($item['rowId'] ?? $item['id'] ?? ''),
+            'produto' => (string) ($item['produto'] ?? ''),
+            'preco' => (string) ($item['preco'] ?? ''),
+            'categoria' => (string) ($item['categoria'] ?? ''),
+        );
     }
 
     if (function_exists('log_action')) {
         log_action(
-            'miauw_cotacao_rapida_criada',
-            'cotacao_itens',
-            (int) ($created[0]['id'] ?? 0),
+            'miauw_cotacao_v2_rapida_criada',
+            'cotacao_v2_rows',
+            null,
             json_encode(array('fornecedor' => $supplierName, 'itens' => $created), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Cotacao rapida criada pelo Miauby.'
         );
     }
 
     return array(
         'fornecedor' => $supplierName,
-        'fornecedor_id' => $supplierId,
+        'fornecedor_id' => (string) ($response['fornecedor_coluna']['key'] ?? ''),
         'itens' => $created,
     );
 }
@@ -3051,62 +2928,6 @@ function miauw_skill_wants_report(string $message): bool
     return miauw_skill_has_any($message, array('pdf', 'relatorio', 'relatório'));
 }
 
-function miauw_skill_financeiro_functions_loaded(): bool
-{
-    if (function_exists('financeiro_add_lancamento')) {
-        return true;
-    }
-
-    $path = __DIR__ . '/../financeiro/financeiro-funcoes.php';
-    if (!is_file($path)) {
-        return false;
-    }
-
-    require_once $path;
-
-    return function_exists('financeiro_add_lancamento');
-}
-
-function miauw_skill_cotacao_functions_loaded(): bool
-{
-    if (function_exists('cotacao_save_item')) {
-        return true;
-    }
-
-    $path = __DIR__ . '/../cotacao/cotacao-funcoes.php';
-    if (!is_file($path)) {
-        return false;
-    }
-
-    require_once $path;
-
-    return function_exists('cotacao_save_item');
-}
-
-function miauw_skill_cotacao_default_block_id(): int
-{
-    if (!miauw_skill_cotacao_functions_loaded()) {
-        throw new RuntimeException('Cotacao indisponivel para o Miauby.');
-    }
-
-    if (function_exists('cotacao_ensure_schema')) {
-        cotacao_ensure_schema();
-    }
-
-    $block = function_exists('cotacao_block_by_slug') ? cotacao_block_by_slug('cotacao-geral') : null;
-    if (is_array($block) && (int) ($block['id'] ?? 0) > 0) {
-        return (int) $block['id'];
-    }
-
-    $stmt = db()->query("SELECT id FROM cotacao_blocos WHERE ativo = 1 ORDER BY ordem ASC, id ASC LIMIT 1");
-    $id = (int) ($stmt ? $stmt->fetchColumn() : 0);
-    if ($id <= 0) {
-        throw new RuntimeException('Nenhum bloco ativo de cotacao encontrado.');
-    }
-
-    return $id;
-}
-
 function miauw_skill_cotacao_planilha_command_from_message(string $message): ?array
 {
     $normalized = miauw_skill_normalized($message);
@@ -3135,23 +2956,12 @@ function miauw_skill_cotacao_planilha_command_from_message(string $message): ?ar
 
 function miauw_skill_create_cotacao_planilha(array $command): array
 {
-    if (!miauw_skill_cotacao_functions_loaded() || !function_exists('cotacao_add_block')) {
-        throw new RuntimeException('Modulo Cotacao indisponivel para criar planilha.');
-    }
-
     $name = miauw_skill_clean_encomenda_part((string) ($command['nome'] ?? ''), 80);
     if ($name === '') {
         throw new RuntimeException('Informe o nome da nova planilha de cotacao.');
     }
 
-    $description = miauw_skill_clean_encomenda_part((string) ($command['descricao'] ?? ''), 180);
-    $block = cotacao_add_block($name, $description !== '' ? $description : 'Planilha de cotacao criada pelo Miauby.');
-
-    return array(
-        'id' => (int) ($block['id'] ?? 0),
-        'nome' => (string) ($block['nome'] ?? $name),
-        'slug' => (string) ($block['slug'] ?? ''),
-    );
+    throw new RuntimeException('Criacao de nova planilha por Miauby esta bloqueada ate existir endpoint moderno na Cotacao V2. Nada foi gravado no legado.');
 }
 
 function miauw_skill_cotacao_planilha_action_reply(array $result): string
@@ -3956,57 +3766,7 @@ function miauw_skill_create_financeiro_lancamento(string $category, float $value
         throw new RuntimeException('Financeiro Postgres nao confirmou o lancamento.');
     }
 
-    if (!miauw_skill_financeiro_functions_loaded()) {
-        throw new RuntimeException('Financeiro indisponivel para o Miauby.');
-    }
-
-    $date = function_exists('financeiro_valid_date') ? financeiro_valid_date($date, date('Y-m-d')) : date('Y-m-d');
-    $closing = financeiro_get_or_create_closing($date);
-
-    if (financeiro_is_locked($closing)) {
-        throw new RuntimeException('Esse dia esta fechado. Reabra antes de pedir para o gato mexer no caixa.');
-    }
-
-    $observation = trim($observation);
-    if ($observation === '') {
-        $observation = 'Miauby criou a categoria ' . $category . ' por comando interno no chat.';
-    }
-
-    if (stripos($observation, 'responsavel informado') === false && stripos($observation, 'responsável informado') === false) {
-        $observation .= ' Responsavel informado: ' . miauw_substr($responsible, 0, 70) . '.';
-    }
-
-    $observation = miauw_substr($observation, 0, 300);
-
-    $id = financeiro_add_lancamento((int) $closing['id'], $date, $category, $value, $observation);
-    $updated = financeiro_fetch_by_id((int) $closing['id']) ?: $closing;
-
-    if (function_exists('log_action')) {
-        $logPayload = array(
-            'data' => $date,
-            'categoria' => $category,
-            'valor' => $value,
-            'responsavel' => $responsible,
-            'observacao' => $observation,
-        );
-        log_action(
-            'miauw_financeiro_lancamento_criado',
-            'financeiro_lancamentos',
-            $id,
-            json_encode($logPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Lancamento financeiro criado pelo Miauby.'
-        );
-    }
-
-    return array(
-        'id' => $id,
-        'data' => $date,
-        'categoria' => $category,
-        'valor' => $value,
-        'responsavel' => $responsible,
-        'observacao' => $observation,
-        'total_conferido' => (float) ($updated['total_conferido'] ?? 0),
-        'sobra_falta' => (float) ($updated['sobra_falta'] ?? 0),
-    );
+    throw new RuntimeException('Financeiro moderno sem token interno. Nao gravei no legado para evitar divergencia.');
 }
 
 function miauw_skill_create_sangria(float $value, string $responsible, string $observation = '', ?string $date = null): array
@@ -4126,27 +3886,7 @@ function miauw_skill_create_financeiro_faturamentos(array $command, ?int $userId
         throw new RuntimeException('Financeiro Postgres nao confirmou o faturamento diario.');
     }
 
-    if (!miauw_skill_financeiro_functions_loaded() || !function_exists('financeiro_save_faturamento_dia')) {
-        throw new RuntimeException('Financeiro indisponivel para salvar faturamento diario.');
-    }
-
-    $saved = array();
-
-    foreach ($entries as $entry) {
-        $date = (string) ($entry['data'] ?? '');
-        $value = (float) ($entry['valor'] ?? 0);
-        if ($date === '' || $value < 0) {
-            continue;
-        }
-
-        $saved[] = financeiro_save_faturamento_dia($date, $value, $userId, 'miauby');
-    }
-
-    if (!$saved) {
-        throw new RuntimeException('Nenhum faturamento diario valido para salvar.');
-    }
-
-    return array('salvos' => $saved);
+    throw new RuntimeException('Financeiro moderno sem token interno. Nao salvei faturamento no legado para evitar divergencia.');
 }
 
 function miauw_skill_financeiro_faturamento_action_reply(array $result): string

@@ -38,6 +38,32 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 - Banco atual: `wimifarma_miauw_whatsapp`.
 - Papel: transporte/bridge, fila, allowlist, outbox, n8n e memoria multicanal. Nao substitui sozinho o Miauby interno.
 
+## Corte de tools legadas em 2026-05-30
+
+O Miauby interno ainda roda em PHP, mas as tools de dominio foram isoladas dos fallbacks antigos que podiam ler ou gravar fora da fonte oficial moderna.
+
+### O que mudou
+
+- Cashback: `resumo_cashback` e `buscar_cliente` usam `GET /cashback/api/internal/summary` e `GET /cashback/api/internal/clients/search`, ambos no app Node/Postgres. Nao consultar `wf_compras`, `wf_clientes`, `wf_cashback_creditos` ou `wf_resgates`.
+- Tarefa: `resumo_tarefas` e `criar_tarefa` usam `GET /tarefa/api/internal/summary` e `POST /tarefa/api/internal/tasks`, gravando em `tarefa_tasks` e `tarefa_audit_events`. Nao criar `wf_tarefas`.
+- Cotacao: resumo, busca, encomenda, urgente e cotacao rapida usam endpoints internos da Cotacao V2 (`/api/internal/summary`, `/search`, `/encomendas`, `/urgentes`, `/cotacoes-rapidas`). Nao usar `cotacao_itens`, `cotacao_precos`, `cotacao_fornecedores` ou `cotacao_blocos`.
+- Codigos: resumo e busca continuam por `/codigos/api/internal/summary` e `/codigos/api/internal/search`; se a ponte falhar, o Miauby nao cai em `wf_codigos_comissao`.
+- Financeiro: resumo, lancamentos, sangria, faturamento diario e guardiao usam `/financeiro/api/internal/*`. Se faltar token/ponte, o Miauby nao grava no legado MySQL.
+- Guardiao operacional: os scans de Financeiro e Cotacao agora consultam os endpoints internos modernos, sem SQL direto nos legados desses modulos.
+
+### Regra operacional
+
+Quando a ponte moderna estiver indisponivel, a resposta correta e avisar que o modulo moderno nao respondeu e pedir verificacao da tela oficial. Nao reativar fallback para MySQL antigo dentro do Miauby sem uma janela de rollback documentada.
+
+### Endpoints adicionados nesta etapa
+
+- `GET /cashback/api/internal/clients/search`
+- `GET /tarefa/api/internal/summary`
+- `POST /tarefa/api/internal/tasks`
+- `GET /cotacao/api/internal/summary`
+- `POST /cotacao/api/internal/urgentes`
+- `POST /cotacao/api/internal/cotacoes-rapidas`
+
 ## Regra de nome
 
 ### Canonico novo

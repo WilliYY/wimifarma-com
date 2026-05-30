@@ -176,7 +176,8 @@ Validar no VPS por dia/amostra: contagens, somatorios, fechamento, relatorio, ex
 - `/cashback/health` e `/cashback/health.php`: health.
 - Endpoints internos tokenizados:
   - `GET /cashback/internal/migration-status`;
-  - `GET /cashback/api/internal/summary`.
+  - `GET /cashback/api/internal/summary`, com periodo opcional;
+  - `GET /cashback/api/internal/clients/search`, busca segura para Miauby sem ler `wf_clientes`.
 
 ### Permissoes e sessao
 
@@ -259,7 +260,7 @@ Hoje estes arquivos PHP sao legado/fonte visual/fallback historico. A rota ofici
 
 - Core auth em `wimifarma_core`.
 - Home publica aponta o card `Cashback` para `/cashback/`.
-- Miauby interno pode consultar resumo/status por endpoint interno tokenizado.
+- Miauby interno consulta resumo/status e busca de cliente por endpoint interno tokenizado do Cashback Node/Postgres; se a ponte moderna falhar, ele nao cai em `wf_compras`, `wf_clientes`, `wf_cashback_creditos` ou `wf_resgates`.
 - Mensagens de WhatsApp do Cashback ainda sao operacionais/manuais dentro do modulo, nao o bridge Miauby WhatsApp.
 - Relatorios/exportacao CSV.
 
@@ -467,6 +468,8 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - `/tarefa/logout.php`: encerra sessao.
 - `/tarefa/health`: health com contagens Postgres/legado.
 - `/tarefa/api/badge` e `/tarefa/badge.php`: total de tarefas abertas para home.
+- `GET /tarefa/api/internal/summary`: resumo interno de tarefas publicas para Miauby.
+- `POST /tarefa/api/internal/tasks`: cria tarefa publica por ponte interna Node/Postgres.
 - `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios.
 
 ### Permissoes e sessao
@@ -502,6 +505,7 @@ Legado/rollback:
 ### Fluxos de escrita
 
 - Criar tarefa normal visivel para todos.
+- Criar tarefa publica via Miauby por `POST /tarefa/api/internal/tasks`, com auditoria em Postgres e sem gravar `wf_tarefas`.
 - Criar tarefa privada para um usuario especifico via Usuarios.
 - Editar titulo, descricao e prioridade.
 - Concluir, reabrir ou cancelar tarefa.
@@ -511,7 +515,7 @@ Legado/rollback:
 
 - Home publica usa badge de tarefas abertas.
 - Usuarios delega tarefas privadas por endpoint interno.
-- Miauby cria tarefas por tool controlada.
+- Miauby cria e consulta tarefas por endpoints internos tokenizados do app Tarefa; nao grava nem consulta `wf_tarefas`.
 - Core auth centraliza login.
 
 ### Riscos
@@ -782,8 +786,11 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 - `/cotacao/api/events`: delta de eventos.
 - `/cotacao/api/cells/:rowId/:columnKey/history`: historico de celula.
 - APIs de linhas, colunas, estilos, regras, Google Sheets, backups e diagnosticos.
+- `GET /cotacao/api/internal/summary`: resumo interno da Cotacao V2 para Miauby/guardiao.
 - `GET /cotacao/api/internal/search`: busca interna tokenizada para Miauby.
 - `POST /cotacao/api/internal/encomendas`: criacao interna tokenizada de encomenda/urgencia.
+- `POST /cotacao/api/internal/urgentes`: criacao interna tokenizada de item urgente.
+- `POST /cotacao/api/internal/cotacoes-rapidas`: criacao interna tokenizada de cotacao rapida, criando distribuidora V2 quando necessario.
 - Socket.IO em `/cotacao/socket.io`.
 
 ### Permissoes e sessao
@@ -827,6 +834,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 - Importar/exportar Google Sheets.
 - Criar/restaurar backups.
 - Criar encomenda por endpoint interno do Miauby.
+- Criar urgente e cotacao rapida por endpoints internos do Miauby, sempre em `cotacao_v2_*`.
 - Atualizar presenca em tempo real via Redis/Socket.IO.
 
 ### Integracoes
@@ -843,6 +851,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 - Undo/redo e estilos em lote precisam manter paridade com comportamento de planilha.
 - Google Sheets pode falhar por token/cota; nao pode travar a planilha local.
 - Migrar para TypeScript deve ser incremental para nao quebrar Socket.IO.
+- Criacao de planilha/bloco antigo pelo Miauby fica bloqueada ate existir endpoint moderno equivalente; nao reintroduzir `cotacao_blocos`.
 
 ### Proxima acao segura
 
@@ -906,14 +915,13 @@ Fonte atual do Miauby interno:
 - `miauw_alertas`;
 - `miauw_padroes`;
 - `miauw_alerta_eventos`;
-- `wf_logs`, para registros curtos de revisao/treino e compatibilidade do Miauby legado, nao para a tool moderna de Gestao;
-- `wf_tarefas`, ainda pode aparecer por tool/legado de tarefa quando fallback antigo estiver ativo.
+- `wf_logs`, para registros curtos de revisao/treino e compatibilidade do Miauby legado, nao para tools modernas de modulos.
 
 ### Tabelas Postgres relacionadas
 
 - `core_users` e `core_login_rate_limits` no `wimifarma_core` para login.
 - `miauw_whatsapp_channel_events` no Postgres do bridge WhatsApp para memoria curta multicanal principal.
-- Tabelas dos modulos modernos acessados por endpoints internos, como `financeiro_*`, `cashback_*`, `codigos_*`, `cotacao_v2_*`, `gestao_*`, `tarefa_*`. Para Gestao, a leitura/escrita do Miauby deve passar por `/gestao/api/internal/*`, nao por tabela MySQL.
+- Tabelas dos modulos modernos acessadas indiretamente por endpoints internos, como `financeiro_*`, `cashback_*`, `codigos_*`, `cotacao_v2_*`, `gestao_*`, `tarefa_*`. O Miauby nao deve ler/gravar diretamente `wf_tarefas`, `wf_compras`, `wf_clientes`, `wf_codigos_comissao`, `financeiro_*` legado MySQL ou `cotacao_*` antigo; quando endpoint/token moderno falhar, deve responder indisponibilidade em vez de cair no legado.
 - Ainda nao existe banco dedicado `wimifarma_miauby` como fonte oficial do Miauby interno.
 - Durante a migracao, criar tabelas canonicas `miauby_*` e, se necessario, views/aliases de compatibilidade para `miauw_*`.
 
@@ -961,11 +969,11 @@ Fonte atual do Miauby interno:
 - OpenAI/Responses API, transcricao e TTS por configuracao `MIAUW_*`.
 - `apps/miauw-agent` como motor Node em sombra/corte controlado.
 - Miauby WhatsApp consome `agent-context.php`, `agent-actions.php` e `agent-memory.php`.
-- Financeiro moderno por endpoints internos tokenizados.
-- Cashback moderno por endpoint interno de resumo.
+- Financeiro moderno por endpoints internos tokenizados, incluindo guardiao financeiro.
+- Cashback moderno por endpoints internos de resumo e busca de cliente.
 - Codigos moderno por endpoints internos tokenizados.
-- Cotacao V2 por endpoints internos tokenizados.
-- Gestao, Pedidos e Tarefa por tools/bridges controlados.
+- Cotacao V2 por endpoints internos tokenizados para resumo, busca, encomenda, urgente e cotacao rapida.
+- Gestao, Pedidos e Tarefa por tools/bridges controlados; tarefas publicas e privadas usam `tarefa_tasks` no Postgres.
 - Widget global carregado na home/modulos.
 - Farmacia Popular por rotina dedicada.
 

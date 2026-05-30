@@ -373,19 +373,30 @@ router.get('/internal/migration-status', requireInternalToken, async (_req: Requ
   res.json({ ok: true, counts: await tableCounts(), migration: migrationStats });
 });
 
-router.get('/api/internal/summary', requireInternalToken, async (_req: Request, res: Response) => {
+router.get('/api/internal/summary', requireInternalToken, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
   const counts = await tableCounts();
   const settings = await loadSettings();
+  const start = isValidDateInput(req.query.start) ? String(req.query.start) : '';
+  const endExclusive = isValidDateInput(req.query.end_exclusive) ? String(req.query.end_exclusive) : '';
+  const periodWhere = start && endExclusive ? 'WHERE purchased_at >= $1::date AND purchased_at < $2::date' : '';
+  const periodParams = start && endExclusive ? [start, endExclusive] : [];
   const totals = await pgPool.query(
     `SELECT
+       COUNT(*)::bigint AS purchases,
+       COALESCE(SUM(total_cents), 0)::bigint AS total,
+       COALESCE(SUM(charged_cents), 0)::bigint AS charged,
        COALESCE(SUM(cashback_generated_cents), 0)::bigint AS generated,
        COALESCE((SELECT SUM(redeemed_cents) FROM cashback_redemptions), 0)::bigint AS redeemed,
        COALESCE((SELECT SUM(remaining_cents) FROM cashback_credits WHERE status = 'ativo' AND expires_at >= CURRENT_DATE), 0)::bigint AS available
-     FROM cashback_purchases`,
+     FROM cashback_purchases
+     ${periodWhere}`,
+    periodParams,
   );
   res.json({
     ok: true,
+    source: 'postgres',
+    period: { start: start || null, end_exclusive: endExclusive || null },
     counts,
     settings: {
       cashback_percent: settings.cashbackPercent,
@@ -394,11 +405,90 @@ router.get('/api/internal/summary', requireInternalToken, async (_req: Request, 
       expiration_alert_days: settings.expirationAlertDays,
     },
     totals: {
+      purchases: num(totals.rows[0]?.purchases),
+      total: centsToMoney(num(totals.rows[0]?.total)),
+      charged: centsToMoney(num(totals.rows[0]?.charged)),
       generated: centsToMoney(num(totals.rows[0]?.generated)),
       redeemed: centsToMoney(num(totals.rows[0]?.redeemed)),
       available: centsToMoney(num(totals.rows[0]?.available)),
     },
   });
+});
+
+router.get('/api/internal/clients/search', requireInternalToken, async (req: Request, res: Response) => {
+  await refreshExpiredCredits();
+  const query = cleanText(req.query.q, 140);
+  const normalizedTerms = query
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter((term) => term.length >= 3)
+    .slice(0, 5);
+  const digitTerm = digitsOnly(query);
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  for (const term of normalizedTerms) {
+    params.push(`%${term}%`);
+    clauses.push(`LOWER(COALESCE(c.name, '')) LIKE $${params.length}`);
+  }
+
+  if (digitTerm.length >= 6) {
+    params.push(`%${digitTerm}%`);
+    clauses.push(`regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') LIKE $${params.length}`);
+  }
+
+  if (!clauses.length) {
+    return res.json({ ok: true, source: 'postgres', query, clients: [], total: 0 });
+  }
+
+  const limit = Math.max(1, Math.min(Number.parseInt(String(req.query.limit || '5'), 10) || 5, 12));
+  params.push(limit);
+  const limitParam = params.length;
+  const result = await pgPool.query(
+    `SELECT
+        c.id,
+        c.name,
+        c.phone,
+        c.status,
+        c.created_at,
+        a.name AS attendant_name,
+        COALESCE((
+          SELECT SUM(cr.remaining_cents)
+          FROM cashback_credits cr
+          WHERE cr.client_id = c.id
+            AND cr.status = 'ativo'
+            AND cr.remaining_cents > 0
+            AND cr.expires_at >= CURRENT_DATE
+        ), 0)::bigint AS available_cents,
+        (SELECT COUNT(*) FROM cashback_purchases p WHERE p.client_id = c.id)::int AS purchase_count,
+        (SELECT MAX(p.purchased_at) FROM cashback_purchases p WHERE p.client_id = c.id) AS last_purchase_at
+       FROM cashback_clients c
+       LEFT JOIN cashback_attendants a ON a.id = c.attendant_id
+       WHERE c.status <> 'excluido'
+         AND (${clauses.join(' OR ')})
+       ORDER BY c.updated_at DESC NULLS LAST, c.id DESC
+       LIMIT $${limitParam}`,
+    params,
+  );
+
+  const clients = result.rows.map((row: DbRow) => ({
+    id: num(row.id),
+    name: String(row.name || ''),
+    phone: String(row.phone || ''),
+    phone_formatted: formatPhone(row.phone),
+    status: String(row.status || ''),
+    attendant_name: String(row.attendant_name || ''),
+    available_cents: num(row.available_cents),
+    available: centsToMoney(num(row.available_cents)),
+    purchase_count: num(row.purchase_count),
+    last_purchase_at: row.last_purchase_at || null,
+    created_at: row.created_at || null,
+  }));
+
+  return res.json({ ok: true, source: 'postgres', query, clients, total: clients.length });
 });
 
 function normalizeBasePath(value: string): string {

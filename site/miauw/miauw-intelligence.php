@@ -718,106 +718,85 @@ function miauw_guardian_scan(bool $force = false): array
 function miauw_guardian_scan_financeiro(array &$processedTypes): array
 {
     $fingerprints = array();
-
-    if (!miauw_intelligence_table_exists('financeiro_fechamentos')) {
-        return $fingerprints;
-    }
-
     $processedTypes = array_merge($processedTypes, array(
         'financeiro_divergencia_recente',
         'financeiro_dia_aberto_antigo',
         'financeiro_divergencia_recorrente',
     ));
 
-    $limit = 10.0;
-    if (miauw_intelligence_table_exists('financeiro_configuracoes')) {
-        $stmt = db()->prepare('SELECT valor FROM financeiro_configuracoes WHERE chave = ? LIMIT 1');
-        $stmt->execute(array('limite_divergencia'));
-        $limit = max(0.0, (float) str_replace(',', '.', (string) ($stmt->fetchColumn() ?: '10.00')));
+    if (!function_exists('miauw_skill_financeiro_internal_configured')
+        || !miauw_skill_financeiro_internal_configured()
+        || !function_exists('miauw_skill_financeiro_internal_request')) {
+        return $fingerprints;
     }
 
-    $stmt = db()->prepare(
-        "SELECT id, data_fechamento, status, responsavel_texto, total_conferido, abertura_sistema, sobra_falta
-         FROM financeiro_fechamentos
-         WHERE data_fechamento >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-           AND ABS(sobra_falta) > ?
-         ORDER BY data_fechamento DESC, id DESC
-         LIMIT 12"
-    );
-    $stmt->execute(array($limit));
-    foreach ($stmt->fetchAll() ?: array() as $row) {
-        $diff = (float) ($row['sobra_falta'] ?? 0);
-        $date = (string) ($row['data_fechamento'] ?? '');
+    try {
+        $summaryResponse = miauw_skill_financeiro_internal_request('GET', '/api/internal/summary', array(), array('month' => date('Y-m')));
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $dayResponse = miauw_skill_financeiro_internal_request('GET', '/api/internal/cash-closing-status', array(), array('date' => $yesterday));
+    } catch (Throwable $error) {
+        error_log('Miauby guardian Financeiro scan failed: ' . $error->getMessage());
+        return $fingerprints;
+    }
+
+    $summary = is_array($summaryResponse['summary'] ?? null) ? $summaryResponse['summary'] : array();
+    $diffCents = (int) ($summary['difference_cents'] ?? 0);
+    $diff = $diffCents / 100;
+    if (abs($diffCents) > 1000) {
         $fingerprints[] = miauw_intelligence_upsert_alert(
             'financeiro',
             'financeiro_divergencia_recente',
-            abs($diff) >= 50 ? 'alta' : 'media',
-            'Divergencia no caixa em ' . date('d/m/Y', strtotime($date)),
-            'Sobra/falta de ' . miauw_skill_money($diff) . ' acima do limite de ' . miauw_skill_money($limit) . '. Conferir dinheiro fisico, pix, maquininha, sangria e observacao.',
+            abs($diffCents) >= 5000 ? 'alta' : 'media',
+            'Divergencia no financeiro este mes',
+            'Sobra/falta acumulada de ' . miauw_skill_money($diff) . ' no Financeiro Postgres. Conferir dinheiro fisico, pix, maquininha, sangria e observacao.',
             array(
-                'subject' => 'financeiro_divergencia_' . (int) $row['id'],
-                'id' => (int) $row['id'],
-                'data' => $date,
+                'subject' => 'financeiro_divergencia_mes_' . date('Y_m'),
+                'mes' => (string) ($summaryResponse['month'] ?? date('Y-m')),
                 'sobra_falta' => $diff,
-                'status' => (string) ($row['status'] ?? ''),
+                'source' => 'financeiro_internal_summary',
             )
         );
     }
 
-    $stmt = db()->prepare(
-        "SELECT id, data_fechamento, status, total_conferido, sobra_falta
-         FROM financeiro_fechamentos
-         WHERE data_fechamento < CURDATE()
-           AND status IN ('aberto', 'conferencia')
-           AND (total_conferido > 0 OR abertura_sistema > 0)
-         ORDER BY data_fechamento DESC, id DESC
-         LIMIT 10"
-    );
-    $stmt->execute();
-    foreach ($stmt->fetchAll() ?: array() as $row) {
-        $date = (string) ($row['data_fechamento'] ?? '');
+    if (is_array($dayResponse)
+        && !empty($dayResponse['ok'])
+        && !empty($dayResponse['closing_exists'])
+        && !empty($dayResponse['should_notify'])) {
         $fingerprints[] = miauw_intelligence_upsert_alert(
             'financeiro',
             'financeiro_dia_aberto_antigo',
             'media',
             'Dia financeiro antigo ainda aberto',
-            date('d/m/Y', strtotime($date)) . ' esta em ' . (string) ($row['status'] ?? 'aberto') . ' com movimento. Fechamento parado vira arqueologia financeira.',
+            date('d/m/Y', strtotime((string) ($dayResponse['date'] ?? 'yesterday'))) . ' esta em ' . (string) ($dayResponse['status_label'] ?? 'aberto') . ' no Financeiro Postgres. Fechamento parado vira arqueologia financeira.',
             array(
-                'subject' => 'financeiro_aberto_' . (int) $row['id'],
-                'id' => (int) $row['id'],
-                'data' => $date,
-                'status' => (string) ($row['status'] ?? ''),
+                'subject' => 'financeiro_aberto_' . (string) ($dayResponse['date'] ?? $yesterday),
+                'data' => (string) ($dayResponse['date'] ?? $yesterday),
+                'status' => (string) ($dayResponse['status'] ?? ''),
+                'source' => 'financeiro_internal_cash_closing_status',
             )
         );
     }
 
-    $stmt = db()->prepare(
-        "SELECT COUNT(*) AS qtd, COALESCE(AVG(ABS(sobra_falta)), 0) AS media_abs
-         FROM financeiro_fechamentos
-         WHERE data_fechamento >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-           AND ABS(sobra_falta) > ?"
-    );
-    $stmt->execute(array($limit));
-    $recurring = $stmt->fetch() ?: array();
-    if ((int) ($recurring['qtd'] ?? 0) >= 2) {
+    $divergences = (int) ($summary['divergences'] ?? 0);
+    if ($divergences >= 2) {
         $fingerprints[] = miauw_intelligence_upsert_alert(
             'financeiro',
             'financeiro_divergencia_recorrente',
             'alta',
             'Divergencia recorrente no financeiro',
-            (int) $recurring['qtd'] . ' dia(s) com divergencia nos ultimos 30 dias. Media aproximada: ' . miauw_skill_money((float) $recurring['media_abs']) . '. Isso pede processo, nao fe administrativa.',
+            $divergences . ' dia(s) divergente(s) no mes atual. Isso pede processo, nao fe administrativa.',
             array(
-                'subject' => 'financeiro_divergencia_recorrente_30d',
-                'qtd' => (int) $recurring['qtd'],
-                'media_abs' => (float) $recurring['media_abs'],
+                'subject' => 'financeiro_divergencia_recorrente_' . date('Y_m'),
+                'qtd' => $divergences,
+                'source' => 'financeiro_internal_summary',
             )
         );
         miauw_intelligence_record_pattern(
             'financeiro',
             'divergencia_recorrente',
-            'divergencia-caixa-30d',
-            'Divergencia de caixa apareceu mais de uma vez nos ultimos 30 dias.',
-            array('qtd' => (int) $recurring['qtd'], 'media_abs' => (float) $recurring['media_abs'])
+            'divergencia-caixa-mes-atual',
+            'Divergencia de caixa apareceu mais de uma vez no mes atual.',
+            array('qtd' => $divergences, 'sobra_falta' => $diff)
         );
     }
 
@@ -827,11 +806,6 @@ function miauw_guardian_scan_financeiro(array &$processedTypes): array
 function miauw_guardian_scan_cotacao(array &$processedTypes): array
 {
     $fingerprints = array();
-
-    if (!miauw_intelligence_table_exists('cotacao_itens') || !miauw_intelligence_table_exists('cotacao_blocos')) {
-        return $fingerprints;
-    }
-
     $processedTypes = array_merge($processedTypes, array(
         'cotacao_encomenda_parada',
         'cotacao_urgente_parada',
@@ -839,162 +813,38 @@ function miauw_guardian_scan_cotacao(array &$processedTypes): array
         'cotacao_duplicidade_aberta',
     ));
 
-    $orderDateExpr = miauw_intelligence_column_exists('cotacao_itens', 'encomenda_registrada_em')
-        ? 'COALESCE(i.encomenda_registrada_em, i.created_at)'
-        : 'COALESCE(i.created_at, i.updated_at)';
-    $stmt = db()->prepare(
-        "SELECT i.id, i.produto, i.ean, i.categoria, i.status, " . $orderDateExpr . " AS registrada_em,
-                DATEDIFF(CURDATE(), DATE(" . $orderDateExpr . ")) AS dias_parado,
-                TIMESTAMPDIFF(HOUR, " . $orderDateExpr . ", NOW()) AS horas_parada,
-                b.nome AS bloco_nome
-         FROM cotacao_itens i
-         LEFT JOIN cotacao_blocos b ON b.id = i.bloco_id
-         WHERE i.status NOT IN ('cancelada', 'pedido')
-           AND i.produto <> ''
-           AND i.prioridade = 'encomenda'
-           AND " . $orderDateExpr . " < DATE_SUB(NOW(), INTERVAL 1 DAY)
-         ORDER BY registrada_em ASC
-         LIMIT 12"
-    );
-    $stmt->execute();
-    foreach ($stmt->fetchAll() ?: array() as $row) {
-        $hours = max(0, (int) ($row['horas_parada'] ?? 0));
-        $days = max(1, (int) floor($hours / 24));
-        $registeredValue = trim((string) ($row['registrada_em'] ?? ''));
-        $registeredDisplay = $registeredValue !== '' ? date('d/m/Y H:i', strtotime($registeredValue)) : 'data nao registrada';
-        $fingerprints[] = miauw_intelligence_upsert_alert(
-            'cotacao',
-            'cotacao_encomenda_parada',
-            $days >= 7 ? 'alta' : 'media',
-            $days > 1 ? 'Encomenda parada ha ' . $days . ' dia(s)' : 'Encomenda ha mais de 1 dia',
-            'Produto "' . (string) ($row['produto'] ?? '-') . '" passou de 1 dia em encomenda desde ' . $registeredDisplay . ' sem baixa/pedido. Confere se ja da para finalizar, marcar retirada, cancelar ou virar pedido.',
-            array(
-                'subject' => 'cotacao_encomenda_' . (int) $row['id'],
-                'id' => (int) $row['id'],
-                'produto' => (string) ($row['produto'] ?? ''),
-                'categoria' => (string) ($row['categoria'] ?? ''),
-                'bloco' => (string) ($row['bloco_nome'] ?? ''),
-                'registrada_em' => (string) ($row['registrada_em'] ?? ''),
-                'dias_parado' => $days,
-                'horas_parada' => $hours,
-                'limite_alerta_horas' => 24,
-            )
-        );
+    if (!function_exists('miauw_skill_cotacao_v2_internal_configured')
+        || !miauw_skill_cotacao_v2_internal_configured()
+        || !function_exists('miauw_skill_cotacao_v2_internal_request')) {
+        return $fingerprints;
     }
 
-    $stmt = db()->prepare(
-        "SELECT i.id, i.produto, i.categoria, i.status, COALESCE(i.updated_at, i.created_at) AS movimentado_em,
-                DATEDIFF(CURDATE(), DATE(COALESCE(i.updated_at, i.created_at))) AS dias_parado
-         FROM cotacao_itens i
-         WHERE i.status NOT IN ('cancelada', 'pedido')
-           AND i.produto <> ''
-           AND i.prioridade = 'urgente'
-           AND COALESCE(i.updated_at, i.created_at) < DATE_SUB(NOW(), INTERVAL 1 DAY)
-         ORDER BY movimentado_em ASC
-         LIMIT 10"
-    );
-    $stmt->execute();
-    foreach ($stmt->fetchAll() ?: array() as $row) {
-        $days = (int) ($row['dias_parado'] ?? 0);
+    try {
+        $response = miauw_skill_cotacao_v2_internal_request('GET', '/api/internal/summary');
+    } catch (Throwable $error) {
+        error_log('Miauby guardian Cotacao V2 scan failed: ' . $error->getMessage());
+        return $fingerprints;
+    }
+
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['counts'] ?? null)) {
+        return $fingerprints;
+    }
+
+    $counts = $response['counts'];
+    $urgentCount = (int) ($counts['urgentes'] ?? 0);
+    $winnerMissing = (int) ($counts['sem_vencedor'] ?? 0);
+    if ($urgentCount > 0 && $winnerMissing > 0) {
         $fingerprints[] = miauw_intelligence_upsert_alert(
             'cotacao',
             'cotacao_urgente_parada',
-            'alta',
-            'Urgente parado na cotacao',
-            'Item "' . (string) ($row['produto'] ?? '-') . '" esta marcado como urgente ha ' . $days . ' dia(s). Urgente parado e so um incendio com etiqueta azul.',
-            array(
-                'subject' => 'cotacao_urgente_' . (int) $row['id'],
-                'id' => (int) $row['id'],
-                'produto' => (string) ($row['produto'] ?? ''),
-                'categoria' => (string) ($row['categoria'] ?? ''),
-                'dias_parado' => $days,
-            )
-        );
-    }
-
-    if (miauw_intelligence_table_exists('cotacao_precos')) {
-        $stmt = db()->prepare(
-            "SELECT i.id, i.produto, i.ean, i.categoria, i.status,
-                COALESCE(pp.ultimo_preco_em, i.updated_at, i.created_at) AS movimentado_em,
-                TIMESTAMPDIFF(HOUR, COALESCE(pp.ultimo_preco_em, i.updated_at, i.created_at), NOW()) AS horas_sem_vencedor,
-                pp.qtd_precos, pp.menor_preco, b.nome AS bloco_nome
-         FROM cotacao_itens i
-         INNER JOIN (
-            SELECT item_id,
-                   COUNT(*) AS qtd_precos,
-                   MIN(preco) AS menor_preco,
-                   MAX(COALESCE(updated_at, created_at)) AS ultimo_preco_em
-            FROM cotacao_precos
-            WHERE preco IS NOT NULL
-            GROUP BY item_id
-         ) pp ON pp.item_id = i.id
-         LEFT JOIN cotacao_blocos b ON b.id = i.bloco_id
-         WHERE i.status NOT IN ('cancelada', 'pedido')
-           AND i.produto <> ''
-           AND i.vencedor_fornecedor_id IS NULL
-           AND COALESCE(pp.ultimo_preco_em, i.updated_at, i.created_at) < DATE_SUB(NOW(), INTERVAL 12 HOUR)
-         ORDER BY horas_sem_vencedor DESC, movimentado_em ASC
-         LIMIT 12"
-        );
-        $stmt->execute();
-        foreach ($stmt->fetchAll() ?: array() as $row) {
-            $hours = (int) ($row['horas_sem_vencedor'] ?? 0);
-            $priceCount = (int) ($row['qtd_precos'] ?? 0);
-            $lowest = (float) ($row['menor_preco'] ?? 0);
-            $fingerprints[] = miauw_intelligence_upsert_alert(
-                'cotacao',
-                'cotacao_sem_vencedor_antiga',
-                $hours >= 48 ? 'media' : 'baixa',
-                'Preco lancado sem vencedor',
-                'Produto "' . (string) ($row['produto'] ?? '-') . '" tem ' . $priceCount . ' preco(s) lancado(s), menor ' . miauw_skill_money($lowest) . ', mas segue sem vencedor ha ' . $hours . 'h.',
-                array(
-                    'subject' => 'cotacao_sem_vencedor_' . (int) $row['id'],
-                    'id' => (int) $row['id'],
-                    'produto' => (string) ($row['produto'] ?? ''),
-                    'categoria' => (string) ($row['categoria'] ?? ''),
-                    'bloco' => (string) ($row['bloco_nome'] ?? ''),
-                    'qtd_precos' => $priceCount,
-                    'menor_preco' => $lowest,
-                    'horas_sem_vencedor' => $hours,
-                )
-            );
-        }
-    }
-
-    $stmt = db()->prepare(
-        "SELECT i.bloco_id, LOWER(TRIM(i.produto)) AS produto_chave,
-                MIN(i.produto) AS produto, COUNT(*) AS qtd,
-                GROUP_CONCAT(i.id ORDER BY i.id SEPARATOR ',') AS ids,
-                b.nome AS bloco_nome
-         FROM cotacao_itens i
-         LEFT JOIN cotacao_blocos b ON b.id = i.bloco_id
-         WHERE i.status NOT IN ('cancelada', 'pedido')
-           AND i.produto <> ''
-         GROUP BY i.bloco_id, produto_chave, b.nome
-         HAVING qtd >= 2
-         ORDER BY qtd DESC, produto ASC
-         LIMIT 8"
-    );
-    $stmt->execute();
-    foreach ($stmt->fetchAll() ?: array() as $row) {
-        $productKey = (string) ($row['produto_chave'] ?? '');
-        if ($productKey === '') {
-            continue;
-        }
-
-        $fingerprints[] = miauw_intelligence_upsert_alert(
-            'cotacao',
-            'cotacao_duplicidade_aberta',
             'baixa',
-            'Produto repetido na cotacao',
-            'Produto "' . (string) ($row['produto'] ?? '-') . '" aparece ' . (int) ($row['qtd'] ?? 0) . ' vez(es) aberto(s) no mesmo bloco. Repeticao aqui vira compra torta.',
+            'Cotacao V2 com urgente aberto',
+            'A Cotacao V2 tem ' . $urgentCount . ' item(ns) urgente(s) e ' . $winnerMissing . ' item(ns) sem vencedor. Conferir /cotacao/ antes de comprar no piloto automatico.',
             array(
-                'subject' => 'cotacao_dup_' . (int) ($row['bloco_id'] ?? 0) . '_' . sha1($productKey),
-                'bloco_id' => (int) ($row['bloco_id'] ?? 0),
-                'bloco' => (string) ($row['bloco_nome'] ?? ''),
-                'produto' => (string) ($row['produto'] ?? ''),
-                'qtd' => (int) ($row['qtd'] ?? 0),
-                'ids' => (string) ($row['ids'] ?? ''),
+                'subject' => 'cotacao_v2_urgentes_abertos',
+                'urgentes' => $urgentCount,
+                'sem_vencedor' => $winnerMissing,
+                'source' => 'cotacao_v2_internal_summary',
             )
         );
     }
