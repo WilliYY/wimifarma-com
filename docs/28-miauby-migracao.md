@@ -42,6 +42,7 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 ### Canonico novo
 
 - Produto/interface: `Miauby`.
+- O widget flutuante deve manter a foto inteira visivel no circulo, sem corte de borda, com borda laranja para diferenciar o acionador do chat.
 - Futuro app interno: `apps/miauby`.
 - Futuro banco: `wimifarma_miauby`.
 - Futuras tabelas: `miauby_conversations`, `miauby_messages`, `miauby_training_examples`, `miauby_memories`, `miauby_alerts`, `miauby_patterns`, `miauby_tool_traces`, `miauby_settings`, `miauby_farmacia_popular_values`, `miauby_farmacia_popular_updates`, `miauby_audit_events`.

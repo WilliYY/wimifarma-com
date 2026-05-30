@@ -700,7 +700,7 @@ $modules = array(
             }
         }
     </style>
-    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css')); ?>">
+    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260530-avatar')); ?>">
 </head>
 <body>
 <div class="wf-page">
@@ -1085,6 +1085,6 @@ $modules = array(
         }
     }());
 </script>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260529a')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260530-avatar')); ?>" defer></script>
 </body>
 </html>

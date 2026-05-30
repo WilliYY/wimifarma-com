@@ -69,15 +69,15 @@
 
 .miauw-widget-bubble {
     position: relative;
-    width: 86px;
-    height: 86px;
-    border: 2px solid #fff;
+    width: 96px;
+    height: 96px;
+    border: 3px solid #f59e0b;
     border-radius: 999px;
     display: grid;
     place-items: center;
     padding: 0;
-    background: linear-gradient(135deg, #fff, #ffe5ee);
-    box-shadow: 0 18px 42px rgba(97, 5, 29, 0.26);
+    background: linear-gradient(135deg, #fff7ed, #fff);
+    box-shadow: 0 18px 42px rgba(97, 5, 29, 0.24), 0 0 0 4px rgba(255, 255, 255, 0.88);
     cursor: pointer;
     transition: transform .18s ease, box-shadow .18s ease;
     animation: miaubyWidgetPulse 3.8s ease-in-out infinite;
@@ -114,21 +114,21 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 92px;
-    height: 92px;
+    width: 88px;
+    height: 88px;
     border-radius: 999px;
-    object-fit: cover;
-    object-position: 50% 54%;
+    object-fit: contain;
+    object-position: 50% 50%;
     background: #fff;
-    clip-path: circle(43px at 50% 50%);
+    clip-path: none;
     transform: translate(-50%, -50%);
     z-index: 0;
 }
 
 .miauw-widget-bubble span {
     position: absolute;
-    right: 92px;
-    bottom: 24px;
+    right: 102px;
+    bottom: 27px;
     border: 1px solid var(--miauw-line);
     border-radius: 999px;
     padding: 8px 11px;
@@ -166,7 +166,7 @@
 .miauw-widget-nudge {
     position: absolute;
     right: 0;
-    bottom: 98px;
+    bottom: 110px;
     display: block;
     width: min(300px, calc(100vw - 118px));
     inline-size: min(300px, calc(100vw - 118px));
@@ -231,7 +231,7 @@
 .miauw-widget-panel {
     position: absolute;
     right: 0;
-    bottom: 102px;
+    bottom: 112px;
     width: min(540px, calc(100vw - 28px));
     height: min(720px, calc(100vh - 108px));
     display: grid;
@@ -1428,7 +1428,7 @@
     .miauw-widget-panel {
         width: calc(100vw - 24px);
         height: min(680px, calc(100vh - 118px));
-        bottom: 90px;
+        bottom: 100px;
     }
 
     .miauw-widget-msg.assistant {
@@ -1437,14 +1437,13 @@
     }
 
     .miauw-widget-bubble {
-        width: 76px;
-        height: 76px;
+        width: 82px;
+        height: 82px;
     }
 
     .miauw-widget-bubble img {
-        width: 82px;
-        height: 82px;
-        clip-path: circle(38px at 50% 50%);
+        width: 74px;
+        height: 74px;
     }
 
     .miauw-widget-bubble span {
@@ -1453,7 +1452,7 @@
 
     .miauw-widget-nudge {
         right: 0;
-        bottom: 88px;
+        bottom: 96px;
         width: min(292px, calc(100vw - 104px));
         inline-size: min(292px, calc(100vw - 104px));
         min-width: 210px;
