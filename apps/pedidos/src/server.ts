@@ -1145,19 +1145,37 @@ async function addItem(req: Request): Promise<void> {
   const cents = parseMoneyToCents(req.body.novo_item_valor);
   if (!id) throw new Error('Conta invalida.');
   if (cents <= 0) throw new Error('Informe um valor maior que zero para adicionar.');
-  const description = cleanText(req.body.novo_item_descricao, 180) || 'Juros ou diferenca';
+  const requestedDescription = cleanText(req.body.novo_item_descricao, 180);
+  const itemType = cleanText(req.body.novo_item_tipo, 40);
   const dueDate = parseOptionalDateOnly(req.body.novo_item_vencimento, 'o vencimento do novo valor');
   const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
+  let description = requestedDescription;
   try {
     await client.query('BEGIN');
     const account = await client.query('SELECT id, status FROM gestao_accounts WHERE id = $1 FOR UPDATE', [id]);
     if (!account.rowCount) throw new Error('Conta nao encontrada.');
     if (account.rows[0].status === 'cancelado') throw new Error('Reabra a conta antes de adicionar itens.');
+    const supplierResult = await client.query<{ supplier_name: string }>(
+      `SELECT supplier_name FROM pedidos_confirmed_orders WHERE account_id = $1 AND lifecycle <> 'cancelado'
+       UNION ALL
+       SELECT supplier_name FROM pedidos_orders WHERE account_id = $1 AND canceled_at IS NULL
+       LIMIT 1`,
+      [id],
+    );
     const orderResult = await client.query<{ next_order: number }>(
       'SELECT COALESCE(MAX(sort_order), 0) + 10 AS next_order FROM gestao_account_items WHERE account_id = $1',
       [id],
     );
+    if (!description && itemType === 'parcela') {
+      const supplier = supplierResult.rows[0]?.supplier_name || 'pedido';
+      const activeCount = await client.query<{ count: string }>(
+        "SELECT COUNT(*)::bigint AS count FROM gestao_account_items WHERE account_id = $1 AND status = 'ativo'",
+        [id],
+      );
+      description = `Parcela ${Number(activeCount.rows[0]?.count || 0) + 1} - ${supplier}`.slice(0, 180);
+    }
+    description = description || 'Juros ou diferenca';
     await client.query(
       'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order, due_at) VALUES ($1, $2, $3, $4, $5::date)',
       [id, description, cents, Number(orderResult.rows[0]?.next_order || 10), dueDate],
@@ -1166,7 +1184,7 @@ async function addItem(req: Request): Promise<void> {
     await refreshAccountDue(client, id);
     await syncPaymentStatus(client, id);
     await syncPedidoAfterAccountChange(client, id, userId);
-    await auditPg(client, id, userId, 'pedidos_valor_adicionado', `Valor adicionado: ${description} / ${formatMoney(cents)}`);
+    await auditPg(client, id, userId, itemType === 'parcela' ? 'pedidos_parcela_adicionada' : 'pedidos_valor_adicionado', `Valor adicionado: ${description} / ${formatMoney(cents)}`);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1174,7 +1192,7 @@ async function addItem(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logAudit(userId, 'pedidos_valor_adicionado', 'gestao_conta', id, `Valor adicionado no pedido: ${description} / ${formatMoney(cents)}`);
+  await logAudit(userId, itemType === 'parcela' ? 'pedidos_parcela_adicionada' : 'pedidos_valor_adicionado', 'gestao_conta', id, `Valor adicionado no pedido: ${description} / ${formatMoney(cents)}`);
 }
 
 async function updateOrderSupplier(req: Request): Promise<void> {
@@ -1865,17 +1883,21 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   const itemRows = activeItems
     .map((item) => `<li><span>${e(item.description)}<small>${item.due_at ? `Vence ${e(brDateOnly(item.due_at))}` : 'Sem vencimento'}</small></span><strong>${e(formatMoney(item.amount_cents))}</strong></li>`)
     .join('');
-  const editableItemRows = activeItems.map((item) => `<div class="gestao-order-edit-row">
+  const editableItemRows = activeItems.map((item, index) => `<div class="gestao-order-edit-row">
+      <div class="gestao-order-edit-row-head">
+        <strong>Parcela ${index + 1}</strong>
+        <small>${item.due_at ? `Vence ${e(brDateOnly(item.due_at))}` : 'Sem vencimento'}</small>
+      </div>
       <form method="post" class="gestao-order-edit-item" data-require-money>
         ${csrfField(req)}
         <input type="hidden" name="action" value="update_order_item">
         <input type="hidden" name="id" value="${e(accountId)}">
         <input type="hidden" name="item_id" value="${e(item.id)}">
         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-        <label><span>Nome do valor</span><input type="text" name="item_descricao" maxlength="180" value="${e(item.description)}" required></label>
-        <label><span>Valor</span><input type="text" name="item_valor" inputmode="decimal" value="${e(moneyInput(Number(item.amount_cents || 0)))}" data-money-input required></label>
+        <label><span>Nome da parcela</span><input type="text" name="item_descricao" maxlength="180" value="${e(item.description)}" required></label>
+        <label><span>Valor da parcela</span><input type="text" name="item_valor" inputmode="decimal" value="${e(moneyInput(Number(item.amount_cents || 0)))}" data-money-input required></label>
         <label><span>Vencimento da parcela</span><input type="date" name="item_vencimento" value="${e(dateInputValue(item.due_at))}"></label>
-        <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar</button>
+        <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar parcela</button>
       </form>
       <form method="post" class="gestao-order-edit-remove" data-confirm="Remover este valor da tela? A auditoria e os dados ja pagos continuam preservados.">
         ${csrfField(req)}
@@ -1883,7 +1905,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <input type="hidden" name="id" value="${e(accountId)}">
         <input type="hidden" name="item_id" value="${e(item.id)}">
         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
-        <button type="submit" class="gestao-link-danger">Excluir valor</button>
+        <button type="submit" class="gestao-link-danger">Retirar parcela</button>
       </form>
     </div>`).join('');
   const paymentRows = activePayments
@@ -1926,6 +1948,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   const quickAction = order.status === 'pedido' ? arrivalAction : paidAction;
 
   const editPanel = canManageOrder ? `<div class="gestao-order-edit-panel" id="${e(editPanelId)}" data-order-edit-panel>
+      <div class="gestao-order-edit-section-title">Fornecedor</div>
       <form method="post" class="gestao-order-edit-supplier">
         ${csrfField(req)}
         <input type="hidden" name="action" value="update_order_supplier">
@@ -1934,7 +1957,20 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <label><span>Fornecedor</span><input type="text" name="fornecedor" maxlength="180" value="${e(order.supplier_name)}" required></label>
         <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar nome</button>
       </form>
-      ${editableItemRows ? `<div class="gestao-order-edit-list">${editableItemRows}</div>` : ''}
+      <div class="gestao-order-edit-section-title">Parcelas atuais</div>
+      ${editableItemRows ? `<div class="gestao-order-edit-list">${editableItemRows}</div>` : '<p class="gestao-empty-line">Nenhuma parcela ativa.</p>'}
+      <form method="post" class="gestao-order-edit-add" data-require-money>
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="add_item">
+        <input type="hidden" name="novo_item_tipo" value="parcela">
+        <input type="hidden" name="id" value="${e(accountId)}">
+        <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+        <div class="gestao-order-edit-section-title">Adicionar parcela</div>
+        <label><span>Valor da nova parcela</span><input type="text" name="novo_item_valor" inputmode="decimal" placeholder="0,00" data-money-input required></label>
+        <label><span>Vencimento da nova parcela</span><input type="date" name="novo_item_vencimento"></label>
+        <label><span>Nome opcional</span><input type="text" name="novo_item_descricao" maxlength="180" placeholder="Ex.: Parcela extra, juros ou frete"></label>
+        <button type="submit" class="gestao-btn gestao-btn-secondary">Adicionar parcela</button>
+      </form>
     </div>` : '';
 
   const orderTools = canManageOrder ? `<div class="gestao-order-head-tools" aria-label="Acoes do pedido">
@@ -2062,7 +2098,7 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529-form-clean">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-parcel-edit">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
   <script src="${BASE_PATH}/app.js?v=20260530-history-collapse" defer></script>
 </head>

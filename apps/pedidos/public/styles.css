@@ -1026,9 +1026,21 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     display: grid;
 }
 
+.gestao-order-edit-section-title {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    color: var(--wine);
+    font-size: 0.76rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 .gestao-order-edit-supplier,
 .gestao-order-edit-item,
-.gestao-order-edit-row {
+.gestao-order-edit-row,
+.gestao-order-edit-add {
     display: grid;
     min-width: 0;
     gap: 8px;
@@ -1046,13 +1058,51 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     background: #fff7fa;
 }
 
+.gestao-order-edit-row-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+}
+
+.gestao-order-edit-row-head strong {
+    min-width: 0;
+    color: var(--wine);
+    font-size: 0.88rem;
+    line-height: 1.15;
+}
+
+.gestao-order-edit-row-head small {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    line-height: 1.2;
+}
+
 .gestao-order-edit-item {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 135px), 1fr));
     align-items: end;
 }
 
+.gestao-order-edit-add {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+    align-items: end;
+    padding: 12px;
+    border: 1px dashed #f2a9c2;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.gestao-order-edit-add .gestao-order-edit-section-title {
+    grid-column: 1 / -1;
+}
+
 .gestao-order-edit-supplier .gestao-btn,
-.gestao-order-edit-item .gestao-btn {
+.gestao-order-edit-item .gestao-btn,
+.gestao-order-edit-add .gestao-btn {
     width: 100%;
 }
 
@@ -1091,7 +1141,8 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-order-due-form label,
 .gestao-order-pay-form label,
 .gestao-order-adjust-form label,
-.gestao-order-edit-panel label {
+.gestao-order-edit-panel label,
+.gestao-order-edit-add label {
     display: grid;
     gap: 6px;
     color: #673046;
@@ -1102,7 +1153,8 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-order-due-form input,
 .gestao-order-pay-form input,
 .gestao-order-adjust-form input,
-.gestao-order-edit-panel input {
+.gestao-order-edit-panel input,
+.gestao-order-edit-add input {
     width: 100%;
     min-width: 0;
     min-height: 40px;
