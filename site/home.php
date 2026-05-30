@@ -51,11 +51,11 @@ function wf_home_redirect(string $path = '/'): void
 
 function wf_home_bubble_style(int $index): string
 {
-    $size = 2 + (mt_rand(0, 400) / 100);
-    $distance = 6 + (mt_rand(0, 400) / 100);
+    $size = 1.5 + (mt_rand(0, 520) / 100);
+    $distance = 7 + (mt_rand(0, 520) / 100);
     $position = -5 + (mt_rand(0, 11000) / 100);
-    $time = 2 + (mt_rand(0, 200) / 100);
-    $delay = -1 * (2 + (mt_rand(0, 200) / 100));
+    $time = 4 + (mt_rand(0, 320) / 100);
+    $delay = -1 * (1 + (mt_rand(0, 520) / 100));
 
     return sprintf(
         '--size:%.2frem;--distance:%.2frem;--position:%.2f%%;--time:%.2fs;--delay:%.2fs;',
@@ -141,7 +141,7 @@ if (!$homeAuthenticated):
             min-height: 100vh;
             margin: 0;
             display: grid;
-            grid-template-rows: minmax(0, 1fr) 4.5rem auto;
+            grid-template-rows: minmax(0, 1fr) 5.8rem auto;
             grid-template-areas: "main" "." "footer";
             overflow-x: hidden;
             background:
@@ -311,81 +311,189 @@ if (!$homeAuthenticated):
 
         .wf-login-footer {
             z-index: 1;
-            --footer-background: #ed5565;
+            --footer-background: #d6092f;
+            --footer-ink: rgba(88, 7, 28, 0.22);
             position: relative;
             grid-area: footer;
-            min-height: 10rem;
+            min-height: 18rem;
             display: grid;
-            overflow: hidden;
+            overflow: visible;
             animation: wf-footer-color 18s ease-in-out infinite;
         }
 
         .wf-login-bubbles {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1rem;
-            overflow: hidden;
-            background: var(--footer-background);
+            top: -5.6rem;
+            left: -3rem;
+            right: -3rem;
+            height: 8.5rem;
+            overflow: visible;
             filter: url("#wf-login-blob");
+            pointer-events: none;
+        }
+
+        .wf-login-bubbles::before {
+            content: "";
+            position: absolute;
+            left: -2rem;
+            right: -2rem;
+            bottom: 0;
+            height: 4.3rem;
+            background: var(--footer-background);
+            border-radius: 999px 999px 0 0;
         }
 
         .wf-login-bubble {
             position: absolute;
             left: var(--position, 50%);
-            bottom: -4rem;
+            bottom: 1.2rem;
             background: var(--footer-background);
             border-radius: 100%;
             animation:
                 wf-bubble-size var(--time, 4s) ease-in infinite var(--delay, 0s),
                 wf-bubble-move var(--time, 4s) ease-in infinite var(--delay, 0s);
-            transform: translate(-50%, 100%);
+            transform: translate(-50%, 0);
         }
 
         .wf-login-footer-content {
+            position: relative;
             z-index: 2;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 4rem;
-            align-items: center;
-            padding: 1.55rem 2rem;
+            grid-template-columns: minmax(230px, 1fr) minmax(170px, 0.65fr) minmax(280px, 1.15fr);
+            gap: clamp(2rem, 6vw, 5.5rem);
+            align-items: start;
+            width: 100%;
+            padding: 4rem max(2rem, calc((100vw - 1160px) / 2)) 3.1rem;
             background: var(--footer-background);
+            color: #210915;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .wf-login-footer-content::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.16;
+            background-image:
+                radial-gradient(circle at 18% 40%, transparent 0 2.2rem, var(--footer-ink) 2.24rem 2.34rem, transparent 2.38rem),
+                radial-gradient(circle at 52% 24%, transparent 0 3rem, var(--footer-ink) 3.05rem 3.18rem, transparent 3.22rem),
+                radial-gradient(circle at 82% 42%, transparent 0 2.6rem, var(--footer-ink) 2.65rem 2.76rem, transparent 2.8rem);
+            background-size: 18rem 9rem, 24rem 11rem, 20rem 10rem;
         }
 
         .wf-login-footer-content b,
         .wf-login-footer-content a,
         .wf-login-footer-content p,
         .wf-login-footer-content span {
-            color: #f5f7fa;
+            color: #270817;
             text-decoration: none;
         }
 
         .wf-login-footer-content b {
-            color: #ffffff;
-            font-size: 0.88rem;
+            color: #210814;
+            font-size: 0.82rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
         }
 
         .wf-login-footer-content p {
             margin: 0;
-            font-size: 0.76rem;
+            font-size: 0.9rem;
             font-weight: 750;
-            line-height: 1.45;
+            line-height: 1.65;
         }
 
         .wf-login-footer-groups {
+            position: relative;
+            z-index: 1;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 0.25rem;
+            gap: 1.2rem;
             min-width: 0;
         }
 
         .wf-login-footer-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.5rem;
+            gap: 0.65rem;
             align-items: center;
+        }
+
+        .wf-login-footer-brand {
+            display: grid;
+            gap: 1.25rem;
+        }
+
+        .wf-login-footer-logo {
+            width: min(210px, 72vw);
+            height: auto;
+            display: block;
+            filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
+        }
+
+        .wf-login-whatsapp {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.55rem;
+            width: fit-content;
+            min-height: 42px;
+            border-radius: 999px;
+            padding: 0 1.35rem;
+            background: #ffffff;
+            color: #1f2937;
+            font-size: 0.86rem;
+            font-weight: 900;
+            text-decoration: none;
+            box-shadow: 0 16px 30px rgba(70, 5, 25, 0.16);
+            transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        .wf-login-whatsapp:hover,
+        .wf-login-whatsapp:focus-visible {
+            transform: translateY(-2px);
+            box-shadow: 0 22px 34px rgba(70, 5, 25, 0.2);
+            outline: 0;
+        }
+
+        .wf-login-whatsapp svg,
+        .wf-login-footer-contact svg,
+        .wf-login-whatsapp-float svg {
+            flex: 0 0 auto;
+        }
+
+        .wf-login-footer-nav {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .wf-login-footer-nav a {
+            display: block;
+            width: fit-content;
+            font-weight: 850;
+        }
+
+        .wf-login-footer-contact {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .wf-login-footer-contact-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 780;
+        }
+
+        .wf-login-footer-contact-row svg {
+            color: #ffd23f;
+        }
+
+        .wf-login-footer-note {
+            border-top: 1px solid rgba(39, 8, 23, 0.16);
+            padding-top: 1rem;
         }
 
         .wf-login-footer-image {
@@ -396,6 +504,30 @@ if (!$homeAuthenticated):
             background: rgba(255, 255, 255, 0.18);
             object-fit: contain;
             padding: 0.35rem;
+        }
+
+        .wf-login-whatsapp-float {
+            position: fixed;
+            right: 1.65rem;
+            bottom: 1.35rem;
+            z-index: 4;
+            width: 58px;
+            height: 58px;
+            display: grid;
+            place-items: center;
+            border-radius: 999px;
+            background: #25d366;
+            color: #ffffff;
+            box-shadow: 0 18px 36px rgba(37, 211, 102, 0.35);
+            text-decoration: none;
+            transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        .wf-login-whatsapp-float:hover,
+        .wf-login-whatsapp-float:focus-visible {
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 22px 42px rgba(37, 211, 102, 0.42);
+            outline: 0;
         }
 
         .wf-login-svg-filter {
@@ -434,7 +566,7 @@ if (!$homeAuthenticated):
 
         @keyframes wf-bubble-move {
             0% {
-                bottom: -4rem;
+                bottom: 0.7rem;
             }
             100% {
                 bottom: var(--distance, 10rem);
@@ -443,16 +575,20 @@ if (!$homeAuthenticated):
 
         @keyframes wf-footer-color {
             0%, 100% {
-                --footer-background: #ed5565;
+                --footer-background: #d6092f;
+                --footer-ink: rgba(88, 7, 28, 0.2);
             }
             25% {
-                --footer-background: #a80f43;
+                --footer-background: #bd0f3f;
+                --footer-ink: rgba(70, 5, 24, 0.22);
             }
             50% {
-                --footer-background: #0f766e;
+                --footer-background: #e31844;
+                --footer-ink: rgba(94, 6, 30, 0.2);
             }
             75% {
-                --footer-background: #d97706;
+                --footer-background: #a80f43;
+                --footer-ink: rgba(51, 4, 18, 0.24);
             }
         }
 
@@ -468,12 +604,19 @@ if (!$homeAuthenticated):
 
             .wf-login-footer-content {
                 grid-template-columns: 1fr;
-                gap: 1.25rem;
-                padding: 1.6rem 1.15rem;
+                gap: 1.75rem;
+                padding: 3.4rem 1.15rem 5.4rem;
             }
 
             .wf-login-footer-image {
                 justify-self: start;
+            }
+
+            .wf-login-whatsapp-float {
+                right: 1rem;
+                bottom: 1rem;
+                width: 52px;
+                height: 52px;
             }
         }
 
@@ -545,28 +688,48 @@ if (!$homeAuthenticated):
             <?php endfor; ?>
         </div>
         <div class="wf-login-footer-content">
-            <div class="wf-login-footer-groups">
-                <div class="wf-login-footer-row">
-                    <b>Wimifarma</b>
-                    <span>Portal interno</span>
-                    <span>Operacao</span>
-                    <span>Auditoria</span>
-                </div>
-                <div class="wf-login-footer-row">
-                    <b>Modulos</b>
-                    <span>Cashback</span>
-                    <span>Pedidos</span>
-                    <span>Financeiro</span>
-                    <span>Miauby</span>
-                </div>
-                <p>Entre somente com credencial autorizada da equipe.</p>
+            <div class="wf-login-footer-brand">
+                <img class="wf-login-footer-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma">
+                <p>Atendimento local pelo WhatsApp para medicamentos, Farmacia Popular e entrega.</p>
+                <a class="wf-login-whatsapp" href="https://wa.me/5544984134971" target="_blank" rel="noopener">
+                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5Z"/>
+                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9.3 9.2c.4 2.2 1.9 3.7 4.1 4.4"/>
+                    </svg>
+                    <span>Chamar no WhatsApp</span>
+                </a>
             </div>
-            <div>
-                <img class="wf-login-footer-image" src="<?php echo wf_home_e(wf_home_asset('assets/img/favicon.svg')); ?>" alt="">
-                <p>&copy; <?php echo date('Y'); ?> Wimifarma</p>
+            <nav class="wf-login-footer-nav" aria-label="Navegacao">
+                <b>Navegacao</b>
+                <a href="<?php echo wf_home_e(wf_home_url('/')); ?>">Farmacia Popular</a>
+                <a href="<?php echo wf_home_e(wf_home_url('/')); ?>">Sobre</a>
+                <a href="https://wa.me/5544984134971" target="_blank" rel="noopener">Contato</a>
+            </nav>
+            <div class="wf-login-footer-contact">
+                <b>Atendimento</b>
+                <div class="wf-login-footer-contact-row">
+                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/>
+                        <circle cx="12" cy="10" r="2.4" fill="none" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    <span>Avenida Minas Gerais, 2263 - Ivate, Parana</span>
+                </div>
+                <div class="wf-login-footer-contact-row">
+                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 16.92v2.25a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 3.4 2 2 0 0 1 4.11 1.2h2.25a2 2 0 0 1 2 1.72c.12.9.33 1.79.62 2.63a2 2 0 0 1-.45 2.11L7.58 8.6a16 16 0 0 0 6 6l.94-.94a2 2 0 0 1 2.11-.45c.84.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92Z"/>
+                    </svg>
+                    <span>(44) 98413-4971</span>
+                </div>
+                <p class="wf-login-footer-note">Pedidos e disponibilidade sempre sob confirmacao da equipe.</p>
             </div>
         </div>
     </footer>
+    <a class="wf-login-whatsapp-float" href="https://wa.me/5544984134971" target="_blank" rel="noopener" aria-label="Chamar no WhatsApp">
+        <svg width="29" height="29" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5Z"/>
+            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9.3 9.2c.4 2.2 1.9 3.7 4.1 4.4"/>
+        </svg>
+    </a>
     <svg class="wf-login-svg-filter" aria-hidden="true" focusable="false">
         <defs>
             <filter id="wf-login-blob">
