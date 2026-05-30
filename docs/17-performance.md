@@ -222,7 +222,7 @@ Servicos:
 - Animacoes da home nao devem bloquear clique nos cards nem cobrir permanentemente os acessos.
 - Assets SVG grandes do XP, especialmente elementos vindos do Canva, devem ser observados no VPS; se a trilha ficar lenta, otimizar/exportar versoes menores antes de adicionar mais animacoes.
 - A trilha XP deve renderizar uma janela curta de niveis: base 1 a 20 no inicio e, quando a equipe passar disso, uma janela em torno do nivel mais alto. Para niveis 50+, evitar renderizar todos os niveis anteriores; preferir janela deslizante, agrupamento de avatares por nivel e resumo clicavel separado. Se o gargalo persistir, otimizar os SVGs grandes ou trocar blocos repetidos por assets raster/sprite mais leves.
-- O XP usa indice aditivo em `wf_xp_sales (deleted_at, employee_id, sale_date)` para reduzir custo das agregacoes de vendas ativas por funcionario/mes. Se o volume crescer para muitos anos de vendas, considerar uma tabela de totais mensais por funcionario em vez de recalcular todo historico a cada carregamento.
+- O XP usa indices em `xp_sales (deleted_at, employee_id, sale_date)` e `xp_sales (deleted_at, sale_date)` para reduzir custo das agregacoes de vendas ativas por funcionario/mes no Postgres. Se o volume crescer para muitos anos de vendas, considerar uma tabela de totais mensais por funcionario em vez de recalcular todo historico a cada carregamento.
 
 ## Pendencias
 

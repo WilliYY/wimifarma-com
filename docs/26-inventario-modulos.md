@@ -537,7 +537,7 @@ Validar no VPS `/tarefa/health`, login, criacao/edicao/status, tarefas privadas,
 - Proxy Apache: `docker/php/Dockerfile` envia `/xp/` para `wimifarma-xp-app:3600/xp/`.
 - App oficial: `apps/xp`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres `wimifarma_xp`.
-- MySQL `wf_xp_*` fica apenas como referencia historica/rollback manual; flags legadas ficam desligadas por padrao.
+- MySQL `wf_xp_*` fica apenas como referencia historica/backup. Desde 2026-05-30 o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `XP_AUTH_PROVIDER` nem flags `XP_LEGACY_MYSQL_*`.
 
 ### Telas e endpoints
 
@@ -551,8 +551,8 @@ Validar no VPS `/tarefa/health`, login, criacao/edicao/status, tarefas privadas,
 ### Permissoes e sessao
 
 - Sessao propria `WFXP`.
-- Login oficial por `core_users` com `XP_AUTH_PROVIDER=core`.
-- Rollback por MySQL existe com `XP_AUTH_PROVIDER=mysql`.
+- Login oficial somente por `core_users`.
+- Rollback por MySQL exige restaurar versao anterior e backup validado.
 - Escritas de tela usam CSRF.
 - Cadastro/configuracao deve ficar restrito a operadores autorizados.
 
@@ -563,8 +563,8 @@ Legado/rollback:
 - `wf_xp_employees`;
 - `wf_xp_sales`;
 - `wf_xp_settings`;
-- `wf_users`, apenas se auth rollback for ligado;
-- `wf_logs`, se `XP_LEGACY_MYSQL_LOGS_ENABLED=true`.
+- `wf_users`, apenas como origem historica sincronizada para `core_users`;
+- `wf_logs`, apenas como historico antigo.
 
 ### Tabelas Postgres oficiais
 
@@ -601,12 +601,12 @@ Legado/rollback:
 
 - `system_key='adm'` e foto ADM sao especiais e nao devem ser excluidos sem regra propria.
 - XP precisa continuar inteiro e dinheiro em centavos.
-- Espelho MySQL ligado por muito tempo pode divergir.
+- Rollback agora depende de restaurar versao anterior e backup, entao validar VPS antes de seguir para outro corte.
 - Mini-card da home depende do vinculo correto usuario -> funcionario.
 
 ### Proxima acao segura
 
-Validar ranking, lancamentos, fotos, mini-card e vinculos em Usuarios; depois desligar `XP_LEGACY_MYSQL_*` e remover dependencia `mysql2`.
+Validar no VPS `/xp/health`, login, ranking, lancamentos, fotos, mini-card da home e vinculos em Usuarios. Depois seguir para Financeiro/Miauby sem reintroduzir MySQL no XP.
 
 ## Codigos
 
@@ -1008,6 +1008,7 @@ Inventarios detalhados ja registrados neste documento:
 
 Proxima rodada segura:
 
-1. Validar no VPS Gestao, Tarefa e Codigos sem `mysql2`/fallback/espelho, incluindo health, login, fluxos principais e Miauby. Depois repetir a remocao cuidadosa de flags legadas e `mysql2` em XP.
-2. Iniciar `docs/28-miauby-migracao.md` como trilha oficial para criar `wimifarma_miauby` e `apps/miauby` sem quebrar `/miauw/`.
-3. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.
+1. Validar no VPS XP sem `mysql2`/fallback/espelho, incluindo health, login, ranking, lancamentos, fotos, mini-card e Usuarios.
+2. Repetir a remocao cuidadosa de caminhos MySQL dormentes no Financeiro quando houver janela e paridade recente.
+3. Iniciar `docs/28-miauby-migracao.md` como trilha oficial para criar `wimifarma_miauby` e `apps/miauby` sem quebrar `/miauw/`.
+4. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.

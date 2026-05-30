@@ -75,7 +75,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao, Gestao, Pedidos, Tarefa, Codigos e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. XP, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback, XP e Usuarios usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Financeiro e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -192,9 +192,9 @@ Inventario real observado em 2026-05-10:
 - `wf_whatsapp_mensagens`: historico/importacao antiga de mensagens e campanhas do Cashback; a escrita oficial nova usa Postgres `cashback_whatsapp_messages`.
 - `wf_codigos_comissao`: legado historico/backup de Codigos; a escrita oficial nova usa Postgres `codigos_items`.
 - `wf_codigos_blocos`: legado historico/backup dos blocos de Codigos; a escrita oficial nova usa Postgres `codigos_groups`.
-- `wf_xp_employees`: legado/importacao/espelho temporario de funcionarios do XP; a escrita oficial nova usa Postgres `xp_employees`.
-- `wf_xp_sales`: legado/importacao/espelho temporario de vendas do XP; a escrita oficial nova usa Postgres `xp_sales`.
-- `wf_xp_settings`: legado/importacao/espelho temporario de configuracoes do XP; a escrita oficial nova usa Postgres `xp_settings`.
+- `wf_xp_employees`: referencia historica/backup de funcionarios do XP; a escrita oficial nova usa Postgres `xp_employees`.
+- `wf_xp_sales`: referencia historica/backup de vendas do XP; a escrita oficial nova usa Postgres `xp_sales`.
+- `wf_xp_settings`: referencia historica/backup de configuracoes do XP; a escrita oficial nova usa Postgres `xp_settings`.
 - `wf_tarefas`: legado/importacao/espelho temporario da Tarefa; a escrita oficial nova usa Postgres `tarefa_tasks`.
 - `cotacao_blocos`: blocos de cotacao.
 - `cotacao_fornecedores`: fornecedores por bloco.

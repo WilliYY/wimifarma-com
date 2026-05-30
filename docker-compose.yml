@@ -360,10 +360,6 @@ services:
       POSTGRES_USER: wimifarma_xp
       POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
       XP_SESSION_SECRET: ${XP_SESSION_SECRET:-wimifarma_xp_dev_secret_change_me}
-      XP_AUTH_PROVIDER: ${XP_AUTH_PROVIDER:-core}
-      XP_LEGACY_MYSQL_IMPORT_ENABLED: ${XP_LEGACY_MYSQL_IMPORT_ENABLED:-false}
-      XP_LEGACY_MYSQL_MIRROR_ENABLED: ${XP_LEGACY_MYSQL_MIRROR_ENABLED:-false}
-      XP_LEGACY_MYSQL_LOGS_ENABLED: ${XP_LEGACY_MYSQL_LOGS_ENABLED:-false}
       XP_UPLOAD_ROOT: /app/public/uploads
     volumes:
       - ./site/xp/styles.css:/app/public/styles.css:ro

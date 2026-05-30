@@ -172,7 +172,7 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos, Tarefa, Codigos e Cashback usam somente `core_users`; XP, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback e XP usam somente `core_users`; Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
 Gestao usa somente `core_users` desde 2026-05-30. O servico nao possui mais `GESTAO_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2`, espelho `wf_logs` nem variaveis `MYSQL_*` no Compose; `/gestao/health` deve mostrar `auth.provider=core`, `mysql_auth=false`, `mysql_auth_fallback=false` e `mysql_reachable=false`.
 
@@ -211,7 +211,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" h
 docker exec wimifarma-xp-db psql -U wimifarma_xp -d wimifarma_xp -c "\dt"
 ```
 
-O app `apps/xp` atende a rota oficial `/xp/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_xp`; MySQL `wf_xp_*` fica como importacao/espelho/log legado por flags `XP_LEGACY_MYSQL_*` para rollback curto. Rollback de autenticacao: `XP_AUTH_PROVIDER=mysql` e rebuild de `wimifarma-xp-app`.
+O app `apps/xp` atende a rota oficial `/xp/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_xp`; desde 2026-05-30 o servico nao possui `mysql2`, importador, espelho, logs ou fallback MySQL. Rollback MySQL exige restaurar versao anterior e backup validado. O frontend continua vindo de `site/xp` por volumes montados.
 
 ## Local - Codigos Node/Postgres
 

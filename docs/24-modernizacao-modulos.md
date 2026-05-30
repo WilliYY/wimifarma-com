@@ -48,7 +48,7 @@ O script mostra:
 | Pedidos | Node.js + TypeScript + Postgres da Gestao + core auth | sem dependencia MySQL no app | manter health/auditoria e validar rotinas n8n/Miauby | moderno |
 | Tarefa | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Codigos | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
-| XP | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 4 em corte |
+| XP | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL legado desligado por padrao; rollback manual | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
 | Cashback | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
@@ -63,7 +63,7 @@ O script mostra:
 2. Manter rollback por `.env` onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos e Gestao nao tem mais fallback MySQL no codigo.
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa em Postgres puro no VPS: `/tarefa/health`, login, tarefas publicas/privadas, badge da home e Miauby sem `mysql2`.
-4. Observar XP em `/xp/` com health, login e checks de paridade antes de remover flags legadas e `mysql2`; Codigos ja foi limpo em 2026-05-30.
+4. XP e Codigos ja foram limpos em 2026-05-30; validar `/xp/health`, login, ranking, lancamentos, fotos e mini-card sem reintroduzir `mysql2`.
 5. Observar Financeiro em `/financeiro/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir checksums por dia/tipo, Caixa, Relatorio, exportacao e contrato Pix CNPJ do Miauby.
 6. Cashback esta em `/cashback/` sem `mysql2`, importador, espelho ou fallback MySQL; rollback exige restaurar commit/imagem anterior e backup, depois repetir saldos por cliente, CSV, mensagens e autoteste.
 7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`, usando `Miauby` como nome canonico e mantendo `miauw` como compatibilidade tecnica ate validacao.
@@ -84,10 +84,9 @@ XP foi cortado para `apps/xp`:
 
 - banco/schema alvo `wimifarma_xp`;
 - tabelas `xp_employees`, `xp_sales`, `xp_settings`, `xp_audit_events` e `xp_sessions`;
-- importador idempotente de `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings`;
 - proxy Apache oficial em `/xp/`;
 - frontend preservado por CSS/JS/assets de `site/xp` e uploads compartilhados;
-- `XP_LEGACY_MYSQL_*` fica desligado por padrao desde 2026-05-30; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente.
+- sem `mysql2`, importador, espelho, fallback `wf_users`, `XP_AUTH_PROVIDER` ou flags `XP_LEGACY_MYSQL_*` desde 2026-05-30.
 
 Codigos foi cortado para `apps/codigos`:
 

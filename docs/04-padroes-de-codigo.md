@@ -75,7 +75,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Codigos adotou Node.js + TypeScript + Postgres dedicado, mantendo o CSS/JS de `site/codigos`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
 - Financeiro adotou Node.js + TypeScript + Postgres dedicado como rota oficial `/financeiro/`, preservando assets de `site/financeiro`; depois da paridade de 2026-05-29, MySQL fica desligado por padrao e so volta em rollback manual.
 - O Miauby WhatsApp adotou Node.js + TypeScript + Postgres dedicado para webhook/fila/outbox, evitando misturar eventos externos com MySQL legado ou com o banco da Gestao.
-- O XP adotou Node.js + TypeScript + Postgres dedicado, mantendo assets/uploads de `site/xp`. O caminho MySQL de rollback fica dormente e desligado por padrao.
+- O XP adotou Node.js + TypeScript + Postgres dedicado, mantendo assets/uploads de `site/xp`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
 
 ## Padroes para novas alteracoes
 

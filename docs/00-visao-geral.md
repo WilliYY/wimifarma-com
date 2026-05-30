@@ -88,7 +88,7 @@ Rotas principais:
 - A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
 - Em 2026-05-29, legados comprovadamente inativos foram movidos para `site/_legacy-disabled/2026-05-29/`; detalhes e cuidados ficam em `docs/27-limpeza-legado.md`.
 - A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; desde 2026-05-30 o login usa somente o core Postgres, com auditoria em Postgres e sem `mysql2`, fallback MySQL ou espelho `wf_logs`.
-- O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets/uploads de `site/xp` e rollback por flags legadas.
+- O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets/uploads de `site/xp`; desde 2026-05-30 nao possui dependencia MySQL no app.
 - Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets de `site/codigos`; desde 2026-05-30 nao possui dependencia MySQL no app.
 - Financeiro foi cortado para `apps/financeiro` com Node.js, TypeScript e Postgres dedicado. A paridade com MySQL foi validada e o espelho/import legado fica desligado por padrao; MySQL `financeiro_*` permanece apenas como rollback manual.
 - Usuarios foi criado em `apps/usuarios` com Node.js, TypeScript e Postgres core para administrar logins, permissoes por modulo, vinculo XP e auditoria central.

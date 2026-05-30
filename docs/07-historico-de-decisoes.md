@@ -236,7 +236,7 @@ Impacto:
 
 Riscos/cuidados:
 
-- A observacao vem de `wf_xp_sales.note` e e exibida escapada; manter limite curto para evitar poluir a lista.
+- A observacao vem de `xp_sales.note` no app atual e e exibida escapada; historicamente veio de `wf_xp_sales.note`. Manter limite curto para evitar poluir a lista.
 - A barra do lancamento e um destaque visual do XP daquele registro, nao altera regra de calculo, totais, niveis nem cancelamento logico.
 
 ## 2026-05-24 - Home publica usa logo animada

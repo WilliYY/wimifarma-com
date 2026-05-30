@@ -1,6 +1,6 @@
 {
   "name": "wimifarma-xp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,7 +15,6 @@
     "express-session": "^1.19.0",
     "image-size": "^2.0.2",
     "multer": "^2.1.1",
-    "mysql2": "^3.11.0",
     "pg": "^8.12.0"
   },
   "devDependencies": {

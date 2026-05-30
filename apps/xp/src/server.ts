@@ -6,7 +6,6 @@ import session from 'express-session';
 import fs from 'fs/promises';
 import { imageSize } from 'image-size';
 import multer from 'multer';
-import mysql from 'mysql2/promise';
 import path from 'path';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
@@ -14,8 +13,6 @@ import { fileURLToPath } from 'url';
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-type AuthProvider = 'core' | 'mysql';
 
 type User = {
   id: number;
@@ -34,14 +31,6 @@ type CoreUserRow = {
   password_hash: string;
   role: string;
   active: boolean;
-};
-
-type MysqlUserRow = {
-  id: number;
-  username: string;
-  password_hash: string;
-  role: string;
-  active: number;
 };
 
 type EmployeeRow = {
@@ -120,38 +109,6 @@ type MonthContext = {
   next: string;
 };
 
-type LegacyEmployeeRow = {
-  id: number;
-  name: string;
-  photo_path: string | null;
-  status: string;
-  system_key: string | null;
-  created_by: number | null;
-  created_at: string | null;
-  updated_at: string | null;
-  deleted_at: string | null;
-};
-
-type LegacySaleRow = {
-  id: number;
-  employee_id: number;
-  sale_date: string;
-  amount_cents: number;
-  xp_points: number;
-  note: string | null;
-  created_by: number | null;
-  created_at: string | null;
-  deleted_at: string | null;
-  deleted_by: number | null;
-};
-
-type LegacySettingRow = {
-  setting_key: string;
-  setting_value: string | null;
-  updated_by: number | null;
-  updated_at: string | null;
-};
-
 declare module 'express-session' {
   interface SessionData {
     csrfToken?: string;
@@ -165,17 +122,10 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'xp';
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.1.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/xp');
 const PORT = Number.parseInt(env.PORT || '3600', 10);
 const SESSION_SECRET = env.XP_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const AUTH_PROVIDER = normalizeAuthProvider(env.XP_AUTH_PROVIDER || 'core');
-const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_IMPORT_ENABLED ?? 'false');
-const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_MIRROR_ENABLED ?? 'false');
-const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_LOGS_ENABLED ?? 'false');
-const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core';
-const LEGACY_MYSQL_REQUIRED =
-  AUTH_PROVIDER === 'mysql' || LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED || LEGACY_MYSQL_LOGS_ENABLED;
 const XP_POINTS_PER_THOUSAND_REAIS = 2500;
 const XP_FIRST_LEVEL_REQUIREMENT = 30000;
 const XP_UPLOAD_MAX_BYTES = 3 * 1024 * 1024;
@@ -195,38 +145,14 @@ const pgPool = new Pool({
   max: 10,
 });
 
-const corePgPool = CORE_AUTH_REQUIRED
-  ? new Pool({
-      host: env.CORE_POSTGRES_HOST || '127.0.0.1',
-      port: Number(env.CORE_POSTGRES_PORT || 5432),
-      database: env.CORE_POSTGRES_DB || 'wimifarma_core',
-      user: env.CORE_POSTGRES_USER || 'wimifarma_core',
-      password: env.CORE_POSTGRES_PASSWORD || '',
-      max: 4,
-    })
-  : null;
-
-const mysqlPool: mysql.Pool | null = LEGACY_MYSQL_REQUIRED
-  ? mysql.createPool({
-      host: env.MYSQL_HOST || '127.0.0.1',
-      port: Number(env.MYSQL_PORT || 3306),
-      database: env.MYSQL_DATABASE || 'wimifarma_app',
-      user: env.MYSQL_USER || 'wimifarma_user',
-      password: env.MYSQL_PASSWORD || '',
-      waitForConnections: true,
-      connectionLimit: 6,
-      charset: 'utf8mb4',
-      dateStrings: true,
-    })
-  : null;
-
-const migrationState = {
-  employeesImported: 0,
-  salesImported: 0,
-  settingsImported: 0,
-  lastRunAt: null as string | null,
-  lastError: null as string | null,
-};
+const corePgPool = new Pool({
+  host: env.CORE_POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.CORE_POSTGRES_PORT || 5432),
+  database: env.CORE_POSTGRES_DB || 'wimifarma_core',
+  user: env.CORE_POSTGRES_USER || 'wimifarma_core',
+  password: env.CORE_POSTGRES_PASSWORD || '',
+  max: 4,
+});
 
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -258,25 +184,8 @@ function normalizeBasePath(value: string): string {
   return clean === '' ? '/xp' : clean;
 }
 
-function normalizeBoolean(value: unknown): boolean {
-  return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
-}
-
-function normalizeAuthProvider(value: unknown): AuthProvider {
-  return String(value || 'core').trim().toLowerCase() === 'mysql' ? 'mysql' : 'core';
-}
-
-function requireMysqlPool(feature: string): mysql.Pool {
-  if (!mysqlPool) {
-    throw new Error(`Legacy MySQL is disabled for ${feature}.`);
-  }
-  return mysqlPool;
-}
-
 function requireCorePgPool(feature: string): pg.Pool {
-  if (!corePgPool) {
-    throw new Error(`Core Postgres auth is disabled for ${feature}.`);
-  }
+  void feature;
   return corePgPool;
 }
 
@@ -311,7 +220,7 @@ function numeric(value: unknown): number {
   return Number(value || 0) || 0;
 }
 
-function userPublic(row: CoreUserRow | MysqlUserRow): User {
+function userPublic(row: CoreUserRow): User {
   return {
     id: Number(row.id),
     username: String(row.username),
@@ -557,17 +466,6 @@ function playerDataAttrs(player: EmployeeView): string {
     .join('');
 }
 
-function validStatus(value: unknown): 'ativo' | 'inativo' {
-  return String(value || '').trim() === 'inativo' ? 'inativo' : 'ativo';
-}
-
-function pgDateFromMysql(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text || text === '0000-00-00 00:00:00') return null;
-  return text.includes('T') ? text : `${text.replace(' ', 'T')}-03:00`;
-}
-
 function validateSaleDate(value: unknown): string {
   const text = String(value || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
@@ -583,7 +481,7 @@ function validateSaleDate(value: unknown): string {
 }
 
 async function authenticate(username: string, password: string): Promise<User | null> {
-  return AUTH_PROVIDER === 'mysql' ? authenticateMysql(username, password) : authenticateCore(username, password);
+  return authenticateCore(username, password);
 }
 
 async function authenticateCore(username: string, password: string): Promise<User | null> {
@@ -606,33 +504,8 @@ async function authenticateCore(username: string, password: string): Promise<Use
   return ok ? userPublic(user) : null;
 }
 
-async function authenticateMysql(username: string, password: string): Promise<User | null> {
-  const [rows] = await requireMysqlPool('auth').query<mysql.RowDataPacket[]>(
-    'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
-    [username],
-  );
-  const user = rows[0] as MysqlUserRow | undefined;
-  if (!user) return null;
-  let ok = false;
-  if (user.password_hash) {
-    ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
-  }
-  if (!ok && normalizeUsername(user.username) === 'adm') {
-    ok = timingSafeStringEqual(password, 'adm');
-  }
-  return ok ? userPublic(user) : null;
-}
-
 async function currentUser(user: User | undefined): Promise<User | null> {
   if (!user) return null;
-  if (AUTH_PROVIDER === 'mysql') {
-    const [rows] = await requireMysqlPool('current user').query<mysql.RowDataPacket[]>(
-      'SELECT id, username, role, active FROM wf_users WHERE id = ? AND active = 1 LIMIT 1',
-      [user.id],
-    );
-    const row = rows[0] as MysqlUserRow | undefined;
-    return row ? userPublic(row) : null;
-  }
   const result = await requireCorePgPool('current user').query<CoreUserRow>(
     `SELECT id::text, username, password_hash, role, active
        FROM core_users
@@ -665,18 +538,6 @@ async function logCoreAudit(userId: number | null, action: string, entityType: s
     );
   } catch (error) {
     console.warn('[xp] failed to write core audit log', error);
-  }
-}
-
-async function logMysql(userId: number | null, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
-  if (!LEGACY_MYSQL_LOGS_ENABLED) return;
-  try {
-    await requireMysqlPool('wf_logs').query(
-      'INSERT INTO wf_logs (user_id, action, entity_type, entity_id, message) VALUES (?, ?, ?, ?, ?)',
-      [userId, action, entityType, entityId, cleanText(message, 255)],
-    );
-  } catch (error) {
-    console.warn('[xp] failed to write legacy log', error);
   }
 }
 
@@ -745,199 +606,6 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('CREATE INDEX IF NOT EXISTS xp_audit_events_created_idx ON xp_audit_events (created_at DESC)');
   await fs.mkdir(path.join(uploadRoot, 'funcionarios'), { recursive: true });
   await fs.mkdir(path.join(uploadRoot, 'adm'), { recursive: true });
-  if (LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED) {
-    await ensureLegacyMysqlSchema();
-  }
-  if (LEGACY_MYSQL_IMPORT_ENABLED) {
-    await migrateLegacyData();
-  }
-}
-
-async function ensureLegacyMysqlSchema(): Promise<void> {
-  const db = requireMysqlPool('legacy schema');
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS wf_xp_employees (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      name VARCHAR(180) NOT NULL,
-      photo_path VARCHAR(255) NULL,
-      status ENUM('ativo','inativo') NOT NULL DEFAULT 'ativo',
-      system_key VARCHAR(32) NULL,
-      created_by INT UNSIGNED NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-      deleted_at DATETIME NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY ux_xp_employees_system_key (system_key),
-      KEY idx_xp_employees_status_name (status, name),
-      KEY idx_xp_employees_created_at (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS wf_xp_sales (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      employee_id BIGINT UNSIGNED NOT NULL,
-      sale_date DATE NOT NULL,
-      amount_cents BIGINT UNSIGNED NOT NULL,
-      xp_points BIGINT UNSIGNED NOT NULL,
-      note VARCHAR(255) NULL,
-      created_by INT UNSIGNED NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      deleted_at DATETIME NULL,
-      deleted_by INT UNSIGNED NULL,
-      PRIMARY KEY (id),
-      KEY idx_xp_sales_employee_date (employee_id, sale_date),
-      KEY idx_xp_sales_date (sale_date),
-      KEY idx_xp_sales_active (deleted_at, sale_date),
-      KEY idx_xp_sales_active_employee_date (deleted_at, employee_id, sale_date),
-      CONSTRAINT fk_xp_sales_employee
-        FOREIGN KEY (employee_id) REFERENCES wf_xp_employees(id)
-        ON UPDATE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS wf_xp_settings (
-      setting_key VARCHAR(80) NOT NULL,
-      setting_value TEXT NULL,
-      updated_by INT UNSIGNED NULL,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (setting_key)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-}
-
-async function migrateLegacyData(): Promise<void> {
-  if (!LEGACY_MYSQL_IMPORT_ENABLED) return;
-  const startedAt = new Date().toISOString();
-  try {
-    const mysqlDb = requireMysqlPool('legacy import');
-    const [employeeRows] = await mysqlDb.query<mysql.RowDataPacket[]>(
-      'SELECT id, name, photo_path, status, system_key, created_by, created_at, updated_at, deleted_at FROM wf_xp_employees ORDER BY id ASC',
-    );
-    const [saleRows] = await mysqlDb.query<mysql.RowDataPacket[]>(
-      'SELECT id, employee_id, sale_date, amount_cents, xp_points, note, created_by, created_at, deleted_at, deleted_by FROM wf_xp_sales ORDER BY id ASC',
-    );
-    const [settingRows] = await mysqlDb.query<mysql.RowDataPacket[]>(
-      'SELECT setting_key, setting_value, updated_by, updated_at FROM wf_xp_settings ORDER BY setting_key ASC',
-    );
-    const client = await pgPool.connect();
-    try {
-      await client.query('BEGIN');
-      let employeesImported = 0;
-      for (const row of employeeRows as LegacyEmployeeRow[]) {
-        await client.query(
-          `INSERT INTO xp_employees (
-             id, legacy_mysql_id, name, photo_path, status, system_key,
-             created_by, created_at, updated_at, deleted_at
-           ) VALUES (
-             $1, $1, $2, $3, $4, $5,
-             $6, COALESCE($7::timestamptz, NOW()), $8::timestamptz, $9::timestamptz
-           )
-           ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-             name = EXCLUDED.name,
-             photo_path = EXCLUDED.photo_path,
-             status = EXCLUDED.status,
-             system_key = EXCLUDED.system_key,
-             created_by = EXCLUDED.created_by,
-             created_at = EXCLUDED.created_at,
-             updated_at = EXCLUDED.updated_at,
-             deleted_at = EXCLUDED.deleted_at`,
-          [
-            Number(row.id),
-            cleanText(row.name, 180) || 'Funcionario sem nome',
-            photoUrl(row.photo_path) || null,
-            validStatus(row.status),
-            row.system_key || null,
-            row.created_by ? Number(row.created_by) : null,
-            pgDateFromMysql(row.created_at),
-            pgDateFromMysql(row.updated_at),
-            pgDateFromMysql(row.deleted_at),
-          ],
-        );
-        employeesImported += 1;
-      }
-      let salesImported = 0;
-      for (const row of saleRows as LegacySaleRow[]) {
-        await client.query(
-          `INSERT INTO xp_sales (
-             id, legacy_mysql_id, employee_id, sale_date, amount_cents, xp_points,
-             note, created_by, created_at, deleted_at, deleted_by
-           ) VALUES (
-             $1, $1, $2, $3::date, $4, $5,
-             $6, $7, COALESCE($8::timestamptz, NOW()), $9::timestamptz, $10
-           )
-           ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-             employee_id = EXCLUDED.employee_id,
-             sale_date = EXCLUDED.sale_date,
-             amount_cents = EXCLUDED.amount_cents,
-             xp_points = EXCLUDED.xp_points,
-             note = EXCLUDED.note,
-             created_by = EXCLUDED.created_by,
-             created_at = EXCLUDED.created_at,
-             deleted_at = EXCLUDED.deleted_at,
-             deleted_by = EXCLUDED.deleted_by`,
-          [
-            Number(row.id),
-            Number(row.employee_id),
-            row.sale_date,
-            Number(row.amount_cents || 0),
-            Number(row.xp_points || 0),
-            row.note ? cleanText(row.note, 255) : null,
-            row.created_by ? Number(row.created_by) : null,
-            pgDateFromMysql(row.created_at),
-            pgDateFromMysql(row.deleted_at),
-            row.deleted_by ? Number(row.deleted_by) : null,
-          ],
-        );
-        salesImported += 1;
-      }
-      let settingsImported = 0;
-      for (const row of settingRows as LegacySettingRow[]) {
-        await client.query(
-          `INSERT INTO xp_settings (setting_key, setting_value, updated_by, updated_at)
-           VALUES ($1, $2, $3, COALESCE($4::timestamptz, NOW()))
-           ON CONFLICT (setting_key) DO UPDATE SET
-             setting_value = EXCLUDED.setting_value,
-             updated_by = EXCLUDED.updated_by,
-             updated_at = EXCLUDED.updated_at`,
-          [cleanText(row.setting_key, 80), row.setting_value ?? null, row.updated_by ? Number(row.updated_by) : null, pgDateFromMysql(row.updated_at)],
-        );
-        settingsImported += 1;
-      }
-      await resetSequences(client);
-      await client.query('COMMIT');
-      migrationState.employeesImported = employeesImported;
-      migrationState.salesImported = salesImported;
-      migrationState.settingsImported = settingsImported;
-      migrationState.lastRunAt = startedAt;
-      migrationState.lastError = null;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    migrationState.lastRunAt = startedAt;
-    migrationState.lastError = error instanceof Error ? error.message : String(error);
-    console.warn('[xp] legacy migration failed', error);
-  }
-}
-
-async function resetSequences(client: pg.PoolClient | pg.Pool = pgPool): Promise<void> {
-  await client.query(`
-    SELECT setval(
-      pg_get_serial_sequence('xp_employees', 'id'),
-      GREATEST((SELECT COALESCE(MAX(id), 1) FROM xp_employees), 1),
-      true
-    )
-  `);
-  await client.query(`
-    SELECT setval(
-      pg_get_serial_sequence('xp_sales', 'id'),
-      GREATEST((SELECT COALESCE(MAX(id), 1) FROM xp_sales), 1),
-      true
-    )
-  `);
 }
 
 async function settingGet(key: string, fallback = ''): Promise<string> {
@@ -955,14 +623,6 @@ async function settingSet(key: string, value: string | null, userId: number): Pr
        updated_at = NOW()`,
     [cleanText(key, 80), value, userId],
   );
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await requireMysqlPool('settings mirror').query(
-      `INSERT INTO wf_xp_settings (setting_key, setting_value, updated_by, updated_at)
-       VALUES (?, ?, ?, NOW())
-       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by), updated_at = NOW()`,
-      [cleanText(key, 80), value, userId],
-    );
-  }
 }
 
 async function adminProfile(): Promise<{ photo_path: string }> {
@@ -1000,40 +660,7 @@ async function syncAdminEmployee(photoPath: string | null, userId: number | null
     );
     id = Number(inserted.rows[0].id);
   }
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await mirrorAdminEmployee(id, adminPhoto, userId, adminName);
-  }
   return id;
-}
-
-async function mirrorAdminEmployee(pgId: number, safePhoto: string | null, userId: number | null, nameValue?: string): Promise<void> {
-  try {
-    const db = requireMysqlPool('admin mirror');
-    const adminName = cleanText(nameValue, 180) || 'ADM';
-    const [rows] = await db.query<mysql.RowDataPacket[]>('SELECT id FROM wf_xp_employees WHERE system_key = ? LIMIT 1', [XP_ADMIN_SYSTEM_KEY]);
-    let legacyId = Number(rows[0]?.id || 0);
-    if (!legacyId) {
-      const [named] = await db.query<mysql.RowDataPacket[]>("SELECT id FROM wf_xp_employees WHERE UPPER(name) = 'ADM' ORDER BY id ASC LIMIT 1");
-      legacyId = Number(named[0]?.id || 0);
-    }
-    if (legacyId) {
-      await db.query(
-        "UPDATE wf_xp_employees SET name = ?, photo_path = ?, status = 'ativo', system_key = ?, deleted_at = NULL WHERE id = ?",
-        [adminName, safePhoto, XP_ADMIN_SYSTEM_KEY, legacyId],
-      );
-    } else {
-      const [insert] = await db.query<mysql.ResultSetHeader>(
-        "INSERT INTO wf_xp_employees (name, photo_path, status, system_key, created_by) VALUES (?, ?, 'ativo', ?, ?)",
-        [adminName, safePhoto, XP_ADMIN_SYSTEM_KEY, userId],
-      );
-      legacyId = Number(insert.insertId);
-    }
-    if (legacyId) {
-      await pgPool.query('UPDATE xp_employees SET legacy_mysql_id = $1 WHERE id = $2 AND legacy_mysql_id IS NULL', [legacyId, pgId]);
-    }
-  } catch (error) {
-    console.warn('[xp] failed to mirror ADM employee', error);
-  }
 }
 
 async function listEmployees(context: MonthContext): Promise<EmployeeView[]> {
@@ -1226,10 +853,6 @@ async function updateAdminProfile(nameValue: unknown, file: Express.Multer.File 
   const photoPath = uploaded || photoUrl(current?.photo_path) || null;
   await pgPool.query('UPDATE xp_employees SET name = $1, photo_path = $2, updated_at = NOW() WHERE id = $3', [name, photoPath, adminId]);
   await auditPg('xp_adm_perfil_atualizado', 'xp_employee', String(adminId), `Perfil ADM do XP atualizado: ${name}.`, userId);
-  void logMysql(userId, 'xp_adm_perfil_atualizado', 'xp_employee', adminId, `Perfil ADM do XP atualizado: ${name}.`);
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await mirrorAdminEmployee(adminId, photoPath, userId, name);
-  }
 }
 
 async function createEmployee(nameValue: unknown, file: Express.Multer.File | undefined, userId: number): Promise<number> {
@@ -1243,25 +866,7 @@ async function createEmployee(nameValue: unknown, file: Express.Multer.File | un
   );
   const id = Number(inserted.rows[0].id);
   await auditPg('xp_funcionario_criado', 'xp_employee', String(id), `Funcionario XP criado: ${name}`, userId);
-  void logMysql(userId, 'xp_funcionario_criado', 'xp_employee', id, `Funcionario XP criado: ${name}`);
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await mirrorEmployeeCreate(id);
-  }
   return id;
-}
-
-async function mirrorEmployeeCreate(id: number): Promise<void> {
-  try {
-    const row = (await pgPool.query<EmployeeRow>('SELECT * FROM xp_employees WHERE id = $1 LIMIT 1', [id])).rows[0];
-    if (!row || row.legacy_mysql_id) return;
-    const [insert] = await requireMysqlPool('employee mirror create').query<mysql.ResultSetHeader>(
-      'INSERT INTO wf_xp_employees (name, photo_path, created_by) VALUES (?, ?, ?)',
-      [row.name, row.photo_path || null, row.created_by],
-    );
-    await pgPool.query('UPDATE xp_employees SET legacy_mysql_id = $1 WHERE id = $2', [Number(insert.insertId), id]);
-  } catch (error) {
-    console.warn('[xp] failed to mirror employee create', error);
-  }
 }
 
 async function updateEmployee(id: number, nameValue: unknown, file: Express.Multer.File | undefined, userId: number): Promise<void> {
@@ -1282,28 +887,6 @@ async function updateEmployee(id: number, nameValue: unknown, file: Express.Mult
   const action = isAdmin ? 'xp_adm_perfil_atualizado' : 'xp_funcionario_editado';
   const description = isAdmin ? `Perfil ADM do XP atualizado: ${name}.` : `Funcionario XP editado: ${name}`;
   await auditPg(action, 'xp_employee', String(id), description, userId);
-  void logMysql(userId, action, 'xp_employee', id, description);
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    if (isAdmin) {
-      const current = await findEmployee(id);
-      await mirrorAdminEmployee(id, photoUrl(current?.photo_path) || null, userId, name);
-    } else {
-      await mirrorEmployeeUpdate(id);
-    }
-  }
-}
-
-async function mirrorEmployeeUpdate(id: number): Promise<void> {
-  try {
-    const row = (await pgPool.query<EmployeeRow>('SELECT * FROM xp_employees WHERE id = $1 LIMIT 1', [id])).rows[0];
-    if (!row?.legacy_mysql_id) return;
-    await requireMysqlPool('employee mirror update').query(
-      'UPDATE wf_xp_employees SET name = ?, photo_path = ?, status = ?, deleted_at = ? WHERE id = ?',
-      [row.name, row.photo_path || null, row.status, row.deleted_at, Number(row.legacy_mysql_id)],
-    );
-  } catch (error) {
-    console.warn('[xp] failed to mirror employee update', error);
-  }
 }
 
 async function deactivateEmployee(id: number, userId: number): Promise<void> {
@@ -1312,10 +895,6 @@ async function deactivateEmployee(id: number, userId: number): Promise<void> {
   if (employee.system_key === XP_ADMIN_SYSTEM_KEY) throw new Error('O ADM e um perfil protegido e nao pode ser excluido.');
   await pgPool.query("UPDATE xp_employees SET status = 'inativo', deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'ativo' AND deleted_at IS NULL", [id]);
   await auditPg('xp_funcionario_inativado', 'xp_employee', String(id), `Funcionario XP inativado: ${employee.name}`, userId);
-  void logMysql(userId, 'xp_funcionario_inativado', 'xp_employee', id, `Funcionario XP inativado: ${employee.name}`);
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await mirrorEmployeeUpdate(id);
-  }
 }
 
 async function createSale(employeeId: number, saleDateValue: unknown, amountValue: unknown, noteValue: unknown, userId: number): Promise<number> {
@@ -1332,27 +911,7 @@ async function createSale(employeeId: number, saleDateValue: unknown, amountValu
   );
   const id = Number(inserted.rows[0].id);
   await auditPg('xp_venda_lancada', 'xp_sale', String(id), `Venda XP lancada: ${centsToMoney(amountCents)} = ${formatNumber(xpPoints)} XP.`, userId);
-  void logMysql(userId, 'xp_venda_lancada', 'xp_sale', id, `Venda XP lancada: ${centsToMoney(amountCents)} = ${formatNumber(xpPoints)} XP.`);
-  if (LEGACY_MYSQL_MIRROR_ENABLED) {
-    await mirrorSaleCreate(id);
-  }
   return id;
-}
-
-async function mirrorSaleCreate(id: number): Promise<void> {
-  try {
-    const row = (await pgPool.query<SaleRow>('SELECT * FROM xp_sales WHERE id = $1 LIMIT 1', [id])).rows[0];
-    if (!row || row.legacy_mysql_id) return;
-    const employee = (await pgPool.query<EmployeeRow>('SELECT legacy_mysql_id FROM xp_employees WHERE id = $1 LIMIT 1', [row.employee_id])).rows[0];
-    if (!employee?.legacy_mysql_id) return;
-    const [insert] = await requireMysqlPool('sale mirror create').query<mysql.ResultSetHeader>(
-      'INSERT INTO wf_xp_sales (employee_id, sale_date, amount_cents, xp_points, note, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-      [Number(employee.legacy_mysql_id), String(row.sale_date).slice(0, 10), Number(row.amount_cents), Number(row.xp_points), row.note || null, row.created_by],
-    );
-    await pgPool.query('UPDATE xp_sales SET legacy_mysql_id = $1 WHERE id = $2', [Number(insert.insertId), id]);
-  } catch (error) {
-    console.warn('[xp] failed to mirror sale create', error);
-  }
 }
 
 async function deleteSale(id: number, userId: number): Promise<void> {
@@ -1364,17 +923,6 @@ async function deleteSale(id: number, userId: number): Promise<void> {
   const sale = updated.rows[0];
   if (!sale) throw new Error('Lancamento nao encontrado.');
   await auditPg('xp_venda_cancelada', 'xp_sale', String(id), 'Lancamento XP cancelado.', userId);
-  void logMysql(userId, 'xp_venda_cancelada', 'xp_sale', id, 'Lancamento XP cancelado.');
-  if (LEGACY_MYSQL_MIRROR_ENABLED && sale.legacy_mysql_id) {
-    try {
-      await requireMysqlPool('sale mirror delete').query('UPDATE wf_xp_sales SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL', [
-        userId,
-        Number(sale.legacy_mysql_id),
-      ]);
-    } catch (error) {
-      console.warn('[xp] failed to mirror sale delete', error);
-    }
-  }
 }
 
 async function postgresStats(): Promise<Record<string, unknown>> {
@@ -1399,30 +947,8 @@ async function postgresStats(): Promise<Record<string, unknown>> {
   return result.rows[0] || {};
 }
 
-async function legacyStats(): Promise<Record<string, unknown> | null> {
-  if (!LEGACY_MYSQL_REQUIRED || !mysqlPool) return null;
-  try {
-    const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(`
-      SELECT
-        (SELECT COUNT(*) FROM wf_xp_employees) AS employees_total,
-        (SELECT COUNT(*) FROM wf_xp_employees WHERE status = 'ativo' AND deleted_at IS NULL) AS employees_active,
-        (SELECT COUNT(*) FROM wf_xp_sales) AS sales_total,
-        (SELECT COUNT(*) FROM wf_xp_sales WHERE deleted_at IS NULL) AS sales_active,
-        (SELECT COALESCE(SUM(amount_cents), 0) FROM wf_xp_sales WHERE deleted_at IS NULL) AS amount_cents_active,
-        (SELECT COALESCE(SUM(xp_points), 0) FROM wf_xp_sales WHERE deleted_at IS NULL) AS xp_points_active,
-        (SELECT COUNT(*) FROM wf_xp_settings) AS settings_total
-    `);
-    return rows[0] || {};
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
 async function coreAuthHealth(): Promise<Record<string, unknown>> {
-  const state: Record<string, unknown> = { provider: AUTH_PROVIDER };
-  if (!CORE_AUTH_REQUIRED || !corePgPool) {
-    return state;
-  }
+  const state: Record<string, unknown> = { provider: 'core' };
   const started = Date.now();
   try {
     const result = await corePgPool.query<{ users: string }>('SELECT COUNT(*)::text AS users FROM core_users WHERE active = true');
@@ -1727,7 +1253,6 @@ app.use(BASE_PATH, express.static(publicDir, { index: false, dotfiles: 'ignore' 
 
 app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');
-  if (LEGACY_MYSQL_REQUIRED) await requireMysqlPool('health').query('SELECT 1');
   res.json({
     ok: true,
     service: SERVICE_NAME,
@@ -1736,13 +1261,8 @@ app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_r
     storage: {
       provider: 'postgres',
       database: env.POSTGRES_DB || 'wimifarma_xp',
-      legacy_mysql_required: LEGACY_MYSQL_REQUIRED,
-      legacy_mysql_import_enabled: LEGACY_MYSQL_IMPORT_ENABLED,
-      legacy_mysql_mirror_enabled: LEGACY_MYSQL_MIRROR_ENABLED,
-      legacy_mysql_logs_enabled: LEGACY_MYSQL_LOGS_ENABLED,
-      migration: migrationState,
+      legacy_mysql_required: false,
       postgres: await postgresStats(),
-      legacy: await legacyStats(),
     },
     auth: await coreAuthHealth(),
     rules: {
@@ -1756,9 +1276,8 @@ app.get(`${BASE_PATH}/internal/migration-status`, asyncRoute(async (_req, res) =
   res.json({
     ok: true,
     service: SERVICE_NAME,
-    migration: migrationState,
+    migration: null,
     postgres: await postgresStats(),
-    legacy: await legacyStats(),
   });
 }));
 
@@ -1803,7 +1322,6 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   if (!user) {
     registerLoginFailure(req);
     void logCoreAudit(null, 'login_xp_falha', 'user', null, `Tentativa de login XP falhou para usuario: ${username}`);
-    void logMysql(null, 'login_xp_falha', 'user', null, `Tentativa de login XP falhou para usuario: ${username}`);
     res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha incorretos.'));
     return;
   }
@@ -1817,7 +1335,6 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     req.session.user = user;
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
     void logCoreAudit(user.id, 'login_xp', 'user', String(user.id), 'Login XP realizado.');
-    void logMysql(user.id, 'login_xp', 'user', user.id, 'Login XP realizado.');
     res.redirect(returnTo);
   });
 }));
@@ -1907,12 +1424,7 @@ async function withRetry(name: string, fn: () => Promise<unknown>, attempts = 20
 
 async function start(): Promise<void> {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
-  if (CORE_AUTH_REQUIRED) {
-    await withRetry('core postgres', () => requireCorePgPool('startup').query('SELECT COUNT(*) FROM core_users'));
-  }
-  if (LEGACY_MYSQL_REQUIRED) {
-    await withRetry('mysql', () => requireMysqlPool('startup').query('SELECT 1'));
-  }
+  await withRetry('core postgres', () => requireCorePgPool('startup').query('SELECT COUNT(*) FROM core_users'));
   await ensureSchema();
   app.listen(PORT, () => {
     console.log(`[xp] listening on ${PORT} at ${BASE_PATH}`);

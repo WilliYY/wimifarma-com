@@ -99,11 +99,11 @@ $modules = @(
     @{
         Module = 'XP'
         Path = 'site/xp;apps/xp'
-        Current = 'Node.js + TypeScript + Postgres'
-        Legacy = 'MySQL desligado por padrao; rollback manual por flags/provedor/credenciais'
+        Current = 'Node.js + TypeScript + Postgres + core auth'
+        Legacy = 'sem dependencia MySQL no app; rollback por restauracao'
         Target = 'Postgres puro + core auth/auditoria'
         Priority = 'moderno'
-        Next = 'Validar XP/home vinculada e manter flags legadas desligadas.'
+        Next = 'Validar health, login, ranking, lancamentos, fotos, mini-card e Usuarios sem reintroduzir mysql2.'
     },
     @{
         Module = 'Financeiro'
