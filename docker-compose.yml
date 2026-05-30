@@ -284,27 +284,18 @@ services:
     container_name: wimifarma-pedidos-app
     restart: unless-stopped
     depends_on:
-      - wimifarma-com-db
       - wimifarma-core-db
       - wimifarma-gestao-db
     environment:
       NODE_ENV: production
       PORT: 3300
       BASE_PATH: /pedidos
-      MYSQL_HOST: wimifarma-com-db
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: wimifarma_app
-      MYSQL_USER: wimifarma_user
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
       CORE_POSTGRES_HOST: wimifarma-core-db
       CORE_POSTGRES_PORT: 5432
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
-      PEDIDOS_AUTH_PROVIDER: ${PEDIDOS_AUTH_PROVIDER:-core}
-      PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED: ${PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED:-false}
-      PEDIDOS_CORE_AUTH_SHADOW_ENABLED: ${PEDIDOS_CORE_AUTH_SHADOW_ENABLED:-false}
-      PEDIDOS_CORE_AUTH_SHADOW_TIMEOUT_MS: ${PEDIDOS_CORE_AUTH_SHADOW_TIMEOUT_MS:-1500}
+      PEDIDOS_CORE_AUTH_TIMEOUT_MS: ${PEDIDOS_CORE_AUTH_TIMEOUT_MS:-1500}
       POSTGRES_HOST: wimifarma-gestao-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: wimifarma_gestao

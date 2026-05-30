@@ -308,7 +308,7 @@ Tabelas principais:
 - Postgres `gestao_supplier_orders` (legado; Pedidos novo usa tabelas proprias)
 - Postgres `pedidos_orders`
 - Postgres `pedidos_confirmed_orders`
-- `wf_logs`
+- `core_audit_logs` para auditoria curta do login/acoes de Pedidos
 
 Regras a preservar:
 
@@ -338,7 +338,7 @@ Regras a preservar:
 - os cards de conta ficam compactos por padrao e podem ser abertos individualmente pelo botao `Abrir`, mantendo a lista fina para caber mais contas por tela; dentro da conta, vencimento, pagamentos, observacao, historico e ajustes/pagamento tambem ficam em blocos recolhidos para reduzir poluicao visual;
 - lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
-- acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e resumo curto em `wf_logs`.
+- acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e/ou `core_audit_logs`; Pedidos nao espelha mais em `wf_logs`.
 - o Miauby pode abrir a Gestao com o comando `gestao`/`abrir gestao` e preparar uma conta com ordens flexiveis como `gestao - titulo - valor - categoria`, `gestao - valor - titulo`, `gestao titulo valor` ou categoria antes/depois; se houver so nome + valor, a categoria vira `geral`, se faltar nome ou valor ele pergunta, e a gravacao so acontece depois de confirmacao humana pelo chat.
 
 Modulo `Pedidos` em `/pedidos/`:
@@ -355,7 +355,7 @@ Modulo `Pedidos` em `/pedidos/`:
 - `Confirmados` ordena os boletos pela menor data de vencimento ativa das parcelas primeiro e mostra alertas de vencido/urgente/atencao conforme a proximidade;
 - pagamentos parciais, botao `Pago` e ajustes de juros/diferenca reutilizam `gestao_account_payments` e `gestao_account_items`, alimentando automaticamente o total mensal e a categoria `Boleto`; a data de pagamento parcial e informada apenas por data na interface;
 - quando o pedido esta recebido e quitado, ele vai para `Historico` com datas de criacao, confirmacao, pagamento e finalizacao preservadas;
-- cards em `Aguardando chegada` e `Confirmados` ficam minimizados por padrao e podem ser abertos ao clicar no resumo do proprio card, sem botao extra de `+/-`; no modo reduzido, mostram status compacto, saldo e acao principal (`Confirmar` para chegada ou `Pago`), enquanto o icone de lapis abre a edicao de fornecedor/valores/vencimentos ativos com auditoria em `gestao_audit_events` e espelho em `wf_logs`; o visual minimizado deve ser denso, com padding/chips/icones menores e botao principal curto alinhado a direita, sem virar barra larga;
+- cards em `Aguardando chegada` e `Confirmados` ficam minimizados por padrao e podem ser abertos ao clicar no resumo do proprio card, sem botao extra de `+/-`; no modo reduzido, mostram status compacto, saldo e acao principal (`Confirmar` para chegada ou `Pago`), enquanto o icone de lapis abre a edicao de fornecedor/valores/vencimentos ativos com auditoria em `gestao_audit_events` e `core_audit_logs`; o visual minimizado deve ser denso, com padding/chips/icones menores e botao principal curto alinhado a direita, sem virar barra larga;
 - os cards-resumo do topo de Pedidos tambem devem usar altura compacta para ampliar a area visivel das colunas operacionais; `Boletos em aberto` continua sendo quantidade, `Valor para chegar` soma o saldo ainda nao pago dos pedidos aguardando chegada e `Valor boletos abertos` soma o saldo ainda nao pago dos boletos confirmados em aberto, sem duplicar valor em tabela paralela;
 - em zoom alto ou viewport intermediario, Pedidos deve reorganizar a grade operacional para duas colunas antes de cair no mobile, evitando corte horizontal, sobreposicao de valores/botoes e quebra dos cards compactos;
 - esses mesmos cards mostram icone de excluir para retirar da tela quando nao houver necessidade de registrar o boleto;

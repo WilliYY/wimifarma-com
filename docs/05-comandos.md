@@ -172,11 +172,11 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao usa somente `core_users`; Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao e Pedidos usam somente `core_users`; Cashback, Gestao, Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
 Gestao usa `GESTAO_AUTH_PROVIDER=core` por padrao. O fallback de login em `wf_users` fica desligado e so deve ser ligado como rollback temporario com `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Para comparar um ambiente ainda em MySQL antes do corte, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 
-Pedidos usa `PEDIDOS_AUTH_PROVIDER=core` por padrao. O fallback de login em `wf_users` fica desligado e so deve ser ligado como rollback temporario com `PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED=true`. Para comparar um ambiente ainda em MySQL antes do corte, ligar `PEDIDOS_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+Pedidos usa somente `core_users` e Postgres. O servico nao possui mais `PEDIDOS_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2` nem variaveis `MYSQL_*` no Compose; `/pedidos/health` deve mostrar `auth.provider=core`, `mysql_dependency=false`, `mysql_auth=false` e `mysql_auth_fallback=false`.
 
 Tarefa usa `TAREFA_AUTH_PROVIDER=core` por padrao. Para comparar um ambiente ainda em MySQL antes do corte, ligar `TAREFA_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
 

@@ -71,7 +71,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao usa `core_users` como fonte unica de login. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao e Pedidos usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Cashback, Gestao, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -131,7 +131,7 @@ Criadas por `apps/gestao/src/server.ts`:
 - `pedidos_confirmed_orders`: pedidos que ja tiveram chegada confirmada, com `lifecycle` `confirmado`, `historico` ou `cancelado`, datas de confirmacao/finalizacao e usuario responsavel por cada etapa.
 - `gestao_supplier_orders`: tabela legada de pedidos criados antes da separacao; fica preservada como compatibilidade/fonte de migracao para `pedidos_orders` e `pedidos_confirmed_orders`, nao como fonte nova da tela.
 
-A Gestao autentica primeiro no core `core_users`, grava auditoria curta em `core_audit_logs`, espelha resumo temporario em `wf_logs` e usa `wf_users` como fallback apenas quando `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true` for ligado explicitamente. Tambem importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. O dinheiro oficial da Gestao no Postgres usa centavos inteiros, nao decimal flutuante.
+A Gestao autentica primeiro no core `core_users`, grava auditoria curta em `core_audit_logs`, espelha resumo temporario em `wf_logs` e usa `wf_users` como fallback apenas quando `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true` for ligado explicitamente. Tambem importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. Pedidos usa o mesmo core como login unico, registra auditoria em `core_audit_logs` e `gestao_audit_events`, e nao escreve mais `wf_logs`. O dinheiro oficial da Gestao/Pedidos no Postgres usa centavos inteiros, nao decimal flutuante.
 
 ## Tabelas da Tarefa em Postgres
 

@@ -409,7 +409,7 @@ Criar `wimifarma_miauw`/`apps/miauw` em fases: primeiro schema Postgres e migrad
 
 ## Ordem recomendada para proximos inventarios
 
-1. Gestao e Pedidos, por terem acoplamento financeiro e regras de boleto.
+1. Gestao, por ainda manter fallback/log MySQL; Pedidos ja esta em Node/TypeScript/Postgres sem dependencia MySQL no app, mas continua merecendo checks junto da Gestao por acoplamento financeiro e regras de boleto.
 2. Tarefa, XP e Codigos, para documentar desligamento final dos espelhos MySQL restantes.
 3. Usuarios, para amarrar permissoes por modulo.
 4. Cotacao, para registrar Google Sheets, tempo real e risco de sync.

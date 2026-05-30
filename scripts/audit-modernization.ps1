@@ -73,10 +73,10 @@ $modules = @(
         Module = 'Pedidos'
         Path = 'apps/pedidos'
         Current = 'Node.js + TypeScript + Express + Postgres da Gestao + core auth'
-        Legacy = 'mysql2 para rollback opt-in de login e wf_logs'
-        Target = 'Node.js + TypeScript + Postgres puro'
-        Priority = '1 - remover legado restante'
-        Next = 'Manter PEDIDOS_AUTH_MYSQL_FALLBACK_ENABLED=false e migrar log curto para auditoria Postgres.'
+        Legacy = 'sem dependencia MySQL no app'
+        Target = 'Manter Postgres puro + core auth/auditoria'
+        Priority = 'moderno'
+        Next = 'Validar health, badge e rotinas n8n/Miauby sem reintroduzir mysql2.'
     },
     @{
         Module = 'Tarefa'

@@ -69,6 +69,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - O WordPress continua como raiz principal.
 - Segredos entram por ambiente ou `config.local.php`.
 - Cashback adotou Node.js + TypeScript + Postgres dedicado, mantendo CSS/JS/assets de `site/cashback`, login core e sessoes `WFCASHBACK`; depois da paridade de 2026-05-29, MySQL fica desligado por padrao e so volta em rollback manual.
+- Pedidos adotou Node.js + TypeScript + Postgres da Gestao com login unico em `core_users`; depois da limpeza de 2026-05-29, nao deve reintroduzir `mysql2`, pool MySQL, fallback `wf_users` nem espelho `wf_logs` sem rollback planejado.
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
 - A Tarefa adotou Node.js + TypeScript + Postgres dedicado para remover o primeiro modulo PHP pequeno do MySQL operacional, mantendo a tela visual e um espelho MySQL temporario para rollback curto.
 - Codigos adotou Node.js + TypeScript + Postgres dedicado, mantendo o CSS/JS de `site/codigos` e espelho MySQL temporario para rollback curto.
@@ -87,7 +88,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Manter CSS/JS do modulo dentro da propria pasta.
 - Uploads de novos modulos devem validar erro, tamanho, MIME real por imagem, extensao controlada, dimensoes minimas/maximas, nome aleatorio e pasta com execucao de script bloqueada.
 - Em modulos administrativos manuais, manter dados principais e itens/pagamentos com total derivado, status reversivel e historico preservado.
-- Em `apps/gestao`, salvar dinheiro em centavos inteiros, usar queries parametrizadas, criar indices por padrao de acesso, manter sessoes em Postgres e evitar dependencia direta de tabelas MySQL fora de `wf_users`/`wf_logs`/importacao legado.
+- Em `apps/gestao`, salvar dinheiro em centavos inteiros, usar queries parametrizadas, criar indices por padrao de acesso, manter sessoes em Postgres e evitar dependencia direta de tabelas MySQL fora de `wf_users`/`wf_logs`/importacao legado. Em `apps/pedidos`, manter dados, sessoes e auditoria em Postgres/core sem dependencia MySQL.
 - Em `apps/cashback`, salvar dinheiro em centavos inteiros, percentual em basis points, usar transacao para resgate, manter `legacy_mysql_id`, preservar rotas PHP antigas e nao deixar exportacao CSV sair em centavos crus.
 - Em `apps/tarefa`, preservar a interface visual, status/prioridades existentes, CSRF, sessao `WFTAREFA`, health/badge e importacao idempotente de `wf_tarefas`.
 - Em `apps/codigos`, preservar a interface visual, autosave, grupos EAN, CSRF, sessao `WFCODIGOS`, health e importacao idempotente de `wf_codigos_*`.

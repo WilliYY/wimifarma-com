@@ -69,7 +69,7 @@ count_refs() {
 rows=(
   "Cotacao|apps/cotacao|Node.js + Express + Postgres/Redis + core auth|sem dependencia MySQL no app|evoluir TypeScript em janela segura|moderno"
   "Gestao|apps/gestao|Node.js + TypeScript + Postgres + core auth|mysql2 rollback opt-in login/log/importacao|Postgres puro + core auth|1"
-  "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres + core auth|mysql2 rollback opt-in login/log|Postgres puro + core auth|1"
+    "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app|manter health/auditoria e rotinas n8n/Miauby|moderno"
   "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres + core auth|MySQL legado opcional por flags|Postgres puro + core auth|2"
   "Codigos|site/codigos assets;apps/codigos|Node.js + TypeScript + Postgres|MySQL legado opcional por flags CODIGOS_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|3 em corte"
   "XP|site/xp assets/uploads;apps/xp|Node.js + TypeScript + Postgres|MySQL legado opcional por flags XP_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|4 em corte"
@@ -97,7 +97,7 @@ done
 cat <<'EOF'
 
 Proximos passos recomendados:
-- Observar Gestao/Pedidos com core auth e fallback MySQL desligado por default; Cotacao ja usa core auth sem MySQL.
+- Observar Gestao com core auth e fallback MySQL desligado por default; Cotacao e Pedidos ja usam core auth sem MySQL.
 - Validar Tarefa com core auth default e desligar legado MySQL de dados por flags apos paridade.
 - Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
 - Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.
