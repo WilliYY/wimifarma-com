@@ -26,7 +26,7 @@ Rotas de smoke test:
 - `/cashback/autoteste.php` deve exigir sessao/senha sensivel e executar criacao de cliente/compra/credito/resgate em transacao com rollback, sem deixar dado persistido.
 - `/cotacao/login.php`
 - `/financeiro/login.php`
-- `/financeiro/health` deve responder JSON 200 quando o servico Financeiro e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core` quando `FINANCEIRO_AUTH_PROVIDER=core` e `storage.provider=postgres`
+- `/financeiro/health` deve responder JSON 200 quando o servico Financeiro e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core`, `storage.provider=postgres` e flags legadas MySQL desligadas/removidas
 - `/usuarios/login.php` deve responder 200 e aceitar somente usuario `adm` ou role `admin`
 - `/usuarios/health` deve responder JSON 200 quando o servico Usuarios, o core Postgres e o schema central estiverem ativos
 - `/tarefa/login.php`

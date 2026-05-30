@@ -49,7 +49,7 @@ O script mostra:
 | Tarefa | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Codigos | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | XP | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
-| Financeiro | Node.js + TypeScript + Postgres oficial | MySQL legado desligado por padrao; rollback manual | Postgres puro + core auth/auditoria | moderno |
+| Financeiro | Node.js + TypeScript + Postgres oficial | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
 | Cashback | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Miauby interno | PHP + Node agent sombra + core auth | `miauw_*` em MySQL e prefixo tecnico legado | Node/TypeScript + Postgres `wimifarma_miauby`, com alias/fallback `miauw` ate corte | 7 |
@@ -59,12 +59,12 @@ O script mostra:
 
 ## Ordem segura
 
-1. Cotacao, Gestao, Pedidos, Tarefa, Codigos e Cashback ja usam apenas `core_users`, sem fallback MySQL no codigo.
-2. Manter rollback por `.env` onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos e Gestao nao tem mais fallback MySQL no codigo.
+1. Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback e Financeiro ja usam apenas `core_users`, sem fallback MySQL no codigo.
+2. Manter rollback por `.env` somente onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos, Gestao e Financeiro nao tem mais fallback MySQL no codigo.
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa em Postgres puro no VPS: `/tarefa/health`, login, tarefas publicas/privadas, badge da home e Miauby sem `mysql2`.
 4. XP e Codigos ja foram limpos em 2026-05-30; validar `/xp/health`, login, ranking, lancamentos, fotos e mini-card sem reintroduzir `mysql2`.
-5. Observar Financeiro em `/financeiro/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir checksums por dia/tipo, Caixa, Relatorio, exportacao e contrato Pix CNPJ do Miauby.
+5. Observar Financeiro em `/financeiro/` como Postgres puro; se houver rollback, restaurar versao anterior e backup, depois repetir checksums por dia/tipo, Caixa, Relatorio, exportacao e contrato Pix CNPJ do Miauby.
 6. Cashback esta em `/cashback/` sem `mysql2`, importador, espelho ou fallback MySQL; rollback exige restaurar commit/imagem anterior e backup, depois repetir saldos por cliente, CSV, mensagens e autoteste.
 7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`, usando `Miauby` como nome canonico e mantendo `miauw` como compatibilidade tecnica ate validacao.
 8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
@@ -101,13 +101,12 @@ Financeiro foi cortado para `apps/financeiro`:
 
 - banco/schema alvo `wimifarma_financeiro`;
 - tabelas `financeiro_closings`, `financeiro_entries`, `financeiro_sangrias`, `financeiro_card_entries`, `financeiro_pix_entries`, `financeiro_settings`, `financeiro_audit_events`, `financeiro_migration_runs`, `financeiro_internal_idempotency` e sessoes `financeiro_sessions`;
-- importador idempotente de `financeiro_fechamentos`, `financeiro_lancamentos`, `financeiro_sangrias`, `financeiro_maquininhas`, `financeiro_pix`, `financeiro_configuracoes` e `financeiro_auditoria`;
 - health em `wimifarma-financeiro-app:3800/financeiro/health`;
 - proxy Apache oficial em `/financeiro/`;
 - frontend preservado por `site/financeiro/styles.css`, `site/financeiro/app.js`, `site/financeiro/login-runner.js`, logo/favicon e assets montados no container Node;
-- login oficial por `core_users` com `FINANCEIRO_AUTH_PROVIDER=core`;
+- login oficial por `core_users`;
 - endpoints internos tokenizados para resumo, dia, checksums por dia/tipo, auditoria recente, lancamentos, faturamentos e sync manual;
-- `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=false` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=false` por padrao desde 2026-05-29 apos paridade validada; import/espelho MySQL so deve voltar em rollback manual com credenciais explicitas.
+- sem `mysql2`, importador, espelho, fallback `wf_users`, `FINANCEIRO_AUTH_PROVIDER` ou flags `FINANCEIRO_LEGACY_MYSQL_*` desde 2026-05-30; rollback MySQL exige restaurar versao anterior e backup validado.
 
 Cashback foi cortado para `apps/cashback`:
 

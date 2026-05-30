@@ -75,7 +75,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback, XP e Usuarios usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Financeiro e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback, XP, Financeiro e Usuarios usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Miauby PHP usa `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente enquanto existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -173,7 +173,7 @@ Criadas por `apps/financeiro/src/server.ts`:
 - `financeiro_internal_idempotency`: idempotencia de chamadas internas do Miauby/WhatsApp.
 - `financeiro_sessions`: sessoes do app Node (`WFFINANCEIRO`).
 
-A fonte oficial do Financeiro e o Postgres `wimifarma_financeiro`. Desde a validacao de 2026-05-29, o MySQL `financeiro_*` fica como referencia historica/rollback manual; `FINANCEIRO_LEGACY_MYSQL_*` fica desligado por padrao e so deve voltar com credenciais MySQL explicitas.
+A fonte oficial do Financeiro e o Postgres `wimifarma_financeiro`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `FINANCEIRO_AUTH_PROVIDER` nem flags `FINANCEIRO_LEGACY_MYSQL_*`; o MySQL `financeiro_*` fica como referencia historica/backup, e rollback exige restaurar versao anterior e backup validado.
 
 ## Tabelas em `wimifarma_app`
 

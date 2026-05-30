@@ -109,10 +109,10 @@ $modules = @(
         Module = 'Financeiro'
         Path = 'site/financeiro;apps/financeiro'
         Current = 'Node.js + TypeScript + Express + Postgres oficial'
-        Legacy = 'MySQL desligado por padrao; rollback manual por flags/credenciais'
+        Legacy = 'sem dependencia MySQL no app; rollback por restauracao'
         Target = 'Postgres puro + core auth/auditoria'
         Priority = 'moderno'
-        Next = 'Validar /financeiro/health e Pix CNPJ via Miauby sem reativar espelho MySQL.'
+        Next = 'Validar /financeiro/health, login, Caixa, Relatorio, CSV e Pix CNPJ sem reintroduzir mysql2.'
     },
     @{
         Module = 'Usuarios'

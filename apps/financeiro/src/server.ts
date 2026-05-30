@@ -5,17 +5,14 @@ import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
 import connectPgSimple from 'connect-pg-simple';
 import session from 'express-session';
-import mysql, { type Pool as MySqlPool, type RowDataPacket } from 'mysql2/promise';
 import pg, { type PoolClient } from 'pg';
 
 const { Pool } = pg;
 
 type AnyRow = Record<string, unknown>;
-type AuthProvider = 'core' | 'mysql';
 type Flash = { type: '' | 'success' | 'error' | 'warning'; message: string };
 type User = { id: number; username: string; role: string };
 type CoreUserRow = { id: string; username: string; password_hash?: string | null; role?: string | null; active?: boolean };
-type MysqlUserRow = RowDataPacket & { id: number; username: string; password_hash?: string | null; role?: string | null; active?: number };
 
 declare module 'express-session' {
   interface SessionData {
@@ -31,16 +28,13 @@ declare module 'express-session' {
 const env = process.env;
 const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
-const SERVICE_VERSION = '0.2.2';
+const SERVICE_VERSION = '1.1.0';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 
-const AUTH_PROVIDER = normalizeAuthProvider(env.FINANCEIRO_AUTH_PROVIDER || 'core');
-const LEGACY_IMPORT_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED, false);
-const LEGACY_MIRROR_ENABLED = parseBool(env.FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED, false);
-const LEGACY_MYSQL_REQUIRED = LEGACY_IMPORT_ENABLED || LEGACY_MIRROR_ENABLED || AUTH_PROVIDER === 'mysql';
+const AUTH_PROVIDER = 'core';
 const SESSION_SECRET = env.FINANCEIRO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const REOPEN_PASSWORD = env.FINANCEIRO_REOPEN_PASSWORD || 'wimifarma';
 const INTERNAL_TOKENS = [
@@ -59,80 +53,17 @@ const pgPool = new Pool({
   max: 8,
 });
 
-const corePgPool =
-  AUTH_PROVIDER === 'core'
-    ? new Pool({
-        host: env.CORE_POSTGRES_HOST || '127.0.0.1',
-        port: Number(env.CORE_POSTGRES_PORT || 5432),
-        database: env.CORE_POSTGRES_DB || 'wimifarma_core',
-        user: env.CORE_POSTGRES_USER || 'wimifarma_core',
-        password: env.CORE_POSTGRES_PASSWORD || '',
-        max: 4,
-      })
-    : null;
-
-let mysqlPool: MySqlPool | null = null;
-
-function legacyDb(): MySqlPool {
-  if (!LEGACY_MYSQL_REQUIRED) {
-    throw new Error('Legacy MySQL is disabled for Financeiro.');
-  }
-  if (!mysqlPool) {
-    mysqlPool = mysql.createPool({
-      host: env.MYSQL_HOST || '127.0.0.1',
-      port: Number(env.MYSQL_PORT || 3306),
-      database: env.MYSQL_DATABASE || 'wimifarma_app',
-      user: env.MYSQL_USER || 'wimifarma_user',
-      password: env.MYSQL_PASSWORD || 'wimifarma_dev_pass',
-      waitForConnections: true,
-      connectionLimit: 5,
-      decimalNumbers: false,
-      dateStrings: true,
-    });
-  }
-  return mysqlPool;
-}
-
-type MigrationState = {
-  lastRunAt: string | null;
-  lastError: string | null;
-  closingsImported: number;
-  entriesImported: number;
-  sangriasImported: number;
-  cardEntriesImported: number;
-  pixEntriesImported: number;
-  settingsImported: number;
-  auditImported: number;
-};
-
-const migrationState: MigrationState = {
-  lastRunAt: null,
-  lastError: null,
-  closingsImported: 0,
-  entriesImported: 0,
-  sangriasImported: 0,
-  cardEntriesImported: 0,
-  pixEntriesImported: 0,
-  settingsImported: 0,
-  auditImported: 0,
-};
-
-function parseBool(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined || value === '') return fallback;
-  return ['1', 'true', 'yes', 'on', 'sim'].includes(value.toLowerCase());
-}
-
-function normalizeAuthProvider(value: unknown): AuthProvider {
-  return String(value || 'core').trim().toLowerCase() === 'mysql' ? 'mysql' : 'core';
-}
+const corePgPool = new Pool({
+  host: env.CORE_POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.CORE_POSTGRES_PORT || 5432),
+  database: env.CORE_POSTGRES_DB || 'wimifarma_core',
+  user: env.CORE_POSTGRES_USER || 'wimifarma_core',
+  password: env.CORE_POSTGRES_PASSWORD || '',
+  max: 4,
+});
 
 function cleanText(value: unknown, max = 500): string {
   return String(value ?? '').trim().slice(0, max);
-}
-
-function nullableText(value: unknown, max = 500): string | null {
-  const text = cleanText(value, max);
-  return text === '' ? null : text;
 }
 
 function intOrNull(value: unknown): number | null {
@@ -168,32 +99,6 @@ function isoDate(value: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
 }
 
-function timeValue(value: unknown): string | null {
-  if (value === null || value === undefined || value === '') return null;
-  const text = String(value).trim();
-  if (/^\d{2}:\d{2}(:\d{2})?$/.test(text)) {
-    return text.length === 5 ? `${text}:00` : text;
-  }
-  return null;
-}
-
-function dateTimeValue(value: unknown): string | null {
-  if (value === null || value === undefined || value === '') return null;
-  if (value instanceof Date) return value.toISOString();
-  const text = String(value).trim();
-  return text === '' || text.startsWith('0000-00-00') ? null : text.replace(' ', 'T');
-}
-
-function safeJson(value: unknown): unknown {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return { raw: value.slice(0, 4000) };
-  }
-}
-
 function e(value: unknown): string {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -222,7 +127,7 @@ function timingSafeStringEqual(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftHash, rightHash);
 }
 
-function userPublic(row: CoreUserRow | MysqlUserRow): User {
+function userPublic(row: CoreUserRow): User {
   return {
     id: Number(row.id),
     username: String(row.username),
@@ -592,390 +497,6 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_fin_idempotency_created ON financeiro_internal_idempotency (created_at DESC)');
 }
 
-async function mysqlTableExists(table: string): Promise<boolean> {
-  const [rows] = await legacyDb().query<RowDataPacket[]>('SHOW TABLES LIKE ?', [table]);
-  return rows.length > 0;
-}
-
-async function legacyRows(table: string): Promise<AnyRow[]> {
-  if (!(await mysqlTableExists(table))) return [];
-  const [rows] = await legacyDb().query<RowDataPacket[]>(`SELECT * FROM \`${table}\` ORDER BY id ASC`);
-  return rows as AnyRow[];
-}
-
-async function closingIdForLegacy(legacyId: unknown): Promise<number | null> {
-  const id = intOrNull(legacyId);
-  if (!id) return null;
-  const result = await pgPool.query<{ id: string }>('SELECT id::text FROM financeiro_closings WHERE legacy_mysql_id = $1 LIMIT 1', [id]);
-  return result.rows[0] ? Number(result.rows[0].id) : null;
-}
-
-async function importClosings(): Promise<number> {
-  const rows = await legacyRows('financeiro_fechamentos');
-  for (const row of rows) {
-    const closingDate = isoDate(row.data_fechamento);
-    if (!closingDate) continue;
-    await pgPool.query(
-      `INSERT INTO financeiro_closings (
-        legacy_mysql_id, closing_date, responsible_legacy_id, responsible_text, status,
-        cash_cents, card_cents, pix_bank_cents, pix_machine_cents, pix_correct_cents,
-        pix_correct_manual_cents, pix_correct_note, sangria_cents, cash_withdraw_cents,
-        system_opening_cents, daily_revenue_cents, daily_revenue_recorded_at,
-        adjustments_cents, total_checked_cents, difference_cents, justification, observation,
-        closed_at, closed_by_legacy_id, created_at, updated_at, imported_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19,
-        $20, $21, $22, $23, $24, COALESCE($25::timestamptz, NOW()), $26, NOW()
-      )
-      ON CONFLICT (closing_date) DO UPDATE SET
-        legacy_mysql_id = COALESCE(financeiro_closings.legacy_mysql_id, EXCLUDED.legacy_mysql_id),
-        responsible_legacy_id = EXCLUDED.responsible_legacy_id,
-        responsible_text = EXCLUDED.responsible_text,
-        status = EXCLUDED.status,
-        cash_cents = EXCLUDED.cash_cents,
-        card_cents = EXCLUDED.card_cents,
-        pix_bank_cents = EXCLUDED.pix_bank_cents,
-        pix_machine_cents = EXCLUDED.pix_machine_cents,
-        pix_correct_cents = EXCLUDED.pix_correct_cents,
-        pix_correct_manual_cents = EXCLUDED.pix_correct_manual_cents,
-        pix_correct_note = EXCLUDED.pix_correct_note,
-        sangria_cents = EXCLUDED.sangria_cents,
-        cash_withdraw_cents = EXCLUDED.cash_withdraw_cents,
-        system_opening_cents = EXCLUDED.system_opening_cents,
-        daily_revenue_cents = EXCLUDED.daily_revenue_cents,
-        daily_revenue_recorded_at = EXCLUDED.daily_revenue_recorded_at,
-        adjustments_cents = EXCLUDED.adjustments_cents,
-        total_checked_cents = EXCLUDED.total_checked_cents,
-        difference_cents = EXCLUDED.difference_cents,
-        justification = EXCLUDED.justification,
-        observation = EXCLUDED.observation,
-        closed_at = EXCLUDED.closed_at,
-        closed_by_legacy_id = EXCLUDED.closed_by_legacy_id,
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        imported_at = NOW()`,
-      [
-        intOrNull(row.id),
-        closingDate,
-        intOrNull(row.responsavel_id),
-        nullableText(row.responsavel_texto, 160),
-        cleanText(row.status || 'aberto', 32),
-        moneyToCents(row.caixa_fisico),
-        moneyToCents(row.cartao_total),
-        moneyToCents(row.pix_banco_total),
-        moneyToCents(row.pix_maquininha_total),
-        moneyToCents(row.pix_correto_total),
-        row.pix_correto_manual === null ? null : moneyToCents(row.pix_correto_manual),
-        nullableText(row.pix_correto_justificativa, 4000),
-        moneyToCents(row.sangria_total),
-        moneyToCents(row.retirada_caixa),
-        moneyToCents(row.abertura_sistema),
-        moneyToCents(row.faturamento_dia),
-        dateTimeValue(row.faturamento_registrado_em),
-        moneyToCents(row.ajustes),
-        moneyToCents(row.total_conferido),
-        moneyToCents(row.sobra_falta),
-        nullableText(row.justificativa, 4000),
-        nullableText(row.observacao, 4000),
-        dateTimeValue(row.fechado_em),
-        intOrNull(row.fechado_por),
-        dateTimeValue(row.created_at),
-        dateTimeValue(row.updated_at),
-      ],
-    );
-  }
-  return rows.length;
-}
-
-async function importEntries(): Promise<number> {
-  const rows = await legacyRows('financeiro_lancamentos');
-  for (const row of rows) {
-    const entryDate = isoDate(row.data);
-    if (!entryDate) continue;
-    const closingId = await closingIdForLegacy(row.fechamento_id);
-    await pgPool.query(
-      `INSERT INTO financeiro_entries (
-        legacy_mysql_id, closing_id, legacy_closing_id, entry_date, category, amount_cents,
-        observation, status, created_by_legacy_id, created_at, updated_at, imported_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, NOW())
-      ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-        closing_id = EXCLUDED.closing_id,
-        legacy_closing_id = EXCLUDED.legacy_closing_id,
-        entry_date = EXCLUDED.entry_date,
-        category = EXCLUDED.category,
-        amount_cents = EXCLUDED.amount_cents,
-        observation = EXCLUDED.observation,
-        status = EXCLUDED.status,
-        created_by_legacy_id = EXCLUDED.created_by_legacy_id,
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        imported_at = NOW()`,
-      [
-        intOrNull(row.id),
-        closingId,
-        intOrNull(row.fechamento_id),
-        entryDate,
-        cleanText(row.categoria, 120),
-        moneyToCents(row.valor),
-        nullableText(row.observacao, 4000),
-        cleanText(row.status || 'lancado', 32),
-        intOrNull(row.created_by),
-        dateTimeValue(row.created_at),
-        dateTimeValue(row.updated_at),
-      ],
-    );
-  }
-  return rows.length;
-}
-
-async function importSangrias(): Promise<number> {
-  const rows = await legacyRows('financeiro_sangrias');
-  for (const row of rows) {
-    const entryDate = isoDate(row.data);
-    if (!entryDate) continue;
-    const closingId = await closingIdForLegacy(row.fechamento_id);
-    await pgPool.query(
-      `INSERT INTO financeiro_sangrias (
-        legacy_mysql_id, closing_id, legacy_closing_id, entry_date, entry_time, amount_cents,
-        reason, responsible_legacy_id, authorized_by, destination, observation, status,
-        attachment_path, created_by_legacy_id, created_at, updated_at, imported_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15::timestamptz, NOW()), $16, NOW())
-      ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-        closing_id = EXCLUDED.closing_id,
-        legacy_closing_id = EXCLUDED.legacy_closing_id,
-        entry_date = EXCLUDED.entry_date,
-        entry_time = EXCLUDED.entry_time,
-        amount_cents = EXCLUDED.amount_cents,
-        reason = EXCLUDED.reason,
-        responsible_legacy_id = EXCLUDED.responsible_legacy_id,
-        authorized_by = EXCLUDED.authorized_by,
-        destination = EXCLUDED.destination,
-        observation = EXCLUDED.observation,
-        status = EXCLUDED.status,
-        attachment_path = EXCLUDED.attachment_path,
-        created_by_legacy_id = EXCLUDED.created_by_legacy_id,
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        imported_at = NOW()`,
-      [
-        intOrNull(row.id),
-        closingId,
-        intOrNull(row.fechamento_id),
-        entryDate,
-        timeValue(row.hora),
-        moneyToCents(row.valor),
-        cleanText(row.motivo || 'Sangria', 140),
-        intOrNull(row.responsavel_id),
-        nullableText(row.autorizado_por, 160),
-        nullableText(row.destino, 180),
-        nullableText(row.observacao, 4000),
-        cleanText(row.status || 'lancado', 32),
-        nullableText(row.anexo_path, 255),
-        intOrNull(row.created_by),
-        dateTimeValue(row.created_at),
-        dateTimeValue(row.updated_at),
-      ],
-    );
-  }
-  return rows.length;
-}
-
-async function importCardEntries(): Promise<number> {
-  const rows = await legacyRows('financeiro_maquininhas');
-  for (const row of rows) {
-    const entryDate = isoDate(row.data);
-    if (!entryDate) continue;
-    const closingId = await closingIdForLegacy(row.fechamento_id);
-    await pgPool.query(
-      `INSERT INTO financeiro_card_entries (
-        legacy_mysql_id, closing_id, legacy_closing_id, entry_date, operator_name, kind,
-        gross_cents, fee_cents, net_cents, brand, nsu, receipt_code, entry_time,
-        responsible_legacy_id, observation, reconciliation_status, attachment_path,
-        created_by_legacy_id, created_at, updated_at, imported_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, COALESCE($19::timestamptz, NOW()), $20, NOW())
-      ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-        closing_id = EXCLUDED.closing_id,
-        legacy_closing_id = EXCLUDED.legacy_closing_id,
-        entry_date = EXCLUDED.entry_date,
-        operator_name = EXCLUDED.operator_name,
-        kind = EXCLUDED.kind,
-        gross_cents = EXCLUDED.gross_cents,
-        fee_cents = EXCLUDED.fee_cents,
-        net_cents = EXCLUDED.net_cents,
-        brand = EXCLUDED.brand,
-        nsu = EXCLUDED.nsu,
-        receipt_code = EXCLUDED.receipt_code,
-        entry_time = EXCLUDED.entry_time,
-        responsible_legacy_id = EXCLUDED.responsible_legacy_id,
-        observation = EXCLUDED.observation,
-        reconciliation_status = EXCLUDED.reconciliation_status,
-        attachment_path = EXCLUDED.attachment_path,
-        created_by_legacy_id = EXCLUDED.created_by_legacy_id,
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        imported_at = NOW()`,
-      [
-        intOrNull(row.id),
-        closingId,
-        intOrNull(row.fechamento_id),
-        entryDate,
-        cleanText(row.operadora || 'Outra', 80),
-        cleanText(row.tipo || 'credito', 32),
-        moneyToCents(row.valor_bruto),
-        moneyToCents(row.taxa),
-        moneyToCents(row.valor_liquido),
-        nullableText(row.bandeira, 80),
-        nullableText(row.nsu, 80),
-        nullableText(row.codigo_comprovante, 120),
-        timeValue(row.horario),
-        intOrNull(row.responsavel_id),
-        nullableText(row.observacao, 4000),
-        cleanText(row.status_conciliacao || 'pendente', 32),
-        nullableText(row.anexo_path, 255),
-        intOrNull(row.created_by),
-        dateTimeValue(row.created_at),
-        dateTimeValue(row.updated_at),
-      ],
-    );
-  }
-  return rows.length;
-}
-
-async function importPixEntries(): Promise<number> {
-  const rows = await legacyRows('financeiro_pix');
-  for (const row of rows) {
-    const entryDate = isoDate(row.data);
-    if (!entryDate) continue;
-    const closingId = await closingIdForLegacy(row.fechamento_id);
-    await pgPool.query(
-      `INSERT INTO financeiro_pix_entries (
-        legacy_mysql_id, closing_id, legacy_closing_id, entry_date, kind, amount_cents,
-        origin, responsible_legacy_id, receipt_path, observation, status,
-        created_by_legacy_id, created_at, updated_at, imported_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13::timestamptz, NOW()), $14, NOW())
-      ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-        closing_id = EXCLUDED.closing_id,
-        legacy_closing_id = EXCLUDED.legacy_closing_id,
-        entry_date = EXCLUDED.entry_date,
-        kind = EXCLUDED.kind,
-        amount_cents = EXCLUDED.amount_cents,
-        origin = EXCLUDED.origin,
-        responsible_legacy_id = EXCLUDED.responsible_legacy_id,
-        receipt_path = EXCLUDED.receipt_path,
-        observation = EXCLUDED.observation,
-        status = EXCLUDED.status,
-        created_by_legacy_id = EXCLUDED.created_by_legacy_id,
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        imported_at = NOW()`,
-      [
-        intOrNull(row.id),
-        closingId,
-        intOrNull(row.fechamento_id),
-        entryDate,
-        cleanText(row.tipo || 'banco', 32),
-        moneyToCents(row.valor),
-        nullableText(row.origem, 160),
-        intOrNull(row.responsavel_id),
-        nullableText(row.comprovante_path, 255),
-        nullableText(row.observacao, 4000),
-        cleanText(row.status || 'pendente', 32),
-        intOrNull(row.created_by),
-        dateTimeValue(row.created_at),
-        dateTimeValue(row.updated_at),
-      ],
-    );
-  }
-  return rows.length;
-}
-
-async function importSettings(): Promise<number> {
-  const rows = await legacyRows('financeiro_configuracoes');
-  for (const row of rows) {
-    const key = cleanText(row.chave, 80);
-    if (!key) continue;
-    await pgPool.query(
-      `INSERT INTO financeiro_settings (legacy_mysql_id, setting_key, setting_value, description, updated_at, imported_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       ON CONFLICT (setting_key) DO UPDATE SET
-         legacy_mysql_id = EXCLUDED.legacy_mysql_id,
-         setting_value = EXCLUDED.setting_value,
-         description = EXCLUDED.description,
-         updated_at = EXCLUDED.updated_at,
-         imported_at = NOW()`,
-      [intOrNull(row.id), key, String(row.valor ?? ''), nullableText(row.descricao, 255), dateTimeValue(row.updated_at)],
-    );
-  }
-  return rows.length;
-}
-
-async function importAudit(): Promise<number> {
-  const rows = await legacyRows('financeiro_auditoria');
-  for (const row of rows) {
-    await pgPool.query(
-      `INSERT INTO financeiro_audit_events (
-        legacy_mysql_id, user_legacy_id, action, entity_table, entity_legacy_id,
-        previous_value, new_value, ip, user_agent, created_at, imported_at
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, COALESCE($10::timestamptz, NOW()), NOW())
-      ON CONFLICT (legacy_mysql_id) DO UPDATE SET
-        user_legacy_id = EXCLUDED.user_legacy_id,
-        action = EXCLUDED.action,
-        entity_table = EXCLUDED.entity_table,
-        entity_legacy_id = EXCLUDED.entity_legacy_id,
-        previous_value = EXCLUDED.previous_value,
-        new_value = EXCLUDED.new_value,
-        ip = EXCLUDED.ip,
-        user_agent = EXCLUDED.user_agent,
-        created_at = EXCLUDED.created_at,
-        imported_at = NOW()`,
-      [
-        intOrNull(row.id),
-        intOrNull(row.usuario_id),
-        cleanText(row.acao, 100),
-        cleanText(row.tabela_afetada, 100),
-        intOrNull(row.registro_id),
-        JSON.stringify(safeJson(row.valor_anterior)),
-        JSON.stringify(safeJson(row.valor_novo)),
-        nullableText(row.ip, 80),
-        nullableText(row.user_agent, 255),
-        dateTimeValue(row.created_at),
-      ],
-    );
-  }
-  return rows.length;
-}
-
-async function runLegacyImport(): Promise<void> {
-  if (!LEGACY_IMPORT_ENABLED) return;
-  await ensureSchema();
-  const run = await pgPool.query<{ id: string }>('INSERT INTO financeiro_migration_runs DEFAULT VALUES RETURNING id::text');
-  const runId = Number(run.rows[0]?.id || 0);
-  try {
-    migrationState.closingsImported = await importClosings();
-    migrationState.entriesImported = await importEntries();
-    migrationState.sangriasImported = await importSangrias();
-    migrationState.cardEntriesImported = await importCardEntries();
-    migrationState.pixEntriesImported = await importPixEntries();
-    migrationState.settingsImported = await importSettings();
-    migrationState.auditImported = await importAudit();
-    migrationState.lastRunAt = new Date().toISOString();
-    migrationState.lastError = null;
-    await pgPool.query(
-      'UPDATE financeiro_migration_runs SET finished_at = NOW(), ok = true, imported_counts = $1::jsonb WHERE id = $2',
-      [JSON.stringify(migrationState), runId],
-    );
-  } catch (error) {
-    migrationState.lastRunAt = new Date().toISOString();
-    migrationState.lastError = error instanceof Error ? error.message : String(error);
-    await pgPool.query(
-      'UPDATE financeiro_migration_runs SET finished_at = NOW(), ok = false, error_message = $1 WHERE id = $2',
-      [migrationState.lastError, runId],
-    );
-    throw error;
-  }
-}
-
 async function pgCounts(): Promise<Record<string, unknown>> {
   const result = await pgPool.query(`
     SELECT
@@ -988,28 +509,6 @@ async function pgCounts(): Promise<Record<string, unknown>> {
       (SELECT COUNT(*)::text FROM financeiro_audit_events) AS audit_total
   `);
   return result.rows[0] || {};
-}
-
-async function legacyCounts(): Promise<Record<string, unknown> | null> {
-  if (!LEGACY_MYSQL_REQUIRED) return null;
-  const tables = [
-    'financeiro_fechamentos',
-    'financeiro_lancamentos',
-    'financeiro_sangrias',
-    'financeiro_maquininhas',
-    'financeiro_pix',
-    'financeiro_auditoria',
-  ];
-  const counts: Record<string, number> = {};
-  for (const table of tables) {
-    if (!(await mysqlTableExists(table))) {
-      counts[table] = 0;
-      continue;
-    }
-    const [rows] = await legacyDb().query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM \`${table}\``);
-    counts[table] = Number((rows[0] as AnyRow | undefined)?.total || 0);
-  }
-  return counts;
 }
 
 async function checksumPayload(): Promise<Record<string, unknown>> {
@@ -1027,31 +526,10 @@ async function checksumPayload(): Promise<Record<string, unknown>> {
       (SELECT COALESCE(SUM(amount_cents), 0)::text FROM financeiro_sangrias WHERE status <> 'cancelado') AS sangrias_amount_cents
   `);
 
-  let legacy: Record<string, unknown> | null = null;
-  if (LEGACY_MYSQL_REQUIRED) {
-    legacy = {};
-    const closings = await legacyRows('financeiro_fechamentos');
-    const entries = await legacyRows('financeiro_lancamentos');
-    const pix = await legacyRows('financeiro_pix');
-    const sangrias = await legacyRows('financeiro_sangrias');
-    legacy = {
-      closings_count: closings.length,
-      closings_total_checked_cents: closings.reduce((sum, row) => sum + moneyToCents(row.total_conferido), 0),
-      closings_difference_cents: closings.reduce((sum, row) => sum + moneyToCents(row.sobra_falta), 0),
-      daily_revenue_cents: closings.reduce((sum, row) => sum + moneyToCents(row.faturamento_dia), 0),
-      entries_count: entries.length,
-      entries_amount_cents: entries.filter((row) => row.status !== 'cancelado').reduce((sum, row) => sum + moneyToCents(row.valor), 0),
-      pix_count: pix.length,
-      pix_amount_cents: pix.filter((row) => row.status !== 'cancelado').reduce((sum, row) => sum + moneyToCents(row.valor), 0),
-      sangrias_count: sangrias.length,
-      sangrias_amount_cents: sangrias.filter((row) => row.status !== 'cancelado').reduce((sum, row) => sum + moneyToCents(row.valor), 0),
-    };
-  }
-
   return {
     ok: true,
     postgres: postgres.rows[0],
-    legacy,
+    legacy: null,
   };
 }
 
@@ -1094,11 +572,10 @@ async function summaryPayload(): Promise<Record<string, unknown>> {
 }
 
 async function authenticate(username: string, password: string): Promise<User | null> {
-  return AUTH_PROVIDER === 'mysql' ? authenticateMysql(username, password) : authenticateCore(username, password);
+  return authenticateCore(username, password);
 }
 
 async function authenticateCore(username: string, password: string): Promise<User | null> {
-  if (!corePgPool) return null;
   const result = await corePgPool.query<CoreUserRow>(
     `SELECT id::text, username, password_hash, role, active
        FROM core_users
@@ -1114,30 +591,8 @@ async function authenticateCore(username: string, password: string): Promise<Use
   return ok ? userPublic(row) : null;
 }
 
-async function authenticateMysql(username: string, password: string): Promise<User | null> {
-  const [rows] = await legacyDb().query<RowDataPacket[]>(
-    'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
-    [username],
-  );
-  const row = rows[0] as MysqlUserRow | undefined;
-  if (!row) return null;
-  let ok = false;
-  if (row.password_hash) ok = await bcrypt.compare(password, normalizeHash(row.password_hash));
-  if (!ok && normalizeUsername(row.username) === 'adm') ok = timingSafeStringEqual(password, 'adm');
-  return ok ? userPublic(row) : null;
-}
-
 async function currentUser(user: User | undefined): Promise<User | null> {
   if (!user) return null;
-  if (AUTH_PROVIDER === 'mysql') {
-    const [rows] = await legacyDb().query<RowDataPacket[]>(
-      'SELECT id, username, role, active FROM wf_users WHERE id = ? AND active = 1 LIMIT 1',
-      [user.id],
-    );
-    const row = rows[0] as MysqlUserRow | undefined;
-    return row ? userPublic(row) : null;
-  }
-  if (!corePgPool) return null;
   const result = await corePgPool.query<CoreUserRow>(
     `SELECT id::text, username, role, active
        FROM core_users
@@ -1342,123 +797,8 @@ async function auditEvent(
         String(req?.get('user-agent') || '').slice(0, 255),
       ],
     );
-    if (LEGACY_MIRROR_ENABLED) {
-      await mirrorAudit(action, entityTable, recordId, before, after, req, userId ?? req?.session.user?.id ?? null);
-    }
   } catch (error) {
     console.warn('[financeiro] audit failed', error);
-  }
-}
-
-async function mirrorAudit(
-  action: string,
-  entityTable: string,
-  recordId: number | null,
-  before: unknown,
-  after: unknown,
-  req?: Request,
-  userId?: number | null,
-): Promise<void> {
-  try {
-    await legacyDb().query(
-      `INSERT INTO financeiro_auditoria
-        (usuario_id, acao, tabela_afetada, registro_id, valor_anterior, valor_novo, ip, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId ?? null,
-        action,
-        entityTable,
-        recordId,
-        before === null || before === undefined ? null : JSON.stringify(before),
-        after === null || after === undefined ? null : JSON.stringify(after),
-        req?.ip || null,
-        String(req?.get('user-agent') || '').slice(0, 255),
-      ],
-    );
-  } catch (error) {
-    console.warn('[financeiro] legacy audit mirror failed', error);
-  }
-}
-
-async function mirrorClosing(closing: AnyRow): Promise<number | null> {
-  if (!LEGACY_MIRROR_ENABLED) return Number(closing.legacy_mysql_id || 0) || null;
-  try {
-    const legacyId = Number(closing.legacy_mysql_id || 0) || null;
-    const values = [
-      closing.data_fechamento,
-      closing.responsavel_id || null,
-      cleanText(closing.responsavel_texto, 160) || null,
-      closing.status || 'aberto',
-      centsToDecimal(moneyTextToCents(closing.caixa_fisico)),
-      centsToDecimal(moneyTextToCents(closing.cartao_total)),
-      centsToDecimal(moneyTextToCents(closing.pix_banco_total)),
-      centsToDecimal(moneyTextToCents(closing.pix_maquininha_total)),
-      centsToDecimal(moneyTextToCents(closing.pix_correto_total)),
-      closing.pix_correto_manual === null || closing.pix_correto_manual === undefined ? null : centsToDecimal(moneyTextToCents(closing.pix_correto_manual)),
-      cleanText(closing.pix_correto_justificativa, 4000) || null,
-      centsToDecimal(moneyTextToCents(closing.sangria_total)),
-      centsToDecimal(moneyTextToCents(closing.retirada_caixa)),
-      centsToDecimal(moneyTextToCents(closing.abertura_sistema)),
-      centsToDecimal(moneyTextToCents(closing.faturamento_dia)),
-      closing.faturamento_registrado_em || null,
-      centsToDecimal(moneyTextToCents(closing.ajustes)),
-      centsToDecimal(moneyTextToCents(closing.total_conferido)),
-      centsToDecimal(moneyTextToCents(closing.sobra_falta)),
-      cleanText(closing.justificativa, 4000) || null,
-      cleanText(closing.observacao, 4000) || null,
-      closing.fechado_em || null,
-      closing.fechado_por || null,
-      legacyId,
-    ];
-    const sql = legacyId
-      ? `UPDATE financeiro_fechamentos
-            SET data_fechamento = ?, responsavel_id = ?, responsavel_texto = ?, status = ?,
-                caixa_fisico = ?, cartao_total = ?, pix_banco_total = ?, pix_maquininha_total = ?,
-                pix_correto_total = ?, pix_correto_manual = ?, pix_correto_justificativa = ?,
-                sangria_total = ?, retirada_caixa = ?, abertura_sistema = ?, faturamento_dia = ?,
-                faturamento_registrado_em = ?, ajustes = ?, total_conferido = ?, sobra_falta = ?,
-                justificativa = ?, observacao = ?, fechado_em = ?, fechado_por = ?
-          WHERE id = ?`
-      : `INSERT INTO financeiro_fechamentos
-           (data_fechamento, responsavel_id, responsavel_texto, status, caixa_fisico, cartao_total,
-            pix_banco_total, pix_maquininha_total, pix_correto_total, pix_correto_manual,
-            pix_correto_justificativa, sangria_total, retirada_caixa, abertura_sistema,
-            faturamento_dia, faturamento_registrado_em, ajustes, total_conferido, sobra_falta,
-            justificativa, observacao, fechado_em, fechado_por)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-            id = LAST_INSERT_ID(id),
-            responsavel_id = VALUES(responsavel_id),
-            responsavel_texto = VALUES(responsavel_texto),
-            status = VALUES(status),
-            caixa_fisico = VALUES(caixa_fisico),
-            cartao_total = VALUES(cartao_total),
-            pix_banco_total = VALUES(pix_banco_total),
-            pix_maquininha_total = VALUES(pix_maquininha_total),
-            pix_correto_total = VALUES(pix_correto_total),
-            pix_correto_manual = VALUES(pix_correto_manual),
-            pix_correto_justificativa = VALUES(pix_correto_justificativa),
-            sangria_total = VALUES(sangria_total),
-            retirada_caixa = VALUES(retirada_caixa),
-            abertura_sistema = VALUES(abertura_sistema),
-            faturamento_dia = VALUES(faturamento_dia),
-            faturamento_registrado_em = VALUES(faturamento_registrado_em),
-            ajustes = VALUES(ajustes),
-            total_conferido = VALUES(total_conferido),
-            sobra_falta = VALUES(sobra_falta),
-            justificativa = VALUES(justificativa),
-            observacao = VALUES(observacao),
-            fechado_em = VALUES(fechado_em),
-            fechado_por = VALUES(fechado_por)`;
-    const [result] = await legacyDb().query(sql, legacyId ? values : values.slice(0, -1));
-    const insertId = Number((result as { insertId?: number }).insertId || legacyId || 0);
-    if (!legacyId && insertId > 0 && closing.id) {
-      await pgPool.query('UPDATE financeiro_closings SET legacy_mysql_id = $1 WHERE id = $2 AND legacy_mysql_id IS NULL', [insertId, closing.id]);
-    }
-    return insertId || legacyId;
-  } catch (error) {
-    console.warn('[financeiro] legacy closing mirror failed', error);
-    return Number(closing.legacy_mysql_id || 0) || null;
   }
 }
 
@@ -1474,8 +814,6 @@ async function getOrCreateClosing(date: string, req?: Request, client?: PoolClie
   );
   const created = closingToView(result.rows[0] || null) || (await fetchClosingByDate(date, client));
   if (!created) throw new Error('Nao foi possivel criar o fechamento financeiro.');
-  const legacyId = await mirrorClosing(created);
-  if (legacyId && !created.legacy_mysql_id) created.legacy_mysql_id = legacyId;
   await auditEvent('criar_fechamento', 'financeiro_fechamentos', Number(created.id), null, created, req);
   return created;
 }
@@ -1568,7 +906,6 @@ async function recalculateClosing(closingId: number): Promise<AnyRow> {
     [cash, card, pixBank, pixMachine, pixCorrect, sangria, adjustments, total, difference, closingId],
   );
   const updated = closingToView(result.rows[0] || null) || closing;
-  await mirrorClosing(updated);
   return updated;
 }
 
@@ -1667,7 +1004,6 @@ async function closeClosing(closingId: number, status: string, req?: Request): P
     [status, req?.session.user?.id || null, closingId],
   );
   const after = closingToView(result.rows[0] || null) || before;
-  await mirrorClosing(after);
   await auditEvent('fechar_fechamento', 'financeiro_fechamentos', closingId, before, after, req);
   return after;
 }
@@ -1687,7 +1023,6 @@ async function reopenClosing(date: string, req: Request): Promise<void> {
     [closing.id],
   );
   const after = closingToView(result.rows[0] || null) || closing;
-  await mirrorClosing(after);
   await auditEvent('reabrir_fechamento', 'financeiro_fechamentos', Number(closing.id), before, after, req);
 }
 
@@ -1708,7 +1043,6 @@ async function saveDailyRevenue(date: string, valueCents: number, userId: number
     [valueCents, valueCents > 0 ? new Date().toISOString() : null, reopenEmpty, closing.id],
   );
   const after = closingToView(result.rows[0] || null) || closing;
-  await mirrorClosing(after);
   await auditEvent(
     'salvar_faturamento_diario',
     'financeiro_fechamentos',
@@ -1726,45 +1060,6 @@ async function saveDailyRevenue(date: string, valueCents: number, userId: number
     userId,
   );
   return after;
-}
-
-async function mirrorEntry(entry: AnyRow): Promise<number | null> {
-  if (!LEGACY_MIRROR_ENABLED) return Number(entry.legacy_mysql_id || 0) || null;
-  try {
-    const legacyId = Number(entry.legacy_mysql_id || 0) || null;
-    const closing = entry.closing_id ? await fetchClosingById(Number(entry.closing_id)) : null;
-    const closingLegacyId = Number(entry.legacy_closing_id || closing?.legacy_mysql_id || 0) || null;
-    const values = [
-      closingLegacyId,
-      toDateInput(entry.entry_date),
-      cleanText(entry.category, 120),
-      centsToDecimal(Number(entry.amount_cents || 0)),
-      cleanText(entry.observation, 4000) || null,
-      entry.status || 'lancado',
-      entry.created_by_legacy_id || null,
-      legacyId,
-    ];
-    const sql = legacyId
-      ? `UPDATE financeiro_lancamentos
-            SET fechamento_id = ?, data = ?, categoria = ?, valor = ?, observacao = ?, status = ?, created_by = ?
-          WHERE id = ?`
-      : `INSERT INTO financeiro_lancamentos
-            (fechamento_id, data, categoria, valor, observacao, status, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`;
-    const [result] = await legacyDb().query(sql, legacyId ? values : values.slice(0, -1));
-    const insertId = Number((result as { insertId?: number }).insertId || legacyId || 0);
-    if (!legacyId && insertId > 0 && entry.id) {
-      await pgPool.query('UPDATE financeiro_entries SET legacy_mysql_id = $1, legacy_closing_id = $2 WHERE id = $3 AND legacy_mysql_id IS NULL', [
-        insertId,
-        closingLegacyId,
-        entry.id,
-      ]);
-    }
-    return insertId || legacyId;
-  } catch (error) {
-    console.warn('[financeiro] legacy entry mirror failed', error);
-    return Number(entry.legacy_mysql_id || 0) || null;
-  }
 }
 
 async function addEntry(
@@ -1788,7 +1083,6 @@ async function addEntry(
     [closing.id, closing.legacy_mysql_id || null, date, cleanedCategory, valueCents, cleanText(observation, 4000), userId],
   );
   const entry = result.rows[0];
-  await mirrorEntry(entry);
   const updated = await recalculateClosing(Number(closing.id));
   await auditEvent(
     'criar_lancamento',
@@ -1810,7 +1104,6 @@ async function cancelEntry(date: string, id: number, req: Request): Promise<void
   if (!before) throw new Error('Lancamento nao encontrado.');
   const afterResult = await pgPool.query<AnyRow>("UPDATE financeiro_entries SET status = 'cancelado', updated_at = NOW() WHERE id = $1 RETURNING *", [id]);
   const after = afterResult.rows[0];
-  await mirrorEntry(after);
   await recalculateClosing(Number(closing.id));
   await auditEvent('cancelar_lancamento', 'financeiro_lancamentos', id, before, after, req);
 }
@@ -2262,15 +1555,6 @@ async function healthPayload(): Promise<Record<string, unknown>> {
   const pgStart = Date.now();
   await pgPool.query('SELECT 1');
   const postgres = await pgCounts();
-  let legacy: Record<string, unknown> | null = null;
-  let legacyError: string | null = null;
-  if (LEGACY_MYSQL_REQUIRED) {
-    try {
-      legacy = await legacyCounts();
-    } catch (error) {
-      legacyError = error instanceof Error ? error.message : String(error);
-    }
-  }
   return {
     ok: true,
     service: 'financeiro',
@@ -2280,30 +1564,26 @@ async function healthPayload(): Promise<Record<string, unknown>> {
     route_cutover_enabled: true,
     auth: {
       provider: AUTH_PROVIDER,
-      core_required: AUTH_PROVIDER === 'core',
+      core_required: true,
       internal_token_configured: INTERNAL_TOKENS.length > 0,
     },
     storage: {
       provider: 'postgres',
       database: env.POSTGRES_DB || 'wimifarma_financeiro',
-      legacy_mysql_required: LEGACY_MYSQL_REQUIRED,
-      legacy_mysql_import_enabled: LEGACY_IMPORT_ENABLED,
-      legacy_mysql_mirror_enabled: LEGACY_MIRROR_ENABLED,
-      migration: migrationState,
+      legacy_mysql_required: false,
+      legacy_mysql_import_enabled: false,
+      legacy_mysql_mirror_enabled: false,
+      migration: null,
       postgres,
-      legacy,
-      legacy_error: legacyError,
+      legacy: null,
+      legacy_error: null,
       postgres_latency_ms: Date.now() - pgStart,
     },
     next_cutover: {
       frontend_assets_preserved: true,
-      rollback: LEGACY_MYSQL_REQUIRED
-        ? 'remover proxy Apache de /financeiro/ e usar espelho MySQL se necessario'
-        : 'rollback MySQL exige religar FINANCEIRO_LEGACY_MYSQL_* e reintroduzir credenciais MySQL explicitamente',
-      required_before_disabling_mysql_mirror: LEGACY_MYSQL_REQUIRED
-        ? ['checksum_match_by_day', 'miauby_pix_smoke', 'export_csv_smoke']
-        : [],
-      mysql_mirror_disabled_by_default: !LEGACY_MYSQL_REQUIRED,
+      rollback: 'rollback MySQL exige restaurar versao anterior/imagem anterior e backup validado',
+      required_before_disabling_mysql_mirror: [],
+      mysql_mirror_disabled_by_default: true,
     },
   };
 }
@@ -2776,52 +2056,6 @@ async function detailedChecksumPayload(fromValue?: unknown, toValue?: unknown): 
       ORDER BY category`,
     [from, to],
   );
-  let legacy: Record<string, unknown> | null = null;
-  if (LEGACY_MYSQL_REQUIRED) {
-    try {
-      const [dayRows] = await legacyDb().query<RowDataPacket[]>(
-        `SELECT data_fechamento AS date,
-                COUNT(*) AS closings,
-                COALESCE(SUM(total_conferido), 0) AS total_checked,
-                COALESCE(SUM(abertura_sistema), 0) AS system_total,
-                COALESCE(SUM(faturamento_dia), 0) AS daily_revenue,
-                COALESCE(SUM(sobra_falta), 0) AS difference_total
-           FROM financeiro_fechamentos
-          WHERE data_fechamento BETWEEN ? AND ?
-          GROUP BY data_fechamento
-          ORDER BY data_fechamento`,
-        [from, to],
-      );
-      const [typeRows] = await legacyDb().query<RowDataPacket[]>(
-        `SELECT categoria AS type,
-                COUNT(*) AS entries,
-                COALESCE(SUM(valor), 0) AS amount
-           FROM financeiro_lancamentos
-          WHERE data BETWEEN ? AND ?
-            AND status <> 'cancelado'
-          GROUP BY categoria
-          ORDER BY categoria`,
-        [from, to],
-      );
-      legacy = {
-        by_day: (dayRows as AnyRow[]).map((row) => ({
-          date: isoDate(row.date),
-          closings: Number(row.closings || 0),
-          total_checked_cents: moneyTextToCents(row.total_checked),
-          system_total_cents: moneyTextToCents(row.system_total),
-          daily_revenue_cents: moneyTextToCents(row.daily_revenue),
-          difference_cents: moneyTextToCents(row.difference_total),
-        })),
-        by_type: (typeRows as AnyRow[]).map((row) => ({
-          type: String(row.type || ''),
-          entries: Number(row.entries || 0),
-          amount_cents: moneyTextToCents(row.amount),
-        })),
-      };
-    } catch (error) {
-      legacy = { error: publicError(error) };
-    }
-  }
   return {
     ok: true,
     source: 'postgres',
@@ -2831,7 +2065,7 @@ async function detailedChecksumPayload(fromValue?: unknown, toValue?: unknown): 
       by_day: postgresByDay.rows,
       by_type: postgresByType.rows,
     },
-    legacy,
+    legacy: null,
   };
 }
 
@@ -2952,8 +2186,13 @@ app.post(`${BASE_PATH}/api/internal/faturamentos`, asyncRoute(async (req, res) =
 
 app.post(`${BASE_PATH}/internal/sync`, asyncRoute(async (req, res) => {
   if (!requireInternalToken(req, res)) return;
-  await runLegacyImport();
-  res.json(await healthPayload());
+  res.json({
+    ok: true,
+    source: 'postgres',
+    legacy_mysql_import_enabled: false,
+    message: 'legacy_mysql_removed',
+    health: await healthPayload(),
+  });
 }));
 
 app.use((req, res) => {
@@ -2967,12 +2206,7 @@ app.use((error: Error, _req: Request, res: Response, _next: express.NextFunction
 
 async function start(): Promise<void> {
   await ensureSchema();
-  if (AUTH_PROVIDER === 'core' && corePgPool) {
-    await corePgPool.query('SELECT COUNT(*) FROM core_users');
-  }
-  if (LEGACY_IMPORT_ENABLED) {
-    await runLegacyImport();
-  }
+  await corePgPool.query('SELECT COUNT(*) FROM core_users');
   app.listen(PORT, () => {
     console.log(`[financeiro] official service listening on ${PORT} at ${BASE_PATH}`);
   });

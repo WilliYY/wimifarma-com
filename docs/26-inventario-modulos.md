@@ -68,15 +68,15 @@ Proxima acao segura:
 ### Permissoes e sessao
 
 - Sessao propria `WFFINANCEIRO`.
-- Login oficial por `core_users` quando `FINANCEIRO_AUTH_PROVIDER=core`.
-- Rollback de login por MySQL existe apenas com `FINANCEIRO_AUTH_PROVIDER=mysql`.
+- Login oficial somente por `core_users`.
+- Nao ha rollback/fallback MySQL de login no codigo atual; rollback exige restaurar versao anterior e backup validado.
 - Rotas operacionais exigem usuario autenticado.
 - Escritas de tela usam CSRF.
 - Endpoints internos exigem `FINANCEIRO_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN`, `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_WHATSAPP_INTERNAL_TOKEN`, conforme ambiente.
 
 ### Tabelas MySQL envolvidas
 
-MySQL e legado/rollback temporario, nao a fonte principal:
+MySQL e legado historico/backup, nao a fonte principal:
 
 - `financeiro_fechamentos`;
 - `financeiro_lancamentos`;
@@ -85,7 +85,7 @@ MySQL e legado/rollback temporario, nao a fonte principal:
 - `financeiro_pix`;
 - `financeiro_configuracoes`;
 - `financeiro_auditoria`;
-- `wf_users`, somente se rollback de auth for ligado;
+- `wf_users`, apenas como origem historica sincronizada para `core_users`;
 - `wf_logs`, apenas como historico/compatibilidade indireta quando aplicavel.
 
 ### Tabelas Postgres oficiais
@@ -126,7 +126,7 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 - `cancel_lancamento`, `cancel_sangria`, `cancel_maquininha`, `cancel_pix`: cancelamentos logicos.
 - `POST /api/internal/lancamentos`: escrita interna usada por Miauby/WhatsApp para `Pix CNPJ`, sangria e lancamentos controlados.
 - `POST /api/internal/faturamentos`: escrita interna para faturamento diario.
-- Desde 2026-05-29, `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=false` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=false` sao o padrao depois da paridade validada. Importacao/espelho MySQL agora e rollback manual com credenciais explicitas, nao fluxo normal.
+- Desde 2026-05-30, o runtime nao possui importacao/espelho MySQL, `mysql2`, fallback `wf_users`, `FINANCEIRO_AUTH_PROVIDER` ou flags `FINANCEIRO_LEGACY_MYSQL_*`.
 
 ### Integracoes
 
@@ -139,14 +139,14 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 ### Riscos
 
 - Dinheiro precisa continuar em centavos inteiros no backend.
-- Espelho MySQL pode divergir se ficar ligado por muito tempo.
+- Rollback para MySQL exige restaurar versao anterior e backup validado; nao existe mais flag de religamento no runtime atual.
 - Fechamento, divergencia e `sem_movimento` afetam automacoes do WhatsApp.
 - Endpoints internos de escrita precisam continuar tokenizados e idempotentes.
 - Nao reativar tela antiga de auditoria para operador sem necessidade; auditoria deve continuar no banco.
 
 ### Proxima acao segura
 
-Validar no VPS por dia/amostra: contagens, somatorios, fechamento, relatorio, exportacao, Pix CNPJ via Miauby e auditoria. Depois disso, desligar espelho MySQL em janela controlada.
+Validar no VPS por dia/amostra: contagens, somatorios, fechamento, relatorio, exportacao, Pix CNPJ via Miauby e auditoria. O espelho MySQL ja foi removido; rollback exige restaurar versao anterior e backup validado.
 
 ## Cashback
 
@@ -1008,7 +1008,6 @@ Inventarios detalhados ja registrados neste documento:
 
 Proxima rodada segura:
 
-1. Validar no VPS XP sem `mysql2`/fallback/espelho, incluindo health, login, ranking, lancamentos, fotos, mini-card e Usuarios.
-2. Repetir a remocao cuidadosa de caminhos MySQL dormentes no Financeiro quando houver janela e paridade recente.
-3. Iniciar `docs/28-miauby-migracao.md` como trilha oficial para criar `wimifarma_miauby` e `apps/miauby` sem quebrar `/miauw/`.
-4. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.
+1. Validar no VPS Financeiro sem `mysql2`/fallback/espelho, incluindo health, login, Caixa, Relatorio, CSV, endpoints internos e Pix CNPJ.
+2. Iniciar a trilha do Miauby interno em `docs/28-miauby-migracao.md`, sem quebrar `/miauw/`.
+3. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.

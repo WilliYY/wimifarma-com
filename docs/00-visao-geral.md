@@ -69,7 +69,7 @@ Rotas principais:
 - O Cashback depende de clientes, compras, creditos e resgates coerentes entre si.
 - Codigos de comissao devem preservar codigo, EAN, preco e historico basico por logs; a tela separa os EANs em blocos por prefixo de dois digitos, com `20` e `40` como padrao e botao `+` para criar outros blocos persistidos no backend, e a exclusao deve esconder o item sem apagar o registro fisico imediatamente.
 - Cotacao deve preservar ordem, categorias, fornecedores, precos, observacoes, cores/formatacao e status.
-- Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias; o Postgres oficial nao depende mais de espelho MySQL por padrao desde a validacao de 2026-05-29.
+- Financeiro deve preservar auditoria e rastreabilidade de fechamentos e divergencias; desde 2026-05-30 o app oficial em Postgres nao possui mais importador, espelho, `mysql2` ou fallback MySQL.
 - Usuarios deve preservar auditoria central, nunca apagar fisicamente login interno e aplicar permissoes por modulo de forma gradual.
 - Gestao deve preservar contas lancadas, itens que compoem o total, categoria livre, pagamentos parciais datados, data de geracao automatica, confirmacao de saldo e logs/auditoria sem apagar historico.
 - XP deve preservar funcionarios, fotos validadas, vendas em centavos, XP inteiro, logs de alimentacao e progressao por total historico sem apagar lancamentos; cancelamentos devem ser logicos.
@@ -90,7 +90,7 @@ Rotas principais:
 - A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; desde 2026-05-30 o login usa somente o core Postgres, com auditoria em Postgres e sem `mysql2`, fallback MySQL ou espelho `wf_logs`.
 - O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets/uploads de `site/xp`; desde 2026-05-30 nao possui dependencia MySQL no app.
 - Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets de `site/codigos`; desde 2026-05-30 nao possui dependencia MySQL no app.
-- Financeiro foi cortado para `apps/financeiro` com Node.js, TypeScript e Postgres dedicado. A paridade com MySQL foi validada e o espelho/import legado fica desligado por padrao; MySQL `financeiro_*` permanece apenas como rollback manual.
+- Financeiro foi cortado para `apps/financeiro` com Node.js, TypeScript e Postgres dedicado. A paridade com MySQL foi validada e o caminho legado de `mysql2`/import/espelho foi removido; MySQL `financeiro_*` permanece apenas como referencia historica/backup.
 - Usuarios foi criado em `apps/usuarios` com Node.js, TypeScript e Postgres core para administrar logins, permissoes por modulo, vinculo XP e auditoria central.
 - O Miauby agente dedicado foi iniciado em `apps/miauw-agent`; `site/miauw/api.php` continua dono de sessao, confirmacoes e escritas fortes mesmo quando `MIAUW_ENGINE=node`.
 - O Miauby WhatsApp foi iniciado em `apps/miauw-whatsapp` com Postgres 17 dedicado porque o canal precisa de fila duravel, idempotencia e outbox auditavel.
@@ -101,7 +101,7 @@ Rotas principais:
 - Misturar portas de tunel, porta local e porta interna Docker pode quebrar proxy e WordPress.
 - Alterar WordPress/cache/plugins sem teste pode reintroduzir lentidao ou redirect errado.
 - Alterar schema automaticamente sem controle pode impactar dados importados do HostGator.
-- Reativar o rollback MySQL do Financeiro sem paridade nova pode confundir a fonte de verdade; se precisar voltar, religar flags e credenciais explicitamente e validar fechamentos, CSV e integracoes do Miauby.
+- Rollback MySQL do Financeiro agora exige restaurar versao/imagem anterior e backup validado; nao ha mais flag de `.env` para religar o caminho antigo no runtime atual.
 - Aplicar bloqueio por permissao em todos os modulos de uma vez pode travar a equipe; usar `/usuarios/` como base e cortar modulo por modulo.
 - Versionar `.env`, dumps ou plugins premium pode expor segredos e licencas.
 

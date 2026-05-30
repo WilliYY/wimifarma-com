@@ -172,7 +172,7 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback e XP usam somente `core_users`; Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback, XP e Financeiro usam somente `core_users`; Miauby PHP usa `core_users` oficialmente por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
 Gestao usa somente `core_users` desde 2026-05-30. O servico nao possui mais `GESTAO_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2`, espelho `wf_logs` nem variaveis `MYSQL_*` no Compose; `/gestao/health` deve mostrar `auth.provider=core`, `mysql_auth=false`, `mysql_auth_fallback=false` e `mysql_reachable=false`.
 
@@ -261,7 +261,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" h
 docker exec wimifarma-financeiro-db psql -U wimifarma_financeiro -d wimifarma_financeiro -c "\dt"
 ```
 
-O app `apps/financeiro` atende a rota oficial `/financeiro/` via proxy Apache, usa `core_users` por `FINANCEIRO_AUTH_PROVIDER=core` e grava em Postgres `wimifarma_financeiro`. Desde a validacao de 2026-05-29, `FINANCEIRO_LEGACY_MYSQL_IMPORT_ENABLED=false` e `FINANCEIRO_LEGACY_MYSQL_MIRROR_ENABLED=false` sao o padrao; rollback MySQL exige religar flags e credenciais explicitamente. Endpoints `/financeiro/internal/*` e `/financeiro/api/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
+O app `apps/financeiro` atende a rota oficial `/financeiro/` via proxy Apache, usa somente `core_users` e grava em Postgres `wimifarma_financeiro`. Desde 2026-05-30, nao ha `mysql2`, importador, espelho, fallback `wf_users`, `FINANCEIRO_AUTH_PROVIDER` nem flags `FINANCEIRO_LEGACY_MYSQL_*`; rollback MySQL exige restaurar versao anterior e backup validado. Endpoints `/financeiro/internal/*` e `/financeiro/api/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
 
 ## Local - Inventario de modernizacao
 

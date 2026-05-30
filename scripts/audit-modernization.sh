@@ -73,7 +73,7 @@ rows=(
   "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth|moderno"
   "Codigos|site/codigos;apps/codigos|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
   "XP|site/xp;apps/xp|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
-  "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
+  "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
   "Usuarios|apps/usuarios|Node.js + TypeScript + Express + Postgres core|sem MySQL operacional para usuarios novos|enforcement gradual por modulo|moderno"
   "Cashback|site/cashback;apps/cashback|Node.js + TypeScript + Express + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
   "Miauby interno|site/miauw|PHP + Node agent sombra + core auth|miauw_* em MySQL; prefixo legado|apps/miauby + Postgres wimifarma_miauby com fallback miauw|7"
@@ -100,7 +100,7 @@ Proximos passos recomendados:
 - Validar Gestao com core auth unico, sem mysql2/fallback/espelho; Cotacao e Pedidos ja usam core auth sem MySQL.
 - Validar Tarefa com Postgres puro, login core, tarefas privadas, badge e Miauby sem reintroduzir mysql2.
 - Validar XP em /xp/ com health, login, ranking, lancamentos, fotos, mini-card e Usuarios sem reintroduzir mysql2.
-- Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.
+- Validar Financeiro Node/Postgres em /financeiro/ com health/login/Caixa/Relatorio/CSV/Pix CNPJ sem reintroduzir mysql2.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.
 - Validar Cashback em /cashback/ com health, login, saldos, CSV, mensagens e autoteste apos remocao do caminho mysql2.
 - Depois migrar Miauby interno seguindo docs/28-miauby-migracao.md, com alias/fallback antes de renomear runtime.
