@@ -17,6 +17,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Criacao/ajuste de tabelas por funcoes `*_ensure_schema()`.
 - Modulos criticos novos ou migrados podem usar Node.js + TypeScript + Postgres dedicado, mantendo o Apache como proxy, `core_users` para login e MySQL apenas como importacao/espelho temporario de rollback quando necessario.
 - Integracoes externas com webhook/fila, como Miauby WhatsApp, devem preferir servico dedicado e Postgres proprio quando precisarem de idempotencia, outbox, retry e isolamento de dados.
+- Next.js e Prisma foram registrados em 2026-05-30 como stack desejada para evolucoes futuras, mas ainda nao sao padrao ativo do repositorio. Usar primeiro em piloto isolado ou modulo novo, com justificativa de dominio, sem alterar modulos Express/SQL estabilizados durante cortes sensiveis.
 
 ## Arquivos envolvidos
 
@@ -76,6 +77,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Financeiro adotou Node.js + TypeScript + Postgres dedicado como rota oficial `/financeiro/`, preservando assets de `site/financeiro`; depois da paridade de 2026-05-29, o caminho `mysql2` foi removido em 2026-05-30 e rollback MySQL exige restaurar versao anterior.
 - O Miauby WhatsApp adotou Node.js + TypeScript + Postgres dedicado para webhook/fila/outbox, evitando misturar eventos externos com MySQL legado ou com o banco da Gestao.
 - O XP adotou Node.js + TypeScript + Postgres dedicado, mantendo assets/uploads de `site/xp`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
+- Next.js e Prisma foram aceitos como direcao futura proposta, nao como migracao imediata. Next.js pode ser preferido para novo site publico ou modulo novo com UI rica; Prisma pode ser avaliado em schema novo controlado. Adoção em modulo existente exige ADR/registro, testes, rollback e validacao de frontend.
 
 ## Padroes para novas alteracoes
 

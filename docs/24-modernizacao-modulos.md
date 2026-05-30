@@ -71,6 +71,8 @@ O script mostra:
 
 ## Proxima fatia tecnica
 
+Direcao futura proposta: Next.js e Prisma foram registrados em 2026-05-30 como tecnologias que o usuario quer usar. Isso nao muda a migracao atual dos modulos ja cortados. O uso recomendado e comecar por piloto isolado, como novo site publico, painel novo ou modulo novo, mantendo Express + SQL direto nos modulos ja estabilizados ate haver decisao especifica, testes, rollback e validacao de frontend.
+
 Tarefa ja foi cortado para `apps/tarefa` com Postgres dedicado:
 
 - banco/schema alvo `wimifarma_tarefa`;

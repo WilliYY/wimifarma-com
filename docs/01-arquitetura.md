@@ -6,6 +6,8 @@ A arquitetura atual empacota o sistema migrado do HostGator em Docker. O contain
 
 A direcao de arquitetura para a proxima etapa e manter uma plataforma Postgres integrada por `wimifarma_core`, sem juntar todos os dominios em um banco unico acoplado. A migracao do Miauby interno deve criar `wimifarma_miauby`/`apps/miauby` por fases, mantendo `/miauw/` e `MIAUW_*` como compatibilidade ate o corte validado.
 
+Em 2026-05-30, ficou registrada a vontade do usuario de adotar Next.js e Prisma em evolucoes futuras. Essa e uma direcao proposta, nao stack ativa: qualquer uso deve comecar por piloto isolado, preferencialmente site publico novo ou modulo novo, com rotas separadas, validacao visual, rollback e deploy documentado. Nao substituir Express + SQL direto em modulos ja cortados sem decisao nova e janela de migracao propria.
+
 ## Componentes envolvidos
 
 ```text

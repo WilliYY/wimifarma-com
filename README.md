@@ -25,6 +25,8 @@ O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evo
 
 Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dominio antes da tela: linguagem/runtime, banco, tabelas, indices, sessao, permissao, auditoria, health e deploy. Cards com regra de negocio propria devem nascer como modulo proprio e integrar outros dominios por tabelas/APIs claras, nao por mistura visual dentro de outro modulo.
 
+Direcao futura registrada em 2026-05-30: o usuario quer usar Next.js e Prisma em evolucoes futuras. Eles nao fazem parte da stack atual e nao devem ser adicionados durante cortes sensiveis sem piloto isolado, validacao de frontend, plano de rollback e deploy documentado. Next.js e candidato para site publico novo ou modulo novo com interface rica; Prisma deve ser avaliado primeiro em modulo novo ou reescrita controlada, sem trocar os modulos Express/SQL ja estabilizados de uma vez.
+
 ## Status atual
 
 - Projeto local em `C:\Users\Thiesen\Desktop\wimifarma-com`.

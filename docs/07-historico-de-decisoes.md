@@ -2,6 +2,35 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-05-30 - Next.js e Prisma ficam registrados como direcao futura proposta
+
+Decisao:
+
+- Registrar a vontade do usuario de usar Next.js e Prisma em evolucoes futuras do projeto.
+- Nao adotar Next.js nem Prisma imediatamente na stack atual.
+- Usar primeiro em piloto isolado, preferencialmente site publico novo, modulo novo ou reescrita controlada, com rotas separadas, build/deploy proprios, rollback e validacao visual.
+- Manter os modulos ja estabilizados em Node.js + TypeScript + Express + SQL direto durante os cortes atuais, salvo nova decisao documentada.
+
+Motivo:
+
+- Next.js pode ajudar em frontend moderno, rotas web, SSR/SEO e experiencia de usuario mais rica.
+- Prisma pode ajudar com tipagem e organizacao de acesso a dados em modulo novo, mas adiciona camada de migracao/ORM que precisa ser validada antes de entrar em producao.
+
+Impacto:
+
+- `AGENTS.md`
+- `README.md`
+- `docs/01-arquitetura.md`
+- `docs/04-padroes-de-codigo.md`
+- `docs/07-historico-de-decisoes.md`
+- `docs/24-modernizacao-modulos.md`
+
+Riscos/cuidados:
+
+- Introduzir Next.js ou Prisma no meio de corte oficial pode aumentar risco de build, deploy, proxy e regressao visual.
+- Prisma nao deve ser misturado sem criterio com SQL direto em modulos financeiros/operacionais ja validados.
+- Qualquer adoção precisa de piloto, testes, smoke no VPS, validacao de frontend e plano de rollback antes de virar padrao.
+
 ## 2026-05-28 - Tarefa migra para Node.js + TypeScript + Postgres
 
 Decisao:
