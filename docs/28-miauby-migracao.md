@@ -184,12 +184,11 @@ Proibido migrar para Postgres:
 - Estado iniciado em 2026-05-30: `wimifarma-miauby-app` roda `apps/miauby` em Node.js 22 + TypeScript + Express, somente na rede Docker.
 - Estado iniciado em 2026-05-30: `/miauby/health` responde status seguro do servico sombra, sem segredo e sem proxy publico.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` exigem token interno e comparam tabelas `miauby_*` contra `miauw_*` por contagem/checksum/amostra, sem retornar payload bruto.
+- Estado iniciado em 2026-05-30: `/miauby/api/internal/readiness?sample=20` consolida health/paridade para pos-deploy e `/miauby/api/internal/context?limit=3` retorna apenas amostras sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes.
 - Proximas leituras a adicionar depois da paridade:
-  - contexto de voz/persona;
-  - treinos aprovados;
-  - memorias revisadas;
-  - alertas;
-  - traces recentes;
+  - contexto de voz/persona compilado;
+  - filtros por status/categoria;
+  - contrato de tool em formato canonico;
   - diagnostico seguro.
 - PHP continua dono da resposta oficial.
 

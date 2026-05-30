@@ -103,6 +103,6 @@ Proximos passos recomendados:
 - Validar Financeiro Node/Postgres em /financeiro/ com health/login/Caixa/Relatorio/CSV/Pix CNPJ sem reintroduzir mysql2.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.
 - Validar Cashback em /cashback/ com health, login, saldos, CSV, mensagens e autoteste apos remocao do caminho mysql2.
-- Depois observar a API interna de paridade do Miauby interno e so entao criar alias/fallback antes de renomear runtime.
+- Depois observar readiness/context da API interna do Miauby e so entao criar alias/fallback antes de renomear runtime.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

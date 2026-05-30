@@ -890,6 +890,8 @@ Manter Postgres/Redis como fonte oficial e planejar migracao JS -> TypeScript po
 - `wimifarma-miauby-app:4100/miauby/health`: health interno do Postgres sombra do Miauby, sem segredo.
 - `wimifarma-miauby-app:4100/miauby/api/internal/status`: status interno tokenizado das tabelas `miauby_*`.
 - `wimifarma-miauby-app:4100/miauby/api/internal/parity?sample=5`: paridade interna tokenizada de contagens e checksums contra `miauw_*`, sem retornar payload bruto.
+- `wimifarma-miauby-app:4100/miauby/api/internal/readiness?sample=20`: resumo tokenizado de health/paridade para pos-deploy, sem proxy publico.
+- `wimifarma-miauby-app:4100/miauby/api/internal/context?limit=3`: amostras tokenizadas e sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes, sem `payload_sanitized` bruto.
 
 ### Permissoes e sessao
 

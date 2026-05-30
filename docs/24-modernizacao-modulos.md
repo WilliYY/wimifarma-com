@@ -148,7 +148,7 @@ O Miauby interno e o proximo modulo de maior risco porque ainda concentra conver
 - alvo de banco: `wimifarma_miauby`, tabelas `miauby_*`;
 - app/migrador sombra: `apps/miauby`, containers `wimifarma-miauby-migrator` e `wimifarma-miauby-app`;
 - banco sombra: `wimifarma-miauby-db`, sem rota publica e sem efeito no frontend;
-- API interna de paridade: `/miauby/health`, `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` apenas dentro da rede Docker;
+- API interna de paridade/leitura: `/miauby/health`, `/miauby/api/internal/status`, `/miauby/api/internal/parity?sample=5`, `/miauby/api/internal/readiness?sample=20` e `/miauby/api/internal/context?limit=3` apenas dentro da rede Docker;
 - alias futuro: `/miauby/`, sem remover `/miauw/` no primeiro corte;
 - env vars futuras `MIAUBY_*` com fallback para `MIAUW_*`;
 - Node/TypeScript primeiro em sombra, depois corte por usuario;

@@ -11,8 +11,13 @@ type SourceTable = {
   previewFields: string[];
 };
 
+type ShadowReadSection = SourceTable & {
+  key: string;
+  label: string;
+};
+
 const env = process.env;
-const serviceVersion = '0.2.0';
+const serviceVersion = '0.3.0';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -29,6 +34,16 @@ const sourceTables: SourceTable[] = [
   { source: 'miauw_configuracoes', target: 'miauby_settings', previewFields: ['chave', 'key', 'nome', 'valor', 'value'] },
   { source: 'miauw_farmacia_popular_valores', target: 'miauby_farmacia_popular_values', previewFields: ['produto', 'nome', 'ean', 'valor'] },
   { source: 'miauw_farmacia_popular_atualizacoes', target: 'miauby_farmacia_popular_updates', previewFields: ['origem', 'status', 'resumo', 'mensagem'] },
+];
+
+const readSections: ShadowReadSection[] = [
+  { key: 'training_examples', label: 'Treinos aprovados/revisaveis', source: 'miauw_treinos_respostas', target: 'miauby_training_examples', previewFields: [] },
+  { key: 'memories', label: 'Memorias revisadas', source: 'miauw_memorias', target: 'miauby_memories', previewFields: [] },
+  { key: 'knowledge', label: 'Conhecimentos operacionais', source: 'miauw_conhecimentos', target: 'miauby_knowledge', previewFields: [] },
+  { key: 'alerts', label: 'Alertas', source: 'miauw_alertas', target: 'miauby_alerts', previewFields: [] },
+  { key: 'patterns', label: 'Padroes', source: 'miauw_padroes', target: 'miauby_patterns', previewFields: [] },
+  { key: 'tool_traces', label: 'Traces recentes', source: 'miauw_tool_traces', target: 'miauby_tool_traces', previewFields: [] },
+  { key: 'settings', label: 'Configuracoes nao secretas', source: 'miauw_configuracoes', target: 'miauby_settings', previewFields: [] },
 ];
 
 const mysqlPool = mysql.createPool({
@@ -215,6 +230,44 @@ function parseLimit(value: unknown, fallback: number, max: number): number {
   return Math.max(0, Math.min(max, Math.trunc(parsed)));
 }
 
+function normalizeText(value: unknown, max = 700): string | null {
+  if (value === undefined || value === null) return null;
+  const text = sanitizeString(String(value)).replace(/\s+/g, ' ').trim();
+  if (text === '') return null;
+  return text.length > max ? `${text.slice(0, max)}...[truncated]` : text;
+}
+
+function asIsoString(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function summarizeParity(parity: Awaited<ReturnType<typeof buildParity>>) {
+  const countMismatches = parity.tables.filter((table) => !table.count_match).length;
+  const sampleMismatches = parity.tables.reduce((total, table) => total + table.sample_mismatches, 0);
+  const sampleMissingTargets = parity.tables.reduce((total, table) => total + table.sample_missing_targets, 0);
+  return {
+    ok: parity.ok,
+    sample_limit: parity.sample_limit,
+    tables_total: parity.tables.length,
+    count_mismatches: countMismatches,
+    sample_mismatches: sampleMismatches,
+    sample_missing_targets: sampleMissingTargets,
+    latest_validate_ok: parity.latest_runs.some((run) => run.mode === 'validate' && run.ok),
+    tables: parity.tables.map((table) => ({
+      source: table.source,
+      target: table.target,
+      source_count: table.source_count,
+      target_count: table.target_count,
+      count_match: table.count_match,
+      sample_checked: table.sample_checked,
+      sample_mismatches: table.sample_mismatches,
+      issues: table.issues,
+    })),
+  };
+}
+
 async function tableExists(source: string): Promise<boolean> {
   const [rows] = await mysqlPool.query<RowDataPacket[]>('SHOW TABLES LIKE ?', [source]);
   return rows.length > 0;
@@ -351,6 +404,67 @@ async function buildParity(sampleLimit: number) {
   }
 }
 
+async function readShadowSection(client: PoolClient, section: ShadowReadSection, limit: number) {
+  const count = await targetCount(client, section.target, section.source);
+  const result = await client.query<{
+    legacy_mysql_id: string | number;
+    role: string | null;
+    status: string | null;
+    content_preview: string | null;
+    source_checksum: string;
+    created_at: Date | string;
+    updated_at: Date | string;
+  }>(
+    `SELECT legacy_mysql_id, role, status, content_preview, source_checksum, created_at, updated_at
+       FROM ${pgIdent(section.target)}
+      WHERE source_table = $1
+      ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+      LIMIT $2`,
+    [section.source, limit],
+  );
+
+  return {
+    key: section.key,
+    label: section.label,
+    source: section.source,
+    target: section.target,
+    count,
+    limit,
+    items: result.rows.map((row) => ({
+      legacy_mysql_id: String(row.legacy_mysql_id),
+      role: normalizeText(row.role, 80),
+      status: normalizeText(row.status, 80),
+      preview: normalizeText(row.content_preview, 700),
+      checksum_prefix: row.source_checksum.slice(0, 16),
+      created_at: asIsoString(row.created_at),
+      updated_at: asIsoString(row.updated_at),
+    })),
+  };
+}
+
+async function buildReadModel(limit: number) {
+  const client = await pgPool.connect();
+  try {
+    const sections = [];
+    for (const section of readSections) {
+      sections.push(await readShadowSection(client, section, limit));
+    }
+    return {
+      ok: true,
+      mode: 'read_only_shadow_context',
+      official_source: 'site/miauw php + mysql miauw_*',
+      shadow_target: 'apps/miauby + postgres miauby_*',
+      write_enabled: false,
+      payload_sanitized_only: true,
+      raw_payload_returned: false,
+      limit,
+      sections,
+    };
+  } finally {
+    client.release();
+  }
+}
+
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
@@ -416,9 +530,45 @@ app.get(`${basePath}/api/internal/status`, requireInternalToken, async (_req, re
   }
 });
 
+app.get(`${basePath}/api/internal/readiness`, requireInternalToken, async (req, res, next) => {
+  const started = Date.now();
+  try {
+    const sampleLimit = parseLimit(req.query.sample, 20, 50);
+    const ping = await pgPool.query<{ ok: number }>('SELECT 1 AS ok');
+    const parity = await buildParity(sampleLimit);
+    const paritySummary = summarizeParity(parity);
+    res.json({
+      ok: ping.rows[0]?.ok === 1 && paritySummary.ok,
+      service: 'miauby',
+      version: serviceVersion,
+      mode: 'shadow_readiness',
+      base_path: basePath,
+      write_enabled: false,
+      route_cutover_enabled: false,
+      public_proxy_enabled: false,
+      token_required: true,
+      checks: {
+        postgres: ping.rows[0]?.ok === 1,
+        parity: paritySummary,
+      },
+      latency_ms: Date.now() - started,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get(`${basePath}/api/internal/parity`, requireInternalToken, async (req, res, next) => {
   try {
     res.json(await buildParity(parseLimit(req.query.sample, 5, 50)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get(`${basePath}/api/internal/context`, requireInternalToken, async (req, res, next) => {
+  try {
+    res.json(await buildReadModel(parseLimit(req.query.limit, 5, 25)));
   } catch (error) {
     next(error);
   }
