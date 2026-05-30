@@ -131,6 +131,18 @@ if (!$homeAuthenticated):
             box-sizing: border-box;
         }
 
+        @property --footer-background {
+            syntax: "<color>";
+            inherits: true;
+            initial-value: #d6092f;
+        }
+
+        @property --footer-ink {
+            syntax: "<color>";
+            inherits: true;
+            initial-value: rgba(88, 7, 28, 0.2);
+        }
+
         html {
             min-height: 100%;
             overflow-x: hidden;
@@ -311,10 +323,12 @@ if (!$homeAuthenticated):
             --footer-ink: rgba(88, 7, 28, 0.22);
             position: relative;
             grid-area: footer;
-            min-height: 18rem;
+            min-height: 17.35rem;
             display: grid;
             overflow: visible;
-            animation: wf-footer-color 18s ease-in-out infinite;
+            background: var(--footer-background);
+            isolation: isolate;
+            animation: wf-footer-color 34s ease-in-out infinite;
         }
 
         .wf-login-bubbles {
@@ -333,8 +347,8 @@ if (!$homeAuthenticated):
             position: absolute;
             left: -2rem;
             right: -2rem;
-            bottom: 0;
-            height: 4.3rem;
+            bottom: -0.35rem;
+            height: 4.8rem;
             background: var(--footer-background);
             border-radius: 999px 999px 0 0;
         }
@@ -359,10 +373,10 @@ if (!$homeAuthenticated):
             gap: clamp(2rem, 6vw, 5.5rem);
             align-items: start;
             width: 100%;
-            padding: 4rem max(2rem, calc((100vw - 1160px) / 2)) 3.1rem;
-            background: var(--footer-background);
+            margin-top: -1px;
+            padding: 3.78rem max(2rem, calc((100vw - 1160px) / 2)) 2.88rem;
+            background: transparent;
             color: #210915;
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
 
         .wf-login-footer-content::before {
@@ -432,7 +446,7 @@ if (!$homeAuthenticated):
             font-weight: 900;
             text-decoration: none;
             box-shadow: 0 16px 30px rgba(70, 5, 25, 0.16);
-            transition: transform 180ms ease, box-shadow 180ms ease;
+            transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
         }
 
         .wf-login-whatsapp:hover,
@@ -446,6 +460,11 @@ if (!$homeAuthenticated):
         .wf-login-footer-contact svg,
         .wf-login-whatsapp-float svg {
             flex: 0 0 auto;
+        }
+
+        .wf-login-whatsapp svg {
+            color: #21b85b;
+            filter: drop-shadow(0 2px 4px rgba(33, 184, 91, 0.18));
         }
 
         .wf-login-footer-nav {
@@ -498,9 +517,12 @@ if (!$homeAuthenticated):
             display: grid;
             place-items: center;
             border-radius: 999px;
-            background: #25d366;
+            border: 2px solid rgba(255, 255, 255, 0.72);
+            background:
+                radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.38), transparent 0 25%),
+                linear-gradient(145deg, #2fed76 0%, #1ebc59 54%, #0f9f49 100%);
             color: #ffffff;
-            box-shadow: 0 18px 36px rgba(37, 211, 102, 0.35);
+            box-shadow: 0 18px 36px rgba(21, 128, 61, 0.36), inset 0 -6px 14px rgba(6, 95, 70, 0.22);
             text-decoration: none;
             transition: transform 180ms ease, box-shadow 180ms ease;
         }
@@ -508,7 +530,7 @@ if (!$homeAuthenticated):
         .wf-login-whatsapp-float:hover,
         .wf-login-whatsapp-float:focus-visible {
             transform: translateY(-3px) scale(1.03);
-            box-shadow: 0 22px 42px rgba(37, 211, 102, 0.42);
+            box-shadow: 0 22px 42px rgba(21, 128, 61, 0.44), inset 0 -6px 14px rgba(6, 95, 70, 0.2);
             outline: 0;
         }
 
@@ -560,17 +582,25 @@ if (!$homeAuthenticated):
                 --footer-background: #d6092f;
                 --footer-ink: rgba(88, 7, 28, 0.2);
             }
-            25% {
+            16% {
                 --footer-background: #bd0f3f;
                 --footer-ink: rgba(70, 5, 24, 0.22);
             }
-            50% {
+            32% {
                 --footer-background: #e31844;
                 --footer-ink: rgba(94, 6, 30, 0.2);
             }
-            75% {
-                --footer-background: #a80f43;
-                --footer-ink: rgba(51, 4, 18, 0.24);
+            48% {
+                --footer-background: #e36822;
+                --footer-ink: rgba(89, 32, 8, 0.2);
+            }
+            64% {
+                --footer-background: #11a39a;
+                --footer-ink: rgba(4, 55, 51, 0.2);
+            }
+            82% {
+                --footer-background: #b42873;
+                --footer-ink: rgba(58, 7, 39, 0.22);
             }
         }
 
@@ -588,7 +618,7 @@ if (!$homeAuthenticated):
                 grid-template-columns: 1fr;
                 gap: 1.75rem;
                 place-items: center;
-                padding: 3.4rem 1.15rem 5.4rem;
+                padding: 3.18rem 1.15rem 5.18rem;
                 text-align: center;
             }
 
@@ -683,9 +713,8 @@ if (!$homeAuthenticated):
                 <img class="wf-login-footer-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma">
                 <p>Atendimento local pelo WhatsApp para medicamentos, Farmacia Popular e entrega.</p>
                 <a class="wf-login-whatsapp" href="https://wa.me/5544984134971" target="_blank" rel="noopener">
-                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5Z"/>
-                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9.3 9.2c.4 2.2 1.9 3.7 4.1 4.4"/>
+                    <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M16.04 3.2c-7.05 0-12.78 5.67-12.78 12.65 0 2.23.6 4.41 1.73 6.32L3.2 28.8l6.82-1.78a12.9 12.9 0 0 0 6.02 1.5c7.05 0 12.78-5.67 12.78-12.65S23.09 3.2 16.04 3.2Zm0 23.1c-1.88 0-3.72-.5-5.33-1.44l-.38-.22-4.05 1.06 1.08-3.9-.25-.4a10.33 10.33 0 0 1-1.63-5.55c0-5.75 4.74-10.43 10.56-10.43S26.6 10.1 26.6 15.85 21.86 26.3 16.04 26.3Zm5.78-7.82c-.32-.16-1.88-.92-2.17-1.03-.29-.1-.5-.16-.71.16-.21.31-.82 1.03-1 1.24-.18.21-.37.24-.69.08-.32-.16-1.34-.49-2.55-1.56-.94-.83-1.58-1.86-1.76-2.18-.18-.31-.02-.48.14-.64.14-.14.32-.37.48-.55.16-.18.21-.31.32-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.7-.97-2.33-.26-.61-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.05 1.29 3.26c.16.21 2.22 3.36 5.38 4.71.75.32 1.34.51 1.8.65.76.24 1.45.21 1.99.13.61-.09 1.88-.76 2.14-1.5.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.61-.37Z"/>
                     </svg>
                     <span>Chamar no WhatsApp</span>
                 </a>
@@ -716,9 +745,8 @@ if (!$homeAuthenticated):
         </div>
     </footer>
     <a class="wf-login-whatsapp-float" href="https://wa.me/5544984134971" target="_blank" rel="noopener" aria-label="Chamar no WhatsApp">
-        <svg width="29" height="29" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5Z"/>
-            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9.3 9.2c.4 2.2 1.9 3.7 4.1 4.4"/>
+        <svg width="31" height="31" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M16.04 3.2c-7.05 0-12.78 5.67-12.78 12.65 0 2.23.6 4.41 1.73 6.32L3.2 28.8l6.82-1.78a12.9 12.9 0 0 0 6.02 1.5c7.05 0 12.78-5.67 12.78-12.65S23.09 3.2 16.04 3.2Zm0 23.1c-1.88 0-3.72-.5-5.33-1.44l-.38-.22-4.05 1.06 1.08-3.9-.25-.4a10.33 10.33 0 0 1-1.63-5.55c0-5.75 4.74-10.43 10.56-10.43S26.6 10.1 26.6 15.85 21.86 26.3 16.04 26.3Zm5.78-7.82c-.32-.16-1.88-.92-2.17-1.03-.29-.1-.5-.16-.71.16-.21.31-.82 1.03-1 1.24-.18.21-.37.24-.69.08-.32-.16-1.34-.49-2.55-1.56-.94-.83-1.58-1.86-1.76-2.18-.18-.31-.02-.48.14-.64.14-.14.32-.37.48-.55.16-.18.21-.31.32-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.7-.97-2.33-.26-.61-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.05 1.29 3.26c.16.21 2.22 3.36 5.38 4.71.75.32 1.34.51 1.8.65.76.24 1.45.21 1.99.13.61-.09 1.88-.76 2.14-1.5.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.61-.37Z"/>
         </svg>
     </a>
     <svg class="wf-login-svg-filter" aria-hidden="true" focusable="false">
