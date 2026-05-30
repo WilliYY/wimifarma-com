@@ -210,16 +210,12 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-logo {
-            width: min(250px, 68vw);
-            height: 80px;
+            width: min(238px, 66vw);
+            height: auto;
+            max-height: 80px;
             display: block;
-            border: 2px solid rgba(255, 255, 255, 0.88);
-            border-radius: 999px;
-            padding: 8px 14px;
-            background: rgba(255, 255, 255, 0.9);
             object-fit: contain;
-            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
-            filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.24));
+            filter: brightness(0) invert(1) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
         }
 
         .wf-login-only {
@@ -631,8 +627,8 @@ if (!$homeAuthenticated):
             }
 
             .wf-login-logo {
-                width: min(220px, 66vw);
-                height: 68px;
+                width: min(214px, 64vw);
+                max-height: 68px;
             }
 
             .wf-login-input,
