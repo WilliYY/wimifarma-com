@@ -5,7 +5,6 @@ import bcrypt from 'bcryptjs';
 import connectPgSimple from 'connect-pg-simple';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
-import mysql from 'mysql2/promise';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -15,8 +14,6 @@ type User = {
   username: string;
   role: string;
 };
-
-type AuthProvider = 'mysql' | 'core';
 
 type Flash = {
   type: 'success' | 'error' | '';
@@ -122,14 +119,6 @@ type AccountSearchResult = {
   score: number;
 };
 
-type MysqlUserRow = {
-  id: number;
-  username: string;
-  password_hash: string | null;
-  role: string | null;
-  active: number;
-};
-
 type CoreUserRow = {
   id: string;
   username: string;
@@ -144,20 +133,13 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.6.1';
+const SERVICE_VERSION = '1.6.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const INTERNAL_TOKEN = String(env.GESTAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
 const TZ = 'America/Sao_Paulo';
-const AUTH_PROVIDER = normalizeAuthProvider(env.GESTAO_AUTH_PROVIDER || 'core');
-const MYSQL_AUTH_FALLBACK_ENABLED = normalizeBoolean(env.GESTAO_AUTH_MYSQL_FALLBACK_ENABLED ?? 'false');
-const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.GESTAO_CORE_AUTH_SHADOW_ENABLED);
-const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
-  500,
-  Math.min(10000, Number.parseInt(env.GESTAO_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500),
-);
-const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core' || CORE_AUTH_SHADOW_ENABLED;
+const AUTH_PROVIDER = 'core';
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -168,43 +150,14 @@ const pgPool = new Pool({
   max: 12,
 });
 
-const mysqlPool = mysql.createPool({
-  host: env.MYSQL_HOST || '127.0.0.1',
-  port: Number(env.MYSQL_PORT || 3306),
-  database: env.MYSQL_DATABASE || 'wimifarma_app',
-  user: env.MYSQL_USER || 'wimifarma_user',
-  password: env.MYSQL_PASSWORD || '',
-  waitForConnections: true,
-  connectionLimit: 8,
-  charset: 'utf8mb4',
-  dateStrings: true,
-  connectTimeout: Number(env.MYSQL_CONNECT_TIMEOUT_MS || 3000),
+const corePgPool = new Pool({
+  host: env.CORE_POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.CORE_POSTGRES_PORT || 5432),
+  database: env.CORE_POSTGRES_DB || 'wimifarma_core',
+  user: env.CORE_POSTGRES_USER || 'wimifarma_core',
+  password: env.CORE_POSTGRES_PASSWORD || '',
+  max: 4,
 });
-
-const corePgPool = CORE_AUTH_REQUIRED
-  ? new Pool({
-      host: env.CORE_POSTGRES_HOST || '127.0.0.1',
-      port: Number(env.CORE_POSTGRES_PORT || 5432),
-      database: env.CORE_POSTGRES_DB || 'wimifarma_core',
-      user: env.CORE_POSTGRES_USER || 'wimifarma_core',
-      password: env.CORE_POSTGRES_PASSWORD || '',
-      max: 4,
-      connectionTimeoutMillis: CORE_AUTH_SHADOW_TIMEOUT_MS,
-      statement_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS,
-      query_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS,
-    })
-  : null;
-
-const coreAuthShadow = {
-  enabled: CORE_AUTH_SHADOW_ENABLED,
-  attempts: 0,
-  ok: 0,
-  mismatches: 0,
-  errors: 0,
-  lastStatus: 'idle',
-  lastLatencyMs: null as number | null,
-  lastCheckedAt: null as string | null,
-};
 
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -242,14 +195,6 @@ function e(value: unknown): string {
 
 function cleanText(value: unknown, limit: number): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
-}
-
-function normalizeBoolean(value: unknown): boolean {
-  return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
-}
-
-function normalizeAuthProvider(value: unknown): AuthProvider {
-  return String(value || 'mysql').trim().toLowerCase() === 'core' ? 'core' : 'mysql';
 }
 
 function normalizeHash(hash: unknown): string {
@@ -290,14 +235,6 @@ function isAllowedUser(user: { username?: unknown; role?: unknown }): boolean {
   const username = String(user.username || '').trim().toLowerCase();
   const role = String(user.role || '').trim().toLowerCase();
   return username === 'adm' || role === 'admin' || role === 'gerente';
-}
-
-function userPublic(row: MysqlUserRow): User {
-  return {
-    id: Number(row.id),
-    username: String(row.username),
-    role: String(row.role || 'user'),
-  };
 }
 
 function ensureCsrf(req: Request): string {
@@ -717,15 +654,6 @@ function dueStatus(account: AccountRow): { key: string; label: string; days: num
   return { key: 'scheduled', label: `Vence em ${days} dia(s)`, days };
 }
 
-function mysqlDateToPg(value: unknown): string | null {
-  const text = String(value || '').trim();
-  if (!text || text === '0000-00-00 00:00:00') return null;
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) {
-    return `${text.replace(' ', 'T')}-03:00`;
-  }
-  return text;
-}
-
 function accountStatusLabel(status: string): string {
   if (status === 'pago') return 'Pago';
   if (status === 'cancelado') return 'Cancelado';
@@ -777,54 +705,18 @@ function clearLoginRateLimit(req: Request): void {
 }
 
 async function authenticate(username: string, password: string): Promise<User | null> {
-  if (AUTH_PROVIDER === 'core') {
-    try {
-      const coreUser = await authenticateCore(username, password);
-      if (coreUser) return coreUser;
-    } catch (error) {
-      console.warn('[gestao] core auth failed', {
-        username: maskUsername(username),
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    if (!MYSQL_AUTH_FALLBACK_ENABLED) return null;
-    try {
-      return await authenticateMysql(username, password);
-    } catch (error) {
-      console.warn('[gestao] mysql auth fallback failed', {
-        username: maskUsername(username),
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
+  try {
+    return await authenticateCore(username, password);
+  } catch (error) {
+    console.warn('[gestao] core auth failed', {
+      username: maskUsername(username),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   }
-
-  return authenticateMysql(username, password);
-}
-
-async function authenticateMysql(username: string, password: string): Promise<User | null> {
-  const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
-    'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
-    [username],
-  );
-  const user = rows[0] as MysqlUserRow | undefined;
-  if (!user) return null;
-
-  let ok = false;
-  if (user.password_hash) {
-    ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
-  }
-  if (!ok && String(user.username || '').trim().toLowerCase() === 'adm') {
-    ok = timingSafeStringEqual(password, 'adm');
-  }
-
-  if (!ok || !isAllowedUser(user)) return null;
-  return userPublic(user);
 }
 
 async function authenticateCore(username: string, password: string): Promise<User | null> {
-  if (!corePgPool) return null;
   const result = await corePgPool.query<CoreUserRow>(
     `SELECT id::text, username, password_hash, role, active
        FROM core_users
@@ -851,65 +743,14 @@ async function authenticateCore(username: string, password: string): Promise<Use
   };
 }
 
-async function shadowCoreAuth(username: string, password: string, mysqlUser: User): Promise<void> {
-  if (!CORE_AUTH_SHADOW_ENABLED || AUTH_PROVIDER !== 'mysql' || !corePgPool) return;
-  const startedAt = Date.now();
-  coreAuthShadow.attempts += 1;
-  try {
-    const coreUser = await authenticateCore(username, password);
-    const latencyMs = Date.now() - startedAt;
-    const sameUser = Boolean(
-      coreUser &&
-      Number(coreUser.id) === Number(mysqlUser.id) &&
-      normalizeUsername(coreUser.username) === normalizeUsername(mysqlUser.username) &&
-      String(coreUser.role || 'user') === String(mysqlUser.role || 'user'),
-    );
-    coreAuthShadow.lastLatencyMs = latencyMs;
-    coreAuthShadow.lastCheckedAt = new Date().toISOString();
-    if (sameUser) {
-      coreAuthShadow.ok += 1;
-      coreAuthShadow.lastStatus = 'ok';
-      console.info('[gestao] core auth shadow ok', {
-        username: maskUsername(username),
-        userId: mysqlUser.id,
-        latencyMs,
-      });
-      return;
-    }
-
-    coreAuthShadow.mismatches += 1;
-    coreAuthShadow.lastStatus = 'mismatch';
-    console.warn('[gestao] core auth shadow mismatch', {
-      username: maskUsername(username),
-      mysqlUserId: mysqlUser.id,
-      coreFound: Boolean(coreUser),
-      coreUserId: coreUser?.id || null,
-      latencyMs,
-    });
-  } catch (error) {
-    coreAuthShadow.errors += 1;
-    coreAuthShadow.lastLatencyMs = Date.now() - startedAt;
-    coreAuthShadow.lastCheckedAt = new Date().toISOString();
-    coreAuthShadow.lastStatus = 'error';
-    console.warn('[gestao] core auth shadow failed', {
-      username: maskUsername(username),
-      error: error instanceof Error ? error.message : String(error),
-      latencyMs: coreAuthShadow.lastLatencyMs,
-    });
-  }
-}
-
 async function coreAuthHealth(): Promise<Record<string, unknown>> {
   const state = {
     provider: AUTH_PROVIDER,
-    mysqlFallbackEnabled: MYSQL_AUTH_FALLBACK_ENABLED,
-    shadowConfigured: CORE_AUTH_SHADOW_ENABLED,
-    shadowEnabled: CORE_AUTH_SHADOW_ENABLED && AUTH_PROVIDER === 'mysql',
-    shadow: { ...coreAuthShadow },
+    mysqlFallbackEnabled: false,
+    shadowConfigured: false,
+    shadowEnabled: false,
+    shadow: null,
   };
-  if (!CORE_AUTH_REQUIRED || !corePgPool) {
-    return state;
-  }
 
   const startedAt = Date.now();
   try {
@@ -930,20 +771,11 @@ async function coreAuthHealth(): Promise<Record<string, unknown>> {
   }
 }
 
-async function logMysql(userId: number | null, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
+async function logAudit(userId: number | null, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
   await logCoreAudit(userId, action, entityType || 'legacy_log', entityId === null ? null : String(entityId), message);
-  try {
-    await mysqlPool.query(
-      'INSERT INTO wf_logs (user_id, action, entity_type, entity_id, message) VALUES (?, ?, ?, ?, ?)',
-      [userId, action, entityType, entityId, cleanText(message, 255)],
-    );
-  } catch (error) {
-    console.warn('[gestao] wf_logs failed', error);
-  }
 }
 
 async function logCoreAudit(userId: number | null, action: string, entityType: string, entityId: string | null, detail: string): Promise<void> {
-  if (!corePgPool) return;
   try {
     await corePgPool.query(
       `INSERT INTO core_audit_logs (actor_user_id, action, entity_type, entity_id, detail, metadata)
@@ -1214,154 +1046,6 @@ async function ensureSchema(): Promise<void> {
   `);
 }
 
-async function mysqlTableExists(tableName: string): Promise<boolean> {
-  const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
-    `SELECT COUNT(*) AS count
-     FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = ?`,
-    [tableName],
-  );
-  return Number(rows[0]?.count || 0) > 0;
-}
-
-async function importMysqlGestaoOnce(): Promise<void> {
-  const applied = await pgPool.query(
-    "SELECT 1 FROM gestao_schema_migrations WHERE version = 'import-mysql-gestao-2026-05-18' LIMIT 1",
-  );
-  if (applied.rowCount) return;
-
-  if (!(await mysqlTableExists('gestao_contas'))) {
-    await pgPool.query(
-      "INSERT INTO gestao_schema_migrations (version) VALUES ('import-mysql-gestao-2026-05-18') ON CONFLICT DO NOTHING",
-    );
-    return;
-  }
-
-  const hasPayments = await mysqlTableExists('gestao_conta_pagamentos');
-  const hasItems = await mysqlTableExists('gestao_conta_itens');
-  const [accountRows] = await mysqlPool.query<mysql.RowDataPacket[]>(
-    'SELECT * FROM gestao_contas ORDER BY id ASC LIMIT 5000',
-  );
-
-  const client = await pgPool.connect();
-  try {
-    await client.query('BEGIN');
-    for (const rawAccount of accountRows) {
-      const account = rawAccount as Record<string, unknown>;
-      const mysqlId = Number(account.id);
-      const totalCents = parseMoneyToCents(account.valor_total);
-      const result = await client.query<{ id: string }>(
-        `INSERT INTO gestao_accounts
-          (source_mysql_id, title, category, status, total_cents, competence_month, note, created_by, generated_at, paid_at, canceled_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, now()), $10::timestamptz, $11::timestamptz)
-         ON CONFLICT (source_mysql_id) DO UPDATE SET
-          title = EXCLUDED.title,
-          category = EXCLUDED.category,
-          status = EXCLUDED.status,
-          total_cents = EXCLUDED.total_cents,
-          competence_month = EXCLUDED.competence_month,
-          note = EXCLUDED.note,
-          paid_at = EXCLUDED.paid_at,
-          canceled_at = EXCLUDED.canceled_at
-         RETURNING id`,
-        [
-          mysqlId,
-          cleanText(account.titulo, 180) || 'Conta importada',
-          categoryLabel(account.categoria),
-          ['pendente', 'pago', 'cancelado'].includes(String(account.status)) ? String(account.status) : 'pendente',
-          totalCents,
-          monthValue(account.competencia_mes),
-          cleanText(account.observacao, 5000) || null,
-          account.criado_por ? Number(account.criado_por) : null,
-          mysqlDateToPg(account.gerado_em),
-          mysqlDateToPg(account.pago_em),
-          mysqlDateToPg(account.cancelado_em),
-        ],
-      );
-      const accountId = Number(result.rows[0].id);
-
-      if (hasItems) {
-        const [itemRows] = await mysqlPool.query<mysql.RowDataPacket[]>(
-          'SELECT * FROM gestao_conta_itens WHERE conta_id = ? ORDER BY ordem ASC, id ASC',
-          [mysqlId],
-        );
-        for (const rawItem of itemRows) {
-          const item = rawItem as Record<string, unknown>;
-          const itemCents = parseMoneyToCents(item.valor);
-          if (itemCents <= 0) continue;
-          await client.query(
-            `INSERT INTO gestao_account_items (source_mysql_id, account_id, description, amount_cents, sort_order, created_at)
-             VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()))
-             ON CONFLICT (source_mysql_id) DO UPDATE SET
-              description = EXCLUDED.description,
-              amount_cents = EXCLUDED.amount_cents,
-              sort_order = EXCLUDED.sort_order`,
-            [
-              Number(item.id),
-              accountId,
-              cleanText(item.descricao, 180) || 'Item importado',
-              itemCents,
-              Number(item.ordem || 0),
-              mysqlDateToPg(item.criado_em),
-            ],
-          );
-        }
-      }
-
-      let importedPayments = 0;
-      if (hasPayments) {
-        const [paymentRows] = await mysqlPool.query<mysql.RowDataPacket[]>(
-          'SELECT * FROM gestao_conta_pagamentos WHERE conta_id = ? ORDER BY pago_em ASC, id ASC',
-          [mysqlId],
-        );
-        for (const rawPayment of paymentRows) {
-          const payment = rawPayment as Record<string, unknown>;
-          const paymentCents = parseMoneyToCents(payment.valor);
-          if (paymentCents <= 0) continue;
-          importedPayments += 1;
-          await client.query(
-            `INSERT INTO gestao_account_payments (source_mysql_id, account_id, description, amount_cents, paid_at, created_by, created_at)
-             VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, now()), $6, COALESCE($7::timestamptz, now()))
-             ON CONFLICT (source_mysql_id) DO UPDATE SET
-              description = EXCLUDED.description,
-              amount_cents = EXCLUDED.amount_cents,
-              paid_at = EXCLUDED.paid_at`,
-            [
-              Number(payment.id),
-              accountId,
-              cleanText(payment.descricao, 180) || 'Pagamento importado',
-              paymentCents,
-              mysqlDateToPg(payment.pago_em),
-              payment.criado_por ? Number(payment.criado_por) : null,
-              mysqlDateToPg(payment.criado_em),
-            ],
-          );
-        }
-      }
-
-      if (String(account.status) === 'pago' && totalCents > 0 && importedPayments === 0) {
-        await client.query(
-          `INSERT INTO gestao_account_payments (account_id, description, amount_cents, paid_at, created_by)
-           VALUES ($1, 'Pagamento confirmado importado', $2, COALESCE($3::timestamptz, now()), $4)`,
-          [accountId, totalCents, mysqlDateToPg(account.pago_em) || mysqlDateToPg(account.gerado_em), account.criado_por ? Number(account.criado_por) : null],
-        );
-      }
-    }
-
-    await client.query(
-      "INSERT INTO gestao_schema_migrations (version) VALUES ('import-mysql-gestao-2026-05-18') ON CONFLICT DO NOTHING",
-    );
-    await client.query('COMMIT');
-    console.log(`[gestao] imported ${accountRows.length} mysql account(s)`);
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 async function paidTotal(client: pg.Pool | pg.PoolClient, accountId: number, itemId?: number): Promise<number> {
   if (itemId) {
     const itemResult = await client.query<{ paid_cents: string }>(
@@ -1587,7 +1271,7 @@ async function createAccount(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_criada', 'gestao_conta', accountId, `Conta criada: ${title} / ${formatMoney(totalCents)}`);
+  await logAudit(userId, 'gestao_conta_criada', 'gestao_conta', accountId, `Conta criada: ${title} / ${formatMoney(totalCents)}`);
   if (req.body.repetir_mes === '1') {
     const previousId = req.body.id;
     req.body.id = String(accountId);
@@ -1669,7 +1353,7 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_criada_miauby', 'gestao_conta', accountId, `Conta criada pelo Miauby: ${title} / ${formatMoney(totalCents)}`);
+  await logAudit(userId, 'gestao_conta_criada_miauby', 'gestao_conta', accountId, `Conta criada pelo Miauby: ${title} / ${formatMoney(totalCents)}`);
 
   return { accountId, totalCents, title, month, status };
 }
@@ -1707,7 +1391,7 @@ async function addItem(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_item_adicionado', 'gestao_conta', id, `Item adicionado na Gestao: ${description} / ${formatMoney(cents)}`);
+  await logAudit(userId, 'gestao_item_adicionado', 'gestao_conta', id, `Item adicionado na Gestao: ${description} / ${formatMoney(cents)}`);
 }
 
 async function addPayment(req: Request): Promise<void> {
@@ -1768,7 +1452,7 @@ async function addPayment(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_pagamento_criado', 'gestao_conta', id, `Pagamento registrado na Gestao: ${formatMoney(cents)}`);
+  await logAudit(userId, 'gestao_pagamento_criado', 'gestao_conta', id, `Pagamento registrado na Gestao: ${formatMoney(cents)}`);
 }
 
 async function confirmRemaining(req: Request): Promise<void> {
@@ -1804,7 +1488,7 @@ async function confirmRemaining(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_status', 'gestao_conta', id, 'Conta quitada na Gestao.');
+  await logAudit(userId, 'gestao_conta_status', 'gestao_conta', id, 'Conta quitada na Gestao.');
 }
 
 async function confirmItem(req: Request): Promise<void> {
@@ -1854,7 +1538,7 @@ async function confirmItem(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_item_quitado', 'gestao_conta', id, `Lancamento quitado na Gestao: ${itemDescription} / ${formatMoney(paidCents)}`);
+  await logAudit(userId, 'gestao_item_quitado', 'gestao_conta', id, `Lancamento quitado na Gestao: ${itemDescription} / ${formatMoney(paidCents)}`);
 }
 
 async function addItemAdjustment(req: Request): Promise<void> {
@@ -1903,7 +1587,7 @@ async function addItemAdjustment(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_item_ajuste', 'gestao_conta', id, `Ajuste em lancamento na Gestao: ${itemDescription} / ${formatMoney(cents)}`);
+  await logAudit(userId, 'gestao_item_ajuste', 'gestao_conta', id, `Ajuste em lancamento na Gestao: ${itemDescription} / ${formatMoney(cents)}`);
 }
 
 async function cancelItem(req: Request): Promise<void> {
@@ -1948,7 +1632,7 @@ async function cancelItem(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_item_cancelado', 'gestao_conta', id, `Lancamento cancelado na Gestao: ${itemDescription}`);
+  await logAudit(userId, 'gestao_item_cancelado', 'gestao_conta', id, `Lancamento cancelado na Gestao: ${itemDescription}`);
 }
 
 async function reopenItem(req: Request): Promise<void> {
@@ -1989,7 +1673,7 @@ async function reopenItem(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_item_reaberto', 'gestao_conta', id, `Lancamento reaberto na Gestao: ${itemDescription}`);
+  await logAudit(userId, 'gestao_item_reaberto', 'gestao_conta', id, `Lancamento reaberto na Gestao: ${itemDescription}`);
 }
 
 async function cancelPayment(req: Request): Promise<void> {
@@ -2028,7 +1712,7 @@ async function cancelPayment(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_pagamento_cancelado', 'gestao_conta', id, `Pagamento cancelado na Gestao: ${formatMoney(cents)}`);
+  await logAudit(userId, 'gestao_pagamento_cancelado', 'gestao_conta', id, `Pagamento cancelado na Gestao: ${formatMoney(cents)}`);
 }
 
 async function updateAccountNote(req: Request): Promise<void> {
@@ -2050,7 +1734,7 @@ async function updateAccountNote(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_observacao_atualizada', 'gestao_conta', id, 'Observacao da conta atualizada na Gestao.');
+  await logAudit(userId, 'gestao_observacao_atualizada', 'gestao_conta', id, 'Observacao da conta atualizada na Gestao.');
 }
 
 async function updateAccountTitle(req: Request): Promise<void> {
@@ -2074,7 +1758,7 @@ async function updateAccountTitle(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_renomeada', 'gestao_conta', id, `Conta renomeada na Gestao: ${title}`);
+  await logAudit(userId, 'gestao_conta_renomeada', 'gestao_conta', id, `Conta renomeada na Gestao: ${title}`);
 }
 
 async function updateAccountDue(req: Request): Promise<void> {
@@ -2096,7 +1780,7 @@ async function updateAccountDue(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_vencimento_atualizado', 'gestao_conta', id, dueAt ? 'Vencimento atualizado na Gestao.' : 'Vencimento removido na Gestao.');
+  await logAudit(userId, 'gestao_vencimento_atualizado', 'gestao_conta', id, dueAt ? 'Vencimento atualizado na Gestao.' : 'Vencimento removido na Gestao.');
 }
 
 async function accountIdsByCategory(month: string, key: string): Promise<number[]> {
@@ -2150,7 +1834,7 @@ async function updateCategoryGroup(req: Request): Promise<number> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_categoria_alterada', 'gestao_categoria', null, `Categoria alterada em lote para ${newCategory}: ${ids.length} conta(s).`);
+  await logAudit(userId, 'gestao_categoria_alterada', 'gestao_categoria', null, `Categoria alterada em lote para ${newCategory}: ${ids.length} conta(s).`);
   return ids.length;
 }
 
@@ -2204,7 +1888,7 @@ async function cancelCategoryGroup(req: Request): Promise<number> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_categoria_cancelada', 'gestao_categoria', null, `Categoria cancelada em lote: ${changed} conta(s) aberta(s).`);
+  await logAudit(userId, 'gestao_categoria_cancelada', 'gestao_categoria', null, `Categoria cancelada em lote: ${changed} conta(s) aberta(s).`);
   return changed;
 }
 
@@ -2238,7 +1922,7 @@ async function archiveCanceledAccount(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_arquivada', 'gestao_conta', id, 'Conta cancelada excluida da tela da Gestao; historico preservado.');
+  await logAudit(userId, 'gestao_conta_arquivada', 'gestao_conta', id, 'Conta cancelada excluida da tela da Gestao; historico preservado.');
 }
 
 async function archiveCanceledCategoryGroup(req: Request): Promise<number> {
@@ -2268,7 +1952,7 @@ async function archiveCanceledCategoryGroup(req: Request): Promise<number> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_arquivada_categoria', 'gestao_categoria', null, `Categoria teve ${changed} conta(s) cancelada(s) excluida(s) da tela.`);
+  await logAudit(userId, 'gestao_conta_arquivada_categoria', 'gestao_categoria', null, `Categoria teve ${changed} conta(s) cancelada(s) excluida(s) da tela.`);
   return changed;
 }
 
@@ -2350,7 +2034,7 @@ async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_repetida', 'gestao_conta', newAccountId, `Conta repetida para ${monthLabel(targetMonth)} na Gestao.`);
+  await logAudit(userId, 'gestao_conta_repetida', 'gestao_conta', newAccountId, `Conta repetida para ${monthLabel(targetMonth)} na Gestao.`);
   return { accountId: newAccountId, month: targetMonth, created };
 }
 
@@ -2382,7 +2066,7 @@ async function toggleRepeatNextMonth(req: Request): Promise<boolean> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_recorrencia_desativada', 'gestao_conta', id, 'Recorrencia da Gestao desativada.');
+  await logAudit(userId, 'gestao_recorrencia_desativada', 'gestao_conta', id, 'Recorrencia da Gestao desativada.');
   return false;
 }
 
@@ -2405,7 +2089,7 @@ async function reopenAccount(req: Request): Promise<void> {
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_reaberta', 'gestao_conta', id, 'Conta reaberta para ajuste na Gestao.');
+  await logAudit(userId, 'gestao_conta_reaberta', 'gestao_conta', id, 'Conta reaberta para ajuste na Gestao.');
 }
 
 async function setStatus(req: Request, status: 'pendente' | 'cancelado'): Promise<void> {
@@ -2452,7 +2136,7 @@ async function setStatus(req: Request, status: 'pendente' | 'cancelado'): Promis
   } finally {
     client.release();
   }
-  await logMysql(userId, 'gestao_conta_status', 'gestao_conta', id, `Conta marcada como ${status}.`);
+  await logAudit(userId, 'gestao_conta_status', 'gestao_conta', id, `Conta marcada como ${status}.`);
 }
 
 async function monthSummary(month: string) {
@@ -2745,7 +2429,7 @@ async function addNotepadNote(req: Request): Promise<void> {
     'INSERT INTO gestao_notepad_notes (body, created_by) VALUES ($1, $2)',
     [body, userId],
   );
-  await logMysql(userId, 'gestao_bloco_nota_criado', 'gestao_nota', null, 'Nota da Gestao criada.');
+  await logAudit(userId, 'gestao_bloco_nota_criado', 'gestao_nota', null, 'Nota da Gestao criada.');
 }
 
 async function updateNotepadNote(req: Request): Promise<void> {
@@ -2759,7 +2443,7 @@ async function updateNotepadNote(req: Request): Promise<void> {
     [body, id],
   );
   if (!result.rowCount) throw new Error('Nota nao encontrada.');
-  await logMysql(userId, 'gestao_bloco_nota_editado', 'gestao_nota', id, 'Nota da Gestao editada.');
+  await logAudit(userId, 'gestao_bloco_nota_editado', 'gestao_nota', id, 'Nota da Gestao editada.');
 }
 
 async function deleteNotepadNote(req: Request): Promise<void> {
@@ -2771,7 +2455,7 @@ async function deleteNotepadNote(req: Request): Promise<void> {
     [userId, id],
   );
   if (!result.rowCount) throw new Error('Nota nao encontrada.');
-  await logMysql(userId, 'gestao_bloco_nota_apagado', 'gestao_nota', id, 'Nota da Gestao apagada.');
+  await logAudit(userId, 'gestao_bloco_nota_apagado', 'gestao_nota', id, 'Nota da Gestao apagada.');
 }
 
 async function updateMonthlyOrder(req: Request): Promise<void> {
@@ -2815,7 +2499,7 @@ async function updateMonthlyOrder(req: Request): Promise<void> {
     client.release();
   }
 
-  await logMysql(userId, 'gestao_mensal_ordem_atualizada', 'gestao', null, `Ordem mensal atualizada em ${selectedMonth}.`);
+  await logAudit(userId, 'gestao_mensal_ordem_atualizada', 'gestao', null, `Ordem mensal atualizada em ${selectedMonth}.`);
 }
 
 function renderAccount(req: Request, account: RenderAccount, selectedMonth: string, options: { monthly?: boolean } = {}): string {
@@ -3472,18 +3156,6 @@ app.use(BASE_PATH, express.static(path.join(rootDir, 'public'), {
 
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');
-  let mysqlReachable = false;
-  if (AUTH_PROVIDER === 'mysql') {
-    await mysqlPool.query('SELECT 1');
-    mysqlReachable = true;
-  } else if (MYSQL_AUTH_FALLBACK_ENABLED) {
-    try {
-      await mysqlPool.query('SELECT 1');
-      mysqlReachable = true;
-    } catch {
-      mysqlReachable = false;
-    }
-  }
   const auth = await coreAuthHealth();
   res.json({
     ok: true,
@@ -3491,9 +3163,9 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
     version: SERVICE_VERSION,
     runtime: 'node22-typescript',
     database: 'postgres',
-    mysql_auth: AUTH_PROVIDER === 'mysql',
-    mysql_auth_fallback: MYSQL_AUTH_FALLBACK_ENABLED,
-    mysql_reachable: mysqlReachable,
+    mysql_auth: false,
+    mysql_auth_fallback: false,
+    mysql_reachable: false,
     auth,
     base_path: BASE_PATH,
   });
@@ -3587,11 +3259,10 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const user = await authenticate(username, password);
   if (!user) {
     registerLoginFailure(req);
-    await logMysql(null, 'login_gestao_falha', 'user', null, `Tentativa de login Gestao Node falhou para usuario: ${username}`);
+    await logAudit(null, 'login_gestao_falha', 'user', null, `Tentativa de login Gestao Node falhou para usuario: ${username}`);
     return res.status(401).type('html').send(renderLogin(req, 'Usuario, senha ou permissao incorretos.'));
   }
 
-  if (AUTH_PROVIDER === 'mysql') void shadowCoreAuth(username, password, user);
   const returnTo = safeGestaoReturnPath(req.session.returnTo) || `${BASE_PATH}/`;
   clearLoginRateLimit(req);
   req.session.regenerate((error) => {
@@ -3601,7 +3272,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     }
     req.session.user = user;
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
-    void logMysql(user.id, 'login_gestao', 'user', user.id, 'Login Gestao Node realizado.');
+    void logAudit(user.id, 'login_gestao', 'user', user.id, 'Login Gestao Node realizado.');
     res.redirect(returnTo);
   });
 }));
@@ -3716,18 +3387,8 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 async function start() {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
-  if (CORE_AUTH_REQUIRED) {
-    await withRetry('core-postgres', () => corePgPool?.query('SELECT 1') || Promise.reject(new Error('core auth disabled')));
-  }
-  if (AUTH_PROVIDER === 'mysql') {
-    await withRetry('mysql', () => mysqlPool.query('SELECT 1'));
-  }
+  await withRetry('core-postgres', () => corePgPool.query('SELECT 1'));
   await ensureSchema();
-  try {
-    await importMysqlGestaoOnce();
-  } catch (error) {
-    console.warn('[gestao] mysql legacy import skipped', error);
-  }
   app.listen(PORT, () => {
     console.log(`[gestao] listening on ${PORT}${BASE_PATH}`);
   });

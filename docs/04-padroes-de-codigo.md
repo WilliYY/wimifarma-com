@@ -88,7 +88,7 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - Manter CSS/JS do modulo dentro da propria pasta.
 - Uploads de novos modulos devem validar erro, tamanho, MIME real por imagem, extensao controlada, dimensoes minimas/maximas, nome aleatorio e pasta com execucao de script bloqueada.
 - Em modulos administrativos manuais, manter dados principais e itens/pagamentos com total derivado, status reversivel e historico preservado.
-- Em `apps/gestao`, salvar dinheiro em centavos inteiros, usar queries parametrizadas, criar indices por padrao de acesso, manter sessoes em Postgres e evitar dependencia direta de tabelas MySQL fora de `wf_users`/`wf_logs`/importacao legado. Em `apps/pedidos`, manter dados, sessoes e auditoria em Postgres/core sem dependencia MySQL.
+- Em `apps/gestao`, salvar dinheiro em centavos inteiros, usar queries parametrizadas, criar indices por padrao de acesso, manter sessoes em Postgres e nao reintroduzir `mysql2`, fallback `wf_users`, espelho `wf_logs` ou importacao MySQL sem rollback planejado. Em `apps/pedidos`, manter dados, sessoes e auditoria em Postgres/core sem dependencia MySQL.
 - Em `apps/cashback`, salvar dinheiro em centavos inteiros, percentual em basis points, usar transacao para resgate, manter `legacy_mysql_id`, preservar rotas PHP antigas e nao deixar exportacao CSV sair em centavos crus.
 - Em `apps/tarefa`, preservar a interface visual, status/prioridades existentes, CSRF, sessao `WFTAREFA`, health/badge e importacao idempotente de `wf_tarefas`.
 - Em `apps/codigos`, preservar a interface visual, autosave, grupos EAN, CSRF, sessao `WFCODIGOS`, health e importacao idempotente de `wf_codigos_*`.

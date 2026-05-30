@@ -64,10 +64,10 @@ $modules = @(
         Module = 'Gestao'
         Path = 'apps/gestao'
         Current = 'Node.js + TypeScript + Express + Postgres + core auth'
-        Legacy = 'mysql2 para rollback opt-in de login, wf_logs e importacao legada'
+        Legacy = 'sem dependencia MySQL no app; rollback por restauracao'
         Target = 'Node.js + TypeScript + Postgres puro'
-        Priority = '1 - remover legado restante'
-        Next = 'Manter GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=false e migrar wf_logs/importacao legada para core_audit_logs.'
+        Priority = 'moderno'
+        Next = 'Validar /gestao/health, login, contas, pagamentos, Pedidos vinculados e Miauby sem reintroduzir mysql2.'
     },
     @{
         Module = 'Pedidos'

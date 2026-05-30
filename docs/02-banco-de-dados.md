@@ -75,7 +75,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao, Pedidos e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Gestao, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao, Gestao, Pedidos e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -135,7 +135,7 @@ Criadas por `apps/gestao/src/server.ts`:
 - `pedidos_confirmed_orders`: pedidos que ja tiveram chegada confirmada, com `lifecycle` `confirmado`, `historico` ou `cancelado`, datas de confirmacao/finalizacao e usuario responsavel por cada etapa.
 - `gestao_supplier_orders`: tabela legada de pedidos criados antes da separacao; fica preservada como compatibilidade/fonte de migracao para `pedidos_orders` e `pedidos_confirmed_orders`, nao como fonte nova da tela.
 
-A Gestao autentica primeiro no core `core_users`, grava auditoria curta em `core_audit_logs`, espelha resumo temporario em `wf_logs` e usa `wf_users` como fallback apenas quando `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true` for ligado explicitamente. Tambem importa uma vez dados legados `gestao_*` do MySQL quando essas tabelas existirem. Pedidos usa o mesmo core como login unico, registra auditoria em `core_audit_logs` e `gestao_audit_events`, e nao escreve mais `wf_logs`. O dinheiro oficial da Gestao/Pedidos no Postgres usa centavos inteiros, nao decimal flutuante.
+A Gestao autentica somente no core `core_users`, grava auditoria curta em `core_audit_logs` e eventos de dominio em `gestao_audit_events`; desde 2026-05-30 nao espelha `wf_logs`, nao usa `wf_users`, nao importa MySQL em runtime e nao possui `mysql2`. Pedidos usa o mesmo core como login unico, registra auditoria em `core_audit_logs` e `gestao_audit_events`, e nao escreve mais `wf_logs`. O dinheiro oficial da Gestao/Pedidos no Postgres usa centavos inteiros, nao decimal flutuante.
 
 ## Tabelas da Tarefa em Postgres
 
@@ -314,7 +314,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Pagamentos vinculados a `gestao_account_payments.item_id` tambem respeitam o saldo geral da conta para nao duplicar pagamento quando ja existe pagamento geral antigo.
 - Cancelar fatura, lancamento ou pagamento deve marcar status/cancelamento, nao apagar fisicamente. Pagamentos cancelados nao contam no total pago do mes.
 - O botao de quitacao da Gestao deve registrar somente o saldo restante como novo pagamento final, preservando no extrato os pagamentos anteriores e qualquer juros/adicao posterior.
-- A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events` e `wf_logs`, preservando itens e pagamentos lancados. Quando o operador "exclui" uma conta cancelada, o sistema apenas preenche `archived_at`/`archived_by` para tirar da tela e dos totais visiveis, mantendo a trilha no Postgres.
+- A Gestao nao deve apagar fisicamente contas; cancelamento ou reabertura muda status e registra `gestao_audit_events`/`core_audit_logs`, preservando itens e pagamentos lancados. Quando o operador "exclui" uma conta cancelada, o sistema apenas preenche `archived_at`/`archived_by` para tirar da tela e dos totais visiveis, mantendo a trilha no Postgres.
 - Categoria da Gestao e texto livre, mas a tela agrupa por chave normalizada apenas na aplicacao: remove acentos, ignora maiusculas/minusculas e junta espacos/pontuacao. O texto original da categoria continua preservado em `gestao_accounts.category`; `aluguel`, `Aluguel` e `ALUGUEL` aparecem juntos, enquanto `boleto agua` e `boleto energia` continuam separados.
 - Vencimento (`due_at`) e independente da competencia mensal e de `paid_at`; ele serve para ordenar urgencia e pode ser alterado ou removido sem recalcular o valor da conta.
 - Repetir uma conta para o mes seguinte cria ou garante de forma idempotente novo registro em `gestao_accounts` com `status='pendente'`, nova `generated_at`, mesmos itens ativos em `gestao_account_items`, vencimento avancado em um mes quando houver `due_at`, nenhum pagamento em `gestao_account_payments` e `repeated_from_account_id` apontando para a origem; desligar o ciclo muda `repeat_next_month=false` sem apagar copia ja criada. A ordenacao manual do painel Mensal fica em `gestao_accounts.monthly_sort_order`, atualizada apenas por contas da competencia atual com `repeat_next_month=true`, sem alterar valor, status, itens ou pagamentos.
@@ -344,7 +344,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Dois bancos separados: WordPress em `wimifarma_wp`; apps internos em `wimifarma_app`.
 - A Cotacao V2 adiciona Postgres separado (`wimifarma_cotacao`) para reduzir risco de remendos no MySQL/PHP antigo e permitir um motor mais proximo de planilha colaborativa.
 - A Cotacao PHP antiga foi removida do repositorio em 2026-05-14; as tabelas `cotacao_*` em MySQL ficam apenas como legado historico/dados antigos, enquanto a planilha oficial usa `cotacao_v2_*` no Postgres.
-- A Gestao adiciona Postgres separado (`wimifarma_gestao`) para contas administrativas criticas, pagamentos parciais, auditoria e sessoes; as tabelas MySQL `gestao_*` ficam como legado/importacao.
+- A Gestao adiciona Postgres separado (`wimifarma_gestao`) para contas administrativas criticas, pagamentos parciais, auditoria e sessoes; as tabelas MySQL `gestao_*` ficam como legado historico/backup fora do runtime do app.
 - O volume `mysql/` fica fora do Git.
 - O volume `cotacao-data/` fica fora do Git.
 - O volume `gestao-data/` fica fora do Git.

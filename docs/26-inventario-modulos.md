@@ -284,7 +284,7 @@ Concluido em 2026-05-30: caminho `mysql2` dormente removido do Cashback. Proxima
 - Proxy Apache: `docker/php/Dockerfile` envia `/gestao/` para `wimifarma-gestao-app:3200/gestao/`.
 - App oficial: `apps/gestao`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres `wimifarma_gestao`.
-- MySQL existe apenas para importacao legado, fallback opt-in de auth e espelho curto de `wf_logs` quando explicitamente ligado.
+- Desde 2026-05-30, nao ha dependencia MySQL no app: sem `mysql2`, sem importador legado, sem fallback `wf_users`, sem espelho `wf_logs`, sem `depends_on` de MySQL e sem variaveis `MYSQL_*` no servico.
 - A URL antiga `/gestao/pedidos` redireciona para `/pedidos/`; Pedidos nao deve voltar a ser subview da Gestao.
 
 ### Telas e endpoints
@@ -292,7 +292,7 @@ Concluido em 2026-05-30: caminho `mysql2` dormente removido do Cashback. Proxima
 - `/gestao/login.php`: login.
 - `/gestao/` e `/gestao/index.php`: tela administrativa de contas, itens, pagamentos, busca e painel mensal.
 - `/gestao/logout.php`: encerra sessao.
-- `/gestao/health`: health com auth, Postgres e estado do fallback MySQL.
+- `/gestao/health`: health com auth core unico e Postgres.
 - `GET /gestao/api/internal/summary`: resumo interno para Miauby/rotinas.
 - `POST /gestao/api/internal/accounts`: criacao interna tokenizada de conta a pagar pelo Miauby.
 - `POST /gestao/api/monthly-order`: ordenacao manual do painel mensal.
@@ -301,9 +301,9 @@ Concluido em 2026-05-30: caminho `mysql2` dormente removido do Cashback. Proxima
 ### Permissoes e sessao
 
 - Sessao propria `WFGESTAO`.
-- Login oficial por `core_users` com `GESTAO_AUTH_PROVIDER=core`.
+- Login oficial e unico por `core_users`.
 - Permissao operacional restrita a `adm`, role `admin` ou role `gerente`.
-- Fallback MySQL so deve ligar com `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`.
+- Nao ha fallback MySQL no codigo atual; rollback MySQL exige restaurar commit/imagem anterior e backup/importacao validada.
 - Escritas de tela usam CSRF.
 - Endpoints internos exigem token por header interno, incluindo `X-Miauw-Internal-Token` ou token especifico da Gestao.
 
@@ -314,8 +314,7 @@ Legado/rollback, nao fonte principal:
 - `gestao_contas`;
 - `gestao_conta_itens`;
 - `gestao_conta_pagamentos`;
-- `wf_users`, apenas se fallback de auth for ligado;
-- `wf_logs`, apenas espelho/compatibilidade enquanto existir.
+- `wf_users`/`wf_logs` ficam apenas como historico/compatibilidade do MySQL legado, fora do runtime da Gestao.
 
 ### Tabelas Postgres oficiais
 
@@ -365,7 +364,7 @@ Legado/rollback, nao fonte principal:
 
 ### Proxima acao segura
 
-Observar `GESTAO_AUTH_PROVIDER=core` com fallback desligado; depois remover dependencia `mysql2`, importacao antiga e espelho de `wf_logs` somente apos backup e comparacao de contas/itens/pagamentos.
+Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_users`, espelho `wf_logs` e envs `GESTAO_AUTH_*` removidos da Gestao. Proxima acao e validar `/gestao/health`, login, contas, itens, pagamentos, Pedidos vinculados e comando Miauby no VPS.
 
 ## Pedidos
 
@@ -999,6 +998,6 @@ Inventarios detalhados ja registrados neste documento:
 
 Proxima rodada segura:
 
-1. Validar no VPS as flags legadas restantes de Gestao, Tarefa, XP e Codigos antes de remover `mysql2`.
+1. Validar no VPS a Gestao sem `mysql2`/fallback/espelho e as flags legadas restantes de Tarefa, XP e Codigos antes de remover `mysql2` nesses modulos.
 2. Iniciar `docs/28-miauby-migracao.md` como trilha oficial para criar `wimifarma_miauby` e `apps/miauby` sem quebrar `/miauw/`.
 3. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.

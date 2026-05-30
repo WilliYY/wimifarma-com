@@ -172,9 +172,9 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Pedidos e Cashback usam somente `core_users`; Gestao, Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos e Cashback usam somente `core_users`; Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
-Gestao usa `GESTAO_AUTH_PROVIDER=core` por padrao. O fallback de login em `wf_users` fica desligado e so deve ser ligado como rollback temporario com `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`. Para comparar um ambiente ainda em MySQL antes do corte, ligar `GESTAO_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
+Gestao usa somente `core_users` desde 2026-05-30. O servico nao possui mais `GESTAO_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2`, espelho `wf_logs` nem variaveis `MYSQL_*` no Compose; `/gestao/health` deve mostrar `auth.provider=core`, `mysql_auth=false`, `mysql_auth_fallback=false` e `mysql_reachable=false`.
 
 Pedidos usa somente `core_users` e Postgres. O servico nao possui mais `PEDIDOS_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2` nem variaveis `MYSQL_*` no Compose; `/pedidos/health` deve mostrar `auth.provider=core`, `mysql_dependency=false`, `mysql_auth=false` e `mysql_auth_fallback=false`.
 
@@ -370,7 +370,7 @@ curl.exe -sS http://127.0.0.1:3002/gestao/health
 docker exec wimifarma-gestao-db psql -U wimifarma_gestao -d wimifarma_gestao -c "\dt"
 ```
 
-A Gestao oficial usa `apps/gestao` por proxy Apache em `/gestao/`. O MySQL continua sendo usado para `wf_users`, `wf_logs` e importacao unica do legado, mas contas novas ficam no Postgres `wimifarma_gestao`.
+A Gestao oficial usa `apps/gestao` por proxy Apache em `/gestao/`. O app usa Postgres `wimifarma_gestao` e core `core_users` sem abrir conexao MySQL; `source_mysql_id` fica apenas como referencia historica importada.
 
 ## Local - Miauby evals
 

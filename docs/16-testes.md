@@ -33,7 +33,7 @@ Rotas de smoke test:
 - `/tarefa/health` deve responder JSON 200 quando o servico de Tarefa e seu Postgres estiverem ativos
 - `/tarefa/badge.php` deve responder JSON sem segredo com a quantidade de tarefas abertas
 - `/gestao/login.php`
-- `/gestao/health` deve mostrar `auth.provider=core` quando `GESTAO_AUTH_PROVIDER=core`, com `coreReachable=true` apos o migrador do core
+- `/gestao/health` deve mostrar `auth.provider=core`, `coreReachable=true`, `mysql_auth=false`, `mysql_auth_fallback=false` e `mysql_reachable=false`
 - `/pedidos/` deve exigir sessao e carregar o fluxo visual de pedidos quando autenticado
 - `/pedidos/health` deve responder JSON 200 quando o servico de Pedidos estiver ativo e mostrar `auth.provider=core`, `mysql_dependency=false`, `mysql_auth=false` e `mysql_auth_fallback=false`
 - `/pedidos/api/badge` deve responder JSON sem segredo com a quantidade total de pedidos ainda em `Aguardando chegada`

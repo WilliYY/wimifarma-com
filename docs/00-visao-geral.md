@@ -87,7 +87,7 @@ Rotas principais:
 - O Nginx Proxy Manager deve encaminhar o dominio publico para `wimifarma-com-web:80`, nao para a porta de tunel.
 - A Cotacao PHP antiga foi removida; a fonte oficial de `/cotacao/` e `apps/cotacao`.
 - Em 2026-05-29, legados comprovadamente inativos foram movidos para `site/_legacy-disabled/2026-05-29/`; detalhes e cuidados ficam em `docs/27-limpeza-legado.md`.
-- A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; o login principal usa o core Postgres, e o MySQL continua apenas como fallback temporario, logs/espelho e legado importado.
+- A Gestao critica foi separada em `apps/gestao` com Node.js, TypeScript e Postgres dedicado; desde 2026-05-30 o login usa somente o core Postgres, com auditoria em Postgres e sem `mysql2`, fallback MySQL ou espelho `wf_logs`.
 - O XP foi migrado para `apps/xp` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets/uploads de `site/xp` e rollback por flags legadas.
 - Codigos foi migrado para `apps/codigos` com Node.js, TypeScript e Postgres dedicado, mantendo somente frontend/assets de `site/codigos` e rollback por flags legadas.
 - Financeiro foi cortado para `apps/financeiro` com Node.js, TypeScript e Postgres dedicado. A paridade com MySQL foi validada e o espelho/import legado fica desligado por padrao; MySQL `financeiro_*` permanece apenas como rollback manual.

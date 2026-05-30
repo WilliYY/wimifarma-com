@@ -68,7 +68,7 @@ count_refs() {
 
 rows=(
   "Cotacao|apps/cotacao|Node.js + Express + Postgres/Redis + core auth|sem dependencia MySQL no app|evoluir TypeScript em janela segura|moderno"
-  "Gestao|apps/gestao|Node.js + TypeScript + Postgres + core auth|mysql2 rollback opt-in login/log/importacao|Postgres puro + core auth|1"
+  "Gestao|apps/gestao|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth|moderno"
     "Pedidos|apps/pedidos|Node.js + TypeScript + Postgres + core auth|sem dependencia MySQL no app|manter health/auditoria e rotinas n8n/Miauby|moderno"
   "Tarefa|apps/tarefa|Node.js + TypeScript + Postgres + core auth|MySQL desligado por padrao; rollback manual|Postgres puro + core auth|moderno"
   "Codigos|site/codigos;apps/codigos|Node.js + TypeScript + Postgres|MySQL desligado por padrao; rollback manual|Postgres puro + core auth/auditoria|moderno"
@@ -97,7 +97,7 @@ done
 cat <<'EOF'
 
 Proximos passos recomendados:
-- Observar Gestao com core auth e fallback MySQL desligado por default; Cotacao e Pedidos ja usam core auth sem MySQL.
+- Validar Gestao com core auth unico, sem mysql2/fallback/espelho; Cotacao e Pedidos ja usam core auth sem MySQL.
 - Validar Tarefa com core auth default e desligar legado MySQL de dados por flags apos paridade.
 - Observar XP e Codigos em /xp/ e /codigos/, validar Miauby por CODIGOS_INTERNAL_TOKEN e desligar flags legadas depois de paridade estavel.
 - Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.

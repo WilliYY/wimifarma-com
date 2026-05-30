@@ -44,7 +44,7 @@ O script mostra:
 | Modulo | Estado atual | Legado principal | Alvo recomendado | Prioridade |
 | --- | --- | --- | --- | --- |
 | Cotacao | Node.js + Express + Postgres/Redis + core auth | sem dependencia MySQL no app | evoluir TypeScript quando houver janela segura | moderno |
-| Gestao | Node.js + TypeScript + Postgres + core auth | `mysql2` para rollback opt-in de login, log e importacao | Postgres puro + core auth/auditoria | 1 |
+| Gestao | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Pedidos | Node.js + TypeScript + Postgres da Gestao + core auth | sem dependencia MySQL no app | manter health/auditoria e validar rotinas n8n/Miauby | moderno |
 | Tarefa | Node.js + TypeScript + Postgres + core auth | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 2 em corte |
 | Codigos | Node.js + TypeScript + Postgres | MySQL legado opcional por flags de rollback/import/log | Postgres puro + core auth/auditoria | 3 em corte |
@@ -59,8 +59,8 @@ O script mostra:
 
 ## Ordem segura
 
-1. Observar Gestao com `core_users` como login padrao e fallback MySQL desligado; Cotacao e Pedidos ja usam apenas `core_users`.
-2. Manter rollback por `.env` onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos nao tem mais fallback MySQL no codigo.
+1. Cotacao, Gestao, Pedidos e Cashback ja usam apenas `core_users`, sem fallback MySQL no codigo.
+2. Manter rollback por `.env` onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos e Gestao nao tem mais fallback MySQL no codigo.
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa com `TAREFA_AUTH_PROVIDER=core` como default e desligar legado MySQL de dados por flags depois de paridade.
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
@@ -122,6 +122,15 @@ Cashback foi cortado para `apps/cashback`:
 - endpoints internos tokenizados para resumo/status por `CASHBACK_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`;
 - sem `mysql2`, flags legadas de Cashback, importador, espelho ou fallback MySQL desde 2026-05-30; rollback MySQL exige restaurar commit/imagem anterior e backup.
 
+Gestao esta cortada em `apps/gestao`:
+
+- banco/schema alvo `wimifarma_gestao`;
+- tabelas `gestao_accounts`, `gestao_account_items`, `gestao_account_payments`, `gestao_audit_events`, `gestao_notepad_notes`, `gestao_supplier_orders`, `gestao_schema_migrations` e `gestao_sessions`;
+- proxy Apache oficial em `/gestao/`;
+- login unico por `core_users`, restrito a `adm`, `admin` ou `gerente`;
+- auditoria em `gestao_audit_events` e `core_audit_logs`;
+- sem `mysql2`, flags `GESTAO_AUTH_*`, importador, espelho `wf_logs`, fallback `wf_users`, `depends_on` de MySQL ou variaveis `MYSQL_*` desde 2026-05-30; rollback MySQL exige restaurar commit/imagem anterior e backup.
+
 Usuarios foi criado em `apps/usuarios`:
 
 - rota/proxy oficial em `/usuarios/`;
@@ -132,7 +141,7 @@ Usuarios foi criado em `apps/usuarios`:
 - cria logins core novos com `legacy_mysql_id` negativo para nao conflitar com usuarios importados de `wf_users`;
 - consulta `xp_employees` para vinculo logico entre login e funcionario XP.
 
-A proxima fatia segura e validar Cashback no VPS com `/cashback/health`, login, contagens importadas, saldos, compras, resgates, exportacao e mensagens. Em paralelo, validar Usuarios com `/usuarios/health`, login admin, criacao/desativacao controlada, vinculo XP e auditoria. Depois, aplicar `core_user_module_permissions` em cada modulo existente por etapa, sem bloquear todos de uma vez.
+A proxima fatia segura e validar Gestao e Cashback no VPS com `/gestao/health`, `/cashback/health`, login, fluxos principais e logs. Em paralelo, validar Usuarios com `/usuarios/health`, login admin, criacao/desativacao controlada, vinculo XP e auditoria. Depois, aplicar `core_user_module_permissions` em cada modulo existente por etapa, sem bloquear todos de uma vez.
 
 ## Miauby - proxima migracao grande
 

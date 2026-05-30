@@ -36,7 +36,7 @@ Rotas de login:
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Pedidos e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
+Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
 
 Arquivos envolvidos:
 
@@ -338,7 +338,7 @@ Regras a preservar:
 - os cards de conta ficam compactos por padrao e podem ser abertos individualmente pelo botao `Abrir`, mantendo a lista fina para caber mais contas por tela; dentro da conta, vencimento, pagamentos, observacao, historico e ajustes/pagamento tambem ficam em blocos recolhidos para reduzir poluicao visual;
 - lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
 - o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
-- acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e/ou `core_audit_logs`; Pedidos nao espelha mais em `wf_logs`.
+- acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e/ou `core_audit_logs`; Gestao e Pedidos nao espelham mais em `wf_logs`.
 - o Miauby pode abrir a Gestao com o comando `gestao`/`abrir gestao` e preparar uma conta com ordens flexiveis como `gestao - titulo - valor - categoria`, `gestao - valor - titulo`, `gestao titulo valor` ou categoria antes/depois; se houver so nome + valor, a categoria vira `geral`, se faltar nome ou valor ele pergunta, e a gravacao so acontece depois de confirmacao humana pelo chat.
 
 Modulo `Pedidos` em `/pedidos/`:
