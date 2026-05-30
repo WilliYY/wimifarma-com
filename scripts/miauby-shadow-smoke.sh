@@ -6,7 +6,7 @@ CONTEXT_LIMIT="${2:-3}"
 
 cd "$(dirname "$0")/.."
 
-docker exec \
+docker exec -i \
   -e "MIAUBY_SMOKE_SAMPLE=${SAMPLE}" \
   -e "MIAUBY_SMOKE_CONTEXT_LIMIT=${CONTEXT_LIMIT}" \
   wimifarma-miauby-app \
