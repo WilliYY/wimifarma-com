@@ -52,7 +52,7 @@ O script mostra:
 | Financeiro | Node.js + TypeScript + Postgres oficial | MySQL legado desligado por padrao; rollback manual | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
 | Cashback | Node.js + TypeScript + Postgres + core auth | MySQL legado opcional por flags de importacao/espelho/log | Postgres puro + core auth/auditoria | 6 em corte |
-| Miauby interno | PHP + Node agent sombra + core auth | `miauw_*` em MySQL | Node agent + Postgres `wimifarma_miauw` | 7 |
+| Miauby interno | PHP + Node agent sombra + core auth | `miauw_*` em MySQL e prefixo tecnico legado | Node/TypeScript + Postgres `wimifarma_miauby`, com alias/fallback `miauw` ate corte | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
 | Home publica | PHP desacoplado do WordPress | PHP simples, sem banco direto | manter ou trocar depois | baixo |
 | WordPress | WordPress + MySQL | dependencia natural do WP | substituir/desacoplar se quiser zero MySQL | ultimo |
@@ -66,7 +66,7 @@ O script mostra:
 4. Observar XP e Codigos em `/xp/` e `/codigos/` com health, login e checks de paridade antes de desligar flags legadas.
 5. Observar Financeiro em `/financeiro/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir checksums por dia/tipo, Caixa, Relatorio, exportacao e contrato Pix CNPJ do Miauby.
 6. Observar Cashback em `/cashback/` sem espelho MySQL ativo; se houver rollback, religar flags/credenciais e repetir saldos por cliente, CSV, mensagens e autoteste.
-7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`.
+7. Migrar o Miauby interno em fases, junto do `apps/miauw-agent`, usando `Miauby` como nome canonico e mantendo `miauw` como compatibilidade tecnica ate validacao.
 8. Decidir se WordPress continua isolado em MySQL ou se o site publico sera substituido.
 
 ## Proxima fatia tecnica
@@ -134,3 +134,15 @@ Usuarios foi criado em `apps/usuarios`:
 - consulta `xp_employees` para vinculo logico entre login e funcionario XP.
 
 A proxima fatia segura e validar Cashback no VPS com `/cashback/health`, login, contagens importadas, saldos, compras, resgates, exportacao e mensagens. Em paralelo, validar Usuarios com `/usuarios/health`, login admin, criacao/desativacao controlada, vinculo XP e auditoria. Depois, aplicar `core_user_module_permissions` em cada modulo existente por etapa, sem bloquear todos de uma vez.
+
+## Miauby - proxima migracao grande
+
+O Miauby interno e o proximo modulo de maior risco porque ainda concentra conversa, treino, memorias, alertas, traces e parte das tools em PHP/MySQL. A migracao deve seguir `docs/28-miauby-migracao.md`:
+
+- nome de produto canonico: `Miauby`;
+- prefixo tecnico legado preservado: `miauw`;
+- alvo de banco: `wimifarma_miauby`, tabelas `miauby_*`;
+- alias futuro: `/miauby/`, sem remover `/miauw/` no primeiro corte;
+- env vars futuras `MIAUBY_*` com fallback para `MIAUW_*`;
+- Node/TypeScript primeiro em sombra, depois corte por usuario;
+- escrita forte sempre por confirmacao humana e endpoint interno do modulo dono.

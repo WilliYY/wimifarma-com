@@ -53,7 +53,7 @@ Legados MySQL que devem ser tratados como migracao/arquivo:
 
 ## Banco alvo recomendado
 
-Nao criar um unico banco gigante para tudo. Manter separacao por dominio:
+A meta operacional e todos os cards conversarem em uma unica plataforma de Postgres, usando `wimifarma_core` como eixo de usuarios, permissoes e auditoria. Isso nao deve virar um unico banco gigante e misturado: manter separacao por dominio reduz risco de bug, facilita rollback e deixa cada modulo dono das proprias regras.
 
 - `wimifarma_core`: autenticacao compartilhada, sessoes compartilhadas quando existirem, auditoria geral e rate limit de login.
 - `wimifarma_cashback`: clientes, compras, creditos, resgates e settings do Cashback.
@@ -61,7 +61,7 @@ Nao criar um unico banco gigante para tudo. Manter separacao por dominio:
 - `wimifarma_tarefa`: tarefas, auditoria e sessoes do modulo Tarefa.
 - `wimifarma_xp`: funcionarios, vendas XP e configuracoes.
 - `wimifarma_codigos`: itens de comissao diferente, blocos EAN, auditoria e sessoes do modulo Codigos.
-- `wimifarma_miauw`: chat, memoria, treino, alertas e traces do Miauby PHP.
+- `wimifarma_miauby`: chat, memoria, treino, alertas e traces do Miauby interno, com `miauw_*` tratado como prefixo tecnico legado durante a transicao.
 - manter `wimifarma_cotacao`, `wimifarma_gestao` e `wimifarma_miauw_whatsapp` como ja existem.
 
 Se a operacao preferir menos containers, esses schemas podem viver no mesmo servidor Postgres, mas com schemas/bancos separados e credenciais separadas por app.
@@ -107,6 +107,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 5. Migrar dados e motor do Miauby PHP
 
 - Migrar conversas, mensagens, memoria, treino, alertas e traces.
+- Criar o alvo novo como `wimifarma_miauby`/`miauby_*`, mantendo rotas/env/tabelas `miauw` como compatibilidade ate o corte validado.
 - Manter a memoria curta multicanal em `miauw_whatsapp_channel_events` como primeiro passo ja cortado para Postgres, removendo o fallback MySQL somente depois de observacao operacional.
 - Cuidar para nao copiar payload bruto, segredo, telefone completo ou stack trace que ja nao deveria existir.
 - Planejar corte junto com o `apps/miauw-agent`, porque parte do Miauby ja esta no Node.
@@ -135,7 +136,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 3. Tarefa, XP e Codigos: ja cortados para Node/Postgres e login core por default, com flags legadas de rollback de dados onde ainda existirem.
 4. Observar Codigos/XP e desligar flags legadas depois de paridade estavel e leitura interna do Miauby validada.
 5. Financeiro e Cashback: Node/Postgres oficiais com espelhos MySQL desligados por default desde 2026-05-29 apos paridade validada.
-6. Miauby PHP.
+6. Miauby PHP, seguindo `docs/28-miauby-migracao.md`.
 7. Decisao sobre WordPress.
 
 Essa ordem reduz risco porque remove primeiro a dependencia compartilhada (`wf_users`) e depois migra dominios cada vez mais sensiveis.

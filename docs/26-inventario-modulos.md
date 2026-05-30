@@ -276,14 +276,586 @@ Hoje estes arquivos PHP sao legado/fonte visual/fallback historico. A rota ofici
 
 Observar producao sem espelho MySQL. Se o objetivo for remover dependencia total de MySQL no codigo, fazer uma segunda limpeza removendo o caminho `mysql2` dormente depois de mais um ciclo de backup/observacao.
 
-## Miauw interno
+## Gestao
 
 ### Rota atual
 
-- Rota publica interna: `/miauw/`, servida por PHP em `site/miauw`.
+- Rota publica oficial: `/gestao/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/gestao/` para `wimifarma-gestao-app:3200/gestao/`.
+- App oficial: `apps/gestao`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres `wimifarma_gestao`.
+- MySQL existe apenas para importacao legado, fallback opt-in de auth e espelho curto de `wf_logs` quando explicitamente ligado.
+- A URL antiga `/gestao/pedidos` redireciona para `/pedidos/`; Pedidos nao deve voltar a ser subview da Gestao.
+
+### Telas e endpoints
+
+- `/gestao/login.php`: login.
+- `/gestao/` e `/gestao/index.php`: tela administrativa de contas, itens, pagamentos, busca e painel mensal.
+- `/gestao/logout.php`: encerra sessao.
+- `/gestao/health`: health com auth, Postgres e estado do fallback MySQL.
+- `GET /gestao/api/internal/summary`: resumo interno para Miauby/rotinas.
+- `POST /gestao/api/internal/accounts`: criacao interna tokenizada de conta a pagar pelo Miauby.
+- `POST /gestao/api/monthly-order`: ordenacao manual do painel mensal.
+- `GET /gestao/api/orders/badge`: compatibilidade de badge de pedidos.
+
+### Permissoes e sessao
+
+- Sessao propria `WFGESTAO`.
+- Login oficial por `core_users` com `GESTAO_AUTH_PROVIDER=core`.
+- Permissao operacional restrita a `adm`, role `admin` ou role `gerente`.
+- Fallback MySQL so deve ligar com `GESTAO_AUTH_MYSQL_FALLBACK_ENABLED=true`.
+- Escritas de tela usam CSRF.
+- Endpoints internos exigem token por header interno, incluindo `X-Miauw-Internal-Token` ou token especifico da Gestao.
+
+### Tabelas MySQL envolvidas
+
+Legado/rollback, nao fonte principal:
+
+- `gestao_contas`;
+- `gestao_conta_itens`;
+- `gestao_conta_pagamentos`;
+- `wf_users`, apenas se fallback de auth for ligado;
+- `wf_logs`, apenas espelho/compatibilidade enquanto existir.
+
+### Tabelas Postgres oficiais
+
+- `gestao_accounts`;
+- `gestao_account_items`;
+- `gestao_account_payments`;
+- `gestao_audit_events`;
+- `gestao_notepad_notes`;
+- `gestao_supplier_orders`;
+- `gestao_schema_migrations`;
+- tabela de sessao criada pelo store do Express.
+
+### Arquivos legados/relevantes
+
+- `apps/gestao/src/server.ts`;
+- `apps/gestao/public/styles.css`;
+- `apps/gestao/public/app.js`;
+- `apps/gestao/public/login-runner.js`;
+- `site/_legacy-disabled/2026-05-29/gestao-php/`, arquivo historico bloqueado.
+
+### Fluxos de escrita
+
+- Criar conta manual com titulo, categoria, competencia, itens e observacao.
+- Adicionar, editar, cancelar, reabrir e quitar itens.
+- Registrar e cancelar pagamentos parciais/totais.
+- Reabrir, cancelar, arquivar e marcar conta como paga.
+- Alterar vencimento, categoria, observacao e nome.
+- Repetir conta para mes seguinte e ordenar painel mensal.
+- Criar conta via Miauby por endpoint interno, com auditoria e confirmacao quando aplicavel.
+- Sincronizar status de contas vinculadas a Pedidos sem recategorizar boletos de pedidos.
+
+### Integracoes
+
+- Core auth e `core_audit_logs` em `wimifarma_core`.
+- Pedidos usa as tabelas da Gestao para boleto, parcelas e pagamentos.
+- Miauby interno cria/consulta contas por endpoint interno.
+- Financeiro/Miauby podem usar resumo para diagnosticos.
+- Home publica aponta `Gestao` para `/gestao/`.
+
+### Riscos
+
+- Gestao e Pedidos compartilham contas de boletos; uma mudanca em `gestao_accounts` pode quebrar pedidos.
+- Categoria `Boleto` de pedidos deve continuar protegida contra recategorizacao em lote.
+- Fallback MySQL prolongado pode gerar divergencia em logs/importacao.
+- Dinheiro precisa continuar em centavos inteiros.
+- Repeticao mensal e arquivamento devem preservar auditoria.
+
+### Proxima acao segura
+
+Observar `GESTAO_AUTH_PROVIDER=core` com fallback desligado; depois remover dependencia `mysql2`, importacao antiga e espelho de `wf_logs` somente apos backup e comparacao de contas/itens/pagamentos.
+
+## Pedidos
+
+### Rota atual
+
+- Rota publica oficial: `/pedidos/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/pedidos/` para `wimifarma-pedidos-app:3300/pedidos/`.
+- App oficial: `apps/pedidos`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres `wimifarma_gestao`, compartilhado com Gestao para contas de boleto.
+- Nao ha dependencia MySQL no app de Pedidos.
+
+### Telas e endpoints
+
+- `/pedidos/login.php`: login.
+- `/pedidos/` e `/pedidos/index.php`: tela de fornecedores, novo pedido, aguardando chegada, confirmados e historico.
+- `/pedidos/logout.php`: encerra sessao.
+- `/pedidos/health`: health com `mysql_dependency=false`.
+- `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.
+- `GET /pedidos/api/internal/arrival-summary`: lista pedidos aguardando chegada para Miauby WhatsApp/n8n.
+- `POST /pedidos/api/internal/confirm-arrival`: confirma chegada por titulo/fornecedor via automacao autorizada.
+
+### Permissoes e sessao
+
+- Sessao propria `WFPEDIDOS`.
+- Login oficial por `core_users`, sem fallback MySQL.
+- Permissao operacional restrita a `adm`, role `admin` ou role `gerente`.
+- Escritas de tela usam CSRF.
+- Endpoints internos exigem `PEDIDOS_INTERNAL_TOKEN` ou `X-Miauw-Internal-Token`.
+
+### Tabelas MySQL envolvidas
+
+- Nenhuma dependencia MySQL runtime no app de Pedidos.
+- Dados historicos antigos podem existir no MySQL por causa da Gestao antiga, mas nao sao fonte oficial do modulo.
+
+### Tabelas Postgres oficiais
+
+- `pedidos_orders`;
+- `pedidos_confirmed_orders`;
+- `gestao_accounts`;
+- `gestao_account_items`;
+- `gestao_account_payments`;
+- `gestao_audit_events`;
+- `pedidos_sessions`.
+
+### Arquivos legados/relevantes
+
+- `apps/pedidos/src/server.ts`;
+- `apps/pedidos/public/styles.css`;
+- `apps/pedidos/public/app.js`;
+- `apps/pedidos/public/login-runner.js`;
+- rota antiga `/gestao/pedidos` apenas redireciona para `/pedidos/`.
+
+### Fluxos de escrita
+
+- Criar pedido com fornecedor, parcelas, vencimentos, previsao de chegada, competencia, status inicial e observacao.
+- Criar pedido ja pago ou ja recebido, movendo para Confirmados/Historico conforme status.
+- Confirmar chegada, com movimento para Confirmados ou Historico se ja estava pago.
+- Editar fornecedor.
+- Adicionar parcela/valor, editar valor, remover valor da tela por arquivamento logico.
+- Registrar pagamento parcial/total e atualizar saldo.
+- Atualizar vencimento do boleto.
+- Arquivar pedido da tela mantendo historico e auditoria.
+- Confirmar chegada via Miauby/n8n apenas com token interno e titulo validado.
+
+### Integracoes
+
+- Home publica usa `/pedidos/api/badge`.
+- Gestao recebe contas, itens e pagamentos vinculados.
+- Miauby WhatsApp/n8n chama `arrival-summary` e `confirm-arrival` para rotina diaria de chegada.
+- Financeiro/Gestao consomem efeitos dos pagamentos por categoria `Boleto`.
+- Widget do Miauby aparece na tela.
+
+### Riscos
+
+- Contagem da home precisa refletir apenas `Aguardando chegada`.
+- Parcelas removidas nao podem apagar historico pago/auditado.
+- Confirmacao por automacao deve bater fornecedor/titulo com seguranca para evitar confirmar pedido errado.
+- Valores e saldos precisam continuar em centavos.
+- Mudancas em `gestao_account_items` afetam vencimento e resumo de boletos.
+
+### Proxima acao segura
+
+Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parcelas e sincronizacao com Gestao antes de qualquer limpeza em tabelas antigas da Gestao.
+
+## Tarefa
+
+### Rota atual
+
+- Rota publica oficial: `/tarefa/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/tarefa/` para `wimifarma-tarefa-app:3500/tarefa/`.
+- App oficial: `apps/tarefa`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres `wimifarma_tarefa`.
+- MySQL `wf_tarefas` fica apenas como importacao/espelho/log temporario quando flags legadas estiverem ligadas.
+
+### Telas e endpoints
+
+- `/tarefa/login.php`: login.
+- `/tarefa/` e `/tarefa/index.php`: tela de tarefas por prioridade/status.
+- `/tarefa/logout.php`: encerra sessao.
+- `/tarefa/health`: health com contagens Postgres/legado.
+- `/tarefa/api/badge` e `/tarefa/badge.php`: total de tarefas abertas para home.
+- `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios.
+
+### Permissoes e sessao
+
+- Sessao propria `WFTAREFA`.
+- Login oficial por `core_users` com `TAREFA_AUTH_PROVIDER=core`.
+- Rollback por MySQL existe com `TAREFA_AUTH_PROVIDER=mysql`.
+- Escritas de tela usam CSRF.
+- Endpoint interno de tarefa privada exige token interno.
+
+### Tabelas MySQL envolvidas
+
+Legado/rollback:
+
+- `wf_tarefas`;
+- `wf_users`, apenas se auth rollback for ligado;
+- `wf_logs`, se `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=true`.
+
+### Tabelas Postgres oficiais
+
+- `tarefa_tasks`;
+- `tarefa_audit_events`;
+- `tarefa_sessions`.
+
+### Arquivos legados/relevantes
+
+- `apps/tarefa/src/server.ts`;
+- `apps/tarefa/public/styles.css`;
+- `apps/tarefa/public/app.js`;
+- `apps/tarefa/public/login-runner.js`;
+- `site/tarefa`, legado/fonte visual/fallback historico.
+
+### Fluxos de escrita
+
+- Criar tarefa normal visivel para todos.
+- Criar tarefa privada para um usuario especifico via Usuarios.
+- Editar titulo, descricao e prioridade.
+- Concluir, reabrir ou cancelar tarefa.
+- Registrar auditoria em Postgres e, se flag ligada, espelhar no MySQL legado.
+
+### Integracoes
+
+- Home publica usa badge de tarefas abertas.
+- Usuarios delega tarefas privadas por endpoint interno.
+- Miauby cria tarefas por tool controlada.
+- Core auth centraliza login.
+
+### Riscos
+
+- Tarefa privada nao pode vazar para usuarios sem vinculo.
+- Desligar espelho MySQL antes de paridade pode perder rollback.
+- Badge da home deve continuar contando tarefas abertas corretas.
+- Escrita via Miauby precisa preservar autor e auditoria.
+
+### Proxima acao segura
+
+Validar `TAREFA_AUTH_PROVIDER=core`, tarefas privadas e badge; depois desligar `TAREFA_LEGACY_MYSQL_*` e remover `mysql2` em uma segunda etapa.
+
+## XP
+
+### Rota atual
+
+- Rota publica oficial: `/xp/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/xp/` para `wimifarma-xp-app:3600/xp/`.
+- App oficial: `apps/xp`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres `wimifarma_xp`.
+- MySQL `wf_xp_*` fica como importacao/espelho/log temporario por flags.
+
+### Telas e endpoints
+
+- `/xp/login.php`: login.
+- `/xp/` e `/xp/index.php`: trilha, ranking e configuracoes.
+- `/xp/logout.php`: encerra sessao.
+- `/xp/health`: health com Postgres/core/legado.
+- `/xp/internal/migration-status`: status de migracao.
+- `/xp/api/me/xp-card`: mini-card do XP do usuario logado para home/Usuarios.
+
+### Permissoes e sessao
+
+- Sessao propria `WFXP`.
+- Login oficial por `core_users` com `XP_AUTH_PROVIDER=core`.
+- Rollback por MySQL existe com `XP_AUTH_PROVIDER=mysql`.
+- Escritas de tela usam CSRF.
+- Cadastro/configuracao deve ficar restrito a operadores autorizados.
+
+### Tabelas MySQL envolvidas
+
+Legado/rollback:
+
+- `wf_xp_employees`;
+- `wf_xp_sales`;
+- `wf_xp_settings`;
+- `wf_users`, apenas se auth rollback for ligado;
+- `wf_logs`, se `XP_LEGACY_MYSQL_LOGS_ENABLED=true`.
+
+### Tabelas Postgres oficiais
+
+- `xp_employees`;
+- `xp_sales`;
+- `xp_settings`;
+- `xp_audit_events`;
+- `xp_sessions`.
+
+### Arquivos legados/relevantes
+
+- `apps/xp/src/server.ts`;
+- assets/uploads compartilhados de `site/xp`;
+- PHP antigo de XP arquivado em `site/_legacy-disabled/2026-05-29/xp-php/`.
+
+### Fluxos de escrita
+
+- Atualizar perfil/foto ADM.
+- Cadastrar funcionario com foto validada.
+- Editar/inativar funcionario.
+- Lancar venda, calcular XP e gravar observacao.
+- Cancelar lancamento de XP.
+- Atualizar configuracoes e renderizar trilha/ranking.
+- Expor mini-card vinculado por `core_user_xp_links`.
+
+### Integracoes
+
+- Usuarios vincula login a funcionario XP por `core_user_xp_links`.
+- Home publica consome `/xp/api/me/xp-card` quando existe sessao vinculada.
+- Miauby conhece o contexto de XP para motivacao operacional, sem inventar pontuacao.
+- Uploads de foto ficam preservados em caminho compartilhado.
+
+### Riscos
+
+- `system_key='adm'` e foto ADM sao especiais e nao devem ser excluidos sem regra propria.
+- XP precisa continuar inteiro e dinheiro em centavos.
+- Espelho MySQL ligado por muito tempo pode divergir.
+- Mini-card da home depende do vinculo correto usuario -> funcionario.
+
+### Proxima acao segura
+
+Validar ranking, lancamentos, fotos, mini-card e vinculos em Usuarios; depois desligar `XP_LEGACY_MYSQL_*` e remover dependencia `mysql2`.
+
+## Codigos
+
+### Rota atual
+
+- Rota publica oficial: `/codigos/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/codigos/` para `wimifarma-codigos-app:3700/codigos/`.
+- App oficial: `apps/codigos`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres `wimifarma_codigos`.
+- MySQL `wf_codigos_*` fica como importacao/espelho/log temporario por flags.
+
+### Telas e endpoints
+
+- `/codigos/login.php`: login.
+- `/codigos/` e `/codigos/index.php`: tela de codigos de comissao e blocos EAN.
+- `/codigos/logout.php`: encerra sessao.
+- `/codigos/health`: health com Postgres/core/legado.
+- `/codigos/api/internal/summary`: resumo interno tokenizado.
+- `/codigos/api/internal/search`: busca interna tokenizada para Miauby.
+- `/codigos/internal/migration-status`: status de migracao.
+- `/codigos/api.php`: compatibilidade de post do frontend.
+
+### Permissoes e sessao
+
+- Sessao propria `WFCODIGOS`.
+- Login oficial por `core_users` com `CODIGOS_AUTH_PROVIDER=core`.
+- Rollback por MySQL existe com `CODIGOS_AUTH_PROVIDER=mysql`.
+- Escritas de tela usam CSRF.
+- Endpoints internos exigem token por `X-Codigos-Internal-Token` ou `X-Miauw-Internal-Token`.
+
+### Tabelas MySQL envolvidas
+
+Legado/rollback:
+
+- `wf_codigos_comissao`;
+- `wf_codigos_blocos`;
+- `wf_users`, apenas se auth rollback for ligado;
+- `wf_logs`, se `CODIGOS_LEGACY_MYSQL_LOGS_ENABLED=true`.
+
+### Tabelas Postgres oficiais
+
+- `codigos_groups`;
+- `codigos_items`;
+- `codigos_audit_events`;
+- `codigos_sessions`.
+
+### Arquivos legados/relevantes
+
+- `apps/codigos/src/server.ts`;
+- `site/codigos/styles.css`;
+- `site/codigos/app.js`;
+- `site/codigos/login-runner.js`;
+- PHP antigo de Codigos arquivado em `site/_legacy-disabled/2026-05-29/codigos-php/`.
+
+### Fluxos de escrita
+
+- Criar bloco/grupo.
+- Criar, editar, apagar logicamente e reordenar codigo.
+- Apagar bloco e seus codigos por soft delete.
+- Espelhar criacao/edicao/remocao para MySQL apenas quando flag de mirror estiver ligada.
+- Auditoria oficial em `codigos_audit_events`.
+
+### Integracoes
+
+- Miauby interno consulta resumo/busca por endpoint interno tokenizado.
+- Core auth centraliza login.
+- Home publica aponta `Codigos` para `/codigos/`.
+
+### Riscos
+
+- Busca do Miauby deve usar Postgres oficial; fallback MySQL so durante rollback.
+- Reordenacao e exclusao de bloco precisam preservar dados para auditoria.
+- EAN/codigo/preco nao podem ser truncados visualmente nem no banco.
+- Espelho legado prolongado aumenta chance de divergencia.
+
+### Proxima acao segura
+
+Validar leitura do Miauby via token, busca, reordenacao e health; depois desligar `CODIGOS_LEGACY_MYSQL_*` e remover `mysql2`.
+
+## Usuarios
+
+### Rota atual
+
+- Rota publica oficial: `/usuarios/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/usuarios/` para `wimifarma-usuarios-app:3900/usuarios/`.
+- App oficial: `apps/usuarios`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres core `wimifarma_core`.
+- Consulta Postgres `wimifarma_xp` para vinculo e mini-card de XP.
+
+### Telas e endpoints
+
+- `/usuarios/login.php`: login admin.
+- `/usuarios/` e `/usuarios/index.php`: painel de usuarios, permissoes, XP, tarefas privadas, allowlist WhatsApp e auditoria.
+- `/usuarios/logout.php`: encerra sessao.
+- `/usuarios/health`: health do core e alcance do XP.
+- `/usuarios/api/me/xp-card`: mini-card XP do usuario logado.
+
+### Permissoes e sessao
+
+- Sessao propria do app Usuarios.
+- Login restrito a username `adm` ou role `admin`.
+- Escritas usam CSRF.
+- Novos usuarios recebem `legacy_mysql_id` negativo para nao conflitar com ids importados de `wf_users`.
+- Permissoes por modulo ficam em `core_user_module_permissions`.
+
+### Tabelas MySQL envolvidas
+
+- Nenhum MySQL operacional para usuarios novos.
+- `core_users.source='mysql:wf_users'` indica origem historica de usuario importado, nao dependencia runtime.
+
+### Tabelas Postgres oficiais
+
+- `core_users`;
+- `core_audit_logs`;
+- `core_login_rate_limits`;
+- `core_user_module_permissions`;
+- `core_user_xp_links`;
+- `core_user_audit_events`;
+- `core_user_whatsapp_links`;
+- tabela de sessao criada pelo store do Express.
+
+### Arquivos legados/relevantes
+
+- `apps/usuarios/src/server.ts`;
+- `apps/usuarios/public/styles.css`;
+- `apps/usuarios/public/login-runner.js`;
+- `apps/usuarios/public/assets/gato-hapy.gif`.
+
+### Fluxos de escrita
+
+- Criar usuario core.
+- Alterar role, senha, status e permissoes por modulo.
+- Desativar usuario.
+- Vincular/desvincular funcionario XP.
+- Criar tarefa privada para usuario especifico por endpoint interno do Tarefa.
+- Vincular/desvincular numeros do Miauby WhatsApp por ponte interna, sem gravar telefone cru no core.
+- Registrar auditoria central de alteracoes.
+
+### Integracoes
+
+- XP por `xp_employees` e `xp_sales`.
+- Tarefa por `/tarefa/api/internal/tasks/private`.
+- Miauby WhatsApp por `/miauw/whatsapp/internal/allowlist/link-user` e unlink.
+- Home publica e modulos podem usar permissoes por modulo em etapa futura.
+
+### Riscos
+
+- Permissao por modulo ainda precisa ser aplicada gradualmente em cada app; nao bloquear todos de uma vez.
+- Usuario admin/adm nao deve ficar sem acesso a Usuarios.
+- Telefones precisam continuar mascarados/hash no core.
+- Tarefas privadas precisam filtrar por usuario no modulo Tarefa.
+
+### Proxima acao segura
+
+Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist; depois aplicar enforcement de `core_user_module_permissions` modulo por modulo.
+
+## Cotacao
+
+### Rota atual
+
+- Rota publica oficial: `/cotacao/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/cotacao/` para `wimifarma-cotacao-app:3000/cotacao/`.
+- App oficial: `apps/cotacao`, Node.js 22 + Express + Socket.IO.
+- Fonte oficial: Postgres `wimifarma_cotacao` e Redis `wimifarma-cotacao-redis`.
+- Nao ha dependencia MySQL no app; a migracao futura e para TypeScript, nao para trocar banco.
+
+### Telas e endpoints
+
+- `/cotacao/login.php`: login.
+- `/cotacao/` e `/cotacao/index.php`: planilha colaborativa.
+- `/cotacao/logout.php`: encerra sessao.
+- `/cotacao/health`: health com Postgres, Redis e auth.
+- `/cotacao/api/bootstrap`: carga inicial da planilha.
+- `/cotacao/api/events`: delta de eventos.
+- `/cotacao/api/cells/:rowId/:columnKey/history`: historico de celula.
+- APIs de linhas, colunas, estilos, regras, Google Sheets, backups e diagnosticos.
+- `GET /cotacao/api/internal/search`: busca interna tokenizada para Miauby.
+- `POST /cotacao/api/internal/encomendas`: criacao interna tokenizada de encomenda/urgencia.
+- Socket.IO em `/cotacao/socket.io`.
+
+### Permissoes e sessao
+
+- Sessao em Redis com prefixo `cotacao:sess:`.
+- Login oficial por `core_users`, sem fallback MySQL.
+- Escritas HTTP usam CSRF.
+- Socket.IO usa sessao/autenticacao do app.
+- Endpoints internos exigem token por `X-Miauw-Internal-Token` ou `X-Internal-Token`.
+
+### Tabelas MySQL envolvidas
+
+- Nenhuma dependencia MySQL runtime no app.
+- `cotacao_*` antigos no MySQL devem ser tratados como historico da Cotacao PHP antiga, nao fonte oficial.
+
+### Tabelas Postgres oficiais
+
+- `cotacao_v2_quotes`;
+- `cotacao_v2_columns`;
+- `cotacao_v2_rows`;
+- `cotacao_v2_events`;
+- `cotacao_v2_rules`;
+- `cotacao_v2_styles`;
+- `cotacao_v2_column_audit`.
+
+### Arquivos legados/relevantes
+
+- `apps/cotacao/src/server.js`;
+- `apps/cotacao/public/app.js`;
+- `apps/cotacao/public/styles.css`;
+- `apps/cotacao/public/assets`;
+- Cotacao PHP antiga foi removida/arquivada; nao reintroduzir.
+
+### Fluxos de escrita
+
+- Editar celula com eventos e historico.
+- Adicionar/inserir/remover linhas.
+- Criar, renomear, mover, remover/restaurar e redimensionar colunas.
+- Aplicar/remover estilos unitarios ou em lote.
+- Criar/editar/remover regras.
+- Importar/exportar Google Sheets.
+- Criar/restaurar backups.
+- Criar encomenda por endpoint interno do Miauby.
+- Atualizar presenca em tempo real via Redis/Socket.IO.
+
+### Integracoes
+
+- Core auth em `wimifarma_core`.
+- Redis para sessao, presenca e Socket.IO.
+- Google Sheets por credenciais de ambiente.
+- Miauby consulta busca/encomendas por endpoint interno tokenizado.
+- Widget do Miauby e efeitos visuais locais.
+
+### Riscos
+
+- Concorrencia em tempo real e historico de eventos exigem cuidado com ordem e delta.
+- Undo/redo e estilos em lote precisam manter paridade com comportamento de planilha.
+- Google Sheets pode falhar por token/cota; nao pode travar a planilha local.
+- Migrar para TypeScript deve ser incremental para nao quebrar Socket.IO.
+
+### Proxima acao segura
+
+Manter Postgres/Redis como fonte oficial e planejar migracao JS -> TypeScript por bordas: tipos de payload, validações de API, depois handlers de escrita e Socket.IO.
+
+## Miauby interno (legado tecnico `miauw`)
+
+### Rota atual
+
+- Nome de produto/canonico: Miauby.
+- Prefixo tecnico legado ainda ativo: `miauw`.
+- Rota publica interna atual: `/miauw/`, servida por PHP em `site/miauw`.
+- Futuro alias/canonico planejado: `/miauby/`, mantendo `/miauw/` como compatibilidade ate corte completo.
 - Agente Node em sombra/corte controlado: `/miauw/agent/`, proxy para `wimifarma-miauw-agent:3100/miauw/agent/`.
-- Bridge WhatsApp separado: `/miauw/whatsapp/`, proxy para `apps/miauw-whatsapp`. Ele nao substitui o Miauw interno, mas consome contexto e acoes dele.
-- Fonte principal do Miauw interno ainda e MySQL `wimifarma_app` para conversas, treino, memorias, alertas e traces.
+- Bridge WhatsApp separado: `/miauw/whatsapp/`, proxy para `apps/miauw-whatsapp`. Ele nao substitui o Miauby interno, mas consome contexto e acoes dele.
+- Fonte principal do Miauby interno ainda e MySQL `wimifarma_app` para conversas, treino, memorias, alertas e traces.
 - Memoria curta multicanal tem ponte principal no Postgres do bridge WhatsApp; `miauw_channel_events` em MySQL fica como fallback.
 
 ### Telas e endpoints
@@ -316,7 +888,7 @@ Observar producao sem espelho MySQL. Se o objetivo for remover dependencia total
 
 ### Tabelas MySQL envolvidas
 
-Fonte atual do Miauw interno:
+Fonte atual do Miauby interno:
 
 - `miauw_conversas`;
 - `miauw_mensagens`;
@@ -339,7 +911,8 @@ Fonte atual do Miauw interno:
 - `core_users` e `core_login_rate_limits` no `wimifarma_core` para login.
 - `miauw_whatsapp_channel_events` no Postgres do bridge WhatsApp para memoria curta multicanal principal.
 - Tabelas dos modulos modernos acessados por endpoints internos, como `financeiro_*`, `cashback_*`, `codigos_*`, `cotacao_v2_*`, `gestao_*`, `tarefa_*`.
-- Ainda nao existe banco dedicado `wimifarma_miauw` como fonte oficial do Miauw interno.
+- Ainda nao existe banco dedicado `wimifarma_miauby` como fonte oficial do Miauby interno.
+- Durante a migracao, criar tabelas canonicas `miauby_*` e, se necessario, views/aliases de compatibilidade para `miauw_*`.
 
 ### Arquivos PHP relevantes
 
@@ -402,15 +975,29 @@ Fonte atual do Miauw interno:
 - Traces e diagnosticos nao podem gravar token, SQL bruto, payload completo, telefone cru, audio ou midia.
 - O widget depende de caminhos PHP atuais; trocar rota sem compatibilidade quebra varios modulos.
 - O Node agent ainda orquestra via PHP bridge; nao deve ganhar escrita direta sem contrato, token e auditoria.
+- Renomear `miauw` para `miauby` direto em arquivos, env vars, tabelas ou rotas quebraria dependencias; fazer por alias e fallback.
 
 ### Proxima acao segura
 
-Criar `wimifarma_miauw`/`apps/miauw` em fases: primeiro schema Postgres e migrador idempotente de conversas, mensagens, treinos, memorias, alertas e traces; depois APIs de leitura; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
+Criar `wimifarma_miauby`/`apps/miauby` em fases: primeiro schema Postgres e migrador idempotente de conversas, mensagens, treinos, memorias, alertas e traces; depois aliases `/miauby/` e variaveis `MIAUBY_*` com fallback para `MIAUW_*`; depois APIs de leitura; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
 
-## Ordem recomendada para proximos inventarios
+## Status dos inventarios e proxima rodada
 
-1. Gestao, por ainda manter fallback/log MySQL; Pedidos ja esta em Node/TypeScript/Postgres sem dependencia MySQL no app, mas continua merecendo checks junto da Gestao por acoplamento financeiro e regras de boleto.
-2. Tarefa, XP e Codigos, para documentar desligamento final dos espelhos MySQL restantes.
-3. Usuarios, para amarrar permissoes por modulo.
-4. Cotacao, para registrar Google Sheets, tempo real e risco de sync.
-5. WordPress/Home, se a meta virar remover MySQL por completo.
+Inventarios detalhados ja registrados neste documento:
+
+- Financeiro;
+- Cashback;
+- Gestao;
+- Pedidos;
+- Tarefa;
+- XP;
+- Codigos;
+- Usuarios;
+- Cotacao;
+- Miauby interno.
+
+Proxima rodada segura:
+
+1. Validar no VPS as flags legadas restantes de Gestao, Tarefa, XP e Codigos antes de remover `mysql2`.
+2. Iniciar `docs/28-miauby-migracao.md` como trilha oficial para criar `wimifarma_miauby` e `apps/miauby` sem quebrar `/miauw/`.
+3. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.

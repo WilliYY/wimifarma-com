@@ -76,7 +76,7 @@ rows=(
   "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|MySQL opcional por FINANCEIRO_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|5 validar"
   "Usuarios|apps/usuarios|Node.js + TypeScript + Express + Postgres core|sem MySQL operacional para usuarios novos|enforcement gradual por modulo|moderno"
   "Cashback|site/cashback;apps/cashback|Node.js + TypeScript + Express + Postgres + core auth|MySQL legado opcional CASHBACK_LEGACY_MYSQL_*|Postgres puro + core auth/auditoria|6 validar"
-  "Miauby interno|site/miauw|PHP + Node agent sombra + core auth|miauw_* em MySQL|apps/miauw-agent + Postgres wimifarma_miauw|7"
+  "Miauby interno|site/miauw|PHP + Node agent sombra + core auth|miauw_* em MySQL; prefixo legado|apps/miauby + Postgres wimifarma_miauby com fallback miauw|7"
   "Miauby WhatsApp|apps/miauw-whatsapp|Node.js + TypeScript + Postgres|sem MySQL operacional|manter/evoluir|moderno"
   "Home publica|site/home.php|PHP desacoplado|sem banco direto|manter ou trocar depois|baixo"
   "WordPress|site/wp-config.php|WordPress + PHP + MySQL|dependencia natural do WP|substituir/desacoplar|ultimo"
@@ -103,6 +103,6 @@ Proximos passos recomendados:
 - Validar Financeiro Node/Postgres em /financeiro/ com health/checksums/fluxos antes de desligar espelho MySQL.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.
 - Validar Cashback em /cashback/ com contagens, saldos, CSV, mensagens e autoteste antes de desligar espelho MySQL.
-- Depois migrar Miauby interno.
+- Depois migrar Miauby interno seguindo docs/28-miauby-migracao.md, com alias/fallback antes de renomear runtime.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

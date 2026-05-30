@@ -4,6 +4,8 @@
 
 A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
+A direcao de arquitetura para a proxima etapa e manter uma plataforma Postgres integrada por `wimifarma_core`, sem juntar todos os dominios em um banco unico acoplado. A migracao do Miauby interno deve criar `wimifarma_miauby`/`apps/miauby` por fases, mantendo `/miauw/` e `MIAUW_*` como compatibilidade ate o corte validado.
+
 ## Componentes envolvidos
 
 ```text
