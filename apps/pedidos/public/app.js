@@ -185,6 +185,7 @@
                     '<strong>Parcela ',
                     String(count),
                     '</strong>',
+                    '<small>Valor e vencimento</small>',
                     '<button type="button" class="gestao-icon-btn gestao-icon-btn-danger gestao-order-parcel-remove" title="Remover parcela" aria-label="Remover parcela" data-remove-order-item>&times;</button>',
                     '</div>',
                     '<label>',

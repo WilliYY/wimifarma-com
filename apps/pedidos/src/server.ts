@@ -1955,31 +1955,48 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
   return `<form method="post" class="gestao-orders-form" data-gestao-order-form>
     ${csrfField(req)}
     <input type="hidden" name="action" value="create_order">
-    <div class="gestao-section-title">
-      <span class="gestao-kicker">Novo pedido</span>
-      <strong data-order-total>Total R$ 0,00</strong>
+    <div class="gestao-order-form-head">
+      <div>
+        <span class="gestao-kicker">Novo pedido</span>
+      </div>
+      <strong class="gestao-order-form-total" data-order-total>Total R$ 0,00</strong>
     </div>
-    <label><span>Nome do fornecedor</span><input type="text" name="fornecedor" maxlength="180" placeholder="Distribuidora, laboratorio, representante" required></label>
-    <div class="gestao-order-values" data-order-items>
-      <div class="gestao-order-parcel" data-order-parcel>
-        <div class="gestao-order-parcel-head">
-          <strong>Parcela 1</strong>
-          <small>Valor e vencimento</small>
+    <div class="gestao-order-form-section">
+      <div class="gestao-order-form-section-head">Fornecedor</div>
+      <label><span>Nome do fornecedor</span><input type="text" name="fornecedor" maxlength="180" placeholder="Distribuidora, laboratorio, representante" required></label>
+    </div>
+    <div class="gestao-order-form-section">
+      <div class="gestao-order-form-section-head">Parcelas</div>
+      <div class="gestao-order-values" data-order-items>
+        <div class="gestao-order-parcel" data-order-parcel>
+          <div class="gestao-order-parcel-head">
+            <strong>Parcela 1</strong>
+            <small>Valor e vencimento</small>
+          </div>
+          <label><span>Valor do boleto ou pedido</span><input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
+          <label><span>Vencimento desta parcela</span><input type="date" name="pedido_vencimento[]"></label>
         </div>
-        <label><span>Valor do boleto ou pedido</span><input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
-        <label><span>Vencimento desta parcela</span><input type="date" name="pedido_vencimento[]"></label>
+      </div>
+      <button type="button" class="gestao-btn gestao-btn-secondary" data-add-order-item>Adicionar parcela</button>
+    </div>
+    <div class="gestao-order-form-section">
+      <div class="gestao-order-form-section-head">Entrega</div>
+      <div class="gestao-order-form-grid">
+        <label><span>Previsao de chegada (dias)</span><input type="text" name="chegada_prevista" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Ex.: 2" title="Digite somente o numero de dias ate a chegada" data-arrival-days></label>
+        <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
       </div>
     </div>
-    <button type="button" class="gestao-btn gestao-btn-secondary" data-add-order-item>Adicionar parcela</button>
-    <div class="gestao-order-form-grid">
-      <label><span>Previsao de chegada (dias)</span><input type="text" name="chegada_prevista" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Ex.: 2" title="Digite somente o numero de dias ate a chegada" data-arrival-days></label>
-      <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
+    <div class="gestao-order-form-section">
+      <div class="gestao-order-form-section-head">Status inicial</div>
+      <div class="gestao-order-checks">
+        <label class="gestao-check-row"><input type="checkbox" name="pago_agora" value="1"><span>Ja foi pago, so falta chegar</span></label>
+        <label class="gestao-check-row"><input type="checkbox" name="chegou_agora" value="1"><span>Ja chegou, so pagar</span></label>
+      </div>
     </div>
-    <div class="gestao-order-checks">
-      <label class="gestao-check-row"><input type="checkbox" name="pago_agora" value="1"><span>Ja foi pago, so falta chegar</span></label>
-      <label class="gestao-check-row"><input type="checkbox" name="chegou_agora" value="1"><span>Ja chegou, so pagar</span></label>
+    <div class="gestao-order-form-section">
+      <div class="gestao-order-form-section-head">Observacao</div>
+      <label><span>Detalhe curto</span><textarea name="observacao" rows="3" placeholder="Pedido, numero do boleto ou detalhe curto."></textarea></label>
     </div>
-    <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Pedido, numero do boleto ou detalhe curto."></textarea></label>
     <button type="submit" class="gestao-btn gestao-btn-primary">Registrar pedido</button>
   </form>`;
 }

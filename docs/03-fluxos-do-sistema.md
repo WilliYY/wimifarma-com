@@ -344,6 +344,7 @@ Regras a preservar:
 Modulo `Pedidos` em `/pedidos/`:
 
 - o formulario `Pedidos feitos` registra fornecedor, uma ou mais parcelas com valor e vencimento proprio opcional apenas por data, previsao opcional de chegada como numero de dias, competencia, observacao e opcoes `Ja foi pago, so falta chegar` e `Ja chegou, so pagar`;
+- esse formulario deve ficar visualmente separado em blocos de fornecedor, parcelas, entrega, status inicial e observacao, mantendo o total no cabecalho e preservando nomes de campos, CSRF e validacoes existentes;
 - a previsao de chegada de novo pedido e digitada como numero de dias, nao como data manual: `2` significa dois dias a partir do dia atual local, e o sistema grava a data calculada em `pedidos_orders.expected_arrival_at`;
 - criar um pedido tambem cria uma conta vinculada em `gestao_accounts` com categoria `Boleto`; cada valor/parcela vira item em `gestao_account_items` com `due_at` proprio quando preenchido, e a menor data ativa alimenta `gestao_accounts.due_at` para ordenacao e resumo;
 - o fluxo operacional fica separado da Gestao: `pedidos_orders` guarda pedidos feitos/aguardando chegada, e `pedidos_confirmed_orders` guarda confirmados e historico;
@@ -361,7 +362,7 @@ Modulo `Pedidos` em `/pedidos/`:
 - remover valores ou excluir um pedido da tela nao apaga dados financeiros: valores viram `cancelado` quando permitido, e pedidos inteiros usam arquivamento logico em `gestao_accounts.archived_at`/`archived_by` mais lifecycle/cancelamento nas tabelas de Pedidos;
 - a tela `/pedidos/` carrega o widget do Miauby como apoio operacional, sem transformar Pedidos em subview da Gestao;
 - endpoints internos tokenizados de Pedidos permitem a rotina n8n/Miauby: `GET /pedidos/api/internal/arrival-summary` lista `Aguardando chegada`, e `POST /pedidos/api/internal/confirm-arrival` confirma chegada por `order_id` ou titulo de fornecedor; respostas WhatsApp como `cimed chegou` exigem card `Pedidos`, registram auditoria e nao marcam pagamento;
-- o badge da home consulta `/pedidos/api/badge` e mostra quantos pedidos em `pedidos_orders` tem previsao de chegada no dia;
+- o badge da home consulta `/pedidos/api/badge` e mostra quantos pedidos em `pedidos_orders` ainda estao em `Aguardando chegada`;
 - a URL antiga `/gestao/pedidos` redireciona para `/pedidos/` apenas por compatibilidade e nao deve receber novas features.
 
 ## Fluxo Tarefas
