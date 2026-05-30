@@ -17,6 +17,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 ## Tabelas
 
 - `core_users`: logins internos. Usuarios novos criados pelo painel usam `source='usuarios:core'` e `legacy_mysql_id` negativo para nao conflitar com ids positivos importados de `wf_users`.
+- `source='mysql:wf_users'` e `legacy_mysql_id` sao somente origem historica/reconciliacao de usuarios antigos migrados para o Postgres; a interface deve mostrar esse estado como migrado, sem sugerir uso ativo de MySQL no modulo Usuarios.
 - `core_user_module_permissions`: permissao por modulo e usuario.
 - `core_user_xp_links`: vinculo logico entre usuario e funcionario em `xp_employees`.
 - `core_user_whatsapp_links`: vinculo seguro entre usuario e contatos da allowlist do Miauby WhatsApp. Guarda `contact_id`, mascara, nome, status e cards liberados; o numero completo permanece somente cifrado no bridge WhatsApp.
@@ -38,6 +39,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - Um usuario pode ter mais de um numero vinculado. Um numero deve ter um unico usuario dono operacional; quando o mesmo contato e vinculado a outro usuario, o painel remove o vinculo seguro antigo do core.
 - Remover o WhatsApp no painel bloqueia o contato salvo no bridge e remove o vinculo seguro do core. LIDs protegidos por alias de ambiente continuam bloqueados para edicao/remocao operacional.
 - Linhas ausentes em `core_user_module_permissions` preservam acesso legado ate cada modulo ser cortado para enforcement.
+- A grade de modulos do painel deve manter os nomes legiveis sem quebrar palavras dentro dos chips; `Salvar` fica separado visualmente de `Excluir` para evitar clique confuso.
 
 ## Integracoes internas
 

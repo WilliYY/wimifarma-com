@@ -463,6 +463,26 @@ a {
   padding-top: 14px;
 }
 
+.users-user-form .users-actions {
+  justify-content: flex-start;
+  margin-top: 2px;
+}
+
+.users-user-form .users-actions .users-button {
+  min-width: 112px;
+}
+
+.users-delete-form {
+  margin-top: 10px;
+  border-top: 1px solid #fee2e2;
+  padding-top: 10px;
+}
+
+.users-delete-form .users-button {
+  width: 100%;
+  min-height: 40px;
+}
+
 .users-form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -490,8 +510,9 @@ a {
 
 .users-modules {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 8px;
+  align-items: stretch;
 }
 
 .users-check {
@@ -499,14 +520,15 @@ a {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  min-height: 36px;
+  min-height: 40px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 8px;
+  padding: 9px 10px;
   background: var(--wf-surface-soft);
   font-weight: 800;
-  line-height: 1.12;
-  overflow-wrap: anywhere;
+  line-height: 1.2;
+  overflow: hidden;
+  overflow-wrap: normal;
   transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
 }
 
@@ -525,7 +547,22 @@ a {
 
 .users-check span {
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.users-create-form .users-modules {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.users-create-form .users-check {
+  padding: 8px 9px;
+}
+
+.users-create-form .users-check span {
+  font-size: 0.9rem;
 }
 
 .users-audit-list {

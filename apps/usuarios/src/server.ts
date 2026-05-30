@@ -321,7 +321,7 @@ function brDateTime(value: unknown): string {
 
 function userSourceLabel(source: unknown): string {
   const value = String(source || '').trim();
-  if (value === 'mysql:wf_users') return 'Importado do MySQL';
+  if (value === 'mysql:wf_users') return 'Migrado para Postgres';
   if (value === 'usuarios:core') return 'Criado no Postgres';
   if (value.includes('core')) return 'Postgres core';
   return value || 'Postgres core';
@@ -1231,7 +1231,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529d">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-ui">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1296,7 +1296,7 @@ function renderDashboard(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529d">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-ui">
 </head>
 <body>
   <header class="users-topbar">
@@ -1319,7 +1319,7 @@ function renderDashboard(
         </div>
         <div class="users-storage-note">
           <strong>Fonte oficial</strong>
-          <span>Postgres core_users; legado MySQL aparece apenas como origem importada.</span>
+          <span>Postgres core_users. Usu&aacute;rios antigos aparecem como migrados.</span>
         </div>
       </div>
       ${flash.message ? `<div class="users-alert ${e(flash.type)}">${e(flash.message)}</div>` : ''}
