@@ -28,6 +28,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 
 - Acesso ao painel fica restrito a username `adm` ou role `admin`.
 - Criar/atualizar/desativar usuario exige CSRF.
+- Senhas existentes nunca sao exibidas em texto: `core_users` guarda apenas `password_hash`. O admin pode gerar, mostrar/ocultar e copiar uma nova senha no navegador antes de salvar, e a troca fica auditada por `password_changed=true`.
 - Excluir usuario no painel significa `active=false`; nao apagar fisicamente.
 - O usuario `adm` nao pode ser desativado.
 - Deve existir pelo menos um administrador ativo.

@@ -101,7 +101,7 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'usuarios';
-const SERVICE_VERSION = '1.0.5';
+const SERVICE_VERSION = '1.0.6';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1232,7 +1232,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-ui">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-passwords">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1298,7 +1298,8 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-ui">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-passwords">
+  <script src="${BASE_PATH}/password-tools.js?v=20260530a" defer></script>
 </head>
 <body>
   <header class="users-topbar">
@@ -1339,7 +1340,16 @@ function renderDashboard(
               ${csrfField(req)}
               <input type="hidden" name="action" value="create_user">
               <label class="users-label"><span>Usu&aacute;rio</span><input class="users-input" type="text" name="username" maxlength="60" autocomplete="off" required></label>
-              <label class="users-label"><span>Senha</span><input class="users-input" type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+              <div class="users-label users-password-label">
+                <span>Senha</span>
+                <div class="users-password-control" data-password-control>
+                  <input class="users-input" type="password" name="password" minlength="6" autocomplete="new-password" required data-password-input>
+                  <button class="users-mini-action" type="button" data-password-generate>Gerar</button>
+                  <button class="users-mini-action" type="button" data-password-toggle>Mostrar</button>
+                  <button class="users-mini-action" type="button" data-password-copy>Copiar</button>
+                </div>
+                <small class="users-field-help" data-password-status>Senha nova fica visivel aqui antes de salvar.</small>
+              </div>
               <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select></label>
               <label class="users-check"><input type="checkbox" name="active" value="1" checked>Ativo</label>
               <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, null)}</select></label>
@@ -1392,7 +1402,16 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <input type="hidden" name="user_id" value="${e(userId)}">
         <div class="users-form-grid">
           <label class="users-label"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select></label>
-          <label class="users-label"><span>Senha nova</span><input class="users-input" type="password" name="password" minlength="6" autocomplete="new-password" placeholder="Manter atual"></label>
+          <div class="users-label users-password-label">
+            <span>Senha nova</span>
+            <div class="users-password-control" data-password-control>
+              <input class="users-input" type="password" name="password" minlength="6" autocomplete="new-password" placeholder="Manter atual" data-password-input>
+              <button class="users-mini-action" type="button" data-password-generate>Gerar</button>
+              <button class="users-mini-action" type="button" data-password-toggle>Mostrar</button>
+              <button class="users-mini-action" type="button" data-password-copy>Copiar</button>
+            </div>
+            <small class="users-field-help" data-password-status>Senha atual protegida por hash. Para saber a senha, defina uma nova aqui.</small>
+          </div>
           <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>
         </div>
         ${isAdm ? `<input type="hidden" name="role" value="${e(row.role)}">` : ''}
