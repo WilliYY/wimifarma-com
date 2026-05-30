@@ -132,6 +132,7 @@ if (!$homeAuthenticated):
 
         html {
             min-height: 100%;
+            overflow-x: hidden;
             background: #0f172a;
         }
 
@@ -307,6 +308,7 @@ if (!$homeAuthenticated):
             grid-area: footer;
             min-height: 12rem;
             display: grid;
+            overflow: hidden;
             animation: wf-footer-color 18s ease-in-out infinite;
         }
 
@@ -316,6 +318,7 @@ if (!$homeAuthenticated):
             left: 0;
             right: 0;
             height: 1rem;
+            overflow: hidden;
             background: var(--footer-background);
             filter: url("#wf-login-blob");
         }
