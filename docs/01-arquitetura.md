@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres sombra do Miauby interno, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
 A direcao de arquitetura para a proxima etapa e manter uma plataforma Postgres integrada por `wimifarma_core`, sem juntar todos os dominios em um banco unico acoplado. A migracao do Miauby interno deve criar `wimifarma_miauby`/`apps/miauby` por fases, mantendo `/miauw/` e `MIAUW_*` como compatibilidade ate o corte validado.
 
@@ -35,6 +35,7 @@ Usuario/Navegador
   -> wimifarma-xp-db:5432 (Postgres)
   -> wimifarma-codigos-db:5432 (Postgres)
   -> wimifarma-financeiro-db:5432 (Postgres Financeiro)
+  -> wimifarma-miauby-db:5432 (Postgres sombra do Miauby interno)
   -> wimifarma-miauw-whatsapp-db:5432 (Postgres)
 ```
 
@@ -44,6 +45,7 @@ Arquivos principais:
 - `docker/php/Dockerfile`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
+- `apps/miauby/src/shadow-migrate.ts`
 - `ops/evolution/docker-compose.yml`
 - `apps/cotacao/src/server.js`
 - `apps/cashback/src/server.ts`
@@ -98,6 +100,8 @@ Containers:
 - `wimifarma-miauw-agent`: Node.js 22 + TypeScript + Agents SDK para `/miauw/agent/` em sombra/corte controlado.
 - `wimifarma-miauw-whatsapp`: Node.js 22 + TypeScript para `/miauw/whatsapp/`, recebendo webhooks da Evolution API ou Meta Cloud API, exibindo painel operacional seguro e processando fila/outbox.
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal WhatsApp do Miauby, monta `./miauw-whatsapp-data/postgres:/var/lib/postgresql/data`.
+- `wimifarma-miauby-db`: Postgres 17 sombra do Miauby interno, monta `./miauby-data/postgres:/var/lib/postgresql/data`.
+- `wimifarma-miauby-migrator`: Node.js 22 + TypeScript em profile `migration`, copia `miauw_*` do MySQL para `miauby_*` sanitizado sem mudar a rota oficial `/miauw/`.
 - `wimifarma-evolution-api`: Evolution API v2 como transporte WhatsApp, em stack separada no VPS, ligada na rede `wimifarma-com-network` para o bridge chamar internamente.
 - `wimifarma-evolution-postgres` e `wimifarma-evolution-redis`: persistencia propria da Evolution API, fora dos bancos do Wimifarma.
 
@@ -145,6 +149,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Manter `codigos-data/` como volume persistente e ignorado pelo Git.
 - Manter `financeiro-data/` como volume persistente e ignorado pelo Git.
 - Manter `miauw-whatsapp-data/` como volume persistente e ignorado pelo Git.
+- Manter `miauby-data/` como volume persistente e ignorado pelo Git; ele e sombra de migracao e nao deve substituir `miauw_*` ate corte validado.
 - Manter a Cotacao V2 em `/cotacao/` sem gatilhos escondidos por palavra de categoria.
 - Manter o Cashback oficial em `/cashback/` via Node/Postgres; `site/cashback` e apenas legado/assets historico.
 - Manter a Gestao oficial em `/gestao/` via Node/Postgres; o legado PHP de `site/gestao` esta arquivado em `site/_legacy-disabled/2026-05-29/gestao`.
@@ -157,6 +162,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Para futuras telas/cards com dominio proprio, escolher explicitamente o melhor desenho tecnico antes de implementar: linguagem/runtime, banco, schema, indices, permissoes, auditoria, healthcheck, deploy e integracoes. Preferir rota/app/servico separados em vez de transformar a Gestao em concentrador de subviews.
 - Cada modulo novo deve declarar sua fonte de verdade. Quando precisar alimentar outro dominio, integrar por tabelas/APIs estruturadas, nao por acoplamento visual ou reaproveitamento de tela.
 - Manter o Miauby agente sem escrita real; quando `MIAUW_ENGINE=node`, liberar primeiro apenas usuarios configurados e preservar rollback imediato para `php`.
+- Manter o migrador sombra `apps/miauby` sem efeito no frontend: ele pode criar/atualizar `miauby_*`, mas `/miauw/`, widget, treino, diagnostico e chat continuam no PHP ate validacao de paridade.
 - Manter o Miauby WhatsApp como borda de transporte: Evolution API ou Meta Cloud API nao viram motor de IA, banco oficial nem executor de escrita forte. O servico usa Postgres dedicado, allowlist, dedupe, painel seguro e outbox; o repositorio fica desligado por padrao e cada ambiente liga por `.env`.
 
 ## Decisoes tecnicas ja tomadas
@@ -176,6 +182,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Codigos foi migrado para `apps/codigos` com Node.js + TypeScript e Postgres dedicado `wimifarma_codigos`. A tela visual foi preservada por assets de `site/codigos`; o PHP antigo fica em `site/_legacy-disabled/2026-05-29/codigos-php`.
 - Financeiro foi cortado para `apps/financeiro` com Node.js + TypeScript e Postgres dedicado `wimifarma_financeiro`. A tela preserva os assets de `site/financeiro`, expoe health/resumo/checksums internos e, desde 2026-05-30, roda sem `mysql2`, importador, espelho ou fallback MySQL; `financeiro_*` no MySQL fica somente como referencia historica/backup.
 - Usuarios foi criado em `apps/usuarios` com Node.js + TypeScript, sessao `WFUSUARIOS` e Postgres core `wimifarma_core`. O app nasce como painel central de criacao/desativacao de logins, permissoes por modulo, vinculo logico com `xp_employees` e historico em `core_user_audit_events`.
+- O Miauby interno iniciou fase 1 em sombra com `apps/miauby`, `wimifarma-miauby-db` e `wimifarma-miauby-migrator`: o migrador cria tabelas `miauby_*`, preserva `legacy_mysql_id`, grava checksum e payload sanitizado, mas nao muda rota, UI, widget nem engine.
 - O criterio para banco novo e: tabelas do dominio com FKs/constraints, dinheiro em centavos inteiros quando houver valor financeiro, indices em filtros/joins frequentes, indices parciais para filas/status, soft delete/arquivamento logico quando houver auditoria e migracao/compatibilidade documentada quando substituir tabela antiga.
 - A Fase 7/8/9 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK, adaptador PHP de comparacao e corte por `MIAUW_ENGINE`. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria.
 - A Fase 17 do Miauby mantem o PHP como dono de treino/revisao e envia ao Node apenas contexto aprovado, versionado e compilado por relevancia; o servico agente continua sem credencial de banco e sem escrita direta.
@@ -197,6 +204,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whats
 - Recriar `xp-data/` sem backup perde funcionarios, vendas, configuracoes, auditoria e sessoes do XP Node/Postgres.
 - Recriar `codigos-data/` sem backup perde itens, blocos, auditoria e sessoes de Codigos Node/Postgres.
 - Recriar `financeiro-data/` sem backup perde a fonte oficial atual do Financeiro em Postgres e o historico de importacao/checksum.
+- Recriar `miauby-data/` sem backup perde a copia sombra usada para validar a migracao do Miauby interno; isso nao derruba `/miauw/`, mas apaga reconciliacao/checksums da fase 1.
 - Rollback MySQL do Financeiro exige restaurar versao/imagem anterior e backup validado; antes de operar apos rollback, validar fechamentos, lancamentos, relatorio, CSV e integracao Pix CNPJ do Miauby WhatsApp.
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.
 - Recriar atalhos automaticos por nome de categoria na Cotacao pode conflitar com a formatacao condicional e causar saltos de linha/sync pesado.

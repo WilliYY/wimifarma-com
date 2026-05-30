@@ -48,6 +48,7 @@ Rotas de smoke test:
 - `/miauw/agent/health` deve responder JSON 200 sem segredo quando o servico sombra estiver ativo
 - `/miauw/whatsapp/` deve responder HTML 200 com painel seguro quando o login do painel estiver desligado, ou HTML de login/401 quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estiverem configurados
 - `/miauw/whatsapp/health` deve responder JSON 200 sem segredo quando o bridge WhatsApp e seu Postgres estiverem ativos
+- `wimifarma-miauby-migrator npm run migrate:shadow` deve criar/atualizar `miauby_*` no Postgres sombra sem alterar `/miauw/`; `npm run validate:shadow` deve confirmar contagens da copia quando todas as tabelas fonte existirem
 - `http://127.0.0.1:8080` deve responder quando a Evolution API separada estiver ativa no VPS
 - `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
 - `/miauw/agent-tools.php` deve recusar sem token interno e aceitar somente tools de leitura baixa quando chamado pelo servico agente
@@ -108,6 +109,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Se mexer em XP, rodar `npm run check` e `npm run build` em `apps/xp`, validar `/xp/login.php`, `/xp/health`, home com card XP e, quando possivel, validar visualmente a moldura do card, trilha e upload de foto. Os PHPs antigos de XP ficam em `site/_legacy-disabled/2026-05-29/xp-php/` e nao fazem parte do smoke operacional.
 - Se mexer em front-end, validar visualmente.
 - Se mexer em Miauby, validar `widget-status.php` e `miauw-evals.php`.
+- Se mexer em `apps/miauby` ou `wimifarma-miauby-db`, rodar `npm run check`, `npm run build`, migrador sombra, validate sombra, `php /var/www/html/miauw/miauw-evals.php`, `widget-status.php` e healths dos modulos principais para provar que `/miauw/` e frontend nao foram cortados.
 - Se mexer em `apps/miauw-agent`, rodar `npm run check`, `npm run check:persona`, build do servico e validar `/miauw/agent/health`.
 - Se mexer em `apps/miauw-whatsapp`, rodar `npm run check`, `npm run build`, validar `/miauw/whatsapp/`, `/miauw/whatsapp/login` quando o login estiver ativo e `/miauw/whatsapp/health`; quando `MIAUW_WHATSAPP_ENABLED=false`, confirmar que o webhook retorna `accepted=false`, e quando estiver ativo, confirmar que webhook sem token/assinatura recusa com 401/503 sem processar mensagem real. Para comandos, validar `site/miauw/agent-actions.php` via chamada interna tokenizada com `sangria 10 Will` e esperar `confirmation_required`, sem executar escrita. No modo Meta, validar tambem `GET /miauw/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...`.
 - Se mexer em `apps/usuarios`, rodar `npm run check`, `npm run build`, validar `/usuarios/health`, `/usuarios/login.php`, criacao/desativacao sem apagar fisicamente, permissoes gravadas em `core_user_module_permissions`, cofre administrativo em `core_user_admin_passwords` quando houver troca de senha e historico em `core_user_audit_events`.

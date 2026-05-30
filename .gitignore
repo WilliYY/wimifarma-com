@@ -9,6 +9,7 @@
 /financeiro-data/
 /cashback-data/
 /miauw-whatsapp-data/
+/miauby-data/
 /ops/n8n/n8n-data/
 /ops/n8n/n8n-postgres/
 node_modules/
@@ -24,6 +25,7 @@ apps/financeiro/dist/
 apps/cashback/dist/
 apps/usuarios/dist/
 apps/miauw-whatsapp/dist/
+apps/miauby/dist/
 .env
 /site/miauw/config.local.php
 **/config.local.php

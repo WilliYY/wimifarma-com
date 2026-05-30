@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Financeiro e de Usuarios. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Financeiro e de Usuarios. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -37,6 +37,9 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - Container Miauby WhatsApp: `wimifarma-miauw-whatsapp-db`
 - Imagem Miauby WhatsApp: `postgres:17-alpine`
 - Volume Miauby WhatsApp: `miauw-whatsapp-data/postgres/`
+- Container Miauby sombra: `wimifarma-miauby-db`
+- Imagem Miauby sombra: `postgres:17-alpine`
+- Volume Miauby sombra: `miauby-data/postgres/`
 - Init SQL: `docker/mysql/init/01-create-databases.sql`
 - Config web: `docker-compose.yml`
 - Config app: `site/cashback/config.php`
@@ -55,10 +58,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_codigos`: Codigos em Postgres.
 - `wimifarma_financeiro`: Financeiro oficial em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
-
-Planejado para a proxima migracao grande:
-
-- `wimifarma_miauby`: futuro banco do Miauby interno, com tabelas canonicas `miauby_*`. O prefixo `miauw_*` permanece legado/compatibilidade ate migracao validada; ver `docs/28-miauby-migracao.md`.
+- `wimifarma_miauby`: banco sombra do Miauby interno, com tabelas canonicas `miauby_*`. O prefixo `miauw_*` permanece oficial no PHP ate corte validado; ver `docs/28-miauby-migracao.md`.
 
 O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
 
@@ -104,6 +104,27 @@ Criadas por `apps/miauw-whatsapp/src/server.ts`:
 - `miauw_whatsapp_outbox`: respostas pendentes/enviadas, status de envio, tentativas e id retornado pelo provedor quando houver.
 
 O Postgres dedicado foi escolhido para esse dominio porque fila duravel, indices parciais, `JSONB`, locks transacionais e `FOR UPDATE SKIP LOCKED` reduzem risco de duplicidade e facilitam auditoria. Payload bruto externo, token, telefone cru, SQL e stack trace nao devem ser salvos.
+
+## Tabelas sombra do Miauby interno em Postgres
+
+Criadas por `apps/miauby/src/shadow-migrate.ts` no banco `wimifarma_miauby`:
+
+- `miauby_schema_migrations`: controle das migracoes sombra aplicadas.
+- `miauby_migration_runs`: historico de execucoes do migrador, modo, resumo e status.
+- `miauby_conversations`: copia sanitizada de `miauw_conversas`.
+- `miauby_messages`: copia sanitizada de `miauw_mensagens`.
+- `miauby_training_examples`: copia sanitizada de `miauw_treinos_respostas`.
+- `miauby_memories`: copia sanitizada de `miauw_memorias`.
+- `miauby_knowledge`: copia sanitizada de `miauw_conhecimentos`.
+- `miauby_alerts`: copia sanitizada de `miauw_alertas`.
+- `miauby_alert_events`: copia sanitizada de `miauw_alerta_eventos`.
+- `miauby_patterns`: copia sanitizada de `miauw_padroes`.
+- `miauby_tool_traces`: copia sanitizada de `miauw_tool_traces`.
+- `miauby_settings`: copia sanitizada de `miauw_configuracoes`.
+- `miauby_farmacia_popular_values`: copia sanitizada de `miauw_farmacia_popular_valores`.
+- `miauby_farmacia_popular_updates`: copia sanitizada de `miauw_farmacia_popular_atualizacoes`.
+
+Essa fase preserva `legacy_mysql_id`, campos auxiliares de usuario/conversa/status, checksum e `payload_sanitized` em `JSONB`. O migrador redige chaves, tokens, senhas, payload bruto, SQL bruto, stack trace, telefone e midia. O PHP continua fonte oficial de `/miauw/` ate existir paridade validada.
 
 ## Tabelas da Cotacao V2 em Postgres
 

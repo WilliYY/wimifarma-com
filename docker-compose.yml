@@ -217,6 +217,19 @@ services:
     networks:
       - wimifarma-com-network
 
+  wimifarma-miauby-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-miauby-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_miauby
+      POSTGRES_USER: wimifarma_miauby
+      POSTGRES_PASSWORD: ${MIAUBY_POSTGRES_PASSWORD:-wimifarma_miauby_dev_pass}
+    volumes:
+      - ./miauby-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
   wimifarma-core-migrator:
     build:
       context: ./apps/core-auth
@@ -239,6 +252,31 @@ services:
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-miauby-migrator:
+    build:
+      context: ./apps/miauby
+      dockerfile: Dockerfile
+    container_name: wimifarma-miauby-migrator
+    profiles:
+      - migration
+    depends_on:
+      - wimifarma-com-db
+      - wimifarma-miauby-db
+    environment:
+      NODE_ENV: production
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      MIAUBY_POSTGRES_HOST: wimifarma-miauby-db
+      MIAUBY_POSTGRES_PORT: 5432
+      MIAUBY_POSTGRES_DB: wimifarma_miauby
+      MIAUBY_POSTGRES_USER: wimifarma_miauby
+      MIAUBY_POSTGRES_PASSWORD: ${MIAUBY_POSTGRES_PASSWORD:-wimifarma_miauby_dev_pass}
     networks:
       - wimifarma-com-network
 

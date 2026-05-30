@@ -134,12 +134,12 @@ $modules = @(
     },
     @{
         Module = 'Miauby interno'
-        Path = 'site/miauw'
-        Current = 'PHP procedural + Node agent sombra + core auth'
-        Legacy = 'miauw_* em MySQL; prefixo tecnico legado; memoria curta ja tem ponte Postgres'
+        Path = 'site/miauw;apps/miauby'
+        Current = 'PHP procedural + Node agent sombra + migrador Postgres sombra + core auth'
+        Legacy = 'miauw_* ainda oficial em MySQL; copia sanitizada em wimifarma_miauby'
         Target = 'apps/miauby + Postgres wimifarma_miauby com alias/fallback miauw'
         Priority = '7 - acoplado ao agente'
-        Next = 'Seguir docs/28-miauby-migracao.md: aliases primeiro, Postgres sombra, Node em sombra e confirmacoes preservadas.'
+        Next = 'Rodar migrador sombra, validar contagens/checksums e manter /miauw/ sem corte ate paridade.'
     },
     @{
         Module = 'Miauby WhatsApp'

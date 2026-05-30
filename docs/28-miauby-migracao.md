@@ -26,6 +26,7 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 - Motor principal: PHP procedural.
 - Auth: `core_users` por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`.
 - Dados principais: MySQL `wimifarma_app`, tabelas `miauw_*`.
+- Postgres sombra: `wimifarma_miauby`, criado por `wimifarma-miauby-db`, com migrador idempotente em `apps/miauby`.
 - Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/`, ainda depende de ponte PHP para tools e contexto.
 - Integracao com Gestao: ja usa endpoint interno tokenizado do app Node/Postgres; a tool `criar_conta_gestao` nao deve depender de `wf_logs` nem de tabela MySQL de Gestao.
 - Escritas fortes: continuam com confirmacao humana e auditoria.
@@ -135,6 +136,13 @@ Primeira versao do `wimifarma_miauby`:
 - `miauby_farmacia_popular_updates`: historico de atualizacao.
 - `miauby_audit_events`: auditoria propria do modulo.
 
+Implementacao inicial de 2026-05-30:
+
+- `apps/miauby/src/shadow-migrate.ts` cria `miauby_schema_migrations`, `miauby_migration_runs` e as tabelas `miauby_*` listadas acima.
+- Cada tabela sombra recebe `legacy_mysql_id`, `source_table`, campos auxiliares de usuario/conversa/status, `content_preview`, `payload_sanitized`, `source_checksum`, `created_at`, `updated_at` e `migrated_at`.
+- O migrador redige chaves, tokens, senhas, payload bruto, SQL bruto, stack trace, telefone, WhatsApp, audio e midia antes de gravar no Postgres.
+- A fonte oficial continua em `site/miauw`/MySQL ate validacao de paridade; esta fase nao muda rota, frontend, widget, treino, diagnostico ou engine.
+
 Campos obrigatorios em todas as tabelas migradas:
 
 - `id`;
@@ -165,8 +173,9 @@ Proibido migrar para Postgres:
 
 ### Fase 1 - Banco Postgres sombra
 
-- Adicionar `wimifarma-miauby-db` no Compose ou schema dedicado no Postgres ja existente, com credencial propria.
-- Criar migrator idempotente para `miauw_*` -> `miauby_*`.
+- Estado iniciado em 2026-05-30: `wimifarma-miauby-db` foi adicionado no Compose com credencial propria `MIAUBY_POSTGRES_PASSWORD`.
+- Estado iniciado em 2026-05-30: `wimifarma-miauby-migrator` foi adicionado no profile `migration`.
+- Estado iniciado em 2026-05-30: `apps/miauby` criou o migrador idempotente para `miauw_*` -> `miauby_*` com payload sanitizado.
 - Preservar `legacy_mysql_id` e checksums por tabela.
 - Rodar em modo sombra, sem mudar leitura oficial.
 

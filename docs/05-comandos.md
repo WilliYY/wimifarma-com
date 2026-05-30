@@ -83,6 +83,7 @@ docker compose logs --tail=80 wimifarma-financeiro-db
 docker compose logs --tail=80 wimifarma-usuarios-app
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
+docker compose logs --tail=80 wimifarma-miauby-migrator
 ```
 
 ## Local - lint PHP
@@ -140,6 +141,23 @@ curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent-memory.php -H "Content-Typ
 
 O bridge nasce com `MIAUW_WHATSAPP_ENABLED=false`. Antes de aceitar webhook real, configurar no `.env`: `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS` e `MIAUW_WHATSAPP_PROVIDER`. Para Evolution, preencher `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`. Para Meta Cloud API, preencher `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` e `META_WHATSAPP_APP_SECRET`.
 O `POST /miauw/whatsapp/internal/memory`, `POST /miauw/agent-context.php` e `POST /miauw/agent-memory.php` sem token devem responder 401 ou 503; com token interno, entregam memoria/contexto compartilhado e nao devem ser testados colando segredo em comandos versionados. A fonte principal da memoria curta e o Postgres do bridge; o endpoint PHP fica como compatibilidade/fallback.
+
+## Local - Miauby interno Postgres sombra
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\miauby
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-miauby-db
+docker compose run --rm wimifarma-miauby-migrator npm run migrate:shadow
+docker compose run --rm wimifarma-miauby-migrator npm run validate:shadow
+docker exec wimifarma-miauby-db psql -U wimifarma_miauby -d wimifarma_miauby -c "\dt"
+curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
+docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
+```
+
+Esse migrador copia `miauw_*` para `miauby_*` em Postgres sombra, com `legacy_mysql_id`, checksum e `payload_sanitized`. Ele nao muda `/miauw/`, nao troca widget, nao corta o PHP e nao deve gravar token, telefone cru, SQL bruto, stack trace, audio ou midia.
 
 ## Local - Cashback Node/Postgres
 
@@ -438,6 +456,7 @@ docker exec wimifarma-cotacao-db psql -U wimifarma_cotacao -d wimifarma_cotacao 
 docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 docker exec wimifarma-gestao-db psql -U wimifarma_gestao -d wimifarma_gestao -c "\dt"
 docker exec wimifarma-miauw-whatsapp-db psql -U wimifarma_miauw_whatsapp -d wimifarma_miauw_whatsapp -c "\dt"
+docker exec wimifarma-miauby-db psql -U wimifarma_miauby -d wimifarma_miauby -c "\dt"
 ```
 
 ## Git local

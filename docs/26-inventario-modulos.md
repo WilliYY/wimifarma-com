@@ -867,6 +867,7 @@ Manter Postgres/Redis como fonte oficial e planejar migracao JS -> TypeScript po
 - Agente Node em sombra/corte controlado: `/miauw/agent/`, proxy para `wimifarma-miauw-agent:3100/miauw/agent/`.
 - Bridge WhatsApp separado: `/miauw/whatsapp/`, proxy para `apps/miauw-whatsapp`. Ele nao substitui o Miauby interno, mas consome contexto e acoes dele.
 - Fonte principal do Miauby interno ainda e MySQL `wimifarma_app` para conversas, treino, memorias, alertas e traces.
+- Fase 1 em sombra: `apps/miauby`, `wimifarma-miauby-db` e `wimifarma-miauby-migrator` copiam `miauw_*` para `miauby_*` em Postgres com payload sanitizado, sem alterar `/miauw/`.
 - Memoria curta multicanal tem ponte principal no Postgres do bridge WhatsApp; `miauw_channel_events` em MySQL fica como fallback.
 
 ### Telas e endpoints
@@ -921,8 +922,8 @@ Fonte atual do Miauby interno:
 - `core_users` e `core_login_rate_limits` no `wimifarma_core` para login.
 - `miauw_whatsapp_channel_events` no Postgres do bridge WhatsApp para memoria curta multicanal principal.
 - Tabelas dos modulos modernos acessadas indiretamente por endpoints internos, como `financeiro_*`, `cashback_*`, `codigos_*`, `cotacao_v2_*`, `gestao_*`, `tarefa_*`. O Miauby nao deve ler/gravar diretamente `wf_tarefas`, `wf_compras`, `wf_clientes`, `wf_codigos_comissao`, `financeiro_*` legado MySQL ou `cotacao_*` antigo; quando endpoint/token moderno falhar, deve responder indisponibilidade em vez de cair no legado.
-- Ainda nao existe banco dedicado `wimifarma_miauby` como fonte oficial do Miauby interno.
-- Durante a migracao, criar tabelas canonicas `miauby_*` e, se necessario, views/aliases de compatibilidade para `miauw_*`.
+- Existe banco dedicado `wimifarma_miauby` em modo sombra, ainda sem ser fonte oficial do Miauby interno.
+- Durante a migracao, manter as tabelas canonicas `miauby_*` preenchidas pelo migrador e, se necessario, criar views/aliases de compatibilidade somente depois de validacao.
 
 ### Arquivos PHP relevantes
 
@@ -947,6 +948,7 @@ Fonte atual do Miauby interno:
 - `site/miauw/agent-memory.php`;
 - `site/miauw/widget*.php`, `widget.js`, `widget.css`;
 - `apps/miauw-agent/src/server.ts`.
+- `apps/miauby/src/shadow-migrate.ts`.
 
 ### Fluxos de escrita
 
@@ -989,7 +991,7 @@ Fonte atual do Miauby interno:
 
 ### Proxima acao segura
 
-Criar `wimifarma_miauby`/`apps/miauby` em fases: primeiro schema Postgres e migrador idempotente de conversas, mensagens, treinos, memorias, alertas e traces; depois aliases `/miauby/` e variaveis `MIAUBY_*` com fallback para `MIAUW_*`; depois APIs de leitura; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
+Continuar `wimifarma_miauby`/`apps/miauby` em fases: o schema Postgres e o migrador idempotente de conversas, mensagens, treinos, memorias, alertas e traces ja foram iniciados em sombra; depois validar contagens/checksums, criar aliases `/miauby/` e variaveis `MIAUBY_*` com fallback para `MIAUW_*`; depois APIs de leitura; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
 
 ## Status dos inventarios e proxima rodada
 

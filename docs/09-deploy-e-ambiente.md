@@ -45,6 +45,7 @@ Higiene de pastas no VPS:
 - `apps/usuarios/`
 - `apps/miauw-agent/`
 - `apps/miauw-whatsapp/`
+- `apps/miauby/`
 - `ops/evolution/`
 - `.env`
 - `.env.example`
@@ -69,6 +70,7 @@ Higiene de pastas no VPS:
 - `codigos-data/`
 - `financeiro-data/`
 - `miauw-whatsapp-data/`
+- `miauby-data/`
 - `/home/ubuntu/projetos/wimifarma-evolution-api` no VPS, com `.env`, Postgres, Redis e instancias da Evolution API fora do Git
 - Nginx Proxy Manager externo a este repositorio
 - GoDaddy DNS externo a este repositorio
@@ -87,6 +89,7 @@ Higiene de pastas no VPS:
 - `wimifarma-usuarios-app:3900`: servico interno oficial de Usuarios, acessado pelo Apache por proxy reverso em `/usuarios`.
 - `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra/corte controlado, acessado pelo Apache por proxy reverso em `/miauw/agent`.
 - `wimifarma-miauw-whatsapp:3400`: servico interno do bridge WhatsApp do Miauby, acessado pelo Apache por proxy reverso em `/miauw/whatsapp`.
+- `wimifarma-miauby-db:5432`: Postgres sombra do Miauby interno; nao possui rota publica.
 - `wimifarma-evolution-api:8080`: Evolution API interna para envio de mensagens do bridge, em stack separada; bind externo apenas em `127.0.0.1:8080`.
 - `127.0.0.1:3002`: porta local publicada pelo Compose.
 - `127.0.0.1:13002`: tunel PuTTY usado em testes.
@@ -123,6 +126,7 @@ Higiene de pastas no VPS:
 - Manter o proxy Apache de `/usuarios/` para `wimifarma-usuarios-app:3900`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O modulo usa `wimifarma_core` e nao deve ser publicado direto fora do Apache.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/miauw/whatsapp/` para `wimifarma-miauw-whatsapp:3400`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`, e o painel `/miauw/whatsapp/` deve mostrar apenas dados seguros.
+- `wimifarma-miauby-db` e `wimifarma-miauby-migrator` sao apenas sombra de migracao do Miauby interno. Nao apontar proxy para eles e nao trocar `/miauw/` para Postgres antes de validacao de paridade.
 - Manter a Evolution API fora do Nginx Proxy Manager por padrao; usar API interna `http://wimifarma-evolution-api:8080` e porta local `127.0.0.1:8080` apenas para operacao controlada.
 - Manter `.env` local em cada ambiente.
 - Manter a pasta oficial do VPS como `/home/ubuntu/projetos/wimifarma-com`; nao voltar a operar a partir de clones temporarios depois da consolidacao.
@@ -147,6 +151,7 @@ Higiene de pastas no VPS:
 - Para Google Sheets, configurar `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial em `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON` ou `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`.
 - A senha operacional para excluir tabelas inteiras em Codigos e `wimifarma` por padrao e pode ser trocada por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env` de cada ambiente.
 - Para o Miauby agente sombra, definir `MIAUW_AGENT_INTERNAL_TOKEN` ou manter `MIAUW_GUARDIAN_TOKEN` como fallback; o endpoint publico de health nao exige token, mas `run` e `stream` internos exigem.
+- Para o Miauby interno sombra, definir `MIAUBY_POSTGRES_PASSWORD` no `.env`, subir `wimifarma-miauby-db` e rodar `docker compose run --rm wimifarma-miauby-migrator npm run migrate:shadow` seguido de `npm run validate:shadow`. Esse fluxo so cria/copia dados sanitizados para `wimifarma_miauby`; nao altera chat, widget, treino, diagnostico ou engine oficial.
 - Para o Miauby WhatsApp, definir `MIAUW_WHATSAPP_POSTGRES_PASSWORD`, `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_ALLOWED_SENDERS`, `MIAUW_WHATSAPP_PROVIDER`, `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` antes de usar webhook real. Com `MIAUW_WHATSAPP_PROVIDER=evolution`, preencher `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE`. Com `MIAUW_WHATSAPP_PROVIDER=meta`, preencher `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `META_WHATSAPP_APP_SECRET` e, se necessario, `META_WHATSAPP_GRAPH_API_VERSION`. O default versionado continua `MIAUW_WHATSAPP_ENABLED=false`; no VPS, a ativacao pode ser feita por `.env` e validada em `/miauw/whatsapp/health` e, com login, em `/miauw/whatsapp/login`.
 - Para n8n no Miauby WhatsApp, preencher `MIAUW_WHATSAPP_N8N_ENABLED=true`, `MIAUW_WHATSAPP_N8N_BASE_URL`, `MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL` e `MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET` quando a stack estiver pronta. A rotina `Chegada de pedidos` usa `MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL` para consultar Pedidos, e o toggle de ativar/desativar fica no painel `/miauw/whatsapp/`.
 - Para sincronizar Miauby WhatsApp com o Miauby interno, manter `MIAUW_WHATSAPP_CONTEXT_URL` apontando para `http://wimifarma-com-web/miauw/agent-context.php` e garantir que `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN` esteja presente tambem no web/PHP e no bridge. Esse endpoint entrega treino/perfil/tools para o core, nao segredo nem escrita direta.
@@ -184,6 +189,7 @@ Higiene de pastas no VPS:
 - Backups manuais da Cotacao V2 ficam em `cotacao-data/backups`, fora do Git.
 - A Fase 7/8/9/10/11/12/13/14/15/16/17/18/19 do Miauby adiciona `wimifarma-miauw-agent`, o adaptador PHP sombra, o corte por `MIAUW_ENGINE`, o contrato versionado de personalidade, contratos de tools enviados do PHP ao Node, ponte PHP de tools, roteador de estilo/memoria aprovada, treinador, perfis de voz e audio por transcricao confirmada. O deploy de mudancas no servico deve rebuildar `wimifarma-miauw-agent` e `wimifarma-com-web`; mudancas so no adaptador PHP podem rebuildar apenas `wimifarma-com-web`.
 - O bridge WhatsApp do Miauby adiciona `wimifarma-miauw-whatsapp` e `wimifarma-miauw-whatsapp-db`. Deploys desse canal devem rebuildar o bridge, garantir o Postgres dedicado e rebuildar `wimifarma-com-web` quando houver mudanca no proxy Apache.
+- A fase 1 do Miauby interno adiciona `wimifarma-miauby-db` e `wimifarma-miauby-migrator`. Deploys dessa fase devem subir o banco, rodar o migrador pelo profile `migration`, validar contagens/checksums e manter `wimifarma-com-web` sem alteracao de rota.
 - Quando o WhatsApp depender de `site/miauw/agent-context.php`, `site/miauw/agent-memory.php`, `site/miauw/agent-actions.php` ou da ponte `POST /miauw/whatsapp/internal/memory`, deploy deve rebuildar `wimifarma-com-web` junto do bridge para contexto, memoria e confirmacoes ficarem na mesma versao do codigo TypeScript. A memoria curta principal fica no Postgres do bridge; MySQL e endpoint PHP sao fallback de compatibilidade.
 
 ## Riscos ao alterar
@@ -216,6 +222,7 @@ Higiene de pastas no VPS:
 - Apagar `xp-data/` remove funcionarios, vendas, configuracoes, auditoria e sessoes oficiais do XP Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `codigos-data/` remove itens, blocos, auditoria e sessoes oficiais de Codigos Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `financeiro-data/` remove a fonte oficial atual do Financeiro em Postgres. Fazer backup antes de qualquer limpeza; MySQL `financeiro_*` e apenas referencia historica/backup.
+- Apagar `miauby-data/` remove a copia sombra do Miauby interno e os checksums de migracao. Isso nao derruba `/miauw/`, mas perde a base de paridade da fase 1.
 - Configurar credencial Google Sheets errada pode fazer import/export falhar ou atingir a planilha errada. Validar sempre com `/cotacao/api/google-sheets/status`.
 
 ## Pendencias
