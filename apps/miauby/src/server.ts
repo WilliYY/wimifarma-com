@@ -1,0 +1,450 @@
+import crypto from 'node:crypto';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
+import { Pool, type PoolClient } from 'pg';
+
+type MysqlRow = RowDataPacket & Record<string, unknown>;
+
+type SourceTable = {
+  source: string;
+  target: string;
+  previewFields: string[];
+};
+
+const env = process.env;
+const serviceVersion = '0.2.0';
+const port = Number(env.PORT || 4100);
+const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
+
+const sourceTables: SourceTable[] = [
+  { source: 'miauw_conversas', target: 'miauby_conversations', previewFields: ['titulo', 'title', 'resumo', 'summary'] },
+  { source: 'miauw_mensagens', target: 'miauby_messages', previewFields: ['mensagem', 'message', 'conteudo', 'content', 'texto', 'resposta', 'pergunta'] },
+  { source: 'miauw_treinos_respostas', target: 'miauby_training_examples', previewFields: ['pergunta', 'resposta', 'prompt', 'completion', 'texto'] },
+  { source: 'miauw_memorias', target: 'miauby_memories', previewFields: ['memoria', 'memory', 'conteudo', 'resumo', 'texto'] },
+  { source: 'miauw_conhecimentos', target: 'miauby_knowledge', previewFields: ['titulo', 'conteudo', 'texto', 'resumo'] },
+  { source: 'miauw_alertas', target: 'miauby_alerts', previewFields: ['titulo', 'descricao', 'mensagem', 'status'] },
+  { source: 'miauw_alerta_eventos', target: 'miauby_alert_events', previewFields: ['evento', 'descricao', 'mensagem', 'status'] },
+  { source: 'miauw_padroes', target: 'miauby_patterns', previewFields: ['padrao', 'descricao', 'exemplo', 'status'] },
+  { source: 'miauw_tool_traces', target: 'miauby_tool_traces', previewFields: ['tool', 'trace_id', 'acao', 'status', 'erro'] },
+  { source: 'miauw_configuracoes', target: 'miauby_settings', previewFields: ['chave', 'key', 'nome', 'valor', 'value'] },
+  { source: 'miauw_farmacia_popular_valores', target: 'miauby_farmacia_popular_values', previewFields: ['produto', 'nome', 'ean', 'valor'] },
+  { source: 'miauw_farmacia_popular_atualizacoes', target: 'miauby_farmacia_popular_updates', previewFields: ['origem', 'status', 'resumo', 'mensagem'] },
+];
+
+const mysqlPool = mysql.createPool({
+  host: env.MYSQL_HOST || '127.0.0.1',
+  port: Number(env.MYSQL_PORT || 3306),
+  database: env.MYSQL_DATABASE || 'wimifarma_app',
+  user: env.MYSQL_USER || 'wimifarma_user',
+  password: env.MYSQL_PASSWORD || '',
+  waitForConnections: true,
+  connectionLimit: 4,
+  charset: 'utf8mb4',
+  dateStrings: true,
+});
+
+const pgPool = new Pool({
+  host: env.MIAUBY_POSTGRES_HOST || env.POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.MIAUBY_POSTGRES_PORT || env.POSTGRES_PORT || 5432),
+  database: env.MIAUBY_POSTGRES_DB || env.POSTGRES_DB || 'wimifarma_miauby',
+  user: env.MIAUBY_POSTGRES_USER || env.POSTGRES_USER || 'wimifarma_miauby',
+  password: env.MIAUBY_POSTGRES_PASSWORD || env.POSTGRES_PASSWORD || '',
+  max: 6,
+});
+
+function assertIdentifier(value: string): string {
+  if (!/^[a-z][a-z0-9_]*$/i.test(value)) {
+    throw new Error(`unsafe identifier: ${value}`);
+  }
+  return value;
+}
+
+function mysqlIdent(value: string): string {
+  return `\`${assertIdentifier(value)}\``;
+}
+
+function pgIdent(value: string): string {
+  return `"${assertIdentifier(value)}"`;
+}
+
+function normalizeKey(value: string): string {
+  return value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = normalizeKey(key);
+  return [
+    'token',
+    'secret',
+    'senha',
+    'password',
+    'apikey',
+    'authorization',
+    'cookie',
+    'session',
+    'payload',
+    'raw',
+    'stack',
+    'audio',
+    'media',
+    'midia',
+    'telefone',
+    'phone',
+    'whatsapp',
+    'celular',
+    'numero',
+  ].some((needle) => normalized.includes(needle));
+}
+
+function sanitizeString(value: string): string {
+  let text = value
+    .replace(/sk-[A-Za-z0-9_-]{16,}/g, '[secret-redacted]')
+    .replace(/(\+?55)?\D?\d{2}\D?\d{4,5}\D?\d{4}/g, '[telefone-redacted]');
+
+  if (/\b(SELECT|INSERT|UPDATE|DELETE)\b[\s\S]{0,600}\b(FROM|INTO|SET|WHERE)\b/i.test(text)) {
+    return '[sql-redacted]';
+  }
+
+  if (/stack trace|fatal error|uncaught exception/i.test(text)) {
+    return '[stack-redacted]';
+  }
+
+  if (text.length > 4000) {
+    text = `${text.slice(0, 4000)}...[truncated]`;
+  }
+  return text;
+}
+
+function sanitizeValue(key: string, value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  if (isSensitiveKey(key)) return '[redacted]';
+  if (Buffer.isBuffer(value)) return `[binary:${value.length}]`;
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map((item, index) => sanitizeValue(`${key}_${index}`, item));
+  if (typeof value === 'object') return sanitizeRow(value as Record<string, unknown>);
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'string') return sanitizeString(value);
+  return value;
+}
+
+function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    sanitized[key] = sanitizeValue(key, value);
+  }
+  return sanitized;
+}
+
+function checksum(payload: Record<string, unknown>): string {
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+function stableJson(value: Record<string, unknown>): string {
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = value[key];
+  }
+  return JSON.stringify(sorted);
+}
+
+function syntheticLegacyId(source: string, row: Record<string, unknown>): { id: number; sourceKey: string } {
+  const preferredKey = ['chave', 'key', 'nome', 'name', 'codigo', 'code'].find((field) => {
+    const value = row[field];
+    return value !== null && value !== undefined && String(value).trim() !== '';
+  });
+  const sourceKey = preferredKey
+    ? `${source}:${preferredKey}:${String(row[preferredKey]).trim()}`
+    : `${source}:row:${stableJson(sanitizeRow(row))}`;
+  const id = Number.parseInt(crypto.createHash('sha256').update(sourceKey).digest('hex').slice(0, 12), 16);
+  return { id, sourceKey };
+}
+
+function valueAsNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function pickNumber(row: Record<string, unknown>, fields: string[]): number | null {
+  for (const field of fields) {
+    const value = valueAsNumber(row[field]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function rowProjection(row: MysqlRow, table: SourceTable): {
+  legacy_mysql_id: number | null;
+  legacy_source_key: string;
+  source_checksum: string;
+} {
+  const payload = sanitizeRow(row);
+  const mysqlLegacyId = pickNumber(row, ['id', 'legacy_mysql_id']);
+  const synthetic = mysqlLegacyId === null ? syntheticLegacyId(table.source, row) : null;
+  const legacyId = mysqlLegacyId ?? synthetic?.id ?? null;
+  return {
+    legacy_mysql_id: legacyId,
+    legacy_source_key: synthetic?.sourceKey ?? `${table.source}:id:${legacyId}`,
+    source_checksum: checksum(payload),
+  };
+}
+
+function internalToken(): string {
+  return String(env.MIAUBY_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || env.MIAUW_AGENT_INTERNAL_TOKEN || '').trim();
+}
+
+function requestToken(req: Request): string {
+  return String(req.header('x-miauby-internal-token') || req.header('x-miauw-internal-token') || req.header('x-miauw-guardian-token') || '').trim();
+}
+
+function requireInternalToken(req: Request, res: Response, next: NextFunction): void {
+  const expected = internalToken();
+  if (expected === '') {
+    res.status(503).json({ ok: false, error: 'internal_token_not_configured' });
+    return;
+  }
+  if (requestToken(req) !== expected) {
+    res.status(401).json({ ok: false, error: 'unauthorized' });
+    return;
+  }
+  next();
+}
+
+function parseLimit(value: unknown, fallback: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(max, Math.trunc(parsed)));
+}
+
+async function tableExists(source: string): Promise<boolean> {
+  const [rows] = await mysqlPool.query<RowDataPacket[]>('SHOW TABLES LIKE ?', [source]);
+  return rows.length > 0;
+}
+
+async function tableColumns(source: string): Promise<string[]> {
+  const [rows] = await mysqlPool.query<RowDataPacket[]>(`SHOW COLUMNS FROM ${mysqlIdent(source)}`);
+  return rows.map((row) => String(row.Field || ''));
+}
+
+async function sourceCount(source: string): Promise<number> {
+  const [rows] = await mysqlPool.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM ${mysqlIdent(source)}`);
+  return Number(rows[0]?.total || 0);
+}
+
+async function targetCount(client: PoolClient, target: string, source: string): Promise<number> {
+  const result = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::bigint AS total FROM ${pgIdent(target)} WHERE source_table = $1`,
+    [source],
+  );
+  return Number(result.rows[0]?.total || 0);
+}
+
+async function readSourceSamples(source: string, columns: string[], limit: number): Promise<MysqlRow[]> {
+  if (limit <= 0) return [];
+  const order = columns.includes('id') ? ' ORDER BY `id` ASC' : '';
+  const [rows] = await mysqlPool.query<MysqlRow[]>(`SELECT * FROM ${mysqlIdent(source)}${order} LIMIT ${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function latestRuns(limit = 5): Promise<Array<{ mode: string; ok: boolean; started_at: string; finished_at: string | null }>> {
+  const result = await pgPool.query<{
+    mode: string;
+    ok: boolean;
+    started_at: Date | string;
+    finished_at: Date | string | null;
+  }>(
+    `SELECT mode, ok, started_at, finished_at
+       FROM miauby_migration_runs
+      ORDER BY id DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return result.rows.map((row) => ({
+    mode: row.mode,
+    ok: row.ok,
+    started_at: String(row.started_at),
+    finished_at: row.finished_at === null ? null : String(row.finished_at),
+  }));
+}
+
+async function tableParity(client: PoolClient, table: SourceTable, sampleLimit: number) {
+  const exists = await tableExists(table.source);
+  const summary = {
+    source: table.source,
+    target: table.target,
+    exists,
+    source_count: 0,
+    target_count: await targetCount(client, table.target, table.source),
+    count_match: false,
+    sample_checked: 0,
+    sample_mismatches: 0,
+    sample_missing_targets: 0,
+    sample: [] as Array<{ legacy_mysql_id: number; target_found: boolean; checksum_match: boolean }>,
+    issues: [] as string[],
+  };
+
+  if (!exists) {
+    summary.issues.push('source_table_missing');
+    return summary;
+  }
+
+  const columns = await tableColumns(table.source);
+  summary.source_count = await sourceCount(table.source);
+  summary.count_match = summary.source_count === summary.target_count;
+  if (!summary.count_match) {
+    summary.issues.push(`count_mismatch:${summary.target_count}/${summary.source_count}`);
+  }
+
+  for (const row of await readSourceSamples(table.source, columns, sampleLimit)) {
+    const projected = rowProjection(row, table);
+    if (projected.legacy_mysql_id === null) {
+      summary.sample_mismatches += 1;
+      summary.issues.push('sample_without_stable_id');
+      continue;
+    }
+    const target = await client.query<{ source_checksum: string }>(
+      `SELECT source_checksum FROM ${pgIdent(table.target)} WHERE source_table = $1 AND legacy_mysql_id = $2 LIMIT 1`,
+      [table.source, projected.legacy_mysql_id],
+    );
+    const targetChecksum = target.rows[0]?.source_checksum || '';
+    const targetFound = target.rows.length > 0;
+    const checksumMatch = targetFound && targetChecksum === projected.source_checksum;
+    summary.sample_checked += 1;
+    if (!targetFound) summary.sample_missing_targets += 1;
+    if (!checksumMatch) summary.sample_mismatches += 1;
+    summary.sample.push({
+      legacy_mysql_id: projected.legacy_mysql_id,
+      target_found: targetFound,
+      checksum_match: checksumMatch,
+    });
+  }
+
+  if (summary.sample_missing_targets > 0) {
+    summary.issues.push(`sample_missing_targets:${summary.sample_missing_targets}`);
+  }
+  if (summary.sample_mismatches > 0) {
+    summary.issues.push(`sample_mismatches:${summary.sample_mismatches}`);
+  }
+
+  return summary;
+}
+
+async function buildParity(sampleLimit: number) {
+  const client = await pgPool.connect();
+  try {
+    const tables = [];
+    for (const table of sourceTables) {
+      tables.push(await tableParity(client, table, sampleLimit));
+    }
+    const runs = await latestRuns(5);
+    const ok = tables.every((table) => table.issues.length === 0) && runs.some((run) => run.mode === 'validate' && run.ok);
+    return {
+      ok,
+      mode: 'read_only_shadow_parity',
+      official_source: 'site/miauw php + mysql miauw_*',
+      shadow_target: 'apps/miauby + postgres miauby_*',
+      sample_limit: sampleLimit,
+      latest_runs: runs,
+      tables,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+const app = express();
+app.disable('x-powered-by');
+app.use(express.json({ limit: '32kb' }));
+app.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
+app.get(['/health', `${basePath}/health`], async (_req, res) => {
+  const started = Date.now();
+  try {
+    const ping = await pgPool.query<{ ok: number }>('SELECT 1 AS ok');
+    let latestMigrationOk: boolean | null = null;
+    try {
+      const runs = await latestRuns(1);
+      latestMigrationOk = runs[0]?.ok ?? null;
+    } catch {
+      latestMigrationOk = null;
+    }
+    res.json({
+      ok: ping.rows[0]?.ok === 1,
+      service: 'miauby',
+      version: serviceVersion,
+      base_path: basePath,
+      mode: 'shadow_read_only',
+      route_cutover_enabled: false,
+      write_enabled: false,
+      internal_token_configured: internalToken() !== '',
+      latest_migration_ok: latestMigrationOk,
+      latency_ms: Date.now() - started,
+    });
+  } catch (error) {
+    res.status(503).json({
+      ok: false,
+      service: 'miauby',
+      version: serviceVersion,
+      error: error instanceof Error ? error.message : 'health_failed',
+      latency_ms: Date.now() - started,
+    });
+  }
+});
+
+app.get(`${basePath}/api/internal/status`, requireInternalToken, async (_req, res) => {
+  const client = await pgPool.connect();
+  try {
+    const tables = [];
+    for (const table of sourceTables) {
+      tables.push({
+        source: table.source,
+        target: table.target,
+        target_count: await targetCount(client, table.target, table.source),
+      });
+    }
+    res.json({
+      ok: true,
+      mode: 'read_only_shadow_status',
+      write_enabled: false,
+      latest_runs: await latestRuns(5),
+      tables,
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.get(`${basePath}/api/internal/parity`, requireInternalToken, async (req, res, next) => {
+  try {
+    res.json(await buildParity(parseLimit(req.query.sample, 5, 50)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[miauby] request failed', error);
+  res.status(500).json({
+    ok: false,
+    error: error instanceof Error ? error.message : 'internal_error',
+  });
+});
+
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`[miauby] read-only shadow service listening on ${port} at ${basePath}`);
+});
+
+async function shutdown(): Promise<void> {
+  server.close();
+  await Promise.allSettled([mysqlPool.end(), pgPool.end()]);
+}
+
+process.on('SIGTERM', () => {
+  void shutdown().then(() => process.exit(0));
+});
+
+process.on('SIGINT', () => {
+  void shutdown().then(() => process.exit(0));
+});

@@ -260,6 +260,7 @@ services:
       context: ./apps/miauby
       dockerfile: Dockerfile
     container_name: wimifarma-miauby-migrator
+    command: ["npm", "run", "migrate:shadow"]
     profiles:
       - migration
     depends_on:
@@ -277,6 +278,34 @@ services:
       MIAUBY_POSTGRES_DB: wimifarma_miauby
       MIAUBY_POSTGRES_USER: wimifarma_miauby
       MIAUBY_POSTGRES_PASSWORD: ${MIAUBY_POSTGRES_PASSWORD:-wimifarma_miauby_dev_pass}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-miauby-app:
+    build:
+      context: ./apps/miauby
+      dockerfile: Dockerfile
+    container_name: wimifarma-miauby-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-miauby-db
+    environment:
+      NODE_ENV: production
+      PORT: 4100
+      BASE_PATH: /miauby
+      MYSQL_HOST: wimifarma-com-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: wimifarma_app
+      MYSQL_USER: wimifarma_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
+      MIAUBY_POSTGRES_HOST: wimifarma-miauby-db
+      MIAUBY_POSTGRES_PORT: 5432
+      MIAUBY_POSTGRES_DB: wimifarma_miauby
+      MIAUBY_POSTGRES_USER: wimifarma_miauby
+      MIAUBY_POSTGRES_PASSWORD: ${MIAUBY_POSTGRES_PASSWORD:-wimifarma_miauby_dev_pass}
+      MIAUBY_INTERNAL_TOKEN: ${MIAUBY_INTERNAL_TOKEN:-}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
     networks:
       - wimifarma-com-network
 

@@ -181,9 +181,10 @@ Proibido migrar para Postgres:
 
 ### Fase 2 - APIs de leitura em Node
 
-- Criar `apps/miauby` em Node.js 22 + TypeScript + Express.
-- Expor health/status publicos sem segredo.
-- Expor endpoints internos tokenizados para:
+- Estado iniciado em 2026-05-30: `wimifarma-miauby-app` roda `apps/miauby` em Node.js 22 + TypeScript + Express, somente na rede Docker.
+- Estado iniciado em 2026-05-30: `/miauby/health` responde status seguro do servico sombra, sem segredo e sem proxy publico.
+- Estado iniciado em 2026-05-30: `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` exigem token interno e comparam tabelas `miauby_*` contra `miauw_*` por contagem/checksum/amostra, sem retornar payload bruto.
+- Proximas leituras a adicionar depois da paridade:
   - contexto de voz/persona;
   - treinos aprovados;
   - memorias revisadas;
@@ -250,8 +251,8 @@ Proibido migrar para Postgres:
 
 1. Fechar inventario detalhado dos modulos modernos em `docs/26-inventario-modulos.md`.
 2. Criar schema/migrator sombra do `wimifarma_miauby`.
-3. Criar alias `/miauby/` sem remover `/miauw/`.
-4. Colocar `apps/miauby` lendo Postgres sombra.
+3. Colocar `apps/miauby` lendo Postgres sombra por API interna somente leitura.
+4. Criar alias `/miauby/` sem remover `/miauw/`.
 5. Migrar motor em sombra para `adm`.
 6. Cortar por usuario, depois por rota.
 

@@ -76,7 +76,7 @@ rows=(
   "Financeiro|site/financeiro;apps/financeiro|Node.js + TypeScript + Express + Postgres oficial|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
   "Usuarios|apps/usuarios|Node.js + TypeScript + Express + Postgres core|sem MySQL operacional para usuarios novos|enforcement gradual por modulo|moderno"
   "Cashback|site/cashback;apps/cashback|Node.js + TypeScript + Express + Postgres + core auth|sem dependencia MySQL no app; rollback por restauracao|Postgres puro + core auth/auditoria|moderno"
-  "Miauby interno|site/miauw;apps/miauby|PHP + Node agent sombra + migrador Postgres sombra + core auth|miauw_* oficial em MySQL; copia sanitizada em Postgres sombra|apps/miauby + Postgres wimifarma_miauby com fallback miauw|7"
+  "Miauby interno|site/miauw;apps/miauby|PHP + Node agent sombra + servico/migrador Postgres sombra + core auth|miauw_* oficial em MySQL; copia sanitizada em Postgres sombra com paridade interna|apps/miauby + Postgres wimifarma_miauby com fallback miauw|7"
   "Miauby WhatsApp|apps/miauw-whatsapp|Node.js + TypeScript + Postgres|sem MySQL operacional|manter/evoluir|moderno"
   "Home publica|site/home.php|PHP desacoplado|sem banco direto|manter ou trocar depois|baixo"
   "WordPress|site/wp-config.php|WordPress + PHP + MySQL|dependencia natural do WP|substituir/desacoplar|ultimo"
@@ -103,6 +103,6 @@ Proximos passos recomendados:
 - Validar Financeiro Node/Postgres em /financeiro/ com health/login/Caixa/Relatorio/CSV/Pix CNPJ sem reintroduzir mysql2.
 - Validar Usuarios em /usuarios/ com health, login admin, vinculo XP e auditoria; depois aplicar permissoes modulo por modulo.
 - Validar Cashback em /cashback/ com health, login, saldos, CSV, mensagens e autoteste apos remocao do caminho mysql2.
-- Depois validar o migrador sombra do Miauby interno e so entao criar alias/fallback antes de renomear runtime.
+- Depois observar a API interna de paridade do Miauby interno e so entao criar alias/fallback antes de renomear runtime.
 - Tratar WordPress como excecao isolada ou substituir o site publico depois.
 EOF

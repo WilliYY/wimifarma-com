@@ -29,7 +29,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 
 - Projeto local em `C:\Users\Thiesen\Desktop\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
-- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cashback-app`, `wimifarma-cashback-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-usuarios-app`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp`, `wimifarma-miauw-whatsapp-db`, `wimifarma-miauby-db` e `wimifarma-miauby-migrator`.
+- Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cashback-app`, `wimifarma-cashback-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-usuarios-app`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp`, `wimifarma-miauw-whatsapp-db`, `wimifarma-miauby-db`, `wimifarma-miauby-migrator` e `wimifarma-miauby-app`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
 - `wimifarma_wp` contem WordPress com prefixo `wptl_`.
@@ -41,7 +41,7 @@ Para novos cards/modulos, a regra e escolher a melhor estrutura tecnica pelo dom
 - Tarefa fica oficialmente em `apps/tarefa`, usa Node.js/TypeScript/Express, sessao propria `WFTAREFA`, Postgres dedicado `wimifarma_tarefa` e rota/proxy separados em `/tarefa/`. A tela foi preservada visualmente; desde 2026-05-30 o servico autentica somente pelo core Postgres, sem `mysql2`, importador, espelho de logs, fallback `wf_users` ou flags `TAREFA_LEGACY_MYSQL_*`. Tarefas sem dono continuam publicas para todos; tarefas delegadas por `/usuarios/` usam `assigned_core_user_id`, aparecem somente para o usuario indicado e nao sao espelhadas no legado MySQL.
 - A Cotacao PHP antiga foi removida; `site/cotacao` nao existe mais e os ativos da tela oficial ficam em `apps/cotacao/public`.
 - Em 2026-05-29, a limpeza de legado arquivou PHPs e assets antigos comprovadamente inativos em `site/_legacy-disabled/2026-05-29/`, com acesso bloqueado por `.htaccess`. Foram preservados WordPress, Miauby PHP, helpers PHP ainda chamados pelo Miauby e assets montados pelos apps Node. O inventario fica em `docs/27-limpeza-legado.md`.
-- Em 2026-05-30, foi iniciado o inventario detalhado de Gestao, Pedidos, Tarefa, XP, Codigos, Usuarios e Cotacao em `docs/26-inventario-modulos.md`, e a trilha de migracao completa do Miauby interno em `docs/28-miauby-migracao.md`. `Miauby` passa a ser o nome canonico de produto, enquanto `miauw` continua como prefixo tecnico legado em rotas/env/tabelas ate haver aliases e corte validado. Ainda em 2026-05-30, a fase 1 criou `apps/miauby`, `wimifarma-miauby-db` e `wimifarma-miauby-migrator` para copiar `miauw_*` para `miauby_*` em Postgres sombra, com payload sanitizado, sem mudar `/miauw/` nem o frontend.
+- Em 2026-05-30, foi iniciado o inventario detalhado de Gestao, Pedidos, Tarefa, XP, Codigos, Usuarios e Cotacao em `docs/26-inventario-modulos.md`, e a trilha de migracao completa do Miauby interno em `docs/28-miauby-migracao.md`. `Miauby` passa a ser o nome canonico de produto, enquanto `miauw` continua como prefixo tecnico legado em rotas/env/tabelas ate haver aliases e corte validado. Ainda em 2026-05-30, `apps/miauby`, `wimifarma-miauby-db`, `wimifarma-miauby-migrator` e `wimifarma-miauby-app` passam a copiar `miauw_*` para `miauby_*` em Postgres sombra e expor API interna somente leitura de status/paridade, com payload sanitizado, sem mudar `/miauw/`, sem proxy publico e sem alterar o frontend.
 - Rotas de login dos modulos responderam HTTP 200 na auditoria local.
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
 - No widget do Miauby, `api_ready` indica chave preenchida, nao chamada OpenAI validada. Se o chat cair no fallback, conferir logs/alertas internos para autenticacao, cota, modelo ou rede.
@@ -353,6 +353,7 @@ CASHBACK_INTERNAL_TOKEN
 CASHBACK_INTERNAL_BASE_URL
 MIAUW_OPENAI_API_KEY
 MIAUBY_POSTGRES_PASSWORD
+MIAUBY_INTERNAL_TOKEN
 MIAUW_OPENAI_MODEL
 MIAUW_GUARDIAN_TOKEN
 MIAUW_AGENT_INTERNAL_TOKEN
@@ -530,7 +531,7 @@ Para o Miauby criar/consultar encomendas diretamente na Cotacao V2, manter `MIAU
 
 Para testar o servico Miauby agente, manter `MIAUW_AGENT_INTERNAL_TOKEN` preenchido ou usar o fallback de `MIAUW_GUARDIAN_TOKEN`; `MIAUW_AGENT_INTERNAL_BASE_URL` aponta internamente para `http://wimifarma-miauw-agent:3100/miauw/agent` e `MIAUW_PHP_TOOL_BRIDGE_URL` aponta para `http://wimifarma-com-web/miauw/agent-tools.php`.
 
-Para iniciar a migracao sombra do Miauby interno, definir `MIAUBY_POSTGRES_PASSWORD` por ambiente, subir `wimifarma-miauby-db` e rodar `wimifarma-miauby-migrator` pelo profile `migration`. O migrador de `apps/miauby` copia tabelas `miauw_*` para tabelas `miauby_*` com `legacy_mysql_id`, checksum e payload sanitizado. Ele nao altera `/miauw/`, nao muda widget, nao grava em `miauw_*` e nao substitui o PHP.
+Para iniciar a migracao sombra do Miauby interno, definir `MIAUBY_POSTGRES_PASSWORD` por ambiente, subir `wimifarma-miauby-db` e rodar `wimifarma-miauby-migrator` pelo profile `migration`. O migrador de `apps/miauby` copia tabelas `miauw_*` para tabelas `miauby_*` com `legacy_mysql_id`, checksum e payload sanitizado. `MIAUBY_INTERNAL_TOKEN` protege os endpoints internos do `wimifarma-miauby-app`; quando vazio, o servico pode reutilizar `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`. O app responde apenas na rede Docker em `wimifarma-miauby-app:4100`, sem proxy Apache/publico, e expoe `/miauby/health`, `/miauby/api/internal/status` e `/miauby/api/internal/parity` para validar paridade antes de qualquer alias ou corte visual.
 
 Para comparar respostas do PHP com o servico sombra em envios reais, ligar `MIAUW_AGENT_SHADOW_ON_SEND=true` e manter `MIAUW_AGENT_SHADOW_TIMEOUT_MS` com limite baixo o suficiente para nao atrapalhar a equipe. O padrao documentado fica `false`.
 
@@ -569,6 +570,7 @@ Portas importantes:
 - app interno Codigos: `wimifarma-codigos-app:3700`
 - app interno Financeiro oficial: `wimifarma-financeiro-app:3800`
 - app interno Usuarios: `wimifarma-usuarios-app:3900`
+- app interno Miauby sombra leitura: `wimifarma-miauby-app:4100`
 - bind local do Compose: `127.0.0.1:3002`
 - tunel local do PuTTY usado em testes: `127.0.0.1:13002`
 - publico: `80/443` via Nginx Proxy Manager

@@ -867,7 +867,7 @@ Manter Postgres/Redis como fonte oficial e planejar migracao JS -> TypeScript po
 - Agente Node em sombra/corte controlado: `/miauw/agent/`, proxy para `wimifarma-miauw-agent:3100/miauw/agent/`.
 - Bridge WhatsApp separado: `/miauw/whatsapp/`, proxy para `apps/miauw-whatsapp`. Ele nao substitui o Miauby interno, mas consome contexto e acoes dele.
 - Fonte principal do Miauby interno ainda e MySQL `wimifarma_app` para conversas, treino, memorias, alertas e traces.
-- Fase 1 em sombra: `apps/miauby`, `wimifarma-miauby-db` e `wimifarma-miauby-migrator` copiam `miauw_*` para `miauby_*` em Postgres com payload sanitizado, sem alterar `/miauw/`.
+- Fase sombra: `apps/miauby`, `wimifarma-miauby-db`, `wimifarma-miauby-migrator` e `wimifarma-miauby-app` copiam `miauw_*` para `miauby_*` em Postgres com payload sanitizado e comparam paridade por API interna somente leitura, sem alterar `/miauw/`.
 - Memoria curta multicanal tem ponte principal no Postgres do bridge WhatsApp; `miauw_channel_events` em MySQL fica como fallback.
 
 ### Telas e endpoints
@@ -887,6 +887,9 @@ Manter Postgres/Redis como fonte oficial e planejar migracao JS -> TypeScript po
 - `/miauw/miauw-evals.php`: eval local do Miauby.
 - `/miauw/farmacia-popular-cron.php` e `/miauw/guardian-cron.php`: rotinas internas.
 - `/miauw/agent/health`, `/status`, `/run`, `/stream`: endpoints do agente Node; `run` e `stream` exigem token interno.
+- `wimifarma-miauby-app:4100/miauby/health`: health interno do Postgres sombra do Miauby, sem segredo.
+- `wimifarma-miauby-app:4100/miauby/api/internal/status`: status interno tokenizado das tabelas `miauby_*`.
+- `wimifarma-miauby-app:4100/miauby/api/internal/parity?sample=5`: paridade interna tokenizada de contagens e checksums contra `miauw_*`, sem retornar payload bruto.
 
 ### Permissoes e sessao
 
@@ -949,6 +952,7 @@ Fonte atual do Miauby interno:
 - `site/miauw/widget*.php`, `widget.js`, `widget.css`;
 - `apps/miauw-agent/src/server.ts`.
 - `apps/miauby/src/shadow-migrate.ts`.
+- `apps/miauby/src/server.ts`.
 
 ### Fluxos de escrita
 
@@ -991,7 +995,7 @@ Fonte atual do Miauby interno:
 
 ### Proxima acao segura
 
-Continuar `wimifarma_miauby`/`apps/miauby` em fases: o schema Postgres e o migrador idempotente de conversas, mensagens, treinos, memorias, alertas e traces ja foram iniciados em sombra; depois validar contagens/checksums, criar aliases `/miauby/` e variaveis `MIAUBY_*` com fallback para `MIAUW_*`; depois APIs de leitura; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
+Continuar `wimifarma_miauby`/`apps/miauby` em fases: o schema Postgres, o migrador idempotente e a API interna somente leitura de paridade ja existem em sombra; depois observar contagens/checksums no VPS, criar aliases `/miauby/` e variaveis `MIAUBY_*` com fallback para `MIAUW_*`; depois expor leituras de contexto/treino/memoria ao engine em sombra; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
 
 ## Status dos inventarios e proxima rodada
 

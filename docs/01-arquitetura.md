@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres sombra do Miauby interno, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. O novo `wimifarma-miauby-app` fica apenas na rede Docker como servico sombra somente leitura para validar Postgres contra PHP/MySQL, sem proxy publico. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres sombra do Miauby interno, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
 A direcao de arquitetura para a proxima etapa e manter uma plataforma Postgres integrada por `wimifarma_core`, sem juntar todos os dominios em um banco unico acoplado. A migracao do Miauby interno deve criar `wimifarma_miauby`/`apps/miauby` por fases, mantendo `/miauw/` e `MIAUW_*` como compatibilidade ate o corte validado.
 
@@ -25,6 +25,7 @@ Usuario/Navegador
       -> proxy /usuarios/ para wimifarma-usuarios-app:3900
       -> proxy /miauw/agent/ para wimifarma-miauw-agent:3100
       -> proxy /miauw/whatsapp/ para wimifarma-miauw-whatsapp:3400
+  -> wimifarma-miauby-app:4100 (somente rede interna, sem proxy publico)
   -> wimifarma-com-db:3306 (MySQL)
   -> wimifarma-core-db:5432 (Postgres core auth)
   -> wimifarma-cashback-db:5432 (Postgres)
@@ -46,6 +47,7 @@ Arquivos principais:
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
 - `apps/miauby/src/shadow-migrate.ts`
+- `apps/miauby/src/server.ts`
 - `ops/evolution/docker-compose.yml`
 - `apps/cotacao/src/server.js`
 - `apps/cashback/src/server.ts`
@@ -102,6 +104,7 @@ Containers:
 - `wimifarma-miauw-whatsapp-db`: Postgres 17 dedicado ao canal WhatsApp do Miauby, monta `./miauw-whatsapp-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-miauby-db`: Postgres 17 sombra do Miauby interno, monta `./miauby-data/postgres:/var/lib/postgresql/data`.
 - `wimifarma-miauby-migrator`: Node.js 22 + TypeScript em profile `migration`, copia `miauw_*` do MySQL para `miauby_*` sanitizado sem mudar a rota oficial `/miauw/`.
+- `wimifarma-miauby-app`: Node.js 22 + TypeScript + Express para health/status/paridade interna somente leitura em `:4100`; nao tem proxy Apache, nao serve frontend e nao grava em `miauw_*` nem `miauby_*`.
 - `wimifarma-evolution-api`: Evolution API v2 como transporte WhatsApp, em stack separada no VPS, ligada na rede `wimifarma-com-network` para o bridge chamar internamente.
 - `wimifarma-evolution-postgres` e `wimifarma-evolution-redis`: persistencia propria da Evolution API, fora dos bancos do Wimifarma.
 
@@ -127,6 +130,7 @@ Rede Docker:
 - Interno Usuarios: `wimifarma-usuarios-app:3900`
 - Interno Miauby agente: `wimifarma-miauw-agent:3100`
 - Interno Miauby WhatsApp: `wimifarma-miauw-whatsapp:3400`
+- Interno Miauby sombra leitura: `wimifarma-miauby-app:4100`
 - Interno Evolution API para o bridge: `wimifarma-evolution-api:8080`
 
 O proxy publico deve encaminhar para `http://wimifarma-com-web:80`. Nao apontar o Nginx Proxy Manager diretamente para `wimifarma-cashback-app` ou `wimifarma-cotacao-app`; o Apache ja publica `/cashback/`, `/cotacao/` e `/cotacao/socket.io/`.
@@ -134,6 +138,7 @@ Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-gestao-app`
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-xp-app`, `wimifarma-codigos-app`, `wimifarma-financeiro-app` ou `wimifarma-usuarios-app`; o Apache publica `/pedidos/`, `/tarefa/`, `/xp/`, `/codigos/`, `/financeiro/` e `/usuarios/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-agent`; o Apache publica `/miauw/agent/` internamente.
 Tambem nao apontar o Nginx Proxy Manager diretamente para `wimifarma-miauw-whatsapp` nem para `wimifarma-evolution-api`; o Apache publica `/miauw/whatsapp/` internamente, e a Evolution API fica limitada a localhost/rede Docker ate decisao explicita.
+Tambem nao apontar o Nginx Proxy Manager nem o Apache para `wimifarma-miauby-app`; ele e API sombra interna de paridade antes de qualquer alias `/miauby/`.
 
 ## Regras que precisam ser preservadas
 

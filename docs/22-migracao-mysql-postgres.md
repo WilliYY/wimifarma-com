@@ -11,7 +11,7 @@ Hoje o projeto ainda precisa de MySQL por dois motivos diferentes:
 - WordPress: banco `wimifarma_wp`, prefixo `wptl_`. WordPress foi feito para MySQL/MariaDB; trocar por Postgres nao e uma migracao simples nem recomendada como ajuste pequeno. Para remover MySQL 100%, a decisao tecnica correta e substituir/desacoplar a parte WordPress ou manter um MySQL isolado so para WordPress ate essa troca.
 - Apps internos: banco `wimifarma_app`, com usuarios, cashback, financeiro, legados de Codigos/XP/Tarefa e Miauby PHP. Estes podem migrar por etapas para Postgres.
 
-Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Cashback e Miauby WhatsApp ja guardam seus dados principais em Postgres. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em Postgres `wimifarma_core`, sincronizando `wf_users` para `core_users`. Em 2026-05-29, a Cotacao e Pedidos removeram a dependencia MySQL do login e passaram a usar somente `core_users`; Tarefa passou a usar core auth por default. Em 2026-05-30, Cashback, Gestao, Tarefa, Codigos, XP e Financeiro removeram `mysql2`, fallback `wf_users`, espelho/log MySQL, importador MySQL e variaveis/flags MySQL do runtime. Miauby PHP passou a `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core` e o Miauby interno ganhou Postgres sombra `wimifarma_miauby` com migrador `apps/miauby` para copiar `miauw_*` sanitizado, sem mudar a rota oficial. WordPress segue MySQL por enquanto.
+Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Cashback e Miauby WhatsApp ja guardam seus dados principais em Postgres. Em 2026-05-28, a memoria curta compartilhada do Miauby interno/WhatsApp passou a ter fonte principal no Postgres do bridge (`miauw_whatsapp_channel_events`), e o core de autenticacao entrou em Postgres `wimifarma_core`, sincronizando `wf_users` para `core_users`. Em 2026-05-29, a Cotacao e Pedidos removeram a dependencia MySQL do login e passaram a usar somente `core_users`; Tarefa passou a usar core auth por default. Em 2026-05-30, Cashback, Gestao, Tarefa, Codigos, XP e Financeiro removeram `mysql2`, fallback `wf_users`, espelho/log MySQL, importador MySQL e variaveis/flags MySQL do runtime. Miauby PHP passou a `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core` e o Miauby interno ganhou Postgres sombra `wimifarma_miauby` com migrador e API interna somente leitura em `apps/miauby` para copiar e comparar `miauw_*` sanitizado, sem mudar a rota oficial. WordPress segue MySQL por enquanto.
 
 ## Uso atual de MySQL
 
@@ -62,7 +62,7 @@ A meta operacional e todos os cards conversarem em uma unica plataforma de Postg
 - `wimifarma_tarefa`: tarefas, auditoria e sessoes do modulo Tarefa.
 - `wimifarma_xp`: funcionarios, vendas XP e configuracoes.
 - `wimifarma_codigos`: itens de comissao diferente, blocos EAN, auditoria e sessoes do modulo Codigos.
-- `wimifarma_miauby`: banco sombra do chat, memoria, treino, alertas e traces do Miauby interno. A fase atual apenas copia `miauw_*` para `miauby_*` por migrador idempotente; `miauw_*` continua oficial ate corte validado.
+- `wimifarma_miauby`: banco sombra do chat, memoria, treino, alertas e traces do Miauby interno. A fase atual copia `miauw_*` para `miauby_*` por migrador idempotente e compara contagens/checksums por API interna somente leitura; `miauw_*` continua oficial ate corte validado.
 - manter `wimifarma_cotacao`, `wimifarma_gestao` e `wimifarma_miauw_whatsapp` como ja existem.
 
 Se a operacao preferir menos containers, esses schemas podem viver no mesmo servidor Postgres, mas com schemas/bancos separados e credenciais separadas por app.
@@ -108,7 +108,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 - Migrar conversas, mensagens, memoria, treino, alertas e traces.
 - Criar e validar o alvo novo como `wimifarma_miauby`/`miauby_*`, mantendo rotas/env/tabelas `miauw` como compatibilidade ate o corte validado.
-- Estado atual: `wimifarma-miauby-db` e `wimifarma-miauby-migrator` existem no Compose; `apps/miauby` cria schema, copia registros por `legacy_mysql_id`, grava checksum e redige dados sensiveis em `payload_sanitized`.
+- Estado atual: `wimifarma-miauby-db`, `wimifarma-miauby-migrator` e `wimifarma-miauby-app` existem no Compose; `apps/miauby` cria schema, copia registros por `legacy_mysql_id`, grava checksum, redige dados sensiveis em `payload_sanitized` e expoe status/paridade interna tokenizada sem proxy publico.
 - Manter a memoria curta multicanal em `miauw_whatsapp_channel_events` como primeiro passo ja cortado para Postgres, removendo o fallback MySQL somente depois de observacao operacional.
 - Cuidar para nao copiar payload bruto, segredo, telefone completo ou stack trace que ja nao deveria existir.
 - Planejar corte junto com o `apps/miauw-agent`, porque parte do Miauby ja esta no Node.

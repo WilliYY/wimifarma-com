@@ -52,7 +52,7 @@ O script mostra:
 | Financeiro | Node.js + TypeScript + Postgres oficial | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
 | Cashback | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
-| Miauby interno | PHP + Node agent sombra + migrador Postgres sombra + core auth | `miauw_*` oficial em MySQL, copia sanitizada em `wimifarma_miauby` | Node/TypeScript + Postgres `wimifarma_miauby`, com alias/fallback `miauw` ate corte | 7 |
+| Miauby interno | PHP + Node agent sombra + servico/migrador Postgres sombra + core auth | `miauw_*` oficial em MySQL, copia sanitizada em `wimifarma_miauby` com paridade interna | Node/TypeScript + Postgres `wimifarma_miauby`, com alias/fallback `miauw` ate corte | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
 | Home publica | PHP desacoplado do WordPress | PHP simples, sem banco direto | manter ou trocar depois | baixo |
 | WordPress | WordPress + MySQL | dependencia natural do WP | substituir/desacoplar se quiser zero MySQL | ultimo |
@@ -141,13 +141,14 @@ A proxima fatia segura e validar Gestao e Cashback no VPS com `/gestao/health`, 
 
 ## Miauby - proxima migracao grande
 
-O Miauby interno e o proximo modulo de maior risco porque ainda concentra conversa, treino, memorias, alertas, traces e parte das tools em PHP/MySQL. A migracao deve seguir `docs/28-miauby-migracao.md`; a fase 1 ja iniciou o Postgres sombra e o migrador idempotente:
+O Miauby interno e o proximo modulo de maior risco porque ainda concentra conversa, treino, memorias, alertas, traces e parte das tools em PHP/MySQL. A migracao deve seguir `docs/28-miauby-migracao.md`; a fase sombra ja tem Postgres, migrador idempotente e API interna de paridade somente leitura:
 
 - nome de produto canonico: `Miauby`;
 - prefixo tecnico legado preservado: `miauw`;
 - alvo de banco: `wimifarma_miauby`, tabelas `miauby_*`;
-- app/migrador sombra: `apps/miauby`, container `wimifarma-miauby-migrator`;
+- app/migrador sombra: `apps/miauby`, containers `wimifarma-miauby-migrator` e `wimifarma-miauby-app`;
 - banco sombra: `wimifarma-miauby-db`, sem rota publica e sem efeito no frontend;
+- API interna de paridade: `/miauby/health`, `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` apenas dentro da rede Docker;
 - alias futuro: `/miauby/`, sem remover `/miauw/` no primeiro corte;
 - env vars futuras `MIAUBY_*` com fallback para `MIAUW_*`;
 - Node/TypeScript primeiro em sombra, depois corte por usuario;

@@ -58,7 +58,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_codigos`: Codigos em Postgres.
 - `wimifarma_financeiro`: Financeiro oficial em Postgres.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
-- `wimifarma_miauby`: banco sombra do Miauby interno, com tabelas canonicas `miauby_*`. O prefixo `miauw_*` permanece oficial no PHP ate corte validado; ver `docs/28-miauby-migracao.md`.
+- `wimifarma_miauby`: banco sombra do Miauby interno, com tabelas canonicas `miauby_*`. `wimifarma-miauby-app` usa esse banco para status/paridade somente leitura contra `miauw_*`; o prefixo `miauw_*` permanece oficial no PHP ate corte validado; ver `docs/28-miauby-migracao.md`.
 
 O inventario de dependencias MySQL e o plano de migracao gradual para Postgres ficam em `docs/22-migracao-mysql-postgres.md`. A decisao mais importante: remover MySQL dos modulos internos e viavel por etapas, mas remover MySQL 100% exige tratar WordPress como excecao temporaria ou substituir/desacoplar a parte WordPress.
 
