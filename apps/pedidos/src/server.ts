@@ -2211,9 +2211,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529-zoom-safe">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529-form-clean">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
-  <script src="${BASE_PATH}/app.js?v=20260521-parcelas" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260529-form-clean" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">
@@ -2283,7 +2283,7 @@ function renderLogin(req: Request, error = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Login</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-compact">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529-form-clean">
   <script src="${BASE_PATH}/login-runner.js?v=20260520-compact" defer></script>
 </head>
 <body class="gestao-login-body">
