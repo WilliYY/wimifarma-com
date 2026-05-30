@@ -331,6 +331,15 @@ O manager operacional, quando necessario, deve ser acessado pelo manager embutid
 
 Para reduzir falhas de pareamento QR/codigo na Evolution/Baileys, a stack deve manter cache local, historico/contatos/chats/labels desligados e `CONFIG_SESSION_PHONE_VERSION=2.3000.1033773198`. Esse ajuste evita sobrecarga e erros como `Invalid buffer` durante o login.
 
+Em 2026-05-30, a Evolution no VPS estava conectada (`connectionState=open`) e os logs mostravam timeouts pontuais do Baileys em `executeInitQueries`/`fetchProps`: 5 ocorrencias em 24h e 0 nas 12h mais recentes. Esse erro, quando isolado, nao deve ser tratado como queda do WhatsApp. O runbook seguro e medir antes de reiniciar:
+
+```bash
+/home/ubuntu/projetos/wimifarma-com/ops/evolution/check-baileys-init-timeouts.sh
+LOOKBACK=24h WARN_THRESHOLD=6 CRITICAL_THRESHOLD=12 /home/ubuntu/projetos/wimifarma-com/ops/evolution/check-baileys-init-timeouts.sh
+```
+
+Se o script voltar `status=ok`, nao fazer nada. Se voltar `status=warn`, acompanhar se ainda entram `MESSAGES_UPSERT` e se a outbox continua `sent`. Se voltar `status=critical` ou a Evolution estiver `open` sem entregar mensagens reais, reiniciar somente `wimifarma-evolution-api`, preservando Postgres/Redis/instancias. Nao atualizar a imagem para `latest` como tentativa rapida: upgrade deve ser validado em stack separada.
+
 No `.env` do Wimifarma principal:
 
 ```text

@@ -59,3 +59,41 @@ DATABASE_SAVE_DATA_HISTORIC=false
 DATABASE_SAVE_DATA_LABELS=false
 CONFIG_SESSION_PHONE_VERSION=2.3000.1033773198
 ```
+
+## Monitoramento de timeouts do Baileys
+
+Em 2026-05-30 foi observado timeout recorrente em `executeInitQueries`/`fetchProps` do Baileys, com a instancia ainda `open`. Esse erro costuma ser ruido de sincronizacao inicial do WhatsApp Web; nao reiniciar a stack inteira nem trocar a imagem enquanto o webhook continua recebendo `MESSAGES_UPSERT` e os envios seguem `sent`.
+
+O script versionado abaixo confere tres coisas sem imprimir segredo: container rodando, `connectionState` da instancia e quantidade de timeouts recentes nos logs.
+
+```bash
+/home/ubuntu/projetos/wimifarma-com/ops/evolution/check-baileys-init-timeouts.sh
+```
+
+Padroes:
+
+- `LOOKBACK=2h`
+- `WARN_THRESHOLD=3`
+- `CRITICAL_THRESHOLD=8`
+- `STACK_DIR=/home/ubuntu/projetos/wimifarma-evolution-api`
+- `MAIN_ENV=/home/ubuntu/projetos/wimifarma-com/.env`
+
+Exemplo para janela diaria:
+
+```bash
+LOOKBACK=24h WARN_THRESHOLD=6 CRITICAL_THRESHOLD=12 \
+  /home/ubuntu/projetos/wimifarma-com/ops/evolution/check-baileys-init-timeouts.sh
+```
+
+Interpretacao:
+
+- `status=ok`: conexao aberta e timeouts abaixo do limite.
+- `status=warn`: Evolution segue aberta, mas a quantidade recente subiu; monitorar e conferir se chegam mensagens reais.
+- `status=critical`: container parado, conexao fora de `open`/`connected` ou timeouts acima do limite critico; verificar `messages.upsert` e, se estiver travado, reiniciar apenas `wimifarma-evolution-api`.
+
+Restart operacional, quando realmente necessario:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-evolution-api
+docker compose restart wimifarma-evolution-api
+```

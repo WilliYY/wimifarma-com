@@ -223,6 +223,14 @@ Checks:
 
 Se falhar, n8n envia alerta e pode abrir tarefa de erro. Ele nao faz rollback automatico sem confirmacao humana.
 
+Para monitorar os timeouts recorrentes do Baileys em `executeInitQueries`/`fetchProps`, o n8n pode executar por SSH/Execute Command no host do VPS o script:
+
+```bash
+/home/ubuntu/projetos/wimifarma-com/ops/evolution/check-baileys-init-timeouts.sh
+```
+
+Usar `LOOKBACK=2h` para rotina frequente. O script retorna `0` com `status=ok`, `1` com `status=warn` e `2` com `status=critical`, sem expor API key. Em `warn`, apenas avisar/acompanhar; em `critical`, acionar alerta humano e, se tambem nao houver `MESSAGES_UPSERT`, reiniciar somente o container `wimifarma-evolution-api`.
+
 ### Miauby + n8n
 
 Uso: webhooks controlados para rotinas repetiveis, como:
