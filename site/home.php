@@ -601,11 +601,30 @@ if (!$homeAuthenticated):
             .wf-login-footer-content {
                 grid-template-columns: 1fr;
                 gap: 1.75rem;
+                place-items: center;
                 padding: 3.4rem 1.15rem 5.4rem;
+                text-align: center;
+            }
+
+            .wf-login-footer-brand,
+            .wf-login-footer-nav,
+            .wf-login-footer-contact {
+                justify-items: center;
+                width: 100%;
+            }
+
+            .wf-login-footer-contact-row {
+                justify-content: center;
             }
 
             .wf-login-footer-image {
-                justify-self: start;
+                display: block;
+                justify-self: center;
+                margin-inline: auto;
+            }
+
+            .wf-login-footer-image + p {
+                text-align: center;
             }
 
             .wf-login-whatsapp-float {
