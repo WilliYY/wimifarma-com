@@ -1895,6 +1895,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     ? 'Aguardando chegada'
     : (order.status === 'confirmado' ? 'Confirmado' : 'Historico');
   const canManageOrder = order.status === 'pedido' || order.status === 'confirmado';
+  const canCollapseOrder = canManageOrder || order.status === 'historico';
   const editPanelId = `pedido-edit-${accountId}`;
   const detailsId = `pedido-details-${accountId}`;
   const compactStatusHtml = order.status === 'pedido'
@@ -1984,9 +1985,9 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     </form>
   </div>` : '';
 
-  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}" ${canManageOrder ? `data-order-card-collapse data-order-card-id="${e(accountId)}"` : ''}>
+  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}" ${canCollapseOrder ? `data-order-card-collapse data-order-card-id="${e(accountId)}" data-order-card-kind="${e(order.status)}"` : ''}>
     <div class="gestao-order-head">
-      ${canManageOrder ? `<div class="gestao-order-summary-toggle" role="button" tabindex="0" title="Abrir ou recolher detalhes do pedido" aria-label="Abrir ou recolher detalhes do pedido" aria-controls="${e(detailsId)}" aria-expanded="true" data-order-collapse-toggle>` : '<div class="gestao-order-summary-static">'}
+      ${canCollapseOrder ? `<div class="gestao-order-summary-toggle" role="button" tabindex="0" title="Abrir ou recolher detalhes do pedido" aria-label="Abrir ou recolher detalhes do pedido" aria-controls="${e(detailsId)}" aria-expanded="true" data-order-collapse-toggle>` : '<div class="gestao-order-summary-static">'}
         <span>
           <span class="gestao-pill">${e(statusLabel)}</span>
           <h2>${e(order.supplier_name)}</h2>
@@ -2063,7 +2064,7 @@ async function renderApp(req: Request): Promise<string> {
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260529-form-clean">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
-  <script src="${BASE_PATH}/app.js?v=20260529-form-clean" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260530-history-collapse" defer></script>
 </head>
 <body>
   <header class="gestao-topbar">

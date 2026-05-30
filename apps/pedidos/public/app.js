@@ -448,7 +448,8 @@
             function expandCard() {
                 var collapseToggle = card ? card.querySelector('[data-order-collapse-toggle]') : null;
                 var cardId = card ? card.getAttribute('data-order-card-id') || '' : '';
-                var key = 'pedidos:order-card-collapsed:v1:' + cardId;
+                var cardKind = card ? card.getAttribute('data-order-card-kind') || 'pedido' : 'pedido';
+                var key = 'pedidos:order-card-collapsed:v3:' + cardKind + ':' + cardId;
 
                 if (!card || !card.classList.contains('is-order-collapsed')) {
                     return;
@@ -492,7 +493,8 @@
         Array.prototype.slice.call(document.querySelectorAll('[data-order-card-collapse]')).forEach(function (card) {
             var toggle = card.querySelector('[data-order-collapse-toggle]');
             var id = card.getAttribute('data-order-card-id') || '';
-            var key = 'pedidos:order-card-collapsed:v2:' + id;
+            var kind = card.getAttribute('data-order-card-kind') || 'pedido';
+            var key = 'pedidos:order-card-collapsed:v3:' + kind + ':' + id;
 
             if (!toggle || !id || toggle.dataset.pedidosCollapseBound === '1') {
                 return;
