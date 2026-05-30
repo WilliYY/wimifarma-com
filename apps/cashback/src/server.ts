@@ -248,7 +248,13 @@ router.post('/manutencao.php', async (req: Request, res: Response) => {
   res.send(renderMaintenance(req, 'Senha incorreta. O sistema continua em manutencao.'));
 });
 
-router.use(requireAuth);
+router.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith('/api/internal/') || req.path.startsWith('/internal/')) {
+    next();
+    return;
+  }
+  requireAuth(req, res, next);
+});
 
 router.get('/dashboard.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
