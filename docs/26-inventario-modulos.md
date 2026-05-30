@@ -422,6 +422,7 @@ Observar `GESTAO_AUTH_PROVIDER=core` com fallback desligado; depois remover depe
 
 - Criar pedido com fornecedor, parcelas, vencimentos, previsao de chegada, competencia, status inicial e observacao.
 - Criar pedido ja pago ou ja recebido, movendo para Confirmados/Historico conforme status.
+- Marcar pedido em Aguardando chegada como ja pago, gravando somente o saldo aberto em `gestao_account_payments` e mantendo a chegada pendente.
 - Confirmar chegada, com movimento para Confirmados ou Historico se ja estava pago.
 - Editar fornecedor.
 - Adicionar parcela/valor, editar valor, remover valor da tela por arquivamento logico.

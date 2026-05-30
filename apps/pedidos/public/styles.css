@@ -701,12 +701,23 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-quick-action form,
-.gestao-order-primary-action {
+.gestao-order-primary-action,
+.gestao-order-secondary-action {
     margin: 0;
 }
 
 .gestao-order-quick-action .gestao-btn {
     width: 100%;
+}
+
+.gestao-order-secondary-action {
+    display: flex;
+}
+
+.gestao-order-secondary-action .gestao-btn {
+    width: 100%;
+    min-height: 38px;
+    white-space: normal;
 }
 
 .gestao-order-card.status-pedido {

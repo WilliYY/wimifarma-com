@@ -350,6 +350,7 @@ Modulo `Pedidos` em `/pedidos/`:
 - o fluxo operacional fica separado da Gestao: `pedidos_orders` guarda pedidos feitos/aguardando chegada, e `pedidos_confirmed_orders` guarda confirmados e historico;
 - contas vinculadas a pedidos ficam travadas na categoria `Boleto`; recategorizacao em lote e bloqueada quando a categoria contem pedidos para preservar o controle financeiro automatico;
 - se o pedido ja foi pago na criacao, o pagamento entra imediatamente em `gestao_account_payments`, mas o pedido continua em `pedido` ate a chegada ser confirmada;
+- pedidos ainda em `Aguardando chegada` podem ser marcados como `Ja foi pago, so falta chegar`; essa acao grava somente o saldo aberto em `gestao_account_payments`, atualiza a conta para `pago` quando quitar e nao confirma chegada automaticamente;
 - se o pedido ja chegou na criacao, ele nasce em `Confirmados` para aguardar pagamento; se tambem ja estiver pago, nasce recebido e quitado em `Historico`;
 - ao clicar em `Confirmar chegada`, o pedido vai para `Confirmados` quando ainda existe saldo ou direto para `Historico` quando ja estava quitado;
 - `Confirmados` ordena os boletos pela menor data de vencimento ativa das parcelas primeiro e mostra alertas de vencido/urgente/atencao conforme a proximidade;

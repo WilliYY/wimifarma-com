@@ -1465,6 +1465,62 @@ async function addPayment(req: Request): Promise<void> {
   await logAudit(userId, 'pedidos_pagamento_criado', 'gestao_conta', id, `Pagamento registrado em pedido: ${formatMoney(cents)}`);
 }
 
+async function markWaitingOrderAsPaid(req: Request): Promise<void> {
+  const orderId = Number(req.body.order_id || 0);
+  if (!orderId) throw new Error('Pedido invalido.');
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let accountId = 0;
+  let supplier = '';
+  let remaining = 0;
+  try {
+    await client.query('BEGIN');
+    const orderResult = await client.query<{
+      account_id: string;
+      supplier_name: string;
+      total_cents: string;
+      status: string;
+      archived_at: Date | string | null;
+    }>(
+      `SELECT o.account_id,
+              o.supplier_name,
+              a.total_cents,
+              a.status,
+              a.archived_at
+       FROM pedidos_orders o
+       JOIN gestao_accounts a ON a.id = o.account_id
+       WHERE o.id = $1
+         AND o.moved_to_confirmed_at IS NULL
+         AND o.canceled_at IS NULL
+       FOR UPDATE OF o, a`,
+      [orderId],
+    );
+    const order = orderResult.rows[0];
+    if (!order) throw new Error('Pedido nao encontrado ou ja confirmado.');
+    if (order.archived_at) throw new Error('Esse pedido foi arquivado da tela.');
+    if (order.status === 'cancelado') throw new Error('Reabra a conta antes de marcar como pago.');
+    accountId = Number(order.account_id);
+    supplier = order.supplier_name;
+    const paid = await paidTotal(client, accountId);
+    remaining = Math.max(0, Number(order.total_cents || 0) - paid);
+    if (remaining <= 0) throw new Error('Esse pedido ja esta pago; agora so confirme a chegada.');
+
+    await client.query(
+      "INSERT INTO gestao_account_payments (account_id, description, amount_cents, paid_at, created_by) VALUES ($1, 'Pagamento antecipado do pedido', $2, now(), $3)",
+      [accountId, remaining, userId],
+    );
+    await syncPaymentStatus(client, accountId);
+    await auditPg(client, accountId, userId, 'pedidos_pedido_pago_antes_chegada', `Pedido marcado como ja pago antes da chegada: ${supplier} / ${formatMoney(remaining)}`);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logAudit(userId, 'pedidos_pedido_pago_antes_chegada', 'pedidos_pedido', orderId, `Pedido aguardando chegada marcado como pago: ${supplier} / ${formatMoney(remaining)}`);
+}
+
 async function confirmRemaining(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
@@ -1945,6 +2001,13 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
       <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
       <button type="submit" class="gestao-btn gestao-btn-primary">Pago</button>
     </form>` : '';
+  const paidBeforeArrivalAction = order.status === 'pedido' && remainingCents > 0 ? `<form method="post" class="gestao-order-secondary-action" data-confirm="Marcar ${e(formatMoney(remainingCents))} como pago para ${e(order.supplier_name)}? A chegada continua pendente.">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="mark_waiting_order_paid">
+      <input type="hidden" name="order_id" value="${e(id)}">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <button type="submit" class="gestao-btn gestao-btn-secondary">Ja foi pago, so falta chegar</button>
+    </form>` : '';
   const quickAction = order.status === 'pedido' ? arrivalAction : paidAction;
 
   const editPanel = canManageOrder ? `<div class="gestao-order-edit-panel" id="${e(editPanelId)}" data-order-edit-panel>
@@ -2056,6 +2119,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
       <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
       ${itemRows ? `<ul class="gestao-order-lines">${itemRows}</ul>` : ''}
       ${paymentRows ? `<ul class="gestao-order-payments">${paymentRows}</ul>` : ''}
+      ${paidBeforeArrivalAction}
       ${order.status === 'pedido' && order.account_status === 'pago' ? '<p class="gestao-empty-line">Ja esta pago; ao confirmar a chegada, vai direto para o historico.</p>' : ''}
       ${arrivalAction}
       ${confirmedActions}
@@ -2357,6 +2421,9 @@ async function handlePost(req: Request, res: Response): Promise<void> {
     } else if (action === 'add_payment') {
       await addPayment(req);
       setFlash(req, 'success', 'Pagamento parcial registrado.');
+    } else if (action === 'mark_waiting_order_paid') {
+      await markWaitingOrderAsPaid(req);
+      setFlash(req, 'success', 'Pedido marcado como pago. Quando chegar, confirme a chegada para ir ao historico.');
     } else if (action === 'confirm_paid') {
       await confirmRemaining(req);
       setFlash(req, 'success', 'Boleto pago e enviado para o historico.');
