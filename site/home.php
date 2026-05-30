@@ -400,21 +400,9 @@ if (!$homeAuthenticated):
             line-height: 1.65;
         }
 
-        .wf-login-footer-groups {
-            position: relative;
-            z-index: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 1.2rem;
-            min-width: 0;
-        }
-
-        .wf-login-footer-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.65rem;
-            align-items: center;
+        .wf-login-footer-groups,
+        .wf-login-footer-content > div:has(> .wf-login-footer-image) {
+            display: none;
         }
 
         .wf-login-footer-brand {
@@ -493,13 +481,11 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-footer-image {
-            width: 4.4rem;
-            height: 4.4rem;
-            border: 2px solid rgba(255, 255, 255, 0.78);
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.18);
-            object-fit: contain;
-            padding: 0.35rem;
+            display: none;
+        }
+
+        .wf-login-footer-image + p {
+            display: none;
         }
 
         .wf-login-whatsapp-float {
@@ -615,16 +601,6 @@ if (!$homeAuthenticated):
 
             .wf-login-footer-contact-row {
                 justify-content: center;
-            }
-
-            .wf-login-footer-image {
-                display: block;
-                justify-self: center;
-                margin-inline: auto;
-            }
-
-            .wf-login-footer-image + p {
-                text-align: center;
             }
 
             .wf-login-whatsapp-float {
