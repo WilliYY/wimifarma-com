@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
 
 SAMPLE="${1:-20}"
 CONTEXT_LIMIT="${2:-3}"
