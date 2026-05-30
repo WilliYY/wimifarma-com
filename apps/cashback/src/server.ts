@@ -390,7 +390,7 @@ router.get('/api/internal/summary', requireInternalToken, async (req: Request, r
   const totals = await pgPool.query(
     `SELECT
        COUNT(*)::bigint AS purchases,
-       COALESCE(SUM(total_cents), 0)::bigint AS total,
+       COALESCE(SUM(gross_cents), 0)::bigint AS total,
        COALESCE(SUM(charged_cents), 0)::bigint AS charged,
        COALESCE(SUM(cashback_generated_cents), 0)::bigint AS generated,
        COALESCE((SELECT SUM(redeemed_cents) FROM cashback_redemptions), 0)::bigint AS redeemed,
