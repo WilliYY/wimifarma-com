@@ -350,7 +350,7 @@ Legado/rollback, nao fonte principal:
 
 - Core auth e `core_audit_logs` em `wimifarma_core`.
 - Pedidos usa as tabelas da Gestao para boleto, parcelas e pagamentos.
-- Miauby interno cria/consulta contas por endpoint interno.
+- Miauby interno cria/consulta contas por endpoint interno tokenizado da Gestao; o contrato da tool `criar_conta_gestao` audita em `gestao_audit_events`, `core_audit_logs` e `miauw_tool_traces`, sem `wf_logs`.
 - Financeiro/Miauby podem usar resumo para diagnosticos.
 - Home publica aponta `Gestao` para `/gestao/`.
 
@@ -364,7 +364,7 @@ Legado/rollback, nao fonte principal:
 
 ### Proxima acao segura
 
-Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_users`, espelho `wf_logs` e envs `GESTAO_AUTH_*` removidos da Gestao. Proxima acao e validar `/gestao/health`, login, contas, itens, pagamentos, Pedidos vinculados e comando Miauby no VPS.
+Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_users`, espelho `wf_logs` e envs `GESTAO_AUTH_*` removidos da Gestao. No corte complementar de 2026-05-30, o contrato do Miauby para `criar_conta_gestao` tambem deixou de referenciar `wf_logs`. Proxima acao e validar `/gestao/health`, login, contas, itens, pagamentos, Pedidos vinculados e comando Miauby no VPS.
 
 ## Pedidos
 
@@ -906,14 +906,14 @@ Fonte atual do Miauby interno:
 - `miauw_alertas`;
 - `miauw_padroes`;
 - `miauw_alerta_eventos`;
-- `wf_logs`, para registros curtos de revisao/treino e compatibilidade;
+- `wf_logs`, para registros curtos de revisao/treino e compatibilidade do Miauby legado, nao para a tool moderna de Gestao;
 - `wf_tarefas`, ainda pode aparecer por tool/legado de tarefa quando fallback antigo estiver ativo.
 
 ### Tabelas Postgres relacionadas
 
 - `core_users` e `core_login_rate_limits` no `wimifarma_core` para login.
 - `miauw_whatsapp_channel_events` no Postgres do bridge WhatsApp para memoria curta multicanal principal.
-- Tabelas dos modulos modernos acessados por endpoints internos, como `financeiro_*`, `cashback_*`, `codigos_*`, `cotacao_v2_*`, `gestao_*`, `tarefa_*`.
+- Tabelas dos modulos modernos acessados por endpoints internos, como `financeiro_*`, `cashback_*`, `codigos_*`, `cotacao_v2_*`, `gestao_*`, `tarefa_*`. Para Gestao, a leitura/escrita do Miauby deve passar por `/gestao/api/internal/*`, nao por tabela MySQL.
 - Ainda nao existe banco dedicado `wimifarma_miauby` como fonte oficial do Miauby interno.
 - Durante a migracao, criar tabelas canonicas `miauby_*` e, se necessario, views/aliases de compatibilidade para `miauw_*`.
 

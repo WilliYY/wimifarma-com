@@ -191,7 +191,7 @@ function miauw_skill_registry(): array
             'entrada' => array('titulo', 'valor', 'categoria', 'competencia_mes', 'vencimento_em', 'observacao'),
             'parametros_obrigatorios' => array('titulo', 'valor', 'categoria'),
             'saida' => 'Conta criada na Gestao somente apos confirmacao humana.',
-            'auditoria' => array('gestao_audit_events', 'wf_logs', 'miauw_tool_traces'),
+            'auditoria' => array('gestao_audit_events', 'core_audit_logs', 'miauw_tool_traces'),
             'efeitos' => array('cria_conta_a_pagar', 'exige_confirmacao'),
         ),
         'resumo_cotacao' => array(

@@ -27,6 +27,7 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 - Auth: `core_users` por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`.
 - Dados principais: MySQL `wimifarma_app`, tabelas `miauw_*`.
 - Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/`, ainda depende de ponte PHP para tools e contexto.
+- Integracao com Gestao: ja usa endpoint interno tokenizado do app Node/Postgres; a tool `criar_conta_gestao` nao deve depender de `wf_logs` nem de tabela MySQL de Gestao.
 - Escritas fortes: continuam com confirmacao humana e auditoria.
 
 ### Miauby WhatsApp
@@ -81,13 +82,13 @@ Fonte MySQL atual:
 - `miauw_alertas`;
 - `miauw_padroes`;
 - `miauw_alerta_eventos`;
-- `wf_logs`, apenas como historico/compatibilidade.
+- `wf_logs`, apenas como historico/compatibilidade do Miauby legado; nao e mais parte do contrato de auditoria da tool moderna de Gestao.
 
 Fonte Postgres ja relacionada:
 
 - `core_users`, `core_audit_logs`, `core_user_module_permissions` em `wimifarma_core`.
 - `miauw_whatsapp_channel_events`, `miauw_whatsapp_contacts`, `miauw_whatsapp_outbox`, `miauw_whatsapp_confirmations`, `miauw_whatsapp_error_logs` em `wimifarma_miauw_whatsapp`.
-- Dados dos modulos modernos consultados por endpoint interno: Financeiro, Cashback, Codigos, Cotacao, Gestao, Pedidos, Tarefa e XP.
+- Dados dos modulos modernos consultados por endpoint interno: Financeiro, Cashback, Codigos, Cotacao, Gestao, Pedidos, Tarefa e XP. Para Gestao, manter apenas endpoint tokenizado e auditoria Postgres (`gestao_audit_events`/`core_audit_logs`) mais trace do Miauby.
 
 ## Schema alvo inicial
 
