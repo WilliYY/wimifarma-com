@@ -10,7 +10,7 @@ Entrada publica:
 
 - `/`: home/portal independente em `site/home.php`, com fundo visual em video em tela inteira preservando as cores originais sem overlay branco de clareamento, logo animada propria da home sem fundo, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
-- O card `Pedidos` abre `/pedidos/`, ao lado de `Cotacao`, com badge de pedidos previstos para chegar hoje.
+- O card `Pedidos` abre `/pedidos/`, ao lado de `Cotacao`, com badge do total ainda em `Aguardando chegada`.
 - O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card como `border-image` de borda/cantos para destacar a entrada sem cortar a arte nem cobrir o texto.
 - O card `Usuarios` abre `/usuarios/` para administrar logins, modulos, vinculo XP e historico central.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.

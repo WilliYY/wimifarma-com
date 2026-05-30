@@ -1815,20 +1815,24 @@ function orderSortKey(order: OrderRow | RenderOrder): number {
   return base - (order.finished_at ? new Date(String(order.finished_at)).getTime() : new Date(String(order.created_at)).getTime());
 }
 
-async function ordersBadge(): Promise<number> {
+async function ordersBadge(): Promise<{ awaitingArrival: number; arrivingToday: number }> {
   await migrateLegacyOrders();
-  const result = await pgPool.query<{ count: string }>(
-    `SELECT COUNT(*)::bigint AS count
+  const result = await pgPool.query<{ awaiting_arrival: string; arriving_today: string }>(
+    `SELECT COUNT(*)::bigint AS awaiting_arrival,
+            COUNT(*) FILTER (WHERE o.expected_arrival_at = ((now() AT TIME ZONE $1)::date))::bigint AS arriving_today
      FROM pedidos_orders o
      JOIN gestao_accounts a ON a.id = o.account_id
      WHERE o.moved_to_confirmed_at IS NULL
        AND o.canceled_at IS NULL
        AND a.archived_at IS NULL
-       AND a.status <> 'cancelado'
-       AND o.expected_arrival_at = ((now() AT TIME ZONE $1)::date)`,
+       AND a.status <> 'cancelado'`,
     [TZ],
   );
-  return Number(result.rows[0]?.count || 0);
+  const row = result.rows[0];
+  return {
+    awaitingArrival: Number(row?.awaiting_arrival || 0),
+    arrivingToday: Number(row?.arriving_today || 0),
+  };
 }
 
 async function listWaitingArrivalInternal(limit = 80): Promise<ArrivalInternalOrder[]> {
@@ -2345,7 +2349,13 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
 }));
 
 app.get(`${BASE_PATH}/api/badge`, asyncRoute(async (_req, res) => {
-  res.json({ ok: true, arriving_today: await ordersBadge() });
+  const badge = await ordersBadge();
+  res.json({
+    ok: true,
+    count: badge.awaitingArrival,
+    awaiting_arrival: badge.awaitingArrival,
+    arriving_today: badge.arrivingToday,
+  });
 }));
 
 app.get(`${BASE_PATH}/api/internal/arrival-summary`, requireInternalToken, asyncRoute(async (req, res) => {

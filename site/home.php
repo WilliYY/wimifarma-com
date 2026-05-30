@@ -747,7 +747,7 @@ $modules = array(
                             <em class="wf-card-badge" data-wf-task-badge hidden aria-label="Tarefas abertas"></em>
                         <?php endif; ?>
                         <?php if (!empty($module['order_badge'])): ?>
-                            <em class="wf-card-badge is-calm" data-wf-order-badge hidden aria-label="Pedidos para chegar hoje"></em>
+                            <em class="wf-card-badge is-calm" data-wf-order-badge hidden aria-label="Pedidos aguardando chegada"></em>
                         <?php endif; ?>
                         <h2><?php echo wf_home_e($module['name']); ?></h2>
                         <span><?php echo wf_home_e($module['label']); ?></span>
@@ -932,14 +932,17 @@ $modules = array(
 
                 return response.json();
             }).then(function (payload) {
-                var count = Number(payload && payload.arriving_today ? payload.arriving_today : 0);
+                var rawCount = payload && typeof payload.awaiting_arrival !== 'undefined'
+                    ? payload.awaiting_arrival
+                    : (payload && typeof payload.count !== 'undefined' ? payload.count : (payload && payload.arriving_today));
+                var count = Number(rawCount || 0);
                 if (!Number.isFinite(count) || count < 0) {
                     count = 0;
                 }
 
                 badge.textContent = count > 99 ? '99+' : String(count);
                 badge.classList.toggle('is-calm', count === 0);
-                badge.setAttribute('aria-label', count === 1 ? '1 pedido para chegar hoje' : String(count) + ' pedidos para chegar hoje');
+                badge.setAttribute('aria-label', count === 1 ? '1 pedido aguardando chegada' : String(count) + ' pedidos aguardando chegada');
                 badge.hidden = false;
             }).catch(function () {
                 badge.hidden = true;
