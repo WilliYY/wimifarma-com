@@ -213,8 +213,13 @@ if (!$homeAuthenticated):
             width: min(250px, 68vw);
             height: 80px;
             display: block;
+            border: 2px solid rgba(255, 255, 255, 0.88);
+            border-radius: 999px;
+            padding: 8px 14px;
+            background: rgba(255, 255, 255, 0.9);
             object-fit: contain;
-            filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.32));
+            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+            filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.24));
         }
 
         .wf-login-only {
