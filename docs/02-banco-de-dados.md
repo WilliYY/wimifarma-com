@@ -75,7 +75,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao, Gestao, Pedidos e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao, Gestao, Pedidos, Tarefa e Cashback usam `core_users` como fonte unica de login, sem dependencia MySQL no app. XP, Codigos, Financeiro, Usuarios e Miauby PHP usam `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente quando existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -145,7 +145,7 @@ Criadas por `apps/tarefa/src/server.ts`:
 - `tarefa_audit_events`: auditoria curta de criacao, edicao e mudanca de status.
 - `tarefa_sessions`: sessoes web do modulo Tarefa gerenciadas por `connect-pg-simple`.
 
-A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` fica apenas como referencia historica/rollback manual; desde 2026-05-30, `TAREFA_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta credenciais MySQL no app. Tarefas privadas nunca devem ser espelhadas para `wf_tarefas`, porque o legado nao possui escopo por usuario.
+A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` fica apenas como referencia historica/backup; desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `TAREFA_AUTH_PROVIDER` nem flags `TAREFA_LEGACY_MYSQL_*`. Tarefas privadas nunca devem ser espelhadas para `wf_tarefas`, porque o legado nao possui escopo por usuario.
 
 ## Tabelas de Codigos em Postgres
 

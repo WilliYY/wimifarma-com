@@ -459,14 +459,14 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - Proxy Apache: `docker/php/Dockerfile` envia `/tarefa/` para `wimifarma-tarefa-app:3500/tarefa/`.
 - App oficial: `apps/tarefa`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres `wimifarma_tarefa`.
-- MySQL `wf_tarefas` fica apenas como referencia historica/rollback manual; flags legadas ficam desligadas por padrao.
+- MySQL `wf_tarefas` fica apenas como referencia historica/backup. Desde 2026-05-30 o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `TAREFA_AUTH_PROVIDER` nem flags `TAREFA_LEGACY_MYSQL_*`.
 
 ### Telas e endpoints
 
 - `/tarefa/login.php`: login.
 - `/tarefa/` e `/tarefa/index.php`: tela de tarefas por prioridade/status.
 - `/tarefa/logout.php`: encerra sessao.
-- `/tarefa/health`: health com contagens Postgres/legado.
+- `/tarefa/health`: health com contagens Postgres.
 - `/tarefa/api/badge` e `/tarefa/badge.php`: total de tarefas abertas para home.
 - `GET /tarefa/api/internal/summary`: resumo interno de tarefas publicas para Miauby.
 - `POST /tarefa/api/internal/tasks`: cria tarefa publica por ponte interna Node/Postgres.
@@ -475,18 +475,18 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 ### Permissoes e sessao
 
 - Sessao propria `WFTAREFA`.
-- Login oficial por `core_users` com `TAREFA_AUTH_PROVIDER=core`.
-- Rollback por MySQL existe com `TAREFA_AUTH_PROVIDER=mysql`.
+- Login oficial somente por `core_users`.
+- Rollback por MySQL exige restaurar versao anterior e backup validado.
 - Escritas de tela usam CSRF.
 - Endpoint interno de tarefa privada exige token interno.
 
 ### Tabelas MySQL envolvidas
 
-Legado/rollback:
+Legado historico/backup:
 
 - `wf_tarefas`;
-- `wf_users`, apenas se auth rollback for ligado;
-- `wf_logs`, se `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=true`.
+- `wf_users`, apenas como origem historica sincronizada para `core_users`;
+- `wf_logs`, apenas historico antigo.
 
 ### Tabelas Postgres oficiais
 
@@ -509,7 +509,7 @@ Legado/rollback:
 - Criar tarefa privada para um usuario especifico via Usuarios.
 - Editar titulo, descricao e prioridade.
 - Concluir, reabrir ou cancelar tarefa.
-- Registrar auditoria em Postgres e, se flag ligada, espelhar no MySQL legado.
+- Registrar auditoria em Postgres/core sem espelho MySQL.
 
 ### Integracoes
 
@@ -521,13 +521,13 @@ Legado/rollback:
 ### Riscos
 
 - Tarefa privada nao pode vazar para usuarios sem vinculo.
-- Desligar espelho MySQL antes de paridade pode perder rollback.
+- Rollback agora depende de restaurar versao anterior e backup, entao validar VPS antes de promover para `main`.
 - Badge da home deve continuar contando tarefas abertas corretas.
 - Escrita via Miauby precisa preservar autor e auditoria.
 
 ### Proxima acao segura
 
-Validar `TAREFA_AUTH_PROVIDER=core`, tarefas privadas e badge; depois desligar `TAREFA_LEGACY_MYSQL_*` e remover `mysql2` em uma segunda etapa.
+Validar no VPS `/tarefa/health`, login, criacao/edicao/status, tarefas privadas, badge da home e Miauby criando/consultando tarefas. Depois repetir o mesmo corte cuidadoso em Codigos ou XP.
 
 ## XP
 
@@ -1009,6 +1009,6 @@ Inventarios detalhados ja registrados neste documento:
 
 Proxima rodada segura:
 
-1. Validar no VPS a Gestao sem `mysql2`/fallback/espelho e as flags legadas restantes de Tarefa, XP e Codigos antes de remover `mysql2` nesses modulos.
+1. Validar no VPS Gestao e Tarefa sem `mysql2`/fallback/espelho, incluindo health, login, fluxos principais e Miauby. Depois repetir a remocao cuidadosa de flags legadas e `mysql2` em XP e Codigos.
 2. Iniciar `docs/28-miauby-migracao.md` como trilha oficial para criar `wimifarma_miauby` e `apps/miauby` sem quebrar `/miauw/`.
 3. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.

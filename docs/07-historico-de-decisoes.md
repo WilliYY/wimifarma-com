@@ -9,7 +9,7 @@ Decisao:
 - Criar `apps/tarefa` como servico Node.js 22 + TypeScript + Express em `/tarefa/`.
 - Usar Postgres dedicado `wimifarma_tarefa` com `tarefa_tasks`, `tarefa_audit_events` e `tarefa_sessions`.
 - Preservar a mesma interface visual do modulo antigo e manter `/tarefa/badge.php`.
-- Importar `wf_tarefas` de forma idempotente e manter espelho MySQL temporario com `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` para rollback curto.
+- Importar `wf_tarefas` de forma idempotente durante o corte inicial. Em 2026-05-30, depois da validacao de fonte oficial Postgres, o espelho/importador MySQL da Tarefa foi removido e rollback passou a exigir restaurar versao anterior e backup validado.
 
 Motivo:
 
