@@ -403,7 +403,7 @@ Regras:
 - criar, editar, concluir, cancelar e reabrir usam CSRF e sessao `WFTAREFA`;
 - tarefas com `assigned_core_user_id` aparecem somente para o usuario indicado e nao entram no espelho MySQL legado;
 - a tela visual deve continuar equivalente ao modulo antigo durante a migracao;
-- `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true` espelha novas escritas em `wf_tarefas` apenas para rollback curto, sem mudar a fonte oficial de verdade do Postgres.
+- `TAREFA_LEGACY_MYSQL_*` fica desligado por padrao desde 2026-05-30; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente, sem mudar a fonte oficial de verdade do Postgres.
 
 ## Fluxo Miauby
 

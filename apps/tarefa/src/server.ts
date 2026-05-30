@@ -100,9 +100,9 @@ const INTERNAL_TOKEN = cleanEnv('TAREFA_INTERNAL_TOKEN')
   || cleanEnv('MIAUW_WHATSAPP_INTERNAL_TOKEN');
 const TZ = 'America/Sao_Paulo';
 const AUTH_PROVIDER = normalizeAuthProvider(env.TAREFA_AUTH_PROVIDER || 'core');
-const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_MIRROR_ENABLED ?? 'true');
-const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_IMPORT_ENABLED ?? 'true');
-const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_LOGS_ENABLED ?? 'true');
+const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_MIRROR_ENABLED ?? 'false');
+const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_IMPORT_ENABLED ?? 'false');
+const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_LOGS_ENABLED ?? 'false');
 const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.TAREFA_CORE_AUTH_SHADOW_ENABLED);
 const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
   500,

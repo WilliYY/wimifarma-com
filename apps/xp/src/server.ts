@@ -170,9 +170,9 @@ const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/xp');
 const PORT = Number.parseInt(env.PORT || '3600', 10);
 const SESSION_SECRET = env.XP_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const AUTH_PROVIDER = normalizeAuthProvider(env.XP_AUTH_PROVIDER || 'core');
-const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_IMPORT_ENABLED ?? 'true');
-const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_MIRROR_ENABLED ?? 'true');
-const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_LOGS_ENABLED ?? 'true');
+const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_IMPORT_ENABLED ?? 'false');
+const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_MIRROR_ENABLED ?? 'false');
+const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.XP_LEGACY_MYSQL_LOGS_ENABLED ?? 'false');
 const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core';
 const LEGACY_MYSQL_REQUIRED =
   AUTH_PROVIDER === 'mysql' || LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED || LEGACY_MYSQL_LOGS_ENABLED;

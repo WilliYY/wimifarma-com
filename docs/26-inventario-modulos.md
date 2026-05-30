@@ -459,7 +459,7 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - Proxy Apache: `docker/php/Dockerfile` envia `/tarefa/` para `wimifarma-tarefa-app:3500/tarefa/`.
 - App oficial: `apps/tarefa`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres `wimifarma_tarefa`.
-- MySQL `wf_tarefas` fica apenas como importacao/espelho/log temporario quando flags legadas estiverem ligadas.
+- MySQL `wf_tarefas` fica apenas como referencia historica/rollback manual; flags legadas ficam desligadas por padrao.
 
 ### Telas e endpoints
 
@@ -534,7 +534,7 @@ Validar `TAREFA_AUTH_PROVIDER=core`, tarefas privadas e badge; depois desligar `
 - Proxy Apache: `docker/php/Dockerfile` envia `/xp/` para `wimifarma-xp-app:3600/xp/`.
 - App oficial: `apps/xp`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres `wimifarma_xp`.
-- MySQL `wf_xp_*` fica como importacao/espelho/log temporario por flags.
+- MySQL `wf_xp_*` fica apenas como referencia historica/rollback manual; flags legadas ficam desligadas por padrao.
 
 ### Telas e endpoints
 
@@ -613,7 +613,7 @@ Validar ranking, lancamentos, fotos, mini-card e vinculos em Usuarios; depois de
 - Proxy Apache: `docker/php/Dockerfile` envia `/codigos/` para `wimifarma-codigos-app:3700/codigos/`.
 - App oficial: `apps/codigos`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres `wimifarma_codigos`.
-- MySQL `wf_codigos_*` fica como importacao/espelho/log temporario por flags.
+- MySQL `wf_codigos_*` fica apenas como referencia historica/rollback manual; flags legadas ficam desligadas por padrao.
 
 ### Telas e endpoints
 

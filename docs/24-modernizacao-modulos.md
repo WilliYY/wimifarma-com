@@ -88,7 +88,7 @@ XP foi cortado para `apps/xp`:
 - importador idempotente de `wf_xp_employees`, `wf_xp_sales` e `wf_xp_settings`;
 - proxy Apache oficial em `/xp/`;
 - frontend preservado por CSS/JS/assets de `site/xp` e uploads compartilhados;
-- rollback por `XP_AUTH_PROVIDER=mysql` e flags `XP_LEGACY_MYSQL_*`.
+- `XP_LEGACY_MYSQL_*` fica desligado por padrao desde 2026-05-30; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente.
 
 Codigos foi cortado para `apps/codigos`:
 
@@ -98,7 +98,7 @@ Codigos foi cortado para `apps/codigos`:
 - proxy Apache oficial em `/codigos/`;
 - endpoints internos tokenizados para o Miauby ler a fonte Postgres;
 - frontend preservado por CSS/JS/login-runner de `site/codigos`;
-- rollback por `CODIGOS_AUTH_PROVIDER=mysql` e flags `CODIGOS_LEGACY_MYSQL_*`.
+- `CODIGOS_LEGACY_MYSQL_*` fica desligado por padrao desde 2026-05-30; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente.
 
 Financeiro foi cortado para `apps/financeiro`:
 
@@ -121,7 +121,7 @@ Cashback foi cortado para `apps/cashback`:
 - frontend preservado por `site/cashback/styles.css`, `site/cashback/app.js`, `site/cashback/login-runner.js`, logo/favicon e GIFs montados no container Node;
 - login oficial por `core_users` com `CASHBACK_AUTH_PROVIDER=core`;
 - endpoints internos tokenizados para resumo/status por `CASHBACK_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`;
-- `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED=true` importa o legado, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED=true` mantem espelho temporario e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=true` espelha logs para rollback curto.
+- `CASHBACK_LEGACY_MYSQL_IMPORT_ENABLED=false`, `CASHBACK_LEGACY_MYSQL_MIRROR_ENABLED=false` e `CASHBACK_LEGACY_MYSQL_LOGS_ENABLED=false` sao o padrao desde 2026-05-29; rollback MySQL exige religar flags e reintroduzir credenciais explicitamente.
 
 Usuarios foi criado em `apps/usuarios`:
 

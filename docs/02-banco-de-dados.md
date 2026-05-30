@@ -145,7 +145,7 @@ Criadas por `apps/tarefa/src/server.ts`:
 - `tarefa_audit_events`: auditoria curta de criacao, edicao e mudanca de status.
 - `tarefa_sessions`: sessoes web do modulo Tarefa gerenciadas por `connect-pg-simple`.
 
-A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` permanece como importacao legado e espelho temporario quando `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder tarefas comuns criadas durante a transicao. Tarefas privadas nao sao espelhadas para `wf_tarefas`, porque o legado nao possui escopo por usuario.
+A fonte oficial apos o corte e `tarefa_tasks`. O MySQL `wf_tarefas` fica apenas como referencia historica/rollback manual; desde 2026-05-30, `TAREFA_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta credenciais MySQL no app. Tarefas privadas nunca devem ser espelhadas para `wf_tarefas`, porque o legado nao possui escopo por usuario.
 
 ## Tabelas de Codigos em Postgres
 
@@ -156,7 +156,7 @@ Criadas por `apps/codigos/src/server.ts`:
 - `codigos_audit_events`: auditoria curta de criacao, edicao, reordenacao, exclusao logica e exclusao de blocos.
 - `codigos_sessions`: sessoes web do modulo Codigos gerenciadas por `connect-pg-simple`.
 
-A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` permanece como importacao legado e espelho temporario quando `CODIGOS_LEGACY_MYSQL_MIRROR_ENABLED=true`, para permitir rollback curto sem perder edicoes feitas durante a transicao.
+A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` fica apenas como referencia historica/rollback manual; desde 2026-05-30, `CODIGOS_LEGACY_MYSQL_*` fica desligado por padrao e o Compose nao injeta credenciais MySQL no app.
 
 ## Tabelas do Financeiro em Postgres
 

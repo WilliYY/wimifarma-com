@@ -196,7 +196,7 @@ curl.exe -sS http://127.0.0.1:3002/tarefa/badge.php
 docker exec wimifarma-tarefa-db psql -U wimifarma_tarefa -d wimifarma_tarefa -c "\dt"
 ```
 
-A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico autentica por `core_users` e importa `wf_tarefas` para `tarefa_tasks` de forma idempotente; enquanto `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=true`, novas escritas tambem espelham no MySQL legado para rollback curto. A fonte oficial depois do corte e o Postgres `wimifarma_tarefa`.
+A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico autentica por `core_users` e usa `tarefa_tasks` no Postgres como fonte oficial. Desde 2026-05-30, `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false` sao o padrao, e o Compose nao injeta credenciais MySQL no app; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente.
 
 ## Local - XP Node/Postgres
 
