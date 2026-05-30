@@ -1490,6 +1490,20 @@ function miauw_skill_financeiro_internal_configured(): bool
     return miauw_skill_financeiro_internal_token() !== '';
 }
 
+function miauw_skill_financeiro_functions_loaded(): bool
+{
+    if (function_exists('financeiro_valid_date')) {
+        return true;
+    }
+
+    $functionsFile = __DIR__ . '/../financeiro/financeiro-funcoes.php';
+    if (is_file($functionsFile)) {
+        require_once $functionsFile;
+    }
+
+    return function_exists('financeiro_valid_date');
+}
+
 function miauw_skill_financeiro_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
 {
     $token = miauw_skill_financeiro_internal_token();
