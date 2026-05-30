@@ -101,7 +101,7 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'usuarios';
-const SERVICE_VERSION = '1.0.4';
+const SERVICE_VERSION = '1.0.5';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1410,17 +1410,33 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <button class="users-button danger" type="submit"${isAdm ? ' disabled' : ''}>Excluir</button>
       </form>
       <div class="users-integrations">
-        <section class="users-subsection">
-          <h3>Tarefa privada</h3>
-          <p>Cria uma tarefa visivel somente para este login. Tarefas normais continuam aparecendo para todos.</p>
-          <form method="post" action="${BASE_PATH}/" class="users-inline-form">
+        <section class="users-subsection users-task-subsection">
+          <div class="users-subsection-head">
+            <div>
+              <h3>Tarefa privada</h3>
+              <p>Cria uma tarefa no mesmo modelo do m&oacute;dulo Tarefas, vis&iacute;vel somente para este login.</p>
+            </div>
+            <a class="users-mini-link" href="/tarefa/">Abrir Tarefas</a>
+          </div>
+          <form method="post" action="${BASE_PATH}/" class="users-inline-form users-task-form">
             ${csrfField(req)}
             <input type="hidden" name="action" value="delegate_task">
             <input type="hidden" name="user_id" value="${e(userId)}">
-            <label class="users-label"><span>Titulo</span><input class="users-input" type="text" name="titulo" maxlength="180" placeholder="Ex.: Conferir pendencia individual" required></label>
-            <label class="users-label"><span>Descricao</span><textarea class="users-input users-textarea" name="descricao" rows="3" placeholder="Detalhe curto para a pessoa certa."></textarea></label>
-            <label class="users-label"><span>Prioridade</span><select class="users-select" name="prioridade"><option value="normal">Normal</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
-            <button class="users-button secondary" type="submit">Delegar tarefa</button>
+            <div class="users-task-create-head">
+              <span class="users-task-kicker">Nova tarefa</span>
+              <select class="users-select" name="prioridade" aria-label="Prioridade">
+                <option value="alta">Alta</option>
+                <option value="normal" selected>Normal</option>
+                <option value="baixa">Baixa</option>
+              </select>
+            </div>
+            <label class="users-label"><span>Titulo</span><input class="users-input" type="text" name="titulo" maxlength="180" placeholder="Ex.: Conferir pendencia do caixa" required></label>
+            <label class="users-label"><span>Descricao</span><textarea class="users-input users-textarea" name="descricao" rows="4" placeholder="Detalhe curto para ninguem precisar adivinhar."></textarea></label>
+            <div class="users-task-meta">
+              <span>Destino: ${e(row.username)}</span>
+              <span>Privada no m&oacute;dulo Tarefas</span>
+            </div>
+            <button class="users-button" type="submit">Criar tarefa privada</button>
           </form>
         </section>
         <section class="users-subsection">
