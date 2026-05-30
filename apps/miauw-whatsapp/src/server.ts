@@ -388,6 +388,7 @@ type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
   outboxCounts: Record<string, number>;
+  outboxProblemCounts: Record<string, number>;
   replyEngines: DashboardEngineRow[];
   responseDelay: DashboardResponseDelay;
   allowlistRows: DashboardAllowlistRow[];
@@ -6604,6 +6605,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
   const [
     eventsResult,
     outboxResult,
+    outboxProblemCountsResult,
     replyEnginesResult,
     responseDelayResult,
     contactsResult,
@@ -6627,6 +6629,13 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
          FROM miauw_whatsapp_outbox
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        WHERE NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
         GROUP BY status
         ORDER BY status`,
     ),
@@ -6825,6 +6834,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     status: publicStatus(),
     eventCounts: countsByStatus(eventsResult.rows),
     outboxCounts: countsByStatus(outboxResult.rows),
+    outboxProblemCounts: countsByStatus(outboxProblemCountsResult.rows),
     replyEngines: replyEnginesResult.rows,
     responseDelay: responseDelayResult.rows[0] || { count: '0', avg_ai_ms: '0', avg_total_ms: '0', p95_total_ms: '0', last_total_ms: '0' },
     allowlistRows: allowlistRowsResult.rows,
@@ -7411,7 +7421,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const queued = countOf(summary.eventCounts, 'queued') + countOf(summary.eventCounts, 'processing');
   const eventProblems = countOf(summary.eventCounts, 'failed') + countOf(summary.eventCounts, 'dead');
   const pendingOutbox = countOf(summary.outboxCounts, 'pending') + countOf(summary.outboxCounts, 'sending');
-  const outboxProblems = countOf(summary.outboxCounts, 'failed') + countOf(summary.outboxCounts, 'dead');
+  const outboxProblems = countOf(summary.outboxProblemCounts, 'failed') + countOf(summary.outboxProblemCounts, 'dead');
   const replied = countOf(summary.eventCounts, 'replied');
   const ignored = countOf(summary.eventCounts, 'ignored');
   const prefix = textStatus(status, 'prefix') || '-';
@@ -8352,7 +8362,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           ${renderStateCard('Recebidos', countOf(summary.eventCounts, 'received'), 'Eventos brutos aceitos antes da decisao.', 'ok')}
           ${renderStateCard('Na fila', queued, 'Eventos aguardando processamento.', queued > 0 ? 'warn' : 'ok')}
           ${renderStateCard('Ignorados', ignored, 'Fora de allowlist, sem prefixo, grupo ou vazio.', ignored > 0 ? 'warn' : 'muted')}
-          ${renderStateCard('Problemas', eventProblems + outboxProblems, 'Falhas com retry ou dead-letter.', eventProblems + outboxProblems > 0 ? 'bad' : 'ok')}
+          ${renderStateCard('Problemas', eventProblems + outboxProblems, 'Falhas atuais com retry ou dead-letter.', eventProblems + outboxProblems > 0 ? 'bad' : 'ok')}
         </div>
       </article>
 
@@ -8713,6 +8723,7 @@ app.get(`${BASE_PATH}/status`, requireDashboardAuth, async (_req, res) => {
       ...summary.status,
       event_counts: summary.eventCounts,
       outbox_counts: summary.outboxCounts,
+      outbox_problem_counts: summary.outboxProblemCounts,
       allowlist_database_allowed: summary.allowlistAllowed,
       allowlist_database_blocked: summary.allowlistBlocked,
       response_delay_24h: summary.responseDelay,
