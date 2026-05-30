@@ -172,15 +172,13 @@ docker exec wimifarma-core-db psql -U wimifarma_core -d wimifarma_core -c "\dt"
 curl.exe -sS http://127.0.0.1:3002/cotacao/health
 ```
 
-Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos e Cashback usam somente `core_users`; Tarefa, XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
+Esta etapa cria/valida `core_users`, `core_audit_logs` e `core_login_rate_limits` em Postgres, sincronizando `wf_users` do MySQL. Cotacao, Gestao, Pedidos, Tarefa e Cashback usam somente `core_users`; XP, Codigos, Financeiro e Miauby PHP usam `core_users` oficialmente por suas variaveis `*_AUTH_PROVIDER=core` ou `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`. Fallback MySQL de autenticacao fica apenas como rollback opt-in onde ainda existir.
 
 Gestao usa somente `core_users` desde 2026-05-30. O servico nao possui mais `GESTAO_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2`, espelho `wf_logs` nem variaveis `MYSQL_*` no Compose; `/gestao/health` deve mostrar `auth.provider=core`, `mysql_auth=false`, `mysql_auth_fallback=false` e `mysql_reachable=false`.
 
 Pedidos usa somente `core_users` e Postgres. O servico nao possui mais `PEDIDOS_AUTH_PROVIDER`, fallback `wf_users`, sombra MySQL, dependencia `mysql2` nem variaveis `MYSQL_*` no Compose; `/pedidos/health` deve mostrar `auth.provider=core`, `mysql_dependency=false`, `mysql_auth=false` e `mysql_auth_fallback=false`.
 
-Tarefa usa `TAREFA_AUTH_PROVIDER=core` por padrao. Para comparar um ambiente ainda em MySQL antes do corte, ligar `TAREFA_CORE_AUTH_SHADOW_ENABLED=true`; nesse caso `auth.shadowEnabled=true` apenas compara logins bem-sucedidos contra `core_users` em paralelo.
-
-Depois do corte validado, a janela MySQL de dados da Tarefa pode ser desligada com `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false`; nesse estado `/tarefa/health` deve mostrar `auth.provider=core` e `storage.legacy_mysql_required=false`. Rollback de autenticacao: voltar `TAREFA_AUTH_PROVIDER=mysql`, religar as flags legadas necessarias e rebuildar `wimifarma-tarefa-app`.
+Tarefa usa somente `core_users` e Postgres desde 2026-05-30. O servico nao possui mais `TAREFA_AUTH_PROVIDER`, sombra MySQL, dependencia `mysql2`, importador, espelho, fallback `wf_users` nem flags `TAREFA_LEGACY_MYSQL_*`; `/tarefa/health` deve mostrar `auth.provider=core` e `storage.provider=postgres`. Rollback MySQL exige restaurar versao anterior e backup validado.
 
 ## Local - Tarefa Node/Postgres
 
@@ -196,7 +194,7 @@ curl.exe -sS http://127.0.0.1:3002/tarefa/badge.php
 docker exec wimifarma-tarefa-db psql -U wimifarma_tarefa -d wimifarma_tarefa -c "\dt"
 ```
 
-A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico autentica por `core_users` e usa `tarefa_tasks` no Postgres como fonte oficial. Desde 2026-05-30, `TAREFA_LEGACY_MYSQL_IMPORT_ENABLED=false`, `TAREFA_LEGACY_MYSQL_MIRROR_ENABLED=false` e `TAREFA_LEGACY_MYSQL_LOGS_ENABLED=false` sao o padrao, e o Compose nao injeta credenciais MySQL no app; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente.
+A rota `/tarefa/` e servida por `apps/tarefa` via proxy Apache. O servico autentica por `core_users` e usa `tarefa_tasks` no Postgres como fonte oficial. Desde 2026-05-30, nao ha importador, espelho, fallback `wf_users`, flags MySQL nem credenciais MySQL no app; rollback MySQL exige restaurar versao anterior e backup validado.
 
 ## Local - XP Node/Postgres
 

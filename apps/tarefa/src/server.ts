@@ -5,7 +5,6 @@ import bcrypt from 'bcryptjs';
 import connectPgSimple from 'connect-pg-simple';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
-import mysql from 'mysql2/promise';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -16,8 +15,6 @@ type User = {
   role: string;
 };
 
-type AuthProvider = 'mysql' | 'core';
-
 type Flash = {
   type: 'success' | 'error' | '';
   message: string;
@@ -25,14 +22,6 @@ type Flash = {
 
 type TaskPriority = 'alta' | 'normal' | 'baixa';
 type TaskStatus = 'aberta' | 'concluida' | 'cancelada';
-
-type MysqlUserRow = {
-  id: number;
-  username: string;
-  password_hash: string | null;
-  role: string | null;
-  active: number;
-};
 
 type CoreUserRow = {
   id: string;
@@ -60,19 +49,6 @@ type TaskRow = {
   canceled_at: Date | string | null;
 };
 
-type LegacyTaskRow = {
-  id: number;
-  prioridade: string;
-  titulo: string;
-  descricao: string | null;
-  status: string;
-  criado_por: number | null;
-  criado_em: string | null;
-  atualizado_em: string | null;
-  concluido_em: string | null;
-  cancelado_em: string | null;
-};
-
 declare module 'express-session' {
   interface SessionData {
     csrfToken?: string;
@@ -90,7 +66,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'tarefa';
-const SERVICE_VERSION = '1.1.2';
+const SERVICE_VERSION = '1.2.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/tarefa');
 const PORT = Number.parseInt(env.PORT || '3500', 10);
 const SESSION_SECRET = env.TAREFA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -99,18 +75,10 @@ const INTERNAL_TOKEN = cleanEnv('TAREFA_INTERNAL_TOKEN')
   || cleanEnv('MIAUW_AGENT_INTERNAL_TOKEN')
   || cleanEnv('MIAUW_WHATSAPP_INTERNAL_TOKEN');
 const TZ = 'America/Sao_Paulo';
-const AUTH_PROVIDER = normalizeAuthProvider(env.TAREFA_AUTH_PROVIDER || 'core');
-const LEGACY_MYSQL_MIRROR_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_MIRROR_ENABLED ?? 'false');
-const LEGACY_MYSQL_IMPORT_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_IMPORT_ENABLED ?? 'false');
-const LEGACY_MYSQL_LOGS_ENABLED = normalizeBoolean(env.TAREFA_LEGACY_MYSQL_LOGS_ENABLED ?? 'false');
-const CORE_AUTH_SHADOW_ENABLED = normalizeBoolean(env.TAREFA_CORE_AUTH_SHADOW_ENABLED);
-const CORE_AUTH_SHADOW_TIMEOUT_MS = Math.max(
+const CORE_AUTH_TIMEOUT_MS = Math.max(
   500,
-  Math.min(10000, Number.parseInt(env.TAREFA_CORE_AUTH_SHADOW_TIMEOUT_MS || '1500', 10) || 1500),
+  Math.min(10000, Number.parseInt(env.TAREFA_CORE_AUTH_TIMEOUT_MS || '1500', 10) || 1500),
 );
-const CORE_AUTH_REQUIRED = AUTH_PROVIDER === 'core' || CORE_AUTH_SHADOW_ENABLED;
-const LEGACY_MYSQL_REQUIRED =
-  AUTH_PROVIDER === 'mysql' || LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED || LEGACY_MYSQL_LOGS_ENABLED;
 
 const priorities: Record<TaskPriority, { label: string; rank: number }> = {
   alta: { label: 'Alta', rank: 3 },
@@ -133,50 +101,17 @@ const pgPool = new Pool({
   max: 10,
 });
 
-const mysqlPool: mysql.Pool | null = LEGACY_MYSQL_REQUIRED
-  ? mysql.createPool({
-      host: env.MYSQL_HOST || '127.0.0.1',
-      port: Number(env.MYSQL_PORT || 3306),
-      database: env.MYSQL_DATABASE || 'wimifarma_app',
-      user: env.MYSQL_USER || 'wimifarma_user',
-      password: env.MYSQL_PASSWORD || '',
-      waitForConnections: true,
-      connectionLimit: 6,
-      charset: 'utf8mb4',
-      dateStrings: true,
-    })
-  : null;
-
-const corePgPool = CORE_AUTH_REQUIRED
-  ? new Pool({
-      host: env.CORE_POSTGRES_HOST || '127.0.0.1',
-      port: Number(env.CORE_POSTGRES_PORT || 5432),
-      database: env.CORE_POSTGRES_DB || 'wimifarma_core',
-      user: env.CORE_POSTGRES_USER || 'wimifarma_core',
-      password: env.CORE_POSTGRES_PASSWORD || '',
-      max: 4,
-      connectionTimeoutMillis: CORE_AUTH_SHADOW_TIMEOUT_MS,
-      statement_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS,
-      query_timeout: CORE_AUTH_SHADOW_TIMEOUT_MS,
-    })
-  : null;
-
-const coreAuthShadow = {
-  enabled: CORE_AUTH_SHADOW_ENABLED,
-  attempts: 0,
-  ok: 0,
-  mismatches: 0,
-  errors: 0,
-  lastStatus: 'idle',
-  lastLatencyMs: null as number | null,
-  lastCheckedAt: null as string | null,
-};
-
-const migrationState = {
-  imported: 0,
-  lastRunAt: null as string | null,
-  lastError: null as string | null,
-};
+const corePgPool = new Pool({
+  host: env.CORE_POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.CORE_POSTGRES_PORT || 5432),
+  database: env.CORE_POSTGRES_DB || 'wimifarma_core',
+  user: env.CORE_POSTGRES_USER || 'wimifarma_core',
+  password: env.CORE_POSTGRES_PASSWORD || '',
+  max: 4,
+  connectionTimeoutMillis: CORE_AUTH_TIMEOUT_MS,
+  statement_timeout: CORE_AUTH_TIMEOUT_MS,
+  query_timeout: CORE_AUTH_TIMEOUT_MS,
+});
 
 const app = express();
 const PgSession = connectPgSimple(session);
@@ -203,23 +138,8 @@ function normalizeBasePath(value: string): string {
   return clean === '' ? '/tarefa' : clean;
 }
 
-function normalizeBoolean(value: unknown): boolean {
-  return value === true || value === 1 || value === '1' || value === 'true' || value === 'on';
-}
-
 function cleanEnv(name: string): string {
   return String(env[name] || '').trim();
-}
-
-function normalizeAuthProvider(value: unknown): AuthProvider {
-  return String(value || 'core').trim().toLowerCase() === 'mysql' ? 'mysql' : 'core';
-}
-
-function requireMysqlPool(feature: string): mysql.Pool {
-  if (!mysqlPool) {
-    throw new Error(`Legacy MySQL is disabled for ${feature}.`);
-  }
-  return mysqlPool;
 }
 
 function requireCorePgPool(feature: string): pg.Pool {
@@ -283,14 +203,6 @@ function validStatus(value: unknown): TaskStatus {
 
 function priorityLabel(priority: TaskPriority): string {
   return priorities[priority]?.label || 'Normal';
-}
-
-function userPublic(row: MysqlUserRow): User {
-  return {
-    id: Number(row.id),
-    username: String(row.username),
-    role: String(row.role || 'user'),
-  };
 }
 
 function ensureCsrf(req: Request): string {
@@ -371,40 +283,12 @@ function clearLoginRateLimit(req: Request): void {
 }
 
 async function authenticate(username: string, password: string): Promise<User | null> {
-  return AUTH_PROVIDER === 'core' ? authenticateCore(username, password) : authenticateMysql(username, password);
-}
-
-async function authenticateMysql(username: string, password: string): Promise<User | null> {
-  const [rows] = await requireMysqlPool('auth').query<mysql.RowDataPacket[]>(
-    'SELECT id, username, password_hash, role, active FROM wf_users WHERE username = ? AND active = 1 LIMIT 1',
-    [username],
-  );
-  const user = rows[0] as MysqlUserRow | undefined;
-  if (!user) return null;
-
-  let ok = false;
-  if (user.password_hash) {
-    ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
-  }
-  if (!ok && normalizeUsername(user.username) === 'adm') {
-    ok = timingSafeStringEqual(password, 'adm');
-  }
-
-  return ok ? userPublic(user) : null;
+  return authenticateCore(username, password);
 }
 
 async function currentUser(user: User | undefined): Promise<User | null> {
   if (!user) return null;
-  return AUTH_PROVIDER === 'core' ? currentCoreUser(user) : currentMysqlUser(user);
-}
-
-async function currentMysqlUser(user: User): Promise<User | null> {
-  const [rows] = await requireMysqlPool('current user').query<mysql.RowDataPacket[]>(
-    'SELECT id, username, role, active FROM wf_users WHERE id = ? AND active = 1 LIMIT 1',
-    [user.id],
-  );
-  const row = rows[0] as MysqlUserRow | undefined;
-  return row ? userPublic(row) : null;
+  return currentCoreUser(user);
 }
 
 async function currentCoreUser(user: User): Promise<User | null> {
@@ -452,60 +336,10 @@ async function authenticateCore(username: string, password: string): Promise<Use
   };
 }
 
-async function shadowCoreAuth(username: string, password: string, mysqlUser: User): Promise<void> {
-  if (!CORE_AUTH_SHADOW_ENABLED || AUTH_PROVIDER !== 'mysql' || !corePgPool) return;
-  const startedAt = Date.now();
-  coreAuthShadow.attempts += 1;
-  try {
-    const coreUser = await authenticateCore(username, password);
-    const latencyMs = Date.now() - startedAt;
-    const sameUser = Boolean(
-      coreUser &&
-        Number(coreUser.id) === Number(mysqlUser.id) &&
-        normalizeUsername(coreUser.username) === normalizeUsername(mysqlUser.username) &&
-        String(coreUser.role || 'user') === String(mysqlUser.role || 'user'),
-    );
-    coreAuthShadow.lastLatencyMs = latencyMs;
-    coreAuthShadow.lastCheckedAt = new Date().toISOString();
-    if (sameUser) {
-      coreAuthShadow.ok += 1;
-      coreAuthShadow.lastStatus = 'ok';
-      console.info('[tarefa] core auth shadow ok', { username: maskUsername(username), userId: mysqlUser.id, latencyMs });
-      return;
-    }
-
-    coreAuthShadow.mismatches += 1;
-    coreAuthShadow.lastStatus = 'mismatch';
-    console.warn('[tarefa] core auth shadow mismatch', {
-      username: maskUsername(username),
-      mysqlUserId: mysqlUser.id,
-      coreFound: Boolean(coreUser),
-      coreUserId: coreUser?.id || null,
-      latencyMs,
-    });
-  } catch (error) {
-    coreAuthShadow.errors += 1;
-    coreAuthShadow.lastLatencyMs = Date.now() - startedAt;
-    coreAuthShadow.lastCheckedAt = new Date().toISOString();
-    coreAuthShadow.lastStatus = 'error';
-    console.warn('[tarefa] core auth shadow failed', {
-      username: maskUsername(username),
-      error: error instanceof Error ? error.message : String(error),
-      latencyMs: coreAuthShadow.lastLatencyMs,
-    });
-  }
-}
-
 async function coreAuthHealth(): Promise<Record<string, unknown>> {
   const state = {
-    provider: AUTH_PROVIDER,
-    shadowEnabled: CORE_AUTH_SHADOW_ENABLED,
-    shadow: { ...coreAuthShadow },
+    provider: 'core',
   };
-  if (!CORE_AUTH_REQUIRED || !corePgPool) {
-    return state;
-  }
-
   const startedAt = Date.now();
   try {
     const result = await corePgPool.query<{ has_users: boolean }>('SELECT EXISTS (SELECT 1 FROM core_users LIMIT 1) AS has_users');
@@ -522,18 +356,6 @@ async function coreAuthHealth(): Promise<Record<string, unknown>> {
       coreStatus: 'unreachable',
       coreLatencyMs: Date.now() - startedAt,
     };
-  }
-}
-
-async function logMysql(userId: number | null, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
-  if (!LEGACY_MYSQL_LOGS_ENABLED) return;
-  try {
-    await requireMysqlPool('wf_logs').query(
-      'INSERT INTO wf_logs (user_id, action, entity_type, entity_id, message) VALUES (?, ?, ?, ?, ?)',
-      [userId, action, entityType, entityId, cleanText(message, 255)],
-    );
-  } catch (error) {
-    console.warn('[tarefa] failed to write wf_logs', error);
   }
 }
 
@@ -619,53 +441,6 @@ function brDate(value: Date | string | null | undefined, withTime = false): stri
   });
 }
 
-function mysqlDate(value: Date | string | null | undefined): string | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return null;
-  const pad = (part: number) => String(part).padStart(2, '0');
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value || '';
-  return `${get('year')}-${get('month')}-${get('day')} ${pad(Number(get('hour')))}:${get('minute')}:${get('second')}`;
-}
-
-function pgDateFromMysql(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text || text === '0000-00-00 00:00:00') return null;
-  return text.includes('T') ? text : `${text.replace(' ', 'T')}-03:00`;
-}
-
-async function ensureLegacyMysqlSchema(): Promise<void> {
-  if (!LEGACY_MYSQL_IMPORT_ENABLED && !LEGACY_MYSQL_MIRROR_ENABLED) return;
-  await requireMysqlPool('legacy schema').query(`
-    CREATE TABLE IF NOT EXISTS wf_tarefas (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      prioridade ENUM('alta','normal','baixa') NOT NULL DEFAULT 'normal',
-      titulo VARCHAR(180) NOT NULL,
-      descricao TEXT NULL,
-      status ENUM('aberta','concluida','cancelada') NOT NULL DEFAULT 'aberta',
-      criado_por INT UNSIGNED NULL,
-      criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      atualizado_em DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-      concluido_em DATETIME NULL,
-      cancelado_em DATETIME NULL,
-      PRIMARY KEY (id),
-      KEY idx_tarefa_status_prioridade (status, prioridade, criado_em),
-      KEY idx_tarefa_criado (criado_em)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-}
-
 async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS tarefa_sessions (
@@ -720,51 +495,6 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await pgPool.query('CREATE INDEX IF NOT EXISTS tarefa_audit_events_task_idx ON tarefa_audit_events (task_id, created_at DESC)');
-  if (LEGACY_MYSQL_IMPORT_ENABLED || LEGACY_MYSQL_MIRROR_ENABLED) {
-    await ensureLegacyMysqlSchema();
-  }
-  if (LEGACY_MYSQL_IMPORT_ENABLED) {
-    await migrateLegacyTasks();
-  }
-}
-
-async function migrateLegacyTasks(): Promise<void> {
-  try {
-    const [rows] = await requireMysqlPool('legacy import').query<mysql.RowDataPacket[]>(
-      'SELECT id, prioridade, titulo, descricao, status, criado_por, criado_em, atualizado_em, concluido_em, cancelado_em FROM wf_tarefas ORDER BY id ASC',
-    );
-    let imported = 0;
-    for (const row of rows as LegacyTaskRow[]) {
-      const result = await pgPool.query(
-        `INSERT INTO tarefa_tasks
-          (legacy_mysql_id, priority, title, description, status, created_by, created_at, updated_at, completed_at, canceled_at)
-         VALUES
-          ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, now()), $8::timestamptz, $9::timestamptz, $10::timestamptz)
-         ON CONFLICT (legacy_mysql_id) DO NOTHING
-         RETURNING id`,
-        [
-          Number(row.id),
-          validPriority(row.prioridade),
-          trimText(row.titulo, 180) || 'Tarefa sem titulo',
-          String(row.descricao || ''),
-          validStatus(row.status),
-          row.criado_por ? Number(row.criado_por) : null,
-          pgDateFromMysql(row.criado_em),
-          pgDateFromMysql(row.atualizado_em),
-          pgDateFromMysql(row.concluido_em),
-          pgDateFromMysql(row.cancelado_em),
-        ],
-      );
-      if (result.rowCount) imported += 1;
-    }
-    migrationState.imported = imported;
-    migrationState.lastRunAt = new Date().toISOString();
-    migrationState.lastError = null;
-  } catch (error) {
-    migrationState.lastRunAt = new Date().toISOString();
-    migrationState.lastError = error instanceof Error ? error.message : String(error);
-    throw error;
-  }
 }
 
 function visibleTasksWhere(userId: number): string {
@@ -781,16 +511,6 @@ async function taskCounts(userId = 0): Promise<Record<TaskStatus, number>> {
     userId > 0 ? [userId] : [],
   );
   for (const row of result.rows) {
-    counts[validStatus(row.status)] = Number(row.total || 0);
-  }
-  return counts;
-}
-
-async function legacyTaskCounts(): Promise<Record<TaskStatus, number>> {
-  const counts: Record<TaskStatus, number> = { aberta: 0, concluida: 0, cancelada: 0 };
-  if (!LEGACY_MYSQL_IMPORT_ENABLED && !LEGACY_MYSQL_MIRROR_ENABLED) return counts;
-  const [rows] = await requireMysqlPool('legacy counts').query<mysql.RowDataPacket[]>('SELECT status, COUNT(*) AS total FROM wf_tarefas GROUP BY status');
-  for (const row of rows as Array<{ status: string; total: number }>) {
     counts[validStatus(row.status)] = Number(row.total || 0);
   }
   return counts;
@@ -848,8 +568,7 @@ async function createTask(req: Request): Promise<number> {
     const taskId = Number(result.rows[0]?.id || 0);
     await auditPg(client, taskId, userId, 'tarefa_criada', `Tarefa criada: ${title}`);
     await client.query('COMMIT');
-    void mirrorCreateToMysql(taskId);
-    void logMysql(userId, 'tarefa_criada', 'task', taskId, `Tarefa criada: ${title}`);
+    void logCoreAudit(userId, 'tarefa_criada', 'task', String(taskId), `Tarefa criada: ${title}`);
     return taskId;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -977,8 +696,7 @@ async function updateTask(req: Request): Promise<void> {
     if (!task) throw new Error('Tarefa invalida.');
     await auditPg(client, id, req.session.user?.id || null, 'tarefa_editada', `Tarefa editada: ${title}`);
     await client.query('COMMIT');
-    void mirrorTaskToMysql(task);
-    void logMysql(req.session.user?.id || null, 'tarefa_editada', 'task', id, `Tarefa editada: ${title}`);
+    void logCoreAudit(req.session.user?.id || null, 'tarefa_editada', 'task', String(id), `Tarefa editada: ${title}`);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -1010,57 +728,7 @@ async function setTaskStatus(req: Request, status: TaskStatus): Promise<void> {
     'INSERT INTO tarefa_audit_events (task_id, user_id, action, summary) VALUES ($1, $2, $3, $4)',
     [id, req.session.user?.id || null, 'tarefa_status', cleanText(`Tarefa marcada como ${status}.`, 255)],
   );
-  void mirrorTaskToMysql(task);
-  void logMysql(req.session.user?.id || null, 'tarefa_status', 'task', id, `Tarefa marcada como ${status}.`);
-}
-
-async function mirrorCreateToMysql(taskId: number): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED) return;
-  try {
-    const result = await pgPool.query<TaskRow>('SELECT * FROM tarefa_tasks WHERE id = $1 LIMIT 1', [taskId]);
-    const task = result.rows[0];
-    if (!task || task.legacy_mysql_id) return;
-    if (task.assigned_core_user_id) return;
-    const [insert] = await requireMysqlPool('legacy mirror create').query<mysql.ResultSetHeader>(
-      'INSERT INTO wf_tarefas (prioridade, titulo, descricao, status, criado_por, criado_em, atualizado_em, concluido_em, cancelado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        task.priority,
-        task.title,
-        task.description || '',
-        task.status,
-        task.created_by,
-        mysqlDate(task.created_at),
-        mysqlDate(task.updated_at),
-        mysqlDate(task.completed_at),
-        mysqlDate(task.canceled_at),
-      ],
-    );
-    await pgPool.query('UPDATE tarefa_tasks SET legacy_mysql_id = $1 WHERE id = $2 AND legacy_mysql_id IS NULL', [insert.insertId, taskId]);
-  } catch (error) {
-    console.warn('[tarefa] legacy mysql mirror create failed', error);
-  }
-}
-
-async function mirrorTaskToMysql(task: TaskRow): Promise<void> {
-  if (!LEGACY_MYSQL_MIRROR_ENABLED || !task.legacy_mysql_id) return;
-  if (task.assigned_core_user_id) return;
-  try {
-    await requireMysqlPool('legacy mirror update').query(
-      'UPDATE wf_tarefas SET prioridade = ?, titulo = ?, descricao = ?, status = ?, atualizado_em = ?, concluido_em = ?, cancelado_em = ? WHERE id = ?',
-      [
-        task.priority,
-        task.title,
-        task.description || '',
-        task.status,
-        mysqlDate(task.updated_at || new Date()),
-        mysqlDate(task.completed_at),
-        mysqlDate(task.canceled_at),
-        Number(task.legacy_mysql_id),
-      ],
-    );
-  } catch (error) {
-    console.warn('[tarefa] legacy mysql mirror update failed', error);
-  }
+  void logCoreAudit(req.session.user?.id || null, 'tarefa_status', 'task', String(id), `Tarefa marcada como ${status}.`);
 }
 
 function renderTask(req: Request, task: TaskRow, history = false): string {
@@ -1316,8 +984,7 @@ app.use(
 
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');
-  if (LEGACY_MYSQL_REQUIRED) await requireMysqlPool('health').query('SELECT 1');
-  const [counts, legacyCounts, auth] = await Promise.all([taskCounts(), legacyTaskCounts(), coreAuthHealth()]);
+  const [counts, auth] = await Promise.all([taskCounts(), coreAuthHealth()]);
   res.json({
     ok: true,
     service: SERVICE_NAME,
@@ -1326,13 +993,8 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
     storage: {
       provider: 'postgres',
       database: env.POSTGRES_DB || 'wimifarma_tarefa',
-      legacy_mysql_required: LEGACY_MYSQL_REQUIRED,
-      legacy_mysql_import_enabled: LEGACY_MYSQL_IMPORT_ENABLED,
-      legacy_mysql_mirror_enabled: LEGACY_MYSQL_MIRROR_ENABLED,
-      legacy_mysql_logs_enabled: LEGACY_MYSQL_LOGS_ENABLED,
-      migration: migrationState,
+      legacy_mysql_required: false,
       counts,
-      legacy_counts: legacyCounts,
     },
     auth,
   });
@@ -1372,13 +1034,11 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   if (!user) {
     registerLoginFailure(req);
     void logCoreAudit(null, 'login_tarefa_falha', 'user', null, `Tentativa de login Tarefas falhou para usuario: ${username}`, {
-      auth_provider: AUTH_PROVIDER,
+      auth_provider: 'core',
     });
-    await logMysql(null, 'login_tarefa_falha', 'user', null, `Tentativa de login Tarefas falhou para usuario: ${username}`);
     return res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha incorretos.'));
   }
 
-  if (AUTH_PROVIDER === 'mysql') void shadowCoreAuth(username, password, user);
   const returnTo = safeTarefaReturnPath(req.session.returnTo) || `${BASE_PATH}/`;
   clearLoginRateLimit(req);
   req.session.regenerate((error) => {
@@ -1389,9 +1049,8 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     req.session.user = user;
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
     void logCoreAudit(user.id, 'login_tarefa', 'user', String(user.id), 'Login Tarefas Node realizado.', {
-      auth_provider: AUTH_PROVIDER,
+      auth_provider: 'core',
     });
-    void logMysql(user.id, 'login_tarefa', 'user', user.id, 'Login Tarefas Node realizado.');
     return res.redirect(returnTo);
   });
 }));
@@ -1544,12 +1203,7 @@ async function withRetry(name: string, fn: () => Promise<unknown>, attempts = 20
 
 async function start() {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
-  if (LEGACY_MYSQL_REQUIRED) {
-    await withRetry('mysql', () => requireMysqlPool('startup').query('SELECT 1'));
-  }
-  if (CORE_AUTH_REQUIRED) {
-    await withRetry('core postgres', () => requireCorePgPool('startup').query('SELECT 1'));
-  }
+  await withRetry('core postgres', () => requireCorePgPool('startup').query('SELECT 1'));
   await ensureSchema();
   app.listen(PORT, () => {
     console.log(`[tarefa] listening on ${PORT} at ${BASE_PATH}`);

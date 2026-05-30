@@ -82,10 +82,10 @@ $modules = @(
         Module = 'Tarefa'
         Path = 'apps/tarefa'
         Current = 'Node.js + TypeScript + Express + Postgres + core auth'
-        Legacy = 'MySQL desligado por padrao; rollback manual por flags/provedor/credenciais'
+        Legacy = 'sem dependencia MySQL no app; rollback por restauracao'
         Target = 'Node.js + TypeScript + Postgres puro'
         Priority = 'moderno'
-        Next = 'Manter health e tarefas privadas sem reativar flags legadas.'
+        Next = 'Validar health, login, tarefas privadas, badge e Miauby sem reintroduzir mysql2.'
     },
     @{
         Module = 'Codigos'

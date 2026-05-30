@@ -37,7 +37,7 @@ Rotas de login:
 - `/miauw/login.php`
 - `/wp-login.php`
 
-Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
+Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos, Tarefa e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
 
 Arquivos envolvidos:
 
@@ -404,7 +404,7 @@ Regras:
 - criar, editar, concluir, cancelar e reabrir usam CSRF e sessao `WFTAREFA`;
 - tarefas com `assigned_core_user_id` aparecem somente para o usuario indicado e nao entram no espelho MySQL legado;
 - a tela visual deve continuar equivalente ao modulo antigo durante a migracao;
-- `TAREFA_LEGACY_MYSQL_*` fica desligado por padrao desde 2026-05-30; rollback MySQL exige religar flags/provedor e reintroduzir credenciais explicitamente, sem mudar a fonte oficial de verdade do Postgres.
+- Desde 2026-05-30, Tarefa nao possui `mysql2`, importador, espelho ou fallback `wf_users`; rollback MySQL exige restaurar versao anterior e backup validado, sem mudar a fonte oficial de verdade do Postgres.
 
 ## Fluxo Miauby
 
