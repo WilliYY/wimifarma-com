@@ -1231,6 +1231,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
+  <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-ui">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
@@ -1296,6 +1297,7 @@ function renderDashboard(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
+  <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-ui">
 </head>
 <body>

@@ -18,6 +18,13 @@ RewriteRule ^$ home.php [L]
 </IfModule>
 # END Wimifarma stable home
 
+# BEGIN Wimifarma favicon
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^favicon\.ico$ /cashback/favicon.png [L]
+</IfModule>
+# END Wimifarma favicon
+
 # BEGIN Wimifarma WordPress hardening
 <Files "xmlrpc.php">
     Require all denied

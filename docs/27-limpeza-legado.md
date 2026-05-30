@@ -16,6 +16,7 @@ Antes de mover arquivos, foram conferidos:
 ## Continua ativo
 
 - WordPress continua ativo em `site/wp-admin`, `site/wp-content`, `site/wp-includes` e `site/wp-config.php`.
+- O favicon `W` do WordPress pode aparecer quando uma tela nao declara icone proprio e o navegador tenta `/favicon.ico`; por isso a raiz reescreve `/favicon.ico` para `/cashback/favicon.png`, e os modulos internos devem declarar favicon explicitamente.
 - MySQL `wimifarma-com-db` continua ativo para WordPress e para legados/rollbacks ainda documentados.
 - `site/miauw` continua ativo em PHP.
 - `site/cashback/config.php` e `site/cashback/functions.php` continuam ativos porque o Miauby usa esse bootstrap.
