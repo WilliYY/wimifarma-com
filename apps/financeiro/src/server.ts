@@ -31,7 +31,7 @@ declare module 'express-session' {
 const env = process.env;
 const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
-const SERVICE_VERSION = '0.2.1';
+const SERVICE_VERSION = '0.2.2';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -2297,8 +2297,13 @@ async function healthPayload(): Promise<Record<string, unknown>> {
     },
     next_cutover: {
       frontend_assets_preserved: true,
-      rollback: 'remover proxy Apache de /financeiro/ e usar espelho MySQL se necessario',
-      required_before_disabling_mysql_mirror: ['checksum_match_by_day', 'miauby_pix_smoke', 'export_csv_smoke'],
+      rollback: LEGACY_MYSQL_REQUIRED
+        ? 'remover proxy Apache de /financeiro/ e usar espelho MySQL se necessario'
+        : 'rollback MySQL exige religar FINANCEIRO_LEGACY_MYSQL_* e reintroduzir credenciais MySQL explicitamente',
+      required_before_disabling_mysql_mirror: LEGACY_MYSQL_REQUIRED
+        ? ['checksum_match_by_day', 'miauby_pix_smoke', 'export_csv_smoke']
+        : [],
+      mysql_mirror_disabled_by_default: !LEGACY_MYSQL_REQUIRED,
     },
   };
 }
