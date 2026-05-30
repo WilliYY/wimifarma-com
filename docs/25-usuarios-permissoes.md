@@ -20,6 +20,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - `source='mysql:wf_users'` e `legacy_mysql_id` sao somente origem historica/reconciliacao de usuarios antigos migrados para o Postgres; a interface deve mostrar esse estado como migrado, sem sugerir uso ativo de MySQL no modulo Usuarios.
 - `core_user_module_permissions`: permissao por modulo e usuario.
 - `core_user_xp_links`: vinculo logico entre usuario e funcionario em `xp_employees`.
+- `core_user_admin_passwords`: cofre administrativo das senhas definidas pelo painel Usuarios. Guarda senha cifrada com AES-GCM para consulta do ADM; o login continua usando somente `core_users.password_hash`.
 - `core_user_whatsapp_links`: vinculo seguro entre usuario e contatos da allowlist do Miauby WhatsApp. Guarda `contact_id`, mascara, nome, status e cards liberados; o numero completo permanece somente cifrado no bridge WhatsApp.
 - `core_user_audit_events`: historico de criacao, atualizacao, desativacao, permissoes e vinculo XP.
 - `core_audit_logs`: espelho curto para auditoria compartilhada dos apps Node.
@@ -28,7 +29,9 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 
 - Acesso ao painel fica restrito a username `adm` ou role `admin`.
 - Criar/atualizar/desativar usuario exige CSRF.
-- Senhas existentes nunca sao exibidas em texto: `core_users` guarda apenas `password_hash`. O admin pode gerar, mostrar/ocultar e copiar uma nova senha no navegador antes de salvar, e a troca fica auditada por `password_changed=true`.
+- Senhas antigas importadas por hash continuam irrecuperaveis. A partir do painel Usuarios, sempre que o ADM cria ou troca uma senha, `core_users.password_hash` recebe o bcrypt oficial do login e `core_user_admin_passwords` recebe uma copia cifrada para consulta interna no bloco `Senha ADM`.
+- Se nao existir registro no cofre administrativo, o painel deve orientar o ADM a definir uma nova senha. Nao tentar quebrar hash antigo.
+- A chave do cofre usa `USUARIOS_PASSWORD_VAULT_KEY`; se ela nao estiver definida, o app usa `USUARIOS_SESSION_SECRET`. Trocar essa chave sem redefinir as senhas torna os registros antigos do cofre indisponiveis, mas nao altera o login por hash.
 - Excluir usuario no painel significa `active=false`; nao apagar fisicamente.
 - O usuario `adm` nao pode ser desativado.
 - Deve existir pelo menos um administrador ativo.
@@ -51,6 +54,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - `USUARIOS_MIAUW_WHATSAPP_INTERNAL_BASE_URL`: base interna do bridge WhatsApp, por padrao `http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp`.
 - `USUARIOS_MIAUW_WHATSAPP_INTERNAL_TOKEN`: token para gerenciar allowlist por usuario; pode reaproveitar `MIAUW_WHATSAPP_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`.
 - `USUARIOS_INTERNAL_HTTP_TIMEOUT_MS`: timeout curto das chamadas internas, default `4500`.
+- `USUARIOS_PASSWORD_VAULT_KEY`: chave operacional para cifrar o cofre administrativo de senhas definidas pelo painel. Deve ficar somente no `.env`/ambiente do VPS.
 
 ## Ordem de implantacao
 

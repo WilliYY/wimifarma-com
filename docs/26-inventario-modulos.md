@@ -696,6 +696,7 @@ Validar leitura do Miauby via token, busca, reordenacao e health; depois desliga
 
 - `/usuarios/login.php`: login admin.
 - `/usuarios/` e `/usuarios/index.php`: painel de usuarios, permissoes, XP, tarefas privadas, allowlist WhatsApp e auditoria.
+- Bloco `Senha ADM`: mostra/copiar senha definida no painel quando houver registro cifrado; senhas antigas por hash exigem redefinicao.
 - `/usuarios/logout.php`: encerra sessao.
 - `/usuarios/health`: health do core e alcance do XP.
 - `/usuarios/api/me/xp-card`: mini-card XP do usuario logado.
@@ -707,6 +708,7 @@ Validar leitura do Miauby via token, busca, reordenacao e health; depois desliga
 - Escritas usam CSRF.
 - Novos usuarios recebem `legacy_mysql_id` negativo para nao conflitar com ids importados de `wf_users`.
 - Permissoes por modulo ficam em `core_user_module_permissions`.
+- Senhas criadas/trocadas pelo ADM ficam cifradas em `core_user_admin_passwords`; o login continua usando o hash em `core_users`.
 
 ### Tabelas MySQL envolvidas
 
@@ -720,6 +722,7 @@ Validar leitura do Miauby via token, busca, reordenacao e health; depois desliga
 - `core_login_rate_limits`;
 - `core_user_module_permissions`;
 - `core_user_xp_links`;
+- `core_user_admin_passwords`;
 - `core_user_audit_events`;
 - `core_user_whatsapp_links`;
 - tabela de sessao criada pelo store do Express.

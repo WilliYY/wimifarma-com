@@ -204,6 +204,10 @@ a {
   min-width: 0;
 }
 
+.users-password-control.vault {
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+}
+
 .users-password-control .users-input {
   min-width: 0;
 }
@@ -243,6 +247,43 @@ a {
 
 .users-field-help.warn {
   color: #92400e;
+}
+
+.users-password-vault {
+  min-width: 0;
+  border: 1px solid #dbe3ee;
+  border-left: 4px solid var(--wf-postgres);
+  border-radius: 8px;
+  padding: 12px;
+  background: linear-gradient(135deg, #f8fbff, #ffffff);
+}
+
+.users-password-vault.available {
+  display: grid;
+  gap: 6px;
+}
+
+.users-password-vault.empty {
+  display: grid;
+  gap: 6px;
+  border-left-color: #f59e0b;
+  background: #fffaf0;
+}
+
+.users-password-vault > span {
+  color: #7b2444;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.users-password-vault p {
+  margin: 0;
+  color: #7c4a11;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .users-actions {
@@ -850,6 +891,10 @@ a {
   .users-password-control {
     grid-template-columns: minmax(0, 1fr) repeat(3, minmax(74px, auto));
   }
+
+  .users-password-control.vault {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(74px, auto));
+  }
 }
 
 @media (max-width: 640px) {
@@ -880,6 +925,10 @@ a {
   }
 
   .users-password-control {
+    grid-template-columns: 1fr;
+  }
+
+  .users-password-control.vault {
     grid-template-columns: 1fr;
   }
 

@@ -70,7 +70,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 1. Criar o core em Postgres
 
-- Modelar `core_users`, `core_audit_logs` e `core_login_rate_limits`.
+- Modelar `core_users`, `core_audit_logs`, `core_login_rate_limits`, permissoes centrais e o cofre administrativo `core_user_admin_passwords`.
 - Migrar `wf_users`, preservando hash de senha, role, status e ids antigos em coluna `legacy_mysql_id`.
 - Estado atual: `apps/core-auth` cria o schema em `wimifarma_core`, sincroniza usuarios de forma idempotente e possui validacao de contagem/campos.
 - Estado atual da Cotacao: usa `core_users` como login unico; `COTACAO_AUTH_PROVIDER`, `COTACAO_AUTH_MYSQL_FALLBACK_ENABLED` e sombra MySQL foram removidos do Compose e nao devem ser usados para rollback.
