@@ -2817,6 +2817,27 @@ async function recordErrorLog(source: string, severity: 'info' | 'warn' | 'error
   }
 }
 
+function actionableErrorLogsWhere(alias: string): string {
+  return `${alias}.resolved_at IS NULL
+    AND NOT (
+      ${alias}.source = 'outbox_recovery'
+      AND ${alias}.severity = 'warn'
+      AND ${alias}.details ? 'count'
+      AND ${alias}.details ? 'max_age_minutes'
+    )
+    AND NOT (
+      ${alias}.source = 'queue_event'
+      AND ${alias}.severity = 'warn'
+      AND ${alias}.event_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+          FROM miauw_whatsapp_events recovered_event
+         WHERE recovered_event.id = ${alias}.event_id
+           AND recovered_event.status = 'replied'
+      )
+    )`;
+}
+
 async function resolveErrorLog(id: string): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
     throw new Error('invalid_error_log_id');
@@ -2826,6 +2847,18 @@ async function resolveErrorLog(id: string): Promise<void> {
         SET resolved_at = NOW()
       WHERE id = $1`,
     [id],
+  );
+}
+
+async function resolveRecoveredQueueEventWarnings(eventId: string): Promise<void> {
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_error_logs
+        SET resolved_at = NOW()
+      WHERE event_id = $1
+        AND resolved_at IS NULL
+        AND source = 'queue_event'
+        AND severity = 'warn'`,
+    [eventId],
   );
 }
 
@@ -3372,6 +3405,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         WHERE id = $1`,
       [row.id],
     );
+    await resolveRecoveredQueueEventWarnings(row.id);
     void recordSharedMemoryTurn(
       row,
       effectiveBodyText,
@@ -6727,9 +6761,9 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     ),
     pgPool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
-         FROM miauw_whatsapp_error_logs
+         FROM miauw_whatsapp_error_logs error_log
         WHERE created_at >= NOW() - INTERVAL '1 day'
-          AND resolved_at IS NULL`,
+          AND ${actionableErrorLogsWhere('error_log')}`,
     ),
     pgPool.query<DashboardEventRow>(
       `SELECT status,
@@ -6798,8 +6832,8 @@ async function dashboardSummary(): Promise<DashboardSummary> {
               message_preview,
               error_summary,
               created_at::text AS created_at
-         FROM miauw_whatsapp_error_logs
-        WHERE resolved_at IS NULL
+         FROM miauw_whatsapp_error_logs error_log
+        WHERE ${actionableErrorLogsWhere('error_log')}
         ORDER BY created_at DESC
         LIMIT 12`,
     ),
