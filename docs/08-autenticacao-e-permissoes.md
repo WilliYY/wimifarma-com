@@ -20,6 +20,7 @@ Arquivos:
 
 Rotas:
 
+- `/`
 - `/cashback/login.php`
 - `/codigos/login.php`
 - `/cotacao/login.php`
@@ -52,6 +53,7 @@ Tabelas:
 ## Regras que precisam ser preservadas
 
 - Os modulos internos dependem de `current_user()` e helpers compartilhados.
+- A home `/` usa sessao isolada `WFHOME` apenas para liberar a tela inicial de cards; nao substitui nem herda login dos modulos internos. A credencial temporaria padrao solicitada para essa etapa e `adm`/`adm`, com override por `WIMIFARMA_HOME_LOGIN_USER` e `WIMIFARMA_HOME_LOGIN_PASSWORD`.
 - Formularios sensiveis devem usar CSRF.
 - Saida HTML deve usar escape.
 - Perfis/roles em `core_users.role` devem ser respeitados quando a rota usa `*_AUTH_PROVIDER=core`; em rollback/fallback MySQL, preservar a mesma regra vindo de `wf_users.role`.

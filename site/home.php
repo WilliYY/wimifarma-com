@@ -8,6 +8,7 @@ $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
 $homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.gif') . '?v=20260524-visible-transparent-logo';
+$homeLoginError = '';
 
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -32,6 +33,544 @@ function wf_home_asset(string $path): string
 
     return wf_home_url($assetRoot . '/' . ltrim($path, '/'));
 }
+
+function wf_home_is_https(): bool
+{
+    $https = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
+    $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+
+    return $https === 'on' || $https === '1' || $forwardedProto === 'https';
+}
+
+function wf_home_redirect(string $path = '/'): void
+{
+    header('Location: ' . wf_home_url($path), true, 302);
+    exit;
+}
+
+function wf_home_bubble_style(int $index): string
+{
+    $size = 2 + (mt_rand(0, 400) / 100);
+    $distance = 6 + (mt_rand(0, 400) / 100);
+    $position = -5 + (mt_rand(0, 11000) / 100);
+    $time = 2 + (mt_rand(0, 200) / 100);
+    $delay = -1 * (2 + (mt_rand(0, 200) / 100));
+
+    return sprintf(
+        '--size:%.2frem;--distance:%.2frem;--position:%.2f%%;--time:%.2fs;--delay:%.2fs;',
+        $size,
+        $distance,
+        $position,
+        $time,
+        $delay
+    );
+}
+
+session_name('WFHOME');
+session_set_cookie_params(array(
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => wf_home_is_https(),
+    'httponly' => true,
+    'samesite' => 'Lax',
+));
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+if (!isset($_SESSION['wf_home_csrf']) || !is_string($_SESSION['wf_home_csrf'])) {
+    $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
+}
+
+if (isset($_GET['sair'])) {
+    $_SESSION = array();
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'] ?? '', (bool) $params['secure'], (bool) $params['httponly']);
+    }
+    session_destroy();
+    wf_home_redirect('/');
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] ?? '') === 'login') {
+    $postedCsrf = (string) ($_POST['wf_home_csrf'] ?? '');
+    $user = trim((string) ($_POST['username'] ?? ''));
+    $password = (string) ($_POST['password'] ?? '');
+    $expectedUser = (string) (getenv('WIMIFARMA_HOME_LOGIN_USER') ?: 'adm');
+    $expectedPassword = (string) (getenv('WIMIFARMA_HOME_LOGIN_PASSWORD') ?: 'adm');
+
+    if (!hash_equals((string) $_SESSION['wf_home_csrf'], $postedCsrf)) {
+        $homeLoginError = 'Sessao expirada. Atualize e tente de novo.';
+    } elseif (hash_equals($expectedUser, $user) && hash_equals($expectedPassword, $password)) {
+        session_regenerate_id(true);
+        $_SESSION['wf_home_authenticated'] = true;
+        $_SESSION['wf_home_user'] = $user;
+        $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
+        wf_home_redirect('/');
+    } else {
+        $homeLoginError = 'Login ou senha invalidos.';
+    }
+}
+
+$homeAuthenticated = !empty($_SESSION['wf_home_authenticated']);
+
+if (!$homeAuthenticated):
+?>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Entrar - Wimifarma</title>
+    <link rel="icon" type="image/svg+xml" href="<?php echo wf_home_e(wf_home_asset('assets/img/favicon.svg')); ?>">
+    <link rel="preload" as="image" href="<?php echo wf_home_e($homeLogoUrl); ?>">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            min-height: 100%;
+            background: #0f172a;
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            grid-template-rows: minmax(0, 1fr) 9rem auto;
+            grid-template-areas: "main" "." "footer";
+            overflow-x: hidden;
+            background:
+                radial-gradient(circle at 28% 20%, rgba(255, 241, 196, 0.16), transparent 24rem),
+                radial-gradient(circle at 72% 18%, rgba(237, 85, 101, 0.18), transparent 22rem),
+                linear-gradient(145deg, #111827 0%, #1f1236 52%, #0f172a 100%);
+            color: #f8fafc;
+            font-family: "Segoe UI", "Open Sans", Arial, sans-serif;
+        }
+
+        .wf-login-main {
+            grid-area: main;
+            min-height: 0;
+            display: grid;
+            place-items: center;
+            padding: clamp(28px, 5vw, 64px) 18px 0;
+        }
+
+        .wf-login-ring {
+            position: relative;
+            width: min(500px, calc(100vw - 34px));
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wf-login-ring i {
+            position: absolute;
+            inset: 0;
+            border: 2px solid rgba(255, 255, 255, 0.82);
+            transition: border-color 0.5s ease, filter 0.5s ease, border-width 0.5s ease;
+        }
+
+        .wf-login-ring i:nth-child(1) {
+            border-radius: 38% 62% 63% 37% / 41% 44% 56% 59%;
+            animation: wf-login-spin 6s linear infinite;
+        }
+
+        .wf-login-ring i:nth-child(2) {
+            border-radius: 41% 44% 56% 59% / 38% 62% 63% 37%;
+            animation: wf-login-spin 4s linear infinite;
+        }
+
+        .wf-login-ring i:nth-child(3) {
+            border-radius: 41% 44% 56% 59% / 38% 62% 63% 37%;
+            animation: wf-login-spin-reverse 10s linear infinite;
+        }
+
+        .wf-login-ring:hover i,
+        .wf-login-ring:focus-within i {
+            border-width: 6px;
+            border-color: var(--clr);
+            filter: drop-shadow(0 0 20px var(--clr));
+        }
+
+        .wf-login-card {
+            position: absolute;
+            width: min(318px, 72vw);
+            min-height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+
+        .wf-login-logo {
+            width: min(260px, 70vw);
+            display: block;
+            filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.32));
+        }
+
+        .wf-login-only {
+            margin-top: -8px;
+            color: #ffe4ec;
+            font-size: 0.95rem;
+            font-weight: 850;
+            letter-spacing: 0.03em;
+        }
+
+        .wf-login-title {
+            margin: 0;
+            color: #ffffff;
+            font-size: clamp(1.72rem, 5vw, 2.1rem);
+            font-weight: 950;
+            line-height: 1;
+            text-align: center;
+        }
+
+        .wf-login-input {
+            width: 100%;
+            display: block;
+            border: 2px solid rgba(255, 255, 255, 0.88);
+            border-radius: 999px;
+            padding: 13px 20px;
+            background: rgba(255, 255, 255, 0.04);
+            color: #ffffff;
+            font: inherit;
+            font-size: 1.08rem;
+            font-weight: 800;
+            outline: none;
+            box-shadow: none;
+        }
+
+        .wf-login-input::placeholder {
+            color: rgba(255, 255, 255, 0.72);
+        }
+
+        .wf-login-input:focus {
+            border-color: #fff172;
+            box-shadow: 0 0 0 4px rgba(255, 241, 114, 0.12);
+        }
+
+        .wf-login-submit {
+            width: 100%;
+            border: 0;
+            border-radius: 999px;
+            padding: 13px 20px;
+            background: linear-gradient(45deg, #ed5565, #fff172);
+            color: #3b0717;
+            font: inherit;
+            font-size: 1.08rem;
+            font-weight: 950;
+            cursor: pointer;
+            box-shadow: 0 18px 34px rgba(237, 85, 101, 0.22);
+            transition: transform 160ms ease, filter 160ms ease;
+        }
+
+        .wf-login-submit:hover,
+        .wf-login-submit:focus-visible {
+            transform: translateY(-2px);
+            filter: saturate(1.08);
+            outline: 0;
+        }
+
+        .wf-login-error {
+            width: 100%;
+            margin: 0;
+            border: 1px solid rgba(255, 255, 255, 0.34);
+            border-radius: 999px;
+            padding: 9px 14px;
+            background: rgba(237, 85, 101, 0.16);
+            color: #fff1f2;
+            font-size: 0.84rem;
+            font-weight: 850;
+            text-align: center;
+        }
+
+        .wf-login-links {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.74);
+            font-size: 0.82rem;
+            font-weight: 800;
+            text-align: center;
+        }
+
+        .wf-login-footer {
+            z-index: 1;
+            --footer-background: #ed5565;
+            position: relative;
+            grid-area: footer;
+            min-height: 12rem;
+            display: grid;
+            animation: wf-footer-color 18s ease-in-out infinite;
+        }
+
+        .wf-login-bubbles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1rem;
+            background: var(--footer-background);
+            filter: url("#wf-login-blob");
+        }
+
+        .wf-login-bubble {
+            position: absolute;
+            left: var(--position, 50%);
+            bottom: -4rem;
+            background: var(--footer-background);
+            border-radius: 100%;
+            animation:
+                wf-bubble-size var(--time, 4s) ease-in infinite var(--delay, 0s),
+                wf-bubble-move var(--time, 4s) ease-in infinite var(--delay, 0s);
+            transform: translate(-50%, 100%);
+        }
+
+        .wf-login-footer-content {
+            z-index: 2;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 4rem;
+            align-items: center;
+            padding: 2rem;
+            background: var(--footer-background);
+        }
+
+        .wf-login-footer-content b,
+        .wf-login-footer-content a,
+        .wf-login-footer-content p,
+        .wf-login-footer-content span {
+            color: #f5f7fa;
+            text-decoration: none;
+        }
+
+        .wf-login-footer-content b {
+            color: #ffffff;
+            font-size: 0.88rem;
+        }
+
+        .wf-login-footer-content p {
+            margin: 0;
+            font-size: 0.76rem;
+            font-weight: 750;
+            line-height: 1.45;
+        }
+
+        .wf-login-footer-groups {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.25rem;
+            min-width: 0;
+        }
+
+        .wf-login-footer-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .wf-login-footer-image {
+            width: 4.4rem;
+            height: 4.4rem;
+            border: 2px solid rgba(255, 255, 255, 0.78);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.18);
+            object-fit: contain;
+            padding: 0.35rem;
+        }
+
+        .wf-login-svg-filter {
+            position: fixed;
+            top: 100vh;
+            left: 0;
+            width: 0;
+            height: 0;
+        }
+
+        @keyframes wf-login-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes wf-login-spin-reverse {
+            from {
+                transform: rotate(360deg);
+            }
+            to {
+                transform: rotate(0deg);
+            }
+        }
+
+        @keyframes wf-bubble-size {
+            0%, 75% {
+                width: var(--size, 4rem);
+                height: var(--size, 4rem);
+            }
+            100% {
+                width: 0;
+                height: 0;
+            }
+        }
+
+        @keyframes wf-bubble-move {
+            0% {
+                bottom: -4rem;
+            }
+            100% {
+                bottom: var(--distance, 10rem);
+            }
+        }
+
+        @keyframes wf-footer-color {
+            0%, 100% {
+                --footer-background: #ed5565;
+            }
+            25% {
+                --footer-background: #a80f43;
+            }
+            50% {
+                --footer-background: #0f766e;
+            }
+            75% {
+                --footer-background: #d97706;
+            }
+        }
+
+        @media (max-width: 720px) {
+            body {
+                grid-template-rows: minmax(0, 1fr) 5rem auto;
+            }
+
+            .wf-login-main {
+                padding-top: 24px;
+            }
+
+            .wf-login-card {
+                width: min(300px, 78vw);
+                gap: 13px;
+            }
+
+            .wf-login-footer-content {
+                grid-template-columns: 1fr;
+                gap: 1.25rem;
+                padding: 1.6rem 1.15rem;
+            }
+
+            .wf-login-footer-image {
+                justify-self: start;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .wf-login-ring {
+                width: min(390px, calc(100vw - 20px));
+            }
+
+            .wf-login-card {
+                width: min(286px, 76vw);
+            }
+
+            .wf-login-logo {
+                width: min(225px, 66vw);
+            }
+
+            .wf-login-input,
+            .wf-login-submit {
+                padding: 12px 16px;
+                font-size: 0.98rem;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="wf-login-main">
+        <form class="wf-login-ring" method="post" action="<?php echo wf_home_e(wf_home_url('/')); ?>" autocomplete="off" novalidate>
+            <i style="--clr:#00ff0a;" aria-hidden="true"></i>
+            <i style="--clr:#ff0057;" aria-hidden="true"></i>
+            <i style="--clr:#fffd44;" aria-hidden="true"></i>
+            <div class="wf-login-card">
+                <img class="wf-login-logo" src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="1560" height="622">
+                <span class="wf-login-only">Apenas funcion&aacute;rios</span>
+                <h1 class="wf-login-title">Login</h1>
+                <?php if ($homeLoginError !== ''): ?>
+                    <p class="wf-login-error"><?php echo wf_home_e($homeLoginError); ?></p>
+                <?php endif; ?>
+                <input type="hidden" name="wf_home_action" value="login">
+                <input type="hidden" name="wf_home_csrf" value="<?php echo wf_home_e((string) $_SESSION['wf_home_csrf']); ?>">
+                <input class="wf-login-input" type="text" name="username" placeholder="Login" autocomplete="username" required autofocus>
+                <input class="wf-login-input" type="password" name="password" placeholder="Senha" autocomplete="current-password" required>
+                <button class="wf-login-submit" type="submit">Entrar</button>
+                <div class="wf-login-links" aria-hidden="true">
+                    <span>Wimifarma</span>
+                    <span>&middot;</span>
+                    <span>Acesso interno</span>
+                </div>
+            </div>
+        </form>
+    </main>
+
+    <footer class="wf-login-footer">
+        <div class="wf-login-bubbles" aria-hidden="true">
+            <?php for ($i = 0; $i < 128; $i++): ?>
+                <span class="wf-login-bubble" style="<?php echo wf_home_e(wf_home_bubble_style($i)); ?>"></span>
+            <?php endfor; ?>
+        </div>
+        <div class="wf-login-footer-content">
+            <div class="wf-login-footer-groups">
+                <div class="wf-login-footer-row">
+                    <b>Wimifarma</b>
+                    <span>Portal interno</span>
+                    <span>Operacao</span>
+                    <span>Auditoria</span>
+                </div>
+                <div class="wf-login-footer-row">
+                    <b>Modulos</b>
+                    <span>Cashback</span>
+                    <span>Pedidos</span>
+                    <span>Financeiro</span>
+                    <span>Miauby</span>
+                </div>
+                <p>Entre somente com credencial autorizada da equipe.</p>
+            </div>
+            <div>
+                <img class="wf-login-footer-image" src="<?php echo wf_home_e(wf_home_asset('assets/img/favicon.svg')); ?>" alt="">
+                <p>&copy; <?php echo date('Y'); ?> Wimifarma</p>
+            </div>
+        </div>
+    </footer>
+    <svg class="wf-login-svg-filter" aria-hidden="true" focusable="false">
+        <defs>
+            <filter id="wf-login-blob">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur"></feGaussianBlur>
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="blob"></feColorMatrix>
+            </filter>
+        </defs>
+    </svg>
+</body>
+</html>
+<?php
+exit;
+endif;
 
 $modules = array(
     array(
@@ -197,7 +736,8 @@ $modules = array(
         .wf-header-inner {
             display: flex;
             align-items: center;
-            justify-content: flex-start;
+            justify-content: space-between;
+            gap: 18px;
         }
 
         .wf-brand {
@@ -217,6 +757,30 @@ $modules = array(
             height: auto;
             aspect-ratio: 1560 / 622;
             filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.22));
+        }
+
+        .wf-home-logout {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            border: 1px solid rgba(255, 255, 255, 0.78);
+            border-radius: 999px;
+            padding: 0 18px;
+            background: rgba(255, 255, 255, 0.16);
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-weight: 900;
+            text-decoration: none;
+            text-shadow: 0 1px 10px rgba(15, 23, 42, 0.3);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
+            backdrop-filter: blur(8px);
+        }
+
+        .wf-home-logout:hover,
+        .wf-home-logout:focus-visible {
+            background: rgba(168, 15, 67, 0.88);
+            outline: 0;
         }
 
         .wf-user-xp {
@@ -551,6 +1115,7 @@ $modules = array(
         @media (max-width: 1040px) {
             .wf-header-inner {
                 justify-content: center;
+                flex-direction: column;
             }
 
             .wf-modules {
@@ -569,6 +1134,16 @@ $modules = array(
 
             .wf-main {
                 padding: 16px 0 84px;
+            }
+
+            .wf-header-inner {
+                gap: 8px;
+            }
+
+            .wf-home-logout {
+                min-height: 36px;
+                padding: 0 15px;
+                font-size: 0.8rem;
             }
 
             .wf-runner.is-nyan {
@@ -721,6 +1296,7 @@ $modules = array(
             <a class="wf-brand" href="<?php echo wf_home_e(wf_home_url('/')); ?>" aria-label="Wimifarma">
                 <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="1560" height="622">
             </a>
+            <a class="wf-home-logout" href="<?php echo wf_home_e(wf_home_url('/?sair=1')); ?>">Sair</a>
         </div>
     </header>
 
