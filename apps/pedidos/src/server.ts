@@ -2067,7 +2067,8 @@ async function renderApp(req: Request): Promise<string> {
   const selectedMonth = monthValue(req.query.mes);
   const flash = takeFlash(req);
   const orders = await listOrders(selectedMonth);
-  const arrivingToday = await ordersBadge();
+  const badge = await ordersBadge();
+  const arrivingToday = badge.arrivingToday;
   const paidMonth = await paidThisMonth(selectedMonth);
   const waitingOrders = orders.filter((order) => order.status === 'pedido');
   const confirmedOrders = orders.filter((order) => order.status === 'confirmado');
