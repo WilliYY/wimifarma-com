@@ -427,7 +427,7 @@ function photoUrl(photoPath: unknown): string {
 function levelAsset(level: number): string {
   if (level % 10 === 0) return `${BASE_PATH}/assets/nivel-10-castelo.svg?v=20260522b`;
   if (level % 5 === 0) return `${BASE_PATH}/assets/nivel-5-estrela.svg?v=20260522b`;
-  return `${BASE_PATH}/assets/bloco-xp.svg?v=20260522b`;
+  return `${BASE_PATH}/assets/bloco-xp.svg?v=20260531a`;
 }
 
 function levelKind(level: number): string {

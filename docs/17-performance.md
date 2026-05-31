@@ -14,6 +14,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - Mesmo sem header de SpeedyCache, a home publica ainda podia gerar parte dos assets em `http://`; o tema ganhou uma segunda camada de normalizacao HTTPS.
 - A raiz `/` passou a ser servida por `site/home.php`, sem bootstrap do WordPress, para isolar a primeira tela de plugins/cache enquanto a migracao estabiliza.
 - A home standalone usa video de fundo em tela inteira, logo animada propria sem fundo e tres GIFs animados decorativos; manter o movimento leve e reaproveitar o padrao dos logins.
+- Em 2026-05-31, o asset comum da trilha do XP (`site/xp/assets/bloco-xp.svg`) deixou de usar imagem base64 exportada e passou a ser SVG vetorial puro. O arquivo caiu de cerca de 23,9 MB para poucos KB, mantendo o mesmo caminho publico e apenas atualizando o cache-bust em `apps/xp/src/server.ts`.
 
 ## Cotacao V2 - baseline de performance em 2026-05-14
 
