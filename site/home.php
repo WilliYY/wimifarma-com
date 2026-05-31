@@ -323,7 +323,7 @@ if (!$homeAuthenticated):
             --footer-ink: rgba(88, 7, 28, 0.22);
             position: relative;
             grid-area: footer;
-            min-height: 17.35rem;
+            min-height: 15.85rem;
             display: grid;
             overflow: visible;
             background: var(--footer-background);
@@ -370,11 +370,11 @@ if (!$homeAuthenticated):
             z-index: 2;
             display: grid;
             grid-template-columns: minmax(230px, 1fr) minmax(170px, 0.65fr) minmax(280px, 1.15fr);
-            gap: clamp(2rem, 6vw, 5.5rem);
+            gap: clamp(1.6rem, 5vw, 4.7rem);
             align-items: start;
             width: 100%;
             margin-top: -1px;
-            padding: 3.78rem max(2rem, calc((100vw - 1160px) / 2)) 2.88rem;
+            padding: 2.95rem max(2rem, calc((100vw - 1160px) / 2)) 2.2rem;
             background: transparent;
             color: #210915;
         }
@@ -411,7 +411,7 @@ if (!$homeAuthenticated):
             margin: 0;
             font-size: 0.9rem;
             font-weight: 750;
-            line-height: 1.65;
+            line-height: 1.5;
         }
 
         .wf-login-footer-groups,
@@ -421,7 +421,7 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-brand {
             display: grid;
-            gap: 1.25rem;
+            gap: 1rem;
         }
 
         .wf-login-footer-logo {
@@ -469,7 +469,7 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-nav {
             display: grid;
-            gap: 1rem;
+            gap: 0.75rem;
         }
 
         .wf-login-footer-nav a {
@@ -480,7 +480,7 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-contact {
             display: grid;
-            gap: 1rem;
+            gap: 0.75rem;
         }
 
         .wf-login-footer-contact-row {
@@ -490,13 +490,18 @@ if (!$homeAuthenticated):
             font-weight: 780;
         }
 
+        .wf-login-footer-contact-row span {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
         .wf-login-footer-contact-row svg {
             color: #ffd23f;
         }
 
         .wf-login-footer-note {
             border-top: 1px solid rgba(39, 8, 23, 0.16);
-            padding-top: 1rem;
+            padding-top: 0.75rem;
         }
 
         .wf-login-footer-image {
@@ -616,9 +621,9 @@ if (!$homeAuthenticated):
 
             .wf-login-footer-content {
                 grid-template-columns: 1fr;
-                gap: 1.75rem;
+                gap: 1.35rem;
                 place-items: center;
-                padding: 3.18rem 1.15rem 5.18rem;
+                padding: 2.72rem 1.15rem 4.45rem;
                 text-align: center;
             }
 
@@ -631,6 +636,13 @@ if (!$homeAuthenticated):
 
             .wf-login-footer-contact-row {
                 justify-content: center;
+                flex-wrap: wrap;
+                gap: 0.45rem;
+            }
+
+            .wf-login-footer-content p,
+            .wf-login-footer-contact-row span {
+                max-width: min(19.5rem, calc(100vw - 2.3rem));
             }
 
             .wf-login-whatsapp-float {
