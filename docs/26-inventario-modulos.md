@@ -771,7 +771,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 
 - Rota publica oficial: `/cotacao/`.
 - Proxy Apache: `docker/php/Dockerfile` envia `/cotacao/` para `wimifarma-cotacao-app:3000/cotacao/`.
-- App oficial: `apps/cotacao`, Node.js 22 + Express + Socket.IO.
+- App oficial: `apps/cotacao`, Node.js 22 + Express + Socket.IO, com tooling TypeScript e contratos estaticos em `apps/cotacao/src/contracts/`.
 - Fonte oficial: Postgres `wimifarma_cotacao` e Redis `wimifarma-cotacao-redis`.
 - Nao ha dependencia MySQL no app; a migracao futura e para TypeScript, nao para trocar banco.
 
@@ -818,6 +818,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 ### Arquivos legados/relevantes
 
 - `apps/cotacao/src/server.js`;
+- `apps/cotacao/src/contracts/`;
 - `apps/cotacao/public/app.js`;
 - `apps/cotacao/public/styles.css`;
 - `apps/cotacao/public/assets`;
@@ -854,7 +855,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 
 ### Proxima acao segura
 
-Manter Postgres/Redis como fonte oficial e planejar migracao JS -> TypeScript por bordas: tipos de payload, validações de API, depois handlers de escrita e Socket.IO.
+Manter Postgres/Redis como fonte oficial e seguir migracao JS -> TypeScript por bordas: contratos de payload ja existem; proximo passo seguro e extrair helpers pequenos do backend, depois handlers de escrita e Socket.IO.
 
 ## Miauby interno (legado tecnico `miauw`)
 

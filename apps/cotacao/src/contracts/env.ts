@@ -1,0 +1,24 @@
+export interface CotacaoEnv {
+  NODE_ENV?: "development" | "test" | "production";
+  PORT?: string;
+  COTACAO_BASE_PATH?: string;
+  COTACAO_POSTGRES_HOST?: string;
+  COTACAO_POSTGRES_PORT?: string;
+  COTACAO_POSTGRES_DB?: string;
+  COTACAO_POSTGRES_USER?: string;
+  COTACAO_POSTGRES_PASSWORD?: string;
+  COTACAO_REDIS_URL?: string;
+  COTACAO_SESSION_SECRET?: string;
+  COTACAO_INTERNAL_TOKEN?: string;
+  MIAUW_GUARDIAN_TOKEN?: string;
+  CORE_POSTGRES_HOST?: string;
+  CORE_POSTGRES_PORT?: string;
+  CORE_POSTGRES_DB?: string;
+  CORE_POSTGRES_USER?: string;
+  CORE_POSTGRES_PASSWORD?: string;
+  WIMIFARMA_HOME_SSO_INTERNAL_URL?: string;
+  GOOGLE_SHEETS_SPREADSHEET_ID?: string;
+  GOOGLE_SHEETS_RANGE?: string;
+  GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON?: string;
+  GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE?: string;
+}

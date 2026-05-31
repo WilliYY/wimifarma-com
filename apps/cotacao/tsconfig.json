@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.js", "public/**/*.js"]
+  "include": ["src/**/*.js", "src/**/*.ts", "public/**/*.js"]
 }
