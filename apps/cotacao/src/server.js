@@ -16,6 +16,9 @@ const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
+const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
+const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const env = process.env;
 const BASE_PATH = env.BASE_PATH || '/cotacao';
@@ -186,6 +189,12 @@ app.use(BASE_PATH, express.static(path.join(rootDir, 'public'), {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+      return;
+    }
+    if (STATIC_ASSET_FILE_RE.test(filePath)) {
+      res.removeHeader('Pragma');
+      res.setHeader('Cache-Control', STATIC_ASSET_CACHE_CONTROL);
+      res.setHeader('Expires', new Date(Date.now() + STATIC_ASSET_MAX_AGE_MS).toUTCString());
       return;
     }
     res.setHeader('Cache-Control', 'public, max-age=3600');

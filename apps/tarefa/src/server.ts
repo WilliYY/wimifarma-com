@@ -72,6 +72,9 @@ const PORT = Number.parseInt(env.PORT || '3500', 10);
 const SESSION_SECRET = env.TAREFA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
+const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
+const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 const INTERNAL_TOKEN = cleanEnv('TAREFA_INTERNAL_TOKEN')
   || cleanEnv('MIAUW_GUARDIAN_TOKEN')
   || cleanEnv('MIAUW_AGENT_INTERNAL_TOKEN')
@@ -261,6 +264,13 @@ function loginRedirectTarget(req: Request): string {
   const target = safeTarefaReturnPath(req.session.returnTo);
   delete req.session.returnTo;
   return target || `${BASE_PATH}/`;
+}
+
+function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
+  if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
+  res.removeHeader('Pragma');
+  res.setHeader('Cache-Control', STATIC_ASSET_CACHE_CONTROL);
+  res.setHeader('Expires', new Date(Date.now() + STATIC_ASSET_MAX_AGE_MS).toUTCString());
 }
 
 function loginWaitSeconds(req: Request): number {
@@ -1048,6 +1058,7 @@ app.use(
     etag: false,
     lastModified: false,
     maxAge: 0,
+    setHeaders: setStaticAssetCacheHeaders,
   }),
 );
 

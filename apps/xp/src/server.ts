@@ -137,6 +137,9 @@ const XP_ADMIN_SYSTEM_KEY = 'adm';
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 const uploadRoot = env.XP_UPLOAD_ROOT || path.resolve(publicDir, 'uploads');
+const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
+const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -198,6 +201,13 @@ function e(value: unknown): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
+  if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
+  res.removeHeader('Pragma');
+  res.setHeader('Cache-Control', STATIC_ASSET_CACHE_CONTROL);
+  res.setHeader('Expires', new Date(Date.now() + STATIC_ASSET_MAX_AGE_MS).toUTCString());
 }
 
 function cleanText(value: unknown, limit: number): string {
@@ -1307,7 +1317,7 @@ app.use((_req, res, next) => {
 });
 app.use(sessionMiddleware);
 app.use(express.urlencoded({ extended: false, limit: '128kb' }));
-app.use(BASE_PATH, express.static(publicDir, { index: false, dotfiles: 'ignore' }));
+app.use(BASE_PATH, express.static(publicDir, { index: false, dotfiles: 'ignore', setHeaders: setStaticAssetCacheHeaders }));
 
 app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');

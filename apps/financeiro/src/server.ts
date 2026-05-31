@@ -33,6 +33,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
+const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
+const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const AUTH_PROVIDER = 'core';
 const SESSION_SECRET = env.FINANCEIRO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1652,6 +1655,13 @@ function asyncRoute(handler: (req: Request, res: Response) => Promise<void>): ex
   };
 }
 
+function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
+  if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
+  res.removeHeader('Pragma');
+  res.setHeader('Cache-Control', STATIC_ASSET_CACHE_CONTROL);
+  res.setHeader('Expires', new Date(Date.now() + STATIC_ASSET_MAX_AGE_MS).toUTCString());
+}
+
 const app = express();
 const PgSession = connectPgSimple(session);
 const sessionMiddleware = session({
@@ -1676,7 +1686,7 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '128kb' }));
 app.use(express.urlencoded({ extended: true, limit: '128kb' }));
 app.use(sessionMiddleware);
-app.use(BASE_PATH, express.static(publicDir, { index: false, dotfiles: 'ignore' }));
+app.use(BASE_PATH, express.static(publicDir, { index: false, dotfiles: 'ignore', setHeaders: setStaticAssetCacheHeaders }));
 
 app.get([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);

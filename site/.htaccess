@@ -25,6 +25,32 @@ RewriteRule ^favicon\.ico$ /cashback/favicon.png [L]
 </IfModule>
 # END Wimifarma favicon
 
+# BEGIN Wimifarma static asset cache
+<IfModule mod_expires.c>
+ExpiresActive On
+ExpiresByType image/avif "access plus 30 days"
+ExpiresByType image/gif "access plus 30 days"
+ExpiresByType image/jpeg "access plus 30 days"
+ExpiresByType image/png "access plus 30 days"
+ExpiresByType image/svg+xml "access plus 30 days"
+ExpiresByType image/webp "access plus 30 days"
+ExpiresByType image/x-icon "access plus 30 days"
+ExpiresByType video/mp4 "access plus 30 days"
+ExpiresByType font/woff "access plus 30 days"
+ExpiresByType font/woff2 "access plus 30 days"
+ExpiresByType text/css "access plus 1 hour"
+ExpiresByType application/javascript "access plus 1 hour"
+</IfModule>
+<IfModule mod_headers.c>
+<FilesMatch "\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$">
+    Header set Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
+</FilesMatch>
+<FilesMatch "\.(?:css|js|mjs)$">
+    Header set Cache-Control "public, max-age=3600, must-revalidate"
+</FilesMatch>
+</IfModule>
+# END Wimifarma static asset cache
+
 # BEGIN Wimifarma WordPress hardening
 <Files "xmlrpc.php">
     Require all denied

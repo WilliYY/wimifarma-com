@@ -63,6 +63,9 @@ declare module 'express-session' {
 const env = process.env;
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
+const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
+const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 const SERVICE_VERSION = '1.0.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -71,6 +74,13 @@ const AUTH_PROVIDER = 'core';
 const INTERNAL_TOKEN = env.CASHBACK_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '';
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
+
+function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
+  if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
+  res.removeHeader('Pragma');
+  res.setHeader('Cache-Control', STATIC_ASSET_CACHE_CONTROL);
+  res.setHeader('Expires', new Date(Date.now() + STATIC_ASSET_MAX_AGE_MS).toUTCString());
+}
 
 const migrationStats: MigrationStats = {
   lastRunAt: null,
@@ -135,6 +145,7 @@ app.use(
     etag: false,
     index: false,
     maxAge: 0,
+    setHeaders: setStaticAssetCacheHeaders,
   }),
 );
 

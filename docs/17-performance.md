@@ -16,6 +16,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - A home standalone usa video de fundo em tela inteira, logo animada propria sem fundo e tres GIFs animados decorativos; manter o movimento leve e reaproveitar o padrao dos logins.
 - Em 2026-05-31, o asset comum da trilha do XP (`site/xp/assets/bloco-xp.svg`) manteve a arte original do bloco, mas deixou de usar a exportacao base64 gigante. O arquivo passou a embutir um PNG transparente otimizado, caindo de cerca de 23,9 MB para cerca de 89 KB, mantendo o mesmo caminho publico e apenas atualizando o cache-bust em `apps/xp/src/server.ts`.
 - Em 2026-05-31, os `favicon.svg` compartilhados por Home/tema, Cotacao, Tarefa, Financeiro e Miauby foram otimizados mantendo o mesmo visual: cada arquivo caiu de cerca de 1,07 MB para cerca de 2,7 KB, sem mudar os links HTML nem os favicons PNG alternativos.
+- Em 2026-05-31, o cache de assets estaticos foi reforcado sem ativar cache de pagina: `site/.htaccess` passou a enviar cache forte para imagens, SVG, video e fontes, cache curto para CSS/JS, e os apps Node passaram a sobrescrever `no-store` somente para arquivos estaticos de midia/imagem/fonte. HTML, PHP, APIs, health checks e sessoes continuam sem cache agressivo.
 
 ## Cotacao V2 - baseline de performance em 2026-05-14
 
@@ -187,6 +188,8 @@ Servicos:
 
 - Nao ativar cache agressivo antes de corrigir URL publica e SSL.
 - Nao ativar page cache publico sem validar que a home gera apenas assets `https://`.
+- Cache forte deve ficar restrito a assets estaticos por extensao; paginas, PHP, APIs e endpoints internos precisam continuar com `no-store` ou sem cache agressivo.
+- Ao trocar imagens, SVGs, videos ou fontes ja publicados, usar cache-bust por query string ou nome de arquivo quando a troca precisar aparecer imediatamente.
 - Nao remover os helpers HTTPS do tema sem substituir por outra camada equivalente.
 - Nao remover `site/home.php` ou a regra de raiz no `.htaccess` antes de validar a home WordPress com CSS/JS, HTTPS e cache limpos.
 - Nao versionar `site/wp-content/endurance-page-cache/`; ele contem HTML estatico legado do HostGator e pode ressuscitar a home antiga.

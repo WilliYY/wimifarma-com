@@ -118,6 +118,9 @@ const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
+const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
+const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 const PASSWORD_VAULT_KEY_SOURCE = cleanEnv('USUARIOS_PASSWORD_VAULT_KEY') || SESSION_SECRET;
 const INTERNAL_HTTP_TIMEOUT_MS = Math.max(800, Math.min(12000, Number.parseInt(env.USUARIOS_INTERNAL_HTTP_TIMEOUT_MS || '4500', 10) || 4500));
 const TAREFA_INTERNAL_BASE_URL = trimTrailingSlash(
@@ -1786,6 +1789,13 @@ function asyncRoute(handler: (req: Request, res: Response, next: NextFunction) =
   };
 }
 
+function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
+  if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
+  res.removeHeader('Pragma');
+  res.setHeader('Cache-Control', STATIC_ASSET_CACHE_CONTROL);
+  res.setHeader('Expires', new Date(Date.now() + STATIC_ASSET_MAX_AGE_MS).toUTCString());
+}
+
 app.disable('x-powered-by');
 app.set('trust proxy', true);
 app.use((_req, res, next) => {
@@ -1803,7 +1813,7 @@ app.use((_req, res, next) => {
 });
 app.use(sessionMiddleware);
 app.use(express.urlencoded({ extended: false, limit: '128kb' }));
-app.use(BASE_PATH, express.static('public', { index: false, dotfiles: 'ignore' }));
+app.use(BASE_PATH, express.static('public', { index: false, dotfiles: 'ignore', setHeaders: setStaticAssetCacheHeaders }));
 
 app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_req, res) => {
   await corePgPool.query('SELECT 1');
