@@ -174,7 +174,7 @@ if (!$homeAuthenticated):
             min-height: 100vh;
             margin: 0;
             display: grid;
-            grid-template-rows: minmax(0, 1fr) 5.8rem auto;
+            grid-template-rows: minmax(0, 1fr) 4.9rem auto;
             grid-template-areas: "main" "." "footer";
             overflow-x: hidden;
             background:
@@ -344,7 +344,7 @@ if (!$homeAuthenticated):
             --footer-ink: rgba(88, 7, 28, 0.22);
             position: relative;
             grid-area: footer;
-            min-height: 15.85rem;
+            min-height: 13.85rem;
             display: grid;
             overflow: visible;
             background: var(--footer-background);
@@ -395,7 +395,7 @@ if (!$homeAuthenticated):
             align-items: start;
             width: 100%;
             margin-top: -1px;
-            padding: 2.95rem max(2rem, calc((100vw - 1160px) / 2)) 2.2rem;
+            padding: 2.35rem max(2rem, calc((100vw - 1160px) / 2)) 1.55rem;
             background: transparent;
             color: #210915;
         }
@@ -657,7 +657,7 @@ if (!$homeAuthenticated):
                 grid-template-columns: 1fr;
                 gap: 1.35rem;
                 place-items: center;
-                padding: 2.72rem 1.15rem 4.45rem;
+                padding: 2.2rem 1.15rem 3.55rem;
                 text-align: center;
             }
 
