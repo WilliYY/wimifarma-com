@@ -1,0 +1,7 @@
+# Wimifarma legacy guard: /financeiro/ is served by apps/financeiro via Apache proxy.
+# PHP files here remain only as server-side helpers/reference and must not resurface as UI.
+Options -Indexes
+
+<FilesMatch "\.(?:php|phtml|phar)$">
+    Require all denied
+</FilesMatch>

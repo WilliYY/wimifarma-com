@@ -20,7 +20,7 @@ Infraestrutura:
 - `docker-compose.yml`: servico `wimifarma-com-db` com imagem `mysql:8.0`, volume `./mysql`, bancos `wimifarma_wp` e `wimifarma_app`.
 - `docker/php/Dockerfile`: instala `mysqli` e `pdo_mysql` para WordPress e modulos PHP.
 - `site/wp-config.php`: configura WordPress no MySQL `wimifarma_wp`.
-- `site/cashback/config.php`: legado/fallback historico do PHP; a rota oficial do Cashback usa `apps/cashback`.
+- `site/cashback/config.php`: helper legado usado por includes do Miauby; a rota oficial do Cashback usa `apps/cashback`, e PHP direto nessa pasta fica bloqueado por `.htaccess`.
 
 Node/TypeScript com MySQL removido do runtime:
 
@@ -39,11 +39,11 @@ Node/TypeScript com MySQL removido do runtime:
 
 PHP interno ainda ligado a MySQL:
 
-- `site/cashback`: fonte de assets visuais e helpers PHP ainda chamados pelo Miauby (`config.php`/`functions.php`); a rota oficial `/cashback/` usa `apps/cashback`, e `wf_*` do Cashback no MySQL fica somente como referencia historica/rollback manual. O financeiro antigo dentro de Cashback foi arquivado em `site/_legacy-disabled/2026-05-29/cashback-financeiro-php/`.
+- `site/cashback`: fonte de assets visuais e helpers PHP ainda chamados pelo Miauby (`config.php`/`functions.php`); a rota oficial `/cashback/` usa `apps/cashback`, PHP direto nessa pasta fica bloqueado por `.htaccess`, e `wf_*` do Cashback no MySQL fica somente como referencia historica/rollback manual. O financeiro antigo dentro de Cashback foi arquivado em `site/_legacy-disabled/2026-05-29/cashback-financeiro-php/`.
 - `site/codigos`: somente fonte dos assets visuais; a rota oficial `/codigos/` usa `apps/codigos` e o PHP antigo foi arquivado em `site/_legacy-disabled/2026-05-29/codigos-php/`.
-- `site/tarefa`: legado/fallback historico; a rota oficial `/tarefa/` usa `apps/tarefa`, e `wf_tarefas` fica como fonte de importacao/espelho temporario.
+- `site/tarefa`: legado de referencia/fonte visual com PHP direto bloqueado por `.htaccess`; a rota oficial `/tarefa/` usa `apps/tarefa`, e `wf_tarefas` fica somente como referencia historica/backup.
 - `site/xp`: somente fonte dos assets/uploads compartilhados; a rota oficial `/xp/` usa `apps/xp` e o PHP antigo foi arquivado em `site/_legacy-disabled/2026-05-29/xp-php/`.
-- `site/financeiro`: legado/fonte de assets visuais do Financeiro; a rota oficial `/financeiro/` usa `apps/financeiro`, e as tabelas `financeiro_*` no MySQL ficam como referencia historica/rollback manual.
+- `site/financeiro`: assets visuais e helper `financeiro-funcoes.php` ainda chamado pelo Miauby, com PHP direto bloqueado por `.htaccess`; a rota oficial `/financeiro/` usa `apps/financeiro`, e as tabelas `financeiro_*` no MySQL ficam como referencia historica/rollback manual.
 - `site/miauw`: login reaproveita o core Postgres do Cashback; `miauw_conversas`, `miauw_mensagens`, `miauw_conhecimentos`, `miauw_memorias`, `miauw_configuracoes`, `miauw_alertas`, `miauw_alerta_eventos`, `miauw_padroes`, `miauw_tool_traces`, `miauw_treinos_respostas`, `miauw_farmacia_popular_valores` e `miauw_farmacia_popular_atualizacoes` seguem como fonte oficial em MySQL. A integracao com Gestao moderna nao le MySQL: usa endpoint interno tokenizado do app Node/Postgres. A tabela `miauw_channel_events` fica como fallback temporario da memoria multicanal; a fonte principal nova e `miauw_whatsapp_channel_events` no Postgres do bridge. Desde 2026-05-30, `apps/miauby` copia esses dados para `wimifarma_miauby` em modo sombra, com payload sanitizado, para preparar a futura troca sem quebrar `/miauw/`.
 
 Legados MySQL que devem ser tratados como migracao/arquivo:
@@ -82,7 +82,7 @@ Se a operacao preferir menos containers, esses schemas podem viver no mesmo serv
 
 2. Migrar modulos PHP pequenos primeiro
 
-- Tarefa ja foi migrado para `apps/tarefa` com Postgres dedicado e suporte a auth oficial pelo core Postgres, mantendo `site/tarefa` como legado/fallback historico.
+- Tarefa ja foi migrado para `apps/tarefa` com Postgres dedicado e suporte a auth oficial pelo core Postgres, mantendo `site/tarefa` apenas como legado de referencia/fonte visual com PHP direto bloqueado por `.htaccess`.
 - XP foi migrado para `apps/xp`, Postgres dedicado, login unico por core e proxy `/xp/`; em 2026-05-30 o importador/espelho idempotente de `wf_xp_*` foi removido do runtime depois do corte para Postgres.
 - Codigos foi migrado para `apps/codigos`, Postgres dedicado, login unico por core, proxy `/codigos/` e endpoints internos tokenizados para o Miauby. Em 2026-05-30, o importador/espelho idempotente de `wf_codigos_*` foi removido do runtime depois do corte para Postgres.
 - Financeiro foi cortado para `apps/financeiro`, com proxy `/financeiro/`, sessao `WFFINANCEIRO`, login por `core_users`, frontend preservado pelos assets de `site/financeiro` e endpoints internos tokenizados. A paridade com MySQL foi validada e em 2026-05-30 o espelho/import/fallback MySQL foi removido do runtime.

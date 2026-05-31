@@ -18,7 +18,7 @@ Use este inventario junto com `docs/22-migracao-mysql-postgres.md` e `docs/24-mo
 
 ## Limpeza de legado em 2026-05-29
 
-Legados comprovadamente fora das rotas oficiais foram movidos para `site/_legacy-disabled/2026-05-29/` e bloqueados por `.htaccess`: Gestao PHP antiga, PHP antigo de Codigos, PHP antigo de XP e financeiro antigo dentro de Cashback. Continuam ativos WordPress, Miauby PHP, helpers PHP ainda chamados pelo Miauby, `site/tarefa` e assets montados pelos apps Node. O inventario da limpeza fica em `docs/27-limpeza-legado.md`.
+Legados comprovadamente fora das rotas oficiais foram movidos para `site/_legacy-disabled/2026-05-29/` e bloqueados por `.htaccess`: Gestao PHP antiga, PHP antigo de Codigos, PHP antigo de XP e financeiro antigo dentro de Cashback. Continuam ativos WordPress, Miauby PHP, helpers PHP ainda chamados pelo Miauby, `site/tarefa` e assets montados pelos apps Node. Em 2026-05-31, `site/cashback`, `site/financeiro` e `site/tarefa` ganharam `.htaccess` local bloqueando PHP direto por HTTP, para que essas pastas nao virem fallback operacional caso o proxy Node seja alterado errado. O inventario da limpeza fica em `docs/27-limpeza-legado.md`.
 
 ## Modelo de ficha
 
@@ -242,7 +242,7 @@ MySQL e legado historico. Desde 2026-05-30 nao ha importacao, espelho, log, fall
 - `site/cashback/app.js`;
 - `site/cashback/login-runner.js`.
 
-Hoje estes arquivos PHP sao legado/fonte visual/fallback historico. A rota oficial passa pelo Node.
+Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta bloqueada por `.htaccess`. A rota oficial passa pelo Node.
 
 ### Fluxos de escrita
 
@@ -500,7 +500,7 @@ Legado historico/backup:
 - `apps/tarefa/public/styles.css`;
 - `apps/tarefa/public/app.js`;
 - `apps/tarefa/public/login-runner.js`;
-- `site/tarefa`, legado/fonte visual/fallback historico.
+- `site/tarefa`, legado de referencia/fonte visual com execucao web direta de PHP bloqueada por `.htaccess`.
 
 ### Fluxos de escrita
 

@@ -1,0 +1,7 @@
+# Wimifarma legacy guard: /cashback/ is served by apps/cashback via Apache proxy.
+# Keep visual assets reachable if the proxy is changed, but never serve legacy PHP UI directly.
+Options -Indexes
+
+<FilesMatch "\.(?:php|phtml|phar)$">
+    Require all denied
+</FilesMatch>

@@ -19,9 +19,9 @@ Antes de mover arquivos, foram conferidos:
 - O favicon `W` do WordPress pode aparecer quando uma tela nao declara icone proprio e o navegador tenta `/favicon.ico`; por isso a raiz reescreve `/favicon.ico` para `/cashback/favicon.png`, e os modulos internos devem declarar favicon explicitamente.
 - MySQL `wimifarma-com-db` continua ativo para WordPress e para legados/rollbacks ainda documentados.
 - `site/miauw` continua ativo em PHP.
-- `site/cashback/config.php` e `site/cashback/functions.php` continuam ativos porque o Miauby usa esse bootstrap.
-- `site/financeiro/financeiro-funcoes.php` continua ativo como helper PHP chamado pelo Miauby.
-- `site/tarefa` continua preservado como legado/fonte visual enquanto o Miauby ainda referencia o mapa dessa pasta.
+- `site/cashback/config.php` e `site/cashback/functions.php` continuam disponiveis para include por filesystem porque o Miauby usa esse bootstrap, mas PHP direto por HTTP em `site/cashback` fica bloqueado por `.htaccess`.
+- `site/financeiro/financeiro-funcoes.php` continua disponivel para include por filesystem como helper PHP chamado pelo Miauby, mas PHP direto por HTTP em `site/financeiro` fica bloqueado por `.htaccess`.
+- `site/tarefa` continua preservado como legado de referencia/fonte visual enquanto o Miauby ainda referencia o mapa dessa pasta, mas PHP direto por HTTP em `site/tarefa` fica bloqueado por `.htaccess`.
 - Assets montados pelos apps Node continuam no lugar:
   - `site/cashback` assets;
   - `site/codigos/styles.css`, `site/codigos/app.js`, `site/codigos/login-runner.js`;
@@ -42,5 +42,6 @@ Os itens abaixo foram movidos para `site/_legacy-disabled/2026-05-29/` e bloquea
 - Nao apagar `site/_legacy-disabled` sem confirmacao explicita; ele e uma quarentena rastreavel.
 - Nao remover MySQL enquanto WordPress, Miauby PHP ou flags de rollback/importacao ainda dependerem dele.
 - Nao mover assets montados por `docker-compose.yml` sem atualizar o compose e validar o app Node afetado.
+- Nao remover os `.htaccess` de `site/cashback`, `site/financeiro` e `site/tarefa` sem rollback deliberado e validado; eles impedem que os PHPs antigos voltem a servir UI se o proxy Apache for alterado errado.
 - Nao remover WordPress core/plugins/tema sem antes confirmar plugins ativos e estrategia do site publico.
 - No VPS, clones/runtimes antigos fora da pasta oficial devem ser movidos para `/home/ubuntu/projetos/_arquivados-wimifarma/AAAA-MM-DD/`, nunca apagados direto.

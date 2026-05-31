@@ -377,7 +377,7 @@ Arquivos:
 - `apps/tarefa/src/server.ts`
 - `apps/tarefa/public/app.js`
 - `apps/tarefa/public/styles.css`
-- `site/tarefa/` como legado/fallback historico
+- `site/tarefa/` como legado de referencia/fonte visual, com PHP direto bloqueado por `.htaccess`
 
 Tabelas:
 

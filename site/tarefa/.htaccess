@@ -1,0 +1,7 @@
+# Wimifarma legacy guard: /tarefa/ is served by apps/tarefa via Apache proxy.
+# Keep assets available if needed, but block the old PHP module from becoming public again.
+Options -Indexes
+
+<FilesMatch "\.(?:php|phtml|phar)$">
+    Require all denied
+</FilesMatch>
