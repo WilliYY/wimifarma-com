@@ -1340,7 +1340,11 @@ app.get(`${BASE_PATH}/internal/migration-status`, asyncRoute(async (_req, res) =
 }));
 
 app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
-  const user = await currentUser(req.session.user);
+  let user = await currentUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
   if (!user) {
     res.status(401).json({ ok: false, authenticated: false, xp: null });
     return;

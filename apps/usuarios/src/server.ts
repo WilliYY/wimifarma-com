@@ -1753,7 +1753,11 @@ app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_r
 }));
 
 app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
-  const user = await currentSessionUser(req.session.user);
+  let user = await currentSessionUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
   if (!user) {
     res.status(401).json({ ok: false, authenticated: false, xp: null });
     return;

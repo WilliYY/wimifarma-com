@@ -36,7 +36,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - O usuario `adm` nao pode ser desativado.
 - Deve existir pelo menos um administrador ativo.
 - O vinculo com XP nao copia vendas nem pontos; apenas referencia `xp_employees.id` e guarda o nome como snapshot.
-- A home consulta `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` para mostrar o mini-card XP do usuario logado quando houver vinculo. Os totais continuam vindo de `xp_sales`, entao lancamentos de XP aparecem na home sem copiar pontuacao para o core.
+- A home consulta `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` para mostrar o mini-card XP do usuario logado quando houver vinculo. Esses endpoints aceitam sessao propria do modulo ou o handoff seguro `WFHOME_SSO`, sempre revalidando o usuario ativo no core. Os totais continuam vindo de `xp_sales`, entao lancamentos de XP aparecem na home sem copiar pontuacao para o core.
 - A criacao de tarefa privada pelo painel chama `POST /tarefa/api/internal/tasks/private` com token interno. A tarefa fica em `tarefa_tasks.assigned_core_user_id`; somente esse login enxerga, edita, conclui, cancela ou reabre a tarefa no modulo Tarefa. Tarefas comuns continuam sem dono e aparecem para todos.
 - O bloco `Tarefa privada` do painel Usuarios deve espelhar a criacao do modulo Tarefa: prioridade `Alta`/`Normal`/`Baixa`, titulo e descricao. A tarefa sempre nasce `aberta`, privada para o usuario escolhido, e o fluxo de editar/concluir/cancelar continua no modulo `/tarefa/`.
 - Tarefas privadas nao sao espelhadas em `wf_tarefas`, para nao vazar tarefa individual no legado MySQL.
@@ -62,7 +62,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 1. Subir `/usuarios/` com schema, painel, health e auditoria.
 2. Validar login admin, criacao/desativacao, permissao por modulo e vinculo XP.
 3. Aplicar enforcement por modulo em etapas pequenas, com rollback por modulo.
-4. Atualizar a home/perfis para mostrar dados do XP do usuario quando o vinculo estiver confiavel. A primeira entrega mostra o mini-card na home para sessoes ativas de XP/Usuarios.
+4. Atualizar a home/perfis para mostrar dados do XP do usuario quando o vinculo estiver confiavel. A home mostra o mini-card via `WFHOME_SSO` valido ou sessoes ativas de XP/Usuarios.
 5. Delegar tarefas individuais pelo painel Usuarios, mantendo tarefa normal publica no modulo Tarefa.
 6. Vincular numeros do Miauby WhatsApp por usuario para avisos individuais sem copiar telefone cru para o core.
 
