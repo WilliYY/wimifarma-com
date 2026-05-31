@@ -471,7 +471,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
       if (!user) {
         const returnTo = safeTarefaReturnPath(req.originalUrl);
         if (returnTo) req.session.returnTo = returnTo;
-        res.redirect(`${BASE_PATH}/login.php`);
+        res.redirect('/');
         return;
       }
       req.session.user = user;
@@ -1088,13 +1088,13 @@ app.get([`${BASE_PATH}/api/badge`, `${BASE_PATH}/badge.php`], asyncRoute(async (
 app.get(`${BASE_PATH}/login`, asyncRoute(async (req, res) => {
   const user = await ensureSessionUser(req);
   if (user) return res.redirect(loginRedirectTarget(req));
-  return res.type('html').send(renderLogin(req));
+  return res.redirect('/');
 }));
 
 app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const user = await ensureSessionUser(req);
   if (user) return res.redirect(loginRedirectTarget(req));
-  return res.type('html').send(renderLogin(req));
+  return res.redirect('/');
 }));
 
 app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {

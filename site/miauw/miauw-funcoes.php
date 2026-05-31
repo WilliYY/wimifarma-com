@@ -3386,7 +3386,7 @@ function miauw_require_user(): array
     $user = current_user() ?: miauw_try_home_sso_user();
 
     if (!$user) {
-        header('Location: /miauw/login.php');
+        header('Location: /');
         exit;
     }
 

@@ -8,6 +8,11 @@ if (current_user() || miauw_try_home_sso_user()) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: /');
+    exit;
+}
+
 function miauw_login_verify_csrf(): void
 {
     $token = $_POST['csrf_token'] ?? '';

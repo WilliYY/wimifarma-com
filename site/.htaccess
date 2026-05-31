@@ -25,6 +25,14 @@ RewriteRule ^favicon\.ico$ /cashback/favicon.png [L]
 </IfModule>
 # END Wimifarma favicon
 
+# BEGIN Wimifarma module aliases
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^pedido/?$ /pedidos/ [R=302,L]
+RewriteRule ^tarefas/?$ /tarefa/ [R=302,L]
+</IfModule>
+# END Wimifarma module aliases
+
 # BEGIN Wimifarma Miauby aliases
 <IfModule mod_rewrite.c>
 RewriteEngine On

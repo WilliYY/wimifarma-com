@@ -9,6 +9,7 @@ Este documento descreve os fluxos reais encontrados no sistema e os cuidados par
 Entrada publica:
 
 - `/`: home/portal independente em `site/home.php`. Antes dos cards, a rota mostra um login inicial com sessao propria `WFHOME`, CSRF, credencial temporaria padrao `adm`/`adm`, logo animada, texto `Apenas funcionarios`, anel animado e footer com bolhas que mudam de cor. Apos autenticar, mostra fundo visual em video em tela inteira preservando as cores originais sem overlay branco de clareamento, logo animada propria da home sem fundo, botao `Sair`, GIFs decorativos com movimento reaproveitado dos logins e cards inferiores de acesso aos modulos.
+- Quem abrir diretamente uma rota protegida de modulo sem sessao do modulo nem `WFHOME_SSO` valido e redirecionado para `/`, para que a primeira tela seja sempre a home/login central. Rotas de health, badges publicos e endpoints internos tokenizados continuam fora desse redirecionamento.
 - O card de Tarefas consulta `/tarefa/badge.php` e exibe badge vermelho quando houver tarefas abertas.
 - O card `Pedidos` abre `/pedidos/`, ao lado de `Cotacao`, com badge do total ainda em `Aguardando chegada`.
 - O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card como `border-image` de borda/cantos para destacar a entrada sem cortar a arte nem cobrir o texto.
@@ -25,16 +26,8 @@ Identidade visual validada em 2026-05-21:
 Rotas de login:
 
 - `/` (login inicial da home, sessao `WFHOME`)
-- `/cashback/login.php`
-- `/codigos/login.php`
-- `/cotacao/login.php` (Cotacao V2 em Node.js, autenticando somente em `core_users`)
-- `/financeiro/login.php`
-- `/usuarios/login.php`
-- `/gestao/login.php`
+- `/cashback/login.php`, `/codigos/login.php`, `/cotacao/login.php`, `/financeiro/login.php`, `/usuarios/login.php`, `/gestao/login.php`, `/xp/login.php`, `/tarefa/login.php` e `/miauw/login.php` ficam como compatibilidade tecnica para SSO/sessoes existentes, mas um GET sem sessao valida redireciona para `/`.
 - `/pedidos/`
-- `/xp/login.php`
-- `/tarefa/login.php`
-- `/miauw/login.php`
 - `/wp-login.php`
 
 Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.

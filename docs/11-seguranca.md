@@ -11,7 +11,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `site/cashback/functions.php` envia headers de seguranca em modulos internos.
 - CSRF e escape HTML existem nos helpers internos.
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
-- A home `/` usa sessao propria `WFHOME` com cookie `HttpOnly`/`SameSite=Lax`, CSRF no formulario de login e botao `Sair`; a credencial temporaria padrao `adm`/`adm` deve ser trocada por variaveis de ambiente (`WIMIFARMA_HOME_LOGIN_USER`/`WIMIFARMA_HOME_LOGIN_PASSWORD`) quando sair da fase de ajuste visual.
+- A home `/` usa sessao propria `WFHOME` com cookie `HttpOnly`/`SameSite=Lax`, CSRF no formulario de login e botao `Sair`; a credencial temporaria padrao `adm`/`adm` deve ser trocada por variaveis de ambiente (`WIMIFARMA_HOME_LOGIN_USER`/`WIMIFARMA_HOME_LOGIN_PASSWORD`) quando sair da fase de ajuste visual. Desde 2026-05-31, navegadores sem sessao de modulo nem `WFHOME_SSO` valido que tentam abrir paginas protegidas ou logins antigos dos modulos sao redirecionados para essa home, mantendo health checks, badges publicos e endpoints internos tokenizados fora desse redirecionamento.
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
 - A ponte interna do Miauby para a Cotacao V2 exige `X-Miauw-Internal-Token` e fica indisponivel se `COTACAO_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN` nao estiver configurado.
 - `/cashback/` e atendido pelo servico Node `apps/cashback`, usa sessao propria `WFCASHBACK`, autentica somente por `core_users`, valida CSRF antes de criar cliente, compra, resgate, configuracao, atendente ou status de WhatsApp, e grava auditoria em Postgres.
@@ -146,6 +146,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Arquivos de upload/cache podem executar codigo se configurados incorretamente.
 - Jobs cron sem token forte podem ser abusados.
 - A senha temporaria `adm`/`adm` da home protege apenas a tela de cards e nao deve ser tratada como controle forte; mover para senha de ambiente ou integrar ao core quando a politica final de acesso da home for definida.
+- Como os logins visuais dos modulos agora voltam para `/`, a producao precisa manter `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY` forte; sem SSO valido, o login da home nao consegue criar sessoes nos modulos.
 - Logs podem conter dados internos.
 - O painel de diagnostico reduz dados sensiveis, mas ainda e uma tela sensivel e deve permanecer restrito.
 - Um `COTACAO_SESSION_SECRET` fraco permite falsificacao de sessao; usar valor longo e exclusivo por ambiente.

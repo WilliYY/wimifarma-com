@@ -191,7 +191,7 @@ router.get(['/', '/index.php'], async (req: Request, res: Response, next: NextFu
     next(error);
     return;
   }
-  res.redirect(req.session.user ? `${BASE_PATH}/dashboard.php#busca` : `${BASE_PATH}/login.php`);
+  res.redirect(req.session.user ? `${BASE_PATH}/dashboard.php#busca` : '/');
 });
 
 router.get('/login.php', async (req: Request, res: Response, next: NextFunction) => {
@@ -208,7 +208,7 @@ router.get('/login.php', async (req: Request, res: Response, next: NextFunction)
     res.redirect(`${BASE_PATH}/dashboard.php#busca`);
     return;
   }
-  res.send(renderLogin(req, ''));
+  res.redirect('/');
 });
 
 router.post('/login.php', async (req: Request, res: Response) => {
@@ -273,7 +273,7 @@ router.post('/manutencao.php', async (req: Request, res: Response) => {
     await setSetting('maintenance_enabled', '0');
     await setSetting('maintenance_finished_at', sqlNowText());
     await logAction(req, 'manutencao_desativada', 'system', null, 'Modo manutencao desativado pela tela publica de manutencao.');
-    res.redirect(req.session.user ? `${BASE_PATH}/dashboard.php#busca` : `${BASE_PATH}/login.php`);
+    res.redirect(req.session.user ? `${BASE_PATH}/dashboard.php#busca` : '/');
     return;
   }
   res.send(renderMaintenance(req, 'Senha incorreta. O sistema continua em manutencao.'));
@@ -717,7 +717,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
     .then((user) => {
       if (!user) {
         req.session.returnTo = req.originalUrl;
-        res.redirect(`${BASE_PATH}/login.php`);
+        res.redirect('/');
         return;
       }
       req.session.user = user;

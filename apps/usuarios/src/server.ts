@@ -740,7 +740,7 @@ async function requireUser(req: Request, res: Response): Promise<User | null> {
   }
   if (!user) {
     req.session.returnTo = req.originalUrl;
-    res.redirect(`${BASE_PATH}/login.php`);
+    res.redirect('/');
     return null;
   }
   req.session.user = user;
@@ -1875,7 +1875,7 @@ app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     res.redirect(`${BASE_PATH}/`);
     return;
   }
-  res.type('html').send(renderLogin(req));
+  res.redirect('/');
 }));
 
 app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {

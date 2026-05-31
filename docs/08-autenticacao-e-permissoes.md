@@ -57,7 +57,8 @@ Tabelas:
 ## Regras que precisam ser preservadas
 
 - Os modulos internos dependem de `current_user()` e helpers compartilhados.
-- A home `/` usa sessao `WFHOME` para liberar a tela inicial de cards e, quando existe segredo forte em `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY`, emite o cookie assinado `WFHOME_SSO` por ate `WIMIFARMA_HOME_SSO_TTL_SECONDS` segundos. Os modulos podem usar esse handoff apenas para criar a propria sessao depois de consultar `core_users` ativo e reaplicar suas restricoes de role/permissao; o cookie da home nao substitui CSRF, sessao propria nem login/senha como fallback. A credencial temporaria padrao solicitada para essa etapa e `adm`/`adm`, com override por `WIMIFARMA_HOME_LOGIN_USER` e `WIMIFARMA_HOME_LOGIN_PASSWORD`.
+- A home `/` usa sessao `WFHOME` para liberar a tela inicial de cards e, quando existe segredo forte em `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY`, emite o cookie assinado `WFHOME_SSO` por ate `WIMIFARMA_HOME_SSO_TTL_SECONDS` segundos. Os modulos podem usar esse handoff apenas para criar a propria sessao depois de consultar `core_users` ativo e reaplicar suas restricoes de role/permissao; o cookie da home nao substitui CSRF nem sessao propria. A credencial temporaria padrao solicitada para essa etapa e `adm`/`adm`, com override por `WIMIFARMA_HOME_LOGIN_USER` e `WIMIFARMA_HOME_LOGIN_PASSWORD`.
+- Desde 2026-05-31, paginas protegidas e telas antigas de login de Cashback, Cotacao, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby redirecionam navegadores sem sessao nem `WFHOME_SSO` para `/`. Health checks, badges publicos e APIs internas tokenizadas mantem suas respostas proprias; APIs autenticadas continuam retornando 401/JSON quando apropriado.
 - Formularios sensiveis devem usar CSRF.
 - Saida HTML deve usar escape.
 - Perfis/roles em `core_users.role` devem ser respeitados nos modulos cortados para core auth. Em rollback/fallback MySQL onde ainda existir, preservar a mesma regra vindo de `wf_users.role`.
@@ -86,7 +87,7 @@ Tabelas:
 
 - Sessao dos modulos internos PHP e configurada em `site/cashback/config.php`.
 - Funcoes comuns legadas ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam o core Postgres por padrao quando um modulo PHP remanescente usa esse caminho.
-- Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota. Quando recebem `WFHOME_SSO`, consultam `/home-sso.php`, buscam o usuario no `core_users` e regeneram a sessao do modulo antes de liberar a rota. Miauby PHP tambem aceita o handoff da home, mas continua no caminho PHP ate seu corte.
+- Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota. Quando recebem `WFHOME_SSO`, consultam `/home-sso.php`, buscam o usuario no `core_users` e regeneram a sessao do modulo antes de liberar a rota. Miauby PHP tambem aceita o handoff da home, mas continua no caminho PHP ate seu corte. Sem sessao propria nem SSO valido, o navegador deve voltar para a home `/`, nao para formularios locais de login.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 

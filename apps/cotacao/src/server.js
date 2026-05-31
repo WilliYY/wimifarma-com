@@ -302,7 +302,7 @@ function requireAuth(req, res, next) {
   Promise.resolve(ensureSessionUser(req))
     .then((user) => {
       if (!user) {
-        return res.redirect(`${BASE_PATH}/login.php`);
+        return res.redirect('/');
       }
       req.session.user = user;
       return next();
@@ -2031,13 +2031,19 @@ app.get(BASE_PATH, (req, res, next) => {
   }
   return next();
 });
-app.get(`${BASE_PATH}/login`, (req, res) => res.type('html').send(renderLogin(req)));
+app.get(`${BASE_PATH}/login`, asyncRoute(async (req, res) => {
+  const user = await ensureSessionUser(req);
+  if (user) {
+    return res.redirect(`${BASE_PATH}/`);
+  }
+  return res.redirect('/');
+}));
 app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const user = await ensureSessionUser(req);
   if (user) {
     return res.redirect(`${BASE_PATH}/`);
   }
-  return res.type('html').send(renderLogin(req));
+  return res.redirect('/');
 }));
 app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const expected = req.session.csrfToken;

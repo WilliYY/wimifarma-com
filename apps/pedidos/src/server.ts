@@ -266,7 +266,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
       if (!user || !isAllowedUser(user)) {
         const returnTo = safePedidosReturnPath(req.originalUrl);
         if (returnTo) req.session.returnTo = returnTo;
-        res.redirect(`${BASE_PATH}/login.php`);
+        res.redirect('/');
         return;
       }
       req.session.user = user;
@@ -2438,12 +2438,12 @@ app.post(`${BASE_PATH}/api/internal/confirm-arrival`, requireInternalToken, asyn
 app.get(`${BASE_PATH}/login`, asyncRoute(async (req, res) => {
   const user = await ensureSessionUser(req);
   if (user) return res.redirect(loginRedirectTarget(req));
-  return res.type('html').send(renderLogin(req));
+  return res.redirect('/');
 }));
 app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const user = await ensureSessionUser(req);
   if (user) return res.redirect(loginRedirectTarget(req));
-  return res.type('html').send(renderLogin(req, req.query.restrito ? 'Pedidos e area restrita para adm, admin ou gerente.' : ''));
+  return res.redirect('/');
 }));
 app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const expected = req.session.csrfToken || '';
