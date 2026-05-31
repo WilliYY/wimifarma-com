@@ -390,12 +390,12 @@ if (!$homeAuthenticated):
             position: relative;
             z-index: 2;
             display: grid;
-            grid-template-columns: minmax(230px, 1fr) minmax(170px, 0.65fr) minmax(280px, 1.15fr);
-            gap: clamp(1.6rem, 5vw, 4.7rem);
+            grid-template-columns: minmax(0, 0.95fr) minmax(150px, 0.5fr) minmax(0, 1.08fr);
+            gap: clamp(1.8rem, 4vw, 4rem);
             align-items: start;
             width: 100%;
             margin-top: -1px;
-            padding: 2.35rem max(2rem, calc((100vw - 1160px) / 2)) 1.55rem;
+            padding: 2.35rem max(2rem, calc((100vw - 1120px) / 2)) 1.55rem;
             background: transparent;
             color: #210915;
         }
@@ -422,9 +422,11 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-footer-content b {
+            display: block;
             color: #210814;
             font-size: 0.82rem;
             letter-spacing: 0.18em;
+            line-height: 1.2;
             text-transform: uppercase;
         }
 
@@ -432,7 +434,7 @@ if (!$homeAuthenticated):
             margin: 0;
             font-size: 0.9rem;
             font-weight: 750;
-            line-height: 1.5;
+            line-height: 1.58;
         }
 
         .wf-login-footer-groups,
@@ -442,7 +444,9 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-brand {
             display: grid;
-            gap: 1rem;
+            align-content: start;
+            gap: 0.9rem;
+            max-width: 22rem;
         }
 
         .wf-login-footer-logo {
@@ -490,7 +494,8 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-nav {
             display: grid;
-            gap: 0.75rem;
+            align-content: start;
+            gap: 0.68rem;
         }
 
         .wf-login-footer-nav a {
@@ -501,14 +506,17 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-contact {
             display: grid;
-            gap: 0.75rem;
+            align-content: start;
+            gap: 0.68rem;
+            max-width: 29rem;
         }
 
         .wf-login-footer-contact-row {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 0.75rem;
             font-weight: 780;
+            line-height: 1.42;
         }
 
         .wf-login-footer-contact-row span {
@@ -518,11 +526,13 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-contact-row svg {
             color: #ffd23f;
+            margin-top: 0.08rem;
         }
 
         .wf-login-footer-note {
             border-top: 1px solid rgba(39, 8, 23, 0.16);
-            padding-top: 0.75rem;
+            max-width: 27rem;
+            padding-top: 0.68rem;
         }
 
         .wf-login-footer-image {
