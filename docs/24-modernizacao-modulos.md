@@ -43,7 +43,7 @@ O script mostra:
 
 | Modulo | Estado atual | Legado principal | Alvo recomendado | Prioridade |
 | --- | --- | --- | --- | --- |
-| Cotacao | Node.js + Express + Postgres/Redis + core auth | sem dependencia MySQL no app | TypeScript em fases; Fase 0 baseline documentada sem troca de runtime | moderno |
+| Cotacao | Node.js + Express + Postgres/Redis + core auth | sem dependencia MySQL no app | TypeScript em fases; Fase 1 tooling/typecheck sem troca de runtime | moderno |
 | Gestao | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Pedidos | Node.js + TypeScript + Postgres da Gestao + core auth | sem dependencia MySQL no app | manter health/auditoria e validar rotinas n8n/Miauby | moderno |
 | Tarefa | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
@@ -60,7 +60,7 @@ O script mostra:
 ## Ordem segura
 
 1. Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback e Financeiro ja usam apenas `core_users`, sem fallback MySQL no codigo.
-1.1. Cotacao deve migrar para TypeScript em fases pequenas: primeiro tooling/contratos sem mudar runtime, depois conversao por modulos, preservando frontend e Socket.IO.
+1.1. Cotacao deve migrar para TypeScript em fases pequenas: Fase 1 ja adicionou tooling/typecheck sem mudar runtime; proximas fases devem criar contratos e converter modulos pequenos, preservando frontend e Socket.IO.
 2. Manter rollback por `.env` somente onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos, Gestao e Financeiro nao tem mais fallback MySQL no codigo.
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa em Postgres puro no VPS: `/tarefa/health`, login, tarefas publicas/privadas, badge da home e Miauby sem `mysql2`.

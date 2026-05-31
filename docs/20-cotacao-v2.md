@@ -190,7 +190,7 @@ Baseline da Fase 0:
 
 Fases recomendadas:
 
-1. Fase 1: adicionar tooling TypeScript sem trocar runtime de producao. Usar `tsconfig.json` conservador com `allowJs`, `noEmit` e sem obrigar checagem total dos JavaScripts no primeiro corte. `npm start` deve continuar chamando `node src/server.js`.
+1. Fase 1: adicionar tooling TypeScript sem trocar runtime de producao. Usar `tsconfig.json` conservador com `allowJs`, `noEmit` e sem obrigar checagem total dos JavaScripts no primeiro corte. `npm start` deve continuar chamando `node src/server.js`. Concluida em 2026-05-31 com `npm run typecheck` separado, devDependencies TypeScript e sem alteracao de frontend/Dockerfile.
 2. Fase 2: criar contratos tipados separados para env, sessoes, rows/columns/styles/rules, eventos, DTOs das APIs e eventos Socket.IO, sem mexer no frontend oficial.
 3. Fase 3: extrair helpers backend pequenos de `server.js` para `.ts` quando houver teste/check cobrindo o caminho, mantendo as rotas iguais.
 4. Fase 4: migrar grupos de rotas por dominio, com uma mudanca pequena por vez: auth/health, bootstrap/events, cells, rows, columns, styles/rules, Google Sheets e backups.

@@ -64,7 +64,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 - PHP 8.3 + Apache.
 - MySQL 8.0.
 - Cashback em Node.js 22 + TypeScript + Express, separado em `/cashback/`, com sessao propria, Postgres 17 dedicado para clientes, atendentes, compras, creditos, resgates, mensagens, configuracoes e auditoria.
-- Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7. Em 2026-05-31, iniciou a Fase 0 da migracao para TypeScript com inventario/baseline documentado, sem alterar runtime, frontend, rotas, Dockerfile ou deploy.
+- Cotacao V2 em Node.js 22 + Express + Socket.IO, com Postgres 17 e Redis 7. Em 2026-05-31, iniciou a migracao para TypeScript em fases: Fase 0 inventariou baseline e Fase 1 adicionou `tsconfig.json`, `npm run typecheck` e devDependencies TypeScript, sem alterar runtime, frontend, rotas, Dockerfile ou deploy; `npm start` segue `node src/server.js`.
 - Gestao em Node.js 22 + TypeScript + Express, com Postgres 17 dedicado para contas, itens, pagamentos, auditoria e sessoes.
 - Pedidos em Node.js 22 + TypeScript + Express, separado da Gestao em `/pedidos/`, com sessao propria e tabelas operacionais proprias no Postgres da Gestao para manter integracao financeira.
 - Tarefa em Node.js 22 + TypeScript + Express, separado em `/tarefa/`, com sessao propria, Postgres 17 dedicado para tarefas/auditoria, tarefas privadas por usuario e importacao idempotente de `wf_tarefas`.

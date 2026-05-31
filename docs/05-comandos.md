@@ -444,6 +444,10 @@ curl.exe -o NUL -sS -w "legacy_disabled=%{http_code}`n" http://127.0.0.1:3002/_l
 ## Local - home e Cotacao tempo real
 
 ```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\cotacao
+npm.cmd run check
+npm.cmd run typecheck
+cd C:\Users\Thiesen\Desktop\wimifarma-com
 curl.exe -I -H "Host: wimifarma.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:3002/
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
 curl.exe -sS http://127.0.0.1:3002/tarefa/health
