@@ -196,7 +196,7 @@ Proibido migrar para Postgres:
 
 ### Fase 3 - Alias publico controlado
 
-- Estado iniciado em 2026-05-31: `/miauby/` redireciona para `/miauw/` por `.htaccess`, sem trocar motor, sessao, banco ou frontend.
+- Estado iniciado em 2026-05-31: `/miauby/` redireciona para `/miauw/` por `.htaccess`, preservando HTTPS publico, sem trocar motor, sessao, banco ou frontend.
 - Estado iniciado em 2026-05-31: `/miauby/agent/` e `/miauby/whatsapp/` sao aliases Apache para os servicos Node ja existentes em `/miauw/agent/` e `/miauw/whatsapp/`.
 - Estado iniciado em 2026-05-31: a home passou a divulgar `/miauby/` e `/miauby/whatsapp/`, mantendo `/miauw/*` vivo para compatibilidade e rollback.
 - Inserir variaveis `MIAUBY_*` com fallback para `MIAUW_*`.

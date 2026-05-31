@@ -28,8 +28,14 @@ RewriteRule ^favicon\.ico$ /cashback/favicon.png [L]
 # BEGIN Wimifarma Miauby aliases
 <IfModule mod_rewrite.c>
 RewriteEngine On
+RewriteCond %{HTTP:X-Forwarded-Proto} https [NC,OR]
+RewriteCond %{HTTPS} =on
+RewriteRule ^miauby/?$ https://%{HTTP_HOST}/miauw/ [R=302,L]
 RewriteRule ^miauby/?$ /miauw/ [R=302,L]
 RewriteRule ^miauby/(index\.php|login\.php|treino\.php|diagnostico\.php|widget-status\.php|widget\.js|widget\.css|miauby-novo\.jpeg|logo-wimifarma\.svg|favicon\.svg|favicon\.png)$ /miauw/$1 [L]
+RewriteCond %{HTTP:X-Forwarded-Proto} https [NC,OR]
+RewriteCond %{HTTPS} =on
+RewriteRule ^miauby/(.+)$ https://%{HTTP_HOST}/miauw/$1 [R=302,L]
 RewriteRule ^miauby/(.+)$ /miauw/$1 [R=302,L]
 </IfModule>
 # END Wimifarma Miauby aliases
