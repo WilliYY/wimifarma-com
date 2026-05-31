@@ -174,7 +174,7 @@ if (!$homeAuthenticated):
 
         .wf-login-ring {
             position: relative;
-            width: min(440px, calc(100vw - 34px));
+            width: min(500px, calc(100vw - 56px));
             aspect-ratio: 1;
             display: flex;
             align-items: center;
@@ -655,7 +655,7 @@ if (!$homeAuthenticated):
 
         @media (max-width: 420px) {
             .wf-login-ring {
-                width: min(360px, calc(100vw - 20px));
+                width: min(360px, calc(100vw - 34px));
             }
 
             .wf-login-card {
