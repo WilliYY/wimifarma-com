@@ -15,6 +15,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - A raiz `/` passou a ser servida por `site/home.php`, sem bootstrap do WordPress, para isolar a primeira tela de plugins/cache enquanto a migracao estabiliza.
 - A home standalone usa video de fundo em tela inteira, logo animada propria sem fundo e tres GIFs animados decorativos; manter o movimento leve e reaproveitar o padrao dos logins.
 - Em 2026-05-31, o asset comum da trilha do XP (`site/xp/assets/bloco-xp.svg`) manteve a arte original do bloco, mas deixou de usar a exportacao base64 gigante. O arquivo passou a embutir um PNG transparente otimizado, caindo de cerca de 23,9 MB para cerca de 89 KB, mantendo o mesmo caminho publico e apenas atualizando o cache-bust em `apps/xp/src/server.ts`.
+- Em 2026-05-31, os `favicon.svg` compartilhados por Home/tema, Cotacao, Tarefa, Financeiro e Miauby foram otimizados mantendo o mesmo visual: cada arquivo caiu de cerca de 1,07 MB para cerca de 2,7 KB, sem mudar os links HTML nem os favicons PNG alternativos.
 
 ## Cotacao V2 - baseline de performance em 2026-05-14
 
