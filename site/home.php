@@ -195,7 +195,7 @@ if (!$homeAuthenticated):
 
         .wf-login-ring {
             position: relative;
-            width: min(500px, calc(100vw - 56px));
+            width: min(530px, calc(100vw - 44px));
             aspect-ratio: 1;
             display: flex;
             align-items: center;
