@@ -160,10 +160,13 @@ docker exec wimifarma-miauby-app sh -lc 'TOKEN="$MIAUW_AGENT_INTERNAL_TOKEN"; wg
 sh scripts/miauby-shadow-smoke.sh 20 3
 docker exec wimifarma-miauby-db psql -U wimifarma_miauby -d wimifarma_miauby -c "\dt"
 curl.exe -L --max-time 30 http://127.0.0.1:3002/miauw/widget-status.php
+curl.exe -I http://127.0.0.1:3002/miauby/
+curl.exe -I http://127.0.0.1:3002/miauby/agent/health
+curl.exe -I http://127.0.0.1:3002/miauby/whatsapp/health
 docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
 ```
 
-Esse migrador copia `miauw_*` para `miauby_*` em Postgres sombra, com `legacy_mysql_id`, checksum e `payload_sanitized`. O `wimifarma-miauby-app` expoe apenas API interna de leitura, sem proxy publico: `/miauby/health` e publico dentro da rede Docker; `/miauby/api/internal/status`, `/miauby/api/internal/parity?sample=5`, `/miauby/api/internal/readiness?sample=20` e `/miauby/api/internal/context?limit=3` exigem `MIAUBY_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`. `readiness` consolida paridade/health para pos-deploy e `context` retorna apenas amostras sanitizadas, sem `payload_sanitized` bruto. Ele nao muda `/miauw/`, nao troca widget, nao corta o PHP e nao deve gravar token, telefone cru, SQL bruto, stack trace, audio ou midia.
+Esse migrador copia `miauw_*` para `miauby_*` em Postgres sombra, com `legacy_mysql_id`, checksum e `payload_sanitized`. O `wimifarma-miauby-app` expoe apenas API interna de leitura, sem proxy publico: `/miauby/health` e publico dentro da rede Docker; `/miauby/api/internal/status`, `/miauby/api/internal/parity?sample=5`, `/miauby/api/internal/readiness?sample=20` e `/miauby/api/internal/context?limit=3` exigem `MIAUBY_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`. `readiness` consolida paridade/health para pos-deploy e `context` retorna apenas amostras sanitizadas, sem `payload_sanitized` bruto. O corte canonico seguro de 2026-05-31 publica `/miauby/` como redirect para `/miauw/` e aliases `/miauby/agent/` e `/miauby/whatsapp/` para os servicos Node atuais; isso nao troca widget, nao corta o PHP e nao deve gravar token, telefone cru, SQL bruto, stack trace, audio ou midia.
 
 ## Local - Cashback Node/Postgres
 

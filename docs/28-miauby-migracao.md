@@ -21,19 +21,21 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 
 ### Miauby interno
 
-- Rota atual: `/miauw/`.
+- Rota canonica iniciada: `/miauby/`, com redirect seguro para `/miauw/` durante a transicao.
+- Rota legada ainda obrigatoria: `/miauw/`.
 - Arquivos atuais: `site/miauw`.
 - Motor principal: PHP procedural.
 - Auth: `core_users` por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`.
 - Dados principais: MySQL `wimifarma_app`, tabelas `miauw_*`.
 - Postgres sombra: `wimifarma_miauby`, criado por `wimifarma-miauby-db`, com migrador idempotente em `apps/miauby`.
-- Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/`, ainda depende de ponte PHP para tools e contexto.
+- Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/` e `/miauby/agent/`, ainda depende de ponte PHP para tools e contexto.
 - Integracao com Gestao: ja usa endpoint interno tokenizado do app Node/Postgres; a tool `criar_conta_gestao` nao deve depender de `wf_logs` nem de tabela MySQL de Gestao.
 - Escritas fortes: continuam com confirmacao humana e auditoria.
 
 ### Miauby WhatsApp
 
-- Rota atual: `/miauw/whatsapp/`.
+- Rota canonica iniciada: `/miauby/whatsapp/`.
+- Rota legada ainda obrigatoria: `/miauw/whatsapp/`.
 - App atual: `apps/miauw-whatsapp`.
 - Stack atual: Node.js 22 + TypeScript + Postgres.
 - Banco atual: `wimifarma_miauw_whatsapp`.
@@ -194,10 +196,12 @@ Proibido migrar para Postgres:
 
 ### Fase 3 - Alias publico controlado
 
-- Publicar `/miauby/` como alias controlado de `/miauw/`.
-- Publicar `/miauby/agent/` e `/miauby/whatsapp/` como aliases das rotas existentes.
+- Estado iniciado em 2026-05-31: `/miauby/` redireciona para `/miauw/` por `.htaccess`, sem trocar motor, sessao, banco ou frontend.
+- Estado iniciado em 2026-05-31: `/miauby/agent/` e `/miauby/whatsapp/` sao aliases Apache para os servicos Node ja existentes em `/miauw/agent/` e `/miauw/whatsapp/`.
+- Estado iniciado em 2026-05-31: a home passou a divulgar `/miauby/` e `/miauby/whatsapp/`, mantendo `/miauw/*` vivo para compatibilidade e rollback.
 - Inserir variaveis `MIAUBY_*` com fallback para `MIAUW_*`.
 - Validar que links antigos continuam abrindo.
+- Nao expor `wimifarma-miauby-app` ao publico nesta fase; suas rotas continuam internas e tokenizadas para paridade/readiness.
 
 ### Fase 4 - Chat em sombra
 

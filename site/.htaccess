@@ -25,6 +25,15 @@ RewriteRule ^favicon\.ico$ /cashback/favicon.png [L]
 </IfModule>
 # END Wimifarma favicon
 
+# BEGIN Wimifarma Miauby aliases
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^miauby/?$ /miauw/ [R=302,L]
+RewriteRule ^miauby/(index\.php|login\.php|treino\.php|diagnostico\.php|widget-status\.php|widget\.js|widget\.css|miauby-novo\.jpeg|logo-wimifarma\.svg|favicon\.svg|favicon\.png)$ /miauw/$1 [L]
+RewriteRule ^miauby/(.+)$ /miauw/$1 [R=302,L]
+</IfModule>
+# END Wimifarma Miauby aliases
+
 # BEGIN Wimifarma static asset cache
 <IfModule mod_expires.c>
 ExpiresActive On

@@ -40,12 +40,30 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/miauby/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
+        echo 'ProxyPassReverse "/miauby/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
+        echo 'ProxyPass "/miauby/agent" "http://wimifarma-miauw-agent:3100/miauw/agent"'; \
+        echo 'ProxyPassReverse "/miauby/agent" "http://wimifarma-miauw-agent:3100/miauw/agent"'; \
+    } > /etc/apache2/conf-available/wimifarma-miauby-agent-alias-proxy.conf \
+    && a2enconf wimifarma-miauby-agent-alias-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/miauw/whatsapp/" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/"'; \
         echo 'ProxyPassReverse "/miauw/whatsapp/" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/"'; \
         echo 'ProxyPass "/miauw/whatsapp" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp"'; \
         echo 'ProxyPassReverse "/miauw/whatsapp" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp"'; \
     } > /etc/apache2/conf-available/wimifarma-miauw-whatsapp-proxy.conf \
     && a2enconf wimifarma-miauw-whatsapp-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/miauby/whatsapp/" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/"'; \
+        echo 'ProxyPassReverse "/miauby/whatsapp/" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/"'; \
+        echo 'ProxyPass "/miauby/whatsapp" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp"'; \
+        echo 'ProxyPassReverse "/miauby/whatsapp" "http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp"'; \
+    } > /etc/apache2/conf-available/wimifarma-miauby-whatsapp-alias-proxy.conf \
+    && a2enconf wimifarma-miauby-whatsapp-alias-proxy
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
