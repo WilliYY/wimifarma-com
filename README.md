@@ -142,7 +142,7 @@ Direcao futura registrada em 2026-05-30: o usuario quer usar Next.js e Prisma em
 - Os headers de seguranca dos modulos internos permitem `microphone=(self)` para o audio do Miauby no proprio dominio, mantendo camera e geolocalizacao bloqueadas.
 - O Miauby tem integracao documentada para WhatsApp via Evolution API ou Meta Cloud API: o transporte recebe mensagens por webhook e devolve respostas por API, mas o motor, permissoes, guardrails, confirmacoes e auditoria continuam no Miauby. A primeira versao deve usar allowlist de numeros e nao expor o numero publico do Cashback a respostas internas sem filtro.
 - Miauby so alerta encomendas da Cotacao quando a linha esta com prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto aparece no balao do widget em qualquer modulo onde o Miauby esteja carregado.
-- A seguranca de base inclui CSRF nos formularios internos, headers de seguranca, bloqueio de `xmlrpc.php`, bloqueio de execucao em uploads versionados, limitador de login nos modulos PHP e na Cotacao V2, e varredura local de segredos por `scripts/check-secrets.ps1`.
+- A seguranca de base inclui CSRF nos formularios internos, headers de seguranca, bloqueio de `xmlrpc.php`, bloqueio de execucao em uploads versionados, limitador de login nos modulos PHP e na Cotacao V2, audit limpo de dependencias de producao em Cotacao/Miauby Agent, e varredura local de segredos por `scripts/check-secrets.ps1`.
 
 Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 
