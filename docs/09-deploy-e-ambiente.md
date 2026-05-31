@@ -113,6 +113,7 @@ Higiene de pastas no VPS:
 - Manter `site/.htaccess` servindo `/` por `site/home.php` enquanto a home WordPress nao estiver validada em producao.
 - `site/home.php` deve responder com header `X-Served-By: wimifarma-static-home`; se esse header nao aparecer no VPS, o proxy/container provavelmente nao esta servindo esta versao.
 - `https://wimifarma.com/home.php` nao pode retornar 404 depois do deploy; se retornar, o commit com `site/home.php` nao chegou ao destino publico ou o proxy aponta para outra copia.
+- A home `/` e os modulos Node publicados por proxy devem manter headers de seguranca basicos nas respostas HTML e APIs: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` e `Strict-Transport-Security` quando a requisicao publica for HTTPS.
 - `site/wp-content/endurance-page-cache/` e cache legado de HostGator e nao deve ser versionado nem preservado como fonte da home.
 - Manter `docker/php/Dockerfile` com `AllowOverride All` para que o Apache leia `site/.htaccess`.
 - Manter o proxy Apache de `/cashback/` para `wimifarma-cashback-app:4000`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. `site/cashback` preserva assets e helpers PHP ainda usados pelo Miauby; financeiro antigo dentro de Cashback fica arquivado em `site/_legacy-disabled/2026-05-29/cashback-financeiro-php/`.

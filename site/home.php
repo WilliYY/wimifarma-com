@@ -45,6 +45,20 @@ function wf_home_is_https(): bool
     return $https === 'on' || $https === '1' || $forwardedProto === 'https';
 }
 
+function wf_home_send_security_headers(): void
+{
+    header('X-Frame-Options: SAMEORIGIN');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: camera=(), microphone=(self), geolocation=()');
+    header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self';");
+    if (wf_home_is_https()) {
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    }
+}
+
+wf_home_send_security_headers();
+
 function wf_home_redirect(string $path = '/'): void
 {
     header('Location: ' . wf_home_url($path), true, 302);

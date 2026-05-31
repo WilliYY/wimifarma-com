@@ -1683,6 +1683,26 @@ const sessionMiddleware = session({
 });
 
 app.disable('x-powered-by');
+app.set('trust proxy', true);
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob: data:; base-uri 'self'; frame-ancestors 'self'; form-action 'self';",
+  );
+  if (req.secure || String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase() === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  if (req.path.startsWith(BASE_PATH)) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
 app.use(express.json({ limit: '128kb' }));
 app.use(express.urlencoded({ extended: true, limit: '128kb' }));
 app.use(sessionMiddleware);
