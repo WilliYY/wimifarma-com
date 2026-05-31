@@ -10,6 +10,7 @@ Arquivos principais:
 
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/src/contracts/`
+- `apps/cotacao/src/utils/normalizers.ts`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
 - `apps/cotacao/public/assets/`
@@ -193,7 +194,7 @@ Fases recomendadas:
 
 1. Fase 1: adicionar tooling TypeScript sem trocar runtime de producao. Usar `tsconfig.json` conservador com `allowJs`, `noEmit` e sem obrigar checagem total dos JavaScripts no primeiro corte. `npm start` deve continuar chamando `node src/server.js`. Concluida em 2026-05-31 com `npm run typecheck` separado, devDependencies TypeScript e sem alteracao de frontend/Dockerfile.
 2. Fase 2: criar contratos tipados separados para env, sessoes, rows/columns/styles/rules, eventos, DTOs das APIs e eventos Socket.IO, sem mexer no frontend oficial. Concluida em 2026-05-31 com `apps/cotacao/src/contracts/` e `tsconfig.json` incluindo `src/**/*.ts`; os contratos nao sao importados pelo runtime atual.
-3. Fase 3: extrair helpers backend pequenos de `server.js` para `.ts` quando houver teste/check cobrindo o caminho, mantendo as rotas iguais.
+3. Fase 3: extrair helpers backend pequenos de `server.js` para `.ts` quando houver teste/check cobrindo o caminho, mantendo as rotas iguais. Iniciada em 2026-05-31 com `apps/cotacao/src/utils/normalizers.ts` e contrato de typecheck em `normalizers.contract.ts`, ainda sem importar no runtime.
 4. Fase 4: migrar grupos de rotas por dominio, com uma mudanca pequena por vez: auth/health, bootstrap/events, cells, rows, columns, styles/rules, Google Sheets e backups.
 5. Fase 5: migrar Socket.IO e build/runtime para TypeScript compilado apenas depois de health, APIs e smoke visual estarem repetiveis no VPS.
 6. Fase 6: avaliar `public/app.js` por ultimo. O frontend e grande e sensivel; antes disso, manter JS oficial e usar contratos/API para reduzir risco.
@@ -209,6 +210,13 @@ Contratos TypeScript da Fase 2:
 - `index.ts`: barrel somente de tipos.
 
 Esses arquivos sao uma rede de seguranca para as proximas fases. Eles nao mudam banco, API, Socket.IO, tela ou Docker enquanto `server.js` segue como entrada oficial.
+
+Helpers TypeScript sombra da Fase 3:
+
+- `utils/normalizers.ts`: copia tipada de helpers puros ja existentes em `server.js` para operador de regra, cor hex, booleano, cursor de eventos e tamanho JSON.
+- `utils/normalizers.contract.ts`: exercita os tipos desses helpers no `npm run typecheck`.
+
+Enquanto nao houver build/runtime TypeScript, esses helpers nao devem ser importados por `server.js`; o corte para runtime vem em fase separada com rebuild e smoke.
 
 Fluxos que nao podem quebrar em nenhuma fase:
 
