@@ -22,7 +22,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - `core_user_xp_links`: vinculo logico entre usuario e funcionario em `xp_employees`.
 - `core_user_admin_passwords`: cofre administrativo das senhas definidas pelo painel Usuarios. Guarda senha cifrada com AES-GCM para consulta do ADM; o login continua usando somente `core_users.password_hash`.
 - `core_user_whatsapp_links`: vinculo seguro entre usuario e contatos da allowlist do Miauby WhatsApp. Guarda `contact_id`, mascara, nome, status e cards liberados; o numero completo permanece somente cifrado no bridge WhatsApp.
-- `core_user_audit_events`: historico de criacao, atualizacao, desativacao, permissoes e vinculo XP.
+- `core_user_audit_events`: historico de criacao, atualizacao, desativacao, permissoes, vinculo XP e acoes relevantes do painel. A tela mostra esse historico por usuario em cards minimizados por padrao, combinando eventos em que o usuario foi ator ou alvo.
 - `core_audit_logs`: espelho curto para auditoria compartilhada dos apps Node.
 
 ## Regras
@@ -46,6 +46,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - Linhas ausentes em `core_user_module_permissions` preservam acesso legado ate cada modulo ser cortado para enforcement.
 - A grade de modulos do painel deve manter os nomes legiveis sem quebrar palavras dentro dos chips; `Salvar` fica separado visualmente de `Excluir` para evitar clique confuso.
 - No card lateral `Novo usuario`, o controle de senha deve caber dentro do card: campo em linha propria e botoes `Gerar`, `Mostrar` e `Copiar` na linha seguinte, sem vazar sobre a lista de usuarios.
+- O historico geral e o historico por usuario devem ficar recolhidos por padrao para evitar poluir a tela; abrir `Historico` no card deve mostrar os eventos recentes daquele login automaticamente, inclusive quando um novo colaborador for criado.
 - As telas de login e painel devem declarar favicon proprio (`/cashback/favicon.png`) para nao herdar o fallback do WordPress.
 
 ## Integracoes internas

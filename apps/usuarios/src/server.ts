@@ -83,6 +83,11 @@ type AuditRow = {
   created_at: string;
 };
 
+type UserAuditRow = AuditRow & {
+  history_user_id: string;
+  relation: 'own' | 'actor' | 'target';
+};
+
 type ModuleDefinition = {
   key: string;
   label: string;
@@ -614,6 +619,10 @@ async function ensureCoreSchema(): Promise<void> {
       ON core_user_audit_events (target_user_id, created_at DESC)
   `);
   await corePgPool.query(`
+    CREATE INDEX IF NOT EXISTS idx_core_user_audit_events_actor_created
+      ON core_user_audit_events (actor_user_id, created_at DESC)
+  `);
+  await corePgPool.query(`
     CREATE INDEX IF NOT EXISTS idx_core_user_whatsapp_links_user
       ON core_user_whatsapp_links (user_id, updated_at DESC)
   `);
@@ -881,6 +890,55 @@ async function recentAudit(limit = 80): Promise<AuditRow[]> {
     [Math.max(1, Math.min(200, limit))],
   );
   return result.rows;
+}
+
+async function auditByUser(userIds: number[], limitPerUser = 12): Promise<Map<number, UserAuditRow[]>> {
+  const safeIds = Array.from(new Set(userIds.filter((id) => Number.isSafeInteger(id) && id > 0)));
+  const grouped = new Map<number, UserAuditRow[]>();
+  for (const id of safeIds) grouped.set(id, []);
+  if (!safeIds.length) return grouped;
+
+  const result = await corePgPool.query<UserAuditRow>(
+    `WITH selected_users AS (
+        SELECT unnest($1::bigint[]) AS user_id
+      ),
+      ranked_events AS (
+        SELECT
+          selected_users.user_id::text AS history_user_id,
+          e.id::text,
+          actor.username AS actor_username,
+          target.username AS target_username,
+          e.action,
+          e.summary,
+          e.created_at::text,
+          CASE
+            WHEN e.actor_user_id = selected_users.user_id AND e.target_user_id = selected_users.user_id THEN 'own'
+            WHEN e.actor_user_id = selected_users.user_id THEN 'actor'
+            ELSE 'target'
+          END AS relation,
+          ROW_NUMBER() OVER (
+            PARTITION BY selected_users.user_id
+            ORDER BY e.created_at DESC, e.id DESC
+          ) AS rn
+        FROM selected_users
+        JOIN core_user_audit_events e
+          ON e.actor_user_id = selected_users.user_id OR e.target_user_id = selected_users.user_id
+        LEFT JOIN core_users actor ON actor.id = e.actor_user_id
+        LEFT JOIN core_users target ON target.id = e.target_user_id
+      )
+      SELECT history_user_id, id, actor_username, target_username, action, summary, created_at, relation
+        FROM ranked_events
+       WHERE rn <= $2
+       ORDER BY history_user_id::bigint ASC, rn ASC`,
+    [safeIds, Math.max(1, Math.min(40, limitPerUser))],
+  );
+
+  for (const row of result.rows) {
+    const userId = Number(row.history_user_id || 0);
+    if (!grouped.has(userId)) grouped.set(userId, []);
+    grouped.get(userId)?.push(row);
+  }
+  return grouped;
 }
 
 async function dashboardStats(): Promise<Record<string, number>> {
@@ -1441,6 +1499,7 @@ function renderDashboard(
   xpEmployees: XpEmployeeRow[],
   whatsappLinks: Map<number, WhatsappLinkRow[]>,
   audit: AuditRow[],
+  userAudit: Map<number, UserAuditRow[]>,
   stats: Record<string, number>,
 ): string {
   const flash = takeFlash(req);
@@ -1452,7 +1511,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-edit-layout">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260531-user-history">
   <script src="${BASE_PATH}/password-tools.js?v=20260530b" defer></script>
 </head>
 <body>
@@ -1511,13 +1570,15 @@ function renderDashboard(
               <button class="users-button" type="submit">Criar</button>
             </form>
           </section>
-          <section class="users-section">
-            <h2>Hist&oacute;rico</h2>
-            ${renderAudit(audit)}
+          <section class="users-section users-audit-section">
+            <details class="users-audit-panel">
+              <summary><span>Hist&oacute;rico geral</span><small>${e(audit.length)} eventos recentes</small></summary>
+              ${renderAudit(audit)}
+            </details>
           </section>
         </aside>
         <section class="users-grid" aria-label="Lista de usuarios">
-          ${users.map((row) => renderUserRow(req, row, xpEmployees, whatsappLinks.get(Number(row.id)) || [])).join('')}
+          ${users.map((row) => renderUserRow(req, row, xpEmployees, whatsappLinks.get(Number(row.id)) || [], userAudit.get(Number(row.id)) || [])).join('')}
         </section>
       </div>
     </div>
@@ -1547,7 +1608,7 @@ function renderAdminPasswordVault(row: UserViewRow): string {
   </div>`;
 }
 
-function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRow[], whatsappLinks: WhatsappLinkRow[]): string {
+function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRow[], whatsappLinks: WhatsappLinkRow[], userAudit: UserAuditRow[]): string {
   const permissions = permissionsForView(row);
   const enabledModules = MODULES.filter((module) => permissions[module.key]).map((module) => module.label);
   const userId = Number(row.id);
@@ -1652,6 +1713,10 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         </section>
       </div>
     </details>
+    <details class="users-user-history">
+      <summary><span>Hist&oacute;rico</span><small>${e(userAudit.length ? `${userAudit.length} eventos recentes` : 'sem eventos')}</small></summary>
+      ${renderUserAudit(userAudit)}
+    </details>
   </article>`;
 }
 
@@ -1685,6 +1750,22 @@ function renderAudit(audit: AuditRow[]): string {
   </div>`).join('')}</div>`;
 }
 
+function auditRelationLabel(row: UserAuditRow): string {
+  if (row.relation === 'actor') return 'Fez';
+  if (row.relation === 'target') return 'Recebeu';
+  return 'Proprio usuario';
+}
+
+function renderUserAudit(audit: UserAuditRow[]): string {
+  if (!audit.length) {
+    return '<p class="users-empty compact">Nenhum evento registrado para este usuario ainda.</p>';
+  }
+  return `<div class="users-audit-list users-user-audit-list">${audit.map((row) => `<div class="users-audit-item users-user-audit-item">
+    <div class="users-audit-title"><strong>${e(row.summary)}</strong><em>${e(auditRelationLabel(row))}</em></div>
+    <span>${e(row.actor_username || 'sistema')} &rarr; ${e(row.target_username || '-')} &middot; ${e(brDateTime(row.created_at))}</span>
+  </div>`).join('')}</div>`;
+}
+
 async function renderDashboardPage(req: Request, res: Response): Promise<void> {
   const user = await requireUser(req, res);
   if (!user) return;
@@ -1695,7 +1776,8 @@ async function renderDashboardPage(req: Request, res: Response): Promise<void> {
     recentAudit(),
     dashboardStats(),
   ]);
-  res.type('html').send(renderDashboard(req, user, users, xpEmployees, whatsappLinks, audit, stats));
+  const userAudit = await auditByUser(users.map((row) => Number(row.id)));
+  res.type('html').send(renderDashboard(req, user, users, xpEmployees, whatsappLinks, audit, userAudit, stats));
 }
 
 function asyncRoute(handler: (req: Request, res: Response, next: NextFunction) => Promise<void>) {
