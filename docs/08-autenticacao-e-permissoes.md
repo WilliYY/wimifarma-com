@@ -11,6 +11,8 @@ Arquivos:
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
 - `site/cashback/auth.php`
+- `site/home-sso-lib.php`
+- `site/home-sso.php`
 - `apps/cashback/src/server.ts`
 - `apps/codigos/src/server.ts`
 - `apps/usuarios/src/server.ts`
@@ -21,6 +23,7 @@ Arquivos:
 Rotas:
 
 - `/`
+- `/home-sso.php`
 - `/cashback/login.php`
 - `/codigos/login.php`
 - `/cotacao/login.php`
@@ -54,7 +57,7 @@ Tabelas:
 ## Regras que precisam ser preservadas
 
 - Os modulos internos dependem de `current_user()` e helpers compartilhados.
-- A home `/` usa sessao isolada `WFHOME` apenas para liberar a tela inicial de cards; nao substitui nem herda login dos modulos internos. A credencial temporaria padrao solicitada para essa etapa e `adm`/`adm`, com override por `WIMIFARMA_HOME_LOGIN_USER` e `WIMIFARMA_HOME_LOGIN_PASSWORD`.
+- A home `/` usa sessao `WFHOME` para liberar a tela inicial de cards e, quando existe segredo forte em `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY`, emite o cookie assinado `WFHOME_SSO` por ate `WIMIFARMA_HOME_SSO_TTL_SECONDS` segundos. Os modulos podem usar esse handoff apenas para criar a propria sessao depois de consultar `core_users` ativo e reaplicar suas restricoes de role/permissao; o cookie da home nao substitui CSRF, sessao propria nem login/senha como fallback. A credencial temporaria padrao solicitada para essa etapa e `adm`/`adm`, com override por `WIMIFARMA_HOME_LOGIN_USER` e `WIMIFARMA_HOME_LOGIN_PASSWORD`.
 - Formularios sensiveis devem usar CSRF.
 - Saida HTML deve usar escape.
 - Perfis/roles em `core_users.role` devem ser respeitados nos modulos cortados para core auth. Em rollback/fallback MySQL onde ainda existir, preservar a mesma regra vindo de `wf_users.role`.
@@ -83,13 +86,14 @@ Tabelas:
 
 - Sessao dos modulos internos PHP e configurada em `site/cashback/config.php`.
 - Funcoes comuns legadas ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam o core Postgres por padrao quando um modulo PHP remanescente usa esse caminho.
-- Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota. Miauby PHP continua no caminho PHP ate seu corte.
+- Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota. Quando recebem `WFHOME_SSO`, consultam `/home-sso.php`, buscam o usuario no `core_users` e regeneram a sessao do modulo antes de liberar a rota. Miauby PHP tambem aceita o handoff da home, mas continua no caminho PHP ate seu corte.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 
 ## Riscos ao alterar
 
 - Alterar `current_user()`, sessao ou cookies pode quebrar todos os modulos internos.
+- Enfraquecer `WIMIFARMA_HOME_SSO_SECRET`/`WP_AUTH_KEY` pode permitir forja do handoff; valores fracos ou padroes devem deixar o SSO inativo e manter login manual.
 - Misturar autenticacao WordPress com autenticacao interna pode criar falhas de permissao.
 - Fallbacks legados de acesso precisam ser removidos com cuidado para nao bloquear o usuario sem plano de recuperacao.
 - Qualquer senha/chave hardcoded deve ser tratada como divida tecnica e movida para variavel de ambiente ou configuracao segura.

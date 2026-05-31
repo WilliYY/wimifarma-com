@@ -126,6 +126,8 @@ const SERVICE_VERSION = '1.1.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/xp');
 const PORT = Number.parseInt(env.PORT || '3600', 10);
 const SESSION_SECRET = env.XP_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
+const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const XP_POINTS_PER_THOUSAND_REAIS = 2500;
 const XP_FIRST_LEVEL_REQUIREMENT = 30000;
 const XP_UPLOAD_MAX_BYTES = 3 * 1024 * 1024;
@@ -517,8 +519,64 @@ async function currentUser(user: User | undefined): Promise<User | null> {
   return row ? userPublic(row) : null;
 }
 
+function hasHomeSsoCookie(req: Request): boolean {
+  return /(?:^|;\s*)WFHOME_SSO=/.test(String(req.get('cookie') || ''));
+}
+
+async function homeSsoUsername(req: Request): Promise<string | null> {
+  const cookie = String(req.get('cookie') || '');
+  if (!HOME_SSO_INTERNAL_URL || !hasHomeSsoCookie(req)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HOME_SSO_TIMEOUT_MS);
+  try {
+    const response = await fetch(HOME_SSO_INTERNAL_URL, { headers: { cookie }, signal: controller.signal });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { ok?: boolean; username?: unknown };
+    const username = normalizeUsername(data.username);
+    return data.ok && username ? username : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function userByHomeSso(req: Request): Promise<User | null> {
+  const username = await homeSsoUsername(req);
+  if (!username) return null;
+  const result = await requireCorePgPool('home sso').query<CoreUserRow>(
+    `SELECT id::text, username, password_hash, role, active
+       FROM core_users
+      WHERE username_normalized = $1 AND active = true
+      LIMIT 1`,
+    [username],
+  );
+  const row = result.rows[0];
+  return row ? userPublic(row) : null;
+}
+
+function regenerateWithUser(req: Request, user: User): Promise<void> {
+  const returnTo = req.session.returnTo;
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      req.session.user = user;
+      req.session.csrfToken = crypto.randomBytes(24).toString('hex');
+      if (returnTo) req.session.returnTo = returnTo;
+      resolve();
+    });
+  });
+}
+
 async function requireUser(req: Request, res: Response): Promise<User | null> {
-  const user = await currentUser(req.session.user);
+  let user = await currentUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect(`${BASE_PATH}/login.php`);
@@ -1299,7 +1357,12 @@ app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
 }));
 
 app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
-  if (await currentUser(req.session.user)) {
+  let user = await currentUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
+  if (user) {
     res.redirect(`${BASE_PATH}/`);
     return;
   }

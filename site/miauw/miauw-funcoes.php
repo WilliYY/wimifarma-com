@@ -3341,9 +3341,49 @@ function miauw_password_matches(array $user, string $password): bool
     return false;
 }
 
+function miauw_try_home_sso_user(): ?array
+{
+    $current = current_user();
+    if ($current) {
+        return $current;
+    }
+
+    if (!internal_auth_uses_core()) {
+        return null;
+    }
+
+    $homeSsoLib = __DIR__ . '/../home-sso-lib.php';
+    if (!is_file($homeSsoLib)) {
+        return null;
+    }
+
+    require_once $homeSsoLib;
+    $sso = wf_home_sso_read();
+    if (!$sso || empty($sso['username'])) {
+        return null;
+    }
+
+    try {
+        $user = internal_auth_fetch_core_by_username((string) $sso['username']);
+        if (!$user) {
+            return null;
+        }
+
+        $normalized = internal_auth_normalize_user($user, 'core');
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = (int) $normalized['id'];
+        $_SESSION['username'] = $normalized['username'];
+        $_SESSION['auth_provider'] = 'core';
+        log_action('login_miauw_home_sso', 'user', (int) $normalized['id'], 'Login Miauby via home SSO realizado.');
+        return $normalized;
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
 function miauw_require_user(): array
 {
-    $user = current_user();
+    $user = current_user() ?: miauw_try_home_sso_user();
 
     if (!$user) {
         header('Location: /miauw/login.php');

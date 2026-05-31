@@ -176,14 +176,17 @@ textarea {
 }
 
 .login-runner {
-  position: absolute;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2;
   pointer-events: none;
   user-select: none;
+  transform: translate3d(var(--login-runner-x, 21vw), var(--login-runner-y, 78vh), 0) scaleX(var(--login-runner-dir, 1));
+  will-change: transform;
 }
 
 .login-runner-cat {
-  left: 21%;
-  bottom: 9%;
   width: 76px;
   filter: drop-shadow(0 18px 26px rgba(47, 16, 29, 0.18));
 }

@@ -80,6 +80,8 @@ const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/codigos');
 const PORT = Number.parseInt(env.PORT || '3700', 10);
 const SERVICE_VERSION = '1.1.0';
 const SESSION_SECRET = env.CODIGOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
+const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const GROUP_DELETE_PASSWORD = env.CODIGOS_GROUP_DELETE_PASSWORD || 'wimifarma';
 const INTERNAL_TOKEN = env.CODIGOS_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '';
 
@@ -358,8 +360,64 @@ async function currentUser(user?: User): Promise<User | null> {
   return row ? { id: toNumber(row.id), username: row.username, role: row.role || 'user' } : null;
 }
 
+function hasHomeSsoCookie(req: Request): boolean {
+  return /(?:^|;\s*)WFHOME_SSO=/.test(String(req.get('cookie') || ''));
+}
+
+async function homeSsoUsername(req: Request): Promise<string | null> {
+  const cookie = String(req.get('cookie') || '');
+  if (!HOME_SSO_INTERNAL_URL || !hasHomeSsoCookie(req)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HOME_SSO_TIMEOUT_MS);
+  try {
+    const response = await fetch(HOME_SSO_INTERNAL_URL, { headers: { cookie }, signal: controller.signal });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { ok?: boolean; username?: unknown };
+    const username = normalizeUsername(data.username);
+    return data.ok && username ? username : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function userByHomeSso(req: Request): Promise<User | null> {
+  const username = await homeSsoUsername(req);
+  if (!username) return null;
+  const result = await corePgPool.query<CoreUserRow>(
+    `SELECT id::text, username, password_hash, role, active
+       FROM core_users
+      WHERE username_normalized = $1 AND active = true
+      LIMIT 1`,
+    [username],
+  );
+  const row = result.rows[0];
+  return row ? { id: toNumber(row.id), username: row.username, role: row.role || 'user' } : null;
+}
+
+function regenerateWithUser(req: Request, user: User): Promise<void> {
+  const returnTo = req.session.returnTo;
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      req.session.user = user;
+      req.session.csrfToken = crypto.randomBytes(24).toString('hex');
+      if (returnTo) req.session.returnTo = returnTo;
+      resolve();
+    });
+  });
+}
+
 async function requireUser(req: Request, res: Response): Promise<User | null> {
-  const user = await currentUser(req.session.user);
+  let user = await currentUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect(`${BASE_PATH}/login.php`);
@@ -1216,7 +1274,12 @@ app.get(`${BASE_PATH}/internal/migration-status`, asyncRoute(async (_req, res) =
 }));
 
 app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
-  if (await currentUser(req.session.user)) {
+  let user = await currentUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
+  if (user) {
     res.redirect(`${BASE_PATH}/`);
     return;
   }

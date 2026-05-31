@@ -111,6 +111,8 @@ const SERVICE_VERSION = '1.0.7';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
+const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const PASSWORD_VAULT_KEY_SOURCE = cleanEnv('USUARIOS_PASSWORD_VAULT_KEY') || SESSION_SECRET;
 const INTERNAL_HTTP_TIMEOUT_MS = Math.max(800, Math.min(12000, Number.parseInt(env.USUARIOS_INTERNAL_HTTP_TIMEOUT_MS || '4500', 10) || 4500));
 const TAREFA_INTERNAL_BASE_URL = trimTrailingSlash(
@@ -665,8 +667,65 @@ async function currentUser(sessionUser: User | undefined): Promise<User | null> 
   return canManageUsers(publicUser) ? publicUser : null;
 }
 
+function hasHomeSsoCookie(req: Request): boolean {
+  return /(?:^|;\s*)WFHOME_SSO=/.test(String(req.get('cookie') || ''));
+}
+
+async function homeSsoUsername(req: Request): Promise<string | null> {
+  const cookie = String(req.get('cookie') || '');
+  if (!HOME_SSO_INTERNAL_URL || !hasHomeSsoCookie(req)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HOME_SSO_TIMEOUT_MS);
+  try {
+    const response = await fetch(HOME_SSO_INTERNAL_URL, { headers: { cookie }, signal: controller.signal });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { ok?: boolean; username?: unknown };
+    const username = normalizeUsername(data.username);
+    return data.ok && username ? username : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function userByHomeSso(req: Request): Promise<User | null> {
+  const username = await homeSsoUsername(req);
+  if (!username) return null;
+  const result = await corePgPool.query<CoreUserRow>(
+    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, password_hash, role, active, source, created_at, updated_at
+       FROM core_users
+      WHERE username_normalized = $1 AND active = true
+      LIMIT 1`,
+    [username],
+  );
+  const user = result.rows[0];
+  const publicUser = user ? userPublic(user) : null;
+  return canManageUsers(publicUser) ? publicUser : null;
+}
+
+function regenerateWithUser(req: Request, user: User): Promise<void> {
+  const returnTo = req.session.returnTo;
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      req.session.user = user;
+      req.session.csrfToken = crypto.randomBytes(24).toString('hex');
+      if (returnTo) req.session.returnTo = returnTo;
+      resolve();
+    });
+  });
+}
+
 async function requireUser(req: Request, res: Response): Promise<User | null> {
-  const user = await currentUser(req.session.user);
+  let user = await currentUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect(`${BASE_PATH}/login.php`);
@@ -1711,7 +1770,12 @@ app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
 }));
 
 app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
-  if (await currentUser(req.session.user)) {
+  let user = await currentUser(req.session.user);
+  if (!user) {
+    user = await userByHomeSso(req);
+    if (user) await regenerateWithUser(req, user);
+  }
+  if (user) {
     res.redirect(`${BASE_PATH}/`);
     return;
   }

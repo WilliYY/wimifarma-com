@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/home-sso-lib.php';
+
 $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
 $hostName = preg_replace('/:\d+$/', '', $host);
 $publicHosts = array('wimifarma.com', 'www.wimifarma.com');
@@ -86,6 +88,7 @@ if (!isset($_SESSION['wf_home_csrf']) || !is_string($_SESSION['wf_home_csrf'])) 
 
 if (isset($_GET['sair'])) {
     $_SESSION = array();
+    wf_home_sso_clear(wf_home_is_https());
     if (ini_get('session.use_cookies')) {
         $params = session_get_cookie_params();
         setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'] ?? '', (bool) $params['secure'], (bool) $params['httponly']);
@@ -108,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
         $_SESSION['wf_home_authenticated'] = true;
         $_SESSION['wf_home_user'] = $user;
         $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
+        wf_home_sso_issue($user, wf_home_is_https());
         wf_home_redirect('/');
     } else {
         $homeLoginError = 'Login ou senha invalidos.';
@@ -115,6 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
 }
 
 $homeAuthenticated = !empty($_SESSION['wf_home_authenticated']);
+if ($homeAuthenticated && !empty($_SESSION['wf_home_user']) && is_string($_SESSION['wf_home_user'])) {
+    wf_home_sso_issue($_SESSION['wf_home_user'], wf_home_is_https());
+}
 
 if (!$homeAuthenticated):
 ?>
@@ -539,6 +546,19 @@ if (!$homeAuthenticated):
             outline: 0;
         }
 
+        .wf-login-runner {
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 4;
+            width: clamp(70px, 8vw, 118px);
+            pointer-events: none;
+            user-select: none;
+            filter: drop-shadow(0 18px 26px rgba(16, 4, 28, 0.24));
+            transform: translate3d(var(--login-runner-x, 14vw), var(--login-runner-y, 58vh), 0) scaleX(var(--login-runner-dir, 1));
+            will-change: transform;
+        }
+
         .wf-login-svg-filter {
             position: fixed;
             top: 100vh;
@@ -651,6 +671,10 @@ if (!$homeAuthenticated):
                 width: 52px;
                 height: 52px;
             }
+
+            .wf-login-runner {
+                width: 72px;
+            }
         }
 
         @media (max-width: 420px) {
@@ -761,6 +785,7 @@ if (!$homeAuthenticated):
             <path fill="currentColor" d="M16.04 3.2c-7.05 0-12.78 5.67-12.78 12.65 0 2.23.6 4.41 1.73 6.32L3.2 28.8l6.82-1.78a12.9 12.9 0 0 0 6.02 1.5c7.05 0 12.78-5.67 12.78-12.65S23.09 3.2 16.04 3.2Zm0 23.1c-1.88 0-3.72-.5-5.33-1.44l-.38-.22-4.05 1.06 1.08-3.9-.25-.4a10.33 10.33 0 0 1-1.63-5.55c0-5.75 4.74-10.43 10.56-10.43S26.6 10.1 26.6 15.85 21.86 26.3 16.04 26.3Zm5.78-7.82c-.32-.16-1.88-.92-2.17-1.03-.29-.1-.5-.16-.71.16-.21.31-.82 1.03-1 1.24-.18.21-.37.24-.69.08-.32-.16-1.34-.49-2.55-1.56-.94-.83-1.58-1.86-1.76-2.18-.18-.31-.02-.48.14-.64.14-.14.32-.37.48-.55.16-.18.21-.31.32-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.7-.97-2.33-.26-.61-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.05 1.29 3.26c.16.21 2.22 3.36 5.38 4.71.75.32 1.34.51 1.8.65.76.24 1.45.21 1.99.13.61-.09 1.88-.76 2.14-1.5.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.61-.37Z"/>
         </svg>
     </a>
+    <img class="wf-login-runner" src="<?php echo wf_home_e(wf_home_url('/cashback/gato-hapy.gif')); ?>" alt="" aria-hidden="true" data-login-runner>
     <svg class="wf-login-svg-filter" aria-hidden="true" focusable="false">
         <defs>
             <filter id="wf-login-blob">
@@ -769,6 +794,119 @@ if (!$homeAuthenticated):
             </filter>
         </defs>
     </svg>
+    <script>
+        (function () {
+            'use strict';
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            function initLoginRunners() {
+                var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                var nodes = Array.prototype.slice.call(document.querySelectorAll('[data-login-runner]'));
+
+                if (nodes.length === 0 || !window.requestAnimationFrame) {
+                    return;
+                }
+
+                var pointer = {
+                    x: window.innerWidth / 2,
+                    y: window.innerHeight / 2,
+                    active: false
+                };
+
+                var states = nodes.map(function (node, index) {
+                    return {
+                        node: node,
+                        x: clamp(window.innerWidth * (0.12 + index * 0.18), 18, Math.max(18, window.innerWidth - 150)),
+                        y: clamp(window.innerHeight * 0.6, 78, Math.max(78, window.innerHeight - 140)),
+                        vx: index % 2 === 0 ? 0.58 : -0.66,
+                        vy: index % 2 === 0 ? -0.28 : 0.34,
+                        phase: Math.random() * Math.PI * 2
+                    };
+                });
+
+                function place(state) {
+                    state.node.style.setProperty('--login-runner-x', state.x.toFixed(1) + 'px');
+                    state.node.style.setProperty('--login-runner-y', state.y.toFixed(1) + 'px');
+                    state.node.style.setProperty('--login-runner-dir', state.vx < 0 ? '-1' : '1');
+                }
+
+                states.forEach(place);
+                if (reducedMotion) {
+                    return;
+                }
+
+                window.addEventListener('pointermove', function (event) {
+                    pointer.x = event.clientX;
+                    pointer.y = event.clientY;
+                    pointer.active = true;
+                }, { passive: true });
+
+                window.addEventListener('pointerleave', function () {
+                    pointer.active = false;
+                });
+
+                var lastTick = performance.now();
+
+                function tick(now) {
+                    var dt = Math.min(32, now - lastTick) / 16.67;
+                    lastTick = now;
+
+                    states.forEach(function (state, index) {
+                        var rect = state.node.getBoundingClientRect();
+                        var width = rect.width || 100;
+                        var height = rect.height || 96;
+                        var centerX = state.x + width / 2;
+                        var centerY = state.y + height / 2;
+                        var dx = centerX - pointer.x;
+                        var dy = centerY - pointer.y;
+                        var distance = Math.max(1, Math.hypot(dx, dy));
+
+                        if (pointer.active && distance < 210) {
+                            var flee = (210 - distance) / 210;
+                            state.vx += (dx / distance) * flee * 0.72;
+                            state.vy += (dy / distance) * flee * 0.72;
+                        } else {
+                            state.vx += Math.cos(now / 900 + state.phase) * 0.014 * dt;
+                            state.vy += Math.sin(now / 1100 + state.phase + index) * 0.014 * dt;
+                        }
+
+                        state.vx = clamp(state.vx * 0.992, -2.25, 2.25);
+                        state.vy = clamp(state.vy * 0.992, -1.9, 1.9);
+                        state.x += state.vx * dt;
+                        state.y += state.vy * dt;
+
+                        var maxX = Math.max(12, window.innerWidth - width - 12);
+                        var maxY = Math.max(68, window.innerHeight - height - 12);
+
+                        if (state.x < 12 || state.x > maxX) {
+                            state.vx *= -0.86;
+                            state.x = clamp(state.x, 12, maxX);
+                        }
+
+                        if (state.y < 68 || state.y > maxY) {
+                            state.vy *= -0.86;
+                            state.y = clamp(state.y, 68, maxY);
+                        }
+
+                        place(state);
+                    });
+
+                    window.requestAnimationFrame(tick);
+                }
+
+                window.requestAnimationFrame(tick);
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initLoginRunners);
+            } else {
+                initLoginRunners();
+            }
+        }());
+    </script>
 </body>
 </html>
 <?php

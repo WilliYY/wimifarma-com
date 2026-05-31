@@ -22,6 +22,8 @@ const BASE_PATH = env.BASE_PATH || '/cotacao';
 const PORT = Number(env.PORT || 3000);
 const SESSION_SECRET = env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const INTERNAL_TOKEN = String(env.COTACAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
+const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
+const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const INTERNAL_CLIENT_ID = 'miauby-internal';
 const DEFAULT_QUOTE_NAME = 'Cotacao atual';
 const BACKUP_DIR = env.COTACAO_BACKUP_DIR || path.join(rootDir, 'backups');
@@ -288,17 +290,27 @@ function clearLoginRateLimit(req, username) {
 }
 
 function requireAuth(req, res, next) {
-  if (!req.session.user) {
-    return res.redirect(`${BASE_PATH}/login.php`);
-  }
-  return next();
+  Promise.resolve(ensureSessionUser(req))
+    .then((user) => {
+      if (!user) {
+        return res.redirect(`${BASE_PATH}/login.php`);
+      }
+      req.session.user = user;
+      return next();
+    })
+    .catch(next);
 }
 
 function requireApiAuth(req, res, next) {
-  if (!req.session.user) {
-    return res.status(401).json({ ok: false, error: 'Login necessario.' });
-  }
-  return next();
+  Promise.resolve(ensureSessionUser(req))
+    .then((user) => {
+      if (!user) {
+        return res.status(401).json({ ok: false, error: 'Login necessario.' });
+      }
+      req.session.user = user;
+      return next();
+    })
+    .catch(next);
 }
 
 function safeTokenEquals(received, expected) {
@@ -422,6 +434,66 @@ async function authenticateCore(username, password) {
   }
   const ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
   return ok ? userPublic({ ...user, id: Number(user.id) }) : null;
+}
+
+function hasHomeSsoCookie(req) {
+  return /(?:^|;\s*)WFHOME_SSO=/.test(String(req.get('cookie') || ''));
+}
+
+async function homeSsoUsername(req) {
+  const cookie = String(req.get('cookie') || '');
+  if (!HOME_SSO_INTERNAL_URL || !hasHomeSsoCookie(req)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HOME_SSO_TIMEOUT_MS);
+  try {
+    const response = await fetch(HOME_SSO_INTERNAL_URL, { headers: { cookie }, signal: controller.signal });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const username = normalizeUsername(data.username);
+    return data.ok && username ? username : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function userByHomeSso(req) {
+  const username = await homeSsoUsername(req);
+  if (!username) return null;
+  const result = await corePgPool.query(
+    `SELECT id::text, username, role, active
+       FROM core_users
+      WHERE username_normalized = $1 AND active = true
+      LIMIT 1`,
+    [username]
+  );
+  const user = result.rows[0];
+  return user ? userPublic({ ...user, id: Number(user.id) }) : null;
+}
+
+function regenerateWithUser(req, user) {
+  const returnTo = req.session.returnTo;
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      req.session.user = user;
+      req.session.csrfToken = crypto.randomBytes(24).toString('hex');
+      if (returnTo) req.session.returnTo = returnTo;
+      resolve();
+    });
+  });
+}
+
+async function ensureSessionUser(req) {
+  if (req.session.user) return req.session.user;
+  const user = await userByHomeSso(req);
+  if (!user) return null;
+  await regenerateWithUser(req, user);
+  return user;
 }
 
 async function coreAuthHealth() {
@@ -1750,6 +1822,7 @@ function renderLogin(req, error = '') {
   <title>Wimifarma Cotacao</title>
   <link rel="icon" href="${BASE_PATH}/favicon.svg">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css">
+  <script src="${BASE_PATH}/login-runner.js?v=20260530a" defer></script>
 </head>
 <body class="login-page">
   <main class="login-shell">
@@ -1770,7 +1843,7 @@ function renderLogin(req, error = '') {
         <button type="submit">Entrar na cotacao</button>
       </form>
     </section>
-    <img class="login-runner login-runner-cat" src="${BASE_PATH}/assets/gato-hapy.gif" alt="">
+    <img class="login-runner login-runner-cat" src="${BASE_PATH}/assets/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
   </main>
 </body>
 </html>`;
@@ -1950,7 +2023,13 @@ app.get(BASE_PATH, (req, res, next) => {
   return next();
 });
 app.get(`${BASE_PATH}/login`, (req, res) => res.type('html').send(renderLogin(req)));
-app.get(`${BASE_PATH}/login.php`, (req, res) => res.type('html').send(renderLogin(req)));
+app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
+  const user = await ensureSessionUser(req);
+  if (user) {
+    return res.redirect(`${BASE_PATH}/`);
+  }
+  return res.type('html').send(renderLogin(req));
+}));
 app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const expected = req.session.csrfToken;
   if (!expected || expected !== req.body.csrf_token) {

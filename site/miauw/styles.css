@@ -1072,7 +1072,22 @@ a {
     animation: miaubyLoginGrid 26s linear infinite;
 }
 
+.miauw-login-runner {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    width: clamp(72px, 8vw, 112px);
+    pointer-events: none;
+    user-select: none;
+    filter: drop-shadow(0 18px 26px rgba(97, 5, 29, .18));
+    transform: translate3d(var(--login-runner-x, 14vw), var(--login-runner-y, 58vh), 0) scaleX(var(--login-runner-dir, 1));
+    will-change: transform;
+}
+
 .miauw-login-card {
+    position: relative;
+    z-index: 2;
     width: min(520px, 100%);
     padding: clamp(26px, 4vw, 42px);
     box-shadow: 0 30px 76px rgba(97, 5, 29, .14);

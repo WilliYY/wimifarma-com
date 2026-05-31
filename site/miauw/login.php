@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
-if (current_user()) {
+if (current_user() || miauw_try_home_sso_user()) {
     header('Location: /miauw/');
     exit;
 }
@@ -65,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="alternate icon" href="/miauw/favicon.png">
     <link rel="stylesheet" href="/miauw/styles.css?v=<?php echo e(MIAUW_VERSION); ?>">
     <script src="/miauw/app.js?v=<?php echo e(MIAUW_VERSION); ?>" defer></script>
+    <script src="/miauw/login-runner.js?v=<?php echo e(MIAUW_VERSION); ?>" defer></script>
 </head>
 <body class="miauw-login-body">
     <main class="miauw-login-card">
@@ -91,5 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button class="btn primary" type="submit">Entrar no Miauby</button>
         </form>
     </main>
+    <img class="miauw-login-runner" src="/cashback/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
 </body>
 </html>

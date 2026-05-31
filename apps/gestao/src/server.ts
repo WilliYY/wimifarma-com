@@ -137,6 +137,8 @@ const SERVICE_VERSION = '1.6.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
+const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const INTERNAL_TOKEN = String(env.GESTAO_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '').trim();
 const TZ = 'America/Sao_Paulo';
 const AUTH_PROVIDER = 'core';
@@ -279,12 +281,18 @@ function safeGestaoReturnPath(value: unknown): string {
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.session.user || !isAllowedUser(req.session.user)) {
-    const returnTo = safeGestaoReturnPath(req.originalUrl);
-    if (returnTo) req.session.returnTo = returnTo;
-    return res.redirect(`${BASE_PATH}/login.php`);
-  }
-  return next();
+  Promise.resolve(ensureSessionUser(req))
+    .then((user) => {
+      if (!user || !isAllowedUser(user)) {
+        const returnTo = safeGestaoReturnPath(req.originalUrl);
+        if (returnTo) req.session.returnTo = returnTo;
+        res.redirect(`${BASE_PATH}/login.php`);
+        return;
+      }
+      req.session.user = user;
+      next();
+    })
+    .catch(next);
 }
 
 function asyncRoute(handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) {
@@ -741,6 +749,71 @@ async function authenticateCore(username: string, password: string): Promise<Use
     username: String(user.username),
     role: String(user.role || 'user'),
   };
+}
+
+function hasHomeSsoCookie(req: Request): boolean {
+  return /(?:^|;\s*)WFHOME_SSO=/.test(String(req.get('cookie') || ''));
+}
+
+async function homeSsoUsername(req: Request): Promise<string | null> {
+  const cookie = String(req.get('cookie') || '');
+  if (!HOME_SSO_INTERNAL_URL || !hasHomeSsoCookie(req)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HOME_SSO_TIMEOUT_MS);
+  try {
+    const response = await fetch(HOME_SSO_INTERNAL_URL, { headers: { cookie }, signal: controller.signal });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { ok?: boolean; username?: unknown };
+    const username = normalizeUsername(data.username);
+    return data.ok && username ? username : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function userByHomeSso(req: Request): Promise<User | null> {
+  const username = await homeSsoUsername(req);
+  if (!username) return null;
+  const result = await corePgPool.query<CoreUserRow>(
+    `SELECT id::text, username, password_hash, role, active
+       FROM core_users
+      WHERE username_normalized = $1 AND active = true
+      LIMIT 1`,
+    [username],
+  );
+  const user = result.rows[0];
+  if (!user || !isAllowedUser(user)) return null;
+  return {
+    id: Number(user.id),
+    username: String(user.username),
+    role: String(user.role || 'user'),
+  };
+}
+
+function regenerateWithUser(req: Request, user: User): Promise<void> {
+  const returnTo = req.session.returnTo;
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      req.session.user = user;
+      req.session.csrfToken = crypto.randomBytes(24).toString('hex');
+      if (returnTo) req.session.returnTo = returnTo;
+      resolve();
+    });
+  });
+}
+
+async function ensureSessionUser(req: Request): Promise<User | null> {
+  if (req.session.user && isAllowedUser(req.session.user)) return req.session.user;
+  const user = await userByHomeSso(req);
+  if (!user) return null;
+  await regenerateWithUser(req, user);
+  return user;
 }
 
 async function coreAuthHealth(): Promise<Record<string, unknown>> {
@@ -3236,14 +3309,16 @@ app.get(`${BASE_PATH}/api/orders/badge`, asyncRoute(async (_req, res) => {
   res.redirect(308, '/pedidos/api/badge');
 }));
 
-app.get(`${BASE_PATH}/login`, (req, res) => {
-  if (req.session.user && isAllowedUser(req.session.user)) return res.redirect(loginRedirectTarget(req));
+app.get(`${BASE_PATH}/login`, asyncRoute(async (req, res) => {
+  const user = await ensureSessionUser(req);
+  if (user) return res.redirect(loginRedirectTarget(req));
   return res.type('html').send(renderLogin(req));
-});
-app.get(`${BASE_PATH}/login.php`, (req, res) => {
-  if (req.session.user && isAllowedUser(req.session.user)) return res.redirect(loginRedirectTarget(req));
+}));
+app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
+  const user = await ensureSessionUser(req);
+  if (user) return res.redirect(loginRedirectTarget(req));
   return res.type('html').send(renderLogin(req, req.query.restrito ? 'Gestao e area restrita para adm, admin ou gerente.' : ''));
-});
+}));
 app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   const expected = req.session.csrfToken || '';
   if (!expected || expected !== String(req.body.csrf_token || '')) {
