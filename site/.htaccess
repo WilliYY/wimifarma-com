@@ -28,7 +28,13 @@ RewriteRule ^favicon\.ico$ /cashback/favicon.png [L]
 # BEGIN Wimifarma module aliases
 <IfModule mod_rewrite.c>
 RewriteEngine On
+RewriteCond %{HTTP:X-Forwarded-Proto} https [NC,OR]
+RewriteCond %{HTTPS} =on
+RewriteRule ^pedido/?$ https://%{HTTP_HOST}/pedidos/ [R=302,L]
 RewriteRule ^pedido/?$ /pedidos/ [R=302,L]
+RewriteCond %{HTTP:X-Forwarded-Proto} https [NC,OR]
+RewriteCond %{HTTPS} =on
+RewriteRule ^tarefas/?$ https://%{HTTP_HOST}/tarefa/ [R=302,L]
 RewriteRule ^tarefas/?$ /tarefa/ [R=302,L]
 </IfModule>
 # END Wimifarma module aliases
