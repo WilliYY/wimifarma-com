@@ -175,6 +175,46 @@ Core Postgres `wimifarma_core`:
 - Backups da Cotacao V2 ficam no volume ignorado `cotacao-data/backups`, montado em `/app/backups`.
 - `docker-compose.yml` nao deve montar arquivos de `site/cotacao` em `wimifarma-cotacao-app`; qualquer ativo da Cotacao oficial precisa ficar em `apps/cotacao/public`.
 
+## Roadmap TypeScript seguro
+
+Em 2026-05-31 foi iniciada a Fase 0 da migracao da Cotacao para TypeScript. Essa fase e somente inventario e baseline: nao altera runtime, frontend, rotas, schema, Dockerfile, Compose, assets ou deploy.
+
+Baseline da Fase 0:
+
+- backend atual: `apps/cotacao/src/server.js`, com cerca de 3439 linhas;
+- frontend atual: `apps/cotacao/public/app.js`, com cerca de 3481 linhas;
+- comando local `npm run check` em `apps/cotacao` passou com `node --check src/server.js && node --check public/app.js`;
+- VPS respondeu `GET /cotacao/health` com `ok=true`, `provider=core`, `mysqlDependency=false`, `coreReachable=true` e `usersSynced=true`;
+- VPS respondeu `GET /cotacao/socket.io/socket.io.js` com HTTP 200;
+- logs recentes de `wimifarma-cotacao-app` mostraram apenas inicializacao normal em `3000/cotacao`.
+
+Fases recomendadas:
+
+1. Fase 1: adicionar tooling TypeScript sem trocar runtime de producao. Usar `tsconfig.json` conservador com `allowJs`, `noEmit` e sem obrigar checagem total dos JavaScripts no primeiro corte. `npm start` deve continuar chamando `node src/server.js`.
+2. Fase 2: criar contratos tipados separados para env, sessoes, rows/columns/styles/rules, eventos, DTOs das APIs e eventos Socket.IO, sem mexer no frontend oficial.
+3. Fase 3: extrair helpers backend pequenos de `server.js` para `.ts` quando houver teste/check cobrindo o caminho, mantendo as rotas iguais.
+4. Fase 4: migrar grupos de rotas por dominio, com uma mudanca pequena por vez: auth/health, bootstrap/events, cells, rows, columns, styles/rules, Google Sheets e backups.
+5. Fase 5: migrar Socket.IO e build/runtime para TypeScript compilado apenas depois de health, APIs e smoke visual estarem repetiveis no VPS.
+6. Fase 6: avaliar `public/app.js` por ultimo. O frontend e grande e sensivel; antes disso, manter JS oficial e usar contratos/API para reduzir risco.
+
+Fluxos que nao podem quebrar em nenhuma fase:
+
+- login manual e handoff `WFHOME_SSO` via `core_users`;
+- `GET /cotacao/health`;
+- endpoints internos do Miauby: `summary`, `search`, `encomendas`, `urgentes` e `cotacoes-rapidas`;
+- `bootstrap`, `events`, save de celula, batch, linhas, colunas, estilos, regras e diagnostico;
+- import/export Google Sheets e backup/restore;
+- Socket.IO de presenca, celulas, lotes, linhas, colunas, regras, estilos e reload;
+- frontend oficial em `apps/cotacao/public/app.js` e `styles.css`.
+
+Gate minimo por fase:
+
+- `npm run check` em `apps/cotacao`;
+- health publico 200 no VPS;
+- `/cotacao/socket.io/socket.io.js` 200 no VPS;
+- logs do app sem erro novo;
+- quando houver runtime change, validar login/bootstrap/save com usuario real e duas abas antes de cortar.
+
 ## Validacoes realizadas
 
 Em 2026-05-12 foram validados localmente:
