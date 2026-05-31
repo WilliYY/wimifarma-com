@@ -45,6 +45,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - Remover o WhatsApp no painel bloqueia o contato salvo no bridge e remove o vinculo seguro do core. LIDs protegidos por alias de ambiente continuam bloqueados para edicao/remocao operacional.
 - Linhas ausentes em `core_user_module_permissions` preservam acesso legado ate cada modulo ser cortado para enforcement.
 - A grade de modulos do painel deve manter os nomes legiveis sem quebrar palavras dentro dos chips; `Salvar` fica separado visualmente de `Excluir` para evitar clique confuso.
+- No card lateral `Novo usuario`, o controle de senha deve caber dentro do card: campo em linha propria e botoes `Gerar`, `Mostrar` e `Copiar` na linha seguinte, sem vazar sobre a lista de usuarios.
 - As telas de login e painel devem declarar favicon proprio (`/cashback/favicon.png`) para nao herdar o fallback do WordPress.
 
 ## Integracoes internas

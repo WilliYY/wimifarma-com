@@ -199,13 +199,13 @@ a {
 
 .users-password-control {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   min-width: 0;
 }
 
 .users-password-control.vault {
-  grid-template-columns: minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .users-password-control .users-input {
@@ -650,6 +650,20 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.users-create-form .users-password-control {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.users-create-form .users-password-control .users-input {
+  grid-column: 1 / -1;
+}
+
+.users-create-form .users-mini-action {
+  width: 100%;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
 .users-create-form .users-check {
   padding: 8px 9px;
 }
@@ -899,7 +913,7 @@ a {
 
 @media (max-width: 640px) {
   .users-shell {
-    width: min(100% - 18px, 1320px);
+    width: min(calc(100% - 18px), 1320px);
   }
 
   .users-topbar-inner,
@@ -930,6 +944,14 @@ a {
 
   .users-password-control.vault {
     grid-template-columns: 1fr;
+  }
+
+  .users-create-form .users-password-control {
+    grid-template-columns: 1fr;
+  }
+
+  .users-create-form .users-password-control .users-input {
+    grid-column: auto;
   }
 
   .users-mini-action {
