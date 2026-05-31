@@ -150,9 +150,9 @@ cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\miauby
 npm.cmd run check
 npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
-docker compose up -d wimifarma-miauby-db
-docker compose run --rm wimifarma-miauby-migrator npm run migrate:shadow
-docker compose run --rm wimifarma-miauby-migrator npm run validate:shadow
+docker compose up -d wimifarma-com-db wimifarma-miauby-db
+sh scripts/miauby-shadow-migrate.sh migrate
+sh scripts/miauby-shadow-migrate.sh validate
 docker compose up -d --no-deps --build wimifarma-miauby-app
 docker exec wimifarma-miauby-app wget -qO- http://127.0.0.1:4100/miauby/health
 docker exec wimifarma-miauby-app sh -lc 'TOKEN="$MIAUW_AGENT_INTERNAL_TOKEN"; wget -qO- --header=x-miauby-internal-token:${TOKEN} "http://127.0.0.1:4100/miauby/api/internal/readiness?sample=20"'
@@ -166,7 +166,7 @@ curl.exe -I http://127.0.0.1:3002/miauby/whatsapp/health
 docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
 ```
 
-Esse migrador copia `miauw_*` para `miauby_*` em Postgres sombra, com `legacy_mysql_id`, checksum e `payload_sanitized`. O `wimifarma-miauby-app` expoe apenas API interna de leitura, sem proxy publico: `/miauby/health` e publico dentro da rede Docker; `/miauby/api/internal/status`, `/miauby/api/internal/parity?sample=5`, `/miauby/api/internal/readiness?sample=20` e `/miauby/api/internal/context?limit=3` exigem `MIAUBY_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`. `readiness` consolida paridade/health para pos-deploy e `context` retorna apenas amostras sanitizadas, sem `payload_sanitized` bruto. O corte canonico seguro de 2026-05-31 publica `/miauby/` como redirect para `/miauw/` e aliases `/miauby/agent/` e `/miauby/whatsapp/` para os servicos Node atuais; isso nao troca widget, nao corta o PHP e nao deve gravar token, telefone cru, SQL bruto, stack trace, audio ou midia.
+Esse migrador copia `miauw_*` para `miauby_*` em Postgres sombra, com `legacy_mysql_id`, checksum e `payload_sanitized`. O script `scripts/miauby-shadow-migrate.sh` prefere `docker compose exec -T wimifarma-miauby-app` quando o app ja esta rodando e usa `docker compose run --rm --no-deps` apenas como fallback, para nao tentar recriar `wimifarma-com-db` em VPS com containers antigos/labels de Compose diferentes. O `wimifarma-miauby-app` expoe apenas API interna de leitura, sem proxy publico: `/miauby/health` e publico dentro da rede Docker; `/miauby/api/internal/status`, `/miauby/api/internal/parity?sample=5`, `/miauby/api/internal/readiness?sample=20` e `/miauby/api/internal/context?limit=3` exigem `MIAUBY_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`. `readiness` consolida paridade/health para pos-deploy e `context` retorna apenas amostras sanitizadas, sem `payload_sanitized` bruto. O corte canonico seguro de 2026-05-31 publica `/miauby/` como redirect para `/miauw/` e aliases `/miauby/agent/` e `/miauby/whatsapp/` para os servicos Node atuais; isso nao troca widget, nao corta o PHP e nao deve gravar token, telefone cru, SQL bruto, stack trace, audio ou midia.
 
 ## Local - Cashback Node/Postgres
 

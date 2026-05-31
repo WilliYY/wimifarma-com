@@ -207,6 +207,7 @@ Proibido migrar para Postgres:
 ### Fase 4 - Chat em sombra
 
 - Enviar conversas do usuario `adm` para o Node em sombra.
+- Estado iniciado em 2026-05-31 no VPS: `MIAUW_ENGINE=node_shadow`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm` e `MIAUW_AGENT_SHADOW_ON_SEND=false`; somente `adm` forca comparacao Node sombra nos envios reais, a resposta oficial segue PHP, usuario comum nao tem sombra/latencia global e rollback imediato e voltar `MIAUW_ENGINE=php` e recriar `wimifarma-com-web`.
 - Comparar resposta Node x PHP com trace sanitizado.
 - Validar persona, treino, guardrails, latencia e ferramentas de leitura.
 - Sem escrita direta no Node.

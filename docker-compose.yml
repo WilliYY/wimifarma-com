@@ -267,7 +267,6 @@ services:
     profiles:
       - migration
     depends_on:
-      - wimifarma-com-db
       - wimifarma-miauby-db
     environment:
       NODE_ENV: production
