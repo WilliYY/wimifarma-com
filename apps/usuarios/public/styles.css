@@ -658,6 +658,20 @@ a {
   grid-column: 1 / -1;
 }
 
+.users-user-form .users-password-control:not(.vault) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.users-user-form .users-password-control:not(.vault) .users-input {
+  grid-column: 1 / -1;
+}
+
+.users-user-form .users-password-control:not(.vault) .users-mini-action {
+  width: 100%;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
 .users-create-form .users-mini-action {
   width: 100%;
   padding-right: 8px;
@@ -951,6 +965,14 @@ a {
   }
 
   .users-create-form .users-password-control .users-input {
+    grid-column: auto;
+  }
+
+  .users-user-form .users-password-control:not(.vault) {
+    grid-template-columns: 1fr;
+  }
+
+  .users-user-form .users-password-control:not(.vault) .users-input {
     grid-column: auto;
   }
 

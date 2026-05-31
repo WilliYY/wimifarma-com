@@ -1386,7 +1386,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-vault">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-edit-layout">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1452,7 +1452,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-vault">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-edit-layout">
   <script src="${BASE_PATH}/password-tools.js?v=20260530b" defer></script>
 </head>
 <body>
