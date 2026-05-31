@@ -187,6 +187,7 @@ Proibido migrar para Postgres:
 - Estado iniciado em 2026-05-30: `/miauby/health` responde status seguro do servico sombra, sem segredo e sem proxy publico.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` exigem token interno e comparam tabelas `miauby_*` contra `miauw_*` por contagem/checksum/amostra, sem retornar payload bruto.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/readiness?sample=20` consolida health/paridade para pos-deploy e `/miauby/api/internal/context?limit=3` retorna apenas amostras sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes.
+- Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente via `docker compose exec -T wimifarma-miauby-app npm run migrate:shadow`, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`.
 - Proximas leituras a adicionar depois da paridade:
   - contexto de voz/persona compilado;
   - filtros por status/categoria;
