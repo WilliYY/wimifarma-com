@@ -15,6 +15,7 @@ $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') 
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
 $homeLoginError = '';
 $homeLoginShootingStarCount = 28;
+$homeLoginBubbleCount = 64;
 
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -77,7 +78,7 @@ function wf_home_bubble_style(int $index): string
     $delay = -1 * (1 + (mt_rand(0, 520) / 100));
 
     return sprintf(
-        '--size:%.2frem;--distance:%.2frem;--position:%.2f%%;--time:%.2fs;--delay:%.2fs;',
+        '--size:%.2frem;--rise:-%.2frem;--position:%.2f%%;--time:%.2fs;--delay:%.2fs;',
         $size,
         $distance,
         $position,
@@ -415,24 +416,26 @@ if (!$homeAuthenticated):
             z-index: 0;
             height: min(70vh, 620px);
             overflow: hidden;
+            contain: layout paint;
             pointer-events: none;
+            transform: translateZ(0);
         }
 
         .wf-login-shooting-star {
             position: absolute;
             top: var(--star-top, -8%);
             left: var(--star-left, 50%);
-            width: 0;
+            width: var(--star-tail, 72px);
             height: 2px;
             border-radius: 999px;
             opacity: 0;
             background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(244, 253, 255, 0.95));
-            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.72));
-            transform: translate3d(0, 0, 0) rotate(var(--star-angle, 34deg));
+            box-shadow: 0 0 7px rgba(255, 255, 255, 0.54);
+            transform: translate3d(0, 0, 0) rotate(var(--star-angle, 34deg)) scaleX(0);
             transform-origin: right center;
             animation: wf-login-shooting-star var(--star-time, 5.8s) ease-in-out infinite;
             animation-delay: var(--star-delay, 0s);
-            will-change: transform, width, opacity;
+            will-change: transform, opacity;
         }
 
         .wf-login-shooting-star::before,
@@ -441,12 +444,14 @@ if (!$homeAuthenticated):
             position: absolute;
             top: calc(50% - 1px);
             right: 0;
-            width: 0;
+            width: 18px;
             height: 2px;
             border-radius: 999px;
+            opacity: 0;
             background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(247, 253, 255, 0.96), rgba(255, 255, 255, 0));
             animation: wf-login-star-shine var(--star-time, 5.8s) ease-in-out infinite;
             animation-delay: var(--star-delay, 0s);
+            will-change: opacity;
         }
 
         .wf-login-shooting-star::before {
@@ -660,6 +665,7 @@ if (!$homeAuthenticated):
             display: grid;
             overflow: visible;
             background: var(--footer-background);
+            contain: layout;
             isolation: isolate;
         }
 
@@ -670,8 +676,9 @@ if (!$homeAuthenticated):
             right: -3rem;
             height: 8.5rem;
             overflow: visible;
-            filter: url("#wf-login-blob");
+            contain: layout;
             pointer-events: none;
+            transform: translateZ(0);
         }
 
         .wf-login-bubbles::before {
@@ -689,12 +696,14 @@ if (!$homeAuthenticated):
             position: absolute;
             left: var(--position, 50%);
             bottom: 1.2rem;
+            width: var(--size, 4rem);
+            height: var(--size, 4rem);
             background: var(--footer-background);
             border-radius: 100%;
-            animation:
-                wf-bubble-size var(--time, 4s) ease-in infinite var(--delay, 0s),
-                wf-bubble-move var(--time, 4s) ease-in infinite var(--delay, 0s);
-            transform: translate(-50%, 0);
+            opacity: 0.9;
+            animation: wf-bubble-rise var(--time, 4s) ease-in infinite var(--delay, 0s);
+            transform: translate3d(-50%, 0, 0) scale(0.82);
+            will-change: transform, opacity;
         }
 
         .wf-login-footer-content {
@@ -956,14 +965,6 @@ if (!$homeAuthenticated):
             will-change: transform;
         }
 
-        .wf-login-svg-filter {
-            position: fixed;
-            top: 100vh;
-            left: 0;
-            width: 0;
-            height: 0;
-        }
-
         @keyframes wf-login-spin {
             to {
                 transform: rotate(360deg);
@@ -979,52 +980,45 @@ if (!$homeAuthenticated):
             }
         }
 
-        @keyframes wf-bubble-size {
-            0%, 75% {
-                width: var(--size, 4rem);
-                height: var(--size, 4rem);
-            }
-            100% {
-                width: 0;
-                height: 0;
-            }
-        }
-
-        @keyframes wf-bubble-move {
+        @keyframes wf-bubble-rise {
             0% {
-                bottom: 0.7rem;
+                opacity: 0.72;
+                transform: translate3d(-50%, 0, 0) scale(0.82);
+            }
+            24%, 74% {
+                opacity: 0.9;
+                transform: translate3d(-50%, -1.1rem, 0) scale(1);
             }
             100% {
-                bottom: var(--distance, 10rem);
+                opacity: 0;
+                transform: translate3d(-50%, var(--rise, -10rem), 0) scale(0.05);
             }
         }
 
         @keyframes wf-login-shooting-star {
             0% {
-                width: 0;
                 opacity: 0;
-                transform: translate3d(0, 0, 0) rotate(var(--star-angle, 34deg));
+                transform: translate3d(0, 0, 0) rotate(var(--star-angle, 34deg)) scaleX(0);
             }
             12% {
                 opacity: var(--star-opacity, 0.58);
             }
             36% {
-                width: var(--star-tail, 72px);
                 opacity: var(--star-opacity, 0.58);
+                transform: translate3d(0, 0, 0) rotate(var(--star-angle, 34deg)) scaleX(1);
             }
             100% {
-                width: 0;
                 opacity: 0;
-                transform: translate3d(var(--star-x, 32vw), var(--star-y, 28vh), 0) rotate(var(--star-angle, 34deg));
+                transform: translate3d(var(--star-x, 32vw), var(--star-y, 28vh), 0) rotate(var(--star-angle, 34deg)) scaleX(0);
             }
         }
 
         @keyframes wf-login-star-shine {
             0%, 18%, 100% {
-                width: 0;
+                opacity: 0;
             }
             36% {
-                width: 18px;
+                opacity: 0.84;
             }
         }
 
@@ -1181,7 +1175,7 @@ if (!$homeAuthenticated):
 
     <footer class="wf-login-footer">
         <div class="wf-login-bubbles" aria-hidden="true">
-            <?php for ($i = 0; $i < 128; $i++): ?>
+            <?php for ($i = 0; $i < $homeLoginBubbleCount; $i++): ?>
                 <span class="wf-login-bubble" style="<?php echo wf_home_e(wf_home_bubble_style($i)); ?>"></span>
             <?php endfor; ?>
         </div>
@@ -1238,14 +1232,6 @@ if (!$homeAuthenticated):
         </svg>
     </a>
     <img class="wf-login-runner" src="<?php echo wf_home_e(wf_home_url('/cashback/gato-hapy.gif')); ?>" alt="" aria-hidden="true" data-login-runner>
-    <svg class="wf-login-svg-filter" aria-hidden="true" focusable="false">
-        <defs>
-            <filter id="wf-login-blob">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur"></feGaussianBlur>
-                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="blob"></feColorMatrix>
-            </filter>
-        </defs>
-    </svg>
     <script>
         (function () {
             'use strict';
