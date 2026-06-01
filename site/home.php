@@ -111,6 +111,163 @@ function wf_home_shooting_star_style(int $index): string
     );
 }
 
+function wf_home_visitor_counter_path(): string
+{
+    return __DIR__ . '/wp-content/uploads/wimifarma-runtime/home-counter.json';
+}
+
+function wf_home_default_visitor_counter(): array
+{
+    return array(
+        'visitors' => 0,
+        'views' => 0,
+        'updated_at' => null,
+        'available' => false,
+    );
+}
+
+function wf_home_normalize_visitor_counter(?array $counter): array
+{
+    $counter = is_array($counter) ? $counter : array();
+
+    return array(
+        'visitors' => max(0, (int) ($counter['visitors'] ?? 0)),
+        'views' => max(0, (int) ($counter['views'] ?? 0)),
+        'updated_at' => isset($counter['updated_at']) && is_string($counter['updated_at'])
+            ? $counter['updated_at']
+            : null,
+        'available' => true,
+    );
+}
+
+function wf_home_read_visitor_counter(string $counterFile): array
+{
+    if (!is_file($counterFile)) {
+        return wf_home_default_visitor_counter();
+    }
+
+    $raw = @file_get_contents($counterFile);
+    if (!is_string($raw) || $raw === '') {
+        return wf_home_default_visitor_counter();
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return wf_home_default_visitor_counter();
+    }
+
+    return wf_home_normalize_visitor_counter($decoded);
+}
+
+function wf_home_ensure_visitor_counter_dir(string $counterDir): bool
+{
+    if (!is_dir($counterDir) && !@mkdir($counterDir, 0755, true) && !is_dir($counterDir)) {
+        return false;
+    }
+
+    $htaccess = $counterDir . '/.htaccess';
+    if (!is_file($htaccess)) {
+        @file_put_contents($htaccess, "Options -Indexes\nRequire all denied\n");
+    }
+
+    return is_dir($counterDir) && is_writable($counterDir);
+}
+
+function wf_home_should_track_visitor_counter(): bool
+{
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+        return false;
+    }
+
+    $userAgent = strtolower((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    if ($userAgent === '') {
+        return false;
+    }
+
+    foreach (array('bot', 'crawler', 'spider', 'curl', 'wget', 'powershell', 'healthcheck', 'monitor') as $needle) {
+        if (strpos($userAgent, $needle) !== false) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function wf_home_has_visitor_cookie(): bool
+{
+    $cookie = (string) ($_COOKIE['WFHOME_VISITOR'] ?? '');
+
+    return preg_match('/^[a-f0-9]{32}$/', $cookie) === 1;
+}
+
+function wf_home_issue_visitor_cookie(): void
+{
+    $visitorId = bin2hex(random_bytes(16));
+    setcookie('WFHOME_VISITOR', $visitorId, array(
+        'expires' => time() + 31536000,
+        'path' => '/',
+        'secure' => wf_home_is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ));
+    $_COOKIE['WFHOME_VISITOR'] = $visitorId;
+}
+
+function wf_home_update_visitor_counter(bool $shouldTrack, bool $isNewVisitor): array
+{
+    $counterFile = wf_home_visitor_counter_path();
+    $counterDir = dirname($counterFile);
+
+    if (!$shouldTrack) {
+        return wf_home_read_visitor_counter($counterFile);
+    }
+
+    if (!wf_home_ensure_visitor_counter_dir($counterDir)) {
+        return wf_home_read_visitor_counter($counterFile);
+    }
+
+    $handle = @fopen($counterFile, 'c+');
+    if ($handle === false) {
+        return wf_home_read_visitor_counter($counterFile);
+    }
+
+    try {
+        if (!flock($handle, LOCK_EX)) {
+            return wf_home_read_visitor_counter($counterFile);
+        }
+
+        rewind($handle);
+        $raw = stream_get_contents($handle);
+        $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+        $counter = wf_home_normalize_visitor_counter(is_array($decoded) ? $decoded : null);
+
+        $counter['views']++;
+        if ($isNewVisitor) {
+            $counter['visitors']++;
+        }
+        $counter['updated_at'] = gmdate('c');
+
+        $payload = json_encode(array(
+            'visitors' => $counter['visitors'],
+            'views' => $counter['views'],
+            'updated_at' => $counter['updated_at'],
+        ), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+        if (is_string($payload)) {
+            ftruncate($handle, 0);
+            rewind($handle);
+            fwrite($handle, $payload . "\n");
+            fflush($handle);
+        }
+
+        flock($handle, LOCK_UN);
+
+        return $counter;
+    } finally {
+        fclose($handle);
+    }
+}
+
 session_name('WFHOME');
 session_set_cookie_params(array(
     'lifetime' => 0,
@@ -127,6 +284,16 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 if (!isset($_SESSION['wf_home_csrf']) || !is_string($_SESSION['wf_home_csrf'])) {
     $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
 }
+
+$homeShouldTrackVisitor = wf_home_should_track_visitor_counter();
+$homeIsNewVisitor = $homeShouldTrackVisitor && !wf_home_has_visitor_cookie();
+if ($homeIsNewVisitor) {
+    wf_home_issue_visitor_cookie();
+}
+$homeVisitorCounter = wf_home_update_visitor_counter($homeShouldTrackVisitor, $homeIsNewVisitor);
+$homeVisitorCount = (int) ($homeVisitorCounter['visitors'] ?? 0);
+$homeVisitorCountLabel = number_format($homeVisitorCount, 0, ',', '.');
+$homeVisitorNoun = $homeVisitorCount === 1 ? 'pessoa acessou' : 'pessoas acessaram';
 
 if (isset($_GET['sair'])) {
     $_SESSION = array();
@@ -518,8 +685,8 @@ if (!$homeAuthenticated):
             position: relative;
             z-index: 2;
             display: grid;
-            grid-template-columns: minmax(0, 0.95fr) minmax(150px, 0.5fr) minmax(0, 1.08fr);
-            gap: clamp(1.8rem, 4vw, 4rem);
+            grid-template-columns: minmax(0, 0.92fr) minmax(136px, 0.42fr) minmax(0, 1.02fr) minmax(158px, 0.58fr);
+            gap: clamp(1.35rem, 3vw, 3rem);
             align-items: start;
             width: 100%;
             margin-top: -1px;
@@ -648,6 +815,35 @@ if (!$homeAuthenticated):
             border-top: 1px solid rgba(39, 8, 23, 0.16);
             max-width: 27rem;
             padding-top: 0.68rem;
+        }
+
+        .wf-login-visitor-counter {
+            justify-self: end;
+            min-width: 10.4rem;
+            display: grid;
+            gap: 0.28rem;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            border-radius: 8px;
+            padding: 0.82rem 0.95rem;
+            background: rgba(255, 255, 255, 0.13);
+            color: #210814;
+            box-shadow: 0 16px 34px rgba(4, 55, 64, 0.12);
+            backdrop-filter: blur(6px);
+        }
+
+        .wf-login-visitor-counter strong {
+            color: #ffffff;
+            font-size: clamp(1.55rem, 2.5vw, 2.35rem);
+            font-weight: 950;
+            line-height: 1;
+            text-shadow: 0 8px 18px rgba(4, 55, 64, 0.24);
+        }
+
+        .wf-login-visitor-counter span {
+            color: #270817;
+            font-size: 0.84rem;
+            font-weight: 850;
+            line-height: 1.3;
         }
 
         .wf-login-footer-image {
@@ -802,9 +998,15 @@ if (!$homeAuthenticated):
 
             .wf-login-footer-brand,
             .wf-login-footer-nav,
-            .wf-login-footer-contact {
+            .wf-login-footer-contact,
+            .wf-login-visitor-counter {
                 justify-items: center;
                 width: 100%;
+            }
+
+            .wf-login-visitor-counter {
+                justify-self: center;
+                text-align: center;
             }
 
             .wf-login-footer-contact-row {
@@ -941,6 +1143,11 @@ if (!$homeAuthenticated):
                     <span>(44) 98413-4971</span>
                 </div>
                 <p class="wf-login-footer-note">Pedidos e disponibilidade sempre sob confirmacao da equipe.</p>
+            </div>
+            <div class="wf-login-visitor-counter" aria-label="Contador de acessos do site">
+                <b>Acessos do site</b>
+                <strong><?php echo wf_home_e($homeVisitorCountLabel); ?></strong>
+                <span><?php echo wf_home_e($homeVisitorNoun); ?></span>
             </div>
         </div>
     </footer>

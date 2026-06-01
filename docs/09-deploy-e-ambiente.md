@@ -60,6 +60,7 @@ Higiene de pastas no VPS:
 - `site/wp-content/advanced-cache.php`
 - `site/wp-content/endurance-page-cache/`
 - `site/wp-content/cache/`
+- `site/wp-content/uploads/wimifarma-runtime/` (runtime ignorado para contador anonimo da home)
 - `site/wp-content/speedycache-config/`
 - `cotacao-data/`
 - `cashback-data/`
@@ -112,6 +113,7 @@ Higiene de pastas no VPS:
 - Manter `site/.htaccess` redirecionando HTTP publico para HTTPS sem afetar `127.0.0.1:3002`.
 - Manter `site/.htaccess` servindo `/` por `site/home.php` enquanto a home WordPress nao estiver validada em producao.
 - Manter a home como ponto central de entrada dos modulos internos: se uma rota protegida ou login legado de modulo for aberta sem sessao nem `WFHOME_SSO`, o navegador deve voltar para `/`. Em producao, garantir `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY` forte para que a home consiga entregar SSO aos modulos depois do login.
+- Manter `site/wp-content/uploads/wimifarma-runtime/` gravavel pelo container web para o contador anonimo da home; o diretorio fica fora do Git, armazena somente totais e recebe `.htaccess` gerado com bloqueio de listagem/acesso direto.
 - Manter os aliases simples em `site/.htaccess`: `/pedido` redireciona para `/pedidos/` e `/tarefas` para `/tarefa/`; sem SSO, esses destinos tambem voltam para `/`.
 - `site/home.php` deve responder com header `X-Served-By: wimifarma-static-home`; se esse header nao aparecer no VPS, o proxy/container provavelmente nao esta servindo esta versao.
 - `https://wimifarma.com/home.php` nao pode retornar 404 depois do deploy; se retornar, o commit com `site/home.php` nao chegou ao destino publico ou o proxy aponta para outra copia.
