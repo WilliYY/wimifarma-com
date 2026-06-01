@@ -14,6 +14,7 @@ $homeLoginLogoUrl = wf_home_asset('assets/img/logo-wimifarma.svg') . '?v=2026053
 $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
 $homeLoginError = '';
+$homeLoginShootingStarCount = 28;
 
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -87,15 +88,15 @@ function wf_home_bubble_style(int $index): string
 
 function wf_home_shooting_star_style(int $index): string
 {
-    $left = 4 + (mt_rand(0, 8800) / 100);
-    $top = -12 + (mt_rand(0, 1800) / 100);
-    $distanceX = 20 + (mt_rand(0, 2600) / 100);
-    $distanceY = 18 + (mt_rand(0, 2400) / 100);
-    $tail = 54 + mt_rand(0, 38);
-    $time = 4.8 + (mt_rand(0, 300) / 100);
-    $delay = -1 * (1 + (mt_rand(0, 1100) / 100));
-    $angle = 28 + (mt_rand(0, 1200) / 100);
-    $opacity = 0.42 + (mt_rand(0, 28) / 100);
+    $left = -26 + (mt_rand(0, 12200) / 100);
+    $top = -24 + (mt_rand(0, 5200) / 100);
+    $distanceX = 72 + (mt_rand(0, 5800) / 100);
+    $distanceY = 36 + (mt_rand(0, 3200) / 100);
+    $tail = 48 + mt_rand(0, 58);
+    $time = 6.2 + (mt_rand(0, 430) / 100);
+    $delay = -1 * (($index * 0.68) + (mt_rand(0, 420) / 100));
+    $angle = 28 + (mt_rand(0, 1400) / 100);
+    $opacity = 0.28 + (mt_rand(0, 34) / 100);
 
     return sprintf(
         '--star-left:%.2f%%;--star-top:%.2f%%;--star-x:%.2fvw;--star-y:%.2fvh;--star-tail:%.0fpx;--star-time:%.2fs;--star-delay:%.2fs;--star-angle:%.2fdeg;--star-opacity:%.2f;',
@@ -397,7 +398,7 @@ if (!$homeAuthenticated):
             position: absolute;
             inset: 0 0 auto;
             z-index: 0;
-            height: min(55vh, 500px);
+            height: min(70vh, 620px);
             overflow: hidden;
             pointer-events: none;
         }
@@ -973,7 +974,7 @@ if (!$homeAuthenticated):
         }
 
         @media (max-width: 720px) {
-            .wf-login-shooting-star:nth-child(n+6) {
+            .wf-login-shooting-star:nth-child(n+12) {
                 display: none;
             }
         }
@@ -1069,7 +1070,7 @@ if (!$homeAuthenticated):
 <body>
     <main class="wf-login-main">
         <div class="wf-login-sky" aria-hidden="true">
-            <?php for ($i = 0; $i < 8; $i++): ?>
+            <?php for ($i = 0; $i < $homeLoginShootingStarCount; $i++): ?>
                 <span class="wf-login-shooting-star" style="<?php echo wf_home_e(wf_home_shooting_star_style($i)); ?>"></span>
             <?php endfor; ?>
         </div>
