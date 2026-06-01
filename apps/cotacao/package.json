@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check public/app.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:ts": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

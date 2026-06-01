@@ -21,6 +21,7 @@ Arquivos principais:
 - `apps/cotacao/public/favicon.svg`
 - `apps/cotacao/public/favicon.png`
 - `apps/cotacao/package.json`
+- `apps/cotacao/tsconfig.build.json`
 - `apps/cotacao/Dockerfile`
 - `docker-compose.yml`
 - `docker/php/Dockerfile`
@@ -198,6 +199,7 @@ Fases recomendadas:
 1. Fase 1: adicionar tooling TypeScript sem trocar runtime de producao. Usar `tsconfig.json` conservador com `allowJs`, `noEmit` e sem obrigar checagem total dos JavaScripts no primeiro corte. `npm start` deve continuar chamando `node src/server.js`. Concluida em 2026-05-31 com `npm run typecheck` separado, devDependencies TypeScript e sem alteracao de frontend/Dockerfile.
 2. Fase 2: criar contratos tipados separados para env, sessoes, rows/columns/styles/rules, eventos, DTOs das APIs e eventos Socket.IO, sem mexer no frontend oficial. Concluida em 2026-05-31 com `apps/cotacao/src/contracts/` e `tsconfig.json` incluindo `src/**/*.ts`; os contratos nao sao importados pelo runtime atual.
 3. Fase 3: extrair helpers backend pequenos de `server.js` para `.ts` quando houver teste/check cobrindo o caminho, mantendo as rotas iguais. Iniciada em 2026-05-31 com `apps/cotacao/src/utils/normalizers.ts` e contrato de typecheck em `normalizers.contract.ts`, ainda sem importar no runtime.
+3.5. Fase 3.5: compilar TypeScript em paralelo, sem trocar runtime. Concluida em 2026-05-31 com `tsconfig.build.json`, `npm run build:ts` e `apps/cotacao/dist/` ignorado pelo Git. `npm start` continua `node src/server.js`.
 4. Fase 4: migrar grupos de rotas por dominio, com uma mudanca pequena por vez: auth/health, bootstrap/events, cells, rows, columns, styles/rules, Google Sheets e backups.
 5. Fase 5: migrar Socket.IO e build/runtime para TypeScript compilado apenas depois de health, APIs e smoke visual estarem repetiveis no VPS.
 6. Fase 6: avaliar `public/app.js` por ultimo. O frontend e grande e sensivel; antes disso, manter JS oficial e usar contratos/API para reduzir risco.
@@ -223,6 +225,13 @@ Helpers TypeScript sombra da Fase 3:
 - `*.contract.ts`: exercitam os tipos desses helpers no `npm run typecheck`.
 
 Enquanto nao houver build/runtime TypeScript, esses helpers nao devem ser importados por `server.js`; o corte para runtime vem em fase separada com rebuild e smoke.
+
+Build paralelo da Fase 3.5:
+
+- `npm run build:ts` em `apps/cotacao` compila JS/TS para `dist/`.
+- `dist/` e apenas artefato local/CI, ignorado pelo Git.
+- Esse build ainda nao copia CSS, SVG, PNG, favicon ou demais assets estaticos; portanto nao e artefato completo de producao.
+- Nao usar `dist/server.js` em producao antes de uma fase de corte com rebuild, health, login, bootstrap, save de celula e Socket.IO validados.
 
 Fluxos que nao podem quebrar em nenhuma fase:
 

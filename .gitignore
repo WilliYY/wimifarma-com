@@ -16,6 +16,7 @@ node_modules/
 **/node_modules/
 apps/miauw-agent/dist/
 apps/core-auth/dist/
+apps/cotacao/dist/
 apps/gestao/dist/
 apps/pedidos/dist/
 apps/tarefa/dist/
