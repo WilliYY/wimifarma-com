@@ -11,6 +11,8 @@ $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
 $homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.gif') . '?v=20260524-visible-transparent-logo';
 $homeLoginLogoUrl = wf_home_asset('assets/img/logo-wimifarma.svg') . '?v=20260530-home-login';
+$homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
+$homeLoginPromoUrl = 'https://wimifarma.com.br';
 $homeLoginError = '';
 
 header('Content-Type: text/html; charset=UTF-8');
@@ -193,8 +195,17 @@ if (!$homeAuthenticated):
             padding: clamp(18px, 4vh, 36px) 18px 0;
         }
 
+        .wf-login-layout {
+            position: relative;
+            width: min(1180px, calc(100vw - 44px));
+            min-height: min(530px, calc(100vw - 44px));
+            display: grid;
+            place-items: center;
+        }
+
         .wf-login-ring {
             position: relative;
+            z-index: 2;
             width: min(530px, calc(100vw - 44px));
             aspect-ratio: 1;
             display: flex;
@@ -336,6 +347,55 @@ if (!$homeAuthenticated):
             font-size: 0.82rem;
             font-weight: 800;
             text-align: center;
+        }
+
+        .wf-login-promo {
+            position: absolute;
+            top: 50%;
+            left: calc(50% + min(25vw, 285px));
+            z-index: 1;
+            width: clamp(240px, 22vw, 420px);
+            display: grid;
+            gap: 10px;
+            align-items: center;
+            color: #ffffff;
+            text-decoration: none;
+            transform: translateY(-50%);
+        }
+
+        .wf-login-promo-video {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            display: block;
+            border: 2px solid rgba(255, 255, 255, 0.54);
+            border-radius: 26px;
+            background: #130d2b;
+            box-shadow: 0 24px 54px rgba(8, 3, 24, 0.34);
+            object-fit: cover;
+            overflow: hidden;
+        }
+
+        .wf-login-promo-link {
+            justify-self: center;
+            border-radius: 999px;
+            padding: 7px 14px;
+            background: rgba(255, 255, 255, 0.13);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.83rem;
+            font-weight: 900;
+            line-height: 1.2;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
+            backdrop-filter: blur(6px);
+        }
+
+        .wf-login-promo:hover .wf-login-promo-video,
+        .wf-login-promo:focus-visible .wf-login-promo-video {
+            border-color: rgba(255, 241, 114, 0.9);
+            box-shadow: 0 28px 62px rgba(8, 3, 24, 0.42), 0 0 0 4px rgba(255, 241, 114, 0.16);
+        }
+
+        .wf-login-promo:focus-visible {
+            outline: 0;
         }
 
         .wf-login-footer {
@@ -653,6 +713,26 @@ if (!$homeAuthenticated):
             }
         }
 
+        @media (max-width: 1080px) {
+            .wf-login-layout {
+                align-content: center;
+                gap: 14px;
+            }
+
+            .wf-login-promo {
+                position: relative;
+                top: auto;
+                left: auto;
+                width: min(320px, 72vw);
+                margin-top: -34px;
+                transform: none;
+            }
+
+            .wf-login-promo-video {
+                border-radius: 22px;
+            }
+        }
+
         @media (max-width: 720px) {
             .wf-login-main {
                 padding-top: 24px;
@@ -699,6 +779,17 @@ if (!$homeAuthenticated):
             .wf-login-runner {
                 width: 72px;
             }
+
+            .wf-login-promo {
+                width: min(284px, 78vw);
+                margin-top: -24px;
+                gap: 8px;
+            }
+
+            .wf-login-promo-link {
+                font-size: 0.78rem;
+                padding: 6px 12px;
+            }
         }
 
         @media (max-width: 420px) {
@@ -721,6 +812,10 @@ if (!$homeAuthenticated):
                 padding: 10px 16px;
                 font-size: 0.98rem;
             }
+
+            .wf-login-promo {
+                width: min(250px, 76vw);
+            }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -737,29 +832,35 @@ if (!$homeAuthenticated):
 </head>
 <body>
     <main class="wf-login-main">
-        <form class="wf-login-ring" method="post" action="<?php echo wf_home_e(wf_home_url('/')); ?>" autocomplete="off" novalidate>
-            <i style="--clr:#00ff0a;" aria-hidden="true"></i>
-            <i style="--clr:#ff0057;" aria-hidden="true"></i>
-            <i style="--clr:#fffd44;" aria-hidden="true"></i>
-            <div class="wf-login-card">
-                <img class="wf-login-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1560" height="622">
-                <span class="wf-login-only">Apenas funcion&aacute;rios</span>
-                <h1 class="wf-login-title">Login</h1>
-                <?php if ($homeLoginError !== ''): ?>
-                    <p class="wf-login-error"><?php echo wf_home_e($homeLoginError); ?></p>
-                <?php endif; ?>
-                <input type="hidden" name="wf_home_action" value="login">
-                <input type="hidden" name="wf_home_csrf" value="<?php echo wf_home_e((string) $_SESSION['wf_home_csrf']); ?>">
-                <input class="wf-login-input" type="text" name="username" placeholder="Login" autocomplete="username" required autofocus>
-                <input class="wf-login-input" type="password" name="password" placeholder="Senha" autocomplete="current-password" required>
-                <button class="wf-login-submit" type="submit">Entrar</button>
-                <div class="wf-login-links" aria-hidden="true">
-                    <span>Wimifarma</span>
-                    <span>&middot;</span>
-                    <span>Acesso interno</span>
+        <div class="wf-login-layout">
+            <form class="wf-login-ring" method="post" action="<?php echo wf_home_e(wf_home_url('/')); ?>" autocomplete="off" novalidate>
+                <i style="--clr:#00ff0a;" aria-hidden="true"></i>
+                <i style="--clr:#ff0057;" aria-hidden="true"></i>
+                <i style="--clr:#fffd44;" aria-hidden="true"></i>
+                <div class="wf-login-card">
+                    <img class="wf-login-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1560" height="622">
+                    <span class="wf-login-only">Apenas funcion&aacute;rios</span>
+                    <h1 class="wf-login-title">Login</h1>
+                    <?php if ($homeLoginError !== ''): ?>
+                        <p class="wf-login-error"><?php echo wf_home_e($homeLoginError); ?></p>
+                    <?php endif; ?>
+                    <input type="hidden" name="wf_home_action" value="login">
+                    <input type="hidden" name="wf_home_csrf" value="<?php echo wf_home_e((string) $_SESSION['wf_home_csrf']); ?>">
+                    <input class="wf-login-input" type="text" name="username" placeholder="Login" autocomplete="username" required autofocus>
+                    <input class="wf-login-input" type="password" name="password" placeholder="Senha" autocomplete="current-password" required>
+                    <button class="wf-login-submit" type="submit">Entrar</button>
+                    <div class="wf-login-links" aria-hidden="true">
+                        <span>Wimifarma</span>
+                        <span>&middot;</span>
+                        <span>Acesso interno</span>
+                    </div>
                 </div>
-            </div>
-        </form>
+            </form>
+            <a class="wf-login-promo" href="<?php echo wf_home_e($homeLoginPromoUrl); ?>" aria-label="Abrir wimifarma.com.br">
+                <video class="wf-login-promo-video" src="<?php echo wf_home_e($homeLoginPromoVideoUrl); ?>" autoplay muted loop playsinline preload="metadata"></video>
+                <span class="wf-login-promo-link">wimifarma.com.br</span>
+            </a>
+        </div>
     </main>
 
     <footer class="wf-login-footer">

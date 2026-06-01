@@ -2,6 +2,30 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-06-01 - Login da home ganha video clicavel
+
+Decisao:
+
+- Adicionar ao login inicial da home um card com `assets/video/login-redirecionado.mp4` em loop, sem controles, mutado e com borda arredondada.
+- O card aponta para `https://wimifarma.com.br` e nao altera o formulario, sessao `WFHOME`, CSRF ou emissao de `WFHOME_SSO`.
+
+Motivo:
+
+- Dar destaque visual ao site publico no espaco lateral do login sem introduzir novo backend, rota ou dependencia.
+
+Impacto:
+
+- `site/home.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/assets/video/login-redirecionado.mp4`
+- `README.md`
+- `AGENTS.md`
+- `docs/03-fluxos-do-sistema.md`
+
+Riscos/cuidados:
+
+- Manter o MP4 leve; se o login ficar pesado em celular, reduzir dimensao/bitrate mantendo o arquivo original fora do Git.
+- Nao mexer no fluxo de autenticacao da home para ajustes apenas visuais.
+
 ## 2026-05-30 - Next.js e Prisma ficam registrados como direcao futura proposta
 
 Decisao:
