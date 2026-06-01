@@ -11,6 +11,7 @@ Arquivos principais:
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/src/contracts/`
 - `apps/cotacao/src/utils/normalizers.ts`
+- `apps/cotacao/src/utils/styles.ts`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
 - `apps/cotacao/public/assets/`
@@ -214,7 +215,8 @@ Esses arquivos sao uma rede de seguranca para as proximas fases. Eles nao mudam 
 Helpers TypeScript sombra da Fase 3:
 
 - `utils/normalizers.ts`: copia tipada de helpers puros ja existentes em `server.js` para operador de regra, cor hex, booleano, cursor de eventos e tamanho JSON.
-- `utils/normalizers.contract.ts`: exercita os tipos desses helpers no `npm run typecheck`.
+- `utils/styles.ts`: copia tipada dos normalizadores puros de alvo/payload de estilo manual, preservando as regras de `row`, `column`, `cell`, cor hex e `styleKey`.
+- `*.contract.ts`: exercitam os tipos desses helpers no `npm run typecheck`.
 
 Enquanto nao houver build/runtime TypeScript, esses helpers nao devem ser importados por `server.js`; o corte para runtime vem em fase separada com rebuild e smoke.
 
