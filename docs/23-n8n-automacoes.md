@@ -41,6 +41,8 @@ docker compose restart wimifarma-n8n
 
 Os workflows possuem ID estavel para importacao idempotente. Em n8n 2.22 no modo simples, a importacao por CLI desativa o workflow e a ativacao precisa ser aplicada depois pelo comando `update:workflow`/`publish:workflow`, seguida de restart para o agendador carregar o cron.
 
+Os workflows versionados usam `$env.WIMIFARMA_INTERNAL_BASE_URL` e `$env.MIAUW_GUARDIAN_TOKEN` para nao gravar URL/token diretamente no JSON. Em n8n 2.22, o Compose deve manter `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`; se essa variavel ficar bloqueada, as execucoes aparecem como `error` com `ExpressionError: access to env vars denied` antes de chamar o endpoint do Miauby.
+
 No Windows deste PC, o n8n tambem foi instalado via npm global para uso local, sem iniciar servico por padrao:
 
 ```powershell

@@ -36,6 +36,7 @@ services:
       TZ: ${TZ:-America/Sao_Paulo}
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_HIRING_BANNER_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: ${N8N_BLOCK_ENV_ACCESS_IN_NODE:-false}
       WIMIFARMA_INTERNAL_BASE_URL: ${WIMIFARMA_INTERNAL_BASE_URL:-http://wimifarma-com-web}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
     volumes:
