@@ -2406,7 +2406,7 @@ app.get(`${BASE_PATH}/api/badge`, asyncRoute(async (_req, res) => {
 app.get(`${BASE_PATH}/api/internal/arrival-summary`, requireInternalToken, asyncRoute(async (req, res) => {
   const limit = Math.max(1, Math.min(120, Number(req.query.limit || 80) || 80));
   const orders = await listWaitingArrivalInternal(limit);
-  const totalCents = orders.reduce((sum, order) => sum + Number(order.remaining_cents || order.total_cents || 0), 0);
+  const totalCents = orders.reduce((sum, order) => sum + Number(order.total_cents || 0), 0);
   res.json({
     ok: true,
     source: 'postgres',

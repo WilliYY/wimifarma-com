@@ -357,7 +357,8 @@ Modulo `Pedidos` em `/pedidos/`:
 - esses mesmos cards mostram icone de excluir para retirar da tela quando nao houver necessidade de registrar o boleto;
 - remover valores ou excluir um pedido da tela nao apaga dados financeiros: valores viram `cancelado` quando permitido, e pedidos inteiros usam arquivamento logico em `gestao_accounts.archived_at`/`archived_by` mais lifecycle/cancelamento nas tabelas de Pedidos;
 - a tela `/pedidos/` carrega o widget do Miauby como apoio operacional, sem transformar Pedidos em subview da Gestao;
-- endpoints internos tokenizados de Pedidos permitem a rotina n8n/Miauby: `GET /pedidos/api/internal/arrival-summary` lista `Aguardando chegada`, e `POST /pedidos/api/internal/confirm-arrival` confirma chegada por `order_id` ou titulo de fornecedor; respostas WhatsApp como `cimed chegou` exigem card `Pedidos`, registram auditoria e nao marcam pagamento;
+- endpoints internos tokenizados de Pedidos permitem a rotina n8n/Miauby: `GET /pedidos/api/internal/arrival-summary` lista `Aguardando chegada` com o valor total de cada pedido, e `POST /pedidos/api/internal/confirm-arrival` confirma chegada por `order_id` ou titulo de fornecedor; respostas WhatsApp como `cimed chegou` exigem card `Pedidos`, registram auditoria e nao marcam pagamento;
+- no WhatsApp, perguntas como `miauby em pedidos o que falta chegar` devem retornar localmente a mesma tabela de pedidos aguardando chegada, sem rodar resposta generativa e sem mostrar instrucao extra no rodape da mensagem automatica;
 - o badge da home consulta `/pedidos/api/badge` e mostra quantos pedidos em `pedidos_orders` ainda estao em `Aguardando chegada`;
 - a URL antiga `/gestao/pedidos` redireciona para `/pedidos/` apenas por compatibilidade e nao deve receber novas features.
 

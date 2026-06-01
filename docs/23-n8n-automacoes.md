@@ -146,8 +146,8 @@ Fluxo:
 1. n8n dispara o horario e envia o token interno no header `X-Miauw-Internal-Token`.
 2. Miauby WhatsApp confere se a rotina `pedidos_chegada_17h` esta ativa no painel.
 3. O bridge consulta `GET /pedidos/api/internal/arrival-summary` no app Pedidos.
-4. A mensagem vai somente para contatos reais autorizados com card `Pedidos`.
-5. O operador responde com o titulo, por exemplo `cimed chegou`, ou `nenhum chegou`.
+4. A mensagem vai somente para contatos reais autorizados com card `Pedidos`, em formato de tabela numerada com fornecedor, valor total do pedido e previsao de chegada.
+5. O operador pode responder com o titulo, por exemplo `cimed chegou`, ou `nenhum chegou`; a mensagem automatica nao deve mais incluir essa instrucao no rodape para nao poluir a lista.
 6. O bridge valida o card `Pedidos` e chama `POST /pedidos/api/internal/confirm-arrival`.
 7. Pedidos move a chegada para `Confirmados` ou `Historico` se ja estava pago; pagamento continua no fluxo normal da tela.
 

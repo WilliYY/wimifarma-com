@@ -564,8 +564,8 @@ const N8N_WORKFLOW_CARDS = [
     moduleKey: 'pedidos',
     description: 'Envia a lista de pedidos em Aguardando chegada e aceita respostas como "cimed chegou".',
     n8nAction: 'As 17:00 o n8n chama o endpoint interno de chegada. O backend consulta Pedidos e monta a lista atual de fornecedores aguardando.',
-    miaubyAction: 'Miauby envia uma mensagem informal para os contatos com card Pedidos, perguntando quais pedidos chegaram. Se alguem responder "cimed chegou", ele confirma essa chegada no modulo Pedidos.',
-    messagePreview: 'Ex.: "Miauby passando: estes pedidos ainda estao aguardando chegada. Se algum chegou, me responde tipo cimed chegou."',
+    miaubyAction: 'Miauby envia a tabela atual de pedidos aguardando chegada para os contatos com card Pedidos. Se alguem responder "cimed chegou", ele confirma essa chegada no modulo Pedidos.',
+    messagePreview: 'Ex.: "Pedidos aguardando chegada (3 / R$ 120,00)." com a lista numerada de fornecedores, valores totais e previsao.',
     safety: 'Confirma somente chegada; pagamento continua em Confirmados/Pedidos.',
     controlNote: 'Desligar aqui faz o endpoint ignorar o disparo mesmo que o n8n continue agendado.',
     settingsKey: PEDIDOS_ARRIVAL_AUTOMATION_KEY,
@@ -3770,6 +3770,26 @@ function formatModuleMenu(cards: WhatsappModuleCard[]): string {
   return `Cards liberados para este WhatsApp:\n${lines.join('\n')}`;
 }
 
+function looksLikePedidosArrivalListRequest(message: string): boolean {
+  const clean = normalizeIntentText(stripActivationWord(message));
+  if (!hasAnyIntentTerm(clean, ['pedido', 'pedidos'])) return false;
+  return hasAnyIntentTerm(clean, [
+    'falta chegar',
+    'faltam chegar',
+    'o que falta',
+    'oque falta',
+    'aguardando chegada',
+    'esperando chegada',
+    'pendente de chegada',
+    'pendentes de chegada',
+    'lista de chegada',
+    'lista dos pedidos',
+    'pedidos para chegar',
+    'pedidos que falta',
+    'pedidos que faltam',
+  ]);
+}
+
 function blockedReplyFor(intent: ReplyIntent): string {
   if (intent === 'sensitive') {
     return 'Esse pedido envolve dado sensivel. Nao mostro por WhatsApp. Use o sistema interno com login.';
@@ -4366,6 +4386,21 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       text: formatModuleMenu(allowedCards),
       engine: 'local',
       reason: 'module_menu',
+    };
+  }
+  if (looksLikePedidosArrivalListRequest(message)) {
+    if (!moduleAllowed(allowedCards, 'pedidos')) {
+      return {
+        text: forbiddenModuleReply('pedidos', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:pedidos_arrival_list',
+      };
+    }
+    const summary = await fetchPedidosArrivalSummary();
+    return {
+      text: pedidosArrivalMessage(summary.orders, summary.totalLabel),
+      engine: 'local',
+      reason: 'pedidos_arrival_list',
     };
   }
   const route = routeWhatsappReply(message);
@@ -6389,11 +6424,11 @@ function pedidosArrivalMessage(orders: PedidosArrivalOrder[], totalLabel: string
   }
   const lines = orders.slice(0, 10).map((order, index) => {
     const date = brDateOnlyFromIso(order.expected_arrival_at);
-    const value = order.remaining_label || order.total_label || '';
+    const value = order.total_label || order.remaining_label || '';
     return `${index + 1}. ${order.supplier_name} - ${value} - ${date}`;
   });
   const extra = orders.length > 10 ? `\n+ ${orders.length - 10} pedido(s) no painel.` : '';
-  return `Pedidos aguardando chegada (${orders.length} / ${totalLabel}).\n${lines.join('\n')}${extra}\n\nSe algum chegou, responda com o titulo: "cimed chegou". Se nenhum chegou, responda: "nenhum chegou".`;
+  return `Pedidos aguardando chegada (${orders.length} / ${totalLabel}).\n${lines.join('\n')}${extra}`;
 }
 
 async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: PedidosArrivalOrder[]; totalLabel: string; count: number }> {
@@ -6589,7 +6624,7 @@ function pedidosArrivalOptionsText(options: unknown): string {
     .slice(0, 8)
     .map((option, index) => {
       const title = safeText(option.supplier_name, 120);
-      const value = safeText(option.remaining_label || option.total_label, 40);
+      const value = safeText(option.total_label || option.remaining_label, 40);
       return title ? `${index + 1}. ${title}${value ? ` - ${value}` : ''}` : '';
     })
     .filter(Boolean);
