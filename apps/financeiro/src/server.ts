@@ -28,7 +28,7 @@ declare module 'express-session' {
 const env = process.env;
 const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
-const SERVICE_VERSION = '1.1.0';
+const SERVICE_VERSION = '1.1.1';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -2079,6 +2079,7 @@ async function cashClosingStatusPayload(dateValue?: unknown): Promise<Record<str
   const closing = savedClosing || defaultClosing(date);
   const status = String(closing.status || 'aberto');
   const closed = isFinishedClosingStatus(status);
+  const openDays = await openCashClosingDays(date, status, Boolean(savedClosing?.id), !closed);
   return {
     ok: true,
     source: 'postgres',
@@ -2087,7 +2088,9 @@ async function cashClosingStatusPayload(dateValue?: unknown): Promise<Record<str
     status,
     status_label: statusLabel(status),
     closed,
-    should_notify: !closed,
+    should_notify: !closed || openDays.open_days_count > 0,
+    open_days_count: openDays.open_days_count,
+    open_days: openDays.open_days,
     closed_at: closing.fechado_em || null,
     responsible: cleanText(closing.responsavel_nome || closing.responsavel_texto, 160),
     total_checked_cents: moneyTextToCents(closing.total_conferido),
@@ -2096,6 +2099,67 @@ async function cashClosingStatusPayload(dateValue?: unknown): Promise<Record<str
     system_total: brMoneyFromDecimal(closing.abertura_sistema),
     difference_cents: moneyTextToCents(closing.sobra_falta),
     difference: brMoneyFromDecimal(closing.sobra_falta),
+  };
+}
+
+type OpenCashClosingDay = {
+  date: string;
+  status: string;
+  status_label: string;
+  closing_exists: boolean;
+};
+
+async function openCashClosingDays(
+  selectedDate: string,
+  selectedStatus: string,
+  selectedExists: boolean,
+  selectedOpen: boolean,
+): Promise<{ open_days_count: number; open_days: OpenCashClosingDay[] }> {
+  const [daysResult, countResult] = await Promise.all([
+    pgPool.query<AnyRow>(
+      `SELECT closing_date::text AS date, status
+         FROM financeiro_closings
+        WHERE status IN ('aberto', 'conferencia')
+        ORDER BY closing_date ASC
+        LIMIT 5`,
+    ),
+    pgPool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM financeiro_closings
+        WHERE status IN ('aberto', 'conferencia')`,
+    ),
+  ]);
+
+  const openDays = daysResult.rows
+    .map((row) => {
+      const date = isoDate(row.date);
+      const status = String(row.status || 'aberto');
+      if (!date) return null;
+      return {
+        date,
+        status,
+        status_label: statusLabel(status),
+        closing_exists: true,
+      };
+    })
+    .filter((row): row is OpenCashClosingDay => row !== null);
+
+  if (selectedOpen && !openDays.some((day) => day.date === selectedDate)) {
+    openDays.push({
+      date: selectedDate,
+      status: selectedStatus || 'aberto',
+      status_label: statusLabel(selectedStatus || 'aberto'),
+      closing_exists: selectedExists,
+    });
+  }
+
+  openDays.sort((left, right) => left.date.localeCompare(right.date));
+  const storedCount = Number(countResult.rows[0]?.count || 0);
+  const implicitSelectedCount = selectedOpen && !selectedExists ? 1 : 0;
+
+  return {
+    open_days_count: storedCount + implicitSelectedCount,
+    open_days: openDays,
   };
 }
 

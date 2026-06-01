@@ -370,6 +370,13 @@ type PedidosArrivalOrder = {
   remaining_label: string;
 };
 
+type FinanceiroOpenCashDay = {
+  date: string;
+  status: string;
+  status_label: string;
+  closing_exists: boolean;
+};
+
 type FinanceiroCashClosingStatus = {
   date: string;
   closing_exists: boolean;
@@ -377,6 +384,8 @@ type FinanceiroCashClosingStatus = {
   status_label: string;
   closed: boolean;
   should_notify: boolean;
+  open_days_count: number;
+  open_days: FinanceiroOpenCashDay[];
   closed_at: string | null;
   responsible: string;
   total_checked: string;
@@ -403,11 +412,12 @@ type DashboardSummary = {
   recentErrors: DashboardErrorRow[];
   n8nRecipients: DashboardN8nRecipientRow[];
   automationSettings: DashboardAutomationSettingRow[];
+  financeiroCashStatus: FinanceiroCashClosingStatus | null;
 };
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.19';
+const SERVICE_VERSION = '0.5.20';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -575,11 +585,11 @@ const N8N_WORKFLOW_CARDS = [
     title: 'Fechamento de caixa',
     schedule: 'Todo dia 18:00',
     moduleKey: 'financeiro',
-    description: 'Lembra a Farmacia de fechar o caixa quando o dia ainda esta aberto.',
-    n8nAction: 'As 18:00 o n8n chama o endpoint interno do Financeiro. O backend consulta se o caixa do dia ja foi fechado, ficou sem movimento ou ainda esta aberto.',
-    miaubyAction: 'Se o caixa ainda precisar de fechamento, Miauby manda um lembrete curto e variado para os contatos com card Financeiro. Se o caixa ja estiver fechado, nao envia nada.',
-    messagePreview: 'Ex.: "Miauby na ronda: esta na hora de fechar o caixa de hoje."',
-    safety: 'So alerta se o Financeiro disser que o caixa do dia nao foi fechado.',
+    description: 'Lembra a Farmacia de finalizar caixa aberto e mostra quais dias ainda estao pendentes.',
+    n8nAction: 'As 18:00 o n8n chama o endpoint interno do Financeiro. O backend consulta o status do dia e a lista de dias em aberto/em conferencia.',
+    miaubyAction: 'Se existir caixa aberto para finalizar, Miauby manda um lembrete curto para contatos com card Financeiro e inclui o dia pendente. Se nao houver caixa aberto, nao envia nada.',
+    messagePreview: 'Ex.: "Caixa em aberto para finalizar: 01/06/2026 (Aberto)."',
+    safety: 'So alerta quando o Financeiro disser que existe caixa aberto, em conferencia ou sem registro para o dia consultado.',
     controlNote: 'Desligar aqui pausa apenas o lembrete do backend; nao altera dados financeiros.',
     settingsKey: FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
   },
@@ -6511,18 +6521,45 @@ function reminderVariantIndex(date: string): number {
   return Number.parseInt(hash.slice(0, 8), 16);
 }
 
+function financeiroOpenCashDaysLine(status: FinanceiroCashClosingStatus): string {
+  const days = status.open_days.filter((day) => day.date).slice(0, 5);
+  const rawCount = Number(status.open_days_count || 0);
+  const count = Number.isFinite(rawCount) ? rawCount : days.length;
+  if (count <= 0) return 'Caixa em aberto: nenhum dia pendente para finalizar.';
+  if (!days.length) {
+    return `Caixa em aberto para finalizar: ${count === 1 ? '1 dia' : `${count} dias`}, mas o Financeiro nao devolveu as datas agora.`;
+  }
+  const labels = days.map((day) => `${brDateOnlyFromStatusDate(day.date)} (${day.status_label || day.status || 'Aberto'})`);
+  const extraCount = count - days.length;
+  const extra = extraCount > 0 ? ` + ${extraCount === 1 ? '1 outro' : `${extraCount} outros`}` : '';
+  const prefix = count === 1 ? 'Caixa em aberto para finalizar' : 'Caixas em aberto para finalizar';
+  return `${prefix}: ${labels.join(', ')}${extra}.`;
+}
+
 function financeiroCashClosingReminderMessage(status: FinanceiroCashClosingStatus): string {
   const dateLabel = brDateOnlyFromStatusDate(status.date);
-  const variants = [
-    `Miauby ta na hora de fechar o caixa de ${dateLabel}!`,
-    `Miauby passando no Financeiro: fecha o caixa de ${dateLabel} antes de encerrar o dia.`,
-    `Miauby lembrou do caixa: ${dateLabel} ainda esta aberto, bora fechar.`,
-    `Miauby de olho: 18h chegou e o caixa de ${dateLabel} ainda precisa ser fechado.`,
-    `Miauby no alarme do caixa: confere e fecha o dia ${dateLabel}.`,
-  ];
+  const selectedDayOpen = !status.closed;
+  const variants = selectedDayOpen
+    ? [
+      `Miauby ta na hora de fechar o caixa de ${dateLabel}!`,
+      `Miauby passando no Financeiro: fecha o caixa de ${dateLabel} antes de encerrar o dia.`,
+      `Miauby lembrou do caixa: ${dateLabel} ainda esta aberto, bora fechar.`,
+      `Miauby de olho: 18h chegou e o caixa de ${dateLabel} ainda precisa ser fechado.`,
+      `Miauby no alarme do caixa: confere e fecha o dia ${dateLabel}.`,
+    ]
+    : [
+      'Miauby viu caixa em aberto no Financeiro.',
+      'Miauby na ronda: tem caixa pendente para finalizar.',
+      'Miauby conferiu o Financeiro e achou caixa antigo aberto.',
+      'Miauby de olho: ainda existe dia de caixa para finalizar.',
+      'Miauby no alarme do caixa: tem pendencia aberta no Financeiro.',
+    ];
   const selected = variants[reminderVariantIndex(status.date) % variants.length];
-  const statusLine = `Status atual: ${status.status_label || status.status || 'Aberto'}.`;
-  return `${selected}\n${statusLine}\nAbra o modulo Financeiro e finalize o fechamento do caixa.`;
+  const openLine = financeiroOpenCashDaysLine(status);
+  const statusLine = selectedDayOpen
+    ? `Status da consulta (${dateLabel}): ${status.status_label || status.status || 'Aberto'}.`
+    : `Status de ${dateLabel}: ${status.status_label || status.status || 'Fechado'}.`;
+  return `${selected}\n${openLine}\n${statusLine}\nAbra o modulo Financeiro e finalize o fechamento do caixa.`;
 }
 
 async function fetchFinanceiroCashClosingStatus(date?: string): Promise<FinanceiroCashClosingStatus> {
@@ -6530,24 +6567,44 @@ async function fetchFinanceiroCashClosingStatus(date?: string): Promise<Financei
   const params = new URLSearchParams();
   if (date) params.set('date', date);
   const url = `${FINANCEIRO_INTERNAL_BASE_URL}/api/internal/cash-closing-status${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, { headers: internalPhpJsonHeaders() });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !isRecord(data) || data.ok !== true) {
-    throw new Error(safeText(isRecord(data) ? data.error || data.message : '', 180) || `financeiro_cash_status_http_${response.status}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { headers: internalPhpJsonHeaders(), signal: controller.signal });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data) || data.ok !== true) {
+      throw new Error(safeText(isRecord(data) ? data.error || data.message : '', 180) || `financeiro_cash_status_http_${response.status}`);
+    }
+    const openDays = Array.isArray(data.open_days)
+      ? data.open_days
+        .filter(isRecord)
+        .map((row) => ({
+          date: safeText(row.date, 20),
+          status: safeText(row.status, 40) || 'aberto',
+          status_label: safeText(row.status_label, 80) || safeText(row.status, 40) || 'Aberto',
+          closing_exists: row.closing_exists === true,
+        }))
+        .filter((row) => row.date)
+      : [];
+    const openDaysCount = Number(data.open_days_count);
+    return {
+      date: safeText(data.date, 20),
+      closing_exists: data.closing_exists === true,
+      status: safeText(data.status, 40) || 'aberto',
+      status_label: safeText(data.status_label, 80) || 'Aberto',
+      closed: data.closed === true,
+      should_notify: data.should_notify !== false,
+      open_days_count: Number.isFinite(openDaysCount) ? openDaysCount : openDays.length,
+      open_days: openDays,
+      closed_at: safeText(data.closed_at, 80) || null,
+      responsible: safeText(data.responsible, 160),
+      total_checked: safeText(data.total_checked, 40),
+      system_total: safeText(data.system_total, 40),
+      difference: safeText(data.difference, 40),
+    };
+  } finally {
+    clearTimeout(timeout);
   }
-  return {
-    date: safeText(data.date, 20),
-    closing_exists: data.closing_exists === true,
-    status: safeText(data.status, 40) || 'aberto',
-    status_label: safeText(data.status_label, 80) || 'Aberto',
-    closed: data.closed === true,
-    should_notify: data.should_notify !== false,
-    closed_at: safeText(data.closed_at, 80) || null,
-    responsible: safeText(data.responsible, 160),
-    total_checked: safeText(data.total_checked, 40),
-    system_total: safeText(data.system_total, 40),
-    difference: safeText(data.difference, 40),
-  };
 }
 
 async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryRun: boolean, date?: string): Promise<JsonRecord> {
@@ -6562,7 +6619,7 @@ async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryR
   }
   const status = await fetchFinanceiroCashClosingStatus(date);
   const message = financeiroCashClosingReminderMessage(status);
-  if (!status.should_notify || status.closed) {
+  if (!status.should_notify) {
     return {
       ok: true,
       skipped: true,
@@ -6688,6 +6745,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentErrorsResult,
     n8nRecipientsResult,
     automationSettingsResult,
+    financeiroCashStatusResult,
   ] = await Promise.all([
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
@@ -6896,6 +6954,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         ORDER BY key`,
       [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.key))]],
     ),
+    INTERNAL_TOKEN ? fetchFinanceiroCashClosingStatus().catch(() => null) : Promise.resolve(null),
   ]);
   const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
 
@@ -6918,6 +6977,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentErrors: recentErrorsResult.rows,
     n8nRecipients: n8nRecipientsResult.rows,
     automationSettings: automationSettingsResult.rows,
+    financeiroCashStatus: financeiroCashStatusResult,
   };
 }
 
@@ -7315,7 +7375,20 @@ function n8nRecipientByModule(rows: DashboardN8nRecipientRow[]): Map<string, Das
   return map;
 }
 
-function renderN8nWorkflows(rows: DashboardN8nRecipientRow[], settingsRows: DashboardAutomationSettingRow[], csrfToken: string): string {
+function financeiroCashClosingPanelText(status: FinanceiroCashClosingStatus | null): string {
+  if (!status) {
+    return 'Status agora: sem leitura ao vivo do Financeiro nesta abertura do painel. No disparo, o backend consulta o endpoint interno antes de enviar.';
+  }
+  const dateLabel = brDateOnlyFromStatusDate(status.date);
+  return `${financeiroOpenCashDaysLine(status)} Status da consulta (${dateLabel}): ${status.status_label || status.status || 'Aberto'}.`;
+}
+
+function renderN8nWorkflows(
+  rows: DashboardN8nRecipientRow[],
+  settingsRows: DashboardAutomationSettingRow[],
+  csrfToken: string,
+  financeiroCashStatus: FinanceiroCashClosingStatus | null,
+): string {
   const recipients = n8nRecipientByModule(rows);
   const settings = new Map(settingsRows.map((row) => [row.key, row]));
   return N8N_WORKFLOW_CARDS.map((workflow) => {
@@ -7327,6 +7400,8 @@ function renderN8nWorkflows(rows: DashboardN8nRecipientRow[], settingsRows: Dash
     const setting = settings.get(workflow.key);
     const enabled = setting?.enabled ?? true;
     const hasPanelToggle = 'settingsKey' in workflow && workflow.settingsKey;
+    const liveFinanceiroHtml = workflow.key === FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY ? `
+        <div class="n8n-message-preview is-live"><b>Status agora</b><span>${htmlEscape(financeiroCashClosingPanelText(financeiroCashStatus))}</span></div>` : '';
     const toggleHtml = hasPanelToggle ? `
         <form class="n8n-control-box is-${enabled ? 'on' : 'off'}" method="post" action="${htmlEscape(BASE_PATH)}/automations/toggle">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
@@ -7369,6 +7444,7 @@ function renderN8nWorkflows(rows: DashboardN8nRecipientRow[], settingsRows: Dash
           </div>
         </div>
         <div class="n8n-message-preview"><b>Mensagem/estilo</b><span>${htmlEscape(workflow.messagePreview)}</span></div>
+        ${liveFinanceiroHtml}
         <p>${htmlEscape(workflow.description)}</p>
         <div class="n8n-guardrail"><b>Limite</b><span>${htmlEscape(workflow.safety)}</span></div>
         ${toggleHtml}
@@ -7866,6 +7942,11 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .n8n-message-preview {
       background: #fff8fb;
       box-shadow: inset 3px 0 0 #f0a000;
+    }
+    .n8n-message-preview.is-live {
+      background: #f6fffa;
+      border-color: #ccebd8;
+      box-shadow: inset 3px 0 0 #2b9b62;
     }
     .n8n-guardrail {
       display: grid;
@@ -8457,7 +8538,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           </div>
         </div>
         <div class="n8n-workflow-grid">
-          ${renderN8nWorkflows(summary.n8nRecipients, summary.automationSettings, csrfToken)}
+          ${renderN8nWorkflows(summary.n8nRecipients, summary.automationSettings, csrfToken, summary.financeiroCashStatus)}
         </div>
         <p class="footnote">Destino por card liberado: Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
       </article>

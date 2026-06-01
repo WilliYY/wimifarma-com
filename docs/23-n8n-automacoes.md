@@ -58,7 +58,7 @@ n8n --version
 - `MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL`
 - `MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL`
 
-O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos` e `Fechamento de caixa`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron do n8n continue ativo.
+O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos` e `Fechamento de caixa`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron do n8n continue ativo. O card `Fechamento de caixa` tambem tenta mostrar a leitura atual do Financeiro, incluindo se existe caixa aberto e quais dias estao pendentes.
 
 ## Rotinas iniciais
 
@@ -199,14 +199,15 @@ Fluxo:
 1. n8n dispara o horario e envia o token interno no header `X-Miauw-Internal-Token`.
 2. Miauby WhatsApp confere se a rotina `financeiro_fechamento_caixa_18h` esta ativa no painel.
 3. O bridge consulta `GET /financeiro/api/internal/cash-closing-status` no app Financeiro.
-4. Se o status do dia for `fechado`, `divergente` ou `sem_movimento`, nada e enviado.
-5. Se o caixa estiver aberto/em conferencia/sem registro, Miauby envia uma frase curta com variacao para contatos reais autorizados com card `Financeiro`.
+4. O Financeiro devolve o status do dia consultado e `open_days`/`open_days_count` com uma lista resumida de dias em `aberto` ou `conferencia`; se o dia consultado nao tiver registro, ele aparece como aberto implicito.
+5. Se nao houver dia em aberto e o status do dia for `fechado`, `divergente` ou `sem_movimento`, nada e enviado.
+6. Se existir caixa aberto/em conferencia/sem registro, Miauby envia uma frase curta com variacao para contatos reais autorizados com card `Financeiro`, incluindo uma linha como `Caixa em aberto para finalizar: 01/06/2026 (Aberto).`
 
 Controle operacional:
 
 - O card `Fechamento de caixa` aparece em `/miauw/whatsapp/` dentro de `n8n automacoes`.
 - O botao `Desativar`/`Ativar` muda somente a execucao do backend; o workflow pode continuar agendado no n8n.
-- O endpoint aceita `dry_run=true` para validar status, destinatarios e previa sem enviar WhatsApp.
+- O endpoint aceita `dry_run=true` para validar status, destinatarios, dias em aberto e previa sem enviar WhatsApp.
 
 ### Deploy/checks
 
