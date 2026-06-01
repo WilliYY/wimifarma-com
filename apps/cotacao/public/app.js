@@ -58,6 +58,7 @@
   ];
   const COLORS = ['Azul', 'Verde', 'Rosa', 'Roxo', 'Dourado', 'Prata', 'Vermelho', 'Preto'];
   const REMOTE_COLORS = ['#2563eb', '#16a34a', '#db2777', '#7c3aed', '#ea580c', '#0891b2', '#dc2626', '#4f46e5'];
+  const ACTIVE_EDIT_AUTOSAVE_DELAY_MS = 1200;
   const REPEATABLE_ACTIONS = Object.freeze({
     'cell-value': {
       label: 'valor',
@@ -2062,6 +2063,12 @@
       status(pending === 1 ? 'Salvando...' : 'Salvando alteracoes...', 'busy');
       return;
     }
+    if (hasDirtyActiveEdit()) {
+      if (saveStatus.dataset.mode !== 'error' && saveStatus.dataset.mode !== 'warn') {
+        status('Alteracoes nao salvas', 'unsaved');
+      }
+      return;
+    }
     if (saveStatus.dataset.mode !== 'error' && saveStatus.dataset.mode !== 'warn') {
       status('Sincronizado');
     }
@@ -2069,6 +2076,83 @@
 
   function hasPendingSaves() {
     return state.pendingCellSaves.size > 0 || state.pendingBatchSaves > 0;
+  }
+
+  function activeEditPersistedValue(editing = state.editing) {
+    if (!editing) return '';
+    const row = rowById(editing.rowId);
+    if (!row) return String(editing.originalValue ?? '');
+    return String(row.values?.[editing.columnKey] ?? '');
+  }
+
+  function hasDirtyActiveEdit(editing = state.editing) {
+    if (!editing?.input) return false;
+    return String(editing.input.value ?? '') !== activeEditPersistedValue(editing);
+  }
+
+  function hasUnsavedWork() {
+    return hasPendingSaves() || hasDirtyActiveEdit();
+  }
+
+  function clearEditAutosaveTimer(editing = state.editing) {
+    if (!editing?.autosaveTimer) return;
+    window.clearTimeout(editing.autosaveTimer);
+    editing.autosaveTimer = null;
+  }
+
+  function scheduleActiveEditAutosave(editing = state.editing) {
+    if (!editing?.input) return;
+    clearEditAutosaveTimer(editing);
+    editing.autosaveTimer = window.setTimeout(() => {
+      flushActiveEditAutosave().catch(console.error);
+    }, ACTIVE_EDIT_AUTOSAVE_DELAY_MS);
+  }
+
+  function markActiveEditDirty(input) {
+    const editing = state.editing;
+    if (!editing || editing.input !== input) return;
+    if (!hasDirtyActiveEdit(editing)) {
+      clearEditAutosaveTimer(editing);
+      updatePendingSaveStatus();
+      return;
+    }
+    if (!hasPendingSaves()) {
+      status('Alteracoes nao salvas', 'unsaved');
+    }
+    scheduleActiveEditAutosave(editing);
+  }
+
+  async function flushActiveEditAutosave() {
+    const editing = state.editing;
+    if (!editing?.input) return false;
+    clearEditAutosaveTimer(editing);
+    const row = rowById(editing.rowId);
+    const column = colByKey(editing.columnKey);
+    if (!row || !column || column.options?.computed === true) return false;
+    const value = String(editing.input.value ?? '');
+    if (value === activeEditPersistedValue(editing)) {
+      updatePendingSaveStatus();
+      return false;
+    }
+    const saveTask = setCellValue(editing.rowId, editing.columnKey, value, { render: false });
+    editing.autosaveTask = saveTask;
+    try {
+      await saveTask;
+      deferRemoteRender([editing.rowId]);
+      if (!state.editing) flushDeferredRemoteRender();
+      if (state.editing === editing) {
+        editing.originalValue = value;
+      }
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    } finally {
+      if (state.editing === editing && editing.autosaveTask === saveTask) {
+        editing.autosaveTask = null;
+      }
+      updatePendingSaveStatus();
+    }
   }
 
   function deferRemoteRender(rowIds = [], options = {}) {
@@ -2146,13 +2230,17 @@
     updatePendingSaveStatus();
     try {
       await saveTask;
-      status('Sincronizado');
+      if (!hasDirtyActiveEdit()) status('Sincronizado');
     } catch (error) {
       const currentRow = rowById(rowId);
       if (currentRow) {
         currentRow.version = previousVersion;
         currentRow.updatedAt = previousUpdatedAt;
-        applyLocalCellValue(currentRow, columnKey, before, { render: true });
+        const renderOnError = options.render !== false
+          || !state.editing
+          || state.editing.rowId !== rowId
+          || state.editing.columnKey !== columnKey;
+        applyLocalCellValue(currentRow, columnKey, before, { render: renderOnError });
       }
       if (error.status === 409 && error.data?.conflict) {
         state.conflicts.set(cellKey(rowId, columnKey), error.data.conflict);
@@ -2350,6 +2438,7 @@
     }
     const editing = state.editing;
     state.editing = null;
+    clearEditAutosaveTimer(editing);
     const input = editing.input;
     const value = input?.value ?? editing.originalValue;
     if (input) {
@@ -2375,6 +2464,7 @@
     if (!state.editing) return;
     const editing = state.editing;
     state.editing = null;
+    clearEditAutosaveTimer(editing);
     if (editing.input) {
       editing.input.value = editing.originalValue;
       editing.input.readOnly = true;
@@ -3348,7 +3438,9 @@
     });
 
     table.addEventListener('input', (event) => {
-      if (event.target.classList?.contains('sheet-input')) scheduleAutosizeInput(event.target);
+      if (!event.target.classList?.contains('sheet-input')) return;
+      scheduleAutosizeInput(event.target);
+      if (!event.isComposing) markActiveEditDirty(event.target);
     });
 
     table.addEventListener('contextmenu', (event) => {
@@ -3482,11 +3574,26 @@
     });
 
     document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        if (hasDirtyActiveEdit()) flushActiveEditAutosave().catch(console.error);
+        return;
+      }
       if (document.visibilityState === 'visible') {
         if (state.socket && !state.socket.connected) state.socket.connect();
         updatePresence();
         if (!state.editing && !hasPendingSaves()) syncEvents().catch(console.error);
       }
+    });
+
+    window.addEventListener('pagehide', () => {
+      if (hasDirtyActiveEdit()) flushActiveEditAutosave().catch(console.error);
+    });
+
+    window.addEventListener('beforeunload', (event) => {
+      if (!hasUnsavedWork()) return;
+      if (hasDirtyActiveEdit()) flushActiveEditAutosave().catch(console.error);
+      event.preventDefault();
+      event.returnValue = '';
     });
 
     document.addEventListener('click', (event) => {

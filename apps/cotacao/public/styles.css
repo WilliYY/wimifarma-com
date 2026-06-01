@@ -424,6 +424,11 @@ textarea {
   color: #1d4ed8;
 }
 
+.save-status[data-mode="unsaved"] {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .save-status[data-mode="error"],
 .save-status.is-error {
   background: #fff1f2;
