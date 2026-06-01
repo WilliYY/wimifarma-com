@@ -471,7 +471,9 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - `/tarefa/api/badge` e `/tarefa/badge.php`: total de tarefas abertas para home.
 - `GET /tarefa/api/internal/summary`: resumo interno de tarefas publicas para Miauby.
 - `POST /tarefa/api/internal/tasks`: cria tarefa publica por ponte interna Node/Postgres.
-- `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios.
+- `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios e pode aceitar `remind_at` opcional.
+- Desde 2026-06-01, ADM/admin na tela `/tarefa/` pode escolher o usuario que vera a tarefa. Usuarios comuns continuam vendo tarefas publicas e as privadas atribuidas ao proprio `core_users.id`; ADM/admin ve todas.
+- Lembretes Miauby ficam em `tarefa_reminders`. O worker do app Tarefa busca lembretes vencidos, chama `POST /miauw/whatsapp/internal/task-reminder`, registra tentativas/resultado em Postgres e grava auditoria. O bridge WhatsApp so envia para contato permitido, vinculado ao usuario e com card `tarefas` liberado.
 
 ### Permissoes e sessao
 
@@ -480,6 +482,7 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - Rollback por MySQL exige restaurar versao anterior e backup validado.
 - Escritas de tela usam CSRF.
 - Endpoint interno de tarefa privada exige token interno.
+- O envio de lembrete usa `TAREFA_MIAUW_WHATSAPP_INTERNAL_BASE_URL` e `TAREFA_MIAUW_WHATSAPP_INTERNAL_TOKEN` ou `MIAUW_WHATSAPP_INTERNAL_TOKEN`; sem token/transporte/contato liberado o lembrete fica registrado como falha, sem quebrar a tarefa.
 
 ### Tabelas MySQL envolvidas
 

@@ -22,6 +22,7 @@ type Flash = {
 
 type TaskPriority = 'alta' | 'normal' | 'baixa';
 type TaskStatus = 'aberta' | 'concluida' | 'cancelada';
+type TaskReminderStatus = 'scheduled' | 'sent' | 'failed' | 'cancelled' | 'skipped';
 
 type CoreUserRow = {
   id: string;
@@ -49,6 +50,38 @@ type TaskRow = {
   canceled_at: Date | string | null;
 };
 
+type AssignableTaskUserRow = {
+  id: string;
+  username: string;
+  role: string | null;
+  can_access: boolean;
+};
+
+type TaskReminderRow = {
+  id: string;
+  task_id: string | number;
+  assigned_core_user_id: string | number;
+  assigned_username_snapshot: string;
+  remind_at: Date | string;
+  status: TaskReminderStatus;
+  requested_by: number | null;
+  requested_at: Date | string;
+  sent_at: Date | string | null;
+  last_attempt_at: Date | string | null;
+  attempts: number;
+  error_summary: string;
+  whatsapp_result: Record<string, unknown>;
+  created_at: Date | string;
+  updated_at: Date | string | null;
+};
+
+type DueTaskReminderRow = TaskReminderRow & {
+  priority: TaskPriority;
+  title: string;
+  description: string | null;
+  task_status: TaskStatus;
+};
+
 declare module 'express-session' {
   interface SessionData {
     csrfToken?: string;
@@ -66,7 +99,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'tarefa';
-const SERVICE_VERSION = '1.2.0';
+const SERVICE_VERSION = '1.3.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/tarefa');
 const PORT = Number.parseInt(env.PORT || '3500', 10);
 const SESSION_SECRET = env.TAREFA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -79,6 +112,31 @@ const INTERNAL_TOKEN = cleanEnv('TAREFA_INTERNAL_TOKEN')
   || cleanEnv('MIAUW_GUARDIAN_TOKEN')
   || cleanEnv('MIAUW_AGENT_INTERNAL_TOKEN')
   || cleanEnv('MIAUW_WHATSAPP_INTERNAL_TOKEN');
+const WHATSAPP_INTERNAL_BASE_URL = trimTrailingSlash(
+  cleanEnv('TAREFA_MIAUW_WHATSAPP_INTERNAL_BASE_URL')
+    || cleanEnv('MIAUW_WHATSAPP_INTERNAL_BASE_URL')
+    || 'http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp',
+);
+const WHATSAPP_INTERNAL_TOKEN = cleanEnv('TAREFA_MIAUW_WHATSAPP_INTERNAL_TOKEN')
+  || cleanEnv('MIAUW_WHATSAPP_INTERNAL_TOKEN')
+  || cleanEnv('MIAUW_GUARDIAN_TOKEN')
+  || INTERNAL_TOKEN;
+const WHATSAPP_INTERNAL_TIMEOUT_MS = Math.max(
+  1000,
+  Math.min(15000, Number.parseInt(env.TAREFA_MIAUW_WHATSAPP_TIMEOUT_MS || '4500', 10) || 4500),
+);
+const REMINDER_WORKER_INTERVAL_MS = Math.max(
+  15000,
+  Math.min(300000, Number.parseInt(env.TAREFA_REMINDER_WORKER_INTERVAL_MS || '60000', 10) || 60000),
+);
+const REMINDER_RETRY_DELAY_MINUTES = Math.max(
+  1,
+  Math.min(60, Number.parseInt(env.TAREFA_REMINDER_RETRY_DELAY_MINUTES || '5', 10) || 5),
+);
+const REMINDER_MAX_ATTEMPTS = Math.max(
+  1,
+  Math.min(10, Number.parseInt(env.TAREFA_REMINDER_MAX_ATTEMPTS || '3', 10) || 3),
+);
 const TZ = 'America/Sao_Paulo';
 const CORE_AUTH_TIMEOUT_MS = Math.max(
   500,
@@ -145,6 +203,10 @@ function normalizeBasePath(value: string): string {
 
 function cleanEnv(name: string): string {
   return String(env[name] || '').trim();
+}
+
+function trimTrailingSlash(value: string): string {
+  return String(value || '').replace(/\/+$/, '');
 }
 
 function requireCorePgPool(feature: string): pg.Pool {
@@ -574,20 +636,52 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await pgPool.query('CREATE INDEX IF NOT EXISTS tarefa_audit_events_task_idx ON tarefa_audit_events (task_id, created_at DESC)');
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS tarefa_reminders (
+      id bigserial PRIMARY KEY,
+      task_id bigint NOT NULL REFERENCES tarefa_tasks(id) ON DELETE CASCADE,
+      assigned_core_user_id bigint NOT NULL,
+      assigned_username_snapshot varchar(120) NOT NULL DEFAULT '',
+      remind_at timestamptz NOT NULL,
+      status varchar(20) NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'sent', 'failed', 'cancelled', 'skipped')),
+      requested_by integer,
+      requested_at timestamptz NOT NULL DEFAULT now(),
+      sent_at timestamptz,
+      last_attempt_at timestamptz,
+      attempts integer NOT NULL DEFAULT 0,
+      error_summary varchar(255) NOT NULL DEFAULT '',
+      whatsapp_result jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz
+    )
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS tarefa_reminders_due_idx
+      ON tarefa_reminders (status, remind_at, id)
+      WHERE status = 'scheduled'
+  `);
+  await pgPool.query('CREATE INDEX IF NOT EXISTS tarefa_reminders_task_idx ON tarefa_reminders (task_id, remind_at DESC, id DESC)');
 }
 
-function visibleTasksWhere(userId: number): string {
-  return userId > 0 ? 'WHERE assigned_core_user_id IS NULL OR assigned_core_user_id = $1' : '';
+function isTaskAdmin(user: User | null | undefined): boolean {
+  const username = normalizeUsername(user?.username);
+  const role = normalizeUsername(user?.role);
+  return username === 'adm' || role === 'adm' || role === 'admin';
 }
 
-async function taskCounts(userId = 0): Promise<Record<TaskStatus, number>> {
+function visibleTasksWhere(userId: number, canViewAll = false): string {
+  if (canViewAll) return '';
+  return userId > 0 ? 'WHERE assigned_core_user_id IS NULL OR assigned_core_user_id = $1' : 'WHERE assigned_core_user_id IS NULL';
+}
+
+async function taskCounts(userId = 0, canViewAll = userId <= 0): Promise<Record<TaskStatus, number>> {
   const counts: Record<TaskStatus, number> = { aberta: 0, concluida: 0, cancelada: 0 };
   const result = await pgPool.query<{ status: TaskStatus; total: string }>(
     `SELECT status, COUNT(*) AS total
        FROM tarefa_tasks
-       ${visibleTasksWhere(userId)}
+       ${visibleTasksWhere(userId, canViewAll)}
       GROUP BY status`,
-    userId > 0 ? [userId] : [],
+    canViewAll || userId <= 0 ? [] : [userId],
   );
   for (const row of result.rows) {
     counts[validStatus(row.status)] = Number(row.total || 0);
@@ -600,32 +694,332 @@ async function countOpenPublic(): Promise<number> {
   return Number(result.rows[0]?.total || 0);
 }
 
-async function openTasks(userId: number): Promise<TaskRow[]> {
+async function openTasks(userId: number, canViewAll = false): Promise<TaskRow[]> {
   const result = await pgPool.query<TaskRow>(
     `SELECT *
        FROM tarefa_tasks
        WHERE status = 'aberta'
-         AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $1)
+         ${canViewAll ? '' : 'AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $1)'}
        ORDER BY
          CASE priority WHEN 'alta' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC,
          created_at ASC,
          id ASC`,
-    [userId],
+    canViewAll ? [] : [userId],
   );
   return result.rows;
 }
 
-async function historyTasks(userId: number): Promise<TaskRow[]> {
+async function historyTasks(userId: number, canViewAll = false): Promise<TaskRow[]> {
   const result = await pgPool.query<TaskRow>(
     `SELECT *
        FROM tarefa_tasks
        WHERE status IN ('concluida', 'cancelada')
-         AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $1)
+         ${canViewAll ? '' : 'AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $1)'}
        ORDER BY COALESCE(completed_at, canceled_at, updated_at, created_at) DESC, id DESC
        LIMIT 120`,
-    [userId],
+    canViewAll ? [] : [userId],
   );
   return result.rows;
+}
+
+async function listAssignableTaskUsers(): Promise<AssignableTaskUserRow[]> {
+  const result = await requireCorePgPool('task assignees').query<AssignableTaskUserRow>(
+    `SELECT u.id::text AS id,
+            u.username,
+            u.role,
+            COALESCE(p.can_access, FALSE) AS can_access
+       FROM core_users u
+       LEFT JOIN core_user_module_permissions p
+         ON p.user_id = u.id
+        AND p.module_key = 'tarefa'
+      WHERE u.active = TRUE
+        AND (
+          u.username_normalized = 'adm'
+          OR COALESCE(u.role, '') IN ('adm', 'admin', 'gerente')
+          OR COALESCE(p.can_access, FALSE) = TRUE
+        )
+      ORDER BY
+        CASE WHEN u.username_normalized = 'adm' THEN 0 ELSE 1 END,
+        lower(u.username)
+      LIMIT 250`,
+  );
+  return result.rows;
+}
+
+async function taskAssigneeById(userId: number): Promise<AssignableTaskUserRow | null> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) return null;
+  const result = await requireCorePgPool('task assignee').query<AssignableTaskUserRow>(
+    `SELECT u.id::text AS id,
+            u.username,
+            u.role,
+            COALESCE(p.can_access, FALSE) AS can_access
+       FROM core_users u
+       LEFT JOIN core_user_module_permissions p
+         ON p.user_id = u.id
+        AND p.module_key = 'tarefa'
+      WHERE u.id = $1
+        AND u.active = TRUE
+        AND (
+          u.username_normalized = 'adm'
+          OR COALESCE(u.role, '') IN ('adm', 'admin', 'gerente')
+          OR COALESCE(p.can_access, FALSE) = TRUE
+        )
+      LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] || null;
+}
+
+async function selectedAssigneeFromRequest(req: Request, canManageAll: boolean): Promise<AssignableTaskUserRow | null> {
+  const raw = String(req.body?.assigned_core_user_id || '').trim();
+  if (!raw) return null;
+  if (!canManageAll) throw new Error('Somente ADM pode direcionar tarefa para outro usuario.');
+  const userId = Number(raw);
+  if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error('Usuario de destino invalido.');
+  const assignee = await taskAssigneeById(userId);
+  if (!assignee) throw new Error('Usuario de destino nao tem acesso ao modulo Tarefas.');
+  return assignee;
+}
+
+function parseReminderDate(value: unknown): Date | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const localMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  const date = localMatch
+    ? new Date(`${localMatch[1]}-${localMatch[2]}-${localMatch[3]}T${localMatch[4]}:${localMatch[5]}:00-03:00`)
+    : new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new Error('Horario do lembrete Miauby invalido.');
+  if (date.getTime() < Date.now() - 60 * 1000) throw new Error('Escolha uma hora futura para o lembrete Miauby.');
+  return date;
+}
+
+function dateTimeLocalValue(value: Date | string | null | undefined): string {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce<Record<string, string>>((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year || ''}-${parts.month || ''}-${parts.day || ''}T${parts.hour || '00'}:${parts.minute || '00'}`;
+}
+
+function reminderStatusLabel(status: TaskReminderStatus): string {
+  if (status === 'scheduled') return 'Agendado';
+  if (status === 'sent') return 'Enviado';
+  if (status === 'failed') return 'Falhou';
+  if (status === 'cancelled') return 'Cancelado';
+  return 'Ignorado';
+}
+
+async function latestReminderMap(taskIds: number[]): Promise<Map<number, TaskReminderRow>> {
+  const uniqueIds = [...new Set(taskIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+  const map = new Map<number, TaskReminderRow>();
+  if (uniqueIds.length === 0) return map;
+  const result = await pgPool.query<TaskReminderRow>(
+    `SELECT DISTINCT ON (task_id) *
+       FROM tarefa_reminders
+      WHERE task_id = ANY($1::bigint[])
+      ORDER BY task_id,
+        CASE status WHEN 'scheduled' THEN 0 WHEN 'failed' THEN 1 WHEN 'sent' THEN 2 ELSE 3 END,
+        remind_at DESC,
+        id DESC`,
+    [uniqueIds],
+  );
+  for (const row of result.rows) map.set(Number(row.task_id), row);
+  return map;
+}
+
+async function auditTaskEvent(taskId: number | null, userId: number | null, action: string, summary: string): Promise<void> {
+  await pgPool.query(
+    'INSERT INTO tarefa_audit_events (task_id, user_id, action, summary) VALUES ($1, $2, $3, $4)',
+    [taskId, userId, action, cleanText(summary, 255)],
+  );
+}
+
+async function cancelScheduledReminders(client: pg.PoolClient, taskId: number, userId: number | null, reason: string): Promise<number> {
+  const result = await client.query<{ id: string }>(
+    `UPDATE tarefa_reminders
+        SET status = 'cancelled',
+            error_summary = $2,
+            updated_at = NOW()
+      WHERE task_id = $1
+        AND status = 'scheduled'
+      RETURNING id`,
+    [taskId, cleanText(reason, 255)],
+  );
+  const changed = Number(result.rowCount || 0);
+  if (changed > 0) {
+    await auditPg(client, taskId, userId, 'tarefa_lembrete_cancelado', reason);
+  }
+  return changed;
+}
+
+async function insertTaskReminder(client: pg.PoolClient, task: TaskRow, remindAt: Date, userId: number | null): Promise<TaskReminderRow> {
+  const assignedUserId = Number(task.assigned_core_user_id || 0);
+  if (!assignedUserId) throw new Error('Escolha um usuario para o lembrete Miauby.');
+  if (validStatus(task.status) !== 'aberta') throw new Error('Lembrete Miauby so pode ser agendado em tarefa aberta.');
+  const result = await client.query<TaskReminderRow>(
+    `INSERT INTO tarefa_reminders (
+       task_id, assigned_core_user_id, assigned_username_snapshot, remind_at, requested_by
+     ) VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [Number(task.id), assignedUserId, cleanText(task.assigned_username_snapshot, 120), remindAt, userId],
+  );
+  await auditPg(client, Number(task.id), userId, 'tarefa_lembrete_agendado', `Lembrete Miauby agendado para ${brDate(remindAt, true)}.`);
+  return result.rows[0];
+}
+
+async function syncTaskReminder(client: pg.PoolClient, task: TaskRow, remindAt: Date | null, userId: number | null): Promise<string> {
+  const taskId = Number(task.id);
+  const existing = await client.query<TaskReminderRow>(
+    `SELECT *
+       FROM tarefa_reminders
+      WHERE task_id = $1
+        AND status = 'scheduled'
+      ORDER BY remind_at DESC, id DESC
+      LIMIT 1
+      FOR UPDATE`,
+    [taskId],
+  );
+  const current = existing.rows[0] || null;
+  if (!remindAt) {
+    if (current) {
+      await cancelScheduledReminders(client, taskId, userId, 'Lembrete Miauby removido.');
+      return 'cancelled';
+    }
+    return '';
+  }
+  const assignedUserId = Number(task.assigned_core_user_id || 0);
+  const unchanged = current
+    && Number(current.assigned_core_user_id || 0) === assignedUserId
+    && Math.abs(new Date(current.remind_at).getTime() - remindAt.getTime()) < 60 * 1000;
+  if (unchanged) return 'unchanged';
+  if (current) await cancelScheduledReminders(client, taskId, userId, 'Lembrete Miauby reagendado.');
+  await insertTaskReminder(client, task, remindAt, userId);
+  return 'scheduled';
+}
+
+async function postWhatsappTaskReminder(row: DueTaskReminderRow): Promise<Record<string, unknown>> {
+  if (!WHATSAPP_INTERNAL_TOKEN) throw new Error('whatsapp_internal_token_not_configured');
+  if (!WHATSAPP_INTERNAL_BASE_URL) throw new Error('whatsapp_internal_base_url_not_configured');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WHATSAPP_INTERNAL_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${WHATSAPP_INTERNAL_BASE_URL}/internal/task-reminder`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${WHATSAPP_INTERNAL_TOKEN}`,
+        'X-Miauw-Internal-Token': WHATSAPP_INTERNAL_TOKEN,
+      },
+      body: JSON.stringify({
+        source: 'tarefa_reminder',
+        reminder_id: Number(row.id),
+        task_id: Number(row.task_id),
+        user_id: Number(row.assigned_core_user_id),
+        username: row.assigned_username_snapshot || '',
+        priority: row.priority,
+        title: row.title,
+        description: row.description || '',
+        remind_at: new Date(row.remind_at).toISOString(),
+        task_url: '/tarefa/',
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!response.ok || data.ok !== true) {
+      throw new Error(cleanText(data.error || data.message || `whatsapp_http_${response.status}`, 180));
+    }
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function finishReminder(row: DueTaskReminderRow, status: TaskReminderStatus, summary: string, result: Record<string, unknown> = {}): Promise<void> {
+  const sent = status === 'sent';
+  await pgPool.query(
+    `UPDATE tarefa_reminders
+        SET status = $2,
+            sent_at = CASE WHEN $2 = 'sent' THEN NOW() ELSE sent_at END,
+            error_summary = $3,
+            whatsapp_result = $4::jsonb,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [Number(row.id), status, cleanText(summary, 255), JSON.stringify(result)],
+  );
+  const action = sent ? 'tarefa_lembrete_enviado' : status === 'skipped' ? 'tarefa_lembrete_ignorado' : 'tarefa_lembrete_falhou';
+  await auditTaskEvent(Number(row.task_id), Number(row.requested_by || 0) || null, action, summary);
+}
+
+async function retryReminder(row: DueTaskReminderRow, error: unknown): Promise<void> {
+  const summary = cleanText(error instanceof Error ? error.message : String(error), 255) || 'Falha ao enviar lembrete Miauby.';
+  if (Number(row.attempts || 0) >= REMINDER_MAX_ATTEMPTS) {
+    await finishReminder(row, 'failed', summary, { error: summary, attempts: row.attempts });
+    return;
+  }
+  await pgPool.query(
+    `UPDATE tarefa_reminders
+        SET remind_at = NOW() + ($2::text || ' minutes')::interval,
+            error_summary = $3,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [Number(row.id), String(REMINDER_RETRY_DELAY_MINUTES), summary],
+  );
+  await auditTaskEvent(Number(row.task_id), Number(row.requested_by || 0) || null, 'tarefa_lembrete_retry', `Lembrete Miauby reagendado apos falha: ${summary}`);
+}
+
+async function processDueTaskReminders(): Promise<void> {
+  const result = await pgPool.query<DueTaskReminderRow>(
+    `WITH due AS (
+       SELECT id
+         FROM tarefa_reminders
+        WHERE status = 'scheduled'
+          AND remind_at <= NOW()
+        ORDER BY remind_at ASC, id ASC
+        LIMIT 10
+        FOR UPDATE SKIP LOCKED
+     )
+     UPDATE tarefa_reminders r
+        SET attempts = r.attempts + 1,
+            last_attempt_at = NOW(),
+            updated_at = NOW()
+       FROM due, tarefa_tasks t
+      WHERE r.id = due.id
+        AND t.id = r.task_id
+      RETURNING r.*, t.priority, t.title, t.description, t.status AS task_status`,
+  );
+
+  for (const row of result.rows) {
+    if (validStatus(row.task_status) !== 'aberta') {
+      await finishReminder(row, 'skipped', 'Tarefa nao esta mais aberta.', { skipped: true, reason: 'task_not_open' });
+      continue;
+    }
+    try {
+      const data = await postWhatsappTaskReminder(row);
+      const sent = Number(data.sent || 0);
+      const recipients = Number(data.recipients || 0);
+      const errors = Array.isArray(data.errors) ? data.errors.map((item) => cleanText(item, 120)).filter(Boolean) : [];
+      if (sent > 0) {
+        await finishReminder(row, 'sent', `Lembrete Miauby enviado para ${sent} contato(s).`, data);
+      } else if (errors.some((error) => error === 'whatsapp_transport_unavailable' || error === 'provider_paused')) {
+        throw new Error(errors[0]);
+      } else {
+        await finishReminder(row, 'failed', errors[0] || (recipients === 0 ? 'Nenhum WhatsApp com card Tarefas vinculado ao usuario.' : 'WhatsApp nao enviou o lembrete.'), data);
+      }
+    } catch (error) {
+      await retryReminder(row, error);
+    }
+  }
 }
 
 async function createTask(req: Request): Promise<number> {
@@ -633,21 +1027,40 @@ async function createTask(req: Request): Promise<number> {
   const title = trimText(req.body.titulo, 180);
   const description = String(req.body.descricao || '').trim();
   const userId = req.session.user?.id || null;
+  const canManageAll = isTaskAdmin(req.session.user);
+  const assignee = await selectedAssigneeFromRequest(req, canManageAll);
+  const remindAt = parseReminderDate(req.body.remind_at);
   if (!title) throw new Error('Informe o titulo da tarefa.');
+  if (remindAt && !assignee) throw new Error('Escolha um usuario para o lembrete Miauby.');
 
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
-    const result = await client.query<{ id: string }>(
-      `INSERT INTO tarefa_tasks (priority, title, description, status, created_by)
-       VALUES ($1, $2, $3, 'aberta', $4)
-       RETURNING id`,
-      [priority, title, description, userId],
+    const result = await client.query<TaskRow>(
+      `INSERT INTO tarefa_tasks (
+         priority, title, description, status, created_by,
+         assigned_core_user_id, assigned_username_snapshot, delegated_by, delegated_at
+       )
+       VALUES ($1, $2, $3, 'aberta', $4, $5, $6, $7, CASE WHEN $5::bigint IS NULL THEN NULL ELSE NOW() END)
+       RETURNING *`,
+      [priority, title, description, userId, assignee ? Number(assignee.id) : null, assignee?.username || '', assignee ? userId : null],
     );
-    const taskId = Number(result.rows[0]?.id || 0);
-    await auditPg(client, taskId, userId, 'tarefa_criada', `Tarefa criada: ${title}`);
+    const task = result.rows[0];
+    const taskId = Number(task?.id || 0);
+    await auditPg(
+      client,
+      taskId,
+      userId,
+      assignee ? 'tarefa_privada_criada' : 'tarefa_criada',
+      assignee ? `Tarefa privada criada para ${assignee.username}: ${title}` : `Tarefa criada: ${title}`,
+    );
+    if (remindAt) await insertTaskReminder(client, task, remindAt, userId);
     await client.query('COMMIT');
-    void logCoreAudit(userId, 'tarefa_criada', 'task', String(taskId), `Tarefa criada: ${title}`);
+    void logCoreAudit(userId, assignee ? 'tarefa_privada_criada' : 'tarefa_criada', 'task', String(taskId), `Tarefa criada: ${title}`, {
+      assigned_core_user_id: assignee ? Number(assignee.id) : null,
+      assigned_username: assignee?.username || null,
+      miauby_reminder_at: remindAt ? remindAt.toISOString() : null,
+    });
     return taskId;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -665,6 +1078,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
   const assignedUsername = cleanText(req.body?.assigned_username || req.body?.username || '', 120);
   const actorUserId = Number(req.body?.actor_user_id || 0) || null;
   const actorUsername = cleanText(req.body?.actor_username || '', 120);
+  const remindAt = parseReminderDate(req.body?.remind_at || req.body?.reminder_at || '');
   if (!title) throw new Error('Informe o titulo da tarefa.');
   if (!Number.isSafeInteger(assignedUserId) || assignedUserId <= 0) {
     throw new Error('Usuario de destino invalido.');
@@ -683,6 +1097,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
       [priority, title, description, actorUserId, assignedUserId, assignedUsername, actorUserId],
     );
     const task = result.rows[0];
+    if (remindAt) await insertTaskReminder(client, task, remindAt, actorUserId);
     await auditPg(
       client,
       Number(task.id),
@@ -694,6 +1109,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
     void logCoreAudit(actorUserId, 'tarefa_privada_delegada', 'task', String(task.id), `Tarefa privada delegada por ${actorUsername || 'sistema'}.`, {
       assigned_core_user_id: assignedUserId,
       assigned_username: assignedUsername || null,
+      miauby_reminder_at: remindAt ? remindAt.toISOString() : null,
     });
     return task;
   } catch (error) {
@@ -749,6 +1165,23 @@ function publicTaskPayload(task: TaskRow): Record<string, unknown> {
   };
 }
 
+function renderAssigneeOptions(users: AssignableTaskUserRow[], selectedId: number): string {
+  const options = ['<option value="">Todos da equipe</option>'];
+  for (const user of users) {
+    const id = Number(user.id || 0);
+    const label = user.role ? `${user.username} (${user.role})` : user.username;
+    options.push(`<option value="${e(id)}" ${id === selectedId ? 'selected' : ''}>${e(label)}</option>`);
+  }
+  return options.join('');
+}
+
+function renderReminderPill(reminder: TaskReminderRow | undefined): string {
+  if (!reminder) return '';
+  const status = reminder.status || 'scheduled';
+  const when = brDate(status === 'sent' && reminder.sent_at ? reminder.sent_at : reminder.remind_at, true);
+  return `<span class="task-reminder-pill status-${e(status)}">Miauby: ${e(reminderStatusLabel(status))} ${e(when)}</span>`;
+}
+
 async function updateTask(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   const priority = validPriority(req.body.prioridade);
@@ -756,26 +1189,70 @@ async function updateTask(req: Request): Promise<void> {
   const description = String(req.body.descricao || '').trim();
   if (!id || !title) throw new Error('Tarefa invalida.');
   const userId = req.session.user?.id || 0;
+  const canManageAll = isTaskAdmin(req.session.user);
+  const assigneeFieldPresent = Object.prototype.hasOwnProperty.call(req.body || {}, 'assigned_core_user_id');
+  const reminderFieldPresent = Object.prototype.hasOwnProperty.call(req.body || {}, 'remind_at');
+  if (!canManageAll && (assigneeFieldPresent || reminderFieldPresent)) {
+    throw new Error('Somente ADM pode alterar dono ou lembrete Miauby.');
+  }
+  const selectedAssignee = canManageAll && assigneeFieldPresent
+    ? await selectedAssigneeFromRequest(req, true)
+    : undefined;
+  const remindAt = canManageAll && reminderFieldPresent ? parseReminderDate(req.body.remind_at) : undefined;
 
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
+    const existing = await client.query<TaskRow>(
+      `SELECT *
+         FROM tarefa_tasks
+        WHERE id = $1
+          ${canManageAll ? '' : 'AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $2)'}
+        FOR UPDATE`,
+      canManageAll ? [id] : [id, userId],
+    );
+    const current = existing.rows[0];
+    if (!current) throw new Error('Tarefa invalida.');
+
+    const nextAssignedId = assigneeFieldPresent
+      ? (selectedAssignee ? Number(selectedAssignee.id) : null)
+      : (current.assigned_core_user_id ? Number(current.assigned_core_user_id) : null);
+    const nextAssignedName = assigneeFieldPresent
+      ? (selectedAssignee?.username || '')
+      : (current.assigned_username_snapshot || '');
+    const assignmentChanged = assigneeFieldPresent
+      && Number(current.assigned_core_user_id || 0) !== Number(nextAssignedId || 0);
+
     const result = await client.query<TaskRow>(
       `UPDATE tarefa_tasks
           SET priority = $1,
-               title = $2,
-               description = $3,
-               updated_at = now()
-         WHERE id = $4
-           AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $5)
-         RETURNING *`,
-      [priority, title, description, id, userId],
+              title = $2,
+              description = $3,
+              assigned_core_user_id = $4,
+              assigned_username_snapshot = $5,
+              delegated_by = CASE WHEN $6::boolean THEN $7 ELSE delegated_by END,
+              delegated_at = CASE
+                WHEN $6::boolean AND $4::bigint IS NOT NULL THEN NOW()
+                WHEN $6::boolean THEN NULL
+                ELSE delegated_at
+              END,
+              updated_at = NOW()
+        WHERE id = $8
+        RETURNING *`,
+      [priority, title, description, nextAssignedId, nextAssignedName, assignmentChanged, userId || null, id],
     );
     const task = result.rows[0];
     if (!task) throw new Error('Tarefa invalida.');
+    if (canManageAll && reminderFieldPresent) {
+      await syncTaskReminder(client, task, remindAt || null, userId || null);
+    }
     await auditPg(client, id, req.session.user?.id || null, 'tarefa_editada', `Tarefa editada: ${title}`);
     await client.query('COMMIT');
-    void logCoreAudit(req.session.user?.id || null, 'tarefa_editada', 'task', String(id), `Tarefa editada: ${title}`);
+    void logCoreAudit(req.session.user?.id || null, 'tarefa_editada', 'task', String(id), `Tarefa editada: ${title}`, {
+      assigned_core_user_id: nextAssignedId,
+      assigned_username: nextAssignedName || null,
+      miauby_reminder_at: remindAt ? remindAt.toISOString() : null,
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -788,29 +1265,47 @@ async function setTaskStatus(req: Request, status: TaskStatus): Promise<void> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Tarefa invalida.');
   const userId = req.session.user?.id || 0;
+  const canManageAll = isTaskAdmin(req.session.user);
   const completedAt = status === 'concluida' ? 'now()' : 'NULL';
   const canceledAt = status === 'cancelada' ? 'now()' : 'NULL';
-  const result = await pgPool.query<TaskRow>(
-    `UPDATE tarefa_tasks
-        SET status = $1,
-            completed_at = ${completedAt},
-             canceled_at = ${canceledAt},
-             updated_at = now()
-       WHERE id = $2
-         AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $3)
-       RETURNING *`,
-    [status, id, userId],
-  );
-  const task = result.rows[0];
-  if (!task) throw new Error('Tarefa invalida.');
-  await pgPool.query(
-    'INSERT INTO tarefa_audit_events (task_id, user_id, action, summary) VALUES ($1, $2, $3, $4)',
-    [id, req.session.user?.id || null, 'tarefa_status', cleanText(`Tarefa marcada como ${status}.`, 255)],
-  );
-  void logCoreAudit(req.session.user?.id || null, 'tarefa_status', 'task', String(id), `Tarefa marcada como ${status}.`);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<TaskRow>(
+      `UPDATE tarefa_tasks
+          SET status = $1,
+              completed_at = ${completedAt},
+              canceled_at = ${canceledAt},
+              updated_at = NOW()
+        WHERE id = $2
+          ${canManageAll ? '' : 'AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $3)'}
+        RETURNING *`,
+      canManageAll ? [status, id] : [status, id, userId],
+    );
+    const task = result.rows[0];
+    if (!task) throw new Error('Tarefa invalida.');
+    if (status !== 'aberta') {
+      await cancelScheduledReminders(client, id, req.session.user?.id || null, `Lembrete Miauby cancelado porque a tarefa foi marcada como ${status}.`);
+    }
+    await auditPg(client, id, req.session.user?.id || null, 'tarefa_status', `Tarefa marcada como ${status}.`);
+    await client.query('COMMIT');
+    void logCoreAudit(req.session.user?.id || null, 'tarefa_status', 'task', String(id), `Tarefa marcada como ${status}.`);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
-function renderTask(req: Request, task: TaskRow, history = false): string {
+function renderTask(
+  req: Request,
+  task: TaskRow,
+  reminders: Map<number, TaskReminderRow>,
+  assignableUsers: AssignableTaskUserRow[],
+  canManageAll: boolean,
+  history = false,
+): string {
   const id = Number(task.id || 0);
   const priority = validPriority(task.priority);
   const status = validStatus(task.status);
@@ -820,15 +1315,19 @@ function renderTask(req: Request, task: TaskRow, history = false): string {
   const finishDate = status === 'concluida' ? brDate(task.completed_at, true) : brDate(task.canceled_at, true);
   const assignedUserId = Number(task.assigned_core_user_id || 0);
   const assignedLabel = cleanText(task.assigned_username_snapshot, 80);
+  const reminder = reminders.get(id);
   const priorityOptions = (Object.entries(priorities) as Array<[TaskPriority, { label: string }]>)
     .map(([key, item]) => `<option value="${e(key)}" ${key === priority ? 'selected' : ''}>${e(item.label)}</option>`)
     .join('');
+  const assigneeOptions = renderAssigneeOptions(assignableUsers, assignedUserId);
+  const reminderValue = reminder?.status === 'scheduled' ? dateTimeLocalValue(reminder.remind_at) : '';
 
   return `
     <article class="task-row priority-${e(priority)} status-${e(status)}" data-task-row>
         <div class="task-priority">
             <span class="priority-pill">${e(priorityLabel(priority))}</span>
             ${assignedUserId > 0 ? `<span class="task-private-pill">Privada${assignedLabel ? `: ${e(assignedLabel)}` : ''}</span>` : ''}
+            ${renderReminderPill(reminder)}
             <small>${e(status === 'aberta' ? date : finishDate)}</small>
         </div>
         <div class="task-main">
@@ -856,6 +1355,19 @@ function renderTask(req: Request, task: TaskRow, history = false): string {
                             <span>Descricao</span>
                             <textarea name="descricao" rows="3">${e(description)}</textarea>
                         </label>
+                        ${
+                          canManageAll
+                            ? `<label>
+                                <span>Quem ve esta tarefa</span>
+                                <select name="assigned_core_user_id">${assigneeOptions}</select>
+                            </label>
+                            <label>
+                                <span>Lembrete Miauby (WhatsApp)</span>
+                                <input type="datetime-local" name="remind_at" value="${e(reminderValue)}">
+                                <small class="task-form-help">Para lembrar por WhatsApp, selecione um usuario com card Tarefas liberado.</small>
+                            </label>`
+                            : ''
+                        }
                         <button type="submit" class="task-btn task-btn-secondary">Salvar ajuste</button>
                     </form>
                 </details>`
@@ -935,15 +1447,22 @@ function renderLogin(req: Request, error = ''): string {
 async function renderApp(req: Request): Promise<string> {
   const flash = takeFlash(req);
   const viewerId = req.session.user?.id || 0;
+  const canManageAll = isTaskAdmin(req.session.user);
   let counts: Record<TaskStatus, number> = { aberta: 0, concluida: 0, cancelada: 0 };
   let open: TaskRow[] = [];
   let history: TaskRow[] = [];
+  let assignableUsers: AssignableTaskUserRow[] = [];
+  let reminders = new Map<number, TaskReminderRow>();
   let loadError = '';
 
   try {
-    counts = await taskCounts(viewerId);
-    open = await openTasks(viewerId);
-    history = await historyTasks(viewerId);
+    [counts, open, history, assignableUsers] = await Promise.all([
+      taskCounts(viewerId, canManageAll),
+      openTasks(viewerId, canManageAll),
+      historyTasks(viewerId, canManageAll),
+      canManageAll ? listAssignableTaskUsers() : Promise.resolve([]),
+    ]);
+    reminders = await latestReminderMap([...open, ...history].map((task) => Number(task.id || 0)));
   } catch {
     loadError = 'Nao consegui carregar as tarefas agora.';
   }
@@ -957,7 +1476,7 @@ async function renderApp(req: Request): Promise<string> {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tarefas - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
-    <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260507b">
+    <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260601a">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
     <script src="/miauw/widget.js?v=20260529a" defer></script>
 </head>
@@ -976,6 +1495,7 @@ async function renderApp(req: Request): Promise<string> {
         <section class="task-hero">
             <div>
                 <h1>Tarefas</h1>
+                ${canManageAll ? '<p class="task-admin-note">ADM vendo tarefas publicas, privadas por usuario e lembretes Miauby.</p>' : ''}
             </div>
             <div class="task-stats" aria-label="Resumo">
                 <span><strong>${e(counts.aberta)}</strong> aberta(s)</span>
@@ -1006,6 +1526,19 @@ async function renderApp(req: Request): Promise<string> {
                     <span>Descricao</span>
                     <textarea name="descricao" rows="4" placeholder="Detalhe curto para ninguem precisar adivinhar."></textarea>
                 </label>
+                ${
+                  canManageAll
+                    ? `<label>
+                        <span>Quem vai ver</span>
+                        <select name="assigned_core_user_id">${renderAssigneeOptions(assignableUsers, 0)}</select>
+                    </label>
+                    <label>
+                        <span>Lembrete Miauby (WhatsApp)</span>
+                        <input type="datetime-local" name="remind_at">
+                        <small class="task-form-help">Opcional. Para enviar lembrete, escolha um usuario privado.</small>
+                    </label>`
+                    : ''
+                }
                 <button type="submit" class="task-btn task-btn-primary">Criar tarefa</button>
             </form>
 
@@ -1015,7 +1548,7 @@ async function renderApp(req: Request): Promise<string> {
                     <strong>${e(open.length)} na fila</strong>
                 </div>
                 <div class="task-list">
-                    ${open.length ? open.map((task) => renderTask(req, task)).join('') : '<div class="task-empty">Sem tarefa aberta. Milagre administrativo, mas eu nao confio cegamente.</div>'}
+                    ${open.length ? open.map((task) => renderTask(req, task, reminders, assignableUsers, canManageAll)).join('') : '<div class="task-empty">Sem tarefa aberta. Milagre administrativo, mas eu nao confio cegamente.</div>'}
                 </div>
             </section>
         </section>
@@ -1026,7 +1559,7 @@ async function renderApp(req: Request): Promise<string> {
                 <strong>${e(history.length)}</strong>
             </summary>
             <div class="task-history-list">
-                ${history.length ? history.map((task) => renderTask(req, task, true)).join('') : '<div class="task-empty">Nada no historico ainda.</div>'}
+                ${history.length ? history.map((task) => renderTask(req, task, reminders, assignableUsers, canManageAll, true)).join('') : '<div class="task-empty">Nada no historico ainda.</div>'}
             </div>
         </details>
     </main>
@@ -1287,6 +1820,12 @@ async function start() {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
   await withRetry('core postgres', () => requireCorePgPool('startup').query('SELECT 1'));
   await ensureSchema();
+  setTimeout(() => {
+    processDueTaskReminders().catch((error) => console.warn('[tarefa] reminder worker failed', error));
+  }, 2500).unref();
+  setInterval(() => {
+    processDueTaskReminders().catch((error) => console.warn('[tarefa] reminder worker failed', error));
+  }, REMINDER_WORKER_INTERVAL_MS).unref();
   app.listen(PORT, () => {
     console.log(`[tarefa] listening on ${PORT} at ${BASE_PATH}`);
   });

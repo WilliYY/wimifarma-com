@@ -277,6 +277,11 @@ a {
     font-size: 1.05rem;
 }
 
+.task-admin-note {
+    margin-top: 8px;
+    font-weight: 900;
+}
+
 .task-stats {
     display: flex;
     flex-wrap: wrap;
@@ -375,6 +380,14 @@ a {
     font-weight: 900;
 }
 
+.task-form-help {
+    display: block;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
 .task-list-panel {
     min-width: 0;
     overflow: hidden;
@@ -401,7 +414,7 @@ a {
 .task-row {
     --task-delay: 0ms;
     display: grid;
-    grid-template-columns: 118px minmax(0, 1fr) 110px;
+    grid-template-columns: 148px minmax(0, 1fr) 110px;
     gap: 18px;
     align-items: center;
     border-bottom: 1px solid #f3d5df;
@@ -496,7 +509,7 @@ a {
 }
 
 .task-private-pill {
-    max-width: 116px;
+    max-width: 136px;
     border-radius: 999px;
     padding: 6px 9px;
     background: #fef3c7;
@@ -505,6 +518,34 @@ a {
     font-weight: 950;
     line-height: 1.1;
     overflow-wrap: anywhere;
+}
+
+.task-reminder-pill {
+    max-width: 136px;
+    border-radius: 999px;
+    padding: 6px 9px;
+    background: #e0f2fe;
+    color: #075985;
+    font-size: 0.7rem;
+    font-weight: 950;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+}
+
+.task-reminder-pill.status-sent {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.task-reminder-pill.status-failed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.task-reminder-pill.status-cancelled,
+.task-reminder-pill.status-skipped {
+    background: #f1f5f9;
+    color: #475569;
 }
 
 .priority-alta .priority-pill {

@@ -6541,6 +6541,158 @@ async function sendAutomationNotification(
   return result;
 }
 
+async function taskReminderRecipientsForUser(userId: number): Promise<AutomationRecipient[]> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) return [];
+  const protectedAliasHashes = recipientAliasSourceHashList();
+  const result = await pgPool.query<{
+    phone_hash: string;
+    phone_mask: string;
+    phone_ciphertext: string;
+    display_name: string;
+  }>(
+    `SELECT DISTINCT c.phone_hash,
+            c.phone_mask,
+            COALESCE(c.phone_ciphertext, '') AS phone_ciphertext,
+            COALESCE(NULLIF(c.display_name, ''), NULLIF(c.linked_username_snapshot, ''), c.phone_mask) AS display_name
+       FROM miauw_whatsapp_contacts c
+       JOIN miauw_whatsapp_contact_modules m ON m.phone_hash = c.phone_hash
+      WHERE c.linked_user_id = $1
+        AND c.status = 'allowed'
+        AND c.phone_ciphertext <> ''
+        AND m.enabled = TRUE
+        AND m.module_key = 'tarefas'
+        AND ($2::text[] = ARRAY[]::text[] OR c.phone_hash::text <> ALL($2::text[]))
+      ORDER BY display_name
+      LIMIT 5`,
+    [userId, protectedAliasHashes],
+  );
+
+  const recipients: AutomationRecipient[] = [];
+  const seenPhones = new Set<string>();
+  for (const row of result.rows) {
+    let phone = '';
+    try {
+      phone = applyRecipientAlias(decryptText(row.phone_ciphertext));
+    } catch {
+      phone = '';
+    }
+    const normalized = normalizePhone(phone);
+    if (!normalized || isRecipientAliasSourcePhone(normalized) || seenPhones.has(normalized)) continue;
+    seenPhones.add(normalized);
+    recipients.push({
+      phone: normalized,
+      phoneHash: row.phone_hash,
+      phoneMask: row.phone_mask,
+      displayName: safeText(row.display_name || row.phone_mask, 120),
+    });
+  }
+  return recipients;
+}
+
+function taskReminderWhenLabel(value: unknown): string {
+  const raw = safeText(value, 80);
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function taskReminderMessage(payload: JsonRecord): string {
+  const title = safeOutboundText(payload.title, 220);
+  const description = safeOutboundText(payload.description, 420);
+  const username = safeText(payload.username, 120);
+  const priority = safeText(payload.priority, 30);
+  const remindAt = taskReminderWhenLabel(payload.remind_at);
+  const taskUrl = safeText(payload.task_url || '/tarefa/', 120);
+  const lines = [
+    'Miauby lembrete de tarefa',
+    username ? `Para: ${username}` : '',
+    priority ? `Prioridade: ${priority}` : '',
+    title ? `Tarefa: ${title}` : '',
+    description ? `Descricao: ${description}` : '',
+    remindAt ? `Horario combinado: ${remindAt}` : '',
+    `Abrir tarefas: ${taskUrl}`,
+  ];
+  return safeOutboundText(lines.filter(Boolean).join('\n'), 1200);
+}
+
+async function sendTaskReminderNotification(payload: JsonRecord): Promise<AutomationSendResult> {
+  const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, errors: [] };
+  const userId = Number(payload.user_id || payload.userId || 0);
+  if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error('invalid_user_id');
+  const message = taskReminderMessage(payload);
+  if (!message) return { ...result, skipped: true };
+
+  const status = publicStatus();
+  if (status.transport_configured !== true || status.enabled !== true) {
+    result.skipped = true;
+    result.errors.push('whatsapp_transport_unavailable');
+    await recordErrorLog('tarefa_reminder', 'warn', new Error('task_reminder_transport_unavailable'), {
+      messagePreview: safeText(message, 280),
+      details: { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null },
+    });
+    return result;
+  }
+
+  const pauseMs = providerPauseRemainingMs();
+  if (pauseMs > 0) {
+    result.skipped = true;
+    result.errors.push('provider_paused');
+    await recordErrorLog('tarefa_reminder', 'warn', new Error('task_reminder_provider_paused'), {
+      messagePreview: safeText(message, 280),
+      details: { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null, pause_ms: pauseMs },
+    });
+    return result;
+  }
+
+  const recipients = await taskReminderRecipientsForUser(userId);
+  result.recipients = recipients.length;
+  if (recipients.length === 0) {
+    result.skipped = true;
+    result.errors.push('no_tarefas_recipient_for_user');
+    await recordErrorLog('tarefa_reminder', 'warn', new Error('task_reminder_no_recipient'), {
+      messagePreview: safeText(message, 280),
+      details: { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null, module_key: 'tarefas' },
+    });
+    return result;
+  }
+
+  for (const recipient of recipients) {
+    try {
+      await sendProviderText(recipient.phone, message, defaultInstanceName());
+      result.sent += 1;
+    } catch (error) {
+      result.failed += 1;
+      result.errors.push(safeError(error));
+      await recordErrorLog('tarefa_reminder_send', 'warn', error, {
+        phoneMask: recipient.phoneMask,
+        messagePreview: safeText(message, 280),
+        details: { user_id: userId, display_name: recipient.displayName, module_key: 'tarefas' },
+      });
+    }
+  }
+
+  await recordErrorLog('tarefa_reminder', result.failed > 0 ? 'warn' : 'info', new Error('task_reminder_notification_sent'), {
+    messagePreview: safeText(message, 280),
+    details: {
+      user_id: userId,
+      reminder_id: payload.reminder_id || null,
+      task_id: payload.task_id || null,
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+    },
+  });
+  return result;
+}
+
 async function fetchTextWithTimeout(url: string, init: RequestInit = {}, timeoutMs = SMOKE_CHECK_TIMEOUT_MS): Promise<{ status: number; text: string; ms: number; error: string }> {
   const startedAt = Date.now();
   const controller = new AbortController();
@@ -9399,6 +9551,15 @@ app.post(`${BASE_PATH}/internal/allowlist/unlink-user`, requireInternalHeaderTok
     const message = error instanceof Error ? error.message : 'allowlist_unlink_failed';
     const status = ['invalid_allowlist_id', 'allowlist_contact_not_found', 'allowlist_user_mismatch', 'protected_alias_contact'].includes(message) ? 400 : 500;
     res.status(status).json({ ok: false, error: safeText(message, 180) });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/task-reminder`, requireInternalToken, async (req, res) => {
+  try {
+    const result = await sendTaskReminderNotification(isRecord(req.body) ? req.body : {});
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: safeText(error instanceof Error ? error.message : 'task_reminder_failed', 180) });
   }
 });
 
