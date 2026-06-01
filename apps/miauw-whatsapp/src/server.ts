@@ -439,7 +439,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.21';
+const SERVICE_VERSION = '0.5.22';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -512,6 +512,7 @@ const DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES = [
 ];
 const PIX_RECEIPT_DESTINATION_ALIASES = parseTextListEnv(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES'), DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES);
 const PIX_RECEIPT_MIN_TARGET_SCORE = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100', 70, 40, 100) / 100;
+const PIX_RECEIPT_NOT_LIKE_REPLY = 'Isso ai é um comprovante pix?';
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
@@ -3277,7 +3278,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           if (!fastGate.shouldAttempt) {
             await mergePixReceiptEventSummary(row.id, pixReceiptFastGateSummary(fastGate));
             mediaFailureReply = {
-              text: 'Esse arquivo ou legenda nao parece comprovante Pix em formato que eu consiga ler. Se for Pix, manda foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
+              text: PIX_RECEIPT_NOT_LIKE_REPLY,
               engine: 'blocked',
               reason: 'pix_receipt_fast_gate_skipped',
             };
@@ -3301,7 +3302,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
               if (!extraction.isPixReceipt) {
                 await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'not_detected'));
                 mediaFailureReply = {
-                  text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
+                  text: PIX_RECEIPT_NOT_LIKE_REPLY,
                   engine: 'blocked',
                   reason: 'pix_receipt_not_detected',
                 };
