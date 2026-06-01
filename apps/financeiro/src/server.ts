@@ -28,7 +28,8 @@ declare module 'express-session' {
 const env = process.env;
 const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
-const SERVICE_VERSION = '1.1.1';
+const SERVICE_VERSION = '1.1.2';
+const OPEN_CASH_CLOSING_LOOKBACK_DAYS = 10;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -181,6 +182,13 @@ function todayDate(): string {
   }).formatToParts(new Date());
   const get = (type: string) => parts.find((part) => part.type === type)?.value || '';
   return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+function shiftIsoDate(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
 }
 
 function toDateInput(value: unknown): string {
@@ -2089,6 +2097,9 @@ async function cashClosingStatusPayload(dateValue?: unknown): Promise<Record<str
     status_label: statusLabel(status),
     closed,
     should_notify: !closed || openDays.open_days_count > 0,
+    open_days_lookback_days: OPEN_CASH_CLOSING_LOOKBACK_DAYS,
+    open_days_start: openDays.open_days_start,
+    open_days_end: openDays.open_days_end,
     open_days_count: openDays.open_days_count,
     open_days: openDays.open_days,
     closed_at: closing.fechado_em || null,
@@ -2114,19 +2125,25 @@ async function openCashClosingDays(
   selectedStatus: string,
   selectedExists: boolean,
   selectedOpen: boolean,
-): Promise<{ open_days_count: number; open_days: OpenCashClosingDay[] }> {
+): Promise<{ open_days_count: number; open_days: OpenCashClosingDay[]; open_days_start: string; open_days_end: string }> {
+  const windowStart = shiftIsoDate(selectedDate, -OPEN_CASH_CLOSING_LOOKBACK_DAYS);
+  const windowEnd = selectedDate;
   const [daysResult, countResult] = await Promise.all([
     pgPool.query<AnyRow>(
       `SELECT closing_date::text AS date, status
          FROM financeiro_closings
         WHERE status IN ('aberto', 'conferencia')
+          AND closing_date BETWEEN $1::date AND $2::date
         ORDER BY closing_date ASC
-        LIMIT 5`,
+        LIMIT 10`,
+      [windowStart, windowEnd],
     ),
     pgPool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
          FROM financeiro_closings
-        WHERE status IN ('aberto', 'conferencia')`,
+        WHERE status IN ('aberto', 'conferencia')
+          AND closing_date BETWEEN $1::date AND $2::date`,
+      [windowStart, windowEnd],
     ),
   ]);
 
@@ -2160,6 +2177,8 @@ async function openCashClosingDays(
   return {
     open_days_count: storedCount + implicitSelectedCount,
     open_days: openDays,
+    open_days_start: windowStart,
+    open_days_end: windowEnd,
   };
 }
 

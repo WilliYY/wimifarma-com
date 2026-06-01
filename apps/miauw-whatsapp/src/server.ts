@@ -384,6 +384,7 @@ type FinanceiroCashClosingStatus = {
   status_label: string;
   closed: boolean;
   should_notify: boolean;
+  open_days_lookback_days: number;
   open_days_count: number;
   open_days: FinanceiroOpenCashDay[];
   closed_at: string | null;
@@ -417,7 +418,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.20';
+const SERVICE_VERSION = '0.5.21';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -6522,17 +6523,21 @@ function reminderVariantIndex(date: string): number {
 }
 
 function financeiroOpenCashDaysLine(status: FinanceiroCashClosingStatus): string {
-  const days = status.open_days.filter((day) => day.date).slice(0, 5);
+  const days = status.open_days.filter((day) => day.date).slice(0, 10);
   const rawCount = Number(status.open_days_count || 0);
   const count = Number.isFinite(rawCount) ? rawCount : days.length;
-  if (count <= 0) return 'Caixa em aberto: nenhum dia pendente para finalizar.';
+  const lookbackDays = Number.isFinite(status.open_days_lookback_days) && status.open_days_lookback_days > 0
+    ? status.open_days_lookback_days
+    : 10;
+  const windowLabel = `nos ultimos ${lookbackDays} dias`;
+  if (count <= 0) return `Caixa em aberto ${windowLabel}: nenhum dia pendente para finalizar.`;
   if (!days.length) {
-    return `Caixa em aberto para finalizar: ${count === 1 ? '1 dia' : `${count} dias`}, mas o Financeiro nao devolveu as datas agora.`;
+    return `Caixa em aberto ${windowLabel} para finalizar: ${count === 1 ? '1 dia' : `${count} dias`}, mas o Financeiro nao devolveu as datas agora.`;
   }
   const labels = days.map((day) => `${brDateOnlyFromStatusDate(day.date)} (${day.status_label || day.status || 'Aberto'})`);
   const extraCount = count - days.length;
   const extra = extraCount > 0 ? ` + ${extraCount === 1 ? '1 outro' : `${extraCount} outros`}` : '';
-  const prefix = count === 1 ? 'Caixa em aberto para finalizar' : 'Caixas em aberto para finalizar';
+  const prefix = count === 1 ? `Caixa em aberto ${windowLabel} para finalizar` : `Caixas em aberto ${windowLabel} para finalizar`;
   return `${prefix}: ${labels.join(', ')}${extra}.`;
 }
 
@@ -6587,6 +6592,7 @@ async function fetchFinanceiroCashClosingStatus(date?: string): Promise<Financei
         .filter((row) => row.date)
       : [];
     const openDaysCount = Number(data.open_days_count);
+    const openDaysLookback = Number(data.open_days_lookback_days);
     return {
       date: safeText(data.date, 20),
       closing_exists: data.closing_exists === true,
@@ -6594,6 +6600,7 @@ async function fetchFinanceiroCashClosingStatus(date?: string): Promise<Financei
       status_label: safeText(data.status_label, 80) || 'Aberto',
       closed: data.closed === true,
       should_notify: data.should_notify !== false,
+      open_days_lookback_days: Number.isFinite(openDaysLookback) && openDaysLookback > 0 ? openDaysLookback : 10,
       open_days_count: Number.isFinite(openDaysCount) ? openDaysCount : openDays.length,
       open_days: openDays,
       closed_at: safeText(data.closed_at, 80) || null,

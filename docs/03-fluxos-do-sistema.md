@@ -269,7 +269,7 @@ Regras a preservar:
 - justificativas;
 - auditoria interna.
 - Caixa e Relatorio usam a mesma linha em `financeiro_closings` para cada dia. O botao `Fechar sem movimento` do Relatorio e apenas um atalho para marcar `status='sem_movimento'`, igual ao Caixa, e nao deve travar a digitacao posterior de venda/faturamento. Se depois for informado faturamento em um dia sem movimento, o dia volta para `conferencia` e fica editavel no Caixa.
-- O endpoint interno `GET /financeiro/api/internal/cash-closing-status` informa ao Miauby/n8n se o caixa do dia esta fechado e devolve `open_days`/`open_days_count` com os dias em `aberto` ou `conferencia`; se o dia consultado nao tiver registro, ele entra como aberto implicito para o lembrete. Para alerta das 18h, `fechado`, `divergente` e `sem_movimento` so bloqueiam WhatsApp quando nao existe nenhum dia pendente. Quando houver caixa aberto, o Miauby avisa contatos com card `Financeiro` e inclui qual dia precisa ser finalizado.
+- O endpoint interno `GET /financeiro/api/internal/cash-closing-status` informa ao Miauby/n8n se o caixa do dia esta fechado e devolve `open_days`/`open_days_count` com os dias em `aberto` ou `conferencia` apenas na janela dos ultimos 10 dias ate a data consultada; se o dia consultado nao tiver registro, ele entra como aberto implicito para o lembrete. Para alerta das 18h, `fechado`, `divergente` e `sem_movimento` so bloqueiam WhatsApp quando nao existe nenhum dia pendente nessa janela. Quando houver caixa aberto, o Miauby avisa contatos com card `Financeiro` e inclui qual dia precisa ser finalizado.
 
 Interface:
 
