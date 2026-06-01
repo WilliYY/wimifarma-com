@@ -169,7 +169,7 @@ if (!$homeAuthenticated):
         html {
             min-height: 100%;
             overflow-x: hidden;
-            background: #0f172a;
+            background: #06b6d4;
         }
 
         body {
@@ -182,7 +182,7 @@ if (!$homeAuthenticated):
             background:
                 radial-gradient(circle at 28% 20%, rgba(255, 241, 196, 0.16), transparent 24rem),
                 radial-gradient(circle at 72% 18%, rgba(237, 85, 101, 0.18), transparent 22rem),
-                linear-gradient(145deg, #111827 0%, #1f1236 52%, #0f172a 100%);
+                linear-gradient(145deg, #06b6d4 0%, #0891b2 52%, #0e7490 100%);
             color: #f8fafc;
             font-family: "Segoe UI", "Open Sans", Arial, sans-serif;
         }
