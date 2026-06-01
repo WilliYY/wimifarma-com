@@ -658,13 +658,13 @@ if (!$homeAuthenticated):
 
         .wf-login-footer {
             z-index: 1;
-            --footer-background: #0e8fa0;
             position: relative;
             grid-area: footer;
             min-height: 13.85rem;
             display: grid;
             overflow: visible;
-            background: var(--footer-background);
+            background-color: #0e8fa0;
+            animation: wf-footer-background-cycle 52s ease-in-out infinite -13s;
             contain: layout;
             isolation: isolate;
         }
@@ -690,19 +690,21 @@ if (!$homeAuthenticated):
             right: -2rem;
             bottom: -1.1rem;
             height: 6.3rem;
-            background: var(--footer-background);
+            background-color: #0e8fa0;
             border-radius: 999px 999px 0 0;
+            animation: wf-footer-background-cycle 52s ease-in-out infinite -13s;
         }
 
         .wf-login-bubble {
             position: absolute;
             left: var(--position, 50%);
             bottom: 1.2rem;
-            background: var(--footer-background);
+            background-color: #0e8fa0;
             border-radius: 100%;
             animation:
                 wf-bubble-size var(--time, 4s) ease-in infinite var(--delay, 0s),
-                wf-bubble-move var(--time, 4s) ease-in infinite var(--delay, 0s);
+                wf-bubble-move var(--time, 4s) ease-in infinite var(--delay, 0s),
+                wf-footer-background-cycle 52s ease-in-out infinite -13s;
             transform: translate(-50%, 0);
         }
 
@@ -988,6 +990,33 @@ if (!$homeAuthenticated):
             }
         }
 
+        @keyframes wf-footer-background-cycle {
+            0%, 100% {
+                background-color: #0e8fa0;
+            }
+            12.5% {
+                background-color: #148b55;
+            }
+            25% {
+                background-color: #7c8f19;
+            }
+            37.5% {
+                background-color: #c78019;
+            }
+            50% {
+                background-color: #c03568;
+            }
+            62.5% {
+                background-color: #8b4fd1;
+            }
+            75% {
+                background-color: #315fd1;
+            }
+            87.5% {
+                background-color: #0f7fbb;
+            }
+        }
+
         @keyframes wf-bubble-size {
             0%, 75% {
                 width: var(--size, 4rem);
@@ -1144,6 +1173,18 @@ if (!$homeAuthenticated):
                 animation-iteration-count: 1 !important;
                 scroll-behavior: auto !important;
                 transition-duration: 0.01ms !important;
+            }
+
+            .wf-login-footer,
+            .wf-login-bubbles::before,
+            .wf-login-bubble {
+                animation: none !important;
+            }
+
+            .wf-login-bubble {
+                width: var(--size, 4rem);
+                height: var(--size, 4rem);
+                bottom: 2.8rem;
             }
         }
     </style>
