@@ -157,13 +157,13 @@ if (!$homeAuthenticated):
         @property --footer-background {
             syntax: "<color>";
             inherits: true;
-            initial-value: #d6092f;
+            initial-value: #0e8fa0;
         }
 
         @property --footer-ink {
             syntax: "<color>";
             inherits: true;
-            initial-value: rgba(88, 7, 28, 0.2);
+            initial-value: rgba(4, 55, 64, 0.2);
         }
 
         html {
@@ -399,8 +399,8 @@ if (!$homeAuthenticated):
 
         .wf-login-footer {
             z-index: 1;
-            --footer-background: #d6092f;
-            --footer-ink: rgba(88, 7, 28, 0.22);
+            --footer-background: #0e8fa0;
+            --footer-ink: rgba(4, 55, 64, 0.22);
             position: relative;
             grid-area: footer;
             min-height: 13.85rem;
@@ -408,7 +408,6 @@ if (!$homeAuthenticated):
             overflow: visible;
             background: var(--footer-background);
             isolation: isolate;
-            animation: wf-footer-color 34s ease-in-out infinite;
         }
 
         .wf-login-bubbles {
@@ -682,33 +681,6 @@ if (!$homeAuthenticated):
             }
             100% {
                 bottom: var(--distance, 10rem);
-            }
-        }
-
-        @keyframes wf-footer-color {
-            0%, 100% {
-                --footer-background: #d6092f;
-                --footer-ink: rgba(88, 7, 28, 0.2);
-            }
-            16% {
-                --footer-background: #bd0f3f;
-                --footer-ink: rgba(70, 5, 24, 0.22);
-            }
-            32% {
-                --footer-background: #e31844;
-                --footer-ink: rgba(94, 6, 30, 0.2);
-            }
-            48% {
-                --footer-background: #e36822;
-                --footer-ink: rgba(89, 32, 8, 0.2);
-            }
-            64% {
-                --footer-background: #11a39a;
-                --footer-ink: rgba(4, 55, 51, 0.2);
-            }
-            82% {
-                --footer-background: #b42873;
-                --footer-ink: rgba(58, 7, 39, 0.22);
             }
         }
 

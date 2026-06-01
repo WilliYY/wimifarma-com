@@ -17,6 +17,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - Em 2026-05-31, o asset comum da trilha do XP (`site/xp/assets/bloco-xp.svg`) manteve a arte original do bloco, mas deixou de usar a exportacao base64 gigante. O arquivo passou a embutir um PNG transparente otimizado, caindo de cerca de 23,9 MB para cerca de 89 KB, mantendo o mesmo caminho publico e apenas atualizando o cache-bust em `apps/xp/src/server.ts`.
 - Em 2026-05-31, os `favicon.svg` compartilhados por Home/tema, Cotacao, Tarefa, Financeiro e Miauby foram otimizados mantendo o mesmo visual: cada arquivo caiu de cerca de 1,07 MB para cerca de 2,7 KB, sem mudar os links HTML nem os favicons PNG alternativos.
 - Em 2026-05-31, o cache de assets estaticos foi reforcado sem ativar cache de pagina: `site/.htaccess` passou a enviar cache forte para imagens, SVG, video e fontes, cache curto para CSS/JS, e os apps Node passaram a sobrescrever `no-store` somente para arquivos estaticos de midia/imagem/fonte. HTML, PHP, APIs, health checks e sessoes continuam sem cache agressivo.
+- Em 2026-06-01, a animacao de troca de cor do footer liquido do login foi desativada em `site/home.php`. O filtro SVG e as bolhas continuam, mas o fundo fica ciano estatico para evitar piscada/repaint perceptivel no Chrome.
 
 ## Cotacao V2 - baseline de performance em 2026-05-14
 
