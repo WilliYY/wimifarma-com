@@ -714,22 +714,8 @@ if (!$homeAuthenticated):
         }
 
         @media (max-width: 1080px) {
-            .wf-login-layout {
-                align-content: center;
-                gap: 14px;
-            }
-
             .wf-login-promo {
-                position: relative;
-                top: auto;
-                left: auto;
-                width: min(320px, 72vw);
-                margin-top: -34px;
-                transform: none;
-            }
-
-            .wf-login-promo-video {
-                border-radius: 22px;
+                display: none;
             }
         }
 
@@ -779,17 +765,6 @@ if (!$homeAuthenticated):
             .wf-login-runner {
                 width: 72px;
             }
-
-            .wf-login-promo {
-                width: min(284px, 78vw);
-                margin-top: -24px;
-                gap: 8px;
-            }
-
-            .wf-login-promo-link {
-                font-size: 0.78rem;
-                padding: 6px 12px;
-            }
         }
 
         @media (max-width: 420px) {
@@ -811,10 +786,6 @@ if (!$homeAuthenticated):
             .wf-login-submit {
                 padding: 10px 16px;
                 font-size: 0.98rem;
-            }
-
-            .wf-login-promo {
-                width: min(250px, 76vw);
             }
         }
 

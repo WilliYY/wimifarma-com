@@ -6,8 +6,9 @@ Este documento registra decisoes tecnicas importantes. Sempre que uma decisao fo
 
 Decisao:
 
-- Adicionar ao login inicial da home um card com `assets/video/login-redirecionado.mp4` em loop, sem controles, mutado e com borda arredondada.
+- Adicionar ao login inicial da home, em telas com espaco, um card com `assets/video/login-redirecionado.mp4` em loop, sem controles, mutado e com borda arredondada.
 - O card aponta para `https://wimifarma.com.br` e nao altera o formulario, sessao `WFHOME`, CSRF ou emissao de `WFHOME_SSO`.
+- Ocultar o card em telas estreitas para preservar layout e performance.
 
 Motivo:
 
