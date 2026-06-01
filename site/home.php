@@ -160,12 +160,6 @@ if (!$homeAuthenticated):
             initial-value: #0e8fa0;
         }
 
-        @property --footer-ink {
-            syntax: "<color>";
-            inherits: true;
-            initial-value: rgba(4, 55, 64, 0.2);
-        }
-
         html {
             min-height: 100%;
             overflow-x: hidden;
@@ -400,7 +394,6 @@ if (!$homeAuthenticated):
         .wf-login-footer {
             z-index: 1;
             --footer-background: #0e8fa0;
-            --footer-ink: rgba(4, 55, 64, 0.22);
             position: relative;
             grid-area: footer;
             min-height: 13.85rem;
@@ -456,19 +449,6 @@ if (!$homeAuthenticated):
             padding: 2.35rem max(2rem, calc((100vw - 1120px) / 2)) 1.55rem;
             background: transparent;
             color: #210915;
-        }
-
-        .wf-login-footer-content::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            opacity: 0.16;
-            background-image:
-                radial-gradient(circle at 18% 40%, transparent 0 2.2rem, var(--footer-ink) 2.24rem 2.34rem, transparent 2.38rem),
-                radial-gradient(circle at 52% 24%, transparent 0 3rem, var(--footer-ink) 3.05rem 3.18rem, transparent 3.22rem),
-                radial-gradient(circle at 82% 42%, transparent 0 2.6rem, var(--footer-ink) 2.65rem 2.76rem, transparent 2.8rem);
-            background-size: 18rem 9rem, 24rem 11rem, 20rem 10rem;
         }
 
         .wf-login-footer-content b,
