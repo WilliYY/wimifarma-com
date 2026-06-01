@@ -835,6 +835,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 - Adicionar/inserir/remover linhas.
 - Criar, renomear, mover, remover/restaurar e redimensionar colunas.
 - Aplicar/remover estilos unitarios ou em lote.
+- Repetir a ultima acao segura com `F4` apenas na tela da planilha: valor nao vazio, colagem sem celulas vazias, aplicar cor e limpar cor; a compatibilidade e revalidada contra a selecao atual.
 - Criar/editar/remover regras.
 - Importar/exportar Google Sheets.
 - Criar/restaurar backups.
@@ -854,6 +855,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 
 - Concorrencia em tempo real e historico de eventos exigem cuidado com ordem e delta.
 - Undo/redo e estilos em lote precisam manter paridade com comportamento de planilha.
+- O atalho `F4` nao deve registrar acoes destrutivas/definitivas nem executar quando a selecao atual for incompativel.
 - Google Sheets pode falhar por token/cota; nao pode travar a planilha local.
 - Migrar para TypeScript deve ser incremental para nao quebrar Socket.IO.
 - Criacao de planilha/bloco antigo pelo Miauby fica bloqueada ate existir endpoint moderno equivalente; nao reintroduzir `cotacao_blocos`.

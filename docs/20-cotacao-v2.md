@@ -10,6 +10,7 @@ Arquivos principais:
 
 - `apps/cotacao/src/server.js`
 - `apps/cotacao/src/contracts/`
+- `apps/cotacao/src/contracts/repeatable-actions.ts`
 - `apps/cotacao/src/utils/normalizers.ts`
 - `apps/cotacao/src/utils/styles.ts`
 - `apps/cotacao/src/utils/winner.ts`
@@ -150,6 +151,7 @@ Core Postgres `wimifarma_core`:
 - A tela usa `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer para mudancas locais rastreaveis, inclusive valores, lotes, filtros, colunas e cores manuais; `Enter` desce para a celula abaixo por padrao, e `F2` abre edicao da celula selecionada sem selecionar todo o texto. Quando a edicao comeca por digitacao direta, as setas salvam a celula e movem a selecao para cima, baixo, esquerda ou direita; quando a edicao comeca por duplo clique/`F2`, as setas continuam navegando dentro do texto.
 - A navegacao por setas mantem a celula ativa visivel dentro da grade: ao chegar perto da borda superior/inferior ou lateral, o container da planilha acompanha a selecao, sem recarregar dados nem redesenhar a tabela inteira.
 - `Ctrl+Z` tambem desfaz filtros locais e pintura manual/borracha; `Ctrl+C` copia a selecao como matriz TSV; `Ctrl+V` cola matriz normalizando texto e precos para o padrao da Cotacao.
+- Desde 2026-06-01, `F4` repete a ultima acao util e segura na selecao atual, estilo Google Sheets. A lista repetivel e fechada e expansivel: valor nao vazio em celula, colagem sem celulas vazias, aplicar cor e limpar cor. Acoes destrutivas ou definitivas, como apagar valor por `Delete`, apagar distribuidora, cancelar, finalizar, enviar, importar/exportar Google Sheets e restore de backup, nao sao registradas para repeticao. O status da planilha informa sucesso, falta de acao anterior ou incompatibilidade com a selecao atual.
 - `Delete`/`Backspace` sobre a selecao usa batch otimista no frontend: limpa a grade imediatamente, salva em segundo plano e refresca somente as linhas afetadas quando a selecao e pequena.
 - A alca de preenchimento no canto da selecao pode ser arrastada para copiar o padrao de valores e cores visiveis da selecao para as celulas adjacentes, ignorando colunas calculadas, e mostra uma previa forte das celulas de destino durante o arrasto.
 - A tela usa controles compactos por icone para formatacao condicional e paleta de cores; a presenca do usuario aparece junto aos indicadores do topo e o campo de busca livre foi removido para reduzir ruido operacional.

@@ -2005,7 +2005,7 @@ function renderApp(req) {
     window.COTACAO_CONFIG = ${JSON.stringify({ basePath: BASE_PATH, user })};
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
-  <script src="${BASE_PATH}/app.js?v=20260529-undo-style"></script>
+  <script src="${BASE_PATH}/app.js?v=20260601-repeat-f4"></script>
   <script src="/miauw/widget.js?v=20260529a" defer></script>
 </body>
 </html>`;

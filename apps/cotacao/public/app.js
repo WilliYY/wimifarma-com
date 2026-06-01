@@ -58,6 +58,28 @@
   ];
   const COLORS = ['Azul', 'Verde', 'Rosa', 'Roxo', 'Dourado', 'Prata', 'Vermelho', 'Preto'];
   const REMOTE_COLORS = ['#2563eb', '#16a34a', '#db2777', '#7c3aed', '#ea580c', '#0891b2', '#dc2626', '#4f46e5'];
+  const REPEATABLE_ACTIONS = Object.freeze({
+    'cell-value': {
+      label: 'valor',
+      canRepeat: canRepeatCellValue,
+      run: repeatCellValue
+    },
+    'paste-values': {
+      label: 'colagem',
+      canRepeat: canRepeatPasteValues,
+      run: repeatPasteValues
+    },
+    'apply-color': {
+      label: 'cor',
+      canRepeat: canRepeatSelectionStyle,
+      run: repeatApplyColor
+    },
+    'erase-format': {
+      label: 'limpeza de cor',
+      canRepeat: canRepeatSelectionStyle,
+      run: repeatEraseFormat
+    }
+  });
 
   const state = {
     quote: null,
@@ -112,6 +134,9 @@
     cellHistoryTarget: null,
     history: [],
     future: [],
+    lastRepeatableAction: null,
+    repeatFeedbackTimer: null,
+    repeatInFlight: false,
     conflicts: new Map()
   };
 
@@ -726,6 +751,222 @@
       }
     }
     return cells;
+  }
+
+  /**
+   * @typedef {'cell-value'|'paste-values'|'apply-color'|'erase-format'} RepeatableActionType
+   * @typedef {{type: RepeatableActionType, label: string, payload: Record<string, unknown>, createdAt: number}} RepeatableAction
+   * @typedef {{activeCell: {rowId: string, columnKey: string} | null, cells: Array<{rowId: string, columnKey: string}>, selectionScope: Record<string, unknown> | null}} RepeatContext
+   */
+
+  function clonePlain(value) {
+    return JSON.parse(JSON.stringify(value ?? null));
+  }
+
+  function repeatableActionLabel(action) {
+    return String(action?.label || REPEATABLE_ACTIONS[action?.type]?.label || 'acao');
+  }
+
+  function rememberRepeatableAction(action) {
+    const handler = REPEATABLE_ACTIONS[action?.type];
+    if (!handler) return;
+    state.lastRepeatableAction = {
+      type: action.type,
+      label: String(action.label || handler.label),
+      payload: clonePlain(action.payload || {}),
+      createdAt: Date.now()
+    };
+  }
+
+  function rememberCellValueAction(value, options = {}) {
+    const text = String(value ?? '');
+    if (options.repeatable === false || options.history === false || !text.trim()) return;
+    rememberRepeatableAction({
+      type: 'cell-value',
+      label: 'valor',
+      payload: { value: text }
+    });
+  }
+
+  function matrixHasOnlyMeaningfulValues(matrix) {
+    return Array.isArray(matrix)
+      && matrix.length > 0
+      && matrix.every((line) => Array.isArray(line)
+        && line.length > 0
+        && line.every((value) => String(value ?? '').trim() !== ''));
+  }
+
+  function rememberPasteValuesAction(matrix, options = {}) {
+    if (options.repeatable === false || !matrixHasOnlyMeaningfulValues(matrix)) return;
+    rememberRepeatableAction({
+      type: 'paste-values',
+      label: 'colagem',
+      payload: { matrix: clonePlain(matrix) }
+    });
+  }
+
+  function rememberColorAction(color, options = {}) {
+    const normalized = normalizeColorValue(color);
+    if (options.repeatable === false || !normalized) return;
+    rememberRepeatableAction({
+      type: 'apply-color',
+      label: 'cor',
+      payload: { color: normalized }
+    });
+  }
+
+  function rememberEraseFormatAction(options = {}) {
+    if (options.repeatable === false) return;
+    rememberRepeatableAction({
+      type: 'erase-format',
+      label: 'limpeza de cor',
+      payload: {}
+    });
+  }
+
+  function repeatFeedback(text, mode = 'warn') {
+    const safeMode = mode === 'ok' ? 'repeat-ok' : mode === 'error' ? 'repeat-error' : 'repeat-warn';
+    status(`F4: ${text}`, safeMode);
+    if (state.repeatFeedbackTimer) window.clearTimeout(state.repeatFeedbackTimer);
+    state.repeatFeedbackTimer = window.setTimeout(() => {
+      state.repeatFeedbackTimer = null;
+      updatePendingSaveStatus();
+    }, 1800);
+  }
+
+  function currentRepeatContext() {
+    return {
+      activeCell: state.activeCell ? { ...state.activeCell } : null,
+      cells: selectedCells(),
+      selectionScope: state.selectionScope ? clonePlain(state.selectionScope) : null
+    };
+  }
+
+  function activeRepeatTarget(context) {
+    const active = context?.activeCell;
+    if (!active) return null;
+    const row = rowById(active.rowId);
+    const column = colByKey(active.columnKey);
+    if (!row || !column || column.options?.computed === true) return null;
+    return { row, column, rowId: active.rowId, columnKey: active.columnKey };
+  }
+
+  function canRepeatCellValue(action, context) {
+    if (!activeRepeatTarget(context)) {
+      return { ok: false, reason: 'selecao atual nao aceita valor' };
+    }
+    if (!String(action?.payload?.value ?? '').trim()) {
+      return { ok: false, reason: 'acao anterior nao tem valor seguro' };
+    }
+    return { ok: true };
+  }
+
+  async function repeatCellValue(action, context) {
+    const target = activeRepeatTarget(context);
+    await setCellValue(target.rowId, target.columnKey, String(action.payload.value ?? ''), { repeatable: false });
+  }
+
+  function parseClipboardMatrix(text) {
+    return String(text || '')
+      .replace(/\r/g, '')
+      .split('\n')
+      .filter((line, index, all) => line !== '' || index < all.length - 1)
+      .map((line) => line.split('\t'));
+  }
+
+  function matrixFromRepeatAction(action) {
+    const matrix = action?.payload?.matrix;
+    if (!Array.isArray(matrix)) return [];
+    return matrix.map((line) => (Array.isArray(line) ? line.map((value) => String(value ?? '')) : []));
+  }
+
+  function matrixChangesAtActiveCell(matrix, context) {
+    if (!activeRepeatTarget(context) || !matrixHasOnlyMeaningfulValues(matrix)) {
+      return { ok: false, reason: 'selecao atual nao aceita a colagem', changes: [] };
+    }
+    const rows = gridRows();
+    const start = coordsFor(context.activeCell.rowId, context.activeCell.columnKey, rows);
+    if (start.row < 0 || start.col < 0) {
+      return { ok: false, reason: 'selecao atual nao esta na grade', changes: [] };
+    }
+    const changes = [];
+    for (let rowOffset = 0; rowOffset < matrix.length; rowOffset += 1) {
+      const line = matrix[rowOffset] || [];
+      for (let colOffset = 0; colOffset < line.length; colOffset += 1) {
+        const row = rows[start.row + rowOffset];
+        const column = state.columns[start.col + colOffset];
+        if (!row || !column || column.options?.computed === true) {
+          return { ok: false, reason: 'a colagem nao cabe na selecao atual', changes: [] };
+        }
+        changes.push({
+          rowId: row.id,
+          columnKey: column.key,
+          value: normalizePastedValue(column, line[colOffset])
+        });
+      }
+    }
+    return changes.length
+      ? { ok: true, changes }
+      : { ok: false, reason: 'sem celulas validas para repetir', changes: [] };
+  }
+
+  function canRepeatPasteValues(action, context) {
+    return matrixChangesAtActiveCell(matrixFromRepeatAction(action), context);
+  }
+
+  async function repeatPasteValues(action, context) {
+    const result = matrixChangesAtActiveCell(matrixFromRepeatAction(action), context);
+    if (!result.ok) return;
+    await saveCellsBatch(result.changes, { optimistic: true, render: 'rows', repeatable: false });
+  }
+
+  function canRepeatSelectionStyle(_action, context) {
+    if (context?.selectionScope) return { ok: true };
+    if (context?.cells?.length) return { ok: true };
+    return { ok: false, reason: 'selecao atual nao aceita formatacao' };
+  }
+
+  async function repeatApplyColor(action) {
+    const color = normalizeColorValue(action?.payload?.color);
+    if (!color) return;
+    await applyColorToSelection(color, { repeatable: false });
+  }
+
+  async function repeatEraseFormat() {
+    await eraseSelection({ repeatable: false });
+  }
+
+  async function repeatLastAction() {
+    if (state.repeatInFlight) {
+      repeatFeedback('aguarde a repeticao anterior terminar');
+      return;
+    }
+    const action = state.lastRepeatableAction;
+    if (!action) {
+      repeatFeedback('nenhuma acao para repetir');
+      return;
+    }
+    const handler = REPEATABLE_ACTIONS[action.type];
+    if (!handler) {
+      repeatFeedback('acao anterior nao e repetivel');
+      return;
+    }
+    const context = currentRepeatContext();
+    const compatibility = handler.canRepeat(action, context);
+    if (!compatibility.ok) {
+      repeatFeedback(compatibility.reason || 'acao incompativel com a selecao atual');
+      return;
+    }
+    state.repeatInFlight = true;
+    try {
+      await handler.run(action, context);
+      repeatFeedback(`repetiu ${repeatableActionLabel(action)}`, 'ok');
+    } catch (error) {
+      console.error(error);
+      repeatFeedback(error.message || 'erro ao repetir acao', 'error');
+    } finally {
+      state.repeatInFlight = false;
+    }
   }
 
   function selectedCellMatrix(rows = gridRows()) {
@@ -1897,6 +2138,7 @@
       if (options.history !== false) {
         pushHistory({ type: 'cell', rowId, columnKey, before, after });
       }
+      rememberCellValueAction(after, options);
       return data;
     })();
     state.pendingCellSaves.set(key, saveTask);
@@ -2244,13 +2486,9 @@
     return data.rows;
   }
 
-  async function pasteMatrix(text) {
+  async function pasteMatrix(text, options = {}) {
     if (!state.activeCell) return;
-    const matrix = String(text || '')
-      .replace(/\r/g, '')
-      .split('\n')
-      .filter((line, index, all) => line !== '' || index < all.length - 1)
-      .map((line) => line.split('\t'));
+    const matrix = parseClipboardMatrix(text);
     if (!matrix.length) return;
     const rows = gridRows();
     const start = coordsFor(state.activeCell.rowId, state.activeCell.columnKey, rows);
@@ -2275,6 +2513,7 @@
       }
     }
     await saveCellsBatch(changes, { optimistic: true, render: 'rows' });
+    if (changes.length) rememberPasteValuesAction(matrix, options);
   }
 
   async function deleteSelectedValues() {
@@ -2423,9 +2662,12 @@
     else refreshRenderedRows(affected.rowIds);
   }
 
-  async function applyColorToSelection(color) {
+  async function applyColorToSelection(color, options = {}) {
+    const normalizedColor = normalizeColorValue(color);
+    if (!normalizedColor) return;
     if (state.selectionScope?.type === 'column') {
-      await colorColumn(state.selectionScope.columnKey, color);
+      await colorColumn(state.selectionScope.columnKey, normalizedColor, { repeatable: false });
+      rememberColorAction(normalizedColor, options);
       return;
     }
     if (state.selectionScope?.type === 'column-range') {
@@ -2433,12 +2675,14 @@
         .slice(state.selectionScope.startCol, state.selectionScope.endCol + 1)
         .filter(Boolean)
         .map((column) => ({ scope: 'column', columnKey: column.key }));
-      await setStylesBatch(targets, color);
+      await setStylesBatch(targets, normalizedColor);
       renderTable();
+      rememberColorAction(normalizedColor, options);
       return;
     }
     if (state.selectionScope?.type === 'row') {
-      await colorRow(state.selectionScope.rowId, color);
+      await colorRow(state.selectionScope.rowId, normalizedColor, { repeatable: false });
+      rememberColorAction(normalizedColor, options);
       return;
     }
     if (state.selectionScope?.type === 'row-range') {
@@ -2446,18 +2690,21 @@
         .slice(state.selectionScope.startRow, state.selectionScope.endRow + 1)
         .filter(Boolean)
         .map((row) => ({ scope: 'row', rowId: row.id }));
-      await setStylesBatch(rows, color);
+      await setStylesBatch(rows, normalizedColor);
       renderTable();
+      rememberColorAction(normalizedColor, options);
       return;
     }
     const cells = selectedCells();
-    await setStylesBatch(cells.map((cell) => ({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey })), color);
+    await setStylesBatch(cells.map((cell) => ({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey })), normalizedColor);
     refreshRenderedRows(new Set(cells.map((cell) => cell.rowId)));
+    rememberColorAction(normalizedColor, options);
   }
 
-  async function eraseSelection() {
+  async function eraseSelection(options = {}) {
     if (state.selectionScope?.type === 'column') {
-      await eraseColumn(state.selectionScope.columnKey);
+      await eraseColumn(state.selectionScope.columnKey, { repeatable: false });
+      rememberEraseFormatAction(options);
       return;
     }
     if (state.selectionScope?.type === 'column-range') {
@@ -2467,10 +2714,12 @@
         .map((column) => ({ scope: 'column', columnKey: column.key }));
       await deleteStylesBatch(targets);
       renderTable();
+      rememberEraseFormatAction(options);
       return;
     }
     if (state.selectionScope?.type === 'row') {
-      await eraseRow(state.selectionScope.rowId);
+      await eraseRow(state.selectionScope.rowId, { repeatable: false });
+      rememberEraseFormatAction(options);
       return;
     }
     if (state.selectionScope?.type === 'row-range') {
@@ -2479,31 +2728,41 @@
         .filter(Boolean);
       await deleteStylesBatch(rows.map((row) => ({ scope: 'row', rowId: row.id })));
       refreshRenderedRows(new Set(rows.map((row) => row.id)));
+      rememberEraseFormatAction(options);
       return;
     }
     const cells = selectedCells();
     await deleteStylesBatch(cells.map((cell) => ({ scope: 'cell', rowId: cell.rowId, columnKey: cell.columnKey })));
     refreshRenderedRows(new Set(cells.map((cell) => cell.rowId)));
+    rememberEraseFormatAction(options);
   }
 
-  async function colorColumn(columnKey, color) {
-    await setStyle({ scope: 'column', columnKey }, color);
+  async function colorColumn(columnKey, color, options = {}) {
+    const normalizedColor = normalizeColorValue(color);
+    if (!normalizedColor) return;
+    await setStyle({ scope: 'column', columnKey }, normalizedColor);
     renderTable();
+    rememberColorAction(normalizedColor, options);
   }
 
-  async function colorRow(rowId, color) {
-    await setStyle({ scope: 'row', rowId }, color);
+  async function colorRow(rowId, color, options = {}) {
+    const normalizedColor = normalizeColorValue(color);
+    if (!normalizedColor) return;
+    await setStyle({ scope: 'row', rowId }, normalizedColor);
     renderTable();
+    rememberColorAction(normalizedColor, options);
   }
 
-  async function eraseColumn(columnKey) {
+  async function eraseColumn(columnKey, options = {}) {
     await deleteStyle({ scope: 'column', columnKey });
     renderTable();
+    rememberEraseFormatAction(options);
   }
 
-  async function eraseRow(rowId) {
+  async function eraseRow(rowId, options = {}) {
     await deleteStyle({ scope: 'row', rowId });
     renderTable();
+    rememberEraseFormatAction(options);
   }
 
   function fillTargetRange(targetCell) {
@@ -3170,6 +3429,11 @@
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
         event.preventDefault();
         redo().catch(console.error);
+        return;
+      }
+      if (event.key === 'F4' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        repeatLastAction().catch(console.error);
         return;
       }
       if (!state.activeCell) return;
