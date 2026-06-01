@@ -671,12 +671,12 @@ if (!$homeAuthenticated):
 
         .wf-login-bubbles {
             position: absolute;
-            top: -5.6rem;
+            top: -6.6rem;
             left: -3rem;
             right: -3rem;
-            height: 8.5rem;
+            height: 12.4rem;
             overflow: visible;
-            contain: layout paint;
+            contain: layout;
             filter: url("#wf-login-blob");
             backface-visibility: hidden;
             pointer-events: none;
@@ -688,8 +688,8 @@ if (!$homeAuthenticated):
             position: absolute;
             left: -2rem;
             right: -2rem;
-            bottom: -0.35rem;
-            height: 4.8rem;
+            bottom: -1.1rem;
+            height: 6.3rem;
             background: var(--footer-background);
             border-radius: 999px 999px 0 0;
         }
