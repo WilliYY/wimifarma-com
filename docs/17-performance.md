@@ -18,6 +18,7 @@ Documenta riscos e observacoes de performance, principalmente na migracao do Wor
 - Em 2026-05-31, os `favicon.svg` compartilhados por Home/tema, Cotacao, Tarefa, Financeiro e Miauby foram otimizados mantendo o mesmo visual: cada arquivo caiu de cerca de 1,07 MB para cerca de 2,7 KB, sem mudar os links HTML nem os favicons PNG alternativos.
 - Em 2026-05-31, o cache de assets estaticos foi reforcado sem ativar cache de pagina: `site/.htaccess` passou a enviar cache forte para imagens, SVG, video e fontes, cache curto para CSS/JS, e os apps Node passaram a sobrescrever `no-store` somente para arquivos estaticos de midia/imagem/fonte. HTML, PHP, APIs, health checks e sessoes continuam sem cache agressivo.
 - Em 2026-06-01, a animacao de troca de cor do footer liquido do login foi desativada em `site/home.php`. O filtro SVG e as bolhas do topo continuam, mas o fundo fica ciano estatico e sem circulos decorativos internos para evitar piscada/repaint perceptivel no Chrome e deixar o bloco mais limpo.
+- Em 2026-06-01, o topo do login ganhou 8 estrelas cadentes leves em CSS puro, renderizadas sem fundo preto sobre o ciano, atras do formulario/video e com reducao automatica em telas pequenas. A camada nao usa JS nem assets externos e respeita `prefers-reduced-motion`.
 
 ## Cotacao V2 - baseline de performance em 2026-05-14
 

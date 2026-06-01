@@ -85,6 +85,32 @@ function wf_home_bubble_style(int $index): string
     );
 }
 
+function wf_home_shooting_star_style(int $index): string
+{
+    $left = 4 + (mt_rand(0, 8800) / 100);
+    $top = -12 + (mt_rand(0, 1800) / 100);
+    $distanceX = 20 + (mt_rand(0, 2600) / 100);
+    $distanceY = 18 + (mt_rand(0, 2400) / 100);
+    $tail = 54 + mt_rand(0, 38);
+    $time = 4.8 + (mt_rand(0, 300) / 100);
+    $delay = -1 * (1 + (mt_rand(0, 1100) / 100));
+    $angle = 28 + (mt_rand(0, 1200) / 100);
+    $opacity = 0.42 + (mt_rand(0, 28) / 100);
+
+    return sprintf(
+        '--star-left:%.2f%%;--star-top:%.2f%%;--star-x:%.2fvw;--star-y:%.2fvh;--star-tail:%.0fpx;--star-time:%.2fs;--star-delay:%.2fs;--star-angle:%.2fdeg;--star-opacity:%.2f;',
+        $left,
+        $top,
+        $distanceX,
+        $distanceY,
+        $tail,
+        $time,
+        $delay,
+        $angle,
+        $opacity
+    );
+}
+
 session_name('WFHOME');
 session_set_cookie_params(array(
     'lifetime' => 0,
@@ -183,18 +209,69 @@ if (!$homeAuthenticated):
 
         .wf-login-main {
             grid-area: main;
+            position: relative;
             min-height: 0;
             display: grid;
             place-items: center;
             padding: clamp(18px, 4vh, 36px) 18px 0;
+            isolation: isolate;
         }
 
         .wf-login-layout {
             position: relative;
+            z-index: 1;
             width: min(1180px, calc(100vw - 44px));
             min-height: min(530px, calc(100vw - 44px));
             display: grid;
             place-items: center;
+        }
+
+        .wf-login-sky {
+            position: absolute;
+            inset: 0 0 auto;
+            z-index: 0;
+            height: min(55vh, 500px);
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .wf-login-shooting-star {
+            position: absolute;
+            top: var(--star-top, -8%);
+            left: var(--star-left, 50%);
+            width: 0;
+            height: 2px;
+            border-radius: 999px;
+            opacity: 0;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(244, 253, 255, 0.95));
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.72));
+            transform: translate3d(0, 0, 0) rotate(var(--star-angle, 34deg));
+            transform-origin: right center;
+            animation: wf-login-shooting-star var(--star-time, 5.8s) ease-in-out infinite;
+            animation-delay: var(--star-delay, 0s);
+            will-change: transform, width, opacity;
+        }
+
+        .wf-login-shooting-star::before,
+        .wf-login-shooting-star::after {
+            content: "";
+            position: absolute;
+            top: calc(50% - 1px);
+            right: 0;
+            width: 0;
+            height: 2px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(247, 253, 255, 0.96), rgba(255, 255, 255, 0));
+            animation: wf-login-star-shine var(--star-time, 5.8s) ease-in-out infinite;
+            animation-delay: var(--star-delay, 0s);
+        }
+
+        .wf-login-shooting-star::before {
+            transform: translateX(50%) rotate(45deg);
+        }
+
+        .wf-login-shooting-star::after {
+            transform: translateX(50%) rotate(-45deg);
         }
 
         .wf-login-ring {
@@ -664,8 +741,43 @@ if (!$homeAuthenticated):
             }
         }
 
+        @keyframes wf-login-shooting-star {
+            0% {
+                width: 0;
+                opacity: 0;
+                transform: translate3d(0, 0, 0) rotate(var(--star-angle, 34deg));
+            }
+            12% {
+                opacity: var(--star-opacity, 0.58);
+            }
+            36% {
+                width: var(--star-tail, 72px);
+                opacity: var(--star-opacity, 0.58);
+            }
+            100% {
+                width: 0;
+                opacity: 0;
+                transform: translate3d(var(--star-x, 32vw), var(--star-y, 28vh), 0) rotate(var(--star-angle, 34deg));
+            }
+        }
+
+        @keyframes wf-login-star-shine {
+            0%, 18%, 100% {
+                width: 0;
+            }
+            36% {
+                width: 18px;
+            }
+        }
+
         @media (max-width: 1080px) {
             .wf-login-promo {
+                display: none;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .wf-login-shooting-star:nth-child(n+6) {
                 display: none;
             }
         }
@@ -754,6 +866,11 @@ if (!$homeAuthenticated):
 </head>
 <body>
     <main class="wf-login-main">
+        <div class="wf-login-sky" aria-hidden="true">
+            <?php for ($i = 0; $i < 8; $i++): ?>
+                <span class="wf-login-shooting-star" style="<?php echo wf_home_e(wf_home_shooting_star_style($i)); ?>"></span>
+            <?php endfor; ?>
+        </div>
         <div class="wf-login-layout">
             <form class="wf-login-ring" method="post" action="<?php echo wf_home_e(wf_home_url('/')); ?>" autocomplete="off" novalidate>
                 <i style="--clr:#00ff0a;" aria-hidden="true"></i>
