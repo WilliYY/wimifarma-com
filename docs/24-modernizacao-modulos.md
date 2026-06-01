@@ -60,7 +60,7 @@ O script mostra:
 ## Ordem segura
 
 1. Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback e Financeiro ja usam apenas `core_users`, sem fallback MySQL no codigo.
-1.1. Cotacao deve migrar para TypeScript em fases pequenas: Fase 1 ja adicionou tooling/typecheck sem mudar runtime, Fase 2 ja criou contratos TS para dominio, APIs, sessao, env e Socket.IO, e Fase 3 comecou por helpers TS sombra; proximas fases devem extrair mais helpers pequenos, preservando frontend e Socket.IO.
+1.1. Cotacao deve migrar para TypeScript em fases pequenas: Fase 1 ja adicionou tooling/typecheck sem mudar runtime, Fase 2 ja criou contratos TS para dominio, APIs, sessao, env e Socket.IO, e Fase 3 segue com helpers TS sombra; proximas fases devem extrair mais helpers pequenos, preservando frontend e Socket.IO.
 2. Manter rollback por `.env` somente onde ainda existir fallback, mas sem deixar MySQL como caminho normal de login. Pedidos, Gestao e Financeiro nao tem mais fallback MySQL no codigo.
 2.1. Usar `/usuarios/` como painel central para criar logins novos, vincular XP e registrar permissoes por modulo antes de aplicar bloqueio em cada rota.
 3. Validar Tarefa em Postgres puro no VPS: `/tarefa/health`, login, tarefas publicas/privadas, badge da home e Miauby sem `mysql2`.
