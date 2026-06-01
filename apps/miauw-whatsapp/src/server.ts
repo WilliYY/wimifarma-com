@@ -43,8 +43,13 @@ type PixReceiptExtraction = {
   paidDate: string;
   paidTime: string;
   institution: string;
+  endToEndId: string;
+  transactionId: string;
   rawText: string;
   confidence: number;
+  amountConfidence: number;
+  payerConfidence: number;
+  targetConfidence: number;
   missing: string[];
 };
 
@@ -3242,6 +3247,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         } else {
           const extraction = await extractPixReceiptFromQueuedMedia(row);
           if (!extraction.isPixReceipt) {
+            await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'not_detected'));
             mediaFailureReply = {
               text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
               engine: 'blocked',
@@ -3252,6 +3258,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
             const targetMatch = pixReceiptTargetMatch(extraction);
             const missing = missingPixReceiptFields(extraction);
             if (missing.length > 0) {
+              await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'missing_fields', targetMatch));
               mediaFailureReply = {
                 text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.`,
                 engine: 'blocked',
@@ -3259,6 +3266,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
               };
               effectiveBodyText = '';
             } else if (!targetMatch.ok) {
+              await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
               mediaFailureReply = {
                 text: `Li o comprovante, mas nao consegui confirmar que o destino e a Wimifarma (${maskDocument(PIX_RECEIPT_CNPJ)} ou nome cadastrado). Nao lancei. Se estiver certo, escreva os dados manualmente para eu confirmar.`,
                 engine: 'blocked',
@@ -3290,6 +3298,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                     pix_receipt_name_match: targetMatch.nameMatch,
                     pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
                     pix_receipt_confidence: extraction.confidence,
+                    ...pixReceiptExtractionSummary(extraction, 'accepted', targetMatch),
                   }),
                 ],
               );
@@ -4712,6 +4721,19 @@ const PIX_RECEIPT_TARGET_STOP_WORDS = new Set([
   'com', 'em', 'no', 'na', 'nos', 'nas', 'produtos', 'produto',
 ]);
 
+const PIX_RECEIPT_TARGET_CONTEXT_TERMS = [
+  'destino',
+  'destinatario',
+  'recebedor',
+  'favorecido',
+  'beneficiario',
+  'beneficiario final',
+  'para',
+  'chave pix',
+  'cnpj destino',
+  'cnpj do recebedor',
+];
+
 function pixReceiptTargetWords(value: string): string[] {
   const words = normalizeIntentText(value)
     .split(/\s+/g)
@@ -4742,13 +4764,44 @@ function pixReceiptAliasScore(source: string, alias: string): number {
   return matches / aliasWords.length;
 }
 
+function textHasPixReceiptTargetContext(value: string): boolean {
+  const clean = normalizeIntentText(value);
+  return hasAnyIntentTerm(clean, PIX_RECEIPT_TARGET_CONTEXT_TERMS);
+}
+
+function pixReceiptTargetContextText(rawText: string): string {
+  const parts = safeOutboundText(rawText, 2000)
+    .split(/[|\n;]/g)
+    .map((part) => safeText(part, 220))
+    .filter((part) => part && textHasPixReceiptTargetContext(part));
+  return parts.join(' ');
+}
+
+function rawTextHasConfiguredPixTarget(rawText: string): boolean {
+  if (!PIX_RECEIPT_CNPJ) return false;
+  const text = safeOutboundText(rawText, 2000);
+  if (!onlyDigits(text).includes(PIX_RECEIPT_CNPJ)) return false;
+  const contextualText = pixReceiptTargetContextText(text);
+  return Boolean(contextualText && onlyDigits(contextualText).includes(PIX_RECEIPT_CNPJ));
+}
+
 function pixReceiptTargetMatch(extraction: PixReceiptExtraction): PixReceiptTargetMatch {
   const destinationCnpj = onlyDigits(extraction.destinationCnpj);
   const destinationKey = onlyDigits(extraction.destinationKey);
-  const rawDigits = onlyDigits(extraction.rawText);
+  if (PIX_RECEIPT_CNPJ && destinationCnpj && destinationCnpj !== PIX_RECEIPT_CNPJ) {
+    return {
+      ok: false,
+      reason: 'destination_cnpj_mismatch',
+      score: 0,
+      matched: maskDocument(destinationCnpj),
+      cnpjMatch: false,
+      keyMatch: false,
+      nameMatch: false,
+    };
+  }
   const cnpjMatch = Boolean(PIX_RECEIPT_CNPJ) && (
     destinationCnpj === PIX_RECEIPT_CNPJ
-    || rawDigits.includes(PIX_RECEIPT_CNPJ)
+    || rawTextHasConfiguredPixTarget(extraction.rawText)
   );
   const keyMatch = Boolean(PIX_RECEIPT_CNPJ) && (
     destinationKey === PIX_RECEIPT_CNPJ
@@ -4777,7 +4830,7 @@ function pixReceiptTargetMatch(extraction: PixReceiptExtraction): PixReceiptTarg
     };
   }
 
-  const sourceText = [extraction.destinationName, extraction.rawText].filter(Boolean).join(' ');
+  const sourceText = [extraction.destinationName, pixReceiptTargetContextText(extraction.rawText)].filter(Boolean).join(' ');
   let bestAlias = '';
   let bestScore = 0;
   for (const alias of PIX_RECEIPT_DESTINATION_ALIASES) {
@@ -4813,6 +4866,7 @@ function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch:
   const destination = cleanReceiptPart(extraction.destinationName, 90);
   const institution = cleanReceiptPart(extraction.institution, 90);
   const date = dateForCommand(extraction.paidDate);
+  const transaction = cleanReceiptPart(extraction.endToEndId || extraction.transactionId, 100);
   const details = [
     'Comprovante Pix CNPJ lido por midia.',
     pixReceiptTargetDetails(targetMatch),
@@ -4821,6 +4875,7 @@ function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch:
     payer ? `Pagador: ${payer}.` : '',
     destination ? `Destino: ${destination}.` : '',
     institution ? `Instituicao: ${institution}.` : '',
+    transaction ? `ID Pix: ${transaction}.` : '',
   ].filter(Boolean).join(' ');
   return `pix cnpj ${moneyForCommand(extraction.amount)} - ${payer} - obs ${details}`;
 }
@@ -4829,6 +4884,12 @@ function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
   const missing = new Set<string>();
   if (!extraction.amount || extraction.amount <= 0) missing.add('valor');
   if (!extraction.payerName) missing.add('nome do pagador');
+  if (extraction.amount > 0 && extraction.amountConfidence > 0 && extraction.amountConfidence < 0.55) {
+    missing.add('valor com confianca baixa');
+  }
+  if (extraction.payerName && extraction.payerConfidence > 0 && extraction.payerConfidence < 0.45) {
+    missing.add('nome do pagador com confianca baixa');
+  }
   for (const item of extraction.missing) {
     const clean = safeText(item, 60);
     const normalized = normalizeIntentText(clean);
@@ -4842,6 +4903,49 @@ function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
   }
   if (extraction.confidence > 0 && extraction.confidence < 0.45) missing.add('confianca baixa na leitura');
   return Array.from(missing).slice(0, 6);
+}
+
+function pixReceiptExtractionSummary(
+  extraction: PixReceiptExtraction,
+  outcome: string,
+  targetMatch?: PixReceiptTargetMatch,
+): JsonRecord {
+  return {
+    pix_receipt_attempted: true,
+    pix_receipt_detected: extraction.isPixReceipt,
+    pix_receipt_outcome: safeText(outcome, 60),
+    pix_receipt_amount: extraction.amount > 0 ? extraction.amount : undefined,
+    pix_receipt_paid_date: safeText(extraction.paidDate, 20) || undefined,
+    pix_receipt_paid_time: safeText(extraction.paidTime, 10) || undefined,
+    pix_receipt_destination_cnpj_present: onlyDigits(extraction.destinationCnpj) !== '',
+    pix_receipt_destination_cnpj_match: targetMatch?.cnpjMatch === true,
+    pix_receipt_destination_key_match: targetMatch?.keyMatch === true,
+    pix_receipt_destination_name_match: targetMatch?.nameMatch === true,
+    pix_receipt_target_reason: targetMatch?.reason,
+    pix_receipt_target_score: targetMatch ? targetMatch.score : undefined,
+    pix_receipt_target_label: targetMatch?.matched ? cleanReceiptPart(targetMatch.matched, 90) : undefined,
+    pix_receipt_destination_name: extraction.destinationName ? cleanReceiptPart(extraction.destinationName, 90) : undefined,
+    pix_receipt_payer_name: extraction.payerName ? cleanReceiptPart(extraction.payerName, 70) : undefined,
+    pix_receipt_institution: extraction.institution ? cleanReceiptPart(extraction.institution, 90) : undefined,
+    pix_receipt_transaction_id: extraction.transactionId ? cleanReceiptPart(extraction.transactionId, 100) : undefined,
+    pix_receipt_end_to_end_id: extraction.endToEndId ? cleanReceiptPart(extraction.endToEndId, 100) : undefined,
+    pix_receipt_confidence: extraction.confidence,
+    pix_receipt_amount_confidence: extraction.amountConfidence,
+    pix_receipt_payer_confidence: extraction.payerConfidence,
+    pix_receipt_target_confidence: extraction.targetConfidence,
+    pix_receipt_missing: extraction.missing.slice(0, 8).map((item) => safeText(item, 60)).filter(Boolean),
+    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+  };
+}
+
+async function mergePixReceiptEventSummary(eventId: string, summary: JsonRecord): Promise<void> {
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_events
+        SET payload_summary = payload_summary || $2::jsonb,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [eventId, JSON.stringify(summary)],
+  );
 }
 
 function pixReceiptExtractionHints(row: QueueRow): PixReceiptExtractionHints {
@@ -4933,6 +5037,13 @@ function numberFromReceiptValue(value: unknown): number {
   return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
 }
 
+function confidenceFromReceiptValue(value: unknown, fallback = 0): number {
+  const raw = numberFromReceiptValue(value);
+  const normalized = raw > 1 && raw <= 100 ? raw / 100 : raw;
+  if (!Number.isFinite(normalized) || normalized < 0) return fallback;
+  return Math.max(0, Math.min(1, normalized || fallback));
+}
+
 function amountFromReceiptRawText(value: unknown): number {
   const text = safeOutboundText(value, 2000);
   if (!text) return 0;
@@ -4990,8 +5101,7 @@ function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
   const rawText = stringFromKeys(data, ['raw_text', 'rawText', 'texto_bruto', 'ocr_text'], 2000);
   const amount = numberFromReceiptValue(data.amount_brl ?? data.amount ?? data.valor ?? data.value)
     || amountFromReceiptRawText(rawText);
-  const rawConfidence = numberFromReceiptValue(data.confidence ?? data.confianca ?? 0);
-  const confidence = rawConfidence > 1 && rawConfidence <= 100 ? rawConfidence / 100 : rawConfidence;
+  const confidence = confidenceFromReceiptValue(data.confidence ?? data.confianca ?? 0);
   return {
     isPixReceipt: boolFromKeys(data, ['is_pix_receipt', 'isPixReceipt', 'comprovante_pix']),
     destinationCnpj: onlyDigits(data.destination_cnpj_digits ?? data.destinationCnpj ?? data.cnpj_destino ?? data.destination_cnpj),
@@ -5002,8 +5112,13 @@ function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
     paidDate: dateFromReceiptValue(data.paid_at_date ?? data.paidDate ?? data.data_pagamento ?? data.data) || dateFromReceiptValue(rawText),
     paidTime: timeFromReceiptValue(data.paid_at_time ?? data.paidTime ?? data.horario_pagamento ?? data.horario ?? data.hora) || timeFromReceiptValue(rawText),
     institution: stringFromKeys(data, ['institution', 'instituicao', 'bank', 'banco']),
+    endToEndId: stringFromKeys(data, ['end_to_end_id', 'endToEndId', 'e2e_id', 'e2eid', 'id_pix'], 120),
+    transactionId: stringFromKeys(data, ['transaction_id', 'transactionId', 'id_transacao', 'autenticacao', 'codigo_autenticacao'], 120),
     rawText,
     confidence: Math.max(0, Math.min(1, confidence)),
+    amountConfidence: confidenceFromReceiptValue(data.amount_confidence ?? data.amountConfidence ?? data.confianca_valor, confidence),
+    payerConfidence: confidenceFromReceiptValue(data.payer_confidence ?? data.payerConfidence ?? data.confianca_pagador, confidence),
+    targetConfidence: confidenceFromReceiptValue(data.target_confidence ?? data.targetConfidence ?? data.confianca_destino, confidence),
     missing: stringArrayFromValue(data.missing ?? data.faltando),
   };
 }
@@ -5343,7 +5458,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
           role: 'user',
           parts: [
             {
-              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se nao for comprovante Pix, use is_pix_receipt false. Se o destino for diferente, retorne o destino real encontrado.`,
+              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id e o identificador Pix/E2E/autenticacao quando existir, mas nao invente. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`,
             },
             {
               inlineData: {
