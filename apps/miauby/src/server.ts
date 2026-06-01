@@ -17,7 +17,7 @@ type ShadowReadSection = SourceTable & {
 };
 
 const env = process.env;
-const serviceVersion = '0.3.0';
+const serviceVersion = '0.4.0';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -44,6 +44,82 @@ const readSections: ShadowReadSection[] = [
   { key: 'patterns', label: 'Padroes', source: 'miauw_padroes', target: 'miauby_patterns', previewFields: [] },
   { key: 'tool_traces', label: 'Traces recentes', source: 'miauw_tool_traces', target: 'miauby_tool_traces', previewFields: [] },
   { key: 'settings', label: 'Configuracoes nao secretas', source: 'miauw_configuracoes', target: 'miauby_settings', previewFields: [] },
+];
+
+type CutoverFlow = {
+  key: string;
+  status: 'legacy_official' | 'shadow_ready' | 'blocked_until_contract';
+  current_owner: string;
+  current_storage: string[];
+  shadow_storage: string[];
+  next_step: string;
+  validation: string[];
+};
+
+const cutoverFlows: CutoverFlow[] = [
+  {
+    key: 'chat_messages',
+    status: 'legacy_official',
+    current_owner: 'site/miauw/api.php?action=send',
+    current_storage: ['miauw_conversas', 'miauw_mensagens', 'miauw_tool_traces', 'miauw_channel_events fallback'],
+    shadow_storage: ['miauby_conversations', 'miauby_messages', 'miauby_tool_traces'],
+    next_step: 'criar adaptador de escrita do Miauby Node desligado por env, mantendo PHP como fonte oficial ate paridade de mensagem e trace',
+    validation: ['mensagem do operador', 'resposta do assistente', 'trace sanitizado', 'fallback PHP quando Node falhar'],
+  },
+  {
+    key: 'training_review',
+    status: 'legacy_official',
+    current_owner: 'site/miauw/treino.php',
+    current_storage: ['miauw_treinos_respostas', 'wf_logs legado curto quando usado'],
+    shadow_storage: ['miauby_training_examples'],
+    next_step: 'migrar contrato de revisao/aprovacao para endpoint Node tokenizado antes de trocar a tela',
+    validation: ['aprovar treino', 'rejeitar treino', 'criar ajuste', 'nao duplicar parent_id/status'],
+  },
+  {
+    key: 'memory_and_knowledge',
+    status: 'legacy_official',
+    current_owner: 'site/miauw/miauw-funcoes.php',
+    current_storage: ['miauw_memorias', 'miauw_conhecimentos'],
+    shadow_storage: ['miauby_memories', 'miauby_knowledge'],
+    next_step: 'separar leitura e escrita de memoria/conhecimento em contratos pequenos antes do corte',
+    validation: ['memoria revisavel', 'conhecimento ativo', 'redacao de segredo/telefone', 'uso sem payload bruto'],
+  },
+  {
+    key: 'alerts_patterns',
+    status: 'legacy_official',
+    current_owner: 'site/miauw/miauw-intelligence.php',
+    current_storage: ['miauw_alertas', 'miauw_alerta_eventos', 'miauw_padroes', 'miauw_configuracoes'],
+    shadow_storage: ['miauby_alerts', 'miauby_alert_events', 'miauby_patterns', 'miauby_settings'],
+    next_step: 'migrar diagnostico/alertas como leitura Node primeiro, depois escrita com auditoria equivalente',
+    validation: ['alerta criado', 'alerta dispensado', 'padrao revisado', 'diagnostico sem stack/SQL bruto'],
+  },
+  {
+    key: 'tool_contracts',
+    status: 'blocked_until_contract',
+    current_owner: 'site/miauw/agent-context.php e site/miauw/agent-tools.php',
+    current_storage: ['contratos PHP em runtime', 'miauw_tool_traces'],
+    shadow_storage: ['miauby_tool_traces'],
+    next_step: 'versionar contratos de tools no Node/Postgres sem liberar escrita direta em bancos de modulos',
+    validation: ['tools de leitura', 'confirmacao de escrita forte', 'auditoria por modulo dono', 'token interno obrigatorio'],
+  },
+  {
+    key: 'strong_actions',
+    status: 'blocked_until_contract',
+    current_owner: 'site/miauw/agent-actions.php',
+    current_storage: ['pendencias/execucao via PHP bridge', 'auditoria nos modulos donos'],
+    shadow_storage: ['miauby_tool_traces'],
+    next_step: 'manter execucao no modulo dono; Node apenas prepara contrato e respeita confirmacao humana',
+    validation: ['SIM/NAO nao executa sem pendencia', 'acao expirada nao grava', 'rollback por MIAUW_ENGINE=php'],
+  },
+  {
+    key: 'farmacia_popular',
+    status: 'shadow_ready',
+    current_owner: 'site/miauw/miauw-farmacia-popular.php e cron dedicado',
+    current_storage: ['miauw_farmacia_popular_valores', 'miauw_farmacia_popular_atualizacoes'],
+    shadow_storage: ['miauby_farmacia_popular_values', 'miauby_farmacia_popular_updates'],
+    next_step: 'migrar leitura para Node antes de mover o cron de atualizacao',
+    validation: ['valores por UF/produto', 'historico de atualizacao', 'sem download bruto em resposta publica'],
+  },
 ];
 
 const mysqlPool = mysql.createPool({
@@ -265,6 +341,62 @@ function summarizeParity(parity: Awaited<ReturnType<typeof buildParity>>) {
       sample_mismatches: table.sample_mismatches,
       issues: table.issues,
     })),
+  };
+}
+
+function buildCutoverInventory() {
+  return {
+    ok: true,
+    service: 'miauby',
+    version: serviceVersion,
+    mode: 'cutover_inventory_read_only',
+    generated_at: new Date().toISOString(),
+    official_source: {
+      route: '/miauw/',
+      runtime: 'site/miauw PHP',
+      database: 'MySQL wimifarma_app / miauw_*',
+      write_enabled: true,
+      note: 'continua oficial ate corte validado com rollback',
+    },
+    shadow_target: {
+      route: `${basePath}/api/internal/*`,
+      runtime: 'apps/miauby Node.js 22 + TypeScript',
+      database: 'Postgres wimifarma_miauby / miauby_*',
+      write_enabled: false,
+      public_proxy_enabled: false,
+    },
+    guards: {
+      token_required: true,
+      route_cutover_enabled: false,
+      write_enabled: false,
+      public_proxy_enabled: false,
+      node_direct_module_db_writes_enabled: false,
+    },
+    tables: sourceTables.map((table) => ({
+      source: table.source,
+      target: table.target,
+    })),
+    flows: cutoverFlows,
+    hard_blockers: [
+      'apps/miauby ainda nao possui adaptador oficial de escrita para mensagens, treino, memorias, alertas e traces',
+      'apps/miauw-agent ainda depende de agent-context.php, agent-tools.php e agent-actions.php para contexto, tools e confirmacoes',
+      'widget, diagnostico e treino continuam em PHP e precisam de compatibilidade de sessao/CSRF antes de trocar a rota',
+      'antes de congelar miauw_* e preciso dump, migracao sombra, validacao de checksum e janela de observacao',
+    ],
+    safe_sequence: [
+      'manter PHP oficial e Postgres sombra sincronizado',
+      'migrar leituras de contexto/persona/tool contracts para Node em modo read-only',
+      'criar adaptador de escrita Node desligado por env e testar com usuario adm',
+      'habilitar node_shadow por usuario e comparar resposta/trace sem latencia global',
+      'cortar escrita de mensagens/traces primeiro, mantendo rollback por MIAUW_ENGINE=php',
+      'migrar treino, memoria, alertas e diagnostico por contratos pequenos',
+    ],
+    rollback: {
+      engine: 'MIAUW_ENGINE=php',
+      keep_routes: ['/miauw/', '/miauby/', '/miauw/agent/', '/miauby/agent/'],
+      keep_legacy_tables: true,
+      restore_rule: 'nao apagar site/miauw nem miauw_* antes de congelamento, dump e observacao',
+    },
   };
 }
 
@@ -572,6 +704,10 @@ app.get(`${basePath}/api/internal/context`, requireInternalToken, async (req, re
   } catch (error) {
     next(error);
   }
+});
+
+app.get(`${basePath}/api/internal/cutover`, requireInternalToken, (_req, res) => {
+  res.json(buildCutoverInventory());
 });
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

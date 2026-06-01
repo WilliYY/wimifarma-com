@@ -900,6 +900,7 @@ Manter Postgres/Redis como fonte oficial e seguir migracao JS -> TypeScript por 
 - `wimifarma-miauby-app:4100/miauby/api/internal/parity?sample=5`: paridade interna tokenizada de contagens e checksums contra `miauw_*`, sem retornar payload bruto.
 - `wimifarma-miauby-app:4100/miauby/api/internal/readiness?sample=20`: resumo tokenizado de health/paridade para pos-deploy, sem proxy publico.
 - `wimifarma-miauby-app:4100/miauby/api/internal/context?limit=3`: amostras tokenizadas e sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes, sem `payload_sanitized` bruto.
+- `wimifarma-miauby-app:4100/miauby/api/internal/cutover`: inventario interno tokenizado do corte PHP -> Node/Postgres, com fluxos, bloqueios, sequencia segura e rollback; somente leitura, sem habilitar rota publica nem escrita.
 
 ### Permissoes e sessao
 
@@ -1005,7 +1006,7 @@ Fonte atual do Miauby interno:
 
 ### Proxima acao segura
 
-Continuar `wimifarma_miauby`/`apps/miauby` em fases: o schema Postgres, o migrador idempotente e a API interna somente leitura de paridade ja existem em sombra; depois observar contagens/checksums no VPS, criar aliases `/miauby/` e variaveis `MIAUBY_*` com fallback para `MIAUW_*`; depois expor leituras de contexto/treino/memoria ao engine em sombra; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
+Continuar `wimifarma_miauby`/`apps/miauby` em fases: o schema Postgres, o migrador idempotente, a API interna somente leitura de paridade e o inventario de corte ja existem em sombra; depois validar `/miauby/api/internal/cutover` no VPS, expor leituras canonicas de contexto/persona/tool contracts ao engine em sombra; depois chat em sombra para `adm`; por ultimo corte de escrita, mantendo PHP como fallback ate paridade de voz, tools e diagnostico.
 
 ## Status dos inventarios e proxima rodada
 

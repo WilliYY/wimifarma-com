@@ -55,6 +55,13 @@ assert(context.response.ok && context.body.ok === true, 'context_failed');
 assert(context.body.raw_payload_returned === false, 'context_must_not_return_raw_payload');
 assert(Array.isArray(context.body.sections) && context.body.sections.length >= 5, 'context_sections_missing');
 
+const cutover = await readJson('/api/internal/cutover', headers);
+assert(cutover.response.ok && cutover.body.ok === true, 'cutover_inventory_failed');
+assert(cutover.body.mode === 'cutover_inventory_read_only', 'cutover_inventory_mode_invalid');
+assert(cutover.body.guards?.write_enabled === false, 'cutover_write_must_stay_disabled');
+assert(cutover.body.guards?.route_cutover_enabled === false, 'cutover_route_must_stay_disabled');
+assert(Array.isArray(cutover.body.flows) && cutover.body.flows.length >= 5, 'cutover_flows_missing');
+
 console.log(JSON.stringify({
   ok: true,
   health: {
@@ -73,5 +80,10 @@ console.log(JSON.stringify({
     count: section.count,
     returned: section.items.length,
   })),
+  cutover: {
+    mode: cutover.body.mode,
+    flows: cutover.body.flows.length,
+    hard_blockers: cutover.body.hard_blockers.length,
+  },
 }, null, 2));
 NODE

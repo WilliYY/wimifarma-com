@@ -188,12 +188,41 @@ Proibido migrar para Postgres:
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` exigem token interno e comparam tabelas `miauby_*` contra `miauw_*` por contagem/checksum/amostra, sem retornar payload bruto.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/readiness?sample=20` consolida health/paridade para pos-deploy e `/miauby/api/internal/context?limit=3` retorna apenas amostras sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes.
 - Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente via `docker compose exec -T wimifarma-miauby-app npm run migrate:shadow`, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`.
+- Estado iniciado em 2026-06-01: `apps/miauby` ganhou `/miauby/api/internal/cutover`, endpoint interno tokenizado e somente leitura que devolve o inventario de corte, fluxos bloqueantes, sequencia segura e rollback. Ele confirma explicitamente `write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false` e `node_direct_module_db_writes_enabled=false`.
 - Proximas leituras a adicionar depois da paridade:
   - contexto de voz/persona compilado;
   - filtros por status/categoria;
   - contrato de tool em formato canonico;
   - diagnostico seguro.
 - PHP continua dono da resposta oficial.
+
+### Etapa 2026-06-01 - Inventario de corte sem troca de motor
+
+Esta etapa inicia o modulo Miauby interno sem mexer no fluxo vivo. A decisao tecnica foi criar uma fonte interna de verdade para o plano de corte no proprio servico sombra, em vez de trocar rota, sessao ou banco.
+
+O diagnostico atual e:
+
+- `site/miauw/api.php?action=send` ainda grava conversa, mensagem do usuario, resposta do assistente, traces e memoria auxiliar em MySQL antes/depois de gerar a resposta.
+- `apps/miauby` ainda e sombra/read-only: cria schema, copia `miauw_*` para `miauby_*`, compara paridade e retorna contexto sanitizado.
+- `apps/miauw-agent` ja gera resposta Node em modo controlado, mas ainda depende de `agent-context.php`, `agent-tools.php` e `agent-actions.php` para contexto, tools e confirmacoes.
+- Treino, diagnostico, memorias, alertas, padroes e Farmacia Popular continuam com telas/rotinas PHP.
+- A troca segura deve comecar pela escrita de mensagens/traces e pela exportacao de contratos de tools, nao pela remocao do PHP.
+
+Novo endpoint interno:
+
+- `GET /miauby/api/internal/cutover`: exige `X-Miauby-Internal-Token`, `X-Miauw-Internal-Token` ou `X-Miauw-Guardian-Token`; retorna inventario de fluxos, tabelas `miauw_*` -> `miauby_*`, bloqueios fortes, sequencia segura e rollback. Nao retorna payload bruto, nao chama OpenAI, nao grava banco e nao habilita proxy publico.
+
+Fluxos que continuam oficiais no PHP ate corte validado:
+
+- `chat_messages`: `miauw_conversas`, `miauw_mensagens`, `miauw_tool_traces` e fallback `miauw_channel_events`.
+- `training_review`: `miauw_treinos_respostas`.
+- `memory_and_knowledge`: `miauw_memorias` e `miauw_conhecimentos`.
+- `alerts_patterns`: `miauw_alertas`, `miauw_alerta_eventos`, `miauw_padroes` e `miauw_configuracoes`.
+- `tool_contracts`: contexto e tools exportados por PHP para o agent Node/WhatsApp.
+- `strong_actions`: preparo/execucao por `agent-actions.php`, sempre com confirmacao humana quando aplicavel.
+- `farmacia_popular`: valores e historico ainda atualizados pela rotina PHP.
+
+Proxima etapa segura apos validar este endpoint: migrar para Node/Postgres uma leitura canonica de contexto/persona/tool contracts baseada em `miauby_*`, ainda sem escrita direta e ainda com PHP oficial.
 
 ### Fase 3 - Alias publico controlado
 
