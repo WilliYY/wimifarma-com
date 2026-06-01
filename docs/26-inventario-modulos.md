@@ -341,6 +341,7 @@ Legado/rollback, nao fonte principal:
 - Criar conta manual com titulo, categoria, competencia, itens e observacao.
 - Adicionar, editar, cancelar, reabrir e quitar itens.
 - Registrar e cancelar pagamentos parciais/totais.
+- Puxar contas pendentes de competencias anteriores para a visao do mes selecionado ate pagamento/cancelamento, sem alterar a competencia original; pagamentos datados no mes compoem o total pago do mes.
 - Reabrir, cancelar, arquivar e marcar conta como paga.
 - Alterar vencimento, categoria, observacao e nome.
 - Repetir conta para mes seguinte e ordenar painel mensal.

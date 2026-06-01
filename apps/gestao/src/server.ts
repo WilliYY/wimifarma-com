@@ -2233,9 +2233,9 @@ async function monthSummary(month: string) {
     pending_accounts: string;
   }>(
     `SELECT
-       COALESCE(SUM(CASE WHEN a.status = 'pendente' THEN GREATEST(a.total_cents - COALESCE(p.paid_cents, 0), 0) ELSE 0 END), 0)::bigint AS pending_cents,
-       COALESCE(SUM(CASE WHEN a.status <> 'cancelado' THEN a.total_cents ELSE 0 END), 0)::bigint AS generated_cents,
-       COALESCE(SUM(CASE WHEN a.status = 'pendente' THEN 1 ELSE 0 END), 0)::bigint AS pending_accounts
+       COALESCE(SUM(CASE WHEN a.status = 'pendente' AND a.competence_month <= $1 THEN GREATEST(a.total_cents - COALESCE(p.paid_cents, 0), 0) ELSE 0 END), 0)::bigint AS pending_cents,
+       COALESCE(SUM(CASE WHEN a.competence_month = $1 AND a.status <> 'cancelado' THEN a.total_cents ELSE 0 END), 0)::bigint AS generated_cents,
+       COALESCE(SUM(CASE WHEN a.status = 'pendente' AND a.competence_month <= $1 THEN 1 ELSE 0 END), 0)::bigint AS pending_accounts
      FROM gestao_accounts a
      LEFT JOIN (
        SELECT account_id, SUM(amount_cents) AS paid_cents
@@ -2243,7 +2243,7 @@ async function monthSummary(month: string) {
        WHERE status = 'ativo'
        GROUP BY account_id
      ) p ON p.account_id = a.id
-     WHERE a.competence_month = $1
+     WHERE (a.competence_month = $1 OR (a.status = 'pendente' AND a.competence_month < $1))
        AND a.archived_at IS NULL`,
     [month],
   );
@@ -2272,10 +2272,12 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
      WHERE a.archived_at IS NULL
        AND (
         a.competence_month = $1
+        OR (a.status = 'pendente' AND a.competence_month < $1)
         OR (a.paid_at >= $2::timestamptz AND a.paid_at < $3::timestamptz)
         OR EXISTS (
           SELECT 1 FROM gestao_account_payments gp
           WHERE gp.account_id = a.id
+            AND gp.status = 'ativo'
             AND gp.paid_at >= $2::timestamptz
             AND gp.paid_at < $3::timestamptz
         )

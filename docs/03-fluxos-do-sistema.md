@@ -281,7 +281,7 @@ Interface:
 
 ## Fluxo Gestao
 
-A Gestao organiza contas a pagar manuais em um servico Node.js + TypeScript com Postgres dedicado. A conta principal guarda titulo, categoria livre, competencia, status e total em centavos; os itens internos guardam a composicao do valor, permitindo lancamentos como salario, aumento, comissao, boleto e juros na mesma conta. Pagamentos ficam separados e datados para permitir pagar em partes ate quitar o saldo, inclusive vinculados a um lancamento especifico quando o operador quer pagar item por item.
+A Gestao organiza contas a pagar manuais em um servico Node.js + TypeScript com Postgres dedicado. A conta principal guarda titulo, categoria livre, competencia, status e total em centavos; os itens internos guardam a composicao do valor, permitindo lancamentos como salario, aumento, comissao, boleto e juros na mesma conta. Pagamentos ficam separados e datados para permitir pagar em partes ate quitar o saldo, inclusive vinculados a um lancamento especifico quando o operador quer pagar item por item. Desde 2026-06-01, a visao mensal puxa contas pendentes de competencias anteriores para o mes selecionado ate serem pagas/canceladas, preservando a competencia original da conta; pagamentos datados no mes entram no total pago do mes.
 
 Arquivos principais:
 
@@ -313,7 +313,7 @@ Regras a preservar:
 - a categoria e texto livre, com sugestoes apenas para acelerar digitacao;
 - categorias iguais por escrita diferente sao agrupadas visualmente por normalizacao de acento/caixa/espaco, preservando o texto original salvo; o painel lateral mostra bolinhas com abertas em verde e fechadas em vermelho, e clicar em uma categoria filtra as abertas primeiro e depois as fechadas daquela categoria;
 - o painel de categorias permite trocar a categoria de um grupo inteiro ou cancelar somente contas abertas daquele grupo, sem apagar contas fechadas nem historico;
-- a lista principal sem filtro mostra somente contas abertas do mes em linhas compactas com `Categoria`, `Nome`, `Valor`, `Pagar` e `Abrir`; contas pagas/canceladas ficam acessiveis pela busca ou pelo filtro de categorias para evitar lista infinita de historico;
+- a lista principal sem filtro mostra contas abertas do mes e pendencias trazidas de competencias anteriores em linhas compactas com `Categoria`, `Nome`, `Valor`, `Pagar` e `Abrir`; contas pagas/canceladas ficam acessiveis pela busca ou pelo filtro de categorias para evitar lista infinita de historico;
 - o painel `Mensal` fica ao lado da lista principal e mostra as contas da competencia atual com `Repetir mes que vem` ativo em estrutura compacta propria para evitar sobreposicao entre valor e botoes; ele soma o valor que sera levado para a proxima competencia, permite abrir o extrato completo e salva a ordem manual quando o operador arrasta as linhas com o mouse;
 - a busca fica abaixo dos resumos do mes e pesquisa contas/boletos por titulo, categoria, status, valor aproximado, saldo, vencimento, data de lancamento, data de pagamento, lancamentos e pagamentos; ela mostra 10 resultados primeiro, permite `Mostrar mais` e `Limpar`;
 - a conta pode ter vencimento opcional por data, sem campo de horario na interface; contas pendentes com vencimento mais proximo sobem na lista e recebem aviso visual de vencido, vence hoje ou vence em poucos dias;
