@@ -10,7 +10,7 @@ $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
 $homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.gif') . '?v=20260524-visible-transparent-logo';
-$homeLoginLogoUrl = wf_home_asset('assets/img/logo-wimifarma.svg') . '?v=20260530-home-login';
+$homeLoginLogoUrl = $homeLogoUrl;
 $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
 $homeLoginError = '';
@@ -493,12 +493,12 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-logo {
-            width: min(238px, 66vw);
+            width: min(420px, 76vw);
             height: auto;
-            max-height: 80px;
+            max-height: 120px;
             display: block;
             object-fit: contain;
-            filter: brightness(0) invert(1) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+            filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
         }
 
         .wf-login-only {
@@ -733,10 +733,10 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-footer-logo {
-            width: min(210px, 72vw);
+            width: min(310px, 72vw);
             height: auto;
             display: block;
-            filter: brightness(0) invert(1) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
+            filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
         }
 
         .wf-login-whatsapp {
@@ -1044,8 +1044,8 @@ if (!$homeAuthenticated):
             }
 
             .wf-login-logo {
-                width: min(214px, 64vw);
-                max-height: 68px;
+                width: min(340px, 72vw);
+                max-height: 100px;
             }
 
             .wf-login-input,
