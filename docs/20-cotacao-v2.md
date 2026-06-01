@@ -13,6 +13,7 @@ Arquivos principais:
 - `apps/cotacao/src/utils/normalizers.ts`
 - `apps/cotacao/src/utils/styles.ts`
 - `apps/cotacao/src/utils/winner.ts`
+- `apps/cotacao/src/utils/sheets.ts`
 - `apps/cotacao/public/app.js`
 - `apps/cotacao/public/styles.css`
 - `apps/cotacao/public/assets/`
@@ -218,6 +219,7 @@ Helpers TypeScript sombra da Fase 3:
 - `utils/normalizers.ts`: copia tipada de helpers puros ja existentes em `server.js` para operador de regra, cor hex, booleano, cursor de eventos e tamanho JSON.
 - `utils/styles.ts`: copia tipada dos normalizadores puros de alvo/payload de estilo manual, preservando as regras de `row`, `column`, `cell`, cor hex e `styleKey`.
 - `utils/winner.ts`: copia tipada dos helpers puros de distribuidora, preco numerico e vencedor/empate da linha.
+- `utils/sheets.ts`: copia tipada dos helpers puros de exportacao/importacao Google Sheets (`matrixFromSheet`, `rowsFromMatrix` e `isUuid`).
 - `*.contract.ts`: exercitam os tipos desses helpers no `npm run typecheck`.
 
 Enquanto nao houver build/runtime TypeScript, esses helpers nao devem ser importados por `server.js`; o corte para runtime vem em fase separada com rebuild e smoke.
