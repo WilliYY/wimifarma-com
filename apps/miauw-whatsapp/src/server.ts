@@ -69,6 +69,22 @@ type PixReceiptExtractionHints = {
   fileName: string;
 };
 
+type PixReceiptMediaGate = {
+  shouldAttempt: boolean;
+  reason: string;
+  score: number;
+  positiveHints: string[];
+  negativeHints: string[];
+};
+
+type PixReceiptDuplicateMatch = {
+  id: string;
+  created_at: string;
+  status: string;
+  outcome: string;
+  match_reason: string;
+};
+
 type OutboundAudio = {
   base64: string;
   mimeType: string;
@@ -1442,6 +1458,14 @@ function receiptMediaKind(mimeType: string): string {
   return 'document';
 }
 
+function mediaFingerprintFromValue(...values: unknown[]): string {
+  for (const value of values) {
+    const text = typeof value === 'string' ? safeText(value, 260) : '';
+    if (text && text !== '[object Object]') return sha256(`media:${text}`);
+  }
+  return '';
+}
+
 function sanitizeEvolutionKey(key: JsonRecord): JsonRecord {
   return {
     id: safeText(key.id, 180),
@@ -1478,6 +1502,7 @@ function evolutionMediaSummary(data: JsonRecord, messageType: string): JsonRecor
       provider: 'evolution',
       key,
       mimetype,
+      file_hash: mediaFingerprintFromValue(image.fileSha256, image.fileEncSha256),
       caption_present: safeText(image.caption, 200) !== '',
       file_length: safeText(image.fileLength, 40),
       has_media_url: safeText(data.mediaUrl || image.url || '', 260) !== '',
@@ -1494,6 +1519,7 @@ function evolutionMediaSummary(data: JsonRecord, messageType: string): JsonRecor
       key,
       mimetype,
       file_name: safeText(document.fileName || document.title || '', 180),
+      file_hash: mediaFingerprintFromValue(document.fileSha256, document.fileEncSha256),
       caption_present: safeText(document.caption, 200) !== '',
       file_length: safeText(document.fileLength, 40),
       has_media_url: safeText(data.mediaUrl || document.url || '', 260) !== '',
@@ -1513,6 +1539,7 @@ function metaMediaSummary(message: JsonRecord, messageType: string): JsonRecord 
       provider: 'meta',
       media_id: safeText(image.id, 220),
       mimetype,
+      file_hash: mediaFingerprintFromValue(image.sha256, image.file_sha256, image.fileSha256),
       caption_present: safeText(image.caption, 200) !== '',
     };
   }
@@ -1527,6 +1554,7 @@ function metaMediaSummary(message: JsonRecord, messageType: string): JsonRecord 
       media_id: safeText(document.id, 220),
       mimetype,
       file_name: safeText(document.filename || document.fileName || '', 180),
+      file_hash: mediaFingerprintFromValue(document.sha256, document.file_sha256, document.fileSha256),
       caption_present: safeText(document.caption, 200) !== '',
     };
   }
@@ -3245,63 +3273,101 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           };
           effectiveBodyText = '';
         } else {
-          const extraction = await extractPixReceiptFromQueuedMedia(row);
-          if (!extraction.isPixReceipt) {
-            await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'not_detected'));
+          const fastGate = pixReceiptMediaFastGate(row);
+          if (!fastGate.shouldAttempt) {
+            await mergePixReceiptEventSummary(row.id, pixReceiptFastGateSummary(fastGate));
             mediaFailureReply = {
-              text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
+              text: 'Esse arquivo ou legenda nao parece comprovante Pix em formato que eu consiga ler. Se for Pix, manda foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
               engine: 'blocked',
-              reason: 'pix_receipt_not_detected',
+              reason: 'pix_receipt_fast_gate_skipped',
             };
             effectiveBodyText = '';
           } else {
-            const targetMatch = pixReceiptTargetMatch(extraction);
-            const missing = missingPixReceiptFields(extraction);
-            if (missing.length > 0) {
-              await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'missing_fields', targetMatch));
+            const mediaDuplicate = await findRecentPixReceiptMediaDuplicate(row);
+            if (mediaDuplicate) {
+              await mergePixReceiptEventSummary(row.id, {
+                ...pixReceiptFastGateSummary(fastGate),
+                ...pixReceiptDuplicateSummary(mediaDuplicate, 'duplicate_media'),
+                pix_receipt_ocr_skipped: true,
+              });
               mediaFailureReply = {
-                text: `Li o comprovante, mas faltou ou ficou duvidoso: ${missing.join(', ')}. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.`,
+                text: pixReceiptDuplicateReply(mediaDuplicate, true),
                 engine: 'blocked',
-                reason: 'pix_receipt_missing_fields',
-              };
-              effectiveBodyText = '';
-            } else if (!targetMatch.ok) {
-              await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
-              mediaFailureReply = {
-                text: `Li o comprovante, mas nao consegui confirmar que o destino e a Wimifarma (${maskDocument(PIX_RECEIPT_CNPJ)} ou nome cadastrado). Nao lancei. Se estiver certo, escreva os dados manualmente para eu confirmar.`,
-                engine: 'blocked',
-                reason: 'pix_receipt_target_mismatch',
+                reason: 'pix_receipt_duplicate_media',
               };
               effectiveBodyText = '';
             } else {
-              effectiveBodyText = pixReceiptCommandMessage(extraction, targetMatch);
-              row.body_text = effectiveBodyText;
-              await pgPool.query(
-                `UPDATE miauw_whatsapp_events
-                    SET body_text = $2,
-                        body_size = $3,
-                        payload_summary = payload_summary || $4::jsonb,
-                        updated_at = NOW()
-                  WHERE id = $1`,
-                [
-                  row.id,
-                  effectiveBodyText,
-                  effectiveBodyText.length,
-                  JSON.stringify({
-                    pix_receipt_extracted: true,
-                    pix_receipt_target_match: true,
-                    pix_receipt_target_reason: targetMatch.reason,
-                    pix_receipt_target_score: targetMatch.score,
-                    pix_receipt_target_label: targetMatch.matched,
-                    pix_receipt_cnpj_match: targetMatch.cnpjMatch,
-                    pix_receipt_key_match: targetMatch.keyMatch,
-                    pix_receipt_name_match: targetMatch.nameMatch,
-                    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
-                    pix_receipt_confidence: extraction.confidence,
-                    ...pixReceiptExtractionSummary(extraction, 'accepted', targetMatch),
-                  }),
-                ],
-              );
+              const extraction = await extractPixReceiptFromQueuedMedia(row);
+              if (!extraction.isPixReceipt) {
+                await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'not_detected'));
+                mediaFailureReply = {
+                  text: 'Nao consegui identificar esse arquivo como comprovante Pix. Manda uma foto/print/PDF do comprovante ou escreve: pix cnpj valor - nome - obs opcional.',
+                  engine: 'blocked',
+                  reason: 'pix_receipt_not_detected',
+                };
+                effectiveBodyText = '';
+              } else {
+                const targetMatch = pixReceiptTargetMatch(extraction);
+                const missing = missingPixReceiptFields(extraction);
+                const identifierDuplicate = await findRecentPixReceiptIdentifierDuplicate(row, extraction);
+                if (identifierDuplicate) {
+                  await mergePixReceiptEventSummary(row.id, {
+                    ...pixReceiptExtractionSummary(extraction, 'duplicate_identifier', targetMatch),
+                    ...pixReceiptDuplicateSummary(identifierDuplicate, 'duplicate_identifier'),
+                  });
+                  mediaFailureReply = {
+                    text: pixReceiptDuplicateReply(identifierDuplicate),
+                    engine: 'blocked',
+                    reason: 'pix_receipt_duplicate_identifier',
+                  };
+                  effectiveBodyText = '';
+                } else if (missing.length > 0) {
+                  await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'missing_fields', targetMatch));
+                  mediaFailureReply = {
+                    text: pixReceiptMissingFieldsReply(missing),
+                    engine: 'blocked',
+                    reason: 'pix_receipt_missing_fields',
+                  };
+                  effectiveBodyText = '';
+                } else if (!targetMatch.ok) {
+                  await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
+                  mediaFailureReply = {
+                    text: `Li o comprovante, mas nao consegui confirmar que o destino e a Wimifarma (${maskDocument(PIX_RECEIPT_CNPJ)} ou nome cadastrado). Nao lancei. Se estiver certo, escreva os dados manualmente para eu confirmar.`,
+                    engine: 'blocked',
+                    reason: 'pix_receipt_target_mismatch',
+                  };
+                  effectiveBodyText = '';
+                } else {
+                  effectiveBodyText = pixReceiptCommandMessage(extraction, targetMatch);
+                  row.body_text = effectiveBodyText;
+                  await pgPool.query(
+                    `UPDATE miauw_whatsapp_events
+                        SET body_text = $2,
+                            body_size = $3,
+                            payload_summary = payload_summary || $4::jsonb,
+                            updated_at = NOW()
+                      WHERE id = $1`,
+                    [
+                      row.id,
+                      effectiveBodyText,
+                      effectiveBodyText.length,
+                      JSON.stringify({
+                        pix_receipt_extracted: true,
+                        pix_receipt_target_match: true,
+                        pix_receipt_target_reason: targetMatch.reason,
+                        pix_receipt_target_score: targetMatch.score,
+                        pix_receipt_target_label: targetMatch.matched,
+                        pix_receipt_cnpj_match: targetMatch.cnpjMatch,
+                        pix_receipt_key_match: targetMatch.keyMatch,
+                        pix_receipt_name_match: targetMatch.nameMatch,
+                        pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+                        pix_receipt_confidence: extraction.confidence,
+                        ...pixReceiptExtractionSummary(extraction, 'accepted', targetMatch),
+                      }),
+                    ],
+                  );
+                }
+              }
             }
           }
         }
@@ -4691,6 +4757,141 @@ function shouldAttemptPixReceiptMedia(bodyText: string, hasMedia = false): boole
     || hasAnyIntentTerm(clean, ['pix', 'comprovante', 'cnpj', 'comprovante pix']);
 }
 
+const PIX_RECEIPT_FAST_POSITIVE_TERMS = [
+  'pix',
+  'comprovante',
+  'comprovante pix',
+  'pagamento',
+  'pagamento pix',
+  'transferencia',
+  'transferencia pix',
+  'end to end',
+  'e2e',
+  'id pix',
+  'identificador pix',
+  'autenticacao',
+  'chave pix',
+  'cnpj',
+  'recebedor',
+  'favorecido',
+  'destinatario',
+  'destino',
+  'wimifarma',
+  'yoshiura',
+];
+
+const PIX_RECEIPT_FAST_NEGATIVE_TERMS = [
+  'nota fiscal',
+  'cupom fiscal',
+  'danfe',
+  'nfe',
+  'xml',
+  'orcamento',
+  'cotacao',
+  'catalogo',
+  'cardapio',
+  'receita',
+  'receita de bolo',
+  'bolo',
+  'curriculo',
+  'rg',
+  'cnh',
+  'documento pessoal',
+  'selfie',
+  'foto do produto',
+  'meme',
+  'video',
+  'audio',
+  'planilha',
+  'relatorio',
+];
+
+function matchedPixReceiptFastTerms(value: string, terms: string[]): string[] {
+  const clean = normalizeIntentText(value);
+  if (!clean) return [];
+  const matches: string[] = [];
+  for (const term of terms) {
+    const normalized = normalizeIntentText(term);
+    if (!normalized) continue;
+    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    if (new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(clean)) {
+      matches.push(term);
+    }
+  }
+  return matches.slice(0, 8);
+}
+
+function receiptFileHasUnsupportedExtension(fileName: string): boolean {
+  const clean = safeText(fileName, 180).toLowerCase();
+  if (!clean) return false;
+  return /\.(?:docx?|xlsx?|csv|txt|xml|zip|rar|7z|html?|mp4|mov|avi|mp3|ogg|opus)$/i.test(clean);
+}
+
+function pixReceiptMediaFastGate(row: QueueRow): PixReceiptMediaGate {
+  const hints = pixReceiptExtractionHints(row);
+  const hintText = [hints.caption, hints.fileName].filter(Boolean).join(' ');
+  const hasUserHint = normalizeIntentText(hintText) !== '';
+  const positiveHints = matchedPixReceiptFastTerms(hintText, PIX_RECEIPT_FAST_POSITIVE_TERMS);
+  const negativeHints = matchedPixReceiptFastTerms(hintText, PIX_RECEIPT_FAST_NEGATIVE_TERMS);
+
+  for (const alias of PIX_RECEIPT_DESTINATION_ALIASES) {
+    if (alias && pixReceiptAliasScore(hintText, alias) >= PIX_RECEIPT_MIN_TARGET_SCORE) {
+      positiveHints.push('nome destino configurado');
+      break;
+    }
+  }
+
+  const unsupportedFile = receiptFileHasUnsupportedExtension(hints.fileName);
+  if (unsupportedFile) {
+    return {
+      shouldAttempt: false,
+      reason: 'unsupported_file_hint',
+      score: 0,
+      positiveHints,
+      negativeHints: negativeHints.length ? negativeHints : ['extensao nao suportada'],
+    };
+  }
+
+  if (positiveHints.length > 0) {
+    return {
+      shouldAttempt: true,
+      reason: 'positive_pix_hint',
+      score: 1,
+      positiveHints: Array.from(new Set(positiveHints)).slice(0, 8),
+      negativeHints,
+    };
+  }
+
+  if (hasUserHint && negativeHints.length > 0) {
+    return {
+      shouldAttempt: false,
+      reason: 'non_pix_hint',
+      score: 0,
+      positiveHints,
+      negativeHints,
+    };
+  }
+
+  return {
+    shouldAttempt: true,
+    reason: hasUserHint ? 'neutral_media_hint' : 'no_user_hint',
+    score: hasUserHint ? 0.45 : 0.55,
+    positiveHints,
+    negativeHints,
+  };
+}
+
+function pixReceiptFastGateSummary(gate: PixReceiptMediaGate): JsonRecord {
+  return {
+    pix_receipt_fast_gate: safeText(gate.reason, 60),
+    pix_receipt_fast_score: gate.score,
+    pix_receipt_fast_positive_hints: gate.positiveHints.map((hint) => safeText(hint, 60)).filter(Boolean),
+    pix_receipt_fast_negative_hints: gate.negativeHints.map((hint) => safeText(hint, 60)).filter(Boolean),
+    pix_receipt_ocr_skipped: gate.shouldAttempt ? undefined : true,
+    pix_receipt_outcome: gate.shouldAttempt ? undefined : 'skipped_fast_gate',
+  };
+}
+
 function maskDocument(value: string): string {
   const digits = onlyDigits(value);
   if (digits.length === 14) {
@@ -4946,6 +5147,94 @@ async function mergePixReceiptEventSummary(eventId: string, summary: JsonRecord)
       WHERE id = $1`,
     [eventId, JSON.stringify(summary)],
   );
+}
+
+function pixReceiptDuplicateSummary(match: PixReceiptDuplicateMatch, outcome: string): JsonRecord {
+  return {
+    pix_receipt_outcome: safeText(outcome, 60),
+    pix_receipt_duplicate_event_id: safeText(match.id, 40),
+    pix_receipt_duplicate_seen_at: safeText(match.created_at, 40),
+    pix_receipt_duplicate_status: safeText(match.status, 30),
+    pix_receipt_duplicate_outcome: safeText(match.outcome, 60),
+    pix_receipt_duplicate_reason: safeText(match.match_reason, 60),
+  };
+}
+
+function comparablePixReceiptIdentifier(value: string, minLength: number): string {
+  const clean = safeText(value, 160).replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+  return clean.length >= minLength ? clean.slice(0, 140) : '';
+}
+
+async function findRecentPixReceiptMediaDuplicate(row: QueueRow): Promise<PixReceiptDuplicateMatch | null> {
+  const media = mediaSummaryFromPayload(row.payload_summary);
+  const fileHash = safeText(media.file_hash, 80);
+  if (!fileHash) return null;
+  const result = await pgPool.query<PixReceiptDuplicateMatch>(
+    `SELECT id::text,
+            created_at::text,
+            status,
+            COALESCE(payload_summary->>'pix_receipt_outcome', '') AS outcome,
+            'media_file_hash' AS match_reason
+       FROM miauw_whatsapp_events
+      WHERE id <> $1
+        AND payload_summary #>> '{media,file_hash}' = $2
+        AND COALESCE(payload_summary->>'pix_receipt_outcome', '') IN ('accepted', 'duplicate_identifier')
+        AND created_at >= NOW() - INTERVAL '90 days'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [row.id, fileHash],
+  );
+  return result.rows[0] || null;
+}
+
+async function findRecentPixReceiptIdentifierDuplicate(row: QueueRow, extraction: PixReceiptExtraction): Promise<PixReceiptDuplicateMatch | null> {
+  const endToEndId = comparablePixReceiptIdentifier(extraction.endToEndId, 16);
+  const transactionId = comparablePixReceiptIdentifier(extraction.transactionId, 16);
+  if (!endToEndId && !transactionId) return null;
+  const result = await pgPool.query<PixReceiptDuplicateMatch>(
+    `SELECT id::text,
+            created_at::text,
+            status,
+            COALESCE(payload_summary->>'pix_receipt_outcome', '') AS outcome,
+            CASE
+              WHEN $2 <> ''
+                AND regexp_replace(lower(COALESCE(payload_summary->>'pix_receipt_end_to_end_id', '')), '[^a-z0-9]', '', 'g') = $2
+              THEN 'end_to_end_id'
+              ELSE 'transaction_id'
+            END AS match_reason
+       FROM miauw_whatsapp_events
+      WHERE id <> $1
+        AND COALESCE(payload_summary->>'pix_receipt_outcome', '') IN ('accepted', 'duplicate_identifier')
+        AND created_at >= NOW() - INTERVAL '90 days'
+        AND (
+          ($2 <> '' AND regexp_replace(lower(COALESCE(payload_summary->>'pix_receipt_end_to_end_id', '')), '[^a-z0-9]', '', 'g') = $2)
+          OR
+          ($3 <> '' AND regexp_replace(lower(COALESCE(payload_summary->>'pix_receipt_transaction_id', '')), '[^a-z0-9]', '', 'g') = $3)
+        )
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [row.id, endToEndId, transactionId],
+  );
+  return result.rows[0] || null;
+}
+
+function pixReceiptDuplicateReply(match: PixReceiptDuplicateMatch, mediaOnly = false): string {
+  const source = mediaOnly ? 'arquivo' : 'ID Pix/E2E';
+  const when = safeText(match.created_at, 19).replace('T', ' ');
+  const suffix = when ? ` Eu ja tinha visto em ${when}.` : '';
+  return `Esse comprovante Pix parece repetido pelo mesmo ${source}.${suffix} Nao criei outra confirmacao para evitar duplicar o caixa. Se for outro pagamento, mande os dados em texto: pix cnpj valor - nome - obs opcional.`;
+}
+
+function pixReceiptMissingFieldsReply(missing: string[]): string {
+  const clean = missing.map((item) => safeText(item, 60)).filter(Boolean);
+  const joined = clean.join(', ');
+  if (clean.length === 1 && normalizeIntentText(clean[0]).includes('valor')) {
+    return 'Li o comprovante, mas nao consegui confiar no valor pago. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.';
+  }
+  if (clean.length === 1 && normalizeIntentText(clean[0]).includes('pagador')) {
+    return 'Li o comprovante, mas nao consegui confiar no nome do pagador. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.';
+  }
+  return `Li o comprovante, mas faltou ou ficou duvidoso: ${joined}. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.`;
 }
 
 function pixReceiptExtractionHints(row: QueueRow): PixReceiptExtractionHints {
