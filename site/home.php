@@ -122,6 +122,7 @@ function wf_home_default_visitor_counter(): array
     return array(
         'visitors' => 0,
         'views' => 0,
+        'first_seen_at' => null,
         'updated_at' => null,
         'available' => false,
     );
@@ -134,6 +135,9 @@ function wf_home_normalize_visitor_counter(?array $counter): array
     return array(
         'visitors' => max(0, (int) ($counter['visitors'] ?? 0)),
         'views' => max(0, (int) ($counter['views'] ?? 0)),
+        'first_seen_at' => isset($counter['first_seen_at']) && is_string($counter['first_seen_at'])
+            ? $counter['first_seen_at']
+            : null,
         'updated_at' => isset($counter['updated_at']) && is_string($counter['updated_at'])
             ? $counter['updated_at']
             : null,
@@ -241,16 +245,21 @@ function wf_home_update_visitor_counter(bool $shouldTrack, bool $isNewVisitor): 
         $raw = stream_get_contents($handle);
         $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
         $counter = wf_home_normalize_visitor_counter(is_array($decoded) ? $decoded : null);
+        $isFirstTrackedView = $counter['views'] === 0 && $counter['visitors'] === 0;
 
         $counter['views']++;
-        if ($isNewVisitor) {
+        if ($isNewVisitor || $isFirstTrackedView) {
             $counter['visitors']++;
+        }
+        if (!$counter['first_seen_at']) {
+            $counter['first_seen_at'] = gmdate('c');
         }
         $counter['updated_at'] = gmdate('c');
 
         $payload = json_encode(array(
             'visitors' => $counter['visitors'],
             'views' => $counter['views'],
+            'first_seen_at' => $counter['first_seen_at'],
             'updated_at' => $counter['updated_at'],
         ), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
@@ -293,8 +302,14 @@ if ($homeIsNewVisitor) {
 }
 $homeVisitorCounter = wf_home_update_visitor_counter($homeShouldTrackVisitor, $homeIsNewVisitor);
 $homeVisitorCount = (int) ($homeVisitorCounter['visitors'] ?? 0);
+$homeViewCount = (int) ($homeVisitorCounter['views'] ?? 0);
 $homeVisitorCountLabel = number_format($homeVisitorCount, 0, ',', '.');
-$homeVisitorNoun = $homeVisitorCount === 1 ? 'pessoa acessou' : 'pessoas acessaram';
+$homeViewCountLabel = number_format($homeViewCount, 0, ',', '.');
+$homeVisitorNoun = $homeVisitorCount === 1 ? 'visitante unico' : 'visitantes unicos';
+$homeViewNoun = $homeViewCount === 1 ? 'acesso registrado' : 'acessos registrados';
+$homeCounterStatus = $homeVisitorCount > 0
+    ? 'contagem anonima'
+    : 'aguardando primeiro acesso humano';
 
 if (isset($_GET['sair'])) {
     $_SESSION = array();
@@ -820,21 +835,38 @@ if (!$homeAuthenticated):
 
         .wf-login-visitor-counter {
             justify-self: end;
-            min-width: 10.4rem;
+            min-width: 13.6rem;
             display: grid;
-            gap: 0.28rem;
+            gap: 0.72rem;
             border: 1px solid rgba(255, 255, 255, 0.28);
             border-radius: 8px;
-            padding: 0.82rem 0.95rem;
-            background: rgba(255, 255, 255, 0.13);
+            padding: 0.92rem 1rem;
+            background:
+                linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08)),
+                rgba(255, 255, 255, 0.1);
             color: #210814;
             box-shadow: 0 16px 34px rgba(4, 55, 64, 0.12);
             backdrop-filter: blur(6px);
         }
 
+        .wf-login-visitor-counter b {
+            color: #270817;
+            font-size: 0.72rem;
+            font-weight: 950;
+            letter-spacing: 0;
+            line-height: 1.25;
+            text-transform: uppercase;
+        }
+
+        .wf-login-counter-main {
+            display: flex;
+            align-items: flex-end;
+            gap: 0.68rem;
+        }
+
         .wf-login-visitor-counter strong {
             color: #ffffff;
-            font-size: clamp(1.55rem, 2.5vw, 2.35rem);
+            font-size: 2.45rem;
             font-weight: 950;
             line-height: 1;
             text-shadow: 0 8px 18px rgba(4, 55, 64, 0.24);
@@ -845,6 +877,35 @@ if (!$homeAuthenticated):
             font-size: 0.84rem;
             font-weight: 850;
             line-height: 1.3;
+        }
+
+        .wf-login-counter-main span {
+            max-width: 5.9rem;
+            padding-bottom: 0.18rem;
+        }
+
+        .wf-login-counter-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.45rem;
+            color: rgba(39, 8, 23, 0.86);
+            font-size: 0.74rem;
+            font-weight: 850;
+            line-height: 1.3;
+        }
+
+        .wf-login-counter-meta span {
+            border-radius: 999px;
+            padding: 0.28rem 0.52rem;
+            background: rgba(255, 255, 255, 0.18);
+            font-size: inherit;
+        }
+
+        .wf-login-counter-meta small {
+            color: rgba(39, 8, 23, 0.78);
+            font-size: inherit;
+            font-weight: 850;
         }
 
         .wf-login-footer-image {
@@ -1010,6 +1071,19 @@ if (!$homeAuthenticated):
                 text-align: center;
             }
 
+            .wf-login-visitor-counter strong {
+                font-size: 2.2rem;
+            }
+
+            .wf-login-counter-main,
+            .wf-login-counter-meta {
+                justify-content: center;
+            }
+
+            .wf-login-counter-main span {
+                max-width: none;
+            }
+
             .wf-login-footer-contact-row {
                 justify-content: center;
                 flex-wrap: wrap;
@@ -1147,8 +1221,14 @@ if (!$homeAuthenticated):
             </div>
             <div class="wf-login-visitor-counter" aria-label="Contador de acessos do site">
                 <b>Acessos do site</b>
-                <strong><?php echo wf_home_e($homeVisitorCountLabel); ?></strong>
-                <span><?php echo wf_home_e($homeVisitorNoun); ?></span>
+                <div class="wf-login-counter-main">
+                    <strong><?php echo wf_home_e($homeVisitorCountLabel); ?></strong>
+                    <span><?php echo wf_home_e($homeVisitorNoun); ?></span>
+                </div>
+                <div class="wf-login-counter-meta">
+                    <span><?php echo wf_home_e($homeViewCountLabel . ' ' . $homeViewNoun); ?></span>
+                    <small><?php echo wf_home_e($homeCounterStatus); ?></small>
+                </div>
             </div>
         </div>
     </footer>
