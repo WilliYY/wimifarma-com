@@ -365,13 +365,12 @@ if (!$homeAuthenticated):
 
         .wf-login-promo-video {
             width: 100%;
-            aspect-ratio: 16 / 9;
+            height: auto;
             display: block;
             border: 2px solid rgba(255, 255, 255, 0.54);
             border-radius: 26px;
             background: #130d2b;
             box-shadow: 0 24px 54px rgba(8, 3, 24, 0.34);
-            object-fit: cover;
             overflow: hidden;
         }
 
