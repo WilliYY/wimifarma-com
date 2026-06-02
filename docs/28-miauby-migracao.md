@@ -189,7 +189,7 @@ Proibido migrar para Postgres:
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/readiness?sample=20` consolida health/paridade para pos-deploy e `/miauby/api/internal/context?limit=3` retorna apenas amostras sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes.
 - Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`. Desde 2026-06-02, a migracao/validacao deve ser rodada pelo `wimifarma-miauby-migrator` descartavel, nao dentro do app vivo.
 - Estado iniciado em 2026-06-01: `apps/miauby` ganhou `/miauby/api/internal/cutover`, endpoint interno tokenizado e somente leitura que devolve o inventario de corte, fluxos bloqueantes, sequencia segura e rollback. Ele confirma explicitamente `write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false` e `node_direct_module_db_writes_enabled=false`.
-- Estado iniciado em 2026-06-02: `apps/miauby` ganhou `/miauby/api/internal/canonical-context` e o alias `/miauby/api/internal/context-pack`, ambos internos/tokenizados, para compilar contexto de estilo/persona/tools a partir de `miauby_*` e de um registry Node tipado. O endpoint confirma `write_enabled=false`, `writes_enabled_in_node=false`, `php_official_response=true`, nao retorna payload bruto e nao chama OpenAI nem executa tools.
+- Estado iniciado em 2026-06-02: `apps/miauby` ganhou `/miauby/api/internal/canonical-context` e o alias `/miauby/api/internal/context-pack`, ambos internos/tokenizados, para compilar contexto de estilo/persona/tools a partir de `miauby_*` e de um registry Node tipado. Em 2026-06-02, a Etapa 5A consolidou esse pacote como read model canônico Node/Postgres, expondo `canonical_read_model.version=miauby-read-model-5a-2026-06-02`, treino aprovado, memorias/padroes aprovados, conhecimentos ativos/aprovados e contratos de tools, sempre com `write_enabled=false`, `writes_enabled_in_node=false`, `php_official_response=true`, sem payload bruto, sem chamada OpenAI e sem executar tools.
 - PHP continua dono da resposta oficial.
 
 ### Etapa 2026-06-01 - Inventario de corte sem troca de motor
@@ -220,13 +220,13 @@ Fluxos que continuam oficiais no PHP ate corte validado:
 
 Etapa seguinte realizada em 2026-06-02: migrar para Node/Postgres uma leitura canonica de contexto/persona/tool contracts baseada em `miauby_*`, ainda sem escrita direta e ainda com PHP oficial.
 
-### Etapa 2026-06-02 - Contexto/persona/tools read-only em Node
+### Etapa 2026-06-02 - Miauby Etapa 5A: contexto/persona/tools read-only em Node
 
 Esta etapa entrega a leitura canonica do pacote de contexto sem trocar o motor oficial. O objetivo e permitir que o servico sombra monte, valide e exponha um pacote equivalente ao que o PHP envia hoje para o agente/WhatsApp, mas usando `miauby_*` como fonte de dados vivos.
 
 Novo endpoint interno:
 
-- `GET|POST /miauby/api/internal/canonical-context`: exige `X-Miauby-Internal-Token`, `X-Miauw-Internal-Token` ou `X-Miauw-Guardian-Token`; aceita `message`, `page_context`, `limit`, `tool`, `module` e `risk`; retorna `style_context`, `personality`, `tool_contracts`, datasets sanitizados e guardas de seguranca.
+- `GET|POST /miauby/api/internal/canonical-context`: exige `X-Miauby-Internal-Token`, `X-Miauw-Internal-Token` ou `X-Miauw-Guardian-Token`; aceita `message`, `page_context`, `limit`, `tool`, `module` e `risk`; retorna `canonical_read_model`, `style_context`, `personality`, `tool_contracts`, datasets sanitizados e guardas de seguranca.
 - `GET|POST /miauby/api/internal/context-pack`: alias do endpoint acima para consumidores futuros.
 
 Regras preservadas:
@@ -234,6 +234,9 @@ Regras preservadas:
 - `site/miauw PHP` continua dono da resposta oficial, de `agent-context.php`, `agent-tools.php` e `agent-actions.php`.
 - `apps/miauby` nao escreve em `miauby_*`, nao escreve em bancos de modulos, nao chama OpenAI e nao executa tool.
 - O pacote retorna apenas preview sanitizado, checksum curto e metadados; `payload_sanitized` bruto nao sai da API.
+- Treino entra no pacote somente quando `status`/`revisao_status` indicar aprovado.
+- Memorias e padroes entram no contexto canonico somente quando revisados/aprovados; itens pendentes continuam visiveis apenas em contagem/diagnostico, nao como contexto de resposta.
+- Conhecimentos entram quando estao ativos/aprovados. O endpoint tambem entende `ativo`/`active` quando a informacao vem do JSON sanitizado da sombra.
 - `tool_contracts` e tipado no Node, mas `execution_owner` e `confirmation_owner` continuam `php`; `writes_enabled_in_node=false` para todas as tools.
 - `channel_memory` multicanal ainda fica no bridge/PHP oficial ate fase propria de migracao.
 
@@ -241,9 +244,9 @@ Validacao esperada:
 
 - `npm run check` e `npm run build` em `apps/miauby`.
 - Migracao/validacao sombra antes do smoke, para garantir que `miauby_*` esta atualizado.
-- `scripts/miauby-shadow-smoke.sh` deve validar health, readiness, contexto sanitizado, pacote canonico, cutover e todos os flags read-only.
+- `scripts/miauby-shadow-smoke.sh` deve validar health, readiness, contexto sanitizado, pacote canonico 5A, persona, treino aprovado, memorias/conhecimentos, contratos de tools, cutover e todos os flags read-only.
 
-Etapa seguinte realizada em 2026-06-02: usar o endpoint em modo sombra por consumidor controlado no Miauby interno, comparando o pacote PHP atual com o pacote Node antes de trocar `MIAUW_WHATSAPP_CONTEXT_URL` ou o consumo oficial do `apps/miauw-agent`.
+Etapa seguinte segura: preparar o adaptador de escrita do `apps/miauby` desligado por variavel de ambiente, com rollback, sem trocar frontend e sem cortar o PHP oficial.
 
 ### Etapa 2026-06-02 - Consumidor sombra do contexto Node
 

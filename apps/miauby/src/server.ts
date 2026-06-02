@@ -14,7 +14,7 @@ type ShadowReadSection = SourceTable & {
 };
 
 const env = process.env;
-const serviceVersion = '0.5.0';
+const serviceVersion = '0.5.1';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -587,6 +587,8 @@ type CanonicalContextInput = {
   riskFilter: string;
 };
 
+type CanonicalSelection = 'all' | 'visible' | 'approved_reviewed_only' | 'active_or_approved_only';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -615,14 +617,58 @@ function canonicalStatus(value: unknown): string {
   return normalizeSearch(String(value ?? ''));
 }
 
+function statusFromActiveFlag(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '';
+  const normalized = canonicalStatus(value);
+  if (['1', 'true', 'sim', 'yes', 'ativo', 'active'].includes(normalized)) return 'ativo';
+  if (['0', 'false', 'nao', 'no', 'inativo', 'inactive', 'arquivado', 'archived'].includes(normalized)) return 'inativo';
+  return '';
+}
+
+function rowPayload(row: ShadowPayloadRow): Record<string, unknown> {
+  return isRecord(row.payload_sanitized) ? row.payload_sanitized : {};
+}
+
+function rowCanonicalStatus(row: ShadowPayloadRow): string {
+  const payload = rowPayload(row);
+  const candidates = [
+    row.status,
+    payload.revisao_status,
+    payload.review_status,
+    payload.status,
+    payload.estado,
+    payload.situacao,
+  ];
+
+  for (const candidate of candidates) {
+    const status = canonicalStatus(candidate);
+    if (status !== '') return status;
+  }
+
+  return statusFromActiveFlag(payload.ativo) || statusFromActiveFlag(payload.active);
+}
+
 function statusLooksApproved(value: unknown): boolean {
   const status = canonicalStatus(value);
-  return status === 'aprovado' || status === 'approved' || status === 'ativo' || status === 'active';
+  return ['aprovado', 'approved', 'ativo', 'active', '1', 'true', 'sim', 'yes'].includes(status);
 }
 
 function statusLooksVisible(value: unknown): boolean {
   const status = canonicalStatus(value);
-  return status === '' || ['aprovado', 'approved', 'ativo', 'active', 'aberto', 'open', 'pendente', 'pending', 'revisado'].includes(status);
+  return status === '' || ['aprovado', 'approved', 'ativo', 'active', '1', 'true', 'aberto', 'open', 'pendente', 'pending', 'revisado'].includes(status);
+}
+
+function statusLooksActiveOrApproved(value: unknown): boolean {
+  const status = canonicalStatus(value);
+  return statusLooksApproved(status) || ['aberto', 'open', 'ok', 'publicado', 'published'].includes(status);
+}
+
+function statusMatchesSelection(row: ShadowPayloadRow, selection: CanonicalSelection): boolean {
+  if (selection === 'all') return true;
+  const status = rowCanonicalStatus(row);
+  if (selection === 'visible') return statusLooksVisible(status);
+  if (selection === 'approved_reviewed_only') return statusLooksApproved(status);
+  return statusLooksActiveOrApproved(status);
 }
 
 function wordsForScore(value: string): string[] {
@@ -824,21 +870,32 @@ async function readShadowRows(client: PoolClient, section: ShadowReadSection, li
 }
 
 async function countRowsByStatus(client: PoolClient, section: ShadowReadSection, statuses: string[]): Promise<number> {
+  const normalizedStatuses = Array.from(new Set(statuses.map((status) => canonicalStatus(status)).filter(Boolean)));
+  const activeValues = ['1', 'true', 'sim', 'yes', 'ativo', 'active'];
+  const includesActive = normalizedStatuses.some((status) => ['ativo', 'active'].includes(status));
   const result = await client.query<{ total: string }>(
     `SELECT COUNT(*)::bigint AS total
        FROM ${pgIdent(section.target)}
       WHERE source_table = $1
-        AND LOWER(TRIM(COALESCE(status, ''))) = ANY($2::text[])`,
-    [section.source, statuses],
+        AND (
+          LOWER(TRIM(COALESCE(status, ''))) = ANY($2::text[])
+          OR LOWER(TRIM(COALESCE(payload_sanitized->>'revisao_status', ''))) = ANY($2::text[])
+          OR LOWER(TRIM(COALESCE(payload_sanitized->>'review_status', ''))) = ANY($2::text[])
+          OR LOWER(TRIM(COALESCE(payload_sanitized->>'status', ''))) = ANY($2::text[])
+          OR LOWER(TRIM(COALESCE(payload_sanitized->>'estado', ''))) = ANY($2::text[])
+          OR LOWER(TRIM(COALESCE(payload_sanitized->>'situacao', ''))) = ANY($2::text[])
+          OR ($3::boolean AND LOWER(TRIM(COALESCE(payload_sanitized->>'ativo', payload_sanitized->>'active', ''))) = ANY($4::text[]))
+        )`,
+    [section.source, normalizedStatuses, includesActive, activeValues],
   );
   return Number(result.rows[0]?.total || 0);
 }
 
 function canonicalItem(row: ShadowPayloadRow, fields: string[]) {
-  const payload = isRecord(row.payload_sanitized) ? row.payload_sanitized : {};
+  const payload = rowPayload(row);
   return {
     legacy_mysql_id: String(row.legacy_mysql_id),
-    status: normalizeText(row.status, 80),
+    status: normalizeText(rowCanonicalStatus(row), 80),
     preview: pickPayloadText(payload, fields, row.content_preview, 700),
     checksum_prefix: row.source_checksum.slice(0, 16),
     created_at: asIsoString(row.created_at),
@@ -846,14 +903,22 @@ function canonicalItem(row: ShadowPayloadRow, fields: string[]) {
   };
 }
 
-async function buildCanonicalSection(client: PoolClient, section: ShadowReadSection, limit: number, fields: string[], visibleOnly = true) {
-  const rows = (await readShadowRows(client, section, Math.max(limit * 4, limit))).filter((row) => !visibleOnly || statusLooksVisible(row.status));
+async function buildCanonicalSection(
+  client: PoolClient,
+  section: ShadowReadSection,
+  limit: number,
+  fields: string[],
+  selection: CanonicalSelection = 'visible',
+) {
+  const scanLimit = Math.max(120, limit * 12, limit);
+  const rows = (await readShadowRows(client, section, scanLimit)).filter((row) => statusMatchesSelection(row, selection));
   return {
     key: section.key,
     label: section.label,
     source: section.source,
     target: section.target,
     count: await targetCount(client, section.target, section.source),
+    selection,
     limit,
     items: rows.slice(0, limit).map((row) => canonicalItem(row, fields)),
   };
@@ -861,7 +926,7 @@ async function buildCanonicalSection(client: PoolClient, section: ShadowReadSect
 
 async function buildTrainingContext(client: PoolClient, message: string, routeIntent: string, limit: number) {
   const section = readSections.find((item) => item.key === 'training_examples') as ShadowReadSection;
-  const rows = (await readShadowRows(client, section, 160)).filter((row) => statusLooksApproved(row.status));
+  const rows = (await readShadowRows(client, section, 160)).filter((row) => statusLooksApproved(rowCanonicalStatus(row)));
   const scored = rows
     .map((row) => {
       const payload = isRecord(row.payload_sanitized) ? row.payload_sanitized : {};
@@ -953,18 +1018,140 @@ function canonicalInputFromRequest(req: Request): CanonicalContextInput {
   };
 }
 
+type CanonicalSectionResult = Awaited<ReturnType<typeof buildCanonicalSection>>;
+type TrainingContextResult = Awaited<ReturnType<typeof buildTrainingContext>>;
+type ToolContractsResult = ReturnType<typeof buildCanonicalToolContracts>;
+type PersonalityContractResult = ReturnType<typeof buildPersonalityContract>;
+type StyleRouteResult = ReturnType<typeof styleRouteFor>;
+
+function sectionSummary(section: CanonicalSectionResult) {
+  return {
+    source: section.target,
+    legacy_source: section.source,
+    selection: section.selection,
+    total: section.count,
+    selected: section.items.length,
+  };
+}
+
+function buildCanonicalReadModel(params: {
+  route: StyleRouteResult;
+  training: TrainingContextResult;
+  memories: CanonicalSectionResult;
+  knowledge: CanonicalSectionResult;
+  patterns: CanonicalSectionResult;
+  alerts: CanonicalSectionResult;
+  settings: CanonicalSectionResult;
+  toolContracts: ToolContractsResult;
+  personality: PersonalityContractResult;
+}) {
+  return {
+    version: 'miauby-read-model-5a-2026-06-02',
+    phase: 'Miauby Etapa 5A',
+    mode: 'node_postgres_read_only',
+    owner: 'apps/miauby',
+    database: 'Postgres wimifarma_miauby / miauby_*',
+    official_response_owner: 'site/miauw PHP',
+    write_owner: 'site/miauw PHP',
+    frontend_unchanged: true,
+    php_official_response: true,
+    sections: {
+      persona: {
+        source: 'apps/miauby/src/server.ts',
+        version: params.personality.version,
+        style_version: params.personality.style_version,
+        selected: params.personality.voz.length,
+      },
+      route: {
+        source: 'apps/miauby style router',
+        intent: params.route.intent,
+        reason: params.route.reason,
+      },
+      approved_training: {
+        source: 'miauby_training_examples',
+        selection: 'status aprovado only',
+        selected: params.training.examples.length,
+        approved_total: params.training.profile.approved_total,
+      },
+      memories: sectionSummary(params.memories),
+      knowledge: sectionSummary(params.knowledge),
+      approved_patterns: sectionSummary(params.patterns),
+      alerts: sectionSummary(params.alerts),
+      settings: sectionSummary(params.settings),
+      tool_contracts: {
+        source: 'apps/miauby/src/tool-contracts.ts',
+        version: params.toolContracts.version,
+        schemas_exported: params.toolContracts.summary.schemas_exported,
+        writes_enabled_in_node: false,
+        execution_owner: params.toolContracts.execution_owner,
+        confirmation_owner: params.toolContracts.confirmation_owner,
+      },
+    },
+    guards: {
+      token_required: true,
+      write_enabled: false,
+      writes_enabled_in_node: false,
+      route_cutover_enabled: false,
+      public_proxy_enabled: false,
+      raw_payload_returned: false,
+      openai_called: false,
+      tools_executed: false,
+    },
+    validation: {
+      compare_with_php: 'MIAUBY_CONTEXT_SHADOW_ENABLED registra miauby_context_shadow_compare sem trocar a resposta oficial',
+      smoke_script: 'scripts/miauby-shadow-smoke.sh',
+      next_step: 'preparar adaptador de escrita desligado por variavel de ambiente, com rollback',
+    },
+  };
+}
+
 async function buildCanonicalContext(input: CanonicalContextInput) {
   const client = await pgPool.connect();
   const started = Date.now();
   try {
     const route = styleRouteFor(input.message, input.pageContext);
     const training = await buildTrainingContext(client, input.message, String(route.intent), input.limit);
-    const memories = await buildCanonicalSection(client, readSections[1], input.limit, ['memoria', 'memory', 'conteudo', 'resumo', 'texto']);
-    const knowledge = await buildCanonicalSection(client, readSections[2], input.limit, ['titulo', 'conteudo', 'texto', 'resumo']);
-    const alerts = await buildCanonicalSection(client, readSections[3], input.limit, ['titulo', 'descricao', 'mensagem', 'status']);
-    const patterns = await buildCanonicalSection(client, readSections[4], input.limit, ['padrao', 'descricao', 'exemplo', 'status']);
-    const settings = await buildCanonicalSection(client, readSections[6], input.limit, ['chave', 'key', 'nome', 'valor', 'value']);
+    const memories = await buildCanonicalSection(
+      client,
+      readSections[1],
+      input.limit,
+      ['memoria', 'memory', 'conteudo', 'resumo', 'texto', 'valor'],
+      'approved_reviewed_only',
+    );
+    const knowledge = await buildCanonicalSection(
+      client,
+      readSections[2],
+      input.limit,
+      ['titulo', 'conteudo', 'texto', 'resumo'],
+      'active_or_approved_only',
+    );
+    const alerts = await buildCanonicalSection(client, readSections[3], input.limit, ['titulo', 'descricao', 'mensagem', 'status'], 'visible');
+    const patterns = await buildCanonicalSection(
+      client,
+      readSections[4],
+      input.limit,
+      ['padrao', 'descricao', 'exemplo', 'status'],
+      'approved_reviewed_only',
+    );
+    const settings = await buildCanonicalSection(client, readSections[6], input.limit, ['chave', 'key', 'nome', 'valor', 'value'], 'all');
     const voiceProfile = buildVoiceProfile();
+    const toolContracts = buildCanonicalToolContracts({
+      name: input.toolFilter,
+      module: input.moduleFilter,
+      risk: input.riskFilter,
+    });
+    const personality = buildPersonalityContract();
+    const canonicalReadModel = buildCanonicalReadModel({
+      route,
+      training,
+      memories,
+      knowledge,
+      patterns,
+      alerts,
+      settings,
+      toolContracts,
+      personality,
+    });
     const examples = [
       ...training.examples.slice(0, 2).map((item) => `treino aprovado: ${item.pergunta} => ${item.resposta_ideal}`),
       ...patterns.items.slice(0, 2).map((item) => `padrao aprovado: ${item.preview}`),
@@ -974,12 +1161,13 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
       ok: true,
       service: 'miauby',
       version: serviceVersion,
-      context_version: 'miauby-node-context-pack-2026-06-02',
+      context_version: 'miauby-node-context-pack-5a-2026-06-02',
       mode: 'node_read_only_context_persona_tools',
       generated_at: new Date().toISOString(),
       latency_ms: Date.now() - started,
       source: 'apps/miauby + postgres miauby_*',
       official_response_owner: 'site/miauw PHP',
+      canonical_read_model: canonicalReadModel,
       php_official_response: true,
       write_enabled: false,
       writes_enabled_in_node: false,
@@ -1009,6 +1197,16 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
         approved_patterns: patterns.items.map((item) => item.preview).filter(Boolean),
         training_examples: training.examples,
         training_profile: training.profile,
+        memory_context: {
+          source: 'miauby_memories',
+          selection: memories.selection,
+          items: memories.items.map((item) => item.preview).filter(Boolean),
+        },
+        knowledge_context: {
+          source: 'miauby_knowledge',
+          selection: knowledge.selection,
+          items: knowledge.items.map((item) => item.preview).filter(Boolean),
+        },
         channel_memory: {
           items: [],
           source: 'not_migrated_to_miauby_shadow_in_this_step',
@@ -1018,12 +1216,8 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
         audio_contract: voiceProfile.audio,
         examples,
       },
-      tool_contracts: buildCanonicalToolContracts({
-        name: input.toolFilter,
-        module: input.moduleFilter,
-        risk: input.riskFilter,
-      }),
-      personality: buildPersonalityContract(),
+      tool_contracts: toolContracts,
+      personality,
       datasets: {
         training_examples: {
           source: 'miauby_training_examples',

@@ -63,6 +63,19 @@ assert(canonical.body.php_official_response === true, 'canonical_context_must_ke
 assert(canonical.body.raw_payload_returned === false, 'canonical_context_must_not_return_raw_payload');
 assert(canonical.body.tool_contracts?.summary?.schemas_exported >= 10, 'canonical_tool_contracts_missing');
 assert(canonical.body.style_context?.training_profile, 'canonical_training_profile_missing');
+assert(canonical.body.canonical_read_model?.version === 'miauby-read-model-5a-2026-06-02', 'canonical_5a_read_model_missing');
+assert(canonical.body.canonical_read_model?.mode === 'node_postgres_read_only', 'canonical_5a_read_model_mode_invalid');
+assert(canonical.body.canonical_read_model?.frontend_unchanged === true, 'canonical_5a_frontend_guard_missing');
+assert(canonical.body.canonical_read_model?.guards?.write_enabled === false, 'canonical_5a_write_guard_invalid');
+assert(canonical.body.canonical_read_model?.guards?.openai_called === false, 'canonical_5a_must_not_call_openai');
+assert(canonical.body.canonical_read_model?.guards?.tools_executed === false, 'canonical_5a_must_not_execute_tools');
+assert(canonical.body.canonical_read_model?.sections?.persona?.version, 'canonical_5a_persona_missing');
+assert(canonical.body.canonical_read_model?.sections?.approved_training?.selection === 'status aprovado only', 'canonical_5a_training_selection_invalid');
+assert(canonical.body.canonical_read_model?.sections?.memories?.selection === 'approved_reviewed_only', 'canonical_5a_memories_selection_invalid');
+assert(canonical.body.canonical_read_model?.sections?.knowledge?.selection === 'active_or_approved_only', 'canonical_5a_knowledge_selection_invalid');
+assert(canonical.body.canonical_read_model?.sections?.tool_contracts?.writes_enabled_in_node === false, 'canonical_5a_tool_write_guard_invalid');
+assert(Array.isArray(canonical.body.style_context?.memory_context?.items), 'canonical_memory_context_missing');
+assert(Array.isArray(canonical.body.style_context?.knowledge_context?.items), 'canonical_knowledge_context_missing');
 
 const cutover = await readJson('/api/internal/cutover', headers);
 assert(cutover.response.ok && cutover.body.ok === true, 'cutover_inventory_failed');
@@ -92,8 +105,11 @@ console.log(JSON.stringify({
   canonical_context: {
     version: canonical.body.context_version,
     mode: canonical.body.mode,
+    read_model: canonical.body.canonical_read_model.version,
     tools: canonical.body.tool_contracts.summary.schemas_exported,
     training_selected: canonical.body.style_context.training_profile.examples_selected,
+    memories_selected: canonical.body.canonical_read_model.sections.memories.selected,
+    knowledge_selected: canonical.body.canonical_read_model.sections.knowledge.selected,
     php_official_response: canonical.body.php_official_response,
   },
   cutover: {

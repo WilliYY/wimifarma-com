@@ -322,7 +322,7 @@ function rowProjection(row: MysqlRow, table: SourceTable): {
     user_legacy_id: pickNumber(row, ['user_id', 'usuario_id', 'created_by', 'autor_id']),
     conversation_legacy_id: pickNumber(row, ['conversa_id', 'conversation_id', 'chat_id']),
     role: pickText(row, ['role', 'papel', 'remetente', 'sender']),
-    status: pickText(row, ['status', 'estado', 'situacao']),
+    status: pickText(row, ['status', 'estado', 'situacao', 'revisao_status', 'review_status', 'ativo', 'active']),
     content_preview: pickText(row, table.previewFields),
     payload_sanitized: payload,
     source_checksum: checksum(payload),
