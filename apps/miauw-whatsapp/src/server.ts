@@ -2516,6 +2516,25 @@ async function linkAllowlistContactToUser(
   return allowlistContactSnapshotById(contact.id);
 }
 
+async function updateLinkedUserDisplayName(userId: number, displayName: string): Promise<number> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    throw new Error('invalid_user_id');
+  }
+  const label = safeText(displayName, 120);
+  if (!label) {
+    throw new Error('invalid_display_name');
+  }
+  const result = await pgPool.query(
+    `UPDATE miauw_whatsapp_contacts
+        SET display_name = $2,
+            link_updated_at = NOW(),
+            updated_at = NOW()
+      WHERE linked_user_id = $1`,
+    [userId, label],
+  );
+  return result.rowCount || 0;
+}
+
 async function unlinkAllowlistContactFromUser(id: string, userId: number, actorUsername: string): Promise<AllowlistContactSnapshot> {
   const currentHash = await contactHashById(id);
   if (isRecipientAliasSourceHash(currentHash)) {
@@ -12087,6 +12106,21 @@ app.post(`${BASE_PATH}/internal/allowlist/link-user`, requireInternalHeaderToken
   } catch (error) {
     const message = error instanceof Error ? error.message : 'allowlist_link_failed';
     const status = ['invalid_allowlist_phone', 'invalid_user_id', 'protected_alias_contact'].includes(message) ? 400 : 500;
+    res.status(status).json({ ok: false, error: safeText(message, 180) });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/allowlist/update-user-display-name`, requireInternalHeaderToken, async (req, res) => {
+  try {
+    const userId = Number(req.body?.user_id || req.body?.userId || 0);
+    const updated = await updateLinkedUserDisplayName(
+      userId,
+      safeText(req.body?.display_name || req.body?.name, 120),
+    );
+    res.json({ ok: true, updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'allowlist_display_name_update_failed';
+    const status = ['invalid_user_id', 'invalid_display_name'].includes(message) ? 400 : 500;
     res.status(status).json({ ok: false, error: safeText(message, 180) });
   }
 });

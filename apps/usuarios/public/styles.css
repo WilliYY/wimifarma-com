@@ -540,6 +540,11 @@ a {
   color: #285474;
 }
 
+.users-pill.master {
+  background: #fff7cc;
+  color: #7c4a03;
+}
+
 .users-user details {
   padding: 0 16px 16px;
 }
@@ -633,6 +638,18 @@ a {
 
 .users-user-form .users-actions .users-button {
   min-width: 170px;
+}
+
+.users-master-note {
+  margin: 12px 0;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fffbeb;
+  color: #7c4a03;
+  font-size: 0.86rem;
+  font-weight: 850;
+  line-height: 1.35;
 }
 
 .users-delete-form {

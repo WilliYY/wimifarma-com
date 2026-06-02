@@ -142,6 +142,7 @@ function internal_auth_normalize_user(array $user, string $source): array
     return array(
         'id' => (int) $user['id'],
         'username' => (string) $user['username'],
+        'display_name' => (string) ($user['display_name'] ?? ''),
         'role' => (string) ($user['role'] ?? 'user'),
         'active' => !empty($user['active']) && $user['active'] !== 'f',
         'auth_source' => $source,
@@ -161,7 +162,7 @@ function internal_auth_password_ok(?array $user, string $password): bool
 function internal_auth_fetch_core_by_username(string $username): ?array
 {
     $stmt = core_auth_db()->prepare(
-        'SELECT id, username, password_hash, role, active
+        'SELECT id, username, display_name, password_hash, role, active
            FROM core_users
           WHERE username_normalized = ?
             AND active = true
@@ -176,7 +177,7 @@ function internal_auth_fetch_core_by_username(string $username): ?array
 function internal_auth_fetch_core_by_id(int $id): ?array
 {
     $stmt = core_auth_db()->prepare(
-        'SELECT id, username, role, active
+        'SELECT id, username, display_name, role, active
            FROM core_users
           WHERE id = ?
             AND active = true

@@ -72,6 +72,7 @@ async function ensureCoreSchema(): Promise<void> {
       legacy_mysql_id BIGINT NOT NULL UNIQUE,
       username TEXT NOT NULL,
       username_normalized TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL DEFAULT '',
       password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'user',
       active BOOLEAN NOT NULL DEFAULT true,
@@ -80,6 +81,10 @@ async function ensureCoreSchema(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await pgPool.query(`
+    ALTER TABLE core_users
+      ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT ''
   `);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS core_audit_logs (

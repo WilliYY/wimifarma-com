@@ -10,6 +10,7 @@ const { Pool } = pg;
 type User = {
   id: number;
   username: string;
+  display_name: string;
   role: string;
 };
 
@@ -23,6 +24,7 @@ type CoreUserRow = {
   legacy_mysql_id: string;
   username: string;
   username_normalized: string;
+  display_name: string;
   password_hash: string | null;
   role: string;
   active: boolean;
@@ -112,7 +114,7 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'usuarios';
-const SERVICE_VERSION = '1.0.7';
+const SERVICE_VERSION = '1.0.8';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/usuarios');
 const PORT = Number.parseInt(env.PORT || '3900', 10);
 const SESSION_SECRET = env.USUARIOS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -368,8 +370,13 @@ function userPublic(row: Pick<CoreUserRow, 'id' | 'username' | 'role'>): User {
   return {
     id: Number(row.id),
     username: String(row.username),
+    display_name: cleanText((row as Partial<CoreUserRow>).display_name || row.username, 120),
     role: String(row.role || 'user'),
   };
+}
+
+function displayNameForUser(row: Pick<CoreUserRow, 'username'> & Partial<Pick<CoreUserRow, 'display_name'>>): string {
+  return cleanText(row.display_name || row.username, 120) || String(row.username || '');
 }
 
 function brDateTime(value: unknown): string {
@@ -518,6 +525,7 @@ async function ensureCoreSchema(): Promise<void> {
       legacy_mysql_id BIGINT NOT NULL UNIQUE,
       username TEXT NOT NULL,
       username_normalized TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL DEFAULT '',
       password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'user',
       active BOOLEAN NOT NULL DEFAULT true,
@@ -526,6 +534,10 @@ async function ensureCoreSchema(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await corePgPool.query(`
+    ALTER TABLE core_users
+      ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT ''
   `);
   await corePgPool.query(`
     CREATE TABLE IF NOT EXISTS core_audit_logs (
@@ -652,7 +664,7 @@ async function ensureCoreSchema(): Promise<void> {
 
 async function authenticateCore(username: string, password: string): Promise<User | null> {
   const result = await corePgPool.query<CoreUserRow>(
-    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, password_hash, role, active, source, created_at, updated_at
+    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, display_name, password_hash, role, active, source, created_at, updated_at
        FROM core_users
       WHERE username_normalized = $1 AND active = true
       LIMIT 1`,
@@ -675,7 +687,7 @@ async function authenticateCore(username: string, password: string): Promise<Use
 async function currentSessionUser(sessionUser: User | undefined): Promise<User | null> {
   if (!sessionUser) return null;
   const result = await corePgPool.query<CoreUserRow>(
-    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, password_hash, role, active, source, created_at, updated_at
+    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, display_name, password_hash, role, active, source, created_at, updated_at
        FROM core_users
       WHERE id = $1 AND active = true
       LIMIT 1`,
@@ -717,7 +729,7 @@ async function userByHomeSso(req: Request): Promise<User | null> {
   const username = await homeSsoUsername(req);
   if (!username) return null;
   const result = await corePgPool.query<CoreUserRow>(
-    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, password_hash, role, active, source, created_at, updated_at
+    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, display_name, password_hash, role, active, source, created_at, updated_at
        FROM core_users
       WHERE username_normalized = $1 AND active = true
       LIMIT 1`,
@@ -788,6 +800,7 @@ async function listUsers(): Promise<UserViewRow[]> {
       u.legacy_mysql_id::text,
       u.username,
       u.username_normalized,
+      u.display_name,
       u.password_hash,
       u.role,
       u.active,
@@ -991,7 +1004,7 @@ async function dashboardStats(): Promise<Record<string, number>> {
 
 async function findCoreUser(userId: number, client: pg.Pool | pg.PoolClient = corePgPool): Promise<CoreUserRow | null> {
   const result = await client.query<CoreUserRow>(
-    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, password_hash, role, active, source, created_at::text, updated_at::text
+    `SELECT id::text, legacy_mysql_id::text, username, username_normalized, display_name, password_hash, role, active, source, created_at::text, updated_at::text
        FROM core_users
       WHERE id = $1
       LIMIT 1`,
@@ -1175,6 +1188,7 @@ async function createUser(req: Request, actor: User): Promise<void> {
   if (!/^[a-z0-9._-]{2,60}$/.test(username)) {
     throw new Error('Informe um nome/login com pelo menos 2 letras ou numeros. Ex.: joao.silva ou caixa1.');
   }
+  const displayName = cleanText(req.body.display_name || req.body.username || username, 120) || username;
   const password = String(req.body.password || '');
   if (password.length < 1) {
     throw new Error('Informe uma senha para criar o usuario.');
@@ -1194,13 +1208,13 @@ async function createUser(req: Request, actor: User): Promise<void> {
     const result = await client.query<CoreUserRow>(
       `INSERT INTO core_users (
          id, legacy_mysql_id, username, username_normalized, password_hash,
-         role, active, source, migrated_at, created_at, updated_at
+         role, active, source, display_name, migrated_at, created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5,
-         $6, $7, 'usuarios:core', NOW(), NOW(), NOW()
+         $6, $7, 'usuarios:core', $8, NOW(), NOW(), NOW()
        )
-       RETURNING id::text, legacy_mysql_id::text, username, username_normalized, password_hash, role, active, source, created_at::text, updated_at::text`,
-      [id, -id, username, normalized, passwordHash, role, active,],
+       RETURNING id::text, legacy_mysql_id::text, username, username_normalized, display_name, password_hash, role, active, source, created_at::text, updated_at::text`,
+      [id, -id, username, normalized, passwordHash, role, active, displayName],
     );
     const created = result.rows[0];
     await saveModulePermissions(Number(created.id), modules, actor.id, client);
@@ -1210,6 +1224,7 @@ async function createUser(req: Request, actor: User): Promise<void> {
       modules: Array.from(modules),
       role,
       active,
+      display_name: displayName,
       xp_employee_id: xpEmployeeId || null,
       admin_password_vault_updated: true,
     }, client);
@@ -1237,6 +1252,9 @@ async function updateUser(req: Request, actor: User): Promise<void> {
   const selected = selectedModuleKeys(req.body.modules);
   const isSelf = targetUserId === actor.id;
   const targetIsAdm = normalizeUsername(target.username) === 'adm';
+  if (targetIsAdm) {
+    for (const module of MODULES) selected.add(module.key);
+  }
   if (isSelf || targetIsAdm) {
     selected.add('usuarios');
   }
@@ -1246,6 +1264,8 @@ async function updateUser(req: Request, actor: User): Promise<void> {
     role = target.role;
     active = true;
   }
+  const displayName = cleanText(req.body.display_name || target.display_name || target.username, 120) || target.username;
+  const displayNameChanged = displayName !== displayNameForUser(target);
   const password = String(req.body.password || '');
   const xpEmployeeId = Number(req.body.xp_employee_id || 0);
   const client = await corePgPool.connect();
@@ -1262,25 +1282,41 @@ async function updateUser(req: Request, actor: User): Promise<void> {
       const passwordHash = await bcrypt.hash(password, 12);
       await client.query(
         `UPDATE core_users
-            SET role = $1, active = $2, password_hash = $3, updated_at = NOW()
-          WHERE id = $4`,
-        [role, active, passwordHash, targetUserId],
+            SET role = $1, active = $2, display_name = $3, password_hash = $4, updated_at = NOW()
+          WHERE id = $5`,
+        [role, active, displayName, passwordHash, targetUserId],
       );
       await saveAdminPasswordSecret(targetUserId, password, actor.id, client);
     } else {
       await client.query(
         `UPDATE core_users
-            SET role = $1, active = $2, updated_at = NOW()
-          WHERE id = $3`,
-        [role, active, targetUserId],
+            SET role = $1, active = $2, display_name = $3, updated_at = NOW()
+          WHERE id = $4`,
+        [role, active, displayName, targetUserId],
       );
     }
     await saveModulePermissions(targetUserId, selected, actor.id, client);
     await saveXpLink(targetUserId, xpEmployeeId, actor.id, client);
+    if (displayNameChanged) {
+      const links = await client.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM core_user_whatsapp_links WHERE user_id = $1',
+        [targetUserId],
+      );
+      const linkedContacts = Number(links.rows[0]?.total || 0);
+      if (linkedContacts > 0) {
+        await syncWhatsappDisplayName(targetUserId, displayName);
+        await client.query(
+          'UPDATE core_user_whatsapp_links SET display_name = $2, updated_at = NOW() WHERE user_id = $1',
+          [targetUserId, displayName],
+        );
+      }
+    }
     await logUserAudit(actor.id, targetUserId, 'usuarios_atualizou_usuario', `Usuario ${target.username} atualizado.`, {
       modules: Array.from(selected),
       role,
       active,
+      display_name: displayName,
+      display_name_changed: displayNameChanged,
       xp_employee_id: xpEmployeeId || null,
       password_changed: Boolean(password),
       admin_password_vault_updated: Boolean(password),
@@ -1362,7 +1398,7 @@ async function linkWhatsappNumber(req: Request, actor: User): Promise<void> {
     throw new Error('Usuario de destino invalido.');
   }
   const phone = cleanText(req.body.phone || req.body.numero, 80);
-  const displayName = cleanText(req.body.display_name || target.username, 120);
+  const displayName = cleanText(req.body.display_name || displayNameForUser(target), 120);
   const moduleKeys = selectedWhatsappModuleKeys(req.body.whatsapp_modules);
   if (!phone) {
     throw new Error('Informe o numero do WhatsApp.');
@@ -1420,6 +1456,18 @@ async function linkWhatsappNumber(req: Request, actor: User): Promise<void> {
   });
 }
 
+async function syncWhatsappDisplayName(targetUserId: number, displayName: string): Promise<void> {
+  await postInternalJson(
+    `${MIAUW_WHATSAPP_INTERNAL_BASE_URL}/internal/allowlist/update-user-display-name`,
+    MIAUW_WHATSAPP_INTERNAL_TOKEN,
+    {
+      user_id: targetUserId,
+      display_name: displayName,
+    },
+    'Miauby WhatsApp',
+  );
+}
+
 async function unlinkWhatsappNumber(req: Request, actor: User): Promise<void> {
   const linkId = Number(req.body.link_id || 0);
   if (!Number.isSafeInteger(linkId) || linkId <= 0) {
@@ -1464,7 +1512,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-users-edit-layout">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-master-user">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1497,8 +1545,8 @@ function renderXpOptions(employees: XpEmployeeRow[], selectedId: string | null):
   return rows.join('');
 }
 
-function renderModuleChecks(name: string, permissions: Record<string, boolean>): string {
-  return `<div class="users-modules">${MODULES.map((module) => `<label class="users-check"><input type="checkbox" name="${e(name)}" value="${e(module.key)}"${permissions[module.key] ? ' checked' : ''}><span>${e(module.label)}</span></label>`).join('')}</div>`;
+function renderModuleChecks(name: string, permissions: Record<string, boolean>, disabled = false): string {
+  return `<div class="users-modules">${MODULES.map((module) => `<label class="users-check"><input type="checkbox" name="${e(name)}" value="${e(module.key)}"${permissions[module.key] ? ' checked' : ''}${disabled ? ' disabled' : ''}><span>${e(module.label)}</span></label>`).join('')}</div>`;
 }
 
 function renderWhatsappModuleChecks(selectedKeys: string[]): string {
@@ -1531,7 +1579,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-edit-ui">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-master-user">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
 </head>
 <body>
@@ -1551,7 +1599,7 @@ function renderDashboard(
         <div>
           <span class="users-kicker">Core Postgres</span>
           <h1>Usu&aacute;rios</h1>
-          <p>${e(user.username)} conectado. Logins individuais, permiss&otilde;es por m&oacute;dulo, XP e auditoria central.</p>
+          <p>${e(user.display_name || user.username)} conectado. Logins individuais, permiss&otilde;es por m&oacute;dulo, XP e auditoria central.</p>
         </div>
         <div class="users-storage-note">
           <strong>Fonte oficial</strong>
@@ -1576,6 +1624,11 @@ function renderDashboard(
                 <span>Usu&aacute;rio</span>
                 <input class="users-input" type="text" name="username" maxlength="120" autocomplete="off" placeholder="Ex.: Jo&atilde;o Silva" required>
                 <small class="users-field-help">Pode digitar nome com espa&ccedil;o/acento; o login sera ajustado automaticamente, como joao.silva.</small>
+              </label>
+              <label class="users-label">
+                <span>Nome exibido</span>
+                <input class="users-input" type="text" name="display_name" maxlength="120" autocomplete="off" placeholder="Ex.: Sueli">
+                <small class="users-field-help">Opcional. Se ficar vazio, o sistema usa o nome digitado acima.</small>
               </label>
               <div class="users-label users-password-label">
                 <span>Senha</span>
@@ -1634,18 +1687,24 @@ function renderAdminPasswordVault(row: UserViewRow): string {
 
 function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRow[], whatsappLinks: WhatsappLinkRow[], userAudit: UserAuditRow[]): string {
   const permissions = permissionsForView(row);
-  const enabledModules = MODULES.filter((module) => permissions[module.key]).map((module) => module.label);
   const userId = Number(row.id);
   const isAdm = normalizeUsername(row.username) === 'adm';
+  const effectivePermissions = isAdm
+    ? Object.fromEntries(MODULES.map((module) => [module.key, true])) as Record<string, boolean>
+    : permissions;
+  const enabledModules = MODULES.filter((module) => effectivePermissions[module.key]).map((module) => module.label);
   const sourceLabel = userSourceLabel(row.source);
-  const whatsappDefaults = whatsappModulesFromUserPermissions(permissions);
+  const displayName = displayNameForUser(row);
+  const showLogin = displayName !== row.username || isAdm;
+  const whatsappDefaults = whatsappModulesFromUserPermissions(effectivePermissions);
   return `<article class="users-user">
     <div class="users-user-head">
       <div class="users-name">
-        <strong>${e(row.username)}</strong>
-        <span><b>${e(sourceLabel)}</b> &middot; ${e(brDateTime(row.created_at))}</span>
+        <strong>${e(displayName)}</strong>
+        <span><b>${e(sourceLabel)}</b>${showLogin ? ` &middot; login: ${e(row.username)}` : ''} &middot; ${e(brDateTime(row.created_at))}</span>
       </div>
       <div class="users-pills">
+        ${isAdm ? '<span class="users-pill master">Mestre</span>' : ''}
         <span class="users-pill ${row.active ? 'ok' : 'off'}">${row.active ? 'Ativo' : 'Inativo'}</span>
         <span class="users-pill">${e(row.role || 'user')}</span>
         <span class="users-pill data">Postgres</span>
@@ -1661,6 +1720,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <input type="hidden" name="action" value="update_user">
         <input type="hidden" name="user_id" value="${e(userId)}">
         <div class="users-form-grid">
+          <label class="users-label"><span>Nome exibido</span><input class="users-input" type="text" name="display_name" maxlength="120" value="${e(displayName)}" placeholder="${e(row.username)}"></label>
           <label class="users-label"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select></label>
           <div class="users-label users-password-label">
             <span>Senha nova</span>
@@ -1674,13 +1734,14 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
           </div>
           <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>
         </div>
+        ${isAdm ? '<p class="users-master-note">Login tecnico protegido: pode trocar nome exibido, senha, XP e WhatsApp; nao pode desativar, perder admin ou ficar sem acesso aos modulos.</p>' : ''}
         ${isAdm ? `<input type="hidden" name="role" value="${e(row.role)}">` : ''}
         <div class="users-edit-security-row">
           ${renderAdminPasswordVault(row)}
           <label class="users-check users-status-check"><input type="checkbox" name="active" value="1"${row.active ? ' checked' : ''}${isAdm ? ' disabled' : ''}><span>Ativo</span></label>
         </div>
         ${isAdm ? '<input type="hidden" name="active" value="1">' : ''}
-        <fieldset class="users-fieldset users-modules-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', permissions)}</fieldset>
+        <fieldset class="users-fieldset users-modules-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', effectivePermissions, isAdm)}</fieldset>
         <div class="users-actions">
           <button class="users-button" type="submit">Salvar alteracoes</button>
         </div>
@@ -1731,7 +1792,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
             <input type="hidden" name="user_id" value="${e(userId)}">
             <div class="users-form-grid two">
               <label class="users-label"><span>Numero</span><input class="users-input" type="tel" name="phone" inputmode="tel" autocomplete="off" placeholder="44 99999-9999" required></label>
-              <label class="users-label"><span>Nome no Miauby</span><input class="users-input" type="text" name="display_name" maxlength="120" placeholder="${e(row.username)}"></label>
+              <label class="users-label"><span>Nome no Miauby</span><input class="users-input" type="text" name="display_name" maxlength="120" placeholder="${e(displayName)}"></label>
             </div>
             <fieldset class="users-fieldset"><legend>Cards no WhatsApp</legend>${renderWhatsappModuleChecks(whatsappDefaults)}</fieldset>
             <button class="users-button secondary" type="submit">Colocar na allowlist</button>
