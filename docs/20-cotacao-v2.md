@@ -203,6 +203,18 @@ Baseline da Fase 0:
 - VPS respondeu `GET /cotacao/socket.io/socket.io.js` com HTTP 200;
 - logs recentes de `wimifarma-cotacao-app` mostraram apenas inicializacao normal em `3000/cotacao`.
 
+Auditoria operacional de 2026-06-02:
+
+- checks locais em `apps/cotacao` passaram: `npm run check`, `npm run typecheck` e `npm run build:ts`;
+- no VPS, a entrada oficial do Compose/Apache respondeu `http://127.0.0.1:3002/cotacao/health` com HTTP 200, `ok=true`, auth `core`, `mysql_auth=false`, `mysql_auth_fallback=false`, `coreReachable=true` e `usersSynced=true`;
+- o proxy interno `wimifarma-com-web` respondeu `/cotacao/health` com HTTP 200 e `/cotacao/socket.io/socket.io.js` com HTTP 200; a consulta externa direta a `https://wimifarma.com.br/cotacao/health` caiu em uma camada publica Next com HTTP 404 e nao deve substituir o smoke local do VPS;
+- o Postgres real tinha 1 cotacao, 13 colunas visiveis, 501 linhas ativas, 2 linhas removidas, 2 regras, 44 estilos, 1898 eventos, 22 eventos de auditoria de coluna e 2 lembretes de encomenda pendentes;
+- os seis indices esperados de performance existiam (`events`, `quotes`, `columns`, `rows`, `rules` e `styles`);
+- endpoints autenticados sem sessao (`/api/bootstrap`, `/api/events`, `/api/diagnostics`, `/api/google-sheets/status`, `/api/backups`) responderam 401, como esperado;
+- endpoints internos da Cotacao exigem `X-Miauw-Internal-Token` ou `X-Internal-Token`; `Authorization: Bearer` nao e aceito nesse modulo. Com o header correto, `/api/internal/summary` retornou contagens reais e `/api/internal/search?q=encomenda` retornou 2 itens;
+- logs recentes do app mostraram apenas inicializacao normal; logs do Postgres/Redis mostraram checkpoints/saves normais. Alguns erros de SQL em 2026-06-02 foram causados por comandos manuais de auditoria mal formatados e nao pelo app;
+- `cotacao_v2_events` indicou 0 eventos com `payload.overwroteRemote=true` nos ultimos 7 dias.
+
 Fases recomendadas:
 
 1. Fase 1: adicionar tooling TypeScript sem trocar runtime de producao. Usar `tsconfig.json` conservador com `allowJs`, `noEmit` e sem obrigar checagem total dos JavaScripts no primeiro corte. `npm start` deve continuar chamando `node src/server.js`. Concluida em 2026-05-31 com `npm run typecheck` separado, devDependencies TypeScript e sem alteracao de frontend/Dockerfile.
@@ -319,6 +331,8 @@ Em 2026-05-12 foram validados localmente:
 - Cores manuais devem continuar independentes de regras de negocio; nao usar cor como estado operacional sem schema explicito.
 - Importar do Google Sheets sem revisar range/credencial pode substituir a cotacao ativa; usar backup antes de importar dados reais.
 - Restore de backup sobrescreve linhas/colunas/regras/estilos da cotacao atual. Deve ser restrito e auditado antes de liberar para toda a equipe.
+- Autosave, edicao de celula, colagem, precos, quantidades e fornecedores devem continuar no backend da Cotacao, nao em n8n. n8n pode monitorar ou avisar, mas nao deve gravar direto em `cotacao_v2_*`.
+- A concorrencia atual usa contrato de ultimo salvamento vencendo; `expectedValue` fica no payload para auditoria/flag historica, nao para rejeitar o save. Se a equipe quiser bloqueio forte por versao, isso precisa de mudanca separada, teste com duas abas e plano de UX para conflito.
 - Resize de coluna e renomeio rapido sao recursos operacionais frequentes; evitar adicionar confirmacoes ou modais nesse caminho.
 - Como nao ha fallback PHP legado, falhas em `/cotacao/` devem ser investigadas no app Node, no proxy Apache ou nos servicos Postgres/Redis/MySQL de login.
 - Indices novos da Cotacao devem ser aditivos e criados com `IF NOT EXISTS`; nao remover historico ou dados para tentar ganhar performance.

@@ -172,6 +172,14 @@ Fluxo:
 5. A mensagem e curta e interna, perguntando se a encomenda chegou, com criada em, hoje e contexto do produto/quantidade.
 6. O envio nao altera valor, fornecedor, ganhador, status ou linha da Cotacao.
 
+Auditoria de 2026-06-02:
+
+- n8n em producao estava ativo com workflows de smoke, watchdog, Evolution/Baileys, Pix/OCR, Pedidos e Financeiro; nao havia workflow n8n dedicado para Cotacao, o que esta correto para o fluxo atual.
+- O painel/backend do Miauby Whats tinha `cotacao_encomenda_16h` cadastrado e ligado em `miauw_whatsapp_automation_settings`.
+- A Cotacao tinha 2 lembretes pendentes em `cotacao_v2_encomenda_reminders`, ambos previstos para 2026-06-03 16h America/Sao_Paulo, ainda sem execucao no bridge porque nao tinham vencido.
+- `miauw_whatsapp_automation_runs` e `miauw_whatsapp_error_logs` nao tinham registros de Cotacao no momento da auditoria; isso e esperado ate a primeira execucao real ou dry-run dessa rotina.
+- Nao mover autosave, precos, fornecedores, quantidades ou import/restore para n8n. Para Cotacao, n8n deve ficar restrito a smoke, watchdog, alerta de backend parado ou monitoramento de cotacao parada.
+
 ### Chegada de pedidos as 17h
 
 Agenda: todo dia as 17:00, timezone `America/Sao_Paulo`.
@@ -361,6 +369,7 @@ Esta tabela serve como cola operacional: o n8n agenda, mas quem decide destinata
 | --- | --- | --- | --- | --- | --- |
 | Chegada de pedidos | Todo dia as 17h | Contatos reais autorizados com card `Pedidos` | Envia tabela dos pedidos ainda em `Aguardando chegada`, com valor total, previsao e data/hora do pedido | Adicionar/remover numero autorizado, mudar horario, mudar texto, mudar regra de filtro, testar com `dry_run=true` | Nao confirma chegada sozinha; confirmacao vem por resposta validada pelo bridge |
 | Fechamento de caixa | Todo dia as 18h | Contatos reais autorizados com card `Financeiro` | Avisa dias de caixa em aberto/conferencia/sem registro nos ultimos 10 dias | Adicionar/remover numero autorizado, mudar horario, mudar janela de dias, mudar texto, pausar/ativar no painel | Nao fecha caixa, nao cria faturamento e nao grava sangria sem fluxo auditado |
+| Encomenda da Cotacao | Dia seguinte as 16h, criada pelo app da Cotacao | Contatos reais autorizados com card `Cotacao` | Pergunta se a encomenda marcada na Cotacao chegou, usando lembrete persistido no Postgres da Cotacao | Liberar/remover card `Cotacao`, pausar/ativar rotina no painel, mudar texto ou janela de retry | Nao altera cotacao e nao usa n8n para salvar dados |
 | Smoke check pos-deploy | Manual ou apos deploy | Contatos reais autorizados com card `Miauby` | Testa rotas/health principais e avisa problema | Enviar tambem sucesso, adicionar rota de health, mudar cooldown, adicionar numero com card `Miauby` | Nao faz rollback automatico |
 | Watchdog WhatsApp | A cada poucos minutos | Contatos reais autorizados com card `Miauby`, normalmente so com problema | Vigia fila, outbox, provider pausado e respostas travadas | Ajustar frequencia, cooldown, severidade, destinatarios e texto de alerta | Nao dispara mensagem atrasada fora de contexto; pendencias antigas viram `dead` |
 | Evolution/Baileys | A cada 30 min | Contatos reais autorizados com card `Miauby` | Avisa conexao ruim, provedor pausado ou falha recente de envio Evolution | Ajustar janela, horario/frequencia, texto e destinatarios por card `Miauby` | Nao executa Docker/shell pelo n8n e nao reinicia Evolution automaticamente |

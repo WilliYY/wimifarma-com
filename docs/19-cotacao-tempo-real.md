@@ -76,9 +76,9 @@ Em nova auditoria de categoria no mesmo dia, foi identificado que a aba que salv
 
 Tambem foi removida a logica antiga de classes fixas para `urgente` e `encomenda`. Essas cores agora devem vir somente de `cotacao_regras_formatacao`, para evitar conflito entre regra condicional e CSS/JS legado. Quando o popover de categoria esta fechado, o frontend apenas memoriza categorias novas e nao reconstrui a lista visual escondida a cada save.
 
-Na revisao seguinte, foi removido outro acoplamento antigo: escrever `encomenda` na categoria nao muda mais `prioridade`, nao registra `encomenda_registrada_em` automaticamente e `urgente`/`encomenda` nao entram mais no filtro de cor por palavra-chave. O campo categoria pode continuar sendo usado pela regra condicional configurada pelo usuario, mas alerta operacional do Miauby depende de prioridade explicita `encomenda`.
+Na revisao seguinte, foi removido outro acoplamento antigo: escrever `encomenda` na categoria nao muda mais `prioridade`, nao registra `encomenda_registrada_em` automaticamente e `urgente`/`encomenda` nao entram mais no filtro de cor por palavra-chave. O campo categoria pode continuar sendo usado pela regra condicional configurada pelo usuario. Naquele momento, alerta operacional do Miauby dependia de prioridade explicita `encomenda`; esse ponto historico foi superado pela excecao controlada de 2026-06-01.
 
-Miauby acompanha alertas operacionais da Cotacao, mas encomenda so vira alerta/comentario de balao quando a linha esta com prioridade explicita `encomenda` e passa de 1 dia sem baixa/pedido. Antes disso, a encomenda deve continuar como fluxo normal da Cotacao para evitar ruido operacional.
+Antes da excecao de 2026-06-01, Miauby acompanhava encomenda apenas por prioridade explicita e idade do item. Esse comportamento nao deve voltar como gatilho visual escondido; a regra atual e somente lembrete persistido, auditado e cancelavel.
 
 Em 2026-06-01, a regra foi ampliada de forma controlada: escrever `encomenda` em uma linha da Cotacao continua sem mudar cor, prioridade, ordem, filtro ou valor, mas agora cria/atualiza um lembrete persistido em `cotacao_v2_encomenda_reminders`. O lembrete pergunta pelo Miauby Whats no dia seguinte as 16h se a encomenda chegou, registra status/tentativas em banco e cancela se a palavra for removida antes do envio.
 
@@ -148,7 +148,7 @@ Tabelas:
 - Precos por fornecedor devem continuar ligados a `item_id` e `fornecedor_id`.
 - Filtro ativo nao pode esconder conflito de dados; se outro usuario estiver em linha fora do filtro, a interface deve indicar isso.
 - Filtro de uma tela nao pode ser aplicado automaticamente em outra enquanto o modo local-first estiver ativo.
-- Encomenda da Cotacao nao deve gerar alerta do Miauby antes de completar mais de 1 dia sem baixa/pedido e deve depender de prioridade explicita `encomenda`, nao de texto livre da categoria.
+- Encomenda da Cotacao nao deve mudar cor, prioridade, ordem, filtro, valor ou ganhador por texto livre. A unica excecao automatica permitida e o lembrete persistido em `cotacao_v2_encomenda_reminders`, com envio previsto para o dia seguinte as 16h via Miauby Whats, validando allowlist/card `Cotacao`.
 - Presenca e dado temporario; nao deve ser usada como historico permanente.
 - A tela deve continuar funcional quando houver apenas um usuario, quando outro usuario fechar o navegador ou quando o ping falhar temporariamente.
 
@@ -177,7 +177,7 @@ Tabelas:
 - `cotacao_add_category()` aceita `touchSync=false` quando chamada dentro de `cotacao_save_item()`, evitando dois toques de sync para um unico save de linha.
 - As classes legadas `is-category-urgent` e `is-category-order` nao devem ser usadas para cor automatica; a origem correta e `cotacao_regras_formatacao`.
 - As palavras `urgente` e `encomenda` tambem nao devem entrar como atalho escondido no filtro de cor. Regras legadas ativas para esses termos sao desativadas automaticamente; se a equipe quiser destacar esses fluxos novamente, isso deve ser redesenhado como regra explicita revisada.
-- `encomenda` so tem significado operacional para idade da encomenda/Miauby quando salvo como prioridade explicita; como texto de categoria, e apenas categoria/formatacao condicional.
+- `encomenda` como texto de categoria continua sendo dado comum para a grade e para regras condicionais explicitas. Desde 2026-06-01, ela tambem cria/atualiza apenas o lembrete operacional persistido para Miauby Whats; nao deve reativar prioridade, cor, filtro ou reordenacao escondida.
 - Regras ativas de categoria com termo exato `urgente`, `urgencia`, `urgência` ou `encomenda` sao desativadas na inicializacao do schema para remover o comportamento antigo que fazia a tela saltar/travar.
 - Regras ativas de categoria com termo `geral` tambem sao desativadas por `cotacao_disable_default_category_trigger_rules()`, porque `geral` e default historico e nao deve funcionar como gatilho visual escondido.
 - Saves de linhas existentes nao enviam mais `ordem` como campo alterado por padrao; o backend preserva a ordem anterior quando receber `ordem` vazia/zero em edicao existente.
