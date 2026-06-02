@@ -440,7 +440,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.26';
+const SERVICE_VERSION = '0.5.27';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -2930,6 +2930,7 @@ async function recordErrorLog(source: string, severity: 'info' | 'warn' | 'error
 
 function actionableErrorLogsWhere(alias: string): string {
   return `${alias}.resolved_at IS NULL
+    AND ${alias}.severity IN ('warn', 'error')
     AND NOT (
       ${alias}.source = 'outbox_recovery'
       AND ${alias}.severity = 'warn'
