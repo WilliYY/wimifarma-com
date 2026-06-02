@@ -1075,7 +1075,6 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
   const title = trimText(req.body?.title || req.body?.titulo, 180);
   const description = String(req.body?.description || req.body?.descricao || '').trim();
   const assignedUserId = Number(req.body?.assigned_core_user_id || req.body?.user_id || 0);
-  const assignedUsername = cleanText(req.body?.assigned_username || req.body?.username || '', 120);
   const actorUserId = Number(req.body?.actor_user_id || 0) || null;
   const actorUsername = cleanText(req.body?.actor_username || '', 120);
   const remindAt = parseReminderDate(req.body?.remind_at || req.body?.reminder_at || '');
@@ -1083,6 +1082,11 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
   if (!Number.isSafeInteger(assignedUserId) || assignedUserId <= 0) {
     throw new Error('Usuario de destino invalido.');
   }
+  const assignee = await taskAssigneeById(assignedUserId);
+  if (!assignee) {
+    throw new Error('Usuario de destino nao tem acesso ao modulo Tarefas.');
+  }
+  const assignedUsername = cleanText(assignee.username, 120);
 
   const client = await pgPool.connect();
   try {
@@ -1245,6 +1249,8 @@ async function updateTask(req: Request): Promise<void> {
     if (!task) throw new Error('Tarefa invalida.');
     if (canManageAll && reminderFieldPresent) {
       await syncTaskReminder(client, task, remindAt || null, userId || null);
+    } else if (canManageAll && assignmentChanged) {
+      await cancelScheduledReminders(client, id, userId || null, 'Lembrete Miauby cancelado porque o usuario da tarefa mudou.');
     }
     await auditPg(client, id, req.session.user?.id || null, 'tarefa_editada', `Tarefa editada: ${title}`);
     await client.query('COMMIT');

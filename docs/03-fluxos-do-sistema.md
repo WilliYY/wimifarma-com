@@ -398,6 +398,8 @@ Regras:
 - `/tarefa/badge.php` retorna apenas a contagem de tarefas publicas abertas, para a home nao vazar volume de tarefas privadas;
 - criar, editar, concluir, cancelar e reabrir usam CSRF e sessao `WFTAREFA`;
 - tarefas com `assigned_core_user_id` aparecem somente para o usuario indicado e nao entram no espelho MySQL legado;
+- endpoint interno de tarefa privada tambem revalida no app Tarefa se o usuario de destino esta ativo e pode receber tarefa, mesmo quando a chamada veio do modulo Usuarios;
+- ao mudar o dono de uma tarefa, lembretes Miauby agendados sao cancelados/recriados para impedir envio ao usuario anterior;
 - a tela visual deve continuar equivalente ao modulo antigo durante a migracao;
 - Desde 2026-05-30, Tarefa nao possui `mysql2`, importador, espelho ou fallback `wf_users`; rollback MySQL exige restaurar versao anterior e backup validado, sem mudar a fonte oficial de verdade do Postgres.
 

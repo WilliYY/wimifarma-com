@@ -474,9 +474,9 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - `/tarefa/api/badge` e `/tarefa/badge.php`: total de tarefas abertas para home.
 - `GET /tarefa/api/internal/summary`: resumo interno de tarefas publicas para Miauby.
 - `POST /tarefa/api/internal/tasks`: cria tarefa publica por ponte interna Node/Postgres.
-- `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios e pode aceitar `remind_at` opcional.
+- `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios, revalidando usuario ativo/com acesso no app Tarefa, e pode aceitar `remind_at` opcional.
 - Desde 2026-06-01, ADM/admin na tela `/tarefa/` pode escolher o usuario que vera a tarefa. Usuarios comuns continuam vendo tarefas publicas e as privadas atribuidas ao proprio `core_users.id`; ADM/admin ve todas.
-- Lembretes Miauby ficam em `tarefa_reminders`. O worker do app Tarefa busca lembretes vencidos, chama `POST /miauw/whatsapp/internal/task-reminder`, registra tentativas/resultado em Postgres e grava auditoria. O bridge WhatsApp so envia para contato permitido, vinculado ao usuario e com card `tarefas` liberado.
+- Lembretes Miauby ficam em `tarefa_reminders`. O worker do app Tarefa busca lembretes vencidos, chama `POST /miauw/whatsapp/internal/task-reminder`, registra tentativas/resultado em Postgres e grava auditoria. O bridge WhatsApp so envia para contato permitido, vinculado ao usuario e com card `tarefas` liberado. Se o dono da tarefa mudar, lembrete agendado antigo e cancelado ou recriado para o novo dono.
 
 ### Permissoes e sessao
 
