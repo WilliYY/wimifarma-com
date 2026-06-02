@@ -10,6 +10,8 @@ Desde 2026-05-27, o bridge tambem pode ler foto, print, imagem encaminhada ou PD
 
 Desde 2026-05-29, o painel operacional reorganiza `n8n automacoes` e `Sincronia recente` em grids responsivos com quebra segura de texto, para que numeros, eventos, motores e mensagens longas fiquem legiveis sem estourar os cards. A area de `n8n automacoes` tambem mostra, por rotina, o que o n8n agenda/chama, o que o Miauby faz, exemplo do estilo da mensagem, destino calculado pelos cards liberados e o controle de ligar/desligar quando a rotina ja e executada pelo backend.
 
+Desde 2026-06-02, o painel `/miauw/whatsapp/` passou a abrir em leitura simplificada: uma faixa `Estado agora` resume canal, fila, integracao, resposta e erros, enquanto indicadores completos, allowlist, configuracao, estados, n8n, eventos e outbox ficam recolhidos em secoes expansivas. `Sincronia recente` continua visivel para operacao diaria, e `Erros abertos` abre automaticamente apenas quando houver falha acionavel. A mudanca e apenas de apresentacao; webhook, fila, envio, allowlist, tokens e regras de negocio nao foram alterados.
+
 Desde 2026-05-29, contatos da allowlist podem ser vinculados a usuarios do core pelo painel `/usuarios/`. O bridge continua sendo o dono do telefone completo cifrado/hash; o core recebe apenas `contact_id`, mascara, nome, status e cards liberados para permitir aviso individual por funcionario.
 
 ## Componentes

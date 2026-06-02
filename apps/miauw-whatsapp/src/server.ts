@@ -9674,6 +9674,26 @@ function renderPill(active: boolean, activeLabel: string, inactiveLabel: string)
   return `<span class="pill ${active ? 'is-ok' : 'is-warn'}">${htmlEscape(active ? activeLabel : inactiveLabel)}</span>`;
 }
 
+function renderFocusItem(title: string, tone: DashboardTone, value: string | number, detail: string): string {
+  return `
+    <article class="focus-item is-${tone}">
+      <span>${htmlEscape(title)}</span>
+      <strong>${htmlEscape(String(value))}</strong>
+      <small>${htmlEscape(detail)}</small>
+    </article>`;
+}
+
+function panelSummary(title: string, detail: string): string {
+  return `
+    <summary class="panel-summary">
+      <span>
+        <b>${htmlEscape(title)}</b>
+        <small>${htmlEscape(detail)}</small>
+      </span>
+      <em aria-hidden="true"></em>
+    </summary>`;
+}
+
 function renderMetric(title: string, value: string | number, hint: string): string {
   return `
     <article class="metric">
@@ -10287,6 +10307,50 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       : (providerPaused || pendingOutbox > 0)
         ? 'warn'
         : 'ok';
+  const channelTone: DashboardTone = !enabled || !transportConfigured
+    ? 'bad'
+    : providerPaused
+      ? 'warn'
+      : 'ok';
+  const queueTone: DashboardTone = eventProblems + outboxProblems > 0
+    ? 'bad'
+    : queued + pendingOutbox > 0
+      ? 'warn'
+      : 'ok';
+  const responseTone = responseTimeTone(responseDelay.avg_total_ms);
+  const focusItems = [
+    renderFocusItem(
+      'Canal',
+      channelTone,
+      enabled ? (providerPaused ? 'Pausado' : 'Ativo') : 'Desligado',
+      transportConfigured ? `${provider} | ${providerPaused ? `retorno em ${Math.ceil(providerPauseMs / 1000)}s` : 'transporte normal'}` : 'transporte pendente',
+    ),
+    renderFocusItem(
+      'Fila',
+      queueTone,
+      queued + pendingOutbox,
+      `${queued} entrada(s), ${pendingOutbox} saida(s), ${eventProblems + outboxProblems} problema(s)`,
+    ),
+    renderFocusItem(
+      'Integracao',
+      integrationTone(integrationHealth),
+      integrationHealthLabel(integrationHealth),
+      `${sharedContextEnabled ? 'contexto ok' : 'contexto pendente'} | ${sharedMemoryEnabled ? 'memoria ok' : 'memoria pendente'}`,
+    ),
+    renderFocusItem(
+      'Resposta',
+      responseTone,
+      formatMs(responseDelay.avg_total_ms),
+      `${responseDelay.count} envio(s) em 24h | p95 ${formatMs(responseDelay.p95_total_ms)}`,
+    ),
+    renderFocusItem(
+      'Erros',
+      summary.errorCount24h > 0 ? 'bad' : 'ok',
+      summary.errorCount24h,
+      summary.errorCount24h > 0 ? 'abertos para correcao' : 'sem erro aberto em 24h',
+    ),
+  ].join('');
+  const errorsPanelOpen = summary.recentErrors.length > 0 ? ' open' : '';
   const noticeHtml = notice
     ? `<p class="notice">${htmlEscape(notice)}</p>`
     : '';
@@ -10329,7 +10393,52 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-family: inherit;
       cursor: pointer;
     }
+    .focus-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0 0 14px;
+    }
+    .focus-item {
+      min-width: 0;
+      min-height: 118px;
+      border: 1px solid #ead5df;
+      border-left: 5px solid #d8c8d0;
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+      box-shadow: 0 14px 28px rgba(89, 27, 57, .07);
+    }
+    .focus-item.is-ok { border-left-color: #21a66b; }
+    .focus-item.is-warn { border-left-color: #f0a000; }
+    .focus-item.is-bad { border-left-color: #d33b57; }
+    .focus-item.is-muted { border-left-color: #d8c8d0; }
+    .focus-item span {
+      display: block;
+      color: #8d0f43;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    .focus-item strong {
+      display: block;
+      margin: 11px 0 8px;
+      color: #251827;
+      font-size: 22px;
+      line-height: 1.08;
+      overflow-wrap: anywhere;
+    }
+    .focus-item small {
+      display: block;
+      color: #645260;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
     .metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .compact-panel { margin-bottom: 14px; }
+    .compact-panel .metrics { margin-bottom: 0; }
     .metric, .panel {
       border: 1px solid #ead5df;
       border-radius: 8px;
@@ -10344,6 +10453,63 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .panel { grid-column: span 6; padding: 16px; overflow: hidden; }
     .panel.is-wide { grid-column: 1 / -1; }
     .panel h2 { margin: 0 0 12px; }
+    details.panel {
+      padding: 0;
+    }
+    details.panel:not([open]) {
+      box-shadow: 0 10px 20px rgba(89, 27, 57, .05);
+    }
+    details.panel[open] {
+      overflow: visible;
+    }
+    .panel-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .panel-summary::-webkit-details-marker { display: none; }
+    .panel-summary span { min-width: 0; }
+    .panel-summary b {
+      display: block;
+      color: #8d0f43;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    .panel-summary small {
+      display: block;
+      margin-top: 5px;
+      color: #645260;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .panel-summary em {
+      display: inline-flex;
+      min-height: 30px;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #e6ccd8;
+      border-radius: 999px;
+      background: #fff8fb;
+      color: #8f0e42;
+      padding: 0 11px;
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .panel-summary em::before { content: "Abrir"; }
+    details[open] > .panel-summary {
+      border-bottom: 1px solid #f0dbe4;
+    }
+    details[open] > .panel-summary em::before { content: "Fechar"; }
+    .panel-body { padding: 16px; }
     .status-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .status-item { border: 1px solid #f1d8e3; border-radius: 8px; padding: 12px; background: #fffafb; }
     .status-item b { display: block; margin-bottom: 8px; color: #251827; font-size: 14px; }
@@ -11076,6 +11242,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .inline-form button { background: #fff; color: #8f0e42; }
     .allowlist-row > .inline-form { margin: 10px 12px 0; }
     @media (max-width: 1120px) {
+      .focus-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .n8n-summary { grid-template-columns: 1fr; }
       .n8n-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .sync-list-head { display: none; }
@@ -11088,8 +11255,12 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     @media (max-width: 860px) {
       .topbar { display: block; }
       .actions { justify-content: flex-start; margin-top: 14px; }
-      .metrics, .grid { grid-template-columns: 1fr; }
+      .focus-strip,
+      .metrics,
+      .grid { grid-template-columns: 1fr; }
       .panel, .panel.is-wide { grid-column: auto; }
+      .panel-summary { align-items: flex-start; }
+      .panel-summary em { margin-top: 2px; }
       .allowlist-form, .allowlist-edit, .allowlist-list { grid-template-columns: 1fr; }
       .status-list { grid-template-columns: 1fr; }
       .config-details,
@@ -11120,18 +11291,28 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     </header>
     ${noticeHtml}
 
-    <section class="metrics" aria-label="Resumo">
-      ${renderMetric('Canal', enabled ? 'Ativo' : 'Desligado', `Prefixo: ${requirePrefix ? prefix : 'sem prefixo'} | ${allowlistHint}`)}
-      ${renderMetric('Fila', queued, `${replied} respondidas | ${ignored} ignoradas`)}
-      ${renderMetric('Outbox', pendingOutbox, `${countOf(summary.outboxCounts, 'sent')} enviadas | ${outboxProblems} problemas`)}
-      ${renderMetric('Contatos', summary.contactsTotal, `${eventProblems} eventos com falha ou dead-letter`)}
-      ${renderMetric('Resposta', formatMs(responseDelay.avg_total_ms), `24h: ${responseDelay.count} envios | p95 ${formatMs(responseDelay.p95_total_ms)} | ultima ${formatMs(responseDelay.last_total_ms)}`)}
-      ${renderMetric('Erros', summary.errorCount24h, 'Abertos nas ultimas 24h para correcao')}
+    <section class="focus-strip" aria-label="Estado agora">
+      ${focusItems}
     </section>
 
+    <details class="panel is-wide panel-collapsible compact-panel">
+      ${panelSummary('Indicadores', 'contadores completos do canal')}
+      <div class="panel-body">
+        <section class="metrics" aria-label="Resumo">
+          ${renderMetric('Canal', enabled ? 'Ativo' : 'Desligado', `Prefixo: ${requirePrefix ? prefix : 'sem prefixo'} | ${allowlistHint}`)}
+          ${renderMetric('Fila', queued, `${replied} respondidas | ${ignored} ignoradas`)}
+          ${renderMetric('Outbox', pendingOutbox, `${countOf(summary.outboxCounts, 'sent')} enviadas | ${outboxProblems} problemas`)}
+          ${renderMetric('Contatos', summary.contactsTotal, `${eventProblems} eventos com falha ou dead-letter`)}
+          ${renderMetric('Resposta', formatMs(responseDelay.avg_total_ms), `24h: ${responseDelay.count} envios | p95 ${formatMs(responseDelay.p95_total_ms)} | ultima ${formatMs(responseDelay.last_total_ms)}`)}
+          ${renderMetric('Erros', summary.errorCount24h, 'Abertos nas ultimas 24h para correcao')}
+        </section>
+      </div>
+    </details>
+
     <section class="grid" aria-label="Status operacional">
-      <article class="panel is-wide">
-        <h2>Allowlist</h2>
+      <details class="panel is-wide panel-collapsible">
+        ${panelSummary('Allowlist', 'autorizar numeros e cards liberados')}
+        <div class="panel-body">
         <form class="allowlist-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
           <label>Numero
@@ -11150,10 +11331,12 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           ${renderAllowlistRows(summary.allowlistRows, csrfToken)}
         </div>
         <p class="footnote">Entradas fixas do ambiente aparecem no total como Env; ajustes feitos aqui ficam no Postgres. LIDs da Evolution configurados como alias ficam ocultos e protegidos; edite apenas o numero real vinculado. O telefone completo aparece apenas nesta allowlist logada.</p>
-      </article>
+        </div>
+      </details>
 
-      <article class="panel config-panel">
-        <h2>Configuracao</h2>
+      <details class="panel config-panel panel-collapsible">
+        ${panelSummary('Configuracao', 'transporte, seguranca, roteador e OCR')}
+        <div class="panel-body">
         <div class="status-list">
           ${renderConfigCard('Canal', enabled ? 'ok' : 'warn', enabled ? 'Ativo' : 'Desligado', [
             ['Ambiente', 'MIAUW_WHATSAPP_ENABLED'],
@@ -11217,20 +11400,24 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           ${renderEngineBreakdown(summary.replyEngines)}
         </div>
         <p class="footnote">O painel mostra apenas mascara/hash operacional. Segredos e identificadores completos permanecem fora do HTML e fora do Git.</p>
-      </article>
+        </div>
+      </details>
 
-      <article class="panel state-panel">
-        <h2>Estados</h2>
+      <details class="panel state-panel panel-collapsible">
+        ${panelSummary('Estados', 'eventos recebidos, fila e problemas')}
+        <div class="panel-body">
         <div class="status-list">
           ${renderStateCard('Recebidos', countOf(summary.eventCounts, 'received'), 'Eventos brutos aceitos antes da decisao.', 'ok')}
           ${renderStateCard('Na fila', queued, 'Eventos aguardando processamento.', queued > 0 ? 'warn' : 'ok')}
           ${renderStateCard('Ignorados', ignored, 'Fora de allowlist, sem prefixo, grupo ou vazio.', ignored > 0 ? 'warn' : 'muted')}
           ${renderStateCard('Problemas', eventProblems + outboxProblems, 'Falhas atuais com retry ou dead-letter.', eventProblems + outboxProblems > 0 ? 'bad' : 'ok')}
         </div>
-      </article>
+        </div>
+      </details>
 
-      <article class="panel is-wide n8n-panel">
-        <h2>n8n automacoes</h2>
+      <details class="panel is-wide n8n-panel panel-collapsible">
+        ${panelSummary('n8n automacoes', 'rotinas, destinatarios e ultimas execucoes')}
+        <div class="panel-body">
         <div class="n8n-summary">
           <div class="n8n-stack-card">
             <div class="engine-head">
@@ -11260,7 +11447,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           </table>
         </div>
         <p class="footnote">Destino por card liberado: Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
-      </article>
+        </div>
+      </details>
 
       <article class="panel is-wide sync-panel">
         <h2>Sincronia recente</h2>
@@ -11277,8 +11465,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <p class="footnote">Comparacao curta para conferir se a mensagem recebida gerou a resposta esperada. O telefone continua mascarado.</p>
       </article>
 
-      <article class="panel is-wide ops-panel">
-        <h2>Erros abertos</h2>
+      <details class="panel is-wide ops-panel panel-collapsible"${errorsPanelOpen}>
+        ${panelSummary('Erros abertos', summary.recentErrors.length > 0 ? 'falhas acionaveis para corrigir' : 'sem falhas acionaveis agora')}
+        <div class="panel-body">
         <div class="table-wrap">
           <table class="ops-table ops-errors-table">
             <thead><tr><th>Quando</th><th>Origem</th><th>Nivel</th><th>Contato</th><th>Erro</th><th>Trace</th><th>Acao</th></tr></thead>
@@ -11286,27 +11475,32 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           </table>
         </div>
         <p class="footnote">Cada falha de fila, envio ou HTTP fica registrada com resumo limpo para facilitar correcao futura sem gravar segredo.</p>
-      </article>
+        </div>
+      </details>
 
-      <article class="panel ops-panel">
-        <h2>Eventos recentes</h2>
+      <details class="panel ops-panel panel-collapsible">
+        ${panelSummary('Eventos recentes', 'ultimas entradas recebidas pelo webhook')}
+        <div class="panel-body">
         <div class="table-wrap">
           <table class="ops-table ops-events-table">
             <thead><tr><th>Quando</th><th>Remetente</th><th>Status</th><th>Motivo</th><th>Tipo</th><th>Tent.</th></tr></thead>
             <tbody>${renderRecentEvents(summary.recentEvents)}</tbody>
           </table>
         </div>
-      </article>
+        </div>
+      </details>
 
-      <article class="panel ops-panel">
-        <h2>Outbox recente</h2>
+      <details class="panel ops-panel panel-collapsible">
+        ${panelSummary('Outbox recente', 'ultimas saidas enviadas pelo transporte')}
+        <div class="panel-body">
         <div class="table-wrap">
           <table class="ops-table ops-outbox-table">
             <thead><tr><th>Quando</th><th>Destino</th><th>Motor</th><th>Rota</th><th>IA</th><th>Total</th><th>Status</th><th>Tent.</th><th>Enviado</th></tr></thead>
             <tbody>${renderRecentOutbox(summary.recentOutbox)}</tbody>
           </table>
         </div>
-      </article>
+        </div>
+      </details>
     </section>
   </main>
 </body>
