@@ -499,6 +499,29 @@ type IntegrationLastMemoryRow = {
   created_at: string;
 };
 
+type EvolutionLastEventRow = {
+  event_type: string;
+  status: string;
+  ignore_reason: string;
+  sender_phone_mask: string;
+  message_type: string;
+  attempts: number;
+  duplicate_count: number;
+  created_at: string;
+};
+
+type EvolutionLastOutboxRow = {
+  status: string;
+  reply_engine: string;
+  route_reason: string;
+  body_preview: string;
+  error_summary: string;
+  attempts: number;
+  created_at: string;
+  sent_at: string | null;
+  updated_at: string;
+};
+
 type DashboardSummary = {
   status: JsonRecord;
   eventCounts: Record<string, number>;
@@ -524,7 +547,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.29';
+const SERVICE_VERSION = '0.5.30';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -6572,6 +6595,7 @@ function publicStatus(): JsonRecord {
     shared_core_memory_backend: 'postgres',
     shared_core_memory_internal_endpoint: `${BASE_PATH}/internal/memory`,
     miauby_whatsapp_integration_status_endpoint: `${BASE_PATH}/internal/integration-status`,
+    evolution_status_endpoint: `${BASE_PATH}/internal/evolution-status`,
     shared_core_memory_timeout_ms: SHARED_MEMORY_TIMEOUT_MS,
     shared_core_memory_recent_days: SHARED_MEMORY_RECENT_DAYS,
     recipient_alias_count: RECIPIENT_ALIASES.size,
@@ -7982,6 +8006,502 @@ async function buildMiaubyWhatsappIntegrationStatus(): Promise<JsonRecord> {
       shared_memory_backend: 'postgres',
       shared_memory_endpoint: `${BASE_PATH}/internal/memory`,
       php_memory_fallback_possible: true,
+    },
+    snapshot,
+  };
+}
+
+function parseJsonRecord(text: string): JsonRecord {
+  try {
+    const parsed = JSON.parse(text || '{}') as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function sanitizedOperationalUrl(value: unknown): string {
+  const text = safeText(value, 500);
+  if (!text) return '';
+  try {
+    const url = new URL(text);
+    return `${url.protocol}//${url.host}${url.pathname}${url.search ? '?[query-redacted]' : ''}`;
+  } catch {
+    return redact(text).replace(/\?.*$/, '?[query-redacted]');
+  }
+}
+
+function evolutionConnectionState(data: JsonRecord): string {
+  const instance = isRecord(data.instance) ? data.instance : {};
+  return safeText(data.state || data.status || instance.state || instance.status, 60).toLowerCase();
+}
+
+function evolutionStateLooksConnected(state: string): boolean {
+  return state.includes('open') || state.includes('connected');
+}
+
+function stringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => safeText(item, 80)).filter(Boolean).slice(0, 30);
+  }
+  const text = safeText(value, 1000);
+  if (!text) return [];
+  return text.split(/[,\n;]/g).map((item) => safeText(item, 80)).filter(Boolean).slice(0, 30);
+}
+
+function evolutionWebhookRecord(data: JsonRecord): JsonRecord {
+  const webhook = data.webhook;
+  if (isRecord(webhook)) return webhook;
+  const instance = isRecord(data.instance) ? data.instance : {};
+  const instanceWebhook = instance.webhook;
+  if (isRecord(instanceWebhook)) return instanceWebhook;
+  return data;
+}
+
+function evolutionWebhookUrl(data: JsonRecord): string {
+  const record = evolutionWebhookRecord(data);
+  const webhook = typeof data.webhook === 'string' ? data.webhook : '';
+  return safeText(
+    record.url
+      || record.webhookUrl
+      || record.webhook_url
+      || record.webhook
+      || data.url
+      || webhook,
+    500,
+  );
+}
+
+function evolutionWebhookEvents(data: JsonRecord): string[] {
+  const record = evolutionWebhookRecord(data);
+  const candidates = [
+    record.events,
+    record.webhookEvents,
+    record.webhook_events,
+    data.events,
+    data.webhookEvents,
+    data.webhook_events,
+  ];
+  for (const candidate of candidates) {
+    const events = stringList(candidate);
+    if (events.length) return events;
+  }
+  return [];
+}
+
+function evolutionWebhookBoolean(data: JsonRecord, camelKey: string, snakeKey: string): boolean {
+  const record = evolutionWebhookRecord(data);
+  const value = record[camelKey] ?? record[snakeKey] ?? data[camelKey] ?? data[snakeKey];
+  return value === true || value === 'true' || value === '1';
+}
+
+function evolutionWebhookEnabled(data: JsonRecord): boolean {
+  const record = evolutionWebhookRecord(data);
+  const value = record.enabled ?? record.webhookEnabled ?? record.webhook_enabled ?? data.enabled;
+  if (value === undefined || value === null || value === '') return evolutionWebhookUrl(data) !== '';
+  return value === true || value === 'true' || value === '1';
+}
+
+function normalizedEventNames(events: string[]): string[] {
+  return events.map((event) => event.toUpperCase().replace(/[.\s-]+/g, '_'));
+}
+
+async function fetchEvolutionApi(path: string): Promise<{ status: number; ms: number; data: JsonRecord; error: string }> {
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY) {
+    return { status: 0, ms: 0, data: {}, error: 'evolution_not_configured' };
+  }
+  const response = await fetchTextWithTimeout(`${EVOLUTION_API_BASE_URL}${path}`, {
+    headers: { apikey: EVOLUTION_API_KEY },
+  }, SMOKE_CHECK_TIMEOUT_MS);
+  return {
+    status: response.status,
+    ms: response.ms,
+    data: parseJsonRecord(response.text),
+    error: response.error,
+  };
+}
+
+async function evolutionConnectionStatusCheck(): Promise<{ check: IntegrationCheck; connection: JsonRecord }> {
+  if (WHATSAPP_PROVIDER !== 'evolution') {
+    return {
+      check: integrationCheck('evolution_connection', 'Evolution conexao', 'warn', `provider atual=${WHATSAPP_PROVIDER}`),
+      connection: { skipped: true, reason: 'provider_not_evolution' },
+    };
+  }
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE) {
+    return {
+      check: integrationCheck('evolution_connection', 'Evolution conexao', 'fail', 'EVOLUTION_API_BASE_URL, EVOLUTION_API_KEY ou EVOLUTION_API_INSTANCE ausente'),
+      connection: { configured: false },
+    };
+  }
+
+  const result = await fetchEvolutionApi(`/instance/connectionState/${encodeURIComponent(EVOLUTION_INSTANCE)}`);
+  const state = evolutionConnectionState(result.data);
+  const connected = result.status >= 200 && result.status < 400 && evolutionStateLooksConnected(state);
+  const detail = result.error || `state=${state || 'unknown'}`;
+  return {
+    check: integrationCheck(
+      'evolution_connection',
+      'Evolution conexao',
+      connected ? 'ok' : 'fail',
+      detail,
+      result.ms,
+    ),
+    connection: {
+      http_status: result.status,
+      ms: result.ms,
+      state: state || 'unknown',
+      connected,
+      error: result.error,
+    },
+  };
+}
+
+async function evolutionWebhookStatusCheck(): Promise<{ check: IntegrationCheck; webhook: JsonRecord }> {
+  if (WHATSAPP_PROVIDER !== 'evolution') {
+    return {
+      check: integrationCheck('evolution_webhook', 'Evolution webhook', 'warn', `provider atual=${WHATSAPP_PROVIDER}`),
+      webhook: { skipped: true, reason: 'provider_not_evolution' },
+    };
+  }
+  if (!EVOLUTION_API_BASE_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE) {
+    return {
+      check: integrationCheck('evolution_webhook', 'Evolution webhook', 'fail', 'Evolution nao configurada'),
+      webhook: { configured: false },
+    };
+  }
+
+  const result = await fetchEvolutionApi(`/webhook/find/${encodeURIComponent(EVOLUTION_INSTANCE)}`);
+  const events = evolutionWebhookEvents(result.data);
+  const normalizedEvents = normalizedEventNames(events);
+  const enabled = evolutionWebhookEnabled(result.data);
+  const rawUrl = evolutionWebhookUrl(result.data);
+  const url = sanitizedOperationalUrl(rawUrl);
+  const basePathOk = rawUrl.includes(`${BASE_PATH}/webhook`);
+  const hasMessages = normalizedEvents.includes('MESSAGES_UPSERT');
+  const hasConnection = normalizedEvents.includes('CONNECTION_UPDATE');
+  const hasQrCode = normalizedEvents.includes('QRCODE_UPDATED');
+  const webhookByEvents = evolutionWebhookBoolean(result.data, 'webhookByEvents', 'webhook_by_events');
+  const webhookBase64 = evolutionWebhookBoolean(result.data, 'webhookBase64', 'webhook_base64');
+  let status: IntegrationHealthStatus = 'ok';
+  let detail = 'webhook ativo com evento de mensagens';
+  if (result.status < 200 || result.status >= 400) {
+    status = 'fail';
+    detail = result.error || `HTTP ${result.status}`;
+  } else if (!enabled || !rawUrl || !basePathOk || !hasMessages) {
+    status = 'fail';
+    detail = [
+      !enabled ? 'desligado' : '',
+      !rawUrl ? 'url ausente' : '',
+      rawUrl && !basePathOk ? 'url nao aponta para Miauby Whats' : '',
+      !hasMessages ? 'MESSAGES_UPSERT ausente' : '',
+    ].filter(Boolean).join(', ');
+  } else if (!hasConnection || !hasQrCode) {
+    status = 'warn';
+    detail = [
+      !hasConnection ? 'CONNECTION_UPDATE ausente' : '',
+      !hasQrCode ? 'QRCODE_UPDATED ausente' : '',
+    ].filter(Boolean).join(', ');
+  }
+
+  return {
+    check: integrationCheck('evolution_webhook', 'Evolution webhook', status, detail, result.ms),
+    webhook: {
+      http_status: result.status,
+      ms: result.ms,
+      enabled,
+      url,
+      base_path_ok: basePathOk,
+      events,
+      has_messages_upsert: hasMessages,
+      has_connection_update: hasConnection,
+      has_qrcode_updated: hasQrCode,
+      webhook_by_events: webhookByEvents,
+      webhook_base64: webhookBase64,
+      error: result.error,
+    },
+  };
+}
+
+async function evolutionDatabaseSnapshot(): Promise<JsonRecord> {
+  const [
+    eventCountsResult,
+    eventTypeCountsResult,
+    outboxCountsResult,
+    outboxProblemCountsResult,
+    staleEventsResult,
+    staleOutboxResult,
+    lastReceivedResult,
+    lastSentResult,
+    lastFailureResult,
+  ] = await Promise.all([
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_events
+        WHERE provider = 'evolution'
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT event_type AS status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_events
+        WHERE provider = 'evolution'
+        GROUP BY event_type
+        ORDER BY event_type`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        WHERE provider = 'evolution'
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        WHERE provider = 'evolution'
+          AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_events
+        WHERE provider = 'evolution'
+          AND status IN ('queued', 'processing')
+          AND (
+            (status = 'processing' AND COALESCE(locked_at, updated_at, created_at) < NOW() - ($1::text || ' minutes')::interval)
+            OR (status = 'queued' AND next_attempt_at <= NOW() AND created_at < NOW() - ($1::text || ' minutes')::interval)
+          )
+        GROUP BY status
+        ORDER BY status`,
+      [String(WATCHDOG_STUCK_MINUTES)],
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        WHERE provider = 'evolution'
+          AND status IN ('pending', 'sending')
+          AND (
+            (status = 'sending' AND updated_at < NOW() - ($1::text || ' minutes')::interval)
+            OR (status = 'pending' AND next_attempt_at <= NOW() AND created_at < NOW() - ($1::text || ' minutes')::interval)
+          )
+        GROUP BY status
+        ORDER BY status`,
+      [String(WATCHDOG_STUCK_MINUTES)],
+    ),
+    pgPool.query<EvolutionLastEventRow>(
+      `SELECT event_type,
+              status,
+              COALESCE(NULLIF(ignore_reason, ''), '') AS ignore_reason,
+              sender_phone_mask,
+              message_type,
+              attempts,
+              duplicate_count,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_events
+        WHERE provider = 'evolution'
+        ORDER BY created_at DESC
+        LIMIT 1`,
+    ),
+    pgPool.query<EvolutionLastOutboxRow>(
+      `SELECT status,
+              COALESCE(NULLIF(reply_engine, ''), '-') AS reply_engine,
+              COALESCE(NULLIF(route_reason, ''), '-') AS route_reason,
+              LEFT(body_text, 220) AS body_preview,
+              COALESCE(NULLIF(error_summary, ''), '') AS error_summary,
+              attempts,
+              created_at::text AS created_at,
+              sent_at::text AS sent_at,
+              updated_at::text AS updated_at
+         FROM miauw_whatsapp_outbox
+        WHERE provider = 'evolution'
+          AND status = 'sent'
+        ORDER BY sent_at DESC NULLS LAST, created_at DESC
+        LIMIT 1`,
+    ),
+    pgPool.query<EvolutionLastOutboxRow>(
+      `SELECT status,
+              COALESCE(NULLIF(reply_engine, ''), '-') AS reply_engine,
+              COALESCE(NULLIF(route_reason, ''), '-') AS route_reason,
+              LEFT(body_text, 220) AS body_preview,
+              COALESCE(NULLIF(error_summary, ''), '') AS error_summary,
+              attempts,
+              created_at::text AS created_at,
+              sent_at::text AS sent_at,
+              updated_at::text AS updated_at
+         FROM miauw_whatsapp_outbox
+        WHERE provider = 'evolution'
+          AND status IN ('failed', 'dead')
+          AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+    ),
+  ]);
+
+  const eventCounts = countsByStatus(eventCountsResult.rows);
+  const eventTypeCounts = countsByStatus(eventTypeCountsResult.rows);
+  const outboxCounts = countsByStatus(outboxCountsResult.rows);
+  const outboxProblemCounts = countsByStatus(outboxProblemCountsResult.rows);
+  const staleEvents = countsByStatus(staleEventsResult.rows);
+  const staleOutbox = countsByStatus(staleOutboxResult.rows);
+  const lastReceived = lastReceivedResult.rows[0] || null;
+  const lastSent = lastSentResult.rows[0] || null;
+  const lastFailure = lastFailureResult.rows[0] || null;
+
+  return {
+    event_counts: eventCounts,
+    event_type_counts: eventTypeCounts,
+    outbox_counts: outboxCounts,
+    outbox_problem_counts: outboxProblemCounts,
+    stale_event_counts: staleEvents,
+    stale_outbox_counts: staleOutbox,
+    queue: {
+      waiting: countOf(eventCounts, 'queued') + countOf(eventCounts, 'processing'),
+      stale: countOf(staleEvents, 'queued') + countOf(staleEvents, 'processing'),
+    },
+    outbox: {
+      waiting: countOf(outboxCounts, 'pending') + countOf(outboxCounts, 'sending'),
+      stale: countOf(staleOutbox, 'pending') + countOf(staleOutbox, 'sending'),
+      problems: countOf(outboxProblemCounts, 'failed') + countOf(outboxProblemCounts, 'dead'),
+      expired_dead_letters: countOf(outboxCounts, 'dead') - countOf(outboxProblemCounts, 'dead'),
+    },
+    last_received_event: lastReceived ? {
+      event_type: safeText(lastReceived.event_type, 80),
+      status: safeText(lastReceived.status, 40),
+      ignore_reason: safeText(lastReceived.ignore_reason, 80),
+      sender_phone_mask: safeText(lastReceived.sender_phone_mask, 40),
+      message_type: safeText(lastReceived.message_type, 80),
+      attempts: Number(lastReceived.attempts || 0),
+      duplicate_count: Number(lastReceived.duplicate_count || 0),
+      created_at: lastReceived.created_at,
+    } : null,
+    last_sent_message: lastSent ? {
+      status: safeText(lastSent.status, 40),
+      reply_engine: safeText(lastSent.reply_engine, 40),
+      route_reason: safeText(lastSent.route_reason, 120),
+      body_preview: cleanIntegrationPreview(lastSent.body_preview, 220),
+      attempts: Number(lastSent.attempts || 0),
+      created_at: lastSent.created_at,
+      sent_at: lastSent.sent_at,
+    } : null,
+    last_failure: lastFailure ? {
+      status: safeText(lastFailure.status, 40),
+      reply_engine: safeText(lastFailure.reply_engine, 40),
+      route_reason: safeText(lastFailure.route_reason, 120),
+      error_summary: cleanIntegrationPreview(lastFailure.error_summary, 180),
+      body_preview: cleanIntegrationPreview(lastFailure.body_preview, 180),
+      attempts: Number(lastFailure.attempts || 0),
+      created_at: lastFailure.created_at,
+      updated_at: lastFailure.updated_at,
+    } : null,
+  };
+}
+
+function evolutionRuntimeCheck(status: JsonRecord): IntegrationCheck {
+  if (WHATSAPP_PROVIDER !== 'evolution') {
+    return integrationCheck('evolution_runtime', 'Evolution runtime', 'warn', `provider atual=${WHATSAPP_PROVIDER}`);
+  }
+  const missing: string[] = [];
+  if (status.enabled !== true) missing.push('canal desligado');
+  if (status.evolution_configured !== true) missing.push('variaveis Evolution');
+  if (status.transport_configured !== true) missing.push('transporte');
+  if (status.webhook_token_configured !== true) missing.push('webhook token');
+  if (status.encryption_configured !== true) missing.push('criptografia');
+  if (missing.length) {
+    return integrationCheck('evolution_runtime', 'Evolution runtime', status.enabled === true ? 'warn' : 'fail', missing.join(', '));
+  }
+  return integrationCheck('evolution_runtime', 'Evolution runtime', 'ok', 'provider evolution configurado com token e criptografia');
+}
+
+function evolutionProviderPauseCheck(): IntegrationCheck {
+  const pauseMs = providerPauseRemainingMs();
+  if (pauseMs <= 0) return integrationCheck('evolution_provider_pause', 'Pausa do provider', 'ok', 'sem pausa ativa');
+  return integrationCheck(
+    'evolution_provider_pause',
+    'Pausa do provider',
+    'warn',
+    `pausado por ${Math.ceil(pauseMs / 1000)}s: ${safeText(providerPauseReason, 120)}`,
+  );
+}
+
+function evolutionQueueOutboxCheck(snapshot: JsonRecord): IntegrationCheck {
+  const queue = isRecord(snapshot.queue) ? snapshot.queue : {};
+  const outbox = isRecord(snapshot.outbox) ? snapshot.outbox : {};
+  const stale = Number(queue.stale || 0) + Number(outbox.stale || 0);
+  const problems = Number(outbox.problems || 0);
+  const waiting = Number(queue.waiting || 0) + Number(outbox.waiting || 0);
+  if (stale > 0 || problems > 0) {
+    return integrationCheck('evolution_queue_outbox', 'Evolution fila/outbox', 'fail', `${stale} travado(s), ${problems} problema(s) atuais`);
+  }
+  if (waiting > 0) {
+    return integrationCheck('evolution_queue_outbox', 'Evolution fila/outbox', 'warn', `${waiting} item(ns) aguardando`);
+  }
+  return integrationCheck('evolution_queue_outbox', 'Evolution fila/outbox', 'ok', 'sem fila travada e sem problema atual');
+}
+
+async function buildEvolutionApiStatus(): Promise<JsonRecord> {
+  const startedAt = Date.now();
+  const status = publicStatus();
+  let snapshot: JsonRecord;
+  let databaseCheck: IntegrationCheck;
+  try {
+    snapshot = await evolutionDatabaseSnapshot();
+    databaseCheck = integrationCheck('evolution_postgres', 'Postgres Evolution', 'ok', 'consultas reais de eventos/outbox executadas');
+  } catch (error) {
+    snapshot = {};
+    databaseCheck = integrationCheck('evolution_postgres', 'Postgres Evolution', 'fail', safeError(error));
+  }
+
+  const [connectionResult, webhookResult] = await Promise.all([
+    evolutionConnectionStatusCheck().catch((error) => ({
+      check: integrationCheck('evolution_connection', 'Evolution conexao', 'fail', safeError(error)),
+      connection: { error: safeError(error) },
+    })),
+    evolutionWebhookStatusCheck().catch((error) => ({
+      check: integrationCheck('evolution_webhook', 'Evolution webhook', 'fail', safeError(error)),
+      webhook: { error: safeError(error) },
+    })),
+  ]);
+
+  const checks = [
+    evolutionRuntimeCheck(status),
+    connectionResult.check,
+    webhookResult.check,
+    databaseCheck,
+    evolutionQueueOutboxCheck(snapshot),
+    evolutionProviderPauseCheck(),
+  ];
+  const overall = worstIntegrationHealth(checks.map((check) => check.status));
+
+  return {
+    ok: overall !== 'fail',
+    status: overall,
+    status_label: integrationHealthLabel(overall),
+    generated_at: new Date().toISOString(),
+    duration_ms: Date.now() - startedAt,
+    service: SERVICE_NAME,
+    version: SERVICE_VERSION,
+    base_path: BASE_PATH,
+    checks,
+    evolution: {
+      provider: WHATSAPP_PROVIDER,
+      configured: status.evolution_configured === true,
+      transport_configured: status.transport_configured === true,
+      api_base: sanitizedOperationalUrl(EVOLUTION_API_BASE_URL),
+      api_key_configured: EVOLUTION_API_KEY !== '',
+      instance_name: EVOLUTION_INSTANCE,
+      real_whatsapp_send_test: false,
+      active_checks_send_message: false,
+      token_exposed: false,
+      phone_number_exposed: false,
+    },
+    connection: connectionResult.connection,
+    webhook: webhookResult.webhook,
+    provider_pause: {
+      paused: status.provider_paused === true,
+      remaining_ms: Number(status.provider_pause_ms_remaining || 0),
+      reason: safeText(status.provider_pause_reason, 160),
     },
     snapshot,
   };
@@ -9741,6 +10261,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const sharedContextEnabled = boolStatus(status, 'shared_core_context_enabled');
   const sharedMemoryEnabled = boolStatus(status, 'shared_core_memory_enabled');
   const integrationEndpoint = textStatus(status, 'miauby_whatsapp_integration_status_endpoint') || `${BASE_PATH}/internal/integration-status`;
+  const evolutionEndpoint = textStatus(status, 'evolution_status_endpoint') || `${BASE_PATH}/internal/evolution-status`;
+  const evolutionConfigured = boolStatus(status, 'evolution_configured');
   const pixReceiptEnabled = boolStatus(status, 'pix_receipt_image_enabled');
   const pixReceiptConfigured = boolStatus(status, 'pix_receipt_cnpj_configured');
   const pixReceiptModel = textStatus(status, 'pix_receipt_ocr_model') || '-';
@@ -9758,6 +10280,13 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     : (queued > 0 || pendingOutbox > 0 || summary.errorCount24h > 0 || providerPaused)
       ? 'warn'
       : 'ok';
+  const evolutionHealth: IntegrationHealthStatus = provider !== 'evolution'
+    ? 'warn'
+    : (!evolutionConfigured || !transportConfigured || outboxProblems > 0)
+      ? 'fail'
+      : (providerPaused || pendingOutbox > 0)
+        ? 'warn'
+        : 'ok';
   const noticeHtml = notice
     ? `<p class="notice">${htmlEscape(notice)}</p>`
     : '';
@@ -10634,6 +11163,12 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             ['Provider', provider],
             ['Instancia', defaultInstanceName()],
           ])}
+          ${renderConfigCard('Evolution API', provider === 'evolution' ? integrationTone(evolutionHealth) : 'muted', provider === 'evolution' ? integrationHealthLabel(evolutionHealth) : 'Nao usada', [
+            ['Config', evolutionConfigured ? 'ok' : 'pendente'],
+            ['Pausa', providerPaused ? `${Math.ceil(providerPauseMs / 1000)}s` : 'normal'],
+            ['Outbox', outboxProblems > 0 ? `${outboxProblems} problema(s)` : pendingOutbox > 0 ? `${pendingOutbox} pendente(s)` : 'ok'],
+            ['Check', evolutionEndpoint],
+          ])}
           ${renderConfigCard('Agente Miauby', (agentConfigured || geminiReady) ? 'ok' : 'warn', (agentConfigured || geminiReady) ? (aiMode === 'hybrid' ? 'Hibrido' : aiMode) : 'Pendente', [
             ['Modo IA', aiMode],
             ['Gemini', geminiReady ? geminiModel : 'sem chave'],
@@ -11107,6 +11642,18 @@ app.post(`${BASE_PATH}/internal/integration-status`, requireInternalToken, async
   } catch (error) {
     await recordErrorLog('miauby_whatsapp_integration_status', 'error', error, {
       details: { endpoint: `${BASE_PATH}/internal/integration-status` },
+    });
+    res.status(500).json({ ok: false, status: 'fail', error: safeError(error) });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/evolution-status`, requireInternalToken, async (_req, res) => {
+  try {
+    const result = await buildEvolutionApiStatus();
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    await recordErrorLog('evolution_status', 'error', error, {
+      details: { endpoint: `${BASE_PATH}/internal/evolution-status` },
     });
     res.status(500).json({ ok: false, status: 'fail', error: safeError(error) });
   }

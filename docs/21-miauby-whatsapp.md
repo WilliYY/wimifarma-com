@@ -179,6 +179,7 @@ Principais variaveis:
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
 - `POST /miauw/whatsapp/internal/memory`: endpoint interno tokenizado da memoria curta compartilhada. Aceita `record`, `record_batch` e `recent`; grava/consulta `miauw_whatsapp_channel_events` no Postgres do bridge e deve receber somente texto resumido/sanitizado, hash/mascara e metadados limpos.
 - `POST /miauw/whatsapp/internal/integration-status`: endpoint interno tokenizado para auditoria da integracao Miauby interno x Miauby WhatsApp. Ele nao envia mensagem real e nao executa escrita operacional; consulta dados reais do Postgres do bridge, testa `agent-context.php`, testa `/internal/memory`, testa o health do `wimifarma-miauw-agent`, resume fila/outbox, ultima mensagem enviada, ultimo evento de memoria e ultima falha acionavel.
+- `POST /miauw/whatsapp/internal/evolution-status`: endpoint interno tokenizado para auditoria do transporte Evolution API. Ele nao envia mensagem real; consulta `connectionState`, `webhook/find`, pausa do provider e dados reais de fila/outbox/eventos do provider `evolution`, retornando URL de webhook sem query/token, ultima mensagem enviada, ultimo evento recebido e ultima falha atual sem telefone cru.
 - `GET /miauw/whatsapp/internal/allowlist/by-user`: endpoint interno por token de cabecalho para listar contatos vinculados a um `core_users.id`, retornando somente dados seguros (`id`, mascara, nome, status, cards e snapshot do usuario).
 - `POST /miauw/whatsapp/internal/allowlist/link-user`: endpoint interno por token de cabecalho para criar/reativar contato de allowlist, ajustar cards liberados e vincular ao usuario do core. Nao aceita LID protegido por alias como contato editavel.
 - `POST /miauw/whatsapp/internal/allowlist/unlink-user`: endpoint interno por token de cabecalho para remover o vinculo de usuario e bloquear o contato salvo no Postgres do bridge. LIDs protegidos por alias nao podem ser removidos por esse fluxo.
@@ -267,6 +268,8 @@ Desde 2026-06-02, o painel tambem mostra o card `Integracao Miauby`, calculado c
 
 O status de integracao nao substitui smoke/watchdog: smoke valida varios servicos do ecossistema e watchdog procura travas operacionais; `integration-status` responde especificamente se Miauby interno e Miauby WhatsApp estao conseguindo trocar contexto/memoria e se a fila/outbox esta saudavel. A chamada nao envia mensagem real pelo WhatsApp, nao chama provider externo e nao altera fluxo de resposta.
 
+Desde 2026-06-02, o painel tambem mostra o card `Evolution API`, que aponta para o check interno `POST /miauw/whatsapp/internal/evolution-status`. Esse endpoint e o caminho rapido para saber se a Evolution esta conectada, se o webhook da instancia aponta para `/miauw/whatsapp/webhook`, se `MESSAGES_UPSERT` esta habilitado, se o provider esta pausado e se existem pendencias/falhas atuais na outbox `evolution`. Ele nao expoe `EVOLUTION_API_KEY`, token do webhook, telefone cru nem payload bruto, e tambem nao dispara envio real.
+
 O painel tambem mostra `n8n automacoes`: Chegada de pedidos, Fechamento de caixa, Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. Desde 2026-05-29, essa area separa visualmente status da stack, fluxo seguro (`n8n agenda -> backend valida -> WhatsApp avisa`) e cards das rotinas com Quando, Card, Destino, o que o n8n chama, o que o Miauby faz, exemplo de mensagem/estilo, Limite e Controle. Desde 2026-06-01, o card `Fechamento de caixa` mostra tambem `Status agora`, lendo o Financeiro quando possivel para indicar se existe caixa aberto nos ultimos 10 dias e qual dia esta pendente. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados reais; LIDs da Evolution protegidos por alias nao entram como destinatarios. n8n apenas orquestra/agenda, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma. As rotinas `Chegada de pedidos` e `Fechamento de caixa` tem box de controle `Ligado/Desligado` no painel, com botao `Desativar`/`Ativar`; n8n pode continuar agendado, mas o bridge ignora a execucao quando elas estiverem pausadas. Para operacao atual, n8n deve chamar os endpoints internos `smoke-check`, `watchdog`, `evolution-baileys-alert`, `pix-ocr-daily-summary`, `pedidos-arrival-check`, `financeiro-cash-closing-reminder` e `cotacao-encomenda-reminder`; o bridge calcula os destinatarios, valida qualquer destinatario explicito da Cotacao contra allowlist/card `Cotacao`, registra cada execucao em `miauw_whatsapp_automation_runs`, registra em `miauw_whatsapp_error_logs` apenas falhas acionaveis e aplica cooldown pela tabela de automacoes onde for alerta para nao floodar a equipe. Perguntas como `miauby em pedidos o que falta chegar` sao respondidas localmente pelo bridge com a mesma tabela da rotina, sem depender de Gemini/core, desde que o contato tenha card `Pedidos`. O worker tambem recupera outbox `pending` recente em lote pequeno e expira pendencias antigas por `MIAUW_WHATSAPP_OUTBOX_RECOVERY_MAX_AGE_MINUTES`, evitando mensagens velhas fora de contexto depois de queda/redeploy.
 
 Desde 2026-05-29, o smoke-check executa os checks de health/proxy/core/Evolution em paralelo para nao somar todos os timeouts em uma chamada do n8n. O watchdog so considera `queued`/`pending` como travado quando `next_attempt_at` ja venceu; mensagens aguardando backoff normal nao devem gerar alerta. Se o transporte estiver em pausa por erro temporario, o worker falha rapido o envio e agenda retry com backoff, em vez de ficar bloqueado em `processing`/`sending` ate a recuperacao reprocessar a mesma mensagem.
@@ -341,6 +344,43 @@ docker exec -i wimifarma-miauw-whatsapp node - <<'NODE'
 NODE
 ```
 
+Para auditar especificamente a Evolution API usada pelo bridge, tambem sem imprimir segredo e sem enviar mensagem real:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+docker exec -i wimifarma-miauw-whatsapp node - <<'NODE'
+(async () => {
+  const token = process.env.MIAUW_WHATSAPP_INTERNAL_TOKEN || process.env.MIAUW_AGENT_INTERNAL_TOKEN || process.env.MIAUW_GUARDIAN_TOKEN || '';
+  const response = await fetch('http://127.0.0.1:3400/miauw/whatsapp/internal/evolution-status', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-miauw-agent-token': token,
+    },
+    body: JSON.stringify({}),
+  });
+  const data = await response.json();
+  console.log(JSON.stringify({
+    http_status: response.status,
+    ok: data.ok,
+    status: data.status,
+    checks: data.checks,
+    connection: data.connection,
+    webhook: data.webhook,
+    provider_pause: data.provider_pause,
+    queue: data.snapshot && data.snapshot.queue,
+    outbox: data.snapshot && data.snapshot.outbox,
+    last_received_event: data.snapshot && data.snapshot.last_received_event,
+    last_sent_message: data.snapshot && data.snapshot.last_sent_message,
+    last_failure: data.snapshot && data.snapshot.last_failure,
+  }, null, 2));
+})().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});
+NODE
+```
+
 Se `/miauw/whatsapp/health` estiver OK, mas o WhatsApp nao responder, primeiro verifique se a mensagem entrou na fila:
 
 ```bash
@@ -380,6 +420,8 @@ A Evolution API nao deve ser colocada dentro de `apps/miauw-whatsapp`. Ela roda 
 Em 2026-05-26, o template foi fixado em `evoapicloud/evolution-api:v2.3.0` para uma nova tentativa de pareamento. A `v2.3.7` retornou `401 Unauthorized` e `Invalid buffer`; a `v2.3.6` tambem falhou com `Invalid buffer` porque ignorou `CONFIG_SESSION_PHONE_VERSION`. A `v2.3.0` ainda usa o pin `CONFIG_SESSION_PHONE_VERSION` ao iniciar o Baileys.
 
 Em 2026-05-27, a instancia `wimifarma-business-no9-20260526190040` foi validada no VPS como `open`/conectada, com webhook apontando para `https://wimifarma.com/miauw/whatsapp/webhook?token=<MIAUW_WHATSAPP_WEBHOOK_TOKEN>` e eventos `QRCODE_UPDATED`, `CONNECTION_UPDATE` e `MESSAGES_UPSERT`.
+
+Em 2026-06-02, o bridge ganhou `POST /miauw/whatsapp/internal/evolution-status` como health interno especifico da Evolution. A checagem usa as variaveis reais `EVOLUTION_API_BASE_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_INSTANCE` dentro do container, consulta `connectionState` e `webhook/find`, mascara a query do webhook e cruza com a outbox/eventos do Postgres. Para producao, este endpoint deve ficar como primeiro check antes de reiniciar a Evolution ou alterar webhook, porque separa falha de conexao, webhook incompleto, pausa de provider e fila/outbox com problema.
 
 Nao atualizar a Evolution API em producao direto para `latest` ou release candidate. Qualquer upgrade deve ser feito primeiro em stack/pasta separada, com backup do Postgres/Redis/instancias, validando manager, `connectionState=open`, webhook, `MESSAGES_UPSERT`, envio de texto e botoes. So promover depois de teste real com o numero/instancia de teste.
 
