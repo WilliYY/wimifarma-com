@@ -571,7 +571,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.31';
+const SERVICE_VERSION = '0.5.32';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -842,7 +842,7 @@ const N8N_WORKFLOW_CARDS = [
     controlNote: 'Controle por workflow externo; escrita forte continua dependendo de confirmacao do Miauby.',
   },
 ] as const;
-const UNAUTHORIZED_REPLY_TEXT = 'Eu sou o Miauby interno da Wimifarma. Este WhatsApp so responde numeros permitidos pela equipe. Se voce precisa de acesso, peca para um admin liberar seu numero no painel Miauby WhatsApp.';
+const UNAUTHORIZED_REPLY_TEXT = 'Oiee! Miauby aqui!\u{1F63C} Esse WhatsApp \u00e9 s\u00f3 para a equipe interna da Wimifarma. Se voc\u00ea precisa falar com a farm\u00e1cia, chame no canal oficial de atendimento (44) 98413-4971.';
 const providerSendTimestamps: number[] = [];
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
 const audioReplyCache = new Map<string, CachedAudioReply>();
