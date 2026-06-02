@@ -284,6 +284,18 @@ function normalizeUsername(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function loginFromUserInput(value: unknown): string {
+  return cleanText(value, 120)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '.')
+    .replace(/[._-]{2,}/g, '.')
+    .replace(/^[._-]+|[._-]+$/g, '')
+    .toLowerCase()
+    .slice(0, 60)
+    .replace(/^[._-]+|[._-]+$/g, '');
+}
+
 function requiredForNextLevel(level: number): number {
   const normalized = Math.max(1, Math.floor(level));
   const extra = Math.pow(Math.max(0, normalized - 1), 1.55) * 14000;
@@ -1158,13 +1170,10 @@ async function linkedXpProfile(userId: number): Promise<Record<string, unknown> 
 }
 
 async function createUser(req: Request, actor: User): Promise<void> {
-  const username = cleanText(req.body.username, 80);
+  const username = loginFromUserInput(req.body.username);
   const normalized = normalizeUsername(username);
-  if (!/^[a-zA-Z0-9._-]{2,60}$/.test(username)) {
-    throw new Error('Usuario precisa ter 2 a 60 caracteres com letras, numeros, ponto, traco ou underline.');
-  }
-  if (normalized !== username.toLowerCase()) {
-    throw new Error('Usuario nao pode ter espacos.');
+  if (!/^[a-z0-9._-]{2,60}$/.test(username)) {
+    throw new Error('Informe um nome/login com pelo menos 2 letras ou numeros. Ex.: joao.silva ou caixa1.');
   }
   const password = String(req.body.password || '');
   if (password.length < 1) {
@@ -1563,7 +1572,11 @@ function renderDashboard(
             <form method="post" action="${BASE_PATH}/" class="users-create-form">
               ${csrfField(req)}
               <input type="hidden" name="action" value="create_user">
-              <label class="users-label"><span>Usu&aacute;rio</span><input class="users-input" type="text" name="username" maxlength="60" autocomplete="off" required></label>
+              <label class="users-label">
+                <span>Usu&aacute;rio</span>
+                <input class="users-input" type="text" name="username" maxlength="120" autocomplete="off" placeholder="Ex.: Jo&atilde;o Silva" required>
+                <small class="users-field-help">Pode digitar nome com espa&ccedil;o/acento; o login sera ajustado automaticamente, como joao.silva.</small>
+              </label>
               <div class="users-label users-password-label">
                 <span>Senha</span>
                 <div class="users-password-control" data-password-control>

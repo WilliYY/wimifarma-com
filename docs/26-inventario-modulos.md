@@ -718,6 +718,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Login restrito a username `adm` ou role `admin`.
 - Escritas usam CSRF.
 - Novos usuarios recebem `legacy_mysql_id` negativo para nao conflitar com ids importados de `wf_users`.
+- No cadastro, o backend aceita nome com espaco/acento e normaliza para login seguro (`Joao Silva` -> `joao.silva`) antes de gravar `core_users.username` e `username_normalized`.
 - Permissoes por modulo ficam em `core_user_module_permissions`.
 - Senhas criadas/trocadas pelo ADM ficam cifradas em `core_user_admin_passwords`; o login continua usando o hash em `core_users`.
 
