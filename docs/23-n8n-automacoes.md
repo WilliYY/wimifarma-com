@@ -245,6 +245,34 @@ Uso: webhooks controlados para rotinas repetiveis, como:
 
 Pelo WhatsApp, o usuario pode pedir `miauby n8n` para ver as automacoes previstas e quais dependem dos cards liberados para aquele numero.
 
+## Tabela resumida das automacoes
+
+Esta tabela serve como cola operacional: o n8n agenda, mas quem decide destinatario, permissao e envio e o backend/Miauby WhatsApp. Para adicionar outro numero a uma rotina existente, o pedido correto e vincular o contato real no painel/Usuarios e liberar o card correspondente; o workflow n8n normalmente nao precisa mudar.
+
+| Automacao | Quando roda | Quem recebe | O que ela faz | O que posso pedir para ajustar | Limite seguro |
+| --- | --- | --- | --- | --- | --- |
+| Chegada de pedidos | Todo dia as 17h | Contatos reais autorizados com card `Pedidos` | Envia tabela dos pedidos ainda em `Aguardando chegada` | Adicionar/remover numero autorizado, mudar horario, mudar texto, mudar regra de filtro, testar com `dry_run=true` | Nao confirma chegada sozinha; confirmacao vem por resposta validada pelo bridge |
+| Fechamento de caixa | Todo dia as 18h | Contatos reais autorizados com card `Financeiro` | Avisa dias de caixa em aberto/conferencia/sem registro nos ultimos 10 dias | Adicionar/remover numero autorizado, mudar horario, mudar janela de dias, mudar texto, pausar/ativar no painel | Nao fecha caixa, nao cria faturamento e nao grava sangria sem fluxo auditado |
+| Smoke check pos-deploy | Manual ou apos deploy | Contatos reais autorizados com card `Miauby` | Testa rotas/health principais e avisa problema | Enviar tambem sucesso, adicionar rota de health, mudar cooldown, adicionar numero com card `Miauby` | Nao faz rollback automatico |
+| Watchdog WhatsApp | A cada poucos minutos | Contatos reais autorizados com card `Miauby`, normalmente so com problema | Vigia fila, outbox, provider pausado e respostas travadas | Ajustar frequencia, cooldown, severidade, destinatarios e texto de alerta | Nao dispara mensagem atrasada fora de contexto; pendencias antigas viram `dead` |
+| Pedidos e boletos | Planejada/expansivel | Contatos com card `Pedidos` ou card definido pela rotina | Pode resumir boletos vencendo, pedidos de hoje e atrasos | Criar rotina nova, escolher horario, definir filtros e destinatarios por card | Baixa/pagamento continua exigindo sistema/core com confirmacao |
+| Financeiro operacional | Planejada/expansivel | Contatos com card `Financeiro` | Pode lembrar sangria, PIX, maquininha ou divergencia | Criar rotina nova, mudar horario, escolher quais alertas entram | Escrita de dinheiro continua em endpoint interno com confirmacao/auditoria |
+| Tarefas com lembrete | Pelo modulo Tarefa, nao por cron n8n atual | Usuario vinculado a tarefa e contato com card `Tarefas` | Envia lembrete agendado da tarefa pelo bridge WhatsApp | Vincular numero ao usuario, liberar card `Tarefas`, alterar horario do lembrete na tarefa | Nao envia para usuario sem vinculo/card e registra tentativa/falha |
+
+Pedidos comuns que sao seguros:
+
+- `adicionar o numero do Thiago para receber chegada de pedidos`: vincular o contato real e liberar card `Pedidos`.
+- `esse numero tambem recebe fechamento de caixa`: liberar card `Financeiro` para o contato real.
+- `mudar chegada de pedidos para 16h30`: alterar cron do workflow e manter o mesmo endpoint.
+- `pausar fechamento de caixa por enquanto`: desativar a rotina no painel do Miauby WhatsApp, sem precisar apagar o workflow.
+- `criar alerta novo de boleto vencendo`: criar rotina n8n nova chamando endpoint interno, sem acesso direto ao banco.
+
+Pedidos que exigem cuidado:
+
+- Enviar para grupo de WhatsApp, cliente ou numero sem allowlist: precisa revisao de seguranca.
+- Gravar pagamento, sangria, baixa, exclusao ou fechamento direto pelo n8n: nao fazer; precisa backend/Miauby com confirmacao e auditoria.
+- Colocar token, URL secreta ou telefone cru no JSON do workflow: nao versionar; usar `.env` e painel/allowlist.
+
 ## Quando n8n e melhor que WhatsApp cru
 
 n8n e melhor para tarefas agendadas, integracoes externas, repeticao, retry, branching visual e notificacoes de rotina.
