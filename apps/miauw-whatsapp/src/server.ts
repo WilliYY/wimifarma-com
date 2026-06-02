@@ -338,6 +338,20 @@ type DashboardAutomationSettingRow = {
   updated_at: string;
 };
 
+type DashboardAutomationRunRow = {
+  source: string;
+  module_key: string;
+  status: string;
+  severity: string;
+  notify_mode: string;
+  recipients_count: string;
+  sent_count: string;
+  failed_count: string;
+  message_preview: string;
+  error_summary: string;
+  created_at: string;
+};
+
 type ErrorLogContext = {
   eventId?: string;
   outboxId?: string;
@@ -348,6 +362,8 @@ type ErrorLogContext = {
 };
 
 type AutomationNotifyMode = 'never' | 'problems' | 'always';
+type AutomationRunStatus = 'skipped' | 'sent' | 'partial' | 'failed';
+type AutomationRunSeverity = 'info' | 'warn' | 'error';
 
 type AutomationRecipient = {
   phone: string;
@@ -363,6 +379,23 @@ type AutomationSendResult = {
   sent: number;
   failed: number;
   errors: string[];
+};
+
+type AutomationRunContext = {
+  moduleKey?: string;
+  status: AutomationRunStatus;
+  severity?: AutomationRunSeverity;
+  notifyMode?: AutomationNotifyMode | string;
+  hasProblems?: boolean;
+  dryRun?: boolean;
+  cooldown?: boolean;
+  recipients?: number;
+  sent?: number;
+  failed?: number;
+  messageFingerprint?: string;
+  messagePreview?: string;
+  errorSummary?: string;
+  details?: JsonRecord;
 };
 
 type SmokeCheckResult = {
@@ -435,12 +468,13 @@ type DashboardSummary = {
   recentErrors: DashboardErrorRow[];
   n8nRecipients: DashboardN8nRecipientRow[];
   automationSettings: DashboardAutomationSettingRow[];
+  recentAutomationRuns: DashboardAutomationRunRow[];
   financeiroCashStatus: FinanceiroCashClosingStatus | null;
 };
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.27';
+const SERVICE_VERSION = '0.5.28';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -1952,6 +1986,28 @@ async function ensureSchema(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS miauw_whatsapp_automation_runs (
+      id UUID PRIMARY KEY,
+      source VARCHAR(80) NOT NULL,
+      module_key VARCHAR(40) NOT NULL DEFAULT '',
+      status VARCHAR(20) NOT NULL DEFAULT 'skipped',
+      severity VARCHAR(20) NOT NULL DEFAULT 'info',
+      notify_mode VARCHAR(20) NOT NULL DEFAULT '',
+      has_problems BOOLEAN NOT NULL DEFAULT FALSE,
+      dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+      cooldown BOOLEAN NOT NULL DEFAULT FALSE,
+      recipients_count INTEGER NOT NULL DEFAULT 0,
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      message_fingerprint VARCHAR(120) NOT NULL DEFAULT '',
+      message_preview TEXT NOT NULL DEFAULT '',
+      error_summary TEXT NOT NULL DEFAULT '',
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (status IN ('skipped', 'sent', 'partial', 'failed')),
+      CHECK (severity IN ('info', 'warn', 'error'))
+    );
+
     CREATE TABLE IF NOT EXISTS miauw_whatsapp_channel_events (
       id UUID PRIMARY KEY,
       event_uid CHAR(40) NOT NULL UNIQUE,
@@ -1994,6 +2050,13 @@ async function ensureSchema(): Promise<void> {
       ON miauw_whatsapp_error_logs (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_automation_settings_enabled
       ON miauw_whatsapp_automation_settings (enabled, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_automation_runs_created
+      ON miauw_whatsapp_automation_runs (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_automation_runs_source_fingerprint
+      ON miauw_whatsapp_automation_runs (source, message_fingerprint, created_at DESC)
+      WHERE message_fingerprint <> '';
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_automation_runs_status_created
+      ON miauw_whatsapp_automation_runs (status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_channel_contact
       ON miauw_whatsapp_channel_events (contact_hash, created_at DESC)
       WHERE contact_hash <> '';
@@ -2926,6 +2989,50 @@ async function recordErrorLog(source: string, severity: 'info' | 'warn' | 'error
   } catch (logError) {
     console.error(redact(`error_log_failed ${safeError(logError)}`));
   }
+}
+
+async function recordAutomationRun(source: string, context: AutomationRunContext): Promise<void> {
+  try {
+    const details = context.details || {};
+    await pgPool.query(
+      `INSERT INTO miauw_whatsapp_automation_runs (
+        id, source, module_key, status, severity, notify_mode,
+        has_problems, dry_run, cooldown, recipients_count, sent_count, failed_count,
+        message_fingerprint, message_preview, error_summary, details
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $12,
+        $13, $14, $15, $16::jsonb
+      )`,
+      [
+        crypto.randomUUID(),
+        safeText(source, 80),
+        safeText(context.moduleKey, 40),
+        context.status,
+        context.severity || 'info',
+        safeText(context.notifyMode, 20),
+        context.hasProblems === true,
+        context.dryRun === true,
+        context.cooldown === true,
+        Math.max(0, Math.floor(Number(context.recipients || 0))),
+        Math.max(0, Math.floor(Number(context.sent || 0))),
+        Math.max(0, Math.floor(Number(context.failed || 0))),
+        safeText(context.messageFingerprint, 120),
+        safeText(context.messagePreview, 600),
+        safeText(context.errorSummary, 220),
+        JSON.stringify(details),
+      ],
+    );
+  } catch (runLogError) {
+    console.error(redact(`automation_run_log_failed ${safeError(runLogError)}`));
+  }
+}
+
+function automationRunStatus(result: AutomationSendResult): AutomationRunStatus {
+  if (result.failed > 0 && result.sent > 0) return 'partial';
+  if (result.failed > 0) return 'failed';
+  if (result.sent > 0) return 'sent';
+  return result.skipped ? 'skipped' : 'failed';
 }
 
 function actionableErrorLogsWhere(alias: string): string {
@@ -6475,9 +6582,10 @@ function automationSeverity(issues: WatchdogIssue[], hasProblems: boolean): 'inf
 async function automationRecentlyNotified(source: string, fingerprint: string): Promise<boolean> {
   const result = await pgPool.query<{ found: string }>(
     `SELECT '1' AS found
-       FROM miauw_whatsapp_error_logs
+       FROM miauw_whatsapp_automation_runs
       WHERE source = $1
-        AND message_preview = $2
+        AND message_fingerprint = $2
+        AND status IN ('sent', 'partial')
         AND created_at >= NOW() - ($3::text || ' minutes')::interval
       LIMIT 1`,
     [safeText(source, 80), safeText(fingerprint, 280), String(AUTOMATION_NOTIFY_COOLDOWN_MINUTES)],
@@ -6541,12 +6649,33 @@ async function sendAutomationNotification(
 ): Promise<AutomationSendResult> {
   const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, errors: [] };
   const message = safeOutboundText(text, 1200);
+  const fingerprint = message ? automationFingerprint(source, message) : '';
   if (!message || !shouldNotifyAutomation(mode, hasProblems)) {
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: 'skipped',
+      severity,
+      notifyMode: mode,
+      hasProblems,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: message ? 'notify_mode' : 'empty_message' },
+    });
     return { ...result, skipped: true };
   }
 
-  const fingerprint = automationFingerprint(source, message);
   if (mode !== 'always' && await automationRecentlyNotified(source, fingerprint)) {
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: 'skipped',
+      severity,
+      notifyMode: mode,
+      hasProblems,
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'cooldown' },
+    });
     return { ...result, skipped: true, cooldown: true };
   }
 
@@ -6556,6 +6685,20 @@ async function sendAutomationNotification(
     result.errors.push('whatsapp_transport_unavailable');
     await recordErrorLog(source, severity, new Error('automation_notification_transport_unavailable'), {
       messagePreview: fingerprint,
+      details: { mode, hasProblems },
+    });
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: 'failed',
+      severity,
+      notifyMode: mode,
+      hasProblems,
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'automation_notification_transport_unavailable',
       details: { mode, hasProblems },
     });
     return result;
@@ -6569,6 +6712,20 @@ async function sendAutomationNotification(
       messagePreview: fingerprint,
       details: { mode, hasProblems, pause_ms: pauseMs },
     });
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: 'failed',
+      severity,
+      notifyMode: mode,
+      hasProblems,
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'automation_notification_provider_paused',
+      details: { mode, hasProblems, pause_ms: pauseMs },
+    });
     return result;
   }
 
@@ -6579,6 +6736,20 @@ async function sendAutomationNotification(
     result.errors.push(`no_${moduleKey}_recipients`);
     await recordErrorLog(source, severity, new Error('automation_notification_no_recipient'), {
       messagePreview: fingerprint,
+      details: { mode, hasProblems, module_key: moduleKey },
+    });
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: 'failed',
+      severity,
+      notifyMode: mode,
+      hasProblems,
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: `no_${moduleKey}_recipients`,
       details: { mode, hasProblems, module_key: moduleKey },
     });
     return result;
@@ -6599,15 +6770,23 @@ async function sendAutomationNotification(
     }
   }
 
-  await recordErrorLog(source, severity, new Error('automation_notification_sent'), {
-    messagePreview: fingerprint,
+  await recordAutomationRun(source, {
+    moduleKey,
+    status: automationRunStatus(result),
+    severity: result.failed > 0 ? 'warn' : severity,
+    notifyMode: mode,
+    hasProblems,
+    recipients: result.recipients,
+    sent: result.sent,
+    failed: result.failed,
+    messageFingerprint: fingerprint,
+    messagePreview: message,
+    errorSummary: result.errors[0] || '',
     details: {
       mode,
       has_problems: hasProblems,
       module_key: moduleKey,
-      recipients: result.recipients,
-      sent: result.sent,
-      failed: result.failed,
+      errors: result.errors.slice(0, 5),
     },
   });
   return result;
@@ -6696,19 +6875,44 @@ function taskReminderMessage(payload: JsonRecord): string {
 }
 
 async function sendTaskReminderNotification(payload: JsonRecord): Promise<AutomationSendResult> {
+  const source = 'tarefa_reminder';
   const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, errors: [] };
   const userId = Number(payload.user_id || payload.userId || 0);
   if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error('invalid_user_id');
   const message = taskReminderMessage(payload);
-  if (!message) return { ...result, skipped: true };
+  const fingerprint = message ? automationFingerprint(source, message) : '';
+  const baseDetails = { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null };
+  if (!message) {
+    await recordAutomationRun(source, {
+      moduleKey: 'tarefas',
+      status: 'skipped',
+      severity: 'info',
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { ...baseDetails, reason: 'empty_message' },
+    });
+    return { ...result, skipped: true };
+  }
 
   const status = publicStatus();
   if (status.transport_configured !== true || status.enabled !== true) {
     result.skipped = true;
     result.errors.push('whatsapp_transport_unavailable');
-    await recordErrorLog('tarefa_reminder', 'warn', new Error('task_reminder_transport_unavailable'), {
+    await recordErrorLog(source, 'warn', new Error('task_reminder_transport_unavailable'), {
       messagePreview: safeText(message, 280),
-      details: { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null },
+      details: baseDetails,
+    });
+    await recordAutomationRun(source, {
+      moduleKey: 'tarefas',
+      status: 'failed',
+      severity: 'warn',
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'task_reminder_transport_unavailable',
+      details: baseDetails,
     });
     return result;
   }
@@ -6717,9 +6921,21 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
   if (pauseMs > 0) {
     result.skipped = true;
     result.errors.push('provider_paused');
-    await recordErrorLog('tarefa_reminder', 'warn', new Error('task_reminder_provider_paused'), {
+    await recordErrorLog(source, 'warn', new Error('task_reminder_provider_paused'), {
       messagePreview: safeText(message, 280),
-      details: { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null, pause_ms: pauseMs },
+      details: { ...baseDetails, pause_ms: pauseMs },
+    });
+    await recordAutomationRun(source, {
+      moduleKey: 'tarefas',
+      status: 'failed',
+      severity: 'warn',
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'task_reminder_provider_paused',
+      details: { ...baseDetails, pause_ms: pauseMs },
     });
     return result;
   }
@@ -6729,9 +6945,21 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
   if (recipients.length === 0) {
     result.skipped = true;
     result.errors.push('no_tarefas_recipient_for_user');
-    await recordErrorLog('tarefa_reminder', 'warn', new Error('task_reminder_no_recipient'), {
+    await recordErrorLog(source, 'warn', new Error('task_reminder_no_recipient'), {
       messagePreview: safeText(message, 280),
-      details: { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null, module_key: 'tarefas' },
+      details: { ...baseDetails, module_key: 'tarefas' },
+    });
+    await recordAutomationRun(source, {
+      moduleKey: 'tarefas',
+      status: 'failed',
+      severity: 'warn',
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'task_reminder_no_recipient',
+      details: { ...baseDetails, module_key: 'tarefas' },
     });
     return result;
   }
@@ -6743,7 +6971,7 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
     } catch (error) {
       result.failed += 1;
       result.errors.push(safeError(error));
-      await recordErrorLog('tarefa_reminder_send', 'warn', error, {
+      await recordErrorLog(`${source}_send`, 'warn', error, {
         phoneMask: recipient.phoneMask,
         messagePreview: safeText(message, 280),
         details: { user_id: userId, display_name: recipient.displayName, module_key: 'tarefas' },
@@ -6751,15 +6979,19 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
     }
   }
 
-  await recordErrorLog('tarefa_reminder', result.failed > 0 ? 'warn' : 'info', new Error('task_reminder_notification_sent'), {
-    messagePreview: safeText(message, 280),
+  await recordAutomationRun(source, {
+    moduleKey: 'tarefas',
+    status: automationRunStatus(result),
+    severity: result.failed > 0 ? 'warn' : 'info',
+    recipients: result.recipients,
+    sent: result.sent,
+    failed: result.failed,
+    messageFingerprint: fingerprint,
+    messagePreview: message,
+    errorSummary: result.errors[0] || '',
     details: {
-      user_id: userId,
-      reminder_id: payload.reminder_id || null,
-      task_id: payload.task_id || null,
-      recipients: result.recipients,
-      sent: result.sent,
-      failed: result.failed,
+      ...baseDetails,
+      errors: result.errors.slice(0, 5),
     },
   });
   return result;
@@ -6793,10 +7025,26 @@ async function cotacaoEncomendaRecipients(payload: JsonRecord): Promise<Automati
 }
 
 async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Promise<AutomationSendResult> {
+  const source = 'cotacao_encomenda_reminder';
   const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, errors: [] };
   const enabled = await automationSettingEnabled(COTACAO_ENCOMENDA_AUTOMATION_KEY, true);
   const message = safeOutboundText(payload.message || payload.text || payload.body, 1200);
+  const fingerprint = message ? automationFingerprint(source, message) : '';
+  const baseDetails = {
+    reminder_id: payload.reminder_id || null,
+    quote_id: payload.quote_id || null,
+    row_id: payload.row_id || null,
+    recipient_mode: payload.recipient_mode || payload.recipientMode || '',
+  };
   if (!enabled || !message) {
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: enabled ? 'info' : 'warn',
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { ...baseDetails, reason: enabled ? 'empty_message' : 'automation_disabled' },
+    });
     return { ...result, skipped: true, errors: enabled ? [] : ['automation_disabled'] };
   }
 
@@ -6804,9 +7052,21 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
   if (status.transport_configured !== true || status.enabled !== true) {
     result.skipped = true;
     result.errors.push('whatsapp_transport_unavailable');
-    await recordErrorLog('cotacao_encomenda_reminder', 'warn', new Error('cotacao_encomenda_transport_unavailable'), {
+    await recordErrorLog(source, 'warn', new Error('cotacao_encomenda_transport_unavailable'), {
       messagePreview: safeText(message, 280),
-      details: { reminder_id: payload.reminder_id || null, row_id: payload.row_id || null },
+      details: baseDetails,
+    });
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'failed',
+      severity: 'warn',
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'cotacao_encomenda_transport_unavailable',
+      details: baseDetails,
     });
     return result;
   }
@@ -6815,9 +7075,21 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
   if (pauseMs > 0) {
     result.skipped = true;
     result.errors.push('provider_paused');
-    await recordErrorLog('cotacao_encomenda_reminder', 'warn', new Error('cotacao_encomenda_provider_paused'), {
+    await recordErrorLog(source, 'warn', new Error('cotacao_encomenda_provider_paused'), {
       messagePreview: safeText(message, 280),
-      details: { reminder_id: payload.reminder_id || null, row_id: payload.row_id || null, pause_ms: pauseMs },
+      details: { ...baseDetails, pause_ms: pauseMs },
+    });
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'failed',
+      severity: 'warn',
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'cotacao_encomenda_provider_paused',
+      details: { ...baseDetails, pause_ms: pauseMs },
     });
     return result;
   }
@@ -6827,13 +7099,24 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
   if (recipients.length === 0) {
     result.skipped = true;
     result.errors.push('no_cotacao_recipient');
-    await recordErrorLog('cotacao_encomenda_reminder', 'warn', new Error('cotacao_encomenda_no_recipient'), {
+    await recordErrorLog(source, 'warn', new Error('cotacao_encomenda_no_recipient'), {
       messagePreview: safeText(message, 280),
       details: {
-        reminder_id: payload.reminder_id || null,
-        row_id: payload.row_id || null,
+        ...baseDetails,
         recipient_mode: payload.recipient_mode || payload.recipientMode || 'module:cotacao',
       },
+    });
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'failed',
+      severity: 'warn',
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'cotacao_encomenda_no_recipient',
+      details: { ...baseDetails, recipient_mode: payload.recipient_mode || payload.recipientMode || 'module:cotacao' },
     });
     return result;
   }
@@ -6845,12 +7128,11 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
     } catch (error) {
       result.failed += 1;
       result.errors.push(safeError(error));
-      await recordErrorLog('cotacao_encomenda_reminder_send', 'warn', error, {
+      await recordErrorLog(`${source}_send`, 'warn', error, {
         phoneMask: recipient.phoneMask,
         messagePreview: safeText(message, 280),
         details: {
-          reminder_id: payload.reminder_id || null,
-          row_id: payload.row_id || null,
+          ...baseDetails,
           display_name: recipient.displayName,
           module_key: 'cotacao',
         },
@@ -6858,16 +7140,19 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
     }
   }
 
-  await recordErrorLog('cotacao_encomenda_reminder', result.failed > 0 ? 'warn' : 'info', new Error('cotacao_encomenda_notification_sent'), {
-    messagePreview: safeText(message, 280),
+  await recordAutomationRun(source, {
+    moduleKey: 'cotacao',
+    status: automationRunStatus(result),
+    severity: result.failed > 0 ? 'warn' : 'info',
+    recipients: result.recipients,
+    sent: result.sent,
+    failed: result.failed,
+    messageFingerprint: fingerprint,
+    messagePreview: message,
+    errorSummary: result.errors[0] || '',
     details: {
-      reminder_id: payload.reminder_id || null,
-      quote_id: payload.quote_id || null,
-      row_id: payload.row_id || null,
-      recipient_mode: payload.recipient_mode || payload.recipientMode || '',
-      recipients: result.recipients,
-      sent: result.sent,
-      failed: result.failed,
+      ...baseDetails,
+      errors: result.errors.slice(0, 5),
     },
   });
   return result;
@@ -7178,10 +7463,19 @@ function evolutionBaileysMessage(issues: WatchdogIssue[], lookbackMinutes: numbe
 }
 
 async function runEvolutionBaileysAlert(mode: AutomationNotifyMode, dryRun: boolean, lookbackMinutes: number): Promise<JsonRecord> {
+  const source = 'automation_evolution_baileys_alerta';
   const enabled = await automationSettingEnabled(EVOLUTION_BAILEYS_AUTOMATION_KEY, true);
   const issues: WatchdogIssue[] = [];
 
   if (!enabled) {
+    await recordAutomationRun(source, {
+      moduleKey: 'miauw',
+      status: 'skipped',
+      severity: 'warn',
+      notifyMode: mode,
+      dryRun,
+      details: { reason: 'automation_disabled', lookback_minutes: lookbackMinutes },
+    });
     return {
       ok: true,
       skipped: true,
@@ -7192,6 +7486,14 @@ async function runEvolutionBaileysAlert(mode: AutomationNotifyMode, dryRun: bool
   }
 
   if (WHATSAPP_PROVIDER !== 'evolution') {
+    await recordAutomationRun(source, {
+      moduleKey: 'miauw',
+      status: 'skipped',
+      severity: 'info',
+      notifyMode: mode,
+      dryRun,
+      details: { reason: 'provider_not_evolution', provider: WHATSAPP_PROVIDER, lookback_minutes: lookbackMinutes },
+    });
     return {
       ok: true,
       skipped: true,
@@ -7247,8 +7549,21 @@ async function runEvolutionBaileysAlert(mode: AutomationNotifyMode, dryRun: bool
 
   const hasProblems = issues.length > 0;
   const message = evolutionBaileysMessage(issues, lookbackMinutes);
+  const fingerprint = automationFingerprint(source, message);
   if (dryRun) {
     const recipients = await automationRecipients('miauw');
+    await recordAutomationRun(source, {
+      moduleKey: 'miauw',
+      status: 'skipped',
+      severity: automationSeverity(issues, hasProblems),
+      notifyMode: mode,
+      hasProblems,
+      dryRun: true,
+      recipients: recipients.length,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'dry_run', lookback_minutes: lookbackMinutes, issues: issues.slice(0, 8) },
+    });
     return {
       ok: !hasProblems,
       dry_run: true,
@@ -7263,7 +7578,7 @@ async function runEvolutionBaileysAlert(mode: AutomationNotifyMode, dryRun: bool
   }
 
   const notification = await sendAutomationNotification(
-    'automation_evolution_baileys_alerta',
+    source,
     automationSeverity(issues, hasProblems),
     message,
     mode,
@@ -7361,6 +7676,7 @@ function pixOcrSummaryMessage(summary: {
 }
 
 async function runPixOcrDailySummary(mode: AutomationNotifyMode, dryRun: boolean, lookbackHours: number): Promise<JsonRecord> {
+  const source = 'automation_pix_ocr_resumo_diario';
   const enabled = await automationSettingEnabled(PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY, true);
   const countsResult = await pgPool.query<{
     attempts: string;
@@ -7459,8 +7775,20 @@ async function runPixOcrDailySummary(mode: AutomationNotifyMode, dryRun: boolean
   };
   const hasProblems = summary.missingFields > 0 || summary.targetMismatch > 0 || summary.ocrErrors > 0;
   const message = pixOcrSummaryMessage(summary);
+  const fingerprint = automationFingerprint(source, message);
 
   if (!enabled) {
+    await recordAutomationRun(source, {
+      moduleKey: 'financeiro',
+      status: 'skipped',
+      severity: 'warn',
+      notifyMode: mode,
+      hasProblems,
+      dryRun,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'automation_disabled', summary },
+    });
     return {
       ok: true,
       skipped: true,
@@ -7474,6 +7802,18 @@ async function runPixOcrDailySummary(mode: AutomationNotifyMode, dryRun: boolean
 
   if (dryRun) {
     const recipients = await automationRecipients('financeiro');
+    await recordAutomationRun(source, {
+      moduleKey: 'financeiro',
+      status: 'skipped',
+      severity: hasProblems ? 'warn' : 'info',
+      notifyMode: mode,
+      hasProblems,
+      dryRun: true,
+      recipients: recipients.length,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'dry_run', summary },
+    });
     return {
       ok: true,
       dry_run: true,
@@ -7487,7 +7827,7 @@ async function runPixOcrDailySummary(mode: AutomationNotifyMode, dryRun: boolean
   }
 
   const notification = await sendAutomationNotification(
-    'automation_pix_ocr_resumo_diario',
+    source,
     hasProblems ? 'warn' : 'info',
     message,
     mode,
@@ -7625,10 +7965,23 @@ async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: Pedidos
 }
 
 async function runPedidosArrivalCheck(mode: AutomationNotifyMode, dryRun: boolean): Promise<JsonRecord> {
+  const source = 'automation_pedidos_chegada_17h';
   const enabled = await automationSettingEnabled(PEDIDOS_ARRIVAL_AUTOMATION_KEY, true);
   const summary = await fetchPedidosArrivalSummary();
   const message = pedidosArrivalMessage(summary.orders, summary.totalLabel);
+  const fingerprint = automationFingerprint(source, message);
   if (!enabled) {
+    await recordAutomationRun(source, {
+      moduleKey: 'pedidos',
+      status: 'skipped',
+      severity: 'warn',
+      notifyMode: mode,
+      dryRun,
+      recipients: 0,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'automation_disabled', count: summary.count },
+    });
     return {
       ok: true,
       skipped: true,
@@ -7640,6 +7993,17 @@ async function runPedidosArrivalCheck(mode: AutomationNotifyMode, dryRun: boolea
   }
   if (dryRun) {
     const recipients = await automationRecipients('pedidos');
+    await recordAutomationRun(source, {
+      moduleKey: 'pedidos',
+      status: 'skipped',
+      severity: 'info',
+      notifyMode: mode,
+      dryRun: true,
+      recipients: recipients.length,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'dry_run', count: summary.count },
+    });
     return {
       ok: true,
       dry_run: true,
@@ -7650,7 +8014,7 @@ async function runPedidosArrivalCheck(mode: AutomationNotifyMode, dryRun: boolea
     };
   }
   const notification = await sendAutomationNotification(
-    'automation_pedidos_chegada_17h',
+    source,
     'info',
     message,
     mode,
@@ -7769,8 +8133,17 @@ async function fetchFinanceiroCashClosingStatus(date?: string): Promise<Financei
 }
 
 async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryRun: boolean, date?: string): Promise<JsonRecord> {
+  const source = 'automation_financeiro_fechamento_caixa_18h';
   const enabled = await automationSettingEnabled(FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY, true);
   if (!enabled) {
+    await recordAutomationRun(source, {
+      moduleKey: 'financeiro',
+      status: 'skipped',
+      severity: 'warn',
+      notifyMode: mode,
+      dryRun,
+      details: { reason: 'automation_disabled', date: safeText(date, 20) },
+    });
     return {
       ok: true,
       skipped: true,
@@ -7780,7 +8153,18 @@ async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryR
   }
   const status = await fetchFinanceiroCashClosingStatus(date);
   const message = financeiroCashClosingReminderMessage(status);
+  const fingerprint = automationFingerprint(source, message);
   if (!status.should_notify) {
+    await recordAutomationRun(source, {
+      moduleKey: 'financeiro',
+      status: 'skipped',
+      severity: 'info',
+      notifyMode: mode,
+      dryRun,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'cash_already_closed', status },
+    });
     return {
       ok: true,
       skipped: true,
@@ -7792,6 +8176,18 @@ async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryR
   }
   if (dryRun) {
     const recipients = await automationRecipients('financeiro');
+    await recordAutomationRun(source, {
+      moduleKey: 'financeiro',
+      status: 'skipped',
+      severity: 'info',
+      notifyMode: mode,
+      hasProblems: true,
+      dryRun: true,
+      recipients: recipients.length,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: 'dry_run', status },
+    });
     return {
       ok: true,
       dry_run: true,
@@ -7802,7 +8198,7 @@ async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryR
     };
   }
   const notification = await sendAutomationNotification(
-    'automation_financeiro_fechamento_caixa_18h',
+    source,
     'info',
     message,
     mode,
@@ -7906,6 +8302,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentErrorsResult,
     n8nRecipientsResult,
     automationSettingsResult,
+    recentAutomationRunsResult,
     financeiroCashStatusResult,
   ] = await Promise.all([
     pgPool.query<CountRow>(
@@ -8115,6 +8512,22 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         ORDER BY key`,
       [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.key))]],
     ),
+    pgPool.query<DashboardAutomationRunRow>(
+      `SELECT source,
+              module_key,
+              status,
+              severity,
+              notify_mode,
+              recipients_count::text AS recipients_count,
+              sent_count::text AS sent_count,
+              failed_count::text AS failed_count,
+              message_preview,
+              error_summary,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_automation_runs
+        ORDER BY created_at DESC
+        LIMIT 10`,
+    ),
     INTERNAL_TOKEN ? fetchFinanceiroCashClosingStatus().catch(() => null) : Promise.resolve(null),
   ]);
   const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
@@ -8138,6 +8551,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentErrors: recentErrorsResult.rows,
     n8nRecipients: n8nRecipientsResult.rows,
     automationSettings: automationSettingsResult.rows,
+    recentAutomationRuns: recentAutomationRunsResult.rows,
     financeiroCashStatus: financeiroCashStatusResult,
   };
 }
@@ -8522,6 +8936,40 @@ function renderErrorRows(rows: DashboardErrorRow[], csrfToken: string): string {
       </td>
     </tr>`;
   }).join('');
+}
+
+function automationRunTone(status: string): DashboardTone {
+  if (status === 'sent') return 'ok';
+  if (status === 'partial') return 'warn';
+  if (status === 'failed') return 'bad';
+  return 'muted';
+}
+
+function renderAutomationRunRows(rows: DashboardAutomationRunRow[]): string {
+  if (!rows.length) {
+    return '<tr><td colspan="5" class="empty">Nenhuma automacao registrada ainda.</td></tr>';
+  }
+  return rows.map((row) => {
+    const tone = automationRunTone(row.status);
+    const delivery = `${Number(row.sent_count || 0)}/${Number(row.recipients_count || 0)} enviados`;
+    const failed = Number(row.failed_count || 0);
+    const mode = row.notify_mode ? `notify=${row.notify_mode}` : 'sem notify';
+    const detail = row.error_summary || row.message_preview || '-';
+    return `
+    <tr class="ops-row ops-row-${tone === 'bad' ? 'bad' : tone === 'warn' ? 'warn' : 'ok'}">
+      <td class="ops-time"><b>${htmlEscape(formatDate(row.created_at))}</b><small>automacao</small></td>
+      <td>${renderOpsChip(row.source || '-', 'muted')}<small class="ops-cell-note">${htmlEscape(row.module_key || '-')}</small></td>
+      <td>${renderOpsChip(row.status || 'skipped', tone)}<small class="ops-cell-note">${htmlEscape(row.severity || 'info')}</small></td>
+      <td><b>${htmlEscape(delivery)}</b><small class="ops-cell-note">${failed ? `${failed} falha(s)` : mode}</small></td>
+      <td class="ops-error-cell">${renderAutomationRunDetail(detail, row.error_summary ? row.message_preview : '')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAutomationRunDetail(summary: string, preview: string): string {
+  const cleanSummary = summary && summary.trim() ? summary : '-';
+  const cleanPreview = preview && preview.trim() ? preview : '';
+  return `<div class="ops-error"><span>Resumo</span><p>${htmlEscape(cleanSummary)}</p>${cleanPreview ? `<small>${htmlEscape(cleanPreview)}</small>` : ''}</div>`;
 }
 
 function renderOpsError(summary: string, preview: string): string {
@@ -9397,9 +9845,18 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .ops-errors-table { min-width: 980px; }
     .ops-events-table { min-width: 700px; }
     .ops-outbox-table { min-width: 980px; }
+    .ops-automation-table { min-width: 900px; }
+    .automation-runs-wrap {
+      margin-top: 12px;
+      border: 1px solid #f1d8e3;
+      border-radius: 8px;
+      background: #fffafb;
+      padding: 0 10px 10px;
+    }
     .ops-time { min-width: 120px; }
     .ops-time b { display: block; color: #251827; font-size: 12px; line-height: 1.25; }
     .ops-time small { display: block; margin-top: 4px; color: #786672; font-size: 11px; line-height: 1.25; }
+    .ops-cell-note { display: block; margin-top: 4px; color: #786672; font-size: 11px; line-height: 1.25; overflow-wrap: anywhere; }
     .ops-sender {
       display: inline-flex;
       min-height: 26px;
@@ -9700,6 +10157,12 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         </div>
         <div class="n8n-workflow-grid">
           ${renderN8nWorkflows(summary.n8nRecipients, summary.automationSettings, csrfToken, summary.financeiroCashStatus)}
+        </div>
+        <div class="table-wrap automation-runs-wrap">
+          <table class="ops-table ops-automation-table">
+            <thead><tr><th>Quando</th><th>Origem</th><th>Status</th><th>Entrega</th><th>Resumo</th></tr></thead>
+            <tbody>${renderAutomationRunRows(summary.recentAutomationRuns)}</tbody>
+          </table>
         </div>
         <p class="footnote">Destino por card liberado: Pedidos envia para quem tem Pedidos; Financeiro para quem tem Financeiro; deploy e rotinas do Miauby para quem tem Miauby.</p>
       </article>
@@ -10156,6 +10619,13 @@ app.post(`${BASE_PATH}/internal/task-reminder`, requireInternalToken, async (req
     const result = await sendTaskReminderNotification(isRecord(req.body) ? req.body : {});
     res.json({ ok: true, ...result });
   } catch (error) {
+    await recordAutomationRun('tarefa_reminder', {
+      moduleKey: 'tarefas',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: { reason: 'endpoint_error' },
+    });
     res.status(500).json({ ok: false, error: safeText(error instanceof Error ? error.message : 'task_reminder_failed', 180) });
   }
 });
@@ -10165,6 +10635,13 @@ app.post(`${BASE_PATH}/internal/cotacao-encomenda-reminder`, requireInternalToke
     const result = await sendCotacaoEncomendaReminderNotification(isRecord(req.body) ? req.body : {});
     res.json({ ok: true, ...result });
   } catch (error) {
+    await recordAutomationRun('cotacao_encomenda_reminder', {
+      moduleKey: 'cotacao',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: { reason: 'endpoint_error' },
+    });
     res.status(500).json({ ok: false, error: safeText(error instanceof Error ? error.message : 'cotacao_encomenda_reminder_failed', 180) });
   }
 });
@@ -10195,6 +10672,13 @@ app.post(`${BASE_PATH}/internal/evolution-baileys-alert`, requireInternalToken, 
     res.status(result.ok === false ? 503 : 200).json(result);
   } catch (error) {
     await recordErrorLog('automation_evolution_baileys_alerta', 'error', error);
+    await recordAutomationRun('automation_evolution_baileys_alerta', {
+      moduleKey: 'miauw',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: { reason: 'endpoint_error' },
+    });
     res.status(500).json({
       ok: false,
       error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',
@@ -10216,6 +10700,13 @@ app.post(`${BASE_PATH}/internal/pix-ocr-daily-summary`, requireInternalToken, as
     res.status(result.ok === false ? 503 : 200).json(result);
   } catch (error) {
     await recordErrorLog('automation_pix_ocr_resumo_diario', 'error', error);
+    await recordAutomationRun('automation_pix_ocr_resumo_diario', {
+      moduleKey: 'financeiro',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: { reason: 'endpoint_error' },
+    });
     res.status(500).json({
       ok: false,
       error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',
@@ -10224,10 +10715,25 @@ app.post(`${BASE_PATH}/internal/pix-ocr-daily-summary`, requireInternalToken, as
 });
 
 app.post(`${BASE_PATH}/internal/pedidos-arrival-check`, requireInternalToken, async (req, res) => {
-  const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
-  const dryRun = req.body?.dry_run === true || req.body?.dryRun === true || req.query.dry_run === '1';
-  const result = await runPedidosArrivalCheck(mode, dryRun);
-  res.status(result.ok === false ? 503 : 200).json(result);
+  try {
+    const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
+    const dryRun = req.body?.dry_run === true || req.body?.dryRun === true || req.query.dry_run === '1';
+    const result = await runPedidosArrivalCheck(mode, dryRun);
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    await recordErrorLog('automation_pedidos_chegada_17h', 'error', error);
+    await recordAutomationRun('automation_pedidos_chegada_17h', {
+      moduleKey: 'pedidos',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: { reason: 'endpoint_error' },
+    });
+    res.status(500).json({
+      ok: false,
+      error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',
+    });
+  }
 });
 
 app.post(`${BASE_PATH}/internal/financeiro-cash-closing-reminder`, requireInternalToken, async (req, res) => {
@@ -10239,6 +10745,13 @@ app.post(`${BASE_PATH}/internal/financeiro-cash-closing-reminder`, requireIntern
     res.status(result.ok === false ? 503 : 200).json(result);
   } catch (error) {
     await recordErrorLog('automation_financeiro_fechamento_caixa_18h', 'error', error);
+    await recordAutomationRun('automation_financeiro_fechamento_caixa_18h', {
+      moduleKey: 'financeiro',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: { reason: 'endpoint_error' },
+    });
     res.status(500).json({
       ok: false,
       error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',

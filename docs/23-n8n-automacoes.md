@@ -10,6 +10,8 @@ Regra de arquitetura:
 n8n agenda/webhook -> endpoint interno tokenizado -> backend Wimifarma -> auditoria/confirmacao -> WhatsApp
 ```
 
+As execucoes ficam registradas em `miauw_whatsapp_automation_runs`, inclusive dry-run, rotina desativada, cooldown, envio, parcial e falha. `miauw_whatsapp_error_logs` fica reservado para falhas acionaveis de fila, transporte, HTTP ou envio individual.
+
 ## Stack sugerida
 
 Template versionado:
@@ -338,7 +340,7 @@ Payload:
 { "notify": "problems", "lookback_hours": 24 }
 ```
 
-O backend le apenas `miauw_whatsapp_events.payload_summary` e `miauw_whatsapp_error_logs` sanitizados do proprio bridge WhatsApp. O resumo mostra tentativas, aceitos, campos faltando, destino divergente, duplicados, descartes rapidos e falhas de OCR. Ele nao cria lancamento, nao confirma Pix, nao acessa o banco do Financeiro e nao guarda midia bruta.
+O backend le apenas `miauw_whatsapp_events.payload_summary`, `miauw_whatsapp_error_logs` e `miauw_whatsapp_automation_runs` sanitizados do proprio bridge WhatsApp. O resumo mostra tentativas, aceitos, campos faltando, destino divergente, duplicados, descartes rapidos, falhas de OCR e registra a execucao da rotina. Ele nao cria lancamento, nao confirma Pix, nao acessa o banco do Financeiro e nao guarda midia bruta.
 
 ### Miauby + n8n
 
