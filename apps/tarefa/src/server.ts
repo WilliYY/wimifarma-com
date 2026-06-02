@@ -1450,6 +1450,20 @@ function renderLogin(req: Request, error = ''): string {
 </html>`;
 }
 
+function internalErrorStatus(error: unknown): number {
+  const message = error instanceof Error ? error.message : '';
+  const validationMessages = [
+    'Informe o titulo da tarefa.',
+    'Usuario de destino invalido.',
+    'Usuario de destino nao tem acesso ao modulo Tarefas.',
+    'Horario do lembrete Miauby invalido.',
+    'Escolha uma hora futura para o lembrete Miauby.',
+    'Escolha um usuario para o lembrete Miauby.',
+    'Lembrete Miauby so pode ser agendado em tarefa aberta.',
+  ];
+  return validationMessages.includes(message) ? 400 : 500;
+}
+
 async function renderApp(req: Request): Promise<string> {
   const flash = takeFlash(req);
   const viewerId = req.session.user?.id || 0;
@@ -1801,7 +1815,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[tarefa] request failed', error);
   if (res.headersSent) return;
   if (_req.path.includes('/api/internal/')) {
-    res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'internal_error' });
+    res.status(internalErrorStatus(error)).json({ ok: false, error: error instanceof Error ? error.message : 'internal_error' });
     return;
   }
   res.status(500).type('html').send('Tarefas indisponivel agora.');
