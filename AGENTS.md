@@ -466,7 +466,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - No widget do Miauby, `api_ready` significa chave preenchida, nao validacao online. Se o chat cair no fallback, conferir logs/alertas internos para autenticacao, cota, modelo ou rede; a resposta ao operador nao deve expor chave, payload nem stack trace.
 - Miauby evita carregar 30 alertas completos apenas para contar badge; usar `miauw_intelligence_active_alert_count()` quando precisar de contador.
 - `miauw_knowledge_for()` filtra conhecimentos por termos relevantes antes do ranking para manter a memoria escalavel.
-- Miauby so cria/comenta alerta de encomenda da Cotacao quando a linha tem prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido; o comentario curto do alerta e repassado para os baloes do widget em todos os modulos.
+- Miauby so cria/comenta alerta de encomenda da Cotacao quando a linha tem prioridade explicita `encomenda` e passou de 1 dia sem baixa/pedido. Em 2026-06-02, a interface de alertas do widget global foi pausada por enquanto: nao mostrar aba `Alertas`, badge/lista, botao de apagar/atualizar nem balao automatico de alerta nos modulos; chamadas do widget tambem nao devem disparar varredura do guardiao. A fila/diagnostico de alertas continua preservada no backend e no Guardiao operacional do Miauby.
 - `cashback/login.php`, `cotacao/login.php`, `financeiro/login.php`, `tarefa/login.php` e `miauw/login.php` responderam 200.
 - A API legada `cotacao/api.php` respondeu 401 sem sessao durante a migracao; depois da limpeza de 2026-05-14, a API oficial passou a ser `/cotacao/api/...` no servico Node.
 - WordPress raiz e `wp-login.php` responderam 200, porem lentos no Docker Desktop Windows com plugins restaurados.

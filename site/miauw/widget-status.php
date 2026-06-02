@@ -41,6 +41,8 @@ try {
         ),
         'agent_runtime' => function_exists('miauw_agent_runtime_status') ? miauw_agent_runtime_status($user ?: null) : array(),
         'audio_contract' => function_exists('miauw_agent_audio_contract') ? miauw_agent_audio_contract() : array(),
+        'guardian_alert_count' => 0,
+        'guardian_alerts' => array(),
         'maintenance' => function_exists('miauw_maintenance_status') ? miauw_maintenance_status($user ?: null) : array(
             'active' => false,
             'can_send' => true,
@@ -54,9 +56,6 @@ try {
 
         try {
             miauw_ensure_schema();
-            if (function_exists('miauw_guardian_scan')) {
-                miauw_guardian_scan(false);
-            }
 
             $conversationId = miauw_current_conversation_id((int) $user['id']);
 
@@ -74,30 +73,6 @@ try {
                 );
             }
 
-            if (function_exists('miauw_intelligence_active_alerts')) {
-                $alerts = function_exists('miauw_intelligence_public_alerts')
-                    ? miauw_intelligence_public_alerts(3)
-                    : miauw_intelligence_active_alerts(3);
-                $payload['guardian_alert_count'] = function_exists('miauw_intelligence_active_alert_count')
-                    ? miauw_intelligence_active_alert_count()
-                    : count(miauw_intelligence_active_alerts(30));
-                $payload['guardian_alerts'] = array_map(static function (array $alert): array {
-                    return array(
-                        'id' => (int) ($alert['id'] ?? 0),
-                        'fingerprint' => (string) ($alert['fingerprint'] ?? ''),
-                        'module' => (string) ($alert['modulo'] ?? 'sistema'),
-                        'type' => (string) ($alert['tipo'] ?? ''),
-                        'severity' => (string) ($alert['severidade'] ?? 'media'),
-                        'title' => (string) ($alert['titulo'] ?? ''),
-                        'message' => (string) ($alert['mensagem'] ?? ''),
-                        'action' => (string) ($alert['acao_sugerida'] ?? ''),
-                        'speech' => (string) ($alert['comentario_balao'] ?? ''),
-                        'risk_score' => (int) ($alert['risco_score'] ?? 50),
-                        'occurrences' => (int) ($alert['ocorrencias'] ?? 1),
-                        'last_seen_at' => (string) ($alert['last_seen_at'] ?? ''),
-                    );
-                }, $alerts);
-            }
         } catch (Throwable $innerError) {
             error_log('Miauby widget authenticated status error: ' . $innerError->getMessage());
             if (function_exists('miauw_register_internal_error_alert')) {

@@ -2255,7 +2255,7 @@ async function renderApp(req: Request): Promise<string> {
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-parcel-edit">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260602-no-alerts">
   <script src="${BASE_PATH}/app.js?v=20260530-history-collapse" defer></script>
 </head>
 <body>
@@ -2313,7 +2313,7 @@ async function renderApp(req: Request): Promise<string> {
       </div>
     </section>
   </main>
-  <script src="/miauw/widget.js?v=20260529a" defer></script>
+  <script src="/miauw/widget.js?v=20260602-no-alerts" defer></script>
 </body>
 </html>`;
 }

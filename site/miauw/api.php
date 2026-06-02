@@ -41,11 +41,12 @@ try {
 
     miauw_api_verify_csrf();
     miauw_ensure_schema();
-    if (function_exists('miauw_guardian_scan')) {
+    $action = (string) ($_POST['action'] ?? '');
+    $widgetMode = !empty($_POST['widget']);
+    if (!$widgetMode && function_exists('miauw_guardian_scan')) {
         miauw_guardian_scan(false);
     }
 
-    $action = (string) ($_POST['action'] ?? '');
     $conversationId = miauw_current_conversation_id((int) $user['id']);
 
     if ($action === 'audio_transcribe') {
@@ -203,7 +204,6 @@ try {
 
     if ($action === 'send') {
         $message = trim((string) ($_POST['message'] ?? ''));
-        $widgetMode = !empty($_POST['widget']);
         $voiceReplyRequested = !empty($_POST['voice_reply']);
         $inputMode = trim((string) ($_POST['input_mode'] ?? 'text'));
         $silentConfirmation = !empty($_POST['silent_confirmation'])
@@ -389,12 +389,16 @@ try {
                 ),
             ));
         }
-        $guardianCount = function_exists('miauw_intelligence_active_alert_count')
-            ? miauw_intelligence_active_alert_count()
-            : (function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : 0);
-        $guardianAlerts = function_exists('miauw_intelligence_public_alerts')
-            ? miauw_intelligence_public_alerts(3)
-            : (function_exists('miauw_intelligence_active_alerts') ? miauw_intelligence_active_alerts(3) : array());
+        $guardianCount = 0;
+        $guardianAlerts = array();
+        if (!$widgetMode) {
+            $guardianCount = function_exists('miauw_intelligence_active_alert_count')
+                ? miauw_intelligence_active_alert_count()
+                : (function_exists('miauw_intelligence_active_alerts') ? count(miauw_intelligence_active_alerts(30)) : 0);
+            $guardianAlerts = function_exists('miauw_intelligence_public_alerts')
+                ? miauw_intelligence_public_alerts(3)
+                : (function_exists('miauw_intelligence_active_alerts') ? miauw_intelligence_active_alerts(3) : array());
+        }
 
         miauw_json(array(
             'ok' => true,

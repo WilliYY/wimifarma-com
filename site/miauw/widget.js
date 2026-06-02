@@ -4,6 +4,7 @@
 
   const currentPath = window.location.pathname || '';
   const isCotacaoPath = currentPath.startsWith('/cotacao');
+  const ALERTS_UI_ENABLED = false;
   if (currentPath.startsWith('/miauw/')) return;
 
   const cssId = 'miauw-widget-css';
@@ -11,7 +12,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260602-size';
+    link.href = '/miauw/widget.css?v=20260602-no-alerts';
     document.head.appendChild(link);
   }
 
@@ -41,7 +42,6 @@
     <button class="miauw-widget-bubble" type="button" aria-label="Abrir Miauby" aria-expanded="false">
       <img src="/miauw/miauby-novo.jpeg" alt="">
       <span>Miauby</span>
-      <strong class="miauw-widget-alert-badge" data-miauw-alert-badge hidden>0</strong>
     </button>
     <button class="miauw-widget-nudge" type="button" data-miauw-nudge hidden aria-label="Recado do Miauby">Miauby esta de olho.</button>
     <div class="miauw-widget-panel" role="dialog" aria-label="Chat do Miauby" aria-hidden="true">
@@ -55,21 +55,7 @@
         </div>
         <button type="button" data-miauw-close aria-label="Fechar Miauby">x</button>
       </header>
-      <nav class="miauw-widget-tools" data-miauw-tools hidden aria-label="Areas do Miauby">
-        <button type="button" class="is-active" data-miauw-view="chat">Chat</button>
-        <button type="button" data-miauw-view="alerts">Alertas <strong data-miauw-tools-alert-count hidden>0</strong></button>
-      </nav>
       <div class="miauw-widget-feed" data-miauw-feed></div>
-      <section class="miauw-widget-alerts" data-miauw-alerts hidden>
-        <div class="miauw-widget-alerts-head">
-          <div>
-            <strong>Alertas do Miauby</strong>
-            <small>Mesmo painel do guardiao, sem alerta duplicado.</small>
-          </div>
-          <button type="button" data-miauw-alerts-refresh>Atualizar</button>
-        </div>
-        <div class="miauw-widget-alert-list" data-miauw-alert-list></div>
-      </section>
       <div class="miauw-widget-login" data-miauw-login hidden>
         <strong>Login interno</strong>
         <p>Entre para o Miauby ajudar sem ficar miando no corredor.</p>
@@ -262,7 +248,7 @@
   };
 
   const setView = (view, options = {}) => {
-    const nextView = view === 'alerts' ? 'alerts' : 'chat';
+    const nextView = ALERTS_UI_ENABLED && view === 'alerts' ? 'alerts' : 'chat';
     state.view = nextView;
 
     viewButtons.forEach((button) => {
@@ -272,7 +258,9 @@
     });
 
     feed.hidden = nextView !== 'chat';
-    alertsPanel.hidden = nextView !== 'alerts';
+    if (alertsPanel) {
+      alertsPanel.hidden = nextView !== 'alerts';
+    }
     form.hidden = !state.authenticated || nextView !== 'chat';
     loginBox.hidden = state.authenticated || nextView !== 'chat';
 
@@ -295,7 +283,7 @@
     if (open) {
       hideAlertNudge();
       loadStatus();
-      if (state.view === 'alerts') {
+      if (ALERTS_UI_ENABLED && state.view === 'alerts') {
         loadAlerts();
       } else {
         setTimeout(() => input && input.focus(), 160);
@@ -558,10 +546,11 @@
 
   const showQueuedNudge = (payload) => {
     if (!alertNudge || !payload || state.open) return;
+    if (payload.alert && !ALERTS_UI_ENABLED) return;
 
     alertNudge.textContent = payload.text || 'Miauby tem algo para verificar.';
     alertNudge.dataset.miauwPrompt = payload.prompt || '';
-    alertNudge.dataset.miauwView = payload.view || (payload.alert ? 'alerts' : 'chat');
+    alertNudge.dataset.miauwView = ALERTS_UI_ENABLED ? (payload.view || (payload.alert ? 'alerts' : 'chat')) : 'chat';
     alertNudge.classList.toggle('is-alert-speech', Boolean(payload.alert));
     alertNudge.classList.toggle('is-ambient-speech', !payload.alert);
     alertNudge.hidden = false;
@@ -598,6 +587,7 @@
   };
 
   const maybeShowAlertNudge = (count, alerts = []) => {
+    if (!ALERTS_UI_ENABLED) return;
     const total = Number(count || 0);
     if (!alertNudge || total <= 0 || state.open) return;
 
@@ -894,6 +884,7 @@
   };
 
   const normalizeAlerts = (alerts = []) => {
+    if (!ALERTS_UI_ENABLED) return [];
     if (!Array.isArray(alerts)) return [];
 
     return alerts
@@ -914,6 +905,7 @@
   };
 
   const renderAlerts = (alerts = []) => {
+    if (!ALERTS_UI_ENABLED) return;
     if (!alertList) return;
     const normalized = normalizeAlerts(alerts);
 
@@ -942,6 +934,23 @@
   };
 
   const updateAlertBadge = (count, alerts = []) => {
+    if (!ALERTS_UI_ENABLED) {
+      state.alertCount = 0;
+      state.alerts = [];
+      state.view = 'chat';
+      if (alertBadge) {
+        alertBadge.hidden = true;
+        alertBadge.textContent = '0';
+      }
+      if (alertCountPill) {
+        alertCountPill.hidden = true;
+        alertCountPill.textContent = '0';
+      }
+      bubble.classList.remove('has-alerts');
+      maybeShowMedicineNewsNudge(0);
+      return;
+    }
+
     const total = Number(count || 0);
     state.alertCount = total;
     state.alerts = normalizeAlerts(alerts);
@@ -962,6 +971,7 @@
   };
 
   const loadAlerts = async () => {
+    if (!ALERTS_UI_ENABLED) return;
     if (!state.authenticated || !alertList) return;
 
     alertList.innerHTML = '<div class="miauw-widget-alert-empty"><strong>Atualizando alertas...</strong><span>Um segundo. Sem teatro.</span></div>';
@@ -992,6 +1002,7 @@
   };
 
   const dismissAlert = async (alertId) => {
+    if (!ALERTS_UI_ENABLED) return;
     const id = Number(alertId || 0);
     if (!id || !state.authenticated) return;
 

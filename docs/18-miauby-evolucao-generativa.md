@@ -19,6 +19,7 @@ Miauby ja possui:
 - varredura operacional em `site/miauw/miauw-intelligence.php`;
 - skills de consulta e escrita limitada em `site/miauw/miauw-skills.php`.
 - em 2026-06-02, o widget global teve a bolha do Miauby levemente ampliada por variaveis CSS responsivas, mantendo offset do painel e do balao de recado para nao cobrir conteudo nem esmagar o mobile.
+- em 2026-06-02, a interface de alertas do widget global foi pausada por pedido operacional: sem aba `Alertas`, badge, lista, botao `Atualizar`, botao `Apagar` ou balao automatico de alerta no widget. `widget-status.php` e chamadas do widget para `api.php` tambem nao disparam varredura do guardiao; a fila/diagnostico de alertas continua preservada no backend e no Guardiao operacional do Miauby para uso futuro/rollback.
 
 Nota de nomenclatura/migracao: `Miauby` e o nome canonico de produto. O prefixo tecnico `miauw` continua em rotas, arquivos, env vars e tabelas por compatibilidade ate a migracao documentada em `docs/28-miauby-migracao.md`.
 - `miauw_skill_registry()` com metadados de modulo, nivel, risco, permissao, executor, entrada, saida, auditoria e efeitos.
