@@ -712,7 +712,7 @@ if (!$homeAuthenticated):
             z-index: 1;
             position: relative;
             grid-area: footer;
-            min-height: 13.85rem;
+            min-height: 12.15rem;
             display: grid;
             overflow: visible;
             background-color: #0e8fa0;
@@ -764,12 +764,12 @@ if (!$homeAuthenticated):
             position: relative;
             z-index: 2;
             display: grid;
-            grid-template-columns: minmax(0, 0.92fr) minmax(136px, 0.42fr) minmax(0, 1.02fr) minmax(158px, 0.58fr);
-            gap: clamp(1.35rem, 3vw, 3rem);
-            align-items: start;
+            grid-template-columns: minmax(16rem, 0.88fr) minmax(26rem, 1.15fr) minmax(12.5rem, 0.56fr);
+            gap: clamp(1.25rem, 2.4vw, 2.35rem);
+            align-items: center;
             width: 100%;
             margin-top: -1px;
-            padding: 2.35rem max(2rem, calc((100vw - 1120px) / 2)) 1.55rem;
+            padding: 1.65rem max(2rem, calc((100vw - 1120px) / 2)) 1.05rem;
             background: transparent;
             color: #210915;
         }
@@ -785,17 +785,17 @@ if (!$homeAuthenticated):
         .wf-login-footer-content b {
             display: block;
             color: #210814;
-            font-size: 0.82rem;
+            font-size: 0.76rem;
             letter-spacing: 0.18em;
-            line-height: 1.2;
+            line-height: 1.15;
             text-transform: uppercase;
         }
 
         .wf-login-footer-content p {
             margin: 0;
-            font-size: 0.9rem;
+            font-size: 0.84rem;
             font-weight: 750;
-            line-height: 1.58;
+            line-height: 1.45;
         }
 
         .wf-login-footer-groups,
@@ -806,12 +806,12 @@ if (!$homeAuthenticated):
         .wf-login-footer-brand {
             display: grid;
             align-content: start;
-            gap: 0.9rem;
-            max-width: 22rem;
+            gap: 0.68rem;
+            max-width: 20rem;
         }
 
         .wf-login-footer-logo {
-            width: min(310px, 72vw);
+            width: min(260px, 72vw);
             height: auto;
             display: block;
             filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
@@ -823,12 +823,12 @@ if (!$homeAuthenticated):
             justify-content: center;
             gap: 0.55rem;
             width: fit-content;
-            min-height: 42px;
+            min-height: 38px;
             border-radius: 999px;
-            padding: 0 1.35rem;
+            padding: 0 1.15rem;
             background: #ffffff;
             color: #1f2937;
-            font-size: 0.86rem;
+            font-size: 0.82rem;
             font-weight: 900;
             text-decoration: none;
             box-shadow: 0 16px 30px rgba(70, 5, 25, 0.16);
@@ -853,10 +853,17 @@ if (!$homeAuthenticated):
             filter: drop-shadow(0 2px 4px rgba(33, 184, 91, 0.18));
         }
 
+        .wf-login-footer-info {
+            display: grid;
+            grid-template-columns: minmax(8.4rem, 0.5fr) minmax(16rem, 1fr);
+            gap: clamp(1.1rem, 2vw, 1.85rem);
+            align-items: start;
+        }
+
         .wf-login-footer-nav {
             display: grid;
             align-content: start;
-            gap: 0.68rem;
+            gap: 0.5rem;
         }
 
         .wf-login-footer-nav a {
@@ -868,16 +875,16 @@ if (!$homeAuthenticated):
         .wf-login-footer-contact {
             display: grid;
             align-content: start;
-            gap: 0.68rem;
-            max-width: 29rem;
+            gap: 0.5rem;
+            max-width: 27rem;
         }
 
         .wf-login-footer-contact-row {
             display: flex;
             align-items: flex-start;
-            gap: 0.75rem;
+            gap: 0.58rem;
             font-weight: 780;
-            line-height: 1.42;
+            line-height: 1.35;
         }
 
         .wf-login-footer-contact-row span {
@@ -892,18 +899,18 @@ if (!$homeAuthenticated):
 
         .wf-login-footer-note {
             border-top: 1px solid rgba(39, 8, 23, 0.16);
-            max-width: 27rem;
-            padding-top: 0.68rem;
+            max-width: 25rem;
+            padding-top: 0.52rem;
         }
 
         .wf-login-visitor-counter {
             justify-self: end;
-            min-width: 13.6rem;
+            min-width: 12.35rem;
             display: grid;
-            gap: 0.72rem;
+            gap: 0.52rem;
             border: 1px solid rgba(255, 255, 255, 0.28);
             border-radius: 8px;
-            padding: 0.92rem 1rem;
+            padding: 0.72rem 0.86rem;
             background:
                 linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08)),
                 rgba(255, 255, 255, 0.1);
@@ -917,7 +924,7 @@ if (!$homeAuthenticated):
             font-size: 0.72rem;
             font-weight: 950;
             letter-spacing: 0;
-            line-height: 1.25;
+            line-height: 1.18;
             text-transform: uppercase;
         }
 
@@ -929,7 +936,7 @@ if (!$homeAuthenticated):
 
         .wf-login-visitor-counter strong {
             color: #ffffff;
-            font-size: 2.45rem;
+            font-size: 2.15rem;
             font-weight: 950;
             line-height: 1;
             text-shadow: 0 8px 18px rgba(4, 55, 64, 0.24);
@@ -937,7 +944,7 @@ if (!$homeAuthenticated):
 
         .wf-login-visitor-counter span {
             color: #270817;
-            font-size: 0.84rem;
+            font-size: 0.78rem;
             font-weight: 850;
             line-height: 1.3;
         }
@@ -953,7 +960,7 @@ if (!$homeAuthenticated):
             align-items: center;
             gap: 0.45rem;
             color: rgba(39, 8, 23, 0.86);
-            font-size: 0.74rem;
+            font-size: 0.7rem;
             font-weight: 850;
             line-height: 1.3;
         }
@@ -1122,6 +1129,22 @@ if (!$homeAuthenticated):
             }
         }
 
+        @media (max-width: 980px) {
+            .wf-login-footer-content {
+                grid-template-columns: minmax(0, 1fr) minmax(12rem, auto);
+                gap: 1.15rem 1.65rem;
+            }
+
+            .wf-login-footer-info {
+                grid-column: 1 / -1;
+                grid-template-columns: minmax(8.4rem, 0.48fr) minmax(16rem, 1fr);
+            }
+
+            .wf-login-visitor-counter {
+                align-self: start;
+            }
+        }
+
         @media (max-width: 720px) {
             .wf-login-shooting-star:nth-child(n+12) {
                 display: none;
@@ -1140,13 +1163,14 @@ if (!$homeAuthenticated):
 
             .wf-login-footer-content {
                 grid-template-columns: 1fr;
-                gap: 1.35rem;
+                gap: 1.15rem;
                 place-items: center;
-                padding: 2.2rem 1.15rem 3.55rem;
+                padding: 2rem 1.15rem 3.25rem;
                 text-align: center;
             }
 
             .wf-login-footer-brand,
+            .wf-login-footer-info,
             .wf-login-footer-nav,
             .wf-login-footer-contact,
             .wf-login-visitor-counter {
@@ -1157,6 +1181,11 @@ if (!$homeAuthenticated):
             .wf-login-visitor-counter {
                 justify-self: center;
                 text-align: center;
+            }
+
+            .wf-login-footer-info {
+                grid-template-columns: 1fr;
+                gap: 1.05rem;
             }
 
             .wf-login-visitor-counter strong {
@@ -1296,28 +1325,30 @@ if (!$homeAuthenticated):
                     <span>Chamar no WhatsApp</span>
                 </a>
             </div>
-            <nav class="wf-login-footer-nav" aria-label="Navegacao">
-                <b>Navegacao</b>
-                <a href="<?php echo wf_home_e(wf_home_url('/')); ?>">Farmacia Popular</a>
-                <a href="<?php echo wf_home_e(wf_home_url('/')); ?>">Sobre</a>
-                <a href="https://wa.me/5544984134971" target="_blank" rel="noopener">Contato</a>
-            </nav>
-            <div class="wf-login-footer-contact">
-                <b>Atendimento</b>
-                <div class="wf-login-footer-contact-row">
-                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/>
-                        <circle cx="12" cy="10" r="2.4" fill="none" stroke="currentColor" stroke-width="2"/>
-                    </svg>
-                    <span>Avenida Minas Gerais, 2263 - Ivate, Parana</span>
+            <div class="wf-login-footer-info">
+                <nav class="wf-login-footer-nav" aria-label="Navegacao">
+                    <b>Navegacao</b>
+                    <a href="<?php echo wf_home_e(wf_home_url('/')); ?>">Farmacia Popular</a>
+                    <a href="<?php echo wf_home_e(wf_home_url('/')); ?>">Sobre</a>
+                    <a href="https://wa.me/5544984134971" target="_blank" rel="noopener">Contato</a>
+                </nav>
+                <div class="wf-login-footer-contact">
+                    <b>Atendimento</b>
+                    <div class="wf-login-footer-contact-row">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/>
+                            <circle cx="12" cy="10" r="2.4" fill="none" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        <span>Avenida Minas Gerais, 2263 - Ivate, Parana</span>
+                    </div>
+                    <div class="wf-login-footer-contact-row">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 16.92v2.25a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 3.4 2 2 0 0 1 4.11 1.2h2.25a2 2 0 0 1 2 1.72c.12.9.33 1.79.62 2.63a2 2 0 0 1-.45 2.11L7.58 8.6a16 16 0 0 0 6 6l.94-.94a2 2 0 0 1 2.11-.45c.84.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92Z"/>
+                        </svg>
+                        <span>(44) 98413-4971</span>
+                    </div>
+                    <p class="wf-login-footer-note">Pedidos e disponibilidade sempre sob confirmacao da equipe.</p>
                 </div>
-                <div class="wf-login-footer-contact-row">
-                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 16.92v2.25a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 3.4 2 2 0 0 1 4.11 1.2h2.25a2 2 0 0 1 2 1.72c.12.9.33 1.79.62 2.63a2 2 0 0 1-.45 2.11L7.58 8.6a16 16 0 0 0 6 6l.94-.94a2 2 0 0 1 2.11-.45c.84.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92Z"/>
-                    </svg>
-                    <span>(44) 98413-4971</span>
-                </div>
-                <p class="wf-login-footer-note">Pedidos e disponibilidade sempre sob confirmacao da equipe.</p>
             </div>
             <div class="wf-login-visitor-counter" aria-label="Contador de acessos do site">
                 <b>Acessos do site</b>
