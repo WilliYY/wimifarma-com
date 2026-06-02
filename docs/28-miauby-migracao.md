@@ -354,6 +354,8 @@ Observabilidade:
 - `miauw_agent_runtime_status()` informa `official_response_owner`, `write_owner`, `route_cutover_enabled`, `public_proxy_enabled`, `node_primary_active_for_user` e `node_failure_fallback_owner`.
 - `scripts/miauby-node-cutover-smoke.sh node` valida dentro do VPS que `adm` esta elegivel para Node, usuario comum nao esta, a escrita segue PHP/MySQL, rota/proxy nao foram cortados e o fallback segue PHP.
 - Para testar uma chamada real ao agent, usar `MIAUBY_NODE_CUTOVER_RUN_AGENT=true sh scripts/miauby-node-cutover-smoke.sh node`; isso chama a camada online e deve ser usado com criterio.
+- `site/miauw/module-status.php` expoe um endpoint interno/tokenizado para conferir leitura de Cotacao, Financeiro, Gestao, Pedidos, Tarefas, Cashback, Codigos, XP, Usuarios e Miauby Whats sem payload bruto. O detalhe de uso fica em `docs/30-miauby-leitura-modulos.md`.
+- Novos traces da ponte universal passam a registrar modulo e risco reais da tool chamada, preservando `writes_enabled_in_node=false`.
 
 Rollback:
 

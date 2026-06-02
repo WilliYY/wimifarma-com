@@ -11,7 +11,8 @@ Este documento deve ser lido junto de:
 - `docs/22-migracao-mysql-postgres.md`;
 - `docs/24-modernizacao-modulos.md`;
 - `docs/26-inventario-modulos.md`;
-- `docs/28-miauby-migracao.md`.
+- `docs/28-miauby-migracao.md`;
+- `docs/30-miauby-leitura-modulos.md`.
 
 ## Resultado da auditoria de 2026-06-02
 
@@ -38,6 +39,7 @@ Validacoes executadas em `/home/ubuntu/projetos/wimifarma-com`:
 - Health publico via Apache local `127.0.0.1:3002`: `/`, `/cashback/health`, `/codigos/health`, `/cotacao/health`, `/financeiro/health`, `/gestao/health`, `/pedidos/health`, `/tarefa/health`, `/usuarios/health`, `/xp/health`, `/miauw/agent/health`, `/miauw/whatsapp/health`, `/miauby/agent/health` e `/miauby/whatsapp/health` responderam HTTP 200.
 - Logs dos apps principais nos ultimos 45 minutos filtrados por erro/falha fatal: sem ocorrencia retornada.
 - Readiness interna do `wimifarma-miauby-app`: HTTP 200, `ok=true`, `mode=shadow_readiness`, paridade 12/12 tabelas, zero divergencia de contagem/amostra e flags seguras (`write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false`).
+- Auditoria interna de leitura do Miauby: `site/miauw/module-status.php` foi criado para checar Cotacao, Financeiro, Gestao, Pedidos, Tarefas, Cashback, Codigos, XP, Usuarios e Miauby Whats por endpoint tokenizado, sem payload bruto e sem escrita real.
 
 Observacao operacional: `docker compose ps -a` mostrou dois containers antigos em estado `Created` (`9c26d1fff654_wimifarma-usuarios-app` e `c1a93d26bef8_wimifarma-miauw-agent`). Eles nao parecem estar servindo trafego porque existem containers oficiais homonimos `Up`; limpar isso deve ser uma tarefa separada, conferindo labels, mounts e logs antes de remover qualquer container.
 

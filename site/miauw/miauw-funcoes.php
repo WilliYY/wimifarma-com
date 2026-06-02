@@ -942,6 +942,8 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
     $argKeys = array_values(array_map('strval', array_keys($args)));
     sort($argKeys);
     $policy = miauw_agent_node_tool_bridge_policy($name);
+    $bridgeMeta = miauw_tool_public_meta($name);
+    $bridgeModule = (string) ($bridgeMeta['modulo'] ?? 'miauby');
 
     try {
         if (!empty($policy['requires_confirmation'])) {
@@ -951,7 +953,9 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
             $durationMs = (int) round((microtime(true) - $started) * 1000);
             miauw_trace_record('miauw_agent_node_tool_bridge', 'confirmation_required', array(
                 'trace_id' => $traceId !== '' ? miauw_substr($traceId, 0, 80) : null,
+                'modulo' => $bridgeModule,
                 'type' => 'agent_tool_bridge',
+                'risk' => (string) $policy['risk'],
                 'summary' => 'Tool forte recebida pelo agente Node sem escrita direta.',
                 'duration_ms' => $durationMs,
                 'requires_confirmation' => true,
@@ -1005,7 +1009,9 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
 
         miauw_trace_record('miauw_agent_node_tool_bridge', 'ok', array(
             'trace_id' => $traceId !== '' ? miauw_substr($traceId, 0, 80) : null,
+            'modulo' => $bridgeModule,
             'type' => 'agent_tool_bridge',
+            'risk' => (string) $policy['risk'],
             'summary' => 'Tool executada pelo PHP para o agente Node.',
             'duration_ms' => $durationMs,
             'payload' => array(
@@ -1037,7 +1043,9 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
         $durationMs = (int) round((microtime(true) - $started) * 1000);
         miauw_trace_record('miauw_agent_node_tool_bridge', 'error', array(
             'trace_id' => $traceId !== '' ? miauw_substr($traceId, 0, 80) : null,
+            'modulo' => $bridgeModule,
             'type' => 'agent_tool_bridge',
+            'risk' => (string) $policy['risk'],
             'summary' => 'Falha em tool chamada pelo agente Node.',
             'duration_ms' => $durationMs,
             'error' => $error->getMessage(),
