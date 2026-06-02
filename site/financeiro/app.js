@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var saveStatus = document.querySelector('[data-save-status]');
     var divergenceField = document.querySelector('[data-divergence-justification]');
     var saveTimer = null;
+    var daySavePending = false;
+    var daySaveInFlight = 0;
     var dailyRevenueForm = document.querySelector('[data-daily-revenue-form]');
     var dailyRevenueState = document.querySelector('[data-daily-revenue-save-state]');
     var emptyConfirm = document.querySelector('[data-empty-confirm]');
@@ -35,6 +37,26 @@ document.addEventListener('DOMContentLoaded', function () {
         saveStatus.textContent = text;
         saveStatus.dataset.state = state || '';
     }
+
+    function hasPendingSaveWork() {
+        if (daySavePending || daySaveInFlight > 0) {
+            return true;
+        }
+
+        var revenueInputs = Array.prototype.slice.call(document.querySelectorAll('[data-daily-revenue-input]'));
+        return revenueInputs.some(function (input) {
+            return Boolean(input._dailyRevenuePending || input._dailyRevenueInFlight);
+        });
+    }
+
+    window.addEventListener('beforeunload', function (event) {
+        if (!hasPendingSaveWork()) {
+            return;
+        }
+
+        event.preventDefault();
+        event.returnValue = '';
+    });
 
     function syncDivergenceJustification(rawValue) {
         if (!divergenceField) {
@@ -212,6 +234,8 @@ document.addEventListener('DOMContentLoaded', function () {
         body.set('rel_mes', reportFormValue('rel_mes', dailyRevenueForm.dataset.reportMonth));
         body.set('data_fechamento', reportFormValue('data_fechamento', entryDate));
 
+        input._dailyRevenuePending = false;
+        input._dailyRevenueInFlight = Number(input._dailyRevenueInFlight || 0) + 1;
         setDailyRevenueState('Salvando...', 'saving');
 
         fetch('/financeiro/', {
@@ -230,6 +254,8 @@ document.addEventListener('DOMContentLoaded', function () {
             setDailyRevenueState('Salvo automaticamente.', 'saved');
         }).catch(function (error) {
             setDailyRevenueState(error.message || 'Falha ao salvar.', 'error');
+        }).finally(function () {
+            input._dailyRevenueInFlight = Math.max(0, Number(input._dailyRevenueInFlight || 0) - 1);
         });
     }
 
@@ -242,6 +268,8 @@ document.addEventListener('DOMContentLoaded', function () {
         body.set('action', 'save_day');
         body.set('ajax', '1');
 
+        daySavePending = false;
+        daySaveInFlight += 1;
         setStatus('Salvando...', 'saving');
 
         fetch('/financeiro/', {
@@ -259,6 +287,8 @@ document.addEventListener('DOMContentLoaded', function () {
             setStatus('Salvo automaticamente', 'saved');
         }).catch(function (error) {
             setStatus(error.message, 'error');
+        }).finally(function () {
+            daySaveInFlight = Math.max(0, daySaveInFlight - 1);
         });
     }
 
@@ -291,6 +321,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             field.addEventListener('input', function () {
                 clearTimeout(saveTimer);
+                daySavePending = true;
                 setStatus('Alteracao pendente...', 'pending');
                 saveTimer = setTimeout(autosaveDay, 750);
             });
@@ -323,6 +354,7 @@ document.addEventListener('DOMContentLoaded', function () {
         input.addEventListener('input', function () {
             updateDailyRevenueTotal();
             window.clearTimeout(input._dailyRevenueTimer);
+            input._dailyRevenuePending = true;
             setDailyRevenueState('Alteracao pendente...', 'pending');
             input._dailyRevenueTimer = window.setTimeout(function () {
                 saveDailyRevenueInput(input);

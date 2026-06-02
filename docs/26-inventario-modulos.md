@@ -69,6 +69,7 @@ Proxima acao segura:
 
 - Sessao propria `WFFINANCEIRO`.
 - Login oficial somente por `core_users`.
+- Desde 2026-06-02, o app respeita `core_user_module_permissions` para `module_key='financeiro'`: linha explicita `can_access=false` bloqueia o modulo; ausencia de linha preserva acesso legado; o usuario `adm` continua como recuperacao segura.
 - Nao ha rollback/fallback MySQL de login no codigo atual; rollback exige restaurar versao anterior e backup validado.
 - Rotas operacionais exigem usuario autenticado.
 - Escritas de tela usam CSRF.
@@ -120,6 +121,7 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 - `save_day`: autosave do fechamento diario, responsavel e totais.
 - `close_day`: fecha o dia como `fechado` ou `divergente`, conforme limite.
 - `save_report_faturamento` e `save_report_faturamento_auto`: salva faturamento diario do relatorio.
+- `close_empty` e `close_report_empty_day`: marcam `sem_movimento` somente quando o dia nao tem lancamento ativo nem valor/faturamento ja salvo.
 - `save_sangria`: cria lancamento de sangria.
 - `save_maquininha`: cria lancamento de maquininha/cartao/Pix de maquininha.
 - `save_pix`: cria lancamento Pix.

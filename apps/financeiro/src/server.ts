@@ -30,6 +30,7 @@ const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
 const SERVICE_VERSION = '1.1.2';
 const OPEN_CASH_CLOSING_LOOKBACK_DAYS = 10;
+const FINANCEIRO_FISCAL_YEARS = [2026, 2027, 2028];
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -146,6 +147,19 @@ function isAdmin(user: User | null | undefined): boolean {
   return normalizeUsername(user.role) === 'admin' || normalizeUsername(user.username) === 'adm';
 }
 
+async function canAccessFinanceiro(user: User): Promise<boolean> {
+  if (normalizeUsername(user.username) === 'adm') return true;
+  const result = await corePgPool.query<{ can_access: boolean }>(
+    `SELECT can_access
+       FROM core_user_module_permissions
+      WHERE user_id = $1 AND module_key = 'financeiro'
+      LIMIT 1`,
+    [user.id],
+  );
+  const row = result.rows[0];
+  return row ? row.can_access !== false : true;
+}
+
 function centsToDecimal(cents: number): number {
   return Math.round(Number(cents || 0)) / 100;
 }
@@ -249,14 +263,34 @@ function publicError(error: unknown): string {
 function validFinanceDate(value: unknown, fallback = todayDate()): string {
   const text = String(value || '').trim();
   if (text === '') return fallback;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    const candidate = new Date(Date.UTC(year, month - 1, day));
+    if (
+      FINANCEIRO_FISCAL_YEARS.includes(year) &&
+      candidate.getUTCFullYear() === year &&
+      candidate.getUTCMonth() + 1 === month &&
+      candidate.getUTCDate() === day
+    ) {
+      return text;
+    }
+    return fallback;
+  }
   const br = text.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
   if (br) {
     const year = Number(br[3].length === 2 ? `20${br[3]}` : br[3]);
     const month = Number(br[2]);
     const day = Number(br[1]);
     const candidate = new Date(Date.UTC(year, month - 1, day));
-    if (candidate.getUTCFullYear() === year && candidate.getUTCMonth() + 1 === month && candidate.getUTCDate() === day) {
+    if (
+      FINANCEIRO_FISCAL_YEARS.includes(year) &&
+      candidate.getUTCFullYear() === year &&
+      candidate.getUTCMonth() + 1 === month &&
+      candidate.getUTCDate() === day
+    ) {
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
   }
@@ -264,7 +298,7 @@ function validFinanceDate(value: unknown, fallback = todayDate()): string {
 }
 
 function fiscalYears(): number[] {
-  return [2026, 2027, 2028];
+  return [...FINANCEIRO_FISCAL_YEARS];
 }
 
 function monthName(month: number): string {
@@ -681,6 +715,16 @@ async function requireUser(req: Request, res: Response): Promise<User | null> {
       return null;
     }
     req.session.returnTo = req.originalUrl;
+    res.redirect('/');
+    return null;
+  }
+  if (!(await canAccessFinanceiro(user))) {
+    if (wantsJson(req)) {
+      res.status(403).json({ ok: false, message: 'Seu usuario nao tem permissao para acessar o Financeiro.' });
+      return null;
+    }
+    await auditEvent('acesso_financeiro_negado', 'user', user.id, null, { username: user.username }, req, user.id);
+    req.session.returnTo = undefined;
     res.redirect('/');
     return null;
   }
@@ -1293,9 +1337,32 @@ function categories(): string[] {
   return ['Sangria', 'Maquininha C/D', 'Maquininha Pix', 'Pix CNPJ', 'Dinheiro Fisico', 'Outros'];
 }
 
+function closingMovementCents(closing: AnyRow): number {
+  const values: unknown[] = [
+    closing.caixa_fisico,
+    closing.cartao_total,
+    closing.pix_banco_total,
+    closing.pix_maquininha_total,
+    closing.pix_correto_total,
+    closing.pix_correto_manual,
+    closing.sangria_total,
+    closing.retirada_caixa,
+    closing.abertura_sistema,
+    closing.faturamento_dia,
+    closing.ajustes,
+    closing.total_conferido,
+    closing.sobra_falta,
+  ];
+  return values.reduce<number>((sum, value) => sum + Math.abs(moneyTextToCents(value)), 0);
+}
+
 async function closeEmptyDay(date: string, req: Request, observation = 'Sem movimento.'): Promise<AnyRow> {
   const closing = await getOrCreateClosing(date, req);
   if (isLocked(closing)) throw new Error('Este dia ja esta fechado.');
+  const sums = await entrySums(Number(closing.id));
+  if (Number(sums.qtd || 0) > 0 || closingMovementCents(closing) > 0) {
+    throw new Error('Este dia ja tem movimento registrado. Remova os lancamentos ou zere os valores antes de marcar sem movimento.');
+  }
   await updateManualClosing(
     Number(closing.id),
     {
@@ -1902,6 +1969,11 @@ app.get([`${BASE_PATH}/login`, `${BASE_PATH}/login.php`], asyncRoute(async (req,
     if (user) await regenerateWithUser(req, user);
   }
   if (user) {
+    if (!(await canAccessFinanceiro(user))) {
+      await auditEvent('acesso_financeiro_negado', 'user', user.id, null, { username: user.username }, req, user.id);
+      res.redirect('/');
+      return;
+    }
     res.redirect(loginRedirectTarget(req));
     return;
   }
@@ -1925,6 +1997,11 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     registerLoginFailure(req);
     await auditEvent('login_financeiro_falha', 'user', null, null, { username }, req, null);
     res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha incorretos.'));
+    return;
+  }
+  if (!(await canAccessFinanceiro(user))) {
+    await auditEvent('login_financeiro_sem_permissao', 'user', user.id, null, { username: user.username }, req, user.id);
+    res.status(403).type('html').send(renderLogin(req, 'Seu usuario nao tem permissao para acessar o Financeiro.'));
     return;
   }
   clearLoginRateLimit(req);
