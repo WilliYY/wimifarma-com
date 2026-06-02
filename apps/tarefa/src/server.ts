@@ -1008,9 +1008,12 @@ async function processDueTaskReminders(): Promise<void> {
       const data = await postWhatsappTaskReminder(row);
       const sent = Number(data.sent || 0);
       const recipients = Number(data.recipients || 0);
+      const blocked = Number(data.blocked || 0);
       const errors = Array.isArray(data.errors) ? data.errors.map((item) => cleanText(item, 120)).filter(Boolean) : [];
       if (sent > 0) {
         await finishReminder(row, 'sent', `Lembrete Miauby enviado para ${sent} contato(s).`, data);
+      } else if (blocked > 0 || errors.some((error) => error === 'user_on_vacation')) {
+        await finishReminder(row, 'skipped', 'Lembrete Miauby nao enviado: usuario em ferias.', data);
       } else if (errors.some((error) => error === 'whatsapp_transport_unavailable' || error === 'provider_paused')) {
         throw new Error(errors[0]);
       } else {

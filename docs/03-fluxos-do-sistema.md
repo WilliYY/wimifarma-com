@@ -94,6 +94,8 @@ O modulo Usuarios administra os logins internos em `/usuarios/`. Ele e servido p
 
 A tela permite criar usuario com senha, perfil e status, desativar usuario sem apagar fisicamente, escolher quais modulos ficam liberados, associar o login a um funcionario do XP, delegar tarefa privada para aquele login, vincular numeros da allowlist do Miauby WhatsApp e consultar o historico central de mudancas. No cadastro, o campo de usuario aceita nome com espaco/acento e o backend normaliza para login seguro antes de gravar no core, por exemplo `Joao Silva` vira `joao.silva`. O historico geral fica minimizado na lateral, e cada card de usuario possui historico individual minimizado por padrao, mostrando tanto o que aquele login fez quanto alteracoes feitas nele. A associacao com XP usa `core_user_xp_links` apontando logicamente para `xp_employees.id`; a fonte oficial de XP continua sendo o modulo XP. Os endpoints `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` retornam somente o mini-card XP do usuario autenticado naquele app ou autenticado pela home via `WFHOME_SSO`, consultando o vinculo no core e os totais diretamente no Postgres do XP.
 
+O card de cada usuario tambem possui o bloco `Ferias`, gravando inicio e retorno em `core_user_vacations`. O status e calculado pelo fuso `America/Sao_Paulo`: sem ferias, ferias agendadas, em ferias ou retornou. Enquanto o usuario estiver em ferias, o Miauby Whats consulta o `linked_user_id` do contato antes de mensagens automaticas e bloqueia lembretes/tarefas/rotinas para esse usuario, registrando o motivo em `core_user_vacation_message_logs` e no historico central. Isso nao remove allowlist, nao bloqueia login e nao interfere em mensagens manuais.
+
 O painel de Usuarios deve deixar claro que a fonte oficial e o Postgres core; quando um login veio de `wf_users`, a tela mostra isso como origem importada do MySQL em vez de expor o identificador tecnico cru.
 
 O login de Usuarios usa o happy cat zanzando pela tela e fugindo do cursor como detalhe visual, sem interferir no formulario ou na sessao.
@@ -106,6 +108,9 @@ Tabelas principais:
 - `core_user_module_permissions`
 - `core_user_xp_links`
 - `core_user_whatsapp_links`
+- `core_user_vacations`
+- `core_user_vacation_events`
+- `core_user_vacation_message_logs`
 - `core_user_audit_events`
 - `usuarios_sessions`
 

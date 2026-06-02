@@ -682,6 +682,7 @@ services:
     depends_on:
       - wimifarma-miauw-whatsapp-db
       - wimifarma-miauw-agent
+      - wimifarma-core-db
     environment:
       NODE_ENV: production
       PORT: 3400
@@ -691,6 +692,11 @@ services:
       POSTGRES_DB: wimifarma_miauw_whatsapp
       POSTGRES_USER: wimifarma_miauw_whatsapp
       POSTGRES_PASSWORD: ${MIAUW_WHATSAPP_POSTGRES_PASSWORD:-wimifarma_miauw_whatsapp_dev_pass}
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
       MIAUW_WHATSAPP_ENABLED: ${MIAUW_WHATSAPP_ENABLED:-false}
       MIAUW_WHATSAPP_WEBHOOK_TOKEN: ${MIAUW_WHATSAPP_WEBHOOK_TOKEN:-}
       MIAUW_WHATSAPP_INTERNAL_TOKEN: ${MIAUW_WHATSAPP_INTERNAL_TOKEN:-}

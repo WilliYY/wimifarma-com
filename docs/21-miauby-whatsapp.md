@@ -16,6 +16,8 @@ Desde 2026-06-02, o painel `/miauw/whatsapp/` passou a abrir em leitura simplifi
 
 Desde 2026-05-29, contatos da allowlist podem ser vinculados a usuarios do core pelo painel `/usuarios/`. O bridge continua sendo o dono do telefone completo cifrado/hash; o core recebe apenas `contact_id`, mascara, nome, status e cards liberados para permitir aviso individual por funcionario.
 
+Desde 2026-06-02, o bridge respeita `Ferias do usuario`, cadastrado no modulo Usuarios. Antes de qualquer envio automatico por card, lembrete de Tarefa, encomenda da Cotacao, rotina n8n ou alerta operacional, o bridge consulta `core_user_vacations` pelo `linked_user_id` do contato. Se o usuario estiver em ferias no fuso `America/Sao_Paulo`, a mensagem nao e enviada, o contato continua na allowlist, o login continua liberado e o bloqueio fica registrado em `core_user_vacation_message_logs` e `core_audit_logs`. O primeiro dia de ferias e o dia do retorno tambem podem gerar uma saudacao curta automatica para o proprio usuario, com marcas de idempotencia no core.
+
 ## Componentes
 
 - `apps/miauw-whatsapp`: servico Node.js 22 + TypeScript.
@@ -58,6 +60,12 @@ Tabelas criadas pelo servico:
 - `miauw_whatsapp_error_logs`: falhas sanitizadas de fila, envio e HTTP, com origem, severidade, trace curto, mascara do contato, resumo e contexto limpo para diagnostico.
 - `miauw_whatsapp_automation_runs`: execucoes de automacoes internas, como Tarefa, encomenda da Cotacao e rotinas n8n, com origem, modulo, status, modo notify, dry-run, destinatarios, enviados, falhas, fingerprint e detalhes sanitizados.
 - `miauw_whatsapp_channel_events`: memoria curta compartilhada entre Miauby interno e WhatsApp, com resumo sanitizado de entrada/saida, canal, motor, status, trace, hash/mascara do contato e metadados limpos.
+
+O bloqueio por ferias usa tabelas do Postgres core, nao o banco dedicado do bridge:
+
+- `core_user_vacations`: periodo, status e marcas dos avisos de inicio/retorno.
+- `core_user_vacation_events`: eventos de cadastro, limpeza e processamento.
+- `core_user_vacation_message_logs`: mensagens automaticas bloqueadas por ferias e avisos enviados/falhos.
 
 O banco nao deve guardar payload bruto externo, telefone cru em texto aberto ou bytes de audio/midia. O servico guarda hash/mascara para auditoria e cifra os identificadores necessarios para responder; o painel logado pode decifrar o telefone apenas na area de edicao da allowlist. Para audio, foto, print, imagem e PDF/documento, `payload_summary.media` guarda apenas tipo, provider, chave/id da midia e sinais como mime/duracao/tamanho quando disponiveis; para comprovantes Pix, quando o transporte fornece `fileSha256` ou equivalente, o bridge guarda somente um hash salgado desse identificador para detectar repeticao, nunca a midia bruta. A midia e baixada do transporte somente durante o processamento, enviada ao Gemini para transcricao/extracao e descartada em memoria.
 
@@ -153,6 +161,12 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_PIX_OCR_SUMMARY_LOOKBACK_HOURS=24`
 - `MIAUW_WHATSAPP_OUTBOX_RECOVERY_BATCH_SIZE=3`
 - `MIAUW_WHATSAPP_OUTBOX_RECOVERY_MAX_AGE_MINUTES=30`
+- `MIAUW_WHATSAPP_VACATION_NOTICE_INTERVAL_MS=3600000`
+- `CORE_POSTGRES_HOST`
+- `CORE_POSTGRES_PORT=5432`
+- `CORE_POSTGRES_DB=wimifarma_core`
+- `CORE_POSTGRES_USER=wimifarma_core`
+- `CORE_POSTGRES_PASSWORD`
 - `MIAUW_WHATSAPP_PROVIDER=evolution`
 - `GEMINI_API_KEY`
 - `GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta`
@@ -195,6 +209,7 @@ Principais variaveis:
 - `POST /miauw/whatsapp/internal/pedidos-arrival-check`: endpoint interno tokenizado para n8n chamar todo dia as 17h. Consulta `GET /pedidos/api/internal/arrival-summary`, respeita o toggle `Chegada de pedidos` no painel, envia a lista de pedidos aguardando chegada para contatos reais com card `Pedidos` em formato de tabela numerada com valor total do pedido e aceita `dry_run=true` para validar sem enviar.
 - `POST /miauw/whatsapp/internal/financeiro-cash-closing-reminder`: endpoint interno tokenizado para n8n chamar todo dia as 18h. Consulta `GET /financeiro/api/internal/cash-closing-status`, respeita o toggle `Fechamento de caixa` no painel e so envia lembrete para contatos reais com card `Financeiro` quando houver caixa em aberto, em conferencia ou sem registro nos ultimos 10 dias ate o dia consultado. A mensagem inclui o(s) dia(s) pendente(s) para finalizar dentro dessa janela.
 - `POST /miauw/whatsapp/internal/cotacao-encomenda-reminder`: endpoint interno tokenizado chamado pela Cotacao quando um lembrete de encomenda vence. Se o payload trouxer `recipients`, `destinatarios` ou `phones`, esses numeros funcionam apenas como filtro e precisam existir como contatos `allowed` com card `Cotacao` liberado; numeros fora da allowlist/card sao ignorados e registrados apenas de forma mascarada na execucao da automacao.
+- `POST /miauw/whatsapp/internal/vacation-check`: endpoint interno tokenizado para conferir e processar avisos de inicio/retorno de ferias. Aceita `dry_run=true` para validar sem enviar. O worker interno tambem roda essa checagem periodicamente por `MIAUW_WHATSAPP_VACATION_NOTICE_INTERVAL_MS`.
 - `POST /miauw/agent-context.php`: endpoint PHP interno, protegido por `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`, usado pelo bridge para exportar `style_context`, treino aprovado, perfil de voz, `channel_memory` e contratos de tools do Miauby interno antes de chamar o agent.
 - `POST /miauw/agent-memory.php`: endpoint PHP interno de compatibilidade, protegido pelo mesmo token. Ele tenta usar a ponte Postgres do bridge e cai para `miauw_channel_events` no MySQL somente se a ponte estiver indisponivel. Aceita `record`, `record_batch` e `recent`; deve receber somente texto resumido/sanitizado, hash/mascara e metadados limpos.
 - `POST /miauw/agent-actions.php`: endpoint PHP interno, protegido pelo mesmo token, usado pelo bridge para preparar acoes fortes permitidas e executar somente depois de confirmacao pendente no WhatsApp.
@@ -211,6 +226,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Cada contato salvo no Postgres pode ter cards/modulos liberados. Ao pedir `miauby menu`, `miauby cards` ou equivalente, o bridge retorna apenas os cards autorizados para aquele telefone, considerando hash direto, alias da Evolution e equivalencia operacional com/sem DDI `55`. O bridge tambem bloqueia chamadas do core/tools quando o card detectado na mensagem ou na tool retornada nao esta liberado para o telefone.
 - Quando um contato e vinculado a um usuario pelo modulo Usuarios, os avisos individuais e as acoes confirmadas devem usar esse vinculo como referencia operacional. O painel Usuarios usa `core_users.display_name` como nome padrao do contato quando existir. O bridge envia `user_context` com `core_users.id`, `username`, `display_name`, origem `whatsapp_link`, hash e mascara para o Miauby interno, para memoria curta e para `agent-actions.php`; se o usuario mandar uma sangria/PIX sem responsavel textual, o PHP usa o nome exibivel do vinculo como responsavel antes de pedir confirmacao. Se a mensagem trouxer outro nome, o vinculo do numero continua vencendo para evitar registro em nome de terceiro. O numero completo continua cifrado no bridge; o core deve usar apenas o `contact_id` e a mascara. Se o mesmo telefone for vinculado a outro usuario, o novo vinculo substitui o dono operacional.
 - Remover um numero pelo painel Usuarios bloqueia o contato no bridge, evitando disparos futuros por allowlist, e apaga o vinculo seguro do core. Para apenas trocar cards sem bloquear, usar edicao normal da allowlist no painel WhatsApp.
+- Ferias do usuario nao removem allowlist, nao bloqueiam conversa manual e nao bloqueiam login. O filtro de ferias atua apenas em mensagens automaticas originadas pelo backend. Lembretes de Tarefas bloqueados por ferias voltam como `skipped` para o app Tarefa, evitando retry infinito.
 - Grupos ficam bloqueados por padrao.
 - Remetente fora da allowlist nao chama Gemini nem core Miauby. Quando envia texto individual, o bridge registra o evento como `ignored/sender_not_allowed` e manda no maximo um aviso curto a cada alguns minutos dizendo que o Miauby e interno e so responde numeros permitidos.
 - Prefixo `miauby` fica exigido por padrao no repositorio. Em ambiente operacional com allowlist revisada, ele pode ser desligado por `MIAUW_WHATSAPP_REQUIRE_PREFIX=false`; nesse modo, conversa solta sem comando vai para Gemini com personalidade/instrucoes seguras. Se `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, comandos operacionais detectados, como `sangria 10 Will`, tambem acionam o core Miauby/API com tools e confirmacao. Mensagens com `miauby` em qualquer posicao continuam acionando o core.

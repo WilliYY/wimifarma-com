@@ -545,6 +545,26 @@ a {
   color: #7c4a03;
 }
 
+.users-pill.vacation.status-none {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.users-pill.vacation.status-scheduled {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.users-pill.vacation.status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.users-pill.vacation.status-returned {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .users-user details {
   padding: 0 16px 16px;
 }
@@ -1059,6 +1079,78 @@ a {
 
 .users-task-form .users-button {
   width: 100%;
+}
+
+.users-vacation-subsection {
+  background: linear-gradient(180deg, #ffffff, #f7fff9);
+  border-color: #cfeedd;
+}
+
+.users-vacation-status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.users-vacation-status.status-none {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.users-vacation-status.status-scheduled {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.users-vacation-status.status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.users-vacation-status.status-returned {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.users-vacation-summary {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 12px;
+  border: 1px dashed #bfe7cf;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.users-vacation-summary strong {
+  color: #173a2b;
+}
+
+.users-vacation-summary span,
+.users-vacation-summary small {
+  color: var(--wf-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.users-vacation-form .users-actions {
+  margin-top: 2px;
+}
+
+.users-vacation-clear-form {
+  margin-top: 8px;
+}
+
+.users-vacation-clear-form .users-button {
+  width: 100%;
+  min-height: 38px;
 }
 
 .users-whatsapp-links {
