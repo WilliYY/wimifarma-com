@@ -28,6 +28,9 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/financeiro/api/internal/cash-closing-status` e demais endpoints internos do Financeiro exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; sem `FINANCEIRO_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN`, `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_WHATSAPP_INTERNAL_TOKEN` configurado, recusam com 503. O status de fechamento retorna apenas resumo do dia para automacoes, sem payload bruto nem segredo.
 - Em 2026-05-31, a home `/`, Codigos, Financeiro e o painel `/miauw/whatsapp/` passaram a enviar o baseline de headers `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` e `Strict-Transport-Security` em HTTPS. A CSP da home e do painel WhatsApp permite `unsafe-inline` somente para preservar os templates atuais com CSS/JS embutidos; objetos e frame externo seguem bloqueados.
 - Em 2026-05-31, `site/cashback`, `site/financeiro` e `site/tarefa` ganharam `.htaccess` local com `Options -Indexes` e bloqueio de `*.php`, `*.phtml` e `*.phar` por HTTP. Isso preserva assets e includes internos, mas impede que telas antigas em PHP/MySQL voltem a responder se o proxy Node/Postgres for removido por engano.
+- Em 2026-06-02, a auditoria de protecao adicionou bloqueio direto para `wp-config.php`, `readme.html`, `license.txt`, arquivos comuns de backup/log/dump/chave e metadados de plugins (`readme`, `changelog`, `license`). `site/wp-content/plugins/.htaccess` bloqueia listagem, metadados e artefatos sensiveis em plugins, e `site/wp-content/plugins/backuply/.htaccess` tambem bloqueia execucao HTTP direta de PHP do Backuply sem impedir o WordPress de carregar o plugin por filesystem.
+- Em 2026-06-02, `site/miauw/relatorios/.htaccess` passou a negar acesso web ao diretorio inteiro de relatorios/diagnosticos gerados. Arquivos gerados continuam preservados no filesystem, mas nao devem ser baixados pelo navegador.
+- Em 2026-06-02, `/miauw/agent/health` ficou publico apenas com resumo minimo sem modelos, tools ou flags internas; `/miauw/agent/status` passou a exigir `X-Miauw-Agent-Token` ou `X-Miauw-Internal-Token`, reutilizando `MIAUW_AGENT_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN`. O agente tambem envia `Cache-Control: no-store`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` e `Permissions-Policy`.
 - Em 2026-05-31, `apps/cotacao` e `apps/miauw-agent` tiveram dependencias de producao atualizadas para resolver vulnerabilidades moderadas de `qs`, `ws`, `engine.io`, `socket.io-adapter` e a cadeia ociosa `googleapis`. A Cotacao mantem integracao Google Sheets por `fetch` direto, sem pacote `googleapis` instalado.
 - Em 2026-05-31, `/miauby/` entrou como rota canonica controlada do Miauby e redireciona para `/miauw/`, preservando HTTPS no publico, enquanto o motor oficial do chat interno ainda e PHP; `/miauby/agent/` e `/miauby/whatsapp/` sao apenas aliases dos servicos Node ja protegidos. O app sombra `wimifarma-miauby-app` permanece sem proxy publico; suas rotas de status/paridade/readiness continuam internas e tokenizadas.
 - HSTS e aplicado somente quando a requisicao e HTTPS.
@@ -41,7 +44,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `/miauw/diagnostico.php` e restrito a `admin`, `gerente` ou `adm`, usa CSRF nas acoes e sanitiza textos de memorias, padroes e diagnosticos antes de exibir.
 - A Fase 5 do Miauby exige confirmacao humana para acoes fortes antes de gravar dados e registra traces sanitizados em `miauw_tool_traces`.
 - A Fase 6 do Miauby adiciona evals para manter dados incompletos fora de escrita, exigir confirmacao para escrita forte por risco e preservar a regra de nao inventar dados.
-- A Fase 7 do Miauby expõe apenas health/status sem segredo em `/miauw/agent/`; `run` e `stream` do servico sombra exigem `X-Miauw-Agent-Token` ou `X-Miauw-Internal-Token` com `MIAUW_AGENT_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN`.
+- A Fase 7 do Miauby expoe apenas health publico minimo em `/miauw/agent/health`; `status`, `run` e `stream` do servico sombra exigem `X-Miauw-Agent-Token` ou `X-Miauw-Internal-Token` com `MIAUW_AGENT_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN`.
 - A Fase 8 chama o servico sombra somente pelo PHP/adaptador com token interno. A comparacao automatica fica desligada por padrao (`MIAUW_AGENT_SHADOW_ON_SEND=false`) e os traces gravam apenas dados sanitizados de comparacao.
 - A Fase 9 permite usar o Node como motor oficial apenas por `MIAUW_ENGINE=node` e somente para usuarios em `MIAUW_AGENT_ENGINE_ALLOWED_USERS`; `MIAUW_MAINTENANCE_MODE=true` bloqueia envio de usuarios comuns durante o corte acelerado.
 
@@ -79,6 +82,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `apps/xp/src/server.ts`
 - `site/xp/uploads/.htaccess`
 - `site/wp-content/uploads/.htaccess`
+- `site/wp-content/plugins/.htaccess`
+- `site/wp-content/plugins/backuply/.htaccess`
 - `apps/gestao/src/server.ts`
 - `apps/cotacao/src/server.js`
 - `site/_legacy-disabled/.htaccess`
@@ -127,6 +132,8 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Payloads brutos da Evolution API ou WhatsApp nao devem ser persistidos em traces/logs; registrar apenas metadados sanitizados, telefone mascarado, trechos curtos de mensagem/resposta quando necessarios para sincronia operacional, status, latencia e erro resumido.
 - O painel `/miauw/whatsapp/` deve continuar limitado a status, contadores, motivos de ignorado, latencia e telefones mascarados fora da allowlist. A unica excecao permitida e o telefone completo decifrado dentro da edicao da allowlist autenticada e protegida por CSRF, para permitir correcao operacional de numeros. Nunca adicionar token ou payload bruto ao HTML. Em producao, manter `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` preenchidos no `.env`.
 - O Apache do container web usa formato de access log sem query string (`%m %U %H`) para evitar gravar tokens de webhook passados por URL. Nao trocar de volta para `%r`/query completa sem sanitizacao.
+- `wp-config.php`, metadados de plugins, dumps, logs, backups e chaves devem responder 403 quando chamados por HTTP. `wp-content/plugins/backuply/*.php` tambem deve responder 403 por acesso direto; o plugin, quando usado, deve rodar somente carregado pelo WordPress.
+- `/miauw/agent/status` e endpoint interno detalhado: manter token obrigatorio. Para monitoramento publico usar `/miauw/agent/health`, que deve continuar enxuto e sem lista de tools, modelos, flags ou segredos.
 - A Evolution API deve ficar fechada em `127.0.0.1:8080` e na rede Docker interna. Nao publicar `wimifarma-evolution-api` no Nginx Proxy Manager sem autenticar e revisar superficie de ataque.
 - Segredos de Evolution API, Meta Cloud API, tokens de webhook e chaves de provedores alternativos como Gemini devem ficar apenas em `.env`/config local e entrar na varredura de segredos antes do push.
 - `MIAUW_WHATSAPP_ENCRYPTION_KEY`, `MIAUW_WHATSAPP_WEBHOOK_TOKEN`, `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`, `EVOLUTION_API_KEY`, `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_APP_SECRET`, `GEMINI_API_KEY` e `MIAUW_WHATSAPP_POSTGRES_PASSWORD` nunca devem ser versionados. Se vazarem, trocar no `.env` do VPS e reiniciar `wimifarma-miauw-whatsapp`.
@@ -164,6 +171,19 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - Avaliar se o bloqueio de `xmlrpc.php` pode continuar permanente.
 - Rodar `powershell -ExecutionPolicy Bypass -File scripts/check-secrets.ps1` antes de pushes com alteracao sensivel.
 - Criar testes de permissao especificos da Cotacao V2 para API HTTP e Socket.IO.
+
+## Como conferir o hardening web
+
+```powershell
+curl.exe -L --max-time 30 -o NUL -w "wp_config=%{http_code}`n" http://127.0.0.1:3002/wp-config.php
+curl.exe -L --max-time 30 -o NUL -w "plugin_readme=%{http_code}`n" http://127.0.0.1:3002/wp-content/plugins/loginizer/readme.txt
+curl.exe -L --max-time 30 -o NUL -w "backuply_php=%{http_code}`n" http://127.0.0.1:3002/wp-content/plugins/backuply/backuply.php
+curl.exe -L --max-time 30 -o NUL -w "miauw_relatorios=%{http_code}`n" http://127.0.0.1:3002/miauw/relatorios/
+curl.exe -L --max-time 30 -o NUL -w "agent_status_sem_token=%{http_code}`n" http://127.0.0.1:3002/miauw/agent/status
+curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
+```
+
+Os quatro primeiros devem responder 403. O status detalhado sem token deve responder 401, e o health publico deve responder 200 com resumo minimo.
 
 ## Evolucao futura
 

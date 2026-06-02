@@ -76,8 +76,8 @@ Nota de nomenclatura/migracao: `Miauby` e o nome canonico de produto. O prefixo 
   - `MIAUW_AGENT_VERSION=2.0-fase7`;
   - `apps/miauw-agent` cria o servico dedicado em Node.js 22 + TypeScript com `@openai/agents`;
   - o Apache publica `/miauw/agent/` por proxy interno para `wimifarma-miauw-agent:3100`;
-  - `GET /miauw/agent/health` e `GET /miauw/agent/status` retornam estado seguro, sem segredo;
-  - `POST /miauw/agent/run` e `POST /miauw/agent/stream` exigem token interno e rodam em modo sombra;
+  - `GET /miauw/agent/health` retorna somente resumo publico minimo, sem modelos, tools ou flags internas;
+  - `GET /miauw/agent/status`, `POST /miauw/agent/run` e `POST /miauw/agent/stream` exigem token interno e rodam em modo sombra/controlado;
   - o servico possui uma tool de diagnostico segura e nao executa escrita real;
   - o PHP continua dono de login, sessoes, widget, registry, confirmacoes, tools auditadas e historico ate existir adaptador validado por evals.
 - Fase 8 do agente operacional v2 iniciada:
@@ -101,7 +101,7 @@ Nota de nomenclatura/migracao: `Miauby` e o nome canonico de produto. O prefixo 
   - `MIAUW_AGENT_PERSONALITY_VERSION=miauby-persona-2026-05-16`;
   - `miauw_agent_personality_contract()` registra papel, voz, bordoes controlados, anti-padroes e proxima melhoria da personalidade;
   - o servico Node em `apps/miauw-agent` agora usa prompt de persona compacto, preservando humor curto, tom de fiscal interno, pedido minimo de contexto e regra de nao inventar dados;
-  - `GET /miauw/agent/health` expoe `personality_version` e `personality_features` sem segredo;
+  - `GET /miauw/agent/status` tokenizado expoe `personality_version` e `personality_features` sem segredo; o health publico fica enxuto para monitoramento;
   - `npm run check:persona` valida localmente o contrato da voz do Miauby sem chamar API online;
   - `/miauw/diagnostico.php` mostra o contrato da personalidade para orientar revisoes futuras.
 - Fase 11 do agente operacional v2 iniciada:
@@ -114,7 +114,7 @@ Nota de nomenclatura/migracao: `Miauby` e o nome canonico de produto. O prefixo 
 - Fase 12 do agente operacional v2 iniciada:
   - `MIAUW_AGENT_VERSION=2.0-fase12`;
   - o servico Node passou para `SERVICE_VERSION=0.6.0` e `PHASE=fase12-read-tool-execution`;
-  - o Node registra no health/status `node_executable_tools` com `diagnostico_miauby_agente` e `consultar_contrato_tool_miauby`;
+  - o Node registra no status tokenizado `node_executable_tools` com `diagnostico_miauby_agente` e `consultar_contrato_tool_miauby`;
   - `consultar_contrato_tool_miauby` executa no Node apenas leitura segura dos contratos enviados pelo PHP, com filtro por nome, modulo ou risco;
   - a resposta do Node informa `read_tools_enabled`, `node_executable_tools` e `tool_contract_version` para trace resumido no PHP;
   - `writes_enabled=false` continua obrigatorio: nenhuma escrita de modulo, confirmacao, sessao ou auditoria saiu do PHP.
@@ -354,7 +354,7 @@ Integracoes:
 - Fase 4: migrar tools importantes para registry e executores controlados. Em andamento com sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
 - Fase 5: adicionar streaming e rastreabilidade por conversa, incluindo log de tool usada e confirmacao para acoes fortes. Em andamento com streaming visual, traces estruturados e card de confirmacao.
 - Fase 6: ampliar evals operacionais para regras proibidas, dados faltantes, nao inventar dados, schema/registry de tools e confirmacao de acoes destrutivas. Em andamento com runner local ampliado.
-- Fase 7: criar o servico dedicado do Miauby em Node.js 22 + TypeScript com Agents SDK, preservando compatibilidade com o PHP atual ate os evals aprovarem a troca. Iniciada com servico sombra e health/status.
+- Fase 7: criar o servico dedicado do Miauby em Node.js 22 + TypeScript com Agents SDK, preservando compatibilidade com o PHP atual ate os evals aprovarem a troca. Iniciada com servico sombra, health publico minimo e status detalhado tokenizado.
 - Fase 8: criar adaptador PHP -> servico sombra, comparar respostas e traces em paralelo, e so depois planejar corte controlado do motor principal. Iniciada com adaptador desligado por padrao e traces de comparacao.
 - Fase 9: ligar manutencao para usuarios comuns, usar `MIAUW_ENGINE=node_shadow|node` apenas para `adm`, validar traces e manter rollback por `.env`.
 - Fase 10: preservar a personalidade do Miauby como contrato versionado no PHP/Node, com eval local para impedir resposta generica durante o corte para agente.

@@ -1,0 +1,13 @@
+Options -Indexes
+
+<FilesMatch "\.(?:php|phtml|phar)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "^(?:readme|changelog|changes|license)\.(?:txt|md)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(?:sql|sqlite|db|bak|backup|old|orig|save|swp|swo|log|zip|tar|gz|tgz|7z)$">
+    Require all denied
+</FilesMatch>

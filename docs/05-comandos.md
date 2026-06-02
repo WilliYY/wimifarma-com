@@ -429,9 +429,15 @@ powershell -ExecutionPolicy Bypass -File scripts\check-secrets.ps1
 curl.exe -I http://127.0.0.1:3002/cotacao/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code}`n" http://127.0.0.1:3002/xmlrpc.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code}`n" http://127.0.0.1:3002/wp-content/uploads/
+curl.exe -L --max-time 30 -o NUL -w "wp_config=%{http_code}`n" http://127.0.0.1:3002/wp-config.php
+curl.exe -L --max-time 30 -o NUL -w "plugin_readme=%{http_code}`n" http://127.0.0.1:3002/wp-content/plugins/loginizer/readme.txt
+curl.exe -L --max-time 30 -o NUL -w "backuply_php=%{http_code}`n" http://127.0.0.1:3002/wp-content/plugins/backuply/backuply.php
+curl.exe -L --max-time 30 -o NUL -w "miauw_relatorios=%{http_code}`n" http://127.0.0.1:3002/miauw/relatorios/
+curl.exe -L --max-time 30 -o NUL -w "agent_status_sem_token=%{http_code}`n" http://127.0.0.1:3002/miauw/agent/status
+curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
 ```
 
-O `xmlrpc.php` e a listagem de `wp-content/uploads/` devem responder 403 enquanto o hardening estiver ativo.
+O `xmlrpc.php`, a listagem de `wp-content/uploads/`, `wp-config.php`, metadados de plugins, PHP direto do Backuply e `/miauw/relatorios/` devem responder 403 enquanto o hardening estiver ativo. O status detalhado do agente sem token deve responder 401; use `/miauw/agent/health` para monitoramento publico minimo.
 
 ## Local - rotas rapidas
 

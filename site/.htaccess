@@ -80,6 +80,19 @@ ExpiresByType application/javascript "access plus 1 hour"
 </IfModule>
 # END Wimifarma static asset cache
 
+# BEGIN Wimifarma sensitive file hardening
+<FilesMatch "^(?:wp-config\.php|readme\.html|license\.txt|\.env|\.user\.ini|php\.ini|composer\.(?:json|lock)|package(?:-lock)?\.json|yarn\.lock|pnpm-lock\.yaml)$">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(?:sql|sqlite|db|bak|backup|old|orig|save|swp|swo|log|ini|env|ya?ml|toml|sh|ps1|ppk|pem|key|crt)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^wp-content/plugins/[^/]+/(?:readme|changelog|changes|license)\.(?:txt|md)$ - [F,L,NC]
+</IfModule>
+# END Wimifarma sensitive file hardening
+
 # BEGIN Wimifarma WordPress hardening
 <Files "xmlrpc.php">
     Require all denied

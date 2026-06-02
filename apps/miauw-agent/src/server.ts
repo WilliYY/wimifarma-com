@@ -115,7 +115,21 @@ function normalizeBasePath(path: string): string {
   return clean === '' ? '/miauw/agent' : clean;
 }
 
-function publicStatus() {
+function publicHealth() {
+  return {
+    ok: true,
+    service: SERVICE_NAME,
+    service_version: SERVICE_VERSION,
+    agent_version: AGENT_VERSION,
+    phase: PHASE,
+    runtime: 'node22-typescript',
+    base_path: basePath,
+    writes_enabled: false,
+    direct_node_writes_enabled: false,
+  };
+}
+
+function internalStatus() {
   return {
     ok: true,
     service: SERVICE_NAME,
@@ -1437,6 +1451,14 @@ async function streamAgent(
 
 const app = express();
 app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(), usb=()');
+  next();
+});
 app.use(express.json({ limit: '128kb' }));
 app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (error instanceof SyntaxError) {
@@ -1452,11 +1474,11 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
 });
 
 app.get(`${basePath}/health`, (_req, res) => {
-  res.json(publicStatus());
+  res.json(publicHealth());
 });
 
-app.get(`${basePath}/status`, (_req, res) => {
-  res.json(publicStatus());
+app.get(`${basePath}/status`, requireInternalToken, (_req, res) => {
+  res.json(internalStatus());
 });
 
 app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {

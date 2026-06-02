@@ -77,7 +77,7 @@ Ele valida:
 - contrato das tools de Codigos (`resumo_codigos` e `buscar_codigo_comissao`).
 - Fase 5 do Miauby: status publico anuncia rastreabilidade/confirmacao/streaming visual, acao forte pede confirmacao antes de escrita e traces aparecem no diagnostico.
 - Fase 6 do Miauby: contrato da proxima camada, schemas das tools, alinhamento registry/tools online, dados incompletos sem escrita, Cotacao pedindo termo quando falta produto/EAN/categoria, prompt de nao inventar dados e confirmacao obrigatoria para escrita forte por risco.
-- Fase 7 do Miauby: status publico anuncia servico sombra, diagnostico inclui status do servico agente e o endpoint `/miauw/agent/health` valida o container Node/TypeScript.
+- Fase 7 do Miauby: health publico valida o container Node/TypeScript com resumo minimo; status detalhado do servico agente fica tokenizado e o diagnostico interno continua podendo consultar o estado do agente.
 - Fase 8 do Miauby: status publico anuncia adaptador PHP sombra, diagnostico inclui status do adaptador, evals validam skip controlado e similaridade sem chamada online.
 - Fase 9 do Miauby: status publico anuncia manutencao/engine switch, diagnostico inclui `agent_runtime`, evals validam engine em lista fechada e `adm` liberado para manutencao/corte.
 - Fase 10 do Miauby: persona preservada, diagnostico inclui contrato da voz e `apps/miauw-agent` valida `npm run check:persona` sem chamada online.

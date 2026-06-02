@@ -389,7 +389,7 @@ Decisao:
 - Criar a Fase 12 do Miauby com `MIAUW_AGENT_VERSION=2.0-fase12`.
 - Subir `apps/miauw-agent` para `SERVICE_VERSION=0.6.0` e `PHASE=fase12-read-tool-execution`.
 - Adicionar a tool Node `consultar_contrato_tool_miauby`, que consulta somente os contratos de tools enviados pelo PHP.
-- Expor `node_executable_tools` e `read_tools_enabled` em health/status/respostas do servico Node.
+- Expor `node_executable_tools` e `read_tools_enabled` no status tokenizado e nas respostas internas do servico Node; o health publico deve ficar minimo.
 - Manter `writes_enabled=false`: login, sessao, confirmacao, auditoria e qualquer escrita real continuam no PHP.
 
 Motivo:

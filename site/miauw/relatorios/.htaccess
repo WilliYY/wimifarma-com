@@ -1,5 +1,7 @@
 Options -Indexes
 
+Require all denied
+
 <FilesMatch "^miauby-internal-diagnostics-.*\.(ndjson|log|json|txt)$">
     Require all denied
 </FilesMatch>
