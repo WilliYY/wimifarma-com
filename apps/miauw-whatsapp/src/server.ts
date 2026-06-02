@@ -182,6 +182,16 @@ type ReplyRoute = {
   cacheable?: boolean;
 };
 
+type WhatsappUserContext = {
+  id: number | null;
+  username: string;
+  role: string;
+  channel: 'whatsapp';
+  contact_hash: string;
+  contact_mask: string;
+  linked: boolean;
+};
+
 type SharedMiauwContext = {
   source: string;
   version: string;
@@ -2682,6 +2692,75 @@ async function allowedModuleCardsForHashes(phoneHashes: string[]): Promise<Whats
   return moduleCardsForKeys(keys.length ? keys : defaultModuleKeys());
 }
 
+function fallbackWhatsappUserContext(senderMask: string, contactHash = ''): WhatsappUserContext {
+  return {
+    id: null,
+    username: `whatsapp:${senderMask}`,
+    role: 'whatsapp_interno',
+    channel: 'whatsapp',
+    contact_hash: safeText(contactHash, 64),
+    contact_mask: senderMask,
+    linked: false,
+  };
+}
+
+function userContextPayload(context: WhatsappUserContext): JsonRecord {
+  return {
+    id: context.id,
+    usuario_id: context.id,
+    user_id: context.id,
+    username: context.username,
+    role: context.role,
+    channel: context.channel,
+    contact_hash: context.contact_hash,
+    contact_mask: context.contact_mask,
+    linked: context.linked,
+  };
+}
+
+async function whatsappUserContextForHashes(phoneHashes: string[], senderMask: string): Promise<WhatsappUserContext> {
+  const hashes = [...new Set(phoneHashes.map((hash) => safeText(hash, 64)).filter(Boolean))];
+  if (!hashes.length) return fallbackWhatsappUserContext(senderMask);
+  try {
+    const result = await pgPool.query<{
+      phone_hash: string;
+      phone_mask: string;
+      linked_user_id: string | null;
+      linked_username_snapshot: string;
+    }>(
+      `SELECT phone_hash::text AS phone_hash,
+              phone_mask,
+              linked_user_id::text AS linked_user_id,
+              linked_username_snapshot
+         FROM miauw_whatsapp_contacts
+        WHERE status = 'allowed'
+          AND phone_hash::text = ANY($1::text[])
+        ORDER BY linked_user_id IS NOT NULL DESC, updated_at DESC
+        LIMIT 1`,
+      [hashes],
+    );
+    const row = result.rows[0];
+    if (!row) return fallbackWhatsappUserContext(senderMask, hashes[0]);
+    const linkedUserId = Number(row.linked_user_id || 0);
+    const linkedUsername = safeText(row.linked_username_snapshot, 120);
+    return {
+      id: Number.isFinite(linkedUserId) && linkedUserId > 0 ? Math.trunc(linkedUserId) : null,
+      username: linkedUsername || `whatsapp:${row.phone_mask || senderMask}`,
+      role: linkedUsername ? 'whatsapp_core_user' : 'whatsapp_interno',
+      channel: 'whatsapp',
+      contact_hash: safeText(row.phone_hash, 64) || hashes[0],
+      contact_mask: row.phone_mask || senderMask,
+      linked: Boolean(linkedUsername && Number.isFinite(linkedUserId) && linkedUserId > 0),
+    };
+  } catch (error) {
+    await recordErrorLog('whatsapp_user_context', 'warn', error, {
+      phoneMask: senderMask,
+      details: { hashes: hashes.length },
+    });
+    return fallbackWhatsappUserContext(senderMask, hashes[0]);
+  }
+}
+
 async function insertEvent(message: IncomingMessage, status: string, ignoreReason: string, bodyText: string): Promise<{ id: string; inserted: boolean }> {
   const remoteHash = sha256(message.remoteJid);
   const phoneHash = sha256(message.senderPhone);
@@ -3300,11 +3379,12 @@ async function recordSharedMemoryTurn(
   outboxId: string,
   senderHashes: string[],
   replyLatencyMs: number,
+  userContext: WhatsappUserContext,
 ): Promise<void> {
   const contactHash = safeText(senderHashes[0] || row.sender_phone_hash, 64);
   if (!contactHash) return;
   const moduleKey = sharedMemoryModuleKey(inboundText || row.body_text, reply.reason);
-  const common = {
+  const common: SharedMemoryEvent = {
     channel: 'whatsapp' as const,
     contact_hash: contactHash,
     contact_mask: row.sender_phone_mask,
@@ -3313,6 +3393,7 @@ async function recordSharedMemoryTurn(
     intent: safeText(reply.reason, 80),
     engine: reply.engine,
   };
+  if (userContext.id) common.usuario_id = userContext.id;
   await recordSharedMemoryEvents([
     {
       ...common,
@@ -3455,6 +3536,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       ]),
     ];
     let allowedCardsCache: WhatsappModuleCard[] | null = null;
+    const whatsappUserContext = await whatsappUserContextForHashes(senderModuleHashes, row.sender_phone_mask);
     const allowedCardsForSender = async () => {
       if (!allowedCardsCache) {
         allowedCardsCache = await allowedModuleCardsForHashes(senderModuleHashes);
@@ -3656,8 +3738,8 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       };
       replyAsAudio = false;
     }
-    const confirmationReply = await maybeHandleConfirmationReply(row);
-    const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes);
+    const confirmationReply = await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
@@ -3748,6 +3830,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       outboxId,
       senderModuleHashes,
       replyLatencyMs,
+      whatsappUserContext,
     );
   } catch (error) {
     if (outboxId) {
@@ -3911,7 +3994,7 @@ async function findPendingConfirmation(senderHash: string, shortId?: string): Pr
   return result.rows[0] || null;
 }
 
-async function maybeHandleConfirmationReply(row: QueueRow): Promise<ReplyResult | null> {
+async function maybeHandleConfirmationReply(row: QueueRow, userContext: WhatsappUserContext): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
   const decision = parseConfirmationDecision(row.body_text);
   if (!decision) return null;
@@ -3952,7 +4035,7 @@ async function maybeHandleConfirmationReply(row: QueueRow): Promise<ReplyResult 
   );
 
   try {
-    const executed = await executeWhatsappAction(pending, row.trace_id, row.sender_phone_mask);
+    const executed = await executeWhatsappAction(pending, row.trace_id, row.sender_phone_mask, userContext);
     await pgPool.query(
       `UPDATE miauw_whatsapp_confirmations
           SET status = 'executed',
@@ -4368,9 +4451,10 @@ function sharedContextCacheKey(message: string, route?: ReplyRoute, senderHashes
   ].join(':'));
 }
 
-async function requestSharedMiauwContext(message: string, traceId: string, senderMask: string, route?: ReplyRoute, senderHashes: string[] = [], timeoutMs = AGENT_CONTEXT_TIMEOUT_MS): Promise<SharedMiauwContext | null> {
+async function requestSharedMiauwContext(message: string, traceId: string, senderMask: string, route?: ReplyRoute, senderHashes: string[] = [], timeoutMs = AGENT_CONTEXT_TIMEOUT_MS, userContext?: WhatsappUserContext): Promise<SharedMiauwContext | null> {
   if (!INTERNAL_TOKEN || !AGENT_CONTEXT_URL) return null;
   const contactHash = safeText(senderHashes[0], 64);
+  const contextUser = userContext || fallbackWhatsappUserContext(senderMask, contactHash);
   const key = sharedContextCacheKey(message, route, senderHashes);
   const now = Date.now();
   const cached = sharedContextCache.get(key);
@@ -4387,13 +4471,7 @@ async function requestSharedMiauwContext(message: string, traceId: string, sende
         trace_id: traceId,
         message,
         page_context: 'whatsapp',
-        user_context: {
-          username: `whatsapp:${senderMask}`,
-          role: 'whatsapp_interno',
-          channel: 'whatsapp',
-          contact_hash: contactHash,
-          contact_mask: senderMask,
-        },
+        user_context: userContextPayload({ ...contextUser, contact_hash: contextUser.contact_hash || contactHash, contact_mask: contextUser.contact_mask || senderMask }),
       }),
       signal: controller.signal,
     });
@@ -4579,7 +4657,7 @@ function confirmationDraftFromData(data: JsonRecord): WhatsappConfirmationDraft 
   };
 }
 
-async function requestWhatsappActionPrepare(message: string, traceId: string, senderMask: string, allowedCards: WhatsappModuleCard[]): Promise<ReplyResult | null> {
+async function requestWhatsappActionPrepare(message: string, traceId: string, senderMask: string, allowedCards: WhatsappModuleCard[], userContext: WhatsappUserContext): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
@@ -4591,10 +4669,7 @@ async function requestWhatsappActionPrepare(message: string, traceId: string, se
         mode: 'prepare',
         trace_id: traceId,
         message,
-        user_context: {
-          username: `whatsapp:${senderMask}`,
-          role: 'whatsapp_interno',
-        },
+        user_context: userContextPayload({ ...userContext, contact_mask: userContext.contact_mask || senderMask }),
       }),
       signal: controller.signal,
     });
@@ -4637,7 +4712,7 @@ async function requestWhatsappActionPrepare(message: string, traceId: string, se
   }
 }
 
-async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: string, senderMask: string): Promise<string> {
+async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
   if (!whatsappConfirmationsReady()) throw new Error('whatsapp_confirmations_not_enabled');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
@@ -4652,10 +4727,7 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
         tool: pending.tool,
         command: pending.command_payload,
         summary: pending.summary,
-        user_context: {
-          username: `whatsapp:${senderMask}`,
-          role: 'whatsapp_interno',
-        },
+        user_context: userContextPayload({ ...userContext, contact_mask: userContext.contact_mask || senderMask }),
       }),
       signal: controller.signal,
     });
@@ -4688,7 +4760,7 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
   return null;
 }
 
-async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[]): Promise<ReplyResult> {
+async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
   const arrivalReply = parsePedidosArrivalReply(message);
   if (arrivalReply) {
@@ -4747,7 +4819,7 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     };
   }
   if (route.useTools) {
-    const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask, allowedCards);
+    const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask, allowedCards, userContext);
     if (prepared) return prepared;
   }
   if (route.engine === 'local' || route.engine === 'blocked') {
@@ -4759,7 +4831,7 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       if (cachedReply) return { text: cachedReply, engine: 'gemini_cache', reason: `${route.reason}:cache_hit` };
       let sharedContext: SharedMiauwContext | null = null;
       try {
-        sharedContext = await requestSharedMiauwContext(route.message, traceId, senderMask, route, senderHashes, GEMINI_CONTEXT_TIMEOUT_MS);
+        sharedContext = await requestSharedMiauwContext(route.message, traceId, senderMask, route, senderHashes, GEMINI_CONTEXT_TIMEOUT_MS, userContext);
       } catch {
         sharedContext = null;
       }
@@ -4768,21 +4840,21 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       return { text: geminiReply.text, engine: 'gemini', reason: route.reason };
     } catch (error) {
       if (REPLY_ENGINE === 'gemini') throw error;
-      const miauwReply = await requestMiauwReply(message, traceId, senderMask, route, allowedCards, senderHashes);
+      const miauwReply = await requestMiauwReply(message, traceId, senderMask, route, allowedCards, senderHashes, userContext);
       return { text: miauwReply.text, engine: 'miauw', reason: `gemini_failed_fallback:${safeError(error)}`, confirmation: miauwReply.confirmation };
     }
   }
 
-  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route, allowedCards, senderHashes);
+  const miauwReply = await requestMiauwReply(route.message, traceId, senderMask, route, allowedCards, senderHashes, userContext);
   return { text: miauwReply.text, engine: 'miauw', reason: route.reason, confirmation: miauwReply.confirmation };
 }
 
-async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute, allowedCards: WhatsappModuleCard[] = moduleCardsForKeys(defaultModuleKeys()), senderHashes: string[] = []): Promise<{ text: string; confirmation?: WhatsappConfirmationDraft }> {
+async function requestMiauwReply(message: string, traceId: string, senderMask: string, route?: ReplyRoute, allowedCards: WhatsappModuleCard[] = moduleCardsForKeys(defaultModuleKeys()), senderHashes: string[] = [], userContext?: WhatsappUserContext): Promise<{ text: string; confirmation?: WhatsappConfirmationDraft }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const useTools = route?.useTools === true;
   let sharedContext: SharedMiauwContext | null = null;
   try {
-    sharedContext = await requestSharedMiauwContext(message, traceId, senderMask, route, senderHashes);
+    sharedContext = await requestSharedMiauwContext(message, traceId, senderMask, route, senderHashes, AGENT_CONTEXT_TIMEOUT_MS, userContext);
   } catch {
     sharedContext = null;
   }
@@ -4791,11 +4863,7 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
     trace_id: traceId,
     message,
     user_context: {
-      username: `whatsapp:${senderMask}`,
-      role: 'whatsapp_interno',
-      channel: 'whatsapp',
-      contact_hash: safeText(senderHashes[0], 64),
-      contact_mask: senderMask,
+      ...userContextPayload(userContext || fallbackWhatsappUserContext(senderMask, safeText(senderHashes[0], 64))),
     },
     style_context: styleContext,
   };

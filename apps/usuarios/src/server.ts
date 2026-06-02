@@ -879,16 +879,19 @@ function safeStringArray(value: unknown): string[] {
 async function recentAudit(limit = 80): Promise<AuditRow[]> {
   const result = await corePgPool.query<AuditRow>(
     `SELECT
-        e.id::text,
+        l.id::text,
         actor.username AS actor_username,
         target.username AS target_username,
-        e.action,
-        e.summary,
-        e.created_at::text
-       FROM core_user_audit_events e
-       LEFT JOIN core_users actor ON actor.id = e.actor_user_id
-       LEFT JOIN core_users target ON target.id = e.target_user_id
-      ORDER BY e.created_at DESC, e.id DESC
+        l.action,
+        COALESCE(NULLIF(l.detail, ''), l.action) AS summary,
+        l.created_at::text
+       FROM core_audit_logs l
+       LEFT JOIN core_users actor ON actor.id = l.actor_user_id
+       LEFT JOIN core_users target
+         ON l.entity_type = 'core_user'
+        AND l.entity_id ~ '^[0-9]+$'
+        AND target.id = l.entity_id::bigint
+      ORDER BY l.created_at DESC, l.id DESC
       LIMIT $1`,
     [Math.max(1, Math.min(200, limit))],
   );
@@ -908,26 +911,34 @@ async function auditByUser(userIds: number[], limitPerUser = 12): Promise<Map<nu
       ranked_events AS (
         SELECT
           selected_users.user_id::text AS history_user_id,
-          e.id::text,
+          l.id::text,
           actor.username AS actor_username,
           target.username AS target_username,
-          e.action,
-          e.summary,
-          e.created_at::text,
+          l.action,
+          COALESCE(NULLIF(l.detail, ''), l.action) AS summary,
+          l.created_at::text,
           CASE
-            WHEN e.actor_user_id = selected_users.user_id AND e.target_user_id = selected_users.user_id THEN 'own'
-            WHEN e.actor_user_id = selected_users.user_id THEN 'actor'
+            WHEN l.actor_user_id = selected_users.user_id AND target.id = selected_users.user_id THEN 'own'
+            WHEN l.actor_user_id = selected_users.user_id THEN 'actor'
             ELSE 'target'
           END AS relation,
           ROW_NUMBER() OVER (
             PARTITION BY selected_users.user_id
-            ORDER BY e.created_at DESC, e.id DESC
+            ORDER BY l.created_at DESC, l.id DESC
           ) AS rn
         FROM selected_users
-        JOIN core_user_audit_events e
-          ON e.actor_user_id = selected_users.user_id OR e.target_user_id = selected_users.user_id
-        LEFT JOIN core_users actor ON actor.id = e.actor_user_id
-        LEFT JOIN core_users target ON target.id = e.target_user_id
+        JOIN core_audit_logs l
+          ON l.actor_user_id = selected_users.user_id
+          OR (
+            l.entity_type = 'core_user'
+            AND l.entity_id ~ '^[0-9]+$'
+            AND l.entity_id::bigint = selected_users.user_id
+          )
+        LEFT JOIN core_users actor ON actor.id = l.actor_user_id
+        LEFT JOIN core_users target
+          ON l.entity_type = 'core_user'
+         AND l.entity_id ~ '^[0-9]+$'
+         AND target.id = l.entity_id::bigint
       )
       SELECT history_user_id, id, actor_username, target_username, action, summary, created_at, relation
         FROM ranked_events
@@ -1156,8 +1167,8 @@ async function createUser(req: Request, actor: User): Promise<void> {
     throw new Error('Usuario nao pode ter espacos.');
   }
   const password = String(req.body.password || '');
-  if (password.length < 6) {
-    throw new Error('Senha precisa ter pelo menos 6 caracteres.');
+  if (password.length < 1) {
+    throw new Error('Informe uma senha para criar o usuario.');
   }
   const role = normalizeRole(req.body.role);
   const active = req.body.active === '1' || req.body.active === 'on';
@@ -1227,9 +1238,6 @@ async function updateUser(req: Request, actor: User): Promise<void> {
     active = true;
   }
   const password = String(req.body.password || '');
-  if (password && password.length < 6) {
-    throw new Error('Senha precisa ter pelo menos 6 caracteres.');
-  }
   const xpEmployeeId = Number(req.body.xp_employee_id || 0);
   const client = await corePgPool.connect();
   try {
@@ -1515,7 +1523,7 @@ function renderDashboard(
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-edit-ui">
-  <script src="${BASE_PATH}/password-tools.js?v=20260530b" defer></script>
+  <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
 </head>
 <body>
   <header class="users-topbar">
@@ -1559,12 +1567,12 @@ function renderDashboard(
               <div class="users-label users-password-label">
                 <span>Senha</span>
                 <div class="users-password-control" data-password-control>
-                  <input class="users-input" type="password" name="password" minlength="6" autocomplete="new-password" required data-password-input>
+                  <input class="users-input" type="password" name="password" autocomplete="new-password" required data-password-input>
                   <button class="users-mini-action" type="button" data-password-generate>Gerar</button>
                   <button class="users-mini-action" type="button" data-password-toggle>Mostrar</button>
                   <button class="users-mini-action" type="button" data-password-copy>Copiar</button>
                 </div>
-                <small class="users-field-help" data-password-status>Ao criar, a senha fica no cofre ADM criptografado para consulta interna.</small>
+                <small class="users-field-help" data-password-status>Senha simples e permitida; ela fica com hash seguro e cofre ADM criptografado.</small>
               </div>
               <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select></label>
               <label class="users-check users-status-check"><input type="checkbox" name="active" value="1" checked><span>Ativo</span></label>
@@ -1644,7 +1652,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
           <div class="users-label users-password-label">
             <span>Senha nova</span>
             <div class="users-password-control" data-password-control>
-              <input class="users-input" type="password" name="password" minlength="6" autocomplete="new-password" placeholder="Manter atual" data-password-input>
+              <input class="users-input" type="password" name="password" autocomplete="new-password" placeholder="Manter atual" data-password-input>
               <button class="users-mini-action" type="button" data-password-generate>Gerar</button>
               <button class="users-mini-action" type="button" data-password-toggle>Mostrar</button>
               <button class="users-mini-action" type="button" data-password-copy>Copiar</button>

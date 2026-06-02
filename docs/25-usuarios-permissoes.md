@@ -22,14 +22,15 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - `core_user_xp_links`: vinculo logico entre usuario e funcionario em `xp_employees`.
 - `core_user_admin_passwords`: cofre administrativo das senhas definidas pelo painel Usuarios. Guarda senha cifrada com AES-GCM para consulta do ADM; o login continua usando somente `core_users.password_hash`.
 - `core_user_whatsapp_links`: vinculo seguro entre usuario e contatos da allowlist do Miauby WhatsApp. Guarda `contact_id`, mascara, nome, status e cards liberados; o numero completo permanece somente cifrado no bridge WhatsApp.
-- `core_user_audit_events`: historico de criacao, atualizacao, desativacao, permissoes, vinculo XP e acoes relevantes do painel. A tela mostra esse historico por usuario em cards minimizados por padrao, combinando eventos em que o usuario foi ator ou alvo.
-- `core_audit_logs`: espelho curto para auditoria compartilhada dos apps Node.
+- `core_user_audit_events`: historico de criacao, atualizacao, desativacao, permissoes, vinculo XP e acoes relevantes do painel.
+- `core_audit_logs`: espelho curto para auditoria compartilhada dos apps Node. A tela de Usuarios usa essa fonte central para mostrar historico geral e por usuario, incluindo eventos operacionais de outros modulos quando eles espelham resumo seguro no core.
 
 ## Regras
 
 - Acesso ao painel fica restrito a username `adm` ou role `admin`.
 - Criar/atualizar/desativar usuario exige CSRF.
 - Senhas antigas importadas por hash continuam irrecuperaveis. A partir do painel Usuarios, sempre que o ADM cria ou troca uma senha, `core_users.password_hash` recebe o bcrypt oficial do login e `core_user_admin_passwords` recebe uma copia cifrada para consulta interna no bloco `Senha ADM`.
+- Senha simples/curta e permitida no cadastro e na troca feita pelo ADM. O painel pode avisar visualmente que a senha e fraca, mas nao bloqueia; a seguranca obrigatoria continua sendo hash `bcrypt` para login e cofre ADM cifrado. Nunca salvar senha em texto puro.
 - Se nao existir registro no cofre administrativo, o painel deve orientar o ADM a definir uma nova senha. Nao tentar quebrar hash antigo.
 - A chave do cofre usa `USUARIOS_PASSWORD_VAULT_KEY`; se ela nao estiver definida, o app usa `USUARIOS_SESSION_SECRET`. Trocar essa chave sem redefinir as senhas torna os registros antigos do cofre indisponiveis, mas nao altera o login por hash.
 - Excluir usuario no painel significa `active=false`; nao apagar fisicamente.
@@ -46,7 +47,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - Linhas ausentes em `core_user_module_permissions` preservam acesso legado ate cada modulo ser cortado para enforcement.
 - A grade de modulos do painel deve manter os nomes legiveis sem quebrar palavras dentro dos chips; `Salvar` fica separado visualmente de `Excluir` para evitar clique confuso.
 - No card lateral `Novo usuario`, o controle de senha deve caber dentro do card: campo em linha propria e botoes `Gerar`, `Mostrar` e `Copiar` na linha seguinte, sem vazar sobre a lista de usuarios.
-- O historico geral e o historico por usuario devem ficar recolhidos por padrao para evitar poluir a tela; abrir `Historico` no card deve mostrar os eventos recentes daquele login automaticamente, inclusive quando um novo colaborador for criado.
+- O historico geral e o historico por usuario devem ficar recolhidos por padrao para evitar poluir a tela; abrir `Historico` no card deve mostrar os eventos recentes daquele login automaticamente, inclusive quando um novo colaborador for criado. Eventos operacionais de outros modulos aparecem quando o modulo grava `core_audit_logs.actor_user_id` com o `core_users.id` do responsavel.
 - As telas de login e painel devem declarar favicon proprio (`/cashback/favicon.png`) para nao herdar o fallback do WordPress.
 
 ## Integracoes internas

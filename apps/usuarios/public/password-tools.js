@@ -26,6 +26,27 @@
     if (kind) node.classList.add(kind);
   }
 
+  function updatePasswordHint(input) {
+    var control = input ? input.closest('[data-password-control]') : null;
+    if (!control || input.readOnly) return;
+    var value = input.value || '';
+    if (!value) {
+      setStatus(
+        control,
+        input.required
+          ? 'Senha simples e permitida; ela fica com hash seguro e cofre ADM criptografado.'
+          : 'Deixe vazio para manter a senha atual.',
+        ''
+      );
+      return;
+    }
+    if (value.length < 6) {
+      setStatus(control, 'Senha fraca, mas permitida. O login continua protegido por hash seguro.', 'warn');
+      return;
+    }
+    setStatus(control, 'Senha aceita. O login continua protegido por hash seguro.', 'ok');
+  }
+
   function randomIndex(max) {
     if (window.crypto && window.crypto.getRandomValues) {
       var bytes = new Uint32Array(1);
@@ -90,5 +111,11 @@
           setStatus(control, 'Digite ou gere uma senha antes de copiar.', 'warn');
         });
     }
+  });
+
+  document.addEventListener('input', function (event) {
+    var input = event.target && event.target.matches ? event.target : null;
+    if (!input || !input.matches('[data-password-input]')) return;
+    updatePasswordHint(input);
   });
 }());

@@ -78,6 +78,34 @@ function miauw_agent_actions_clean_responsible(string $value): string
     return $value === '' ? '' : miauw_substr($value, 0, 70);
 }
 
+function miauw_agent_actions_user_context(array $body): array
+{
+    $context = $body['user_context'] ?? array();
+    return is_array($context) ? $context : array();
+}
+
+function miauw_agent_actions_context_user_id(array $context): int
+{
+    foreach (array('id', 'usuario_id', 'user_id') as $key) {
+        $value = (int) ($context[$key] ?? 0);
+        if ($value > 0) {
+            return $value;
+        }
+    }
+
+    return 0;
+}
+
+function miauw_agent_actions_context_username(array $context): string
+{
+    $username = trim((string) ($context['username'] ?? ''));
+    if ($username === '' || str_starts_with(strtolower($username), 'whatsapp:')) {
+        return '';
+    }
+
+    return miauw_substr($username, 0, 80);
+}
+
 function miauw_agent_actions_confirmation(string $tool, array $command, ?string $summary = null): array
 {
     $meta = function_exists('miauw_tool_public_meta') ? miauw_tool_public_meta($tool) : array();
@@ -97,7 +125,7 @@ function miauw_agent_actions_confirmation(string $tool, array $command, ?string 
     );
 }
 
-function miauw_agent_actions_prepare_financeiro(string $message): ?array
+function miauw_agent_actions_prepare_financeiro(string $message, array $userContext = array()): ?array
 {
     if (!function_exists('miauw_skill_financeiro_command_from_message')) {
         return null;
@@ -108,7 +136,18 @@ function miauw_agent_actions_prepare_financeiro(string $message): ?array
         return null;
     }
 
+    $contextUserId = miauw_agent_actions_context_user_id($userContext);
+    $contextUsername = miauw_agent_actions_context_username($userContext);
     $command['responsavel'] = miauw_agent_actions_clean_responsible((string) ($command['responsavel'] ?? ''));
+    if ($command['responsavel'] === '' && $contextUsername !== '') {
+        $command['responsavel'] = $contextUsername;
+    }
+    if ($contextUserId > 0) {
+        $command['usuario_id'] = $contextUserId;
+    }
+    if ($contextUsername !== '') {
+        $command['username'] = $contextUsername;
+    }
     $command['raw_message'] = 'whatsapp_action_prepare_financeiro: ' . miauw_substr($message, 0, 260);
 
     $missing = array();
@@ -190,7 +229,7 @@ function miauw_agent_actions_prepare_gestao(string $message): ?array
     return miauw_agent_actions_confirmation('criar_conta_gestao', $command);
 }
 
-function miauw_agent_actions_prepare(string $message): array
+function miauw_agent_actions_prepare(string $message, array $userContext = array()): array
 {
     $message = trim($message);
     if ($message === '') {
@@ -202,7 +241,7 @@ function miauw_agent_actions_prepare(string $message): array
         return $gestao;
     }
 
-    $financeiro = miauw_agent_actions_prepare_financeiro($message);
+    $financeiro = miauw_agent_actions_prepare_financeiro($message, $userContext);
     if (is_array($financeiro)) {
         return $financeiro;
     }
@@ -242,7 +281,16 @@ function miauw_agent_actions_execute(array $body): array
     }
 
     $traceId = miauw_substr(trim((string) ($body['trace_id'] ?? '')), 0, 80);
-    $userId = (int) MIAUW_WHATSAPP_ACTOR_USER_ID;
+    $userContext = miauw_agent_actions_user_context($body);
+    $contextUserId = miauw_agent_actions_context_user_id($userContext);
+    $contextUsername = miauw_agent_actions_context_username($userContext);
+    $userId = $contextUserId > 0 ? $contextUserId : (int) MIAUW_WHATSAPP_ACTOR_USER_ID;
+    if ($userId > 0) {
+        $command['usuario_id'] = $userId;
+    }
+    if ($contextUsername !== '') {
+        $command['username'] = $contextUsername;
+    }
     if ($traceId !== '' && function_exists('miauw_trace_set_context')) {
         miauw_trace_set_context($traceId, null, $userId);
     }
@@ -325,7 +373,7 @@ $mode = trim((string) ($body['mode'] ?? 'prepare'));
 
 try {
     if ($mode === 'prepare') {
-        miauw_agent_actions_json(200, miauw_agent_actions_prepare((string) ($body['message'] ?? '')));
+        miauw_agent_actions_json(200, miauw_agent_actions_prepare((string) ($body['message'] ?? ''), miauw_agent_actions_user_context($body)));
     }
 
     if ($mode === 'execute') {

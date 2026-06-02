@@ -50,6 +50,15 @@ const INTERNAL_TOKENS = [
   env.MIAUW_WHATSAPP_INTERNAL_TOKEN,
   env.MIAUW_AGENT_INTERNAL_TOKEN,
 ].map((value) => String(value || '').trim()).filter(Boolean);
+const CORE_AUDIT_ACTIONS = new Set([
+  'criar_fechamento',
+  'alterar_fechamento',
+  'fechar_fechamento',
+  'reabrir_fechamento',
+  'salvar_faturamento_diario',
+  'criar_lancamento',
+  'cancelar_lancamento',
+]);
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -145,6 +154,65 @@ function userPublic(row: CoreUserRow): User {
 function isAdmin(user: User | null | undefined): boolean {
   if (!user) return false;
   return normalizeUsername(user.role) === 'admin' || normalizeUsername(user.username) === 'adm';
+}
+
+function auditObject(value: unknown): AnyRow {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRow : {};
+}
+
+function auditValueLabel(row: AnyRow): string {
+  const direct = row.valor ?? row.amount ?? row.faturamento_dia;
+  if (direct !== undefined && direct !== null && direct !== '') return brMoneyFromDecimal(direct);
+  const cents = Number(row.valor_cents ?? row.amount_cents ?? 0);
+  return Number.isFinite(cents) && cents > 0 ? brMoneyFromCents(cents) : '';
+}
+
+function financeCoreAuditSummary(action: string, entityTable: string, after: unknown): string {
+  const row = auditObject(after);
+  const date = isoDate(row.data_fechamento ?? row.data ?? row.entry_date ?? row.closing_date);
+  const dateLabel = date ? ` em ${brDate(date)}` : '';
+  const category = cleanText(row.categoria ?? row.category, 120);
+  const valueLabel = auditValueLabel(row);
+
+  if (action === 'criar_lancamento') {
+    return `Financeiro: lancamento${category ? ` ${category}` : ''}${valueLabel ? ` de ${valueLabel}` : ''}${dateLabel}.`;
+  }
+  if (action === 'cancelar_lancamento') return `Financeiro: lancamento cancelado${dateLabel}.`;
+  if (action === 'salvar_faturamento_diario') return `Financeiro: faturamento diario${valueLabel ? ` de ${valueLabel}` : ''}${dateLabel} salvo.`;
+  if (action === 'fechar_fechamento') return `Financeiro: fechamento${dateLabel} finalizado.`;
+  if (action === 'reabrir_fechamento') return `Financeiro: fechamento${dateLabel} reaberto.`;
+  if (action === 'alterar_fechamento') return `Financeiro: fechamento${dateLabel} salvo/alterado.`;
+  if (action === 'criar_fechamento') return `Financeiro: fechamento${dateLabel} criado.`;
+  return `Financeiro: ${action} em ${entityTable}.`;
+}
+
+async function mirrorCoreAudit(
+  action: string,
+  entityTable: string,
+  recordId: number | null,
+  after: unknown,
+  req?: Request,
+  userId?: number | null,
+): Promise<void> {
+  if (!CORE_AUDIT_ACTIONS.has(action)) return;
+  const actorUserId = userId ?? req?.session.user?.id ?? null;
+  await corePgPool.query(
+    `INSERT INTO core_audit_logs (actor_user_id, action, entity_type, entity_id, detail, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+    [
+      actorUserId,
+      `financeiro_${action}`,
+      entityTable,
+      recordId === null ? null : String(recordId),
+      financeCoreAuditSummary(action, entityTable, after),
+      JSON.stringify({
+        service: 'financeiro',
+        module: 'financeiro',
+        source: req ? 'web' : 'internal',
+        action,
+      }),
+    ],
+  );
 }
 
 async function canAccessFinanceiro(user: User): Promise<boolean> {
@@ -913,6 +981,11 @@ async function auditEvent(
   } catch (error) {
     console.warn('[financeiro] audit failed', error);
   }
+  try {
+    await mirrorCoreAudit(action, entityTable, recordId, after, req, userId);
+  } catch (error) {
+    console.warn('[financeiro] core audit mirror failed', error);
+  }
 }
 
 async function getOrCreateClosing(date: string, req?: Request, client?: PoolClient): Promise<AnyRow> {
@@ -1022,10 +1095,13 @@ async function recalculateClosing(closingId: number): Promise<AnyRow> {
   return updated;
 }
 
-function closingDataFromBody(body: AnyRow): AnyRow {
+function closingDataFromBody(body: AnyRow, user?: User): AnyRow {
+  const userResponsible = cleanText(user?.username, 160);
+  const responsibleText = cleanText(body.responsavel_texto, 160) || userResponsible;
+  const responsibleUserId = userResponsible && normalizeUsername(responsibleText) === normalizeUsername(userResponsible) ? user?.id || null : null;
   return {
-    responsavel_id: intOrNull(body.responsavel_id),
-    responsavel_texto: cleanText(body.responsavel_texto, 160),
+    responsavel_id: intOrNull(body.responsavel_id) || responsibleUserId,
+    responsavel_texto: responsibleText,
     caixa_fisico: moneyTextToCents(body.caixa_fisico),
     cartao_total: moneyTextToCents(body.cartao_total),
     pix_banco_total: moneyTextToCents(body.pix_banco_total),
@@ -1624,6 +1700,7 @@ async function renderCashier(req: Request): Promise<string> {
     .join('');
   const categoryOptions = categories().map((category) => `<option value="${e(category)}">${e(category)}</option>`).join('');
   const badgeText = `${brDate(date)} - ${statusLabel(String(selectedClosing.status || 'aberto'))}${selectedClosing.fechado_em ? ` - Fechado ${formatPgTimestamp(selectedClosing.fechado_em, true)}` : ''}`;
+  const responsibleText = selectedClosing.responsavel_nome || selectedClosing.responsavel_texto || req.session.user?.username || '';
   return `<div class="fiscal-overview">
     <details class="finance-card year-card collapsed-picker">
       <summary><div><span class="kicker">Mes fiscal</span><h2>${year} / ${e(monthName(month))}</h2></div><div class="year-actions">${years
@@ -1652,7 +1729,7 @@ async function renderCashier(req: Request): Promise<string> {
       <input type="hidden" name="ajustes" value="${e(moneyInput(selectedClosing.ajustes))}">
       <input type="hidden" name="faturamento_dia" value="${e(moneyInput(selectedClosing.faturamento_dia))}">
       <div class="form-grid top-fields">
-        <label>Responsavel <input name="responsavel_texto" value="${e(selectedClosing.responsavel_nome || selectedClosing.responsavel_texto || '')}" placeholder="Ex.: Isadora" ${locked ? 'disabled' : ''}></label>
+        <label>Responsavel <input name="responsavel_texto" value="${e(responsibleText)}" placeholder="Ex.: Isadora" ${locked ? 'disabled' : ''}></label>
         <label>Total Sistema <input name="total_sistema" value="${e(moneyInput(selectedClosing.abertura_sistema))}" inputmode="decimal" placeholder="0,00" ${locked ? 'disabled' : ''}></label>
       </div>
     </form>
@@ -1862,7 +1939,7 @@ app.post([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(asyn
 
     if (action === 'save_day' || action === 'close_day') {
       const closing = await getOrCreateClosing(date, req);
-      const updated = await updateManualClosing(Number(closing.id), closingDataFromBody(body), req);
+      const updated = await updateManualClosing(Number(closing.id), closingDataFromBody(body, user), req);
       if (action === 'save_day' && wantsJson(req)) {
         res.json({
           ok: true,

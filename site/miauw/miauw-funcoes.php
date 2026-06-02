@@ -3408,14 +3408,16 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
                 (float) ($command['valor'] ?? 0),
                 (string) ($command['responsavel'] ?? ''),
                 (string) ($command['observacao'] ?? ''),
-                isset($command['data']) ? (string) $command['data'] : null
+                isset($command['data']) ? (string) $command['data'] : null,
+                $userId
             )
             : miauw_skill_create_financeiro_lancamento(
                 'Sangria',
                 (float) ($command['valor'] ?? 0),
                 (string) ($command['observacao'] ?? ''),
                 isset($command['data']) ? (string) $command['data'] : null,
-                (string) ($command['responsavel'] ?? '')
+                (string) ($command['responsavel'] ?? ''),
+                $userId
             );
 
         return "Sangria registrada.\n"
@@ -3433,7 +3435,8 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
             (float) ($command['valor'] ?? 0),
             (string) ($command['observacao'] ?? ''),
             isset($command['data']) ? (string) $command['data'] : null,
-            (string) ($command['responsavel'] ?? '')
+            (string) ($command['responsavel'] ?? ''),
+            $userId
         );
 
         return miauw_skill_financeiro_action_reply($result);
