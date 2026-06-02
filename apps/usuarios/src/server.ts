@@ -1514,7 +1514,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260531-user-history">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-edit-ui">
   <script src="${BASE_PATH}/password-tools.js?v=20260530b" defer></script>
 </head>
 <body>
@@ -1567,7 +1567,7 @@ function renderDashboard(
                 <small class="users-field-help" data-password-status>Ao criar, a senha fica no cofre ADM criptografado para consulta interna.</small>
               </div>
               <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select></label>
-              <label class="users-check"><input type="checkbox" name="active" value="1" checked>Ativo</label>
+              <label class="users-check users-status-check"><input type="checkbox" name="active" value="1" checked><span>Ativo</span></label>
               <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, null)}</select></label>
               <fieldset class="users-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', defaultModules)}</fieldset>
               <button class="users-button" type="submit">Criar</button>
@@ -1633,8 +1633,8 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
       </div>
       <div class="users-meta"><span>${e(enabledModules.length)} m&oacute;dulos</span></div>
     </div>
-    <details>
-      <summary>Editar</summary>
+    <details class="users-edit-details">
+      <summary><span>Editar</span></summary>
       <form method="post" action="${BASE_PATH}/" class="users-user-form">
         ${csrfField(req)}
         <input type="hidden" name="action" value="update_user">
@@ -1653,20 +1653,22 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
           </div>
           <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>
         </div>
-        ${renderAdminPasswordVault(row)}
         ${isAdm ? `<input type="hidden" name="role" value="${e(row.role)}">` : ''}
-        <label class="users-check"><input type="checkbox" name="active" value="1"${row.active ? ' checked' : ''}${isAdm ? ' disabled' : ''}>Ativo</label>
+        <div class="users-edit-security-row">
+          ${renderAdminPasswordVault(row)}
+          <label class="users-check users-status-check"><input type="checkbox" name="active" value="1"${row.active ? ' checked' : ''}${isAdm ? ' disabled' : ''}><span>Ativo</span></label>
+        </div>
         ${isAdm ? '<input type="hidden" name="active" value="1">' : ''}
-        <fieldset class="users-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', permissions)}</fieldset>
+        <fieldset class="users-fieldset users-modules-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', permissions)}</fieldset>
         <div class="users-actions">
-          <button class="users-button" type="submit">Salvar</button>
+          <button class="users-button" type="submit">Salvar alteracoes</button>
         </div>
       </form>
       <form method="post" action="${BASE_PATH}/" class="users-delete-form">
         ${csrfField(req)}
         <input type="hidden" name="action" value="deactivate_user">
         <input type="hidden" name="user_id" value="${e(userId)}">
-        <button class="users-button danger" type="submit"${isAdm ? ' disabled' : ''}>Excluir</button>
+        <button class="users-button danger" type="submit"${isAdm ? ' disabled' : ''}>Desativar usuario</button>
       </form>
       <div class="users-integrations">
         <section class="users-subsection users-task-subsection">

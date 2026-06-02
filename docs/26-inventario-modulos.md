@@ -707,6 +707,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - `/usuarios/login.php`: login admin.
 - `/usuarios/` e `/usuarios/index.php`: painel de usuarios, permissoes, XP, tarefas privadas, allowlist WhatsApp e auditoria.
 - Bloco `Senha ADM`: mostra/copiar senha definida no painel quando houver registro cifrado; senhas antigas por hash exigem redefinicao.
+- Desde 2026-06-02, o card expandido de edicao usa painel visual compacto: perfil/senha/XP alinhados sem esticar selects, status `Ativo` ao lado do cofre ADM, modulos em grade mais densa e acao `Desativar usuario` como botao secundario vermelho. Essa mudanca e apenas frontend e nao altera permissoes, CSRF, sessao, senha ou auditoria.
 - `/usuarios/logout.php`: encerra sessao.
 - `/usuarios/health`: health do core e alcance do XP.
 - `/usuarios/api/me/xp-card`: mini-card XP do usuario logado.
