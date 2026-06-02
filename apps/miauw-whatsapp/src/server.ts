@@ -440,7 +440,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.25';
+const SERVICE_VERSION = '0.5.26';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -552,11 +552,15 @@ const FINANCEIRO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_F
 const PEDIDOS_ARRIVAL_AUTOMATION_KEY = 'pedidos_chegada_17h';
 const FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY = 'financeiro_fechamento_caixa_18h';
 const COTACAO_ENCOMENDA_AUTOMATION_KEY = 'cotacao_encomenda_16h';
+const EVOLUTION_BAILEYS_AUTOMATION_KEY = 'evolution_baileys_alerta';
+const PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY = 'pix_ocr_resumo_diario';
 const AUTOMATION_NOTIFY_COOLDOWN_MINUTES = numberEnv('MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES', 15, 1, 240);
 const WATCHDOG_LOOKBACK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES', 30, 5, 240);
 const WATCHDOG_STUCK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES', 2, 1, 60);
 const WATCHDOG_SLOW_TOTAL_MS = numberEnv('MIAUW_WHATSAPP_WATCHDOG_SLOW_TOTAL_MS', 30000, 5000, 300000);
 const SMOKE_CHECK_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_SMOKE_CHECK_TIMEOUT_MS', 6000, 1000, 30000);
+const EVOLUTION_BAILEYS_ALERT_LOOKBACK_MINUTES = numberEnv('MIAUW_WHATSAPP_EVOLUTION_BAILEYS_ALERT_LOOKBACK_MINUTES', 120, 15, 1440);
+const PIX_OCR_SUMMARY_LOOKBACK_HOURS = numberEnv('MIAUW_WHATSAPP_PIX_OCR_SUMMARY_LOOKBACK_HOURS', 24, 1, 168);
 const WHATSAPP_MODULE_CARDS: WhatsappModuleCard[] = [
   { key: 'cashback', label: 'Cashback', description: 'Clientes, compras, creditos e resgates.', command: 'miauby cashback' },
   { key: 'cotacao', label: 'Cotacao', description: 'Itens, precos, fornecedores e ganhadores.', command: 'miauby cotacao' },
@@ -630,6 +634,32 @@ const N8N_WORKFLOW_CARDS = [
     safety: 'Somente alerta interno; nao altera valor, fornecedor, status ou linha da Cotacao.',
     controlNote: 'Desligar aqui faz o Miauby ignorar o envio mesmo que a Cotacao continue registrando o lembrete.',
     settingsKey: COTACAO_ENCOMENDA_AUTOMATION_KEY,
+  },
+  {
+    key: EVOLUTION_BAILEYS_AUTOMATION_KEY,
+    title: 'Evolution/Baileys',
+    schedule: 'A cada 30 min',
+    moduleKey: 'miauw',
+    description: 'Alerta quando o transporte Evolution/Baileys mostra conexao ruim, pausa de provedor ou falhas recentes.',
+    n8nAction: 'O n8n chama um endpoint interno seguro do bridge. Ele nao executa shell, nao monta Docker socket e nao acessa segredo da Evolution.',
+    miaubyAction: 'Miauby envia alerta apenas para contatos com card Miauby quando houver problema. O script de host continua como runbook para auditoria exata de logs.',
+    messagePreview: 'Ex.: "Alerta Evolution/Baileys: conexao nao esta open ou houve envio failed/dead recente."',
+    safety: 'Somente leitura e alerta; nao reinicia container nem atualiza a Evolution sozinho.',
+    controlNote: 'Desligar aqui faz o backend ignorar o disparo mesmo que o workflow continue agendado.',
+    settingsKey: EVOLUTION_BAILEYS_AUTOMATION_KEY,
+  },
+  {
+    key: PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY,
+    title: 'Resumo Pix/OCR',
+    schedule: 'Todo dia 19:10',
+    moduleKey: 'financeiro',
+    description: 'Resume leituras Pix por midia, destacando falhas de OCR, campos faltando e destino divergente.',
+    n8nAction: 'O n8n chama o resumo interno diario do bridge com notify=problems. O endpoint le apenas eventos/logs sanitizados do WhatsApp.',
+    miaubyAction: 'Miauby avisa contatos com card Financeiro quando houver falha ou campo faltando para corrigir antes de fechar o caixa.',
+    messagePreview: 'Ex.: "Resumo Pix/OCR: 4 tentativas, 1 com campos faltando e 1 falha OCR."',
+    safety: 'Nao cria lancamento, nao confirma Pix e nao acessa banco financeiro; apenas resume diagnostico sanitizado.',
+    controlNote: 'Desligar aqui pausa o envio do resumo pelo backend; o workflow pode continuar agendado.',
+    settingsKey: PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY,
   },
   {
     key: 'pedidos_boletos',
@@ -2023,6 +2053,20 @@ async function ensureSchema(): Promise<void> {
     'Encomenda da Cotacao',
     'cotacao',
     'Dia seguinte 16:00',
+    true,
+  );
+  await ensureAutomationSetting(
+    EVOLUTION_BAILEYS_AUTOMATION_KEY,
+    'Evolution/Baileys',
+    'miauw',
+    'A cada 30 min',
+    true,
+  );
+  await ensureAutomationSetting(
+    PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY,
+    'Resumo Pix/OCR',
+    'financeiro',
+    'Todo dia 19:10',
     true,
   );
 }
@@ -6343,12 +6387,16 @@ function publicStatus(): JsonRecord {
     n8n_internal_pedidos_arrival_check: `${BASE_PATH}/internal/pedidos-arrival-check`,
     n8n_internal_financeiro_cash_closing_reminder: `${BASE_PATH}/internal/financeiro-cash-closing-reminder`,
     n8n_internal_cotacao_encomenda_reminder: `${BASE_PATH}/internal/cotacao-encomenda-reminder`,
+    n8n_internal_evolution_baileys_alert: `${BASE_PATH}/internal/evolution-baileys-alert`,
+    n8n_internal_pix_ocr_daily_summary: `${BASE_PATH}/internal/pix-ocr-daily-summary`,
     pedidos_internal_base_configured: PEDIDOS_INTERNAL_BASE_URL !== '',
     financeiro_internal_base_configured: FINANCEIRO_INTERNAL_BASE_URL !== '',
     automation_notify_cooldown_minutes: AUTOMATION_NOTIFY_COOLDOWN_MINUTES,
     watchdog_lookback_minutes: WATCHDOG_LOOKBACK_MINUTES,
     watchdog_stuck_minutes: WATCHDOG_STUCK_MINUTES,
     watchdog_slow_total_ms: WATCHDOG_SLOW_TOTAL_MS,
+    evolution_baileys_alert_lookback_minutes: EVOLUTION_BAILEYS_ALERT_LOOKBACK_MINUTES,
+    pix_ocr_summary_lookback_hours: PIX_OCR_SUMMARY_LOOKBACK_HOURS,
     whatsapp_write_actions: 'core_confirmation',
     whatsapp_confirmations_enabled: CONFIRMATIONS_ENABLED,
     whatsapp_confirmed_actions_enabled: CONFIRMED_ACTIONS_ENABLED,
@@ -7106,6 +7154,352 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
     stuck_minutes: WATCHDOG_STUCK_MINUTES,
     sent_count: Number(sentRow.sent_count || 0),
     issues,
+    notification,
+  };
+}
+
+function requestNumberValue(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
+}
+
+function requestBooleanFlag(...values: unknown[]): boolean {
+  return values.some((value) => value === true || value === '1' || String(value || '').toLowerCase() === 'true');
+}
+
+function evolutionBaileysMessage(issues: WatchdogIssue[], lookbackMinutes: number): string {
+  if (issues.length === 0) {
+    return `Evolution/Baileys: tudo ok nas ultimas ${lookbackMinutes} min. Conexao e envios recentes sem sinal de trava.`;
+  }
+  const lines = issues.slice(0, 6).map((issue) => `- ${issue.detail}`);
+  return `Alerta Evolution/Baileys: ${issues.length} ponto(s) pedem atencao.\n${lines.join('\n')}`;
+}
+
+async function runEvolutionBaileysAlert(mode: AutomationNotifyMode, dryRun: boolean, lookbackMinutes: number): Promise<JsonRecord> {
+  const enabled = await automationSettingEnabled(EVOLUTION_BAILEYS_AUTOMATION_KEY, true);
+  const issues: WatchdogIssue[] = [];
+
+  if (!enabled) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'automation_disabled',
+      enabled,
+      lookback_minutes: lookbackMinutes,
+    };
+  }
+
+  if (WHATSAPP_PROVIDER !== 'evolution') {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'provider_not_evolution',
+      provider: WHATSAPP_PROVIDER,
+      enabled,
+      lookback_minutes: lookbackMinutes,
+    };
+  }
+
+  const evolutionCheck = await smokeEvolutionCheck();
+  if (!evolutionCheck.ok) {
+    issues.push({
+      type: 'evolution_connection',
+      severity: 'error',
+      count: 1,
+      detail: `Conexao Evolution: ${evolutionCheck.detail || `status ${evolutionCheck.status}`}`,
+    });
+  }
+
+  const pauseMs = providerPauseRemainingMs();
+  if (pauseMs > 0) {
+    issues.push({
+      type: 'provider_paused',
+      severity: 'warn',
+      count: 1,
+      detail: `Transporte pausado por ${Math.ceil(pauseMs / 1000)}s: ${safeText(providerPauseReason, 120)}`,
+    });
+  }
+
+  const outboxProblems = await pgPool.query<{ status: string; count: string; newest_at: string; sample_error: string }>(
+    `SELECT status,
+            COUNT(*)::text AS count,
+            MAX(updated_at)::text AS newest_at,
+            COALESCE(MAX(NULLIF(error_summary, '')), '') AS sample_error
+       FROM miauw_whatsapp_outbox
+      WHERE provider = 'evolution'
+        AND status IN ('failed', 'dead')
+        AND updated_at >= NOW() - ($1::text || ' minutes')::interval
+        AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+      GROUP BY status
+      ORDER BY status`,
+    [String(lookbackMinutes)],
+  );
+  for (const row of outboxProblems.rows) {
+    issues.push({
+      type: `evolution_outbox_${row.status}`,
+      severity: row.status === 'dead' ? 'error' : 'warn',
+      count: Number(row.count || 0),
+      detail: `${row.count} envio(s) Evolution ${row.status} nas ultimas ${lookbackMinutes} min${row.sample_error ? ` (${safeText(row.sample_error, 90)})` : ''}`,
+    });
+  }
+
+  const hasProblems = issues.length > 0;
+  const message = evolutionBaileysMessage(issues, lookbackMinutes);
+  if (dryRun) {
+    const recipients = await automationRecipients('miauw');
+    return {
+      ok: !hasProblems,
+      dry_run: true,
+      enabled,
+      notify: mode,
+      lookback_minutes: lookbackMinutes,
+      recipients: recipients.length,
+      issues,
+      preview: message,
+      note: 'Checagem segura via backend; o script de host permanece como runbook para contar timeouts em logs Docker.',
+    };
+  }
+
+  const notification = await sendAutomationNotification(
+    'automation_evolution_baileys_alerta',
+    automationSeverity(issues, hasProblems),
+    message,
+    mode,
+    hasProblems,
+    'miauw',
+  );
+
+  return {
+    ok: !hasProblems,
+    enabled,
+    notify: mode,
+    lookback_minutes: lookbackMinutes,
+    issues,
+    notification,
+  };
+}
+
+function parsePixMissingFields(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => safeText(item, 60)).filter(Boolean).slice(0, 5);
+  }
+  const text = safeText(value, 500);
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => safeText(item, 60)).filter(Boolean).slice(0, 5);
+    }
+  } catch {
+    // Keep the compact text fallback below.
+  }
+  return text.split(/[,;\n]/g).map((item) => safeText(item, 60)).filter(Boolean).slice(0, 5);
+}
+
+function pixOcrOutcomeLabel(outcome: string): string {
+  switch (outcome) {
+    case 'accepted':
+      return 'aceito';
+    case 'missing_fields':
+      return 'campos faltando';
+    case 'target_mismatch':
+      return 'destino divergente';
+    case 'not_detected':
+      return 'nao parece Pix';
+    case 'skipped_fast_gate':
+      return 'descartado pelo filtro rapido';
+    case 'duplicate_identifier':
+    case 'duplicate_media':
+      return 'repetido';
+    default:
+      return outcome || 'sem resultado';
+  }
+}
+
+function pixOcrProblemLine(row: { created_at: string; sender_phone_mask: string; outcome: string; missing: unknown; target_reason: string }): string {
+  const missing = parsePixMissingFields(row.missing);
+  const parts = [
+    pixOcrOutcomeLabel(row.outcome),
+    missing.length ? `campos: ${missing.join(', ')}` : '',
+    row.target_reason ? `motivo: ${safeText(row.target_reason, 70)}` : '',
+  ].filter(Boolean);
+  return `- ${formatDate(row.created_at)} ${row.sender_phone_mask || 'contato'}: ${parts.join(' - ')}`;
+}
+
+function pixOcrErrorLine(row: { created_at: string; phone_mask: string; error_summary: string }): string {
+  return `- ${formatDate(row.created_at)} ${row.phone_mask || 'contato'}: ${safeText(row.error_summary, 110) || 'falha OCR'}`;
+}
+
+function pixOcrSummaryMessage(summary: {
+  lookbackHours: number;
+  attempts: number;
+  accepted: number;
+  missingFields: number;
+  targetMismatch: number;
+  notDetected: number;
+  skippedFastGate: number;
+  duplicates: number;
+  ocrErrors: number;
+  problemRows: { created_at: string; sender_phone_mask: string; outcome: string; missing: unknown; target_reason: string }[];
+  errorRows: { created_at: string; phone_mask: string; error_summary: string }[];
+}): string {
+  const header = `Resumo Pix/OCR (${summary.lookbackHours}h): ${summary.attempts} tentativa(s), ${summary.accepted} aceita(s), ${summary.missingFields} com campos faltando, ${summary.targetMismatch} destino divergente, ${summary.ocrErrors} falha(s) OCR.`;
+  const extra = [
+    summary.notDetected ? `${summary.notDetected} nao Pix` : '',
+    summary.skippedFastGate ? `${summary.skippedFastGate} descartada(s) antes do OCR` : '',
+    summary.duplicates ? `${summary.duplicates} repetida(s)` : '',
+  ].filter(Boolean).join(' / ');
+  const lines = [
+    header,
+    extra ? `Info: ${extra}.` : '',
+    ...summary.problemRows.slice(0, 4).map(pixOcrProblemLine),
+    ...summary.errorRows.slice(0, 4).map(pixOcrErrorLine),
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+async function runPixOcrDailySummary(mode: AutomationNotifyMode, dryRun: boolean, lookbackHours: number): Promise<JsonRecord> {
+  const enabled = await automationSettingEnabled(PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY, true);
+  const countsResult = await pgPool.query<{
+    attempts: string;
+    accepted: string;
+    missing_fields: string;
+    target_mismatch: string;
+    not_detected: string;
+    skipped_fast_gate: string;
+    duplicates: string;
+  }>(
+    `WITH pix_events AS (
+       SELECT COALESCE(payload_summary->>'pix_receipt_outcome', '') AS outcome
+         FROM miauw_whatsapp_events
+        WHERE created_at >= NOW() - ($1::text || ' hours')::interval
+          AND (
+            payload_summary ? 'pix_receipt_outcome'
+            OR payload_summary ? 'pix_receipt_attempted'
+            OR payload_summary ? 'pix_receipt_fast_gate'
+          )
+     )
+     SELECT COUNT(*)::text AS attempts,
+            COUNT(*) FILTER (WHERE outcome = 'accepted')::text AS accepted,
+            COUNT(*) FILTER (WHERE outcome = 'missing_fields')::text AS missing_fields,
+            COUNT(*) FILTER (WHERE outcome = 'target_mismatch')::text AS target_mismatch,
+            COUNT(*) FILTER (WHERE outcome = 'not_detected')::text AS not_detected,
+            COUNT(*) FILTER (WHERE outcome = 'skipped_fast_gate')::text AS skipped_fast_gate,
+            COUNT(*) FILTER (WHERE outcome IN ('duplicate_identifier', 'duplicate_media'))::text AS duplicates
+       FROM pix_events`,
+    [String(lookbackHours)],
+  );
+  const counts = countsResult.rows[0] || {
+    attempts: '0',
+    accepted: '0',
+    missing_fields: '0',
+    target_mismatch: '0',
+    not_detected: '0',
+    skipped_fast_gate: '0',
+    duplicates: '0',
+  };
+
+  const problemRowsResult = await pgPool.query<{
+    created_at: string;
+    sender_phone_mask: string;
+    outcome: string;
+    missing: unknown;
+    target_reason: string;
+  }>(
+    `SELECT created_at::text,
+            sender_phone_mask,
+            COALESCE(payload_summary->>'pix_receipt_outcome', '') AS outcome,
+            payload_summary->'pix_receipt_missing' AS missing,
+            COALESCE(payload_summary->>'pix_receipt_target_reason', '') AS target_reason
+       FROM miauw_whatsapp_events
+      WHERE created_at >= NOW() - ($1::text || ' hours')::interval
+        AND COALESCE(payload_summary->>'pix_receipt_outcome', '') IN ('missing_fields', 'target_mismatch')
+      ORDER BY created_at DESC
+      LIMIT 8`,
+    [String(lookbackHours)],
+  );
+
+  const errorRowsResult = await pgPool.query<{
+    created_at: string;
+    phone_mask: string;
+    error_summary: string;
+  }>(
+    `SELECT created_at::text,
+            phone_mask,
+            error_summary
+       FROM miauw_whatsapp_error_logs
+      WHERE source = 'pix_receipt_ocr'
+        AND created_at >= NOW() - ($1::text || ' hours')::interval
+      ORDER BY created_at DESC
+      LIMIT 8`,
+    [String(lookbackHours)],
+  );
+  const errorCountResult = await pgPool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM miauw_whatsapp_error_logs
+      WHERE source = 'pix_receipt_ocr'
+        AND created_at >= NOW() - ($1::text || ' hours')::interval`,
+    [String(lookbackHours)],
+  );
+
+  const summary = {
+    lookbackHours,
+    attempts: Number(counts.attempts || 0),
+    accepted: Number(counts.accepted || 0),
+    missingFields: Number(counts.missing_fields || 0),
+    targetMismatch: Number(counts.target_mismatch || 0),
+    notDetected: Number(counts.not_detected || 0),
+    skippedFastGate: Number(counts.skipped_fast_gate || 0),
+    duplicates: Number(counts.duplicates || 0),
+    ocrErrors: Number(errorCountResult.rows[0]?.count || errorRowsResult.rows.length),
+    problemRows: problemRowsResult.rows,
+    errorRows: errorRowsResult.rows,
+  };
+  const hasProblems = summary.missingFields > 0 || summary.targetMismatch > 0 || summary.ocrErrors > 0;
+  const message = pixOcrSummaryMessage(summary);
+
+  if (!enabled) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'automation_disabled',
+      enabled,
+      has_problems: hasProblems,
+      summary,
+      preview: message,
+    };
+  }
+
+  if (dryRun) {
+    const recipients = await automationRecipients('financeiro');
+    return {
+      ok: true,
+      dry_run: true,
+      enabled,
+      notify: mode,
+      has_problems: hasProblems,
+      recipients: recipients.length,
+      summary,
+      preview: message,
+    };
+  }
+
+  const notification = await sendAutomationNotification(
+    'automation_pix_ocr_resumo_diario',
+    hasProblems ? 'warn' : 'info',
+    message,
+    mode,
+    hasProblems,
+    'financeiro',
+  );
+
+  return {
+    ok: notification.failed === 0,
+    enabled,
+    notify: mode,
+    has_problems: hasProblems,
+    summary,
     notification,
   };
 }
@@ -9784,6 +10178,48 @@ app.post(`${BASE_PATH}/internal/watchdog`, requireInternalToken, async (req, res
   const mode = automationNotifyMode(req.body?.notify || req.query.notify);
   const result = await runWhatsappWatchdog(mode);
   res.status(result.ok === false ? 503 : 200).json(result);
+});
+
+app.post(`${BASE_PATH}/internal/evolution-baileys-alert`, requireInternalToken, async (req, res) => {
+  try {
+    const mode = automationNotifyMode(req.body?.notify || req.query.notify);
+    const dryRun = requestBooleanFlag(req.body?.dry_run, req.body?.dryRun, req.query.dry_run);
+    const lookbackMinutes = requestNumberValue(
+      req.body?.lookback_minutes || req.body?.lookbackMinutes || req.query.lookback_minutes || req.query.lookbackMinutes,
+      EVOLUTION_BAILEYS_ALERT_LOOKBACK_MINUTES,
+      15,
+      1440,
+    );
+    const result = await runEvolutionBaileysAlert(mode, dryRun, lookbackMinutes);
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    await recordErrorLog('automation_evolution_baileys_alerta', 'error', error);
+    res.status(500).json({
+      ok: false,
+      error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',
+    });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/pix-ocr-daily-summary`, requireInternalToken, async (req, res) => {
+  try {
+    const mode = automationNotifyMode(req.body?.notify || req.query.notify);
+    const dryRun = requestBooleanFlag(req.body?.dry_run, req.body?.dryRun, req.query.dry_run);
+    const lookbackHours = requestNumberValue(
+      req.body?.lookback_hours || req.body?.lookbackHours || req.query.lookback_hours || req.query.lookbackHours,
+      PIX_OCR_SUMMARY_LOOKBACK_HOURS,
+      1,
+      168,
+    );
+    const result = await runPixOcrDailySummary(mode, dryRun, lookbackHours);
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    await recordErrorLog('automation_pix_ocr_resumo_diario', 'error', error);
+    res.status(500).json({
+      ok: false,
+      error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',
+    });
+  }
 });
 
 app.post(`${BASE_PATH}/internal/pedidos-arrival-check`, requireInternalToken, async (req, res) => {

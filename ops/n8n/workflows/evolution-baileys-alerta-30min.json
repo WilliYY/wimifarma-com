@@ -1,0 +1,79 @@
+{
+  "id": "evolution-baileys-alerta-30min",
+  "name": "Wimifarma - Evolution Baileys alerta 30min",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/30 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-evolution-baileys-alerta-30min",
+      "name": "A cada 30 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.WIMIFARMA_INTERNAL_BASE_URL + \"/miauw/whatsapp/internal/evolution-baileys-alert\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Miauw-Internal-Token",
+              "value": "={{$env.MIAUW_GUARDIAN_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{ \"notify\": \"problems\", \"lookback_minutes\": 120 }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "post-miauby-evolution-baileys-alerta",
+      "name": "Miauby alerta Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "A cada 30 min": {
+      "main": [
+        [
+          {
+            "node": "Miauby alerta Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}

@@ -1,0 +1,79 @@
+{
+  "id": "pix-ocr-resumo-diario-1910",
+  "name": "Wimifarma - Pix OCR resumo diario 19h10",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "10 19 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-pix-ocr-resumo-diario-1910",
+      "name": "Todos os dias 19h10",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.WIMIFARMA_INTERNAL_BASE_URL + \"/miauw/whatsapp/internal/pix-ocr-daily-summary\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Miauw-Internal-Token",
+              "value": "={{$env.MIAUW_GUARDIAN_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{ \"notify\": \"problems\", \"lookback_hours\": 24 }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "post-miauby-pix-ocr-resumo-diario",
+      "name": "Miauby resumo Pix OCR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Todos os dias 19h10": {
+      "main": [
+        [
+          {
+            "node": "Miauby resumo Pix OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}

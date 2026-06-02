@@ -347,6 +347,10 @@ ops\n8n\docker-compose.yml
 ops\n8n\.env.example
 ops\n8n\workflows\pedidos-chegada-17h.json
 ops\n8n\workflows\financeiro-fechamento-caixa-18h.json
+ops\n8n\workflows\miauby-smoke-check-pos-deploy.json
+ops\n8n\workflows\miauby-watchdog-5min.json
+ops\n8n\workflows\evolution-baileys-alerta-30min.json
+ops\n8n\workflows\pix-ocr-resumo-diario-1910.json
 ```
 
 Instalacao em stack separada no VPS:
@@ -371,8 +375,16 @@ Importar/ativar as rotinas diarias:
 cd /home/ubuntu/projetos/wimifarma-n8n
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pedidos-chegada-17h.json
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/financeiro-fechamento-caixa-18h.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miauby-smoke-check-pos-deploy.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miauby-watchdog-5min.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/evolution-baileys-alerta-30min.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pix-ocr-resumo-diario-1910.json
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=pedidos-chegada-17h --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=financeiro-fechamento-caixa-18h --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-smoke-check-pos-deploy --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-watchdog-5min --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=evolution-baileys-alerta-30min --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=pix-ocr-resumo-diario-1910 --active=true
 docker compose restart wimifarma-n8n
 ```
 
@@ -382,7 +394,11 @@ Validar o backend sem enviar WhatsApp:
 cd /home/ubuntu/projetos/wimifarma-com
 docker compose exec -T wimifarma-miauw-whatsapp node -e "fetch('http://127.0.0.1:3400/miauw/whatsapp/internal/pedidos-arrival-check',{method:'POST',headers:{'content-type':'application/json','x-miauw-internal-token':process.env.MIAUW_GUARDIAN_TOKEN||process.env.MIAUW_WHATSAPP_INTERNAL_TOKEN},body:JSON.stringify({notify:'always',dry_run:true})}).then(r=>r.text()).then(t=>console.log(t))"
 docker compose exec -T wimifarma-miauw-whatsapp node -e "fetch('http://127.0.0.1:3400/miauw/whatsapp/internal/financeiro-cash-closing-reminder',{method:'POST',headers:{'content-type':'application/json','x-miauw-internal-token':process.env.MIAUW_GUARDIAN_TOKEN||process.env.MIAUW_WHATSAPP_INTERNAL_TOKEN},body:JSON.stringify({notify:'always',dry_run:true})}).then(r=>r.text()).then(t=>console.log(t))"
+docker compose exec -T wimifarma-miauw-whatsapp node -e "fetch('http://127.0.0.1:3400/miauw/whatsapp/internal/evolution-baileys-alert',{method:'POST',headers:{'content-type':'application/json','x-miauw-internal-token':process.env.MIAUW_GUARDIAN_TOKEN||process.env.MIAUW_WHATSAPP_INTERNAL_TOKEN},body:JSON.stringify({notify:'never',dry_run:true,lookback_minutes:120})}).then(r=>r.text()).then(t=>console.log(t))"
+docker compose exec -T wimifarma-miauw-whatsapp node -e "fetch('http://127.0.0.1:3400/miauw/whatsapp/internal/pix-ocr-daily-summary',{method:'POST',headers:{'content-type':'application/json','x-miauw-internal-token':process.env.MIAUW_GUARDIAN_TOKEN||process.env.MIAUW_WHATSAPP_INTERNAL_TOKEN},body:JSON.stringify({notify:'never',dry_run:true,lookback_hours:24})}).then(r=>r.text()).then(t=>console.log(t))"
 ```
+
+O alerta Evolution/Baileys ativo no n8n usa endpoint HTTP interno seguro. Nao montar Docker socket no n8n para rodar `ops/evolution/check-baileys-init-timeouts.sh`; esse script continua como runbook de host para auditoria exata de logs.
 
 ## Local - Gestao Node/Postgres
 

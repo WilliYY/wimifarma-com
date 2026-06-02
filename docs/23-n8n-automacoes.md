@@ -18,6 +18,10 @@ Template versionado:
 - `ops/n8n/.env.example`
 - `ops/n8n/workflows/pedidos-chegada-17h.json`
 - `ops/n8n/workflows/financeiro-fechamento-caixa-18h.json`
+- `ops/n8n/workflows/miauby-smoke-check-pos-deploy.json`
+- `ops/n8n/workflows/miauby-watchdog-5min.json`
+- `ops/n8n/workflows/evolution-baileys-alerta-30min.json`
+- `ops/n8n/workflows/pix-ocr-resumo-diario-1910.json`
 
 O n8n deve rodar separado do Compose principal, com Postgres proprio, porta publicada apenas em `127.0.0.1:5678` e acesso publico somente por proxy/autenticacao quando estiver pronto.
 
@@ -34,8 +38,16 @@ sudo chown -R 1000:1000 n8n-data workflows
 docker compose up -d --force-recreate wimifarma-n8n
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pedidos-chegada-17h.json
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/financeiro-fechamento-caixa-18h.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miauby-smoke-check-pos-deploy.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miauby-watchdog-5min.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/evolution-baileys-alerta-30min.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pix-ocr-resumo-diario-1910.json
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=pedidos-chegada-17h --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=financeiro-fechamento-caixa-18h --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-smoke-check-pos-deploy --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-watchdog-5min --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=evolution-baileys-alerta-30min --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=pix-ocr-resumo-diario-1910 --active=true
 docker compose restart wimifarma-n8n
 ```
 
@@ -57,6 +69,8 @@ n8n --version
 - `MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET`
 - `MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL`
 - `MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL`
+- `MIAUW_WHATSAPP_EVOLUTION_BAILEYS_ALERT_LOOKBACK_MINUTES`
+- `MIAUW_WHATSAPP_PIX_OCR_SUMMARY_LOOKBACK_HOURS`
 
 O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos`, `Fechamento de caixa` e `Encomenda da Cotacao`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron/worker continue ativo. O card `Fechamento de caixa` tambem tenta mostrar a leitura atual do Financeiro, incluindo se existe caixa aberto nos ultimos 10 dias e quais dias estao pendentes.
 
@@ -65,6 +79,14 @@ O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados,
 ### Smoke check pos-deploy
 
 Agenda: manual apos deploy ou chamado pelo proprio deploy.
+
+Workflow versionado:
+
+```text
+ops/n8n/workflows/miauby-smoke-check-pos-deploy.json
+```
+
+O workflow tem disparo manual e webhook ativo `POST /webhook/wimifarma/smoke-check-pos-deploy` no n8n. O payload padrao chama o backend com `notify=always`, para confirmar tambem sucesso quando for acionado apos deploy importante.
 
 Destino: numeros autorizados com card `Miauby`.
 
@@ -87,6 +109,14 @@ Os checks sao executados em paralelo dentro do bridge para que uma rota lenta na
 ### Watchdog do WhatsApp
 
 Agenda: a cada poucos minutos, com janela curta.
+
+Workflow versionado:
+
+```text
+ops/n8n/workflows/miauby-watchdog-5min.json
+```
+
+Agenda: a cada 5 minutos, `notify=problems`.
 
 Destino: numeros autorizados com card `Miauby`, somente quando houver problema por padrao.
 
@@ -248,13 +278,67 @@ Checks:
 
 Se falhar, n8n envia alerta e pode abrir tarefa de erro. Ele nao faz rollback automatico sem confirmacao humana.
 
-Para monitorar os timeouts recorrentes do Baileys em `executeInitQueries`/`fetchProps`, o n8n pode executar por SSH/Execute Command no host do VPS o script:
+### Evolution/Baileys
+
+Agenda: a cada 30 minutos.
+
+Destino: numeros autorizados com card `Miauby`, somente quando houver problema por padrao.
+
+Workflow versionado:
+
+```text
+ops/n8n/workflows/evolution-baileys-alerta-30min.json
+```
+
+Endpoint interno:
+
+```text
+POST /miauw/whatsapp/internal/evolution-baileys-alert
+```
+
+Payload:
+
+```json
+{ "notify": "problems", "lookback_minutes": 120 }
+```
+
+O endpoint verifica, pelo bridge, se a Evolution esta conectada, se o provedor esta pausado e se houve outbox `failed/dead` recente pelo transporte `evolution`. Ele e a versao segura para rotina n8n ativa: nao monta Docker socket, nao executa shell no container do n8n e nao le segredo da Evolution diretamente.
+
+Para auditoria exata dos timeouts recorrentes do Baileys em `executeInitQueries`/`fetchProps`, o runbook de host continua sendo o script:
 
 ```bash
 /home/ubuntu/projetos/wimifarma-com/ops/evolution/check-baileys-init-timeouts.sh
 ```
 
 Usar `LOOKBACK=2h` para rotina frequente. O script retorna `0` com `status=ok`, `1` com `status=warn` e `2` com `status=critical`, sem expor API key. Em `warn`, apenas avisar/acompanhar; em `critical`, acionar alerta humano e, se tambem nao houver `MESSAGES_UPSERT`, reiniciar somente o container `wimifarma-evolution-api`.
+
+Nao montar `/var/run/docker.sock` no n8n para rodar esse script sem revisao separada de seguranca. Se for necessario executar o script automaticamente no futuro, preferir SSH/credencial especifica e comando somente leitura.
+
+### Resumo diario Pix/OCR
+
+Agenda: todo dia as 19:10, timezone `America/Sao_Paulo`.
+
+Destino: numeros autorizados com card `Financeiro`, somente quando houver falha/campo faltando por padrao.
+
+Workflow versionado:
+
+```text
+ops/n8n/workflows/pix-ocr-resumo-diario-1910.json
+```
+
+Endpoint interno:
+
+```text
+POST /miauw/whatsapp/internal/pix-ocr-daily-summary
+```
+
+Payload:
+
+```json
+{ "notify": "problems", "lookback_hours": 24 }
+```
+
+O backend le apenas `miauw_whatsapp_events.payload_summary` e `miauw_whatsapp_error_logs` sanitizados do proprio bridge WhatsApp. O resumo mostra tentativas, aceitos, campos faltando, destino divergente, duplicados, descartes rapidos e falhas de OCR. Ele nao cria lancamento, nao confirma Pix, nao acessa o banco do Financeiro e nao guarda midia bruta.
 
 ### Miauby + n8n
 
@@ -277,6 +361,8 @@ Esta tabela serve como cola operacional: o n8n agenda, mas quem decide destinata
 | Fechamento de caixa | Todo dia as 18h | Contatos reais autorizados com card `Financeiro` | Avisa dias de caixa em aberto/conferencia/sem registro nos ultimos 10 dias | Adicionar/remover numero autorizado, mudar horario, mudar janela de dias, mudar texto, pausar/ativar no painel | Nao fecha caixa, nao cria faturamento e nao grava sangria sem fluxo auditado |
 | Smoke check pos-deploy | Manual ou apos deploy | Contatos reais autorizados com card `Miauby` | Testa rotas/health principais e avisa problema | Enviar tambem sucesso, adicionar rota de health, mudar cooldown, adicionar numero com card `Miauby` | Nao faz rollback automatico |
 | Watchdog WhatsApp | A cada poucos minutos | Contatos reais autorizados com card `Miauby`, normalmente so com problema | Vigia fila, outbox, provider pausado e respostas travadas | Ajustar frequencia, cooldown, severidade, destinatarios e texto de alerta | Nao dispara mensagem atrasada fora de contexto; pendencias antigas viram `dead` |
+| Evolution/Baileys | A cada 30 min | Contatos reais autorizados com card `Miauby` | Avisa conexao ruim, provedor pausado ou falha recente de envio Evolution | Ajustar janela, horario/frequencia, texto e destinatarios por card `Miauby` | Nao executa Docker/shell pelo n8n e nao reinicia Evolution automaticamente |
+| Resumo Pix/OCR | Todo dia as 19h10 | Contatos reais autorizados com card `Financeiro` | Resume falhas/campos faltando na leitura Pix por midia | Mudar horario, janela, texto, criterios do resumo ou destinatarios por card `Financeiro` | Nao grava Pix, nao confirma lancamento e nao acessa banco financeiro |
 | Pedidos e boletos | Planejada/expansivel | Contatos com card `Pedidos` ou card definido pela rotina | Pode resumir boletos vencendo, pedidos de hoje e atrasos | Criar rotina nova, escolher horario, definir filtros e destinatarios por card | Baixa/pagamento continua exigindo sistema/core com confirmacao |
 | Financeiro operacional | Planejada/expansivel | Contatos com card `Financeiro` | Pode lembrar sangria, PIX, maquininha ou divergencia | Criar rotina nova, mudar horario, escolher quais alertas entram | Escrita de dinheiro continua em endpoint interno com confirmacao/auditoria |
 | Tarefas com lembrete | Pelo modulo Tarefa, nao por cron n8n atual | Usuario vinculado a tarefa e contato com card `Tarefas` | Envia lembrete agendado da tarefa pelo bridge WhatsApp | Vincular numero ao usuario, liberar card `Tarefas`, alterar horario do lembrete na tarefa | Nao envia para usuario sem vinculo/card e registra tentativa/falha |

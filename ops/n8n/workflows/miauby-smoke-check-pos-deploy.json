@@ -1,0 +1,97 @@
+{
+  "id": "miauby-smoke-check-pos-deploy",
+  "name": "Wimifarma - Miauby smoke check pos deploy",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-smoke-check-pos-deploy",
+      "name": "Rodar manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wimifarma/smoke-check-pos-deploy",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-smoke-check-pos-deploy",
+      "name": "Webhook pos deploy",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.WIMIFARMA_INTERNAL_BASE_URL + \"/miauw/whatsapp/internal/smoke-check\"}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Miauw-Internal-Token",
+              "value": "={{$env.MIAUW_GUARDIAN_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{ \"notify\": \"always\" }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "post-miauby-smoke-check-pos-deploy",
+      "name": "Miauby smoke check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        310
+      ]
+    }
+  ],
+  "connections": {
+    "Rodar manual": {
+      "main": [
+        [
+          {
+            "node": "Miauby smoke check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook pos deploy": {
+      "main": [
+        [
+          {
+            "node": "Miauby smoke check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": []
+}
