@@ -209,6 +209,34 @@ if (!defined('MIAUW_AGENT_INTERNAL_BASE_URL')) {
     define('MIAUW_AGENT_INTERNAL_BASE_URL', $miauwAgentInternalBaseUrl !== '' ? $miauwAgentInternalBaseUrl : 'http://wimifarma-miauw-agent:3100/miauw/agent');
 }
 
+if (!defined('MIAUBY_CONTEXT_SHADOW_ENABLED')) {
+    define('MIAUBY_CONTEXT_SHADOW_ENABLED', miauw_env_bool(array('MIAUBY_CONTEXT_SHADOW_ENABLED'), false));
+}
+
+if (!defined('MIAUBY_CONTEXT_INTERNAL_URL')) {
+    $miaubyContextInternalUrl = miauw_env_string(array('MIAUBY_CONTEXT_INTERNAL_URL'));
+    define('MIAUBY_CONTEXT_INTERNAL_URL', $miaubyContextInternalUrl !== '' ? $miaubyContextInternalUrl : 'http://wimifarma-miauby-app:4100/miauby/api/internal/canonical-context');
+}
+
+if (!defined('MIAUBY_CONTEXT_INTERNAL_TOKEN')) {
+    $miaubyContextInternalToken = miauw_env_string(array('MIAUBY_INTERNAL_TOKEN', 'MIAUBY_CONTEXT_INTERNAL_TOKEN'));
+    if ($miaubyContextInternalToken === '' && defined('MIAUW_AGENT_INTERNAL_TOKEN')) {
+        $miaubyContextInternalToken = trim((string) MIAUW_AGENT_INTERNAL_TOKEN);
+    }
+    if ($miaubyContextInternalToken === '' && defined('MIAUW_GUARDIAN_TOKEN')) {
+        $miaubyContextInternalToken = trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+    define('MIAUBY_CONTEXT_INTERNAL_TOKEN', $miaubyContextInternalToken);
+}
+
+if (!defined('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS')) {
+    $miaubyContextShadowTimeout = (int) miauw_env_string(array('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS'));
+    if ($miaubyContextShadowTimeout <= 0) {
+        $miaubyContextShadowTimeout = 2500;
+    }
+    define('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS', max(500, min(10000, $miaubyContextShadowTimeout)));
+}
+
 if (!defined('MIAUW_CHANNEL_MEMORY_BRIDGE_URL')) {
     $miauwChannelMemoryBridgeUrl = miauw_env_string(array('MIAUW_CHANNEL_MEMORY_BRIDGE_URL', 'MIAUW_WHATSAPP_MEMORY_BRIDGE_URL'));
     define('MIAUW_CHANNEL_MEMORY_BRIDGE_URL', $miauwChannelMemoryBridgeUrl !== '' ? $miauwChannelMemoryBridgeUrl : 'http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/internal/memory');
@@ -2343,8 +2371,198 @@ function miauw_agent_shadow_status(): array
         'on_send' => $onSend,
         'timeout_ms' => $timeoutMs,
         'writes_enabled' => false,
+        'context_shadow' => miauby_context_shadow_status(),
         'status' => $configured ? ($onSend ? 'compare_on_send' : 'manual_ready') : 'not_configured',
     );
+}
+
+function miauby_context_shadow_status(): array
+{
+    $url = miauw_constant_string('MIAUBY_CONTEXT_INTERNAL_URL');
+    $token = miauw_constant_string('MIAUBY_CONTEXT_INTERNAL_TOKEN');
+    $enabled = defined('MIAUBY_CONTEXT_SHADOW_ENABLED') ? (bool) MIAUBY_CONTEXT_SHADOW_ENABLED : false;
+    $timeoutMs = miauw_constant_int('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS', 2500);
+    $configured = $enabled && $url !== '' && $token !== '' && function_exists('curl_init');
+
+    return array(
+        'mode' => 'node_context_shadow',
+        'enabled' => $enabled,
+        'configured' => $configured,
+        'url_configured' => $url !== '',
+        'token_configured' => $token !== '',
+        'curl_enabled' => function_exists('curl_init'),
+        'timeout_ms' => $timeoutMs,
+        'writes_enabled' => false,
+        'official_response_owner' => 'php',
+        'status' => $configured ? 'compare_on_shadow_send' : ($enabled ? 'not_configured' : 'disabled'),
+    );
+}
+
+function miauby_context_shadow_count_tools(array $contracts): int
+{
+    if (isset($contracts['tools']) && is_array($contracts['tools'])) {
+        return count($contracts['tools']);
+    }
+
+    if (isset($contracts['openai_tools']) && is_array($contracts['openai_tools'])) {
+        return count($contracts['openai_tools']);
+    }
+
+    return 0;
+}
+
+function miauby_context_shadow_training_count(array $styleContext): int
+{
+    $examples = $styleContext['training_examples'] ?? null;
+    if (is_array($examples)) {
+        return count($examples);
+    }
+
+    $profile = $styleContext['training_profile'] ?? null;
+    if (is_array($profile) && isset($profile['examples_selected'])) {
+        return max(0, (int) $profile['examples_selected']);
+    }
+
+    return 0;
+}
+
+function miauby_context_shadow_request(string $message, string $traceId, array $phpPayload): array
+{
+    $url = miauw_constant_string('MIAUBY_CONTEXT_INTERNAL_URL');
+    $token = miauw_constant_string('MIAUBY_CONTEXT_INTERNAL_TOKEN');
+    $timeoutMs = miauw_constant_int('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS', 2500);
+
+    if ($url === '' || $token === '') {
+        throw new RuntimeException('Servico de contexto Miauby sem configuracao interna.');
+    }
+
+    if (!function_exists('curl_init')) {
+        throw new RuntimeException('cURL nao esta habilitado no PHP.');
+    }
+
+    $userContext = is_array($phpPayload['user_context'] ?? null) ? $phpPayload['user_context'] : array();
+    $body = array(
+        'trace_id' => miauw_substr($traceId, 0, 80),
+        'message' => miauw_substr($message, 0, 4000),
+        'page_context' => 'miauw_chat_shadow',
+        'limit' => 3,
+    );
+    if (isset($userContext['username'])) {
+        $body['username'] = miauw_substr((string) $userContext['username'], 0, 80);
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, array(
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => array(
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'X-Miauby-Internal-Token: ' . $token,
+            'X-Miauw-Internal-Token: ' . $token,
+        ),
+        CURLOPT_POSTFIELDS => json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT_MS => min(800, max(200, $timeoutMs)),
+        CURLOPT_TIMEOUT_MS => $timeoutMs,
+    ));
+
+    $raw = curl_exec($ch);
+    $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+    if (!is_string($raw) || $raw === '' || $httpStatus < 200 || $httpStatus >= 300 || !is_array($decoded)) {
+        $detail = $error !== '' ? miauw_diagnostic_redact_string($error) : ('HTTP ' . $httpStatus);
+        throw new RuntimeException('Falha no contexto Miauby Node: ' . $detail);
+    }
+
+    if (empty($decoded['ok'])) {
+        $serviceMessage = miauw_diagnostic_redact_string((string) ($decoded['message'] ?? $decoded['error'] ?? 'contexto recusado'));
+        throw new RuntimeException('Contexto Miauby Node recusou a execucao: ' . $serviceMessage);
+    }
+
+    return $decoded;
+}
+
+function miauby_context_shadow_compare(string $message, string $traceId, array $phpPayload): ?array
+{
+    $status = miauby_context_shadow_status();
+    if (empty($status['enabled'])) {
+        return null;
+    }
+
+    if (empty($status['configured'])) {
+        miauw_trace_record('miauby_context_shadow_compare', 'skipped', array(
+            'type' => 'context_shadow',
+            'summary' => 'Contexto Node do Miauby ignorado por configuracao incompleta.',
+            'payload' => array(
+                'status' => $status,
+            ),
+        ));
+
+        return array(
+            'ok' => false,
+            'status' => 'skipped',
+            'reason' => 'not_configured',
+        );
+    }
+
+    $started = microtime(true);
+    try {
+        $nodeContext = miauby_context_shadow_request($message, $traceId, $phpPayload);
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        $phpStyle = is_array($phpPayload['style_context'] ?? null) ? $phpPayload['style_context'] : array();
+        $phpTools = is_array($phpPayload['tool_contracts'] ?? null) ? $phpPayload['tool_contracts'] : array();
+        $nodeStyle = is_array($nodeContext['style_context'] ?? null) ? $nodeContext['style_context'] : array();
+        $nodeTools = is_array($nodeContext['tool_contracts'] ?? null) ? $nodeContext['tool_contracts'] : array();
+        $nodeDatasets = is_array($nodeContext['datasets'] ?? null) ? $nodeContext['datasets'] : array();
+        $nodeTraining = is_array($nodeDatasets['training_examples'] ?? null) ? $nodeDatasets['training_examples'] : array();
+        $nodeTrainingSelected = isset($nodeTraining['selected']) ? max(0, (int) $nodeTraining['selected']) : miauby_context_shadow_training_count($nodeStyle);
+
+        miauw_trace_record('miauby_context_shadow_compare', 'ok', array(
+            'type' => 'context_shadow',
+            'summary' => 'Pacote de contexto PHP comparado com apps/miauby Node em sombra.',
+            'duration_ms' => $durationMs,
+            'payload' => array(
+                'node_source' => (string) ($nodeContext['source'] ?? ''),
+                'node_context_version' => (string) ($nodeContext['context_version'] ?? ''),
+                'node_mode' => (string) ($nodeContext['mode'] ?? ''),
+                'php_style_version' => (string) ($phpStyle['version'] ?? ''),
+                'node_style_version' => (string) ($nodeStyle['version'] ?? ''),
+                'php_tool_count' => miauby_context_shadow_count_tools($phpTools),
+                'node_tool_count' => miauby_context_shadow_count_tools($nodeTools),
+                'php_training_count' => miauby_context_shadow_training_count($phpStyle),
+                'node_training_count' => $nodeTrainingSelected,
+                'node_write_enabled' => !empty($nodeContext['write_enabled']),
+                'node_writes_enabled_in_node' => !empty($nodeContext['writes_enabled_in_node']),
+                'node_php_official_response' => !empty($nodeContext['php_official_response']),
+                'node_raw_payload_returned' => !empty($nodeContext['raw_payload_returned']),
+            ),
+        ));
+
+        return array(
+            'ok' => true,
+            'status' => 'ok',
+            'duration_ms' => $durationMs,
+            'node_context_version' => (string) ($nodeContext['context_version'] ?? ''),
+        );
+    } catch (Throwable $error) {
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        miauw_trace_record('miauby_context_shadow_compare', 'error', array(
+            'type' => 'context_shadow',
+            'summary' => 'Falha ao comparar contexto PHP com apps/miauby Node.',
+            'duration_ms' => $durationMs,
+            'error' => $error->getMessage(),
+        ));
+
+        return array(
+            'ok' => false,
+            'status' => 'error',
+            'reason' => miauw_diagnostic_redact_string($error->getMessage()),
+            'duration_ms' => $durationMs,
+        );
+    }
 }
 
 function miauw_agent_shadow_request(string $message, string $traceId, int $timeoutMs): array
@@ -2383,6 +2601,8 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
     if (function_exists('miauw_agent_tool_contract_export')) {
         $payload['tool_contracts'] = miauw_agent_tool_contract_export();
     }
+
+    miauby_context_shadow_compare($message, $traceId, $payload);
 
     $ch = curl_init($url);
     curl_setopt_array($ch, array(

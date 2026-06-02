@@ -36,6 +36,9 @@ define('MIAUW_GUARDIAN_TOKEN', 'troque_por_um_token_grande');
  */
 // define('MIAUW_AGENT_INTERNAL_TOKEN', ''); // se vazio/omitido, use MIAUW_GUARDIAN_TOKEN ou .env
 define('MIAUW_AGENT_INTERNAL_BASE_URL', 'http://wimifarma-miauw-agent:3100/miauw/agent');
+define('MIAUBY_CONTEXT_SHADOW_ENABLED', false);
+define('MIAUBY_CONTEXT_INTERNAL_URL', 'http://wimifarma-miauby-app:4100/miauby/api/internal/canonical-context');
+define('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS', 2500);
 define('MIAUW_AGENT_SHADOW_ON_SEND', false);
 define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
 define('MIAUW_ENGINE', 'php');

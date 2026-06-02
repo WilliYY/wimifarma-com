@@ -243,7 +243,33 @@ Validacao esperada:
 - Migracao/validacao sombra antes do smoke, para garantir que `miauby_*` esta atualizado.
 - `scripts/miauby-shadow-smoke.sh` deve validar health, readiness, contexto sanitizado, pacote canonico, cutover e todos os flags read-only.
 
-Proxima etapa segura apos validar este pacote: usar o endpoint em modo sombra por consumidor controlado, comparando o pacote PHP atual com o pacote Node antes de trocar `MIAUW_WHATSAPP_CONTEXT_URL` ou o consumo do `apps/miauw-agent`.
+Etapa seguinte realizada em 2026-06-02: usar o endpoint em modo sombra por consumidor controlado no Miauby interno, comparando o pacote PHP atual com o pacote Node antes de trocar `MIAUW_WHATSAPP_CONTEXT_URL` ou o consumo oficial do `apps/miauw-agent`.
+
+### Etapa 2026-06-02 - Consumidor sombra do contexto Node
+
+Esta etapa resolve o proximo bloqueio seguro sem ligar escrita, rota publica ou corte do PHP. O chat interno continua oficial em `site/miauw`, mas quando a comparacao sombra do agente roda para usuario liberado, o PHP tambem consulta o pacote canônico de contexto em `apps/miauby` e grava um trace sanitizado com versoes/contagens.
+
+Novas configuracoes:
+
+- `MIAUBY_CONTEXT_SHADOW_ENABLED`: liga/desliga a consulta sombra; fica `false` por padrao no Git.
+- `MIAUBY_CONTEXT_INTERNAL_URL`: endpoint interno do pacote canônico, por padrao `http://wimifarma-miauby-app:4100/miauby/api/internal/canonical-context`.
+- `MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS`: timeout curto da consulta sombra, por padrao 2500 ms.
+- `MIAUBY_INTERNAL_TOKEN` ou fallback para `MIAUW_AGENT_INTERNAL_TOKEN`/`MIAUW_GUARDIAN_TOKEN`: token interno para chamar `apps/miauby`.
+
+Regras preservadas:
+
+- A resposta oficial continua PHP.
+- O agente Node continua recebendo o pacote PHP atual como contexto operacional.
+- `apps/miauby` continua sem escrita direta: `write_enabled=false`, `writes_enabled_in_node=false`.
+- `route_cutover_enabled=false` e `public_proxy_enabled=false` continuam corretos nesta fase.
+- O trace `miauby_context_shadow_compare` registra apenas fonte, versoes, contagens, flags e duracao; nao grava payload bruto, segredo, SQL, telefone, audio ou midia.
+
+Rollback:
+
+- Desligar `MIAUBY_CONTEXT_SHADOW_ENABLED=false` e recriar `wimifarma-com-web`.
+- Se o `apps/miauby` falhar, o erro fica em trace e a resposta PHP/agent sombra seguem sem usar o pacote Node.
+
+Proxima etapa segura apos alguns testes do `adm`: trocar um consumidor controlado do WhatsApp ou do agent para ler o pacote Node como fonte primaria de contexto, ainda mantendo fallback PHP e ainda sem escrita direta.
 
 ### Fase 3 - Alias publico controlado
 
