@@ -424,12 +424,15 @@ if (!$homeAuthenticated):
 
         html {
             min-height: 100%;
+            min-height: 100dvh;
             overflow-x: hidden;
             background: #06b6d4;
         }
 
         body {
             min-height: 100vh;
+            min-height: 100svh;
+            min-height: 100dvh;
             margin: 0;
             display: grid;
             grid-template-rows: minmax(0, 1fr) 4.9rem auto;
@@ -467,6 +470,7 @@ if (!$homeAuthenticated):
             inset: 0 0 auto;
             z-index: 0;
             height: min(70vh, 620px);
+            height: min(70dvh, 620px);
             overflow: hidden;
             contain: layout paint;
             pointer-events: none;
@@ -1096,6 +1100,15 @@ if (!$homeAuthenticated):
             }
         }
 
+        @keyframes wf-bubble-move-mobile {
+            0% {
+                bottom: 0.55rem;
+            }
+            100% {
+                bottom: 6.15rem;
+            }
+        }
+
         @keyframes wf-login-shooting-star {
             0% {
                 opacity: 0;
@@ -1151,9 +1164,47 @@ if (!$homeAuthenticated):
             }
         }
 
+        @media (max-width: 820px) {
+            body {
+                grid-template-rows: minmax(0, auto) clamp(7.35rem, 27vw, 8.2rem) auto;
+                padding-left: env(safe-area-inset-left);
+                padding-right: env(safe-area-inset-right);
+            }
+
+            .wf-login-bubbles {
+                top: -4.45rem;
+                left: -1.75rem;
+                right: -1.75rem;
+                height: 8.85rem;
+            }
+
+            .wf-login-bubbles::before {
+                bottom: -0.85rem;
+                height: 4.8rem;
+            }
+
+            .wf-login-bubble {
+                animation:
+                    wf-bubble-size var(--time, 4s) ease-in infinite var(--delay, 0s),
+                    wf-bubble-move-mobile var(--time, 4s) ease-in infinite var(--delay, 0s),
+                    wf-footer-background-cycle 52s ease-in-out infinite -13s;
+                transform: translate(-50%, 0) scale(0.82);
+                transform-origin: center bottom;
+            }
+
+            .wf-login-whatsapp {
+                min-height: 42px;
+                padding: 0 1rem;
+            }
+        }
+
         @media (max-width: 720px) {
             .wf-login-main {
-                padding-top: 24px;
+                padding: max(22px, env(safe-area-inset-top)) 14px 0;
+            }
+
+            .wf-login-layout {
+                width: min(100%, calc(100vw - 28px));
             }
 
             .wf-login-card {
@@ -1163,9 +1214,9 @@ if (!$homeAuthenticated):
 
             .wf-login-footer-content {
                 grid-template-columns: 1fr;
-                gap: 1.15rem;
+                gap: 0.85rem;
                 place-items: center;
-                padding: 2rem 1.15rem 3.25rem;
+                padding: 1.2rem max(1rem, env(safe-area-inset-right)) calc(1.15rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
                 text-align: center;
             }
 
@@ -1181,15 +1232,41 @@ if (!$homeAuthenticated):
             .wf-login-visitor-counter {
                 justify-self: center;
                 text-align: center;
+                width: min(100%, 20rem);
+                min-width: 0;
+                padding: 0.66rem 0.78rem;
             }
 
             .wf-login-footer-info {
                 grid-template-columns: 1fr;
-                gap: 1.05rem;
+                gap: 0.78rem;
+            }
+
+            .wf-login-footer-brand {
+                max-width: min(20rem, 100%);
+                gap: 0.56rem;
+            }
+
+            .wf-login-footer-logo {
+                width: min(220px, 62vw);
+            }
+
+            .wf-login-footer-content p {
+                font-size: 0.78rem;
+                line-height: 1.36;
+            }
+
+            .wf-login-footer-nav,
+            .wf-login-footer-contact {
+                gap: 0.42rem;
+            }
+
+            .wf-login-footer-note {
+                padding-top: 0.42rem;
             }
 
             .wf-login-visitor-counter strong {
-                font-size: 2.2rem;
+                font-size: 2rem;
             }
 
             .wf-login-counter-main,
@@ -1213,36 +1290,39 @@ if (!$homeAuthenticated):
             }
 
             .wf-login-whatsapp-float {
-                right: 1rem;
-                bottom: 1rem;
-                width: 52px;
-                height: 52px;
+                display: none;
             }
 
             .wf-login-runner {
-                width: 72px;
+                display: none;
             }
         }
 
         @media (max-width: 420px) {
+            .wf-login-layout {
+                width: min(360px, calc(100vw - 34px));
+                min-height: min(360px, calc(100vw - 34px));
+            }
+
             .wf-login-ring {
                 width: min(360px, calc(100vw - 34px));
             }
 
             .wf-login-card {
-                width: min(276px, 76vw);
-                gap: 10px;
+                width: min(296px, calc(100vw - 58px));
+                gap: 9px;
             }
 
             .wf-login-logo {
                 width: min(340px, 72vw);
-                max-height: 100px;
+                max-height: 92px;
             }
 
             .wf-login-input,
             .wf-login-submit {
-                padding: 10px 16px;
-                font-size: 0.98rem;
+                min-height: 46px;
+                padding: 11px 16px;
+                font-size: 1rem;
             }
         }
 
