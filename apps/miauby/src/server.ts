@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { Pool, type PoolClient } from 'pg';
+import { buildCanonicalToolContracts } from './tool-contracts.js';
 
 type MysqlRow = RowDataPacket & Record<string, unknown>;
 
@@ -17,7 +18,7 @@ type ShadowReadSection = SourceTable & {
 };
 
 const env = process.env;
-const serviceVersion = '0.4.0';
+const serviceVersion = '0.5.0';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -597,6 +598,488 @@ async function buildReadModel(limit: number) {
   }
 }
 
+type ShadowPayloadRow = {
+  legacy_mysql_id: string | number;
+  role: string | null;
+  status: string | null;
+  content_preview: string | null;
+  payload_sanitized: unknown;
+  source_checksum: string;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+type CanonicalContextInput = {
+  message: string;
+  pageContext: string;
+  limit: number;
+  toolFilter: string;
+  moduleFilter: string;
+  riskFilter: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function canonicalString(value: unknown, max = 700): string {
+  return normalizeText(value, max) || '';
+}
+
+function pickPayloadText(payload: Record<string, unknown>, fields: string[], fallback: unknown = null, max = 700): string {
+  for (const field of fields) {
+    const text = canonicalString(payload[field], max);
+    if (text !== '') return text;
+  }
+  return canonicalString(fallback, max);
+}
+
+function canonicalStatus(value: unknown): string {
+  return normalizeSearch(String(value ?? ''));
+}
+
+function statusLooksApproved(value: unknown): boolean {
+  const status = canonicalStatus(value);
+  return status === 'aprovado' || status === 'approved' || status === 'ativo' || status === 'active';
+}
+
+function statusLooksVisible(value: unknown): boolean {
+  const status = canonicalStatus(value);
+  return status === '' || ['aprovado', 'approved', 'ativo', 'active', 'aberto', 'open', 'pendente', 'pending', 'revisado'].includes(status);
+}
+
+function wordsForScore(value: string): string[] {
+  const stop = new Set([
+    'aqui',
+    'agora',
+    'ainda',
+    'algo',
+    'como',
+    'com',
+    'das',
+    'dos',
+    'essa',
+    'esse',
+    'isso',
+    'mais',
+    'para',
+    'pela',
+    'pelo',
+    'por',
+    'pra',
+    'que',
+    'qual',
+    'quando',
+    'sem',
+    'ser',
+    'sua',
+    'tem',
+    'uma',
+    'voce',
+  ]);
+  const normalized = normalizeSearch(value).replace(/[^a-z0-9]+/g, ' ');
+  return Array.from(
+    new Set(
+      normalized
+        .split(/\s+/)
+        .map((word) => word.trim())
+        .filter((word) => word.length >= 3 && !stop.has(word)),
+    ),
+  );
+}
+
+function scoreText(message: string, values: string[]): number {
+  const normalizedMessage = normalizeSearch(message);
+  if (normalizedMessage === '') return 0;
+  const haystack = normalizeSearch(values.join(' '));
+  if (haystack === '') return 0;
+  let score = haystack.includes(normalizedMessage) ? 80 : 0;
+  for (const word of wordsForScore(message)) {
+    if (haystack.includes(word)) score += 8;
+  }
+  return score;
+}
+
+function styleRouteFor(message: string, pageContext: string) {
+  const normalized = normalizeSearch(`${message} ${pageContext}`);
+  const hasAny = (needles: string[]) => needles.some((needle) => normalized.includes(needle));
+
+  let intent = 'operational';
+  let budgetWords = 120;
+  let useTools = true;
+  let localReply = false;
+  let allowLists = true;
+  let tone = 'miauby curto, pratico e operacional';
+  let reason = 'fallback_operacional';
+
+  if (normalized === '' || /^(oi|ola|teste|bom dia|boa tarde|boa noite)$/.test(normalized)) {
+    intent = 'greeting';
+    budgetWords = 28;
+    useTools = false;
+    localReply = true;
+    allowLists = false;
+    tone = 'entrada viva e curta';
+    reason = 'saudacao_curta';
+  } else if (hasAny(['token', 'senha', 'api', 'prompt', 'codigo', 'backend', 'endpoint', 'stack trace'])) {
+    intent = 'backstage_technical';
+    budgetWords = 55;
+    useTools = false;
+    localReply = true;
+    allowLists = false;
+    tone = 'bastidor vira suporte tecnico interno';
+    reason = 'bastidor_tecnico';
+  } else if (hasAny(['criar', 'lancar', 'registrar', 'sangria', 'pix', 'encomenda', 'conta gestao'])) {
+    intent = 'strong_action';
+    budgetWords = 140;
+    useTools = true;
+    localReply = false;
+    allowLists = true;
+    tone = 'confirmacao humana antes de escrita';
+    reason = 'acao_operacional';
+  } else if (hasAny(['bolo', 'receita', 'horoscopo', 'filme', 'futebol'])) {
+    intent = 'offtopic';
+    budgetWords = 45;
+    useTools = false;
+    localReply = true;
+    allowLists = false;
+    tone = 'puxar de volta para operacao';
+    reason = 'fora_da_operacao';
+  }
+
+  return {
+    intent,
+    label: intent,
+    budget_words: budgetWords,
+    use_tools: useTools,
+    local_reply: localReply,
+    allow_lists: allowLists,
+    tone,
+    reason,
+  };
+}
+
+function buildAudioContract() {
+  return {
+    version: 'miauby-voice-playback-profile-2026-05-17',
+    enabled: false,
+    ui_enabled: false,
+    requested_by_env: false,
+    status: 'desativado',
+    mode: 'text_only',
+    capture_enabled: false,
+    playback_enabled: false,
+    transcription_enabled: false,
+    tts_enabled: false,
+    voice_reply_enabled: false,
+    speech_to_speech_enabled: false,
+    storage_enabled: false,
+    provider: 'not_configured',
+    model: 'gpt-4o-transcribe',
+    speech_model: 'gpt-4o-mini-tts',
+    voice: 'marin',
+    allowed_formats: ['text'],
+    requires_explicit_user_action: true,
+    privacy_rules: [
+      'microfone nunca liga sozinho',
+      'audio nao e armazenado no banco pelo Miauby',
+      'voz nao libera escrita operacional direta',
+      'acao forte continua exigindo confirmacao humana pelo fluxo auditado',
+    ],
+  };
+}
+
+function buildVoiceProfile() {
+  const audio = buildAudioContract();
+  return {
+    version: 'miauby-voice-profile-2026-05-17',
+    profile_id: 'miauby_padrao',
+    label: 'Miauby padrao',
+    tone: 'fiscal interno vivo, pratico, esperto e levemente acido',
+    tempo: 'medio',
+    humor: 'curto',
+    directives: [
+      'personalidade forte com solucao pratica',
+      'respostas curtas por padrao no widget',
+      'pedir somente o menor dado ausente antes de agir',
+      'nao inventar dado real sem fonte do sistema ou do operador',
+    ],
+    audio,
+  };
+}
+
+function buildPersonalityContract() {
+  return {
+    version: 'miauby-persona-2026-05-16',
+    style_version: 'miauby-style-router-2026-05-16',
+    source: 'apps/miauby_node_contract',
+    nome_publico: 'Miauby',
+    papel: 'Fiscal interno da operacao Wimifarma',
+    voz: [
+      'fiscal interno vivo, pratico, esperto e levemente acido',
+      'humor curto como tempero, nunca como enrolacao',
+      'personalidade forte com solucao pratica em toda resposta',
+      'respostas curtas por padrao no widget',
+      'perguntas casuais nao viram lista de ferramentas',
+      'pedir somente o menor dado ausente antes de agir',
+      'nao inventar dado real sem fonte do sistema ou do operador',
+    ],
+    bordoes_controlados: ['Miauby direto:', 'Veredito:', 'Sem dado, sem milagre.', 'Pode seguir.'],
+    guardrails: [
+      'nao expor segredo, token, payload bruto, stack trace ou telefone cru',
+      'nao escrever diretamente nos bancos dos modulos por apps/miauby nesta fase',
+      'acoes fortes continuam sob confirmacao humana e dono oficial PHP/modulo',
+      'resposta oficial ainda e site/miauw PHP ate corte validado',
+    ],
+    proxima_melhoria: 'validar consumo sombra pelo agente antes de qualquer troca oficial.',
+  };
+}
+
+async function readShadowRows(client: PoolClient, section: ShadowReadSection, limit: number): Promise<ShadowPayloadRow[]> {
+  const result = await client.query<ShadowPayloadRow>(
+    `SELECT legacy_mysql_id, role, status, content_preview, payload_sanitized, source_checksum, created_at, updated_at
+       FROM ${pgIdent(section.target)}
+      WHERE source_table = $1
+      ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+      LIMIT $2`,
+    [section.source, limit],
+  );
+  return result.rows;
+}
+
+async function countRowsByStatus(client: PoolClient, section: ShadowReadSection, statuses: string[]): Promise<number> {
+  const result = await client.query<{ total: string }>(
+    `SELECT COUNT(*)::bigint AS total
+       FROM ${pgIdent(section.target)}
+      WHERE source_table = $1
+        AND LOWER(TRIM(COALESCE(status, ''))) = ANY($2::text[])`,
+    [section.source, statuses],
+  );
+  return Number(result.rows[0]?.total || 0);
+}
+
+function canonicalItem(row: ShadowPayloadRow, fields: string[]) {
+  const payload = isRecord(row.payload_sanitized) ? row.payload_sanitized : {};
+  return {
+    legacy_mysql_id: String(row.legacy_mysql_id),
+    status: normalizeText(row.status, 80),
+    preview: pickPayloadText(payload, fields, row.content_preview, 700),
+    checksum_prefix: row.source_checksum.slice(0, 16),
+    created_at: asIsoString(row.created_at),
+    updated_at: asIsoString(row.updated_at),
+  };
+}
+
+async function buildCanonicalSection(client: PoolClient, section: ShadowReadSection, limit: number, fields: string[], visibleOnly = true) {
+  const rows = (await readShadowRows(client, section, Math.max(limit * 4, limit))).filter((row) => !visibleOnly || statusLooksVisible(row.status));
+  return {
+    key: section.key,
+    label: section.label,
+    source: section.source,
+    target: section.target,
+    count: await targetCount(client, section.target, section.source),
+    limit,
+    items: rows.slice(0, limit).map((row) => canonicalItem(row, fields)),
+  };
+}
+
+async function buildTrainingContext(client: PoolClient, message: string, routeIntent: string, limit: number) {
+  const section = readSections.find((item) => item.key === 'training_examples') as ShadowReadSection;
+  const rows = (await readShadowRows(client, section, 160)).filter((row) => statusLooksApproved(row.status));
+  const scored = rows
+    .map((row) => {
+      const payload = isRecord(row.payload_sanitized) ? row.payload_sanitized : {};
+      const question = pickPayloadText(payload, ['pergunta', 'prompt', 'question', 'mensagem'], row.content_preview, 180);
+      const reply = pickPayloadText(payload, ['resposta_ideal', 'resposta', 'completion', 'reply'], null, 360);
+      const category = pickPayloadText(payload, ['categoria', 'category'], null, 80) || 'geral';
+      const style = pickPayloadText(payload, ['estilo', 'style'], null, 80) || 'miauby';
+      const score = scoreText(message, [question, reply, category, style]);
+      return {
+        row,
+        question,
+        reply,
+        category,
+        style,
+        score,
+      };
+    })
+    .filter((item) => item.question !== '' && item.reply !== '');
+
+  scored.sort((left, right) => right.score - left.score || String(right.row.updated_at).localeCompare(String(left.row.updated_at)));
+  const selected = (message.trim() === '' ? scored : scored.filter((item) => item.score > 0)).slice(0, limit);
+  const fallback = selected.length > 0 ? selected : scored.slice(0, limit);
+  const topScore = fallback[0]?.score || 0;
+  const categories = Array.from(new Set(fallback.map((item) => item.category).filter(Boolean))).slice(0, 4);
+  const styles = Array.from(new Set(fallback.map((item) => item.style).filter(Boolean))).slice(0, 4);
+  const directives = [
+    'usar treino aprovado como padrao de voz, nao como assunto para citar',
+    'responder curto quando a mensagem for solta; pedir o menor recorte util',
+  ];
+  if (routeIntent === 'backstage_technical') {
+    directives.push('bastidor, senha, chave e login: recusar sem expor e puxar para suporte interno ou objetivo operacional');
+  }
+  if (routeIntent === 'strong_action') {
+    directives.push('acao forte: pedir dados obrigatorios e confirmacao humana antes de gravar');
+  }
+
+  let confidence = 'baixa';
+  if (topScore >= 80) confidence = 'exata';
+  else if (topScore >= 32) confidence = 'alta';
+  else if (topScore >= 8) confidence = 'media';
+
+  return {
+    profile: {
+      version: 'miauby-training-compiler-node-2026-06-02',
+      approved_total: await countRowsByStatus(client, section, ['aprovado', 'approved', 'ativo', 'active']),
+      examples_selected: fallback.length,
+      confidence,
+      top_score: topScore,
+      route_intent: routeIntent,
+      directives: directives.slice(0, 5),
+      categories,
+      styles,
+    },
+    examples: fallback.map((item) => ({
+      pergunta: item.question,
+      resposta_ideal: item.reply,
+      categoria: item.category,
+      estilo: item.style,
+      score: item.score,
+      legacy_mysql_id: String(item.row.legacy_mysql_id),
+      updated_at: asIsoString(item.row.updated_at),
+    })),
+  };
+}
+
+function requestValue(req: Request, names: string[]): string {
+  const body = isRecord(req.body) ? req.body : {};
+  for (const name of names) {
+    const raw = body[name] ?? req.query[name];
+    if (Array.isArray(raw)) {
+      const text = canonicalString(raw[0], 4000);
+      if (text !== '') return text;
+      continue;
+    }
+    const text = canonicalString(raw, 4000);
+    if (text !== '') return text;
+  }
+  return '';
+}
+
+function canonicalInputFromRequest(req: Request): CanonicalContextInput {
+  return {
+    message: requestValue(req, ['message', 'mensagem']),
+    pageContext: requestValue(req, ['page_context', 'pageContext', 'contexto']),
+    limit: parseLimit(requestValue(req, ['limit', 'limite']), 3, 12),
+    toolFilter: requestValue(req, ['tool', 'name', 'nome']),
+    moduleFilter: requestValue(req, ['module', 'modulo']),
+    riskFilter: requestValue(req, ['risk', 'risco']),
+  };
+}
+
+async function buildCanonicalContext(input: CanonicalContextInput) {
+  const client = await pgPool.connect();
+  const started = Date.now();
+  try {
+    const route = styleRouteFor(input.message, input.pageContext);
+    const training = await buildTrainingContext(client, input.message, String(route.intent), input.limit);
+    const memories = await buildCanonicalSection(client, readSections[1], input.limit, ['memoria', 'memory', 'conteudo', 'resumo', 'texto']);
+    const knowledge = await buildCanonicalSection(client, readSections[2], input.limit, ['titulo', 'conteudo', 'texto', 'resumo']);
+    const alerts = await buildCanonicalSection(client, readSections[3], input.limit, ['titulo', 'descricao', 'mensagem', 'status']);
+    const patterns = await buildCanonicalSection(client, readSections[4], input.limit, ['padrao', 'descricao', 'exemplo', 'status']);
+    const settings = await buildCanonicalSection(client, readSections[6], input.limit, ['chave', 'key', 'nome', 'valor', 'value']);
+    const voiceProfile = buildVoiceProfile();
+    const examples = [
+      ...training.examples.slice(0, 2).map((item) => `treino aprovado: ${item.pergunta} => ${item.resposta_ideal}`),
+      ...patterns.items.slice(0, 2).map((item) => `padrao aprovado: ${item.preview}`),
+    ].filter((item) => item.trim() !== '').slice(0, 4);
+
+    return {
+      ok: true,
+      service: 'miauby',
+      version: serviceVersion,
+      context_version: 'miauby-node-context-pack-2026-06-02',
+      mode: 'node_read_only_context_persona_tools',
+      generated_at: new Date().toISOString(),
+      latency_ms: Date.now() - started,
+      source: 'apps/miauby + postgres miauby_*',
+      official_response_owner: 'site/miauw PHP',
+      php_official_response: true,
+      write_enabled: false,
+      writes_enabled_in_node: false,
+      route_cutover_enabled: false,
+      public_proxy_enabled: false,
+      payload_sanitized_only: true,
+      raw_payload_returned: false,
+      limit: input.limit,
+      style_context: {
+        version: 'miauby-style-router-2026-05-16',
+        source: 'apps/miauby_node_read_only',
+        route,
+        hard_rules: [
+          'casual sem lista numerada',
+          'nao responder pergunta casual com lista de ferramentas',
+          'bastidor tecnico vira suporte tecnico interno',
+          'usar memorias/padroes apenas quando revisados como aprovado',
+          'usar exemplos de treino aprovados sem citar treino, tabela ou revisao',
+          'audio so inicia por botao explicito, sem gravacao e sem escrita operacional por voz',
+        ],
+        anti_patterns: [
+          'resposta generica de suporte',
+          'catalogo de ferramentas em pergunta casual',
+          'expor endpoint, segredo, stack trace ou payload bruto',
+          'prometer escrita sem confirmacao',
+        ],
+        approved_patterns: patterns.items.map((item) => item.preview).filter(Boolean),
+        training_examples: training.examples,
+        training_profile: training.profile,
+        channel_memory: {
+          items: [],
+          source: 'not_migrated_to_miauby_shadow_in_this_step',
+          note: 'memoria multicanal continua no bridge/PHP oficial ate proxima fase',
+        },
+        voice_profile: voiceProfile,
+        audio_contract: voiceProfile.audio,
+        examples,
+      },
+      tool_contracts: buildCanonicalToolContracts({
+        name: input.toolFilter,
+        module: input.moduleFilter,
+        risk: input.riskFilter,
+      }),
+      personality: buildPersonalityContract(),
+      datasets: {
+        training_examples: {
+          source: 'miauby_training_examples',
+          selected: training.examples.length,
+          approved_total: training.profile.approved_total,
+        },
+        memories,
+        knowledge,
+        alerts,
+        patterns,
+        settings,
+      },
+      guards: {
+        token_required: true,
+        write_enabled: false,
+        direct_node_writes_enabled: false,
+        execution_owner: 'php',
+        confirmation_owner: 'php',
+      },
+    };
+  } finally {
+    client.release();
+  }
+}
+
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
@@ -624,6 +1107,7 @@ app.get(['/health', `${basePath}/health`], async (_req, res) => {
       mode: 'shadow_read_only',
       route_cutover_enabled: false,
       write_enabled: false,
+      canonical_context_supported: true,
       internal_token_configured: internalToken() !== '',
       latest_migration_ok: latestMigrationOk,
       latency_ms: Date.now() - started,
@@ -705,6 +1189,19 @@ app.get(`${basePath}/api/internal/context`, requireInternalToken, async (req, re
     next(error);
   }
 });
+
+async function canonicalContextHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await buildCanonicalContext(canonicalInputFromRequest(req)));
+  } catch (error) {
+    next(error);
+  }
+}
+
+app.get(`${basePath}/api/internal/canonical-context`, requireInternalToken, canonicalContextHandler);
+app.post(`${basePath}/api/internal/canonical-context`, requireInternalToken, canonicalContextHandler);
+app.get(`${basePath}/api/internal/context-pack`, requireInternalToken, canonicalContextHandler);
+app.post(`${basePath}/api/internal/context-pack`, requireInternalToken, canonicalContextHandler);
 
 app.get(`${basePath}/api/internal/cutover`, requireInternalToken, (_req, res) => {
   res.json(buildCutoverInventory());

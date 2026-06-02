@@ -55,6 +55,15 @@ assert(context.response.ok && context.body.ok === true, 'context_failed');
 assert(context.body.raw_payload_returned === false, 'context_must_not_return_raw_payload');
 assert(Array.isArray(context.body.sections) && context.body.sections.length >= 5, 'context_sections_missing');
 
+const canonical = await readJson(`/api/internal/canonical-context?limit=${contextLimit}&message=${encodeURIComponent('teste miauby cotacao')}`, headers);
+assert(canonical.response.ok && canonical.body.ok === true, 'canonical_context_failed');
+assert(canonical.body.mode === 'node_read_only_context_persona_tools', 'canonical_context_mode_invalid');
+assert(canonical.body.write_enabled === false && canonical.body.writes_enabled_in_node === false, 'canonical_context_must_be_read_only');
+assert(canonical.body.php_official_response === true, 'canonical_context_must_keep_php_official');
+assert(canonical.body.raw_payload_returned === false, 'canonical_context_must_not_return_raw_payload');
+assert(canonical.body.tool_contracts?.summary?.schemas_exported >= 10, 'canonical_tool_contracts_missing');
+assert(canonical.body.style_context?.training_profile, 'canonical_training_profile_missing');
+
 const cutover = await readJson('/api/internal/cutover', headers);
 assert(cutover.response.ok && cutover.body.ok === true, 'cutover_inventory_failed');
 assert(cutover.body.mode === 'cutover_inventory_read_only', 'cutover_inventory_mode_invalid');
@@ -80,6 +89,13 @@ console.log(JSON.stringify({
     count: section.count,
     returned: section.items.length,
   })),
+  canonical_context: {
+    version: canonical.body.context_version,
+    mode: canonical.body.mode,
+    tools: canonical.body.tool_contracts.summary.schemas_exported,
+    training_selected: canonical.body.style_context.training_profile.examples_selected,
+    php_official_response: canonical.body.php_official_response,
+  },
   cutover: {
     mode: cutover.body.mode,
     flows: cutover.body.flows.length,
