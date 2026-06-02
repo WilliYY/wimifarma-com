@@ -225,6 +225,24 @@
     background: linear-gradient(135deg, #fff, #f9fffd);
 }
 
+.miauw-widget-nudge.is-home-greeting {
+    width: min(280px, calc(100vw - var(--miauw-nudge-clearance)));
+    inline-size: min(280px, calc(100vw - var(--miauw-nudge-clearance)));
+    min-width: 0;
+    min-inline-size: 0;
+    border-color: rgba(190, 24, 93, 0.22);
+    background:
+        radial-gradient(circle at 16px 14px, rgba(251, 207, 232, 0.8), transparent 23px),
+        linear-gradient(135deg, #fff, #fff7fb);
+    color: #8a0f3b;
+    font-size: 13px;
+    line-height: 1.32;
+}
+
+.miauw-widget-nudge.is-home-greeting.is-visible {
+    pointer-events: none;
+}
+
 .miauw-widget-nudge.is-visible {
     opacity: 1;
     transform: translateY(0);
@@ -1489,6 +1507,13 @@
         min-inline-size: 210px;
         max-width: calc(100vw - 24px);
         max-inline-size: calc(100vw - 24px);
+    }
+
+    .miauw-widget-nudge.is-home-greeting {
+        width: min(236px, calc(100vw - 132px));
+        inline-size: min(236px, calc(100vw - 132px));
+        padding: 10px 12px;
+        font-size: 12.25px;
     }
 
     .miauw-widget-composer {

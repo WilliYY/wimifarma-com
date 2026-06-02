@@ -12,7 +12,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260602-avatar-fit';
+    link.href = '/miauw/widget.css?v=20260602-home-greeting';
     document.head.appendChild(link);
   }
 
@@ -145,6 +145,16 @@
   let cotacaoRunnerTimer = null;
   const recentInteractions = [];
   const NUDGE_ACTIVITY_WINDOW = 1000 * 18;
+  const HOME_GREETING_PHRASES = [
+    'Miauww, {nome}! Fiscal de plantao ativado.',
+    'Miauww, {nome}! Bora manter essa farmacia nos trilhos.',
+    'Cheguei, {nome}. Hoje eu fiscalizo, voce vende.',
+    'Miauww, {nome}! Sem caos no sistema hoje, combinado?',
+    'Ola, {nome}. Ja estou de olho nos modulos.',
+    'Miauww, {nome}! Se der erro, a culpa e do humano.',
+    'Bom te ver, {nome}. Vamos fazer esse turno render.',
+    'Miauww, {nome}! Miauby online e julgando planilhas.',
+  ];
 
   const escapeHtml = (value) => String(value)
     .replaceAll('&', '&amp;')
@@ -167,6 +177,61 @@
     .slice(0, max);
 
   const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
+
+  const readHomeGreetingConfig = () => {
+    const dataset = document.body && document.body.dataset ? document.body.dataset : {};
+    if (dataset.miauwHomeGreeting !== '1') return null;
+
+    const name = clipText(dataset.miauwUserName || dataset.miauwUserLogin || 'usuario', 42)
+      .replace(/[<>]/g, '')
+      .trim() || 'usuario';
+    const key = clipText(dataset.miauwUserKey || name, 60).replace(/[^a-z0-9_-]+/gi, '_') || 'home';
+
+    return { name, key };
+  };
+
+  const sessionStorageGet = (key) => {
+    try {
+      return window.sessionStorage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const sessionStorageSet = (key, value) => {
+    try {
+      window.sessionStorage.setItem(key, value);
+    } catch (error) {
+      // Saudacao e decorativa; se o storage falhar, o widget continua normal.
+    }
+  };
+
+  const localStorageGet = (key) => {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const localStorageSet = (key, value) => {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (error) {
+      // Fallback silencioso para navegadores que bloqueiam storage.
+    }
+  };
+
+  const homeGreetingText = (name) => {
+    const lastIndex = Number(localStorageGet('miauw_home_greeting_last_index') || -1);
+    let index = Math.floor(Math.random() * HOME_GREETING_PHRASES.length);
+    if (HOME_GREETING_PHRASES.length > 1 && index === lastIndex) {
+      index = (index + 1 + Math.floor(Math.random() * (HOME_GREETING_PHRASES.length - 1))) % HOME_GREETING_PHRASES.length;
+    }
+    localStorageSet('miauw_home_greeting_last_index', String(index));
+
+    return HOME_GREETING_PHRASES[index].replace('{nome}', name);
+  };
 
   const isWidgetTarget = (target) => target && root.contains(target);
 
@@ -553,6 +618,7 @@
     alertNudge.dataset.miauwView = ALERTS_UI_ENABLED ? (payload.view || (payload.alert ? 'alerts' : 'chat')) : 'chat';
     alertNudge.classList.toggle('is-alert-speech', Boolean(payload.alert));
     alertNudge.classList.toggle('is-ambient-speech', !payload.alert);
+    alertNudge.classList.toggle('is-home-greeting', payload.kind === 'home-login-greeting');
     alertNudge.hidden = false;
     window.requestAnimationFrame(() => alertNudge.classList.add('is-visible'));
 
@@ -564,7 +630,7 @@
       window.localStorage.setItem(payload.storageCount.key, String(payload.storageCount.value || 0));
     }
 
-    window.setTimeout(hideAlertNudge, 8500);
+    window.setTimeout(hideAlertNudge, Number(payload.timeoutMs || 8500));
   };
 
   const queueOrShowNudge = (payload) => {
@@ -665,6 +731,28 @@
       view: 'chat',
       storage: { key: 'miauby_home_creature_nudge_at', value: now },
     });
+  };
+
+  const maybeShowHomeLoginGreeting = () => {
+    if (!alertNudge || state.open) return;
+
+    const config = readHomeGreetingConfig();
+    if (!config) return;
+
+    const storageKey = `miauw_home_login_greeting_seen_${config.key}`;
+    if (sessionStorageGet(storageKey)) return;
+    sessionStorageSet(storageKey, String(Date.now()));
+
+    window.setTimeout(() => {
+      if (state.open) return;
+      showQueuedNudge({
+        text: homeGreetingText(config.name),
+        prompt: '',
+        view: 'chat',
+        kind: 'home-login-greeting',
+        timeoutMs: 6400,
+      });
+    }, reducedMotion ? 450 : 1250);
   };
 
   const cotacaoRunnerHomePoint = () => {
@@ -1874,7 +1962,8 @@
   };
 
   loadStatus({ statusOnly: true });
-  window.setTimeout(maybeShowHomeCreatureNudge, 2200);
+  maybeShowHomeLoginGreeting();
+  window.setTimeout(maybeShowHomeCreatureNudge, 4200);
   scheduleCotacaoPikachuRunner(7500 + Math.random() * 5500);
   window.setInterval(() => {
     loadStatus({ statusOnly: !state.open });

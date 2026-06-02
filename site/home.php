@@ -49,6 +49,112 @@ function wf_home_is_https(): bool
     return $https === 'on' || $https === '1' || $forwardedProto === 'https';
 }
 
+function wf_home_env_string(string $name, string $default = ''): string
+{
+    $value = getenv($name);
+    if (is_string($value) && trim($value) !== '') {
+        return trim($value);
+    }
+
+    if (isset($_ENV[$name]) && is_string($_ENV[$name]) && trim($_ENV[$name]) !== '') {
+        return trim($_ENV[$name]);
+    }
+
+    if (isset($_SERVER[$name]) && is_string($_SERVER[$name]) && trim($_SERVER[$name]) !== '') {
+        return trim($_SERVER[$name]);
+    }
+
+    return $default;
+}
+
+function wf_home_human_login_name(string $username): string
+{
+    $username = trim($username);
+    if ($username === '') {
+        return 'usuario';
+    }
+
+    $name = preg_replace('/[._-]+/', ' ', $username);
+    $name = is_string($name) ? trim($name) : $username;
+    if ($name === '') {
+        return $username;
+    }
+
+    if (function_exists('mb_convert_case')) {
+        return mb_convert_case($name, MB_CASE_TITLE, 'UTF-8');
+    }
+
+    return ucwords(strtolower($name));
+}
+
+function wf_home_core_user_identity(string $username): ?array
+{
+    $username = strtolower(trim($username));
+    if ($username === '' || !preg_match('/^[a-z0-9._@-]{1,80}$/', $username)) {
+        return null;
+    }
+
+    if (!class_exists(PDO::class)) {
+        return null;
+    }
+
+    $password = wf_home_env_string('CORE_POSTGRES_PASSWORD');
+    if ($password === '') {
+        return null;
+    }
+
+    try {
+        $dsn = sprintf(
+            'pgsql:host=%s;port=%s;dbname=%s',
+            wf_home_env_string('CORE_POSTGRES_HOST', 'wimifarma-core-db'),
+            wf_home_env_string('CORE_POSTGRES_PORT', '5432'),
+            wf_home_env_string('CORE_POSTGRES_DB', 'wimifarma_core')
+        );
+        $pdo = new PDO(
+            $dsn,
+            wf_home_env_string('CORE_POSTGRES_USER', 'wimifarma_core'),
+            $password,
+            array(
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_TIMEOUT => 2,
+            )
+        );
+        $stmt = $pdo->prepare(
+            'SELECT username, display_name
+               FROM core_users
+              WHERE username_normalized = ?
+                AND active = true
+              LIMIT 1'
+        );
+        $stmt->execute(array($username));
+        $row = $stmt->fetch();
+    } catch (Throwable $error) {
+        return null;
+    }
+
+    return is_array($row) ? $row : null;
+}
+
+function wf_home_logged_user_label(string $username): string
+{
+    $identity = wf_home_core_user_identity($username);
+    if ($identity) {
+        $displayName = trim((string) ($identity['display_name'] ?? ''));
+        if ($displayName !== '') {
+            return $displayName;
+        }
+
+        $coreUsername = trim((string) ($identity['username'] ?? ''));
+        if ($coreUsername !== '') {
+            return wf_home_human_login_name($coreUsername);
+        }
+    }
+
+    return wf_home_human_login_name($username);
+}
+
 function wf_home_send_security_headers(): void
 {
     header('X-Frame-Options: SAMEORIGIN');
@@ -388,6 +494,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
         session_regenerate_id(true);
         $_SESSION['wf_home_authenticated'] = true;
         $_SESSION['wf_home_user'] = $user;
+        $_SESSION['wf_home_login_nonce'] = bin2hex(random_bytes(8));
         $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
         wf_home_sso_issue($user, wf_home_is_https());
         wf_home_redirect('/');
@@ -398,6 +505,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
 
 $homeAuthenticated = !empty($_SESSION['wf_home_authenticated']);
 if ($homeAuthenticated && !empty($_SESSION['wf_home_user']) && is_string($_SESSION['wf_home_user'])) {
+    if (empty($_SESSION['wf_home_login_nonce']) || !is_string($_SESSION['wf_home_login_nonce'])) {
+        $_SESSION['wf_home_login_nonce'] = bin2hex(random_bytes(8));
+    }
     wf_home_sso_issue($_SESSION['wf_home_user'], wf_home_is_https());
 }
 
@@ -1625,6 +1735,14 @@ if (!$homeAuthenticated):
 exit;
 endif;
 
+$homeUserLogin = $homeAuthenticated && !empty($_SESSION['wf_home_user']) && is_string($_SESSION['wf_home_user'])
+    ? strtolower(trim((string) $_SESSION['wf_home_user']))
+    : '';
+$homeUserLabel = $homeUserLogin !== '' ? wf_home_logged_user_label($homeUserLogin) : '';
+$homeGreetingSessionKey = $homeUserLogin !== ''
+    ? substr(hash('sha256', $homeUserLogin . '|' . (string) ($_SESSION['wf_home_login_nonce'] ?? '')), 0, 24)
+    : '';
+
 $modules = array(
     array(
         'name' => 'Cashback',
@@ -2328,9 +2446,13 @@ $modules = array(
             }
         }
     </style>
-    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260602-avatar-fit')); ?>">
+    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260602-home-greeting')); ?>">
 </head>
-<body>
+<body
+    data-miauw-home-greeting="1"
+    data-miauw-user-name="<?php echo wf_home_e($homeUserLabel); ?>"
+    data-miauw-user-key="<?php echo wf_home_e($homeGreetingSessionKey); ?>"
+>
 <div class="wf-page">
     <div class="wf-backdrop" aria-hidden="true">
         <video autoplay muted loop playsinline preload="metadata">
@@ -2714,6 +2836,6 @@ $modules = array(
         }
     }());
 </script>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260602-avatar-fit')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260602-home-greeting')); ?>" defer></script>
 </body>
 </html>
