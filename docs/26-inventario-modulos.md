@@ -796,6 +796,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 - `POST /cotacao/api/internal/urgentes`: criacao interna tokenizada de item urgente.
 - `POST /cotacao/api/internal/cotacoes-rapidas`: criacao interna tokenizada de cotacao rapida, criando distribuidora V2 quando necessario.
 - Socket.IO em `/cotacao/socket.io`.
+- O app da Cotacao tambem agenda e envia lembretes de encomenda para `/miauw/whatsapp/internal/cotacao-encomenda-reminder` quando uma linha contem `encomenda`, sem alterar a planilha.
 
 ### Permissoes e sessao
 
@@ -818,7 +819,8 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 - `cotacao_v2_events`;
 - `cotacao_v2_rules`;
 - `cotacao_v2_styles`;
-- `cotacao_v2_column_audit`.
+- `cotacao_v2_column_audit`;
+- `cotacao_v2_encomenda_reminders`.
 
 ### Arquivos legados/relevantes
 

@@ -137,8 +137,9 @@ Criadas por `apps/cotacao/src/server.js`:
 - `cotacao_v2_rules`: regras de formatacao condicional explicitas, com `show_timestamp` para habilitar hover de data/hora da criacao da regra.
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula.
 - `cotacao_v2_column_audit`: historico de renomeacao/reordenacao de distribuidoras.
+- `cotacao_v2_encomenda_reminders`: lembretes de encomenda detectados na Cotacao para envio interno pelo Miauby Whats, com cotacao/linha, texto original, produto, quantidade, categoria, valores da linha, data de deteccao, horario de aviso, destinatarios mascarados/modo, status, tentativas, erro e resultado do WhatsApp.
 
-A Cotacao V2 autentica somente no core `core_users`, sem abrir conexao MySQL e sem fallback `wf_users`. Os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico.
+A Cotacao V2 autentica somente no core `core_users`, sem abrir conexao MySQL e sem fallback `wf_users`. Os dados da planilha nova ficam no Postgres. Redis guarda sessoes e presenca temporaria, nao historico. `cotacao_v2_rules.show_timestamp` continua sendo apenas tooltip visual da regra; a automacao de encomenda usa a tabela propria `cotacao_v2_encomenda_reminders`, nao tooltip nem regra visual.
 
 ## Tabelas da Gestao em Postgres
 

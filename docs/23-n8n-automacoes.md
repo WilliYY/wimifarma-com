@@ -58,7 +58,7 @@ n8n --version
 - `MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL`
 - `MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL`
 
-O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos` e `Fechamento de caixa`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron do n8n continue ativo. O card `Fechamento de caixa` tambem tenta mostrar a leitura atual do Financeiro, incluindo se existe caixa aberto nos ultimos 10 dias e quais dias estao pendentes.
+O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos`, `Fechamento de caixa` e `Encomenda da Cotacao`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron/worker continue ativo. O card `Fechamento de caixa` tambem tenta mostrar a leitura atual do Financeiro, incluindo se existe caixa aberto nos ultimos 10 dias e quais dias estao pendentes.
 
 ## Rotinas iniciais
 
@@ -118,6 +118,27 @@ Fluxo:
 2. Backend calcula boletos vencendo, pedidos que chegam hoje e pedidos atrasados.
 3. Miauby WhatsApp envia resumo curto para destinatarios autorizados.
 4. Pagamento ou baixa continua exigindo sistema/core com confirmacao.
+
+### Encomenda da Cotacao as 16h
+
+Agenda: criada pelo app da Cotacao para o dia seguinte as 16:00, timezone `America/Sao_Paulo`.
+
+Destino: se `COTACAO_ENCOMENDA_REMINDER_RECIPIENTS` estiver preenchido, usa esses numeros; se vazio, usa contatos autorizados com card `Cotacao`.
+
+Endpoint interno chamado pela Cotacao:
+
+```text
+POST /miauw/whatsapp/internal/cotacao-encomenda-reminder
+```
+
+Fluxo:
+
+1. A Cotacao detecta `encomenda` em uma linha salva e grava `cotacao_v2_encomenda_reminders`.
+2. O lembrete fica previsto para o dia seguinte as 16h, com produto, quantidade, texto original, status e destinatarios mascarados/modo.
+3. Antes do envio, a Cotacao confere a linha de novo; se `encomenda` sumiu ou a linha foi removida, cancela o lembrete.
+4. O Miauby Whats confere se a rotina `cotacao_encomenda_16h` esta ativa no painel.
+5. A mensagem e curta e interna, perguntando se a encomenda chegou, com criada em, hoje e contexto do produto/quantidade.
+6. O envio nao altera valor, fornecedor, ganhador, status ou linha da Cotacao.
 
 ### Chegada de pedidos as 17h
 

@@ -82,6 +82,7 @@ Postgres `wimifarma_cotacao`:
 - `cotacao_v2_rules`: regras condicionais explicitas sempre com `target='cell'`, incluindo `show_timestamp` para exibir no hover a data/hora de criacao da regra quando habilitado.
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula, usados pela paleta de cores da tela.
 - `cotacao_v2_column_audit`: auditoria de renomeacao e reordenacao de colunas de distribuidoras.
+- `cotacao_v2_encomenda_reminders`: lembretes operacionais criados quando uma linha contem `encomenda`, com cotacao, linha, texto original, produto/quantidade extraidos, data de deteccao, envio previsto, destinatarios mascarados, status (`pendente`, `enviado`, `erro`, `cancelado`, `resolvido`), tentativas e resultado do Miauby Whats.
 
 Redis:
 
@@ -102,7 +103,8 @@ Core Postgres `wimifarma_core`:
 - Colunas de distribuidoras podem ser adicionadas ou removidas pela interface; colunas fixas e calculadas nao.
 - `Ganhador` e calculado pelo menor preco numerico entre distribuidoras visiveis e nao aceita escrita manual.
 - Categoria e texto comum.
-- `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem, filtro nem alerta por gatilho escondido.
+- `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem nem filtro por gatilho escondido.
+- Excecao documentada de 2026-06-01: `encomenda` gera apenas um lembrete operacional persistido para o Miauby Whats no dia seguinte as 16h. Esse lembrete nao muda valores, fornecedor, ganhador, prioridade, cor ou posicao da linha.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`; regras criadas pela tela podem ser editadas ou apagadas no proprio modal.
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.
@@ -123,6 +125,7 @@ Core Postgres `wimifarma_core`:
 - Nomes de presenca aparecem como animais aleatorios/deterministicos por aba para diferenciar usuarios sem expor o nome real na area principal.
 - Quando outro usuario esta em uma celula visivel, a grade deve mostrar contorno colorido, etiqueta do animal e tooltip com coluna/linha; esse indicador nao bloqueia escrita.
 - O botao `Historico`, ao lado do contador de linhas com dados, abre as alteracoes da celula selecionada a partir de `cotacao_v2_events` e permite restaurar o valor anterior por um save normal.
+- O historico tambem pode mostrar eventos do lembrete de encomenda (`criado`, `atualizado`, `cancelado`, `enviado` ou `erro`) vinculados a linha; esses eventos nao sao restauraveis como valor de celula.
 - O modal de formatacao condicional deve manter leitura operacional: criacao de regra em uma faixa compacta, lista de regras em linhas alinhadas e acoes visiveis sem quebrar o layout.
 - Login deve continuar aceitando os usuarios internos sincronizados para `core_users`; se um usuario existir apenas em `wf_users`, rodar o migrador do core antes de liberar o acesso.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.

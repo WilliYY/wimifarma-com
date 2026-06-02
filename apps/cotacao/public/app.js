@@ -1600,7 +1600,7 @@
     historyList.innerHTML = history.map((item, index) => {
       const previous = item.previousValue === '' ? '(vazio)' : item.previousValue;
       const current = item.value === '' ? '(vazio)' : item.value;
-      const restoreButton = data.canRestore
+      const restoreButton = data.canRestore && item.restorable !== false
         ? `<button type="button" data-history-restore="${index}">Restaurar anterior</button>`
         : '';
       const overwrite = item.overwroteRemote ? '<span class="history-flag">ultimo salvamento venceu</span>' : '';

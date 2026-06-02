@@ -439,7 +439,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.23';
+const SERVICE_VERSION = '0.5.24';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -550,6 +550,7 @@ const PEDIDOS_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_PEDI
 const FINANCEIRO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL') || textEnv('FINANCEIRO_INTERNAL_BASE_URL') || 'http://wimifarma-financeiro-app:3800/financeiro');
 const PEDIDOS_ARRIVAL_AUTOMATION_KEY = 'pedidos_chegada_17h';
 const FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY = 'financeiro_fechamento_caixa_18h';
+const COTACAO_ENCOMENDA_AUTOMATION_KEY = 'cotacao_encomenda_16h';
 const AUTOMATION_NOTIFY_COOLDOWN_MINUTES = numberEnv('MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES', 15, 1, 240);
 const WATCHDOG_LOOKBACK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES', 30, 5, 240);
 const WATCHDOG_STUCK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES', 2, 1, 60);
@@ -615,6 +616,19 @@ const N8N_WORKFLOW_CARDS = [
     safety: 'So alerta quando o Financeiro disser que existe caixa aberto, em conferencia ou sem registro para o dia consultado.',
     controlNote: 'Desligar aqui pausa apenas o lembrete do backend; nao altera dados financeiros.',
     settingsKey: FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
+  },
+  {
+    key: COTACAO_ENCOMENDA_AUTOMATION_KEY,
+    title: 'Encomenda da Cotacao',
+    schedule: 'Dia seguinte 16:00',
+    moduleKey: 'cotacao',
+    description: 'Pergunta para a equipe se a encomenda marcada na Cotacao ja chegou.',
+    n8nAction: 'O app da Cotacao agenda e chama o endpoint interno do Miauby Whats quando o lembrete vence.',
+    miaubyAction: 'Miauby envia um texto curto para contatos com card Cotacao ou para destinatarios configurados no ambiente da Cotacao.',
+    messagePreview: 'Ex.: "Encomenda chegou? Produto: Dipirona. Quantidade: 20 caixas."',
+    safety: 'Somente alerta interno; nao altera valor, fornecedor, status ou linha da Cotacao.',
+    controlNote: 'Desligar aqui faz o Miauby ignorar o envio mesmo que a Cotacao continue registrando o lembrete.',
+    settingsKey: COTACAO_ENCOMENDA_AUTOMATION_KEY,
   },
   {
     key: 'pedidos_boletos',
@@ -2001,6 +2015,13 @@ async function ensureSchema(): Promise<void> {
     'Fechamento de caixa',
     'financeiro',
     'Todo dia 18:00',
+    true,
+  );
+  await ensureAutomationSetting(
+    COTACAO_ENCOMENDA_AUTOMATION_KEY,
+    'Encomenda da Cotacao',
+    'cotacao',
+    'Dia seguinte 16:00',
     true,
   );
 }
@@ -6320,6 +6341,7 @@ function publicStatus(): JsonRecord {
     n8n_internal_watchdog: `${BASE_PATH}/internal/watchdog`,
     n8n_internal_pedidos_arrival_check: `${BASE_PATH}/internal/pedidos-arrival-check`,
     n8n_internal_financeiro_cash_closing_reminder: `${BASE_PATH}/internal/financeiro-cash-closing-reminder`,
+    n8n_internal_cotacao_encomenda_reminder: `${BASE_PATH}/internal/cotacao-encomenda-reminder`,
     pedidos_internal_base_configured: PEDIDOS_INTERNAL_BASE_URL !== '',
     financeiro_internal_base_configured: FINANCEIRO_INTERNAL_BASE_URL !== '',
     automation_notify_cooldown_minutes: AUTOMATION_NOTIFY_COOLDOWN_MINUTES,
@@ -6685,6 +6707,114 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
       user_id: userId,
       reminder_id: payload.reminder_id || null,
       task_id: payload.task_id || null,
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+    },
+  });
+  return result;
+}
+
+function explicitAutomationRecipientPhones(value: unknown): string[] {
+  const rawItems = Array.isArray(value) ? value : phoneListItems(safeText(value, 2000));
+  const recipients: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of rawItems) {
+    const normalized = normalizePhone(applyRecipientAlias(safeText(raw, 120)));
+    if (normalized.length < 8 || normalized.length > 20 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    recipients.push(normalized);
+  }
+  return recipients;
+}
+
+async function cotacaoEncomendaRecipients(payload: JsonRecord): Promise<AutomationRecipient[]> {
+  const explicit = explicitAutomationRecipientPhones(payload.recipients || payload.destinatarios || payload.phones);
+  if (explicit.length) {
+    return explicit.map((phone) => ({
+      phone,
+      phoneHash: sha256(phone),
+      phoneMask: maskPhone(phone),
+      displayName: maskPhone(phone),
+    }));
+  }
+  const moduleKey = normalizeModuleKeys(payload.module_key || payload.moduleKey || 'cotacao')[0] || 'cotacao';
+  return automationRecipients(moduleKey);
+}
+
+async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Promise<AutomationSendResult> {
+  const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, errors: [] };
+  const enabled = await automationSettingEnabled(COTACAO_ENCOMENDA_AUTOMATION_KEY, true);
+  const message = safeOutboundText(payload.message || payload.text || payload.body, 1200);
+  if (!enabled || !message) {
+    return { ...result, skipped: true, errors: enabled ? [] : ['automation_disabled'] };
+  }
+
+  const status = publicStatus();
+  if (status.transport_configured !== true || status.enabled !== true) {
+    result.skipped = true;
+    result.errors.push('whatsapp_transport_unavailable');
+    await recordErrorLog('cotacao_encomenda_reminder', 'warn', new Error('cotacao_encomenda_transport_unavailable'), {
+      messagePreview: safeText(message, 280),
+      details: { reminder_id: payload.reminder_id || null, row_id: payload.row_id || null },
+    });
+    return result;
+  }
+
+  const pauseMs = providerPauseRemainingMs();
+  if (pauseMs > 0) {
+    result.skipped = true;
+    result.errors.push('provider_paused');
+    await recordErrorLog('cotacao_encomenda_reminder', 'warn', new Error('cotacao_encomenda_provider_paused'), {
+      messagePreview: safeText(message, 280),
+      details: { reminder_id: payload.reminder_id || null, row_id: payload.row_id || null, pause_ms: pauseMs },
+    });
+    return result;
+  }
+
+  const recipients = await cotacaoEncomendaRecipients(payload);
+  result.recipients = recipients.length;
+  if (recipients.length === 0) {
+    result.skipped = true;
+    result.errors.push('no_cotacao_recipient');
+    await recordErrorLog('cotacao_encomenda_reminder', 'warn', new Error('cotacao_encomenda_no_recipient'), {
+      messagePreview: safeText(message, 280),
+      details: {
+        reminder_id: payload.reminder_id || null,
+        row_id: payload.row_id || null,
+        recipient_mode: payload.recipient_mode || payload.recipientMode || 'module:cotacao',
+      },
+    });
+    return result;
+  }
+
+  for (const recipient of recipients) {
+    try {
+      await sendProviderText(recipient.phone, message, defaultInstanceName());
+      result.sent += 1;
+    } catch (error) {
+      result.failed += 1;
+      result.errors.push(safeError(error));
+      await recordErrorLog('cotacao_encomenda_reminder_send', 'warn', error, {
+        phoneMask: recipient.phoneMask,
+        messagePreview: safeText(message, 280),
+        details: {
+          reminder_id: payload.reminder_id || null,
+          row_id: payload.row_id || null,
+          display_name: recipient.displayName,
+          module_key: 'cotacao',
+        },
+      });
+    }
+  }
+
+  await recordErrorLog('cotacao_encomenda_reminder', result.failed > 0 ? 'warn' : 'info', new Error('cotacao_encomenda_notification_sent'), {
+    messagePreview: safeText(message, 280),
+    details: {
+      reminder_id: payload.reminder_id || null,
+      quote_id: payload.quote_id || null,
+      row_id: payload.row_id || null,
+      recipient_mode: payload.recipient_mode || payload.recipientMode || '',
       recipients: result.recipients,
       sent: result.sent,
       failed: result.failed,
@@ -9560,6 +9690,15 @@ app.post(`${BASE_PATH}/internal/task-reminder`, requireInternalToken, async (req
     res.json({ ok: true, ...result });
   } catch (error) {
     res.status(500).json({ ok: false, error: safeText(error instanceof Error ? error.message : 'task_reminder_failed', 180) });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/cotacao-encomenda-reminder`, requireInternalToken, async (req, res) => {
+  try {
+    const result = await sendCotacaoEncomendaReminderNotification(isRecord(req.body) ? req.body : {});
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: safeText(error instanceof Error ? error.message : 'cotacao_encomenda_reminder_failed', 180) });
   }
 });
 

@@ -281,6 +281,7 @@ Arquivos/tabelas candidatos:
 - `cotacao_v2_rules`
 - `cotacao_v2_styles`
 - `cotacao_v2_events`
+- `cotacao_v2_encomenda_reminders`
 
 Estado atual:
 
@@ -288,6 +289,8 @@ Estado atual:
 - A integracao depende de `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial de service account no `.env`.
 - O export inclui `cotacao_row_id` para preservar o ID estavel da linha.
 - O import usa `cotacao_row_id` quando presente; sem IDs, trata o range como substituicao controlada da cotacao ativa.
+- Desde 2026-06-01, linhas que contem a palavra `encomenda` criam/atualizam um lembrete persistido para o Miauby Whats no dia seguinte as 16h. O envio chama `/miauw/whatsapp/internal/cotacao-encomenda-reminder` por token interno, registra status/tentativas e nao altera dados da cotacao.
+- Destinatarios do lembrete de encomenda podem ser definidos por `COTACAO_ENCOMENDA_REMINDER_RECIPIENTS`; se vazio, o Miauby Whats usa contatos autorizados com card `Cotacao`.
 
 ### Miauby skills generativas
 

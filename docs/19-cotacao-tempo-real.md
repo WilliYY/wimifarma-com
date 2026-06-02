@@ -80,6 +80,8 @@ Na revisao seguinte, foi removido outro acoplamento antigo: escrever `encomenda`
 
 Miauby acompanha alertas operacionais da Cotacao, mas encomenda so vira alerta/comentario de balao quando a linha esta com prioridade explicita `encomenda` e passa de 1 dia sem baixa/pedido. Antes disso, a encomenda deve continuar como fluxo normal da Cotacao para evitar ruido operacional.
 
+Em 2026-06-01, a regra foi ampliada de forma controlada: escrever `encomenda` em uma linha da Cotacao continua sem mudar cor, prioridade, ordem, filtro ou valor, mas agora cria/atualiza um lembrete persistido em `cotacao_v2_encomenda_reminders`. O lembrete pergunta pelo Miauby Whats no dia seguinte as 16h se a encomenda chegou, registra status/tentativas em banco e cancela se a palavra for removida antes do envio.
+
 Na mesma auditoria local, o banco tinha 243 itens e 53 categorias, e a rota autenticada `/cotacao/` apareceu nos logs com cerca de 1,46 MB de HTML. Isso ainda funciona, mas indica que o proximo gargalo provavel sera peso inicial da tela/snapshot quando a planilha crescer.
 
 Em 2026-05-11, a sincronizacao recebeu uma primeira fila de eventos em `cotacao_eventos`. Saves de linha, linhas criadas, cancelamentos, filtros e regras condicionais gravam eventos com `client_id`. O frontend tenta aplicar esses eventos incrementalmente e so volta para `sync_pull`/snapshot quando ha mudanca estrutural, atraso grande ou conflito local. Isso reduz reprocessamento pesado e impede que a propria aba reaplique a alteracao que acabou de salvar.
