@@ -123,12 +123,14 @@ Validacao esperada:
 
 Objetivo: liberar o motor Node oficial apenas para `adm` ou usuarios listados, mantendo rollback imediato por env.
 
+Estado em 2026-06-02: Etapa 6A preparada. `site/miauw` aceita `MIAUBY_ENGINE` como alias novo de `MIAUW_ENGINE`; `miauw_agent_runtime_status()` informa por usuario o dono da resposta oficial, se o Node primario esta ativo, dono da escrita (`php_mysql`) e guardas de rota/proxy. O script `scripts/miauby-node-cutover-smoke.sh` valida que `adm` pode ser cortado para Node sem liberar usuarios comuns, sem trocar escrita, sem trocar `/miauw/` e com fallback para PHP.
+
 Ordem segura:
 
-1. Node usa contexto canonico como fonte primaria com fallback PHP.
-2. Resposta Node oficial somente para `adm`.
-3. Escrita ainda por PHP ou por adaptador Node com flag por usuario.
-4. Comparar voz, latencia, tools, confirmacoes e diagnostico por alguns dias.
+1. Resposta Node oficial somente para `adm`, com `MIAUBY_ENGINE=node` e `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`.
+2. Escrita continua pelo PHP/MySQL, com 5C dry-run registrando intencoes em Postgres.
+3. Node usa contexto/contratos seguros e ponte PHP auditada para tools; se falhar, PHP responde.
+4. Comparar voz, latencia, tools, confirmacoes e diagnostico por alguns dias antes de liberar outro usuario.
 
 ### Fase 4 - Miauby interno Etapa 7: escrita oficial em Postgres
 
@@ -176,7 +178,7 @@ Somente depois de Miauby interno e WordPress resolvidos:
 ## Ordem recomendada agora
 
 1. Validar Miauby interno Etapa 5C com `adm` por alguns envios reais e sem divergencia.
-2. Miauby interno corte por usuario `adm`.
+2. Ativar/validar Miauby interno Etapa 6A: corte por usuario `adm`, ainda com escrita PHP/MySQL e dry-run 5C.
 3. Miauby interno escrita oficial em Postgres.
 4. Remover sincronizador MySQL do core-auth.
 5. Decidir WordPress: manter como excecao ou substituir por site novo.
@@ -190,9 +192,9 @@ Estamos no projeto C:\Users\Thiesen\Desktop\wimifarma-com, repositorio https://g
 
 Siga obrigatoriamente AGENTS.md, README.md e docs/29-roadmap-final-migracao.md. Para Miauby, leia tambem docs/28-miauby-migracao.md e docs/22-migracao-mysql-postgres.md.
 
-Quero validar a proxima etapa segura da migracao 100%: Miauby interno Etapa 5C.
+Quero validar a proxima etapa segura da migracao 100%: Miauby interno Etapa 6A.
 
-Objetivo da etapa: validar shadow write/dry-run controlado do Miauby, com PHP ainda oficial gravando MySQL, Node/Postgres registrando apenas intencoes sanitizadas/auditoria em dry-run, idempotencia e deteccao de divergencia, sem trocar a resposta oficial do PHP, sem trocar /miauw/, sem habilitar escrita real, sem remover MySQL e sem quebrar o chat atual.
+Objetivo da etapa: cortar a resposta oficial do Miauby apenas para o usuario adm via agent Node, mantendo escrita oficial no PHP/MySQL, mantendo shadow write/dry-run 5C no Postgres, mantendo /miauw/, fallback imediato para PHP por env e sem habilitar escrita real Node/Postgres.
 
 Antes de alterar arquivos:
 - leia AGENTS.md, README.md e docs relevantes;

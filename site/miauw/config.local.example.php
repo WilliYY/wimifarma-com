@@ -31,8 +31,8 @@ define('MIAUW_GUARDIAN_TOKEN', 'troque_por_um_token_grande');
 
 /*
  * Opcional: servico Miauby agente em Node/Agents SDK.
- * MIAUW_ENGINE aceita php, node_shadow ou node. Use node somente para usuarios
- * liberados e com manutencao ativa quando estiver em corte acelerado.
+ * MIAUBY_ENGINE e MIAUW_ENGINE aceitam php, node_shadow ou node.
+ * Use node somente para usuarios liberados e com rollback por env testado.
  */
 // define('MIAUW_AGENT_INTERNAL_TOKEN', ''); // se vazio/omitido, use MIAUW_GUARDIAN_TOKEN ou .env
 define('MIAUW_AGENT_INTERNAL_BASE_URL', 'http://wimifarma-miauw-agent:3100/miauw/agent');
@@ -45,6 +45,7 @@ define('MIAUBY_WRITE_ADAPTER_INTERNAL_URL', 'http://wimifarma-miauby-app:4100/mi
 define('MIAUBY_WRITE_SHADOW_TIMEOUT_MS', 900);
 define('MIAUW_AGENT_SHADOW_ON_SEND', false);
 define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
+define('MIAUBY_ENGINE', '');
 define('MIAUW_ENGINE', 'php');
 define('MIAUW_AGENT_ENGINE_ALLOWED_USERS', 'adm');
 define('MIAUW_MAINTENANCE_MODE', false);

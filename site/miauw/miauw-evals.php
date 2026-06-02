@@ -912,6 +912,9 @@ miauw_eval_add('fase9_engine_switch_seguro', static function (): void {
     miauw_eval_assert(in_array($engine, array('php', 'node_shadow', 'node'), true), 'Engine do Miauby precisa ficar em lista fechada.');
     miauw_eval_assert_same($engine, (string) ($runtime['engine'] ?? ''), 'Runtime precisa refletir engine atual.');
     miauw_eval_assert(!empty($runtime['engine_allowed']), 'Usuario adm precisa estar liberado para o corte controlado.');
+    miauw_eval_assert(in_array((string) ($runtime['official_response_owner'] ?? ''), array('php', 'node'), true), 'Dono da resposta oficial precisa ser explicito.');
+    miauw_eval_assert_same('php_mysql', (string) ($runtime['write_owner'] ?? ''), 'Corte de motor nao pode trocar escrita oficial ainda.');
+    miauw_eval_assert(($runtime['route_cutover_enabled'] ?? true) === false, 'Corte por usuario nao pode trocar rota publica.');
     miauw_eval_assert(isset($runtime['maintenance'], $runtime['shadow']), 'Runtime precisa trazer manutencao e sombra.');
 });
 

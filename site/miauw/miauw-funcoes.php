@@ -295,6 +295,10 @@ if (!defined('MIAUW_AGENT_SHADOW_TIMEOUT_MS')) {
     define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', max(1000, min(30000, $miauwAgentShadowTimeout)));
 }
 
+if (!defined('MIAUBY_ENGINE')) {
+    define('MIAUBY_ENGINE', miauw_env_string(array('MIAUBY_ENGINE')));
+}
+
 if (!defined('MIAUW_ENGINE')) {
     $miauwEngine = miauw_env_string(array('MIAUW_ENGINE'));
     define('MIAUW_ENGINE', $miauwEngine !== '' ? $miauwEngine : 'php');
@@ -619,7 +623,10 @@ function miauw_openai_public_status(): array
 
 function miauw_agent_engine(): string
 {
-    $engine = strtolower(trim(miauw_constant_string('MIAUW_ENGINE', 'php')));
+    $engine = strtolower(trim(miauw_constant_string('MIAUBY_ENGINE')));
+    if ($engine === '') {
+        $engine = strtolower(trim(miauw_constant_string('MIAUW_ENGINE', 'php')));
+    }
     $allowed = array('php', 'node_shadow', 'node');
 
     return in_array($engine, $allowed, true) ? $engine : 'php';
@@ -698,11 +705,37 @@ function miauw_agent_should_force_shadow(?array $user = null): bool
     return miauw_agent_engine() === 'node_shadow' && miauw_agent_engine_allowed_for_user($user);
 }
 
+function miauw_agent_official_response_owner(?array $user = null): string
+{
+    $engine = miauw_agent_engine();
+    if ($engine === 'node' && miauw_agent_engine_allowed_for_user($user)) {
+        return 'node';
+    }
+
+    return 'php';
+}
+
 function miauw_agent_runtime_status(?array $user = null): array
 {
+    $engine = miauw_agent_engine();
+    $engineAllowed = miauw_agent_engine_allowed_for_user($user);
+    $officialOwner = miauw_agent_official_response_owner($user);
+
     return array(
-        'engine' => miauw_agent_engine(),
-        'engine_allowed' => miauw_agent_engine_allowed_for_user($user),
+        'engine' => $engine,
+        'engine_alias' => 'MIAUBY_ENGINE',
+        'legacy_engine_alias' => 'MIAUW_ENGINE',
+        'engine_allowed' => $engineAllowed,
+        'official_response_owner' => $officialOwner,
+        'official_response_mode' => $officialOwner === 'node' ? 'node_primary_for_allowed_user' : 'php_primary',
+        'write_owner' => 'php_mysql',
+        'write_shadow_owner' => 'apps/miauby_postgres_dry_run',
+        'node_failure_fallback_owner' => 'php',
+        'route_owner' => '/miauw/',
+        'route_cutover_enabled' => false,
+        'public_proxy_enabled' => false,
+        'node_primary_active_for_user' => $engine === 'node' && $engineAllowed,
+        'node_shadow_active_for_user' => $engine === 'node_shadow' && $engineAllowed,
         'maintenance' => miauw_maintenance_status($user),
         'shadow' => function_exists('miauw_agent_shadow_status') ? miauw_agent_shadow_status() : array(),
     );

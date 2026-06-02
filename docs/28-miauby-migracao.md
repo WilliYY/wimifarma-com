@@ -329,6 +329,38 @@ Rollback:
 - `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false` no `wimifarma-miauby-app`;
 - manter `MIAUBY_WRITES_ENABLED=false` e `MIAUW_ENGINE=php`.
 
+### Etapa 2026-06-02 - Miauby Etapa 6A: corte de resposta por usuario adm
+
+Esta etapa prepara o primeiro corte controlado do motor de resposta, sem transformar o Node em dono da escrita. O chat continua entrando por `site/miauw/api.php?action=send`; o PHP continua criando conversa, gravando mensagem do usuario e gravando mensagem do assistente em `miauw_mensagens`; a diferenca e que, para usuario liberado, o texto da resposta pode vir oficialmente do `wimifarma-miauw-agent`.
+
+Novas/ajustadas configuracoes:
+
+- `MIAUBY_ENGINE`: nome novo do motor, aceitando `php`, `node_shadow` ou `node`.
+- `MIAUW_ENGINE`: fallback legado enquanto a transicao ainda usa prefixo tecnico antigo.
+- `MIAUW_AGENT_ENGINE_ALLOWED_USERS`: allowlist do corte; deve comecar apenas com `adm`.
+
+Regras preservadas:
+
+- `/miauw/` continua sendo a rota do chat interno.
+- `/miauby/` continua compatibilidade/redirect seguro enquanto o app oficial ainda nao foi cortado por rota.
+- Escrita oficial continua `php_mysql`; o Node nao grava `miauby_messages` como fonte oficial.
+- `MIAUBY_WRITES_ENABLED=false` continua obrigatorio.
+- O dry-run 5C pode continuar registrando intencoes/auditoria em `miauby_write_intents`/`miauby_write_audit_events`.
+- Falha do agent Node volta para resposta PHP no mesmo request e registra trace sanitizado.
+- Usuarios fora da allowlist continuam com resposta PHP mesmo se `MIAUBY_ENGINE=node`.
+
+Observabilidade:
+
+- `miauw_agent_runtime_status()` informa `official_response_owner`, `write_owner`, `route_cutover_enabled`, `public_proxy_enabled`, `node_primary_active_for_user` e `node_failure_fallback_owner`.
+- `scripts/miauby-node-cutover-smoke.sh node` valida dentro do VPS que `adm` esta elegivel para Node, usuario comum nao esta, a escrita segue PHP/MySQL, rota/proxy nao foram cortados e o fallback segue PHP.
+- Para testar uma chamada real ao agent, usar `MIAUBY_NODE_CUTOVER_RUN_AGENT=true sh scripts/miauby-node-cutover-smoke.sh node`; isso chama a camada online e deve ser usado com criterio.
+
+Rollback:
+
+- Preferir `MIAUBY_ENGINE=php`; se a variavel nova nao existir no ambiente, voltar `MIAUW_ENGINE=php`.
+- Recriar `wimifarma-com-web`.
+- Se o agent Node tambem foi alterado, recriar `wimifarma-miauw-agent`.
+
 ### Etapa 2026-06-02 - Consumidor sombra do contexto Node
 
 Esta etapa resolve o proximo bloqueio seguro sem ligar escrita, rota publica ou corte do PHP. O chat interno continua oficial em `site/miauw`, mas quando a comparacao sombra do agente roda para usuario liberado, o PHP tambem consulta o pacote canônico de contexto em `apps/miauby` e grava um trace sanitizado com versoes/contagens.
@@ -408,6 +440,7 @@ Rollback:
 - `MIAUW_ENGINE` fica como fallback durante transicao.
 - Liberar `node` apenas para `adm`/usuarios listados.
 - Rollback por env deve voltar ao PHP sem alterar banco.
+- Estado iniciado em 2026-06-02: Etapa 6A preparou status por usuario, alias `MIAUBY_ENGINE` e smoke `scripts/miauby-node-cutover-smoke.sh`; escrita oficial continua PHP/MySQL.
 
 ### Fase 7 - Corte de escrita e diagnostico
 
@@ -437,12 +470,11 @@ Rollback:
 
 ## Ordem recomendada agora
 
-1. Fechar inventario detalhado dos modulos modernos em `docs/26-inventario-modulos.md`.
-2. Criar schema/migrator sombra do `wimifarma_miauby`.
-3. Colocar `apps/miauby` lendo Postgres sombra por API interna somente leitura.
-4. Criar alias `/miauby/` sem remover `/miauw/`.
-5. Migrar motor em sombra para `adm`.
-6. Cortar por usuario, depois por rota.
+1. Validar 5C com `adm` por envios reais e zero divergencia de dry-run.
+2. Ativar/validar 6A com `MIAUBY_ENGINE=node` apenas para `adm`.
+3. Observar latencia, confirmacoes, tools e traces por alguns dias.
+4. Migrar escrita oficial para `wimifarma_miauby` somente depois do corte de resposta estar estavel.
+5. Cortar por rota apenas depois de escrita Postgres validada.
 
 ## Cuidados de rollback
 
