@@ -52,6 +52,7 @@ Direcao futura registrada em 2026-05-30: o usuario quer usar Next.js e Prisma em
 - Rotas de login dos modulos responderam HTTP 200 na auditoria local.
 - `miauw/widget-status.php` respondeu `api_ready: true` quando a chave local estava configurada.
 - No widget do Miauby, `api_ready` indica chave preenchida, nao chamada OpenAI validada. Se o chat cair no fallback, conferir logs/alertas internos para autenticacao, cota, modelo ou rede.
+- Em 2026-06-02, o widget global do Miauby refinou o enquadramento visual usando `site/miauw/miauby-avatar.jpeg`, derivado quadrado de `site/miauw/miauby-novo.jpeg`: o botao flutuante, o cabecalho e as mensagens mostram o avatar maior/proporcional por CSS central em `site/miauw/widget.css`, com cache-bust `20260602-avatar-fit`, sem alterar chat, audio, sessao ou backend.
 - Em 2026-06-02, a aba/badge/lista de alertas do widget global do Miauby foi pausada por enquanto, e chamadas do widget nao disparam varredura do guardiao. O chat, audio, sessao e backend de diagnostico continuam preservados; alertas operacionais seguem consultaveis pelo Guardiao da tela Miauby/diagnostico, sem aparecer como coisa pendente no widget dos modulos.
 - WordPress respondeu HTTP 200 localmente, mas ficou lento no Docker Desktop Windows com plugins restaurados.
 - DNS GoDaddy e Nginx Proxy Manager estavam em configuracao para `wimifarma.com`.

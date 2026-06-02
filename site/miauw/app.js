@@ -127,7 +127,7 @@
     if (role === 'assistant') {
       const headerImage = document.querySelector('.agent img');
       const img = document.createElement('img');
-      img.src = headerImage ? headerImage.src : '/miauw/miauby-novo.jpeg';
+      img.src = headerImage ? headerImage.src : '/miauw/miauby-avatar.jpeg';
       img.alt = '';
       article.appendChild(img);
     }
@@ -202,7 +202,7 @@
     if (role === 'assistant') {
       const headerImage = document.querySelector('.agent img');
       const img = document.createElement('img');
-      img.src = headerImage ? headerImage.src : '/miauw/miauby-novo.jpeg';
+      img.src = headerImage ? headerImage.src : '/miauw/miauby-avatar.jpeg';
       img.alt = '';
       article.appendChild(img);
     }
@@ -440,7 +440,7 @@
     article.className = 'message assistant typing';
     article.setAttribute('aria-live', 'polite');
     article.innerHTML = `
-      <img src="${escapeHtml((document.querySelector('.agent img') || {}).src || '/miauw/miauby-novo.jpeg')}" alt="">
+      <img src="${escapeHtml((document.querySelector('.agent img') || {}).src || '/miauw/miauby-avatar.jpeg')}" alt="">
       <div class="bubble">
         <span class="typing-text">Miauby esta digitando</span>
         <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>

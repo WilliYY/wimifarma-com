@@ -10424,7 +10424,7 @@ function renderDashboardLogin(error: string): string {
 </head>
 <body>
   <main>
-    <img class="mascot" src="/miauw/miauby-novo.jpeg" alt="Miauby">
+    <img class="mascot" src="/miauw/miauby-avatar.jpeg" alt="Miauby">
     <h1>Miauby Whatsapp</h1>
     <p>Acesso operacional do canal WhatsApp.</p>
     ${errorHtml}

@@ -1525,9 +1525,9 @@ function renderShell(req: Request, user: User, view: 'caixa' | 'relatorio', page
   <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
   <link rel="alternate icon" href="${BASE_PATH}/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-card">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260602-no-alerts">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/app.js?v=20260529-node" defer></script>
-  <script src="/miauw/widget.js?v=20260602-no-alerts" defer></script>
+  <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body>
 <header class="finance-topbar">

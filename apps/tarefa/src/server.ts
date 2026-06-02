@@ -1417,8 +1417,8 @@ function renderLogin(req: Request, error = ''): string {
     <title>Tarefas - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
     <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260507b">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260602-no-alerts">
-    <script src="/miauw/widget.js?v=20260602-no-alerts" defer></script>
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
+    <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body class="task-login-body">
     <img class="login-screen-runner login-cat-runner" src="${BASE_PATH}/assets/gato-hapy.gif" alt="" aria-hidden="true" data-login-runner>
@@ -1497,8 +1497,8 @@ async function renderApp(req: Request): Promise<string> {
     <title>Tarefas - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
     <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260601a">
-    <link rel="stylesheet" href="/miauw/widget.css?v=20260602-no-alerts">
-    <script src="/miauw/widget.js?v=20260602-no-alerts" defer></script>
+    <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
+    <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body class="task-app-body">
     <header class="task-topbar">

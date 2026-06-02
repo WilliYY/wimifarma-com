@@ -1580,7 +1580,9 @@ function renderDashboard(
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-master-user">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
+  <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body>
   <header class="users-topbar">

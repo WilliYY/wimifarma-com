@@ -12,7 +12,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260602-no-alerts';
+    link.href = '/miauw/widget.css?v=20260602-avatar-fit';
     document.head.appendChild(link);
   }
 
@@ -20,7 +20,7 @@
     open: false,
     authenticated: false,
     csrf: '',
-    avatar: '/miauw/miauby-novo.jpeg',
+    avatar: '/miauw/miauby-avatar.jpeg',
     loading: false,
     alerts: [],
     alertCount: 0,
@@ -40,14 +40,14 @@
   root.className = 'miauw-widget';
   root.innerHTML = `
     <button class="miauw-widget-bubble" type="button" aria-label="Abrir Miauby" aria-expanded="false">
-      <img src="/miauw/miauby-novo.jpeg" alt="">
+      <img src="/miauw/miauby-avatar.jpeg" alt="">
       <span>Miauby</span>
     </button>
     <button class="miauw-widget-nudge" type="button" data-miauw-nudge hidden aria-label="Recado do Miauby">Miauby esta de olho.</button>
     <div class="miauw-widget-panel" role="dialog" aria-label="Chat do Miauby" aria-hidden="true">
       <header class="miauw-widget-head">
         <div>
-          <img src="/miauw/miauby-novo.jpeg" alt="">
+          <img src="/miauw/miauby-avatar.jpeg" alt="">
           <div>
             <strong>Miauby</strong>
             <small>Fiscal interno</small>

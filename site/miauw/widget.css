@@ -6,7 +6,9 @@
     --miauw-text: #2b0713;
     --miauw-muted: #744659;
     --miauw-bubble-size: 108px;
-    --miauw-avatar-size: 100px;
+    --miauw-avatar-size: 102px;
+    --miauw-head-avatar-size: 50px;
+    --miauw-message-avatar-size: 36px;
     --miauw-panel-offset: 126px;
     --miauw-nudge-offset: 124px;
     --miauw-nudge-clearance: 130px;
@@ -122,7 +124,7 @@
     width: var(--miauw-avatar-size);
     height: var(--miauw-avatar-size);
     border-radius: 999px;
-    object-fit: contain;
+    object-fit: cover;
     object-position: 50% 50%;
     background: #fff;
     clip-path: none;
@@ -146,14 +148,14 @@
 
 .miauw-widget-alert-badge {
     position: absolute;
-    top: -5px;
-    right: -4px;
-    min-width: 28px;
-    height: 28px;
+    top: -9px;
+    right: -6px;
+    min-width: 30px;
+    height: 30px;
     display: grid;
     place-items: center;
     padding: 0 6px;
-    border: 2px solid #fff;
+    border: 3px solid #fff;
     border-radius: 999px;
     background: #e11d48;
     color: #fff;
@@ -253,6 +255,10 @@
     transition: opacity .18s ease, transform .18s ease;
 }
 
+.miauw-widget-panel:has(.miauw-widget-tools:not([hidden])) {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
 .miauw-widget.is-open .miauw-widget-panel {
     opacity: 1;
     pointer-events: auto;
@@ -278,12 +284,13 @@
 }
 
 .miauw-widget-head img {
-    width: 42px;
-    height: 42px;
+    width: var(--miauw-head-avatar-size);
+    height: var(--miauw-head-avatar-size);
+    flex: 0 0 var(--miauw-head-avatar-size);
     border: 2px solid rgba(255, 255, 255, .85);
-    border-radius: 14px;
+    border-radius: 16px;
     object-fit: cover;
-    object-position: 50% 54%;
+    object-position: 50% 50%;
     background: #fff;
 }
 
@@ -367,7 +374,7 @@
 }
 
 .miauw-widget-feed {
-    grid-row: 3;
+    grid-row: 2;
     min-height: 0;
     overflow: auto;
     display: flex;
@@ -377,16 +384,24 @@
     background: linear-gradient(180deg, #fff, #fff7fa);
 }
 
+.miauw-widget-tools:not([hidden]) ~ .miauw-widget-feed {
+    grid-row: 3;
+}
+
 .miauw-widget-feed[hidden] {
     display: none;
 }
 
 .miauw-widget-alerts {
-    grid-row: 3;
+    grid-row: 2;
     min-height: 0;
     overflow: auto;
     padding: 14px;
     background: linear-gradient(180deg, #fff, #fff7fa);
+}
+
+.miauw-widget-tools:not([hidden]) ~ .miauw-widget-alerts {
+    grid-row: 3;
 }
 
 .miauw-widget-alerts[hidden] {
@@ -553,11 +568,12 @@
 }
 
 .miauw-widget-msg img {
-    width: 30px;
-    height: 30px;
-    border-radius: 11px;
+    width: var(--miauw-message-avatar-size);
+    height: var(--miauw-message-avatar-size);
+    flex: 0 0 var(--miauw-message-avatar-size);
+    border-radius: 13px;
     object-fit: cover;
-    object-position: 50% 54%;
+    object-position: 50% 50%;
     background: #fff;
     align-self: flex-end;
     box-shadow: 0 8px 18px rgba(97, 5, 29, .12);
@@ -1427,11 +1443,13 @@
 
 @media (max-width: 520px) {
     .miauw-widget {
-        --miauw-bubble-size: 90px;
-        --miauw-avatar-size: 82px;
-        --miauw-panel-offset: 108px;
-        --miauw-nudge-offset: 106px;
-        --miauw-nudge-clearance: 112px;
+        --miauw-bubble-size: 94px;
+        --miauw-avatar-size: 88px;
+        --miauw-head-avatar-size: 48px;
+        --miauw-message-avatar-size: 34px;
+        --miauw-panel-offset: 112px;
+        --miauw-nudge-offset: 110px;
+        --miauw-nudge-clearance: 116px;
         right: 12px;
         bottom: 12px;
     }
@@ -1474,7 +1492,23 @@
     }
 
     .miauw-widget-composer {
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: minmax(0, 1fr) 72px 74px;
+        gap: 7px;
+        padding: 10px;
+    }
+
+    .miauw-widget-composer button {
+        min-width: 0;
+        padding: 0 10px;
+    }
+
+    .miauw-widget-composer .miauw-widget-audio {
+        min-width: 0;
+        gap: 5px;
+    }
+
+    .miauw-widget-msg.user {
+        max-width: 84%;
     }
 
     .miauw-widget-audio-draft-player {
@@ -1493,6 +1527,24 @@
     .miauw-widget-composer .miauw-widget-audio-cancel:not([hidden]) {
         grid-column: 1 / -1;
         width: 100%;
+    }
+}
+
+@media (max-width: 380px) {
+    .miauw-widget-composer {
+        grid-template-columns: minmax(0, 1fr) 72px 74px;
+    }
+
+    .miauw-widget-composer textarea {
+        grid-column: 1 / -1;
+    }
+
+    .miauw-widget-composer .miauw-widget-audio {
+        grid-column: 2;
+    }
+
+    .miauw-widget-composer .miauw-widget-send {
+        grid-column: 3;
     }
 }
 
