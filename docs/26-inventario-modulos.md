@@ -798,7 +798,7 @@ Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist
 - `POST /cotacao/api/internal/urgentes`: criacao interna tokenizada de item urgente.
 - `POST /cotacao/api/internal/cotacoes-rapidas`: criacao interna tokenizada de cotacao rapida, criando distribuidora V2 quando necessario.
 - Socket.IO em `/cotacao/socket.io`.
-- O app da Cotacao tambem agenda e envia lembretes de encomenda para `/miauw/whatsapp/internal/cotacao-encomenda-reminder` quando uma linha contem `encomenda`, sem alterar a planilha.
+- O app da Cotacao tambem agenda e envia lembretes de encomenda para `/miauw/whatsapp/internal/cotacao-encomenda-reminder` quando uma linha contem `encomenda`, sem alterar a planilha. Erro sem destinatario configurado encerra o lembrete como erro final; transporte indisponivel ou pausado reagenda por `next_attempt_at` com atraso conservador.
 
 ### Permissoes e sessao
 

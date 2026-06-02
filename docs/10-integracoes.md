@@ -291,6 +291,7 @@ Estado atual:
 - O import usa `cotacao_row_id` quando presente; sem IDs, trata o range como substituicao controlada da cotacao ativa.
 - Desde 2026-06-01, linhas que contem a palavra `encomenda` criam/atualizam um lembrete persistido para o Miauby Whats no dia seguinte as 16h. O envio chama `/miauw/whatsapp/internal/cotacao-encomenda-reminder` por token interno, registra status/tentativas e nao altera dados da cotacao.
 - Destinatarios do lembrete de encomenda podem ser definidos por `COTACAO_ENCOMENDA_REMINDER_RECIPIENTS`; se vazio, o Miauby Whats usa contatos autorizados com card `Cotacao`.
+- Desde 2026-06-02, falha sem destinatario configurado vira erro final e nao fica tentando em loop; falha de transporte/configuracao usa `next_attempt_at` com atraso maior por `COTACAO_ENCOMENDA_REMINDER_TRANSPORT_RETRY_DELAY_MINUTES` antes de nova tentativa.
 
 ### Miauby skills generativas
 

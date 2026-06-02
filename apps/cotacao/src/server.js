@@ -47,6 +47,10 @@ const ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES = Math.max(
   1,
   Math.min(60, Number.parseInt(env.COTACAO_ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES || '5', 10) || 5)
 );
+const ENCOMENDA_REMINDER_TRANSPORT_RETRY_DELAY_MINUTES = Math.max(
+  ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES,
+  Math.min(180, Number.parseInt(env.COTACAO_ENCOMENDA_REMINDER_TRANSPORT_RETRY_DELAY_MINUTES || '15', 10) || 15)
+);
 const ENCOMENDA_REMINDER_MAX_ATTEMPTS = Math.max(
   1,
   Math.min(10, Number.parseInt(env.COTACAO_ENCOMENDA_REMINDER_MAX_ATTEMPTS || '3', 10) || 3)
@@ -375,6 +379,58 @@ function normalizeInternalText(value, maxLength = 180) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLength);
+}
+
+function encomendaReminderFailurePolicy(error, { recipients = null } = {}) {
+  const summary = normalizeInternalText(error instanceof Error ? error.message : String(error || ''), 255)
+    || 'Falha ao enviar lembrete de encomenda.';
+  const search = normalizeInternalSearch(summary);
+  const noRecipient = search.includes('no cotacao recipient')
+    || search.includes('no recipient')
+    || search.includes('sem destinatario')
+    || search.includes('nenhum whatsapp com card cotacao')
+    || search.includes('nenhum contato');
+  if (noRecipient) {
+    return {
+      action: 'final',
+      summary,
+      reason: 'no_recipient',
+      retryMinutes: 0
+    };
+  }
+  if (search.includes('automation disabled') || search.includes('automacao desativada')) {
+    return {
+      action: 'final',
+      summary,
+      reason: 'automation_disabled',
+      retryMinutes: 0
+    };
+  }
+  const transportOrConfig = search.includes('whatsapp transport unavailable')
+    || search.includes('provider paused')
+    || search.includes('token not configured')
+    || search.includes('base url not configured')
+    || search.includes('internal token not configured')
+    || search.includes('internal base url not configured')
+    || search.includes('whatsapp http')
+    || search.includes('fetch failed')
+    || search.includes('abort');
+  if (!transportOrConfig && recipients === 0) {
+    return {
+      action: 'final',
+      summary,
+      reason: 'no_recipient',
+      retryMinutes: 0
+    };
+  }
+  return {
+    action: 'retry',
+    summary,
+    reason: transportOrConfig ? 'transport_or_config' : 'temporary_failure',
+    retryMinutes: transportOrConfig
+      ? ENCOMENDA_REMINDER_TRANSPORT_RETRY_DELAY_MINUTES
+      : ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES
+  };
 }
 
 function normalizeInternalSearch(value) {
@@ -2290,8 +2346,9 @@ async function postWhatsappEncomendaReminder(row) {
   }
 }
 
-async function finishEncomendaReminder(row, status, summary, result = {}) {
+async function finishEncomendaReminder(row, status, summary, result = {}, options = {}) {
   const sent = status === 'enviado';
+  const finalError = status === 'erro' && options.final === true;
   await pgPool.query(
     `UPDATE cotacao_v2_encomenda_reminders
      SET status = $2,
@@ -2299,9 +2356,10 @@ async function finishEncomendaReminder(row, status, summary, result = {}) {
          error_summary = $3,
          whatsapp_result = $4::jsonb,
          next_attempt_at = NULL,
+         attempts = CASE WHEN $5::boolean THEN max_attempts ELSE attempts END,
          updated_at = now()
-     WHERE id = $1`,
-    [row.id, status, normalizeInternalText(summary, 255), JSON.stringify(result)]
+      WHERE id = $1`,
+    [row.id, status, normalizeInternalText(summary, 255), JSON.stringify(result), finalError]
   );
   await appendEvent({
     quoteId: row.quote_id,
@@ -2313,6 +2371,8 @@ async function finishEncomendaReminder(row, status, summary, result = {}) {
       status,
       summary,
       sent,
+      final: finalError,
+      finalReason: options.finalReason || '',
       result
     },
     user: { id: null, username: 'Miauby Whats' },
@@ -2320,22 +2380,31 @@ async function finishEncomendaReminder(row, status, summary, result = {}) {
   });
 }
 
-async function retryEncomendaReminder(row, error) {
-  const summary = normalizeInternalText(error instanceof Error ? error.message : String(error), 255)
+async function retryEncomendaReminder(row, error, options = {}) {
+  const policy = options.policy || encomendaReminderFailurePolicy(error);
+  const summary = policy.summary || normalizeInternalText(error instanceof Error ? error.message : String(error), 255)
     || 'Falha ao enviar lembrete de encomenda.';
+  if (policy.action === 'final') {
+    await finishEncomendaReminder(row, 'erro', summary, { error: summary, reason: policy.reason }, {
+      final: true,
+      finalReason: policy.reason
+    });
+    return;
+  }
   const maxAttempts = Number(row.max_attempts || ENCOMENDA_REMINDER_MAX_ATTEMPTS);
   if (Number(row.attempts || 0) >= maxAttempts) {
     await finishEncomendaReminder(row, 'erro', summary, { error: summary, attempts: row.attempts });
     return;
   }
+  const retryMinutes = Math.max(1, Math.min(180, Number(policy.retryMinutes || ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES)));
   await pgPool.query(
     `UPDATE cotacao_v2_encomenda_reminders
      SET status = 'erro',
          error_summary = $2,
          next_attempt_at = now() + ($3::text || ' minutes')::interval,
          updated_at = now()
-     WHERE id = $1`,
-    [row.id, summary, String(ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES)]
+      WHERE id = $1`,
+    [row.id, summary, String(retryMinutes)]
   );
   await appendEvent({
     quoteId: row.quote_id,
@@ -2345,7 +2414,8 @@ async function retryEncomendaReminder(row, error) {
     payload: {
       reminderId: row.id,
       status: 'erro',
-      retryMinutes: ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES,
+      retryMinutes,
+      retryReason: policy.reason || 'temporary_failure',
       summary: `Lembrete de encomenda reagendado apos falha: ${summary}`
     },
     user: { id: null, username: 'Miauby Whats' },
@@ -2401,15 +2471,19 @@ async function processDueEncomendaReminders() {
       const errors = Array.isArray(data.errors) ? data.errors.map((item) => normalizeInternalText(item, 120)).filter(Boolean) : [];
       if (sent > 0) {
         await finishEncomendaReminder(rowForMessage, 'enviado', `Lembrete enviado para ${sent} contato(s).`, data);
-      } else if (errors.some((error) => error === 'whatsapp_transport_unavailable' || error === 'provider_paused')) {
-        throw new Error(errors[0]);
       } else {
-        await finishEncomendaReminder(
-          rowForMessage,
-          'erro',
+        const policy = encomendaReminderFailurePolicy(
           errors[0] || (recipients === 0 ? 'Nenhum WhatsApp com card Cotacao configurado.' : 'Miauby Whats nao enviou o lembrete.'),
-          data
+          { recipients }
         );
+        if (policy.action === 'final') {
+          await finishEncomendaReminder(rowForMessage, 'erro', policy.summary, data, {
+            final: true,
+            finalReason: policy.reason
+          });
+        } else {
+          await retryEncomendaReminder(rowForMessage, policy.summary, { policy });
+        }
       }
     } catch (error) {
       await retryEncomendaReminder(rowForMessage, error);
