@@ -155,7 +155,7 @@ Fluxo:
 
 Agenda: criada pelo app da Cotacao para o dia seguinte as 16:00, timezone `America/Sao_Paulo`.
 
-Destino: se `COTACAO_ENCOMENDA_REMINDER_RECIPIENTS` estiver preenchido, usa esses numeros; se vazio, usa contatos autorizados com card `Cotacao`.
+Destino: se `COTACAO_ENCOMENDA_REMINDER_RECIPIENTS` estiver preenchido, esses numeros viram apenas um filtro de destinatarios; o bridge ainda valida cada numero contra a allowlist real e exige card `Cotacao` liberado. Se vazio, usa todos os contatos autorizados com card `Cotacao`.
 
 Endpoint interno chamado pela Cotacao:
 

@@ -104,7 +104,7 @@ Core Postgres `wimifarma_core`:
 - `Ganhador` e calculado pelo menor preco numerico entre distribuidoras visiveis e nao aceita escrita manual.
 - Categoria e texto comum.
 - `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem nem filtro por gatilho escondido.
-- Excecao documentada de 2026-06-01: `encomenda` gera apenas um lembrete operacional persistido para o Miauby Whats no dia seguinte as 16h. Esse lembrete nao muda valores, fornecedor, ganhador, prioridade, cor ou posicao da linha. Desde 2026-06-02, importacao Google Sheets e restore de backup tambem reconciliam a tabela de lembretes depois da substituicao em massa.
+- Excecao documentada de 2026-06-01: `encomenda` gera apenas um lembrete operacional persistido para o Miauby Whats no dia seguinte as 16h. Esse lembrete nao muda valores, fornecedor, ganhador, prioridade, cor ou posicao da linha. Desde 2026-06-02, importacao Google Sheets e restore de backup tambem reconciliam a tabela de lembretes depois da substituicao em massa. Se a Cotacao enviar destinatarios explicitos ao bridge WhatsApp, eles nao autorizam envio por si so: o Miauby valida cada numero contra allowlist e card `Cotacao`.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`; regras criadas pela tela podem ser editadas ou apagadas no proprio modal.
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.

@@ -398,6 +398,15 @@ type AutomationRunContext = {
   details?: JsonRecord;
 };
 
+type CotacaoEncomendaRecipientResolution = {
+  recipients: AutomationRecipient[];
+  recipientMode: string;
+  explicitRequested: number;
+  explicitAccepted: number;
+  explicitBlocked: number;
+  explicitBlockedMasks: string[];
+};
+
 type SmokeCheckResult = {
   key: string;
   label: string;
@@ -474,7 +483,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.28';
+const SERVICE_VERSION = '0.5.29';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -7002,7 +7011,9 @@ function explicitAutomationRecipientPhones(value: unknown): string[] {
   const recipients: string[] = [];
   const seen = new Set<string>();
   for (const raw of rawItems) {
-    const normalized = normalizePhone(applyRecipientAlias(safeText(raw, 120)));
+    const rawNormalized = normalizePhone(safeText(raw, 120));
+    if (isRecipientAliasSourcePhone(rawNormalized)) continue;
+    const normalized = normalizePhone(applyRecipientAlias(rawNormalized));
     if (normalized.length < 8 || normalized.length > 20 || seen.has(normalized)) continue;
     seen.add(normalized);
     recipients.push(normalized);
@@ -7010,18 +7021,95 @@ function explicitAutomationRecipientPhones(value: unknown): string[] {
   return recipients;
 }
 
-async function cotacaoEncomendaRecipients(payload: JsonRecord): Promise<AutomationRecipient[]> {
+async function allowedAutomationRecipientByPhone(phone: string, moduleKey: string): Promise<AutomationRecipient | null> {
+  const normalized = normalizePhone(applyRecipientAlias(phone));
+  if (!normalized || isRecipientAliasSourcePhone(normalized)) return null;
+  const contact = await findContactByPhone(normalized);
+  if (!contact || contact.status !== 'allowed' || isRecipientAliasSourceHash(contact.phone_hash)) return null;
+
+  const result = await pgPool.query<{
+    phone_hash: string;
+    phone_mask: string;
+    phone_ciphertext: string;
+    display_name: string;
+  }>(
+    `SELECT c.phone_hash,
+            c.phone_mask,
+            COALESCE(c.phone_ciphertext, '') AS phone_ciphertext,
+            COALESCE(NULLIF(c.display_name, ''), c.phone_mask) AS display_name
+       FROM miauw_whatsapp_contacts c
+       JOIN miauw_whatsapp_contact_modules m ON m.phone_hash = c.phone_hash
+      WHERE c.phone_hash = $1
+        AND c.status = 'allowed'
+        AND c.phone_ciphertext <> ''
+        AND m.enabled = TRUE
+        AND m.module_key = $2
+      LIMIT 1`,
+    [contact.phone_hash, moduleKey],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+
+  let decrypted = '';
+  try {
+    decrypted = applyRecipientAlias(decryptText(row.phone_ciphertext));
+  } catch {
+    decrypted = '';
+  }
+  const recipientPhone = normalizePhone(decrypted);
+  if (!recipientPhone || isRecipientAliasSourcePhone(recipientPhone) || !phonesMatch(normalized, recipientPhone)) return null;
+  return {
+    phone: recipientPhone,
+    phoneHash: row.phone_hash,
+    phoneMask: row.phone_mask,
+    displayName: safeText(row.display_name || row.phone_mask, 120),
+  };
+}
+
+async function cotacaoEncomendaRecipients(payload: JsonRecord): Promise<CotacaoEncomendaRecipientResolution> {
+  const moduleKey = normalizeModuleKeys(payload.module_key || payload.moduleKey || 'cotacao')[0] || 'cotacao';
   const explicit = explicitAutomationRecipientPhones(payload.recipients || payload.destinatarios || payload.phones);
   if (explicit.length) {
-    return explicit.map((phone) => ({
-      phone,
-      phoneHash: sha256(phone),
-      phoneMask: maskPhone(phone),
-      displayName: maskPhone(phone),
-    }));
+    const recipients: AutomationRecipient[] = [];
+    const blockedMasks: string[] = [];
+    const seen = new Set<string>();
+    for (const phone of explicit) {
+      const recipient = await allowedAutomationRecipientByPhone(phone, moduleKey);
+      const dedupeKey = recipient ? `${recipient.phoneHash}:${recipient.phone}` : '';
+      if (recipient && !seen.has(dedupeKey)) {
+        seen.add(dedupeKey);
+        recipients.push(recipient);
+        continue;
+      }
+      blockedMasks.push(maskPhone(phone));
+    }
+    return {
+      recipients,
+      recipientMode: `explicit_allowlist:${moduleKey}`,
+      explicitRequested: explicit.length,
+      explicitAccepted: recipients.length,
+      explicitBlocked: Math.max(0, explicit.length - recipients.length),
+      explicitBlockedMasks: blockedMasks.slice(0, 8),
+    };
   }
-  const moduleKey = normalizeModuleKeys(payload.module_key || payload.moduleKey || 'cotacao')[0] || 'cotacao';
-  return automationRecipients(moduleKey);
+  return {
+    recipients: await automationRecipients(moduleKey),
+    recipientMode: `module:${moduleKey}`,
+    explicitRequested: 0,
+    explicitAccepted: 0,
+    explicitBlocked: 0,
+    explicitBlockedMasks: [],
+  };
+}
+
+function cotacaoRecipientResolutionDetails(resolution: CotacaoEncomendaRecipientResolution): JsonRecord {
+  return {
+    recipient_mode: resolution.recipientMode,
+    explicit_requested_count: resolution.explicitRequested,
+    explicit_accepted_count: resolution.explicitAccepted,
+    explicit_blocked_count: resolution.explicitBlocked,
+    explicit_blocked_masks: resolution.explicitBlockedMasks,
+  };
 }
 
 async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Promise<AutomationSendResult> {
@@ -7094,17 +7182,16 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
     return result;
   }
 
-  const recipients = await cotacaoEncomendaRecipients(payload);
+  const recipientResolution = await cotacaoEncomendaRecipients(payload);
+  const recipients = recipientResolution.recipients;
+  const recipientDetails = { ...baseDetails, ...cotacaoRecipientResolutionDetails(recipientResolution) };
   result.recipients = recipients.length;
   if (recipients.length === 0) {
     result.skipped = true;
     result.errors.push('no_cotacao_recipient');
     await recordErrorLog(source, 'warn', new Error('cotacao_encomenda_no_recipient'), {
       messagePreview: safeText(message, 280),
-      details: {
-        ...baseDetails,
-        recipient_mode: payload.recipient_mode || payload.recipientMode || 'module:cotacao',
-      },
+      details: recipientDetails,
     });
     await recordAutomationRun(source, {
       moduleKey: 'cotacao',
@@ -7116,7 +7203,7 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
       messageFingerprint: fingerprint,
       messagePreview: message,
       errorSummary: 'cotacao_encomenda_no_recipient',
-      details: { ...baseDetails, recipient_mode: payload.recipient_mode || payload.recipientMode || 'module:cotacao' },
+      details: recipientDetails,
     });
     return result;
   }
@@ -7151,7 +7238,7 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
     messagePreview: message,
     errorSummary: result.errors[0] || '',
     details: {
-      ...baseDetails,
+      ...recipientDetails,
       errors: result.errors.slice(0, 5),
     },
   });
