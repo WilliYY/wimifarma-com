@@ -4148,6 +4148,107 @@ function cancellationReplyForPending(pending: PendingConfirmationRow): string {
   return 'Cancelado. Nada foi gravado.';
 }
 
+function financeiroCommandCategory(command: JsonRecord): string {
+  return safeText(command.categoria || command.category, 80);
+}
+
+function financeiroCommandObservation(command: JsonRecord): string {
+  return safeOutboundText(
+    [
+      command.observacao,
+      command.observation,
+      command.observacao_usuario,
+      command.user_observation,
+      command.raw_message,
+    ].filter(Boolean).join(' '),
+    1200,
+  );
+}
+
+function isPixReceiptFinanceiroCommand(command: JsonRecord): boolean {
+  const category = normalizeIntentText(financeiroCommandCategory(command));
+  if (category !== 'pix cnpj') return false;
+  const observation = normalizeIntentText(financeiroCommandObservation(command));
+  return observation.includes('comprovante pix cnpj lido por midia')
+    || observation.includes('comprovante pix recebido');
+}
+
+function titleCaseShortName(value: unknown): string {
+  const first = safeText(value, 80).split(/\s+/).filter(Boolean)[0] || '';
+  if (!first) return '';
+  const lower = first.toLocaleLowerCase('pt-BR');
+  return lower.charAt(0).toLocaleUpperCase('pt-BR') + lower.slice(1);
+}
+
+function financeiroCommandAmountLabel(command: JsonRecord): string {
+  const raw = command.valor ?? command.value ?? command.amount;
+  const rawText = safeText(raw, 40);
+  const normalizedText = rawText.includes(',')
+    ? rawText.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]+/g, '')
+    : rawText.replace(/[^\d.-]+/g, '');
+  const numberValue = typeof raw === 'number' ? raw : Number(normalizedText);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return 'valor não identificado';
+  return moneyForCommand(numberValue);
+}
+
+function shortDateTimeLabelFromParts(datePart: string, timePart = ''): string {
+  const dateMatch = safeText(datePart, 40).match(/^(\d{2})\/(\d{2})(?:\/\d{4})?$/);
+  if (!dateMatch) return '';
+  const timeMatch = safeText(timePart, 20).match(/^([0-2]?\d):([0-5]\d)$/);
+  const dateLabel = `${dateMatch[1]}/${dateMatch[2]}`;
+  if (!timeMatch) return dateLabel;
+  return `${dateLabel} às ${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
+}
+
+function pixReceiptPublicDateTimeLabel(command: JsonRecord, executedText = ''): string {
+  const executedDate = safeOutboundText(executedText, 1200).match(/\bData:\s*(\d{2}\/\d{2}(?:\/\d{4})?)\s+([0-2]?\d:[0-5]\d)/iu);
+  if (executedDate) return shortDateTimeLabelFromParts(executedDate[1], executedDate[2]);
+
+  const observation = financeiroCommandObservation(command);
+  const observationDate = observation.match(/\bData:\s*(\d{2}\/\d{2}(?:\/\d{4})?)/iu);
+  const observationTime = observation.match(/\b(?:Horario|Hora):\s*([0-2]?\d:[0-5]\d)/iu);
+  if (observationDate) return shortDateTimeLabelFromParts(observationDate[1], observationTime?.[1] || '');
+
+  const commandDate = safeText(command.data || command.date, 30);
+  const isoDate = commandDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) return `${isoDate[3]}/${isoDate[2]}`;
+  return '';
+}
+
+function pixReceiptPublicReply(command: JsonRecord, status: 'found' | 'launched', executedText = ''): string {
+  const amount = financeiroCommandAmountLabel(command);
+  const responsible = titleCaseShortName(command.responsavel || command.responsible);
+  const dateTime = pixReceiptPublicDateTimeLabel(command, executedText);
+  if (!responsible) {
+    return `Comprovante lido. Valor: ${amount} — Responsável não identificado. Confira no Financeiro.`;
+  }
+  const prefix = status === 'launched' ? 'PIX CNPJ lançado' : 'PIX CNPJ encontrado';
+  return `${prefix}: ${amount} — Responsável: ${responsible}${dateTime ? ` — ${dateTime}` : ''}.`;
+}
+
+function shortCategoryObservationForWhatsapp(text: string): string {
+  return safeOutboundText(text, 1800).replace(
+    /Miauby criou a categoria\s+(.+?)\s+por comando interno(?: no chat)?\./giu,
+    (_match, category: string) => `Miauby - Categoria criada: ${safeText(category, 80)}.`,
+  );
+}
+
+function publicConfirmationTextForDraft(draft: WhatsappConfirmationDraft): string {
+  const command = isRecord(draft.command) ? draft.command : {};
+  if (draft.tool === 'criar_lancamento_financeiro' && isPixReceiptFinanceiroCommand(command)) {
+    return pixReceiptPublicReply(command, 'found');
+  }
+  return '';
+}
+
+function publicExecutedActionText(pending: PendingConfirmationRow, executedText: string): string {
+  const command = isRecord(pending.command_payload) ? pending.command_payload : {};
+  if (pending.tool === 'criar_lancamento_financeiro' && isPixReceiptFinanceiroCommand(command)) {
+    return pixReceiptPublicReply(command, 'launched', executedText);
+  }
+  return shortCategoryObservationForWhatsapp(executedText);
+}
+
 function looksLikeN8nStatusRequest(message: string): boolean {
   const clean = normalizeIntentText(stripActivationWord(message));
   return clean === 'n8n'
@@ -4694,8 +4795,9 @@ async function requestWhatsappActionPrepare(message: string, traceId: string, se
         reason: `blocked_module:${moduleKey || 'unknown_tool'}`,
       };
     }
+    const publicText = publicConfirmationTextForDraft(draft);
     return {
-      text: `Antes de gravar, confirma essa acao?\n${draft.summary}`,
+      text: publicText || `Antes de gravar, confirma essa acao?\n${draft.summary}`,
       engine: 'miauw',
       reason: 'whatsapp_action_confirmation_required',
       confirmation: draft,
@@ -4735,7 +4837,8 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
     if (!response.ok || !isRecord(data) || data.ok !== true) {
       throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `whatsapp_action_http_${response.status}`);
     }
-    return safeText(data.text, 1800) || 'Acao confirmada.';
+    const executedText = safeText(data.text, 1800) || 'Acao confirmada.';
+    return publicExecutedActionText(pending, executedText);
   } finally {
     clearTimeout(timeout);
   }
@@ -4895,8 +4998,9 @@ async function requestMiauwReply(message: string, traceId: string, senderMask: s
       if (!moduleAllowed(allowedCards, moduleKey)) {
         return { text: forbiddenModuleReply(moduleKey, allowedCards) };
       }
+      const publicText = publicConfirmationTextForDraft(confirmation);
       return {
-        text: `Confirmar lancamento?\n${confirmation.summary}`,
+        text: publicText || `Confirmar lancamento?\n${confirmation.summary}`,
         confirmation,
       };
     }
