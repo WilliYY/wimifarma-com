@@ -237,6 +237,42 @@ if (!defined('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS')) {
     define('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS', max(500, min(10000, $miaubyContextShadowTimeout)));
 }
 
+if (!defined('MIAUBY_WRITE_SHADOW_ENABLED')) {
+    define('MIAUBY_WRITE_SHADOW_ENABLED', miauw_env_bool(array('MIAUBY_WRITE_SHADOW_ENABLED'), false));
+}
+
+if (!defined('MIAUBY_WRITE_SHADOW_ALLOWED_USERS')) {
+    $miaubyWriteShadowUsers = miauw_env_string(array('MIAUBY_WRITE_SHADOW_ALLOWED_USERS'));
+    define('MIAUBY_WRITE_SHADOW_ALLOWED_USERS', $miaubyWriteShadowUsers !== '' ? $miaubyWriteShadowUsers : 'adm');
+}
+
+if (!defined('MIAUBY_WRITE_ADAPTER_INTERNAL_URL')) {
+    $miaubyWriteAdapterUrl = miauw_env_string(array('MIAUBY_WRITE_ADAPTER_INTERNAL_URL'));
+    define(
+        'MIAUBY_WRITE_ADAPTER_INTERNAL_URL',
+        $miaubyWriteAdapterUrl !== '' ? $miaubyWriteAdapterUrl : 'http://wimifarma-miauby-app:4100/miauby/api/internal/write-adapter/dry-run'
+    );
+}
+
+if (!defined('MIAUBY_WRITE_ADAPTER_INTERNAL_TOKEN')) {
+    $miaubyWriteAdapterToken = miauw_env_string(array('MIAUBY_INTERNAL_TOKEN', 'MIAUBY_WRITE_ADAPTER_INTERNAL_TOKEN'));
+    if ($miaubyWriteAdapterToken === '' && defined('MIAUW_AGENT_INTERNAL_TOKEN')) {
+        $miaubyWriteAdapterToken = trim((string) MIAUW_AGENT_INTERNAL_TOKEN);
+    }
+    if ($miaubyWriteAdapterToken === '' && defined('MIAUW_GUARDIAN_TOKEN')) {
+        $miaubyWriteAdapterToken = trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+    define('MIAUBY_WRITE_ADAPTER_INTERNAL_TOKEN', $miaubyWriteAdapterToken);
+}
+
+if (!defined('MIAUBY_WRITE_SHADOW_TIMEOUT_MS')) {
+    $miaubyWriteShadowTimeout = (int) miauw_env_string(array('MIAUBY_WRITE_SHADOW_TIMEOUT_MS'));
+    if ($miaubyWriteShadowTimeout <= 0) {
+        $miaubyWriteShadowTimeout = 900;
+    }
+    define('MIAUBY_WRITE_SHADOW_TIMEOUT_MS', max(250, min(5000, $miaubyWriteShadowTimeout)));
+}
+
 if (!defined('MIAUW_CHANNEL_MEMORY_BRIDGE_URL')) {
     $miauwChannelMemoryBridgeUrl = miauw_env_string(array('MIAUW_CHANNEL_MEMORY_BRIDGE_URL', 'MIAUW_WHATSAPP_MEMORY_BRIDGE_URL'));
     define('MIAUW_CHANNEL_MEMORY_BRIDGE_URL', $miauwChannelMemoryBridgeUrl !== '' ? $miauwChannelMemoryBridgeUrl : 'http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp/internal/memory');
@@ -2372,6 +2408,7 @@ function miauw_agent_shadow_status(): array
         'timeout_ms' => $timeoutMs,
         'writes_enabled' => false,
         'context_shadow' => miauby_context_shadow_status(),
+        'write_shadow' => miauby_write_shadow_status(function_exists('current_user') ? current_user() : null),
         'status' => $configured ? ($onSend ? 'compare_on_send' : 'manual_ready') : 'not_configured',
     );
 }
@@ -2396,6 +2433,211 @@ function miauby_context_shadow_status(): array
         'official_response_owner' => 'php',
         'status' => $configured ? 'compare_on_shadow_send' : ($enabled ? 'not_configured' : 'disabled'),
     );
+}
+
+function miauby_write_shadow_status(?array $user = null): array
+{
+    $enabled = defined('MIAUBY_WRITE_SHADOW_ENABLED') ? (bool) MIAUBY_WRITE_SHADOW_ENABLED : false;
+    $url = miauw_constant_string('MIAUBY_WRITE_ADAPTER_INTERNAL_URL');
+    $token = miauw_constant_string('MIAUBY_WRITE_ADAPTER_INTERNAL_TOKEN');
+    $timeoutMs = miauw_constant_int('MIAUBY_WRITE_SHADOW_TIMEOUT_MS', 900);
+    $allowedCsv = miauw_constant_string('MIAUBY_WRITE_SHADOW_ALLOWED_USERS', 'adm');
+    $userAllowed = miauw_user_matches_allowed_list($user, $allowedCsv);
+    $configured = $enabled && $userAllowed && $url !== '' && $token !== '' && function_exists('curl_init');
+
+    return array(
+        'mode' => 'node_write_shadow_dry_run',
+        'phase' => 'Miauby Etapa 5C',
+        'enabled' => $enabled,
+        'configured' => $configured,
+        'url_configured' => $url !== '',
+        'token_configured' => $token !== '',
+        'curl_enabled' => function_exists('curl_init'),
+        'timeout_ms' => $timeoutMs,
+        'allowed_users' => miauw_csv_list($allowedCsv),
+        'user_allowed' => $userAllowed,
+        'official_write_owner' => 'site/miauw PHP',
+        'real_write_enabled' => false,
+        'status' => $configured ? 'dry_run_on_php_write' : ($enabled ? 'not_configured_or_not_allowed' : 'disabled'),
+    );
+}
+
+function miauby_write_shadow_payload_preview(string $content, int $limit = 700): string
+{
+    $preview = trim(strip_tags($content));
+    $preview = preg_replace('/\s+/u', ' ', $preview) ?? $preview;
+    if (function_exists('miauw_diagnostic_redact_string')) {
+        $preview = miauw_diagnostic_redact_string($preview);
+    } elseif (function_exists('miauw_redact_secret_fragments')) {
+        $preview = miauw_redact_secret_fragments($preview);
+    }
+
+    return miauw_substr($preview, 0, max(1, $limit));
+}
+
+function miauby_write_shadow_request(array $payload): array
+{
+    $url = miauw_constant_string('MIAUBY_WRITE_ADAPTER_INTERNAL_URL');
+    $token = miauw_constant_string('MIAUBY_WRITE_ADAPTER_INTERNAL_TOKEN');
+    $timeoutMs = miauw_constant_int('MIAUBY_WRITE_SHADOW_TIMEOUT_MS', 900);
+
+    if ($url === '' || $token === '') {
+        throw new RuntimeException('Adaptador de escrita Miauby sem configuracao interna.');
+    }
+
+    if (!function_exists('curl_init')) {
+        throw new RuntimeException('cURL nao esta habilitado no PHP.');
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, array(
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => array(
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'X-Miauby-Internal-Token: ' . $token,
+            'X-Miauw-Internal-Token: ' . $token,
+        ),
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT_MS => min(400, max(150, $timeoutMs)),
+        CURLOPT_TIMEOUT_MS => $timeoutMs,
+    ));
+
+    $raw = curl_exec($ch);
+    $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+    if (!is_string($raw) || $raw === '' || $httpStatus < 200 || $httpStatus >= 300 || !is_array($decoded)) {
+        $detail = $error !== '' ? miauw_diagnostic_redact_string($error) : ('HTTP ' . $httpStatus);
+        throw new RuntimeException('Falha no dry-run do adaptador Miauby: ' . $detail);
+    }
+
+    return $decoded;
+}
+
+function miauby_write_shadow_message(
+    int $conversationId,
+    int $messageId,
+    ?int $userId,
+    string $role,
+    string $content,
+    ?string $model = null,
+    bool $fallback = false,
+    array $metadata = array()
+): ?array {
+    $user = function_exists('current_user') ? current_user() : null;
+    $status = miauby_write_shadow_status(is_array($user) ? $user : null);
+    if (empty($status['enabled'])) {
+        return null;
+    }
+
+    if (empty($status['configured'])) {
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('miauby_write_shadow_dry_run', 'skipped', array(
+                'type' => 'write_shadow',
+                'summary' => 'Dry-run sombra de escrita Miauby ignorado por configuracao incompleta ou usuario nao liberado.',
+                'conversa_id' => $conversationId,
+                'mensagem_id' => $messageId,
+                'usuario_id' => $userId,
+                'payload' => array(
+                    'status' => $status,
+                    'role' => $role,
+                ),
+            ));
+        }
+
+        return array(
+            'ok' => false,
+            'status' => 'skipped',
+            'reason' => 'not_configured_or_not_allowed',
+        );
+    }
+
+    $trace = function_exists('miauw_trace_context') ? miauw_trace_context() : array();
+    $actor = array(
+        'user_id' => $userId,
+        'user_legacy_id' => $userId,
+        'username' => is_array($user) ? (string) ($user['username'] ?? '') : '',
+    );
+    $body = array(
+        'operation' => 'conversation_message',
+        'idempotency_key' => 'php:mysql:miauw_mensagens:' . $messageId,
+        'actor' => $actor,
+        'conversation_legacy_id' => $conversationId,
+        'payload' => array(
+            'role' => $role,
+            'content_preview' => miauby_write_shadow_payload_preview($content),
+            'model' => $model,
+            'fallback' => $fallback,
+            'legacy_mysql_id' => $messageId,
+        ),
+        'metadata' => array_merge(array(
+            'source' => 'site/miauw PHP',
+            'phase' => 'Miauby Etapa 5C',
+            'trace_id' => (string) ($trace['trace_id'] ?? ''),
+            'mysql_table' => 'miauw_mensagens',
+            'official_write_done' => true,
+            'real_write_requested' => false,
+        ), $metadata),
+    );
+
+    $started = microtime(true);
+    try {
+        $result = miauby_write_shadow_request($body);
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('miauby_write_shadow_dry_run', !empty($result['ok']) ? 'ok' : 'blocked', array(
+                'type' => 'write_shadow',
+                'summary' => 'Mensagem oficial do PHP enviada como intencao dry-run para apps/miauby.',
+                'conversa_id' => $conversationId,
+                'mensagem_id' => $messageId,
+                'usuario_id' => $userId,
+                'duration_ms' => $durationMs,
+                'payload' => array(
+                    'adapter_status' => (string) ($result['status'] ?? ''),
+                    'operation' => 'conversation_message',
+                    'role' => $role,
+                    'real_write_executed' => !empty($result['real_write_executed']),
+                    'divergence_detected' => !empty($result['divergence_detected']),
+                    'idempotency_key' => (string) ($result['plan']['idempotency_key'] ?? ''),
+                ),
+            ));
+        }
+
+        return array(
+            'ok' => !empty($result['ok']),
+            'status' => (string) ($result['status'] ?? ''),
+            'duration_ms' => $durationMs,
+            'divergence_detected' => !empty($result['divergence_detected']),
+        );
+    } catch (Throwable $error) {
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('miauby_write_shadow_dry_run', 'error', array(
+                'type' => 'write_shadow',
+                'summary' => 'Falha no dry-run sombra de escrita Miauby; PHP segue oficial.',
+                'conversa_id' => $conversationId,
+                'mensagem_id' => $messageId,
+                'usuario_id' => $userId,
+                'duration_ms' => $durationMs,
+                'error' => $error->getMessage(),
+                'payload' => array(
+                    'role' => $role,
+                    'official_write_done' => true,
+                ),
+            ));
+        }
+
+        return array(
+            'ok' => false,
+            'status' => 'error',
+            'reason' => miauw_diagnostic_redact_string($error->getMessage()),
+            'duration_ms' => $durationMs,
+        );
+    }
 }
 
 function miauby_context_shadow_count_tools(array $contracts): int
@@ -3685,7 +3927,12 @@ function miauw_add_message(int $conversationId, ?int $userId, string $role, stri
     );
     $stmt->execute(array($conversationId, $userId, $role, $content, $model, $fallback ? 1 : 0));
 
-    return (int) db()->lastInsertId();
+    $messageId = (int) db()->lastInsertId();
+    if (function_exists('miauby_write_shadow_message')) {
+        miauby_write_shadow_message($conversationId, $messageId, $userId, $role, $content, $model, $fallback);
+    }
+
+    return $messageId;
 }
 
 function miauw_channel_event_clean_text(string $text, int $limit = 500): string

@@ -85,7 +85,7 @@ Regras:
 - nao remover PHP;
 - nao remover MySQL;
 - criar apenas contratos, schema, idempotencia, logs/auditoria e dry-run.
-- manter `MIAUBY_WRITES_ENABLED=false` e `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false` ate a Etapa 5C.
+- manter `MIAUBY_WRITES_ENABLED=false`; `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=true` so pode ser usado em 5C controlada para registrar intencao/auditoria, nunca escrita real.
 
 Validacao esperada:
 
@@ -93,12 +93,14 @@ Validacao esperada:
 - migrador sombra `migrate` e `validate`;
 - readiness 12/12 sem divergencia;
 - smoke do pacote canonico;
-- smoke do adaptador 5B confirmando status bloqueado, plano sanitizado e dry-run bloqueado por env;
+- smoke do adaptador confirmando status bloqueado ou dry-run controlado, plano sanitizado e escrita real inexistente;
 - teste de rollback com escrita ainda desligada.
 
 ### Fase 2 - Miauby interno Etapa 5C: shadow write/dry-run
 
 Objetivo: o PHP oficial continua gravando no MySQL, mas o Node recebe a intencao de escrita em modo sombra, compara payload sanitizado e registra divergencia sem afetar usuario.
+
+Estado em 2026-06-02: implementado o primeiro recorte seguro. O PHP em `site/miauw` envia intencoes de `conversation_message` para `/miauby/api/internal/write-adapter/dry-run` apenas quando `MIAUBY_WRITE_SHADOW_ENABLED=true` e o usuario esta em `MIAUBY_WRITE_SHADOW_ALLOWED_USERS` (`adm` por padrao). O `apps/miauby` so registra em `miauby_write_intents`/`miauby_write_audit_events` quando `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=true`; `MIAUBY_WRITES_ENABLED=false` continua impedindo qualquer escrita real em tabelas de dominio. Idempotencia usa o ID MySQL oficial da mensagem e divergencia por checksum fica auditada.
 
 Regras:
 
@@ -106,6 +108,16 @@ Regras:
 - manter `route_cutover_enabled=false`;
 - manter `public_proxy_enabled=false`;
 - manter resposta final do PHP.
+- manter `MIAUBY_WRITES_ENABLED=false`;
+- validar inicialmente somente com `adm`;
+- falha no adaptador nao pode alterar resposta, sessao, `/miauw/` ou gravacao MySQL oficial.
+
+Validacao esperada:
+
+- `npm run check` e `npm run build` em `apps/miauby`;
+- `php -l` nos arquivos PHP tocados;
+- migrador/readiness/smoke no VPS;
+- envio controlado do `adm` gerando `dry_run_recorded` sem `real_write_executed`.
 
 ### Fase 3 - Miauby interno Etapa 6: corte controlado por usuario
 
@@ -163,14 +175,13 @@ Somente depois de Miauby interno e WordPress resolvidos:
 
 ## Ordem recomendada agora
 
-1. Miauby interno Etapa 5B: adaptador de escrita desligado em Node/Postgres.
-2. Miauby interno Etapa 5C: shadow write/dry-run.
-3. Miauby interno corte por usuario `adm`.
-4. Miauby interno escrita oficial em Postgres.
-5. Remover sincronizador MySQL do core-auth.
-6. Decidir WordPress: manter como excecao ou substituir por site novo.
-7. Se substituir WordPress, iniciar piloto Next.js/Prisma/Postgres.
-8. Auditoria final e retirada do MySQL.
+1. Validar Miauby interno Etapa 5C com `adm` por alguns envios reais e sem divergencia.
+2. Miauby interno corte por usuario `adm`.
+3. Miauby interno escrita oficial em Postgres.
+4. Remover sincronizador MySQL do core-auth.
+5. Decidir WordPress: manter como excecao ou substituir por site novo.
+6. Se substituir WordPress, iniciar piloto Next.js/Prisma/Postgres.
+7. Auditoria final e retirada do MySQL.
 
 ## Prompt para a proxima conversa
 
@@ -179,9 +190,9 @@ Estamos no projeto C:\Users\Thiesen\Desktop\wimifarma-com, repositorio https://g
 
 Siga obrigatoriamente AGENTS.md, README.md e docs/29-roadmap-final-migracao.md. Para Miauby, leia tambem docs/28-miauby-migracao.md e docs/22-migracao-mysql-postgres.md.
 
-Quero iniciar a proxima etapa segura da migracao 100%: Miauby interno Etapa 5B.
+Quero validar a proxima etapa segura da migracao 100%: Miauby interno Etapa 5C.
 
-Objetivo da etapa: criar/preparar no apps/miauby um adaptador de escrita Node/Postgres desligado por variavel de ambiente, com contratos tipados, idempotencia, auditoria e rollback, mas sem trocar a resposta oficial do PHP, sem trocar /miauw/, sem habilitar escrita real, sem remover MySQL e sem quebrar o chat atual.
+Objetivo da etapa: validar shadow write/dry-run controlado do Miauby, com PHP ainda oficial gravando MySQL, Node/Postgres registrando apenas intencoes sanitizadas/auditoria em dry-run, idempotencia e deteccao de divergencia, sem trocar a resposta oficial do PHP, sem trocar /miauw/, sem habilitar escrita real, sem remover MySQL e sem quebrar o chat atual.
 
 Antes de alterar arquivos:
 - leia AGENTS.md, README.md e docs relevantes;

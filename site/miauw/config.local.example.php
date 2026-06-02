@@ -39,6 +39,10 @@ define('MIAUW_AGENT_INTERNAL_BASE_URL', 'http://wimifarma-miauw-agent:3100/miauw
 define('MIAUBY_CONTEXT_SHADOW_ENABLED', false);
 define('MIAUBY_CONTEXT_INTERNAL_URL', 'http://wimifarma-miauby-app:4100/miauby/api/internal/canonical-context');
 define('MIAUBY_CONTEXT_SHADOW_TIMEOUT_MS', 2500);
+define('MIAUBY_WRITE_SHADOW_ENABLED', false);
+define('MIAUBY_WRITE_SHADOW_ALLOWED_USERS', 'adm');
+define('MIAUBY_WRITE_ADAPTER_INTERNAL_URL', 'http://wimifarma-miauby-app:4100/miauby/api/internal/write-adapter/dry-run');
+define('MIAUBY_WRITE_SHADOW_TIMEOUT_MS', 900);
 define('MIAUW_AGENT_SHADOW_ON_SEND', false);
 define('MIAUW_AGENT_SHADOW_TIMEOUT_MS', 12000);
 define('MIAUW_ENGINE', 'php');

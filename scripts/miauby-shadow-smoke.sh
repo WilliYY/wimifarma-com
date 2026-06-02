@@ -84,14 +84,14 @@ assert(cutover.response.ok && cutover.body.ok === true, 'cutover_inventory_faile
 assert(cutover.body.mode === 'cutover_inventory_read_only', 'cutover_inventory_mode_invalid');
 assert(cutover.body.guards?.write_enabled === false, 'cutover_write_must_stay_disabled');
 assert(cutover.body.guards?.route_cutover_enabled === false, 'cutover_route_must_stay_disabled');
-assert(cutover.body.write_adapter_5b?.write_enabled === false, 'cutover_write_adapter_must_stay_disabled');
+assert(cutover.body.write_adapter_5c?.write_enabled === false, 'cutover_write_adapter_must_stay_disabled');
 assert(Array.isArray(cutover.body.flows) && cutover.body.flows.length >= 5, 'cutover_flows_missing');
 
 const writeAdapter = await readJson('/api/internal/write-adapter', headers);
 assert(writeAdapter.response.ok && writeAdapter.body.ok === true, 'write_adapter_status_failed');
-assert(writeAdapter.body.mode === 'write_adapter_prepared_disabled', 'write_adapter_mode_invalid');
+assert(['shadow_write_dry_run_blocked', 'shadow_write_dry_run_controlled'].includes(writeAdapter.body.mode), 'write_adapter_mode_invalid');
 assert(writeAdapter.body.write_enabled === false, 'write_adapter_must_stay_disabled');
-assert(writeAdapter.body.real_write_supported === false, 'write_adapter_real_write_must_not_exist_in_5b');
+assert(writeAdapter.body.real_write_supported === false, 'write_adapter_real_write_must_not_exist_in_5c');
 assert(Array.isArray(writeAdapter.body.contracts) && writeAdapter.body.contracts.length >= 8, 'write_adapter_contracts_missing');
 
 const writePlan = await readJson('/api/internal/write-adapter/plan', {
@@ -104,7 +104,7 @@ const writePlan = await readJson('/api/internal/write-adapter/plan', {
     conversation_legacy_id: 1,
     payload: {
       role: 'user',
-      content_preview: 'teste seguro 5B',
+      content_preview: 'teste seguro 5C',
       telefone: '+55 44 99999-9999',
     },
   }),
@@ -121,14 +121,21 @@ const dryRun = await readJson('/api/internal/write-adapter/dry-run', {
   method: 'POST',
   body: JSON.stringify({
     operation: 'conversation_message',
+    idempotency_key: `smoke-5c-${Date.now()}`,
     conversation_legacy_id: 1,
     payload: {
       role: 'user',
-      content_preview: 'teste seguro 5B',
+      content_preview: 'teste seguro 5C',
     },
   }),
 });
-assert(dryRun.response.status === 409 && dryRun.body.status === 'blocked_by_env', 'write_adapter_dry_run_must_stay_blocked_by_env');
+if (writeAdapter.body.dry_run_enabled === true) {
+  assert(dryRun.response.ok && dryRun.body.ok === true, 'write_adapter_dry_run_should_record_when_enabled');
+  assert(['dry_run_recorded', 'dry_run_duplicate'].includes(dryRun.body.status), 'write_adapter_dry_run_status_invalid');
+  assert(dryRun.body.real_write_executed === false, 'write_adapter_dry_run_must_not_execute_real_write');
+} else {
+  assert(dryRun.response.status === 409 && dryRun.body.status === 'blocked_by_env', 'write_adapter_dry_run_must_stay_blocked_by_env');
+}
 
 console.log(JSON.stringify({
   ok: true,
@@ -166,6 +173,7 @@ console.log(JSON.stringify({
   write_adapter: {
     mode: writeAdapter.body.mode,
     contracts: writeAdapter.body.contracts.length,
+    dry_run_enabled: writeAdapter.body.dry_run_enabled,
     dry_run_status: dryRun.body.status,
   },
 }, null, 2));

@@ -50,8 +50,8 @@ export type MiaubyWriteIntentInput = {
 
 export type MiaubyWritePlan = {
   ok: boolean;
-  mode: 'write_adapter_5b_plan';
-  phase: 'Miauby Etapa 5B';
+  mode: 'write_adapter_5c_plan';
+  phase: 'Miauby Etapa 5C';
   write_enabled: false;
   dry_run_enabled: boolean;
   real_write_supported: false;
@@ -372,7 +372,7 @@ export function writeAdapterFlags(env: MiaubyWriteAdapterEnv = process.env) {
     dry_run_enabled: envBool(env.MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED, false),
     audit_enabled: envBool(env.MIAUBY_WRITE_ADAPTER_AUDIT_ENABLED, true),
     real_write_supported: false,
-    blocked_reason: writesEnabled ? 'real_write_not_supported_in_5b' : 'MIAUBY_WRITES_ENABLED=false',
+    blocked_reason: writesEnabled ? 'real_write_not_supported_in_5c' : 'MIAUBY_WRITES_ENABLED=false',
   };
 }
 
@@ -381,9 +381,9 @@ export function buildWriteAdapterStatus(env: MiaubyWriteAdapterEnv = process.env
   return {
     ok: true,
     service: 'miauby',
-    phase: 'Miauby Etapa 5B',
-    mode: 'write_adapter_prepared_disabled',
-    version: 'miauby-write-adapter-5b-2026-06-02',
+    phase: 'Miauby Etapa 5C',
+    mode: flags.dry_run_enabled ? 'shadow_write_dry_run_controlled' : 'shadow_write_dry_run_blocked',
+    version: 'miauby-write-adapter-5c-2026-06-02',
     official_response_owner: 'site/miauw PHP',
     official_write_owner: 'site/miauw PHP',
     route_cutover_enabled: false,
@@ -398,6 +398,8 @@ export function buildWriteAdapterStatus(env: MiaubyWriteAdapterEnv = process.env
       'nao troca /miauw/',
       'nao troca resposta oficial',
       'nao escreve em tabelas de dominio quando MIAUBY_WRITES_ENABLED=false',
+      'dry-run registra apenas intencao/auditoria quando MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=true',
+      'idempotencia diferencia duplicidade segura de divergencia por checksum',
       'nao executa tools',
       'payloads sao sanitizados antes de plano/dry-run',
       'rollback imediato por MIAUBY_WRITES_ENABLED=false e MIAUW_ENGINE=php',
@@ -413,8 +415,8 @@ export function planWriteIntent(input: MiaubyWriteIntentInput, env: MiaubyWriteA
     const fallback = writeContracts[0];
     return {
       ok: false,
-      mode: 'write_adapter_5b_plan',
-      phase: 'Miauby Etapa 5B',
+      mode: 'write_adapter_5c_plan',
+      phase: 'Miauby Etapa 5C',
       write_enabled: false,
       dry_run_enabled: writeAdapterFlags(env).dry_run_enabled,
       real_write_supported: false,
@@ -448,8 +450,8 @@ export function planWriteIntent(input: MiaubyWriteIntentInput, env: MiaubyWriteA
 
   return {
     ok: validationErrors.length === 0,
-    mode: 'write_adapter_5b_plan',
-    phase: 'Miauby Etapa 5B',
+    mode: 'write_adapter_5c_plan',
+    phase: 'Miauby Etapa 5C',
     write_enabled: false,
     dry_run_enabled: writeAdapterFlags(env).dry_run_enabled,
     real_write_supported: false,
@@ -477,7 +479,7 @@ export function writeAdapterSchemaSql(): string[] {
       idempotency_key TEXT NOT NULL UNIQUE,
       operation TEXT NOT NULL,
       target_table TEXT NOT NULL,
-      source TEXT NOT NULL DEFAULT 'miauby_write_adapter_5b',
+      source TEXT NOT NULL DEFAULT 'miauby_write_adapter_5c',
       actor_user_id BIGINT,
       actor_username TEXT,
       conversation_legacy_id BIGINT,
@@ -532,14 +534,14 @@ export async function recordWriteAdapterDryRun(pool: Pool, input: MiaubyWriteInt
     return { ok: false, status: 'blocked_by_env', blocked_reason: 'MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false', plan };
   }
   if (flags.requested_write_enabled) {
-    return { ok: false, status: 'blocked_real_write_requested', blocked_reason: 'real_write_not_supported_in_5b', plan };
+    return { ok: false, status: 'blocked_real_write_requested', blocked_reason: 'real_write_not_supported_in_5c', plan };
   }
 
   const actorUserId = Number(plan.metadata_sanitized.actor_user_id ?? 0);
   const conversationId = Number(plan.metadata_sanitized.conversation_legacy_id ?? 0);
   const actorUsername = canonicalString(plan.metadata_sanitized.actor_username, 80) || null;
 
-  await pool.query(
+  const insertResult = await pool.query<{ status: string }>(
     `INSERT INTO miauby_write_intents (
        idempotency_key, operation, target_table, actor_user_id, actor_username, conversation_legacy_id,
        request_checksum, payload_sanitized, metadata_sanitized, status, dry_run,
@@ -550,7 +552,10 @@ export async function recordWriteAdapterDryRun(pool: Pool, input: MiaubyWriteInt
        false, $10::jsonb, NOW()
      )
      ON CONFLICT (idempotency_key) DO UPDATE SET
-       status = 'dry_run_duplicate',
+       status = CASE
+         WHEN miauby_write_intents.request_checksum = EXCLUDED.request_checksum THEN 'dry_run_duplicate'
+         ELSE 'dry_run_divergence'
+       END,
        updated_at = NOW()
      RETURNING status`,
     [
@@ -567,24 +572,29 @@ export async function recordWriteAdapterDryRun(pool: Pool, input: MiaubyWriteInt
     ],
   );
 
+  const recordedStatus = String(insertResult.rows[0]?.status || 'dry_run_recorded');
+
   await pool.query(
     `INSERT INTO miauby_write_audit_events (
        idempotency_key, operation, event_type, actor_user_id, actor_username, status,
        dry_run, writes_enabled_at_request, payload_sanitized, metadata_sanitized
-     ) VALUES ($1, $2, 'dry_run_recorded', $3, $4, 'ok', true, false, $5::jsonb, $6::jsonb)`,
+     ) VALUES ($1, $2, $3, $4, $5, $6, true, false, $7::jsonb, $8::jsonb)`,
     [
       plan.idempotency_key,
       plan.operation,
+      recordedStatus,
       Number.isFinite(actorUserId) && actorUserId > 0 ? actorUserId : null,
       actorUsername,
+      recordedStatus === 'dry_run_divergence' ? 'divergence' : 'ok',
       JSON.stringify(plan.payload_sanitized),
       JSON.stringify(plan.metadata_sanitized),
     ],
   );
 
   return {
-    ok: true,
-    status: 'dry_run_recorded',
+    ok: recordedStatus !== 'dry_run_divergence',
+    status: recordedStatus,
+    divergence_detected: recordedStatus === 'dry_run_divergence',
     real_write_executed: false,
     plan,
   };

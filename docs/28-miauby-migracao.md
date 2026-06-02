@@ -190,7 +190,8 @@ Proibido migrar para Postgres:
 - Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`. Desde 2026-06-02, a migracao/validacao deve ser rodada pelo `wimifarma-miauby-migrator` descartavel, nao dentro do app vivo.
 - Estado iniciado em 2026-06-01: `apps/miauby` ganhou `/miauby/api/internal/cutover`, endpoint interno tokenizado e somente leitura que devolve o inventario de corte, fluxos bloqueantes, sequencia segura e rollback. Ele confirma explicitamente `write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false` e `node_direct_module_db_writes_enabled=false`.
 - Estado iniciado em 2026-06-02: `apps/miauby` ganhou `/miauby/api/internal/canonical-context` e o alias `/miauby/api/internal/context-pack`, ambos internos/tokenizados, para compilar contexto de estilo/persona/tools a partir de `miauby_*` e de um registry Node tipado. Em 2026-06-02, a Etapa 5A consolidou esse pacote como read model canônico Node/Postgres, expondo `canonical_read_model.version=miauby-read-model-5a-2026-06-02`, treino aprovado, memorias/padroes aprovados, conhecimentos ativos/aprovados e contratos de tools, sempre com `write_enabled=false`, `writes_enabled_in_node=false`, `php_official_response=true`, sem payload bruto, sem chamada OpenAI e sem executar tools.
-- Estado iniciado em 2026-06-02: a Etapa 5B preparou o adaptador interno de escrita do `apps/miauby`, ainda desligado. O migrador cria `miauby_write_intents` e `miauby_write_audit_events`; o app expoe `/miauby/api/internal/write-adapter`, `/miauby/api/internal/write-adapter/plan` e `/miauby/api/internal/write-adapter/dry-run`, todos internos/tokenizados. `MIAUBY_WRITES_ENABLED=false` e `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false` sao o padrao seguro, entao o Node nao grava conversas, mensagens, traces, treino, memorias, alertas, padroes nem configuracoes como fonte oficial, e nem registra dry-run sem liberacao futura explicita.
+- Estado iniciado em 2026-06-02: a Etapa 5B preparou o adaptador interno de escrita do `apps/miauby`, ainda desligado. O migrador cria `miauby_write_intents` e `miauby_write_audit_events`; o app expoe `/miauby/api/internal/write-adapter`, `/miauby/api/internal/write-adapter/plan` e `/miauby/api/internal/write-adapter/dry-run`, todos internos/tokenizados. `MIAUBY_WRITES_ENABLED=false` e `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false` sao o padrao seguro, entao o Node nao grava conversas, mensagens, traces, treino, memorias, alertas, padroes nem configuracoes como fonte oficial, e nem registra dry-run sem liberacao explicita.
+- Estado iniciado em 2026-06-02: a Etapa 5C ligou o caminho de shadow write/dry-run controlado. O PHP oficial pode, apenas quando `MIAUBY_WRITE_SHADOW_ENABLED=true` e usuario permitido em `MIAUBY_WRITE_SHADOW_ALLOWED_USERS`, enviar ao adaptador uma intencao sanitizada depois de gravar a mensagem em `miauw_mensagens`. O `wimifarma-miauby-app` registra somente em `miauby_write_intents`/`miauby_write_audit_events` quando `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=true`; `MIAUBY_WRITES_ENABLED=false` continua impedindo escrita real, e idempotencia por chave/checksum diferencia duplicidade segura de divergencia.
 - PHP continua dono da resposta oficial.
 
 ### Etapa 2026-06-01 - Inventario de corte sem troca de motor
@@ -287,6 +288,46 @@ Validacao esperada:
 - `npm run check` e `npm run build` em `apps/miauby`;
 - `scripts/miauby-shadow-migrate.sh migrate` e `validate` para criar o schema 5B no Postgres;
 - `scripts/miauby-shadow-smoke.sh` deve confirmar que `write_adapter.write_enabled=false`, o plano sanitiza telefone e o dry-run segue bloqueado por env.
+
+### Etapa 2026-06-02 - Miauby Etapa 5C: shadow write/dry-run controlado
+
+Esta etapa permite validar o caminho de escrita em sombra sem trocar a fonte oficial. O PHP continua gravando `miauw_conversas`/`miauw_mensagens` em MySQL e so depois envia uma intencao sanitizada para o adaptador Node/Postgres.
+
+Novas configuracoes no PHP:
+
+- `MIAUBY_WRITE_SHADOW_ENABLED`: liga/desliga o envio de intencoes dry-run pelo PHP. Padrao `false`.
+- `MIAUBY_WRITE_SHADOW_ALLOWED_USERS`: allowlist de usuarios para shadow write. Padrao `adm`.
+- `MIAUBY_WRITE_ADAPTER_INTERNAL_URL`: endpoint interno `/miauby/api/internal/write-adapter/dry-run`.
+- `MIAUBY_WRITE_SHADOW_TIMEOUT_MS`: timeout curto para nao atrasar o chat se o Node falhar.
+
+Configuracoes no `wimifarma-miauby-app`:
+
+- `MIAUBY_WRITES_ENABLED=false`: obrigatorio; escrita real continua sem suporte.
+- `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=true`: permite gravar apenas dry-run em `miauby_write_intents` e `miauby_write_audit_events`.
+- `MIAUBY_WRITE_ADAPTER_AUDIT_ENABLED=true`: mantem auditoria do dry-run.
+
+Regras preservadas:
+
+- resposta oficial continua PHP;
+- escrita oficial continua PHP/MySQL;
+- `/miauw/` e `/miauby/` nao mudam de destino;
+- nenhuma tabela de dominio `miauby_*` recebe escrita oficial nesta etapa;
+- o payload enviado pelo PHP contem preview sanitizado, id legado MySQL e metadados limpos, sem telefone cru, segredo, SQL, stack trace, audio ou midia;
+- falha no adaptador vira trace sanitizado `miauby_write_shadow_dry_run` e nao altera a resposta ao operador;
+- idempotencia usa `php:mysql:miauw_mensagens:{id}`; reenvio igual vira duplicidade, reenvio com checksum diferente vira divergencia auditada.
+
+Validacao esperada:
+
+- `npm run check` e `npm run build` em `apps/miauby`;
+- smoke do adaptador com dry-run bloqueado e, no VPS controlado, com dry-run habilitado;
+- envio real do `adm` no chat PHP deve continuar respondendo pelo PHP e criar intencoes `dry_run_recorded` no Postgres do Miauby;
+- divergencia deve parar o avanco da migracao ate investigacao, mas nao quebra o chat atual.
+
+Rollback:
+
+- `MIAUBY_WRITE_SHADOW_ENABLED=false` no PHP;
+- `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false` no `wimifarma-miauby-app`;
+- manter `MIAUBY_WRITES_ENABLED=false` e `MIAUW_ENGINE=php`.
 
 ### Etapa 2026-06-02 - Consumidor sombra do contexto Node
 

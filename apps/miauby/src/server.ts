@@ -15,7 +15,7 @@ type ShadowReadSection = SourceTable & {
 };
 
 const env = process.env;
-const serviceVersion = '0.5.2';
+const serviceVersion = '0.5.3';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -331,7 +331,7 @@ function buildCutoverInventory() {
       target: table.target,
     })),
     flows: cutoverFlows,
-    write_adapter_5b: buildWriteAdapterStatus(env),
+    write_adapter_5c: buildWriteAdapterStatus(env),
     hard_blockers: [
       'apps/miauby possui adaptador de escrita preparado, mas MIAUBY_WRITES_ENABLED=false e nenhuma escrita real e suportada nesta etapa',
       'apps/miauw-agent ainda depende de agent-context.php, agent-tools.php e agent-actions.php para contexto, tools e confirmacoes',
