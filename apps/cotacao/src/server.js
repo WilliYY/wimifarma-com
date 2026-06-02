@@ -2432,9 +2432,12 @@ async function processDueEncomendaReminders() {
        WHERE status IN ('pendente', 'erro')
          AND remind_at <= now()
          AND attempts < max_attempts
-         AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-       ORDER BY remind_at ASC, id ASC
-       LIMIT 10
+         AND (
+           status = 'pendente'
+           OR (next_attempt_at IS NOT NULL AND next_attempt_at <= now())
+         )
+        ORDER BY remind_at ASC, id ASC
+        LIMIT 10
        FOR UPDATE SKIP LOCKED
      )
      UPDATE cotacao_v2_encomenda_reminders r
