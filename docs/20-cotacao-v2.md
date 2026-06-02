@@ -82,7 +82,7 @@ Postgres `wimifarma_cotacao`:
 - `cotacao_v2_rules`: regras condicionais explicitas sempre com `target='cell'`, incluindo `show_timestamp` para exibir no hover a data/hora de criacao da regra quando habilitado.
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula, usados pela paleta de cores da tela.
 - `cotacao_v2_column_audit`: auditoria de renomeacao e reordenacao de colunas de distribuidoras.
-- `cotacao_v2_encomenda_reminders`: lembretes operacionais criados quando uma linha contem `encomenda`, com cotacao, linha, texto original, produto/quantidade extraidos, data de deteccao, envio previsto, destinatarios mascarados, status (`pendente`, `enviado`, `erro`, `cancelado`, `resolvido`), tentativas e resultado do Miauby Whats.
+- `cotacao_v2_encomenda_reminders`: lembretes operacionais criados quando uma linha contem `encomenda`, com cotacao, linha, texto original, produto/quantidade extraidos, data de deteccao, envio previsto, destinatarios mascarados, status (`pendente`, `enviado`, `erro`, `cancelado`, `resolvido`), tentativas e resultado do Miauby Whats. Importacoes Google Sheets e restores de backup recalculam esses lembretes para criar os faltantes e cancelar pendentes de linhas removidas.
 
 Redis:
 
@@ -104,7 +104,7 @@ Core Postgres `wimifarma_core`:
 - `Ganhador` e calculado pelo menor preco numerico entre distribuidoras visiveis e nao aceita escrita manual.
 - Categoria e texto comum.
 - `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem nem filtro por gatilho escondido.
-- Excecao documentada de 2026-06-01: `encomenda` gera apenas um lembrete operacional persistido para o Miauby Whats no dia seguinte as 16h. Esse lembrete nao muda valores, fornecedor, ganhador, prioridade, cor ou posicao da linha.
+- Excecao documentada de 2026-06-01: `encomenda` gera apenas um lembrete operacional persistido para o Miauby Whats no dia seguinte as 16h. Esse lembrete nao muda valores, fornecedor, ganhador, prioridade, cor ou posicao da linha. Desde 2026-06-02, importacao Google Sheets e restore de backup tambem reconciliam a tabela de lembretes depois da substituicao em massa.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`; regras criadas pela tela podem ser editadas ou apagadas no proprio modal.
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.
@@ -130,7 +130,7 @@ Core Postgres `wimifarma_core`:
 - Login deve continuar aceitando os usuarios internos sincronizados para `core_users`; se um usuario existir apenas em `wf_users`, rodar o migrador do core antes de liberar o acesso.
 - Dados oficiais ainda podem estar no Google Sheets; import/export deve ser controlado e auditavel.
 - Import/export Google Sheets deve preservar `cotacao_row_id` para manter linha estavel e evitar duplicacao silenciosa.
-- Acoes de import e restore precisam de permissao clara antes de uso amplo; apagar distribuidora permanece no fluxo normal com desfazer na mesma sessao.
+- Importar Google Sheets e restaurar backup exigem permissao forte (`adm`, role `admin` ou role `gerente`) alem de sessao e CSRF. Apagar/restaurar distribuidora permanece no fluxo normal com desfazer na mesma sessao.
 
 ## Decisoes tecnicas ja tomadas
 

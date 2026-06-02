@@ -3309,6 +3309,15 @@
     diagnosticsOutput.textContent = JSON.stringify({ diagnostics, google, backups: backups.backups }, null, 2);
   }
 
+  function showDiagnosticsError(error) {
+    diagnosticsOutput.textContent = JSON.stringify({
+      ok: false,
+      status: error?.status || 0,
+      error: error?.message || 'Falha na acao.'
+    }, null, 2);
+    status(error?.message || 'Falha na acao.', 'error');
+  }
+
   function bindEvents() {
     table.addEventListener('mousedown', async (event) => {
       if (event.target.closest('.column-title-editor')) return;
@@ -3817,9 +3826,13 @@
     if (googleImportButton) {
       googleImportButton.addEventListener('click', async () => {
         if (!confirm('Importar do Google Sheets vai substituir as linhas atuais da Cotacao V2. Continuar?')) return;
-        const data = await api('/api/google-sheets/import', { method: 'POST', body: JSON.stringify({ clientId }) });
-        diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
-        await reloadSheet();
+        try {
+          const data = await api('/api/google-sheets/import', { method: 'POST', body: JSON.stringify({ clientId }) });
+          diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
+          await reloadSheet();
+        } catch (error) {
+          showDiagnosticsError(error);
+        }
       });
     }
     if (createBackupButton) {
@@ -3833,12 +3846,16 @@
       restoreBackupButton.addEventListener('click', async () => {
         const name = backupSelect.value;
         if (!name || !confirm(`Restaurar ${name}? As linhas atuais serao substituidas.`)) return;
-        const data = await api(`/api/backups/${encodeURIComponent(name)}/restore`, {
-          method: 'POST',
-          body: JSON.stringify({ clientId })
-        });
-        diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
-        await reloadSheet();
+        try {
+          const data = await api(`/api/backups/${encodeURIComponent(name)}/restore`, {
+            method: 'POST',
+            body: JSON.stringify({ clientId })
+          });
+          diagnosticsOutput.textContent = JSON.stringify(data, null, 2);
+          await reloadSheet();
+        } catch (error) {
+          showDiagnosticsError(error);
+        }
       });
     }
   }

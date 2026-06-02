@@ -82,6 +82,7 @@ Tabelas:
 - O audio do Miauby (`api.php?action=audio_transcribe`) exige a mesma sessao interna e CSRF do chat; o browser envia audio temporario para transcricao e nunca recebe chave de API.
 - O painel Miauby WhatsApp (`/miauw/whatsapp/`) usa login proprio por variaveis de ambiente `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` quando preenchidas; a sessao e cookie assinado do servico Node, separado de `wf_users` e do WordPress.
 - Login PHP interno do Miauby usa `core_users` e `core_login_rate_limits` no Postgres por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`; rollback MySQL fica opt-in por `WIMIFARMA_INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED=true`. Cashback usa login unico no core no app Node, com limitador persistente em `core_login_rate_limits`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
+- Na Cotacao V2, importar Google Sheets e restaurar backup sao operacoes fortes: alem de sessao e CSRF, exigem username `adm`, role `admin` ou role `gerente`. Exportar, criar backup, editar celula e restaurar distribuidora apagada seguem as regras existentes.
 
 ## Decisoes tecnicas ja tomadas
 

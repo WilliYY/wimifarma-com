@@ -307,11 +307,18 @@ export type GoogleSheetsStatusResponse = ApiResult<{
   range: string;
 }>;
 
+export interface EncomendaReminderSyncResult {
+  rows: number;
+  synced: number;
+  failed: number;
+}
+
 export type GoogleSheetsMutationResponse = ApiResult<{
   range: string;
   result?: JsonRecord;
   rows?: number;
   backup?: string;
+  encomendaReminders?: EncomendaReminderSyncResult;
   eventId: number;
 }>;
 
@@ -332,5 +339,6 @@ export type BackupCreateResponse = ApiResult<{
 
 export type BackupRestoreResponse = ApiResult<{
   rows: number;
+  encomendaReminders?: EncomendaReminderSyncResult;
   eventId: number;
 }>;

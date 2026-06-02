@@ -352,6 +352,22 @@ function requireApiAuth(req, res, next) {
     .catch(next);
 }
 
+function hasStrongCotacaoPermission(user) {
+  const username = normalizeUsername(user?.username);
+  const role = normalizeUsername(user?.role);
+  return username === 'adm' || role === 'admin' || role === 'gerente';
+}
+
+function requireStrongCotacaoPermission(req, res, next) {
+  if (!hasStrongCotacaoPermission(req.session?.user)) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Apenas adm, admin ou gerente podem importar ou restaurar a Cotacao.'
+    });
+  }
+  return next();
+}
+
 function safeTokenEquals(received, expected) {
   const left = String(received || '').trim();
   const right = String(expected || '').trim();
@@ -2305,6 +2321,34 @@ async function syncEncomendaRemindersForRows(quoteId, rowIds, options = {}) {
   }
 }
 
+async function syncEncomendaRemindersForQuote(quoteId, options = {}) {
+  const result = await pgPool.query(
+    `SELECT id::text AS row_id
+       FROM cotacao_v2_rows
+      WHERE quote_id = $1
+        AND deleted_at IS NULL
+     UNION
+     SELECT row_id::text AS row_id
+       FROM cotacao_v2_encomenda_reminders
+      WHERE quote_id = $1
+        AND status IN ('pendente', 'erro')`,
+    [quoteId]
+  );
+  const ids = result.rows.map((row) => String(row.row_id || '')).filter(isUuid);
+  let synced = 0;
+  let failed = 0;
+  for (const rowId of ids) {
+    try {
+      await syncEncomendaReminderForRow(quoteId, rowId, options);
+      synced += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn('[cotacao] encomenda reminder quote sync failed', { rowId, error: error.message });
+    }
+  }
+  return { rows: ids.length, synced, failed };
+}
+
 async function postWhatsappEncomendaReminder(row) {
   if (!WHATSAPP_INTERNAL_TOKEN) throw new Error('whatsapp_internal_token_not_configured');
   if (!WHATSAPP_INTERNAL_BASE_URL) throw new Error('whatsapp_internal_base_url_not_configured');
@@ -3974,7 +4018,7 @@ app.delete(`${BASE_PATH}/api/rules/:id`, requireApiAuth, verifyCsrf, asyncRoute(
   res.json({ ok: true, id, eventId: Number(event.id) });
 }));
 
-app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, res) => {
+app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (req, res) => {
   const startedAt = Date.now();
   const sheetStartedAt = Date.now();
   const sheet = await loadSheet();
@@ -4031,7 +4075,9 @@ app.get(`${BASE_PATH}/api/diagnostics`, requireApiAuth, asyncRoute(async (_req, 
       deltaEventLimit: DELTA_EVENT_LIMIT,
       destructiveChanges: false,
       oldCotacaoPhpFallback: false,
-      backupBeforeImportRestore: true
+      backupBeforeImportRestore: true,
+      importRestoreRequiresStrongPermission: true,
+      currentUserCanImportRestore: hasStrongCotacaoPermission(req.session.user)
     },
     performance: {
       loadSheetMs,
@@ -4070,22 +4116,27 @@ app.post(`${BASE_PATH}/api/google-sheets/export`, requireApiAuth, verifyCsrf, as
   res.json({ ok: true, range, result, eventId: Number(event.id) });
 }));
 
-app.post(`${BASE_PATH}/api/google-sheets/import`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+app.post(`${BASE_PATH}/api/google-sheets/import`, requireApiAuth, verifyCsrf, requireStrongCotacaoPermission, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
   const range = String(req.body.range || GOOGLE_SHEETS_RANGE);
   const data = await googleSheetsRequest('GET', range);
   const rows = rowsFromMatrix(data.values || [], sheet.columns);
   const backup = await createBackup(sheet.quote.id, req.session.user?.username);
   const inserted = await replaceRowsFromImport(sheet.quote.id, rows);
+  const reminderSync = await syncEncomendaRemindersForQuote(sheet.quote.id, {
+    user: req.session.user,
+    clientId: String(req.body.clientId || ''),
+    source: 'google_sheets_import'
+  });
   const event = await appendEvent({
     quoteId: sheet.quote.id,
     type: 'google_sheets_imported',
-    payload: { range, rows: inserted.length, backup: backup.name },
+    payload: { range, rows: inserted.length, backup: backup.name, encomendaReminders: reminderSync },
     user: req.session.user,
     clientId: String(req.body.clientId || '')
   });
   io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
-  res.json({ ok: true, range, rows: inserted.length, backup: backup.name, eventId: Number(event.id) });
+  res.json({ ok: true, range, rows: inserted.length, backup: backup.name, encomendaReminders: reminderSync, eventId: Number(event.id) });
 }));
 
 app.get(`${BASE_PATH}/api/backups`, requireApiAuth, asyncRoute(async (_req, res) => {
@@ -4106,18 +4157,23 @@ app.post(`${BASE_PATH}/api/backups`, requireApiAuth, verifyCsrf, asyncRoute(asyn
   res.json({ ok: true, backup: { name: backup.name, bytes: backup.bytes }, eventId: Number(event.id) });
 }));
 
-app.post(`${BASE_PATH}/api/backups/:name/restore`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+app.post(`${BASE_PATH}/api/backups/:name/restore`, requireApiAuth, verifyCsrf, requireStrongCotacaoPermission, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
   const rows = await restoreBackup(String(req.params.name || ''), sheet.quote.id);
+  const reminderSync = await syncEncomendaRemindersForQuote(sheet.quote.id, {
+    user: req.session.user,
+    clientId: String(req.body.clientId || ''),
+    source: 'backup_restore'
+  });
   const event = await appendEvent({
     quoteId: sheet.quote.id,
     type: 'backup_restored',
-    payload: { name: String(req.params.name || ''), rows: rows.length },
+    payload: { name: String(req.params.name || ''), rows: rows.length, encomendaReminders: reminderSync },
     user: req.session.user,
     clientId: String(req.body.clientId || '')
   });
   io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
-  res.json({ ok: true, rows: rows.length, eventId: Number(event.id) });
+  res.json({ ok: true, rows: rows.length, encomendaReminders: reminderSync, eventId: Number(event.id) });
 }));
 
 io.on('connection', (socket) => {

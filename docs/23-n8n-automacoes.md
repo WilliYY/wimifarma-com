@@ -133,7 +133,7 @@ POST /miauw/whatsapp/internal/cotacao-encomenda-reminder
 
 Fluxo:
 
-1. A Cotacao detecta `encomenda` em uma linha salva e grava `cotacao_v2_encomenda_reminders`.
+1. A Cotacao detecta `encomenda` em uma linha salva e grava `cotacao_v2_encomenda_reminders`; importacao Google Sheets e restore de backup tambem reconciliam os lembretes depois da substituicao em massa.
 2. O lembrete fica previsto para o dia seguinte as 16h, com produto, quantidade, texto original, status e destinatarios mascarados/modo.
 3. Antes do envio, a Cotacao confere a linha de novo; se `encomenda` sumiu ou a linha foi removida, cancela o lembrete.
 4. O Miauby Whats confere se a rotina `cotacao_encomenda_16h` esta ativa no painel.
