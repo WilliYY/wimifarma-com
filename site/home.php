@@ -118,6 +118,10 @@ function wf_home_visitor_counter_path(): string
     return __DIR__ . '/wp-content/uploads/wimifarma-runtime/home-counter.json';
 }
 
+const WF_HOME_VISITOR_COOKIE = 'WFHOME_VISITOR';
+const WF_HOME_VISIT_COOKIE = 'WFHOME_VISIT';
+const WF_HOME_VISIT_WINDOW_SECONDS = 1800;
+
 function wf_home_default_visitor_counter(): array
 {
     return array(
@@ -201,7 +205,7 @@ function wf_home_should_track_visitor_counter(): bool
 
 function wf_home_has_visitor_cookie(): bool
 {
-    $cookie = (string) ($_COOKIE['WFHOME_VISITOR'] ?? '');
+    $cookie = (string) ($_COOKIE[WF_HOME_VISITOR_COOKIE] ?? '');
 
     return preg_match('/^[a-f0-9]{32}$/', $cookie) === 1;
 }
@@ -209,17 +213,50 @@ function wf_home_has_visitor_cookie(): bool
 function wf_home_issue_visitor_cookie(): void
 {
     $visitorId = bin2hex(random_bytes(16));
-    setcookie('WFHOME_VISITOR', $visitorId, array(
+    setcookie(WF_HOME_VISITOR_COOKIE, $visitorId, array(
         'expires' => time() + 31536000,
         'path' => '/',
         'secure' => wf_home_is_https(),
         'httponly' => true,
         'samesite' => 'Lax',
     ));
-    $_COOKIE['WFHOME_VISITOR'] = $visitorId;
+    $_COOKIE[WF_HOME_VISITOR_COOKIE] = $visitorId;
 }
 
-function wf_home_update_visitor_counter(bool $shouldTrack, bool $isNewVisitor): array
+function wf_home_has_visit_cookie(): bool
+{
+    $cookie = (string) ($_COOKIE[WF_HOME_VISIT_COOKIE] ?? '');
+
+    return preg_match('/^[a-f0-9]{32}$/', $cookie) === 1;
+}
+
+function wf_home_issue_visit_cookie(?string $visitId = null): void
+{
+    $visitId = is_string($visitId) && preg_match('/^[a-f0-9]{32}$/', $visitId) === 1
+        ? $visitId
+        : bin2hex(random_bytes(16));
+
+    setcookie(WF_HOME_VISIT_COOKIE, $visitId, array(
+        'expires' => time() + WF_HOME_VISIT_WINDOW_SECONDS,
+        'path' => '/',
+        'secure' => wf_home_is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ));
+    $_COOKIE[WF_HOME_VISIT_COOKIE] = $visitId;
+}
+
+function wf_home_refresh_visit_cookie(): void
+{
+    $visitId = (string) ($_COOKIE[WF_HOME_VISIT_COOKIE] ?? '');
+    if (preg_match('/^[a-f0-9]{32}$/', $visitId) !== 1) {
+        return;
+    }
+
+    wf_home_issue_visit_cookie($visitId);
+}
+
+function wf_home_update_visitor_counter(bool $shouldTrack, bool $isNewVisitor, bool $isNewVisit): array
 {
     $counterFile = wf_home_visitor_counter_path();
     $counterDir = dirname($counterFile);
@@ -247,28 +284,37 @@ function wf_home_update_visitor_counter(bool $shouldTrack, bool $isNewVisitor): 
         $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
         $counter = wf_home_normalize_visitor_counter(is_array($decoded) ? $decoded : null);
         $isFirstTrackedView = $counter['views'] === 0 && $counter['visitors'] === 0;
+        $hasChanges = false;
 
-        $counter['views']++;
+        if ($isNewVisit || $isFirstTrackedView) {
+            $counter['views']++;
+            $hasChanges = true;
+        }
         if ($isNewVisitor || $isFirstTrackedView) {
             $counter['visitors']++;
+            $hasChanges = true;
         }
-        if (!$counter['first_seen_at']) {
+        if ($hasChanges && !$counter['first_seen_at']) {
             $counter['first_seen_at'] = gmdate('c');
         }
-        $counter['updated_at'] = gmdate('c');
+        if ($hasChanges) {
+            $counter['updated_at'] = gmdate('c');
+        }
 
-        $payload = json_encode(array(
-            'visitors' => $counter['visitors'],
-            'views' => $counter['views'],
-            'first_seen_at' => $counter['first_seen_at'],
-            'updated_at' => $counter['updated_at'],
-        ), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($hasChanges) {
+            $payload = json_encode(array(
+                'visitors' => $counter['visitors'],
+                'views' => $counter['views'],
+                'first_seen_at' => $counter['first_seen_at'],
+                'updated_at' => $counter['updated_at'],
+            ), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
-        if (is_string($payload)) {
-            ftruncate($handle, 0);
-            rewind($handle);
-            fwrite($handle, $payload . "\n");
-            fflush($handle);
+            if (is_string($payload)) {
+                ftruncate($handle, 0);
+                rewind($handle);
+                fwrite($handle, $payload . "\n");
+                fflush($handle);
+            }
         }
 
         flock($handle, LOCK_UN);
@@ -301,13 +347,19 @@ $homeIsNewVisitor = $homeShouldTrackVisitor && !wf_home_has_visitor_cookie();
 if ($homeIsNewVisitor) {
     wf_home_issue_visitor_cookie();
 }
-$homeVisitorCounter = wf_home_update_visitor_counter($homeShouldTrackVisitor, $homeIsNewVisitor);
+$homeIsNewVisit = $homeShouldTrackVisitor && !wf_home_has_visit_cookie();
+if ($homeIsNewVisit) {
+    wf_home_issue_visit_cookie();
+} elseif ($homeShouldTrackVisitor) {
+    wf_home_refresh_visit_cookie();
+}
+$homeVisitorCounter = wf_home_update_visitor_counter($homeShouldTrackVisitor, $homeIsNewVisitor, $homeIsNewVisit);
 $homeVisitorCount = (int) ($homeVisitorCounter['visitors'] ?? 0);
 $homeViewCount = (int) ($homeVisitorCounter['views'] ?? 0);
 $homeVisitorCountLabel = number_format($homeVisitorCount, 0, ',', '.');
 $homeViewCountLabel = number_format($homeViewCount, 0, ',', '.');
 $homeVisitorNoun = $homeVisitorCount === 1 ? 'visitante unico' : 'visitantes unicos';
-$homeViewNoun = $homeViewCount === 1 ? 'acesso registrado' : 'acessos registrados';
+$homeViewNoun = $homeViewCount === 1 ? 'visita registrada' : 'visitas registradas';
 $homeCounterStatus = $homeVisitorCount > 0
     ? 'contagem anonima'
     : 'aguardando primeiro acesso humano';
