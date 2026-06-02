@@ -2328,7 +2328,7 @@ $modules = array(
             }
         }
     </style>
-    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260530-avatar')); ?>">
+    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260602-size')); ?>">
 </head>
 <body>
 <div class="wf-page">
@@ -2714,6 +2714,6 @@ $modules = array(
         }
     }());
 </script>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260530-avatar')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260602-size')); ?>" defer></script>
 </body>
 </html>

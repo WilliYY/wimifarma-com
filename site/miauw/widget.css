@@ -5,6 +5,11 @@
     --miauw-line: #f0b6c7;
     --miauw-text: #2b0713;
     --miauw-muted: #744659;
+    --miauw-bubble-size: 108px;
+    --miauw-avatar-size: 100px;
+    --miauw-panel-offset: 126px;
+    --miauw-nudge-offset: 124px;
+    --miauw-nudge-clearance: 130px;
     position: fixed;
     right: max(18px, env(safe-area-inset-right));
     bottom: max(18px, env(safe-area-inset-bottom));
@@ -69,8 +74,8 @@
 
 .miauw-widget-bubble {
     position: relative;
-    width: 96px;
-    height: 96px;
+    width: var(--miauw-bubble-size);
+    height: var(--miauw-bubble-size);
     border: 3px solid #f59e0b;
     border-radius: 999px;
     display: grid;
@@ -114,8 +119,8 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 88px;
-    height: 88px;
+    width: var(--miauw-avatar-size);
+    height: var(--miauw-avatar-size);
     border-radius: 999px;
     object-fit: contain;
     object-position: 50% 50%;
@@ -127,8 +132,8 @@
 
 .miauw-widget-bubble span {
     position: absolute;
-    right: 102px;
-    bottom: 27px;
+    right: calc(var(--miauw-bubble-size) + 8px);
+    bottom: 31px;
     border: 1px solid var(--miauw-line);
     border-radius: 999px;
     padding: 8px 11px;
@@ -166,10 +171,10 @@
 .miauw-widget-nudge {
     position: absolute;
     right: 0;
-    bottom: 110px;
+    bottom: var(--miauw-nudge-offset);
     display: block;
-    width: min(300px, calc(100vw - 118px));
-    inline-size: min(300px, calc(100vw - 118px));
+    width: min(300px, calc(100vw - var(--miauw-nudge-clearance)));
+    inline-size: min(300px, calc(100vw - var(--miauw-nudge-clearance)));
     min-width: 220px;
     min-inline-size: 220px;
     max-width: 300px;
@@ -231,9 +236,10 @@
 .miauw-widget-panel {
     position: absolute;
     right: 0;
-    bottom: 112px;
+    bottom: var(--miauw-panel-offset);
     width: min(540px, calc(100vw - 28px));
-    height: min(720px, calc(100vh - 108px));
+    height: min(720px, calc(100vh - var(--miauw-panel-offset) - 14px));
+    height: min(720px, calc(100dvh - var(--miauw-panel-offset) - 14px));
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     overflow: hidden;
@@ -1421,14 +1427,20 @@
 
 @media (max-width: 520px) {
     .miauw-widget {
+        --miauw-bubble-size: 90px;
+        --miauw-avatar-size: 82px;
+        --miauw-panel-offset: 108px;
+        --miauw-nudge-offset: 106px;
+        --miauw-nudge-clearance: 112px;
         right: 12px;
         bottom: 12px;
     }
 
     .miauw-widget-panel {
         width: calc(100vw - 24px);
-        height: min(680px, calc(100vh - 118px));
-        bottom: 100px;
+        height: min(680px, calc(100vh - var(--miauw-panel-offset) - 12px));
+        height: min(680px, calc(100dvh - var(--miauw-panel-offset) - 12px));
+        bottom: var(--miauw-panel-offset);
     }
 
     .miauw-widget-msg.assistant {
@@ -1437,13 +1449,13 @@
     }
 
     .miauw-widget-bubble {
-        width: 82px;
-        height: 82px;
+        width: var(--miauw-bubble-size);
+        height: var(--miauw-bubble-size);
     }
 
     .miauw-widget-bubble img {
-        width: 74px;
-        height: 74px;
+        width: var(--miauw-avatar-size);
+        height: var(--miauw-avatar-size);
     }
 
     .miauw-widget-bubble span {
@@ -1452,9 +1464,9 @@
 
     .miauw-widget-nudge {
         right: 0;
-        bottom: 96px;
-        width: min(292px, calc(100vw - 104px));
-        inline-size: min(292px, calc(100vw - 104px));
+        bottom: var(--miauw-nudge-offset);
+        width: min(292px, calc(100vw - var(--miauw-nudge-clearance)));
+        inline-size: min(292px, calc(100vw - var(--miauw-nudge-clearance)));
         min-width: 210px;
         min-inline-size: 210px;
         max-width: calc(100vw - 24px);
