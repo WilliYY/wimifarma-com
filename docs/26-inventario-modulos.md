@@ -292,6 +292,7 @@ Concluido em 2026-05-30: caminho `mysql2` dormente removido do Cashback. Proxima
 
 - `/gestao/login.php`: login.
 - `/gestao/` e `/gestao/index.php`: tela administrativa de contas, itens, pagamentos, busca e painel mensal.
+- Desde 2026-06-01, a lista compacta abre detalhes ao clicar na linha inteira, sem botao separado `Abrir`; contas com `Repetir mes que vem` ativo aparecem primeiro e recebem simbolo de repeticao.
 - `/gestao/logout.php`: encerra sessao.
 - `/gestao/health`: health com auth core unico e Postgres.
 - `GET /gestao/api/internal/summary`: resumo interno para Miauby/rotinas.

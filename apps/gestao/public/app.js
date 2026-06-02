@@ -135,12 +135,14 @@
     }
 
     function initAccountCollapse() {
+        function isInteractiveAccountTarget(target) {
+            return target && target.closest && Boolean(target.closest('button, input, select, textarea, a, label, form'));
+        }
+
         Array.prototype.slice.call(document.querySelectorAll('[data-account-card]')).forEach(function (card) {
             var trigger = card.querySelector('[data-account-toggle]');
             var id = card.getAttribute('data-account-id') || '';
             var key = 'gestao:account-collapsed:v3:' + id;
-            var openLabel = trigger ? (trigger.getAttribute('data-open-label') || 'Abrir') : 'Abrir';
-            var closeLabel = trigger ? (trigger.getAttribute('data-close-label') || 'Fechar') : 'Fechar';
 
             if (!trigger || !id || trigger.dataset.gestaoCollapseBound === '1') {
                 return;
@@ -149,7 +151,6 @@
             function setCollapsed(collapsed) {
                 card.classList.toggle('is-collapsed', collapsed);
                 trigger.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                trigger.textContent = collapsed ? openLabel : closeLabel;
                 try {
                     window.localStorage.setItem(key, collapsed ? '1' : '0');
                 } catch (error) {
@@ -164,10 +165,18 @@
                 setCollapsed(true);
             }
 
-            trigger.addEventListener('click', function () {
+            trigger.addEventListener('click', function (event) {
+                if (isInteractiveAccountTarget(event.target)) {
+                    return;
+                }
+
                 setCollapsed(!card.classList.contains('is-collapsed'));
             });
             trigger.addEventListener('keydown', function (event) {
+                if (event.target !== trigger) {
+                    return;
+                }
+
                 if (event.key !== 'Enter' && event.key !== ' ') {
                     return;
                 }
@@ -298,7 +307,6 @@
                     var trigger = card.querySelector('[data-account-toggle]');
                     if (trigger) {
                         trigger.setAttribute('aria-expanded', 'true');
-                        trigger.textContent = trigger.getAttribute('data-close-label') || 'Fechar';
                     }
                 }
             }

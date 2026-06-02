@@ -2284,6 +2284,7 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
        )
      ORDER BY
        CASE a.status WHEN 'pendente' THEN 0 WHEN 'pago' THEN 1 ELSE 2 END ASC,
+       CASE WHEN a.repeat_next_month THEN 0 ELSE 1 END ASC,
        CASE WHEN a.status = 'pendente' AND a.due_at IS NOT NULL THEN 0 ELSE 1 END ASC,
        CASE WHEN a.status = 'pendente' THEN a.due_at END ASC NULLS LAST,
        COALESCE(a.paid_at, p.last_payment_at, a.generated_at) DESC,
@@ -2919,14 +2920,16 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     : `<span class="gestao-compact-state">${e(accountStatusLabel(status))}</span>`;
   const monthlyAttrs = options.monthly ? ` data-monthly-item data-monthly-account-id="${e(id)}" draggable="true"` : '';
   const monthlyMeta = options.monthly ? `<em>Repete ${e(monthLabel(nextMonthValue(selectedMonth)))}</em>` : '';
+  const repeatMarker = repeatEnabled
+    ? '<span class="gestao-repeat-marker" title="Repete mes que vem" aria-label="Repete mes que vem">&#8635;</span>'
+    : '';
 
-  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
-    <div class="gestao-account-compact">
+  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${repeatEnabled ? 'is-recurring' : ''} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
+    <div class="gestao-account-compact" data-account-toggle data-open-label="Abrir detalhes" data-close-label="Fechar detalhes" role="button" tabindex="0" aria-expanded="false">
       <span class="gestao-compact-category">${e(categoryLabel(account.category))}</span>
-      <strong class="gestao-compact-title">${e(account.title)}${due.label ? `<em>${e(due.label)}</em>` : ''}${monthlyMeta}</strong>
+      <strong class="gestao-compact-title"><span class="gestao-compact-title-line">${repeatMarker}<span>${e(account.title)}</span></span>${due.label ? `<em>${e(due.label)}</em>` : ''}${monthlyMeta}</strong>
       <span class="gestao-compact-value">${e(formatMoney(remainingCents > 0 ? remainingCents : totalCents))}</span>
       ${quickPayControl}
-      <button type="button" class="gestao-compact-open" data-account-toggle data-open-label="Abrir" data-close-label="Fechar" aria-expanded="false">Abrir</button>
     </div>
     <div class="gestao-account-main">
       <div class="gestao-account-details" data-account-details>
@@ -3124,9 +3127,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260524-compact-monthly">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260601-recurring-row">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260529a">
-  <script src="${BASE_PATH}/app.js?v=20260523-compact-monthly" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260601-recurring-row" defer></script>
   <script src="/miauw/widget.js?v=20260529a" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">

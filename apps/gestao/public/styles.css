@@ -985,12 +985,30 @@ textarea {
 
 .gestao-account-compact {
     display: grid;
-    grid-template-columns: minmax(58px, 0.55fr) minmax(108px, 1fr) minmax(78px, 0.64fr) 58px 52px;
+    grid-template-columns: minmax(58px, 0.55fr) minmax(126px, 1fr) minmax(78px, 0.64fr) 58px;
     align-items: center;
     gap: 6px;
     min-width: 0;
     min-height: 44px;
     padding: 6px 8px;
+    cursor: pointer;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.gestao-account-compact:hover,
+.gestao-account-compact:focus-visible {
+    background: #fff7fb;
+    box-shadow: inset 3px 0 0 rgba(180, 14, 77, 0.28);
+    outline: 0;
+}
+
+.gestao-account-compact form,
+.gestao-account-compact button,
+.gestao-account-compact input,
+.gestao-account-compact select,
+.gestao-account-compact textarea,
+.gestao-account-compact a {
+    cursor: auto;
 }
 
 .gestao-compact-category,
@@ -1022,6 +1040,41 @@ textarea {
     white-space: nowrap;
 }
 
+.gestao-compact-title-line {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.gestao-compact-title-line > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-repeat-marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: #fff0a8;
+    color: #7a4700;
+    border: 1px solid rgba(180, 117, 0, 0.28);
+    font-size: 0.76rem;
+    font-weight: 950;
+    line-height: 1;
+}
+
+.gestao-account.is-recurring {
+    border-color: #eccd65;
+}
+
 .gestao-compact-title em {
     display: block;
     margin-top: 2px;
@@ -1047,8 +1100,7 @@ textarea {
     min-width: 0;
 }
 
-.gestao-compact-pay,
-.gestao-compact-open {
+.gestao-compact-pay {
     width: 100%;
     min-height: 28px;
     border-radius: 999px;
@@ -1064,17 +1116,11 @@ textarea {
     color: #ffffff;
 }
 
-.gestao-compact-open {
-    border: 1px solid #f4bfd0;
-    background: #ffffff;
-    color: var(--wine);
-}
-
 .gestao-account.is-monthly-item .gestao-account-compact {
-    grid-template-columns: auto minmax(0, 1fr) 56px 50px;
+    grid-template-columns: auto minmax(0, 1fr) 56px;
     grid-template-areas:
-        "category title value value"
-        "category title pay open";
+        "category title value"
+        "category title pay";
     align-items: center;
     row-gap: 3px;
     min-height: 56px;
@@ -1099,10 +1145,6 @@ textarea {
 
 .gestao-account.is-monthly-item .gestao-quick-pay {
     grid-area: pay;
-}
-
-.gestao-account.is-monthly-item .gestao-compact-open {
-    grid-area: open;
 }
 
 .gestao-account-summary {
@@ -1911,8 +1953,7 @@ textarea {
     .gestao-compact-category,
     .gestao-compact-value,
     .gestao-quick-pay,
-    .gestao-compact-state,
-    .gestao-compact-open {
+    .gestao-compact-state {
         width: 100%;
     }
 
