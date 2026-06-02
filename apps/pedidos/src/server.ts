@@ -99,6 +99,7 @@ type ArrivalInternalOrder = {
   account_id: string;
   supplier_name: string;
   expected_arrival_at: Date | string | null;
+  created_at: Date | string;
   account_status: 'pendente' | 'pago' | 'cancelado';
   total_cents: string;
   paid_cents: string;
@@ -119,7 +120,7 @@ const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const SERVICE_NAME = 'pedidos';
-const SERVICE_VERSION = '1.0.1';
+const SERVICE_VERSION = '1.0.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/pedidos');
 const PORT = Number.parseInt(env.PORT || '3300', 10);
 const SESSION_SECRET = env.PEDIDOS_SESSION_SECRET || env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -449,6 +450,13 @@ function dateInputValue(value: Date | string | null | undefined): string {
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.getTime())) return '';
   return date.toISOString().slice(0, 10);
+}
+
+function dateTimeIsoValue(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return typeof value === 'string' ? value : null;
+  return date.toISOString();
 }
 
 function brDate(value: Date | string | null | undefined, withTime = false): string {
@@ -844,6 +852,11 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS pedidos_orders_waiting_arrival_idx
     ON pedidos_orders (expected_arrival_at ASC NULLS LAST, id DESC)
+    WHERE moved_to_confirmed_at IS NULL AND canceled_at IS NULL
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS pedidos_orders_waiting_created_idx
+    ON pedidos_orders (created_at ASC, id ASC)
     WHERE moved_to_confirmed_at IS NULL AND canceled_at IS NULL
   `);
   await pgPool.query(`
@@ -1842,6 +1855,7 @@ async function listWaitingArrivalInternal(limit = 80): Promise<ArrivalInternalOr
             o.account_id,
             o.supplier_name,
             o.expected_arrival_at,
+            o.created_at,
             a.status AS account_status,
             a.total_cents::bigint::text AS total_cents,
             COALESCE(p.paid_cents, 0)::bigint::text AS paid_cents,
@@ -1858,7 +1872,7 @@ async function listWaitingArrivalInternal(limit = 80): Promise<ArrivalInternalOr
         AND o.canceled_at IS NULL
         AND a.archived_at IS NULL
         AND a.status <> 'cancelado'
-      ORDER BY o.expected_arrival_at ASC NULLS LAST, o.id DESC
+      ORDER BY o.created_at ASC, o.id ASC
       LIMIT $1`,
     [Math.max(1, Math.min(200, Math.trunc(limit)))],
   );
@@ -1871,6 +1885,7 @@ function arrivalOrderPublic(order: ArrivalInternalOrder): Record<string, unknown
     account_id: Number(order.account_id),
     supplier_name: order.supplier_name,
     expected_arrival_at: order.expected_arrival_at ? dateInputValue(order.expected_arrival_at) : null,
+    created_at: dateTimeIsoValue(order.created_at),
     account_status: order.account_status,
     total_cents: Number(order.total_cents || 0),
     paid_cents: Number(order.paid_cents || 0),

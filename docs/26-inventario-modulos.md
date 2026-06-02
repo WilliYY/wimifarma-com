@@ -386,7 +386,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - `/pedidos/logout.php`: encerra sessao.
 - `/pedidos/health`: health com `mysql_dependency=false`.
 - `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.
-- `GET /pedidos/api/internal/arrival-summary`: lista pedidos aguardando chegada para Miauby WhatsApp/n8n.
+- `GET /pedidos/api/internal/arrival-summary`: lista pedidos aguardando chegada para Miauby WhatsApp/n8n, com valor total, previsao, `created_at` do pedido e ordenacao pelos mais antigos.
 - `POST /pedidos/api/internal/confirm-arrival`: confirma chegada por titulo/fornecedor via automacao autorizada.
 
 ### Permissoes e sessao
@@ -437,7 +437,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 
 - Home publica usa `/pedidos/api/badge`.
 - Gestao recebe contas, itens e pagamentos vinculados.
-- Miauby WhatsApp/n8n chama `arrival-summary` e `confirm-arrival` para rotina diaria de chegada.
+- Miauby WhatsApp/n8n chama `arrival-summary` e `confirm-arrival` para rotina diaria de chegada; a mensagem usa `pedidos_orders.created_at` para exibir quando o pedido foi registrado e ha quanto tempo esta parado.
 - Financeiro/Gestao consomem efeitos dos pagamentos por categoria `Boleto`.
 - Widget do Miauby aparece na tela.
 

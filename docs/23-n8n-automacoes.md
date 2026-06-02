@@ -167,7 +167,7 @@ Fluxo:
 1. n8n dispara o horario e envia o token interno no header `X-Miauw-Internal-Token`.
 2. Miauby WhatsApp confere se a rotina `pedidos_chegada_17h` esta ativa no painel.
 3. O bridge consulta `GET /pedidos/api/internal/arrival-summary` no app Pedidos.
-4. A mensagem vai somente para contatos reais autorizados com card `Pedidos`, em formato de tabela numerada com fornecedor, valor total do pedido e previsao de chegada.
+4. A mensagem vai somente para contatos reais autorizados com card `Pedidos`, em formato de tabela numerada com fornecedor, valor total do pedido, previsao de chegada e data/hora persistida em `pedidos_orders.created_at`.
 5. O operador pode responder com o titulo, por exemplo `cimed chegou`, ou `nenhum chegou`; a mensagem automatica nao deve mais incluir essa instrucao no rodape para nao poluir a lista.
 6. O bridge valida o card `Pedidos` e chama `POST /pedidos/api/internal/confirm-arrival`.
 7. Pedidos move a chegada para `Confirmados` ou `Historico` se ja estava pago; pagamento continua no fluxo normal da tela.
@@ -177,6 +177,7 @@ Controle operacional:
 - O card `Chegada de pedidos` aparece em `/miauw/whatsapp/` dentro de `n8n automacoes`.
 - O botao `Desativar`/`Ativar` muda somente a execucao do backend; o workflow pode continuar agendado no n8n.
 - O endpoint aceita `dry_run=true` para validar destinatarios e previa sem enviar WhatsApp.
+- A lista prioriza pedidos mais antigos primeiro e mostra a idade aproximada, por exemplo `pedido em 01/06/2026 as 14:30 - ha 2 dias`.
 
 ### Financeiro
 
@@ -272,7 +273,7 @@ Esta tabela serve como cola operacional: o n8n agenda, mas quem decide destinata
 
 | Automacao | Quando roda | Quem recebe | O que ela faz | O que posso pedir para ajustar | Limite seguro |
 | --- | --- | --- | --- | --- | --- |
-| Chegada de pedidos | Todo dia as 17h | Contatos reais autorizados com card `Pedidos` | Envia tabela dos pedidos ainda em `Aguardando chegada` | Adicionar/remover numero autorizado, mudar horario, mudar texto, mudar regra de filtro, testar com `dry_run=true` | Nao confirma chegada sozinha; confirmacao vem por resposta validada pelo bridge |
+| Chegada de pedidos | Todo dia as 17h | Contatos reais autorizados com card `Pedidos` | Envia tabela dos pedidos ainda em `Aguardando chegada`, com valor total, previsao e data/hora do pedido | Adicionar/remover numero autorizado, mudar horario, mudar texto, mudar regra de filtro, testar com `dry_run=true` | Nao confirma chegada sozinha; confirmacao vem por resposta validada pelo bridge |
 | Fechamento de caixa | Todo dia as 18h | Contatos reais autorizados com card `Financeiro` | Avisa dias de caixa em aberto/conferencia/sem registro nos ultimos 10 dias | Adicionar/remover numero autorizado, mudar horario, mudar janela de dias, mudar texto, pausar/ativar no painel | Nao fecha caixa, nao cria faturamento e nao grava sangria sem fluxo auditado |
 | Smoke check pos-deploy | Manual ou apos deploy | Contatos reais autorizados com card `Miauby` | Testa rotas/health principais e avisa problema | Enviar tambem sucesso, adicionar rota de health, mudar cooldown, adicionar numero com card `Miauby` | Nao faz rollback automatico |
 | Watchdog WhatsApp | A cada poucos minutos | Contatos reais autorizados com card `Miauby`, normalmente so com problema | Vigia fila, outbox, provider pausado e respostas travadas | Ajustar frequencia, cooldown, severidade, destinatarios e texto de alerta | Nao dispara mensagem atrasada fora de contexto; pendencias antigas viram `dead` |

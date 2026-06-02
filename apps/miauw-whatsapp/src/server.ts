@@ -385,6 +385,7 @@ type PedidosArrivalOrder = {
   id: number;
   supplier_name: string;
   expected_arrival_at: string | null;
+  created_at: string | null;
   total_cents: number;
   remaining_cents: number;
   total_label: string;
@@ -439,7 +440,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.24';
+const SERVICE_VERSION = '0.5.25';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -7116,14 +7117,84 @@ function brDateOnlyFromIso(value: string | null | undefined): string {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+function brDateTimeFromIso(value: string | null | undefined): string {
+  const text = safeText(value, 40);
+  if (!text) return '';
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return '';
+  const dateLabel = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+  const timeLabel = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+  return `${dateLabel} \u00e0s ${timeLabel}`;
+}
+
+function saoPauloDateStamp(date: Date): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = Number(parts.find((part) => part.type === 'year')?.value || 0);
+  const month = Number(parts.find((part) => part.type === 'month')?.value || 0);
+  const day = Number(parts.find((part) => part.type === 'day')?.value || 0);
+  if (!year || !month || !day) return Number.NaN;
+  return Date.UTC(year, month - 1, day);
+}
+
+function pedidosCreatedAgeLabel(value: string | null | undefined): string {
+  const text = safeText(value, 40);
+  if (!text) return '';
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return '';
+  const createdStamp = saoPauloDateStamp(date);
+  const todayStamp = saoPauloDateStamp(new Date());
+  if (!Number.isFinite(createdStamp) || !Number.isFinite(todayStamp)) return '';
+  const days = Math.max(0, Math.floor((todayStamp - createdStamp) / 86_400_000));
+  if (days === 0) return 'hoje';
+  if (days === 1) return 'h\u00e1 1 dia';
+  return `h\u00e1 ${days} dias`;
+}
+
+function pedidosCreatedSuffix(value: string | null | undefined): string {
+  const createdAt = brDateTimeFromIso(value);
+  if (!createdAt) return '';
+  const age = pedidosCreatedAgeLabel(value);
+  return ` (pedido em ${createdAt}${age ? ` \u2014 ${age}` : ''})`;
+}
+
+function pedidosArrivalForecastLabel(value: string | null | undefined): string {
+  const date = brDateOnlyFromIso(value);
+  return date === 'sem previsao' ? 'sem previs\u00e3o' : `previs\u00e3o ${date}`;
+}
+
+function comparePedidosArrivalCreatedAt(left: PedidosArrivalOrder, right: PedidosArrivalOrder): number {
+  const leftTime = left.created_at ? new Date(left.created_at).getTime() : Number.POSITIVE_INFINITY;
+  const rightTime = right.created_at ? new Date(right.created_at).getTime() : Number.POSITIVE_INFINITY;
+  const leftSafe = Number.isFinite(leftTime) ? leftTime : Number.POSITIVE_INFINITY;
+  const rightSafe = Number.isFinite(rightTime) ? rightTime : Number.POSITIVE_INFINITY;
+  if (leftSafe !== rightSafe) return leftSafe - rightSafe;
+  return left.id - right.id;
+}
+
 function pedidosArrivalMessage(orders: PedidosArrivalOrder[], totalLabel: string): string {
   if (!orders.length) {
     return 'Pedidos 17h: nenhum pedido aguardando chegada agora.';
   }
-  const lines = orders.slice(0, 10).map((order, index) => {
-    const date = brDateOnlyFromIso(order.expected_arrival_at);
+  const sortedOrders = [...orders].sort(comparePedidosArrivalCreatedAt);
+  const lines = sortedOrders.slice(0, 10).map((order, index) => {
+    const date = pedidosArrivalForecastLabel(order.expected_arrival_at);
     const value = order.total_label || order.remaining_label || '';
-    return `${index + 1}. ${order.supplier_name} - ${value} - ${date}`;
+    return `${index + 1}. ${order.supplier_name} - ${value} - ${date}${pedidosCreatedSuffix(order.created_at)}`;
   });
   const extra = orders.length > 10 ? `\n+ ${orders.length - 10} pedido(s) no painel.` : '';
   return `Pedidos aguardando chegada (${orders.length} / ${totalLabel}).\n${lines.join('\n')}${extra}`;
@@ -7144,6 +7215,7 @@ async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: Pedidos
       id: Number(order.id || 0),
       supplier_name: safeText(order.supplier_name, 180),
       expected_arrival_at: safeText(order.expected_arrival_at, 20) || null,
+      created_at: safeText(order.created_at, 40) || null,
       total_cents: Number(order.total_cents || 0),
       remaining_cents: Number(order.remaining_cents || 0),
       total_label: safeText(order.total_label, 40),
