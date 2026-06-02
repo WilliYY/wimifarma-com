@@ -178,6 +178,7 @@ Principais variaveis:
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
 - `POST /miauw/whatsapp/internal/memory`: endpoint interno tokenizado da memoria curta compartilhada. Aceita `record`, `record_batch` e `recent`; grava/consulta `miauw_whatsapp_channel_events` no Postgres do bridge e deve receber somente texto resumido/sanitizado, hash/mascara e metadados limpos.
+- `POST /miauw/whatsapp/internal/integration-status`: endpoint interno tokenizado para auditoria da integracao Miauby interno x Miauby WhatsApp. Ele nao envia mensagem real e nao executa escrita operacional; consulta dados reais do Postgres do bridge, testa `agent-context.php`, testa `/internal/memory`, testa o health do `wimifarma-miauw-agent`, resume fila/outbox, ultima mensagem enviada, ultimo evento de memoria e ultima falha acionavel.
 - `GET /miauw/whatsapp/internal/allowlist/by-user`: endpoint interno por token de cabecalho para listar contatos vinculados a um `core_users.id`, retornando somente dados seguros (`id`, mascara, nome, status, cards e snapshot do usuario).
 - `POST /miauw/whatsapp/internal/allowlist/link-user`: endpoint interno por token de cabecalho para criar/reativar contato de allowlist, ajustar cards liberados e vincular ao usuario do core. Nao aceita LID protegido por alias como contato editavel.
 - `POST /miauw/whatsapp/internal/allowlist/unlink-user`: endpoint interno por token de cabecalho para remover o vinculo de usuario e bloquear o contato salvo no Postgres do bridge. LIDs protegidos por alias nao podem ser removidos por esse fluxo.
@@ -252,6 +253,20 @@ O audio nao substitui guardrails. Escritas fortes seguem exigindo pendencia e co
 
 O painel `/miauw/whatsapp/` mostra motor usado (`local`, `blocked`, `gemini`, `gemini_cache` ou `miauw`), motivo da rota, latencia de geracao antes do envio e demora total entre recebimento do evento e envio pelo transporte. Essa telemetria fica na `miauw_whatsapp_outbox`/consulta com `miauw_whatsapp_events` e usa mascaras/hash fora da edicao da allowlist; a Sincronia recente, por ser painel logado, mostra o telefone completo resolvido por `MIAUW_WHATSAPP_RECIPIENT_ALIASES` quando houver alias da Evolution. O painel tambem mostra graficos simples de media/p95 por motor, uma visao de sincronia recente comparando mensagem recebida e resposta enviada em blocos visuais com chips de evento/outbox/motor/tempo, allowlist minimizada por padrao com telefone completo editavel, eventos/outbox recentes com chips operacionais e uma area de erros abertos alimentada por `miauw_whatsapp_error_logs`. Desde 2026-05-29, os blocos `Configuracao` e `Estados` usam cards operacionais com chip de status, detalhes separados e tons visuais por severidade, mantendo os mesmos dados seguros sem exibir segredo ou payload bruto. Desde 2026-05-30, o card `Problemas` ignora outbox `dead` com `error_summary='stale_pending_expired'`, porque essas linhas representam expiracao segura de pendencia velha e nao falha atual. A lista de `Erros abertos` tambem ignora logs `info`, usados como auditoria/cooldown de automacoes bem-sucedidas, avisos de recuperacao segura de outbox antigo e avisos transitorios `queue_event` cujo evento ja terminou como `replied`; quando uma tentativa temporaria volta a responder com sucesso, o worker marca esse aviso como resolvido.
 
+Desde 2026-06-02, o painel tambem mostra o card `Integracao Miauby`, calculado com dados reais de runtime, fila, outbox e erros acionaveis. Para auditoria mais completa, usar `POST /miauw/whatsapp/internal/integration-status` com token interno. Esse endpoint consolida:
+
+- configuracao viva do bridge, transporte, contexto e memoria;
+- contagens reais de `miauw_whatsapp_events` e `miauw_whatsapp_outbox`;
+- outbox atual com problema, ignorando `dead/stale_pending_expired` como falha ativa;
+- erros acionaveis abertos em `miauw_whatsapp_error_logs`;
+- ultima mensagem enviada, sem telefone cru nem payload bruto;
+- ultimo evento de memoria em `miauw_whatsapp_channel_events`;
+- chamada ativa a `site/miauw/agent-context.php`;
+- chamada ativa a `/miauw/whatsapp/internal/memory`;
+- health do `wimifarma-miauw-agent`.
+
+O status de integracao nao substitui smoke/watchdog: smoke valida varios servicos do ecossistema e watchdog procura travas operacionais; `integration-status` responde especificamente se Miauby interno e Miauby WhatsApp estao conseguindo trocar contexto/memoria e se a fila/outbox esta saudavel. A chamada nao envia mensagem real pelo WhatsApp, nao chama provider externo e nao altera fluxo de resposta.
+
 O painel tambem mostra `n8n automacoes`: Chegada de pedidos, Fechamento de caixa, Pedidos e boletos, Financeiro, Deploy/checks e Miauby + n8n. Desde 2026-05-29, essa area separa visualmente status da stack, fluxo seguro (`n8n agenda -> backend valida -> WhatsApp avisa`) e cards das rotinas com Quando, Card, Destino, o que o n8n chama, o que o Miauby faz, exemplo de mensagem/estilo, Limite e Controle. Desde 2026-06-01, o card `Fechamento de caixa` mostra tambem `Status agora`, lendo o Financeiro quando possivel para indicar se existe caixa aberto nos ultimos 10 dias e qual dia esta pendente. O destino de cada rotina e calculado pelos cards liberados para contatos autorizados reais; LIDs da Evolution protegidos por alias nao entram como destinatarios. n8n apenas orquestra/agenda, enquanto permissao, dados, escrita forte e auditoria continuam no backend Wimifarma. As rotinas `Chegada de pedidos` e `Fechamento de caixa` tem box de controle `Ligado/Desligado` no painel, com botao `Desativar`/`Ativar`; n8n pode continuar agendado, mas o bridge ignora a execucao quando elas estiverem pausadas. Para operacao atual, n8n deve chamar os endpoints internos `smoke-check`, `watchdog`, `evolution-baileys-alert`, `pix-ocr-daily-summary`, `pedidos-arrival-check`, `financeiro-cash-closing-reminder` e `cotacao-encomenda-reminder`; o bridge calcula os destinatarios, valida qualquer destinatario explicito da Cotacao contra allowlist/card `Cotacao`, registra cada execucao em `miauw_whatsapp_automation_runs`, registra em `miauw_whatsapp_error_logs` apenas falhas acionaveis e aplica cooldown pela tabela de automacoes onde for alerta para nao floodar a equipe. Perguntas como `miauby em pedidos o que falta chegar` sao respondidas localmente pelo bridge com a mesma tabela da rotina, sem depender de Gemini/core, desde que o contato tenha card `Pedidos`. O worker tambem recupera outbox `pending` recente em lote pequeno e expira pendencias antigas por `MIAUW_WHATSAPP_OUTBOX_RECOVERY_MAX_AGE_MINUTES`, evitando mensagens velhas fora de contexto depois de queda/redeploy.
 
 Desde 2026-05-29, o smoke-check executa os checks de health/proxy/core/Evolution em paralelo para nao somar todos os timeouts em uma chamada do n8n. O watchdog so considera `queued`/`pending` como travado quando `next_attempt_at` ja venceu; mensagens aguardando backoff normal nao devem gerar alerta. Se o transporte estiver em pausa por erro temporario, o worker falha rapido o envio e agenda retry com backoff, em vez de ficar bloqueado em `processing`/`sending` ate a recuperacao reprocessar a mesma mensagem.
@@ -292,6 +307,39 @@ Nao existe garantia tecnica de banimento zero, principalmente quando o transport
 Para o VPS em producao inicial, recomenda-se comecar ainda mais restrito que o default do repositorio: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=2500`, `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=5500` e `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=7000`. Esses limites podem subir depois de alguns dias sem erro, bloqueio, report ou queda de qualidade.
 
 ## Diagnostico rapido quando nao responde
+
+Para auditar especificamente a ponte Miauby interno x Miauby WhatsApp no VPS, sem imprimir token e sem enviar mensagem real:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+docker exec -i wimifarma-miauw-whatsapp node - <<'NODE'
+(async () => {
+  const token = process.env.MIAUW_WHATSAPP_INTERNAL_TOKEN || process.env.MIAUW_AGENT_INTERNAL_TOKEN || process.env.MIAUW_GUARDIAN_TOKEN || '';
+  const response = await fetch('http://127.0.0.1:3400/miauw/whatsapp/internal/integration-status', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-miauw-agent-token': token,
+    },
+    body: JSON.stringify({}),
+  });
+  const data = await response.json();
+  console.log(JSON.stringify({
+    http_status: response.status,
+    ok: data.ok,
+    status: data.status,
+    checks: data.checks,
+    queue: data.snapshot && data.snapshot.queue,
+    outbox: data.snapshot && data.snapshot.outbox,
+    last_sent_message: data.snapshot && data.snapshot.last_sent_message,
+    last_failure: data.snapshot && data.snapshot.last_failure,
+  }, null, 2));
+})().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});
+NODE
+```
 
 Se `/miauw/whatsapp/health` estiver OK, mas o WhatsApp nao responder, primeiro verifique se a mensagem entrou na fila:
 

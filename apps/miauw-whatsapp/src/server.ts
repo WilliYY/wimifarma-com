@@ -325,6 +325,7 @@ type DashboardErrorRow = {
 };
 
 type DashboardTone = 'ok' | 'warn' | 'bad' | 'muted';
+type IntegrationHealthStatus = 'ok' | 'warn' | 'fail';
 
 type DashboardN8nRecipientRow = {
   module_key: string;
@@ -456,6 +457,46 @@ type FinanceiroCashClosingStatus = {
   total_checked: string;
   system_total: string;
   difference: string;
+};
+
+type IntegrationCheck = {
+  key: string;
+  label: string;
+  status: IntegrationHealthStatus;
+  ok: boolean;
+  ms: number;
+  detail: string;
+};
+
+type IntegrationLastOutboxRow = {
+  status: string;
+  reply_engine: string;
+  route_reason: string;
+  body_preview: string;
+  error_summary: string;
+  created_at: string;
+  sent_at: string | null;
+};
+
+type IntegrationLastErrorRow = {
+  source: string;
+  severity: string;
+  message_preview: string;
+  error_summary: string;
+  created_at: string;
+};
+
+type IntegrationLastMemoryRow = {
+  channel: string;
+  direction: string;
+  role: string;
+  module_key: string;
+  intent: string;
+  engine: string;
+  status: string;
+  message_preview: string;
+  reply_preview: string;
+  created_at: string;
 };
 
 type DashboardSummary = {
@@ -6530,6 +6571,7 @@ function publicStatus(): JsonRecord {
     shared_core_memory_enabled: true,
     shared_core_memory_backend: 'postgres',
     shared_core_memory_internal_endpoint: `${BASE_PATH}/internal/memory`,
+    miauby_whatsapp_integration_status_endpoint: `${BASE_PATH}/internal/integration-status`,
     shared_core_memory_timeout_ms: SHARED_MEMORY_TIMEOUT_MS,
     shared_core_memory_recent_days: SHARED_MEMORY_RECENT_DAYS,
     recipient_alias_count: RECIPIENT_ALIASES.size,
@@ -7528,6 +7570,420 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
     sent_count: Number(sentRow.sent_count || 0),
     issues,
     notification,
+  };
+}
+
+function integrationHealthWeight(status: IntegrationHealthStatus): number {
+  if (status === 'fail') return 2;
+  if (status === 'warn') return 1;
+  return 0;
+}
+
+function worstIntegrationHealth(statuses: IntegrationHealthStatus[]): IntegrationHealthStatus {
+  return statuses.reduce<IntegrationHealthStatus>(
+    (worst, status) => (integrationHealthWeight(status) > integrationHealthWeight(worst) ? status : worst),
+    'ok',
+  );
+}
+
+function integrationCheck(key: string, label: string, status: IntegrationHealthStatus, detail: string, ms = 0): IntegrationCheck {
+  return {
+    key,
+    label,
+    status,
+    ok: status !== 'fail',
+    ms,
+    detail: safeText(detail, 220),
+  };
+}
+
+function integrationHealthLabel(status: IntegrationHealthStatus): string {
+  if (status === 'fail') return 'Falha';
+  if (status === 'warn') return 'Atencao';
+  return 'OK';
+}
+
+function integrationTone(status: IntegrationHealthStatus): DashboardTone {
+  if (status === 'fail') return 'bad';
+  if (status === 'warn') return 'warn';
+  return 'ok';
+}
+
+function cleanIntegrationPreview(value: unknown, limit = 220): string {
+  return redact(safeOutboundText(value, limit));
+}
+
+async function integrationDatabaseSnapshot(): Promise<JsonRecord> {
+  const [
+    eventsResult,
+    outboxResult,
+    outboxProblemResult,
+    actionableErrorsResult,
+    staleEventsResult,
+    staleOutboxResult,
+    lastSentResult,
+    lastErrorResult,
+    memoryCountsResult,
+    lastMemoryResult,
+    contactCountsResult,
+    miaubyCardContactsResult,
+  ] = await Promise.all([
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_events
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        WHERE NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT error_log.severity AS status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_error_logs error_log
+        WHERE ${actionableErrorLogsWhere('error_log')}
+        GROUP BY error_log.severity
+        ORDER BY error_log.severity`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_events
+        WHERE status IN ('queued', 'processing')
+          AND (
+            (status = 'processing' AND COALESCE(locked_at, updated_at, created_at) < NOW() - ($1::text || ' minutes')::interval)
+            OR (status = 'queued' AND next_attempt_at <= NOW() AND created_at < NOW() - ($1::text || ' minutes')::interval)
+          )
+        GROUP BY status
+        ORDER BY status`,
+      [String(WATCHDOG_STUCK_MINUTES)],
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_outbox
+        WHERE status IN ('pending', 'sending')
+          AND (
+            (status = 'sending' AND updated_at < NOW() - ($1::text || ' minutes')::interval)
+            OR (status = 'pending' AND next_attempt_at <= NOW() AND created_at < NOW() - ($1::text || ' minutes')::interval)
+          )
+        GROUP BY status
+        ORDER BY status`,
+      [String(WATCHDOG_STUCK_MINUTES)],
+    ),
+    pgPool.query<IntegrationLastOutboxRow>(
+      `SELECT status,
+              COALESCE(NULLIF(reply_engine, ''), '-') AS reply_engine,
+              COALESCE(NULLIF(route_reason, ''), '-') AS route_reason,
+              LEFT(body_text, 220) AS body_preview,
+              COALESCE(NULLIF(error_summary, ''), '') AS error_summary,
+              created_at::text AS created_at,
+              sent_at::text AS sent_at
+         FROM miauw_whatsapp_outbox
+        WHERE status = 'sent'
+        ORDER BY sent_at DESC NULLS LAST, created_at DESC
+        LIMIT 1`,
+    ),
+    pgPool.query<IntegrationLastErrorRow>(
+      `SELECT source,
+              severity,
+              message_preview,
+              error_summary,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_error_logs error_log
+        WHERE ${actionableErrorLogsWhere('error_log')}
+        ORDER BY created_at DESC
+        LIMIT 1`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT channel || '/' || direction AS status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_channel_events
+        GROUP BY channel, direction
+        ORDER BY status`,
+    ),
+    pgPool.query<IntegrationLastMemoryRow>(
+      `SELECT channel,
+              direction,
+              role,
+              module_key,
+              intent,
+              engine,
+              status,
+              message_preview,
+              reply_preview,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_channel_events
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+    ),
+    pgPool.query<CountRow>(
+      `SELECT status, COUNT(*)::text AS count
+         FROM miauw_whatsapp_contacts
+        GROUP BY status
+        ORDER BY status`,
+    ),
+    pgPool.query<{ count: string }>(
+      `SELECT COUNT(DISTINCT c.phone_hash)::text AS count
+         FROM miauw_whatsapp_contacts c
+         JOIN miauw_whatsapp_contact_modules m ON m.phone_hash = c.phone_hash
+        WHERE c.status = 'allowed'
+          AND m.enabled = TRUE
+          AND m.module_key = 'miauw'`,
+    ),
+  ]);
+
+  const eventCounts = countsByStatus(eventsResult.rows);
+  const outboxCounts = countsByStatus(outboxResult.rows);
+  const outboxProblemCounts = countsByStatus(outboxProblemResult.rows);
+  const actionableErrors = countsByStatus(actionableErrorsResult.rows);
+  const staleEvents = countsByStatus(staleEventsResult.rows);
+  const staleOutbox = countsByStatus(staleOutboxResult.rows);
+  const contactCounts = countsByStatus(contactCountsResult.rows);
+  const memoryCounts = countsByStatus(memoryCountsResult.rows);
+  const lastSent = lastSentResult.rows[0] || null;
+  const lastError = lastErrorResult.rows[0] || null;
+  const lastMemory = lastMemoryResult.rows[0] || null;
+
+  return {
+    event_counts: eventCounts,
+    outbox_counts: outboxCounts,
+    outbox_problem_counts: outboxProblemCounts,
+    actionable_error_counts: actionableErrors,
+    stale_event_counts: staleEvents,
+    stale_outbox_counts: staleOutbox,
+    memory_counts: memoryCounts,
+    contact_counts: contactCounts,
+    miauby_card_contacts: Number(miaubyCardContactsResult.rows[0]?.count || 0),
+    queue: {
+      waiting: countOf(eventCounts, 'queued') + countOf(eventCounts, 'processing'),
+      stale: countOf(staleEvents, 'queued') + countOf(staleEvents, 'processing'),
+    },
+    outbox: {
+      waiting: countOf(outboxCounts, 'pending') + countOf(outboxCounts, 'sending'),
+      stale: countOf(staleOutbox, 'pending') + countOf(staleOutbox, 'sending'),
+      problems: countOf(outboxProblemCounts, 'failed') + countOf(outboxProblemCounts, 'dead'),
+    },
+    errors: {
+      actionable: countOf(actionableErrors, 'warn') + countOf(actionableErrors, 'error'),
+      actionable_warn: countOf(actionableErrors, 'warn'),
+      actionable_error: countOf(actionableErrors, 'error'),
+    },
+    last_sent_message: lastSent ? {
+      status: lastSent.status,
+      reply_engine: lastSent.reply_engine,
+      route_reason: lastSent.route_reason,
+      body_preview: cleanIntegrationPreview(lastSent.body_preview, 220),
+      created_at: lastSent.created_at,
+      sent_at: lastSent.sent_at,
+    } : null,
+    last_failure: lastError ? {
+      source: safeText(lastError.source, 80),
+      severity: safeText(lastError.severity, 20),
+      message_preview: cleanIntegrationPreview(lastError.message_preview, 180),
+      error_summary: cleanIntegrationPreview(lastError.error_summary, 180),
+      created_at: lastError.created_at,
+    } : null,
+    last_memory_event: lastMemory ? {
+      channel: safeText(lastMemory.channel, 20),
+      direction: safeText(lastMemory.direction, 20),
+      role: safeText(lastMemory.role, 20),
+      module_key: safeText(lastMemory.module_key, 40),
+      intent: safeText(lastMemory.intent, 80),
+      engine: safeText(lastMemory.engine, 40),
+      status: safeText(lastMemory.status, 40),
+      message_preview: cleanIntegrationPreview(lastMemory.message_preview, 180),
+      reply_preview: cleanIntegrationPreview(lastMemory.reply_preview, 180),
+      created_at: lastMemory.created_at,
+    } : null,
+  };
+}
+
+function queueOutboxIntegrationCheck(snapshot: JsonRecord): IntegrationCheck {
+  const queue = isRecord(snapshot.queue) ? snapshot.queue : {};
+  const outbox = isRecord(snapshot.outbox) ? snapshot.outbox : {};
+  const stale = Number(queue.stale || 0) + Number(outbox.stale || 0);
+  const problems = Number(outbox.problems || 0);
+  const waiting = Number(queue.waiting || 0) + Number(outbox.waiting || 0);
+  if (stale > 0 || problems > 0) {
+    return integrationCheck('queue_outbox', 'Fila e outbox', 'fail', `${stale} travado(s), ${problems} problema(s) atuais`);
+  }
+  if (waiting > 0) {
+    return integrationCheck('queue_outbox', 'Fila e outbox', 'warn', `${waiting} item(ns) aguardando processamento/envio`);
+  }
+  return integrationCheck('queue_outbox', 'Fila e outbox', 'ok', 'sem fila travada e sem problemas atuais');
+}
+
+function errorLogIntegrationCheck(snapshot: JsonRecord): IntegrationCheck {
+  const errors = isRecord(snapshot.errors) ? snapshot.errors : {};
+  const actionable = Number(errors.actionable || 0);
+  const errorCount = Number(errors.actionable_error || 0);
+  if (errorCount > 0) {
+    return integrationCheck('error_logs', 'Logs de erro', 'fail', `${errorCount} erro(s) acionavel(is) aberto(s)`);
+  }
+  if (actionable > 0) {
+    return integrationCheck('error_logs', 'Logs de erro', 'warn', `${actionable} aviso(s) acionavel(is) aberto(s)`);
+  }
+  return integrationCheck('error_logs', 'Logs de erro', 'ok', 'sem erro acionavel aberto');
+}
+
+async function contextIntegrationCheck(): Promise<IntegrationCheck> {
+  if (!INTERNAL_TOKEN || !AGENT_CONTEXT_URL) {
+    return integrationCheck('miauby_context', 'Contexto Miauby interno', 'fail', 'token interno ou URL de contexto nao configurado');
+  }
+  const response = await fetchTextWithTimeout(AGENT_CONTEXT_URL, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(),
+    body: JSON.stringify({
+      trace_id: 'miaubywhatsappintegrationstatus',
+      message: 'auditoria integracao miauby whatsapp',
+      page_context: 'whatsapp_integration_status',
+      user_context: {
+        username: 'whatsapp:integration-status',
+        role: 'whatsapp_interno',
+        channel: 'whatsapp',
+      },
+    }),
+  }, AGENT_CONTEXT_TIMEOUT_MS);
+  if (response.status < 200 || response.status >= 300) {
+    return integrationCheck('miauby_context', 'Contexto Miauby interno', 'fail', response.error || `HTTP ${response.status}`, response.ms);
+  }
+  const data = JSON.parse(response.text || '{}') as unknown;
+  if (!isRecord(data) || data.ok !== true) {
+    return integrationCheck('miauby_context', 'Contexto Miauby interno', 'fail', safeText(isRecord(data) ? data.message || data.error : 'payload invalido', 180), response.ms);
+  }
+  const styleContext = isRecord(data.style_context);
+  const contracts = isRecord(data.tool_contracts);
+  const memory = isRecord(data.channel_memory) ? data.channel_memory : {};
+  const memoryBackend = safeText(memory.backend, 40) || 'interno';
+  return integrationCheck(
+    'miauby_context',
+    'Contexto Miauby interno',
+    styleContext ? 'ok' : 'warn',
+    `${safeText(data.source, 80) || 'php_miauby_core'}; memoria=${memoryBackend}; tools=${contracts ? 'ok' : 'ausentes'}`,
+    response.ms,
+  );
+}
+
+async function sharedMemoryEndpointCheck(): Promise<IntegrationCheck> {
+  if (!INTERNAL_TOKEN) {
+    return integrationCheck('shared_memory', 'Memoria compartilhada', 'fail', 'token interno nao configurado');
+  }
+  const response = await fetchTextWithTimeout(`http://127.0.0.1:${PORT}${BASE_PATH}/internal/memory`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(),
+    body: JSON.stringify({
+      mode: 'recent',
+      message: 'auditoria integracao miauby whatsapp',
+      options: { limit: 3 },
+    }),
+  }, SHARED_MEMORY_TIMEOUT_MS);
+  if (response.status < 200 || response.status >= 300) {
+    return integrationCheck('shared_memory', 'Memoria compartilhada', 'fail', response.error || `HTTP ${response.status}`, response.ms);
+  }
+  const data = JSON.parse(response.text || '{}') as unknown;
+  if (!isRecord(data) || data.ok !== true) {
+    return integrationCheck('shared_memory', 'Memoria compartilhada', 'fail', safeText(isRecord(data) ? data.error || data.message : 'payload invalido', 180), response.ms);
+  }
+  const memory = isRecord(data.memory) ? data.memory : {};
+  const items = Array.isArray(memory.items) ? memory.items.length : 0;
+  const backend = safeText(memory.backend, 40) || safeText(data.source, 40) || 'postgres';
+  return integrationCheck(
+    'shared_memory',
+    'Memoria compartilhada',
+    backend === 'postgres' ? 'ok' : 'warn',
+    `${backend}; ${items} item(ns) recentes retornados`,
+    response.ms,
+  );
+}
+
+async function agentHealthIntegrationCheck(): Promise<IntegrationCheck> {
+  if (!INTERNAL_TOKEN || !AGENT_RUN_URL) {
+    return integrationCheck('miauw_agent', 'Agente Miauby Node', 'fail', 'token interno ou URL do agente nao configurado');
+  }
+  const healthUrl = AGENT_RUN_URL.replace(/\/run\/?$/i, '/health');
+  const response = await fetchTextWithTimeout(healthUrl, {
+    headers: {
+      'X-Miauw-Agent-Token': INTERNAL_TOKEN,
+    },
+  }, AGENT_CONTEXT_TIMEOUT_MS);
+  if (response.status < 200 || response.status >= 300) {
+    return integrationCheck('miauw_agent', 'Agente Miauby Node', 'fail', response.error || `HTTP ${response.status}`, response.ms);
+  }
+  return integrationCheck('miauw_agent', 'Agente Miauby Node', 'ok', `HTTP ${response.status}`, response.ms);
+}
+
+function configIntegrationCheck(status: JsonRecord): IntegrationCheck {
+  const missing: string[] = [];
+  if (status.enabled !== true) missing.push('canal desligado');
+  if (status.transport_configured !== true) missing.push('transporte');
+  if (status.agent_configured !== true) missing.push('agente');
+  if (status.shared_core_context_enabled !== true) missing.push('contexto');
+  if (status.shared_core_memory_enabled !== true) missing.push('memoria');
+  if (status.provider_paused === true) missing.push('provider pausado');
+  if (missing.length) {
+    return integrationCheck('runtime_config', 'Configuracao runtime', status.enabled === true ? 'warn' : 'fail', missing.join(', '));
+  }
+  return integrationCheck('runtime_config', 'Configuracao runtime', 'ok', 'canal, transporte, agente, contexto e memoria configurados');
+}
+
+async function buildMiaubyWhatsappIntegrationStatus(): Promise<JsonRecord> {
+  const startedAt = Date.now();
+  let snapshot: JsonRecord;
+  let databaseCheck: IntegrationCheck;
+  try {
+    snapshot = await integrationDatabaseSnapshot();
+    databaseCheck = integrationCheck('postgres', 'Postgres WhatsApp', 'ok', 'consultas reais de fila/outbox/memoria executadas');
+  } catch (error) {
+    snapshot = {};
+    databaseCheck = integrationCheck('postgres', 'Postgres WhatsApp', 'fail', safeError(error));
+  }
+
+  const status = publicStatus();
+  const activeChecks = await Promise.all([
+    contextIntegrationCheck().catch((error) => integrationCheck('miauby_context', 'Contexto Miauby interno', 'fail', safeError(error))),
+    sharedMemoryEndpointCheck().catch((error) => integrationCheck('shared_memory', 'Memoria compartilhada', 'fail', safeError(error))),
+    agentHealthIntegrationCheck().catch((error) => integrationCheck('miauw_agent', 'Agente Miauby Node', 'fail', safeError(error))),
+  ]);
+  const checks = [
+    configIntegrationCheck(status),
+    databaseCheck,
+    queueOutboxIntegrationCheck(snapshot),
+    errorLogIntegrationCheck(snapshot),
+    ...activeChecks,
+  ];
+  const overall = worstIntegrationHealth(checks.map((check) => check.status));
+
+  return {
+    ok: overall !== 'fail',
+    status: overall,
+    status_label: integrationHealthLabel(overall),
+    generated_at: new Date().toISOString(),
+    duration_ms: Date.now() - startedAt,
+    service: SERVICE_NAME,
+    version: SERVICE_VERSION,
+    base_path: BASE_PATH,
+    checks,
+    integration: {
+      whatsapp_provider: WHATSAPP_PROVIDER,
+      writes_policy: 'core_confirmation',
+      official_php_response_preserved: true,
+      real_whatsapp_send_test: false,
+      active_checks_send_message: false,
+      context_url_configured: AGENT_CONTEXT_URL !== '' && INTERNAL_TOKEN !== '',
+      agent_url_configured: AGENT_RUN_URL !== '' && INTERNAL_TOKEN !== '',
+      actions_url_configured: ACTIONS_URL !== '' && INTERNAL_TOKEN !== '',
+      shared_memory_backend: 'postgres',
+      shared_memory_endpoint: `${BASE_PATH}/internal/memory`,
+      php_memory_fallback_possible: true,
+    },
+    snapshot,
   };
 }
 
@@ -9282,6 +9738,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const n8nEnabled = boolStatus(status, 'n8n_enabled');
   const n8nBaseConfigured = boolStatus(status, 'n8n_base_configured');
   const n8nWebhookConfigured = boolStatus(status, 'n8n_webhook_configured');
+  const sharedContextEnabled = boolStatus(status, 'shared_core_context_enabled');
+  const sharedMemoryEnabled = boolStatus(status, 'shared_core_memory_enabled');
+  const integrationEndpoint = textStatus(status, 'miauby_whatsapp_integration_status_endpoint') || `${BASE_PATH}/internal/integration-status`;
   const pixReceiptEnabled = boolStatus(status, 'pix_receipt_image_enabled');
   const pixReceiptConfigured = boolStatus(status, 'pix_receipt_cnpj_configured');
   const pixReceiptModel = textStatus(status, 'pix_receipt_ocr_model') || '-';
@@ -9293,6 +9752,12 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const responseDelay = summary.responseDelay;
   const aliasHint = summary.protectedAliasCount > 0 ? ` | LIDs ocultos: ${summary.protectedAliasCount}` : '';
   const allowlistHint = `Env: ${envAllowlist} | Postgres: ${summary.allowlistAllowed} | bloqueados: ${summary.allowlistBlocked}${aliasHint}`;
+  const integrationReady = enabled && transportConfigured && agentConfigured && sharedContextEnabled && sharedMemoryEnabled;
+  const integrationHealth: IntegrationHealthStatus = (!integrationReady || eventProblems > 0 || outboxProblems > 0)
+    ? 'fail'
+    : (queued > 0 || pendingOutbox > 0 || summary.errorCount24h > 0 || providerPaused)
+      ? 'warn'
+      : 'ok';
   const noticeHtml = notice
     ? `<p class="notice">${htmlEscape(notice)}</p>`
     : '';
@@ -10194,6 +10659,14 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             ['Escrita', writePolicy],
             ['Cache', `${cacheTtl}s/${cacheEntries}`],
           ])}
+          ${renderConfigCard('Integracao Miauby', integrationTone(integrationHealth), integrationHealthLabel(integrationHealth), [
+            ['Contexto', sharedContextEnabled ? 'ok' : 'pendente'],
+            ['Memoria', sharedMemoryEnabled ? 'postgres' : 'pendente'],
+            ['Fila', queued > 0 ? `${queued} aguardando` : 'limpa'],
+            ['Outbox', outboxProblems > 0 ? `${outboxProblems} problema(s)` : pendingOutbox > 0 ? `${pendingOutbox} pendente(s)` : 'ok'],
+            ['Erros', summary.errorCount24h > 0 ? `${summary.errorCount24h} aberto(s)` : 'sem aberto 24h'],
+            ['Check', integrationEndpoint],
+          ])}
           ${renderConfigCard('Pix CNPJ midia', (pixReceiptEnabled && pixReceiptConfigured) ? 'ok' : pixReceiptConfigured ? 'muted' : 'warn', (pixReceiptEnabled && pixReceiptConfigured) ? 'Ativo' : pixReceiptConfigured ? 'Desligado' : 'Pendente', [
             ['Midia', 'foto/print/PDF'],
             ['OCR', pixReceiptModel],
@@ -10625,6 +11098,18 @@ app.post(`${BASE_PATH}/worker/run`, requireInternalToken, async (req, res) => {
   const limit = Math.max(1, Math.min(20, Number(req.body?.limit || WORKER_BATCH_SIZE)));
   const result = await processQueue(limit);
   res.json({ ok: true, ...result });
+});
+
+app.post(`${BASE_PATH}/internal/integration-status`, requireInternalToken, async (_req, res) => {
+  try {
+    const result = await buildMiaubyWhatsappIntegrationStatus();
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    await recordErrorLog('miauby_whatsapp_integration_status', 'error', error, {
+      details: { endpoint: `${BASE_PATH}/internal/integration-status` },
+    });
+    res.status(500).json({ ok: false, status: 'fail', error: safeError(error) });
+  }
 });
 
 app.post(`${BASE_PATH}/internal/memory`, requireInternalToken, async (req, res) => {
