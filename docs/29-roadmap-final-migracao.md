@@ -74,6 +74,8 @@ Antes de cada etapa de corte:
 
 Objetivo: preparar o Node/Postgres para escrever conversas, mensagens, traces, memorias e eventos, mas com escrita desligada por variavel de ambiente.
 
+Estado em 2026-06-02: iniciado em `apps/miauby` com adaptador interno desligado. Foram preparados contratos tipados, plano de idempotencia, endpoints internos tokenizados de status/plano/dry-run, flags seguras (`MIAUBY_WRITES_ENABLED=false`, `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false`) e schema de intencao/auditoria criado pelo migrador (`miauby_write_intents`, `miauby_write_audit_events`). Nenhuma escrita real foi habilitada e `/miauw/` continua oficial.
+
 Regras:
 
 - nao trocar `/miauw/`;
@@ -83,6 +85,7 @@ Regras:
 - nao remover PHP;
 - nao remover MySQL;
 - criar apenas contratos, schema, idempotencia, logs/auditoria e dry-run.
+- manter `MIAUBY_WRITES_ENABLED=false` e `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false` ate a Etapa 5C.
 
 Validacao esperada:
 
@@ -90,6 +93,7 @@ Validacao esperada:
 - migrador sombra `migrate` e `validate`;
 - readiness 12/12 sem divergencia;
 - smoke do pacote canonico;
+- smoke do adaptador 5B confirmando status bloqueado, plano sanitizado e dry-run bloqueado por env;
 - teste de rollback com escrita ainda desligada.
 
 ### Fase 2 - Miauby interno Etapa 5C: shadow write/dry-run

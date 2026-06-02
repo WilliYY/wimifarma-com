@@ -190,6 +190,7 @@ Proibido migrar para Postgres:
 - Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`. Desde 2026-06-02, a migracao/validacao deve ser rodada pelo `wimifarma-miauby-migrator` descartavel, nao dentro do app vivo.
 - Estado iniciado em 2026-06-01: `apps/miauby` ganhou `/miauby/api/internal/cutover`, endpoint interno tokenizado e somente leitura que devolve o inventario de corte, fluxos bloqueantes, sequencia segura e rollback. Ele confirma explicitamente `write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false` e `node_direct_module_db_writes_enabled=false`.
 - Estado iniciado em 2026-06-02: `apps/miauby` ganhou `/miauby/api/internal/canonical-context` e o alias `/miauby/api/internal/context-pack`, ambos internos/tokenizados, para compilar contexto de estilo/persona/tools a partir de `miauby_*` e de um registry Node tipado. Em 2026-06-02, a Etapa 5A consolidou esse pacote como read model canônico Node/Postgres, expondo `canonical_read_model.version=miauby-read-model-5a-2026-06-02`, treino aprovado, memorias/padroes aprovados, conhecimentos ativos/aprovados e contratos de tools, sempre com `write_enabled=false`, `writes_enabled_in_node=false`, `php_official_response=true`, sem payload bruto, sem chamada OpenAI e sem executar tools.
+- Estado iniciado em 2026-06-02: a Etapa 5B preparou o adaptador interno de escrita do `apps/miauby`, ainda desligado. O migrador cria `miauby_write_intents` e `miauby_write_audit_events`; o app expoe `/miauby/api/internal/write-adapter`, `/miauby/api/internal/write-adapter/plan` e `/miauby/api/internal/write-adapter/dry-run`, todos internos/tokenizados. `MIAUBY_WRITES_ENABLED=false` e `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false` sao o padrao seguro, entao o Node nao grava conversas, mensagens, traces, treino, memorias, alertas, padroes nem configuracoes como fonte oficial, e nem registra dry-run sem liberacao futura explicita.
 - PHP continua dono da resposta oficial.
 
 ### Etapa 2026-06-01 - Inventario de corte sem troca de motor
@@ -246,7 +247,46 @@ Validacao esperada:
 - Migracao/validacao sombra antes do smoke, para garantir que `miauby_*` esta atualizado.
 - `scripts/miauby-shadow-smoke.sh` deve validar health, readiness, contexto sanitizado, pacote canonico 5A, persona, treino aprovado, memorias/conhecimentos, contratos de tools, cutover e todos os flags read-only.
 
-Etapa seguinte segura: preparar o adaptador de escrita do `apps/miauby` desligado por variavel de ambiente, com rollback, sem trocar frontend e sem cortar o PHP oficial.
+Etapa seguinte segura: ligar somente shadow write/dry-run controlado para o PHP oficial enviar intencoes sanitizadas ao adaptador, ainda sem trocar frontend, sem cortar o PHP oficial e sem habilitar escrita real.
+
+### Etapa 2026-06-02 - Miauby Etapa 5B: adaptador de escrita desligado
+
+Esta etapa prepara a trilha de escrita Node/Postgres sem tornar o Node dono de nenhuma escrita do chat interno. O PHP em `site/miauw` continua gravando oficialmente em MySQL `miauw_*`; `/miauby/` continua redirecionando para `/miauw/`; e o `apps/miauby` continua sem proxy publico.
+
+Novas configuracoes:
+
+- `MIAUBY_WRITES_ENABLED`: controla escrita real pelo adaptador. Deve ficar `false` nesta etapa.
+- `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED`: controla se o endpoint de dry-run pode gravar apenas intencao/auditoria em `miauby_write_*`. Deve ficar `false` nesta etapa.
+- `MIAUBY_WRITE_ADAPTER_AUDIT_ENABLED`: reservado para auditoria do adaptador; padrao `true`, mas sem efeito de escrita quando dry-run esta bloqueado.
+
+Novos endpoints internos:
+
+- `GET /miauby/api/internal/write-adapter`: status, flags, contratos tipados, tabelas de schema e garantias de rollback.
+- `POST /miauby/api/internal/write-adapter/plan`: valida uma intencao, sanitiza payload, calcula checksum/idempotency key e devolve plano de rollback. Nao grava banco.
+- `POST /miauby/api/internal/write-adapter/dry-run`: nesta etapa retorna bloqueio por env enquanto `MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false`; quando liberado em etapa futura, devera gravar somente intencao/auditoria, sem escrever nas tabelas de dominio.
+
+Contratos preparados:
+
+- conversas e mensagens: `miauby_conversations`, `miauby_messages`;
+- traces: `miauby_tool_traces`;
+- treino, memorias, conhecimentos, alertas, eventos, padroes e configuracoes;
+- Farmacia Popular: valores e historico de atualizacao.
+
+Regras preservadas:
+
+- resposta oficial continua PHP;
+- escrita oficial continua PHP/MySQL `miauw_*`;
+- `apps/miauby` nao executa tools;
+- nenhuma escrita real e implementada em 5B, mesmo se alguem tentar ligar `MIAUBY_WRITES_ENABLED`;
+- payloads de plano/dry-run sao sanitizados contra segredo, telefone, SQL, stack trace, audio e midia;
+- idempotencia usa chave explicita ou checksum estavel do payload sanitizado;
+- rollback imediato continua sendo `MIAUBY_WRITES_ENABLED=false` e `MIAUW_ENGINE=php`.
+
+Validacao esperada:
+
+- `npm run check` e `npm run build` em `apps/miauby`;
+- `scripts/miauby-shadow-migrate.sh migrate` e `validate` para criar o schema 5B no Postgres;
+- `scripts/miauby-shadow-smoke.sh` deve confirmar que `write_adapter.write_enabled=false`, o plano sanitiza telefone e o dry-run segue bloqueado por env.
 
 ### Etapa 2026-06-02 - Consumidor sombra do contexto Node
 

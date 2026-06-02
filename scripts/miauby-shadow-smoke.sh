@@ -22,8 +22,8 @@ function assert(condition, message) {
   }
 }
 
-async function readJson(path, headers = {}) {
-  const response = await fetch(`${baseUrl}${path}`, { headers });
+async function readJson(path, headers = {}, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, { headers, ...options });
   const text = await response.text();
   let body = {};
   try {
@@ -37,6 +37,7 @@ async function readJson(path, headers = {}) {
 const health = await readJson('/health');
 assert(health.response.ok && health.body.ok === true, 'health_failed');
 assert(health.body.write_enabled === false, 'health_must_be_read_only');
+assert(health.body.write_adapter?.write_enabled === false, 'health_write_adapter_must_stay_disabled');
 
 const unauthorized = await readJson('/api/internal/status');
 assert(unauthorized.response.status === 401 || unauthorized.response.status === 503, 'internal_status_must_reject_without_token');
@@ -48,6 +49,7 @@ assert(readiness.response.ok && readiness.body.ok === true, 'readiness_failed');
 assert(readiness.body.write_enabled === false, 'readiness_must_be_read_only');
 assert(readiness.body.route_cutover_enabled === false, 'route_cutover_must_stay_disabled');
 assert(readiness.body.public_proxy_enabled === false, 'public_proxy_must_stay_disabled');
+assert(readiness.body.write_adapter?.write_enabled === false, 'readiness_write_adapter_must_stay_disabled');
 assert(readiness.body.checks?.parity?.ok === true, 'parity_summary_failed');
 
 const context = await readJson(`/api/internal/context?limit=${contextLimit}`, headers);
@@ -82,7 +84,51 @@ assert(cutover.response.ok && cutover.body.ok === true, 'cutover_inventory_faile
 assert(cutover.body.mode === 'cutover_inventory_read_only', 'cutover_inventory_mode_invalid');
 assert(cutover.body.guards?.write_enabled === false, 'cutover_write_must_stay_disabled');
 assert(cutover.body.guards?.route_cutover_enabled === false, 'cutover_route_must_stay_disabled');
+assert(cutover.body.write_adapter_5b?.write_enabled === false, 'cutover_write_adapter_must_stay_disabled');
 assert(Array.isArray(cutover.body.flows) && cutover.body.flows.length >= 5, 'cutover_flows_missing');
+
+const writeAdapter = await readJson('/api/internal/write-adapter', headers);
+assert(writeAdapter.response.ok && writeAdapter.body.ok === true, 'write_adapter_status_failed');
+assert(writeAdapter.body.mode === 'write_adapter_prepared_disabled', 'write_adapter_mode_invalid');
+assert(writeAdapter.body.write_enabled === false, 'write_adapter_must_stay_disabled');
+assert(writeAdapter.body.real_write_supported === false, 'write_adapter_real_write_must_not_exist_in_5b');
+assert(Array.isArray(writeAdapter.body.contracts) && writeAdapter.body.contracts.length >= 8, 'write_adapter_contracts_missing');
+
+const writePlan = await readJson('/api/internal/write-adapter/plan', {
+  ...headers,
+  'content-type': 'application/json',
+}, {
+  method: 'POST',
+  body: JSON.stringify({
+    operation: 'conversation_message',
+    conversation_legacy_id: 1,
+    payload: {
+      role: 'user',
+      content_preview: 'teste seguro 5B',
+      telefone: '+55 44 99999-9999',
+    },
+  }),
+});
+assert(writePlan.response.ok && writePlan.body.ok === true, 'write_adapter_plan_failed');
+assert(writePlan.body.write_enabled === false, 'write_adapter_plan_must_stay_disabled');
+assert(writePlan.body.real_write_supported === false, 'write_adapter_plan_real_write_must_not_exist');
+assert(writePlan.body.payload_sanitized?.telefone === '[redacted]', 'write_adapter_plan_must_redact_phone');
+
+const dryRun = await readJson('/api/internal/write-adapter/dry-run', {
+  ...headers,
+  'content-type': 'application/json',
+}, {
+  method: 'POST',
+  body: JSON.stringify({
+    operation: 'conversation_message',
+    conversation_legacy_id: 1,
+    payload: {
+      role: 'user',
+      content_preview: 'teste seguro 5B',
+    },
+  }),
+});
+assert(dryRun.response.status === 409 && dryRun.body.status === 'blocked_by_env', 'write_adapter_dry_run_must_stay_blocked_by_env');
 
 console.log(JSON.stringify({
   ok: true,
@@ -116,6 +162,11 @@ console.log(JSON.stringify({
     mode: cutover.body.mode,
     flows: cutover.body.flows.length,
     hard_blockers: cutover.body.hard_blockers.length,
+  },
+  write_adapter: {
+    mode: writeAdapter.body.mode,
+    contracts: writeAdapter.body.contracts.length,
+    dry_run_status: dryRun.body.status,
   },
 }, null, 2));
 NODE

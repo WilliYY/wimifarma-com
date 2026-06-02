@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { Pool, type PoolClient } from 'pg';
 import { buildCanonicalToolContracts } from './tool-contracts.js';
+import { buildWriteAdapterStatus, planWriteIntent, recordWriteAdapterDryRun } from './write-adapter.js';
 
 type SourceTable = {
   source: string;
@@ -14,7 +15,7 @@ type ShadowReadSection = SourceTable & {
 };
 
 const env = process.env;
-const serviceVersion = '0.5.1';
+const serviceVersion = '0.5.2';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -316,6 +317,7 @@ function buildCutoverInventory() {
       database: 'Postgres wimifarma_miauby / miauby_*',
       write_enabled: false,
       public_proxy_enabled: false,
+      write_adapter: buildWriteAdapterStatus(env),
     },
     guards: {
       token_required: true,
@@ -329,8 +331,9 @@ function buildCutoverInventory() {
       target: table.target,
     })),
     flows: cutoverFlows,
+    write_adapter_5b: buildWriteAdapterStatus(env),
     hard_blockers: [
-      'apps/miauby ainda nao possui adaptador oficial de escrita para mensagens, treino, memorias, alertas e traces',
+      'apps/miauby possui adaptador de escrita preparado, mas MIAUBY_WRITES_ENABLED=false e nenhuma escrita real e suportada nesta etapa',
       'apps/miauw-agent ainda depende de agent-context.php, agent-tools.php e agent-actions.php para contexto, tools e confirmacoes',
       'widget, diagnostico e treino continuam em PHP e precisam de compatibilidade de sessao/CSRF antes de trocar a rota',
       'antes de congelar miauw_* e preciso dump, migracao sombra, validacao de checksum e janela de observacao',
@@ -1270,6 +1273,7 @@ app.get(['/health', `${basePath}/health`], async (_req, res) => {
       mode: 'shadow_read_only',
       route_cutover_enabled: false,
       write_enabled: false,
+      write_adapter: buildWriteAdapterStatus(env),
       canonical_context_supported: true,
       internal_token_configured: internalToken() !== '',
       latest_migration_ok: latestMigrationOk,
@@ -1301,6 +1305,7 @@ app.get(`${basePath}/api/internal/status`, requireInternalToken, async (_req, re
       ok: true,
       mode: 'read_only_shadow_status',
       write_enabled: false,
+      write_adapter: buildWriteAdapterStatus(env),
       latest_runs: await latestRuns(5),
       tables,
     });
@@ -1326,6 +1331,7 @@ app.get(`${basePath}/api/internal/readiness`, requireInternalToken, async (req, 
       route_cutover_enabled: false,
       public_proxy_enabled: false,
       token_required: true,
+      write_adapter: buildWriteAdapterStatus(env),
       checks: {
         postgres: ping.rows[0]?.ok === 1,
         parity: paritySummary,
@@ -1368,6 +1374,23 @@ app.post(`${basePath}/api/internal/context-pack`, requireInternalToken, canonica
 
 app.get(`${basePath}/api/internal/cutover`, requireInternalToken, (_req, res) => {
   res.json(buildCutoverInventory());
+});
+
+app.get(`${basePath}/api/internal/write-adapter`, requireInternalToken, (_req, res) => {
+  res.json(buildWriteAdapterStatus(env));
+});
+
+app.post(`${basePath}/api/internal/write-adapter/plan`, requireInternalToken, (req, res) => {
+  res.json(planWriteIntent(req.body, env));
+});
+
+app.post(`${basePath}/api/internal/write-adapter/dry-run`, requireInternalToken, async (req, res, next) => {
+  try {
+    const result = await recordWriteAdapterDryRun(pgPool, req.body, env);
+    res.status(result.ok ? 200 : 409).json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { Pool, type PoolClient } from 'pg';
+import { ensureWriteAdapterSchema } from './write-adapter.js';
 
 type MysqlRow = RowDataPacket & Record<string, unknown>;
 
@@ -26,6 +27,7 @@ const validateOnly = process.argv.includes('--validate-only');
 const migrate = process.argv.includes('--migrate') || !validateOnly;
 const limit = Number((process.argv.find((arg) => arg.startsWith('--limit=')) || '').split('=')[1] || 0);
 const MIGRATION_VERSION = '20260530_miauby_shadow_schema';
+const WRITE_ADAPTER_MIGRATION_VERSION = '20260602_miauby_write_adapter_5b';
 
 const sourceTables: SourceTable[] = [
   { source: 'miauw_conversas', target: 'miauby_conversations', previewFields: ['titulo', 'title', 'resumo', 'summary'] },
@@ -266,6 +268,14 @@ async function ensureSchema(): Promise<void> {
      VALUES ($1)
      ON CONFLICT (version) DO NOTHING`,
     [MIGRATION_VERSION],
+  );
+
+  await ensureWriteAdapterSchema(pgPool);
+  await pgPool.query(
+    `INSERT INTO miauby_schema_migrations (version)
+     VALUES ($1)
+     ON CONFLICT (version) DO NOTHING`,
+    [WRITE_ADAPTER_MIGRATION_VERSION],
   );
 }
 
