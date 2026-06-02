@@ -890,20 +890,221 @@ function miauw_agent_node_tool_bridge_policy(string $name): array
     );
 }
 
+function miauw_display_name_from_username(string $username): string
+{
+    $username = trim($username);
+    if ($username === '' || str_starts_with(strtolower($username), 'whatsapp:')) {
+        return '';
+    }
+
+    $label = preg_replace('/@.+$/', '', $username) ?? $username;
+    $label = str_replace(array('.', '_', '-'), ' ', $label);
+    $label = trim(preg_replace('/\s+/', ' ', $label) ?? '');
+    if ($label === '') {
+        return '';
+    }
+
+    if (function_exists('mb_convert_case')) {
+        return miauw_substr(mb_convert_case($label, MB_CASE_TITLE, 'UTF-8'), 0, 120);
+    }
+
+    return miauw_substr(ucwords(strtolower($label)), 0, 120);
+}
+
+function miauw_user_display_name(?array $user = null): string
+{
+    if (!is_array($user)) {
+        return '';
+    }
+
+    foreach (array('display_name', 'responsible_name', 'responsavel_nome', 'name', 'nome', 'full_name') as $key) {
+        $value = trim((string) ($user[$key] ?? ''));
+        if ($value !== '') {
+            return miauw_substr($value, 0, 120);
+        }
+    }
+
+    return miauw_display_name_from_username((string) ($user['username'] ?? ''));
+}
+
+function miauw_user_context_id(array $context): int
+{
+    foreach (array('id', 'usuario_id', 'user_id', 'actor_user_id') as $key) {
+        $value = (int) ($context[$key] ?? 0);
+        if ($value > 0) {
+            return $value;
+        }
+    }
+
+    return 0;
+}
+
+function miauw_user_context_username(array $context): string
+{
+    $username = trim((string) ($context['username'] ?? $context['usuario'] ?? ''));
+    if ($username === '' || str_starts_with(strtolower($username), 'whatsapp:')) {
+        return '';
+    }
+
+    return miauw_substr($username, 0, 80);
+}
+
+function miauw_user_context_display_name(array $context): string
+{
+    foreach (array('display_name', 'responsible_name', 'responsavel_nome', 'name', 'nome', 'linked_display_name') as $key) {
+        $value = trim((string) ($context[$key] ?? ''));
+        if ($value !== '' && !str_starts_with(strtolower($value), 'whatsapp:')) {
+            return miauw_substr($value, 0, 120);
+        }
+    }
+
+    return miauw_display_name_from_username(miauw_user_context_username($context));
+}
+
+function miauw_clean_responsible_name(string $value): string
+{
+    $value = trim(preg_replace('/\s+/', ' ', $value) ?? '');
+    $value = preg_replace('/\b(?:responsavel|resp|feito por|feita por|quem fez|operador|caixa)\b/iu', ' ', $value) ?? $value;
+    $value = trim(preg_replace('/\s+/', ' ', $value) ?? '');
+
+    return $value === '' ? '' : miauw_substr($value, 0, 120);
+}
+
+function miauw_responsible_names_match(string $left, string $right): bool
+{
+    $normalize = static function (string $value): string {
+        if (function_exists('miauw_skill_normalized')) {
+            $value = miauw_skill_normalized($value);
+        } else {
+            $value = strtolower($value);
+        }
+
+        return trim(preg_replace('/[^a-z0-9]+/i', ' ', $value) ?? '');
+    };
+
+    return $normalize($left) !== '' && $normalize($left) === $normalize($right);
+}
+
+function miauw_resolve_responsible_actor(array $options = array()): array
+{
+    $preferSession = array_key_exists('prefer_session', $options) ? (bool) $options['prefer_session'] : true;
+    $manual = miauw_clean_responsible_name((string) ($options['manual'] ?? ''));
+
+    if ($preferSession && function_exists('current_user')) {
+        $sessionUser = current_user();
+        if (is_array($sessionUser)) {
+            $displayName = miauw_user_display_name($sessionUser);
+            if ($displayName !== '') {
+                return array(
+                    'user_id' => (int) ($sessionUser['id'] ?? 0),
+                    'username' => miauw_user_context_username($sessionUser),
+                    'display_name' => $displayName,
+                    'source' => 'session',
+                    'identified' => true,
+                );
+            }
+        }
+    }
+
+    $context = is_array($options['user_context'] ?? null) ? $options['user_context'] : array();
+    $contextId = miauw_user_context_id($context);
+    $contextUsername = miauw_user_context_username($context);
+    $contextDisplay = miauw_user_context_display_name($context);
+    if ($contextDisplay !== '' || $contextUsername !== '' || $contextId > 0) {
+        $channel = trim((string) ($context['channel'] ?? ''));
+        $source = trim((string) ($context['responsible_source'] ?? $context['responsavel_origem'] ?? ''));
+        if ($source === '') {
+            $source = $channel === 'whatsapp' ? (!empty($context['linked']) ? 'whatsapp_link' : 'whatsapp') : 'context';
+        }
+
+        return array(
+            'user_id' => $contextId > 0 ? $contextId : null,
+            'username' => $contextUsername,
+            'display_name' => $contextDisplay !== '' ? $contextDisplay : miauw_display_name_from_username($contextUsername),
+            'source' => $source,
+            'identified' => true,
+        );
+    }
+
+    if ($manual !== '') {
+        return array(
+            'user_id' => null,
+            'username' => '',
+            'display_name' => $manual,
+            'source' => 'manual',
+            'identified' => true,
+        );
+    }
+
+    return array(
+        'user_id' => null,
+        'username' => '',
+        'display_name' => '',
+        'source' => 'unidentified',
+        'identified' => false,
+    );
+}
+
+function miauw_apply_actor_identity_to_command(array $command, array $actor): array
+{
+    $userId = (int) ($actor['user_id'] ?? 0);
+    $username = trim((string) ($actor['username'] ?? ''));
+    $displayName = trim((string) ($actor['display_name'] ?? ''));
+    $source = trim((string) ($actor['source'] ?? ''));
+
+    if ($userId > 0) {
+        $command['usuario_id'] = $userId;
+        $command['actor_user_id'] = $userId;
+    }
+    if ($username !== '') {
+        $command['username'] = miauw_substr($username, 0, 80);
+    }
+    if ($displayName !== '') {
+        $command['responsavel_nome'] = miauw_substr($displayName, 0, 120);
+    }
+    if ($source !== '') {
+        $command['responsavel_origem'] = miauw_substr($source, 0, 60);
+    }
+
+    return $command;
+}
+
+function miauw_apply_responsible_actor_to_command(array $command, array $actor, bool $overrideResponsible = true): array
+{
+    $command = miauw_apply_actor_identity_to_command($command, $actor);
+    $displayName = trim((string) ($actor['display_name'] ?? ''));
+    if ($displayName === '') {
+        return $command;
+    }
+
+    $currentResponsible = miauw_clean_responsible_name((string) ($command['responsavel'] ?? ''));
+    if ($overrideResponsible || $currentResponsible === '') {
+        if ($currentResponsible !== '' && !miauw_responsible_names_match($currentResponsible, $displayName)) {
+            $command['responsavel_manual_informado'] = $currentResponsible;
+        }
+        $command['responsavel'] = miauw_substr($displayName, 0, 70);
+    }
+
+    return $command;
+}
+
 function miauw_agent_node_user_context(array $raw): array
 {
-    $id = (int) ($raw['id'] ?? $raw['user_id'] ?? 0);
+    $id = miauw_user_context_id($raw);
     $username = trim((string) ($raw['username'] ?? $raw['usuario'] ?? ''));
     $role = trim((string) ($raw['role'] ?? $raw['perfil'] ?? ''));
+    $displayName = miauw_user_context_display_name($raw);
 
     return array(
         'id' => $id > 0 ? $id : null,
         'username' => miauw_substr($username, 0, 80),
+        'display_name' => $displayName,
+        'responsible_name' => $displayName,
         'role' => miauw_substr($role, 0, 40),
     );
 }
 
-function miauw_agent_node_confirmation_text(string $name, array $args, ?array &$commandOut = null, ?string &$summaryOut = null): string
+function miauw_agent_node_confirmation_text(string $name, array $args, ?array &$commandOut = null, ?string &$summaryOut = null, array $userContext = array()): string
 {
     $command = $args;
     if ($name === 'criar_encomenda_cotacao') {
@@ -915,6 +1116,18 @@ function miauw_agent_node_confirmation_text(string $name, array $args, ?array &$
     }
     if ($name === 'criar_conta_gestao') {
         $command['raw_message'] = 'node_bridge_criar_conta_gestao';
+    }
+
+    $actor = miauw_resolve_responsible_actor(array(
+        'user_context' => $userContext,
+        'manual' => (string) ($command['responsavel'] ?? ''),
+        'prefer_session' => true,
+    ));
+    $command = miauw_apply_actor_identity_to_command($command, $actor);
+    if (in_array($name, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+    } elseif ($name === 'criar_encomenda_cotacao') {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
     }
 
     $summary = miauw_confirmation_summary($name, $command);
@@ -949,7 +1162,7 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
         if (!empty($policy['requires_confirmation'])) {
             $confirmationCommand = array();
             $confirmationSummary = '';
-            $text = miauw_agent_node_confirmation_text($name, $args, $confirmationCommand, $confirmationSummary);
+            $text = miauw_agent_node_confirmation_text($name, $args, $confirmationCommand, $confirmationSummary, $userContext);
             $durationMs = (int) round((microtime(true) - $started) * 1000);
             miauw_trace_record('miauw_agent_node_tool_bridge', 'confirmation_required', array(
                 'trace_id' => $traceId !== '' ? miauw_substr($traceId, 0, 80) : null,
@@ -991,10 +1204,15 @@ function miauw_agent_node_tool_bridge_result(string $name, array $args, string $
                 throw new RuntimeException('Usuario logado nao informado para criar tarefa pelo agente.');
             }
 
+            $actor = miauw_resolve_responsible_actor(array(
+                'user_context' => $userContext,
+                'prefer_session' => false,
+            ));
             $result = miauw_skill_create_tarefa(array(
                 'titulo' => (string) ($args['titulo'] ?? ''),
                 'descricao' => (string) ($args['descricao'] ?? ''),
                 'prioridade' => (string) ($args['prioridade'] ?? 'normal'),
+                'username' => (string) ($actor['username'] ?? $actor['display_name'] ?? 'Miauby'),
             ), $userId);
             $text = miauw_skill_tarefa_action_reply($result);
         } else {
@@ -2868,9 +3086,13 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
     );
     $user = function_exists('current_user') ? current_user() : null;
     if (is_array($user)) {
+        $displayName = miauw_user_display_name($user);
         $payload['user_context'] = array(
             'id' => (int) ($user['id'] ?? 0),
             'username' => miauw_substr((string) ($user['username'] ?? ''), 0, 80),
+            'display_name' => $displayName,
+            'responsible_name' => $displayName,
+            'responsible_source' => 'session',
             'role' => miauw_substr((string) ($user['role'] ?? $user['perfil'] ?? ''), 0, 40),
         );
     }
@@ -3314,6 +3536,21 @@ function miauw_queue_confirmation(string $tool, array $command, ?string $summary
 {
     $id = substr(miauw_trace_new_id(), 0, 8);
     $meta = miauw_tool_public_meta($tool);
+
+    $actor = miauw_resolve_responsible_actor(array(
+        'manual' => (string) ($command['responsavel'] ?? ''),
+        'prefer_session' => true,
+    ));
+    $command = miauw_apply_actor_identity_to_command($command, $actor);
+    if (in_array($tool, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+    } elseif ($tool === 'criar_encomenda_cotacao') {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
+    }
+    if ($userId === null && (int) ($actor['user_id'] ?? 0) > 0) {
+        $userId = (int) $actor['user_id'];
+    }
+
     $summary = $summary !== null && trim($summary) !== '' ? trim($summary) : miauw_confirmation_summary($tool, $command);
     $confirmation = array(
         'id' => $id,
@@ -3365,6 +3602,21 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
 {
     $tool = (string) ($pending['tool'] ?? '');
     $command = is_array($pending['command'] ?? null) ? $pending['command'] : array();
+    $actor = miauw_resolve_responsible_actor(array(
+        'user_context' => $command,
+        'manual' => (string) ($command['responsavel'] ?? ''),
+        'prefer_session' => true,
+    ));
+    if ($userId > 0 && empty($actor['user_id'])) {
+        $actor['user_id'] = $userId;
+    }
+    $command = miauw_apply_actor_identity_to_command($command, $actor);
+
+    if (in_array($tool, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+    } elseif ($tool === 'criar_encomenda_cotacao') {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
+    }
 
     if ($tool === 'criar_encomenda_cotacao') {
         $command['usuario_id'] = $userId;
@@ -5707,6 +5959,31 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             );
         }
 
+        $actor = miauw_resolve_responsible_actor(array(
+            'user_context' => $pending,
+            'manual' => (string) ($pending['responsavel'] ?? ''),
+            'prefer_session' => true,
+        ));
+        if (trim((string) ($actor['display_name'] ?? '')) !== '') {
+            $responsible = (string) $actor['display_name'];
+            $userObservation = (string) ($pending['observacao_usuario'] ?? '');
+            $baseMessage = $userObservation !== '' ? 'obs: ' . $userObservation : '';
+            $observation = function_exists('miauw_skill_financeiro_obs_from_message')
+                ? miauw_skill_financeiro_obs_from_message($baseMessage, (string) $pending['categoria'], $responsible)
+                : 'Miauby criou este lancamento. Responsavel informado: ' . $responsible . '.';
+            $command = $pending;
+            $command['observacao'] = $observation;
+            $command['raw_message'] = (string) ($pending['raw_message'] ?? $message);
+            $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+            unset($_SESSION[$pendingKey]);
+
+            $toolName = strcasecmp((string) ($command['categoria'] ?? ''), 'Sangria') === 0
+                ? 'registrar_sangria'
+                : 'criar_lancamento_financeiro';
+
+            return miauw_confirmation_request_reply($toolName, $command, $userId);
+        }
+
         $responsible = miauw_responsible_from_pending_answer($message);
         if ($responsible !== '') {
             $userObservation = (string) ($pending['observacao_usuario'] ?? '');
@@ -5753,6 +6030,15 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
         $command = function_exists('miauw_skill_cotacao_encomenda_command_from_message')
             ? miauw_skill_cotacao_encomenda_command_from_message($combined)
             : null;
+
+        if (is_array($command)) {
+            $actor = miauw_resolve_responsible_actor(array(
+                'user_context' => $command,
+                'manual' => (string) ($command['responsavel'] ?? ''),
+                'prefer_session' => true,
+            ));
+            $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
+        }
 
         if (is_array($command) && trim((string) ($command['produto'] ?? '')) !== '' && trim((string) ($command['responsavel'] ?? '')) !== '') {
             unset($_SESSION[$pendingOrderKey]);
@@ -5912,6 +6198,8 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     if (function_exists('miauw_skill_tarefa_command_from_message')) {
         $command = miauw_skill_tarefa_command_from_message($message);
         if (is_array($command)) {
+            $actor = miauw_resolve_responsible_actor(array('prefer_session' => true));
+            $command = miauw_apply_actor_identity_to_command($command, $actor);
             if (trim((string) ($command['titulo'] ?? '')) === '') {
                 return array(
                     'text' => function_exists('miauw_skill_tarefa_missing_reply') ? miauw_skill_tarefa_missing_reply($command) : 'Faltou o titulo da tarefa.',
@@ -5956,6 +6244,12 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     if (function_exists('miauw_skill_cotacao_encomenda_command_from_message')) {
         $command = miauw_skill_cotacao_encomenda_command_from_message($message);
         if (is_array($command)) {
+            $actor = miauw_resolve_responsible_actor(array(
+                'user_context' => $command,
+                'manual' => (string) ($command['responsavel'] ?? ''),
+                'prefer_session' => true,
+            ));
+            $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
             if (trim((string) ($command['produto'] ?? '')) === '' || trim((string) ($command['responsavel'] ?? '')) === '') {
                 $_SESSION[$pendingOrderKey] = $command;
 
@@ -5973,6 +6267,7 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     if (function_exists('miauw_skill_cotacao_urgente_command_from_message')) {
         $command = miauw_skill_cotacao_urgente_command_from_message($message);
         if (is_array($command)) {
+            $command = miauw_apply_actor_identity_to_command($command, miauw_resolve_responsible_actor(array('prefer_session' => true)));
             return miauw_confirmation_request_reply('criar_cotacao_urgente', $command, $userId);
         }
     }
@@ -5980,6 +6275,7 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     if (function_exists('miauw_skill_cotacao_planilha_command_from_message')) {
         $command = miauw_skill_cotacao_planilha_command_from_message($message);
         if (is_array($command)) {
+            $command = miauw_apply_actor_identity_to_command($command, miauw_resolve_responsible_actor(array('prefer_session' => true)));
             return miauw_confirmation_request_reply('criar_planilha_cotacao', $command, $userId);
         }
     }
@@ -5987,6 +6283,7 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     if (function_exists('miauw_skill_cotacao_rapida_command_from_message')) {
         $command = miauw_skill_cotacao_rapida_command_from_message($message);
         if (is_array($command)) {
+            $command = miauw_apply_actor_identity_to_command($command, miauw_resolve_responsible_actor(array('prefer_session' => true)));
             return miauw_confirmation_request_reply('criar_cotacao_rapida', $command, $userId);
         }
     }
@@ -6087,6 +6384,15 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             $command = function_exists('miauw_skill_financeiro_command_from_message')
                 ? miauw_skill_financeiro_command_from_message($message)
                 : null;
+
+            if (is_array($command)) {
+                $actor = miauw_resolve_responsible_actor(array(
+                    'user_context' => $command,
+                    'manual' => (string) ($command['responsavel'] ?? ''),
+                    'prefer_session' => true,
+                ));
+                $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+            }
 
             if (is_array($command) && trim((string) ($command['responsavel'] ?? '')) === '') {
                 $command['raw_message'] = $message;
@@ -6809,7 +7115,7 @@ function miauw_openai_tool_result(string $name, array $args): string
         $confirmation = miauw_queue_confirmation(
             $name,
             $command,
-            miauw_confirmation_summary($name, $command),
+            null,
             is_array($user) ? (int) ($user['id'] ?? 0) : null
         );
 
@@ -6897,10 +7203,12 @@ function miauw_openai_tool_result(string $name, array $args): string
 
         try {
             $user = function_exists('current_user') ? current_user() : null;
+            $actor = miauw_resolve_responsible_actor(array('prefer_session' => true));
             $result = miauw_skill_create_tarefa(array(
                 'titulo' => (string) ($args['titulo'] ?? ''),
                 'descricao' => (string) ($args['descricao'] ?? ''),
                 'prioridade' => (string) ($args['prioridade'] ?? 'normal'),
+                'username' => (string) ($actor['username'] ?? $actor['display_name'] ?? 'Miauby'),
             ), is_array($user) ? (int) ($user['id'] ?? 0) : null);
         } catch (Throwable $error) {
             error_log('Miauby OpenAI tool criar_tarefa failed: ' . $error->getMessage());

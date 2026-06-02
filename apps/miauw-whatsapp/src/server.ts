@@ -185,6 +185,7 @@ type ReplyRoute = {
 type WhatsappUserContext = {
   id: number | null;
   username: string;
+  display_name: string;
   role: string;
   channel: 'whatsapp';
   contact_hash: string;
@@ -2696,6 +2697,7 @@ function fallbackWhatsappUserContext(senderMask: string, contactHash = ''): What
   return {
     id: null,
     username: `whatsapp:${senderMask}`,
+    display_name: '',
     role: 'whatsapp_interno',
     channel: 'whatsapp',
     contact_hash: safeText(contactHash, 64),
@@ -2710,6 +2712,9 @@ function userContextPayload(context: WhatsappUserContext): JsonRecord {
     usuario_id: context.id,
     user_id: context.id,
     username: context.username,
+    display_name: context.display_name,
+    responsible_name: context.display_name,
+    responsible_source: context.linked ? 'whatsapp_link' : 'whatsapp',
     role: context.role,
     channel: context.channel,
     contact_hash: context.contact_hash,
@@ -2725,11 +2730,13 @@ async function whatsappUserContextForHashes(phoneHashes: string[], senderMask: s
     const result = await pgPool.query<{
       phone_hash: string;
       phone_mask: string;
+      display_name: string;
       linked_user_id: string | null;
       linked_username_snapshot: string;
     }>(
       `SELECT phone_hash::text AS phone_hash,
               phone_mask,
+              display_name,
               linked_user_id::text AS linked_user_id,
               linked_username_snapshot
          FROM miauw_whatsapp_contacts
@@ -2743,9 +2750,11 @@ async function whatsappUserContextForHashes(phoneHashes: string[], senderMask: s
     if (!row) return fallbackWhatsappUserContext(senderMask, hashes[0]);
     const linkedUserId = Number(row.linked_user_id || 0);
     const linkedUsername = safeText(row.linked_username_snapshot, 120);
+    const displayName = safeText(row.display_name, 120) || linkedUsername;
     return {
       id: Number.isFinite(linkedUserId) && linkedUserId > 0 ? Math.trunc(linkedUserId) : null,
       username: linkedUsername || `whatsapp:${row.phone_mask || senderMask}`,
+      display_name: displayName,
       role: linkedUsername ? 'whatsapp_core_user' : 'whatsapp_interno',
       channel: 'whatsapp',
       contact_hash: safeText(row.phone_hash, 64) || hashes[0],

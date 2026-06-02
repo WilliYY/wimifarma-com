@@ -86,6 +86,10 @@ function miauw_agent_actions_user_context(array $body): array
 
 function miauw_agent_actions_context_user_id(array $context): int
 {
+    if (function_exists('miauw_user_context_id')) {
+        return miauw_user_context_id($context);
+    }
+
     foreach (array('id', 'usuario_id', 'user_id') as $key) {
         $value = (int) ($context[$key] ?? 0);
         if ($value > 0) {
@@ -98,12 +102,36 @@ function miauw_agent_actions_context_user_id(array $context): int
 
 function miauw_agent_actions_context_username(array $context): string
 {
+    if (function_exists('miauw_user_context_username')) {
+        return miauw_user_context_username($context);
+    }
+
     $username = trim((string) ($context['username'] ?? ''));
     if ($username === '' || str_starts_with(strtolower($username), 'whatsapp:')) {
         return '';
     }
 
     return miauw_substr($username, 0, 80);
+}
+
+function miauw_agent_actions_resolve_actor(array $context, string $manualResponsible = ''): array
+{
+    if (function_exists('miauw_resolve_responsible_actor')) {
+        return miauw_resolve_responsible_actor(array(
+            'user_context' => $context,
+            'manual' => $manualResponsible,
+            'prefer_session' => false,
+        ));
+    }
+
+    $username = miauw_agent_actions_context_username($context);
+    return array(
+        'user_id' => miauw_agent_actions_context_user_id($context) ?: null,
+        'username' => $username,
+        'display_name' => $username,
+        'source' => $username !== '' ? 'context' : 'unidentified',
+        'identified' => $username !== '',
+    );
 }
 
 function miauw_agent_actions_confirmation(string $tool, array $command, ?string $summary = null): array
@@ -139,13 +167,16 @@ function miauw_agent_actions_prepare_financeiro(string $message, array $userCont
     $contextUserId = miauw_agent_actions_context_user_id($userContext);
     $contextUsername = miauw_agent_actions_context_username($userContext);
     $command['responsavel'] = miauw_agent_actions_clean_responsible((string) ($command['responsavel'] ?? ''));
-    if ($command['responsavel'] === '' && $contextUsername !== '') {
-        $command['responsavel'] = $contextUsername;
+    $actor = miauw_agent_actions_resolve_actor($userContext, (string) ($command['responsavel'] ?? ''));
+    if (function_exists('miauw_apply_responsible_actor_to_command')) {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+    } elseif ($command['responsavel'] === '' && trim((string) ($actor['display_name'] ?? '')) !== '') {
+        $command['responsavel'] = (string) $actor['display_name'];
     }
-    if ($contextUserId > 0) {
+    if ($contextUserId > 0 && !isset($command['usuario_id'])) {
         $command['usuario_id'] = $contextUserId;
     }
-    if ($contextUsername !== '') {
+    if ($contextUsername !== '' && !isset($command['username'])) {
         $command['username'] = $contextUsername;
     }
     $command['raw_message'] = 'whatsapp_action_prepare_financeiro: ' . miauw_substr($message, 0, 260);
@@ -284,9 +315,14 @@ function miauw_agent_actions_execute(array $body): array
     $userContext = miauw_agent_actions_user_context($body);
     $contextUserId = miauw_agent_actions_context_user_id($userContext);
     $contextUsername = miauw_agent_actions_context_username($userContext);
+    $actor = miauw_agent_actions_resolve_actor($userContext, (string) ($command['responsavel'] ?? ''));
+    if (function_exists('miauw_apply_responsible_actor_to_command')) {
+        $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+    }
     $userId = $contextUserId > 0 ? $contextUserId : (int) MIAUW_WHATSAPP_ACTOR_USER_ID;
     if ($userId > 0) {
         $command['usuario_id'] = $userId;
+        $command['actor_user_id'] = $userId;
     }
     if ($contextUsername !== '') {
         $command['username'] = $contextUsername;

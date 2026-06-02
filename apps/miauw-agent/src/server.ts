@@ -235,6 +235,10 @@ type ToolContractQuery = {
 type UserContext = {
   id?: number;
   username?: string;
+  display_name?: string;
+  responsible_name?: string;
+  responsible_source?: string;
+  channel?: string;
   role?: string;
 };
 
@@ -645,10 +649,20 @@ function safeUserContext(value: unknown): UserContext {
     return {};
   }
 
-  const id = typeof value.id === 'number' && Number.isFinite(value.id) ? Math.trunc(value.id) : 0;
+  const rawId = typeof value.id === 'number' && Number.isFinite(value.id)
+    ? value.id
+    : (typeof value.user_id === 'number' && Number.isFinite(value.user_id)
+      ? value.user_id
+      : (typeof value.usuario_id === 'number' && Number.isFinite(value.usuario_id) ? value.usuario_id : 0));
+  const id = Math.trunc(rawId);
+  const displayName = safeShort(value.display_name, 120) || safeShort(value.responsible_name, 120);
   return {
     id: id > 0 ? id : undefined,
     username: safeShort(value.username, 80) || undefined,
+    display_name: displayName || undefined,
+    responsible_name: displayName || undefined,
+    responsible_source: safeShort(value.responsible_source, 60) || undefined,
+    channel: safeShort(value.channel, 40) || undefined,
     role: safeShort(value.role, 40) || undefined,
   };
 }

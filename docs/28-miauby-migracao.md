@@ -31,6 +31,7 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 - Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/` e `/miauby/agent/`, ainda depende de ponte PHP para tools e contexto.
 - Integracao com Gestao: ja usa endpoint interno tokenizado do app Node/Postgres; a tool `criar_conta_gestao` nao deve depender de `wf_logs` nem de tabela MySQL de Gestao.
 - Escritas fortes: continuam com confirmacao humana e auditoria.
+- Responsavel de acao: o PHP resolveu um helper central para identificar o operador por sessao logada, depois por `user_context` do WhatsApp vinculado, depois por nome manual. Financeiro/sangria usam o nome identificado pela sessao ou allowlist como responsavel visivel e gravam `usuario_id`/`actor_user_id`; se nada identificar, a acao continua pedindo confirmacao/dado em vez de gravar anonimo.
 
 ### Miauby WhatsApp
 
@@ -40,6 +41,7 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 - Stack atual: Node.js 22 + TypeScript + Postgres.
 - Banco atual: `wimifarma_miauw_whatsapp`.
 - Papel: transporte/bridge, fila, allowlist, outbox, n8n e memoria multicanal. Nao substitui sozinho o Miauby interno.
+- Quando um numero esta vinculado a `core_users`, o bridge envia ao Miauby interno `id`, `username`, `display_name`, origem `whatsapp_link`, hash e mascara. O telefone cru continua cifrado apenas no bridge.
 
 ## Corte de tools legadas em 2026-05-30
 
