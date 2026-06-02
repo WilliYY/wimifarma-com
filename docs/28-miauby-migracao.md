@@ -187,7 +187,7 @@ Proibido migrar para Postgres:
 - Estado iniciado em 2026-05-30: `/miauby/health` responde status seguro do servico sombra, sem segredo e sem proxy publico.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` exigem token interno e comparam tabelas `miauby_*` contra `miauw_*` por contagem/checksum/amostra, sem retornar payload bruto.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/readiness?sample=20` consolida health/paridade para pos-deploy e `/miauby/api/internal/context?limit=3` retorna apenas amostras sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes.
-- Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente via `docker compose exec -T wimifarma-miauby-app npm run migrate:shadow`, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`.
+- Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`. Desde 2026-06-02, a migracao/validacao deve ser rodada pelo `wimifarma-miauby-migrator` descartavel, nao dentro do app vivo.
 - Estado iniciado em 2026-06-01: `apps/miauby` ganhou `/miauby/api/internal/cutover`, endpoint interno tokenizado e somente leitura que devolve o inventario de corte, fluxos bloqueantes, sequencia segura e rollback. Ele confirma explicitamente `write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false` e `node_direct_module_db_writes_enabled=false`.
 - Estado iniciado em 2026-06-02: `apps/miauby` ganhou `/miauby/api/internal/canonical-context` e o alias `/miauby/api/internal/context-pack`, ambos internos/tokenizados, para compilar contexto de estilo/persona/tools a partir de `miauby_*` e de um registry Node tipado. O endpoint confirma `write_enabled=false`, `writes_enabled_in_node=false`, `php_official_response=true`, nao retorna payload bruto e nao chama OpenAI nem executa tools.
 - PHP continua dono da resposta oficial.
@@ -270,6 +270,29 @@ Rollback:
 - Se o `apps/miauby` falhar, o erro fica em trace e a resposta PHP/agent sombra seguem sem usar o pacote Node.
 
 Proxima etapa segura apos alguns testes do `adm`: trocar um consumidor controlado do WhatsApp ou do agent para ler o pacote Node como fonte primaria de contexto, ainda mantendo fallback PHP e ainda sem escrita direta.
+
+### Etapa 2026-06-02 - Runtime Miauby sem MySQL direto
+
+Esta etapa reduz o acoplamento operacional com MySQL sem desligar o PHP oficial nem perder a capacidade de validar a sombra.
+
+O que mudou:
+
+- `wimifarma-miauby-app` nao recebe mais `MYSQL_*` no Compose.
+- `apps/miauby/src/server.ts` nao importa `mysql2` nem abre pool MySQL ao subir.
+- `/miauby/api/internal/readiness` e `/miauby/api/internal/parity` usam o ultimo `validate` salvo em `miauby_migration_runs` para resumir contagens e divergencias.
+- `scripts/miauby-shadow-migrate.sh` passou a construir e executar um `wimifarma-miauby-migrator` descartavel com `--no-deps`; esse migrador continua usando MySQL somente durante `migrate`/`validate`.
+
+Regras preservadas:
+
+- O PHP/MySQL `site/miauw` continua oficial para chat, treino, diagnostico, memoria, alertas e escrita.
+- O Node/Postgres continua read-only: `write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false`.
+- `mysql2` em `apps/miauby` fica justificado somente pelo migrador sombra, nao pelo app vivo.
+- Para atualizar a paridade, rode `sh scripts/miauby-shadow-migrate.sh migrate` e depois `sh scripts/miauby-shadow-migrate.sh validate`; sem validate recente, readiness deve apontar snapshot ausente ou divergente em vez de fazer leitura MySQL ao vivo.
+
+Rollback:
+
+- Reativar `MYSQL_*` no servico `wimifarma-miauby-app` e restaurar versao anterior se for necessario voltar a paridade live MySQL por endpoint.
+- O rollback normal do produto continua sendo manter `/miauby/` redirecionando para `/miauw/` e `MIAUW_ENGINE=php`.
 
 ### Fase 3 - Alias publico controlado
 

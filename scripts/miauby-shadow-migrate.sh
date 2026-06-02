@@ -18,9 +18,6 @@ esac
 
 cd "$(dirname "$0")/.."
 
-if docker compose ps --status=running --services | grep -qx 'wimifarma-miauby-app'; then
-  docker compose exec -T wimifarma-miauby-app npm run "$NPM_SCRIPT"
-else
-  echo "wimifarma-miauby-app not running; using one-off migrator without dependencies" >&2
-  docker compose run --rm --no-deps wimifarma-miauby-migrator npm run "$NPM_SCRIPT"
-fi
+echo "using one-off Miauby migrator; live app keeps no MySQL runtime connection" >&2
+docker compose build wimifarma-miauby-migrator
+docker compose run --rm --no-deps wimifarma-miauby-migrator npm run "$NPM_SCRIPT"

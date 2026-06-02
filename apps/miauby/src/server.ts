@@ -1,10 +1,6 @@
-import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { Pool, type PoolClient } from 'pg';
 import { buildCanonicalToolContracts } from './tool-contracts.js';
-
-type MysqlRow = RowDataPacket & Record<string, unknown>;
 
 type SourceTable = {
   source: string;
@@ -55,6 +51,30 @@ type CutoverFlow = {
   shadow_storage: string[];
   next_step: string;
   validation: string[];
+};
+
+type MigrationTableSummary = {
+  source: string;
+  target: string;
+  exists?: boolean;
+  source_count?: number;
+  target_count?: number;
+  issues?: string[];
+};
+
+type MigrationRunSummary = {
+  ok?: boolean;
+  mode?: string;
+  limit?: number | null;
+  tables?: MigrationTableSummary[];
+};
+
+type MigrationRunWithSummary = {
+  mode: string;
+  ok: boolean;
+  summary: MigrationRunSummary;
+  started_at: string;
+  finished_at: string | null;
 };
 
 const cutoverFlows: CutoverFlow[] = [
@@ -123,18 +143,6 @@ const cutoverFlows: CutoverFlow[] = [
   },
 ];
 
-const mysqlPool = mysql.createPool({
-  host: env.MYSQL_HOST || '127.0.0.1',
-  port: Number(env.MYSQL_PORT || 3306),
-  database: env.MYSQL_DATABASE || 'wimifarma_app',
-  user: env.MYSQL_USER || 'wimifarma_user',
-  password: env.MYSQL_PASSWORD || '',
-  waitForConnections: true,
-  connectionLimit: 4,
-  charset: 'utf8mb4',
-  dateStrings: true,
-});
-
 const pgPool = new Pool({
   host: env.MIAUBY_POSTGRES_HOST || env.POSTGRES_HOST || '127.0.0.1',
   port: Number(env.MIAUBY_POSTGRES_PORT || env.POSTGRES_PORT || 5432),
@@ -149,10 +157,6 @@ function assertIdentifier(value: string): string {
     throw new Error(`unsafe identifier: ${value}`);
   }
   return value;
-}
-
-function mysqlIdent(value: string): string {
-  return `\`${assertIdentifier(value)}\``;
 }
 
 function pgIdent(value: string): string {
@@ -225,59 +229,6 @@ function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
     sanitized[key] = sanitizeValue(key, value);
   }
   return sanitized;
-}
-
-function checksum(payload: Record<string, unknown>): string {
-  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-}
-
-function stableJson(value: Record<string, unknown>): string {
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(value).sort()) {
-    sorted[key] = value[key];
-  }
-  return JSON.stringify(sorted);
-}
-
-function syntheticLegacyId(source: string, row: Record<string, unknown>): { id: number; sourceKey: string } {
-  const preferredKey = ['chave', 'key', 'nome', 'name', 'codigo', 'code'].find((field) => {
-    const value = row[field];
-    return value !== null && value !== undefined && String(value).trim() !== '';
-  });
-  const sourceKey = preferredKey
-    ? `${source}:${preferredKey}:${String(row[preferredKey]).trim()}`
-    : `${source}:row:${stableJson(sanitizeRow(row))}`;
-  const id = Number.parseInt(crypto.createHash('sha256').update(sourceKey).digest('hex').slice(0, 12), 16);
-  return { id, sourceKey };
-}
-
-function valueAsNumber(value: unknown): number | null {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function pickNumber(row: Record<string, unknown>, fields: string[]): number | null {
-  for (const field of fields) {
-    const value = valueAsNumber(row[field]);
-    if (value !== null) return value;
-  }
-  return null;
-}
-
-function rowProjection(row: MysqlRow, table: SourceTable): {
-  legacy_mysql_id: number | null;
-  legacy_source_key: string;
-  source_checksum: string;
-} {
-  const payload = sanitizeRow(row);
-  const mysqlLegacyId = pickNumber(row, ['id', 'legacy_mysql_id']);
-  const synthetic = mysqlLegacyId === null ? syntheticLegacyId(table.source, row) : null;
-  const legacyId = mysqlLegacyId ?? synthetic?.id ?? null;
-  return {
-    legacy_mysql_id: legacyId,
-    legacy_source_key: synthetic?.sourceKey ?? `${table.source}:id:${legacyId}`,
-    source_checksum: checksum(payload),
-  };
 }
 
 function internalToken(): string {
@@ -401,34 +352,12 @@ function buildCutoverInventory() {
   };
 }
 
-async function tableExists(source: string): Promise<boolean> {
-  const [rows] = await mysqlPool.query<RowDataPacket[]>('SHOW TABLES LIKE ?', [source]);
-  return rows.length > 0;
-}
-
-async function tableColumns(source: string): Promise<string[]> {
-  const [rows] = await mysqlPool.query<RowDataPacket[]>(`SHOW COLUMNS FROM ${mysqlIdent(source)}`);
-  return rows.map((row) => String(row.Field || ''));
-}
-
-async function sourceCount(source: string): Promise<number> {
-  const [rows] = await mysqlPool.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM ${mysqlIdent(source)}`);
-  return Number(rows[0]?.total || 0);
-}
-
 async function targetCount(client: PoolClient, target: string, source: string): Promise<number> {
   const result = await client.query<{ total: string }>(
     `SELECT COUNT(*)::bigint AS total FROM ${pgIdent(target)} WHERE source_table = $1`,
     [source],
   );
   return Number(result.rows[0]?.total || 0);
-}
-
-async function readSourceSamples(source: string, columns: string[], limit: number): Promise<MysqlRow[]> {
-  if (limit <= 0) return [];
-  const order = columns.includes('id') ? ' ORDER BY `id` ASC' : '';
-  const [rows] = await mysqlPool.query<MysqlRow[]>(`SELECT * FROM ${mysqlIdent(source)}${order} LIMIT ${limit}`);
-  return Array.isArray(rows) ? rows : [];
 }
 
 async function latestRuns(limit = 5): Promise<Array<{ mode: string; ok: boolean; started_at: string; finished_at: string | null }>> {
@@ -452,83 +381,123 @@ async function latestRuns(limit = 5): Promise<Array<{ mode: string; ok: boolean;
   }));
 }
 
-async function tableParity(client: PoolClient, table: SourceTable, sampleLimit: number) {
-  const exists = await tableExists(table.source);
-  const summary = {
+function normalizeMigrationTableSummary(value: unknown): MigrationTableSummary | null {
+  if (!isRecord(value)) return null;
+  const source = String(value.source || '').trim();
+  const target = String(value.target || '').trim();
+  if (source === '' || target === '') return null;
+  const issues = Array.isArray(value.issues) ? value.issues.map((issue) => String(issue)).filter(Boolean) : [];
+  const sourceCount = Number(value.source_count ?? 0);
+  const targetCount = Number(value.target_count ?? 0);
+  return {
+    source,
+    target,
+    exists: value.exists === undefined ? undefined : Boolean(value.exists),
+    source_count: Number.isFinite(sourceCount) ? sourceCount : 0,
+    target_count: Number.isFinite(targetCount) ? targetCount : 0,
+    issues,
+  };
+}
+
+function normalizeMigrationSummary(value: unknown): MigrationRunSummary {
+  if (!isRecord(value)) return {};
+  const tables = Array.isArray(value.tables)
+    ? value.tables.map(normalizeMigrationTableSummary).filter((table): table is MigrationTableSummary => table !== null)
+    : [];
+  return {
+    ok: value.ok === undefined ? undefined : Boolean(value.ok),
+    mode: String(value.mode || ''),
+    limit: value.limit === null || value.limit === undefined ? null : Number(value.limit),
+    tables,
+  };
+}
+
+async function latestRunWithSummary(mode: string): Promise<MigrationRunWithSummary | null> {
+  const result = await pgPool.query<{
+    mode: string;
+    ok: boolean;
+    summary: unknown;
+    started_at: Date | string;
+    finished_at: Date | string | null;
+  }>(
+    `SELECT mode, ok, summary, started_at, finished_at
+       FROM miauby_migration_runs
+      WHERE mode = $1
+      ORDER BY id DESC
+      LIMIT 1`,
+    [mode],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    mode: row.mode,
+    ok: row.ok,
+    summary: normalizeMigrationSummary(row.summary),
+    started_at: String(row.started_at),
+    finished_at: row.finished_at === null ? null : String(row.finished_at),
+  };
+}
+
+async function tableParityFromSnapshot(client: PoolClient, table: SourceTable, snapshot: MigrationTableSummary | undefined) {
+  const currentTargetCount = await targetCount(client, table.target, table.source);
+  const snapshotIssues = snapshot?.issues || [];
+  const sourceCount = snapshot?.source_count ?? currentTargetCount;
+  const snapshotTargetCount = snapshot?.target_count ?? currentTargetCount;
+  const issues = [...snapshotIssues];
+
+  if (!snapshot) {
+    issues.push('latest_validate_snapshot_missing');
+  }
+  if (snapshot && snapshotTargetCount !== currentTargetCount) {
+    issues.push(`target_count_changed_after_validate:${currentTargetCount}/${snapshotTargetCount}`);
+  }
+  if (snapshot && sourceCount !== snapshotTargetCount) {
+    issues.push(`count_mismatch:${snapshotTargetCount}/${sourceCount}`);
+  }
+
+  return {
     source: table.source,
     target: table.target,
-    exists,
-    source_count: 0,
-    target_count: await targetCount(client, table.target, table.source),
-    count_match: false,
+    exists: snapshot?.exists ?? true,
+    source_count: sourceCount,
+    target_count: currentTargetCount,
+    count_match: issues.length === 0,
     sample_checked: 0,
     sample_mismatches: 0,
     sample_missing_targets: 0,
     sample: [] as Array<{ legacy_mysql_id: number; target_found: boolean; checksum_match: boolean }>,
-    issues: [] as string[],
+    issues,
   };
-
-  if (!exists) {
-    summary.issues.push('source_table_missing');
-    return summary;
-  }
-
-  const columns = await tableColumns(table.source);
-  summary.source_count = await sourceCount(table.source);
-  summary.count_match = summary.source_count === summary.target_count;
-  if (!summary.count_match) {
-    summary.issues.push(`count_mismatch:${summary.target_count}/${summary.source_count}`);
-  }
-
-  for (const row of await readSourceSamples(table.source, columns, sampleLimit)) {
-    const projected = rowProjection(row, table);
-    if (projected.legacy_mysql_id === null) {
-      summary.sample_mismatches += 1;
-      summary.issues.push('sample_without_stable_id');
-      continue;
-    }
-    const target = await client.query<{ source_checksum: string }>(
-      `SELECT source_checksum FROM ${pgIdent(table.target)} WHERE source_table = $1 AND legacy_mysql_id = $2 LIMIT 1`,
-      [table.source, projected.legacy_mysql_id],
-    );
-    const targetChecksum = target.rows[0]?.source_checksum || '';
-    const targetFound = target.rows.length > 0;
-    const checksumMatch = targetFound && targetChecksum === projected.source_checksum;
-    summary.sample_checked += 1;
-    if (!targetFound) summary.sample_missing_targets += 1;
-    if (!checksumMatch) summary.sample_mismatches += 1;
-    summary.sample.push({
-      legacy_mysql_id: projected.legacy_mysql_id,
-      target_found: targetFound,
-      checksum_match: checksumMatch,
-    });
-  }
-
-  if (summary.sample_missing_targets > 0) {
-    summary.issues.push(`sample_missing_targets:${summary.sample_missing_targets}`);
-  }
-  if (summary.sample_mismatches > 0) {
-    summary.issues.push(`sample_mismatches:${summary.sample_mismatches}`);
-  }
-
-  return summary;
 }
 
 async function buildParity(sampleLimit: number) {
   const client = await pgPool.connect();
   try {
+    const latestValidate = await latestRunWithSummary('validate');
+    const snapshotTables = new Map(
+      (latestValidate?.summary.tables || []).map((table) => [`${table.source}->${table.target}`, table]),
+    );
     const tables = [];
     for (const table of sourceTables) {
-      tables.push(await tableParity(client, table, sampleLimit));
+      tables.push(await tableParityFromSnapshot(client, table, snapshotTables.get(`${table.source}->${table.target}`)));
     }
     const runs = await latestRuns(5);
-    const ok = tables.every((table) => table.issues.length === 0) && runs.some((run) => run.mode === 'validate' && run.ok);
+    const ok = Boolean(latestValidate?.ok) && tables.every((table) => table.issues.length === 0);
     return {
       ok,
-      mode: 'read_only_shadow_parity',
-      official_source: 'site/miauw php + mysql miauw_*',
+      mode: 'read_only_shadow_parity_snapshot',
+      official_source: 'latest migration validate against site/miauw php + mysql miauw_*',
       shadow_target: 'apps/miauby + postgres miauby_*',
       sample_limit: sampleLimit,
+      live_mysql_comparison_enabled: false,
+      source_snapshot: latestValidate
+        ? {
+            mode: latestValidate.mode,
+            ok: latestValidate.ok,
+            started_at: latestValidate.started_at,
+            finished_at: latestValidate.finished_at,
+          }
+        : null,
       latest_runs: runs,
       tables,
     };
@@ -1221,7 +1190,7 @@ const server = app.listen(port, '0.0.0.0', () => {
 
 async function shutdown(): Promise<void> {
   server.close();
-  await Promise.allSettled([mysqlPool.end(), pgPool.end()]);
+  await pgPool.end();
 }
 
 process.on('SIGTERM', () => {

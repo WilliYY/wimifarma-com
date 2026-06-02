@@ -271,6 +271,7 @@ services:
     profiles:
       - migration
     depends_on:
+      - wimifarma-com-db
       - wimifarma-miauby-db
     environment:
       NODE_ENV: production
@@ -299,11 +300,6 @@ services:
       NODE_ENV: production
       PORT: 4100
       BASE_PATH: /miauby
-      MYSQL_HOST: wimifarma-com-db
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: wimifarma_app
-      MYSQL_USER: wimifarma_user
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wimifarma_dev_pass}
       MIAUBY_POSTGRES_HOST: wimifarma-miauby-db
       MIAUBY_POSTGRES_PORT: 5432
       MIAUBY_POSTGRES_DB: wimifarma_miauby
