@@ -31,6 +31,7 @@ Direcao futura registrada em 2026-05-30: o usuario quer usar Next.js e Prisma em
 
 - Projeto local em `C:\Users\Thiesen\Desktop\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
+- Auditoria geral de 2026-06-02 e roadmap para finalizar a migracao 100% ficam em `docs/29-roadmap-final-migracao.md`. Os checks locais, audits npm, healths do VPS e readiness do Miauby passaram; os bloqueios finais sao Miauby interno, core-auth legado, migrador sombra do Miauby e decisao sobre WordPress/site publico.
 - Docker Compose sobe `wimifarma-com-web`, `wimifarma-com-db`, `wimifarma-core-db`, `wimifarma-core-migrator`, `wimifarma-cashback-app`, `wimifarma-cashback-db`, `wimifarma-cotacao-app`, `wimifarma-cotacao-db`, `wimifarma-cotacao-redis`, `wimifarma-gestao-app`, `wimifarma-pedidos-app`, `wimifarma-tarefa-app`, `wimifarma-gestao-db`, `wimifarma-tarefa-db`, `wimifarma-xp-app`, `wimifarma-xp-db`, `wimifarma-codigos-app`, `wimifarma-codigos-db`, `wimifarma-financeiro-app`, `wimifarma-financeiro-db`, `wimifarma-usuarios-app`, `wimifarma-miauw-agent`, `wimifarma-miauw-whatsapp`, `wimifarma-miauw-whatsapp-db`, `wimifarma-miauby-db`, `wimifarma-miauby-migrator` e `wimifarma-miauby-app`.
 - Banco local importado do HostGator no volume ignorado `mysql/`.
 - `wimifarma_app` contem tabelas `wf_*`, `cotacao_*`, `financeiro_*`, legados `gestao_*` e `miauw_*`.
