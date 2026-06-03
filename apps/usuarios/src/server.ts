@@ -1881,7 +1881,12 @@ function renderRoleGuide(): string {
         <span class="users-kicker">Perfis</span>
         <h2>Perfis do sistema</h2>
       </div>
-      <p>Resumo visual do que cada perfil significa hoje. Os m&oacute;dulos continuam respeitando as permiss&otilde;es marcadas em cada usu&aacute;rio.</p>
+      <p>Perfil define a base do usu&aacute;rio. Cards e m&oacute;dulos continuam individuais, salvos no cadastro de cada pessoa.</p>
+    </div>
+    <div class="users-role-guide-note">
+      <strong>Perfil &ne; cards:</strong>
+      trocar o perfil de um usu&aacute;rio afeta somente aquele usu&aacute;rio e n&atilde;o altera os cards de outros logins do mesmo perfil.
+      O card controla a visibilidade na Home; o backend continua validando permiss&atilde;o real por m&oacute;dulo.
     </div>
     <div class="users-role-guide-grid">
       <article class="users-role-info collaborator">
@@ -1890,8 +1895,9 @@ function renderRoleGuide(): string {
           <h3>Colaborador</h3>
         </div>
         <ul>
-          <li>Funcion&aacute;rio operacional comum.</li>
-          <li>Usa somente os m&oacute;dulos liberados no cadastro.</li>
+          <li>Perfil operacional comum.</li>
+          <li>Usa apenas os m&oacute;dulos liberados no cadastro dele.</li>
+          <li>Cards s&atilde;o individuais por usu&aacute;rio.</li>
           <li>No WhatsApp pr&oacute;prio, vira respons&aacute;vel padr&atilde;o da a&ccedil;&atilde;o.</li>
         </ul>
       </article>
@@ -1901,9 +1907,10 @@ function renderRoleGuide(): string {
           <h3>Gerente</h3>
         </div>
         <ul>
-          <li>Perfil gerencial da equipe.</li>
-          <li>Libera fun&ccedil;&otilde;es gerenciais apenas onde o m&oacute;dulo j&aacute; valida gerente.</li>
-          <li>N&atilde;o vira Admin automaticamente.</li>
+          <li>Perfil gerencial.</li>
+          <li>Usa os m&oacute;dulos liberados no cadastro dele.</li>
+          <li>Pode ter permiss&otilde;es gerenciais onde o m&oacute;dulo j&aacute; valida gerente.</li>
+          <li>Cards continuam individuais por usu&aacute;rio.</li>
         </ul>
       </article>
       <article class="users-role-info admin">
@@ -1914,6 +1921,8 @@ function renderRoleGuide(): string {
         <ul>
           <li>Perfil administrativo do sistema.</li>
           <li>Gerencia usu&aacute;rios, m&oacute;dulos e configura&ccedil;&otilde;es conforme a regra atual.</li>
+          <li>Pode ter acesso administrativo por regra pr&oacute;pria.</li>
+          <li>Cards continuam individuais, salvo regra especial de Admin.</li>
           <li>N&atilde;o altera a prote&ccedil;&atilde;o do usu&aacute;rio mestre.</li>
         </ul>
       </article>
@@ -1924,8 +1933,10 @@ function renderRoleGuide(): string {
         </div>
         <ul>
           <li>Perfil do WhatsApp oficial da farm&aacute;cia.</li>
-          <li>&Eacute; canal institucional autorizado, n&atilde;o respons&aacute;vel humano.</li>
+          <li>Canal institucional autorizado, parecido com colaborador.</li>
+          <li>N&atilde;o &eacute; respons&aacute;vel humano padr&atilde;o.</li>
           <li>Se faltar respons&aacute;vel no comando, o Miauby pergunta quem fez.</li>
+          <li><code>miauby sangria 10</code> vira escolha de respons&aacute;vel.</li>
         </ul>
       </article>
     </div>
@@ -1990,7 +2001,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-role-guide">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-profile-cards">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
   <script src="${BASE_PATH}/user-cards.js?v=20260603-toggle" defer></script>

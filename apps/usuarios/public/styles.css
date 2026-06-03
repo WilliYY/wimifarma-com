@@ -483,6 +483,22 @@ a {
   line-height: 1.42;
 }
 
+.users-role-guide-note {
+  border: 1px dashed rgba(168, 15, 67, 0.24);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff7fb;
+  color: #40516a;
+  font-size: 0.86rem;
+  font-weight: 760;
+  line-height: 1.42;
+}
+
+.users-role-guide-note strong {
+  color: var(--wf-wine);
+  font-weight: 950;
+}
+
 .users-role-guide-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -559,6 +575,17 @@ a {
 
 .users-role-info li::marker {
   color: var(--role-accent);
+}
+
+.users-role-info code {
+  border: 1px solid color-mix(in srgb, var(--role-accent) 20%, #ffffff);
+  border-radius: 6px;
+  padding: 1px 5px;
+  background: color-mix(in srgb, var(--role-accent) 9%, #ffffff);
+  color: #243044;
+  font-size: 0.79rem;
+  font-weight: 900;
+  white-space: normal;
 }
 
 .users-layout {
