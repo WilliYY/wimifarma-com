@@ -356,7 +356,7 @@
                         '<small>Expirando: ', escapeHtml(client.saldo_expirando), '</small>',
                         '</div>',
                         '<div class="message-actions">',
-                        '<a class="btn primary" href="', escapeHtml(client.resgate_url), '">Compra Cashback</a>',
+                        '<a class="btn primary" href="', escapeHtml(client.resgate_url), '">Gastar/Usar Cashback</a>',
                         '<a class="btn" href="', escapeHtml(client.selecionar_url), '">Selecionar</a>',
                         '</div>',
                         '</article>'

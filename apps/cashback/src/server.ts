@@ -1228,7 +1228,7 @@ ${body}
   const nav = [
     ['dashboard.php#busca', 'Balcao'],
     ['dashboard.php#cadastro', 'Novo cliente'],
-    ['dashboard.php#resgate', 'Compra Cashback'],
+    ['dashboard.php#resgate', 'Gastar/Usar Cashback'],
     ['mensagens.php', 'Mensagens'],
     ['relatorio.php', 'Configuracao e Relatorio'],
     ['diagnostico.php', 'Diagnostico'],
@@ -1747,7 +1747,7 @@ async function renderDashboard(req: Request): Promise<string> {
         <div class="result-balance"><span>Disponivel</span><strong>${brMoneyCents(balance.saldoDisponivel)}</strong></div>
         <div class="result-actions">
           <a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${num(client.id)}#cliente-atual`)}">Selecionar</a>
-          <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${num(client.id)}#resgate`)}">Compra Cashback</a>
+          <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${num(client.id)}#resgate`)}">Gastar/Usar Cashback</a>
           <a class="btn" href="${pageUrl(`cliente-detalhe.php?id=${num(client.id)}`)}">Historico completo</a>
         </div>
       </article>`;
@@ -1768,7 +1768,7 @@ async function renderDashboard(req: Request): Promise<string> {
           <article class="metric"><span>Proximo vencimento</span><strong>${e(brDate(selected.balance.proximoVencimento))}</strong></article>
         </div>
         <div class="quick-actions">
-          <a class="btn primary" href="#resgate" data-section-link="resgate">Compra Cashback</a>
+          <a class="btn primary" href="#resgate" data-section-link="resgate">Gastar/Usar Cashback</a>
           <a class="btn" href="${pageUrl(`clientes.php?edit=${num(selected.client.id)}`)}">Editar dados</a>
         </div>
         <div class="client-history-grid">
@@ -1826,7 +1826,7 @@ async function renderDashboard(req: Request): Promise<string> {
         <label><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
         <div class="charge-summary full"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback previsto</span><strong class="js-new-cashback">R$ 0,00</strong></div></div>
         <div class="live-preview full js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
-        <button type="submit" class="btn primary full">Registrar Compra Cashback</button>
+        <button type="submit" class="btn primary full">Gastar/Usar Cashback</button>
       </form>
     </section>
 
@@ -1849,7 +1849,7 @@ async function renderDashboard(req: Request): Promise<string> {
       </form>
     </section>
   </div>
-  <aside class="balcao-side"><section class="panel sticky-panel"><span class="kicker">Resumo do cliente</span>${selected?.client && selected.balance ? `<h2>${e(selected.client.name)}</h2><div class="balance-box"><span>Saldo disponivel</span><strong>${brMoneyCents(selected.balance.saldoDisponivel)}</strong><small>Expirando: ${brMoneyCents(selected.balance.saldoExpirando)}</small></div><a class="btn primary" href="#resgate" data-section-link="resgate">Compra Cashback</a>` : '<h2>Selecione um cliente</h2><p>Use a busca para puxar saldo, compras, vencimentos e abrir a Compra Cashback.</p>'}</section></aside>
+  <aside class="balcao-side"><section class="panel sticky-panel"><span class="kicker">Resumo do cliente</span>${selected?.client && selected.balance ? `<h2>${e(selected.client.name)}</h2><div class="balance-box"><span>Saldo disponivel</span><strong>${brMoneyCents(selected.balance.saldoDisponivel)}</strong><small>Expirando: ${brMoneyCents(selected.balance.saldoExpirando)}</small></div><a class="btn primary" href="#resgate" data-section-link="resgate">Gastar/Usar Cashback</a>` : '<h2>Selecione um cliente</h2><p>Use a busca para puxar saldo, compras, vencimentos e abrir a Compra Cashback.</p>'}</section></aside>
 </section>`;
   return htmlShell(req, 'Balcao', body);
 }
