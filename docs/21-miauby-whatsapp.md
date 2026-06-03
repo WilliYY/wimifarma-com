@@ -571,6 +571,7 @@ Quando o login do painel estiver ativo, `/miauw/whatsapp/` deve retornar a tela 
 - O VPS voltou a exigir prefixo operacional: `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`, `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=false` e `MIAUW_WHATSAPP_PREFIX=miauby`.
 - Comandos de Tarefas reconhecem `miauby concluir tarefa ...` como conclusao, limpando o texto da busca para usar apenas o trecho da tarefa.
 - A auditoria encontrou repeticao antiga de `tarefa_reminder` quando a chave de dedupe vinha vazia; o bridge passou a usar tambem fingerprint da mensagem e trava em memoria para Tarefa, Cotacao, Ferias e automacoes gerais. Automacoes com `notify=always` tambem respeitam guarda de repeticao recente.
+- O `.env` do VPS foi ajustado para operacao mais conservadora: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=6`, `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=5000`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=1200` e `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=3500`.
 - Nao enviar teste real de WhatsApp sem controle; use dry-run dos endpoints internos para validar automacoes.
 
 ## Proximas etapas
