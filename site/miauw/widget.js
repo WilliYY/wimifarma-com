@@ -12,7 +12,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260602-home-greeting';
+    link.href = '/miauw/widget.css?v=20260603-widget-compact';
     document.head.appendChild(link);
   }
 

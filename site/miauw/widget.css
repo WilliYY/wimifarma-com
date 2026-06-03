@@ -5,13 +5,13 @@
     --miauw-line: #f0b6c7;
     --miauw-text: #2b0713;
     --miauw-muted: #744659;
-    --miauw-bubble-size: 108px;
-    --miauw-avatar-size: 102px;
+    --miauw-bubble-size: 92px;
+    --miauw-avatar-size: 86px;
     --miauw-head-avatar-size: 50px;
     --miauw-message-avatar-size: 36px;
-    --miauw-panel-offset: 126px;
-    --miauw-nudge-offset: 124px;
-    --miauw-nudge-clearance: 130px;
+    --miauw-panel-offset: 110px;
+    --miauw-nudge-offset: 108px;
+    --miauw-nudge-clearance: 114px;
     position: fixed;
     right: max(18px, env(safe-area-inset-right));
     bottom: max(18px, env(safe-area-inset-bottom));
@@ -148,14 +148,14 @@
 
 .miauw-widget-alert-badge {
     position: absolute;
-    top: -9px;
-    right: -6px;
-    min-width: 30px;
-    height: 30px;
+    top: -7px;
+    right: -5px;
+    min-width: 28px;
+    height: 28px;
     display: grid;
     place-items: center;
     padding: 0 6px;
-    border: 3px solid #fff;
+    border: 2px solid #fff;
     border-radius: 999px;
     background: #e11d48;
     color: #fff;
@@ -1461,13 +1461,13 @@
 
 @media (max-width: 520px) {
     .miauw-widget {
-        --miauw-bubble-size: 94px;
-        --miauw-avatar-size: 88px;
+        --miauw-bubble-size: 82px;
+        --miauw-avatar-size: 76px;
         --miauw-head-avatar-size: 48px;
         --miauw-message-avatar-size: 34px;
-        --miauw-panel-offset: 112px;
-        --miauw-nudge-offset: 110px;
-        --miauw-nudge-clearance: 116px;
+        --miauw-panel-offset: 98px;
+        --miauw-nudge-offset: 96px;
+        --miauw-nudge-clearance: 102px;
         right: 12px;
         bottom: 12px;
     }
