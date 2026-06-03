@@ -259,19 +259,23 @@ function wf_home_redirect(string $path = '/'): void
 
 function wf_home_bubble_style(int $index): string
 {
-    $size = 1.5 + (mt_rand(0, 520) / 100);
-    $distance = 7 + (mt_rand(0, 520) / 100);
+    $size = 1.45 + (mt_rand(0, 500) / 100);
+    $distance = 5.4 + (mt_rand(0, 430) / 100);
     $position = -5 + (mt_rand(0, 11000) / 100);
-    $time = 4 + (mt_rand(0, 320) / 100);
-    $delay = -1 * (1 + (mt_rand(0, 520) / 100));
+    $time = 7.8 + (mt_rand(0, 640) / 100);
+    $delay = -1 * (($index * 0.11) + (mt_rand(0, 780) / 100));
+    $drift = -1.75 + (mt_rand(0, 350) / 100);
+    $swell = 0.9 + (mt_rand(0, 34) / 100);
 
     return sprintf(
-        '--size:%.2frem;--distance:%.2frem;--position:%.2f%%;--time:%.2fs;--delay:%.2fs;',
+        '--size:%.2frem;--distance:%.2frem;--position:%.2f%%;--time:%.2fs;--delay:%.2fs;--drift:%.2frem;--swell:%.2f;',
         $size,
         $distance,
         $position,
         $time,
-        $delay
+        $delay,
+        $drift,
+        $swell
     );
 }
 
@@ -920,13 +924,14 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-footer {
+            --footer-background: #0e8fa0;
             z-index: 1;
             position: relative;
             grid-area: footer;
             min-height: 12.15rem;
             display: grid;
             overflow: visible;
-            background-color: #0e8fa0;
+            background-color: var(--footer-background);
             animation: wf-footer-background-cycle 52s ease-in-out infinite -13s;
             contain: layout;
             isolation: isolate;
@@ -946,29 +951,45 @@ if (!$homeAuthenticated):
             transform: translateZ(0);
         }
 
-        .wf-login-bubbles::before {
+        .wf-login-bubbles::before,
+        .wf-login-bubbles::after {
             content: "";
             position: absolute;
+            background-color: var(--footer-background);
+            will-change: transform;
+        }
+
+        .wf-login-bubbles::before {
             left: -2rem;
             right: -2rem;
             bottom: -1.1rem;
             height: 6.3rem;
-            background-color: #0e8fa0;
             border-radius: 999px 999px 0 0;
-            animation: wf-footer-background-cycle 52s ease-in-out infinite -13s;
+            transform: translate3d(0, 0, 0);
+        }
+
+        .wf-login-bubbles::after {
+            left: -8rem;
+            right: -8rem;
+            bottom: 1.5rem;
+            height: 4.8rem;
+            border-radius: 48% 52% 42% 58% / 64% 58% 42% 36%;
+            animation: wf-liquid-sway 13.5s ease-in-out infinite;
+            transform: translate3d(0, 0, 0) scaleY(1);
+            transform-origin: center bottom;
         }
 
         .wf-login-bubble {
             position: absolute;
             left: var(--position, 50%);
-            bottom: 1.2rem;
-            background-color: #0e8fa0;
+            bottom: 0.74rem;
+            width: var(--size, 4rem);
+            height: var(--size, 4rem);
+            background-color: var(--footer-background);
             border-radius: 100%;
-            animation:
-                wf-bubble-size var(--time, 4s) ease-in infinite var(--delay, 0s),
-                wf-bubble-move var(--time, 4s) ease-in infinite var(--delay, 0s),
-                wf-footer-background-cycle 52s ease-in-out infinite -13s;
-            transform: translate(-50%, 0);
+            animation: wf-bubble-rise var(--time, 8s) cubic-bezier(0.42, 0, 0.24, 1) infinite var(--delay, 0s);
+            transform: translate3d(-50%, 0.7rem, 0) scale(1.02, 0.82);
+            transform-origin: center bottom;
         }
 
         .wf-login-footer-content {
@@ -1262,57 +1283,73 @@ if (!$homeAuthenticated):
 
         @keyframes wf-footer-background-cycle {
             0%, 100% {
-                background-color: #0e8fa0;
+                --footer-background: #0e8fa0;
             }
             12.5% {
-                background-color: #148b55;
+                --footer-background: #148b55;
             }
             25% {
-                background-color: #7c8f19;
+                --footer-background: #7c8f19;
             }
             37.5% {
-                background-color: #c78019;
+                --footer-background: #c78019;
             }
             50% {
-                background-color: #c03568;
+                --footer-background: #c03568;
             }
             62.5% {
-                background-color: #8b4fd1;
+                --footer-background: #8b4fd1;
             }
             75% {
-                background-color: #315fd1;
+                --footer-background: #315fd1;
             }
             87.5% {
-                background-color: #0f7fbb;
+                --footer-background: #0f7fbb;
             }
         }
 
-        @keyframes wf-bubble-size {
-            0%, 75% {
-                width: var(--size, 4rem);
-                height: var(--size, 4rem);
+        @keyframes wf-liquid-sway {
+            0%, 100% {
+                transform: translate3d(-1.2%, 0.18rem, 0) scale3d(1.03, 0.96, 1);
             }
-            100% {
-                width: 0;
-                height: 0;
+            34% {
+                transform: translate3d(1.35%, -0.22rem, 0) scale3d(0.985, 1.06, 1);
+            }
+            68% {
+                transform: translate3d(-0.35%, 0.08rem, 0) scale3d(1.02, 1.015, 1);
             }
         }
 
-        @keyframes wf-bubble-move {
+        @keyframes wf-bubble-rise {
             0% {
-                bottom: 0.7rem;
+                transform: translate3d(-50%, 0.75rem, 0) scale3d(1.08, 0.78, 1);
+            }
+            28% {
+                transform: translate3d(calc(-50% + (var(--drift, 0rem) * 0.22)), calc(var(--distance, 10rem) * -0.31), 0) scale3d(calc(var(--swell, 1) * 1.08), 0.94, 1);
+            }
+            58% {
+                transform: translate3d(calc(-50% + (var(--drift, 0rem) * -0.18)), calc(var(--distance, 10rem) * -0.64), 0) scale3d(calc(var(--swell, 1) * 0.98), 1.04, 1);
+            }
+            82% {
+                transform: translate3d(calc(-50% + (var(--drift, 0rem) * 0.42)), calc(var(--distance, 10rem) * -0.86), 0) scale3d(0.78, 0.78, 1);
             }
             100% {
-                bottom: var(--distance, 10rem);
+                transform: translate3d(calc(-50% + var(--drift, 0rem)), calc(var(--distance, 10rem) * -1), 0) scale3d(0.18, 0.18, 1);
             }
         }
 
-        @keyframes wf-bubble-move-mobile {
+        @keyframes wf-bubble-rise-mobile {
             0% {
-                bottom: 0.55rem;
+                transform: translate3d(-50%, 0.55rem, 0) scale3d(0.88, 0.7, 1);
+            }
+            36% {
+                transform: translate3d(calc(-50% + (var(--drift, 0rem) * 0.18)), -2.5rem, 0) scale3d(0.86, 0.82, 1);
+            }
+            72% {
+                transform: translate3d(calc(-50% + (var(--drift, 0rem) * -0.14)), -4.7rem, 0) scale3d(0.76, 0.86, 1);
             }
             100% {
-                bottom: 6.15rem;
+                transform: translate3d(calc(-50% + (var(--drift, 0rem) * 0.28)), -6.15rem, 0) scale3d(0.14, 0.14, 1);
             }
         }
 
@@ -1396,13 +1433,16 @@ if (!$homeAuthenticated):
                 height: 4.8rem;
             }
 
+            .wf-login-bubbles::after {
+                left: -4rem;
+                right: -4rem;
+                bottom: 1.25rem;
+                height: 3.6rem;
+            }
+
             .wf-login-bubble {
                 animation:
-                    wf-bubble-size var(--time, 4s) ease-in infinite var(--delay, 0s),
-                    wf-bubble-move-mobile var(--time, 4s) ease-in infinite var(--delay, 0s),
-                    wf-footer-background-cycle 52s ease-in-out infinite -13s;
-                transform: translate(-50%, 0) scale(0.82);
-                transform-origin: center bottom;
+                    wf-bubble-rise-mobile var(--time, 8s) cubic-bezier(0.42, 0, 0.24, 1) infinite var(--delay, 0s);
             }
 
             .wf-login-whatsapp {
@@ -1594,6 +1634,7 @@ if (!$homeAuthenticated):
 
             .wf-login-footer,
             .wf-login-bubbles::before,
+            .wf-login-bubbles::after,
             .wf-login-bubble {
                 animation: none !important;
             }
@@ -1602,6 +1643,7 @@ if (!$homeAuthenticated):
                 width: var(--size, 4rem);
                 height: var(--size, 4rem);
                 bottom: 2.8rem;
+                transform: translate3d(-50%, 0, 0) scale(0.82);
             }
         }
     </style>
