@@ -2155,7 +2155,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
             <button class="users-button" type="submit">Criar tarefa privada</button>
           </form>
         </section>
-        <section class="users-subsection">
+        <section class="users-subsection users-whatsapp-subsection">
           <h3>WhatsApp do funcionario</h3>
           <p>Vincula numeros a este usuario para o Miauby poder mandar aviso individual. O numero completo fica no bridge WhatsApp, nao no core.</p>
           ${renderWhatsappLinks(req, whatsappLinks)}

@@ -1100,9 +1100,12 @@ a {
 
 .users-integrations {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 278px), 1fr));
-  gap: 12px;
-  margin-top: 14px;
+  grid-template-columns: minmax(220px, 0.82fr) minmax(320px, 1.18fr);
+  grid-template-areas:
+    "vacation task"
+    "whatsapp whatsapp";
+  gap: 14px;
+  margin-top: 16px;
   align-items: start;
 }
 
@@ -1110,7 +1113,7 @@ a {
   min-width: 0;
   border: 1px solid #dbe3ee;
   border-radius: 8px;
-  padding: 14px;
+  padding: 16px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
 }
@@ -1118,15 +1121,16 @@ a {
 .users-subsection h3 {
   margin: 0;
   color: #243044;
-  font-size: 1rem;
+  font-size: 1.04rem;
+  line-height: 1.15;
 }
 
 .users-subsection p {
-  margin: 6px 0 12px;
+  margin: 6px 0 14px;
   color: var(--wf-muted);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.42;
 }
 
 .users-subsection-head {
@@ -1162,6 +1166,18 @@ a {
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.users-vacation-subsection {
+  grid-area: vacation;
+}
+
+.users-task-subsection {
+  grid-area: task;
+}
+
+.users-whatsapp-subsection {
+  grid-area: whatsapp;
 }
 
 .users-task-form {
@@ -1272,7 +1288,7 @@ a {
 .users-vacation-summary {
   display: grid;
   gap: 4px;
-  margin: 10px 0 12px;
+  margin: 10px 0 14px;
   border: 1px dashed #bfe7cf;
   border-radius: 8px;
   padding: 10px 12px;
@@ -1286,9 +1302,13 @@ a {
 .users-vacation-summary span,
 .users-vacation-summary small {
   color: var(--wf-muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 800;
   line-height: 1.35;
+}
+
+.users-vacation-form .users-form-grid.two {
+  grid-template-columns: repeat(2, minmax(128px, 1fr));
 }
 
 .users-vacation-form .users-actions {
@@ -1319,6 +1339,38 @@ a {
   border-radius: 8px;
   padding: 10px;
   background: #ffffff;
+}
+
+.users-whatsapp-subsection > p {
+  max-width: 720px;
+}
+
+.users-whatsapp-form {
+  gap: 12px;
+}
+
+.users-whatsapp-form .users-form-grid.two {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.users-whatsapp-form .users-fieldset {
+  padding: 14px 12px 12px;
+}
+
+.users-whatsapp-modules {
+  grid-template-columns: repeat(auto-fit, minmax(134px, 1fr));
+  gap: 7px;
+}
+
+.users-whatsapp-modules .users-check {
+  min-height: 36px;
+  padding: 8px 9px;
+  background: #ffffff;
+}
+
+.users-whatsapp-form > .users-button {
+  justify-self: end;
+  min-width: 210px;
 }
 
 .users-whatsapp-link strong,
@@ -1353,14 +1405,28 @@ a {
   cursor: pointer;
 }
 
+@media (min-width: 1560px) {
+  .users-integrations {
+    grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1fr) minmax(300px, 1fr);
+    grid-template-areas: "vacation task whatsapp";
+  }
+}
+
 @media (max-width: 1060px) {
   .users-layout,
   .users-summary,
   .users-form-grid,
   .users-form-grid.two,
-  .users-edit-security-row,
+  .users-edit-security-row {
+    grid-template-columns: 1fr;
+  }
+
   .users-integrations {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "vacation"
+      "task"
+      "whatsapp";
   }
 
   .users-user-head {
