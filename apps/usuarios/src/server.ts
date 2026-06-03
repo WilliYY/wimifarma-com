@@ -1881,12 +1881,12 @@ function renderRoleGuide(): string {
         <span class="users-kicker">Perfis</span>
         <h2>Perfis do sistema</h2>
       </div>
-      <p>Perfil define a base do usu&aacute;rio. Cards e m&oacute;dulos continuam individuais, salvos no cadastro de cada pessoa.</p>
+      <p>Perfil define a base e regras gerais j&aacute; implementadas. Cards e m&oacute;dulos continuam individuais, salvos no cadastro de cada pessoa.</p>
     </div>
     <div class="users-role-guide-note">
       <strong>Perfil &ne; cards:</strong>
       trocar o perfil de um usu&aacute;rio afeta somente aquele usu&aacute;rio e n&atilde;o altera os cards de outros logins do mesmo perfil.
-      O card controla a visibilidade na Home; o backend continua validando permiss&atilde;o real por m&oacute;dulo.
+      Regra geral por perfil s&oacute; vale quando foi pedida e implementada; este card mostra apenas diferen&ccedil;as reais.
     </div>
     <div class="users-role-guide-grid">
       <article class="users-role-info collaborator">
@@ -1895,9 +1895,9 @@ function renderRoleGuide(): string {
           <h3>Colaborador</h3>
         </div>
         <ul>
-          <li>Perfil operacional comum.</li>
-          <li>Usa apenas os m&oacute;dulos liberados no cadastro dele.</li>
-          <li>Cards s&atilde;o individuais por usu&aacute;rio.</li>
+          <li>Perfil operacional.</li>
+          <li>Usa os m&oacute;dulos liberados individualmente no cadastro.</li>
+          <li>Sem pacote autom&aacute;tico de cards por perfil.</li>
           <li>No WhatsApp pr&oacute;prio, vira respons&aacute;vel padr&atilde;o da a&ccedil;&atilde;o.</li>
         </ul>
       </article>
@@ -1908,9 +1908,9 @@ function renderRoleGuide(): string {
         </div>
         <ul>
           <li>Perfil gerencial.</li>
-          <li>Usa os m&oacute;dulos liberados no cadastro dele.</li>
-          <li>Pode ter permiss&otilde;es gerenciais onde o m&oacute;dulo j&aacute; valida gerente.</li>
-          <li>Cards continuam individuais por usu&aacute;rio.</li>
+          <li>Usa os m&oacute;dulos liberados individualmente no cadastro.</li>
+          <li>Tem efeito apenas onde o m&oacute;dulo j&aacute; valida <code>gerente</code>.</li>
+          <li>Sem pacote autom&aacute;tico de cards por perfil.</li>
         </ul>
       </article>
       <article class="users-role-info admin">
@@ -1921,8 +1921,8 @@ function renderRoleGuide(): string {
         <ul>
           <li>Perfil administrativo do sistema.</li>
           <li>Gerencia usu&aacute;rios, m&oacute;dulos e configura&ccedil;&otilde;es conforme a regra atual.</li>
-          <li>Pode ter acesso administrativo por regra pr&oacute;pria.</li>
-          <li>Cards continuam individuais, salvo regra especial de Admin.</li>
+          <li>Pode ter exce&ccedil;&otilde;es administrativas expl&iacute;citas.</li>
+          <li>N&atilde;o aplica cards em massa a outros Admins.</li>
           <li>N&atilde;o altera a prote&ccedil;&atilde;o do usu&aacute;rio mestre.</li>
         </ul>
       </article>
@@ -2001,7 +2001,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-profile-cards">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-profile-rules">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
   <script src="${BASE_PATH}/user-cards.js?v=20260603-toggle" defer></script>
@@ -2064,7 +2064,7 @@ function renderDashboard(
                 </div>
                 <small class="users-field-help" data-password-status>Senha simples e permitida; ela fica com hash seguro e cofre ADM criptografado.</small>
               </div>
-              <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select><small class="users-field-help">Perfil muda permissao base; os modulos continuam controlados abaixo.</small></label>
+              <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select><small class="users-field-help">Perfil muda regra base quando existir; modulos continuam individuais abaixo.</small></label>
               <label class="users-check users-status-check"><input type="checkbox" name="active" value="1" checked><span>Ativo</span></label>
               <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, null)}</select></label>
               <fieldset class="users-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', defaultModules)}</fieldset>
@@ -2239,7 +2239,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <div class="users-form-grid users-account-grid">
           <label class="users-label users-field-display"><span>Nome exibido</span><input class="users-input" type="text" name="display_name" maxlength="120" value="${e(displayName)}" placeholder="${e(row.username)}"></label>
           <label class="users-label users-field-login"><span>Login</span><input class="users-input" type="text" name="username" maxlength="120" value="${e(row.username)}" autocomplete="off"${isAdm ? ' disabled' : ' required'}><small class="users-field-help">${isAdm ? 'Login tecnico protegido.' : 'Usado para entrar. Aceita maiuscula/minuscula.'}</small></label>
-          <label class="users-label users-field-role"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select><small class="users-field-help">${isAdm ? 'Perfil mestre protegido para nao perder acesso.' : 'Muda permissao base; os modulos continuam controlados abaixo.'}</small></label>
+          <label class="users-label users-field-role"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select><small class="users-field-help">${isAdm ? 'Perfil mestre protegido para nao perder acesso.' : 'Muda regra base quando existir; modulos continuam individuais abaixo.'}</small></label>
           <div class="users-label users-password-label users-field-password">
             <span>Senha nova</span>
             <div class="users-password-control" data-password-control>
