@@ -1732,7 +1732,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-master-user">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-cards">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1799,7 +1799,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260602-master-user">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-cards">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
   <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
@@ -1986,10 +1986,10 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         ${csrfField(req)}
         <input type="hidden" name="action" value="update_user">
         <input type="hidden" name="user_id" value="${e(userId)}">
-        <div class="users-form-grid">
-          <label class="users-label"><span>Nome exibido</span><input class="users-input" type="text" name="display_name" maxlength="120" value="${e(displayName)}" placeholder="${e(row.username)}"></label>
-          <label class="users-label"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select></label>
-          <div class="users-label users-password-label">
+        <div class="users-form-grid users-account-grid">
+          <label class="users-label users-field-display"><span>Nome exibido</span><input class="users-input" type="text" name="display_name" maxlength="120" value="${e(displayName)}" placeholder="${e(row.username)}"></label>
+          <label class="users-label users-field-role"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select></label>
+          <div class="users-label users-password-label users-field-password">
             <span>Senha nova</span>
             <div class="users-password-control" data-password-control>
               <input class="users-input" type="password" name="password" autocomplete="new-password" placeholder="Manter atual" data-password-input>
@@ -1999,7 +1999,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
             </div>
             <small class="users-field-help" data-password-status>Senha atual protegida por hash. Para saber a senha, defina uma nova aqui.</small>
           </div>
-          <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>
+          <label class="users-label users-field-xp"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>
         </div>
         ${isAdm ? '<p class="users-master-note">Login tecnico protegido: pode trocar nome exibido, senha, XP e WhatsApp; nao pode desativar, perder admin ou ficar sem acesso aos modulos.</p>' : ''}
         ${isAdm ? `<input type="hidden" name="role" value="${e(row.role)}">` : ''}
