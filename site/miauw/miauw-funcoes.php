@@ -2372,18 +2372,60 @@ function miauw_agent_text_command_catalog(): array
             'keywords' => array('pedido', 'pedidos', 'fornecedor', 'distribuidora', 'boleto', 'parcela', 'chegou'),
         ),
         array(
+            'intent' => 'listar_tarefas',
+            'module' => 'tarefa',
+            'tool' => 'listar_tarefas_usuario',
+            'risk' => 'baixo',
+            'required_fields' => array('responsavel_identificado'),
+            'optional_fields' => array('filtro_texto'),
+            'internal_examples' => array('tarefas', 'minhas tarefas', 'o que preciso fazer', 'lista minhas tarefas'),
+            'whatsapp_examples' => array('miauby tarefas', 'miauby minhas tarefas', 'miauby o que preciso fazer'),
+            'missing_data_replies' => array('Sessao expirada. Entre no sistema antes de consultar tarefas.'),
+            'response_examples' => array('Tarefas do ADM para voce: 1. Conferir caixa.'),
+            'rules' => array('usuario comum ve somente tarefas gerais e privadas dele', 'ADM pode ver tarefas privadas separadas por usuario'),
+            'keywords' => array('tarefa', 'tarefas', 'minhas tarefas', 'pendente'),
+        ),
+        array(
             'intent' => 'criar_tarefa',
             'module' => 'tarefa',
             'tool' => 'criar_tarefa',
             'risk' => 'medio',
             'required_fields' => array('titulo'),
             'optional_fields' => array('descricao', 'prioridade', 'usuario_destino', 'lembrete'),
-            'internal_examples' => array('criar tarefa conferir caixa', 'tarefa para sueli conferir pendencia do caixa', 'lembrete amanha conferir encomenda'),
-            'whatsapp_examples' => array('miauby criar tarefa conferir caixa', 'miauby tarefa para sueli conferir pendencia do caixa'),
+            'internal_examples' => array('criar tarefa conferir caixa', 'tarefa pra mim organizar balcao', 'me lembra de conferir vencidos', 'tarefa para sueli conferir pendencia do caixa', 'tarefa geral limpar balcao'),
+            'whatsapp_examples' => array('miauby criar tarefa conferir caixa', 'miauby tarefa pra mim organizar balcao', 'miauby tarefa para sueli conferir pendencia do caixa', 'miauby tarefa geral limpar balcao'),
             'missing_data_replies' => array('Faltou o titulo da tarefa. Me mande assim: tarefa conferir caixa.'),
-            'response_examples' => array('Tarefa criada: conferir caixa.'),
-            'rules' => array('tarefa privada precisa usuario de destino valido', 'lembrete automatico respeita ferias e allowlist'),
+            'response_examples' => array('Tarefa criada para voce: conferir caixa.', 'Tarefa criada para Thiago: conferir pedidos.', 'Tarefa geral criada: limpar balcao.'),
+            'rules' => array('usuario comum cria tarefa privada para si mesmo por padrao', 'usuario comum nao cria tarefa geral e nao cria para outro usuario', 'ADM/admin pode criar tarefa privada para outro usuario ou tarefa geral', 'tarefa privada precisa usuario de destino valido', 'lembrete automatico respeita ferias e allowlist'),
             'keywords' => array('tarefa', 'lembrete', 'conferir', 'prioridade', 'amanha'),
+        ),
+        array(
+            'intent' => 'concluir_tarefa',
+            'module' => 'tarefa',
+            'tool' => 'concluir_tarefa',
+            'risk' => 'medio',
+            'required_fields' => array('responsavel_identificado', 'texto_da_tarefa'),
+            'optional_fields' => array('task_id'),
+            'internal_examples' => array('terminei a tarefa conferir caixa', 'conclui conferir pedidos', 'ja fiz a tarefa dos distribuidores'),
+            'whatsapp_examples' => array('miauby terminei a tarefa conferir caixa', 'miauby ja fiz a tarefa dos distribuidores'),
+            'missing_data_replies' => array('Qual tarefa voce concluiu?'),
+            'response_examples' => array('Confirma concluir: "Trocar todos os distribuidores"?', 'Tarefa concluida: Trocar todos os distribuidores.'),
+            'rules' => array('procurar apenas tarefas abertas visiveis para o usuario', 'mais de uma tarefa parecida pede escolha curta', 'uma tarefa clara pede confirmacao antes de concluir'),
+            'keywords' => array('concluir', 'terminei', 'feito', 'finalizar tarefa'),
+        ),
+        array(
+            'intent' => 'cancelar_tarefa',
+            'module' => 'tarefa',
+            'tool' => 'cancelar_tarefa',
+            'risk' => 'medio',
+            'required_fields' => array('responsavel_identificado', 'texto_da_tarefa'),
+            'optional_fields' => array('task_id'),
+            'internal_examples' => array('cancelar tarefa conferir caixa', 'nao preciso mais da tarefa organizar balcao'),
+            'whatsapp_examples' => array('miauby cancelar tarefa conferir caixa', 'miauby nao preciso mais da tarefa organizar balcao'),
+            'missing_data_replies' => array('Qual tarefa voce quer cancelar?'),
+            'response_examples' => array('Confirma cancelar: "Conferir caixa"?', 'Tarefa cancelada: Conferir caixa.'),
+            'rules' => array('usuario comum nao cancela tarefa criada pelo ADM para ele', 'ADM/admin pode cancelar conforme regra do app Tarefa', 'uma tarefa clara pede confirmacao antes de cancelar'),
+            'keywords' => array('cancelar tarefa', 'excluir tarefa', 'nao preciso mais'),
         ),
         array(
             'intent' => 'consultar_cotacao',
@@ -2557,7 +2599,7 @@ function miauw_agent_text_command_contracts(string $message = '', string $origin
     }
 
     return array(
-        'version' => 'miauby-text-command-contracts-2026-06-03-session',
+        'version' => 'miauby-text-command-contracts-2026-06-03-tarefas',
         'source' => 'site/miauw/miauw-funcoes.php',
         'mode' => 'text_only_shared_training',
         'origin' => $origin,
@@ -3735,6 +3777,8 @@ function miauw_tools_requiring_confirmation(): array
         'criar_cotacao_rapida',
         'criar_planilha_cotacao',
         'criar_conta_gestao',
+        'concluir_tarefa',
+        'cancelar_tarefa',
     );
 }
 
@@ -3821,6 +3865,14 @@ function miauw_confirmation_summary(string $tool, array $command): string
             . trim((string) ($command['titulo'] ?? 'titulo nao informado'))
             . ', ' . $money($command['valor'] ?? 0)
             . ', categoria ' . trim((string) ($command['categoria'] ?? 'nao informada')) . '.';
+    }
+
+    if ($tool === 'concluir_tarefa') {
+        return 'Concluir tarefa: ' . trim((string) ($command['titulo'] ?? 'tarefa nao informada')) . '?';
+    }
+
+    if ($tool === 'cancelar_tarefa') {
+        return 'Cancelar tarefa: ' . trim((string) ($command['titulo'] ?? 'tarefa nao informada')) . '?';
     }
 
     if ($tool === 'criar_cotacao_urgente') {
@@ -3940,6 +3992,15 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
     if ($tool === 'criar_conta_gestao') {
         $result = miauw_skill_create_gestao_account($command, $userId);
         return miauw_skill_gestao_action_reply($result);
+    }
+
+    if ($tool === 'concluir_tarefa' || $tool === 'cancelar_tarefa') {
+        if (!function_exists('miauw_skill_tarefa_set_status') || !function_exists('miauw_skill_tarefa_status_action_reply')) {
+            throw new RuntimeException('Ferramenta de Tarefas indisponivel.');
+        }
+        $status = $tool === 'concluir_tarefa' ? 'concluida' : 'cancelada';
+        $result = miauw_skill_tarefa_set_status($command, $userId, $status);
+        return miauw_skill_tarefa_status_action_reply($result, $status);
     }
 
     if ($tool === 'criar_cotacao_urgente') {
@@ -6467,6 +6528,13 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             }
 
             return miauw_confirmation_request_reply('criar_conta_gestao', $gestaoCommand, $userId);
+        }
+    }
+
+    if (function_exists('miauw_skill_tarefa_try_controlled_reply')) {
+        $taskReply = miauw_skill_tarefa_try_controlled_reply($message, $userId, 'miauby_interno');
+        if ($taskReply !== null) {
+            return $taskReply;
         }
     }
 

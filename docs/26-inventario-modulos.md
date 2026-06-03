@@ -482,6 +482,9 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - `GET /tarefa/api/internal/summary`: resumo interno de tarefas publicas para Miauby.
 - `POST /tarefa/api/internal/tasks`: cria tarefa publica por ponte interna Node/Postgres.
 - `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios, revalidando usuario ativo/com acesso no app Tarefa, e pode aceitar `remind_at` opcional.
+- `GET /tarefa/api/internal/users`: lista usuarios ativos com acesso ao modulo, para resolver destino de comandos do Miauby sem consultar tabela diretamente.
+- `GET /tarefa/api/internal/tasks/visible`: lista tarefas abertas que o usuario identificado pode ver, separando tarefa privada do ADM, tarefa propria e tarefa geral; ADM/admin pode pedir visao ampliada.
+- `POST /tarefa/api/internal/tasks/status`: altera status para `concluida` ou `cancelada` por comando interno/WhatsApp apos confirmacao, revalidando visibilidade e permissao.
 - Desde 2026-06-01, ADM/admin na tela `/tarefa/` pode escolher o usuario que vera a tarefa. Usuarios comuns continuam vendo tarefas publicas e as privadas atribuidas ao proprio `core_users.id`; ADM/admin ve todas.
 - Lembretes Miauby ficam em `tarefa_reminders`. O worker do app Tarefa busca lembretes vencidos, chama `POST /miauw/whatsapp/internal/task-reminder`, registra tentativas/resultado em Postgres e grava auditoria. O bridge WhatsApp so envia para contato permitido, vinculado ao usuario e com card `tarefas` liberado. Se o dono da tarefa mudar, lembrete agendado antigo e cancelado ou recriado para o novo dono.
 
@@ -491,7 +494,8 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - Login oficial somente por `core_users`.
 - Rollback por MySQL exige restaurar versao anterior e backup validado.
 - Escritas de tela usam CSRF.
-- Endpoint interno de tarefa privada exige token interno.
+- Endpoints internos exigem `TAREFA_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN`, `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_WHATSAPP_INTERNAL_TOKEN`.
+- `tasks/private`, `tasks/visible` e `tasks/status` revalidam `actor_user_id`/usuario de destino no core antes de tocar em tarefa privada.
 - O envio de lembrete usa `TAREFA_MIAUW_WHATSAPP_INTERNAL_BASE_URL` e `TAREFA_MIAUW_WHATSAPP_INTERNAL_TOKEN` ou `MIAUW_WHATSAPP_INTERNAL_TOKEN`; sem token/transporte/contato liberado o lembrete fica registrado como falha, sem quebrar a tarefa.
 
 ### Tabelas MySQL envolvidas
@@ -505,6 +509,7 @@ Legado historico/backup:
 ### Tabelas Postgres oficiais
 
 - `tarefa_tasks`;
+- `tarefa_reminders`;
 - `tarefa_audit_events`;
 - `tarefa_sessions`.
 
@@ -519,17 +524,19 @@ Legado historico/backup:
 ### Fluxos de escrita
 
 - Criar tarefa normal visivel para todos.
-- Criar tarefa publica via Miauby por `POST /tarefa/api/internal/tasks`, com auditoria em Postgres e sem gravar `wf_tarefas`.
-- Criar tarefa privada para um usuario especifico via Usuarios.
+- Criar tarefa publica via Miauby por `POST /tarefa/api/internal/tasks`, com auditoria em Postgres e sem gravar `wf_tarefas`; somente ADM/admin pode criar geral por comando.
+- Criar tarefa privada para um usuario especifico via Usuarios ou por comando ADM/admin no Miauby; usuario comum cria privada para si por padrao.
 - Editar titulo, descricao e prioridade.
 - Concluir, reabrir ou cancelar tarefa.
+- Concluir/cancelar por Miauby usa `POST /tarefa/api/internal/tasks/status`, exige confirmacao humana, cancela lembrete pendente quando o status deixa de ser `aberta` e grava auditoria.
 - Registrar auditoria em Postgres/core sem espelho MySQL.
 
 ### Integracoes
 
 - Home publica usa badge de tarefas abertas.
 - Usuarios delega tarefas privadas por endpoint interno.
-- Miauby cria e consulta tarefas por endpoints internos tokenizados do app Tarefa; nao grava nem consulta `wf_tarefas`.
+- Miauby interno e Miauby WhatsApp criam, listam, concluem e cancelam tarefas por endpoints internos tokenizados do app Tarefa; nao gravam nem consultam `wf_tarefas`.
+- Miauby interno usa a sessao logada como responsavel padrao. Miauby WhatsApp usa o numero vinculado/allowlist e exige card `Tarefas`.
 - Core auth centraliza login.
 
 ### Riscos
@@ -538,6 +545,7 @@ Legado historico/backup:
 - Rollback agora depende de restaurar versao anterior e backup, entao validar VPS antes de promover para `main`.
 - Badge da home deve continuar contando tarefas abertas corretas.
 - Escrita via Miauby precisa preservar autor e auditoria.
+- Busca textual para concluir/cancelar pode achar varias tarefas parecidas; nesse caso o Miauby deve listar opcoes e nao alterar nada.
 
 ### Proxima acao segura
 

@@ -13,6 +13,7 @@ type User = {
   id: number;
   username: string;
   role: string;
+  display_name?: string;
 };
 
 type Flash = {
@@ -27,6 +28,7 @@ type TaskReminderStatus = 'scheduled' | 'sent' | 'failed' | 'cancelled' | 'skipp
 type CoreUserRow = {
   id: string;
   username: string;
+  display_name?: string | null;
   password_hash: string | null;
   role: string | null;
   active: boolean;
@@ -53,8 +55,13 @@ type TaskRow = {
 type AssignableTaskUserRow = {
   id: string;
   username: string;
+  display_name?: string | null;
   role: string | null;
   can_access: boolean;
+};
+
+type InternalTaskActorRow = AssignableTaskUserRow & {
+  active: boolean;
 };
 
 type TaskReminderRow = {
@@ -99,7 +106,7 @@ const rootDir = path.resolve(__dirname, '..');
 const env = process.env;
 
 const SERVICE_NAME = 'tarefa';
-const SERVICE_VERSION = '1.3.0';
+const SERVICE_VERSION = '1.3.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/tarefa');
 const PORT = Number.parseInt(env.PORT || '3500', 10);
 const SESSION_SECRET = env.TAREFA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -663,10 +670,22 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('CREATE INDEX IF NOT EXISTS tarefa_reminders_task_idx ON tarefa_reminders (task_id, remind_at DESC, id DESC)');
 }
 
-function isTaskAdmin(user: User | null | undefined): boolean {
-  const username = normalizeUsername(user?.username);
-  const role = normalizeUsername(user?.role);
+function isTaskAdminIdentity(usernameValue: unknown, roleValue: unknown): boolean {
+  const username = normalizeUsername(usernameValue);
+  const role = normalizeUsername(roleValue);
   return username === 'adm' || role === 'adm' || role === 'admin';
+}
+
+function isTaskAdmin(user: User | null | undefined): boolean {
+  return isTaskAdminIdentity(user?.username, user?.role);
+}
+
+function isInternalTaskAdmin(user: InternalTaskActorRow | null | undefined): boolean {
+  return isTaskAdminIdentity(user?.username, user?.role);
+}
+
+function taskDisplayName(user: Partial<AssignableTaskUserRow | InternalTaskActorRow> | null | undefined): string {
+  return cleanText(user?.display_name || user?.username || '', 120);
 }
 
 function visibleTasksWhere(userId: number, canViewAll = false): string {
@@ -726,6 +745,7 @@ async function listAssignableTaskUsers(): Promise<AssignableTaskUserRow[]> {
   const result = await requireCorePgPool('task assignees').query<AssignableTaskUserRow>(
     `SELECT u.id::text AS id,
             u.username,
+            COALESCE(u.display_name, '') AS display_name,
             u.role,
             COALESCE(p.can_access, FALSE) AS can_access
        FROM core_users u
@@ -751,6 +771,7 @@ async function taskAssigneeById(userId: number): Promise<AssignableTaskUserRow |
   const result = await requireCorePgPool('task assignee').query<AssignableTaskUserRow>(
     `SELECT u.id::text AS id,
             u.username,
+            COALESCE(u.display_name, '') AS display_name,
             u.role,
             COALESCE(p.can_access, FALSE) AS can_access
        FROM core_users u
@@ -768,6 +789,30 @@ async function taskAssigneeById(userId: number): Promise<AssignableTaskUserRow |
     [userId],
   );
   return result.rows[0] || null;
+}
+
+async function internalTaskActorById(userId: number): Promise<InternalTaskActorRow | null> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) return null;
+  const result = await requireCorePgPool('task internal actor').query<InternalTaskActorRow>(
+    `SELECT u.id::text AS id,
+            u.username,
+            COALESCE(u.display_name, '') AS display_name,
+            u.role,
+            u.active,
+            COALESCE(p.can_access, FALSE) AS can_access
+       FROM core_users u
+       LEFT JOIN core_user_module_permissions p
+         ON p.user_id = u.id
+        AND p.module_key = 'tarefa'
+      WHERE u.id = $1
+        AND u.active = TRUE
+      LIMIT 1`,
+    [userId],
+  );
+  const actor = result.rows[0] || null;
+  if (!actor) return null;
+  if (isInternalTaskAdmin(actor) || actor.can_access === true) return actor;
+  return null;
 }
 
 async function selectedAssigneeFromRequest(req: Request, canManageAll: boolean): Promise<AssignableTaskUserRow | null> {
@@ -1085,11 +1130,19 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
   if (!Number.isSafeInteger(assignedUserId) || assignedUserId <= 0) {
     throw new Error('Usuario de destino invalido.');
   }
+  const actor = actorUserId ? await internalTaskActorById(actorUserId) : null;
+  if (actorUserId && !actor) {
+    throw new Error('Usuario executor nao tem acesso ao modulo Tarefas.');
+  }
+  if (actor && actorUserId !== assignedUserId && !isInternalTaskAdmin(actor)) {
+    throw new Error('Somente ADM pode direcionar tarefa para outro usuario.');
+  }
   const assignee = await taskAssigneeById(assignedUserId);
   if (!assignee) {
     throw new Error('Usuario de destino nao tem acesso ao modulo Tarefas.');
   }
   const assignedUsername = cleanText(assignee.username, 120);
+  const assignedDisplayName = taskDisplayName(assignee);
 
   const client = await pgPool.connect();
   try {
@@ -1110,12 +1163,13 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
       Number(task.id),
       actorUserId,
       'tarefa_privada_delegada',
-      `Tarefa privada delegada para ${assignedUsername || assignedUserId}: ${title}`,
+      `Tarefa privada delegada para ${assignedDisplayName || assignedUsername || assignedUserId}: ${title}`,
     );
     await client.query('COMMIT');
     void logCoreAudit(actorUserId, 'tarefa_privada_delegada', 'task', String(task.id), `Tarefa privada delegada por ${actorUsername || 'sistema'}.`, {
       assigned_core_user_id: assignedUserId,
       assigned_username: assignedUsername || null,
+      assigned_display_name: assignedDisplayName || null,
       miauby_reminder_at: remindAt ? remindAt.toISOString() : null,
     });
     return task;
@@ -1134,6 +1188,13 @@ async function createPublicTaskFromInternal(req: Request): Promise<TaskRow> {
   const actorUserId = Number(req.body?.actor_user_id || req.body?.usuario_id || 0) || null;
   const actorUsername = cleanText(req.body?.actor_username || req.body?.username || 'Miauby', 120);
   if (!title) throw new Error('Informe o titulo da tarefa.');
+  const actor = actorUserId ? await internalTaskActorById(actorUserId) : null;
+  if (actorUserId && !actor) {
+    throw new Error('Usuario executor nao tem acesso ao modulo Tarefas.');
+  }
+  if (actor && !isInternalTaskAdmin(actor)) {
+    throw new Error('Somente ADM pode criar tarefa geral pelo Miauby.');
+  }
 
   const client = await pgPool.connect();
   try {
@@ -1463,8 +1524,151 @@ function internalErrorStatus(error: unknown): number {
     'Escolha uma hora futura para o lembrete Miauby.',
     'Escolha um usuario para o lembrete Miauby.',
     'Lembrete Miauby so pode ser agendado em tarefa aberta.',
+    'Usuario executor nao tem acesso ao modulo Tarefas.',
+    'Somente ADM pode direcionar tarefa para outro usuario.',
+    'Somente ADM pode criar tarefa geral pelo Miauby.',
+    'Voce nao pode cancelar essa tarefa pelo Miauby.',
+    'Tarefa nao encontrada para esse usuario.',
+    'Status interno invalido para esse comando.',
   ];
+  if (message.startsWith('Somente ADM') || message.includes('nao tem acesso') || message.includes('nao pode cancelar')) return 403;
   return validationMessages.includes(message) ? 400 : 500;
+}
+
+function normalizeTaskSearch(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function taskSearchScore(query: string, task: TaskRow): number {
+  const cleanQuery = normalizeTaskSearch(query);
+  if (!cleanQuery) return 1;
+  const title = normalizeTaskSearch(task.title);
+  const description = normalizeTaskSearch(task.description || '');
+  const haystack = `${title} ${description}`.trim();
+  if (!haystack) return 0;
+  if (title === cleanQuery) return 100;
+  if (title.includes(cleanQuery)) return 82;
+  if (haystack.includes(cleanQuery)) return 66;
+  const queryWords = cleanQuery.split(/\s+/).filter((word) => word.length >= 3);
+  if (!queryWords.length) return 0;
+  const matched = queryWords.filter((word) => haystack.includes(word)).length;
+  return matched === 0 ? 0 : Math.round((matched / queryWords.length) * 55);
+}
+
+function taskScopeForActor(task: TaskRow, actor: InternalTaskActorRow): string {
+  const actorId = Number(actor.id || 0);
+  const assignedId = Number(task.assigned_core_user_id || 0);
+  const createdBy = Number(task.created_by || 0);
+  const delegatedBy = Number(task.delegated_by || 0);
+  if (!assignedId) return 'general';
+  if (assignedId === actorId && (delegatedBy || createdBy) && delegatedBy !== actorId && createdBy !== actorId) return 'admin_to_user';
+  if (assignedId === actorId) return 'mine';
+  return 'assigned_other';
+}
+
+function internalTaskPayload(task: TaskRow, actor: InternalTaskActorRow, score = 0): Record<string, unknown> {
+  return {
+    ...publicTaskPayload(task),
+    assigned_core_user_id: task.assigned_core_user_id ? Number(task.assigned_core_user_id) : null,
+    assigned_username: task.assigned_username_snapshot || '',
+    created_by: task.created_by === null ? null : Number(task.created_by),
+    delegated_by: task.delegated_by === null ? null : Number(task.delegated_by),
+    delegated_at: task.delegated_at,
+    scope: taskScopeForActor(task, actor),
+    match_score: score,
+  };
+}
+
+async function visibleOpenTasksForInternal(actor: InternalTaskActorRow, query = '', adminViewAll = false, limit = 80): Promise<Array<{ task: TaskRow; score: number }>> {
+  const actorId = Number(actor.id || 0);
+  const canViewAll = isInternalTaskAdmin(actor) && adminViewAll;
+  const result = await pgPool.query<TaskRow>(
+    `SELECT *
+       FROM tarefa_tasks
+      WHERE status = 'aberta'
+        ${canViewAll ? '' : 'AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $1)'}
+      ORDER BY
+        CASE priority WHEN 'alta' THEN 3 WHEN 'normal' THEN 2 ELSE 1 END DESC,
+        created_at ASC,
+        id ASC
+      LIMIT 160`,
+    canViewAll ? [] : [actorId],
+  );
+  const scored = result.rows
+    .map((task) => ({ task, score: taskSearchScore(query, task) }))
+    .filter((item) => normalizeTaskSearch(query) === '' || item.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      const leftPriority = left.task.priority === 'alta' ? 3 : left.task.priority === 'normal' ? 2 : 1;
+      const rightPriority = right.task.priority === 'alta' ? 3 : right.task.priority === 'normal' ? 2 : 1;
+      if (rightPriority !== leftPriority) return rightPriority - leftPriority;
+      return Number(left.task.id || 0) - Number(right.task.id || 0);
+    });
+  return scored.slice(0, Math.max(1, Math.min(120, limit)));
+}
+
+function canCancelTaskInternally(task: TaskRow, actor: InternalTaskActorRow): boolean {
+  if (isInternalTaskAdmin(actor)) return true;
+  const actorId = Number(actor.id || 0);
+  const createdBy = Number(task.created_by || 0);
+  const delegatedBy = Number(task.delegated_by || 0);
+  return actorId > 0 && (createdBy === actorId || delegatedBy === actorId);
+}
+
+async function setTaskStatusFromInternal(actor: InternalTaskActorRow, taskId: number, status: TaskStatus): Promise<TaskRow> {
+  if (!Number.isSafeInteger(taskId) || taskId <= 0) throw new Error('Tarefa nao encontrada para esse usuario.');
+  const actorId = Number(actor.id || 0);
+  const canManageAll = isInternalTaskAdmin(actor);
+  const completedAt = status === 'concluida' ? 'now()' : 'NULL';
+  const canceledAt = status === 'cancelada' ? 'now()' : 'NULL';
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query<TaskRow>(
+      `SELECT *
+         FROM tarefa_tasks
+        WHERE id = $1
+          AND status = 'aberta'
+          ${canManageAll ? '' : 'AND (assigned_core_user_id IS NULL OR assigned_core_user_id = $2)'}
+        FOR UPDATE`,
+      canManageAll ? [taskId] : [taskId, actorId],
+    );
+    const current = existing.rows[0];
+    if (!current) throw new Error('Tarefa nao encontrada para esse usuario.');
+    if (status === 'cancelada' && !canCancelTaskInternally(current, actor)) {
+      throw new Error('Voce nao pode cancelar essa tarefa pelo Miauby.');
+    }
+    const result = await client.query<TaskRow>(
+      `UPDATE tarefa_tasks
+          SET status = $1,
+              completed_at = ${completedAt},
+              canceled_at = ${canceledAt},
+              updated_at = NOW()
+        WHERE id = $2
+        RETURNING *`,
+      [status, taskId],
+    );
+    const task = result.rows[0];
+    if (!task) throw new Error('Tarefa nao encontrada para esse usuario.');
+    await cancelScheduledReminders(client, taskId, actorId || null, `Lembrete Miauby cancelado porque a tarefa foi marcada como ${status} pelo Miauby.`);
+    await auditPg(client, taskId, actorId || null, 'tarefa_status_miauby', `Tarefa marcada como ${status} pelo Miauby.`);
+    await client.query('COMMIT');
+    void logCoreAudit(actorId || null, 'tarefa_status_miauby', 'task', String(taskId), `Tarefa marcada como ${status} pelo Miauby.`, {
+      source: 'miauby_task_command',
+      status,
+    });
+    return task;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function renderApp(req: Request): Promise<string> {
@@ -1799,6 +2003,68 @@ app.post(`${BASE_PATH}/api/internal/tasks`, requireInternalToken, asyncRoute(asy
   });
 }));
 
+app.get(`${BASE_PATH}/api/internal/users`, requireInternalToken, asyncRoute(async (req, res) => {
+  const q = normalizeTaskSearch(req.query.q || '');
+  const users = await listAssignableTaskUsers();
+  const filtered = q
+    ? users.filter((user) => {
+      const label = normalizeTaskSearch(`${user.username} ${user.display_name || ''}`);
+      return label.includes(q) || q.split(/\s+/).filter(Boolean).every((word) => label.includes(word));
+    })
+    : users;
+  res.json({
+    ok: true,
+    source: 'core_postgres',
+    users: filtered.slice(0, 50).map((user) => ({
+      id: Number(user.id),
+      username: user.username,
+      display_name: user.display_name || user.username,
+      role: user.role || '',
+      can_access: user.can_access === true,
+      can_manage_all: isTaskAdminIdentity(user.username, user.role),
+    })),
+  });
+}));
+
+app.get(`${BASE_PATH}/api/internal/tasks/visible`, requireInternalToken, asyncRoute(async (req, res) => {
+  const actorUserId = Number(req.query.actor_user_id || req.query.user_id || 0);
+  const actor = await internalTaskActorById(actorUserId);
+  if (!actor) throw new Error('Usuario executor nao tem acesso ao modulo Tarefas.');
+  const q = cleanText(req.query.q || req.query.search || '', 180);
+  const limit = Number.parseInt(String(req.query.limit || '80'), 10) || 80;
+  const adminViewAll = ['1', 'true', 'sim', 'yes'].includes(String(req.query.admin_view_all || '').toLowerCase());
+  const tasks = await visibleOpenTasksForInternal(actor, q, adminViewAll, limit);
+  res.json({
+    ok: true,
+    source: 'postgres',
+    actor: {
+      id: Number(actor.id),
+      username: actor.username,
+      display_name: taskDisplayName(actor),
+      role: actor.role || '',
+      can_manage_all: isInternalTaskAdmin(actor),
+    },
+    scope: isInternalTaskAdmin(actor) && adminViewAll ? 'admin_all' : 'actor_visible',
+    query: q || null,
+    tasks: tasks.map((item) => internalTaskPayload(item.task, actor, item.score)),
+  });
+}));
+
+app.post(`${BASE_PATH}/api/internal/tasks/status`, requireInternalToken, asyncRoute(async (req, res) => {
+  const actorUserId = Number(req.body?.actor_user_id || req.body?.user_id || 0);
+  const actor = await internalTaskActorById(actorUserId);
+  if (!actor) throw new Error('Usuario executor nao tem acesso ao modulo Tarefas.');
+  const taskId = Number(req.body?.task_id || req.body?.id || 0);
+  const status = validStatus(req.body?.status || '');
+  if (status === 'aberta') throw new Error('Status interno invalido para esse comando.');
+  const task = await setTaskStatusFromInternal(actor, taskId, status);
+  res.json({
+    ok: true,
+    source: 'postgres',
+    task: internalTaskPayload(task, actor),
+  });
+}));
+
 app.post(`${BASE_PATH}/api/internal/tasks/private`, requireInternalToken, asyncRoute(async (req, res) => {
   const task = await createPrivateTaskFromInternal(req);
   res.json({
@@ -1810,6 +2076,7 @@ app.post(`${BASE_PATH}/api/internal/tasks/private`, requireInternalToken, asyncR
       title: task.title,
       assigned_core_user_id: Number(task.assigned_core_user_id || 0),
       assigned_username: task.assigned_username_snapshot || '',
+      assigned_display_name: task.assigned_username_snapshot || '',
     },
   });
 }));

@@ -17,6 +17,10 @@ import {
   parseSangriaCommand,
   type SangriaCommand,
 } from './sangria-command.js';
+import {
+  parseTaskCommand,
+  type TaskCommand,
+} from './task-command.js';
 
 const { Pool } = pg;
 
@@ -482,6 +486,22 @@ type PedidosArrivalOrder = {
   remaining_label: string;
 };
 
+type TarefaVisibleTask = {
+  id: number;
+  title: string;
+  priority: string;
+  scope: string;
+  assigned_username: string;
+};
+
+type TarefaUser = {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  can_manage_all: boolean;
+};
+
 type FinanceiroOpenCashDay = {
   date: string;
   status: string;
@@ -705,6 +725,8 @@ const N8N_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_BASE_URL') ||
 const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL') || textEnv('N8N_WEBHOOK_URL'));
 const N8N_WEBHOOK_SECRET_CONFIGURED = textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET') !== '';
 const PEDIDOS_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL') || 'http://wimifarma-pedidos-app:3300/pedidos');
+const TAREFA_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_TAREFA_INTERNAL_BASE_URL') || textEnv('TAREFA_INTERNAL_BASE_URL') || 'http://wimifarma-tarefa-app:3500/tarefa');
+const TAREFA_INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_TAREFA_INTERNAL_TOKEN') || textEnv('TAREFA_INTERNAL_TOKEN') || INTERNAL_TOKEN;
 const FINANCEIRO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL') || textEnv('FINANCEIRO_INTERNAL_BASE_URL') || 'http://wimifarma-financeiro-app:3800/financeiro');
 const COTACAO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_COTACAO_INTERNAL_BASE_URL') || textEnv('COTACAO_INTERNAL_BASE_URL') || 'http://wimifarma-cotacao-app:3000/cotacao');
 const COTACAO_INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_COTACAO_INTERNAL_TOKEN') || textEnv('COTACAO_INTERNAL_TOKEN') || INTERNAL_TOKEN;
@@ -919,12 +941,12 @@ function numberEnv(name: string, fallback: number, min: number, max: number): nu
   return Math.max(min, Math.min(max, value));
 }
 
-function internalPhpJsonHeaders(): Record<string, string> {
+function internalPhpJsonHeaders(token = INTERNAL_TOKEN): Record<string, string> {
   return {
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    'X-Miauw-Agent-Token': INTERNAL_TOKEN,
-    'X-Miauw-Internal-Token': INTERNAL_TOKEN,
+    'X-Miauw-Agent-Token': token,
+    'X-Miauw-Internal-Token': token,
     'X-Forwarded-Proto': 'https',
   };
 }
@@ -4273,6 +4295,12 @@ function cancellationReplyForPending(pending: PendingConfirmationRow): string {
   if (pending.tool === 'registrar_sangria_whatsapp') {
     return 'Cancelado. Sangria nao foi registrada.';
   }
+  if (pending.tool === 'concluir_tarefa_whatsapp') {
+    return 'Cancelado. Tarefa nao foi concluida.';
+  }
+  if (pending.tool === 'cancelar_tarefa_whatsapp') {
+    return 'Cancelado. Tarefa nao foi cancelada.';
+  }
   if (pending.tool === 'criar_lancamento_financeiro') {
     const command = isRecord(pending.command_payload) ? pending.command_payload : {};
     const category = normalizeIntentText(safeText(command.categoria, 80));
@@ -4964,6 +4992,9 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
   if (pending.tool === 'registrar_sangria_whatsapp') {
     return executeConfirmedSangriaCreate(pending, traceId, senderMask, userContext);
   }
+  if (pending.tool === 'concluir_tarefa_whatsapp' || pending.tool === 'cancelar_tarefa_whatsapp') {
+    return executeConfirmedTarefaStatus(pending, userContext);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
   try {
@@ -5006,6 +5037,275 @@ async function executeConfirmedSangriaCreate(pending: PendingConfirmationRow, tr
   if (!command) throw new Error('sangria_confirmation_payload_invalid');
   const reply = await createSangriaFromWhatsapp(command, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
   return reply.text;
+}
+
+function isWhatsappTaskAdmin(userContext: WhatsappUserContext): boolean {
+  const username = normalizeIntentText(userContext.username || '');
+  const role = normalizeIntentText(userContext.role || '');
+  return username === 'adm' || role === 'adm' || role === 'admin';
+}
+
+function tarefaPriorityLabel(priority: string): string {
+  const clean = normalizeIntentText(priority);
+  if (clean === 'alta') return 'Alta';
+  if (clean === 'baixa') return 'Baixa';
+  return 'Normal';
+}
+
+async function fetchTarefaVisibleTasks(userContext: WhatsappUserContext, query = '', adminViewAll = false): Promise<TarefaVisibleTask[]> {
+  if (!TAREFA_INTERNAL_TOKEN) throw new Error('tarefa_internal_token_not_configured');
+  if (!userContext.id || !userContext.linked) throw new Error('tarefa_unlinked_user');
+  const params = new URLSearchParams({
+    actor_user_id: String(userContext.id),
+    admin_view_all: adminViewAll ? '1' : '0',
+    limit: query ? '12' : '80',
+  });
+  if (query) params.set('q', query);
+  const response = await fetch(`${TAREFA_INTERNAL_BASE_URL}/api/internal/tasks/visible?${params.toString()}`, {
+    headers: internalPhpJsonHeaders(TAREFA_INTERNAL_TOKEN),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `tarefa_visible_http_${response.status}`);
+  }
+  return (Array.isArray(data.tasks) ? data.tasks : [])
+    .filter(isRecord)
+    .map((task) => ({
+      id: Number(task.id || 0),
+      title: safeText(task.title, 180),
+      priority: safeText(task.priority, 20) || 'normal',
+      scope: safeText(task.scope, 40) || 'general',
+      assigned_username: safeText(task.assigned_username, 80),
+    }))
+    .filter((task) => task.id > 0 && task.title);
+}
+
+function formatTarefaListReply(tasks: TarefaVisibleTask[]): string {
+  if (!tasks.length) return 'Nenhuma tarefa aberta para voce. Milagre operacional detectado.';
+  const groups: Array<[string, string, TarefaVisibleTask[]]> = [
+    ['admin_to_user', '*Tarefas do ADM para voce*', []],
+    ['mine', '*Minhas tarefas*', []],
+    ['general', '*Tarefas gerais*', []],
+    ['assigned_other', '*Tarefas privadas por usuario*', []],
+  ];
+  for (const task of tasks) {
+    const group = groups.find(([key]) => key === task.scope) || groups[3];
+    group[2].push(task);
+  }
+  const lines: string[] = [];
+  for (const [, title, items] of groups) {
+    if (!items.length) continue;
+    lines.push(title);
+    items.slice(0, 6).forEach((task, index) => {
+      const owner = task.scope === 'assigned_other' && task.assigned_username ? `[${task.assigned_username}] ` : '';
+      lines.push(`${index + 1}. ${owner}${task.title} - ${tarefaPriorityLabel(task.priority)}`);
+    });
+    lines.push('');
+  }
+  return lines.join('\n').trim();
+}
+
+async function fetchTarefaUsers(query: string): Promise<TarefaUser[]> {
+  if (!TAREFA_INTERNAL_TOKEN) throw new Error('tarefa_internal_token_not_configured');
+  const params = new URLSearchParams();
+  if (query) params.set('q', query);
+  const response = await fetch(`${TAREFA_INTERNAL_BASE_URL}/api/internal/users${params.toString() ? `?${params.toString()}` : ''}`, {
+    headers: internalPhpJsonHeaders(TAREFA_INTERNAL_TOKEN),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `tarefa_users_http_${response.status}`);
+  }
+  return (Array.isArray(data.users) ? data.users : [])
+    .filter(isRecord)
+    .map((user) => ({
+      id: Number(user.id || 0),
+      username: safeText(user.username, 80),
+      display_name: safeText(user.display_name, 120),
+      role: safeText(user.role, 40),
+      can_manage_all: user.can_manage_all === true,
+    }))
+    .filter((user) => user.id > 0 && user.username);
+}
+
+async function resolveTarefaUserHint(hint: string): Promise<TarefaUser | null> {
+  const cleanHint = safeText(hint, 80);
+  if (!cleanHint) return null;
+  const normalizedHint = normalizeIntentText(cleanHint);
+  const users = await fetchTarefaUsers(cleanHint);
+  for (const user of users) {
+    const username = normalizeIntentText(user.username);
+    const display = normalizeIntentText(user.display_name);
+    if (username === normalizedHint || display === normalizedHint || display.startsWith(normalizedHint)) return user;
+  }
+  return users.length === 1 ? users[0] : null;
+}
+
+async function promoteLeadingTarefaUser(command: TaskCommand, userContext: WhatsappUserContext): Promise<TaskCommand> {
+  if (command.action !== 'create' || command.scope !== 'self' || !isWhatsappTaskAdmin(userContext)) return command;
+  const match = command.title.match(/^\s*([A-Za-z0-9._-]{2,40})\s+(.+)$/);
+  if (!match) return command;
+  const user = await resolveTarefaUserHint(match[1]).catch(() => null);
+  if (!user) return command;
+  return {
+    ...command,
+    scope: 'target',
+    target_hint: user.display_name || user.username,
+    title: safeText(match[2], 180),
+  };
+}
+
+async function createTarefaFromWhatsapp(command: TaskCommand, userContext: WhatsappUserContext): Promise<ReplyResult> {
+  if (!TAREFA_INTERNAL_TOKEN) throw new Error('tarefa_internal_token_not_configured');
+  if (!userContext.id || !userContext.linked) {
+    return {
+      text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de mexer em tarefas.',
+      engine: 'blocked',
+      reason: 'tarefa_unlinked_user',
+    };
+  }
+  const prepared = await promoteLeadingTarefaUser(command, userContext);
+  if (!prepared.title) {
+    return {
+      text: 'Faltou o titulo. Me mande assim: miauby tarefa conferir caixa.',
+      engine: 'local',
+      reason: 'tarefa_missing_title',
+    };
+  }
+
+  const basePayload = {
+    actor_user_id: userContext.id,
+    actor_username: userContext.username,
+    priority: prepared.priority,
+    title: prepared.title,
+    description: prepared.description,
+    source: 'miauby_whatsapp',
+  };
+
+  if (prepared.scope === 'general') {
+    if (!isWhatsappTaskAdmin(userContext)) {
+      return {
+        text: 'Voce nao pode criar tarefa geral pelo WhatsApp.',
+        engine: 'blocked',
+        reason: 'tarefa_general_forbidden',
+      };
+    }
+    const response = await fetch(`${TAREFA_INTERNAL_BASE_URL}/api/internal/tasks`, {
+      method: 'POST',
+      headers: internalPhpJsonHeaders(TAREFA_INTERNAL_TOKEN),
+      body: JSON.stringify(basePayload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data) || data.ok !== true) throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `tarefa_create_http_${response.status}`);
+    return { text: `Tarefa geral criada: ${prepared.title}.`, engine: 'local', reason: 'tarefa_general_created' };
+  }
+
+  let assignedUserId = userContext.id;
+  let assignedName = titleCaseShortName(userContext.display_name || userContext.username) || 'voce';
+  if (prepared.scope === 'target') {
+    if (!isWhatsappTaskAdmin(userContext)) {
+      return {
+        text: 'Voce nao pode passar tarefa para outro usuario. O gato fiscal barrou.',
+        engine: 'blocked',
+        reason: 'tarefa_target_forbidden',
+      };
+    }
+    const target = await resolveTarefaUserHint(prepared.target_hint);
+    if (!target) {
+      return { text: 'Nao achei esse usuario. Qual funcionario e?', engine: 'local', reason: 'tarefa_target_not_found' };
+    }
+    assignedUserId = target.id;
+    assignedName = titleCaseShortName(target.display_name || target.username) || target.username;
+  }
+
+  const response = await fetch(`${TAREFA_INTERNAL_BASE_URL}/api/internal/tasks/private`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(TAREFA_INTERNAL_TOKEN),
+    body: JSON.stringify({
+      ...basePayload,
+      assigned_core_user_id: assignedUserId,
+      assigned_username: assignedName,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `tarefa_private_create_http_${response.status}`);
+  if (prepared.scope === 'target') {
+    return { text: `Tarefa criada para ${assignedName}: ${prepared.title}.`, engine: 'local', reason: 'tarefa_target_created' };
+  }
+  return { text: `Tarefa criada para voce: ${prepared.title}.`, engine: 'local', reason: 'tarefa_self_created' };
+}
+
+function tarefaStatusOptionsText(tasks: TarefaVisibleTask[]): string {
+  const lines = tasks.slice(0, 5).map((task, index) => `${index + 1}. ${task.title}`);
+  return lines.length ? `\n${lines.join('\n')}` : '';
+}
+
+async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext: WhatsappUserContext): Promise<ReplyResult> {
+  if (!userContext.id || !userContext.linked) {
+    return {
+      text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de mexer em tarefas.',
+      engine: 'blocked',
+      reason: 'tarefa_unlinked_user',
+    };
+  }
+  if (!command.query) {
+    return {
+      text: command.action === 'complete' ? 'Qual tarefa voce concluiu?' : 'Qual tarefa voce quer cancelar?',
+      engine: 'local',
+      reason: 'tarefa_missing_query',
+    };
+  }
+  const tasks = await fetchTarefaVisibleTasks(userContext, command.query, isWhatsappTaskAdmin(userContext));
+  if (!tasks.length) {
+    return { text: 'Nao achei essa tarefa aberta para voce.', engine: 'local', reason: 'tarefa_not_found' };
+  }
+  if (tasks.length > 1) {
+    return { text: `Achei mais de uma. Qual delas?${tarefaStatusOptionsText(tasks)}`, engine: 'local', reason: 'tarefa_ambiguous' };
+  }
+  const task = tasks[0];
+  const isComplete = command.action === 'complete';
+  return {
+    text: `${isComplete ? 'Confirma concluir' : 'Confirma cancelar'}: "${task.title}"?`,
+    engine: 'local',
+    reason: isComplete ? 'tarefa_complete_confirmation_required' : 'tarefa_cancel_confirmation_required',
+    confirmation: {
+      tool: isComplete ? 'concluir_tarefa_whatsapp' : 'cancelar_tarefa_whatsapp',
+      summary: `${isComplete ? 'Concluir' : 'Cancelar'} tarefa: ${task.title}?`,
+      risk: 'medio',
+      command: {
+        task_id: task.id,
+        title: task.title,
+        status: isComplete ? 'concluida' : 'cancelada',
+      },
+    },
+  };
+}
+
+async function executeConfirmedTarefaStatus(pending: PendingConfirmationRow, userContext: WhatsappUserContext): Promise<string> {
+  if (!TAREFA_INTERNAL_TOKEN) throw new Error('tarefa_internal_token_not_configured');
+  if (!userContext.id || !userContext.linked) throw new Error('tarefa_unlinked_user');
+  const command = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const taskId = Number(command.task_id || command.id || 0);
+  const status = pending.tool === 'concluir_tarefa_whatsapp' ? 'concluida' : 'cancelada';
+  if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('tarefa_confirmation_payload_invalid');
+  const response = await fetch(`${TAREFA_INTERNAL_BASE_URL}/api/internal/tasks/status`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(TAREFA_INTERNAL_TOKEN),
+    body: JSON.stringify({
+      actor_user_id: userContext.id,
+      task_id: taskId,
+      status,
+      source: 'miauby_whatsapp',
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    const detail = safeText(isRecord(data) ? data.message || data.error : '', 180);
+    throw new Error(detail || `tarefa_status_http_${response.status}`);
+  }
+  const task = isRecord(data.task) ? data.task : {};
+  const title = safeText(task.title || command.title, 180) || 'tarefa';
+  return status === 'concluida' ? `Tarefa concluida: ${title}.` : `Tarefa cancelada: ${title}.`;
 }
 
 function sangriaConfirmationPayload(command: SangriaCommand): JsonRecord {
@@ -5253,6 +5553,35 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       };
     }
     return confirmPedidosArrivalFromWhatsapp(arrivalReply.supplier, traceId, senderMask);
+  }
+  const taskCommand = parseTaskCommand(message);
+  if (taskCommand) {
+    if (!moduleAllowed(allowedCards, 'tarefas')) {
+      return {
+        text: forbiddenModuleReply('tarefas', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:tarefa_command',
+      };
+    }
+    if (!userContext.id || !userContext.linked) {
+      return {
+        text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de mexer em tarefas.',
+        engine: 'blocked',
+        reason: 'tarefa_unlinked_user',
+      };
+    }
+    if (taskCommand.action === 'list') {
+      const tasks = await fetchTarefaVisibleTasks(userContext, '', isWhatsappTaskAdmin(userContext));
+      return {
+        text: formatTarefaListReply(tasks),
+        engine: 'local',
+        reason: 'tarefa_list',
+      };
+    }
+    if (taskCommand.action === 'create') {
+      return createTarefaFromWhatsapp(taskCommand, userContext);
+    }
+    return prepareTarefaStatusConfirmation(taskCommand, userContext);
   }
   if (looksLikeN8nStatusRequest(message)) {
     return {

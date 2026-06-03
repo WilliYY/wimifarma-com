@@ -402,6 +402,63 @@ function miauw_skill_registry(): array
             'auditoria' => array('tarefa_tasks', 'tarefa_audit_events', 'core_audit_logs', 'miauw_tool_traces'),
             'efeitos' => array('cria_registro'),
         ),
+        'listar_tarefas_usuario' => array(
+            'nome' => 'listar_tarefas_usuario',
+            'titulo' => 'Listar tarefas do usuario',
+            'modulo' => 'tarefa',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_tarefa_fetch_visible',
+            'openai_tool' => false,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Tarefas',
+            'aliases' => array('tarefas', 'minhas tarefas', 'pendencias'),
+            'parametros_obrigatorios' => array(),
+            'entrada' => array('actor_user_id', 'filtro'),
+            'saida' => 'Tarefas abertas visiveis para o usuario, separadas por escopo.',
+            'auditoria' => array('tarefa_tasks', 'miauw_tool_traces'),
+            'efeitos' => array('consulta_dados'),
+        ),
+        'concluir_tarefa' => array(
+            'nome' => 'concluir_tarefa',
+            'titulo' => 'Concluir tarefa',
+            'modulo' => 'tarefa',
+            'nivel' => 'escrita',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_tarefa_set_status',
+            'openai_tool' => false,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Tarefas',
+            'aliases' => array('concluir tarefa', 'terminei tarefa', 'feito'),
+            'parametros_obrigatorios' => array('task_id'),
+            'entrada' => array('task_id', 'actor_user_id'),
+            'saida' => 'Tarefa movida para concluida com auditoria.',
+            'auditoria' => array('tarefa_tasks', 'tarefa_audit_events', 'core_audit_logs', 'miauw_tool_traces'),
+            'efeitos' => array('altera_status', 'exige_confirmacao'),
+        ),
+        'cancelar_tarefa' => array(
+            'nome' => 'cancelar_tarefa',
+            'titulo' => 'Cancelar tarefa',
+            'modulo' => 'tarefa',
+            'nivel' => 'escrita',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_tarefa_set_status',
+            'openai_tool' => false,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Tarefas',
+            'aliases' => array('cancelar tarefa', 'excluir tarefa', 'nao preciso mais'),
+            'parametros_obrigatorios' => array('task_id'),
+            'entrada' => array('task_id', 'actor_user_id'),
+            'saida' => 'Tarefa movida para cancelada com auditoria.',
+            'auditoria' => array('tarefa_tasks', 'tarefa_audit_events', 'core_audit_logs', 'miauw_tool_traces'),
+            'efeitos' => array('altera_status', 'exige_confirmacao'),
+        ),
         'criar_encomenda_cotacao' => array(
             'nome' => 'criar_encomenda_cotacao',
             'titulo' => 'Criar encomenda na cotacao',
@@ -1122,6 +1179,8 @@ function miauw_skill_create_tarefa(array $command, ?int $userId): array
     $title = trim((string) ($command['titulo'] ?? ''));
     $description = trim((string) ($command['descricao'] ?? ''));
     $priority = (string) ($command['prioridade'] ?? 'normal');
+    $actor = miauw_skill_tarefa_actor($userId, $command);
+    $actorId = (int) ($actor['user_id'] ?? $userId ?? 0);
 
     if (!in_array($priority, array('alta', 'normal', 'baixa'), true)) {
         $priority = 'normal';
@@ -1139,10 +1198,24 @@ function miauw_skill_create_tarefa(array $command, ?int $userId): array
         'titulo' => miauw_substr($title, 0, 180),
         'descricao' => $description,
         'prioridade' => $priority,
-        'usuario_id' => $userId,
-        'username' => (string) ($command['username'] ?? 'Miauby'),
+        'usuario_id' => $actorId,
+        'actor_user_id' => $actorId,
+        'username' => (string) ($actor['username'] ?? $command['username'] ?? 'Miauby'),
+        'actor_username' => (string) ($actor['username'] ?? $command['username'] ?? 'Miauby'),
     );
-    $response = miauw_skill_tarefa_internal_request('POST', '/api/internal/tasks', $payload);
+
+    $scope = (string) ($command['escopo'] ?? $command['scope'] ?? 'self');
+    if ($scope === 'general') {
+        $response = miauw_skill_tarefa_internal_request('POST', '/api/internal/tasks', $payload);
+    } else {
+        $assignedId = (int) ($command['assigned_core_user_id'] ?? $command['target_user_id'] ?? $actorId);
+        if ($assignedId <= 0) {
+            throw new RuntimeException('Usuario da tarefa nao identificado.');
+        }
+        $payload['assigned_core_user_id'] = $assignedId;
+        $payload['assigned_username'] = (string) ($command['assigned_username'] ?? $actor['username'] ?? '');
+        $response = miauw_skill_tarefa_internal_request('POST', '/api/internal/tasks/private', $payload);
+    }
     if (!is_array($response) || empty($response['ok']) || !is_array($response['task'] ?? null)) {
         throw new RuntimeException('Nao consegui criar a tarefa no Postgres agora.');
     }
@@ -1158,24 +1231,485 @@ function miauw_skill_create_tarefa(array $command, ?int $userId): array
 
 function miauw_skill_tarefa_action_reply(array $result): string
 {
-    $lines = array(
-        'Tarefa criada.',
-        'Nivel: ' . miauw_skill_tarefa_priority_label((string) ($result['prioridade'] ?? 'normal')),
-        'Titulo: ' . (string) ($result['titulo'] ?? '-'),
-    );
-
-    if (trim((string) ($result['descricao'] ?? '')) !== '') {
-        $lines[] = 'Descricao: ' . (string) $result['descricao'];
-    }
-
-    $lines[] = 'Entrou na fila por prioridade. Sem cerimonia, sem planilha paralela.';
-
-    return implode("\n", $lines);
+    return 'Tarefa criada para voce: ' . (string) ($result['titulo'] ?? '-') . '.';
 }
 
 function miauw_skill_tarefa_missing_reply(array $command): string
 {
     return "Faltou o titulo da tarefa.\nUse assim: tarefa media - cotar popular - losartana\nNivel aceito: alta, media ou baixa.";
+}
+
+function miauw_skill_tarefa_actor(?int $userId = null, array $userContext = array()): array
+{
+    if (function_exists('current_user')) {
+        $user = current_user();
+        if (is_array($user)) {
+            return array(
+                'user_id' => (int) ($user['id'] ?? 0),
+                'username' => miauw_substr(trim((string) ($user['username'] ?? '')), 0, 80),
+                'display_name' => function_exists('miauw_user_display_name') ? miauw_user_display_name($user) : trim((string) ($user['display_name'] ?? $user['username'] ?? '')),
+                'role' => miauw_substr(trim((string) ($user['role'] ?? '')), 0, 40),
+                'source' => 'session',
+                'identified' => true,
+            );
+        }
+    }
+
+    if ($userContext) {
+        $id = function_exists('miauw_user_context_id') ? miauw_user_context_id($userContext) : (int) ($userContext['id'] ?? $userContext['user_id'] ?? 0);
+        $username = function_exists('miauw_user_context_username') ? miauw_user_context_username($userContext) : trim((string) ($userContext['username'] ?? ''));
+        $display = function_exists('miauw_user_context_display_name') ? miauw_user_context_display_name($userContext) : trim((string) ($userContext['display_name'] ?? $username));
+        if ($id > 0 || $username !== '' || $display !== '') {
+            return array(
+                'user_id' => $id > 0 ? $id : null,
+                'username' => miauw_substr($username, 0, 80),
+                'display_name' => miauw_substr($display !== '' ? $display : $username, 0, 120),
+                'role' => miauw_substr(trim((string) ($userContext['role'] ?? $userContext['perfil'] ?? '')), 0, 40),
+                'source' => (string) ($userContext['channel'] ?? '') === 'whatsapp' ? 'whatsapp_link' : 'context',
+                'identified' => true,
+            );
+        }
+    }
+
+    if ($userId !== null && $userId > 0) {
+        return array(
+            'user_id' => $userId,
+            'username' => '',
+            'display_name' => '',
+            'role' => '',
+            'source' => 'user_id',
+            'identified' => true,
+        );
+    }
+
+    return array('user_id' => null, 'username' => '', 'display_name' => '', 'role' => '', 'source' => 'unidentified', 'identified' => false);
+}
+
+function miauw_skill_tarefa_actor_is_admin(array $actor): bool
+{
+    $username = function_exists('miauw_skill_normalized') ? miauw_skill_normalized((string) ($actor['username'] ?? '')) : strtolower((string) ($actor['username'] ?? ''));
+    $role = function_exists('miauw_skill_normalized') ? miauw_skill_normalized((string) ($actor['role'] ?? '')) : strtolower((string) ($actor['role'] ?? ''));
+
+    return $username === 'adm' || $role === 'adm' || $role === 'admin';
+}
+
+function miauw_skill_tarefa_strip_miauby_prefix(string $message): string
+{
+    return trim(preg_replace('/^\s*(?:miauby|miauw)\s+/iu', '', $message) ?? $message);
+}
+
+function miauw_skill_tarefa_compact_title(string $text): string
+{
+    $text = preg_replace('/\b(?:por favor|pfv|pra mim|para mim|minha|meu|hoje|agora)\b/iu', ' ', $text) ?? $text;
+    $text = preg_replace('/\b(?:prioridade\s+)?(?:alta|media|m.dia|medio|m.dio|normal|baixa|urgente|critica|crit.ca|critico|crit.co|grave|leve|menor|simples)\b/iu', ' ', $text) ?? $text;
+
+    return miauw_skill_tarefa_clean_part($text, 180);
+}
+
+function miauw_skill_tarefa_query_from_message(string $message, string $action): string
+{
+    $text = miauw_skill_tarefa_strip_miauby_prefix($message);
+    $patterns = $action === 'cancel'
+        ? array(
+            '/\b(?:cancelar|cancela|excluir|apagar|remover)\s+(?:a\s+)?(?:tarefa|pendencia)\b/iu',
+            '/\bnao\s+preciso\s+mais\s+(?:da\s+)?(?:tarefa|pendencia)\b/iu',
+        )
+        : array(
+            '/\b(?:terminei|conclui|conclui|finalizar|finaliza|marcar\s+como\s+feito|pode\s+marcar\s+como\s+feito|ja\s+fiz|fiz)\s+(?:a\s+)?(?:tarefa|pendencia)?\b/iu',
+            '/\b(?:tarefa|pendencia)\s+(?:concluida|feita|pronta)\b/iu',
+        );
+    foreach ($patterns as $pattern) {
+        $text = preg_replace($pattern, ' ', $text) ?? $text;
+    }
+    $text = preg_replace('/\b(?:aquela|aquela\s+tarefa|do|da|dos|das|de|o|a)\b/iu', ' ', $text) ?? $text;
+
+    return miauw_skill_tarefa_clean_part($text, 160);
+}
+
+function miauw_skill_tarefa_command_kind(string $message): ?array
+{
+    $raw = trim($message);
+    if ($raw === '') {
+        return null;
+    }
+
+    $text = miauw_skill_tarefa_strip_miauby_prefix($raw);
+    $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($text) : strtolower($text);
+
+    if (preg_match('/^(?:tarefa|tarefas|minhas tarefas)$/u', $normalized)
+        || preg_match('/^(?:ver|veja|mostrar|mostra|listar|lista|consulta|consultar)\s+(?:minhas\s+)?(?:tarefa|tarefas|pendencia|pendencias)\b/u', $normalized)
+        || preg_match('/\b(?:o que tem de tarefa|o que preciso fazer|lista minhas tarefas|tarefa pendente|tarefas pendentes)\b/u', $normalized)) {
+        return array('acao' => 'list', 'raw_message' => $raw);
+    }
+
+    if (preg_match('/\b(?:cancelar|cancela|excluir|apagar|remover|nao preciso mais)\b/u', $normalized)
+        && preg_match('/\b(?:tarefa|tarefas|pendencia|pendencias)\b/u', $normalized)) {
+        return array('acao' => 'cancel', 'query' => miauw_skill_tarefa_query_from_message($raw, 'cancel'), 'raw_message' => $raw);
+    }
+
+    if (preg_match('/\b(?:terminei|conclui|finalizar|finaliza|marcar como feito|ja fiz|fiz|concluida|feito|feita)\b/u', $normalized)
+        && (preg_match('/\b(?:tarefa|tarefas|pendencia|pendencias)\b/u', $normalized) || strlen($normalized) > 8)) {
+        return array('acao' => 'complete', 'query' => miauw_skill_tarefa_query_from_message($raw, 'complete'), 'raw_message' => $raw);
+    }
+
+    $looksCreate = preg_match('/^(?:(?:cria|criar|nova|novo|adiciona|adicionar|abre|abrir|lanca|lancar|registra|registrar)\s+)?(?:uma\s+)?(?:tarefa|tarefas|pendencia|pendenciazinha)\b/u', $normalized) === 1
+        || preg_match('/^(?:me lembra de|me lembre de|preciso fazer|tenho que|adiciona tarefa|criar tarefa)\b/u', $normalized) === 1
+        || preg_match('/^todos precisam\b/u', $normalized) === 1;
+    if (!$looksCreate) {
+        return null;
+    }
+
+    $body = $text;
+    $body = preg_replace('/^\s*(?:cria|criar|nova|novo|adiciona|adicionar|abre|abrir|lanca|lancar|lan.a|registra|registrar)\s+/iu', '', $body) ?? $body;
+    $body = preg_replace('/^\s*(?:uma\s+)?(?:tarefa|tarefas|pend.ncia|pendenciazinha)\s*/iu', '', $body) ?? $body;
+    $body = preg_replace('/^\s*(?:me\s+lembra\s+de|me\s+lembre\s+de|preciso\s+fazer|tenho\s+que)\s+/iu', '', $body) ?? $body;
+    $body = trim($body, " \t\n\r\0\x0B-:;,.()");
+
+    $priority = miauw_skill_tarefa_priority_from_text($body);
+    $scope = 'self';
+    $targetHint = '';
+
+    $bodyNormalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($body) : strtolower($body);
+    if (preg_match('/^(?:geral|publica|publico|para todos|pra todos)\b/u', $bodyNormalized)) {
+        $scope = 'general';
+        $body = preg_replace('/^\s*(?:geral|publica|publico|para todos|pra todos)\s*/iu', '', $body) ?? $body;
+    } elseif (preg_match('/^todos\s+precisam\s+/iu', $text)) {
+        $scope = 'general';
+        $body = preg_replace('/^\s*todos\s+precisam\s+/iu', '', $text) ?? $body;
+    } elseif (preg_match('/^\s*(?:para|pra|pro|p\/)\s+([\p{L}\p{N}._-]{2,45})\s+(.+)$/iu', $body, $match)) {
+        $candidate = trim((string) $match[1]);
+        $rest = trim((string) $match[2]);
+        $candidateClean = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($candidate) : strtolower($candidate);
+        if (!in_array($candidateClean, array('mim', 'eu', 'todos', 'todas', 'equipe'), true)) {
+            $scope = 'target';
+            $targetHint = miauw_skill_tarefa_clean_part($candidate, 80);
+            $body = $rest;
+        } elseif (in_array($candidateClean, array('todos', 'todas', 'equipe'), true)) {
+            $scope = 'general';
+            $body = $rest;
+        }
+    }
+
+    $parts = preg_split('/\s*(?:-|;|\|)\s*/u', $body) ?: array();
+    $parts = array_values(array_filter(array_map(static function ($part): string {
+        return trim((string) $part);
+    }, $parts), static function ($part): bool {
+        return $part !== '';
+    }));
+    $title = miauw_skill_tarefa_compact_title((string) ($parts[0] ?? $body));
+    $description = count($parts) > 1 ? miauw_skill_tarefa_clean_part(implode(' - ', array_slice($parts, 1)), 900) : '';
+
+    return array(
+        'acao' => 'create',
+        'escopo' => $scope,
+        'target_hint' => $targetHint,
+        'prioridade' => $priority,
+        'titulo' => $title,
+        'descricao' => $description,
+        'body' => $body,
+        'raw_message' => $raw,
+    );
+}
+
+function miauw_skill_tarefa_users(string $query = ''): array
+{
+    if (!miauw_skill_tarefa_internal_configured()) {
+        return array();
+    }
+
+    $response = miauw_skill_tarefa_internal_request('GET', '/api/internal/users', array(), $query !== '' ? array('q' => $query) : array());
+    return is_array($response['users'] ?? null) ? $response['users'] : array();
+}
+
+function miauw_skill_tarefa_resolve_user_hint(string $hint): ?array
+{
+    $hint = miauw_skill_tarefa_clean_part($hint, 80);
+    if ($hint === '') {
+        return null;
+    }
+    $normalizedHint = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($hint) : strtolower($hint);
+    $users = miauw_skill_tarefa_users($hint);
+    foreach ($users as $user) {
+        if (!is_array($user)) {
+            continue;
+        }
+        $username = function_exists('miauw_skill_normalized') ? miauw_skill_normalized((string) ($user['username'] ?? '')) : strtolower((string) ($user['username'] ?? ''));
+        $display = function_exists('miauw_skill_normalized') ? miauw_skill_normalized((string) ($user['display_name'] ?? '')) : strtolower((string) ($user['display_name'] ?? ''));
+        if ($username === $normalizedHint || $display === $normalizedHint || str_starts_with($display, $normalizedHint)) {
+            return $user;
+        }
+    }
+
+    return count($users) === 1 && is_array($users[0]) ? $users[0] : null;
+}
+
+function miauw_skill_tarefa_try_leading_user(array $command): array
+{
+    if ((string) ($command['escopo'] ?? 'self') !== 'self') {
+        return $command;
+    }
+    $body = trim((string) ($command['body'] ?? ''));
+    if (!preg_match('/^\s*([A-Za-z0-9._-]{2,40})\s+(.+)$/u', $body, $match)) {
+        return $command;
+    }
+    $user = miauw_skill_tarefa_resolve_user_hint((string) $match[1]);
+    if (!is_array($user)) {
+        return $command;
+    }
+    $command['escopo'] = 'target';
+    $command['target_hint'] = (string) ($user['display_name'] ?? $user['username'] ?? $match[1]);
+    $command['target_user'] = $user;
+    $command['titulo'] = miauw_skill_tarefa_compact_title((string) $match[2]);
+
+    return $command;
+}
+
+function miauw_skill_tarefa_fetch_visible(array $actor, string $query = '', bool $adminViewAll = false): array
+{
+    $actorId = (int) ($actor['user_id'] ?? 0);
+    if ($actorId <= 0) {
+        throw new RuntimeException('Sessao expirada. Entre no sistema antes de mexer nas tarefas.');
+    }
+    $response = miauw_skill_tarefa_internal_request('GET', '/api/internal/tasks/visible', array(), array(
+        'actor_user_id' => (string) $actorId,
+        'q' => $query,
+        'admin_view_all' => $adminViewAll ? '1' : '0',
+        'limit' => $query !== '' ? '12' : '80',
+    ));
+    if (!is_array($response) || empty($response['ok'])) {
+        throw new RuntimeException('Nao consegui consultar as tarefas agora.');
+    }
+
+    return is_array($response['tasks'] ?? null) ? $response['tasks'] : array();
+}
+
+function miauw_skill_tarefa_format_list(array $tasks): string
+{
+    if (!$tasks) {
+        return 'Nenhuma tarefa aberta para voce. Milagre operacional detectado.';
+    }
+
+    $groups = array(
+        'admin_to_user' => array('title' => '*Tarefas do ADM para voce*', 'items' => array()),
+        'mine' => array('title' => '*Minhas tarefas*', 'items' => array()),
+        'general' => array('title' => '*Tarefas gerais*', 'items' => array()),
+        'assigned_other' => array('title' => '*Tarefas privadas por usuario*', 'items' => array()),
+    );
+
+    foreach ($tasks as $task) {
+        if (!is_array($task)) {
+            continue;
+        }
+        $scope = (string) ($task['scope'] ?? 'general');
+        if (!isset($groups[$scope])) {
+            $scope = 'assigned_other';
+        }
+        $groups[$scope]['items'][] = $task;
+    }
+
+    $lines = array();
+    foreach ($groups as $group) {
+        $items = $group['items'];
+        if (!$items) {
+            continue;
+        }
+        $lines[] = (string) $group['title'];
+        $index = 1;
+        foreach (array_slice($items, 0, 6) as $task) {
+            $prefix = '';
+            if ((string) ($task['scope'] ?? '') === 'assigned_other') {
+                $prefix = trim((string) ($task['assigned_username'] ?? '')) !== '' ? '[' . (string) $task['assigned_username'] . '] ' : '';
+            }
+            $priority = miauw_skill_tarefa_priority_label((string) ($task['priority'] ?? 'normal'));
+            $lines[] = $index . '. ' . $prefix . (string) ($task['title'] ?? '-') . ' - ' . $priority;
+            $index++;
+        }
+        $lines[] = '';
+    }
+
+    return trim(implode("\n", $lines));
+}
+
+function miauw_skill_tarefa_find_single_for_status(array $actor, string $query): array
+{
+    $query = miauw_skill_tarefa_clean_part($query, 160);
+    if ($query === '') {
+        return array('status' => 'missing_query', 'tasks' => array());
+    }
+    $tasks = miauw_skill_tarefa_fetch_visible($actor, $query, miauw_skill_tarefa_actor_is_admin($actor));
+    if (!$tasks) {
+        return array('status' => 'not_found', 'tasks' => array());
+    }
+    if (count($tasks) > 1) {
+        return array('status' => 'ambiguous', 'tasks' => $tasks);
+    }
+
+    return array('status' => 'ok', 'task' => $tasks[0], 'tasks' => $tasks);
+}
+
+function miauw_skill_tarefa_status_options_text(array $tasks): string
+{
+    $lines = array();
+    foreach (array_slice($tasks, 0, 5) as $index => $task) {
+        if (!is_array($task)) {
+            continue;
+        }
+        $lines[] = ((int) $index + 1) . '. ' . (string) ($task['title'] ?? '-');
+    }
+
+    return $lines ? "\n" . implode("\n", $lines) : '';
+}
+
+function miauw_skill_tarefa_set_status(array $command, ?int $userId, string $status): array
+{
+    $actorId = (int) ($command['actor_user_id'] ?? $command['usuario_id'] ?? $userId ?? 0);
+    $taskId = (int) ($command['task_id'] ?? $command['id'] ?? 0);
+    if ($actorId <= 0) {
+        throw new RuntimeException('Sessao expirada. Entre no sistema antes de mexer nas tarefas.');
+    }
+    if ($taskId <= 0) {
+        throw new RuntimeException('Tarefa nao informada para alterar.');
+    }
+
+    $response = miauw_skill_tarefa_internal_request('POST', '/api/internal/tasks/status', array(
+        'actor_user_id' => $actorId,
+        'task_id' => $taskId,
+        'status' => $status,
+        'source' => (string) ($command['origin'] ?? $command['origem'] ?? 'miauby_interno'),
+    ));
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['task'] ?? null)) {
+        throw new RuntimeException('Nao consegui atualizar a tarefa agora.');
+    }
+
+    return $response['task'];
+}
+
+function miauw_skill_tarefa_status_action_reply(array $task, string $status): string
+{
+    $title = (string) ($task['title'] ?? 'tarefa');
+    if ($status === 'concluida') {
+        return 'Tarefa concluida: ' . $title . '.';
+    }
+
+    return 'Tarefa cancelada: ' . $title . '.';
+}
+
+function miauw_skill_tarefa_handle_command(array $command, ?int $userId, string $origin = 'miauby_interno', array $userContext = array()): array
+{
+    if (!miauw_skill_tarefa_internal_configured()) {
+        return array('text' => 'Tarefas esta sem ponte interna segura agora. Abra /tarefa/.', 'fallback' => false, 'model' => 'miauw-tarefa');
+    }
+
+    $actor = miauw_skill_tarefa_actor($userId, $userContext);
+    $actorId = (int) ($actor['user_id'] ?? 0);
+    if ($actorId <= 0) {
+        return array('text' => 'Sessao expirada. Entre no sistema antes de mexer nas tarefas.', 'fallback' => false, 'model' => 'miauw-tarefa-auth');
+    }
+
+    $action = (string) ($command['acao'] ?? '');
+    if ($action === 'list') {
+        $tasks = miauw_skill_tarefa_fetch_visible($actor, '', miauw_skill_tarefa_actor_is_admin($actor));
+        return array('text' => miauw_skill_tarefa_format_list($tasks), 'fallback' => false, 'model' => 'miauw-tarefa-list');
+    }
+
+    if ($action === 'complete' || $action === 'cancel') {
+        $found = miauw_skill_tarefa_find_single_for_status($actor, (string) ($command['query'] ?? ''));
+        if (($found['status'] ?? '') === 'missing_query') {
+            return array('text' => $action === 'complete' ? 'Qual tarefa voce concluiu?' : 'Qual tarefa voce quer cancelar?', 'fallback' => false, 'model' => 'miauw-tarefa-guide');
+        }
+        if (($found['status'] ?? '') === 'not_found') {
+            return array('text' => 'Nao achei essa tarefa aberta para voce.', 'fallback' => false, 'model' => 'miauw-tarefa-list');
+        }
+        if (($found['status'] ?? '') === 'ambiguous') {
+            return array('text' => 'Achei mais de uma. Qual delas?' . miauw_skill_tarefa_status_options_text($found['tasks'] ?? array()), 'fallback' => false, 'model' => 'miauw-tarefa-list');
+        }
+        $task = is_array($found['task'] ?? null) ? $found['task'] : array();
+        $tool = $action === 'complete' ? 'concluir_tarefa' : 'cancelar_tarefa';
+        $status = $action === 'complete' ? 'concluida' : 'cancelada';
+        $payload = array(
+            'task_id' => (int) ($task['id'] ?? 0),
+            'titulo' => (string) ($task['title'] ?? ''),
+            'status' => $status,
+            'usuario_id' => $actorId,
+            'actor_user_id' => $actorId,
+            'username' => (string) ($actor['username'] ?? ''),
+            'responsavel_nome' => (string) ($actor['display_name'] ?? ''),
+            'origin' => $origin,
+            'raw_message' => (string) ($command['raw_message'] ?? ''),
+        );
+        $summary = ($action === 'complete' ? 'Concluir tarefa: ' : 'Cancelar tarefa: ') . (string) ($task['title'] ?? 'tarefa') . '?';
+
+        return function_exists('miauw_confirmation_request_reply')
+            ? miauw_confirmation_request_reply($tool, $payload, $actorId, $summary)
+            : array('text' => $summary, 'fallback' => false, 'model' => 'miauw-tarefa-confirmacao');
+    }
+
+    if ($action !== 'create') {
+        return array('text' => 'Nao entendi a tarefa. Me mande assim: tarefa conferir caixa.', 'fallback' => false, 'model' => 'miauw-tarefa-guide');
+    }
+
+    if (trim((string) ($command['titulo'] ?? '')) === '') {
+        return array('text' => 'Faltou o titulo. Me mande assim: tarefa conferir caixa.', 'fallback' => false, 'model' => 'miauw-tarefa-guide');
+    }
+
+    $isAdmin = miauw_skill_tarefa_actor_is_admin($actor);
+    if ($isAdmin) {
+        $command = miauw_skill_tarefa_try_leading_user($command);
+    }
+    $scope = (string) ($command['escopo'] ?? 'self');
+    $payload = array(
+        'actor_user_id' => $actorId,
+        'actor_username' => (string) ($actor['username'] ?? ''),
+        'priority' => (string) ($command['prioridade'] ?? 'normal'),
+        'title' => (string) ($command['titulo'] ?? ''),
+        'description' => (string) ($command['descricao'] ?? ''),
+        'source' => $origin,
+    );
+
+    try {
+        if ($scope === 'general') {
+            if (!$isAdmin) {
+                return array('text' => 'Voce nao pode criar tarefa geral. Criei nada, sem bagunca.', 'fallback' => false, 'model' => 'miauw-tarefa-permissao');
+            }
+            $response = miauw_skill_tarefa_internal_request('POST', '/api/internal/tasks', $payload);
+            $task = is_array($response['task'] ?? null) ? $response['task'] : array();
+            return array('text' => 'Tarefa geral criada: ' . (string) ($task['title'] ?? $command['titulo']) . '.', 'fallback' => false, 'model' => 'miauw-tarefa-create');
+        }
+
+        $targetUser = null;
+        if ($scope === 'target') {
+            if (!$isAdmin) {
+                return array('text' => 'Voce nao pode passar tarefa para outro usuario. O gato fiscal barrou.', 'fallback' => false, 'model' => 'miauw-tarefa-permissao');
+            }
+            $targetUser = is_array($command['target_user'] ?? null) ? $command['target_user'] : miauw_skill_tarefa_resolve_user_hint((string) ($command['target_hint'] ?? ''));
+            if (!is_array($targetUser)) {
+                return array('text' => 'Nao achei esse usuario. Qual funcionario e?', 'fallback' => false, 'model' => 'miauw-tarefa-guide');
+            }
+        }
+
+        $payload['assigned_core_user_id'] = $targetUser ? (int) ($targetUser['id'] ?? 0) : $actorId;
+        $payload['assigned_username'] = $targetUser ? (string) ($targetUser['username'] ?? '') : (string) ($actor['username'] ?? '');
+        $response = miauw_skill_tarefa_internal_request('POST', '/api/internal/tasks/private', $payload);
+        $task = is_array($response['task'] ?? null) ? $response['task'] : array();
+        if ($targetUser) {
+            $name = (string) ($targetUser['display_name'] ?? $targetUser['username'] ?? 'usuario');
+            return array('text' => 'Tarefa criada para ' . $name . ': ' . (string) ($task['title'] ?? $command['titulo']) . '.', 'fallback' => false, 'model' => 'miauw-tarefa-create');
+        }
+
+        return array('text' => 'Tarefa criada para voce: ' . (string) ($task['title'] ?? $command['titulo']) . '.', 'fallback' => false, 'model' => 'miauw-tarefa-create');
+    } catch (Throwable $error) {
+        return array('text' => function_exists('miauw_action_error_reply') ? miauw_action_error_reply($error) : 'Nao consegui mexer nessa tarefa agora.', 'fallback' => false, 'model' => 'miauw-tarefa-error');
+    }
+}
+
+function miauw_skill_tarefa_try_controlled_reply(string $message, ?int $userId, string $origin = 'miauby_interno', array $userContext = array()): ?array
+{
+    $command = miauw_skill_tarefa_command_kind($message);
+    if (!is_array($command)) {
+        return null;
+    }
+
+    return miauw_skill_tarefa_handle_command($command, $userId, $origin, $userContext);
 }
 
 function miauw_skill_cotacao_summary(array $period): array

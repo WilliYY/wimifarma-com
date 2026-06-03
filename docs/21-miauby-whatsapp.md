@@ -28,6 +28,8 @@ Em 2026-06-03, o treinamento deterministico de sangria ganhou mais tolerancia pa
 
 Tambem em 2026-06-03, ficou registrada a regra padrao de treinamento compartilhado: todo comando textual criado ou melhorado no Miauby WhatsApp deve ser registrado como variacao textual para o Miauby interno quando fizer sentido. O WhatsApp continua exigindo `miauby` conforme prefixo/allowlist, mas o interno deve aceitar a forma direta sem prefixo. Exemplo: WhatsApp `miauby pix cnpj 28,90 sueli`; interno `pix cnpj 28,90 compra fornecedor`, `lancar pix cnpj 28,90 compra fornecedor` ou `registrar pix cnpj valor 28,90 observacao compra urgente`. A diferenca de identidade e obrigatoria: no interno, o responsavel vem da sessao do usuario logado; no WhatsApp, vem do numero vinculado/allowlist. Usuario comum nao pode registrar acao em nome de outro sem permissao validada. Se o comando depender de foto, PDF, audio ou comprovante, o interno aprende apenas a versao textual/manual; nao ha OCR, leitura de midia nem audio operacional no chat interno. A regra fica em `site/miauw/miauw-funcoes.php` (`identity_context`, `text_command_contracts`/`text_command_training`) e em `apps/miauby/src/text-command-contracts.ts`, e nao habilita escrita direta no Node.
 
+Tambem em 2026-06-03, Tarefas ganhou interpretacao textual compartilhada. No WhatsApp autorizado, com card `Tarefas` e usuario vinculado, o bridge entende `miauby tarefas`, `miauby minhas tarefas`, `miauby o que preciso fazer`, `miauby tarefa conferir caixa`, `miauby tarefa para sueli conferir caixa`, `miauby tarefa geral limpar balcao`, `miauby conclui tarefa conferir caixa` e `miauby cancelar tarefa conferir caixa`. Usuario comum cria tarefa privada para si por padrao; ADM/admin pode criar para outro usuario ou tarefa geral. Listagens sao buscadas em `GET /tarefa/api/internal/tasks/visible` e retornam grupos curtos: tarefas do ADM para voce, minhas tarefas e tarefas gerais. Concluir/cancelar tarefa usa busca por texto no app Tarefa, exige confirmacao humana quando ha uma unica candidata, lista opcoes quando ha ambiguidade e nao permite que usuario comum cancele tarefa criada/delegada por ADM. A execucao final chama `POST /tarefa/api/internal/tasks/status`, cancela lembretes pendentes quando necessario e grava auditoria em `tarefa_audit_events` e `core_audit_logs`.
+
 ## Componentes
 
 - `apps/miauw-whatsapp`: servico Node.js 22 + TypeScript.
@@ -164,6 +166,8 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_COTACAO_INTERNAL_BASE_URL=http://wimifarma-cotacao-app:3000/cotacao`
 - `MIAUW_WHATSAPP_COTACAO_INTERNAL_TOKEN` ou `COTACAO_INTERNAL_TOKEN` para o painel consultar status de encomendas da Cotacao
 - `MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL=http://wimifarma-financeiro-app:3800/financeiro`
+- `MIAUW_WHATSAPP_TAREFA_INTERNAL_BASE_URL=http://wimifarma-tarefa-app:3500/tarefa`
+- `MIAUW_WHATSAPP_TAREFA_INTERNAL_TOKEN` ou `TAREFA_INTERNAL_TOKEN` para comandos de Tarefas pelo WhatsApp
 - `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES=15`
 - `MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES=30`
 - `MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES=2`
