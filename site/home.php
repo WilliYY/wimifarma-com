@@ -318,22 +318,20 @@ function wf_home_expire_cookie(string $name, string $path): void
 function wf_home_clear_module_session_cookies(): void
 {
     $cookies = array(
-        'WFCASHBACK' => array('/', '/cashback', '/cashback/'),
-        'WFCOTACAOV2' => array('/', '/cotacao', '/cotacao/'),
-        'WFPEDIDOS' => array('/', '/pedidos', '/pedidos/'),
-        'WFFINANCEIRO' => array('/', '/financeiro', '/financeiro/'),
-        'WFTAREFA' => array('/', '/tarefa', '/tarefa/'),
-        'WFCODIGOS' => array('/', '/codigos', '/codigos/'),
-        'WFXP' => array('/', '/xp', '/xp/'),
-        'WFGESTAO' => array('/', '/gestao', '/gestao/'),
-        'WFUSUARIOS' => array('/', '/usuarios', '/usuarios/'),
-        'WFWCASHBACK' => array('/', '/cashback', '/cashback/', '/miauw', '/miauw/', '/miauby', '/miauby/'),
+        'WFCASHBACK',
+        'WFCOTACAOV2',
+        'WFPEDIDOS',
+        'WFFINANCEIRO',
+        'WFTAREFA',
+        'WFCODIGOS',
+        'WFXP',
+        'WFGESTAO',
+        'WFUSUARIOS',
+        'WFWCASHBACK',
     );
 
-    foreach ($cookies as $name => $paths) {
-        foreach ($paths as $path) {
-            wf_home_expire_cookie($name, $path);
-        }
+    foreach ($cookies as $name) {
+        wf_home_expire_cookie($name, '/');
     }
 }
 
