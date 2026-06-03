@@ -313,6 +313,17 @@ miauw_eval_add('fase21_audio_curto_bloqueia_chute', static function (): void {
     miauw_eval_assert($blocked, 'Transcricao longa em audio de 1 segundo precisa ser bloqueada.');
 });
 
+miauw_eval_add('fase21_audio_bloqueia_glossario_inventado', static function (): void {
+    $blocked = false;
+    try {
+        miauw_agent_validate_transcribed_audio_text('Wimifarma, Miauby, cotacao, cashback, sangria, EAN, distribuidora, encomenda, farmacia popular.', 2200);
+    } catch (InvalidArgumentException $error) {
+        $blocked = true;
+    }
+
+    miauw_eval_assert($blocked, 'Transcricao que parece glossario interno nao pode virar rascunho de audio.');
+});
+
 miauw_eval_add('fase17_treinador_compilado', static function (): void {
     miauw_ensure_schema();
     $pdo = db();

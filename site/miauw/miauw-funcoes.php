@@ -2033,11 +2033,57 @@ function miauw_agent_audio_word_count(string $text): int
     return count(array_filter($parts, static fn ($part): bool => trim((string) $part) !== ''));
 }
 
+function miauw_agent_audio_transcription_normalized(string $text): string
+{
+    $normalized = function_exists('miauw_skill_normalized')
+        ? miauw_skill_normalized($text)
+        : (function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text));
+    $normalized = preg_replace('/[^a-z0-9]+/u', ' ', $normalized) ?? $normalized;
+    return trim(preg_replace('/\s+/u', ' ', $normalized) ?? $normalized);
+}
+
+function miauw_agent_transcription_looks_like_seed_glossary(string $text): bool
+{
+    $normalized = miauw_agent_audio_transcription_normalized($text);
+    if ($normalized === '') {
+        return false;
+    }
+
+    $seedPhrase = 'wimifarma miauby cotacao cashback sangria ean distribuidora encomenda farmacia popular';
+    if ($normalized === $seedPhrase) {
+        return true;
+    }
+
+    $words = preg_split('/\s+/u', $normalized) ?: array();
+    $words = array_values(array_filter($words, static fn ($word): bool => trim((string) $word) !== ''));
+    if (count($words) < 6) {
+        return false;
+    }
+
+    $seedWords = array_flip(explode(' ', $seedPhrase));
+    $hits = 0;
+    $uniqueHits = array();
+    foreach ($words as $word) {
+        $key = (string) $word;
+        if (isset($seedWords[$key])) {
+            $hits++;
+            $uniqueHits[$key] = true;
+        }
+    }
+
+    $ratio = $hits / max(1, count($words));
+    return count($uniqueHits) >= 6 && $ratio >= 0.75;
+}
+
 function miauw_agent_validate_transcribed_audio_text(string $text, int $durationMs = 0): void
 {
     $text = trim($text);
     if ($text === '') {
         throw new RuntimeException('Transcricao voltou vazia. Grave de novo mais perto do microfone.');
+    }
+
+    if (miauw_agent_transcription_looks_like_seed_glossary($text)) {
+        throw new InvalidArgumentException('Nao deu para confiar nessa transcricao. Grave de novo falando uma frase clara.');
     }
 
     if ($durationMs <= 0) {
@@ -2130,7 +2176,6 @@ function miauw_agent_transcribe_audio_upload(array $file, array $user, int $dura
         'file' => curl_file_create($tmpName, $mime, $originalName),
         'language' => 'pt',
         'response_format' => 'json',
-        'prompt' => 'Transcreva em portugues do Brasil. Termos comuns: Wimifarma, Miauby, cotacao, cashback, sangria, EAN, distribuidora, encomenda, farmacia popular.',
     );
 
     $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
