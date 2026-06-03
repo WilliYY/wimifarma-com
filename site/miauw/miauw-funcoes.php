@@ -2334,13 +2334,13 @@ function miauw_agent_text_command_catalog(): array
             'module' => 'financeiro',
             'tool' => 'registrar_sangria',
             'risk' => 'alto',
-            'required_fields' => array('valor', 'responsavel'),
+            'required_fields' => array('valor', 'responsavel_identificado'),
             'optional_fields' => array('observacao', 'horario_referencia'),
             'internal_examples' => array('sangria 10 troco', 'lancar sangria 25 mercado', 'tira 20 do caixa para cafe'),
             'whatsapp_examples' => array('miauby sangria 10 troco', 'miauby sangria 50 sueli compra de agua'),
             'missing_data_replies' => array('Faltou o valor. Me mande assim: sangria 10 troco.'),
             'response_examples' => array('Sangria registrada: R$ 10,00 - Will - troco.'),
-            'rules' => array('usar usuario logado como responsavel padrao no interno', 'valor alto pede confirmacao', 'texto restante vira observacao'),
+            'rules' => array('usar usuario logado como responsavel padrao no interno', 'usuario comum nao registra em nome de outro sem permissao', 'valor alto pede confirmacao', 'texto restante vira observacao'),
             'keywords' => array('sangria', 'sangra', 'retirei', 'retirada', 'caixa', 'sangrei'),
         ),
         array(
@@ -2348,13 +2348,13 @@ function miauw_agent_text_command_catalog(): array
             'module' => 'financeiro',
             'tool' => 'criar_lancamento_financeiro',
             'risk' => 'alto',
-            'required_fields' => array('valor', 'responsavel'),
+            'required_fields' => array('valor', 'responsavel_identificado'),
             'optional_fields' => array('observacao', 'destino', 'pagador', 'data_hora'),
-            'internal_examples' => array('pix cnpj 28,90 sueli', 'lancar pix cnpj 28,90 sueli', 'registrar pix cnpj responsavel sueli valor 28,90'),
+            'internal_examples' => array('pix cnpj 28,90 compra fornecedor', 'lancar pix cnpj 28,90 compra fornecedor', 'registrar pix cnpj valor 28,90 observacao compra urgente', 'pix cnpj 28,90 sueli compra fornecedor'),
             'whatsapp_examples' => array('miauby pix cnpj 28,90 sueli', 'miauby pix cnpj valor 28,90 responsavel sueli', 'foto/PDF somente no WhatsApp quando OCR estiver habilitado'),
-            'missing_data_replies' => array('Faltou o valor. Me mande assim: pix cnpj 28,90 sueli.', 'Faltou o responsavel. Me mande assim: pix cnpj 28,90 sueli.'),
+            'missing_data_replies' => array('Faltou o valor. Me mande assim: pix cnpj 28,90 compra fornecedor.', 'Responsavel nao identificado. Entre de novo ou confirme o usuario antes de gravar.'),
             'response_examples' => array('PIX CNPJ lancado: R$ 28,90 - Sueli.'),
-            'rules' => array('Miauby interno usa somente texto manual', 'nao inventar dado de comprovante ilegivel', 'detalhe completo fica em log/historico'),
+            'rules' => array('Miauby interno usa somente texto manual', 'Miauby interno usa sessao como responsavel padrao', 'nome digitado diferente do usuario logado precisa permissao', 'nao inventar dado de comprovante ilegivel', 'detalhe completo fica em log/historico'),
             'keywords' => array('pix', 'cnpj', 'cpnj', 'comprovante', 'responsavel', 'valor'),
         ),
         array(
@@ -2465,6 +2465,52 @@ function miauw_agent_text_command_score(string $message, array $contract): int
     return $score;
 }
 
+function miauw_agent_identity_context(?int $userId = null, string $pageContext = '', array $channelContextOptions = array()): array
+{
+    $channel = miauw_substr(trim((string) ($channelContextOptions['channel'] ?? $pageContext)), 0, 40);
+    $origin = $channel === 'whatsapp' || $pageContext === 'whatsapp' ? 'miauby_whatsapp' : 'miauby_interno';
+    $rawUserContext = is_array($channelContextOptions['user_context'] ?? null) ? $channelContextOptions['user_context'] : array();
+    if ($userId !== null && $userId > 0 && !isset($rawUserContext['id'], $rawUserContext['user_id'], $rawUserContext['usuario_id'])) {
+        $rawUserContext['id'] = $userId;
+    }
+
+    $actor = miauw_resolve_responsible_actor(array(
+        'user_context' => $rawUserContext,
+        'prefer_session' => $origin === 'miauby_interno',
+    ));
+    $identified = !empty($actor['identified']);
+    $displayName = miauw_substr(trim((string) ($actor['display_name'] ?? '')), 0, 120);
+    $username = miauw_substr(trim((string) ($actor['username'] ?? '')), 0, 80);
+    $source = miauw_substr(trim((string) ($actor['source'] ?? '')), 0, 60);
+
+    if ($origin === 'miauby_interno') {
+        $defaultSource = 'session';
+        $policy = 'usuario comum nao executa comando em nome de outro; admin pode informar outro responsavel somente quando a regra do modulo permitir';
+        $missingReply = 'Sessao expirada. Entre de novo para o Miauby continuar.';
+    } else {
+        $defaultSource = 'whatsapp_link';
+        $policy = 'numero vinculado vence como responsavel oficial; nome digitado diferente fica em auditoria/observacao salvo permissao valida';
+        $missingReply = 'Responsavel nao identificado. Vincule esse numero a um usuario antes de gravar.';
+    }
+
+    return array(
+        'origin' => $origin,
+        'channel' => $channel !== '' ? $channel : ($origin === 'miauby_whatsapp' ? 'whatsapp' : 'internal'),
+        'responsible_source' => $source !== '' && $identified ? $source : $defaultSource,
+        'default_responsible_source' => $defaultSource,
+        'requires_valid_session' => $origin === 'miauby_interno',
+        'requires_allowlist' => $origin === 'miauby_whatsapp',
+        'identified' => $identified,
+        'user_id' => isset($actor['user_id']) && (int) $actor['user_id'] > 0 ? (int) $actor['user_id'] : null,
+        'username' => $username,
+        'display_name' => $displayName,
+        'role' => miauw_substr(trim((string) ($rawUserContext['role'] ?? $rawUserContext['perfil'] ?? '')), 0, 40),
+        'manual_responsible_policy' => $policy,
+        'missing_identity_reply' => $missingReply,
+        'history_actor_fields' => array('user_id', 'display_name', 'username', 'origin'),
+    );
+}
+
 function miauw_agent_text_command_contracts(string $message = '', string $origin = 'miauby_interno', int $limit = 8): array
 {
     $catalog = miauw_agent_text_command_catalog();
@@ -2502,13 +2548,16 @@ function miauw_agent_text_command_contracts(string $message = '', string $origin
         $examples = (array) ($item['internal_examples'] ?? array());
         $responses = (array) ($item['response_examples'] ?? array());
         $required = implode(', ', (array) ($item['required_fields'] ?? array()));
+        $identityRule = $origin === 'miauby_whatsapp'
+            ? 'responsavel=usuario_vinculado_ao_numero'
+            : 'responsavel=usuario_logado_da_sessao';
         $trainingLines[] = (string) ($item['intent'] ?? 'comando_textual')
             . ': no interno aceite "' . (string) ($examples[0] ?? '') . '" sem prefixo; campos=' . $required
-            . '; origem=' . $origin . '; resposta="' . (string) ($responses[0] ?? 'resposta curta operacional.') . '"';
+            . '; ' . $identityRule . '; origem=' . $origin . '; resposta="' . (string) ($responses[0] ?? 'resposta curta operacional.') . '"';
     }
 
     return array(
-        'version' => 'miauby-text-command-contracts-2026-06-03',
+        'version' => 'miauby-text-command-contracts-2026-06-03-session',
         'source' => 'site/miauw/miauw-funcoes.php',
         'mode' => 'text_only_shared_training',
         'origin' => $origin,
@@ -2516,9 +2565,31 @@ function miauw_agent_text_command_contracts(string $message = '', string $origin
         'internal_requires_prefix' => false,
         'internal_supports_media' => false,
         'writes_enabled_in_node' => false,
+        'identity_resolution' => array(
+            'miauby_interno' => array(
+                'responsible_source' => 'session',
+                'default_origin' => 'miauby_interno',
+                'requires_valid_session' => true,
+                'missing_identity_reply' => 'Sessao expirada. Entre de novo para o Miauby continuar.',
+                'manual_responsible_policy' => 'usuario comum nao executa em nome de outro; admin pode informar outro responsavel somente quando a regra do modulo permitir',
+                'history_fields' => array('user_id', 'display_name', 'username', 'origin'),
+            ),
+            'miauby_whatsapp' => array(
+                'responsible_source' => 'whatsapp_link',
+                'default_origin' => 'miauby_whatsapp',
+                'requires_allowlist' => true,
+                'missing_identity_reply' => 'Responsavel nao identificado. Vincule esse numero a um usuario antes de gravar.',
+                'manual_responsible_policy' => 'numero vinculado vence como responsavel oficial; nome digitado diferente fica em auditoria/observacao salvo permissao valida',
+                'history_fields' => array('user_id', 'display_name', 'username', 'origin', 'contact_mask'),
+            ),
+        ),
         'rules' => array(
             'todo comando textual criado no WhatsApp deve ganhar variacoes textuais no Miauby interno quando fizer sentido',
             'Miauby interno aceita comando direto, sem exigir a palavra miauby',
+            'Miauby interno usa o usuario logado da sessao como responsavel padrao',
+            'sem sessao valida no Miauby interno, nao executar comando e pedir login',
+            'Miauby WhatsApp usa o usuario vinculado ao numero/allowlist como responsavel padrao',
+            'usuario comum nao registra acao em nome de outro sem permissao',
             'Miauby interno nao le imagem, foto, PDF, audio ou comprovante; usa somente fallback textual/manual',
             'origem precisa ser registrada como miauby_interno ou miauby_whatsapp',
             'resposta publica fica curta; detalhes completos ficam em historico/log',
@@ -2563,6 +2634,7 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
         $pageContext === 'whatsapp' ? 'miauby_whatsapp' : 'miauby_interno',
         8
     );
+    $identityContext = miauw_agent_identity_context($userId, $pageContext, $channelContextOptions);
     foreach ($trainingExamples as $example) {
         $question = (string) ($example['pergunta'] ?? '');
         $reply = (string) ($example['resposta_ideal'] ?? '');
@@ -2585,11 +2657,16 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
             'audio so inicia por botao explicito, sem gravacao e sem escrita operacional por voz',
             'comandos textuais do WhatsApp tambem treinam o Miauby interno quando forem texto puro',
             'Miauby interno aceita comando direto sem prefixo miauby e nao processa midia',
+            'Miauby interno usa o usuario logado da sessao como responsavel padrao',
+            'Miauby WhatsApp usa o usuario vinculado ao numero/allowlist como responsavel padrao',
+            'usuario comum nao registra acao em nome de outro sem permissao',
+            'sem sessao valida no Miauby interno, nao executar comando',
         ),
         'anti_patterns' => array_values((array) ($contract['anti_patterns'] ?? array())),
         'approved_patterns' => miauw_agent_approved_style_patterns($message, $userId),
         'training_examples' => $trainingExamples,
         'training_profile' => $trainingProfile,
+        'identity_context' => $identityContext,
         'text_command_contracts' => $textCommandContracts,
         'text_command_training' => array_values((array) ($textCommandContracts['training_lines'] ?? array())),
         'channel_memory' => $channelMemory,
@@ -2620,6 +2697,17 @@ function miauw_agent_style_context_text(string $message, ?int $userId = null, st
         foreach (array_slice((array) ($voiceProfile['directives'] ?? array()), 0, 2) as $directive) {
             $lines[] = '- regra de voz: ' . miauw_substr((string) $directive, 0, 160);
         }
+    }
+
+    $identityContext = is_array($context['identity_context'] ?? null) ? $context['identity_context'] : array();
+    if ($identityContext) {
+        $responsibleName = trim((string) ($identityContext['display_name'] ?? ''));
+        $responsibleLogin = trim((string) ($identityContext['username'] ?? ''));
+        $label = $responsibleName !== '' ? $responsibleName : ($responsibleLogin !== '' ? $responsibleLogin : 'nao identificado');
+        $lines[] = '- identidade: canal=' . (string) ($identityContext['origin'] ?? 'miauby_interno')
+            . '; responsavel_padrao=' . (string) ($identityContext['responsible_source'] ?? 'session')
+            . '; usuario=' . miauw_substr($label, 0, 120)
+            . '; regra=' . miauw_substr((string) ($identityContext['manual_responsible_policy'] ?? ''), 0, 180);
     }
 
     foreach (array_slice((array) ($context['approved_patterns'] ?? array()), 0, 3) as $pattern) {
@@ -7332,6 +7420,18 @@ function miauw_openai_tool_result(string $name, array $args): string
             $command['raw_message'] = 'tool_call_criar_conta_gestao';
         }
 
+        $actor = miauw_resolve_responsible_actor(array(
+            'user_context' => $command,
+            'manual' => (string) ($command['responsavel'] ?? ''),
+            'prefer_session' => true,
+        ));
+        $command = miauw_apply_actor_identity_to_command($command, $actor);
+        if (in_array($name, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
+            $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+        } elseif ($name === 'criar_encomenda_cotacao') {
+            $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
+        }
+
         $user = function_exists('current_user') ? current_user() : null;
         $confirmation = miauw_queue_confirmation(
             $name,
@@ -7522,11 +7622,19 @@ function miauw_openai_tool_result(string $name, array $args): string
         }
 
         try {
+            $command = $args;
+            $actor = miauw_resolve_responsible_actor(array(
+                'user_context' => $command,
+                'manual' => (string) ($command['responsavel'] ?? ''),
+                'prefer_session' => true,
+            ));
+            $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
             $result = miauw_skill_create_sangria(
-                (float) ($args['valor'] ?? 0),
-                (string) ($args['responsavel'] ?? ''),
-                (string) ($args['observacao'] ?? ''),
-                isset($args['data']) ? (string) $args['data'] : null
+                (float) ($command['valor'] ?? 0),
+                (string) ($command['responsavel'] ?? ''),
+                (string) ($command['observacao'] ?? ''),
+                isset($command['data']) ? (string) $command['data'] : null,
+                isset($command['actor_user_id']) ? (int) $command['actor_user_id'] : null
             );
         } catch (Throwable $error) {
             error_log('Miauby OpenAI tool registrar_sangria failed: ' . $error->getMessage());
@@ -7548,21 +7656,29 @@ function miauw_openai_tool_result(string $name, array $args): string
         }
 
         try {
+            $command = $args;
+            $actor = miauw_resolve_responsible_actor(array(
+                'user_context' => $command,
+                'manual' => (string) ($command['responsavel'] ?? ''),
+                'prefer_session' => true,
+            ));
+            $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
             if (function_exists('miauw_intelligence_learn_financeiro_command')) {
                 miauw_intelligence_learn_financeiro_command('tool_call_criar_lancamento_financeiro', array(
-                    'categoria' => (string) ($args['categoria'] ?? ''),
-                    'valor' => (float) ($args['valor'] ?? 0),
-                    'responsavel' => (string) ($args['responsavel'] ?? ''),
-                    'observacao_usuario' => (string) ($args['observacao'] ?? ''),
+                    'categoria' => (string) ($command['categoria'] ?? ''),
+                    'valor' => (float) ($command['valor'] ?? 0),
+                    'responsavel' => (string) ($command['responsavel'] ?? ''),
+                    'observacao_usuario' => (string) ($command['observacao'] ?? ''),
                 ));
             }
 
             $result = miauw_skill_create_financeiro_lancamento(
-                (string) ($args['categoria'] ?? ''),
-                (float) ($args['valor'] ?? 0),
-                (string) ($args['observacao'] ?? ''),
-                isset($args['data']) ? (string) $args['data'] : null,
-                (string) ($args['responsavel'] ?? '')
+                (string) ($command['categoria'] ?? ''),
+                (float) ($command['valor'] ?? 0),
+                (string) ($command['observacao'] ?? ''),
+                isset($command['data']) ? (string) $command['data'] : null,
+                (string) ($command['responsavel'] ?? ''),
+                isset($command['actor_user_id']) ? (int) $command['actor_user_id'] : null
             );
         } catch (Throwable $error) {
             error_log('Miauby OpenAI tool criar_lancamento_financeiro failed: ' . $error->getMessage());

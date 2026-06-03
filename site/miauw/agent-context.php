@@ -107,6 +107,7 @@ $channelContextOptions = array(
     'contact_hash' => miauw_substr(trim((string) ($userContext['contact_hash'] ?? '')), 0, 64),
     'contact_mask' => miauw_substr(trim((string) ($userContext['contact_mask'] ?? '')), 0, 40),
     'channel' => miauw_substr(trim((string) ($userContext['channel'] ?? $pageContext)), 0, 40),
+    'user_context' => $userContext,
 );
 
 try {
@@ -126,7 +127,7 @@ try {
     miauw_agent_context_json(200, array(
         'ok' => true,
         'source' => 'php_miauby_core',
-        'version' => 'miauby-shared-context-2026-05-27',
+        'version' => 'miauby-shared-context-2026-06-03-session',
         'style_context' => $styleContext,
         'channel_memory' => is_array($styleContext['channel_memory'] ?? null) ? $styleContext['channel_memory'] : array('items' => array()),
         'tool_contracts' => $toolContracts,

@@ -243,6 +243,24 @@ miauw_eval_add('fase15_roteador_estilo_casual', static function (): void {
     miauw_eval_assert(empty($textCommands['internal_requires_prefix']), 'Miauby interno nao deve exigir prefixo nos comandos textuais.');
     miauw_eval_assert(!empty($textCommands['whatsapp_requires_prefix']), 'WhatsApp deve continuar exigindo prefixo nos comandos textuais.');
     miauw_eval_assert(empty($textCommands['internal_supports_media']), 'Miauby interno nao deve aceitar midia como comando textual.');
+    miauw_eval_assert(is_array($context['identity_context'] ?? null), 'Contexto precisa carregar identidade do operador/canal.');
+    miauw_eval_assert(is_array($textCommands['identity_resolution'] ?? null), 'Contratos textuais precisam carregar regra de identidade por origem.');
+    miauw_eval_assert_same('session', (string) ($textCommands['identity_resolution']['miauby_interno']['responsible_source'] ?? ''), 'Miauby interno deve usar sessao como fonte do responsavel.');
+    miauw_eval_assert_same('whatsapp_link', (string) ($textCommands['identity_resolution']['miauby_whatsapp']['responsible_source'] ?? ''), 'WhatsApp deve usar vinculo do numero como fonte do responsavel.');
+    $commandContracts = miauw_agent_text_command_contracts('pix cnpj 28,90 compra fornecedor', 'miauby_interno', 3);
+    $trainingLine = implode("\n", (array) ($commandContracts['training_lines'] ?? array()));
+    miauw_eval_assert_contains('responsavel=usuario_logado_da_sessao', $trainingLine, 'Treino interno precisa ensinar responsavel pela sessao.');
+    $selectedCommands = (array) ($commandContracts['commands'] ?? array());
+    $firstRequired = (array) ($selectedCommands[0]['required_fields'] ?? array());
+    miauw_eval_assert(in_array('responsavel_identificado', $firstRequired, true), 'Comando financeiro precisa exigir responsavel identificado, nao nome digitado obrigatorio.');
+    $sessionCommand = miauw_apply_responsible_actor_to_command(
+        array('valor' => 10, 'responsavel' => 'Sueli', 'observacao' => 'troco'),
+        array('user_id' => 7, 'username' => 'thiago', 'display_name' => 'Thiago', 'source' => 'session', 'identified' => true),
+        true
+    );
+    miauw_eval_assert_same('Thiago', (string) ($sessionCommand['responsavel'] ?? ''), 'Sessao deve vencer responsavel digitado no interno.');
+    miauw_eval_assert_same('Sueli', (string) ($sessionCommand['responsavel_manual_informado'] ?? ''), 'Responsavel manual diferente deve ficar auditavel.');
+    miauw_eval_assert_same('session', (string) ($sessionCommand['responsavel_origem'] ?? ''), 'Origem do responsavel precisa ficar registrada.');
 });
 
 miauw_eval_add('fase21_perfil_voz_audio_seguro', static function (): void {

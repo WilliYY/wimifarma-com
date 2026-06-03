@@ -16,7 +16,7 @@ type ShadowReadSection = SourceTable & {
 };
 
 const env = process.env;
-const serviceVersion = '0.5.4';
+const serviceVersion = '0.5.5';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -1100,6 +1100,7 @@ function buildCanonicalReadModel(params: {
         internal_requires_prefix: params.textCommandContracts.internal_requires_prefix,
         whatsapp_requires_prefix: params.textCommandContracts.whatsapp_requires_prefix,
         internal_supports_media: params.textCommandContracts.internal_supports_media,
+        identity_resolution: params.textCommandContracts.identity_resolution,
       },
     },
     guards: {
@@ -1211,6 +1212,10 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
           'audio so inicia por botao explicito, sem gravacao e sem escrita operacional por voz',
           'comandos textuais do WhatsApp tambem treinam o Miauby interno quando forem texto puro',
           'Miauby interno aceita comando direto sem prefixo miauby e nao processa midia',
+          'Miauby interno usa o usuario logado da sessao como responsavel padrao',
+          'Miauby WhatsApp usa o usuario vinculado ao numero/allowlist como responsavel padrao',
+          'usuario comum nao registra acao em nome de outro sem permissao',
+          'sem sessao valida no Miauby interno, nao executar comando',
         ],
         anti_patterns: [
           'resposta generica de suporte',

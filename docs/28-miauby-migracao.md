@@ -31,7 +31,7 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 - Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/` e `/miauby/agent/`, ainda depende de ponte PHP para tools e contexto.
 - Integracao com Gestao: ja usa endpoint interno tokenizado do app Node/Postgres; a tool `criar_conta_gestao` nao deve depender de `wf_logs` nem de tabela MySQL de Gestao.
 - Escritas fortes: continuam com confirmacao humana e auditoria.
-- Responsavel de acao: o PHP resolveu um helper central para identificar o operador por sessao logada, depois por `user_context` do WhatsApp vinculado, depois por nome manual. Financeiro/sangria usam o nome identificado pela sessao ou allowlist como responsavel visivel e gravam `usuario_id`/`actor_user_id`; se nada identificar, a acao continua pedindo confirmacao/dado em vez de gravar anonimo.
+- Responsavel de acao: o PHP resolveu um helper central para identificar o operador por sessao logada, depois por `user_context` do WhatsApp vinculado, depois por nome manual. No Miauby interno, comandos usam automaticamente o usuario logado da sessao como responsavel padrao (`core_users.id`, `username`, `display_name`) e nao exigem que a pessoa informe o proprio nome; usuario comum nao pode registrar acao em nome de outro sem permissao validada. No WhatsApp, o responsavel vem do numero vinculado/allowlist. Financeiro/sangria usam o nome identificado pela sessao ou allowlist como responsavel visivel e gravam `usuario_id`/`actor_user_id`; se nada identificar, a acao continua pedindo confirmacao/dado em vez de gravar anonimo.
 
 ### Miauby WhatsApp
 
@@ -242,7 +242,7 @@ Regras preservadas:
 - Memorias e padroes entram no contexto canonico somente quando revisados/aprovados; itens pendentes continuam visiveis apenas em contagem/diagnostico, nao como contexto de resposta.
 - Conhecimentos entram quando estao ativos/aprovados. O endpoint tambem entende `ativo`/`active` quando a informacao vem do JSON sanitizado da sombra.
 - `tool_contracts` e tipado no Node, mas `execution_owner` e `confirmation_owner` continuam `php`; `writes_enabled_in_node=false` para todas as tools.
-- Desde 2026-06-03, `text_command_contracts` tambem entra no pacote canonico para registrar que comandos textuais treinados no Miauby WhatsApp devem virar variacoes textuais do Miauby interno quando fizer sentido. O interno nao exige prefixo `miauby`, nao processa midia e usa apenas texto manual, por exemplo `sangria 10 troco`, `pix cnpj 28,90 sueli`, `pedido anb 350`, `criar tarefa conferir caixa` e `cotacao dipirona`.
+- Desde 2026-06-03, `text_command_contracts` tambem entra no pacote canonico para registrar que comandos textuais treinados no Miauby WhatsApp devem virar variacoes textuais do Miauby interno quando fizer sentido. O interno nao exige prefixo `miauby`, nao processa midia e usa apenas texto manual, por exemplo `sangria 10 troco`, `pix cnpj 28,90 compra fornecedor`, `pedido anb 350`, `criar tarefa conferir caixa` e `cotacao dipirona`. O pacote tambem expoe `identity_resolution`: `miauby_interno` resolve responsavel pela sessao logada, enquanto `miauby_whatsapp` resolve pelo numero vinculado/allowlist.
 - `channel_memory` multicanal ainda fica no bridge/PHP oficial ate fase propria de migracao.
 
 Validacao esperada:

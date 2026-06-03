@@ -22,6 +22,25 @@ export type TextCommandContract = {
   keywords: string[];
 };
 
+const identityResolution = {
+  miauby_interno: {
+    responsible_source: 'session',
+    default_origin: 'miauby_interno',
+    requires_valid_session: true,
+    missing_identity_reply: 'Sessao expirada. Entre de novo para o Miauby continuar.',
+    manual_responsible_policy: 'usuario comum nao executa em nome de outro; admin pode informar outro responsavel somente quando a regra do modulo permitir',
+    history_fields: ['user_id', 'display_name', 'username', 'origin'],
+  },
+  miauby_whatsapp: {
+    responsible_source: 'whatsapp_link',
+    default_origin: 'miauby_whatsapp',
+    requires_allowlist: true,
+    missing_identity_reply: 'Responsavel nao identificado. Vincule esse numero a um usuario antes de gravar.',
+    manual_responsible_policy: 'numero vinculado vence como responsavel oficial; nome digitado diferente fica em auditoria/observacao salvo permissao valida',
+    history_fields: ['user_id', 'display_name', 'username', 'origin', 'contact_mask'],
+  },
+} as const;
+
 const textCommandContracts: TextCommandContract[] = [
   {
     intent: 'registrar_sangria',
@@ -34,7 +53,7 @@ const textCommandContracts: TextCommandContract[] = [
     whatsapp_requires_prefix: true,
     internal_supports_media: false,
     whatsapp_supports_media: false,
-    required_fields: ['valor', 'responsavel'],
+    required_fields: ['valor', 'responsavel_identificado'],
     optional_fields: ['observacao', 'horario_referencia'],
     internal_examples: [
       'sangria 10 troco',
@@ -54,6 +73,7 @@ const textCommandContracts: TextCommandContract[] = [
     ambiguity_rules: [
       'usar usuario logado como responsavel padrao no interno',
       'usar usuario vinculado ao numero como responsavel padrao no WhatsApp',
+      'usuario comum nao registra sangria em nome de outro sem permissao',
       'nao registrar valor zerado, negativo ou confuso',
       'valor muito alto pede confirmacao antes de gravar',
     ],
@@ -63,6 +83,7 @@ const textCommandContracts: TextCommandContract[] = [
     ],
     notes: [
       'texto restante depois de valor/responsavel vira observacao',
+      'no interno, nao pedir o nome do proprio usuario quando a sessao ja identificou',
       'origem deve ser miauby_interno ou miauby_whatsapp',
     ],
     keywords: ['sangria', 'sangra', 'retirei', 'retirada', 'caixa', 'tirar', 'sangrei'],
@@ -78,12 +99,12 @@ const textCommandContracts: TextCommandContract[] = [
     whatsapp_requires_prefix: true,
     internal_supports_media: false,
     whatsapp_supports_media: true,
-    required_fields: ['valor', 'responsavel'],
+    required_fields: ['valor', 'responsavel_identificado'],
     optional_fields: ['observacao', 'destino', 'pagador', 'data_hora'],
     internal_examples: [
-      'pix cnpj 28,90 sueli',
-      'lancar pix cnpj 28,90 sueli',
-      'registrar pix cnpj responsavel sueli valor 28,90',
+      'pix cnpj 28,90 compra fornecedor',
+      'lancar pix cnpj 28,90 compra fornecedor',
+      'registrar pix cnpj valor 28,90 observacao compra urgente',
       'pix cnpj 28,90 sueli compra fornecedor',
     ],
     whatsapp_examples: [
@@ -93,11 +114,13 @@ const textCommandContracts: TextCommandContract[] = [
       'foto/PDF de comprovante Pix, quando OCR estiver habilitado',
     ],
     missing_data_replies: [
-      'Faltou o valor. Me mande assim: pix cnpj 28,90 sueli.',
-      'Faltou o responsavel. Me mande assim: pix cnpj 28,90 sueli.',
+      'Faltou o valor. Me mande assim: pix cnpj 28,90 compra fornecedor.',
+      'Responsavel nao identificado. Entre de novo ou confirme o usuario antes de gravar.',
     ],
     ambiguity_rules: [
       'Miauby interno trabalha somente com texto manual, sem OCR de imagem/PDF',
+      'Miauby interno usa a sessao como responsavel padrao; nao exigir nome proprio no comando',
+      'nome digitado diferente do usuario logado precisa permissao antes de virar responsavel',
       'WhatsApp pode tentar OCR de midia; se falhar, pede comando textual curto',
       'nao inventar dado de comprovante ilegivel',
       'nao registrar sem valor e responsavel',
@@ -108,6 +131,7 @@ const textCommandContracts: TextCommandContract[] = [
     ],
     notes: [
       'texto manual e a base de aprendizado compartilhada com o interno',
+      'no interno, observacao pode vir logo depois do valor porque o responsavel ja vem da sessao',
       'detalhes completos de midia ficam so em log/historico do WhatsApp',
     ],
     keywords: ['pix', 'cnpj', 'cpnj', 'comprovante', 'responsavel', 'valor'],
@@ -269,11 +293,15 @@ function scoreContract(message: string, contract: TextCommandContract): number {
   return score;
 }
 
-function trainingLine(contract: TextCommandContract): string {
+function trainingLine(contract: TextCommandContract, origin: TextCommandOrigin): string {
   const fields = contract.required_fields.join(', ');
   const internalExample = contract.internal_examples[0] || contract.intent;
   const reply = contract.response_examples[0] || 'resposta curta operacional.';
-  return `${contract.intent}: no interno aceite "${internalExample}" sem prefixo; campos=${fields}; origem=miauby_interno; resposta="${reply}"`;
+  const identityRule = origin === 'miauby_whatsapp'
+    ? 'responsavel=usuario_vinculado_ao_numero'
+    : 'responsavel=usuario_logado_da_sessao';
+
+  return `${contract.intent}: no interno aceite "${internalExample}" sem prefixo; campos=${fields}; ${identityRule}; origem=${origin}; resposta="${reply}"`;
 }
 
 export function buildTextCommandContracts(options: { message?: string; origin?: TextCommandOrigin; limit?: number } = {}) {
@@ -289,7 +317,7 @@ export function buildTextCommandContracts(options: { message?: string; origin?: 
   const fallback = selected.length > 0 ? selected : scored.slice(0, limit);
 
   return {
-    version: 'miauby-text-command-contracts-2026-06-03',
+    version: 'miauby-text-command-contracts-2026-06-03-session',
     source: 'apps/miauby/src/text-command-contracts.ts',
     mode: 'text_only_shared_training',
     origin,
@@ -299,6 +327,7 @@ export function buildTextCommandContracts(options: { message?: string; origin?: 
     writes_enabled_in_node: false,
     execution_owner: 'php_or_module_endpoint',
     confirmation_owner: 'php_or_module_endpoint',
+    identity_resolution: identityResolution,
     summary: {
       total: textCommandContracts.length,
       selected: fallback.length,
@@ -307,11 +336,15 @@ export function buildTextCommandContracts(options: { message?: string; origin?: 
     rules: [
       'todo comando textual criado no WhatsApp deve ganhar variacoes textuais no Miauby interno quando fizer sentido',
       'Miauby interno aceita comando direto, sem exigir a palavra miauby',
+      'Miauby interno usa o usuario logado da sessao como responsavel padrao',
+      'sem sessao valida no Miauby interno, nao executar comando e pedir login',
+      'Miauby WhatsApp usa o usuario vinculado ao numero/allowlist como responsavel padrao',
+      'usuario comum nao registra acao em nome de outro sem permissao',
       'Miauby interno nao le imagem, foto, PDF, audio ou comprovante; usa somente fallback textual/manual',
       'origem precisa ser registrada como miauby_interno ou miauby_whatsapp',
       'resposta publica fica curta; detalhes completos ficam em historico/log',
     ],
-    training_lines: fallback.map((item) => trainingLine(item.contract)),
+    training_lines: fallback.map((item) => trainingLine(item.contract, origin)),
     commands: fallback.map((item) => ({
       ...item.contract,
       score: item.score,
