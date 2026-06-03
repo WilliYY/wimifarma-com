@@ -2585,7 +2585,7 @@ $modules = array(
             }
         }
     </style>
-    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260603-home-speech-v2')); ?>">
+    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260603-home-jokes')); ?>">
 </head>
 <body
     data-miauw-home-greeting="1"
@@ -2975,6 +2975,6 @@ $modules = array(
         }
     }());
 </script>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-speech-v2')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-jokes')); ?>" defer></script>
 </body>
 </html>

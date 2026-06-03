@@ -12,7 +12,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260603-home-speech-v2';
+    link.href = '/miauw/widget.css?v=20260603-home-jokes';
     document.head.appendChild(link);
   }
 
@@ -152,118 +152,137 @@
   const HOME_GREETING_REPEAT_MAX_MS = 1000 * 120;
   const HOME_GREETING_INTERACTION_PAUSE_MS = 1000 * 60 * 4;
   const HOME_GREETING_VISIBLE_MS = 7200;
-  const HOME_GREETING_PHRASES = [
-    'Miauww, {nome}! Fiscal interno online e julgando pendencias.',
-    '{nome}, hoje o caos vai ter que pegar senha.',
-    'Miauww, {nome}! Bora vender, conferir e fingir que esta tudo sob controle.',
-    '{nome}, se aparecer boleto perdido, eu vou miar alto.',
-    'Miauby de olho, {nome}. Pendencia hoje nao cria raiz.',
-    '{nome}, turno iniciado. O gato fiscal assumiu o plantao.',
-    'Miauww, {nome}! Produtividade sim, bagunca nao.',
-    '{nome}, se o sistema aprontar, a culpa e do humano. Eu sou so fofo.',
-    'Miauby online, {nome}. Planilhas suspeitas serao observadas.',
-    '{nome}, hoje e dia de fechar caixa sem emocao. Sera que vem ai?',
-    'Miauww, {nome}! Ja conferiu tarefa aberta ou vai fingir que nao viu?',
-    '{nome}, o sistema esta calmo... suspeitamente calmo.',
-    'Gato fiscal na area, {nome}. Pode trabalhar, eu vigio.',
-    '{nome}, lembrete amigavel: pendencia nao se resolve sozinha. Infelizmente.',
-    'Miauww, {nome}! Respira, vende e nao deixa o caixa te dominar.',
-    '{nome}, se tiver encomenda esquecida, eu vou miar no WhatsApp.',
-    'Miauby ativado. Modo fiscal de farmacia: ligado.',
-    '{nome}, cuidado: tarefas acumuladas podem causar miados internos.',
-    'Miauww, {nome}! Que o balcao esteja cheio e o sistema sem bug.',
-    '{nome}, hoje eu so aceito duas coisas: venda boa e caixa fechado.',
-    'Miauby presente. O RH dos gatos me recusou, entao fiquei aqui.',
-    '{nome}, se alguem disser "rapidinho", desconfie. Nunca e rapidinho.',
-    'Miauww, {nome}! Lembrete: boleto nao evapora. Eu tambem achei injusto.',
-    '{nome}, missao do dia: vender bem e nao deixar pedido sumir.',
-    'Fiscalizando em silencio, {nome}. Mentira, vou miar se precisar.',
-    '{nome}, se a farmacia virar caos, pelo menos teremos estilo.',
-    'Miauww, {nome}! A meta e simples: menos pendencia, mais dinheiro.',
-    '{nome}, hoje eu acordei fofo e operacional. Aproveite.',
-    'Miauby na escuta, {nome}. Se chamar, eu julgo e ajudo. Nessa ordem.',
-    '{nome}, nao deixe para amanha o caixa que pode fechar hoje.',
-    'Miauww, {nome}! Que os clientes venham e os bugs tirem folga.',
-    '{nome}, se o sistema travar, olha para o gato e mantem a dignidade.',
-    'Hoje tem Wimifarma, {nome}. E eu estou fiscalizando o drama.',
-    'Miauww, {nome}! O plantao comecou e eu ja estou desconfiado.',
-    '{nome}, tarefa aberta e igual gato com fome: nao da para ignorar muito tempo.',
-    'Miauby fiscal interno: pequeno no tamanho, gigante na cobranca.',
-    '{nome}, caixa fechado da paz. Caixa aberto da mensagem minha.',
-    'Miauww, {nome}! Evite pendencias. Elas voltam mais fortes.',
-    '{nome}, se aparecer "so uma coisinha", prepare o cafe.',
-    'Estou de olho, {nome}. Principalmente nos pedidos esquecidos.',
-    'Miauww, {nome}! Hoje o sistema prometeu se comportar. Nao confio.',
-    '{nome}, pedido registrado e pedido que nao assombra.',
-    'Miauby fiscalizando, {nome}. A fofura e so cobertura.',
-    '{nome}, se concluir uma tarefa, eu quase ronrono.',
-    'Miauww, {nome}! Que o PIX caia e o erro suba para longe.',
-    '{nome}, se o caixa fechar certinho, eu libero um miau de aprovacao.',
-    'Gato fiscal online. Pendencias, escondam-se.',
-    '{nome}, hoje e um otimo dia para nao esquecer encomenda.',
-    'Miauww, {nome}! Trabalhe tranquilo. Eu cuido da paranoia operacional.',
-    '{nome}, se tudo der certo hoje, finjo que foi planejamento.',
-    'Miauby acordado, {nome}. Diferente de alguns boletos esquecidos.',
-    '{nome}, ja bebeu agua? Gato fiscal tambem cuida do time.',
-    'Miauww, {nome}! Seu login foi aceito. Sua paz, nao prometo.',
-    '{nome}, status do dia: potencialmente produtivo. Vamos confirmar.',
-    'Miauby observando. Nenhuma pendencia escapara sem julgamento.',
-    '{nome}, se o cliente pedir desconto, respire e pense na margem.',
-    'Miauww, {nome}! Bora transformar correria em faturamento.',
-    '{nome}, lembrete: "depois eu vejo" e onde as tarefas vao morar.',
-    'Fiscal interno ativo. O gato esta pequeno, mas o relatorio e grande.',
-    '{nome}, se o dia ficar puxado, culpe Mercurio. Eu culpo planilhas.',
-    'Miauww, {nome}! Que os fornecedores respondam antes do proximo eclipse.',
-    '{nome}, pedidos sem previsao me deixam com bigode tremendo.',
-    'Miauby aqui, {nome}. Fofo, sim. Inocente, jamais.',
-    '{nome}, hoje a meta e vender, organizar e nao surtar. Nessa ordem.',
-    'Miauww, {nome}! Se tiver tarefa chata, chama de missao premium.',
-    '{nome}, caixa aberto as 18h me da coceira fiscal.',
-    'Gato fiscal em patrulha. Favor nao alimentar pendencias.',
-    '{nome}, se algo sumir, primeiro olhe no sistema. Depois culpe o gato.',
-    'Miauww, {nome}! Voce entrou. As pendencias fingiram que nao viram.',
-    '{nome}, produtividade detectada. Vou acompanhar de perto.',
-    'Miauby online. A farmacia agora tem auditoria com bigodes.',
-    '{nome}, se o pedido chegou, registra. Se nao chegou, eu cobro.',
-    'Miauww, {nome}! Hoje eu quero ver esse sistema brilhando. Ou quase.',
-    '{nome}, tarefa concluida e carinho no coracao do gato fiscal.',
-    'Gato fiscal pronto. Tragam vendas, nao confusao.',
-    '{nome}, se a internet cair, eu nego envolvimento.',
-    'Miauww, {nome}! Que o dia seja leve e o caixa bata de primeira.',
-    '{nome}, cuidado com a frase "ja ja eu faco". Ela e perigosa.',
-    'Miauby na area. O setor de cobranca emocional chegou.',
-    '{nome}, se tudo estiver organizado, eu vou ate estranhar.',
-    'Miauww, {nome}! Abra o sistema, feche as pendencias. Bonito assim.',
-    '{nome}, lembrete tecnico: caos nao e metodologia.',
-    'Fiscalizando com fofura e leve ameaca operacional.',
-    '{nome}, bom turno. Que o estoque esteja certo e o fornecedor tambem.',
-    'Miauww, {nome}! Se precisar, eu ajudo. Se nao precisar, eu observo.',
-    '{nome}, o gato fiscal recomenda: menos promessa, mais registro.',
-    'Miauby pronto. Hoje ninguem foge do historico.',
-    '{nome}, se esquecer de registrar, eu apareco em forma de alerta.',
-    'Miauww, {nome}! Sistema aberto, bigodes calibrados.',
-    '{nome}, dia bom e dia com venda, pedido certo e caixa fechado.',
-    'Gato fiscal presente. Pode comecar o espetaculo administrativo.',
-    '{nome}, se o dia complicar, pelo menos o Miauby esta bonito.',
-    'Miauww, {nome}! Vamos fazer a Wimifarma girar sem drama.',
-    '{nome}, tarefa parada por muito tempo vira patrimonio historico.',
-    'Miauby fiscal: porque alguem precisa olhar essas pendencias.',
-    '{nome}, hoje eu estou no modo: fofo, util e levemente julgador.',
-    'Miauww, {nome}! Que nenhuma encomenda se esconda hoje.',
-    '{nome}, sistema alimentado, farmacia organizada.',
-    'Gato fiscal logado. A paz administrativa comeca agora. Talvez.',
-    '{nome}, se bater o caixa de primeira, eu enquadro esse momento.',
-    'Miauww, {nome}! Hora de trabalhar antes que as tarefas se multipliquem.',
-    '{nome}, se o financeiro estiver lindo hoje, eu prometo nao miar. Muito.',
-    'Miauby aqui. Seu assistente interno com bigode e opiniao.',
-    '{nome}, vamos manter tudo registrado. Memoria humana e bugada.',
-    'Miauww, {nome}! Hoje o lema e: se fez, registra.',
-    '{nome}, cuidado: pedido sem registro vira lenda urbana.',
-    'Fiscal interno ativado. O sistema esta sob patas responsaveis.',
-    '{nome}, bom trabalho. Eu fico de olho nos detalhes chatos.',
-    'Miauww, {nome}! Que as vendas sejam muitas e os erros poucos.',
-    '{nome}, se tiver caos, chama. Se tiver cafe, tambem.',
-  ];
+  const HOME_GREETING_JOKE_CHANCE = 0.42;
+  const HOME_SPEECH_CATEGORIES = {
+    greetings: [
+      'Miauww, {nome}! Fiscal interno online.',
+      '{nome}, turno iniciado. O gato fiscal esta atento.',
+      'Miauby de olho, {nome}. Sem bagunca hoje.',
+      'Miauww, {nome}! Bora manter essa farmacia nos trilhos.',
+      'Bom te ver, {nome}. Vamos fazer esse turno render.',
+      'Gato fiscal na area, {nome}. Pode trabalhar tranquilo.',
+      '{nome}, hoje e dia de vender e registrar tudo certinho.',
+      'Miauww, {nome}! Ja conferiu se tem tarefa aberta?',
+      'Miauby online. Planilhas suspeitas serao observadas.',
+      '{nome}, sistema aberto, bigodes calibrados.',
+      'Miauww, {nome}! Que as vendas sejam muitas e os erros poucos.',
+      '{nome}, bom trabalho. Eu fico de olho nos detalhes chatos.',
+      'Miauby pronto. Hoje ninguem foge do historico.',
+      'Miauww, {nome}! Vamos fazer a Wimifarma girar sem drama.',
+      '{nome}, status do dia: potencialmente produtivo. Vamos confirmar.',
+      'Fiscal interno ativado. O sistema esta sob patas responsaveis.',
+    ],
+    jokes: [
+      '{nome}, sabia que tarefa aberta se reproduz quando ninguem olha?',
+      '{nome}, hoje eu estou fofo, mas sigo fiscalizando.',
+      'Miauww, {nome}! Boleto vencido me da arrepio no bigode.',
+      '{nome}, se o caixa bater de primeira, eu faco ate pose de calendario.',
+      '{nome}, dica do gato: "depois eu vejo" e o berco das pendencias.',
+      'Miauww, {nome}! Se o sistema travar, mantenha a classe e culpe o Wi-Fi.',
+      '{nome}, fornecedor que responde rapido deveria ganhar trofeu.',
+      '{nome}, tarefa concluida alimenta a alma do gato fiscal.',
+      'Miauby informa: cafe nao resolve tudo, mas ajuda a ignorar o caos.',
+      '{nome}, pedido sem registro vira historia de terror administrativa.',
+      'Miauww, {nome}! Hoje a meta e vender muito e sofrer pouco.',
+      '{nome}, se alguem disser "e rapidinho", ja sabemos que nao e.',
+      '{nome}, o sistema esta calmo demais. Estou desconfiado.',
+      'Gato fiscal na area. Pendencias, finjam costume.',
+      '{nome}, caixa aberto depois do horario me da ansiedade felina.',
+      'Miauww, {nome}! Que o PIX caia e os bugs evaporem.',
+      '{nome}, se a internet cair, eu nego envolvimento.',
+      '{nome}, pedido atrasado e igual gato com fome: uma hora comeca a gritar.',
+      'Miauby aqui: pequeno, fofo e perigosamente atento.',
+      '{nome}, se o financeiro fechar certinho hoje, eu quase acredito em milagre.',
+      'Miauww, {nome}! Nada como comecar o dia fingindo que esta tudo sob controle.',
+      '{nome}, se a tarefa sumiu, procure no sistema antes de culpar o gato.',
+      '{nome}, organizacao e quando ate o Miauby fica sem assunto. Raro.',
+      'Miauby fiscalizando: a fofura e so disfarce.',
+      '{nome}, se tiver encomenda esquecida, eu vou miar no WhatsApp.',
+      'Miauww, {nome}! Cliente chegou, bug saiu correndo. Assim esperamos.',
+      '{nome}, lembrete: estoque nao se arruma por telepatia. Eu ja tentei.',
+      '{nome}, pedido sem previsao e praticamente uma novela mexicana.',
+      'Miauby alerta: "so mais uma coisinha" nunca e so uma coisinha.',
+      '{nome}, se bater o caixa hoje, ganha um miau de aprovacao.',
+      'Miauww, {nome}! Que o dia seja leve e o sistema nao invente moda.',
+      '{nome}, pendencia antiga ja pode pedir CPF na farmacia.',
+      '{nome}, tarefa parada por muito tempo vira patrimonio historico.',
+      'Gato fiscal online. Favor nao alimentar o caos.',
+      '{nome}, se o fornecedor respondeu, tire print. Pode ser evento raro.',
+      '{nome}, hoje estou no modo fofo, util e levemente julgador.',
+      'Miauww, {nome}! Que os boletos estejam pagos e os pedidos registrados.',
+      '{nome}, erro no sistema e igual gato escondido: voce sabe que esta ali.',
+      '{nome}, se tudo der certo hoje, vamos fingir que foi planejamento.',
+      'Miauby recomenda: registre agora, esqueca nunca.',
+      '{nome}, tarefa concluida e carinho no coracao do gato fiscal.',
+      '{nome}, "amanha eu faco" e frase de origem perigosa.',
+      'Miauww, {nome}! Hoje o caos vai ter que aguardar atendimento.',
+      '{nome}, se alguem perguntar, eu sempre estive trabalhando.',
+      '{nome}, pedido que chegou e nao foi registrado vira fofoca no sistema.',
+      'Miauby de olho. Principalmente no que voces dizem que "ja resolveram".',
+      '{nome}, se o caixa nao bater, respira. Depois confere de novo. Depois respira mais.',
+      'Miauww, {nome}! A farmacia gira, o Miauby fiscaliza.',
+      '{nome}, pendencia nao morre. Ela so espera voce logar.',
+      '{nome}, se tiver tarefa chata, chama de missao premium.',
+      'Miauby aqui: seu lembrete ambulante com bigode.',
+      '{nome}, se o dia estiver dificil, pelo menos o gato esta bonito.',
+      '{nome}, nunca subestime uma tarefa com nome inocente.',
+      'Miauww, {nome}! Hoje eu aceito venda boa, caixa fechado e zero drama.',
+      '{nome}, pedido duplicado e o tipo de susto que eu nao recomendo.',
+      '{nome}, se alguem mexeu e nao registrou, o gato sabe.',
+      'Miauby fiscal: julgando pendencias desde o login.',
+      '{nome}, bora trabalhar antes que as tarefas formem sindicato.',
+      '{nome}, caixa fechado e paz. Caixa aberto e notificacao minha.',
+      'Miauww, {nome}! Que os clientes comprem e os erros tirem folga.',
+      '{nome}, se a planilha parece suspeita, provavelmente e.',
+      '{nome}, o sistema nao morde. Mas as vezes rosna.',
+      'Gato fiscal recomenda: menos improviso, mais registro.',
+      '{nome}, se esquecer a tarefa, eu apareco. Nao diga que nao avisei.',
+      '{nome}, hoje o objetivo e simples: vender, registrar e nao surtar.',
+      'Miauww, {nome}! Pode comecar. Eu ja estou julgando com carinho.',
+      '{nome}, se tudo estiver organizado, eu vou ate estranhar.',
+      '{nome}, lembrete amigavel: historico existe para evitar novela.',
+      'Miauby online. Seu fiscal interno com patas pequenas e cobranca grande.',
+      '{nome}, pedido sem baixa me deixa com bigode torto.',
+      '{nome}, se o erro persistir, chame o Will. Se for o Will, chame o gato.',
+      'Miauww, {nome}! Que o turno seja produtivo e os boletos comportados.',
+      '{nome}, tarefa aberta e igual pilha de pratos: quanto mais espera, pior fica.',
+      '{nome}, estou so observando. Por enquanto.',
+      'Miauby no plantao: fofo, util e sem paciencia para pendencia.',
+      '{nome}, se o modulo travar, encare com superioridade.',
+      '{nome}, pedido entregue sem registro e lenda urbana com nota fiscal.',
+      'Miauww, {nome}! Bora transformar correria em faturamento.',
+      '{nome}, financeiro bonito e poesia administrativa.',
+      '{nome}, se alguem disser "eu vi depois", eu ja fico em alerta.',
+      'Gato fiscal presente. Tragam vendas, nao confusao.',
+      '{nome}, que seu dia tenha mais venda que retrabalho.',
+      '{nome}, se a encomenda chegou, registra antes que ela vire memoria falsa.',
+      'Miauww, {nome}! O sistema abriu. Sua paz, nao prometo.',
+      '{nome}, hoje estou aceitando elogios e tarefas concluidas.',
+      '{nome}, pendencia escondida ainda e pendencia. Eu sinto o cheiro.',
+      'Miauby alerta: organizacao evita miado desnecessario.',
+      '{nome}, se o cliente pedir desconto, pense na margem e respire.',
+      '{nome}, o caos tentou entrar, mas estava sem cadastro.',
+      'Miauww, {nome}! Que os fornecedores colaborem e os bugs durmam.',
+      '{nome}, tarefa concluida deveria tocar musiquinha. Vou sugerir.',
+      '{nome}, se tiver duvida, pergunte. Se tiver boleto, pague.',
+      'Miauby diz: registro feito vale mais que "eu lembro".',
+      '{nome}, memoria humana e cache sem backup. Registra.',
+      '{nome}, o gato fiscal esta online e levemente desconfiado.',
+      'Miauww, {nome}! Bora deixar esse sistema bonito no historico.',
+      '{nome}, se o dia render, eu prometo nao miar muito.',
+      '{nome}, pendencia antiga tem mais historia que novela das oito.',
+      'Miauby fiscalizando com fofura estrategica.',
+      '{nome}, se o pedido sumiu, o sistema sabe. Ou deveria saber.',
+      '{nome}, vender e bom. Registrar e o que salva depois.',
+      'Miauww, {nome}! Seu turno comecou e minhas suspeitas tambem.',
+      '{nome}, caixa certo da ate vontade de ronronar.',
+      '{nome}, se aparecer problema, trate com calma. Ou com cafe.',
+      'Gato fiscal pronto para mais um episodio de "cade esse pedido?".',
+      '{nome}, se a tarefa parece pequena, e assim que ela engana.',
+      '{nome}, hoje o Miauby esta elegante e operacional.',
+      'Miauww, {nome}! Que as pendencias tenham medo de voce.',
+    ],
+  };
 
   const escapeHtml = (value) => String(value)
     .replaceAll('&', '&amp;')
@@ -344,7 +363,7 @@
 
   const homeGreetingStorageKey = (config) => `miauw_home_greeting_state_v2_${config.key}`;
 
-  const homeGreetingLastIndexKey = (config) => `miauw_home_greeting_last_index_${config.identityKey || 'home'}`;
+  const homeSpeechLastKey = (config) => `miauw_home_speech_last_${config.identityKey || 'home'}`;
 
   const readHomeGreetingState = (storageKey) => {
     const raw = sessionStorageGet(storageKey);
@@ -362,19 +381,52 @@
     sessionStorageSet(storageKey, JSON.stringify(value || {}));
   };
 
-  const homeGreetingText = (config, previousIndex = null) => {
-    const sessionIndex = Number(previousIndex);
-    const storedIndex = Number(localStorageGet(homeGreetingLastIndexKey(config)) || -1);
-    const lastIndex = Number.isFinite(sessionIndex) && sessionIndex >= 0 ? sessionIndex : storedIndex;
-    let index = Math.floor(Math.random() * HOME_GREETING_PHRASES.length);
-    if (HOME_GREETING_PHRASES.length > 1 && index === lastIndex) {
-      index = (index + 1 + Math.floor(Math.random() * (HOME_GREETING_PHRASES.length - 1))) % HOME_GREETING_PHRASES.length;
+  const readHomeSpeechLast = (config) => {
+    const raw = localStorageGet(homeSpeechLastKey(config));
+    if (!raw) return {};
+
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+      return {};
     }
-    localStorageSet(homeGreetingLastIndexKey(config), String(index));
+  };
+
+  const writeHomeSpeechLast = (config, value) => {
+    localStorageSet(homeSpeechLastKey(config), JSON.stringify(value || {}));
+  };
+
+  const homeSpeechCategoryName = (greetingState) => {
+    if (!greetingState || !greetingState.firstShown) return 'greetings';
+    return Math.random() < HOME_GREETING_JOKE_CHANCE ? 'jokes' : 'greetings';
+  };
+
+  const homeGreetingText = (config, greetingState = {}) => {
+    const storedLast = readHomeSpeechLast(config);
+    const lastCategory = String(greetingState.lastCategory || storedLast.category || '');
+    const sessionIndex = Number(greetingState.lastIndex);
+    const storedIndex = Number(storedLast.index);
+    const lastIndex = Number.isFinite(sessionIndex) && sessionIndex >= 0
+      ? sessionIndex
+      : (Number.isFinite(storedIndex) ? storedIndex : -1);
+    let category = homeSpeechCategoryName(greetingState);
+    let phrases = HOME_SPEECH_CATEGORIES[category] || HOME_SPEECH_CATEGORIES.greetings;
+    if (!Array.isArray(phrases) || !phrases.length) {
+      category = 'greetings';
+      phrases = HOME_SPEECH_CATEGORIES.greetings;
+    }
+
+    let index = Math.floor(Math.random() * phrases.length);
+    if (phrases.length > 1 && category === lastCategory && index === lastIndex) {
+      index = (index + 1 + Math.floor(Math.random() * (phrases.length - 1))) % phrases.length;
+    }
+    writeHomeSpeechLast(config, { category, index });
 
     return {
+      category,
       index,
-      text: HOME_GREETING_PHRASES[index].replace('{nome}', config.name),
+      text: phrases[index].replace('{nome}', config.name),
     };
   };
 
@@ -931,11 +983,12 @@
       return;
     }
 
-    const greeting = homeGreetingText(config, greetingState.lastIndex);
+    const greeting = homeGreetingText(config, greetingState);
     const nextAt = now + randomBetween(HOME_GREETING_REPEAT_MIN_MS, HOME_GREETING_REPEAT_MAX_MS);
     writeHomeGreetingState(storageKey, {
       firstShown: true,
       lastShownAt: now,
+      lastCategory: greeting.category,
       lastIndex: greeting.index,
       nextAt,
     });
