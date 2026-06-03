@@ -303,6 +303,7 @@ router.post('/dashboard.php', clearSensitive, maintenanceGuard, async (req: Requ
     res.redirect(`${BASE_PATH}/dashboard.php#busca`);
     return;
   }
+  await refreshExpiredCredits();
   await handleDashboardPost(req, res);
 });
 
@@ -336,6 +337,7 @@ router.post('/compras.php', clearSensitive, maintenanceGuard, async (req: Reques
     res.redirect(`${BASE_PATH}/compras.php`);
     return;
   }
+  await refreshExpiredCredits();
   await handleSimplePurchasePost(req, res);
 });
 
@@ -350,6 +352,7 @@ router.post('/resgates.php', clearSensitive, maintenanceGuard, async (req: Reque
     res.redirect(`${BASE_PATH}/resgates.php`);
     return;
   }
+  await refreshExpiredCredits();
   await handleManualRedemptionPost(req, res);
 });
 
