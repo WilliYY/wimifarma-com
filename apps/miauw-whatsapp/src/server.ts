@@ -4016,8 +4016,9 @@ function parseConfirmationDecision(message: string): { action: 'confirm' | 'canc
   }
 
   const clean = normalizeIntentText(raw);
-  const wantsCancel = /^(nao|n|cancelar|cancela|cancelado|deixa|esquece|negativo)(\s|$)/.test(clean);
-  const wantsConfirm = /^(sim|s|confirmar|confirma|confirmo|pode|ok|positivo|feito)(\s|$)/.test(clean);
+  const wantsCancel = /^(nao|n|cancelar|cancela|cancelado|deixa|esquece|negativo|errado|volta)(\s|$)/.test(clean)
+    || /^(nao cria|nao criar|nao registra|nao registrar)(\s|$)/.test(clean);
+  const wantsConfirm = /^(sim|s|confirmar|confirma|confirmo|isso|isso mesmo|pode|cria|criar|registrar|registra|manda|ok|positivo|feito)(\s|$)/.test(clean);
   if (!wantsCancel && !wantsConfirm) return null;
   return {
     action: wantsCancel ? 'cancel' : 'confirm',
@@ -4248,6 +4249,9 @@ function offTopicSimpleReplyFor(message: string): string {
 }
 
 function cancellationReplyForPending(pending: PendingConfirmationRow): string {
+  if (pending.tool === 'criar_pedido_whatsapp') {
+    return 'Cancelado. Pedido nao foi criado.';
+  }
   if (pending.tool === 'criar_lancamento_financeiro') {
     const command = isRecord(pending.command_payload) ? pending.command_payload : {};
     const category = normalizeIntentText(safeText(command.categoria, 80));
@@ -4927,6 +4931,9 @@ async function requestWhatsappActionPrepare(message: string, traceId: string, se
 
 async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
   if (!whatsappConfirmationsReady()) throw new Error('whatsapp_confirmations_not_enabled');
+  if (pending.tool === 'criar_pedido_whatsapp') {
+    return executeConfirmedPedidoCreate(pending, traceId, senderMask, userContext);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
   try {
@@ -4953,6 +4960,75 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function executeConfirmedPedidoCreate(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
+  if (!userContext.id || !userContext.linked) throw new Error('pedidos_create_unlinked_user');
+  const command = pedidoCommandFromConfirmationPayload(pending.command_payload);
+  if (!command) throw new Error('pedidos_confirmation_payload_invalid');
+  const reply = await createPedidoFromWhatsapp(command, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
+  return reply.text;
+}
+
+function pedidoConfirmationPayload(command: PedidosCreateCommand): JsonRecord {
+  return {
+    raw: command.raw,
+    supplier_name: command.supplier_name,
+    items: command.items.map((item) => ({
+      amount_cents: item.amount_cents,
+      due_date: item.due_date,
+      description: item.description,
+    })),
+    expected_arrival_at: command.expected_arrival_at,
+    competence_month: command.competence_month,
+    paid_now: command.paid_now,
+    arrived_now: command.arrived_now,
+    register_only: command.register_only,
+    note: command.note,
+    total_cents: command.total_cents,
+    total_label: command.total_label,
+    status_label: command.status_label,
+  };
+}
+
+function pedidoCommandFromConfirmationPayload(payload: JsonRecord): PedidosCreateCommand | null {
+  const supplierName = safeText(payload.supplier_name, 180);
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  const items = rawItems.flatMap((item): PedidosCreateCommand['items'] => {
+    if (!isRecord(item)) return [];
+    const amountCents = Number(item.amount_cents);
+    if (!Number.isInteger(amountCents) || amountCents <= 0) return [];
+    const dueDate = safeText(item.due_date, 20);
+    return [{
+      amount_cents: amountCents,
+      due_date: /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null,
+      description: safeText(item.description, 180) || `Pedido - ${supplierName}`,
+    }];
+  });
+  const competenceMonth = safeText(payload.competence_month, 7);
+  if (!supplierName || !items.length || !/^\d{4}-\d{2}$/.test(competenceMonth)) return null;
+  const totalCents = items.reduce((sum, item) => sum + item.amount_cents, 0);
+  const expectedArrival = safeText(payload.expected_arrival_at, 20);
+  return {
+    ok: true,
+    error: '',
+    error_message: '',
+    raw: safeText(payload.raw, 1000),
+    supplier_name: supplierName,
+    items,
+    expected_arrival_at: /^\d{4}-\d{2}-\d{2}$/.test(expectedArrival) ? expectedArrival : null,
+    competence_month: competenceMonth,
+    paid_now: payload.paid_now === true,
+    arrived_now: payload.arrived_now === true,
+    register_only: payload.register_only === true,
+    note: safeText(payload.note, 500) || 'Criado pelo Miauby WhatsApp.',
+    total_cents: totalCents,
+    total_label: safeText(payload.total_label, 80),
+    status_label: safeText(payload.status_label, 120),
+    needs_confirmation: false,
+    confirmation_message: '',
+    confirmation_summary: '',
+  };
 }
 
 function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft | null {
@@ -4987,6 +5063,26 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       };
     }
     if (!pedidoCreate.ok) {
+      if (pedidoCreate.needs_confirmation) {
+        if (!userContext.id || !userContext.linked) {
+          return {
+            text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de criar pedido.',
+            engine: 'blocked',
+            reason: 'pedidos_create_unlinked_user',
+          };
+        }
+        return {
+          text: pedidoCreate.confirmation_message || formatPedidosCreateError(pedidoCreate),
+          engine: 'local',
+          reason: `pedidos_create_confirmation_required:${pedidoCreate.error || 'unknown'}`,
+          confirmation: {
+            tool: 'criar_pedido_whatsapp',
+            summary: pedidoCreate.confirmation_summary || `Criar pedido ${pedidoCreate.supplier_name} (${pedidoCreate.total_label}).`,
+            risk: 'medio',
+            command: pedidoConfirmationPayload(pedidoCreate),
+          },
+        };
+      }
       return {
         text: formatPedidosCreateError(pedidoCreate),
         engine: 'local',
@@ -10142,7 +10238,13 @@ async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: stri
   throw new Error(safeText(data.message || data.error, 180) || `pedidos_confirm_arrival_http_${response.status}`);
 }
 
-async function createPedidoFromWhatsapp(command: PedidosCreateCommand, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<ReplyResult> {
+async function createPedidoFromWhatsapp(
+  command: PedidosCreateCommand,
+  traceId: string,
+  senderMask: string,
+  userContext: WhatsappUserContext,
+  idempotencyKey = `whatsapp:${traceId}`,
+): Promise<ReplyResult> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const actorName = safeText(userContext.display_name || userContext.username || senderMask, 120) || 'Miauby WhatsApp';
   const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/create-order`, {
@@ -10151,7 +10253,7 @@ async function createPedidoFromWhatsapp(command: PedidosCreateCommand, traceId: 
     body: JSON.stringify({
       source: 'miauby_whatsapp',
       trace_id: traceId,
-      idempotency_key: `whatsapp:${traceId}`,
+      idempotency_key: idempotencyKey,
       actor: actorName,
       actor_user_id: userContext.id,
       supplier_name: command.supplier_name,
