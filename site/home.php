@@ -3191,7 +3191,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
     }());
 </script>
 <?php if ($homeCanUseMiauw): ?>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-5s')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-10s')); ?>" defer></script>
 <?php endif; ?>
 </body>
 </html>
