@@ -26,8 +26,8 @@
     if (!card || shouldIgnoreClick(target)) return;
 
     var editDetails = card.querySelector('.users-edit-details');
-    if (!editDetails || editDetails.open) return;
+    if (!editDetails) return;
 
-    editDetails.open = true;
+    editDetails.open = !editDetails.open;
   });
 })();
