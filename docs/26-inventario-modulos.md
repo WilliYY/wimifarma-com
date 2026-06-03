@@ -251,14 +251,14 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 ### Fluxos de escrita
 
 - Criar/editar/inativar/excluir cliente.
-- Criar compra, calcular cashback gerado e criar credito.
+- Criar compra, calcular cashback gerado e criar credito vinculado a compra; novo credito expira sempre 45 dias apos `cashback_purchases.purchased_at::date`.
 - Criar resgate, consumir creditos e gravar itens do resgate.
 - Atualizar status de mensagens (`aberta`, `copiada`, `enviada`, `cancelada`, `expirado_da_fila`).
 - Listar mensagens de expiracao apenas para creditos ativos com saldo, ainda nao vencidos e dentro da janela configurada, agrupando por cliente e data exata de vencimento para respeitar compras diferentes; ao vencer, o credito sai da lista pelo status `expirado`, sem apagar cliente nem credito historico.
 - Listar recompra para clientes com saldo ativo e sem compra recente com uma pendencia por cliente e ultima compra; a pendencia fica visivel por ate 14 dias e depois sai da fila principal com status `expirado_da_fila`. `Excluir da fila` usa `cancelada` como arquivamento manual e ambos bloqueiam retorno imediato, sem apagar cliente, saldo ou historico.
 - Em `/cashback/mensagens.php`, o bloco `Todos Whats` fica recolhido por padrao e, ao abrir, mostra somente os 10 registros salvos mais recentes.
 - Criar/editar/inativar/excluir atendente.
-- Atualizar configuracoes (`cashback_percent`, validade, manutencao e afins).
+- Atualizar configuracoes (`cashback_percent`, alertas, manutencao e afins); a validade de novos creditos e regra fixa de 45 dias por compra.
 - Autoteste cria dados dentro de transacao controlada.
 - Auditoria oficial em `cashback_audit_events`.
 - Escritas nao sao espelhadas em MySQL; a trilha oficial fica em Postgres.
@@ -277,7 +277,7 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - Excluir fisicamente cliente/atendente e mais arriscado que inativar; validar se ainda precisa existir na UI.
 - Rollback para MySQL exige restaurar commit/imagem anterior e backup; nao existe mais chave de `.env` que religue o caminho no Cashback atual.
 - Telefone de cliente e mensagem WhatsApp sao dados sensiveis; nao expor em logs.
-- Mudancas em percentual/validade alteram regra de negocio historica.
+- Mudancas em percentual alteram regra de negocio historica; a validade de novos creditos deve permanecer fixa em 45 dias por compra.
 - Em 2026-05-29, a validacao de corte bateu 89 clientes, 4 atendentes, 45 compras, 45 creditos, 7 resgates, 7 itens de resgate, 7 settings e 171 mensagens entre Postgres e MySQL; somatorios de compras, creditos, saldo disponivel, resgates e itens fecharam em centavos; sequencias e integridade referencial ficaram OK. A diferenca de `wf_logs` era de 11 eventos de Pedidos/XP gravados depois da importacao, nao de Cashback.
 
 ### Proxima acao segura

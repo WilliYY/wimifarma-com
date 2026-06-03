@@ -74,6 +74,7 @@ const INTERNAL_TOKEN = env.CASHBACK_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN |
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const RECOMPRA_QUEUE_VISIBLE_DAYS = 14;
+const CASHBACK_CREDIT_VALIDITY_DAYS = 45;
 
 function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
   if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
@@ -640,6 +641,14 @@ function dateDaysFromNow(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function dateDaysFromDate(value: unknown, days: number): string {
+  const base = isoDate(value) || todayIso();
+  const [year, month, day] = base.split('-').map(Number);
+  if (!year || !month || !day) return dateDaysFromNow(days);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -1107,7 +1116,7 @@ async function loadSettings(): Promise<Settings> {
   return {
     cashbackPercent,
     cashbackPercentBps: percentToBps(cashbackPercent),
-    validityDays: Math.round(boundedNumber(values.get('cashback_validity_days'), 45, 1, 3650)),
+    validityDays: CASHBACK_CREDIT_VALIDITY_DAYS,
     redeemMultiplier: boundedNumber(values.get('redeem_multiplier'), 4, 1, 20),
     expirationAlertDays: Math.round(boundedNumber(values.get('expiration_alert_days'), 10, 1, 365)),
   };
@@ -1396,7 +1405,6 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
         redemptionId: null,
         percentBps: initialPercentBps,
         notes: `Compra inicial registrada junto ao cadastro.${notes ? ` ${notes}` : ''}`,
-        validityDays: settings.validityDays,
         userId: req.session.user?.id ?? null,
       });
       message += ` Compra inicial registrada. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. Cashback gerado: ${brMoneyCents(
@@ -1445,7 +1453,6 @@ async function createPurchaseFromDashboard(req: Request, res: Response): Promise
         redemptionId: null,
         percentBps,
         notes,
-        validityDays: settings.validityDays,
         userId: req.session.user?.id ?? null,
       });
       await client.query('COMMIT');
@@ -1518,7 +1525,6 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
         redemptionId,
         percentBps: settings.cashbackPercentBps,
         notes: redeemedCents > 0 ? cleanText(`Compra com uso de cashback. ${notes}`, 5000) : notes,
-        validityDays: settings.validityDays,
         userId: req.session.user?.id ?? null,
       });
       await client.query('COMMIT');
@@ -1552,19 +1558,17 @@ async function createPurchaseAndCredit(
     redemptionId: number | null;
     percentBps: number;
     notes: string;
-    validityDays: number;
     userId: number | null;
   },
 ): Promise<{ id: number; creditId: number | null; cashbackCents: number; chargedCents: number; expiresAt: string }> {
   const chargedCents = Math.max(input.grossCents - input.discountCents, 0);
   const cashbackCents = Math.round(chargedCents * (input.percentBps / 10000));
-  const expiresAt = dateDaysFromNow(input.validityDays);
   const purchase = await client.query(
     `INSERT INTO cashback_purchases
       (client_id, attendant_id, gross_cents, cashback_discount_cents, charged_cents, redemption_id,
        cashback_percent_bps, cashback_generated_cents, notes, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     RETURNING id`,
+     RETURNING id, purchased_at::date AS purchase_date`,
     [
       input.clientId,
       input.attendantId,
@@ -1579,6 +1583,7 @@ async function createPurchaseAndCredit(
     ],
   );
   const purchaseId = num(purchase.rows[0]?.id);
+  const expiresAt = dateDaysFromDate(purchase.rows[0]?.purchase_date, CASHBACK_CREDIT_VALIDITY_DAYS);
   await client.query('UPDATE cashback_purchases SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [purchaseId]);
   let creditId: number | null = null;
   if (cashbackCents > 0) {
@@ -2673,15 +2678,15 @@ async function renderSelfTest(req: Request): Promise<string> {
 
     const purchaseCents = 10000;
     const cashbackCents = Math.round((purchaseCents * settings.cashbackPercentBps) / 10000);
-    const expiresAt = await db.query('SELECT (CURRENT_DATE + $1::int)::date AS value', [settings.validityDays]);
     const purchase = await db.query(
       `INSERT INTO cashback_purchases
         (client_id, attendant_id, gross_cents, charged_cents, cashback_percent_bps, cashback_generated_cents, purchased_at, notes, created_by)
        VALUES ($1, $2, $3, $3, $4, $5, NOW(), $6, $7)
-       RETURNING id`,
+       RETURNING id, purchased_at::date AS purchase_date`,
       [clientId, attendantId, purchaseCents, settings.cashbackPercentBps, cashbackCents, 'Compra criada pelo autoteste.', req.session.user?.id ?? null],
     );
     const purchaseId = num(purchase.rows[0]?.id);
+    const expiresAt = await db.query('SELECT ($1::date + $2::int)::date AS value', [purchase.rows[0]?.purchase_date, settings.validityDays]);
     add('Registro de compra', purchaseId > 0, 'Compra de R$ 100,00 gravada temporariamente no Postgres.');
 
     const credit = await db.query(
