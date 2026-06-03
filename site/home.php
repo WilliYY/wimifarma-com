@@ -3018,6 +3018,6 @@ $modules = array(
         }
     }());
 </script>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-jokes')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-5s')); ?>" defer></script>
 </body>
 </html>

@@ -142,16 +142,19 @@
   let activityTimer = null;
   let pendingNudge = null;
   let homeGreetingTimer = null;
+  let alertNudgeHideTimer = null;
+  let alertNudgeHiddenTimer = null;
   let cotacaoRunnerActive = false;
   let cotacaoRunnerTimer = null;
   const recentInteractions = [];
   const NUDGE_ACTIVITY_WINDOW = 1000 * 18;
-  const HOME_GREETING_FIRST_DELAY_MIN_MS = 1000 * 3;
-  const HOME_GREETING_FIRST_DELAY_MAX_MS = 1000 * 6;
-  const HOME_GREETING_REPEAT_MIN_MS = 1000 * 45;
-  const HOME_GREETING_REPEAT_MAX_MS = 1000 * 120;
+  const HOME_GREETING_INTERVAL_MS = 1000 * 5;
+  const HOME_GREETING_FIRST_DELAY_MIN_MS = HOME_GREETING_INTERVAL_MS;
+  const HOME_GREETING_FIRST_DELAY_MAX_MS = HOME_GREETING_INTERVAL_MS;
+  const HOME_GREETING_REPEAT_MIN_MS = HOME_GREETING_INTERVAL_MS;
+  const HOME_GREETING_REPEAT_MAX_MS = HOME_GREETING_INTERVAL_MS;
   const HOME_GREETING_INTERACTION_PAUSE_MS = 1000 * 60 * 4;
-  const HOME_GREETING_VISIBLE_MS = 7200;
+  const HOME_GREETING_VISIBLE_MS = HOME_GREETING_INTERVAL_MS;
   const HOME_GREETING_JOKE_CHANCE = 0.42;
   const HOME_SPEECH_CATEGORIES = {
     greetings: [
@@ -801,9 +804,17 @@
 
   const hideAlertNudge = () => {
     if (!alertNudge) return;
+    if (alertNudgeHideTimer) {
+      window.clearTimeout(alertNudgeHideTimer);
+      alertNudgeHideTimer = null;
+    }
     alertNudge.classList.remove('is-visible');
-    window.setTimeout(() => {
+    if (alertNudgeHiddenTimer) {
+      window.clearTimeout(alertNudgeHiddenTimer);
+    }
+    alertNudgeHiddenTimer = window.setTimeout(() => {
       alertNudge.hidden = true;
+      alertNudgeHiddenTimer = null;
     }, 180);
   };
 
@@ -817,6 +828,14 @@
     alertNudge.classList.toggle('is-alert-speech', Boolean(payload.alert));
     alertNudge.classList.toggle('is-ambient-speech', !payload.alert);
     alertNudge.classList.toggle('is-home-greeting', payload.kind === 'home-login-greeting');
+    if (alertNudgeHideTimer) {
+      window.clearTimeout(alertNudgeHideTimer);
+      alertNudgeHideTimer = null;
+    }
+    if (alertNudgeHiddenTimer) {
+      window.clearTimeout(alertNudgeHiddenTimer);
+      alertNudgeHiddenTimer = null;
+    }
     alertNudge.hidden = false;
     window.requestAnimationFrame(() => alertNudge.classList.add('is-visible'));
 
@@ -828,7 +847,7 @@
       window.localStorage.setItem(payload.storageCount.key, String(payload.storageCount.value || 0));
     }
 
-    window.setTimeout(hideAlertNudge, Number(payload.timeoutMs || 8500));
+    alertNudgeHideTimer = window.setTimeout(hideAlertNudge, Number(payload.timeoutMs || 8500));
   };
 
   const queueOrShowNudge = (payload) => {
@@ -940,7 +959,8 @@
     const config = readHomeGreetingConfig();
     if (!config || !alertNudge) return;
 
-    const delay = clampNumber(Number(delayMs) || HOME_GREETING_REPEAT_MIN_MS, 800, HOME_GREETING_REPEAT_MAX_MS);
+    const maxDelay = Math.max(HOME_GREETING_REPEAT_MAX_MS, HOME_GREETING_INTERACTION_PAUSE_MS);
+    const delay = clampNumber(Number(delayMs) || HOME_GREETING_REPEAT_MIN_MS, 800, maxDelay);
     homeGreetingTimer = window.setTimeout(() => {
       homeGreetingTimer = null;
       showHomeGreetingSpeech();
@@ -998,7 +1018,7 @@
       prompt: '',
       view: 'chat',
       kind: 'home-login-greeting',
-      timeoutMs: reducedMotion ? 5200 : HOME_GREETING_VISIBLE_MS,
+      timeoutMs: HOME_GREETING_VISIBLE_MS,
     });
 
     scheduleHomeGreetingSpeech(nextAt - now);
@@ -1021,8 +1041,8 @@
     }
 
     const delay = greetingState.firstShown
-      ? randomBetween(6500, 16000)
-      : (reducedMotion ? 1200 : randomBetween(HOME_GREETING_FIRST_DELAY_MIN_MS, HOME_GREETING_FIRST_DELAY_MAX_MS));
+      ? randomBetween(HOME_GREETING_REPEAT_MIN_MS, HOME_GREETING_REPEAT_MAX_MS)
+      : randomBetween(HOME_GREETING_FIRST_DELAY_MIN_MS, HOME_GREETING_FIRST_DELAY_MAX_MS);
     scheduleHomeGreetingSpeech(delay);
   };
 
