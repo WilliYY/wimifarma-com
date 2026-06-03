@@ -383,6 +383,44 @@ function miauw_skill_registry(): array
             'auditoria' => array(),
             'efeitos' => array('nao_exibe_segredos'),
         ),
+        'listar_pedidos_chegada' => array(
+            'nome' => 'listar_pedidos_chegada',
+            'titulo' => 'Listar pedidos aguardando chegada',
+            'modulo' => 'pedidos',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_pedidos_fetch_waiting',
+            'openai_tool' => false,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Pedidos',
+            'aliases' => array('pedidos', 'pedidos abertos', 'o que falta chegar'),
+            'parametros_obrigatorios' => array(),
+            'entrada' => array('actor_user_id'),
+            'saida' => 'Pedidos em Aguardando chegada, com fornecedor, valor, data e previsao.',
+            'auditoria' => array('pedidos_orders', 'miauw_tool_traces'),
+            'efeitos' => array('consulta_dados'),
+        ),
+        'cancelar_pedido' => array(
+            'nome' => 'cancelar_pedido',
+            'titulo' => 'Cancelar pedido aguardando chegada',
+            'modulo' => 'pedidos',
+            'nivel' => 'escrita',
+            'risco' => 'medio',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_pedidos_cancel',
+            'openai_tool' => false,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Pedidos',
+            'aliases' => array('cancelar pedido', 'remover pedido', 'nao precisa mais do pedido'),
+            'parametros_obrigatorios' => array('order_id', 'actor_user_id'),
+            'entrada' => array('order_id', 'account_id', 'actor_user_id'),
+            'saida' => 'Pedido aguardando chegada arquivado/cancelado com auditoria, sem apagar financeiro.',
+            'auditoria' => array('pedidos_orders', 'gestao_accounts', 'gestao_audit_events', 'core_audit_logs'),
+            'efeitos' => array('altera_status', 'exige_confirmacao', 'mantem_financeiro'),
+        ),
         'criar_tarefa' => array(
             'nome' => 'criar_tarefa',
             'titulo' => 'Criar tarefa',
@@ -2153,6 +2191,467 @@ function miauw_skill_tarefa_try_controlled_reply(string $message, ?int $userId, 
     return miauw_skill_tarefa_handle_command($command, $userId, $origin, $userContext);
 }
 
+function miauw_skill_pedidos_strip_miauby_prefix(string $message): string
+{
+    return trim(preg_replace('/^\s*(?:miauby|miauw)\s+/iu', '', $message) ?? $message);
+}
+
+function miauw_skill_pedidos_cancel_query(string $message): string
+{
+    $text = miauw_skill_pedidos_strip_miauby_prefix($message);
+    $patterns = array(
+        '/\b(?:cancelar|cancela|remover|remove|excluir|exclui|apagar|deletar)\s+(?:o\s+|a\s+)?(?:pedido|pedidos)\b/iu',
+        '/\b(?:nao|não)\s+(?:precisa|preciso)\s+mais\s+(?:do\s+|da\s+|de\s+)?(?:pedido|pedidos)\b/iu',
+        '/\b(?:pedido|pedidos)\s+(?:que\s+)?(?:falta|faltam|vai|vao|vão)\s+chegar\b/iu',
+        '/\b(?:pedido|pedidos)\b/iu',
+        '/\b(?:da|do|de|dos|das|que|falta|faltam|chegar|chegada|aguardando|aberto|abertos|pendente|pendentes)\b/iu',
+    );
+    foreach ($patterns as $pattern) {
+        $text = preg_replace($pattern, ' ', $text) ?? $text;
+    }
+
+    return miauw_skill_text(miauw_substr($text, 0, 180));
+}
+
+function miauw_skill_pedidos_command_kind(string $message): ?array
+{
+    $raw = trim($message);
+    if ($raw === '') {
+        return null;
+    }
+    $text = miauw_skill_pedidos_strip_miauby_prefix($raw);
+    $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($text) : strtolower($text);
+
+    $cancelIntent = preg_match('/\b(cancelar|cancela|remover|remove|excluir|exclui|apagar|deletar|nao precisa mais|nao preciso mais)\b/u', $normalized) === 1;
+    $mentionsPedido = preg_match('/\b(pedido|pedidos)\b/u', $normalized) === 1;
+    if ($cancelIntent && $mentionsPedido) {
+        return array('acao' => 'cancel', 'query' => miauw_skill_pedidos_cancel_query($raw), 'raw_message' => $raw);
+    }
+
+    if (preg_match('/^(pedido|pedidos)$/u', $normalized)
+        || preg_match('/^(ver|veja|mostrar|mostra|listar|lista|consultar|consulta)\s+pedidos?$/u', $normalized)
+        || preg_match('/\b(pedidos?\s+abertos?|pedidos?\s+pendentes?|pedido\s+pendente)\b/u', $normalized)
+        || preg_match('/\b(o que tem para chegar|o que tem pra chegar|o que falta chegar|o que falta|falta chegar|faltam chegar)\b/u', $normalized)
+        || preg_match('/\b(pedidos?\s+aguardando\s+chegada|aguardando\s+chegada|pedidos?\s+para\s+chegar|pedido\s+para\s+chegar)\b/u', $normalized)) {
+        return array('acao' => 'list', 'raw_message' => $raw);
+    }
+
+    return null;
+}
+
+function miauw_skill_pedidos_actor(?int $userId = null, array $userContext = array()): array
+{
+    return miauw_skill_tarefa_actor($userId, $userContext);
+}
+
+function miauw_skill_pedidos_fetch_waiting(array $actor): array
+{
+    if (!miauw_skill_pedidos_internal_configured()) {
+        throw new RuntimeException('Pedidos esta sem ponte interna segura agora.');
+    }
+    $actorId = (int) ($actor['user_id'] ?? 0);
+    if ($actorId <= 0) {
+        throw new RuntimeException('Sessao expirada. Entre no sistema antes de consultar Pedidos.');
+    }
+    $response = miauw_skill_pedidos_internal_request('GET', '/api/internal/cancel-candidates', array(), array(
+        'actor_user_id' => (string) $actorId,
+        'limit' => '80',
+    ));
+    if (!is_array($response) || empty($response['ok'])) {
+        throw new RuntimeException('Nao consegui consultar os pedidos agora.');
+    }
+
+    return is_array($response['orders'] ?? null) ? $response['orders'] : array();
+}
+
+function miauw_skill_pedidos_fetch_candidates(array $actor, string $query): array
+{
+    if (!miauw_skill_pedidos_internal_configured()) {
+        throw new RuntimeException('Pedidos esta sem ponte interna segura agora.');
+    }
+    $actorId = (int) ($actor['user_id'] ?? 0);
+    if ($actorId <= 0) {
+        throw new RuntimeException('Sessao expirada. Entre no sistema antes de cancelar Pedidos.');
+    }
+    $response = miauw_skill_pedidos_internal_request('GET', '/api/internal/cancel-candidates', array(), array(
+        'actor_user_id' => (string) $actorId,
+        'q' => $query,
+        'limit' => '12',
+    ));
+    if (!is_array($response) || empty($response['ok'])) {
+        throw new RuntimeException('Nao consegui consultar os pedidos agora.');
+    }
+
+    return is_array($response['orders'] ?? null) ? $response['orders'] : array();
+}
+
+function miauw_skill_pedidos_date_label($value): string
+{
+    $text = trim((string) $value);
+    if ($text === '') {
+        return 'sem data';
+    }
+    $timestamp = strtotime($text);
+    return $timestamp ? date('d/m/Y', $timestamp) : 'sem data';
+}
+
+function miauw_skill_pedidos_forecast_label($value): string
+{
+    $text = trim((string) $value);
+    if ($text === '') {
+        return 'sem previsao';
+    }
+    $timestamp = strtotime($text);
+    return $timestamp ? ('previsao ' . date('d/m/Y', $timestamp)) : 'sem previsao';
+}
+
+function miauw_skill_pedidos_status_label(array $order): string
+{
+    $status = trim((string) ($order['status_label'] ?? ''));
+    if ($status !== '') {
+        return $status;
+    }
+
+    return (string) ($order['account_status'] ?? '') === 'pago' ? 'ja pago, falta chegar' : 'aguardando chegada';
+}
+
+function miauw_skill_pedidos_order_line(array $order, int $index = 0): string
+{
+    $prefix = $index > 0 ? ($index . '. ') : '• ';
+    $supplier = trim((string) ($order['supplier_name'] ?? 'pedido'));
+    $value = trim((string) ($order['total_label'] ?? ''));
+    if ($value === '') {
+        $value = miauw_skill_money(((int) ($order['total_cents'] ?? 0)) / 100);
+    }
+
+    return $prefix
+        . $supplier
+        . ' - ' . $value
+        . ' - pedido em ' . miauw_skill_pedidos_date_label($order['created_at'] ?? '')
+        . ' - ' . miauw_skill_pedidos_forecast_label($order['expected_arrival_at'] ?? '')
+        . ' - ' . miauw_skill_pedidos_status_label($order);
+}
+
+function miauw_skill_pedidos_format_list(array $orders): string
+{
+    if (!$orders) {
+        return 'Nenhum pedido aguardando chegada. Milagre logistico detectado.';
+    }
+    $lines = array('Pedidos aguardando chegada');
+    foreach (array_slice($orders, 0, 10) as $order) {
+        if (is_array($order)) {
+            $lines[] = miauw_skill_pedidos_order_line($order);
+        }
+    }
+    if (count($orders) > 10) {
+        $lines[] = '+ ' . (count($orders) - 10) . ' pedido(s) no painel.';
+    }
+
+    return implode("\n", $lines);
+}
+
+function miauw_skill_pedidos_choice_payload(array $orders, int $limit = 10): array
+{
+    $options = array();
+    foreach (array_slice($orders, 0, $limit) as $order) {
+        if (!is_array($order)) {
+            continue;
+        }
+        $order['choice_number'] = count($options) + 1;
+        $options[] = $order;
+    }
+
+    return $options;
+}
+
+function miauw_skill_pedidos_ambiguous_options_text(array $orders): string
+{
+    $options = miauw_skill_pedidos_choice_payload($orders);
+    $lines = array('Achei mais de um pedido parecido. Qual deseja cancelar?', '');
+    foreach ($options as $order) {
+        if (is_array($order)) {
+            $lines[] = miauw_skill_pedidos_order_line($order, (int) ($order['choice_number'] ?? 0));
+        }
+    }
+    $lines[] = '';
+    $lines[] = 'Responda com o numero ou escreva o fornecedor/valor.';
+
+    return implode("\n", $lines);
+}
+
+function miauw_skill_pedidos_text_score(string $query, array $order): int
+{
+    $clean = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($query) : strtolower($query);
+    $clean = preg_replace('/\b(cancelar|cancela|remove|remover|excluir|pedido|pedidos|a|o|da|do|de)\b/u', ' ', $clean) ?? $clean;
+    $clean = trim(preg_replace('/\s+/', ' ', $clean) ?? $clean);
+    $supplier = function_exists('miauw_skill_normalized') ? miauw_skill_normalized((string) ($order['supplier_name'] ?? '')) : strtolower((string) ($order['supplier_name'] ?? ''));
+    $score = 0;
+    if (preg_match_all('/R\$\s*\d+(?:[.,]\d{1,2})?|\d{1,3}(?:\.\d{3})+,\d{2}|\d+(?:[.,]\d{1,2})?/iu', $query, $matches)) {
+        foreach ($matches[0] as $rawAmount) {
+            $number = str_replace(array('R$', ' ', '.'), '', (string) $rawAmount);
+            $number = str_replace(',', '.', $number);
+            $cents = (int) round(((float) $number) * 100);
+            if ($cents > 0 && $cents === (int) ($order['total_cents'] ?? 0)) {
+                $score = max($score, 95);
+            }
+            if ($cents > 0 && ($cents === (int) ($order['id'] ?? 0) || $cents === (int) ($order['account_id'] ?? 0))) {
+                $score = max($score, 100);
+            }
+        }
+    }
+    if ($clean === '') {
+        return $score;
+    }
+    if ($supplier === $clean) {
+        return max($score, 100);
+    }
+    if (str_contains($supplier, $clean)) {
+        $score = max($score, 85);
+    }
+    $words = array_values(array_filter(preg_split('/\s+/', $clean) ?: array(), static function ($word): bool {
+        return strlen((string) $word) >= 3;
+    }));
+    if ($words) {
+        $matched = 0;
+        foreach ($words as $word) {
+            if (str_contains($supplier, (string) $word)) {
+                $matched++;
+            }
+        }
+        if ($matched > 0) {
+            $score = max($score, (int) round(($matched / count($words)) * 70));
+        }
+    }
+
+    return $score;
+}
+
+function miauw_skill_pedidos_parse_choice(string $message, array $options): ?array
+{
+    $clean = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
+    if (preg_match('/^\d+$/', $clean)) {
+        $index = (int) $clean - 1;
+        return is_array($options[$index] ?? null) ? $options[$index] : null;
+    }
+    $ordinals = array('primeira' => 0, 'primeiro' => 0, 'segunda' => 1, 'segundo' => 1, 'terceira' => 2, 'terceiro' => 2, 'quarta' => 3, 'quarto' => 3, 'quinta' => 4, 'quinto' => 4);
+    $ordinalClean = preg_replace('/^(cancela|cancelar)\s+/u', '', $clean) ?? $clean;
+    $ordinalClean = preg_replace('/^(a|o)\s+/u', '', $ordinalClean) ?? $ordinalClean;
+    if (array_key_exists($ordinalClean, $ordinals)) {
+        $index = (int) $ordinals[$ordinalClean];
+        return is_array($options[$index] ?? null) ? $options[$index] : null;
+    }
+
+    $scored = array();
+    foreach ($options as $index => $order) {
+        if (!is_array($order)) {
+            continue;
+        }
+        $score = miauw_skill_pedidos_text_score($message, $order);
+        if ($score > 0) {
+            $scored[] = array('index' => (int) $index, 'score' => $score);
+        }
+    }
+    usort($scored, static function ($left, $right): int {
+        return (int) ($right['score'] ?? 0) <=> (int) ($left['score'] ?? 0);
+    });
+    if (!$scored) {
+        return null;
+    }
+    if (count($scored) > 1 && (int) $scored[0]['score'] === (int) $scored[1]['score']) {
+        return null;
+    }
+
+    $index = (int) $scored[0]['index'];
+    return is_array($options[$index] ?? null) ? $options[$index] : null;
+}
+
+function miauw_skill_pedidos_start_selection(array $orders, array $actor, string $origin, string $rawMessage): string
+{
+    $_SESSION['miauw_pending_pedido_selection'] = array(
+        'action' => 'cancel',
+        'orders' => miauw_skill_pedidos_choice_payload($orders),
+        'actor_user_id' => (int) ($actor['user_id'] ?? 0),
+        'actor_username' => (string) ($actor['username'] ?? ''),
+        'actor_display_name' => (string) ($actor['display_name'] ?? ''),
+        'origin' => $origin,
+        'raw_message' => $rawMessage,
+        'created_at' => time(),
+    );
+
+    return miauw_skill_pedidos_ambiguous_options_text($orders);
+}
+
+function miauw_skill_pedidos_confirmation_payload(array $order, array $actor, string $origin, string $rawMessage): array
+{
+    return array(
+        'order_id' => (int) ($order['id'] ?? $order['order_id'] ?? 0),
+        'account_id' => (int) ($order['account_id'] ?? 0),
+        'supplier_name' => (string) ($order['supplier_name'] ?? ''),
+        'total_label' => (string) ($order['total_label'] ?? ''),
+        'total_cents' => (int) ($order['total_cents'] ?? 0),
+        'financial_linked' => !empty($order['financial_linked']),
+        'usuario_id' => (int) ($actor['user_id'] ?? 0),
+        'actor_user_id' => (int) ($actor['user_id'] ?? 0),
+        'username' => (string) ($actor['username'] ?? ''),
+        'responsavel_nome' => (string) ($actor['display_name'] ?? ''),
+        'origin' => $origin,
+        'raw_message' => $rawMessage,
+        'idempotency_key' => 'miauby-interno-cancel:' . bin2hex(random_bytes(8)),
+    );
+}
+
+function miauw_skill_pedidos_confirmation_summary(array $order): string
+{
+    $supplier = (string) ($order['supplier_name'] ?? 'pedido');
+    $value = (string) ($order['total_label'] ?? '');
+    if ($value === '') {
+        $value = miauw_skill_money(((int) ($order['total_cents'] ?? 0)) / 100);
+    }
+    $prefix = !empty($order['financial_linked'])
+        ? 'Esse pedido tem financeiro vinculado. Cancelar mesmo assim: '
+        : 'Cancelar pedido: ';
+
+    return $prefix . $supplier . ' - ' . $value . '?';
+}
+
+function miauw_skill_pedidos_try_selection_reply(string $message, ?int $userId, string $origin = 'miauby_interno'): ?array
+{
+    $pending = $_SESSION['miauw_pending_pedido_selection'] ?? null;
+    if (!is_array($pending)) {
+        return null;
+    }
+    $createdAt = (int) ($pending['created_at'] ?? 0);
+    if ($createdAt > 0 && (time() - $createdAt) > 900) {
+        unset($_SESSION['miauw_pending_pedido_selection']);
+
+        return array('text' => 'Essa escolha expirou. Manda o comando de novo para eu nao cancelar pedido errado.', 'fallback' => false, 'model' => 'miauw-pedidos-selecao');
+    }
+
+    $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
+    if (preg_match('/^(nao|n|deixa|volta|esquece|errado|cancela comando|cancelar comando)(\s|$)/u', $normalized)) {
+        unset($_SESSION['miauw_pending_pedido_selection']);
+
+        return array('text' => 'Beleza, nao mexi em pedido nenhum.', 'fallback' => false, 'model' => 'miauw-pedidos-selecao');
+    }
+
+    $options = is_array($pending['orders'] ?? null) ? $pending['orders'] : array();
+    $order = miauw_skill_pedidos_parse_choice($message, $options);
+    if (!is_array($order)) {
+        return array('text' => 'Escolha pelo numero ou pelo fornecedor/valor. Ex.: 1 ou ANB 350.', 'fallback' => false, 'model' => 'miauw-pedidos-selecao');
+    }
+
+    unset($_SESSION['miauw_pending_pedido_selection']);
+    $actorId = (int) ($pending['actor_user_id'] ?? $userId ?? 0);
+    $actor = array(
+        'user_id' => $actorId,
+        'username' => (string) ($pending['actor_username'] ?? ''),
+        'display_name' => (string) ($pending['actor_display_name'] ?? ''),
+    );
+    $payload = miauw_skill_pedidos_confirmation_payload($order, $actor, $origin, (string) ($pending['raw_message'] ?? $message));
+    $summary = miauw_skill_pedidos_confirmation_summary($order);
+
+    return function_exists('miauw_confirmation_request_reply')
+        ? miauw_confirmation_request_reply('cancelar_pedido', $payload, $actorId, $summary)
+        : array('text' => $summary, 'fallback' => false, 'model' => 'miauw-pedidos-confirmacao');
+}
+
+function miauw_skill_pedidos_cancel(array $command, ?int $userId): array
+{
+    $actorId = (int) ($command['actor_user_id'] ?? $command['usuario_id'] ?? $userId ?? 0);
+    $orderId = (int) ($command['order_id'] ?? $command['id'] ?? 0);
+    if ($actorId <= 0) {
+        throw new RuntimeException('Sessao expirada. Entre no sistema antes de cancelar Pedidos.');
+    }
+    if ($orderId <= 0) {
+        throw new RuntimeException('Pedido nao informado para cancelar.');
+    }
+    $idempotencyKey = (string) ($command['idempotency_key'] ?? '');
+    if ($idempotencyKey === '') {
+        $idempotencyKey = 'miauby-interno-cancel:' . sha1($actorId . ':' . $orderId . ':' . (string) ($command['raw_message'] ?? ''));
+    }
+
+    $response = miauw_skill_pedidos_internal_request('POST', '/api/internal/cancel-order', array(
+        'actor_user_id' => $actorId,
+        'order_id' => $orderId,
+        'account_id' => (int) ($command['account_id'] ?? 0),
+        'source' => (string) ($command['origin'] ?? $command['origem'] ?? 'miauby_interno'),
+        'idempotency_key' => $idempotencyKey,
+    ));
+    if (!is_array($response) || empty($response['ok'])) {
+        throw new RuntimeException('Nao consegui cancelar o pedido agora.');
+    }
+
+    return $response;
+}
+
+function miauw_skill_pedidos_cancel_action_reply(array $result): string
+{
+    $supplier = (string) ($result['supplier_name'] ?? 'pedido');
+    $value = (string) ($result['total_label'] ?? '');
+    return 'Pedido cancelado: ' . $supplier . ($value !== '' ? ' - ' . $value : '') . '.';
+}
+
+function miauw_skill_pedidos_handle_command(array $command, ?int $userId, string $origin = 'miauby_interno', array $userContext = array()): array
+{
+    if (!miauw_skill_pedidos_internal_configured()) {
+        return array('text' => 'Pedidos esta sem ponte interna segura agora. Abra /pedidos/.', 'fallback' => false, 'model' => 'miauw-pedidos');
+    }
+
+    $actor = miauw_skill_pedidos_actor($userId, $userContext);
+    $actorId = (int) ($actor['user_id'] ?? 0);
+    if ($actorId <= 0) {
+        return array('text' => 'Sessao expirada. Entre no sistema antes de mexer em Pedidos.', 'fallback' => false, 'model' => 'miauw-pedidos-auth');
+    }
+
+    $action = (string) ($command['acao'] ?? '');
+    if ($action === 'list') {
+        try {
+            return array('text' => miauw_skill_pedidos_format_list(miauw_skill_pedidos_fetch_waiting($actor)), 'fallback' => false, 'model' => 'miauw-pedidos-list');
+        } catch (Throwable $error) {
+            return array('text' => function_exists('miauw_action_error_reply') ? miauw_action_error_reply($error) : 'Nao consegui consultar os pedidos agora.', 'fallback' => false, 'model' => 'miauw-pedidos-error');
+        }
+    }
+
+    if ($action !== 'cancel') {
+        return array('text' => 'Nao entendi Pedidos. Me mande assim: pedidos ou cancelar pedido ANB.', 'fallback' => false, 'model' => 'miauw-pedidos-guide');
+    }
+
+    $query = (string) ($command['query'] ?? '');
+    if ($query === '') {
+        return array('text' => 'Qual pedido voce quer cancelar? Ex.: cancelar pedido ANB 350.', 'fallback' => false, 'model' => 'miauw-pedidos-guide');
+    }
+
+    try {
+        $orders = miauw_skill_pedidos_fetch_candidates($actor, $query);
+    } catch (Throwable $error) {
+        return array('text' => function_exists('miauw_action_error_reply') ? miauw_action_error_reply($error) : 'Nao consegui consultar os pedidos agora.', 'fallback' => false, 'model' => 'miauw-pedidos-error');
+    }
+    if (!$orders) {
+        return array('text' => 'Nao achei pedido aguardando chegada da ' . $query . '.', 'fallback' => false, 'model' => 'miauw-pedidos-list');
+    }
+    if (count($orders) > 1) {
+        return array('text' => miauw_skill_pedidos_start_selection($orders, $actor, $origin, (string) ($command['raw_message'] ?? '')), 'fallback' => false, 'model' => 'miauw-pedidos-selecao');
+    }
+
+    $order = is_array($orders[0] ?? null) ? $orders[0] : array();
+    $payload = miauw_skill_pedidos_confirmation_payload($order, $actor, $origin, (string) ($command['raw_message'] ?? ''));
+    $summary = miauw_skill_pedidos_confirmation_summary($order);
+
+    return function_exists('miauw_confirmation_request_reply')
+        ? miauw_confirmation_request_reply('cancelar_pedido', $payload, $actorId, $summary)
+        : array('text' => $summary, 'fallback' => false, 'model' => 'miauw-pedidos-confirmacao');
+}
+
+function miauw_skill_pedidos_try_controlled_reply(string $message, ?int $userId, string $origin = 'miauby_interno', array $userContext = array()): ?array
+{
+    $command = miauw_skill_pedidos_command_kind($message);
+    if (!is_array($command)) {
+        return null;
+    }
+
+    return miauw_skill_pedidos_handle_command($command, $userId, $origin, $userContext);
+}
+
 function miauw_skill_cotacao_summary(array $period): array
 {
     unset($period);
@@ -2429,6 +2928,47 @@ function miauw_skill_tarefa_internal_request(string $method, string $path, array
     return miauw_skill_internal_json_request(
         miauw_skill_tarefa_internal_token(),
         miauw_skill_tarefa_internal_base_url(),
+        $method,
+        $path,
+        $payload,
+        $query,
+        5
+    );
+}
+
+function miauw_skill_pedidos_internal_token(): string
+{
+    if (defined('PEDIDOS_INTERNAL_TOKEN') && trim((string) PEDIDOS_INTERNAL_TOKEN) !== '') {
+        return trim((string) PEDIDOS_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('PEDIDOS_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN'));
+}
+
+function miauw_skill_pedidos_internal_base_url(): string
+{
+    $url = defined('PEDIDOS_INTERNAL_BASE_URL') ? trim((string) PEDIDOS_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('PEDIDOS_INTERNAL_BASE_URL', 'MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-pedidos-app:3300/pedidos', '/');
+}
+
+function miauw_skill_pedidos_internal_configured(): bool
+{
+    return miauw_skill_pedidos_internal_token() !== '';
+}
+
+function miauw_skill_pedidos_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    return miauw_skill_internal_json_request(
+        miauw_skill_pedidos_internal_token(),
+        miauw_skill_pedidos_internal_base_url(),
         $method,
         $path,
         $payload,

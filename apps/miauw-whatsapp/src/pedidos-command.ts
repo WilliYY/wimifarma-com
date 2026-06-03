@@ -25,6 +25,12 @@ export type PedidosCreateCommand = {
   confirmation_summary: string;
 };
 
+export type PedidosOperationalCommand = {
+  action: 'list' | 'cancel';
+  raw: string;
+  query: string;
+};
+
 type Token = {
   raw: string;
   clean: string;
@@ -147,6 +153,38 @@ const WORD_FIXES: Record<string, string> = {
   paguei: 'paguei',
   venc: 'venc',
 };
+
+export function parsePedidosOperationalCommand(message: string): PedidosOperationalCommand | null {
+  const raw = stripActivationWord(message).replace(/[?!;]+$/g, '').trim();
+  const normalized = normalizeIntentText(raw);
+  if (!normalized) return null;
+
+  const cancelIntent = /\b(cancelar|cancela|remover|remove|excluir|exclui|apagar|deletar|nao precisa mais|nao preciso mais)\b/.test(normalized);
+  const mentionsPedido = /\b(pedido|pedidos)\b/.test(normalized);
+  if (cancelIntent && mentionsPedido) {
+    return {
+      action: 'cancel',
+      raw,
+      query: extractCancelQuery(raw),
+    };
+  }
+
+  if (
+    /^(pedido|pedidos)$/.test(normalized)
+    || /^(ver|veja|mostrar|mostra|listar|lista|consultar|consulta)\s+pedidos?$/.test(normalized)
+    || /\b(pedidos?\s+abertos?|pedidos?\s+pendentes?|pedido\s+pendente)\b/.test(normalized)
+    || /\b(o que tem para chegar|o que tem pra chegar|o que falta chegar|o que falta|falta chegar|faltam chegar)\b/.test(normalized)
+    || /\b(pedidos?\s+aguardando\s+chegada|aguardando\s+chegada|pedidos?\s+para\s+chegar|pedido\s+para\s+chegar)\b/.test(normalized)
+  ) {
+    return {
+      action: 'list',
+      raw,
+      query: '',
+    };
+  }
+
+  return null;
+}
 
 export function parsePedidosCreateCommand(message: string, options: ParserOptions = {}): PedidosCreateCommand | null {
   const raw = stripActivationWord(message).replace(/[?!;]+$/g, '').trim();
@@ -290,6 +328,21 @@ function stripActivationWord(value: string): string {
     .replace(/(^|[\s,:;.-])miauby([\s,:;.-]|$)/ig, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function extractCancelQuery(value: string): string {
+  let text = value;
+  const replacements = [
+    /\b(?:cancelar|cancela|remover|remove|excluir|exclui|apagar|deletar)\s+(?:o\s+|a\s+)?(?:pedido|pedidos)\b/giu,
+    /\b(?:nao|não)\s+(?:precisa|preciso)\s+mais\s+(?:do\s+|da\s+|de\s+)?(?:pedido|pedidos)\b/giu,
+    /\b(?:pedido|pedidos)\s+(?:que\s+)?(?:falta|faltam|vai|vao|vão)\s+chegar\b/giu,
+    /\b(?:pedido|pedidos)\b/giu,
+    /\b(?:da|do|de|dos|das|que|falta|faltam|chegar|chegada|aguardando|aberto|abertos|pendente|pendentes)\b/giu,
+  ];
+  for (const pattern of replacements) {
+    text = text.replace(pattern, ' ');
+  }
+  return text.replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
 function extractSupplier(tokens: Token[]): string {

@@ -2372,6 +2372,34 @@ function miauw_agent_text_command_catalog(): array
             'keywords' => array('pedido', 'pedidos', 'fornecedor', 'distribuidora', 'boleto', 'parcela', 'chegou'),
         ),
         array(
+            'intent' => 'listar_pedidos_chegada',
+            'module' => 'pedidos',
+            'tool' => 'listar_pedidos_chegada',
+            'risk' => 'baixo',
+            'required_fields' => array('responsavel_identificado'),
+            'optional_fields' => array('limite'),
+            'internal_examples' => array('pedidos', 'ver pedidos', 'pedidos abertos', 'o que falta chegar', 'pedidos aguardando chegada'),
+            'whatsapp_examples' => array('miauby pedidos', 'miauby ver pedidos', 'miauby o que tem para chegar', 'miauby pedidos aguardando chegada'),
+            'missing_data_replies' => array('Sessao expirada. Entre no sistema antes de consultar Pedidos.'),
+            'response_examples' => array('Pedidos aguardando chegada: ANB - R$ 350,00 - pedido em 02/06 - sem previsao.', 'Nenhum pedido aguardando chegada. Milagre logistico detectado.'),
+            'rules' => array('listar somente pedidos em Aguardando chegada', 'mostrar fornecedor, valor, data do pedido, previsao e status em uma linha', 'consulta usa endpoint oficial de Pedidos'),
+            'keywords' => array('pedido', 'pedidos', 'falta chegar', 'aguardando chegada', 'pendente'),
+        ),
+        array(
+            'intent' => 'cancelar_pedido',
+            'module' => 'pedidos',
+            'tool' => 'cancelar_pedido',
+            'risk' => 'medio',
+            'required_fields' => array('responsavel_identificado', 'texto_ou_id_do_pedido'),
+            'optional_fields' => array('order_id', 'account_id'),
+            'internal_examples' => array('cancelar pedido anb', 'cancelar pedido 350', 'nao precisa mais do pedido da nissei'),
+            'whatsapp_examples' => array('miauby cancelar pedido anb', 'miauby cancelar pedido da nissei', 'miauby nao precisa mais do pedido da anb'),
+            'missing_data_replies' => array('Qual pedido voce quer cancelar? Ex.: cancelar pedido ANB 350.', 'Nao achei pedido aberto com esse nome.'),
+            'response_examples' => array('Confirma cancelar: ANB - R$ 350,00?', 'Achei mais de um pedido parecido. Qual deseja cancelar?', 'Pedido cancelado: ANB - R$ 350,00.'),
+            'rules' => array('buscar somente pedidos abertos em Aguardando chegada', 'se houver mais de um pedido parecido, listar opcoes e pedir numero ou fornecedor/valor', 'sempre pedir confirmacao antes de cancelar', 'se tiver financeiro vinculado, avisar antes da confirmacao', 'nao apagar financeiro; usar cancelamento logico do app Pedidos'),
+            'keywords' => array('cancelar pedido', 'remover pedido', 'excluir pedido', 'nao precisa mais'),
+        ),
+        array(
             'intent' => 'listar_tarefas',
             'module' => 'tarefa',
             'tool' => 'listar_tarefas_usuario',
@@ -2613,7 +2641,7 @@ function miauw_agent_text_command_contracts(string $message = '', string $origin
     }
 
     return array(
-        'version' => 'miauby-text-command-contracts-2026-06-03-tarefas',
+        'version' => 'miauby-text-command-contracts-2026-06-03-pedidos',
         'source' => 'site/miauw/miauw-funcoes.php',
         'mode' => 'text_only_shared_training',
         'origin' => $origin,
@@ -3793,6 +3821,7 @@ function miauw_tools_requiring_confirmation(): array
         'criar_conta_gestao',
         'concluir_tarefa',
         'cancelar_tarefa',
+        'cancelar_pedido',
     );
 }
 
@@ -3887,6 +3916,19 @@ function miauw_confirmation_summary(string $tool, array $command): string
 
     if ($tool === 'cancelar_tarefa') {
         return 'Cancelar tarefa: ' . trim((string) ($command['titulo'] ?? 'tarefa nao informada')) . '?';
+    }
+
+    if ($tool === 'cancelar_pedido') {
+        $supplier = trim((string) ($command['supplier_name'] ?? $command['fornecedor'] ?? 'pedido nao informado'));
+        $value = trim((string) ($command['total_label'] ?? ''));
+        if ($value === '' && isset($command['total_cents'])) {
+            $value = $money(((float) $command['total_cents']) / 100);
+        }
+        $prefix = !empty($command['financial_linked'])
+            ? 'Esse pedido tem financeiro vinculado. Cancelar mesmo assim: '
+            : 'Cancelar pedido: ';
+
+        return $prefix . $supplier . ($value !== '' ? ' - ' . $value : '') . '?';
     }
 
     if ($tool === 'criar_cotacao_urgente') {
@@ -4017,6 +4059,14 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
         return miauw_skill_tarefa_status_action_reply($result, $status);
     }
 
+    if ($tool === 'cancelar_pedido') {
+        if (!function_exists('miauw_skill_pedidos_cancel') || !function_exists('miauw_skill_pedidos_cancel_action_reply')) {
+            throw new RuntimeException('Ferramenta de Pedidos indisponivel.');
+        }
+        $result = miauw_skill_pedidos_cancel($command, $userId);
+        return miauw_skill_pedidos_cancel_action_reply($result);
+    }
+
     if ($tool === 'criar_cotacao_urgente') {
         $result = miauw_skill_create_cotacao_urgente($command);
         return miauw_skill_cotacao_urgente_action_reply($result);
@@ -4104,7 +4154,7 @@ function miauw_try_confirmation_reply(string $message, int $userId): ?array
     $wantsCancel = preg_match('/\b(cancela|cancelar|nao|n|deixa|esquece)\b/u', $normalized) === 1;
     $wantsConfirm = preg_match('/\b(confirmar|confirmo|confirma|sim|s|pode|ok|feito)\b/u', $normalized) === 1
         || ($id !== '' && strpos($normalized, $id) !== false);
-    if ((string) ($pending['tool'] ?? '') === 'cancelar_tarefa') {
+    if (in_array((string) ($pending['tool'] ?? ''), array('cancelar_tarefa', 'cancelar_pedido'), true)) {
         if (preg_match('/^(nao|n|deixa|volta|esquece|errado|cancela comando|cancelar comando|nao cancela|nao cancelar)(\s|$)/u', $normalized)) {
             $wantsCancel = true;
             $wantsConfirm = false;
@@ -6339,6 +6389,13 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
         }
     }
 
+    if (function_exists('miauw_skill_pedidos_try_selection_reply')) {
+        $pedidoSelectionReply = miauw_skill_pedidos_try_selection_reply($message, $userId, 'miauby_interno');
+        if ($pedidoSelectionReply !== null) {
+            return $pedidoSelectionReply;
+        }
+    }
+
     $confirmationReply = miauw_try_confirmation_reply($message, $userId);
     if ($confirmationReply !== null) {
         return $confirmationReply;
@@ -6558,6 +6615,13 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             }
 
             return miauw_confirmation_request_reply('criar_conta_gestao', $gestaoCommand, $userId);
+        }
+    }
+
+    if (function_exists('miauw_skill_pedidos_try_controlled_reply')) {
+        $pedidoReply = miauw_skill_pedidos_try_controlled_reply($message, $userId, 'miauby_interno');
+        if ($pedidoReply !== null) {
+            return $pedidoReply;
         }
     }
 

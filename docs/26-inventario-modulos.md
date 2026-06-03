@@ -393,6 +393,8 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - `GET /pedidos/api/internal/arrival-summary`: lista pedidos aguardando chegada para Miauby WhatsApp/n8n, com valor total, previsao, `created_at` do pedido e ordenacao pelos mais antigos.
 - `POST /pedidos/api/internal/confirm-arrival`: confirma chegada por titulo/fornecedor via automacao autorizada.
 - `POST /pedidos/api/internal/create-order`: cria pedido por comando do Miauby Whats, revalidando token interno, `actor_user_id`, permissao do usuario no core e idempotencia por mensagem.
+- `GET /pedidos/api/internal/cancel-candidates`: lista candidatos em `Aguardando chegada` para cancelamento por Miauby WhatsApp/Miauby interno, revalidando `actor_user_id`, permissao core e retornando se existe financeiro vinculado.
+- `POST /pedidos/api/internal/cancel-order`: cancela/arquiva logicamente pedido ainda em `Aguardando chegada`, com token interno, `actor_user_id`, idempotencia, auditoria e preservacao de pagamentos/financeiro.
 
 ### Permissoes e sessao
 
@@ -432,6 +434,8 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Criar pedido ja pago, ja recebido ou `Chegou e pago - Registrar`, movendo para Confirmados/Historico conforme status.
 - `Chegou e pago - Registrar` reutiliza o mesmo fluxo seguro de pago + recebido: cria a conta `Boleto`, itens, um unico pagamento total, registro em `pedidos_confirmed_orders` com lifecycle `historico` e auditoria de registro manual.
 - Criar pedido pelo Miauby Whats com mensagens como `miauby pedido anb 350`, `miauby pedido anb 350 chegada amanha`, `miauby pedido anb 350 ja pago so chegar`, `miauby pedido anb 350 ja chegou so pagar`, `miauby pedido anb 350 chegou e pago registrar` ou parcelas `miauby pedido anb em 2 parcelas 200 10/06 e 150 20/06`; o bridge exige allowlist/card `Pedidos`, vinculo com usuario e resposta curta, e o app Pedidos evita duplicidade por `pedidos_internal_idempotency`.
+- Consultar pedidos aguardando chegada por Miauby WhatsApp ou Miauby interno com `pedidos`, `ver pedidos`, `o que falta chegar` e variacoes; a resposta lista um pedido por linha, sem consultar historico/finalizados.
+- Cancelar pedido aguardando chegada por Miauby WhatsApp ou Miauby interno com `cancelar pedido anb`, `cancelar pedido 350`, `nao precisa mais do pedido da anb` e variacoes; quando ha varios candidatos, o Miauby guarda escolha pendente por numero/texto e depois exige confirmacao final. Pedido com financeiro vinculado avisa antes da confirmacao. A execucao usa `cancel-order`, nao apaga financeiro e nao alcança historico/finalizados.
 - Marcar pedido em Aguardando chegada como ja pago, gravando somente o saldo aberto em `gestao_account_payments` e mantendo a chegada pendente.
 - Confirmar chegada, com movimento para Confirmados ou Historico se ja estava pago.
 - Editar fornecedor.
@@ -446,7 +450,8 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Home publica usa `/pedidos/api/badge`.
 - Gestao recebe contas, itens e pagamentos vinculados.
 - Miauby WhatsApp/n8n chama `arrival-summary` e `confirm-arrival` para rotina diaria de chegada; a mensagem usa `pedidos_orders.created_at` para exibir quando o pedido foi registrado e ha quanto tempo esta parado.
-- Miauby WhatsApp tambem chama `create-order` para criar pedidos por texto operacional. Esse fluxo nao passa pelo Gemini, nao aceita comando ambiguo e nao grava quando fornecedor/valor/permissao estiverem faltando.
+- Miauby WhatsApp tambem chama `create-order`, `cancel-candidates` e `cancel-order` para criar, consultar e cancelar pedidos por texto operacional. Esse fluxo nao passa pelo Gemini, nao aceita comando ambiguo sem escolha/confirmacao e nao grava quando fornecedor/valor/permissao estiverem faltando.
+- Miauby interno usa os mesmos endpoints tokenizados para `pedidos`, `o que falta chegar` e `cancelar pedido ...`, usando a sessao do usuario logado como responsavel padrao.
 - Financeiro/Gestao consomem efeitos dos pagamentos por categoria `Boleto`.
 - Widget do Miauby aparece na tela.
 
@@ -455,6 +460,8 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Contagem da home precisa refletir apenas `Aguardando chegada`.
 - Parcelas removidas nao podem apagar historico pago/auditado.
 - Confirmacao por automacao deve bater fornecedor/titulo com seguranca para evitar confirmar pedido errado.
+- Cancelamento por texto nunca deve escolher sozinho quando houver mais de um pedido parecido; a pendencia de escolha deve expirar e a confirmacao final deve ser obrigatoria.
+- Pedido ja pago/financeiro vinculado pode ser arquivado/cancelado logicamente, mas pagamentos e historico financeiro nao podem ser apagados.
 - Valores e saldos precisam continuar em centavos.
 - Mudancas em `gestao_account_items` afetam vencimento e resumo de boletos.
 

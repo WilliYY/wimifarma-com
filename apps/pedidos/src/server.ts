@@ -84,6 +84,28 @@ type CreateOrderResult = {
   duplicate: boolean;
 };
 
+type CancelOrderInput = {
+  orderId: number;
+  accountId: number;
+  userId: number;
+  source: string;
+  idempotencyKey: string;
+  requestHash: string;
+  traceId: string;
+};
+
+type CancelOrderResult = {
+  orderId: number;
+  accountId: number;
+  supplier: string;
+  totalCents: number;
+  paidCents: number;
+  remainingCents: number;
+  accountStatus: string;
+  financialLinked: boolean;
+  duplicate: boolean;
+};
+
 type OrderRow = {
   id: string;
   order_id: string | null;
@@ -163,7 +185,7 @@ const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const SERVICE_NAME = 'pedidos';
-const SERVICE_VERSION = '1.0.2';
+const SERVICE_VERSION = '1.0.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/pedidos');
 const PORT = Number.parseInt(env.PORT || '3300', 10);
 const SESSION_SECRET = env.PEDIDOS_SESSION_SECRET || env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1209,6 +1231,39 @@ function createOrderResultPayload(result: CreateOrderResult): Record<string, unk
   };
 }
 
+function cancelOrderResultFromPayload(payload: unknown): CancelOrderResult | null {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
+  const data = payload as Record<string, unknown>;
+  const accountId = Number(data.accountId || data.account_id || 0);
+  const orderId = Number(data.orderId || data.order_id || 0);
+  const totalCents = Number(data.totalCents || data.total_cents || 0);
+  if (!accountId || !orderId) return null;
+  return {
+    orderId,
+    accountId,
+    supplier: cleanText(data.supplier || data.supplier_name, 180),
+    totalCents,
+    paidCents: Number(data.paidCents || data.paid_cents || 0),
+    remainingCents: Number(data.remainingCents || data.remaining_cents || 0),
+    accountStatus: cleanText(data.accountStatus || data.account_status, 40),
+    financialLinked: data.financialLinked === true || data.financial_linked === true,
+    duplicate: true,
+  };
+}
+
+function cancelOrderResultPayload(result: CancelOrderResult): Record<string, unknown> {
+  return {
+    orderId: result.orderId,
+    accountId: result.accountId,
+    supplier: result.supplier,
+    totalCents: result.totalCents,
+    paidCents: result.paidCents,
+    remainingCents: result.remainingCents,
+    accountStatus: result.accountStatus,
+    financialLinked: result.financialLinked,
+  };
+}
+
 async function createOrderFromInput(input: CreateOrderInput): Promise<CreateOrderResult> {
   const supplier = cleanText(input.supplier, 180);
   if (!supplier) throw new Error('Informe o nome do fornecedor.');
@@ -2134,6 +2189,215 @@ function matchArrivalOrders(orders: ArrivalInternalOrder[], supplierInput: unkno
   });
 }
 
+function pedidoCancelNeedle(value: unknown): string {
+  return normalizeLookupText(value)
+    .replace(/\b(cancelar|cancela|cancelado|remover|remove|excluir|exclui|apagar|deletar|deleta)\b/g, ' ')
+    .replace(/\b(pedido|pedidos|fornecedor|distribuidora|titulo|aberto|abertos|pendente|pendentes)\b/g, ' ')
+    .replace(/\b(nao|n|precisa|preciso|mais|falta|faltam|chegar|chegada|aguardando|esperando|da|do|de|dos|das|a|o|que)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pedidoMoneyCandidates(value: unknown): number[] {
+  const raw = cleanText(value, 240);
+  const matches = raw.match(/R\$\s*\d+(?:[.,]\d{1,2})?|\d{1,3}(?:\.\d{3})+,\d{2}|\d+(?:[.,]\d{1,2})?/gi) || [];
+  return Array.from(new Set(matches.map((match) => parseMoneyToCents(match)).filter((cents) => cents > 0)));
+}
+
+function pedidoCancelScore(order: ArrivalInternalOrder, rawQuery: unknown): number {
+  const needle = pedidoCancelNeedle(rawQuery);
+  const supplier = normalizeLookupText(order.supplier_name);
+  const valueCandidates = pedidoMoneyCandidates(rawQuery);
+  let score = 0;
+
+  for (const cents of valueCandidates) {
+    if (cents === Number(order.total_cents || 0)) score = Math.max(score, 85);
+    if (cents === Number(order.remaining_cents || 0)) score = Math.max(score, 75);
+    if (cents === Number(order.paid_cents || 0)) score = Math.max(score, 65);
+    if (cents === Number(order.id || 0) || cents === Number(order.account_id || 0)) score = Math.max(score, 95);
+  }
+
+  if (!needle) return score;
+  if (supplier === needle) return Math.max(score, 100);
+  if (supplier.startsWith(`${needle} `) || supplier.endsWith(` ${needle}`) || supplier.includes(` ${needle} `)) {
+    score = Math.max(score, 88);
+  } else if (needle.length >= 3 && supplier.includes(needle)) {
+    score = Math.max(score, 78);
+  }
+
+  const words = needle.split(' ').filter((word) => word.length >= 3);
+  if (words.length) {
+    const matched = words.filter((word) => supplier.includes(word)).length;
+    if (matched) score = Math.max(score, Math.round((matched / words.length) * 70));
+  }
+
+  return score;
+}
+
+function compareWaitingOrders(left: ArrivalInternalOrder, right: ArrivalInternalOrder): number {
+  const leftTime = left.created_at ? new Date(String(left.created_at)).getTime() : Number.POSITIVE_INFINITY;
+  const rightTime = right.created_at ? new Date(String(right.created_at)).getTime() : Number.POSITIVE_INFINITY;
+  const leftSafe = Number.isFinite(leftTime) ? leftTime : Number.POSITIVE_INFINITY;
+  const rightSafe = Number.isFinite(rightTime) ? rightTime : Number.POSITIVE_INFINITY;
+  if (leftSafe !== rightSafe) return leftSafe - rightSafe;
+  return Number(left.id || 0) - Number(right.id || 0);
+}
+
+async function listCancelCandidates(query: unknown, limit = 12): Promise<ArrivalInternalOrder[]> {
+  const orders = await listWaitingArrivalInternal(120);
+  const cappedLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+  const needle = pedidoCancelNeedle(query);
+  const values = pedidoMoneyCandidates(query);
+  if (!needle && !values.length) {
+    return orders.sort(compareWaitingOrders).slice(0, cappedLimit);
+  }
+
+  const scored = orders
+    .map((order) => ({ order, score: pedidoCancelScore(order, query) }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return compareWaitingOrders(left.order, right.order);
+    });
+  return scored.slice(0, cappedLimit).map((item) => item.order);
+}
+
+function cancelCandidatePublic(order: ArrivalInternalOrder): Record<string, unknown> {
+  const paidCents = Number(order.paid_cents || 0);
+  return {
+    ...arrivalOrderPublic(order),
+    paid_label: formatMoney(paidCents),
+    financial_linked: paidCents > 0 || order.account_status === 'pago',
+    status_label: order.account_status === 'pago' ? 'ja pago, falta chegar' : 'aguardando chegada',
+  };
+}
+
+async function cancelWaitingOrderInternal(input: CancelOrderInput): Promise<CancelOrderResult> {
+  if (!input.userId) throw new Error('Usuario sem permissao para cancelar pedido.');
+  const idempotencyKey = cleanText(input.idempotencyKey, 180);
+  if (!idempotencyKey) throw new Error('Informe idempotency_key para cancelar pedido interno.');
+  const source = cleanText(input.source, 80) || 'internal';
+  const client = await pgPool.connect();
+  let result: CancelOrderResult | null = null;
+  try {
+    await client.query('BEGIN');
+    const inserted = await client.query(
+      `INSERT INTO pedidos_internal_idempotency (idempotency_key, source, status, request_hash)
+       VALUES ($1, $2, 'processing', $3)
+       ON CONFLICT DO NOTHING
+       RETURNING idempotency_key`,
+      [idempotencyKey, source, cleanText(input.requestHash, 80)],
+    );
+    if (inserted.rowCount === 0) {
+      const existing = await client.query<{ status: string; response_payload: unknown }>(
+        'SELECT status, response_payload FROM pedidos_internal_idempotency WHERE idempotency_key = $1 FOR UPDATE',
+        [idempotencyKey],
+      );
+      const previous = cancelOrderResultFromPayload(existing.rows[0]?.response_payload);
+      if (previous) {
+        await client.query('COMMIT');
+        return previous;
+      }
+      throw new Error('duplicate_processing');
+    }
+
+    const orderResult = await client.query<{
+      order_id: string;
+      account_id: string;
+      supplier_name: string;
+      account_status: string;
+      archived_at: Date | string | null;
+      total_cents: string;
+      paid_cents: string;
+      remaining_cents: string;
+    }>(
+      `SELECT o.id AS order_id,
+              o.account_id,
+              o.supplier_name,
+              a.status AS account_status,
+              a.archived_at,
+              a.total_cents::bigint::text AS total_cents,
+              COALESCE(p.paid_cents, 0)::bigint::text AS paid_cents,
+              GREATEST(a.total_cents - COALESCE(p.paid_cents, 0), 0)::bigint::text AS remaining_cents
+         FROM pedidos_orders o
+         JOIN gestao_accounts a ON a.id = o.account_id
+         LEFT JOIN (
+           SELECT account_id, SUM(amount_cents) AS paid_cents
+             FROM gestao_account_payments
+            WHERE status = 'ativo'
+            GROUP BY account_id
+         ) p ON p.account_id = a.id
+        WHERE (
+                ($1::bigint > 0 AND o.id = $1::bigint)
+             OR ($2::bigint > 0 AND o.account_id = $2::bigint)
+              )
+          AND o.moved_to_confirmed_at IS NULL
+          AND o.canceled_at IS NULL
+        FOR UPDATE OF o, a`,
+      [input.orderId || 0, input.accountId || 0],
+    );
+    const order = orderResult.rows[0];
+    if (!order) throw new Error('Nao achei pedido aguardando chegada para cancelar.');
+    if (order.archived_at) throw new Error('Esse pedido ja saiu da tela.');
+    if (order.account_status === 'cancelado') throw new Error('Esse pedido ja esta cancelado.');
+
+    const accountId = Number(order.account_id);
+    const orderId = Number(order.order_id);
+    const totalCents = Number(order.total_cents || 0);
+    const paidCents = Number(order.paid_cents || 0);
+    const remainingCents = Number(order.remaining_cents || 0);
+    await client.query('UPDATE gestao_accounts SET archived_at = now(), archived_by = $1::integer WHERE id = $2', [input.userId, accountId]);
+    await client.query(
+      "UPDATE pedidos_orders SET canceled_at = COALESCE(canceled_at, now()), canceled_by = COALESCE(canceled_by, $1::integer) WHERE id = $2 AND moved_to_confirmed_at IS NULL",
+      [input.userId, orderId],
+    );
+    await client.query(
+      "UPDATE pedidos_confirmed_orders SET lifecycle = 'cancelado', finished_at = COALESCE(finished_at, now()), finished_by = COALESCE(finished_by, $1::integer) WHERE order_id = $2 AND lifecycle <> 'cancelado'",
+      [input.userId, orderId],
+    );
+    await auditPg(
+      client,
+      accountId,
+      input.userId,
+      'pedidos_pedido_cancelado_interno',
+      `Pedido cancelado via ${source}: ${order.supplier_name}${input.traceId ? ` / trace ${cleanText(input.traceId, 80)}` : ''}`,
+    );
+    result = {
+      orderId,
+      accountId,
+      supplier: order.supplier_name,
+      totalCents,
+      paidCents,
+      remainingCents,
+      accountStatus: order.account_status,
+      financialLinked: paidCents > 0 || order.account_status === 'pago',
+      duplicate: false,
+    };
+    await client.query(
+      `UPDATE pedidos_internal_idempotency
+          SET status = 'completed', response_payload = $2::jsonb, updated_at = now()
+        WHERE idempotency_key = $1`,
+      [idempotencyKey, JSON.stringify(cancelOrderResultPayload(result))],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (!result) throw new Error('Nao consegui cancelar o pedido agora.');
+  await logAudit(
+    input.userId,
+    'pedidos_pedido_cancelado_interno',
+    'pedidos_pedido',
+    result.orderId,
+    `Pedido cancelado via ${source}: ${result.supplier} / ${formatMoney(result.totalCents)}`,
+  );
+  return result;
+}
+
 async function confirmArrivalBySupplier(supplierInput: unknown, actorLabel: string): Promise<Record<string, unknown>> {
   const orders = await listWaitingArrivalInternal(120);
   const matches = matchArrivalOrders(orders, supplierInput);
@@ -2670,8 +2934,13 @@ function internalCreateOrderMessage(result: CreateOrderResult): string {
       ? 'recebido, falta pagar'
       : result.paidNow
         ? 'pago, aguardando chegada'
-        : 'aguardando chegada e pagamento';
+      : 'aguardando chegada e pagamento';
   return `${prefix}: ${result.supplier} - ${formatMoney(result.totalCents)} - ${status}.`;
+}
+
+function internalCancelOrderMessage(result: CancelOrderResult): string {
+  const prefix = result.duplicate ? 'Pedido ja cancelado' : 'Pedido cancelado';
+  return `${prefix}: ${result.supplier} - ${formatMoney(result.totalCents)}.`;
 }
 
 app.post(`${BASE_PATH}/api/internal/create-order`, requireInternalToken, asyncRoute(async (req, res) => {
@@ -2763,6 +3032,104 @@ app.get(`${BASE_PATH}/api/internal/arrival-summary`, requireInternalToken, async
     total_label: formatMoney(totalCents),
     orders: orders.map((order) => arrivalOrderPublic(order)),
   });
+}));
+
+app.get(`${BASE_PATH}/api/internal/cancel-candidates`, requireInternalToken, asyncRoute(async (req, res) => {
+  const actor = await internalActorForPedidos(req.query.actor_user_id || req.query.user_id);
+  if (!actor) {
+    return res.status(403).json({
+      ok: false,
+      status: 'forbidden',
+      message: 'Usuario sem permissao para consultar Pedidos.',
+    });
+  }
+
+  const limit = Math.max(1, Math.min(20, Number(req.query.limit || 12) || 12));
+  const query = cleanText(req.query.q || req.query.query || '', 180);
+  const orders = await listCancelCandidates(query, limit);
+  res.json({
+    ok: true,
+    source: 'postgres',
+    query,
+    count: orders.length,
+    orders: orders.map((order) => cancelCandidatePublic(order)),
+  });
+}));
+
+app.post(`${BASE_PATH}/api/internal/cancel-order`, requireInternalToken, asyncRoute(async (req, res) => {
+  const actor = await internalActorForPedidos(req.body?.actor_user_id || req.body?.user_id);
+  if (!actor) {
+    return res.status(403).json({
+      ok: false,
+      status: 'forbidden',
+      message: 'Usuario sem permissao para cancelar Pedidos.',
+    });
+  }
+
+  const idempotencyKey = cleanText(req.body?.idempotency_key, 180);
+  if (!idempotencyKey) {
+    return res.status(400).json({
+      ok: false,
+      status: 'missing_idempotency_key',
+      message: 'Informe idempotency_key para cancelar pedido interno.',
+    });
+  }
+
+  const orderId = Number(req.body?.order_id || 0);
+  const accountId = Number(req.body?.account_id || 0);
+  if (!orderId && !accountId) {
+    return res.status(400).json({
+      ok: false,
+      status: 'missing_order',
+      message: 'Informe order_id ou account_id para cancelar pedido.',
+    });
+  }
+
+  const payloadForHash = {
+    order_id: orderId || null,
+    account_id: accountId || null,
+    actor_user_id: actor.id,
+    source: cleanText(req.body?.source, 80) || 'internal',
+  };
+
+  try {
+    const result = await cancelWaitingOrderInternal({
+      orderId,
+      accountId,
+      userId: actor.id,
+      source: payloadForHash.source,
+      idempotencyKey,
+      requestHash: createOrderRequestHash(payloadForHash),
+      traceId: cleanText(req.body?.trace_id, 120),
+    });
+    return res.status(result.duplicate ? 200 : 201).json({
+      ok: true,
+      duplicate: result.duplicate,
+      status: 'cancelled',
+      order_id: result.orderId,
+      account_id: result.accountId,
+      supplier_name: result.supplier,
+      total_cents: result.totalCents,
+      total_label: formatMoney(result.totalCents),
+      paid_cents: result.paidCents,
+      paid_label: formatMoney(result.paidCents),
+      remaining_cents: result.remainingCents,
+      remaining_label: formatMoney(result.remainingCents),
+      account_status: result.accountStatus,
+      financial_linked: result.financialLinked,
+      message: internalCancelOrderMessage(result),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === 'duplicate_processing') {
+      return res.status(409).json({
+        ok: false,
+        status: 'duplicate_processing',
+        message: 'Cancelamento ja esta em processamento para esta mensagem.',
+      });
+    }
+    throw error;
+  }
 }));
 
 app.post(`${BASE_PATH}/api/internal/confirm-arrival`, requireInternalToken, asyncRoute(async (req, res) => {

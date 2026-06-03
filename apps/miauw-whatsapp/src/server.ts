@@ -4,6 +4,7 @@ import pg from 'pg';
 import {
   formatPedidosCreateError,
   formatPedidosCreateSuccess,
+  parsePedidosOperationalCommand,
   parsePedidosCreateCommand,
   type PedidosCreateCommand,
 } from './pedidos-command.js';
@@ -477,13 +478,19 @@ type WatchdogIssue = {
 
 type PedidosArrivalOrder = {
   id: number;
+  account_id: number;
   supplier_name: string;
   expected_arrival_at: string | null;
   created_at: string | null;
+  account_status: string;
   total_cents: number;
+  paid_cents: number;
   remaining_cents: number;
   total_label: string;
+  paid_label: string;
   remaining_label: string;
+  financial_linked?: boolean;
+  status_label?: string;
 };
 
 type TarefaVisibleTask = {
@@ -3894,7 +3901,8 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       replyAsAudio = false;
     }
     const taskSelectionReply = await maybeHandleTaskSelectionReply(row);
-    const confirmationReply = taskSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const pedidoSelectionReply = taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row);
+    const confirmationReply = taskSelectionReply || pedidoSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
     const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
@@ -4177,6 +4185,21 @@ async function findPendingTaskSelection(senderHash: string): Promise<PendingConf
   return result.rows[0] || null;
 }
 
+async function findPendingPedidoSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+  await expireOldConfirmations();
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'
+        AND tool = 'selecionar_pedido_whatsapp'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
 async function findRecentExpiredTaskSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
   const result = await pgPool.query<PendingConfirmationRow>(
     `SELECT id, short_id, tool, summary, risk, command_payload, attempts
@@ -4184,6 +4207,21 @@ async function findRecentExpiredTaskSelection(senderHash: string): Promise<Pendi
       WHERE sender_phone_hash = $1
         AND status = 'expired'
         AND tool = 'selecionar_tarefa_whatsapp'
+        AND updated_at >= NOW() - INTERVAL '10 minutes'
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
+async function findRecentExpiredPedidoSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'expired'
+        AND tool = 'selecionar_pedido_whatsapp'
         AND updated_at >= NOW() - INTERVAL '10 minutes'
       ORDER BY updated_at DESC
       LIMIT 1`,
@@ -4219,6 +4257,40 @@ async function createPendingTaskSelection(row: QueueRow, command: JsonRecord): P
       row.sender_phone_mask,
       row.instance_name || defaultInstanceName(),
       safeOutboundText('Selecionar tarefa para concluir/cancelar.', 500),
+      JSON.stringify(command),
+      CONFIRMATION_TTL_MINUTES,
+      row.trace_id,
+    ],
+  );
+}
+
+async function createPendingPedidoSelection(row: QueueRow, command: JsonRecord): Promise<void> {
+  if (!whatsappConfirmationsReady()) return;
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'expired',
+            error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_new_pedido_selection' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'`,
+    [row.sender_phone_hash],
+  );
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_confirmations (
+      id, short_id, event_id, sender_phone_hash, sender_phone_mask, instance_name,
+      tool, summary, risk, command_payload, expires_at, trace_id
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      'selecionar_pedido_whatsapp', $7, 'baixo', $8::jsonb, NOW() + ($9::int * INTERVAL '1 minute'), $10
+    )`,
+    [
+      crypto.randomUUID(),
+      confirmationShortId(),
+      row.id,
+      row.sender_phone_hash,
+      row.sender_phone_mask,
+      row.instance_name || defaultInstanceName(),
+      safeOutboundText('Selecionar pedido para cancelar.', 500),
       JSON.stringify(command),
       CONFIRMATION_TTL_MINUTES,
       row.trace_id,
@@ -4316,6 +4388,73 @@ function taskTextMatchScore(query: string, title: string): number {
   if (!words.length) return 0;
   const matched = words.filter((word) => cleanTitle.includes(word)).length;
   return matched ? Math.round((matched / words.length) * 60) : 0;
+}
+
+function centsFromChoiceText(message: string): number[] {
+  const matches = safeText(message, 220).match(/R\$\s*\d+(?:[.,]\d{1,2})?|\d{1,3}(?:\.\d{3})+,\d{2}|\d+(?:[.,]\d{1,2})?/gi) || [];
+  return Array.from(new Set(matches
+    .map((match) => {
+      let text = match.replace(/R\$/gi, '').replace(/\s+/g, '').trim();
+      if (text.includes(',') && text.includes('.')) text = text.replace(/\./g, '').replace(',', '.');
+      else if (text.includes(',')) text = text.replace(',', '.');
+      const value = Number.parseFloat(text);
+      return Number.isFinite(value) ? Math.round(value * 100) : 0;
+    })
+    .filter((cents) => cents > 0)));
+}
+
+function pedidoTextMatchScore(query: string, option: JsonRecord): number {
+  const clean = normalizeIntentText(query)
+    .replace(/\b(cancelar|cancela|remove|remover|excluir|pedido|pedidos|a|o|da|do|de)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const supplier = normalizeIntentText(safeText(option.supplier_name, 180));
+  const totalCents = Number(option.total_cents || 0);
+  const accountId = Number(option.account_id || 0);
+  const orderId = Number(option.id || option.order_id || 0);
+  let score = 0;
+  for (const cents of centsFromChoiceText(query)) {
+    if (cents === totalCents) score = Math.max(score, 95);
+    if (cents === accountId || cents === orderId) score = Math.max(score, 100);
+  }
+  if (!clean) return score;
+  if (supplier === clean) return Math.max(score, 100);
+  if (supplier.includes(clean)) score = Math.max(score, 85);
+  const words = clean.split(/\s+/).filter((word) => word.length >= 3);
+  if (words.length) {
+    const matched = words.filter((word) => supplier.includes(word)).length;
+    if (matched) score = Math.max(score, Math.round((matched / words.length) * 70));
+  }
+  return score;
+}
+
+function parsePedidoChoiceIndex(message: string, options: JsonRecord[]): number | null {
+  const clean = normalizeIntentText(message);
+  const digit = clean.match(/^\d+$/);
+  if (digit) {
+    const index = Number(digit[0]) - 1;
+    return index >= 0 && index < options.length ? index : null;
+  }
+  const ordinalMap: Array<[RegExp, number]> = [
+    [/^(primeira|primeiro|a primeira|o primeiro|cancela a primeira|cancelar a primeira)$/, 0],
+    [/^(segunda|segundo|a segunda|o segundo|cancela a segunda|cancelar a segunda)$/, 1],
+    [/^(terceira|terceiro|a terceira|o terceiro|cancela a terceira|cancelar a terceira)$/, 2],
+    [/^(quarta|quarto|a quarta|o quarto|cancela a quarta|cancelar a quarta)$/, 3],
+    [/^(quinta|quinto|a quinta|o quinto|cancela a quinta|cancelar a quinta)$/, 4],
+  ];
+  for (const [pattern, index] of ordinalMap) {
+    if (pattern.test(clean) && index < options.length) return index;
+  }
+  const scored = options
+    .map((option, index) => ({
+      index,
+      score: pedidoTextMatchScore(clean, option),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+  return scored[0].index;
 }
 
 async function maybeHandleTaskSelectionReply(row: QueueRow): Promise<ReplyResult | null> {
@@ -4422,6 +4561,102 @@ async function maybeHandleTaskSelectionReply(row: QueueRow): Promise<ReplyResult
   };
 }
 
+async function maybeHandlePedidoSelectionReply(row: QueueRow): Promise<ReplyResult | null> {
+  if (!whatsappConfirmationsReady()) return null;
+  const pending = await findPendingPedidoSelection(row.sender_phone_hash);
+  if (!pending) {
+    const clean = normalizeIntentText(row.body_text);
+    const looksLikeLateChoice = /^\d+$/.test(clean)
+      || /^(a\s+)?(primeira|segunda|terceira|quarta|quinta)\b/.test(clean)
+      || /\b(de|da|do)\s+\d/.test(clean);
+    if (looksLikeLateChoice && await findRecentExpiredPedidoSelection(row.sender_phone_hash)) {
+      return {
+        text: 'Essa escolha expirou. Manda o comando de novo com miauby para eu nao cancelar pedido errado.',
+        engine: 'local',
+        reason: 'pedido_selection_expired',
+      };
+    }
+    return null;
+  }
+  const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const options = Array.isArray(payload.orders) ? payload.orders.filter(isRecord) : [];
+  const selectedIndex = parsePedidoChoiceIndex(row.body_text, options);
+  if (selectedIndex === null) {
+    const clean = normalizeIntentText(row.body_text);
+    if (/^(nao|n|deixa|esquece|errado|cancela comando|cancelar comando)(\s|$)/.test(clean)) {
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = 'cancelled',
+                cancelled_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [pending.id],
+      );
+      return {
+        text: 'Beleza, nao mexi em pedido nenhum.',
+        engine: 'local',
+        reason: 'pedido_selection_cancelled',
+      };
+    }
+    return {
+      text: 'Escolha pelo numero ou pelo fornecedor/valor. Ex.: 1 ou ANB 350.',
+      engine: 'local',
+      reason: 'pedido_selection_expected',
+    };
+  }
+
+  const selected = options[selectedIndex];
+  const orderId = Number(selected.id || selected.order_id || 0);
+  const accountId = Number(selected.account_id || 0);
+  const supplier = safeText(selected.supplier_name, 180);
+  if (!Number.isInteger(orderId) || orderId <= 0 || !supplier) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'failed',
+              error_summary = 'pedido_selection_payload_invalid',
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id],
+    );
+    return {
+      text: 'Nao consegui usar essa escolha. Manda o comando de novo com miauby.',
+      engine: 'local',
+      reason: 'pedido_selection_invalid',
+    };
+  }
+
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'executed',
+            executed_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [pending.id],
+  );
+  const totalLabel = safeText(selected.total_label, 60) || moneyForCommand(Number(selected.total_cents || 0) / 100);
+  const financialLinked = selected.financial_linked === true;
+  return {
+    text: financialLinked
+      ? `Esse pedido tem financeiro vinculado. Confirma cancelar mesmo assim: ${supplier} - ${totalLabel}?`
+      : `Confirma cancelar: ${supplier} - ${totalLabel}?`,
+    engine: 'local',
+    reason: 'pedido_selection_cancel_confirmation_required',
+    confirmation: {
+      tool: 'cancelar_pedido_whatsapp',
+      summary: `Cancelar pedido: ${supplier} - ${totalLabel}?`,
+      risk: financialLinked ? 'alto' : 'medio',
+      command: {
+        order_id: orderId,
+        account_id: accountId,
+        supplier_name: supplier,
+        total_label: totalLabel,
+        total_cents: Number(selected.total_cents || 0),
+        financial_linked: financialLinked,
+      },
+    },
+  };
+}
+
 async function maybeHandleConfirmationReply(row: QueueRow, userContext: WhatsappUserContext): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
   let decision = parseConfirmationDecision(row.body_text);
@@ -4459,7 +4694,30 @@ async function maybeHandleConfirmationReply(row: QueueRow, userContext: Whatsapp
     };
   }
 
-  if (pending.tool === 'cancelar_tarefa_whatsapp') {
+  if (pending.tool === 'selecionar_pedido_whatsapp') {
+    if (decision.action === 'cancel') {
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = 'cancelled',
+                cancelled_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [pending.id],
+      );
+      return {
+        text: 'Beleza, nao mexi em pedido nenhum.',
+        engine: 'local',
+        reason: 'pedido_selection_cancelled',
+      };
+    }
+    return {
+      text: 'Escolha pelo numero ou pelo fornecedor/valor. Ex.: 1 ou ANB 350.',
+      engine: 'local',
+      reason: 'pedido_selection_expected',
+    };
+  }
+
+  if (pending.tool === 'cancelar_tarefa_whatsapp' || pending.tool === 'cancelar_pedido_whatsapp') {
     decision = taskCancelConfirmationDecision(row.body_text, decision);
   }
 
@@ -4603,6 +4861,9 @@ function cancellationReplyForPending(pending: PendingConfirmationRow): string {
   }
   if (pending.tool === 'cancelar_tarefa_whatsapp') {
     return 'Cancelado. Tarefa nao foi cancelada.';
+  }
+  if (pending.tool === 'cancelar_pedido_whatsapp') {
+    return 'Cancelado. Pedido nao foi cancelado.';
   }
   if (pending.tool === 'criar_lancamento_financeiro') {
     const command = isRecord(pending.command_payload) ? pending.command_payload : {};
@@ -5292,6 +5553,9 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
   if (pending.tool === 'criar_pedido_whatsapp') {
     return executeConfirmedPedidoCreate(pending, traceId, senderMask, userContext);
   }
+  if (pending.tool === 'cancelar_pedido_whatsapp') {
+    return executeConfirmedPedidoCancel(pending, traceId, senderMask, userContext);
+  }
   if (pending.tool === 'registrar_sangria_whatsapp') {
     return executeConfirmedSangriaCreate(pending, traceId, senderMask, userContext);
   }
@@ -5331,6 +5595,16 @@ async function executeConfirmedPedidoCreate(pending: PendingConfirmationRow, tra
   const command = pedidoCommandFromConfirmationPayload(pending.command_payload);
   if (!command) throw new Error('pedidos_confirmation_payload_invalid');
   const reply = await createPedidoFromWhatsapp(command, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
+  return reply.text;
+}
+
+async function executeConfirmedPedidoCancel(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
+  if (!userContext.id || !userContext.linked) throw new Error('pedidos_cancel_unlinked_user');
+  const command = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const orderId = Number(command.order_id || command.id || 0);
+  const accountId = Number(command.account_id || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) throw new Error('pedidos_cancel_payload_invalid');
+  const reply = await cancelPedidoFromWhatsapp(orderId, accountId, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
   return reply.text;
 }
 
@@ -5944,6 +6218,81 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       };
     }
     return createSangriaFromWhatsapp(sangriaCreate, traceId, senderMask, userContext);
+  }
+  const pedidoOperation = parsePedidosOperationalCommand(message);
+  if (pedidoOperation) {
+    if (!moduleAllowed(allowedCards, 'pedidos')) {
+      return {
+        text: forbiddenModuleReply('pedidos', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:pedidos_operation',
+      };
+    }
+    if (pedidoOperation.action === 'list') {
+      const summary = await fetchPedidosArrivalSummary();
+      return {
+        text: pedidosArrivalQueryMessage(summary.orders),
+        engine: 'local',
+        reason: 'pedidos_arrival_list',
+      };
+    }
+    if (!userContext.id || !userContext.linked) {
+      return {
+        text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de cancelar pedido.',
+        engine: 'blocked',
+        reason: 'pedidos_cancel_unlinked_user',
+      };
+    }
+    if (!pedidoOperation.query) {
+      return {
+        text: 'Qual pedido voce quer cancelar? Ex.: miauby cancelar pedido ANB 350.',
+        engine: 'local',
+        reason: 'pedidos_cancel_missing_query',
+      };
+    }
+    const candidates = await fetchPedidosCancelCandidates(userContext, pedidoOperation.query, 12);
+    if (!candidates.length) {
+      return {
+        text: pedidoOperation.query
+          ? `Nao achei pedido aguardando chegada da ${pedidoOperation.query}.`
+          : 'Nao achei pedido aberto com esse nome.',
+        engine: 'local',
+        reason: 'pedidos_cancel_not_found',
+      };
+    }
+    if (candidates.length > 1) {
+      if (row) {
+        await createPendingPedidoSelection(row, {
+          action: 'cancel',
+          query: pedidoOperation.query,
+          orders: candidates,
+        });
+      }
+      return {
+        text: pedidosCancelOptionsMessage(candidates),
+        engine: 'local',
+        reason: 'pedidos_cancel_ambiguous',
+      };
+    }
+    const [order] = candidates;
+    return {
+      text: pedidoCancelConfirmationText(order),
+      engine: 'local',
+      reason: 'pedidos_cancel_confirmation_required',
+      confirmation: {
+        tool: 'cancelar_pedido_whatsapp',
+        summary: `Cancelar pedido: ${order.supplier_name} - ${order.total_label || moneyForCommand(order.total_cents / 100)}?`,
+        risk: order.financial_linked === true ? 'alto' : 'medio',
+        command: {
+          order_id: order.id,
+          account_id: order.account_id,
+          supplier_name: order.supplier_name,
+          total_label: order.total_label,
+          total_cents: order.total_cents,
+          financial_linked: order.financial_linked === true,
+        },
+      },
+    };
   }
   const arrivalReply = parsePedidosArrivalReply(message);
   const pedidoCreate = parsePedidosCreateCommand(message);
@@ -10811,6 +11160,46 @@ function pedidosArrivalMessage(orders: PedidosArrivalOrder[], totalLabel: string
   return `Pedidos aguardando chegada (${orders.length} / ${totalLabel}).\n${lines.join('\n')}${extra}`;
 }
 
+function pedidosArrivalQueryMessage(orders: PedidosArrivalOrder[]): string {
+  if (!orders.length) {
+    return 'Nenhum pedido aguardando chegada. Milagre logistico detectado 😼';
+  }
+  const sortedOrders = [...orders].sort(comparePedidosArrivalCreatedAt);
+  const lines = sortedOrders.slice(0, 10).map((order) => {
+    const created = brDateOnlyFromIso(order.created_at || '');
+    const createdLabel = created === 'sem previsao' ? 'sem data' : created;
+    const forecast = pedidosArrivalForecastLabel(order.expected_arrival_at);
+    const status = order.account_status === 'pago' ? 'ja pago, falta chegar' : 'aguardando chegada';
+    const value = order.total_label || order.remaining_label || '';
+    return `• ${order.supplier_name} - ${value} - pedido em ${createdLabel} - ${forecast} - ${status}`;
+  });
+  const extra = orders.length > 10 ? `\n+ ${orders.length - 10} pedido(s) no painel.` : '';
+  return `Pedidos aguardando chegada 😼\n${lines.join('\n')}${extra}`;
+}
+
+function pedidoCancelOptionLine(order: PedidosArrivalOrder, index: number): string {
+  const created = brDateOnlyFromIso(order.created_at || '');
+  const createdLabel = created === 'sem previsao' ? 'sem data' : created;
+  const value = order.total_label || moneyForCommand(Number(order.total_cents || 0) / 100);
+  const status = order.status_label || (order.account_status === 'pago' ? 'ja pago, falta chegar' : 'aguardando chegada');
+  const forecast = order.expected_arrival_at ? ` - ${pedidosArrivalForecastLabel(order.expected_arrival_at)}` : ' - sem previsao';
+  return `${index + 1}. ${order.supplier_name} - ${value} - pedido em ${createdLabel} - ${status}${forecast}`;
+}
+
+function pedidosCancelOptionsMessage(orders: PedidosArrivalOrder[]): string {
+  const lines = orders.slice(0, 10).map((order, index) => pedidoCancelOptionLine(order, index));
+  return `Achei mais de um pedido parecido. Qual deseja cancelar?\n\n${lines.join('\n')}\n\nResponda com o numero ou escreva o fornecedor/valor.`;
+}
+
+function pedidoCancelConfirmationText(order: PedidosArrivalOrder): string {
+  const value = order.total_label || moneyForCommand(Number(order.total_cents || 0) / 100);
+  const status = order.status_label || (order.account_status === 'pago' ? 'ja pago, falta chegar' : 'aguardando chegada');
+  if (order.financial_linked === true) {
+    return `Esse pedido tem financeiro vinculado. Confirma cancelar mesmo assim: ${order.supplier_name} - ${value} - ${status}?`;
+  }
+  return `Confirma cancelar: ${order.supplier_name} - ${value} - ${status}?`;
+}
+
 async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: PedidosArrivalOrder[]; totalLabel: string; count: number }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const url = `${PEDIDOS_INTERNAL_BASE_URL}/api/internal/arrival-summary?limit=${encodeURIComponent(String(limit))}`;
@@ -10824,13 +11213,19 @@ async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: Pedidos
     .filter(isRecord)
     .map((order) => ({
       id: Number(order.id || 0),
+      account_id: Number(order.account_id || 0),
       supplier_name: safeText(order.supplier_name, 180),
       expected_arrival_at: safeText(order.expected_arrival_at, 20) || null,
       created_at: safeText(order.created_at, 40) || null,
+      account_status: safeText(order.account_status, 40),
       total_cents: Number(order.total_cents || 0),
+      paid_cents: Number(order.paid_cents || 0),
       remaining_cents: Number(order.remaining_cents || 0),
       total_label: safeText(order.total_label, 40),
+      paid_label: safeText(order.paid_label, 40),
       remaining_label: safeText(order.remaining_label, 40),
+      financial_linked: order.financial_linked === true,
+      status_label: safeText(order.status_label, 80),
     }))
     .filter((order) => order.id > 0 && order.supplier_name);
   return {
@@ -10838,6 +11233,43 @@ async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: Pedidos
     totalLabel: safeText(data.total_label, 60) || `${orders.length} pedido(s)`,
     count: Number(data.count || orders.length),
   };
+}
+
+async function fetchPedidosCancelCandidates(userContext: WhatsappUserContext, query = '', limit = 12): Promise<PedidosArrivalOrder[]> {
+  if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
+  if (!userContext.id || !userContext.linked) throw new Error('pedidos_cancel_unlinked_user');
+  const params = new URLSearchParams({
+    actor_user_id: String(userContext.id),
+    limit: String(limit),
+  });
+  if (query) params.set('q', query);
+  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/cancel-candidates?${params.toString()}`, {
+    headers: internalPhpJsonHeaders(),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `pedidos_cancel_candidates_http_${response.status}`);
+  }
+  const rawOrders = Array.isArray(data.orders) ? data.orders : [];
+  return rawOrders
+    .filter(isRecord)
+    .map((order) => ({
+      id: Number(order.id || 0),
+      account_id: Number(order.account_id || 0),
+      supplier_name: safeText(order.supplier_name, 180),
+      expected_arrival_at: safeText(order.expected_arrival_at, 20) || null,
+      created_at: safeText(order.created_at, 40) || null,
+      account_status: safeText(order.account_status, 40),
+      total_cents: Number(order.total_cents || 0),
+      paid_cents: Number(order.paid_cents || 0),
+      remaining_cents: Number(order.remaining_cents || 0),
+      total_label: safeText(order.total_label, 40),
+      paid_label: safeText(order.paid_label, 40),
+      remaining_label: safeText(order.remaining_label, 40),
+      financial_linked: order.financial_linked === true,
+      status_label: safeText(order.status_label, 80),
+    }))
+    .filter((order) => order.id > 0 && order.supplier_name);
 }
 
 async function runPedidosArrivalCheck(mode: AutomationNotifyMode, dryRun: boolean): Promise<JsonRecord> {
@@ -11680,6 +12112,60 @@ async function createPedidoFromWhatsapp(
     };
   }
   throw new Error(safeText(data.message || data.error, 180) || `pedidos_create_http_${response.status}`);
+}
+
+async function cancelPedidoFromWhatsapp(
+  orderId: number,
+  accountId: number,
+  traceId: string,
+  senderMask: string,
+  userContext: WhatsappUserContext,
+  idempotencyKey: string,
+): Promise<ReplyResult> {
+  if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
+  const actorName = safeText(userContext.display_name || userContext.username || senderMask, 120) || 'Miauby WhatsApp';
+  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/cancel-order`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(),
+    body: JSON.stringify({
+      source: 'miauby_whatsapp',
+      trace_id: traceId,
+      idempotency_key: idempotencyKey,
+      actor: actorName,
+      actor_user_id: userContext.id,
+      order_id: orderId,
+      account_id: accountId,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!isRecord(data)) throw new Error(`pedidos_cancel_http_${response.status}`);
+  if (response.ok && data.ok === true) {
+    const supplier = safeText(data.supplier_name, 180) || 'pedido';
+    const totalLabel = safeText(data.total_label, 60) || '';
+    return {
+      text: data.duplicate === true
+        ? `Pedido ja cancelado: ${supplier}${totalLabel ? ` - ${totalLabel}` : ''}.`
+        : `Pedido cancelado: ${supplier}${totalLabel ? ` - ${totalLabel}` : ''}.`,
+      engine: 'local',
+      reason: data.duplicate === true ? 'pedidos_cancel_duplicate' : 'pedidos_cancel_cancelled',
+    };
+  }
+  const status = safeText(data.status || data.error, 80);
+  if (response.status === 403 || status === 'forbidden') {
+    return {
+      text: 'Voce nao tem permissao para cancelar pedido. O gato fiscal barrou.',
+      engine: 'blocked',
+      reason: 'pedidos_cancel_forbidden',
+    };
+  }
+  if (status === 'duplicate_processing') {
+    return {
+      text: 'Cancelamento ja esta em processamento. Nao vou duplicar.',
+      engine: 'local',
+      reason: 'pedidos_cancel_duplicate_processing',
+    };
+  }
+  throw new Error(safeText(data.message || data.error, 180) || `pedidos_cancel_http_${response.status}`);
 }
 
 async function dashboardSummary(): Promise<DashboardSummary> {
