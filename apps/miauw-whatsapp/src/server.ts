@@ -918,6 +918,7 @@ const N8N_WORKFLOW_CARDS = [
 ] as const;
 const UNAUTHORIZED_REPLY_TEXT = 'Oiee! Miauby aqui!\u{1F63C} Esse WhatsApp \u00e9 s\u00f3 para a equipe interna da Wimifarma. Se voc\u00ea precisa falar com a farm\u00e1cia, chame no canal oficial de atendimento (44) 98413-4971.';
 const providerSendTimestamps: number[] = [];
+const activeTaskReminderSends = new Set<string>();
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
 const audioReplyCache = new Map<string, CachedAudioReply>();
 const sharedContextCache = new Map<string, { context: SharedMiauwContext; expiresAt: number }>();
@@ -9882,6 +9883,41 @@ async function taskReminderRecipientsForUser(userId: number): Promise<Automation
   return recipients;
 }
 
+function taskReminderKind(value: unknown): string {
+  const kind = safeText(value, 40);
+  if (kind === 'assignment_created' || kind === 'assignment_followup') return kind;
+  return 'manual';
+}
+
+function taskReminderDedupeKey(payload: JsonRecord): string {
+  const explicit = safeText(payload.dedupe_key || payload.dedupeKey, 180);
+  if (explicit) return explicit;
+  const reminderId = Number(payload.reminder_id || payload.reminderId || 0);
+  return Number.isSafeInteger(reminderId) && reminderId > 0 ? `reminder:${reminderId}` : '';
+}
+
+async function taskReminderRecentlySent(dedupeKey: string, fingerprint: string): Promise<boolean> {
+  if (dedupeKey) {
+    const reminderId = dedupeKey.match(/^reminder:(\d+)$/)?.[1] || '';
+    const result = await pgPool.query<{ found: string }>(
+      `SELECT '1' AS found
+         FROM miauw_whatsapp_automation_runs
+        WHERE source = 'tarefa_reminder'
+          AND status IN ('sent', 'partial')
+          AND (
+            details->>'dedupe_key' = $1
+            OR details->>'reminder_dedupe_key' = $1
+            OR ($2::text <> '' AND details->>'reminder_id' = $2)
+          )
+          AND created_at >= NOW() - INTERVAL '14 days'
+        LIMIT 1`,
+      [dedupeKey, reminderId],
+    );
+    if (result.rows.length > 0) return true;
+  }
+  return fingerprint ? await automationRecentlyNotified('tarefa_reminder', fingerprint) : false;
+}
+
 function taskReminderWhenLabel(value: unknown): string {
   const raw = safeText(value, 80);
   if (!raw) return '';
@@ -9904,13 +9940,20 @@ function taskReminderMessage(payload: JsonRecord): string {
   const priority = safeText(payload.priority, 30);
   const remindAt = taskReminderWhenLabel(payload.remind_at);
   const taskUrl = safeText(payload.task_url || '/tarefa/', 120);
+  const kind = taskReminderKind(payload.reminder_kind || payload.kind);
+  const header = kind === 'assignment_created'
+    ? 'Miauby nova tarefa para voce'
+    : kind === 'assignment_followup'
+      ? 'Miauby tarefa pendente'
+      : 'Miauby lembrete de tarefa';
   const lines = [
-    'Miauby lembrete de tarefa',
+    header,
     username ? `Para: ${username}` : '',
     priority ? `Prioridade: ${priority}` : '',
     title ? `Tarefa: ${title}` : '',
     description ? `Descricao: ${description}` : '',
-    remindAt ? `Horario combinado: ${remindAt}` : '',
+    kind === 'manual' && remindAt ? `Horario combinado: ${remindAt}` : '',
+    kind === 'assignment_followup' ? 'Essa tarefa segue aberta. Me avise quando concluir.' : '',
     `Abrir tarefas: ${taskUrl}`,
   ];
   return safeOutboundText(lines.filter(Boolean).join('\n'), 1200);
@@ -9923,7 +9966,14 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
   if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error('invalid_user_id');
   const message = taskReminderMessage(payload);
   const fingerprint = message ? automationFingerprint(source, message) : '';
-  const baseDetails = { user_id: userId, reminder_id: payload.reminder_id || null, task_id: payload.task_id || null };
+  const dedupeKey = taskReminderDedupeKey(payload);
+  const baseDetails = {
+    user_id: userId,
+    reminder_id: payload.reminder_id || null,
+    task_id: payload.task_id || null,
+    reminder_kind: taskReminderKind(payload.reminder_kind || payload.kind),
+    dedupe_key: dedupeKey || null,
+  };
   if (!message) {
     await recordAutomationRun(source, {
       moduleKey: 'tarefas',
@@ -9935,6 +9985,43 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
     });
     return { ...result, skipped: true };
   }
+
+  if (dedupeKey && activeTaskReminderSends.has(dedupeKey)) {
+    result.skipped = true;
+    result.cooldown = true;
+    result.errors.push('task_reminder_in_flight');
+    await recordAutomationRun(source, {
+      moduleKey: 'tarefas',
+      status: 'skipped',
+      severity: 'info',
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'task_reminder_in_flight',
+      details: { ...baseDetails, reason: 'duplicate_in_flight' },
+    });
+    return result;
+  }
+
+  if (await taskReminderRecentlySent(dedupeKey, fingerprint)) {
+    result.skipped = true;
+    result.cooldown = true;
+    result.errors.push('duplicate_task_reminder');
+    await recordAutomationRun(source, {
+      moduleKey: 'tarefas',
+      status: 'skipped',
+      severity: 'info',
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'duplicate_task_reminder',
+      details: { ...baseDetails, reason: 'duplicate_already_sent' },
+    });
+    return result;
+  }
+
+  if (dedupeKey) activeTaskReminderSends.add(dedupeKey);
+  try {
 
   const status = publicStatus();
   if (status.transport_configured !== true || status.enabled !== true) {
@@ -10042,6 +10129,9 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
     },
   });
   return result;
+  } finally {
+    if (dedupeKey) activeTaskReminderSends.delete(dedupeKey);
+  }
 }
 
 async function vacationRecipientsForUser(userId: number): Promise<AutomationRecipient[]> {

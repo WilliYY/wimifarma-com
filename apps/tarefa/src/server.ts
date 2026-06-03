@@ -24,6 +24,7 @@ type Flash = {
 type TaskPriority = 'alta' | 'normal' | 'baixa';
 type TaskStatus = 'aberta' | 'concluida' | 'cancelada';
 type TaskReminderStatus = 'scheduled' | 'sent' | 'failed' | 'cancelled' | 'skipped';
+type TaskReminderKind = 'manual' | 'assignment_created' | 'assignment_followup';
 
 type CoreUserRow = {
   id: string;
@@ -70,6 +71,8 @@ type TaskReminderRow = {
   assigned_core_user_id: string | number;
   assigned_username_snapshot: string;
   remind_at: Date | string;
+  kind: TaskReminderKind;
+  dedupe_key: string;
   status: TaskReminderStatus;
   requested_by: number | null;
   requested_at: Date | string;
@@ -130,7 +133,7 @@ const WHATSAPP_INTERNAL_TOKEN = cleanEnv('TAREFA_MIAUW_WHATSAPP_INTERNAL_TOKEN')
   || INTERNAL_TOKEN;
 const WHATSAPP_INTERNAL_TIMEOUT_MS = Math.max(
   1000,
-  Math.min(15000, Number.parseInt(env.TAREFA_MIAUW_WHATSAPP_TIMEOUT_MS || '4500', 10) || 4500),
+  Math.min(60000, Number.parseInt(env.TAREFA_MIAUW_WHATSAPP_TIMEOUT_MS || '25000', 10) || 25000),
 );
 const REMINDER_WORKER_INTERVAL_MS = Math.max(
   15000,
@@ -143,6 +146,10 @@ const REMINDER_RETRY_DELAY_MINUTES = Math.max(
 const REMINDER_MAX_ATTEMPTS = Math.max(
   1,
   Math.min(10, Number.parseInt(env.TAREFA_REMINDER_MAX_ATTEMPTS || '3', 10) || 3),
+);
+const REMINDER_IN_FLIGHT_GRACE_MINUTES = Math.max(
+  2,
+  Math.min(60, Number.parseInt(env.TAREFA_REMINDER_IN_FLIGHT_GRACE_MINUTES || '15', 10) || 15),
 );
 const TZ = 'America/Sao_Paulo';
 const CORE_AUTH_TIMEOUT_MS = Math.max(
@@ -672,6 +679,8 @@ async function ensureSchema(): Promise<void> {
       assigned_core_user_id bigint NOT NULL,
       assigned_username_snapshot varchar(120) NOT NULL DEFAULT '',
       remind_at timestamptz NOT NULL,
+      kind varchar(30) NOT NULL DEFAULT 'manual',
+      dedupe_key varchar(180) NOT NULL DEFAULT '',
       status varchar(20) NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'sent', 'failed', 'cancelled', 'skipped')),
       requested_by integer,
       requested_at timestamptz NOT NULL DEFAULT now(),
@@ -685,11 +694,33 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await pgPool.query(`
+    ALTER TABLE tarefa_reminders
+      ADD COLUMN IF NOT EXISTS kind varchar(30) NOT NULL DEFAULT 'manual',
+      ADD COLUMN IF NOT EXISTS dedupe_key varchar(180) NOT NULL DEFAULT ''
+  `);
+  await pgPool.query(`
+    DO $$
+    BEGIN
+      ALTER TABLE tarefa_reminders
+        ADD CONSTRAINT tarefa_reminders_kind_check
+        CHECK (kind IN ('manual', 'assignment_created', 'assignment_followup'));
+    EXCEPTION WHEN duplicate_object THEN
+      NULL;
+    END
+    $$;
+  `);
+  await pgPool.query(`
     CREATE INDEX IF NOT EXISTS tarefa_reminders_due_idx
       ON tarefa_reminders (status, remind_at, id)
       WHERE status = 'scheduled'
   `);
   await pgPool.query('CREATE INDEX IF NOT EXISTS tarefa_reminders_task_idx ON tarefa_reminders (task_id, remind_at DESC, id DESC)');
+  await pgPool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS tarefa_reminders_dedupe_key_idx
+      ON tarefa_reminders (dedupe_key)
+      WHERE dedupe_key <> ''
+        AND status IN ('scheduled', 'sent')
+  `);
 }
 
 function isTaskAdminIdentity(usernameValue: unknown, roleValue: unknown): boolean {
@@ -900,6 +931,38 @@ function reminderStatusLabel(status: TaskReminderStatus): string {
   return 'Ignorado';
 }
 
+function validReminderKind(value: unknown): TaskReminderKind {
+  const kind = cleanText(value, 40);
+  if (kind === 'assignment_created' || kind === 'assignment_followup') return kind;
+  return 'manual';
+}
+
+function reminderKindLabel(kind: TaskReminderKind): string {
+  if (kind === 'assignment_created') return 'Nova tarefa';
+  if (kind === 'assignment_followup') return 'Pendente';
+  return 'Lembrete';
+}
+
+function saoPauloDateKey(value: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value).reduce<Record<string, string>>((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year || '0000'}-${parts.month || '00'}-${parts.day || '00'}`;
+}
+
+function reminderDedupeKey(taskId: number, kind: TaskReminderKind, remindAt: Date): string {
+  if (!Number.isSafeInteger(taskId) || taskId <= 0) return '';
+  if (kind === 'assignment_created') return `task:${taskId}:assignment-created`;
+  if (kind === 'assignment_followup') return `task:${taskId}:assignment-followup:${saoPauloDateKey(remindAt)}`;
+  return `task:${taskId}:manual:${Math.floor(remindAt.getTime() / 60000)}`;
+}
+
 async function latestReminderMap(taskIds: number[]): Promise<Map<number, TaskReminderRow>> {
   const uniqueIds = [...new Set(taskIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
   const map = new Map<number, TaskReminderRow>();
@@ -910,6 +973,7 @@ async function latestReminderMap(taskIds: number[]): Promise<Map<number, TaskRem
       WHERE task_id = ANY($1::bigint[])
       ORDER BY task_id,
         CASE status WHEN 'scheduled' THEN 0 WHEN 'failed' THEN 1 WHEN 'sent' THEN 2 ELSE 3 END,
+        CASE kind WHEN 'manual' THEN 0 ELSE 1 END,
         remind_at DESC,
         id DESC`,
     [uniqueIds],
@@ -925,7 +989,13 @@ async function auditTaskEvent(taskId: number | null, userId: number | null, acti
   );
 }
 
-async function cancelScheduledReminders(client: pg.PoolClient, taskId: number, userId: number | null, reason: string): Promise<number> {
+async function cancelScheduledReminders(
+  client: pg.PoolClient,
+  taskId: number,
+  userId: number | null,
+  reason: string,
+  kind?: TaskReminderKind,
+): Promise<number> {
   const result = await client.query<{ id: string }>(
     `UPDATE tarefa_reminders
         SET status = 'cancelled',
@@ -933,8 +1003,9 @@ async function cancelScheduledReminders(client: pg.PoolClient, taskId: number, u
             updated_at = NOW()
       WHERE task_id = $1
         AND status = 'scheduled'
+        AND ($3::text = '' OR kind = $3)
       RETURNING id`,
-    [taskId, cleanText(reason, 255)],
+    [taskId, cleanText(reason, 255), kind || ''],
   );
   const changed = Number(result.rowCount || 0);
   if (changed > 0) {
@@ -943,28 +1014,56 @@ async function cancelScheduledReminders(client: pg.PoolClient, taskId: number, u
   return changed;
 }
 
-async function insertTaskReminder(client: pg.PoolClient, task: TaskRow, remindAt: Date, userId: number | null): Promise<TaskReminderRow> {
+async function insertTaskReminder(
+  client: pg.PoolClient,
+  task: TaskRow,
+  remindAt: Date,
+  userId: number | null,
+  kindValue: TaskReminderKind = 'manual',
+): Promise<TaskReminderRow> {
   const assignedUserId = Number(task.assigned_core_user_id || 0);
   if (!assignedUserId) throw new Error('Escolha um usuario para o lembrete Miauby.');
   if (validStatus(task.status) !== 'aberta') throw new Error('Lembrete Miauby so pode ser agendado em tarefa aberta.');
+  const kind = validReminderKind(kindValue);
+  const taskId = Number(task.id);
+  const dedupeKey = reminderDedupeKey(taskId, kind, remindAt);
   const result = await client.query<TaskReminderRow>(
     `INSERT INTO tarefa_reminders (
-       task_id, assigned_core_user_id, assigned_username_snapshot, remind_at, requested_by
-     ) VALUES ($1, $2, $3, $4, $5)
+       task_id, assigned_core_user_id, assigned_username_snapshot, remind_at, requested_by, kind, dedupe_key
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT DO NOTHING
      RETURNING *`,
-    [Number(task.id), assignedUserId, cleanText(task.assigned_username_snapshot, 120), remindAt, userId],
+    [taskId, assignedUserId, cleanText(task.assigned_username_snapshot, 120), remindAt, userId, kind, dedupeKey],
   );
-  await auditPg(client, Number(task.id), userId, 'tarefa_lembrete_agendado', `Lembrete Miauby agendado para ${brDate(remindAt, true)}.`);
-  return result.rows[0];
+  const inserted = result.rows[0];
+  if (inserted) {
+    const action = kind === 'manual' ? 'tarefa_lembrete_agendado' : 'tarefa_aviso_miauby_agendado';
+    const summary = kind === 'manual'
+      ? `Lembrete Miauby agendado para ${brDate(remindAt, true)}.`
+      : `${reminderKindLabel(kind)} Miauby agendado para ${brDate(remindAt, true)}.`;
+    await auditPg(client, taskId, userId, action, summary);
+    return inserted;
+  }
+  const existing = await client.query<TaskReminderRow>(
+    `SELECT *
+       FROM tarefa_reminders
+      WHERE dedupe_key = $1
+      LIMIT 1`,
+    [dedupeKey],
+  );
+  const duplicate = existing.rows[0];
+  if (!duplicate) throw new Error('Falha ao registrar lembrete Miauby.');
+  return duplicate;
 }
 
 async function syncTaskReminder(client: pg.PoolClient, task: TaskRow, remindAt: Date | null, userId: number | null): Promise<string> {
   const taskId = Number(task.id);
   const existing = await client.query<TaskReminderRow>(
     `SELECT *
-       FROM tarefa_reminders
+      FROM tarefa_reminders
       WHERE task_id = $1
         AND status = 'scheduled'
+        AND kind = 'manual'
       ORDER BY remind_at DESC, id DESC
       LIMIT 1
       FOR UPDATE`,
@@ -973,7 +1072,7 @@ async function syncTaskReminder(client: pg.PoolClient, task: TaskRow, remindAt: 
   const current = existing.rows[0] || null;
   if (!remindAt) {
     if (current) {
-      await cancelScheduledReminders(client, taskId, userId, 'Lembrete Miauby removido.');
+      await cancelScheduledReminders(client, taskId, userId, 'Lembrete Miauby removido.', 'manual');
       return 'cancelled';
     }
     return '';
@@ -983,7 +1082,7 @@ async function syncTaskReminder(client: pg.PoolClient, task: TaskRow, remindAt: 
     && Number(current.assigned_core_user_id || 0) === assignedUserId
     && Math.abs(new Date(current.remind_at).getTime() - remindAt.getTime()) < 60 * 1000;
   if (unchanged) return 'unchanged';
-  if (current) await cancelScheduledReminders(client, taskId, userId, 'Lembrete Miauby reagendado.');
+  if (current) await cancelScheduledReminders(client, taskId, userId, 'Lembrete Miauby reagendado.', 'manual');
   await insertTaskReminder(client, task, remindAt, userId);
   return 'scheduled';
 }
@@ -1004,6 +1103,8 @@ async function postWhatsappTaskReminder(row: DueTaskReminderRow): Promise<Record
       body: JSON.stringify({
         source: 'tarefa_reminder',
         reminder_id: Number(row.id),
+        reminder_kind: validReminderKind(row.kind),
+        dedupe_key: cleanText(row.dedupe_key, 180),
         task_id: Number(row.task_id),
         user_id: Number(row.assigned_core_user_id),
         username: row.assigned_username_snapshot || '',
@@ -1058,6 +1159,39 @@ async function retryReminder(row: DueTaskReminderRow, error: unknown): Promise<v
   await auditTaskEvent(Number(row.task_id), Number(row.requested_by || 0) || null, 'tarefa_lembrete_retry', `Lembrete Miauby reagendado apos falha: ${summary}`);
 }
 
+async function scheduleNextAssignmentFollowup(row: DueTaskReminderRow): Promise<void> {
+  const kind = validReminderKind(row.kind);
+  if (kind !== 'assignment_created' && kind !== 'assignment_followup') return;
+  const taskId = Number(row.task_id || 0);
+  const assignedUserId = Number(row.assigned_core_user_id || 0);
+  if (!Number.isSafeInteger(taskId) || taskId <= 0 || !Number.isSafeInteger(assignedUserId) || assignedUserId <= 0) return;
+
+  const nextAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const taskResult = await client.query<TaskRow>(
+      `SELECT *
+         FROM tarefa_tasks
+        WHERE id = $1
+          AND status = 'aberta'
+          AND assigned_core_user_id = $2
+        FOR UPDATE`,
+      [taskId, assignedUserId],
+    );
+    const task = taskResult.rows[0];
+    if (task) {
+      await insertTaskReminder(client, task, nextAt, Number(row.requested_by || 0) || null, 'assignment_followup');
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.warn('[tarefa] reminder followup schedule failed', error);
+  } finally {
+    client.release();
+  }
+}
+
 async function processDueTaskReminders(): Promise<void> {
   const result = await pgPool.query<DueTaskReminderRow>(
     `WITH due AS (
@@ -1065,6 +1199,11 @@ async function processDueTaskReminders(): Promise<void> {
          FROM tarefa_reminders
         WHERE status = 'scheduled'
           AND remind_at <= NOW()
+          AND (
+            last_attempt_at IS NULL
+            OR remind_at > last_attempt_at
+            OR last_attempt_at < NOW() - ($1::text || ' minutes')::interval
+          )
         ORDER BY remind_at ASC, id ASC
         LIMIT 10
         FOR UPDATE SKIP LOCKED
@@ -1077,6 +1216,7 @@ async function processDueTaskReminders(): Promise<void> {
       WHERE r.id = due.id
         AND t.id = r.task_id
       RETURNING r.*, t.priority, t.title, t.description, t.status AS task_status`,
+    [String(REMINDER_IN_FLIGHT_GRACE_MINUTES)],
   );
 
   for (const row of result.rows) {
@@ -1092,9 +1232,13 @@ async function processDueTaskReminders(): Promise<void> {
       const errors = Array.isArray(data.errors) ? data.errors.map((item) => cleanText(item, 120)).filter(Boolean) : [];
       if (sent > 0) {
         await finishReminder(row, 'sent', `Lembrete Miauby enviado para ${sent} contato(s).`, data);
+        await scheduleNextAssignmentFollowup(row);
+      } else if (errors.some((error) => error === 'duplicate_task_reminder')) {
+        await finishReminder(row, 'sent', 'Lembrete Miauby ja havia sido enviado; repeticao bloqueada.', data);
+        await scheduleNextAssignmentFollowup(row);
       } else if (blocked > 0 || errors.some((error) => error === 'user_on_vacation')) {
         await finishReminder(row, 'skipped', 'Lembrete Miauby nao enviado: usuario em ferias.', data);
-      } else if (errors.some((error) => error === 'whatsapp_transport_unavailable' || error === 'provider_paused')) {
+      } else if (errors.some((error) => error === 'whatsapp_transport_unavailable' || error === 'provider_paused' || error === 'task_reminder_in_flight')) {
         throw new Error(errors[0]);
       } else {
         await finishReminder(row, 'failed', errors[0] || (recipients === 0 ? 'Nenhum WhatsApp com card Tarefas vinculado ao usuario.' : 'WhatsApp nao enviou o lembrete.'), data);
@@ -1137,6 +1281,7 @@ async function createTask(req: Request): Promise<number> {
       assignee ? 'tarefa_privada_criada' : 'tarefa_criada',
       assignee ? `Tarefa privada criada para ${taskAssigneeLabel(assignee)}: ${title}` : `Tarefa criada: ${title}`,
     );
+    if (assignee) await insertTaskReminder(client, task, new Date(), userId, 'assignment_created');
     if (remindAt) await insertTaskReminder(client, task, remindAt, userId);
     await client.query('COMMIT');
     void logCoreAudit(userId, assignee ? 'tarefa_privada_criada' : 'tarefa_criada', 'task', String(taskId), `Tarefa criada: ${title}`, {
@@ -1194,6 +1339,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
       [priority, title, description, actorUserId, assignedUserId, assignedSnapshotName, actorUserId],
     );
     const task = result.rows[0];
+    await insertTaskReminder(client, task, new Date(), actorUserId, 'assignment_created');
     if (remindAt) await insertTaskReminder(client, task, remindAt, actorUserId);
     await auditPg(
       client,
@@ -1328,8 +1474,9 @@ function renderReminderControl(value = '', help = 'Opcional. Para enviar lembret
 function renderReminderPill(reminder: TaskReminderRow | undefined): string {
   if (!reminder) return '';
   const status = reminder.status || 'scheduled';
+  const kind = validReminderKind(reminder.kind);
   const when = brDate(status === 'sent' && reminder.sent_at ? reminder.sent_at : reminder.remind_at, true);
-  return `<span class="task-reminder-pill status-${e(status)}">Miauby: ${e(reminderStatusLabel(status))} ${e(when)}</span>`;
+  return `<span class="task-reminder-pill status-${e(status)}">Miauby ${e(reminderKindLabel(kind))}: ${e(reminderStatusLabel(status))} ${e(when)}</span>`;
 }
 
 function assigneeLabelForTask(task: TaskRow, users: AssignableTaskUserRow[]): string {
@@ -1399,10 +1546,14 @@ async function updateTask(req: Request): Promise<void> {
     );
     const task = result.rows[0];
     if (!task) throw new Error('Tarefa invalida.');
+    if (canManageAll && assignmentChanged) {
+      await cancelScheduledReminders(client, id, userId || null, 'Lembrete Miauby cancelado porque o usuario da tarefa mudou.');
+    }
     if (canManageAll && reminderFieldPresent) {
       await syncTaskReminder(client, task, remindAt || null, userId || null);
-    } else if (canManageAll && assignmentChanged) {
-      await cancelScheduledReminders(client, id, userId || null, 'Lembrete Miauby cancelado porque o usuario da tarefa mudou.');
+    }
+    if (canManageAll && assignmentChanged && nextAssignedId) {
+      await insertTaskReminder(client, task, new Date(), userId || null, 'assignment_created');
     }
     await auditPg(client, id, req.session.user?.id || null, 'tarefa_editada', `Tarefa editada: ${title}`);
     await client.query('COMMIT');
@@ -1479,7 +1630,9 @@ function renderTask(
     .map(([key, item]) => `<option value="${e(key)}" ${key === priority ? 'selected' : ''}>${e(item.label)}</option>`)
     .join('');
   const assigneeOptions = renderAssigneeOptions(assignableUsers, assignedUserId);
-  const reminderValue = reminder?.status === 'scheduled' ? dateTimeLocalValue(reminder.remind_at) : '';
+  const reminderValue = reminder?.status === 'scheduled' && validReminderKind(reminder.kind) === 'manual'
+    ? dateTimeLocalValue(reminder.remind_at)
+    : '';
 
   return `
     <article class="task-row priority-${e(priority)} status-${e(status)}" data-task-row>
