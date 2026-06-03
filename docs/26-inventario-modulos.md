@@ -119,7 +119,7 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 ### Fluxos de escrita
 
 - `save_day`: autosave do fechamento diario, responsavel e totais.
-- `close_day`: fecha o dia como `fechado` ou `divergente`, conforme limite.
+- `close_day`: fecha o dia como `fechado` ou `divergente`, conforme limite; o backend aceita a acao real do botao mesmo se uma pagina antiga ainda enviar `save_day` junto.
 - `save_report_faturamento` e `save_report_faturamento_auto`: salva faturamento diario do relatorio.
 - `close_empty` e `close_report_empty_day`: marcam `sem_movimento` somente quando o dia nao tem lancamento ativo nem valor/faturamento ja salvo.
 - `save_sangria`: cria lancamento de sangria.

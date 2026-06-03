@@ -28,7 +28,7 @@ declare module 'express-session' {
 const env = process.env;
 const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
-const SERVICE_VERSION = '1.1.2';
+const SERVICE_VERSION = '1.1.3';
 const OPEN_CASH_CLOSING_LOOKBACK_DAYS = 10;
 const FINANCEIRO_FISCAL_YEARS = [2026, 2027, 2028];
 const __filename = fileURLToPath(import.meta.url);
@@ -80,6 +80,12 @@ const corePgPool = new Pool({
 
 function cleanText(value: unknown, max = 500): string {
   return String(value ?? '').trim().slice(0, max);
+}
+
+function bodyText(value: unknown, preferLast = false): string {
+  if (!Array.isArray(value)) return String(value ?? '');
+  const values = value.map((item) => cleanText(item, 500)).filter(Boolean);
+  return values.length === 0 ? '' : String(preferLast ? values[values.length - 1] : values[0]);
 }
 
 function intOrNull(value: unknown): number | null {
@@ -811,7 +817,7 @@ function csrfField(req: Request): string {
 
 function csrfMatches(req: Request): boolean {
   const expected = req.session.csrfToken || '';
-  const received = String(req.body?.csrf_token || req.get('x-csrf-token') || '');
+  const received = bodyText(req.body?.csrf_token || req.get('x-csrf-token') || '');
   if (!expected || !received) return false;
   const left = crypto.createHash('sha256').update(expected).digest();
   const right = crypto.createHash('sha256').update(received).digest();
@@ -1718,7 +1724,6 @@ async function renderCashier(req: Request): Promise<string> {
     ${locked ? '<div class="notice warning">Este dia esta fechado. Para editar, reabra com a senha interna.</div>' : ''}
     <form id="day-close-form" class="finance-form day-autosave-form" method="post" data-no-enter-submit data-autosave-day>
       ${csrfField(req)}
-      <input type="hidden" name="action" value="save_day">
       <input type="hidden" name="data_fechamento" value="${e(date)}">
       <input type="hidden" name="caixa_fisico" value="${e(moneyInput(selectedClosing.caixa_fisico))}">
       <input type="hidden" name="cartao_total" value="${e(moneyInput(selectedClosing.cartao_total))}">
@@ -1872,8 +1877,8 @@ app.post([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(asyn
   const user = await requireUser(req, res);
   if (!user) return;
   const body = req.body as AnyRow;
-  const action = String(body.action || '');
-  const date = validFinanceDate(body.data_fechamento, selectedContext(req).date);
+  const action = bodyText(body.action, true);
+  const date = validFinanceDate(bodyText(body.data_fechamento), selectedContext(req).date);
   const postYear = new Date(`${date}T00:00:00-03:00`).getFullYear();
   const postMonth = new Date(`${date}T00:00:00-03:00`).getMonth() + 1;
   try {
