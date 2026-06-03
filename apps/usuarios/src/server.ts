@@ -1874,6 +1874,64 @@ function renderRoleOptions(selected: string): string {
   return ROLE_OPTIONS.map((role) => `<option value="${e(role)}"${role === selected ? ' selected' : ''}>${e(roleLabel(role))}</option>`).join('');
 }
 
+function renderRoleGuide(): string {
+  return `<section class="users-role-guide" aria-label="Perfis do sistema">
+    <div class="users-role-guide-head">
+      <div>
+        <span class="users-kicker">Perfis</span>
+        <h2>Perfis do sistema</h2>
+      </div>
+      <p>Resumo visual do que cada perfil significa hoje. Os m&oacute;dulos continuam respeitando as permiss&otilde;es marcadas em cada usu&aacute;rio.</p>
+    </div>
+    <div class="users-role-guide-grid">
+      <article class="users-role-info collaborator">
+        <div class="users-role-info-top">
+          <span class="users-role-mark">CO</span>
+          <h3>Colaborador</h3>
+        </div>
+        <ul>
+          <li>Funcion&aacute;rio operacional comum.</li>
+          <li>Usa somente os m&oacute;dulos liberados no cadastro.</li>
+          <li>No WhatsApp pr&oacute;prio, vira respons&aacute;vel padr&atilde;o da a&ccedil;&atilde;o.</li>
+        </ul>
+      </article>
+      <article class="users-role-info manager">
+        <div class="users-role-info-top">
+          <span class="users-role-mark">GE</span>
+          <h3>Gerente</h3>
+        </div>
+        <ul>
+          <li>Perfil gerencial da equipe.</li>
+          <li>Libera fun&ccedil;&otilde;es gerenciais apenas onde o m&oacute;dulo j&aacute; valida gerente.</li>
+          <li>N&atilde;o vira Admin automaticamente.</li>
+        </ul>
+      </article>
+      <article class="users-role-info admin">
+        <div class="users-role-info-top">
+          <span class="users-role-mark">AD</span>
+          <h3>Admin</h3>
+        </div>
+        <ul>
+          <li>Perfil administrativo do sistema.</li>
+          <li>Gerencia usu&aacute;rios, m&oacute;dulos e configura&ccedil;&otilde;es conforme a regra atual.</li>
+          <li>N&atilde;o altera a prote&ccedil;&atilde;o do usu&aacute;rio mestre.</li>
+        </ul>
+      </article>
+      <article class="users-role-info pharmacy">
+        <div class="users-role-info-top">
+          <span class="users-role-mark">FA</span>
+          <h3>Farm&aacute;cia</h3>
+        </div>
+        <ul>
+          <li>Perfil do WhatsApp oficial da farm&aacute;cia.</li>
+          <li>&Eacute; canal institucional autorizado, n&atilde;o respons&aacute;vel humano.</li>
+          <li>Se faltar respons&aacute;vel no comando, o Miauby pergunta quem fez.</li>
+        </ul>
+      </article>
+    </div>
+  </section>`;
+}
+
 function roleLabel(role: string): string {
   switch (normalizeRole(role)) {
     case 'admin':
@@ -1932,7 +1990,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-integration-cards">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-role-guide">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
   <script src="${BASE_PATH}/user-cards.js?v=20260603-toggle" defer></script>
@@ -1967,6 +2025,7 @@ function renderDashboard(
         <article><span>Admins</span><strong>${e(stats.admins_active)}</strong></article>
         <article><span>XP</span><strong>${e(stats.xp_links)}</strong></article>
       </section>
+      ${renderRoleGuide()}
       <div class="users-layout">
         <aside>
           <section class="users-section">
