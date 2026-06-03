@@ -76,7 +76,7 @@ function miauw_training_date_label(string $date): string
 </head>
 <body class="miauw-app-body">
     <header class="topbar">
-        <a class="topbar-brand" href="/miauw/" aria-label="Miauby">
+        <a class="topbar-brand" href="/" aria-label="Ir para Home">
             <img src="/miauw/logo-wimifarma.svg" alt="Wimifarma">
             <strong>Miauby</strong>
         </a>

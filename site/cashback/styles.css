@@ -63,6 +63,7 @@ button {
     gap: 14px;
     align-items: center;
     min-width: 220px;
+    color: #fff;
 }
 
 .brand-logo {

@@ -30,10 +30,10 @@ $navItems = array(
 <body>
 <img class="cashback-screen-runner" src="<?php echo e(app_url('mario.gif')); ?>?v=<?php echo e((string) filemtime(__DIR__ . '/mario.gif')); ?>" alt="" aria-hidden="true" data-cashback-runner>
 <header class="topbar">
-    <div class="brand-wrap">
+    <a class="brand-wrap" href="/" aria-label="Ir para Home">
         <img class="brand-logo" src="<?php echo e(app_url('logo-wimifarma.svg')); ?>" alt="Wimifarma">
         <strong class="brand">Cashback</strong>
-    </div>
+    </a>
     <nav class="nav">
         <?php foreach ($navItems as $file => $label) : ?>
             <?php $isAbsolute = strpos((string) $file, '/') === 0; ?>

@@ -158,7 +158,7 @@ function miauw_diag_review_buttons(string $kind, int $id): string
 </head>
 <body class="miauw-app-body">
     <header class="topbar">
-        <a class="topbar-brand" href="/miauw/" aria-label="Miauby">
+        <a class="topbar-brand" href="/" aria-label="Ir para Home">
             <img src="/miauw/logo-wimifarma.svg" alt="Wimifarma">
             <strong>Miauby</strong>
         </a>

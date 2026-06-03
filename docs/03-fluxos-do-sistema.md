@@ -21,6 +21,7 @@ Entrada publica:
 Identidade visual validada em 2026-05-21:
 
 - Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw carregam a logo nova nas telas de login e nas telas internas autenticadas.
+- Nas telas internas dos modulos, clicar na logo/marca do topo deve voltar para a Home `/`, preservando os menus operacionais de cada modulo.
 - Os SVGs ativos desses modulos batem com o mesmo hash da logo oficial nova; a home publica pode usar o GIF animado sem fundo como variacao visual sem alterar a identidade dos modulos internos.
 - `/wp-login.php` e uma tela WordPress separada e continua podendo exibir o cabecalho/logo padrao do WordPress; isso nao e regressao dos modulos internos, salvo quando a tarefa pedir customizacao do login WordPress.
 

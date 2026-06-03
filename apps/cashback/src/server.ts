@@ -1329,10 +1329,10 @@ ${body}
 <body>
 <img class="cashback-screen-runner" src="${asset('mario.gif')}" alt="" aria-hidden="true" data-cashback-runner>
 <header class="topbar">
-  <div class="brand-wrap">
+  <a class="brand-wrap" href="/" aria-label="Ir para Home">
     <img class="brand-logo" src="${asset('logo-wimifarma.svg')}" alt="Wimifarma">
     <strong class="brand">Cashback</strong>
-  </div>
+  </a>
   <nav class="nav">
     ${nav
       .map(([href, label]) => {
