@@ -234,6 +234,19 @@ async function canAccessFinanceiro(user: User): Promise<boolean> {
   return row ? row.can_access !== false : true;
 }
 
+async function coreUserById(userId: number | null): Promise<User | null> {
+  if (!userId || userId <= 0) return null;
+  const result = await corePgPool.query<CoreUserRow>(
+    `SELECT id::text, username, role, active
+       FROM core_users
+      WHERE id = $1 AND active = true
+      LIMIT 1`,
+    [userId],
+  );
+  const row = result.rows[0];
+  return row ? userPublic(row) : null;
+}
+
 function centsToDecimal(cents: number): number {
   return Math.round(Number(cents || 0)) / 100;
 }
@@ -2475,6 +2488,13 @@ app.post(`${BASE_PATH}/api/internal/lancamentos`, asyncRoute(async (req, res) =>
     observation = cleanText(`${observation} Responsavel informado: ${responsible}.`, 300);
   }
   const actorUserId = intOrNull(payload.actor_user_id || payload.actorUserId) || null;
+  if (actorUserId) {
+    const actor = await coreUserById(actorUserId);
+    if (!actor || !(await canAccessFinanceiro(actor))) {
+      res.status(403).json({ ok: false, status: 'forbidden', error: 'actor_without_financeiro_permission' });
+      return;
+    }
+  }
   const entry = await addEntry(date, category, amountCents, observation, actorUserId, undefined);
   const entryClosing = (entry.closing || {}) as AnyRow;
   const response = {

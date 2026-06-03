@@ -7,6 +7,11 @@ import {
   parsePedidosCreateCommand,
   type PedidosCreateCommand,
 } from './pedidos-command.js';
+import {
+  formatSangriaCreateError,
+  parseSangriaCommand,
+  type SangriaCommand,
+} from './sangria-command.js';
 
 const { Pool } = pg;
 
@@ -197,6 +202,13 @@ type WhatsappUserContext = {
   contact_hash: string;
   contact_mask: string;
   linked: boolean;
+};
+
+type CoreUserIdentity = {
+  id: number;
+  username: string;
+  displayName: string;
+  role: string;
 };
 
 type SharedMiauwContext = {
@@ -4252,6 +4264,9 @@ function cancellationReplyForPending(pending: PendingConfirmationRow): string {
   if (pending.tool === 'criar_pedido_whatsapp') {
     return 'Cancelado. Pedido nao foi criado.';
   }
+  if (pending.tool === 'registrar_sangria_whatsapp') {
+    return 'Cancelado. Sangria nao foi registrada.';
+  }
   if (pending.tool === 'criar_lancamento_financeiro') {
     const command = isRecord(pending.command_payload) ? pending.command_payload : {};
     const category = normalizeIntentText(safeText(command.categoria, 80));
@@ -4934,6 +4949,9 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
   if (pending.tool === 'criar_pedido_whatsapp') {
     return executeConfirmedPedidoCreate(pending, traceId, senderMask, userContext);
   }
+  if (pending.tool === 'registrar_sangria_whatsapp') {
+    return executeConfirmedSangriaCreate(pending, traceId, senderMask, userContext);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
   try {
@@ -4968,6 +4986,44 @@ async function executeConfirmedPedidoCreate(pending: PendingConfirmationRow, tra
   if (!command) throw new Error('pedidos_confirmation_payload_invalid');
   const reply = await createPedidoFromWhatsapp(command, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
   return reply.text;
+}
+
+async function executeConfirmedSangriaCreate(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
+  if (!userContext.id || !userContext.linked) throw new Error('sangria_unlinked_user');
+  const command = sangriaCommandFromConfirmationPayload(pending.command_payload);
+  if (!command) throw new Error('sangria_confirmation_payload_invalid');
+  const reply = await createSangriaFromWhatsapp(command, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
+  return reply.text;
+}
+
+function sangriaConfirmationPayload(command: SangriaCommand): JsonRecord {
+  return {
+    raw: command.raw,
+    amount_cents: command.amount_cents,
+    amount_label: command.amount_label,
+    responsible_hint: command.responsible_hint,
+    observation: command.observation,
+    time_note: command.time_note,
+  };
+}
+
+function sangriaCommandFromConfirmationPayload(payload: JsonRecord): SangriaCommand | null {
+  const amountCents = Number(payload.amount_cents);
+  if (!Number.isInteger(amountCents) || amountCents <= 0) return null;
+  return {
+    ok: true,
+    error: '',
+    error_message: '',
+    raw: safeText(payload.raw, 1000),
+    amount_cents: amountCents,
+    amount_label: safeText(payload.amount_label, 80) || moneyForCommand(amountCents / 100),
+    responsible_hint: safeText(payload.responsible_hint, 80),
+    observation: safeOutboundText(payload.observation, 220),
+    time_note: safeOutboundText(payload.time_note, 120),
+    needs_confirmation: false,
+    confirmation_message: '',
+    confirmation_summary: '',
+  };
 }
 
 function pedidoConfirmationPayload(command: PedidosCreateCommand): JsonRecord {
@@ -5052,6 +5108,51 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+  const sangriaCreate = parseSangriaCommand(message);
+  if (sangriaCreate) {
+    if (!moduleAllowed(allowedCards, 'financeiro')) {
+      return {
+        text: forbiddenModuleReply('financeiro', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:sangria_create',
+      };
+    }
+    if (!userContext.id || !userContext.linked) {
+      return {
+        text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de registrar sangria.',
+        engine: 'blocked',
+        reason: 'sangria_unlinked_user',
+      };
+    }
+    if (!sangriaCreate.ok) {
+      if (sangriaCreate.needs_confirmation) {
+        if (!whatsappConfirmationsReady()) {
+          return {
+            text: `${sangriaCreate.confirmation_message || 'Valor alto para sangria.'} Confirme pelo modulo Financeiro antes de gravar.`,
+            engine: 'blocked',
+            reason: `sangria_confirmation_unavailable:${sangriaCreate.error || 'unknown'}`,
+          };
+        }
+        return {
+          text: sangriaCreate.confirmation_message || formatSangriaCreateError(sangriaCreate),
+          engine: 'local',
+          reason: `sangria_confirmation_required:${sangriaCreate.error || 'unknown'}`,
+          confirmation: {
+            tool: 'registrar_sangria_whatsapp',
+            summary: sangriaCreate.confirmation_summary || `Registrar sangria de ${sangriaCreate.amount_label}.`,
+            risk: 'alto',
+            command: sangriaConfirmationPayload(sangriaCreate),
+          },
+        };
+      }
+      return {
+        text: formatSangriaCreateError(sangriaCreate),
+        engine: 'local',
+        reason: `sangria_invalid:${sangriaCreate.error || 'unknown'}`,
+      };
+    }
+    return createSangriaFromWhatsapp(sangriaCreate, traceId, senderMask, userContext);
+  }
   const arrivalReply = parsePedidosArrivalReply(message);
   const pedidoCreate = parsePedidosCreateCommand(message);
   if (pedidoCreate && (pedidoCreate.ok || pedidoCreate.error !== 'missing_amount' || !arrivalReply)) {
@@ -10286,6 +10387,217 @@ async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: stri
     };
   }
   throw new Error(safeText(data.message || data.error, 180) || `pedidos_confirm_arrival_http_${response.status}`);
+}
+
+type ResolvedSangriaResponsible = {
+  responsibleName: string;
+  replyName: string;
+  actorUserId: number;
+  publicObservation: string;
+  auditObservation: string;
+};
+
+async function resolveSangriaResponsible(command: SangriaCommand, userContext: WhatsappUserContext): Promise<ResolvedSangriaResponsible> {
+  if (!userContext.id || !userContext.linked) {
+    throw new Error('sangria_unlinked_user');
+  }
+
+  const linkedName = safeText(userContext.display_name || userContext.username, 120) || 'Responsavel identificado';
+  const replyName = titleCaseShortName(linkedName) || titleCaseShortName(userContext.username) || linkedName;
+  const observationParts = [command.observation, command.time_note].map((item) => safeOutboundText(item, 160)).filter(Boolean);
+  const auditParts: string[] = [];
+  const hint = safeText(command.responsible_hint, 80);
+
+  if (hint && !samePersonLabel(hint, linkedName) && !samePersonLabel(hint, userContext.username)) {
+    const hintedUser = await resolveCoreUserByNameHint(hint).catch(async (error) => {
+      await recordErrorLog('sangria_responsible_lookup', 'warn', error, {
+        messagePreview: command.raw,
+        details: { hint: safeText(hint, 80) },
+      });
+      return null;
+    });
+    if (hintedUser) {
+      auditParts.push(`Responsavel citado no texto: ${hintedUser.displayName}.`);
+    } else if (!command.observation) {
+      observationParts.push(hint);
+    } else {
+      auditParts.push(`Pista de responsavel no texto: ${hint}.`);
+    }
+  }
+
+  return {
+    responsibleName: linkedName,
+    replyName,
+    actorUserId: userContext.id,
+    publicObservation: safeOutboundText(observationParts.join(' '), 160),
+    auditObservation: safeOutboundText(auditParts.join(' '), 180),
+  };
+}
+
+async function resolveCoreUserByNameHint(hint: string): Promise<CoreUserIdentity | null> {
+  const needle = normalizedPersonLabel(hint);
+  if (needle.length < 2) return null;
+  const result = await corePgPool.query<{
+    id: string;
+    username: string;
+    display_name: string;
+    role: string | null;
+  }>(
+    `SELECT id::text,
+            username,
+            COALESCE(NULLIF(display_name, ''), username) AS display_name,
+            role
+       FROM core_users
+      WHERE active = true
+      ORDER BY username = 'adm' DESC, username ASC
+      LIMIT 200`,
+  );
+  const users = result.rows.map((row): CoreUserIdentity => ({
+    id: Number(row.id),
+    username: safeText(row.username, 120),
+    displayName: safeText(row.display_name || row.username, 120),
+    role: safeText(row.role, 60),
+  }));
+
+  return users.find((user) => coreUserMatchesName(user, needle, 'exact'))
+    || users.find((user) => coreUserMatchesName(user, needle, 'prefix'))
+    || users.find((user) => coreUserMatchesName(user, needle, 'fuzzy'))
+    || null;
+}
+
+function coreUserMatchesName(user: CoreUserIdentity, needle: string, mode: 'exact' | 'prefix' | 'fuzzy'): boolean {
+  const labels = [
+    user.username,
+    user.displayName,
+    user.displayName.split(/\s+/)[0] || '',
+  ].map(normalizedPersonLabel).filter(Boolean);
+  if (mode === 'exact') return labels.some((label) => label === needle);
+  if (mode === 'prefix') return needle.length >= 3 && labels.some((label) => label.startsWith(needle) || needle.startsWith(label));
+  return needle.length >= 3 && labels.some((label) => levenshteinDistance(label, needle) <= 1);
+}
+
+function samePersonLabel(left: string, right: string): boolean {
+  const a = normalizedPersonLabel(left);
+  const b = normalizedPersonLabel(right);
+  if (!a || !b) return false;
+  return a === b || a.split(' ')[0] === b.split(' ')[0];
+}
+
+function normalizedPersonLabel(value: string): string {
+  return normalizeIntentText(value)
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshteinDistance(left: string, right: string): number {
+  if (left === right) return 0;
+  if (!left) return right.length;
+  if (!right) return left.length;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let diagonal = previous[0];
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const temp = previous[j];
+      previous[j] = Math.min(
+        previous[j] + 1,
+        previous[j - 1] + 1,
+        diagonal + (left[i - 1] === right[j - 1] ? 0 : 1),
+      );
+      diagonal = temp;
+    }
+  }
+  return previous[right.length] || 0;
+}
+
+function sangriaFinanceiroObservation(command: SangriaCommand, resolved: ResolvedSangriaResponsible): string {
+  const parts = [
+    'Origem: Miauby WhatsApp.',
+    resolved.publicObservation ? `Obs do usuario: ${resolved.publicObservation}.` : '',
+    resolved.auditObservation,
+    command.raw ? `Texto original: ${safeOutboundText(command.raw, 120)}.` : '',
+  ].filter(Boolean);
+  return safeOutboundText(parts.join(' '), 300);
+}
+
+function formatSangriaRegisteredReply(command: SangriaCommand, resolved: ResolvedSangriaResponsible, duplicate = false): string {
+  if (duplicate) return 'Sangria ja registrada. Nao dupliquei \u{1F63C}';
+  const obs = safeOutboundText(resolved.publicObservation, 80);
+  return `Sangria registrada: ${command.amount_label} - ${resolved.replyName}${obs ? ` - ${obs}` : ''}.`;
+}
+
+async function createSangriaFromWhatsapp(
+  command: SangriaCommand,
+  traceId: string,
+  senderMask: string,
+  userContext: WhatsappUserContext,
+  idempotencyKey = `whatsapp:sangria:${traceId}`,
+): Promise<ReplyResult> {
+  if (!INTERNAL_TOKEN) {
+    return {
+      text: 'Nao consegui registrar agora. Financeiro interno sem conexao segura.',
+      engine: 'blocked',
+      reason: 'sangria_internal_token_missing',
+    };
+  }
+
+  let resolved: ResolvedSangriaResponsible;
+  try {
+    resolved = await resolveSangriaResponsible(command, userContext);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'sangria_unlinked_user') {
+      return {
+        text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de registrar sangria.',
+        engine: 'blocked',
+        reason: 'sangria_unlinked_user',
+      };
+    }
+    throw error;
+  }
+
+  const response = await fetch(`${FINANCEIRO_INTERNAL_BASE_URL}/api/internal/lancamentos`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(),
+    body: JSON.stringify({
+      source: 'miauby_whatsapp',
+      trace_id: traceId,
+      idempotency_key: idempotencyKey,
+      categoria: 'Sangria',
+      amount_cents: command.amount_cents,
+      data: saoPauloTodayIso(),
+      responsavel: resolved.responsibleName,
+      observacao: sangriaFinanceiroObservation(command, resolved),
+      actor_user_id: resolved.actorUserId,
+      raw_text: safeOutboundText(command.raw, 500),
+      contact_mask: senderMask,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!isRecord(data)) throw new Error(`financeiro_sangria_http_${response.status}`);
+  if (response.ok && data.ok === true) {
+    return {
+      text: formatSangriaRegisteredReply(command, resolved, data.idempotent === true),
+      engine: 'local',
+      reason: data.idempotent === true ? 'sangria_duplicate' : 'sangria_created',
+    };
+  }
+  const status = safeText(data.status || data.error || data.message, 100);
+  if (response.status === 403 || status === 'forbidden' || status === 'actor_without_financeiro_permission') {
+    return {
+      text: 'Esse usuario nao tem permissao para lancar sangria pelo WhatsApp.',
+      engine: 'blocked',
+      reason: 'sangria_forbidden',
+    };
+  }
+  if (status === 'duplicate_processing') {
+    return {
+      text: 'Sangria ja esta em processamento. Nao vou duplicar.',
+      engine: 'local',
+      reason: 'sangria_duplicate_processing',
+    };
+  }
+  throw new Error(safeText(data.message || data.error, 180) || `financeiro_sangria_http_${response.status}`);
 }
 
 async function createPedidoFromWhatsapp(
