@@ -2301,7 +2301,11 @@ async function renderMessages(req: Request): Promise<string> {
   const retorno = await generateRecompraMessages(req, returnDays, today);
   const aniversarios = await generateBirthdayMessages(req, today);
   const expirando = await generateExpiringMessages(req);
-  const all = await pgPool.query('SELECT * FROM cashback_whatsapp_messages ORDER BY created_at DESC, id DESC LIMIT 200');
+  const all = await pgPool.query('SELECT * FROM cashback_whatsapp_messages ORDER BY created_at DESC, id DESC LIMIT 10');
+  const historyRows =
+    (all.rows as DbRow[])
+      .map((row: DbRow) => `<tr><td>${e(brDate(row.created_at, true))}</td><td>${e(campaignLabel(row.campaign))}</td><td>${e(row.client_name)}<br><small>${e(formatPhone(row.phone))}</small></td><td><span class="badge">${e(statusLabel(row.status))}</span></td><td>${e(shortMessage(row.message))}</td></tr>`)
+      .join('') || '<tr><td colspan="5">Nenhum WhatsApp salvo ainda.</td></tr>';
 
   const body = `<section class="metrics compact"><article class="metric highlight"><span>Compraram hoje</span><strong>${comprasHoje.length}</strong></article><article class="metric"><span>Recompra</span><strong>${retorno.length}</strong></article><article class="metric"><span>Aniversarios em ate 5 dias</span><strong>${aniversarios.length}</strong></article><article class="metric"><span>Expirando em ate ${e(settings.expirationAlertDays)} dias</span><strong>${expirando.length}</strong></article></section>
 <nav class="anchor-bar" aria-label="Atalhos de mensagens"><a class="btn primary" href="#compras-hoje">Compras de hoje</a><a class="btn" href="#retorno">Recompra</a><a class="btn" href="#aniversarios">Aniversarios</a><a class="btn" href="#expiracao">Expiracao</a><a class="btn" href="#todos-whats">Todos Whats</a></nav>
@@ -2309,9 +2313,7 @@ ${messageSection('compras-hoje', 'Obrigado pela compra', 'Clientes que compraram
 ${messageSection('retorno', 'Retorno e recompra', 'Clientes com saldo e sem compra recente', retorno)}
 ${messageSection('aniversarios', 'Aniversario', 'Clientes com aniversario em ate 5 dias', aniversarios)}
 ${messageSection('expiracao', 'Expiracao', `Cashback vencendo em ate ${settings.expirationAlertDays} dias`, expirando)}
-<section id="todos-whats" class="panel section-block"><div class="section-title"><div><span class="kicker">Historico salvo</span><h2>Todos Whats</h2></div><span class="soft-pill">${all.rows.length} ultimos registros</span></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Tipo</th><th>Cliente</th><th>Status</th><th>Mensagem</th></tr></thead><tbody>${(all.rows as DbRow[])
-    .map((row: DbRow) => `<tr><td>${e(brDate(row.created_at, true))}</td><td>${e(campaignLabel(row.campaign))}</td><td>${e(row.client_name)}<br><small>${e(formatPhone(row.phone))}</small></td><td><span class="badge">${e(statusLabel(row.status))}</span></td><td>${e(shortMessage(row.message))}</td></tr>`)
-    .join('') || '<tr><td colspan="5">Nenhum WhatsApp salvo ainda.</td></tr>'}</tbody></table></div></section>`;
+<details id="todos-whats" class="panel section-block whatsapp-history-panel"><summary class="section-title whatsapp-history-summary"><div><span class="kicker">Historico salvo</span><h2>Todos Whats</h2></div><div class="history-summary-actions"><span class="soft-pill">${all.rows.length} ultimos registros</span><span class="history-toggle" aria-hidden="true"></span></div></summary><div class="table-wrap"><table><thead><tr><th>Data</th><th>Tipo</th><th>Cliente</th><th>Status</th><th>Mensagem</th></tr></thead><tbody>${historyRows}</tbody></table></div></details>`;
   return htmlShell(req, 'WhatsApp', body);
 }
 

@@ -624,6 +624,52 @@ body.sections-ready .workspace-section.is-active {
     white-space: nowrap;
 }
 
+.whatsapp-history-panel {
+    overflow: hidden;
+}
+
+.whatsapp-history-summary {
+    cursor: pointer;
+    list-style: none;
+    margin-bottom: 0;
+}
+
+.whatsapp-history-summary::-webkit-details-marker {
+    display: none;
+}
+
+.whatsapp-history-panel[open] .whatsapp-history-summary {
+    margin-bottom: 18px;
+}
+
+.history-summary-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.history-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    min-width: 72px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--red-800);
+    font-weight: 800;
+    background: #fff;
+}
+
+.history-toggle::before {
+    content: 'Abrir';
+}
+
+.whatsapp-history-panel[open] .history-toggle::before {
+    content: 'Fechar';
+}
+
 .search-row {
     display: grid;
     grid-template-columns: minmax(220px, 1fr) auto auto;
