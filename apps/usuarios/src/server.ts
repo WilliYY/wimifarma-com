@@ -1732,7 +1732,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-cards">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-card-open">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1799,9 +1799,10 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-cards">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-card-open">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
+  <script src="${BASE_PATH}/user-cards.js?v=20260603a" defer></script>
   <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body>

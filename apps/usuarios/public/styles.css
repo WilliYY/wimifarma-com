@@ -473,6 +473,16 @@ a {
   overflow: hidden;
 }
 
+.users-user:has(.users-edit-details:not([open])) .users-user-head,
+.users-user:has(.users-edit-details:not([open])) > .users-edit-details {
+  cursor: pointer;
+}
+
+.users-user:has(.users-edit-details:not([open])):hover {
+  border-color: rgba(168, 15, 67, 0.24);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+}
+
 .users-user-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
