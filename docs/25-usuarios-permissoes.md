@@ -79,6 +79,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - `USUARIOS_TAREFA_INTERNAL_TOKEN`: token para criar tarefa privada; pode reaproveitar `TAREFA_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN`, `MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_WHATSAPP_INTERNAL_TOKEN`.
 - `USUARIOS_MIAUW_WHATSAPP_INTERNAL_BASE_URL`: base interna do bridge WhatsApp, por padrao `http://wimifarma-miauw-whatsapp:3400/miauw/whatsapp`.
 - `USUARIOS_MIAUW_WHATSAPP_INTERNAL_TOKEN`: token para gerenciar allowlist por usuario; pode reaproveitar `MIAUW_WHATSAPP_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`.
+- Para comandos de Tarefas vindos do Miauby WhatsApp, o container do bridge tambem precisa receber `MIAUW_WHATSAPP_TAREFA_INTERNAL_TOKEN` ou `TAREFA_INTERNAL_TOKEN`; caso contrario o contato pode estar correto na allowlist, mas a consulta a `/tarefa/api/internal/tasks/visible` retorna `401 unauthorized`.
 - `USUARIOS_INTERNAL_HTTP_TIMEOUT_MS`: timeout curto das chamadas internas, default `4500`.
 - `USUARIOS_PASSWORD_VAULT_KEY`: chave operacional para cifrar o cofre administrativo de senhas definidas pelo painel. Deve ficar somente no `.env`/ambiente do VPS.
 

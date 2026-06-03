@@ -170,6 +170,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL=http://wimifarma-financeiro-app:3800/financeiro`
 - `MIAUW_WHATSAPP_TAREFA_INTERNAL_BASE_URL=http://wimifarma-tarefa-app:3500/tarefa`
 - `MIAUW_WHATSAPP_TAREFA_INTERNAL_TOKEN` ou `TAREFA_INTERNAL_TOKEN` para comandos de Tarefas pelo WhatsApp
+- O Compose deve repassar `MIAUW_WHATSAPP_TAREFA_INTERNAL_TOKEN` e `TAREFA_INTERNAL_TOKEN` ao `wimifarma-miauw-whatsapp`. Se `miauby tarefas` entrar como evento e terminar `dead` com erro `unauthorized`, a primeira verificacao e o token usado pelo bridge contra `/tarefa/api/internal/tasks/visible`.
 - `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES=15`
 - `MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES=30`
 - `MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES=2`
