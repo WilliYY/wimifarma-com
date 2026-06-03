@@ -5431,6 +5431,17 @@ function sharedMiaubyTrainingPromptSnippet(shared: SharedMiauwContext | null): s
   const trainingDirectives = safeStringList(trainingProfile.directives, 5, 220);
   if (trainingDirectives.length) lines.push(`Regras do treino aprovado: ${trainingDirectives.join(' | ')}.`);
 
+  const textCommandContracts = isRecord(style.text_command_contracts ?? style.textCommandContracts)
+    ? (style.text_command_contracts ?? style.textCommandContracts) as JsonRecord
+    : {};
+  const textCommandTraining = uniqueStringList([
+    ...safeStringList(style.text_command_training ?? style.textCommandTraining, 5, 260),
+    ...safeStringList(textCommandContracts.training_lines ?? textCommandContracts.trainingLines, 5, 260),
+  ], 5);
+  if (textCommandTraining.length) {
+    lines.push(`Comandos textuais compartilhados com o Miauby interno: ${textCommandTraining.join(' | ')}.`);
+  }
+
   const examples = safeStringList(style.examples, 2, 260);
   if (examples.length) lines.push(`Exemplos aprovados para inspirar forma, sem citar treino: ${examples.join(' | ')}.`);
 

@@ -301,6 +301,31 @@ Integracoes:
 - Cotacao + Sheets precisa de IDs estaveis e controle de conflito antes de qualquer automacao generativa de sync.
 - WhatsApp deve ser tratado como canal externo nao autenticado por padrao: sem allowlist/prefixo/token validado, o Miauby nao deve consultar nem responder dados internos.
 
+## Comandos textuais compartilhados
+
+Desde 2026-06-03, todo comando textual criado ou melhorado no Miauby WhatsApp deve tambem virar base de treinamento/interpretacao para o Miauby interno quando fizer sentido operacional. O WhatsApp continua exigindo o acionamento `miauby` conforme configuracao de prefixo/allowlist; o chat interno do Miauby aceita o comando direto em texto, sem exigir a palavra `miauby`.
+
+Regra por origem:
+
+- WhatsApp: pode receber texto, audio transcrito e midia quando a feature existir. Comandos operacionais seguem allowlist, card liberado, usuario vinculado, idempotencia e confirmacao quando aplicavel.
+- Miauby interno: trabalha apenas com texto. Ele nao deve ler imagem, foto, PDF, audio ou comprovante Pix; quando um fluxo do WhatsApp depender de midia, o interno aprende somente o fallback textual/manual.
+- Ambos: devem registrar origem correta (`miauby_whatsapp` ou `miauby_interno`), usuario/responsavel resolvido, logs/historico e resposta curta no estilo Miauby.
+
+Exemplos atuais por origem:
+
+- Sangria no WhatsApp: `miauby sangria 10 troco`; no interno: `sangria 10 troco`.
+- PIX CNPJ no WhatsApp: `miauby pix cnpj 28,90 sueli`; no interno: `pix cnpj 28,90 sueli` ou `registrar pix cnpj responsavel sueli valor 28,90`.
+- Pedido no WhatsApp: `miauby pedido anb 350`; no interno: `pedido anb 350`.
+- Tarefa no WhatsApp: `miauby criar tarefa conferir caixa`; no interno: `criar tarefa conferir caixa`.
+- Cotacao no WhatsApp: `miauby cotacao dipirona`; no interno: `cotacao dipirona`.
+
+Implementacao atual:
+
+- `site/miauw/miauw-funcoes.php` exporta `text_command_contracts` e `text_command_training` dentro de `miauw_agent_style_context_export()`, entao o PHP oficial, o agente Node e o bridge WhatsApp recebem a mesma regra curta.
+- `apps/miauby/src/text-command-contracts.ts` registra o mesmo contrato no pacote canonico Node/Postgres read-only, exposto em `/miauby/api/internal/canonical-context`.
+- `apps/miauw-agent` consome `text_command_training` no prompt. O bridge WhatsApp tambem inclui essas linhas no contexto do Gemini quando cair no modo conversa curta.
+- Isso nao habilita escrita real no Node, nao muda `/miauw/`, nao remove PHP/MySQL do Miauby interno e nao implementa OCR/midia no chat interno.
+
 ## Decisoes tecnicas recomendadas
 
 - Manter o registro formal de skills com nome, modulo, permissao exigida, schema de entrada, schema de saida, risco e funcao PHP executora.

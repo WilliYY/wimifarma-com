@@ -2326,6 +2326,213 @@ function miauw_agent_voice_profile_contract(?string $requested = null): array
     );
 }
 
+function miauw_agent_text_command_catalog(): array
+{
+    return array(
+        array(
+            'intent' => 'registrar_sangria',
+            'module' => 'financeiro',
+            'tool' => 'registrar_sangria',
+            'risk' => 'alto',
+            'required_fields' => array('valor', 'responsavel'),
+            'optional_fields' => array('observacao', 'horario_referencia'),
+            'internal_examples' => array('sangria 10 troco', 'lancar sangria 25 mercado', 'tira 20 do caixa para cafe'),
+            'whatsapp_examples' => array('miauby sangria 10 troco', 'miauby sangria 50 sueli compra de agua'),
+            'missing_data_replies' => array('Faltou o valor. Me mande assim: sangria 10 troco.'),
+            'response_examples' => array('Sangria registrada: R$ 10,00 - Will - troco.'),
+            'rules' => array('usar usuario logado como responsavel padrao no interno', 'valor alto pede confirmacao', 'texto restante vira observacao'),
+            'keywords' => array('sangria', 'sangra', 'retirei', 'retirada', 'caixa', 'sangrei'),
+        ),
+        array(
+            'intent' => 'registrar_pix_cnpj',
+            'module' => 'financeiro',
+            'tool' => 'criar_lancamento_financeiro',
+            'risk' => 'alto',
+            'required_fields' => array('valor', 'responsavel'),
+            'optional_fields' => array('observacao', 'destino', 'pagador', 'data_hora'),
+            'internal_examples' => array('pix cnpj 28,90 sueli', 'lancar pix cnpj 28,90 sueli', 'registrar pix cnpj responsavel sueli valor 28,90'),
+            'whatsapp_examples' => array('miauby pix cnpj 28,90 sueli', 'miauby pix cnpj valor 28,90 responsavel sueli', 'foto/PDF somente no WhatsApp quando OCR estiver habilitado'),
+            'missing_data_replies' => array('Faltou o valor. Me mande assim: pix cnpj 28,90 sueli.', 'Faltou o responsavel. Me mande assim: pix cnpj 28,90 sueli.'),
+            'response_examples' => array('PIX CNPJ lancado: R$ 28,90 - Sueli.'),
+            'rules' => array('Miauby interno usa somente texto manual', 'nao inventar dado de comprovante ilegivel', 'detalhe completo fica em log/historico'),
+            'keywords' => array('pix', 'cnpj', 'cpnj', 'comprovante', 'responsavel', 'valor'),
+        ),
+        array(
+            'intent' => 'criar_pedido',
+            'module' => 'pedidos',
+            'tool' => 'criar_pedido',
+            'risk' => 'alto',
+            'required_fields' => array('fornecedor', 'valor'),
+            'optional_fields' => array('parcelas', 'vencimento', 'previsao_chegada', 'status_inicial'),
+            'internal_examples' => array('pedido anb 350', 'registrar pedido nissei 280 vence 10/06', 'pedido nissei 100 chegou e pago'),
+            'whatsapp_examples' => array('miauby pedido anb 350', 'miauby distribuidora anb 350'),
+            'missing_data_replies' => array('Faltou fornecedor e valor. Me mande assim: pedido anb 350.'),
+            'response_examples' => array('Pedido criado: ANB - R$ 350,00.'),
+            'rules' => array('status contraditorio nao grava', 'divergencia de parcelas pede confirmacao', 'usar endpoint oficial de Pedidos'),
+            'keywords' => array('pedido', 'pedidos', 'fornecedor', 'distribuidora', 'boleto', 'parcela', 'chegou'),
+        ),
+        array(
+            'intent' => 'criar_tarefa',
+            'module' => 'tarefa',
+            'tool' => 'criar_tarefa',
+            'risk' => 'medio',
+            'required_fields' => array('titulo'),
+            'optional_fields' => array('descricao', 'prioridade', 'usuario_destino', 'lembrete'),
+            'internal_examples' => array('criar tarefa conferir caixa', 'tarefa para sueli conferir pendencia do caixa', 'lembrete amanha conferir encomenda'),
+            'whatsapp_examples' => array('miauby criar tarefa conferir caixa', 'miauby tarefa para sueli conferir pendencia do caixa'),
+            'missing_data_replies' => array('Faltou o titulo da tarefa. Me mande assim: tarefa conferir caixa.'),
+            'response_examples' => array('Tarefa criada: conferir caixa.'),
+            'rules' => array('tarefa privada precisa usuario de destino valido', 'lembrete automatico respeita ferias e allowlist'),
+            'keywords' => array('tarefa', 'lembrete', 'conferir', 'prioridade', 'amanha'),
+        ),
+        array(
+            'intent' => 'consultar_cotacao',
+            'module' => 'cotacao',
+            'tool' => 'buscar_cotacao',
+            'risk' => 'baixo',
+            'required_fields' => array('busca'),
+            'optional_fields' => array('categoria', 'ean', 'fornecedor'),
+            'internal_examples' => array('cotacao dipirona', 'buscar cotacao pelo ean 789', 'ver urgentes da cotacao'),
+            'whatsapp_examples' => array('miauby cotacao dipirona', 'miauby buscar cotacao dipirona'),
+            'missing_data_replies' => array('Faltou o item. Me mande assim: cotacao dipirona.'),
+            'response_examples' => array('Achei na Cotacao: confira fornecedor/preco no modulo.'),
+            'rules' => array('consulta nao inventa preco ou fornecedor sem dado do backend'),
+            'keywords' => array('cotacao', 'cotar', 'preco', 'ean', 'urgente', 'encomenda'),
+        ),
+        array(
+            'intent' => 'fechamento_caixa',
+            'module' => 'financeiro',
+            'tool' => 'resumo_financeiro',
+            'risk' => 'medio',
+            'required_fields' => array('acao_ou_data'),
+            'optional_fields' => array('status', 'observacao'),
+            'internal_examples' => array('caixa de hoje esta aberto?', 'fechar caixa de hoje', 'abrir caixa novamente'),
+            'whatsapp_examples' => array('miauby caixa de hoje esta aberto?', 'miauby fechamento de caixa'),
+            'missing_data_replies' => array('Me diga se quer consultar, fechar ou reabrir o caixa.'),
+            'response_examples' => array('Caixa de hoje ainda esta aberto. Abra o Financeiro e finalize.'),
+            'rules' => array('consulta pode responder com dado real', 'fechar/reabrir exige permissao e confirmacao conforme modulo Financeiro'),
+            'keywords' => array('caixa', 'fechamento', 'fechar', 'reabrir', 'aberto', 'conferencia'),
+        ),
+    );
+}
+
+function miauw_agent_text_command_score(string $message, array $contract): int
+{
+    $normalized = function_exists('miauw_agent_style_normalized')
+        ? miauw_agent_style_normalized($message)
+        : strtolower(trim($message));
+    if ($normalized === '') {
+        return 0;
+    }
+
+    $anchorValues = array_merge(
+        array((string) ($contract['intent'] ?? ''), (string) ($contract['module'] ?? ''), (string) ($contract['tool'] ?? '')),
+        (array) ($contract['keywords'] ?? array())
+    );
+    $anchorHaystack = function_exists('miauw_agent_style_normalized')
+        ? miauw_agent_style_normalized(implode(' ', $anchorValues))
+        : strtolower(implode(' ', $anchorValues));
+    $words = preg_split('/\s+/', $normalized) ?: array();
+    $hasAnchor = strpos($anchorHaystack, $normalized) !== false;
+    foreach ($words as $word) {
+        $word = trim((string) $word);
+        if (strlen($word) >= 3 && strpos($anchorHaystack, $word) !== false) {
+            $hasAnchor = true;
+            break;
+        }
+    }
+    if (!$hasAnchor) {
+        return 0;
+    }
+
+    $values = array_merge(
+        array($anchorHaystack),
+        (array) ($contract['internal_examples'] ?? array()),
+        (array) ($contract['whatsapp_examples'] ?? array())
+    );
+    $haystack = function_exists('miauw_agent_style_normalized')
+        ? miauw_agent_style_normalized(implode(' ', $values))
+        : strtolower(implode(' ', $values));
+    $score = strpos($haystack, $normalized) !== false ? 80 : 0;
+
+    foreach ($words as $word) {
+        $word = trim((string) $word);
+        if (strlen($word) >= 3 && strpos($haystack, $word) !== false) {
+            $score += 10;
+        }
+    }
+
+    return $score;
+}
+
+function miauw_agent_text_command_contracts(string $message = '', string $origin = 'miauby_interno', int $limit = 8): array
+{
+    $catalog = miauw_agent_text_command_catalog();
+    $scored = array();
+
+    foreach ($catalog as $item) {
+        $score = miauw_agent_text_command_score($message, $item);
+        $item['score'] = $score;
+        $item['selected_for_message'] = $score > 0;
+        $item['origins'] = array('miauby_interno', 'miauby_whatsapp');
+        $item['internal_requires_prefix'] = false;
+        $item['whatsapp_requires_prefix'] = true;
+        $item['internal_supports_media'] = false;
+        $item['whatsapp_supports_media'] = ($item['intent'] ?? '') === 'registrar_pix_cnpj';
+        $scored[] = $item;
+    }
+
+    usort($scored, static function (array $left, array $right): int {
+        $byScore = ((int) ($right['score'] ?? 0)) <=> ((int) ($left['score'] ?? 0));
+        if ($byScore !== 0) {
+            return $byScore;
+        }
+
+        return strcmp((string) ($left['intent'] ?? ''), (string) ($right['intent'] ?? ''));
+    });
+
+    $selected = array_values(array_filter($scored, static fn (array $item): bool => (int) ($item['score'] ?? 0) >= 20));
+    if (!$selected) {
+        $selected = $scored;
+    }
+    $selected = array_slice($selected, 0, max(1, min(12, $limit)));
+
+    $trainingLines = array();
+    foreach ($selected as $item) {
+        $examples = (array) ($item['internal_examples'] ?? array());
+        $responses = (array) ($item['response_examples'] ?? array());
+        $required = implode(', ', (array) ($item['required_fields'] ?? array()));
+        $trainingLines[] = (string) ($item['intent'] ?? 'comando_textual')
+            . ': no interno aceite "' . (string) ($examples[0] ?? '') . '" sem prefixo; campos=' . $required
+            . '; origem=' . $origin . '; resposta="' . (string) ($responses[0] ?? 'resposta curta operacional.') . '"';
+    }
+
+    return array(
+        'version' => 'miauby-text-command-contracts-2026-06-03',
+        'source' => 'site/miauw/miauw-funcoes.php',
+        'mode' => 'text_only_shared_training',
+        'origin' => $origin,
+        'whatsapp_requires_prefix' => true,
+        'internal_requires_prefix' => false,
+        'internal_supports_media' => false,
+        'writes_enabled_in_node' => false,
+        'rules' => array(
+            'todo comando textual criado no WhatsApp deve ganhar variacoes textuais no Miauby interno quando fizer sentido',
+            'Miauby interno aceita comando direto, sem exigir a palavra miauby',
+            'Miauby interno nao le imagem, foto, PDF, audio ou comprovante; usa somente fallback textual/manual',
+            'origem precisa ser registrada como miauby_interno ou miauby_whatsapp',
+            'resposta publica fica curta; detalhes completos ficam em historico/log',
+        ),
+        'summary' => array(
+            'total' => count($catalog),
+            'selected' => count($selected),
+            'media_commands_for_internal' => 0,
+        ),
+        'training_lines' => $trainingLines,
+        'commands' => $selected,
+    );
+}
+
 function miauw_agent_style_context_export(string $message, ?int $userId = null, string $pageContext = '', array $channelContextOptions = array()): array
 {
     $contract = miauw_agent_style_contract();
@@ -2351,6 +2558,11 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
         ? miauw_channel_context_export($message, $userId, $pageContext, $channelContextOptions)
         : array('items' => array());
     $voiceProfile = miauw_agent_voice_profile_contract();
+    $textCommandContracts = miauw_agent_text_command_contracts(
+        $message,
+        $pageContext === 'whatsapp' ? 'miauby_whatsapp' : 'miauby_interno',
+        8
+    );
     foreach ($trainingExamples as $example) {
         $question = (string) ($example['pergunta'] ?? '');
         $reply = (string) ($example['resposta_ideal'] ?? '');
@@ -2371,11 +2583,15 @@ function miauw_agent_style_context_export(string $message, ?int $userId = null, 
             'usar exemplos de treino aprovados sem citar treino, tabela ou revisao',
             'preferir perfil de treino compilado em vez de aumentar contexto bruto',
             'audio so inicia por botao explicito, sem gravacao e sem escrita operacional por voz',
+            'comandos textuais do WhatsApp tambem treinam o Miauby interno quando forem texto puro',
+            'Miauby interno aceita comando direto sem prefixo miauby e nao processa midia',
         ),
         'anti_patterns' => array_values((array) ($contract['anti_patterns'] ?? array())),
         'approved_patterns' => miauw_agent_approved_style_patterns($message, $userId),
         'training_examples' => $trainingExamples,
         'training_profile' => $trainingProfile,
+        'text_command_contracts' => $textCommandContracts,
+        'text_command_training' => array_values((array) ($textCommandContracts['training_lines'] ?? array())),
         'channel_memory' => $channelMemory,
         'voice_profile' => $voiceProfile,
         'audio_contract' => $voiceProfile['audio'],
@@ -2422,6 +2638,10 @@ function miauw_agent_style_context_text(string $message, ?int $userId = null, st
 
     foreach (array_slice((array) ($context['examples'] ?? array()), 0, 2) as $example) {
         $lines[] = '- exemplo: ' . miauw_substr((string) $example, 0, 260);
+    }
+
+    foreach (array_slice((array) ($context['text_command_training'] ?? array()), 0, 4) as $line) {
+        $lines[] = '- comando textual compartilhado: ' . miauw_substr((string) $line, 0, 260);
     }
 
     $channelMemory = is_array($context['channel_memory'] ?? null) ? $context['channel_memory'] : array();

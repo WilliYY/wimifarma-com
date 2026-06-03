@@ -237,6 +237,12 @@ miauw_eval_add('fase15_roteador_estilo_casual', static function (): void {
     miauw_eval_assert(is_array($context['audio_contract'] ?? null), 'Contexto de estilo precisa carregar contrato de audio.');
     miauw_eval_assert(!empty($context['audio_contract']['requires_explicit_user_action']), 'Audio precisa exigir acao explicita no contexto.');
     miauw_eval_assert(empty($context['audio_contract']['storage_enabled']), 'Audio nao pode ser armazenado pelo contexto.');
+    miauw_eval_assert(is_array($context['text_command_contracts'] ?? null), 'Contexto precisa carregar contratos de comandos textuais.');
+    miauw_eval_assert(is_array($context['text_command_training'] ?? null), 'Contexto precisa carregar treino de comandos textuais.');
+    $textCommands = $context['text_command_contracts'];
+    miauw_eval_assert(empty($textCommands['internal_requires_prefix']), 'Miauby interno nao deve exigir prefixo nos comandos textuais.');
+    miauw_eval_assert(!empty($textCommands['whatsapp_requires_prefix']), 'WhatsApp deve continuar exigindo prefixo nos comandos textuais.');
+    miauw_eval_assert(empty($textCommands['internal_supports_media']), 'Miauby interno nao deve aceitar midia como comando textual.');
 });
 
 miauw_eval_add('fase21_perfil_voz_audio_seguro', static function (): void {

@@ -319,6 +319,7 @@ type SafeStyleContext = {
   antiPatterns: string[];
   approvedPatterns: string[];
   trainingProfile: TrainingProfile;
+  textCommandTraining: string[];
   voiceProfile: VoiceProfile;
   examples: string[];
 };
@@ -533,10 +534,14 @@ function safeStyleContext(value: unknown): SafeStyleContext {
       antiPatterns: [],
       approvedPatterns: [],
       trainingProfile: safeTrainingProfile(null),
+      textCommandTraining: [],
       voiceProfile: safeVoiceProfile(null),
       examples: [],
     };
   }
+  const textCommandContracts = isRecord(value.text_command_contracts ?? value.textCommandContracts)
+    ? (value.text_command_contracts ?? value.textCommandContracts) as Record<string, unknown>
+    : {};
 
   return {
     version: safeShort(value.version, 80) || STYLE_VERSION,
@@ -545,6 +550,10 @@ function safeStyleContext(value: unknown): SafeStyleContext {
     antiPatterns: safeStringArray(value.anti_patterns ?? value.antiPatterns, 10),
     approvedPatterns: safeStringArray(value.approved_patterns ?? value.approvedPatterns, 8),
     trainingProfile: safeTrainingProfile(value.training_profile ?? value.trainingProfile),
+    textCommandTraining: Array.from(new Set([
+      ...safeStringArray(value.text_command_training ?? value.textCommandTraining, 8, 280),
+      ...safeStringArray(textCommandContracts.training_lines ?? textCommandContracts.trainingLines, 8, 280),
+    ])).slice(0, 8),
     voiceProfile: safeVoiceProfile(value.voice_profile ?? value.voiceProfile),
     examples: safeStringArray(value.examples, 5, 260),
   };
@@ -582,6 +591,10 @@ function styleContextForPrompt(styleContext: SafeStyleContext): string {
     if (training.categories.length > 0 || training.styles.length > 0) {
       lines.push(`sinais_treino: categorias=${training.categories.join(',') || 'geral'}; estilos=${training.styles.join(',') || 'miauby'}`);
     }
+  }
+
+  if (styleContext.textCommandTraining.length > 0) {
+    lines.push(`treino_comandos_textuais: ${styleContext.textCommandTraining.slice(0, 5).join(' | ')}`);
   }
 
   const voice = styleContext.voiceProfile;

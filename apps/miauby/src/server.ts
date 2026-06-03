@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { Pool, type PoolClient } from 'pg';
+import { buildTextCommandContracts } from './text-command-contracts.js';
 import { buildCanonicalToolContracts } from './tool-contracts.js';
 import { buildWriteAdapterStatus, planWriteIntent, recordWriteAdapterDryRun } from './write-adapter.js';
 
@@ -15,7 +16,7 @@ type ShadowReadSection = SourceTable & {
 };
 
 const env = process.env;
-const serviceVersion = '0.5.3';
+const serviceVersion = '0.5.4';
 const port = Number(env.PORT || 4100);
 const basePath = `/${String(env.BASE_PATH || '/miauby').replace(/^\/+|\/+$/g, '')}`;
 
@@ -1024,6 +1025,7 @@ function canonicalInputFromRequest(req: Request): CanonicalContextInput {
 type CanonicalSectionResult = Awaited<ReturnType<typeof buildCanonicalSection>>;
 type TrainingContextResult = Awaited<ReturnType<typeof buildTrainingContext>>;
 type ToolContractsResult = ReturnType<typeof buildCanonicalToolContracts>;
+type TextCommandContractsResult = ReturnType<typeof buildTextCommandContracts>;
 type PersonalityContractResult = ReturnType<typeof buildPersonalityContract>;
 type StyleRouteResult = ReturnType<typeof styleRouteFor>;
 
@@ -1046,6 +1048,7 @@ function buildCanonicalReadModel(params: {
   alerts: CanonicalSectionResult;
   settings: CanonicalSectionResult;
   toolContracts: ToolContractsResult;
+  textCommandContracts: TextCommandContractsResult;
   personality: PersonalityContractResult;
 }) {
   return {
@@ -1089,6 +1092,15 @@ function buildCanonicalReadModel(params: {
         execution_owner: params.toolContracts.execution_owner,
         confirmation_owner: params.toolContracts.confirmation_owner,
       },
+      text_command_contracts: {
+        source: 'apps/miauby/src/text-command-contracts.ts',
+        version: params.textCommandContracts.version,
+        total: params.textCommandContracts.summary.total,
+        selected: params.textCommandContracts.summary.selected,
+        internal_requires_prefix: params.textCommandContracts.internal_requires_prefix,
+        whatsapp_requires_prefix: params.textCommandContracts.whatsapp_requires_prefix,
+        internal_supports_media: params.textCommandContracts.internal_supports_media,
+      },
     },
     guards: {
       token_required: true,
@@ -1099,6 +1111,7 @@ function buildCanonicalReadModel(params: {
       raw_payload_returned: false,
       openai_called: false,
       tools_executed: false,
+      media_processed_by_internal_miauby: false,
     },
     validation: {
       compare_with_php: 'MIAUBY_CONTEXT_SHADOW_ENABLED registra miauby_context_shadow_compare sem trocar a resposta oficial',
@@ -1143,6 +1156,11 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
       module: input.moduleFilter,
       risk: input.riskFilter,
     });
+    const textCommandContracts = buildTextCommandContracts({
+      message: input.message,
+      origin: 'miauby_interno',
+      limit: input.limit + 4,
+    });
     const personality = buildPersonalityContract();
     const canonicalReadModel = buildCanonicalReadModel({
       route,
@@ -1153,6 +1171,7 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
       alerts,
       settings,
       toolContracts,
+      textCommandContracts,
       personality,
     });
     const examples = [
@@ -1190,6 +1209,8 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
           'usar memorias/padroes apenas quando revisados como aprovado',
           'usar exemplos de treino aprovados sem citar treino, tabela ou revisao',
           'audio so inicia por botao explicito, sem gravacao e sem escrita operacional por voz',
+          'comandos textuais do WhatsApp tambem treinam o Miauby interno quando forem texto puro',
+          'Miauby interno aceita comando direto sem prefixo miauby e nao processa midia',
         ],
         anti_patterns: [
           'resposta generica de suporte',
@@ -1200,6 +1221,8 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
         approved_patterns: patterns.items.map((item) => item.preview).filter(Boolean),
         training_examples: training.examples,
         training_profile: training.profile,
+        text_command_training: textCommandContracts.training_lines,
+        text_command_contracts: textCommandContracts,
         memory_context: {
           source: 'miauby_memories',
           selection: memories.selection,
@@ -1220,6 +1243,7 @@ async function buildCanonicalContext(input: CanonicalContextInput) {
         examples,
       },
       tool_contracts: toolContracts,
+      text_command_contracts: textCommandContracts,
       personality,
       datasets: {
         training_examples: {

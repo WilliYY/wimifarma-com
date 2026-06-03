@@ -242,6 +242,7 @@ Regras preservadas:
 - Memorias e padroes entram no contexto canonico somente quando revisados/aprovados; itens pendentes continuam visiveis apenas em contagem/diagnostico, nao como contexto de resposta.
 - Conhecimentos entram quando estao ativos/aprovados. O endpoint tambem entende `ativo`/`active` quando a informacao vem do JSON sanitizado da sombra.
 - `tool_contracts` e tipado no Node, mas `execution_owner` e `confirmation_owner` continuam `php`; `writes_enabled_in_node=false` para todas as tools.
+- Desde 2026-06-03, `text_command_contracts` tambem entra no pacote canonico para registrar que comandos textuais treinados no Miauby WhatsApp devem virar variacoes textuais do Miauby interno quando fizer sentido. O interno nao exige prefixo `miauby`, nao processa midia e usa apenas texto manual, por exemplo `sangria 10 troco`, `pix cnpj 28,90 sueli`, `pedido anb 350`, `criar tarefa conferir caixa` e `cotacao dipirona`.
 - `channel_memory` multicanal ainda fica no bridge/PHP oficial ate fase propria de migracao.
 
 Validacao esperada:
