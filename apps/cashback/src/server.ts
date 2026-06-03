@@ -2390,18 +2390,21 @@ async function generateBirthdayMessages(req: Request, _today: string): Promise<D
 async function generateExpiringMessages(req: Request): Promise<DbRow[]> {
   const settings = await loadSettings();
   const result = await pgPool.query(
-    `SELECT c.id, c.name, c.phone, COALESCE(SUM(cr.remaining_cents), 0)::bigint AS expiring, MIN(cr.expires_at) AS deadline, COUNT(cr.id)::int AS credits
+    `SELECT c.id, c.name, c.phone, cr.expires_at AS deadline, COALESCE(SUM(cr.remaining_cents), 0)::bigint AS expiring, COUNT(cr.id)::int AS credits
      FROM cashback_credits cr
      INNER JOIN cashback_clients c ON c.id = cr.client_id
      WHERE c.status = 'ativo' AND cr.status = 'ativo' AND cr.remaining_cents > 0
-       AND cr.expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + ($1::int * INTERVAL '1 day')
-     GROUP BY c.id, c.name, c.phone
-     ORDER BY deadline ASC`,
+       AND cr.expires_at IS NOT NULL
+       AND cr.expires_at >= CURRENT_DATE
+       AND cr.expires_at <= CURRENT_DATE + ($1::int * INTERVAL '1 day')
+     GROUP BY c.id, c.name, c.phone, cr.expires_at
+     ORDER BY deadline ASC, c.name ASC`,
     [settings.expirationAlertDays],
   );
   const rows: DbRow[] = [];
   for (const row of result.rows as DbRow[]) {
     const deadline = isoDate(row.deadline);
+    if (!deadline) continue;
     const message = `Oi ${row.name}, seu cashback de ${brMoneyCents(row.expiring)} na Wimifarma expira ate ${brDate(deadline)}. Aproveite antes do vencimento.`;
     const saved = await saveWhatsappMessage({
       campaign: 'expiracao',
