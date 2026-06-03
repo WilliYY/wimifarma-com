@@ -258,6 +258,7 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - Listar mensagens de expiracao apenas para creditos ativos com saldo, ainda nao vencidos e dentro da janela configurada, agrupando por cliente e data exata de vencimento para respeitar compras diferentes; ao vencer, o credito sai da lista pelo status `expirado`, sem apagar cliente nem credito historico.
 - Listar recompra para clientes com saldo ativo e sem compra recente com uma pendencia por cliente e ultima compra; a pendencia fica visivel por ate 14 dias e depois sai da fila principal com status `expirado_da_fila`. `Excluir da fila` usa `cancelada` como arquivamento manual e ambos bloqueiam retorno imediato, sem apagar cliente, saldo ou historico.
 - Em `/cashback/mensagens.php`, o bloco `Todos Whats` fica recolhido por padrao e, ao abrir, mostra somente os 10 registros salvos mais recentes.
+- Na navegacao superior do Cashback, o atalho `Home` fica por ultimo para manter o fluxo operacional primeiro.
 - Criar/editar/inativar/excluir atendente.
 - Atualizar configuracoes (`cashback_percent`, alertas, manutencao e afins); a validade de novos creditos e regra fixa de 45 dias por compra.
 - Autoteste cria dados dentro de transacao controlada.
