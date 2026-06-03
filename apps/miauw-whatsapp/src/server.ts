@@ -492,6 +492,8 @@ type TarefaVisibleTask = {
   priority: string;
   scope: string;
   assigned_username: string;
+  assigned_core_user_id: number | null;
+  created_by: number | null;
 };
 
 type TarefaUser = {
@@ -3889,8 +3891,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       };
       replyAsAudio = false;
     }
-    const confirmationReply = await maybeHandleConfirmationReply(row, whatsappUserContext);
-    const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext);
+    const taskSelectionReply = await maybeHandleTaskSelectionReply(row);
+    const confirmationReply = taskSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
@@ -4146,6 +4149,170 @@ async function findPendingConfirmation(senderHash: string, shortId?: string): Pr
   return result.rows[0] || null;
 }
 
+async function findPendingTaskSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+  await expireOldConfirmations();
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'
+        AND tool = 'selecionar_tarefa_whatsapp'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
+async function createPendingTaskSelection(row: QueueRow, command: JsonRecord): Promise<void> {
+  if (!whatsappConfirmationsReady()) return;
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'expired',
+            error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_new_task_selection' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'`,
+    [row.sender_phone_hash],
+  );
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_confirmations (
+      id, short_id, event_id, sender_phone_hash, sender_phone_mask, instance_name,
+      tool, summary, risk, command_payload, expires_at, trace_id
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      'selecionar_tarefa_whatsapp', $7, 'baixo', $8::jsonb, NOW() + ($9::int * INTERVAL '1 minute'), $10
+    )`,
+    [
+      crypto.randomUUID(),
+      confirmationShortId(),
+      row.id,
+      row.sender_phone_hash,
+      row.sender_phone_mask,
+      row.instance_name || defaultInstanceName(),
+      safeOutboundText('Selecionar tarefa para concluir/cancelar.', 500),
+      JSON.stringify(command),
+      CONFIRMATION_TTL_MINUTES,
+      row.trace_id,
+    ],
+  );
+}
+
+function parseTaskChoiceIndex(message: string, options: JsonRecord[]): number | null {
+  const clean = normalizeIntentText(message);
+  const digit = clean.match(/^\d+$/);
+  if (digit) {
+    const index = Number(digit[0]) - 1;
+    return index >= 0 && index < options.length ? index : null;
+  }
+  const ordinalMap: Array<[RegExp, number]> = [
+    [/^(primeira|primeiro|a primeira|o primeiro)$/, 0],
+    [/^(segunda|segundo|a segunda|o segundo)$/, 1],
+    [/^(terceira|terceiro|a terceira|o terceiro)$/, 2],
+    [/^(quarta|quarto|a quarta|o quarto)$/, 3],
+    [/^(quinta|quinto|a quinta|o quinto)$/, 4],
+  ];
+  for (const [pattern, index] of ordinalMap) {
+    if (pattern.test(clean) && index < options.length) return index;
+  }
+  const scored = options
+    .map((option, index) => ({
+      index,
+      score: taskTextMatchScore(clean, safeText(option.title, 180)),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+  return scored[0].index;
+}
+
+function taskTextMatchScore(query: string, title: string): number {
+  const cleanTitle = normalizeIntentText(title);
+  if (!query || !cleanTitle) return 0;
+  if (cleanTitle === query) return 100;
+  if (cleanTitle.includes(query)) return 80;
+  const words = query.split(/\s+/).filter((word) => word.length >= 3);
+  if (!words.length) return 0;
+  const matched = words.filter((word) => cleanTitle.includes(word)).length;
+  return matched ? Math.round((matched / words.length) * 60) : 0;
+}
+
+async function maybeHandleTaskSelectionReply(row: QueueRow): Promise<ReplyResult | null> {
+  if (!whatsappConfirmationsReady()) return null;
+  const pending = await findPendingTaskSelection(row.sender_phone_hash);
+  if (!pending) return null;
+  const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const options = Array.isArray(payload.tasks) ? payload.tasks.filter(isRecord) : [];
+  const selectedIndex = parseTaskChoiceIndex(row.body_text, options);
+  if (selectedIndex === null) {
+    const clean = normalizeIntentText(row.body_text);
+    if (/^(nao|n|cancelar|cancela|deixa|esquece|errado)(\s|$)/.test(clean)) {
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = 'cancelled',
+                cancelled_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [pending.id],
+      );
+      return {
+        text: 'Cancelado. Nao mexi em tarefa nenhuma.',
+        engine: 'local',
+        reason: 'tarefa_selection_cancelled',
+      };
+    }
+    return {
+      text: 'Escolha pelo numero ou pelo nome da tarefa. Ex.: 1 ou a da Nissei.',
+      engine: 'local',
+      reason: 'tarefa_selection_expected',
+    };
+  }
+  const selected = options[selectedIndex];
+  const taskId = Number(selected.id || 0);
+  const title = safeText(selected.title, 180);
+  const action = safeText(payload.action, 20) === 'cancel' ? 'cancel' : 'complete';
+  const isComplete = action === 'complete';
+  if (!Number.isInteger(taskId) || taskId <= 0 || !title) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'failed',
+              error_summary = 'task_selection_payload_invalid',
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id],
+    );
+    return {
+      text: 'Nao consegui usar essa escolha. Manda o comando de novo com miauby.',
+      engine: 'local',
+      reason: 'tarefa_selection_invalid',
+    };
+  }
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'executed',
+            executed_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [pending.id],
+  );
+  return {
+    text: `${isComplete ? 'Confirma concluir' : 'Confirma cancelar'}: "${title}"?`,
+    engine: 'local',
+    reason: isComplete ? 'tarefa_selection_complete_confirmation_required' : 'tarefa_selection_cancel_confirmation_required',
+    confirmation: {
+      tool: isComplete ? 'concluir_tarefa_whatsapp' : 'cancelar_tarefa_whatsapp',
+      summary: `${isComplete ? 'Concluir' : 'Cancelar'} tarefa: ${title}?`,
+      risk: 'medio',
+      command: {
+        task_id: taskId,
+        title,
+        status: isComplete ? 'concluida' : 'cancelada',
+      },
+    },
+  };
+}
+
 async function maybeHandleConfirmationReply(row: QueueRow, userContext: WhatsappUserContext): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
   const decision = parseConfirmationDecision(row.body_text);
@@ -4157,6 +4324,29 @@ async function maybeHandleConfirmationReply(row: QueueRow, userContext: Whatsapp
       text: 'Nao achei acao pendente para confirmar agora. Manda o comando de novo com miauby.',
       engine: 'local',
       reason: 'confirmation_not_found',
+    };
+  }
+
+  if (pending.tool === 'selecionar_tarefa_whatsapp') {
+    if (decision.action === 'cancel') {
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = 'cancelled',
+                cancelled_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [pending.id],
+      );
+      return {
+        text: 'Cancelado. Nao mexi em tarefa nenhuma.',
+        engine: 'local',
+        reason: 'tarefa_selection_cancelled',
+      };
+    }
+    return {
+      text: 'Escolha pelo numero ou pelo nome da tarefa. Ex.: 1 ou a da Nissei.',
+      engine: 'local',
+      reason: 'tarefa_selection_expected',
     };
   }
 
@@ -5076,12 +5266,47 @@ async function fetchTarefaVisibleTasks(userContext: WhatsappUserContext, query =
       priority: safeText(task.priority, 20) || 'normal',
       scope: safeText(task.scope, 40) || 'general',
       assigned_username: safeText(task.assigned_username, 80),
+      assigned_core_user_id: task.assigned_core_user_id === null || task.assigned_core_user_id === undefined ? null : Number(task.assigned_core_user_id),
+      created_by: task.created_by === null || task.created_by === undefined ? null : Number(task.created_by),
     }))
     .filter((task) => task.id > 0 && task.title);
 }
 
-function formatTarefaListReply(tasks: TarefaVisibleTask[]): string {
+function formatTarefaListReply(tasks: TarefaVisibleTask[], userContext?: WhatsappUserContext): string {
   if (!tasks.length) return 'Nenhuma tarefa aberta para voce. Milagre operacional detectado.';
+  if (userContext && isWhatsappTaskAdmin(userContext)) {
+    const actorId = Number(userContext.id || 0);
+    const mineCreated = tasks.filter((task) => task.scope !== 'general' && task.created_by === actorId);
+    const general = tasks.filter((task) => task.scope === 'general');
+    const rest = tasks.filter((task) => task.scope !== 'general' && task.created_by !== actorId);
+    const lines: string[] = [];
+    if (mineCreated.length) {
+      lines.push('*Tarefas que voce criou*');
+      mineCreated.slice(0, 8).forEach((task, index) => {
+        const owner = task.assigned_username ? `${titleCaseShortName(task.assigned_username)} - ` : '';
+        lines.push(`${index + 1}. ${owner}${task.title}`);
+      });
+      lines.push('');
+    }
+    if (general.length) {
+      lines.push('*Tarefas gerais*');
+      general.slice(0, 8).forEach((task, index) => lines.push(`${index + 1}. ${task.title}`));
+      lines.push('');
+    }
+    if (rest.length) {
+      lines.push('*Tarefas abertas por usuario*');
+      const byUser = new Map<string, TarefaVisibleTask[]>();
+      for (const task of rest) {
+        const key = titleCaseShortName(task.assigned_username) || 'Sem usuario';
+        byUser.set(key, [...(byUser.get(key) || []), task]);
+      }
+      for (const [user, items] of byUser) {
+        lines.push(`${user}:`);
+        items.slice(0, 5).forEach((task, index) => lines.push(`${index + 1}. ${task.title}`));
+      }
+    }
+    return lines.join('\n').trim();
+  }
   const groups: Array<[string, string, TarefaVisibleTask[]]> = [
     ['admin_to_user', '*Tarefas do ADM para voce*', []],
     ['mine', '*Minhas tarefas*', []],
@@ -5179,6 +5404,7 @@ async function createTarefaFromWhatsapp(command: TaskCommand, userContext: Whats
     priority: prepared.priority,
     title: prepared.title,
     description: prepared.description,
+    remind_at: prepared.remind_at || '',
     source: 'miauby_whatsapp',
   };
 
@@ -5240,7 +5466,7 @@ function tarefaStatusOptionsText(tasks: TarefaVisibleTask[]): string {
   return lines.length ? `\n${lines.join('\n')}` : '';
 }
 
-async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext: WhatsappUserContext): Promise<ReplyResult> {
+async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
   if (!userContext.id || !userContext.linked) {
     return {
       text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de mexer em tarefas.',
@@ -5260,6 +5486,16 @@ async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext
     return { text: 'Nao achei essa tarefa aberta para voce.', engine: 'local', reason: 'tarefa_not_found' };
   }
   if (tasks.length > 1) {
+    if (row) {
+      await createPendingTaskSelection(row, {
+        action: command.action,
+        query: command.query,
+        tasks: tasks.slice(0, 5).map((task) => ({
+          id: task.id,
+          title: task.title,
+        })),
+      });
+    }
     return { text: `Achei mais de uma. Qual delas?${tarefaStatusOptionsText(tasks)}`, engine: 'local', reason: 'tarefa_ambiguous' };
   }
   const task = tasks[0];
@@ -5418,7 +5654,7 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
   return null;
 }
 
-async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext): Promise<ReplyResult> {
+async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
   const pixCnpjCreate = isPixReceiptGeneratedCommand(message) ? null : parsePixCnpjCommand(message);
   if (pixCnpjCreate) {
@@ -5573,7 +5809,7 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     if (taskCommand.action === 'list') {
       const tasks = await fetchTarefaVisibleTasks(userContext, '', isWhatsappTaskAdmin(userContext));
       return {
-        text: formatTarefaListReply(tasks),
+        text: formatTarefaListReply(tasks, userContext),
         engine: 'local',
         reason: 'tarefa_list',
       };
@@ -5581,7 +5817,7 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     if (taskCommand.action === 'create') {
       return createTarefaFromWhatsapp(taskCommand, userContext);
     }
-    return prepareTarefaStatusConfirmation(taskCommand, userContext);
+    return prepareTarefaStatusConfirmation(taskCommand, userContext, row);
   }
   if (looksLikeN8nStatusRequest(message)) {
     return {

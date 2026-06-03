@@ -1202,6 +1202,7 @@ function miauw_skill_create_tarefa(array $command, ?int $userId): array
         'actor_user_id' => $actorId,
         'username' => (string) ($actor['username'] ?? $command['username'] ?? 'Miauby'),
         'actor_username' => (string) ($actor['username'] ?? $command['username'] ?? 'Miauby'),
+        'remind_at' => (string) ($command['remind_at'] ?? ''),
     );
 
     $scope = (string) ($command['escopo'] ?? $command['scope'] ?? 'self');
@@ -1326,6 +1327,102 @@ function miauw_skill_tarefa_query_from_message(string $message, string $action):
     return miauw_skill_tarefa_clean_part($text, 160);
 }
 
+function miauw_skill_tarefa_extract_reminder(string $body): array
+{
+    $text = $body;
+    $tz = new DateTimeZone('America/Sao_Paulo');
+    $now = new DateTimeImmutable('now', $tz);
+    $hour = 9;
+    $minute = 0;
+    $timeLabel = '09:00';
+
+    if (preg_match('/\b(?:as|a|às)?\s*([01]?\d|2[0-3])(?:h|:)([0-5]\d)?\b/iu', $text, $timeMatch)) {
+        $hour = (int) $timeMatch[1];
+        $minute = isset($timeMatch[2]) && $timeMatch[2] !== '' ? (int) $timeMatch[2] : 0;
+        $timeLabel = sprintf('%02d:%02d', $hour, $minute);
+        $text = str_replace((string) $timeMatch[0], ' ', $text);
+    } else {
+        $normalizedTime = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($text) : strtolower($text);
+        if (preg_match('/\b(?:cedo|manha)\b/u', $normalizedTime)) {
+            $hour = 9;
+            $timeLabel = '09:00';
+            $text = preg_replace('/\b(?:cedo|manh[aã])\b/iu', ' ', $text) ?? $text;
+        } elseif (preg_match('/\btarde\b/u', $normalizedTime)) {
+            $hour = 15;
+            $timeLabel = '15:00';
+            $text = preg_replace('/\btarde\b/iu', ' ', $text) ?? $text;
+        } elseif (preg_match('/\bnoite\b/u', $normalizedTime)) {
+            $hour = 18;
+            $timeLabel = '18:00';
+            $text = preg_replace('/\bnoite\b/iu', ' ', $text) ?? $text;
+        }
+    }
+
+    $targetDate = null;
+    $label = '';
+    $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($text) : strtolower($text);
+    if (preg_match('/\b([0-3]?\d)\/([01]?\d)(?:\/(\d{2,4}))?\b/u', $text, $dateMatch)) {
+        $day = (int) $dateMatch[1];
+        $month = (int) $dateMatch[2];
+        $year = isset($dateMatch[3]) && $dateMatch[3] !== '' ? (int) $dateMatch[3] : (int) $now->format('Y');
+        if ($year < 100) {
+            $year += 2000;
+        }
+        $targetDate = DateTimeImmutable::createFromFormat('!Y-n-j H:i', sprintf('%04d-%d-%d %02d:%02d', $year, $month, $day, $hour, $minute), $tz) ?: null;
+        if ($targetDate && (!isset($dateMatch[3]) || $dateMatch[3] === '') && $targetDate < $now) {
+            $targetDate = $targetDate->modify('+1 year');
+        }
+        $label = (string) $dateMatch[0];
+        $text = str_replace((string) $dateMatch[0], ' ', $text);
+    } elseif (preg_match('/\bamanha\b/u', $normalized)) {
+        $targetDate = $now->modify('+1 day')->setTime($hour, $minute);
+        $label = 'amanha';
+        $text = preg_replace('/\bamanh[aã]\b/iu', ' ', $text) ?? $text;
+    } elseif (preg_match('/\bhoje\b/u', $normalized)) {
+        $targetDate = $now->setTime($hour, $minute);
+        if ($targetDate < $now) {
+            $targetDate = $targetDate->modify('+1 day');
+            $label = 'amanha';
+        } else {
+            $label = 'hoje';
+        }
+        $text = preg_replace('/\bhoje\b/iu', ' ', $text) ?? $text;
+    } else {
+        $weekdays = array(
+            0 => array('domingo', '/\bdomingo\b/iu'),
+            1 => array('segunda', '/\bsegunda\b/iu'),
+            2 => array('terca', '/\bter[cç]a\b/iu'),
+            3 => array('quarta', '/\bquarta\b/iu'),
+            4 => array('quinta', '/\bquinta\b/iu'),
+            5 => array('sexta', '/\bsexta\b/iu'),
+            6 => array('sabado', '/\bs[aá]bado\b/iu'),
+        );
+        foreach ($weekdays as $index => $config) {
+            if (preg_match($config[1], $text)) {
+                $todayIndex = (int) $now->format('w');
+                $days = ((int) $index - $todayIndex + 7) % 7;
+                if ($days === 0) {
+                    $days = 7;
+                }
+                $targetDate = $now->modify('+' . $days . ' day')->setTime($hour, $minute);
+                $label = (string) $config[0];
+                $text = preg_replace($config[1], ' ', $text) ?? $text;
+                break;
+            }
+        }
+    }
+
+    if (!$targetDate) {
+        return array('body' => miauw_skill_tarefa_clean_part($text, 1000), 'remind_at' => '', 'label' => '');
+    }
+
+    return array(
+        'body' => miauw_skill_tarefa_clean_part($text, 1000),
+        'remind_at' => $targetDate->format('c'),
+        'label' => trim($label . ' ' . $timeLabel),
+    );
+}
+
 function miauw_skill_tarefa_command_kind(string $message): ?array
 {
     $raw = trim($message);
@@ -1390,6 +1487,9 @@ function miauw_skill_tarefa_command_kind(string $message): ?array
         }
     }
 
+    $reminder = miauw_skill_tarefa_extract_reminder($body);
+    $body = (string) ($reminder['body'] ?? $body);
+
     $parts = preg_split('/\s*(?:-|;|\|)\s*/u', $body) ?: array();
     $parts = array_values(array_filter(array_map(static function ($part): string {
         return trim((string) $part);
@@ -1406,6 +1506,8 @@ function miauw_skill_tarefa_command_kind(string $message): ?array
         'prioridade' => $priority,
         'titulo' => $title,
         'descricao' => $description,
+        'remind_at' => (string) ($reminder['remind_at'] ?? ''),
+        'reminder_label' => (string) ($reminder['label'] ?? ''),
         'body' => $body,
         'raw_message' => $raw,
     );
@@ -1663,6 +1765,7 @@ function miauw_skill_tarefa_handle_command(array $command, ?int $userId, string 
         'priority' => (string) ($command['prioridade'] ?? 'normal'),
         'title' => (string) ($command['titulo'] ?? ''),
         'description' => (string) ($command['descricao'] ?? ''),
+        'remind_at' => (string) ($command['remind_at'] ?? ''),
         'source' => $origin,
     );
 

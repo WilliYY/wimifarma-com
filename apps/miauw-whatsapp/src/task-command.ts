@@ -9,6 +9,8 @@ export type TaskCommand = {
   scope: 'self' | 'target' | 'general';
   target_hint: string;
   description: string;
+  remind_at: string;
+  reminder_label: string;
 };
 
 const CREATE_WORDS = [
@@ -54,6 +56,8 @@ function baseCommand(action: TaskCommandAction, raw: string): TaskCommand {
     scope: 'self',
     target_hint: '',
     description: '',
+    remind_at: '',
+    reminder_label: '',
   };
 }
 
@@ -111,6 +115,11 @@ function parseCreate(raw: string): TaskCommand {
     }
   }
 
+  const reminder = extractReminderFromText(body);
+  body = reminder.text;
+  command.remind_at = reminder.remind_at;
+  command.reminder_label = reminder.label;
+
   const parts = body.split(/\s*(?:-|;|\|)\s*/).map((part) => part.trim()).filter(Boolean);
   command.title = cleanTaskTitle(parts[0] || body);
   command.description = cleanPart(parts.slice(1).join(' - '), 900);
@@ -145,6 +154,134 @@ function cleanTaskTitle(value: string): string {
       .replace(/\b(pra mim|para mim|minha|meu|hoje|agora)\b/gi, ' '),
     180,
   );
+}
+
+function extractReminderFromText(value: string): { text: string; remind_at: string; label: string } {
+  let text = value;
+  const time = timeFromText(text);
+  const timeLabel = time.label;
+  const timeForDate = time.value;
+  let date = '';
+  let label = '';
+  const clean = normalizeIntentText(text);
+  const dateMatch = text.match(/\b([0-3]?\d)\/([01]?\d)(?:\/(\d{2,4}))?\b/);
+  if (dateMatch) {
+    date = dateFromSlashMatch(dateMatch);
+    label = dateMatch[0];
+    text = text.replace(dateMatch[0], ' ');
+  } else if (/\bamanha\b/.test(clean)) {
+    date = saoPauloDatePlusDays(1);
+    label = 'amanha';
+    text = text.replace(/\bamanh[aã]\b/iu, ' ');
+  } else if (/\bhoje\b/.test(clean)) {
+    date = saoPauloDatePlusDays(0);
+    label = 'hoje';
+    text = text.replace(/\bhoje\b/iu, ' ');
+  } else {
+    const weekday = weekdayFromText(clean);
+    if (weekday !== null) {
+      date = nextSaoPauloWeekday(weekday);
+      label = weekdayLabel(weekday);
+      text = text.replace(new RegExp(`\\b${weekdayRegexSource(weekday)}\\b`, 'iu'), ' ');
+    }
+  }
+
+  if (time.matched) {
+    text = text.replace(time.matched, ' ');
+  }
+
+  if (!date) {
+    return { text: cleanPart(text, 1000), remind_at: '', label: '' };
+  }
+
+  return {
+    text: cleanPart(text, 1000),
+    remind_at: `${date}T${timeForDate}:00-03:00`,
+    label: `${label}${timeLabel ? ` ${timeLabel}` : ''}`.trim(),
+  };
+}
+
+function timeFromText(value: string): { value: string; label: string; matched: string } {
+  const explicit = value.match(/\b(?:as|às|a)?\s*([01]?\d|2[0-3])(?:h|:)([0-5]\d)?\b/i);
+  if (explicit) {
+    const hour = explicit[1].padStart(2, '0');
+    const minute = (explicit[2] || '00').padStart(2, '0');
+    return { value: `${hour}:${minute}`, label: `${hour}:${minute}`, matched: explicit[0] };
+  }
+  const clean = normalizeIntentText(value);
+  if (/\b(cedo|manha)\b/.test(clean)) return { value: '09:00', label: '09:00', matched: matchTimeWord(value, ['cedo', 'manha']) };
+  if (/\btarde\b/.test(clean)) return { value: '15:00', label: '15:00', matched: matchTimeWord(value, ['tarde']) };
+  if (/\bnoite\b/.test(clean)) return { value: '18:00', label: '18:00', matched: matchTimeWord(value, ['noite']) };
+  return { value: '09:00', label: '09:00', matched: '' };
+}
+
+function matchTimeWord(value: string, words: string[]): string {
+  for (const word of words) {
+    const match = value.match(new RegExp(`\\b${word}\\b`, 'iu'));
+    if (match) return match[0];
+  }
+  return '';
+}
+
+function saoPauloParts(): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return { year: get('year'), month: get('month'), day: get('day') };
+}
+
+function saoPauloDatePlusDays(days: number): string {
+  const parts = saoPauloParts();
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+function dateFromSlashMatch(match: RegExpMatchArray): string {
+  const now = saoPauloParts();
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  let year = match[3] ? Number(match[3]) : now.year;
+  if (year < 100) year += 2000;
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  const today = new Date(Date.UTC(now.year, now.month - 1, now.day));
+  if (!match[3] && candidate.getTime() < today.getTime()) {
+    candidate.setUTCFullYear(candidate.getUTCFullYear() + 1);
+  }
+  return candidate.toISOString().slice(0, 10);
+}
+
+function weekdayFromText(clean: string): number | null {
+  const names: Array<[number, RegExp]> = [
+    [0, /\bdomingo\b/],
+    [1, /\bsegunda\b/],
+    [2, /\bterca\b/],
+    [3, /\bquarta\b/],
+    [4, /\bquinta\b/],
+    [5, /\bsexta\b/],
+    [6, /\bsabado\b/],
+  ];
+  const found = names.find(([, pattern]) => pattern.test(clean));
+  return found ? found[0] : null;
+}
+
+function nextSaoPauloWeekday(target: number): string {
+  const parts = saoPauloParts();
+  const today = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  const diff = (target - today.getUTCDay() + 7) % 7 || 7;
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + diff));
+  return date.toISOString().slice(0, 10);
+}
+
+function weekdayLabel(day: number): string {
+  return ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'][day] || 'data';
+}
+
+function weekdayRegexSource(day: number): string {
+  return ['domingo', 'segunda', 'ter[cç]a', 'quarta', 'quinta', 'sexta', 's[aá]bado'][day] || 'data';
 }
 
 function cleanPart(value: string, limit: number): string {
