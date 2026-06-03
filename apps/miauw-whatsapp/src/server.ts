@@ -712,6 +712,9 @@ const PIX_RECEIPT_DESTINATION_ALIASES = parseTextListEnv(textEnv('MIAUW_WHATSAPP
 const PIX_RECEIPT_MIN_TARGET_SCORE = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100', 70, 40, 100) / 100;
 const PIX_CNPJ_MANUAL_HINT_REPLY = 'Nao consegui ler bem o comprovante \u{1F63F} Me mande assim: miauby pix cnpj 28,90 sueli.';
 const PIX_RECEIPT_NOT_LIKE_REPLY = 'Isso ai é um comprovante pix?';
+const AUDIO_TRANSCRIPTION_UNCLEAR_REPLY = 'Nao consegui entender bem esse audio. Me manda em texto ou grava de novo falando uma frase clara.';
+const AUDIO_TRANSCRIPTION_SEED_PHRASE = 'wimifarma miauby cotacao cashback sangria ean distribuidora encomenda farmacia popular';
+const AUDIO_TRANSCRIPTION_SEED_WORDS = new Set(AUDIO_TRANSCRIPTION_SEED_PHRASE.split(' '));
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
@@ -3747,6 +3750,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const incomingPixReceiptMedia = isPixReceiptMediaMessageType(row.message_type);
     let effectiveBodyText = row.body_text;
     let replyAsAudio = incomingAudio && AUDIO_REPLY_MODE === 'voice_on_voice';
+    let audioFailureReason = '';
     if (incomingAudio && AUDIO_INPUT_ENABLED) {
       try {
         const transcript = await transcribeQueuedAudio(row);
@@ -3774,11 +3778,13 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           const prefix = stripActivationPrefix(transcript);
           if (!prefix.accepted) {
             effectiveBodyText = '';
+            audioFailureReason = 'missing_prefix';
           } else {
             effectiveBodyText = prefix.text;
           }
         }
       } catch (error) {
+        audioFailureReason = safeError(error);
         await recordErrorLog('audio_transcription', 'warn', error, {
           eventId: row.id,
           traceId: row.trace_id,
@@ -3786,6 +3792,21 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           messagePreview: row.body_text,
           details: { message_type: row.message_type },
         });
+        await pgPool.query(
+          `UPDATE miauw_whatsapp_events
+              SET payload_summary = payload_summary || $2::jsonb,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [
+            row.id,
+            JSON.stringify({
+              audio_transcribed: false,
+              audio_transcribe_provider: AUDIO_TRANSCRIBE_PROVIDER,
+              audio_transcribe_model: AUDIO_TRANSCRIBE_MODEL,
+              audio_transcribe_error: safeText(audioFailureReason, 120),
+            }),
+          ],
+        );
         effectiveBodyText = '';
       }
     }
@@ -3942,11 +3963,11 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     let audioFailureReply: ReplyResult | null = null;
     if (incomingAudio && AUDIO_INPUT_ENABLED && !effectiveBodyText) {
       audioFailureReply = {
-        text: REQUIRE_PREFIX
+        text: REQUIRE_PREFIX && audioFailureReason === 'missing_prefix'
           ? `Ouvi o audio, mas neste ambiente ele precisa comecar com "${PREFIX}". Exemplo: "${PREFIX} pedidos de hoje".`
-          : 'Nao consegui entender esse audio com seguranca. Manda de novo mais curto ou digita a mensagem.',
+          : AUDIO_TRANSCRIPTION_UNCLEAR_REPLY,
         engine: 'blocked',
-        reason: 'audio_transcription_failed_or_missing_prefix',
+        reason: audioFailureReason === 'missing_prefix' ? 'audio_missing_prefix' : 'audio_transcription_failed_or_untrusted',
       };
       replyAsAudio = false;
     }
@@ -8446,8 +8467,8 @@ async function transcribeQueuedAudio(row: QueueRow): Promise<string> {
     ? await fetchMetaAudioMedia(row)
     : await fetchEvolutionAudioMedia(row);
   const transcript = safeText(await requestGeminiAudioTranscript(media, row.trace_id), 4000);
-  if (!transcript) throw new Error('audio_empty_transcript');
-  return transcript;
+  validateAudioTranscript(transcript, audioDurationMsFromPayload(row.payload_summary));
+  return cleanTranscript(transcript);
 }
 
 async function fetchEvolutionAudioMedia(row: QueueRow): Promise<AudioMedia> {
@@ -8577,6 +8598,51 @@ function cleanTranscript(text: string): string {
     .replace(/^transcri\S+\s*:\s*/i, '')
     .replace(/^["']+|["']+$/g, '')
     .trim();
+}
+
+function audioTranscriptLooksLikeSeedGlossary(text: string): boolean {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+  if (normalized === AUDIO_TRANSCRIPTION_SEED_PHRASE) return true;
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length < 6) return false;
+
+  let hits = 0;
+  const uniqueHits = new Set<string>();
+  for (const word of words) {
+    if (!AUDIO_TRANSCRIPTION_SEED_WORDS.has(word)) continue;
+    hits += 1;
+    uniqueHits.add(word);
+  }
+  return uniqueHits.size >= 6 && hits / Math.max(1, words.length) >= 0.75;
+}
+
+function audioDurationMsFromPayload(summary: JsonRecord): number {
+  const media = mediaSummaryFromPayload(summary);
+  const seconds = Number(media.seconds || media.duration_seconds || media.duration || 0);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.trunc(seconds * 1000) : 0;
+}
+
+function validateAudioTranscript(text: string, durationMs = 0): void {
+  const clean = cleanTranscript(text);
+  if (!clean) throw new Error('audio_empty_transcript');
+  if (audioTranscriptLooksLikeSeedGlossary(clean)) {
+    throw new Error('audio_transcription_untrusted_seed_glossary');
+  }
+  if (durationMs <= 0) return;
+
+  const words = normalizeIntentText(clean).split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  if (durationMs < 2500 && wordCount > 12) {
+    throw new Error('audio_transcription_too_long_for_short_audio');
+  }
+
+  const seconds = Math.max(1, durationMs / 1000);
+  const maxPlausibleWords = Math.max(16, Math.ceil(seconds * 5.5));
+  if (durationMs < 6500 && wordCount > maxPlausibleWords) {
+    throw new Error('audio_transcription_implausible_for_duration');
+  }
 }
 
 async function requestGeminiAudioTranscript(audio: AudioMedia, traceId: string): Promise<string> {

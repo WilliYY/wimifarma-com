@@ -122,6 +122,8 @@ O adaptador PHP compara respostas quando `MIAUW_AGENT_SHADOW_ON_SEND=true` ou qu
 
 O perfil de voz atual pode ser ajustado por ambiente com `MIAUW_VOICE_PROFILE=miauby_padrao|miauby_curto|miauby_operacional`. O audio do chat usa `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`; microfone so abre pelo botao `Falar`, o audio temporario vira rascunho transcrito, e o usuario escolhe `Enviar` ou `Cancelar`. Se a transcricao parecer chute/glossario interno em vez de fala real, o PHP bloqueia o rascunho e pede para gravar de novo.
 
+No Miauby WhatsApp, `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=true` faz audio autorizado virar texto antes do roteador. A partir de 2026-06-03, o bridge aplica a mesma trava do audio interno: transcricao vazia, parecida com glossario/seed do sistema ou grande demais para audio curto nao executa comando; o WhatsApp responde pedindo texto/audio claro e registra so metadados sanitizados.
+
 ## Local - Miauby WhatsApp Bridge
 
 ```powershell
