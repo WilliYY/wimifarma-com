@@ -221,6 +221,8 @@ type CoreUserIdentity = {
   role: string;
 };
 
+type ResponsibleSelectionAction = 'sangria' | 'pix_cnpj' | 'pedido_create' | 'pedido_cancel' | 'tarefa_status';
+
 type SharedMiauwContext = {
   source: string;
   version: string;
@@ -511,6 +513,15 @@ type TarefaUser = {
   display_name: string;
   role: string;
   can_manage_all: boolean;
+};
+
+type TarefaTargetChoice = {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  can_manage_all: boolean;
+  kind: 'user' | 'general';
 };
 
 type FinanceiroOpenCashDay = {
@@ -3928,8 +3939,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     }
     const taskSelectionReply = await maybeHandleTaskSelectionReply(row);
     const pedidoSelectionReply = taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row);
-    const responsibleSelectionReply = taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
-    const confirmationReply = taskSelectionReply || pedidoSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const taskTargetSelectionReply = taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
+    const responsibleSelectionReply = taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
+    const confirmationReply = taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
     const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
@@ -4242,6 +4254,21 @@ async function findPendingResponsibleSelection(senderHash: string): Promise<Pend
   return result.rows[0] || null;
 }
 
+async function findPendingTaskTargetSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+  await expireOldConfirmations();
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'
+        AND tool = 'selecionar_destino_tarefa_whatsapp'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
 async function findRecentExpiredTaskSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
   const result = await pgPool.query<PendingConfirmationRow>(
     `SELECT id, short_id, tool, summary, risk, command_payload, attempts
@@ -4279,6 +4306,21 @@ async function findRecentExpiredResponsibleSelection(senderHash: string): Promis
       WHERE sender_phone_hash = $1
         AND status = 'expired'
         AND tool = 'selecionar_responsavel_whatsapp'
+        AND updated_at >= NOW() - INTERVAL '10 minutes'
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
+async function findRecentExpiredTaskTargetSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'expired'
+        AND tool = 'selecionar_destino_tarefa_whatsapp'
         AND updated_at >= NOW() - INTERVAL '10 minutes'
       ORDER BY updated_at DESC
       LIMIT 1`,
@@ -4389,6 +4431,40 @@ async function createPendingResponsibleSelection(row: QueueRow, command: JsonRec
   );
 }
 
+async function createPendingTaskTargetSelection(row: QueueRow, command: JsonRecord): Promise<void> {
+  if (!whatsappConfirmationsReady()) return;
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'expired',
+            error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_new_task_target_selection' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'`,
+    [row.sender_phone_hash],
+  );
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_confirmations (
+      id, short_id, event_id, sender_phone_hash, sender_phone_mask, instance_name,
+      tool, summary, risk, command_payload, expires_at, trace_id
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      'selecionar_destino_tarefa_whatsapp', $7, 'baixo', $8::jsonb, NOW() + ($9::int * INTERVAL '1 minute'), $10
+    )`,
+    [
+      crypto.randomUUID(),
+      confirmationShortId(),
+      row.id,
+      row.sender_phone_hash,
+      row.sender_phone_mask,
+      row.instance_name || defaultInstanceName(),
+      safeOutboundText('Selecionar destino de tarefa vinda do WhatsApp oficial.', 500),
+      JSON.stringify(command),
+      CONFIRMATION_TTL_MINUTES,
+      row.trace_id,
+    ],
+  );
+}
+
 async function listResponsibleCoreUsers(limit = 12): Promise<CoreUserIdentity[]> {
   const result = await corePgPool.query<{
     id: string;
@@ -4455,20 +4531,24 @@ function userContextFromResponsiblePayload(payload: JsonRecord, base: WhatsappUs
 
 function responsibleActionQuestion(action: string): string {
   if (action === 'pix_cnpj') return 'Quem fez esse PIX CNPJ?';
-  if (action === 'pedido_create') return 'Quem fez esse pedido?';
+  if (action === 'pedido_create') return 'Quem esta registrando esse pedido?';
   if (action === 'pagamento') return 'Quem fez esse pagamento?';
+  if (action === 'pedido_cancel' || action === 'tarefa_status') return 'Quem esta fazendo essa acao?';
   return 'Quem fez essa sangria?';
 }
 
 function responsibleActionExample(action: string): string {
   if (action === 'pix_cnpj') return 'miauby pix cnpj 28,90 sueli';
   if (action === 'pedido_create') return 'miauby pedido anb 350 will';
+  if (action === 'pedido_cancel') return 'miauby cancelar pedido anb will';
+  if (action === 'tarefa_status') return 'miauby concluir tarefa conferir pedido will';
   return 'miauby sangria 10 will';
 }
 
-function responsibleSelectionMessage(action: string, users: CoreUserIdentity[]): string {
+function responsibleSelectionMessage(action: string, users: CoreUserIdentity[], intro = ''): string {
   const lines = users.map((user, index) => `${index + 1}. ${titleCaseShortName(user.displayName) || user.displayName || user.username}`);
-  return `${responsibleActionQuestion(action)}\n\n${lines.join('\n')}\n\nResponda com o numero ou nome.`;
+  const prefix = safeOutboundText(intro, 160);
+  return `${prefix ? `${prefix}\n\n` : ''}${responsibleActionQuestion(action)}\n\n${lines.join('\n')}\n\nResponda com o numero ou nome.`;
 }
 
 function parseResponsibleChoiceIndex(message: string, users: CoreUserIdentity[]): number | null {
@@ -4519,8 +4599,9 @@ function responsibleTextMatchScore(query: string, user: CoreUserIdentity): numbe
 
 async function requestResponsibleSelectionForPharmacy(
   row: QueueRow | undefined,
-  action: 'sangria' | 'pix_cnpj' | 'pedido_create',
+  action: ResponsibleSelectionAction,
   command: JsonRecord,
+  intro = '',
 ): Promise<ReplyResult> {
   if (!row || !whatsappConfirmationsReady()) {
     return {
@@ -4543,7 +4624,7 @@ async function requestResponsibleSelectionForPharmacy(
     users: users.map(responsiblePayloadFromUser),
   });
   return {
-    text: responsibleSelectionMessage(action, users),
+    text: responsibleSelectionMessage(action, users, intro),
     engine: 'local',
     reason: `responsible_selection_required:${action}`,
   };
@@ -4567,6 +4648,38 @@ async function resolveResponsibleMentionAfterAmount(raw: string): Promise<CoreUs
     if (match && !matches.some((user) => user.id === match.id)) matches.push(match);
   }
   return matches.length === 1 ? matches[0] : null;
+}
+
+function pedidoTailLooksLikeResponsibleHint(raw: string): boolean {
+  const tail = normalizeIntentText(textAfterFirstMoneyAmount(raw));
+  if (!tail) return false;
+  if (hasAnyIntentTerm(tail, [
+    'parcela',
+    'parcelas',
+    'boleto',
+    'boletos',
+    'venc',
+    'vencimento',
+    'prev',
+    'previsao',
+    'chega',
+    'chegar',
+    'chegou',
+    'pago',
+    'pagar',
+    'recebido',
+    'registrar',
+    'so chegar',
+    'so pagar',
+    'dia',
+    'dias',
+    'semana',
+    'obs',
+    'observacao',
+  ])) {
+    return false;
+  }
+  return tail.split(/\s+/g).some((word) => word.length >= 2 && !/^\d+$/.test(word));
 }
 
 function groupAliasesFromChoice(clean: string): string[] {
@@ -4851,7 +4964,22 @@ async function maybeHandleResponsibleSelectionReply(row: QueueRow, userContext: 
           },
         };
       }
-      return createPedidoFromWhatsapp(command, row.trace_id, row.sender_phone_mask, selectedContext, `whatsapp-responsavel:${pending.id}`);
+      return createPedidoFromWhatsapp(command, row.trace_id, row.sender_phone_mask, selectedContext, `whatsapp-responsavel:${pending.id}`, true);
+    }
+
+    if (action === 'pedido_cancel') {
+      const query = safeText(commandPayload.query, 180);
+      if (!query) throw new Error('pedido_cancel_responsible_payload_invalid');
+      await markExecuted();
+      return preparePedidoCancelFromWhatsapp(query, row, selectedContext, selected);
+    }
+
+    if (action === 'tarefa_status') {
+      const taskPayload = isRecord(commandPayload.task_command) ? commandPayload.task_command : commandPayload;
+      const command = taskCommandFromPayload(taskPayload);
+      if (!command || !['complete', 'cancel'].includes(command.action)) throw new Error('tarefa_status_responsible_payload_invalid');
+      await markExecuted();
+      return prepareTarefaStatusConfirmation(command, selectedContext, row, selected);
     }
 
     throw new Error('responsible_selection_action_invalid');
@@ -4861,6 +4989,99 @@ async function maybeHandleResponsibleSelectionReply(row: QueueRow, userContext: 
       text: `Nao consegui registrar agora. ${safeError(error)}`,
       engine: 'miauw',
       reason: 'responsible_selection_execution_failed',
+    };
+  }
+}
+
+async function maybeHandleTaskTargetSelectionReply(row: QueueRow, userContext: WhatsappUserContext): Promise<ReplyResult | null> {
+  if (!whatsappConfirmationsReady()) return null;
+  const pending = await findPendingTaskTargetSelection(row.sender_phone_hash);
+  if (!pending) {
+    const clean = normalizeIntentText(row.body_text);
+    const looksLikeLateChoice = /^\d+$/.test(clean)
+      || /^(a\s+)?(primeira|segunda|terceira|quarta|quinta|sexta|geral|equipe)\b/.test(clean)
+      || /^[a-z]{2,}(?:\s+[a-z]{2,})?$/u.test(clean);
+    if (looksLikeLateChoice && await findRecentExpiredTaskTargetSelection(row.sender_phone_hash)) {
+      return {
+        text: 'Contexto expirou. Manda o comando de novo 😿',
+        engine: 'local',
+        reason: 'tarefa_target_selection_expired',
+      };
+    }
+    return null;
+  }
+
+  const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const choices = (Array.isArray(payload.choices) ? payload.choices : [])
+    .map(tarefaTargetChoiceFromPayload)
+    .filter((choice): choice is TarefaTargetChoice => Boolean(choice));
+  const selectedIndex = parseTarefaTargetChoiceIndex(row.body_text, choices);
+  if (selectedIndex === null) {
+    const clean = normalizeIntentText(row.body_text);
+    if (/^(nao|n|cancelar|cancela|deixa|esquece|errado|nao cria|nao criar)(\s|$)/.test(clean)) {
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = 'cancelled',
+                cancelled_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [pending.id],
+      );
+      return {
+        text: 'Beleza, nao criei tarefa.',
+        engine: 'local',
+        reason: 'tarefa_target_selection_cancelled',
+      };
+    }
+    return {
+      text: 'Escolha pelo numero ou nome. Ex.: 1, Thiago ou Geral.',
+      engine: 'local',
+      reason: 'tarefa_target_selection_expected',
+    };
+  }
+
+  const commandPayload = isRecord(payload.command) ? payload.command : {};
+  const command = taskCommandFromPayload(commandPayload);
+  const selected = choices[selectedIndex];
+  const markExecuted = async () => {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'executed',
+              executed_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id],
+    );
+  };
+  const markFailed = async (error: unknown) => {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'failed',
+              error_summary = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id, safeError(error)],
+    );
+  };
+
+  try {
+    if (!command) throw new Error('tarefa_target_payload_invalid');
+    const selectedCommand: TaskCommand = selected.kind === 'general'
+      ? { ...command, scope: 'general', target_hint: '' }
+      : { ...command, scope: 'target', target_hint: selected.display_name || selected.username };
+    const reply = await createTarefaFromWhatsapp(selectedCommand, userContext);
+    if (reply.engine === 'blocked') {
+      await markFailed(new Error(reply.reason));
+      return reply;
+    }
+    await markExecuted();
+    return reply;
+  } catch (error) {
+    await markFailed(error);
+    return {
+      text: `Nao consegui criar a tarefa agora. ${safeError(error)}`,
+      engine: 'miauw',
+      reason: 'tarefa_target_selection_execution_failed',
     };
   }
 }
@@ -4884,6 +5105,7 @@ async function maybeHandleTaskSelectionReply(row: QueueRow): Promise<ReplyResult
   }
   const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
   const options = Array.isArray(payload.tasks) ? payload.tasks.filter(isRecord) : [];
+  const responsibleUser = responsibleUserFromPayload(payload.responsible_user);
   const selectedIndex = parseTaskChoiceIndex(row.body_text, options);
   if (selectedIndex === null) {
     const clean = normalizeIntentText(row.body_text);
@@ -4964,6 +5186,7 @@ async function maybeHandleTaskSelectionReply(row: QueueRow): Promise<ReplyResult
         task_id: taskId,
         title,
         status: isComplete ? 'concluida' : 'cancelada',
+        ...(responsibleUser ? { responsible_user: responsiblePayloadFromUser(responsibleUser) } : {}),
       },
     },
   };
@@ -4988,6 +5211,7 @@ async function maybeHandlePedidoSelectionReply(row: QueueRow): Promise<ReplyResu
   }
   const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
   const options = Array.isArray(payload.orders) ? payload.orders.filter(isRecord) : [];
+  const responsibleUser = responsibleUserFromPayload(payload.responsible_user);
   const selectedIndex = parsePedidoChoiceIndex(row.body_text, options);
   if (selectedIndex === null) {
     const clean = normalizeIntentText(row.body_text);
@@ -5060,6 +5284,7 @@ async function maybeHandlePedidoSelectionReply(row: QueueRow): Promise<ReplyResu
         total_label: totalLabel,
         total_cents: Number(selected.total_cents || 0),
         financial_linked: financialLinked,
+        ...(responsibleUser ? { responsible_user: responsiblePayloadFromUser(responsibleUser) } : {}),
       },
     },
   };
@@ -5999,22 +6224,73 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
 }
 
 async function executeConfirmedPedidoCreate(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
+  const responsibleUser = responsibleUserFromPayload(pending.command_payload.responsible_user);
   const executionContext = userContextFromResponsiblePayload(pending.command_payload, userContext);
   if (!executionContext.id || !executionContext.linked) throw new Error('pedidos_create_unlinked_user');
   const command = pedidoCommandFromConfirmationPayload(pending.command_payload);
   if (!command) throw new Error('pedidos_confirmation_payload_invalid');
-  const reply = await createPedidoFromWhatsapp(command, traceId, senderMask, executionContext, `whatsapp-confirm:${pending.id}`);
+  const reply = await createPedidoFromWhatsapp(command, traceId, senderMask, executionContext, `whatsapp-confirm:${pending.id}`, Boolean(responsibleUser));
   return reply.text;
 }
 
 async function executeConfirmedPedidoCancel(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
-  if (!userContext.id || !userContext.linked) throw new Error('pedidos_cancel_unlinked_user');
   const command = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const executionContext = userContextFromResponsiblePayload(command, userContext);
+  if (!executionContext.id || !executionContext.linked) throw new Error('pedidos_cancel_unlinked_user');
   const orderId = Number(command.order_id || command.id || 0);
   const accountId = Number(command.account_id || 0);
   if (!Number.isInteger(orderId) || orderId <= 0) throw new Error('pedidos_cancel_payload_invalid');
-  const reply = await cancelPedidoFromWhatsapp(orderId, accountId, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
+  const reply = await cancelPedidoFromWhatsapp(orderId, accountId, traceId, senderMask, executionContext, `whatsapp-confirm:${pending.id}`);
   return reply.text;
+}
+
+async function preparePedidoCancelFromWhatsapp(query: string, row: QueueRow | undefined, userContext: WhatsappUserContext, responsibleUser: CoreUserIdentity | null = null): Promise<ReplyResult> {
+  const cleanQuery = safeText(query, 180);
+  const candidates = await fetchPedidosCancelCandidates(userContext, cleanQuery, 12);
+  if (!candidates.length) {
+    return {
+      text: cleanQuery
+        ? `Nao achei pedido aguardando chegada da ${cleanQuery}.`
+        : 'Nao achei pedido aberto com esse nome.',
+      engine: 'local',
+      reason: 'pedidos_cancel_not_found',
+    };
+  }
+  if (candidates.length > 1) {
+    if (row) {
+      await createPendingPedidoSelection(row, {
+        action: 'cancel',
+        query: cleanQuery,
+        orders: candidates,
+        ...(responsibleUser ? { responsible_user: responsiblePayloadFromUser(responsibleUser) } : {}),
+      });
+    }
+    return {
+      text: pedidosCancelOptionsMessage(candidates),
+      engine: 'local',
+      reason: 'pedidos_cancel_ambiguous',
+    };
+  }
+  const [order] = candidates;
+  return {
+    text: pedidoCancelConfirmationText(order),
+    engine: 'local',
+    reason: 'pedidos_cancel_confirmation_required',
+    confirmation: {
+      tool: 'cancelar_pedido_whatsapp',
+      summary: `Cancelar pedido: ${order.supplier_name} - ${order.total_label || moneyForCommand(order.total_cents / 100)}?`,
+      risk: order.financial_linked === true ? 'alto' : 'medio',
+      command: {
+        order_id: order.id,
+        account_id: order.account_id,
+        supplier_name: order.supplier_name,
+        total_label: order.total_label,
+        total_cents: order.total_cents,
+        financial_linked: order.financial_linked === true,
+        ...(responsibleUser ? { responsible_user: responsiblePayloadFromUser(responsibleUser) } : {}),
+      },
+    },
+  };
 }
 
 async function executeConfirmedSangriaCreate(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
@@ -6156,13 +6432,188 @@ async function resolveTarefaUserHint(hint: string): Promise<TarefaUser | null> {
   const cleanHint = safeText(hint, 80);
   if (!cleanHint) return null;
   const normalizedHint = normalizeIntentText(cleanHint);
-  const users = await fetchTarefaUsers(cleanHint);
+  const users = (await fetchTarefaUsers(cleanHint))
+    .filter((user) => normalizeIntentText(user.role) !== 'farmacia');
   for (const user of users) {
     const username = normalizeIntentText(user.username);
     const display = normalizeIntentText(user.display_name);
     if (username === normalizedHint || display === normalizedHint || display.startsWith(normalizedHint)) return user;
   }
   return users.length === 1 ? users[0] : null;
+}
+
+function tarefaTargetPayloadFromChoice(choice: TarefaTargetChoice): JsonRecord {
+  return {
+    id: choice.id,
+    username: choice.username,
+    display_name: choice.display_name,
+    role: choice.role,
+    can_manage_all: choice.can_manage_all,
+    kind: choice.kind,
+  };
+}
+
+function tarefaTargetChoiceFromPayload(value: unknown): TarefaTargetChoice | null {
+  if (!isRecord(value)) return null;
+  const kind = safeText(value.kind, 20) === 'general' ? 'general' : 'user';
+  const id = Number(value.id || 0);
+  const username = safeText(value.username, 120);
+  if (kind === 'user' && (!Number.isInteger(id) || id <= 0 || !username)) return null;
+  return {
+    id: kind === 'general' ? 0 : id,
+    username: kind === 'general' ? 'geral' : username,
+    display_name: kind === 'general' ? 'Geral/equipe' : safeText(value.display_name || username, 120),
+    role: safeText(value.role, 40),
+    can_manage_all: value.can_manage_all === true,
+    kind,
+  };
+}
+
+async function listTarefaTargetChoices(): Promise<TarefaTargetChoice[]> {
+  const users = await fetchTarefaUsers('');
+  const choices: TarefaTargetChoice[] = users
+    .filter((user) => normalizeIntentText(user.role) !== 'farmacia')
+    .slice(0, 12)
+    .map((user) => ({
+      id: user.id,
+      username: user.username,
+      display_name: user.display_name || user.username,
+      role: user.role,
+      can_manage_all: user.can_manage_all === true,
+      kind: 'user' as const,
+    }));
+  choices.push({
+    id: 0,
+    username: 'geral',
+    display_name: 'Geral/equipe',
+    role: '',
+    can_manage_all: false,
+    kind: 'general',
+  });
+  return choices;
+}
+
+function tarefaTargetLabel(choice: TarefaTargetChoice): string {
+  return choice.kind === 'general'
+    ? 'Geral/equipe'
+    : titleCaseShortName(choice.display_name || choice.username) || choice.display_name || choice.username;
+}
+
+function tarefaTargetSelectionMessage(choices: TarefaTargetChoice[], intro = ''): string {
+  const lines = choices.map((choice, index) => `${index + 1}. ${tarefaTargetLabel(choice)}`);
+  const prefix = safeOutboundText(intro, 160);
+  return `${prefix ? `${prefix}\n\n` : ''}Essa tarefa e para quem?\n\n${lines.join('\n')}\n\nResponda com o numero ou nome.`;
+}
+
+function tarefaTargetMatchScore(query: string, choice: TarefaTargetChoice): number {
+  if (choice.kind === 'general') {
+    return /^(geral|equipe|todos|todas|geral equipe|time)$/.test(query) ? 100 : 0;
+  }
+  return responsibleTextMatchScore(query, {
+    id: choice.id,
+    username: choice.username,
+    displayName: choice.display_name || choice.username,
+    role: choice.role || 'user',
+  });
+}
+
+function parseTarefaTargetChoiceIndex(message: string, choices: TarefaTargetChoice[]): number | null {
+  const clean = normalizeIntentText(message)
+    .replace(/^(para|pra|pro|destino|usuario|funcionario|e|eh|a|o)\s+/u, '')
+    .trim();
+  const digit = clean.match(/^\d+$/);
+  if (digit) {
+    const index = Number(digit[0]) - 1;
+    return index >= 0 && index < choices.length ? index : null;
+  }
+  const ordinalMap: Array<[RegExp, number]> = [
+    [/^(primeira|primeiro|a primeira|o primeiro)$/, 0],
+    [/^(segunda|segundo|a segunda|o segundo)$/, 1],
+    [/^(terceira|terceiro|a terceira|o terceiro)$/, 2],
+    [/^(quarta|quarto|a quarta|o quarto)$/, 3],
+    [/^(quinta|quinto|a quinta|o quinto)$/, 4],
+    [/^(sexta|sexto|a sexta|o sexto)$/, 5],
+  ];
+  for (const [pattern, index] of ordinalMap) {
+    if (pattern.test(clean) && index < choices.length) return index;
+  }
+  const scored = choices
+    .map((choice, index) => ({
+      index,
+      score: tarefaTargetMatchScore(clean, choice),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+  return scored[0].index;
+}
+
+function taskCommandPayload(command: TaskCommand): JsonRecord {
+  return {
+    action: command.action,
+    raw: command.raw,
+    title: command.title,
+    query: command.query,
+    priority: command.priority,
+    scope: command.scope,
+    target_hint: command.target_hint,
+    description: command.description,
+    remind_at: command.remind_at,
+    reminder_label: command.reminder_label,
+  };
+}
+
+function taskCommandFromPayload(payload: JsonRecord): TaskCommand | null {
+  const action = safeText(payload.action, 20);
+  if (!['list', 'show', 'create', 'complete', 'cancel'].includes(action)) return null;
+  const title = safeText(payload.title, 180);
+  const priority = safeText(payload.priority, 20);
+  const scope = safeText(payload.scope, 20);
+  return {
+    action: action as TaskCommand['action'],
+    raw: safeText(payload.raw, 1000),
+    title,
+    query: safeText(payload.query, 180),
+    priority: priority === 'alta' || priority === 'baixa' ? priority : 'normal',
+    scope: scope === 'target' || scope === 'general' ? scope : 'self',
+    target_hint: safeText(payload.target_hint, 80),
+    description: safeText(payload.description, 900),
+    remind_at: safeText(payload.remind_at, 80),
+    reminder_label: safeText(payload.reminder_label, 80),
+  };
+}
+
+async function requestTarefaTargetSelectionForPharmacy(
+  row: QueueRow | undefined,
+  command: TaskCommand,
+  intro = '',
+): Promise<ReplyResult> {
+  if (!row || !whatsappConfirmationsReady()) {
+    return {
+      text: 'Essa tarefa e para quem? Mande de novo com o destino. Ex.: miauby tarefa para Thiago conferir pedido.',
+      engine: 'local',
+      reason: 'tarefa_target_selection_unavailable',
+    };
+  }
+  const choices = await listTarefaTargetChoices();
+  if (choices.length <= 1) {
+    return {
+      text: 'Nao achei usuarios ativos para receber tarefa. Confira o modulo Usuarios.',
+      engine: 'blocked',
+      reason: 'tarefa_target_selection_no_users',
+    };
+  }
+  await createPendingTaskTargetSelection(row, {
+    action: 'tarefa_create',
+    command: taskCommandPayload(command),
+    choices: choices.map(tarefaTargetPayloadFromChoice),
+  });
+  return {
+    text: tarefaTargetSelectionMessage(choices, intro),
+    engine: 'local',
+    reason: 'tarefa_target_selection_required',
+  };
 }
 
 async function promoteLeadingTarefaUser(command: TaskCommand, userContext: WhatsappUserContext): Promise<TaskCommand> {
@@ -6188,7 +6639,8 @@ async function createTarefaFromWhatsapp(command: TaskCommand, userContext: Whats
       reason: 'tarefa_unlinked_user',
     };
   }
-  const prepared = await promoteLeadingTarefaUser(command, userContext);
+  const pharmacyContext = isPharmacyUserContext(userContext);
+  const prepared = pharmacyContext ? command : await promoteLeadingTarefaUser(command, userContext);
   if (!prepared.title) {
     return {
       text: 'Faltou o titulo. Me mande assim: miauby tarefa conferir caixa.',
@@ -6208,7 +6660,7 @@ async function createTarefaFromWhatsapp(command: TaskCommand, userContext: Whats
   };
 
   if (prepared.scope === 'general') {
-    if (!isWhatsappTaskAdmin(userContext)) {
+    if (!isWhatsappTaskAdmin(userContext) && !pharmacyContext) {
       return {
         text: 'Voce nao pode criar tarefa geral pelo WhatsApp.',
         engine: 'blocked',
@@ -6228,7 +6680,7 @@ async function createTarefaFromWhatsapp(command: TaskCommand, userContext: Whats
   let assignedUserId = userContext.id;
   let assignedName = titleCaseShortName(userContext.display_name || userContext.username) || 'voce';
   if (prepared.scope === 'target') {
-    if (!isWhatsappTaskAdmin(userContext)) {
+    if (!isWhatsappTaskAdmin(userContext) && !pharmacyContext) {
       return {
         text: 'Voce nao pode passar tarefa para outro usuario. O gato fiscal barrou.',
         engine: 'blocked',
@@ -6241,6 +6693,12 @@ async function createTarefaFromWhatsapp(command: TaskCommand, userContext: Whats
     }
     assignedUserId = target.id;
     assignedName = titleCaseShortName(target.display_name || target.username) || target.username;
+  } else if (pharmacyContext) {
+    return {
+      text: 'Essa tarefa e para quem?',
+      engine: 'local',
+      reason: 'tarefa_pharmacy_target_required',
+    };
   }
 
   const response = await fetch(`${TAREFA_INTERNAL_BASE_URL}/api/internal/tasks/private`, {
@@ -6356,7 +6814,7 @@ function formatTarefaDetailReply(task: JsonRecord): string {
   return parts.join('\n');
 }
 
-async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
+async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext: WhatsappUserContext, row?: QueueRow, responsibleUser: CoreUserIdentity | null = null): Promise<ReplyResult> {
   if (!userContext.id || !userContext.linked) {
     return {
       text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de mexer em tarefas.',
@@ -6381,6 +6839,7 @@ async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext
         action: command.action,
         query: command.query,
         tasks: tarefaChoicePayload(tasks, userContext),
+        ...(responsibleUser ? { responsible_user: responsiblePayloadFromUser(responsibleUser) } : {}),
       });
     }
     const actionText = command.action === 'complete' ? 'concluir' : command.action === 'cancel' ? 'cancelar' : 'consultar';
@@ -6414,6 +6873,7 @@ async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext
         task_id: task.id,
         title: task.title,
         status: isComplete ? 'concluida' : 'cancelada',
+        ...(responsibleUser ? { responsible_user: responsiblePayloadFromUser(responsibleUser) } : {}),
       },
     },
   };
@@ -6421,8 +6881,9 @@ async function prepareTarefaStatusConfirmation(command: TaskCommand, userContext
 
 async function executeConfirmedTarefaStatus(pending: PendingConfirmationRow, userContext: WhatsappUserContext): Promise<string> {
   if (!TAREFA_INTERNAL_TOKEN) throw new Error('tarefa_internal_token_not_configured');
-  if (!userContext.id || !userContext.linked) throw new Error('tarefa_unlinked_user');
   const command = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const executionContext = userContextFromResponsiblePayload(command, userContext);
+  if (!executionContext.id || !executionContext.linked) throw new Error('tarefa_unlinked_user');
   const taskId = Number(command.task_id || command.id || 0);
   const status = pending.tool === 'concluir_tarefa_whatsapp' ? 'concluida' : 'cancelada';
   if (!Number.isInteger(taskId) || taskId <= 0) throw new Error('tarefa_confirmation_payload_invalid');
@@ -6430,7 +6891,7 @@ async function executeConfirmedTarefaStatus(pending: PendingConfirmationRow, use
     method: 'POST',
     headers: internalPhpJsonHeaders(TAREFA_INTERNAL_TOKEN),
     body: JSON.stringify({
-      actor_user_id: userContext.id,
+      actor_user_id: executionContext.id,
       task_id: taskId,
       status,
       source: 'miauby_whatsapp',
@@ -6610,6 +7071,17 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     if (isPharmacyUserContext(userContext) && !safeText(pixCnpjCreate.responsible_hint, 80)) {
       return requestResponsibleSelectionForPharmacy(row, 'pix_cnpj', pixCnpjCommandPayload(pixCnpjCreate));
     }
+    if (isPharmacyUserContext(userContext) && safeText(pixCnpjCreate.responsible_hint, 80)) {
+      const responsible = await resolveCoreUserByNameHint(pixCnpjCreate.responsible_hint);
+      if (!responsible) {
+        return requestResponsibleSelectionForPharmacy(
+          row,
+          'pix_cnpj',
+          pixCnpjCommandPayload(pixCnpjCreate),
+          'Nao achei esse usuario. Escolha da lista.',
+        );
+      }
+    }
     return createPixCnpjFromWhatsapp(pixCnpjCreate, traceId, senderMask, userContext);
   }
   const sangriaCreate = parseSangriaCommand(message);
@@ -6635,6 +7107,22 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
         confirmation_message: sangriaCreate.confirmation_message,
         confirmation_summary: sangriaCreate.confirmation_summary,
       });
+    }
+    if (isPharmacyUserContext(userContext) && safeText(sangriaCreate.responsible_hint, 80) && (sangriaCreate.ok || sangriaCreate.needs_confirmation)) {
+      const responsible = await resolveCoreUserByNameHint(sangriaCreate.responsible_hint);
+      if (!responsible) {
+        return requestResponsibleSelectionForPharmacy(
+          row,
+          'sangria',
+          {
+            ...sangriaConfirmationPayload(sangriaCreate),
+            needs_confirmation: sangriaCreate.needs_confirmation,
+            confirmation_message: sangriaCreate.confirmation_message,
+            confirmation_summary: sangriaCreate.confirmation_summary,
+          },
+          'Nao achei esse usuario. Escolha da lista.',
+        );
+      }
     }
     if (!sangriaCreate.ok) {
       if (sangriaCreate.needs_confirmation) {
@@ -6696,49 +7184,13 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
         reason: 'pedidos_cancel_missing_query',
       };
     }
-    const candidates = await fetchPedidosCancelCandidates(userContext, pedidoOperation.query, 12);
-    if (!candidates.length) {
-      return {
-        text: pedidoOperation.query
-          ? `Nao achei pedido aguardando chegada da ${pedidoOperation.query}.`
-          : 'Nao achei pedido aberto com esse nome.',
-        engine: 'local',
-        reason: 'pedidos_cancel_not_found',
-      };
+    if (isPharmacyUserContext(userContext)) {
+      return requestResponsibleSelectionForPharmacy(row, 'pedido_cancel', {
+        query: pedidoOperation.query,
+        raw: message,
+      });
     }
-    if (candidates.length > 1) {
-      if (row) {
-        await createPendingPedidoSelection(row, {
-          action: 'cancel',
-          query: pedidoOperation.query,
-          orders: candidates,
-        });
-      }
-      return {
-        text: pedidosCancelOptionsMessage(candidates),
-        engine: 'local',
-        reason: 'pedidos_cancel_ambiguous',
-      };
-    }
-    const [order] = candidates;
-    return {
-      text: pedidoCancelConfirmationText(order),
-      engine: 'local',
-      reason: 'pedidos_cancel_confirmation_required',
-      confirmation: {
-        tool: 'cancelar_pedido_whatsapp',
-        summary: `Cancelar pedido: ${order.supplier_name} - ${order.total_label || moneyForCommand(order.total_cents / 100)}?`,
-        risk: order.financial_linked === true ? 'alto' : 'medio',
-        command: {
-          order_id: order.id,
-          account_id: order.account_id,
-          supplier_name: order.supplier_name,
-          total_label: order.total_label,
-          total_cents: order.total_cents,
-          financial_linked: order.financial_linked === true,
-        },
-      },
-    };
+    return preparePedidoCancelFromWhatsapp(pedidoOperation.query, row, userContext);
   }
   const arrivalReply = parsePedidosArrivalReply(message);
   const pedidoCreate = parsePedidosCreateCommand(message);
@@ -6767,7 +7219,7 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
               needs_confirmation: true,
               confirmation_message: pedidoCreate.confirmation_message,
               confirmation_summary: pedidoCreate.confirmation_summary,
-            });
+            }, pedidoTailLooksLikeResponsibleHint(pedidoCreate.raw) ? 'Nao achei esse usuario. Escolha da lista.' : '');
           }
           return {
             text: pedidoCreate.confirmation_message || formatPedidosCreateError(pedidoCreate),
@@ -6812,13 +7264,20 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     if (isPharmacyUserContext(userContext)) {
       const responsible = await resolveResponsibleMentionAfterAmount(pedidoCreate.raw);
       if (!responsible) {
-        return requestResponsibleSelectionForPharmacy(row, 'pedido_create', pedidoConfirmationPayload(pedidoCreate));
+        return requestResponsibleSelectionForPharmacy(
+          row,
+          'pedido_create',
+          pedidoConfirmationPayload(pedidoCreate),
+          pedidoTailLooksLikeResponsibleHint(pedidoCreate.raw) ? 'Nao achei esse usuario. Escolha da lista.' : '',
+        );
       }
       return createPedidoFromWhatsapp(
         pedidoCreate,
         traceId,
         senderMask,
         userContextForResponsible(userContext, responsible),
+        undefined,
+        true,
       );
     }
     return createPedidoFromWhatsapp(pedidoCreate, traceId, senderMask, userContext);
@@ -6865,7 +7324,23 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       };
     }
     if (taskCommand.action === 'create') {
+      if (isPharmacyUserContext(userContext)) {
+        if (taskCommand.scope === 'self') {
+          return requestTarefaTargetSelectionForPharmacy(row, taskCommand);
+        }
+        if (taskCommand.scope === 'target') {
+          const target = await resolveTarefaUserHint(taskCommand.target_hint);
+          if (!target) {
+            return requestTarefaTargetSelectionForPharmacy(row, taskCommand, 'Nao achei esse usuario. Escolha da lista.');
+          }
+        }
+      }
       return createTarefaFromWhatsapp(taskCommand, userContext);
+    }
+    if (isPharmacyUserContext(userContext) && (taskCommand.action === 'complete' || taskCommand.action === 'cancel')) {
+      return requestResponsibleSelectionForPharmacy(row, 'tarefa_status', {
+        task_command: taskCommandPayload(taskCommand),
+      });
     }
     return prepareTarefaStatusConfirmation(taskCommand, userContext, row);
   }
@@ -12586,6 +13061,7 @@ async function createPedidoFromWhatsapp(
   senderMask: string,
   userContext: WhatsappUserContext,
   idempotencyKey = `whatsapp:${traceId}`,
+  includeResponsibleInReply = false,
 ): Promise<ReplyResult> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const actorName = safeText(userContext.display_name || userContext.username || senderMask, 120) || 'Miauby WhatsApp';
@@ -12611,8 +13087,12 @@ async function createPedidoFromWhatsapp(
   const data = await response.json().catch(() => ({}));
   if (!isRecord(data)) throw new Error(`pedidos_create_http_${response.status}`);
   if (response.ok && data.ok === true) {
+    const baseText = formatPedidosCreateSuccess(command, data.duplicate === true);
+    const responsibleName = includeResponsibleInReply
+      ? titleCaseShortName(actorName) || actorName
+      : '';
     return {
-      text: formatPedidosCreateSuccess(command, data.duplicate === true),
+      text: responsibleName ? `${baseText.replace(/\.$/, '')} - ${responsibleName}.` : baseText,
       engine: 'local',
       reason: data.duplicate === true ? 'pedidos_create_duplicate' : 'pedidos_create_created',
     };

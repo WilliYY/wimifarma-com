@@ -706,6 +706,11 @@ function isInternalTaskAdmin(user: InternalTaskActorRow | null | undefined): boo
   return isTaskAdminIdentity(user?.username, user?.role);
 }
 
+function isOfficialPharmacyWhatsappActor(user: InternalTaskActorRow | null | undefined, source: unknown): boolean {
+  return normalizeUsername(user?.role) === 'farmacia'
+    && normalizeUsername(source) === 'miauby_whatsapp';
+}
+
 function taskDisplayName(user: Partial<AssignableTaskUserRow | InternalTaskActorRow> | null | undefined): string {
   return cleanText(user?.display_name || user?.username || '', 120);
 }
@@ -1156,7 +1161,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
   if (actorUserId && !actor) {
     throw new Error('Usuario executor nao tem acesso ao modulo Tarefas.');
   }
-  if (actor && actorUserId !== assignedUserId && !isInternalTaskAdmin(actor)) {
+  if (actor && actorUserId !== assignedUserId && !isInternalTaskAdmin(actor) && !isOfficialPharmacyWhatsappActor(actor, req.body?.source)) {
     throw new Error('Somente ADM pode direcionar tarefa para outro usuario.');
   }
   const assignee = await taskAssigneeById(assignedUserId);
@@ -1193,6 +1198,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
       assigned_username: assignedUsername || null,
       assigned_display_name: assignedDisplayName || null,
       miauby_reminder_at: remindAt ? remindAt.toISOString() : null,
+      source: cleanText(req.body?.source || '', 80) || null,
     });
     return task;
   } catch (error) {
@@ -1214,7 +1220,7 @@ async function createPublicTaskFromInternal(req: Request): Promise<TaskRow> {
   if (actorUserId && !actor) {
     throw new Error('Usuario executor nao tem acesso ao modulo Tarefas.');
   }
-  if (actor && !isInternalTaskAdmin(actor)) {
+  if (actor && !isInternalTaskAdmin(actor) && !isOfficialPharmacyWhatsappActor(actor, req.body?.source)) {
     throw new Error('Somente ADM pode criar tarefa geral pelo Miauby.');
   }
 
@@ -1231,7 +1237,7 @@ async function createPublicTaskFromInternal(req: Request): Promise<TaskRow> {
     await auditPg(client, Number(task.id), actorUserId, 'tarefa_criada_miauby', `Tarefa criada pelo Miauby: ${title}`);
     await client.query('COMMIT');
     void logCoreAudit(actorUserId, 'tarefa_criada_miauby', 'task', String(task.id), `Tarefa criada pelo Miauby por ${actorUsername}.`, {
-      source: 'miauby_internal_tool',
+      source: cleanText(req.body?.source || '', 80) || 'miauby_internal_tool',
     });
     return task;
   } catch (error) {
