@@ -270,8 +270,8 @@ Fluxo:
 2. Miauby WhatsApp confere se a rotina `financeiro_fechamento_caixa_18h` esta ativa no painel.
 3. O bridge consulta `GET /financeiro/api/internal/cash-closing-status` no app Financeiro.
 4. O Financeiro devolve o status do dia consultado, `open_days_lookback_days=10` e `open_days`/`open_days_count` com uma lista resumida de dias em `aberto` ou `conferencia` somente entre 10 dias atras e a data consultada; se o dia consultado nao tiver registro, ele aparece como aberto implicito.
-5. Se nao houver dia em aberto e o status do dia for `fechado`, `divergente` ou `sem_movimento`, nada e enviado.
-6. Se existir caixa aberto/em conferencia/sem registro dentro dessa janela, Miauby envia uma frase curta com variacao para contatos reais autorizados com card `Financeiro`, incluindo uma linha como `Caixa em aberto nos ultimos 10 dias para finalizar: 01/06/2026 (Aberto).`
+5. Se nao houver dia em aberto e o status do dia for `fechado`, `divergente` ou `sem_movimento`, `notify=problems` nao envia mensagem; `notify=always` envia uma confirmacao curta de tudo certo.
+6. Se existir caixa aberto/em conferencia/sem registro dentro dessa janela, Miauby envia um bloco curto formatado para contatos reais autorizados com card `Financeiro`: destaca o caixa do dia consultado primeiro, lista um caixa por linha nos ultimos 10 dias e fecha com a acao `Abra o modulo Financeiro e finalize o fechamento do caixa.`. Se todos os caixas estiverem finalizados e a chamada vier com `notify=always`, envia apenas uma confirmacao curta de tudo certo; com `notify=problems`, continua silencioso.
 
 Controle operacional:
 

@@ -9966,54 +9966,71 @@ function brDateOnlyFromStatusDate(value: string): string {
   return formatted === 'sem previsao' ? 'hoje' : formatted;
 }
 
-function reminderVariantIndex(date: string): number {
-  const hash = sha256(`financeiro-cash-closing:${date}`);
-  return Number.parseInt(hash.slice(0, 8), 16);
+function financeiroCashStatusLabel(statusValue: string, fallback = 'Aberto'): string {
+  const status = safeText(statusValue, 80);
+  const normalized = normalizeIntentText(status);
+  if (normalized === 'aberto') return 'Aberto';
+  if (normalized === 'conferencia' || normalized === 'em conferencia') return 'Em conferência';
+  if (normalized === 'fechado') return 'Fechado';
+  if (normalized === 'divergente') return 'Divergente';
+  if (normalized === 'sem movimento' || normalized === 'sem_movimento') return 'Sem movimento';
+  return status || fallback;
 }
 
-function financeiroOpenCashDaysLine(status: FinanceiroCashClosingStatus): string {
+function financeiroOpenCashDaysBlock(status: FinanceiroCashClosingStatus): string {
   const days = status.open_days.filter((day) => day.date).slice(0, 10);
   const rawCount = Number(status.open_days_count || 0);
   const count = Number.isFinite(rawCount) ? rawCount : days.length;
   const lookbackDays = Number.isFinite(status.open_days_lookback_days) && status.open_days_lookback_days > 0
     ? status.open_days_lookback_days
     : 10;
-  const windowLabel = `nos ultimos ${lookbackDays} dias`;
-  if (count <= 0) return `Caixa em aberto ${windowLabel}: nenhum dia pendente para finalizar.`;
+  const windowLabel = `nos últimos ${lookbackDays} dias`;
+  if (count <= 0) return '';
   if (!days.length) {
-    return `Caixa em aberto ${windowLabel} para finalizar: ${count === 1 ? '1 dia' : `${count} dias`}, mas o Financeiro nao devolveu as datas agora.`;
+    const label = count === 1 ? '1 dia pendente' : `${count} dias pendentes`;
+    return `Caixas abertos ${windowLabel}:\n• ${label}; o Financeiro não devolveu as datas agora.`;
   }
-  const labels = days.map((day) => `${brDateOnlyFromStatusDate(day.date)} (${day.status_label || day.status || 'Aberto'})`);
+  const lines = days.map((day) => {
+    const dateLabel = brDateOnlyFromStatusDate(day.date);
+    const statusLabel = financeiroCashStatusLabel(day.status || day.status_label, 'Aberto');
+    const marker = day.date === status.date ? `*${dateLabel}*` : `_${dateLabel}_`;
+    return `• ${marker} — ${statusLabel}`;
+  });
   const extraCount = count - days.length;
-  const extra = extraCount > 0 ? ` + ${extraCount === 1 ? '1 outro' : `${extraCount} outros`}` : '';
-  const prefix = count === 1 ? `Caixa em aberto ${windowLabel} para finalizar` : `Caixas em aberto ${windowLabel} para finalizar`;
-  return `${prefix}: ${labels.join(', ')}${extra}.`;
+  if (extraCount > 0) lines.push(`• + ${extraCount === 1 ? '1 outro dia pendente' : `${extraCount} outros dias pendentes`}`);
+  return `Caixas abertos ${windowLabel}:\n${lines.join('\n')}`;
 }
 
 function financeiroCashClosingReminderMessage(status: FinanceiroCashClosingStatus): string {
   const dateLabel = brDateOnlyFromStatusDate(status.date);
   const selectedDayOpen = !status.closed;
-  const variants = selectedDayOpen
-    ? [
-      `Miauby ta na hora de fechar o caixa de ${dateLabel}!`,
-      `Miauby passando no Financeiro: fecha o caixa de ${dateLabel} antes de encerrar o dia.`,
-      `Miauby lembrou do caixa: ${dateLabel} ainda esta aberto, bora fechar.`,
-      `Miauby de olho: 18h chegou e o caixa de ${dateLabel} ainda precisa ser fechado.`,
-      `Miauby no alarme do caixa: confere e fecha o dia ${dateLabel}.`,
-    ]
-    : [
-      'Miauby viu caixa em aberto no Financeiro.',
-      'Miauby na ronda: tem caixa pendente para finalizar.',
-      'Miauby conferiu o Financeiro e achou caixa antigo aberto.',
-      'Miauby de olho: ainda existe dia de caixa para finalizar.',
-      'Miauby no alarme do caixa: tem pendencia aberta no Financeiro.',
-    ];
-  const selected = variants[reminderVariantIndex(status.date) % variants.length];
-  const openLine = financeiroOpenCashDaysLine(status);
-  const statusLine = selectedDayOpen
-    ? `Status da consulta (${dateLabel}): ${status.status_label || status.status || 'Aberto'}.`
-    : `Status de ${dateLabel}: ${status.status_label || status.status || 'Fechado'}.`;
-  return `${selected}\n${openLine}\n${statusLine}\nAbra o modulo Financeiro e finalize o fechamento do caixa.`;
+  const statusLabel = financeiroCashStatusLabel(status.status || status.status_label, selectedDayOpen ? 'Aberto' : 'Fechado');
+  const openBlock = financeiroOpenCashDaysBlock(status);
+  if (!selectedDayOpen && !openBlock) {
+    return [
+      'Miauby de olho 😼',
+      `Tudo certo no Financeiro: caixa de ${dateLabel} está ${statusLabel.toLowerCase()}.`,
+    ].join('\n');
+  }
+  const title = selectedDayOpen
+    ? 'O caixa de HOJE ainda precisa ser fechado:'
+    : 'Existem caixas antigos pendentes no Financeiro:';
+  const todayBlock = selectedDayOpen
+    ? [`*HOJE — ${dateLabel}*`, `Status: *${statusLabel}*`].join('\n')
+    : `Caixa de hoje: *${dateLabel}* — ${statusLabel}`;
+  const lines = [
+    'Miauby de olho 😼',
+    title,
+    '',
+    todayBlock,
+    '',
+  ];
+  if (openBlock) lines.push(openBlock, '');
+  lines.push(
+    'Ação:',
+    'Abra o módulo Financeiro e finalize o fechamento do caixa.',
+  );
+  return lines.join('\n');
 }
 
 async function fetchFinanceiroCashClosingStatus(date?: string): Promise<FinanceiroCashClosingStatus> {
@@ -10110,22 +10127,47 @@ async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryR
   const message = financeiroCashClosingReminderMessage(status);
   const fingerprint = automationFingerprint(source, message);
   if (!status.should_notify) {
-    await recordAutomationRun(source, {
-      moduleKey: 'financeiro',
-      status: 'skipped',
-      severity: 'info',
-      notifyMode: mode,
-      dryRun,
-      messageFingerprint: fingerprint,
-      messagePreview: message,
-      details: { reason: 'cash_already_closed', status },
-    });
+    if (dryRun) {
+      const recipients = await automationRecipients('financeiro');
+      await recordAutomationRun(source, {
+        moduleKey: 'financeiro',
+        status: 'skipped',
+        severity: 'info',
+        notifyMode: mode,
+        hasProblems: false,
+        dryRun: true,
+        recipients: recipients.length,
+        messageFingerprint: fingerprint,
+        messagePreview: message,
+        details: { reason: 'cash_already_closed', status },
+      });
+      return {
+        ok: true,
+        dry_run: true,
+        skipped: true,
+        reason: 'cash_already_closed',
+        enabled,
+        status,
+        recipients: recipients.length,
+        preview: message,
+      };
+    }
+    const notification = await sendAutomationNotification(
+      source,
+      'info',
+      message,
+      mode,
+      false,
+      'financeiro',
+    );
     return {
-      ok: true,
-      skipped: true,
+      ok: notification.failed === 0,
+      skipped: notification.skipped,
       reason: 'cash_already_closed',
       enabled,
       status,
+      notify: mode,
+      notification,
       preview: message,
     };
   }
@@ -11025,7 +11067,10 @@ function financeiroCashClosingPanelText(status: FinanceiroCashClosingStatus | nu
     return 'Status agora: sem leitura ao vivo do Financeiro nesta abertura do painel. No disparo, o backend consulta o endpoint interno antes de enviar.';
   }
   const dateLabel = brDateOnlyFromStatusDate(status.date);
-  return `${financeiroOpenCashDaysLine(status)} Status da consulta (${dateLabel}): ${status.status_label || status.status || 'Aberto'}.`;
+  const openSummary = financeiroOpenCashDaysBlock(status).replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (openSummary) return `Status agora: ${openSummary}`;
+  const statusLabel = financeiroCashStatusLabel(status.status || status.status_label, 'Fechado').toLowerCase();
+  return `Status agora: caixa de ${dateLabel} esta ${statusLabel}.`;
 }
 
 function recordField(value: unknown): JsonRecord {
