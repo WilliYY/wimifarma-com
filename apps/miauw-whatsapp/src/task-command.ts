@@ -1,4 +1,4 @@
-export type TaskCommandAction = 'list' | 'create' | 'complete' | 'cancel';
+export type TaskCommandAction = 'list' | 'show' | 'create' | 'complete' | 'cancel';
 
 export type TaskCommand = {
   action: TaskCommandAction;
@@ -30,6 +30,9 @@ export function parseTaskCommand(message: string): TaskCommand | null {
   const clean = normalizeIntentText(raw);
   if (!clean) return null;
 
+  if (looksLikeShow(clean)) {
+    return { ...baseCommand('show', raw), query: cleanTaskQuery(raw, 'show') };
+  }
   if (looksLikeList(clean)) {
     return baseCommand('list', raw);
   }
@@ -63,8 +66,14 @@ function baseCommand(action: TaskCommandAction, raw: string): TaskCommand {
 
 function looksLikeList(clean: string): boolean {
   return /^(tarefa|tarefas|minhas tarefas)$/.test(clean)
-    || /^(ver|veja|mostrar|mostra|listar|lista|consulta|consultar)\s+(minhas\s+)?(tarefa|tarefas|pendencia|pendencias)\b/.test(clean)
+    || /^(ver|veja|mostrar|mostra|listar|lista|consulta|consultar)\s+(minhas\s+)?(tarefas|pendencias)\b/.test(clean)
+    || /^(ver|veja|mostrar|mostra|listar|lista|consulta|consultar)\s+(minhas\s+)?(tarefa|pendencia)\s*$/.test(clean)
     || /\b(o que tem de tarefa|o que preciso fazer|lista minhas tarefas|tarefa pendente|tarefas pendentes)\b/.test(clean);
+}
+
+function looksLikeShow(clean: string): boolean {
+  return /^(ver|veja|mostrar|mostra|consulta|consultar|detalha|detalhar)\s+(a\s+)?(tarefa|pendencia)\s+.{3,}$/.test(clean)
+    || /^(qual|como esta|status da|status de)\s+(a\s+)?(tarefa|pendencia)\s+.{3,}$/.test(clean);
 }
 
 function looksLikeCancel(clean: string): boolean {
@@ -126,16 +135,20 @@ function parseCreate(raw: string): TaskCommand {
   return command;
 }
 
-function cleanTaskQuery(raw: string, action: 'complete' | 'cancel'): string {
+function cleanTaskQuery(raw: string, action: 'complete' | 'cancel' | 'show'): string {
   let text = raw;
   if (action === 'cancel') {
     text = text
       .replace(/\b(cancelar|cancela|excluir|apagar|remover)\s+(a\s+)?(tarefa|pendencia)\b/gi, ' ')
       .replace(/\bnao\s+preciso\s+mais\s+(da\s+)?(tarefa|pendencia)\b/gi, ' ');
-  } else {
+  } else if (action === 'complete') {
     text = text
       .replace(/\b(terminei|conclui|finalizar|finaliza|marcar\s+como\s+feito|pode\s+marcar\s+como\s+feito|ja\s+fiz|fiz)\s+(a\s+)?(tarefa|pendencia)?\b/gi, ' ')
       .replace(/\b(tarefa|pendencia)\s+(concluida|feita|pronta)\b/gi, ' ');
+  } else {
+    text = text
+      .replace(/\b(ver|veja|mostrar|mostra|consulta|consultar|detalha|detalhar|qual|status\s+da|status\s+de|como\s+esta)\s+(a\s+)?(tarefa|pendencia)\b/gi, ' ')
+      .replace(/\b(tarefa|pendencia)\b/gi, ' ');
   }
   return cleanPart(text.replace(/\b(aquela|do|da|dos|das|de|o|a)\b/gi, ' '), 160);
 }

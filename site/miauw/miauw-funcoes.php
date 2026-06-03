@@ -2386,6 +2386,20 @@ function miauw_agent_text_command_catalog(): array
             'keywords' => array('tarefa', 'tarefas', 'minhas tarefas', 'pendente'),
         ),
         array(
+            'intent' => 'consultar_tarefa',
+            'module' => 'tarefa',
+            'tool' => 'consultar_tarefa',
+            'risk' => 'baixo',
+            'required_fields' => array('responsavel_identificado', 'texto_da_tarefa'),
+            'optional_fields' => array('task_id'),
+            'internal_examples' => array('consultar tarefa conferir pedido', 'mostrar tarefa da Nissei', 'status da tarefa encomenda'),
+            'whatsapp_examples' => array('miauby consultar tarefa conferir pedido', 'miauby mostrar tarefa da Nissei', 'miauby status da tarefa encomenda'),
+            'missing_data_replies' => array('Qual tarefa voce quer consultar?'),
+            'response_examples' => array('Achei mais de uma tarefa parecida. Qual deseja consultar?', 'Tarefa: Conferir pedido da Nissei'),
+            'rules' => array('consultar apenas tarefas abertas visiveis para o usuario', 'se houver mais de uma tarefa parecida, listar por grupo e pedir numero ou texto', 'consulta nao altera status nem pede confirmacao de gravacao'),
+            'keywords' => array('consultar tarefa', 'mostrar tarefa', 'status tarefa'),
+        ),
+        array(
             'intent' => 'criar_tarefa',
             'module' => 'tarefa',
             'tool' => 'criar_tarefa',
@@ -2409,8 +2423,8 @@ function miauw_agent_text_command_catalog(): array
             'internal_examples' => array('terminei a tarefa conferir caixa', 'conclui conferir pedidos', 'ja fiz a tarefa dos distribuidores'),
             'whatsapp_examples' => array('miauby terminei a tarefa conferir caixa', 'miauby ja fiz a tarefa dos distribuidores'),
             'missing_data_replies' => array('Qual tarefa voce concluiu?'),
-            'response_examples' => array('Achei mais de uma. Qual delas? 1. Trocar todos os distribuidores', 'Confirma concluir: "Trocar todos os distribuidores"?', 'Tarefa concluida: Trocar todos os distribuidores.'),
-            'rules' => array('procurar apenas tarefas abertas visiveis para o usuario', 'mais de uma tarefa parecida pede escolha curta por numero, ordinal ou trecho do titulo', 'uma tarefa clara pede confirmacao antes de concluir'),
+            'response_examples' => array('Achei mais de uma tarefa parecida. Qual deseja concluir?', 'Confirma concluir: "Trocar todos os distribuidores"?', 'Tarefa concluida: Trocar todos os distribuidores 😼'),
+            'rules' => array('procurar apenas tarefas abertas visiveis para o usuario', 'mais de uma tarefa parecida lista grupos e pede escolha por numero, ordinal, grupo ou trecho do titulo', 'aceitar respostas como 1, a segunda, a geral, adm 1, minha 2, a da Nissei', 'uma tarefa clara pede confirmacao antes de concluir'),
             'keywords' => array('concluir', 'terminei', 'feito', 'finalizar tarefa'),
         ),
         array(
@@ -2423,8 +2437,8 @@ function miauw_agent_text_command_catalog(): array
             'internal_examples' => array('cancelar tarefa conferir caixa', 'nao preciso mais da tarefa organizar balcao'),
             'whatsapp_examples' => array('miauby cancelar tarefa conferir caixa', 'miauby nao preciso mais da tarefa organizar balcao'),
             'missing_data_replies' => array('Qual tarefa voce quer cancelar?'),
-            'response_examples' => array('Confirma cancelar: "Conferir caixa"?', 'Tarefa cancelada: Conferir caixa.'),
-            'rules' => array('usuario comum nao cancela tarefa criada pelo ADM para ele', 'ADM/admin pode cancelar conforme regra do app Tarefa', 'mais de uma tarefa parecida pede escolha curta antes de confirmar', 'uma tarefa clara pede confirmacao antes de cancelar'),
+            'response_examples' => array('Achei mais de uma tarefa parecida. Qual deseja cancelar?', 'Confirma cancelar: "Conferir caixa"?', 'Tarefa cancelada: Conferir caixa.'),
+            'rules' => array('usuario comum nao cancela tarefa criada pelo ADM para ele', 'ADM/admin pode cancelar conforme regra do app Tarefa', 'mais de uma tarefa parecida lista grupos e pede escolha antes de confirmar', 'aceitar cancela como confirmacao quando a pergunta for Confirma cancelar; aceitar nao cancela/cancela comando como desistir', 'uma tarefa clara pede confirmacao antes de cancelar'),
             'keywords' => array('cancelar tarefa', 'excluir tarefa', 'nao preciso mais'),
         ),
         array(
@@ -4090,6 +4104,15 @@ function miauw_try_confirmation_reply(string $message, int $userId): ?array
     $wantsCancel = preg_match('/\b(cancela|cancelar|nao|n|deixa|esquece)\b/u', $normalized) === 1;
     $wantsConfirm = preg_match('/\b(confirmar|confirmo|confirma|sim|s|pode|ok|feito)\b/u', $normalized) === 1
         || ($id !== '' && strpos($normalized, $id) !== false);
+    if ((string) ($pending['tool'] ?? '') === 'cancelar_tarefa') {
+        if (preg_match('/^(nao|n|deixa|volta|esquece|errado|cancela comando|cancelar comando|nao cancela|nao cancelar)(\s|$)/u', $normalized)) {
+            $wantsCancel = true;
+            $wantsConfirm = false;
+        } elseif (preg_match('/^(sim|s|confirmar|confirmo|confirma|isso|isso mesmo|pode cancelar|pode|cancela|cancelar|ok)(\s|$)/u', $normalized)) {
+            $wantsCancel = false;
+            $wantsConfirm = true;
+        }
+    }
 
     if (!$wantsCancel && !$wantsConfirm) {
         $tool = (string) ($pending['tool'] ?? '');
@@ -6307,6 +6330,13 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     if ($traceId !== null || $conversationId !== null) {
         $trace = miauw_trace_context();
         miauw_trace_set_context($traceId ?: (string) ($trace['trace_id'] ?? ''), $conversationId, $userId, isset($trace['mensagem_id']) ? (int) $trace['mensagem_id'] : null);
+    }
+
+    if (function_exists('miauw_skill_tarefa_try_selection_reply')) {
+        $taskSelectionReply = miauw_skill_tarefa_try_selection_reply($message, $userId, 'miauby_interno');
+        if ($taskSelectionReply !== null) {
+            return $taskSelectionReply;
+        }
     }
 
     $confirmationReply = miauw_try_confirmation_reply($message, $userId);

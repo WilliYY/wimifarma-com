@@ -1310,15 +1310,22 @@ function miauw_skill_tarefa_compact_title(string $text): string
 function miauw_skill_tarefa_query_from_message(string $message, string $action): string
 {
     $text = miauw_skill_tarefa_strip_miauby_prefix($message);
-    $patterns = $action === 'cancel'
-        ? array(
+    if ($action === 'cancel') {
+        $patterns = array(
             '/\b(?:cancelar|cancela|excluir|apagar|remover)\s+(?:a\s+)?(?:tarefa|pendencia)\b/iu',
             '/\bnao\s+preciso\s+mais\s+(?:da\s+)?(?:tarefa|pendencia)\b/iu',
-        )
-        : array(
+        );
+    } elseif ($action === 'complete') {
+        $patterns = array(
             '/\b(?:terminei|conclui|conclui|finalizar|finaliza|marcar\s+como\s+feito|pode\s+marcar\s+como\s+feito|ja\s+fiz|fiz)\s+(?:a\s+)?(?:tarefa|pendencia)?\b/iu',
             '/\b(?:tarefa|pendencia)\s+(?:concluida|feita|pronta)\b/iu',
         );
+    } else {
+        $patterns = array(
+            '/\b(?:ver|veja|mostrar|mostra|consulta|consultar|detalha|detalhar|qual|status\s+da|status\s+de|como\s+esta)\s+(?:a\s+)?(?:tarefa|pendencia)\b/iu',
+            '/\b(?:tarefa|pendencia)\b/iu',
+        );
+    }
     foreach ($patterns as $pattern) {
         $text = preg_replace($pattern, ' ', $text) ?? $text;
     }
@@ -1433,8 +1440,14 @@ function miauw_skill_tarefa_command_kind(string $message): ?array
     $text = miauw_skill_tarefa_strip_miauby_prefix($raw);
     $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($text) : strtolower($text);
 
+    if (preg_match('/^(?:ver|veja|mostrar|mostra|consulta|consultar|detalha|detalhar)\s+(?:a\s+)?(?:tarefa|pendencia)\s+.{3,}$/u', $normalized)
+        || preg_match('/^(?:qual|como esta|status da|status de)\s+(?:a\s+)?(?:tarefa|pendencia)\s+.{3,}$/u', $normalized)) {
+        return array('acao' => 'show', 'query' => miauw_skill_tarefa_query_from_message($raw, 'show'), 'raw_message' => $raw);
+    }
+
     if (preg_match('/^(?:tarefa|tarefas|minhas tarefas)$/u', $normalized)
-        || preg_match('/^(?:ver|veja|mostrar|mostra|listar|lista|consulta|consultar)\s+(?:minhas\s+)?(?:tarefa|tarefas|pendencia|pendencias)\b/u', $normalized)
+        || preg_match('/^(?:ver|veja|mostrar|mostra|listar|lista|consulta|consultar)\s+(?:minhas\s+)?(?:tarefas|pendencias)\b/u', $normalized)
+        || preg_match('/^(?:ver|veja|mostrar|mostra|listar|lista|consulta|consultar)\s+(?:minhas\s+)?(?:tarefa|pendencia)\s*$/u', $normalized)
         || preg_match('/\b(?:o que tem de tarefa|o que preciso fazer|lista minhas tarefas|tarefa pendente|tarefas pendentes)\b/u', $normalized)) {
         return array('acao' => 'list', 'raw_message' => $raw);
     }
@@ -1585,10 +1598,52 @@ function miauw_skill_tarefa_fetch_visible(array $actor, string $query = '', bool
     return is_array($response['tasks'] ?? null) ? $response['tasks'] : array();
 }
 
-function miauw_skill_tarefa_format_list(array $tasks): string
+function miauw_skill_tarefa_format_list(array $tasks, array $actor = array()): string
 {
     if (!$tasks) {
         return 'Nenhuma tarefa aberta para voce. Milagre operacional detectado.';
+    }
+
+    if (miauw_skill_tarefa_actor_is_admin($actor)) {
+        $actorId = (int) ($actor['user_id'] ?? 0);
+        $groups = array(
+            'created_by' => array('title' => '*Tarefas que voce criou*', 'items' => array()),
+            'general' => array('title' => '*Tarefas gerais*', 'items' => array()),
+            'by_user' => array('title' => '*Tarefas por usuario*', 'items' => array()),
+        );
+        foreach ($tasks as $task) {
+            if (!is_array($task)) {
+                continue;
+            }
+            $scope = (string) ($task['scope'] ?? 'general');
+            $createdBy = (int) ($task['created_by'] ?? 0);
+            if ($scope === 'general') {
+                $groups['general']['items'][] = $task;
+            } elseif ($actorId > 0 && $createdBy === $actorId) {
+                $groups['created_by']['items'][] = $task;
+            } else {
+                $groups['by_user']['items'][] = $task;
+            }
+        }
+        $lines = array();
+        foreach ($groups as $key => $group) {
+            $items = $group['items'];
+            if (!$items) {
+                continue;
+            }
+            $lines[] = (string) $group['title'];
+            $index = 1;
+            foreach (array_slice($items, 0, 8) as $task) {
+                $owner = $key !== 'general' && trim((string) ($task['assigned_username'] ?? '')) !== ''
+                    ? ucfirst((string) $task['assigned_username']) . ' - '
+                    : '';
+                $lines[] = $index . '. ' . $owner . (string) ($task['title'] ?? '-');
+                $index++;
+            }
+            $lines[] = '';
+        }
+
+        return trim(implode("\n", $lines));
     }
 
     $groups = array(
@@ -1649,17 +1704,295 @@ function miauw_skill_tarefa_find_single_for_status(array $actor, string $query):
     return array('status' => 'ok', 'task' => $tasks[0], 'tasks' => $tasks);
 }
 
-function miauw_skill_tarefa_status_options_text(array $tasks): string
+function miauw_skill_tarefa_choice_groups(array $tasks, array $actor): array
 {
-    $lines = array();
-    foreach (array_slice($tasks, 0, 5) as $index => $task) {
-        if (!is_array($task)) {
-            continue;
-        }
-        $lines[] = ((int) $index + 1) . '. ' . (string) ($task['title'] ?? '-');
+    if (miauw_skill_tarefa_actor_is_admin($actor)) {
+        $actorId = (int) ($actor['user_id'] ?? 0);
+        return array(
+            array('key' => 'created_by', 'title' => '*Tarefas que voce criou*', 'items' => array_values(array_filter($tasks, static function ($task) use ($actorId): bool {
+                return is_array($task) && (string) ($task['scope'] ?? '') !== 'general' && (int) ($task['created_by'] ?? 0) === $actorId;
+            }))),
+            array('key' => 'general', 'title' => '*Tarefas gerais*', 'items' => array_values(array_filter($tasks, static function ($task): bool {
+                return is_array($task) && (string) ($task['scope'] ?? '') === 'general';
+            }))),
+            array('key' => 'by_user', 'title' => '*Tarefas por usuario*', 'items' => array_values(array_filter($tasks, static function ($task) use ($actorId): bool {
+                return is_array($task) && (string) ($task['scope'] ?? '') !== 'general' && (int) ($task['created_by'] ?? 0) !== $actorId;
+            }))),
+        );
     }
 
-    return $lines ? "\n" . implode("\n", $lines) : '';
+    return array(
+        array('key' => 'admin_to_user', 'title' => '*Tarefas do ADM para voce*', 'items' => array_values(array_filter($tasks, static function ($task): bool {
+            return is_array($task) && (string) ($task['scope'] ?? '') === 'admin_to_user';
+        }))),
+        array('key' => 'mine', 'title' => '*Minhas tarefas*', 'items' => array_values(array_filter($tasks, static function ($task): bool {
+            return is_array($task) && (string) ($task['scope'] ?? '') === 'mine';
+        }))),
+        array('key' => 'general', 'title' => '*Tarefas gerais*', 'items' => array_values(array_filter($tasks, static function ($task): bool {
+            return is_array($task) && (string) ($task['scope'] ?? '') === 'general';
+        }))),
+    );
+}
+
+function miauw_skill_tarefa_choice_payload(array $tasks, array $actor, int $limit = 10): array
+{
+    $options = array();
+    foreach (miauw_skill_tarefa_choice_groups($tasks, $actor) as $group) {
+        foreach ((array) ($group['items'] ?? array()) as $task) {
+            if (!is_array($task) || count($options) >= $limit) {
+                continue;
+            }
+            $task['group_key'] = (string) ($group['key'] ?? '');
+            $task['group_label'] = str_replace('*', '', (string) ($group['title'] ?? ''));
+            $task['choice_number'] = count($options) + 1;
+            $options[] = $task;
+        }
+    }
+
+    return $options;
+}
+
+function miauw_skill_tarefa_ambiguous_options_text(array $tasks, array $actor): string
+{
+    $options = miauw_skill_tarefa_choice_payload($tasks, $actor);
+    $lines = array();
+    foreach (miauw_skill_tarefa_choice_groups($options, $actor) as $group) {
+        $items = (array) ($group['items'] ?? array());
+        if (!$items) {
+            continue;
+        }
+        $lines[] = '';
+        $lines[] = (string) ($group['title'] ?? '');
+        foreach ($items as $task) {
+            if (!is_array($task)) {
+                continue;
+            }
+            $prefix = '';
+            if (miauw_skill_tarefa_actor_is_admin($actor) && (string) ($task['group_key'] ?? '') !== 'general' && trim((string) ($task['assigned_username'] ?? '')) !== '') {
+                $prefix = ucfirst((string) $task['assigned_username']) . ' - ';
+            }
+            $lines[] = (int) ($task['choice_number'] ?? 0) . '. ' . $prefix . (string) ($task['title'] ?? '-');
+        }
+    }
+    if ($options) {
+        $lines[] = '';
+        $lines[] = 'Responda com o numero ou escreva o nome da tarefa.';
+    }
+
+    return implode("\n", $lines);
+}
+
+function miauw_skill_tarefa_status_options_text(array $tasks, array $actor = array()): string
+{
+    return miauw_skill_tarefa_ambiguous_options_text($tasks, $actor);
+}
+
+function miauw_skill_tarefa_detail_reply(array $task): string
+{
+    $lines = array('Tarefa: ' . (string) ($task['title'] ?? 'tarefa'));
+    if (trim((string) ($task['assigned_username'] ?? '')) !== '') {
+        $lines[] = 'Responsavel: ' . ucfirst((string) $task['assigned_username']);
+    }
+    if (trim((string) ($task['group_label'] ?? '')) !== '') {
+        $lines[] = 'Grupo: ' . (string) ($task['group_label'] ?? '');
+    }
+    $lines[] = 'Prioridade: ' . miauw_skill_tarefa_priority_label((string) ($task['priority'] ?? 'normal'));
+    if (trim((string) ($task['description'] ?? '')) !== '') {
+        $lines[] = 'Obs: ' . miauw_substr(trim((string) $task['description']), 0, 220);
+    }
+
+    return implode("\n", $lines);
+}
+
+function miauw_skill_tarefa_text_score(string $query, string $text): int
+{
+    $query = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($query) : strtolower($query);
+    $text = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($text) : strtolower($text);
+    if ($query === '' || $text === '') {
+        return 0;
+    }
+    if ($query === $text) {
+        return 100;
+    }
+    if (str_contains($text, $query)) {
+        return 80;
+    }
+    $words = array_values(array_filter(preg_split('/\s+/', $query) ?: array(), static function ($word): bool {
+        return strlen((string) $word) >= 3;
+    }));
+    if (!$words) {
+        return 0;
+    }
+    $matched = 0;
+    foreach ($words as $word) {
+        if (str_contains($text, (string) $word)) {
+            $matched++;
+        }
+    }
+
+    return $matched > 0 ? (int) round(($matched / count($words)) * 60) : 0;
+}
+
+function miauw_skill_tarefa_choice_group_aliases(string $clean): array
+{
+    $aliases = array();
+    if (preg_match('/\b(adm|admin|administrador)\b/u', $clean)) {
+        $aliases = array_merge($aliases, array('admin_to_user', 'created_by'));
+    }
+    if (preg_match('/\b(minha|minhas|meu|meus)\b/u', $clean)) {
+        $aliases[] = 'mine';
+    }
+    if (preg_match('/\b(geral|gerais|publica|publico|equipe)\b/u', $clean)) {
+        $aliases[] = 'general';
+    }
+    if (preg_match('/\b(usuario|usuarios|funcionario|funcionarios)\b/u', $clean)) {
+        $aliases = array_merge($aliases, array('by_user', 'assigned_other'));
+    }
+
+    return array_values(array_unique($aliases));
+}
+
+function miauw_skill_tarefa_parse_choice(string $message, array $options): ?array
+{
+    $clean = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
+    if (preg_match('/^\d+$/', $clean)) {
+        $index = (int) $clean - 1;
+        return is_array($options[$index] ?? null) ? $options[$index] : null;
+    }
+    if (preg_match('/^(adm|admin|minha|minhas|meu|meus|geral|gerais|usuario|usuarios|funcionario|funcionarios)\s+(\d+)$/u', $clean, $match)) {
+        $aliases = miauw_skill_tarefa_choice_group_aliases((string) $match[1]);
+        $groupOptions = array_values(array_filter($options, static function ($option) use ($aliases): bool {
+            return is_array($option) && in_array((string) ($option['group_key'] ?? ''), $aliases, true);
+        }));
+        $index = (int) $match[2] - 1;
+        return is_array($groupOptions[$index] ?? null) ? $groupOptions[$index] : null;
+    }
+    $aliases = miauw_skill_tarefa_choice_group_aliases($clean);
+    if ($aliases && preg_match('/^(a\s+)?(tarefa\s+)?(adm|admin|minha|minhas|meu|meus|geral|gerais|publica|publico|equipe)$/u', $clean)) {
+        $groupOptions = array_values(array_filter($options, static function ($option) use ($aliases): bool {
+            return is_array($option) && in_array((string) ($option['group_key'] ?? ''), $aliases, true);
+        }));
+        return count($groupOptions) === 1 && is_array($groupOptions[0]) ? $groupOptions[0] : null;
+    }
+    $ordinals = array('primeira' => 0, 'primeiro' => 0, 'segunda' => 1, 'segundo' => 1, 'terceira' => 2, 'terceiro' => 2, 'quarta' => 3, 'quarto' => 3, 'quinta' => 4, 'quinto' => 4);
+    $ordinalClean = preg_replace('/^(a|o)\s+/u', '', $clean) ?? $clean;
+    if (array_key_exists($ordinalClean, $ordinals)) {
+        $index = (int) $ordinals[$ordinalClean];
+        return is_array($options[$index] ?? null) ? $options[$index] : null;
+    }
+    if (preg_match('/^(a\s+)?(?:do|da|de)\s+(.+)$/u', $clean, $match)) {
+        $clean = (string) $match[2];
+    }
+    $scored = array();
+    foreach ($options as $index => $option) {
+        if (!is_array($option)) {
+            continue;
+        }
+        $haystack = (string) ($option['title'] ?? '') . ' ' . (string) ($option['assigned_username'] ?? '') . ' ' . (string) ($option['group_label'] ?? '');
+        $score = miauw_skill_tarefa_text_score($clean, $haystack);
+        if ($score > 0) {
+            $scored[] = array('index' => (int) $index, 'score' => $score);
+        }
+    }
+    usort($scored, static function ($left, $right): int {
+        return (int) ($right['score'] ?? 0) <=> (int) ($left['score'] ?? 0);
+    });
+    if (!$scored) {
+        return null;
+    }
+    if (count($scored) > 1 && (int) $scored[0]['score'] === (int) $scored[1]['score']) {
+        return null;
+    }
+
+    $index = (int) $scored[0]['index'];
+    return is_array($options[$index] ?? null) ? $options[$index] : null;
+}
+
+function miauw_skill_tarefa_start_selection(string $action, array $tasks, array $actor, string $origin, string $rawMessage): string
+{
+    $options = miauw_skill_tarefa_choice_payload($tasks, $actor);
+    $_SESSION['miauw_pending_tarefa_selection'] = array(
+        'action' => $action,
+        'tasks' => $options,
+        'actor_user_id' => (int) ($actor['user_id'] ?? 0),
+        'actor_username' => (string) ($actor['username'] ?? ''),
+        'actor_display_name' => (string) ($actor['display_name'] ?? ''),
+        'origin' => $origin,
+        'raw_message' => $rawMessage,
+        'created_at' => time(),
+    );
+    $verb = $action === 'complete' ? 'concluir' : ($action === 'cancel' ? 'cancelar' : 'consultar');
+
+    return 'Achei mais de uma tarefa parecida. Qual deseja ' . $verb . '?' . miauw_skill_tarefa_ambiguous_options_text($tasks, $actor);
+}
+
+function miauw_skill_tarefa_try_selection_reply(string $message, ?int $userId, string $origin = 'miauby_interno'): ?array
+{
+    $pending = $_SESSION['miauw_pending_tarefa_selection'] ?? null;
+    if (!is_array($pending)) {
+        return null;
+    }
+    $createdAt = (int) ($pending['created_at'] ?? 0);
+    if ($createdAt > 0 && (time() - $createdAt) > 900) {
+        unset($_SESSION['miauw_pending_tarefa_selection']);
+
+        return array(
+            'text' => 'Essa escolha expirou. Manda o comando de novo para eu nao mexer na tarefa errada.',
+            'fallback' => false,
+            'model' => 'miauw-tarefa-selecao',
+        );
+    }
+
+    $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
+    if (preg_match('/^(nao|n|deixa|volta|esquece|errado|cancela comando|cancelar comando)(\s|$)/u', $normalized)) {
+        unset($_SESSION['miauw_pending_tarefa_selection']);
+
+        return array(
+            'text' => 'Beleza, nao mexi em nada.',
+            'fallback' => false,
+            'model' => 'miauw-tarefa-selecao',
+        );
+    }
+
+    $options = is_array($pending['tasks'] ?? null) ? $pending['tasks'] : array();
+    $task = miauw_skill_tarefa_parse_choice($message, $options);
+    if (!is_array($task)) {
+        return array(
+            'text' => 'Escolha pelo numero ou pelo nome da tarefa. Ex.: 1 ou a da Nissei.',
+            'fallback' => false,
+            'model' => 'miauw-tarefa-selecao',
+        );
+    }
+
+    unset($_SESSION['miauw_pending_tarefa_selection']);
+    $action = (string) ($pending['action'] ?? 'show');
+    if ($action === 'show') {
+        return array(
+            'text' => miauw_skill_tarefa_detail_reply($task),
+            'fallback' => false,
+            'model' => 'miauw-tarefa-consulta',
+        );
+    }
+
+    $actorId = (int) ($pending['actor_user_id'] ?? $userId ?? 0);
+    $tool = $action === 'complete' ? 'concluir_tarefa' : 'cancelar_tarefa';
+    $status = $action === 'complete' ? 'concluida' : 'cancelada';
+    $payload = array(
+        'task_id' => (int) ($task['id'] ?? 0),
+        'titulo' => (string) ($task['title'] ?? ''),
+        'status' => $status,
+        'usuario_id' => $actorId,
+        'actor_user_id' => $actorId,
+        'username' => (string) ($pending['actor_username'] ?? ''),
+        'responsavel_nome' => (string) ($pending['actor_display_name'] ?? ''),
+        'origin' => $origin,
+        'raw_message' => (string) ($pending['raw_message'] ?? $message),
+    );
+    $summary = ($action === 'complete' ? 'Concluir tarefa: ' : 'Cancelar tarefa: ') . (string) ($task['title'] ?? 'tarefa') . '?';
+
+    return function_exists('miauw_confirmation_request_reply')
+        ? miauw_confirmation_request_reply($tool, $payload, $actorId, $summary)
+        : array('text' => $summary, 'fallback' => false, 'model' => 'miauw-tarefa-confirmacao');
 }
 
 function miauw_skill_tarefa_set_status(array $command, ?int $userId, string $status): array
@@ -1690,7 +2023,7 @@ function miauw_skill_tarefa_status_action_reply(array $task, string $status): st
 {
     $title = (string) ($task['title'] ?? 'tarefa');
     if ($status === 'concluida') {
-        return 'Tarefa concluida: ' . $title . '.';
+        return 'Tarefa concluida: ' . $title . ' 😼';
     }
 
     return 'Tarefa cancelada: ' . $title . '.';
@@ -1711,21 +2044,26 @@ function miauw_skill_tarefa_handle_command(array $command, ?int $userId, string 
     $action = (string) ($command['acao'] ?? '');
     if ($action === 'list') {
         $tasks = miauw_skill_tarefa_fetch_visible($actor, '', miauw_skill_tarefa_actor_is_admin($actor));
-        return array('text' => miauw_skill_tarefa_format_list($tasks), 'fallback' => false, 'model' => 'miauw-tarefa-list');
+        return array('text' => miauw_skill_tarefa_format_list($tasks, $actor), 'fallback' => false, 'model' => 'miauw-tarefa-list');
     }
 
-    if ($action === 'complete' || $action === 'cancel') {
+    if ($action === 'complete' || $action === 'cancel' || $action === 'show') {
         $found = miauw_skill_tarefa_find_single_for_status($actor, (string) ($command['query'] ?? ''));
         if (($found['status'] ?? '') === 'missing_query') {
-            return array('text' => $action === 'complete' ? 'Qual tarefa voce concluiu?' : 'Qual tarefa voce quer cancelar?', 'fallback' => false, 'model' => 'miauw-tarefa-guide');
+            $question = $action === 'complete' ? 'Qual tarefa voce concluiu?' : ($action === 'cancel' ? 'Qual tarefa voce quer cancelar?' : 'Qual tarefa voce quer consultar?');
+            return array('text' => $question, 'fallback' => false, 'model' => 'miauw-tarefa-guide');
         }
         if (($found['status'] ?? '') === 'not_found') {
             return array('text' => 'Nao achei essa tarefa aberta para voce.', 'fallback' => false, 'model' => 'miauw-tarefa-list');
         }
         if (($found['status'] ?? '') === 'ambiguous') {
-            return array('text' => 'Achei mais de uma. Qual delas?' . miauw_skill_tarefa_status_options_text($found['tasks'] ?? array()), 'fallback' => false, 'model' => 'miauw-tarefa-list');
+            return array('text' => miauw_skill_tarefa_start_selection($action, $found['tasks'] ?? array(), $actor, $origin, (string) ($command['raw_message'] ?? '')), 'fallback' => false, 'model' => 'miauw-tarefa-selecao');
         }
         $task = is_array($found['task'] ?? null) ? $found['task'] : array();
+        if ($action === 'show') {
+            $payload = miauw_skill_tarefa_choice_payload(array($task), $actor);
+            return array('text' => miauw_skill_tarefa_detail_reply(is_array($payload[0] ?? null) ? $payload[0] : $task), 'fallback' => false, 'model' => 'miauw-tarefa-consulta');
+        }
         $tool = $action === 'complete' ? 'concluir_tarefa' : 'cancelar_tarefa';
         $status = $action === 'complete' ? 'concluida' : 'cancelada';
         $payload = array(

@@ -535,7 +535,7 @@ Legado historico/backup:
 
 - Home publica usa badge de tarefas abertas.
 - Usuarios delega tarefas privadas por endpoint interno.
-- Miauby interno e Miauby WhatsApp criam, listam, concluem e cancelam tarefas por endpoints internos tokenizados do app Tarefa; nao gravam nem consultam `wf_tarefas`. O parser textual aceita data/hora simples para `remind_at` de tarefa privada e o WhatsApp guarda uma pendencia de escolha quando concluir/cancelar encontra varias tarefas parecidas.
+- Miauby interno e Miauby WhatsApp criam, listam, consultam, concluem e cancelam tarefas por endpoints internos tokenizados do app Tarefa; nao gravam nem consultam `wf_tarefas`. O parser textual aceita data/hora simples para `remind_at` de tarefa privada e guarda uma pendencia de escolha quando consultar/concluir/cancelar encontra varias tarefas parecidas.
 - Miauby interno usa a sessao logada como responsavel padrao. Miauby WhatsApp usa o numero vinculado/allowlist e exige card `Tarefas`.
 - Core auth centraliza login.
 
@@ -545,7 +545,7 @@ Legado historico/backup:
 - Rollback agora depende de restaurar versao anterior e backup, entao validar VPS antes de promover para `main`.
 - Badge da home deve continuar contando tarefas abertas corretas.
 - Escrita via Miauby precisa preservar autor e auditoria.
-- Busca textual para concluir/cancelar pode achar varias tarefas parecidas; nesse caso o Miauby deve listar opcoes e nao alterar nada.
+- Busca textual para consultar/concluir/cancelar pode achar varias tarefas parecidas; nesse caso o Miauby deve listar opcoes agrupadas por escopo/usuario e nao alterar nada ate a pessoa escolher. Concluir/cancelar ainda exige confirmacao humana depois da escolha.
 
 ### Proxima acao segura
 
