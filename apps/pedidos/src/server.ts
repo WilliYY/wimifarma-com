@@ -39,14 +39,6 @@ type CoreUserRow = {
   active: boolean;
 };
 
-type InternalActorUserRow = {
-  id: string;
-  username: string;
-  role: string | null;
-  active: boolean;
-  can_access: boolean | null;
-};
-
 type OrderStatus = 'pedido' | 'confirmado' | 'historico';
 
 type CreateOrderItemInput = {
@@ -296,10 +288,12 @@ function timingSafeStringEqual(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftHash, rightHash);
 }
 
-function isAllowedUser(user: { username?: unknown; role?: unknown }): boolean {
-  const username = String(user.username || '').trim().toLowerCase();
-  const role = String(user.role || '').trim().toLowerCase();
-  return username === 'adm' || role === 'admin' || role === 'gerente';
+function coreUserToSessionUser(user: Pick<CoreUserRow, 'id' | 'username' | 'role'>): User {
+  return {
+    id: Number(user.id),
+    username: String(user.username),
+    role: String(user.role || 'user'),
+  };
 }
 
 async function canAccessModule(user: User, moduleKey: string): Promise<boolean> {
@@ -357,7 +351,7 @@ function safePedidosReturnPath(value: unknown): string {
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   Promise.resolve(ensureSessionUser(req))
     .then(async (user) => {
-      if (!user || !isAllowedUser(user) || !(await canAccessModule(user, 'pedidos'))) {
+      if (!user || !(await canAccessModule(user, 'pedidos'))) {
         const returnTo = safePedidosReturnPath(req.originalUrl);
         if (returnTo) req.session.returnTo = returnTo;
         res.redirect('/');
@@ -694,12 +688,9 @@ async function authenticateCore(username: string, password: string): Promise<Use
     ok = timingSafeStringEqual(password, 'adm');
   }
 
-  if (!ok || !isAllowedUser(user)) return null;
-  return {
-    id: Number(user.id),
-    username: String(user.username),
-    role: String(user.role || 'user'),
-  };
+  const candidate = coreUserToSessionUser(user);
+  if (!ok || !(await canAccessModule(candidate, 'pedidos'))) return null;
+  return candidate;
 }
 
 function hasHomeSsoCookie(req: Request): boolean {
@@ -735,36 +726,25 @@ async function userByHomeSso(req: Request): Promise<User | null> {
     [username],
   );
   const user = result.rows[0];
-  if (!user || !isAllowedUser(user)) return null;
-  return {
-    id: Number(user.id),
-    username: String(user.username),
-    role: String(user.role || 'user'),
-  };
+  if (!user) return null;
+  const candidate = coreUserToSessionUser(user);
+  return (await canAccessModule(candidate, 'pedidos')) ? candidate : null;
 }
 
 async function internalActorForPedidos(userId: unknown): Promise<User | null> {
   const id = Number(userId || 0);
   if (!Number.isInteger(id) || id <= 0) return null;
-  const result = await corePgPool.query<InternalActorUserRow>(
-    `SELECT u.id::text, u.username, u.role, u.active, p.can_access
+  const result = await corePgPool.query<CoreUserRow>(
+    `SELECT u.id::text, u.username, u.password_hash, u.role, u.active
        FROM core_users u
-       LEFT JOIN core_user_module_permissions p
-         ON p.user_id = u.id AND p.module_key = 'pedidos'
       WHERE u.id = $1 AND u.active = true
       LIMIT 1`,
     [id],
   );
   const user = result.rows[0];
   if (!user) return null;
-  const candidate = {
-    id: Number(user.id),
-    username: String(user.username),
-    role: String(user.role || 'user'),
-  };
-  if (isAllowedUser(candidate)) return candidate;
-  if (user.can_access === false) return null;
-  return candidate;
+  const candidate = coreUserToSessionUser(user);
+  return (await canAccessModule(candidate, 'pedidos')) ? candidate : null;
 }
 
 function regenerateWithUser(req: Request, user: User): Promise<void> {
@@ -792,7 +772,7 @@ async function ensureSessionUser(req: Request): Promise<User | null> {
     }
     return homeUser;
   }
-  if (req.session.user && isAllowedUser(req.session.user)) return req.session.user;
+  if (req.session.user && await canAccessModule(req.session.user, 'pedidos')) return req.session.user;
   return null;
 }
 
