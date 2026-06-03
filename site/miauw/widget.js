@@ -12,7 +12,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260603-home-speech';
+    link.href = '/miauw/widget.css?v=20260603-home-speech-v2';
     document.head.appendChild(link);
   }
 
@@ -150,23 +150,119 @@
   const HOME_GREETING_FIRST_DELAY_MAX_MS = 1000 * 6;
   const HOME_GREETING_REPEAT_MIN_MS = 1000 * 45;
   const HOME_GREETING_REPEAT_MAX_MS = 1000 * 120;
+  const HOME_GREETING_INTERACTION_PAUSE_MS = 1000 * 60 * 4;
   const HOME_GREETING_VISIBLE_MS = 7200;
   const HOME_GREETING_PHRASES = [
-    'Miauww, {nome}! Fiscal interno online.',
+    'Miauww, {nome}! Fiscal interno online e julgando pendencias.',
     '{nome}, hoje o caos vai ter que pegar senha.',
-    'Miauww, {nome}! Bora manter essa farmacia nos trilhos.',
-    '{nome}, se o sistema aprontar, eu julgo primeiro.',
-    'Miauby de olho, {nome}. Sem bagunca hoje.',
-    '{nome}, turno iniciado. O gato fiscal esta atento.',
-    'Miauww, {nome}! Produtividade sem drama, combinado?',
-    '{nome}, se aparecer boleto perdido eu finjo surpresa.',
+    'Miauww, {nome}! Bora vender, conferir e fingir que esta tudo sob controle.',
+    '{nome}, se aparecer boleto perdido, eu vou miar alto.',
+    'Miauby de olho, {nome}. Pendencia hoje nao cria raiz.',
+    '{nome}, turno iniciado. O gato fiscal assumiu o plantao.',
+    'Miauww, {nome}! Produtividade sim, bagunca nao.',
+    '{nome}, se o sistema aprontar, a culpa e do humano. Eu sou so fofo.',
     'Miauby online, {nome}. Planilhas suspeitas serao observadas.',
-    '{nome}, hoje e dia de vender e nao deixar pendencia criar raiz.',
-    'Miauww, {nome}! Ja conferiu se tem tarefa aberta?',
-    '{nome}, o sistema esta calmo... por enquanto.',
-    'Gato fiscal na area, {nome}. Pode trabalhar tranquilo.',
-    '{nome}, lembrete amigavel: pendencia nao se resolve sozinha.',
-    'Miauww, {nome}! Se der erro, respira. Depois culpa o humano.',
+    '{nome}, hoje e dia de fechar caixa sem emocao. Sera que vem ai?',
+    'Miauww, {nome}! Ja conferiu tarefa aberta ou vai fingir que nao viu?',
+    '{nome}, o sistema esta calmo... suspeitamente calmo.',
+    'Gato fiscal na area, {nome}. Pode trabalhar, eu vigio.',
+    '{nome}, lembrete amigavel: pendencia nao se resolve sozinha. Infelizmente.',
+    'Miauww, {nome}! Respira, vende e nao deixa o caixa te dominar.',
+    '{nome}, se tiver encomenda esquecida, eu vou miar no WhatsApp.',
+    'Miauby ativado. Modo fiscal de farmacia: ligado.',
+    '{nome}, cuidado: tarefas acumuladas podem causar miados internos.',
+    'Miauww, {nome}! Que o balcao esteja cheio e o sistema sem bug.',
+    '{nome}, hoje eu so aceito duas coisas: venda boa e caixa fechado.',
+    'Miauby presente. O RH dos gatos me recusou, entao fiquei aqui.',
+    '{nome}, se alguem disser "rapidinho", desconfie. Nunca e rapidinho.',
+    'Miauww, {nome}! Lembrete: boleto nao evapora. Eu tambem achei injusto.',
+    '{nome}, missao do dia: vender bem e nao deixar pedido sumir.',
+    'Fiscalizando em silencio, {nome}. Mentira, vou miar se precisar.',
+    '{nome}, se a farmacia virar caos, pelo menos teremos estilo.',
+    'Miauww, {nome}! A meta e simples: menos pendencia, mais dinheiro.',
+    '{nome}, hoje eu acordei fofo e operacional. Aproveite.',
+    'Miauby na escuta, {nome}. Se chamar, eu julgo e ajudo. Nessa ordem.',
+    '{nome}, nao deixe para amanha o caixa que pode fechar hoje.',
+    'Miauww, {nome}! Que os clientes venham e os bugs tirem folga.',
+    '{nome}, se o sistema travar, olha para o gato e mantem a dignidade.',
+    'Hoje tem Wimifarma, {nome}. E eu estou fiscalizando o drama.',
+    'Miauww, {nome}! O plantao comecou e eu ja estou desconfiado.',
+    '{nome}, tarefa aberta e igual gato com fome: nao da para ignorar muito tempo.',
+    'Miauby fiscal interno: pequeno no tamanho, gigante na cobranca.',
+    '{nome}, caixa fechado da paz. Caixa aberto da mensagem minha.',
+    'Miauww, {nome}! Evite pendencias. Elas voltam mais fortes.',
+    '{nome}, se aparecer "so uma coisinha", prepare o cafe.',
+    'Estou de olho, {nome}. Principalmente nos pedidos esquecidos.',
+    'Miauww, {nome}! Hoje o sistema prometeu se comportar. Nao confio.',
+    '{nome}, pedido registrado e pedido que nao assombra.',
+    'Miauby fiscalizando, {nome}. A fofura e so cobertura.',
+    '{nome}, se concluir uma tarefa, eu quase ronrono.',
+    'Miauww, {nome}! Que o PIX caia e o erro suba para longe.',
+    '{nome}, se o caixa fechar certinho, eu libero um miau de aprovacao.',
+    'Gato fiscal online. Pendencias, escondam-se.',
+    '{nome}, hoje e um otimo dia para nao esquecer encomenda.',
+    'Miauww, {nome}! Trabalhe tranquilo. Eu cuido da paranoia operacional.',
+    '{nome}, se tudo der certo hoje, finjo que foi planejamento.',
+    'Miauby acordado, {nome}. Diferente de alguns boletos esquecidos.',
+    '{nome}, ja bebeu agua? Gato fiscal tambem cuida do time.',
+    'Miauww, {nome}! Seu login foi aceito. Sua paz, nao prometo.',
+    '{nome}, status do dia: potencialmente produtivo. Vamos confirmar.',
+    'Miauby observando. Nenhuma pendencia escapara sem julgamento.',
+    '{nome}, se o cliente pedir desconto, respire e pense na margem.',
+    'Miauww, {nome}! Bora transformar correria em faturamento.',
+    '{nome}, lembrete: "depois eu vejo" e onde as tarefas vao morar.',
+    'Fiscal interno ativo. O gato esta pequeno, mas o relatorio e grande.',
+    '{nome}, se o dia ficar puxado, culpe Mercurio. Eu culpo planilhas.',
+    'Miauww, {nome}! Que os fornecedores respondam antes do proximo eclipse.',
+    '{nome}, pedidos sem previsao me deixam com bigode tremendo.',
+    'Miauby aqui, {nome}. Fofo, sim. Inocente, jamais.',
+    '{nome}, hoje a meta e vender, organizar e nao surtar. Nessa ordem.',
+    'Miauww, {nome}! Se tiver tarefa chata, chama de missao premium.',
+    '{nome}, caixa aberto as 18h me da coceira fiscal.',
+    'Gato fiscal em patrulha. Favor nao alimentar pendencias.',
+    '{nome}, se algo sumir, primeiro olhe no sistema. Depois culpe o gato.',
+    'Miauww, {nome}! Voce entrou. As pendencias fingiram que nao viram.',
+    '{nome}, produtividade detectada. Vou acompanhar de perto.',
+    'Miauby online. A farmacia agora tem auditoria com bigodes.',
+    '{nome}, se o pedido chegou, registra. Se nao chegou, eu cobro.',
+    'Miauww, {nome}! Hoje eu quero ver esse sistema brilhando. Ou quase.',
+    '{nome}, tarefa concluida e carinho no coracao do gato fiscal.',
+    'Gato fiscal pronto. Tragam vendas, nao confusao.',
+    '{nome}, se a internet cair, eu nego envolvimento.',
+    'Miauww, {nome}! Que o dia seja leve e o caixa bata de primeira.',
+    '{nome}, cuidado com a frase "ja ja eu faco". Ela e perigosa.',
+    'Miauby na area. O setor de cobranca emocional chegou.',
+    '{nome}, se tudo estiver organizado, eu vou ate estranhar.',
+    'Miauww, {nome}! Abra o sistema, feche as pendencias. Bonito assim.',
+    '{nome}, lembrete tecnico: caos nao e metodologia.',
+    'Fiscalizando com fofura e leve ameaca operacional.',
+    '{nome}, bom turno. Que o estoque esteja certo e o fornecedor tambem.',
+    'Miauww, {nome}! Se precisar, eu ajudo. Se nao precisar, eu observo.',
+    '{nome}, o gato fiscal recomenda: menos promessa, mais registro.',
+    'Miauby pronto. Hoje ninguem foge do historico.',
+    '{nome}, se esquecer de registrar, eu apareco em forma de alerta.',
+    'Miauww, {nome}! Sistema aberto, bigodes calibrados.',
+    '{nome}, dia bom e dia com venda, pedido certo e caixa fechado.',
+    'Gato fiscal presente. Pode comecar o espetaculo administrativo.',
+    '{nome}, se o dia complicar, pelo menos o Miauby esta bonito.',
+    'Miauww, {nome}! Vamos fazer a Wimifarma girar sem drama.',
+    '{nome}, tarefa parada por muito tempo vira patrimonio historico.',
+    'Miauby fiscal: porque alguem precisa olhar essas pendencias.',
+    '{nome}, hoje eu estou no modo: fofo, util e levemente julgador.',
+    'Miauww, {nome}! Que nenhuma encomenda se esconda hoje.',
+    '{nome}, sistema alimentado, farmacia organizada.',
+    'Gato fiscal logado. A paz administrativa comeca agora. Talvez.',
+    '{nome}, se bater o caixa de primeira, eu enquadro esse momento.',
+    'Miauww, {nome}! Hora de trabalhar antes que as tarefas se multipliquem.',
+    '{nome}, se o financeiro estiver lindo hoje, eu prometo nao miar. Muito.',
+    'Miauby aqui. Seu assistente interno com bigode e opiniao.',
+    '{nome}, vamos manter tudo registrado. Memoria humana e bugada.',
+    'Miauww, {nome}! Hoje o lema e: se fez, registra.',
+    '{nome}, cuidado: pedido sem registro vira lenda urbana.',
+    'Fiscal interno ativado. O sistema esta sob patas responsaveis.',
+    '{nome}, bom trabalho. Eu fico de olho nos detalhes chatos.',
+    'Miauww, {nome}! Que as vendas sejam muitas e os erros poucos.',
+    '{nome}, se tiver caos, chama. Se tiver cafe, tambem.',
   ];
 
   const escapeHtml = (value) => String(value)
@@ -193,16 +289,25 @@
 
   const randomBetween = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 
+  const displayHomeGreetingName = (value) => {
+    const name = clipText(value || 'usuario', 48)
+      .replace(/[<>]/g, '')
+      .trim() || 'usuario';
+    const firstName = name.split(/\s+/).find(Boolean) || name;
+
+    return name.length > 16 && firstName.length >= 2 ? firstName : name;
+  };
+
   const readHomeGreetingConfig = () => {
     const dataset = document.body && document.body.dataset ? document.body.dataset : {};
     if (dataset.miauwHomeGreeting !== '1') return null;
 
-    const name = clipText(dataset.miauwUserName || dataset.miauwUserLogin || 'usuario', 42)
-      .replace(/[<>]/g, '')
-      .trim() || 'usuario';
-    const key = clipText(dataset.miauwUserKey || name, 60).replace(/[^a-z0-9_-]+/gi, '_') || 'home';
+    const rawName = dataset.miauwUserName || dataset.miauwUserLogin || 'usuario';
+    const name = displayHomeGreetingName(rawName);
+    const identityKey = clipText(dataset.miauwUserLogin || rawName || name, 60).replace(/[^a-z0-9_-]+/gi, '_') || 'home';
+    const key = clipText(dataset.miauwUserKey || identityKey, 60).replace(/[^a-z0-9_-]+/gi, '_') || 'home';
 
-    return { name, key };
+    return { name, key, identityKey };
   };
 
   const sessionStorageGet = (key) => {
@@ -239,6 +344,8 @@
 
   const homeGreetingStorageKey = (config) => `miauw_home_greeting_state_v2_${config.key}`;
 
+  const homeGreetingLastIndexKey = (config) => `miauw_home_greeting_last_index_${config.identityKey || 'home'}`;
+
   const readHomeGreetingState = (storageKey) => {
     const raw = sessionStorageGet(storageKey);
     if (!raw) return {};
@@ -255,19 +362,19 @@
     sessionStorageSet(storageKey, JSON.stringify(value || {}));
   };
 
-  const homeGreetingText = (name, previousIndex = null) => {
+  const homeGreetingText = (config, previousIndex = null) => {
     const sessionIndex = Number(previousIndex);
-    const storedIndex = Number(localStorageGet('miauw_home_greeting_last_index') || -1);
+    const storedIndex = Number(localStorageGet(homeGreetingLastIndexKey(config)) || -1);
     const lastIndex = Number.isFinite(sessionIndex) && sessionIndex >= 0 ? sessionIndex : storedIndex;
     let index = Math.floor(Math.random() * HOME_GREETING_PHRASES.length);
     if (HOME_GREETING_PHRASES.length > 1 && index === lastIndex) {
       index = (index + 1 + Math.floor(Math.random() * (HOME_GREETING_PHRASES.length - 1))) % HOME_GREETING_PHRASES.length;
     }
-    localStorageSet('miauw_home_greeting_last_index', String(index));
+    localStorageSet(homeGreetingLastIndexKey(config), String(index));
 
     return {
       index,
-      text: HOME_GREETING_PHRASES[index].replace('{nome}', name),
+      text: HOME_GREETING_PHRASES[index].replace('{nome}', config.name),
     };
   };
 
@@ -382,6 +489,7 @@
     root.classList.toggle('is-open', open);
     bubble.setAttribute('aria-expanded', open ? 'true' : 'false');
     panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    pauseHomeGreetingSpeech();
 
     if (open) {
       hideAlertNudge();
@@ -787,6 +895,22 @@
     }, delay);
   };
 
+  const pauseHomeGreetingSpeech = (pauseMs = HOME_GREETING_INTERACTION_PAUSE_MS) => {
+    const config = readHomeGreetingConfig();
+    if (!config) return;
+
+    const now = Date.now();
+    const storageKey = homeGreetingStorageKey(config);
+    const greetingState = readHomeGreetingState(storageKey);
+    const nextAt = now + pauseMs;
+    writeHomeGreetingState(storageKey, {
+      ...greetingState,
+      firstShown: Boolean(greetingState.firstShown),
+      nextAt,
+    });
+    scheduleHomeGreetingSpeech(nextAt - now);
+  };
+
   const showHomeGreetingSpeech = () => {
     if (!alertNudge) return;
 
@@ -807,7 +931,7 @@
       return;
     }
 
-    const greeting = homeGreetingText(config.name, greetingState.lastIndex);
+    const greeting = homeGreetingText(config, greetingState.lastIndex);
     const nextAt = now + randomBetween(HOME_GREETING_REPEAT_MIN_MS, HOME_GREETING_REPEAT_MAX_MS);
     writeHomeGreetingState(storageKey, {
       firstShown: true,
@@ -1945,6 +2069,7 @@
 
   bubble.addEventListener('click', () => setOpen(!state.open));
   alertNudge.addEventListener('click', () => {
+    pauseHomeGreetingSpeech();
     const prompt = alertNudge.dataset.miauwPrompt || '';
     const view = alertNudge.dataset.miauwView || 'chat';
     alertNudge.dataset.miauwPrompt = '';
@@ -1982,11 +2107,13 @@
   });
 
   input.addEventListener('input', () => {
+    pauseHomeGreetingSpeech();
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 104)}px`;
   });
 
   input.addEventListener('keydown', (event) => {
+    pauseHomeGreetingSpeech();
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       form.requestSubmit();
@@ -1995,6 +2122,7 @@
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
+    pauseHomeGreetingSpeech();
     const message = input.value;
     const voiceDraft = consumeWidgetAudioDraftForMessage();
     clearWidgetAudioDraftPreview();
@@ -2009,7 +2137,10 @@
   });
 
   if (audioButton) {
-    audioButton.addEventListener('click', startWidgetAudioSession);
+    audioButton.addEventListener('click', () => {
+      pauseHomeGreetingSpeech();
+      startWidgetAudioSession();
+    });
     window.addEventListener('beforeunload', () => {
       resetWidgetAudioCaptureState({ clearDraft: false });
       releaseWidgetAudioMessageUrls();
