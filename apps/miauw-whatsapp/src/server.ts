@@ -160,6 +160,7 @@ type WhatsappConfirmationDraft = {
 
 type PendingConfirmationRow = {
   id: string;
+  event_id?: string | null;
   short_id: string;
   tool: string;
   summary: string;
@@ -3928,6 +3929,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                       'pix_cnpj',
                       pixCnpjCommandPayload(pixReceiptCommand),
                       pixReceiptResponsibleIntroFromExtraction(extraction, targetMatch),
+                      'Responda com o numero ou nome. Se nao for isso, digite cancelar.',
                     );
                     effectiveBodyText = '';
                   }
@@ -4278,7 +4280,7 @@ async function findPendingPedidoSelection(senderHash: string): Promise<PendingCo
 async function findPendingResponsibleSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
   await expireOldConfirmations();
   const result = await pgPool.query<PendingConfirmationRow>(
-    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+    `SELECT id, event_id, short_id, tool, summary, risk, command_payload, attempts
        FROM miauw_whatsapp_confirmations
       WHERE sender_phone_hash = $1
         AND status = 'pending'
@@ -4566,7 +4568,7 @@ function userContextFromResponsiblePayload(payload: JsonRecord, base: WhatsappUs
 }
 
 function responsibleActionQuestion(action: string): string {
-  if (action === 'pix_cnpj') return 'Quem foi o responsavel?';
+  if (action === 'pix_cnpj') return 'Quem fez essa acao?';
   if (action === 'pedido_create') return 'Quem esta registrando esse pedido?';
   if (action === 'pagamento') return 'Quem fez esse pagamento?';
   if (action === 'pedido_cancel' || action === 'tarefa_status') return 'Quem esta fazendo essa acao?';
@@ -4581,10 +4583,16 @@ function responsibleActionExample(action: string): string {
   return 'miauby sangria 10 will';
 }
 
-function responsibleSelectionMessage(action: string, users: CoreUserIdentity[], intro = ''): string {
+function responsibleSelectionMessage(
+  action: string,
+  users: CoreUserIdentity[],
+  intro = '',
+  instruction = 'Responda com o numero ou nome. Para cancelar, digite cancelar.',
+): string {
   const lines = users.map((user, index) => `${index + 1}. ${titleCaseShortName(user.displayName) || user.displayName || user.username}`);
   const prefix = safeOutboundText(intro, 160);
-  return `${prefix ? `${prefix}\n\n` : ''}${responsibleActionQuestion(action)}\n\n${lines.join('\n')}\n\nResponda com o numero ou nome.`;
+  const footer = safeOutboundText(instruction, 180) || 'Responda com o numero ou nome. Para cancelar, digite cancelar.';
+  return `${prefix ? `${prefix}\n\n` : ''}${responsibleActionQuestion(action)}\n\n${lines.join('\n')}\n\n${footer}`;
 }
 
 function parseResponsibleChoiceIndex(message: string, users: CoreUserIdentity[]): number | null {
@@ -4638,6 +4646,7 @@ async function requestResponsibleSelectionForPharmacy(
   action: ResponsibleSelectionAction,
   command: JsonRecord,
   intro = '',
+  instruction = 'Responda com o numero ou nome. Para cancelar, digite cancelar.',
 ): Promise<ReplyResult> {
   if (!row || !whatsappConfirmationsReady()) {
     return {
@@ -4660,7 +4669,7 @@ async function requestResponsibleSelectionForPharmacy(
     users: users.map(responsiblePayloadFromUser),
   });
   return {
-    text: responsibleSelectionMessage(action, users, intro),
+    text: responsibleSelectionMessage(action, users, intro, instruction),
     engine: 'local',
     reason: `responsible_selection_required:${action}`,
   };
@@ -4894,6 +4903,7 @@ async function maybeHandleResponsibleSelectionReply(row: QueueRow, userContext: 
     }
     return null;
   }
+  if (pending.event_id === row.id) return null;
 
   const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
   const users = (Array.isArray(payload.users) ? payload.users : [])
@@ -4919,7 +4929,7 @@ async function maybeHandleResponsibleSelectionReply(row: QueueRow, userContext: 
       };
     }
     return {
-      text: 'Escolha pelo numero ou nome. Ex.: 1 ou Thiago.',
+      text: 'Escolha o responsavel pelo numero ou nome. Para cancelar, digite cancelar.',
       engine: 'local',
       reason: 'responsible_selection_expected',
     };
@@ -8053,16 +8063,16 @@ function pixReceiptResponsibleIntroFromExtraction(extraction: PixReceiptExtracti
   const amount = moneyForCommand(extraction.amount);
   const date = dateForCommand(extraction.paidDate);
   const destination = cleanReceiptPart(extraction.destinationName || (targetMatch.nameMatch ? targetMatch.matched : ''), 44);
-  const parts = [
-    amount,
-    destination ? `destino: ${destination}` : '',
-    date,
-  ].filter(Boolean);
-  return `PIX CNPJ encontrado: ${parts.join(' - ')}.`;
+  return [
+    'PIX CNPJ encontrado:',
+    `Valor: ${amount}`,
+    `Data: ${date || 'nao informada'}`,
+    `Destino: ${destination || 'destino validado'}`,
+  ].join('\n');
 }
 
 function pixCnpjResponsibleIntroFromCommand(command: PixCnpjCommand): string {
-  return `PIX CNPJ informado: ${command.amount_label || moneyForCommand(command.amount_cents / 100)}.`;
+  return `PIX CNPJ identificado: ${command.amount_label || moneyForCommand(command.amount_cents / 100)}.`;
 }
 
 function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
