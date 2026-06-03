@@ -7,6 +7,9 @@ export type PixCnpjCommand = {
   amount_label: string;
   responsible_hint: string;
   observation: string;
+  public_observation?: string;
+  audit_observation?: string;
+  origin?: string;
 };
 
 type AmountMatch = {

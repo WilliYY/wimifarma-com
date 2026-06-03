@@ -3867,7 +3867,11 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                   };
                   effectiveBodyText = '';
                 } else {
-                  effectiveBodyText = pixReceiptCommandMessage(extraction, targetMatch);
+                  const pharmacyReceiptContext = isPharmacyUserContext(whatsappUserContext);
+                  const pixReceiptCommand = pixReceiptCommandFromExtraction(extraction, targetMatch);
+                  effectiveBodyText = pharmacyReceiptContext
+                    ? pixReceiptCommand.raw
+                    : pixReceiptCommandMessage(extraction, targetMatch);
                   row.body_text = effectiveBodyText;
                   await pgPool.query(
                     `UPDATE miauw_whatsapp_events
@@ -3895,6 +3899,15 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                       }),
                     ],
                   );
+                  if (pharmacyReceiptContext) {
+                    mediaFailureReply = await requestResponsibleSelectionForPharmacy(
+                      row,
+                      'pix_cnpj',
+                      pixCnpjCommandPayload(pixReceiptCommand),
+                      pixReceiptResponsibleIntroFromExtraction(extraction, targetMatch),
+                    );
+                    effectiveBodyText = '';
+                  }
                 }
               }
             }
@@ -4530,7 +4543,7 @@ function userContextFromResponsiblePayload(payload: JsonRecord, base: WhatsappUs
 }
 
 function responsibleActionQuestion(action: string): string {
-  if (action === 'pix_cnpj') return 'Quem fez esse PIX CNPJ?';
+  if (action === 'pix_cnpj') return 'Quem foi o responsavel?';
   if (action === 'pedido_create') return 'Quem esta registrando esse pedido?';
   if (action === 'pagamento') return 'Quem fez esse pagamento?';
   if (action === 'pedido_cancel' || action === 'tarefa_status') return 'Quem esta fazendo essa acao?';
@@ -6944,6 +6957,9 @@ function pixCnpjCommandPayload(command: PixCnpjCommand): JsonRecord {
     amount_label: command.amount_label,
     responsible_hint: command.responsible_hint,
     observation: command.observation,
+    public_observation: command.public_observation || '',
+    audit_observation: command.audit_observation || '',
+    origin: command.origin || 'manual_text',
   };
 }
 
@@ -6959,6 +6975,9 @@ function pixCnpjCommandFromPayload(payload: JsonRecord): PixCnpjCommand | null {
     amount_label: safeText(payload.amount_label, 80) || moneyForCommand(amountCents / 100),
     responsible_hint: safeText(payload.responsible_hint, 80),
     observation: safeOutboundText(payload.observation, 260),
+    public_observation: safeOutboundText(payload.public_observation, 180),
+    audit_observation: safeOutboundText(payload.audit_observation, 500),
+    origin: safeText(payload.origin, 40) || 'manual_text',
   };
 }
 
@@ -7069,7 +7088,12 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       };
     }
     if (isPharmacyUserContext(userContext) && !safeText(pixCnpjCreate.responsible_hint, 80)) {
-      return requestResponsibleSelectionForPharmacy(row, 'pix_cnpj', pixCnpjCommandPayload(pixCnpjCreate));
+      return requestResponsibleSelectionForPharmacy(
+        row,
+        'pix_cnpj',
+        pixCnpjCommandPayload(pixCnpjCreate),
+        pixCnpjResponsibleIntroFromCommand(pixCnpjCreate),
+      );
     }
     if (isPharmacyUserContext(userContext) && safeText(pixCnpjCreate.responsible_hint, 80)) {
       const responsible = await resolveCoreUserByNameHint(pixCnpjCreate.responsible_hint);
@@ -7954,13 +7978,13 @@ function pixReceiptTargetDetails(match: PixReceiptTargetMatch): string {
   return '';
 }
 
-function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
-  const payer = cleanReceiptPart(extraction.payerName || 'Pagador nao informado', 70);
+function pixReceiptObservationDetails(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
+  const payer = cleanReceiptPart(extraction.payerName, 70);
   const destination = cleanReceiptPart(extraction.destinationName, 90);
   const institution = cleanReceiptPart(extraction.institution, 90);
   const date = dateForCommand(extraction.paidDate);
   const transaction = cleanReceiptPart(extraction.endToEndId || extraction.transactionId, 100);
-  const details = [
+  return [
     'Comprovante Pix CNPJ lido por midia.',
     pixReceiptTargetDetails(targetMatch),
     date ? `Data: ${date}.` : '',
@@ -7970,6 +7994,57 @@ function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch:
     institution ? `Instituicao: ${institution}.` : '',
     transaction ? `ID Pix: ${transaction}.` : '',
   ].filter(Boolean).join(' ');
+}
+
+function pixReceiptCommandFromExtraction(
+  extraction: PixReceiptExtraction,
+  targetMatch: PixReceiptTargetMatch,
+  responsibleHint = '',
+): PixCnpjCommand {
+  const amountCents = Math.round(Number(extraction.amount || 0) * 100);
+  const amountLabel = moneyForCommand(extraction.amount);
+  const observation = safeOutboundText(pixReceiptObservationDetails(extraction, targetMatch), 260);
+  const raw = safeOutboundText(
+    [
+      `pix cnpj ${amountLabel}`,
+      safeText(responsibleHint, 80),
+    ].filter(Boolean).join(' '),
+    1000,
+  );
+  return {
+    ok: amountCents > 0,
+    error: '',
+    error_message: '',
+    raw,
+    amount_cents: amountCents,
+    amount_label: amountLabel,
+    responsible_hint: safeText(responsibleHint, 80),
+    observation: '',
+    public_observation: '',
+    audit_observation: observation,
+    origin: 'media_ocr',
+  };
+}
+
+function pixReceiptResponsibleIntroFromExtraction(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
+  const amount = moneyForCommand(extraction.amount);
+  const date = dateForCommand(extraction.paidDate);
+  const destination = cleanReceiptPart(extraction.destinationName || (targetMatch.nameMatch ? targetMatch.matched : ''), 44);
+  const parts = [
+    amount,
+    destination ? `destino: ${destination}` : '',
+    date,
+  ].filter(Boolean);
+  return `PIX CNPJ encontrado: ${parts.join(' - ')}.`;
+}
+
+function pixCnpjResponsibleIntroFromCommand(command: PixCnpjCommand): string {
+  return `PIX CNPJ informado: ${command.amount_label || moneyForCommand(command.amount_cents / 100)}.`;
+}
+
+function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
+  const payer = cleanReceiptPart(extraction.payerName || 'Pagador nao informado', 70);
+  const details = pixReceiptObservationDetails(extraction, targetMatch);
   return `pix cnpj ${moneyForCommand(extraction.amount)} - ${payer} - obs ${details}`;
 }
 
@@ -12633,8 +12708,10 @@ type ResolvedPixCnpjResponsible = {
 
 async function resolvePixCnpjResponsible(command: PixCnpjCommand, userContext: WhatsappUserContext): Promise<ResolvedPixCnpjResponsible> {
   const hint = safeText(command.responsible_hint, 80);
-  const observationParts = [command.observation].map((item) => safeOutboundText(item, 180)).filter(Boolean);
-  const auditParts: string[] = [];
+  const publicObservation = safeOutboundText(command.public_observation ?? command.observation, 180);
+  const auditObservation = safeOutboundText(command.audit_observation || '', 500);
+  const observationParts = [publicObservation].filter(Boolean);
+  const auditParts: string[] = auditObservation ? [auditObservation] : [];
 
   if (isPharmacyUserContext(userContext)) {
     if (!hint) throw new Error('pix_cnpj_pharmacy_missing_responsible');
@@ -12645,7 +12722,10 @@ async function resolvePixCnpjResponsible(command: PixCnpjCommand, userContext: W
       replyName: titleCaseShortName(hintedUser.displayName) || titleCaseShortName(hintedUser.username) || hintedUser.displayName,
       actorUserId: hintedUser.id,
       publicObservation: safeOutboundText(observationParts.join(' '), 180),
-      auditObservation: 'Responsavel resolvido pelo WhatsApp oficial da Farmacia.',
+      auditObservation: safeOutboundText([
+        'Responsavel resolvido pelo WhatsApp oficial da Farmacia.',
+        ...auditParts,
+      ].join(' '), 700),
     };
   }
 
@@ -12671,7 +12751,7 @@ async function resolvePixCnpjResponsible(command: PixCnpjCommand, userContext: W
       replyName,
       actorUserId: userContext.id,
       publicObservation: safeOutboundText(observationParts.join(' '), 180),
-      auditObservation: safeOutboundText(auditParts.join(' '), 180),
+      auditObservation: safeOutboundText(auditParts.join(' '), 700),
     };
   }
 
@@ -12683,7 +12763,10 @@ async function resolvePixCnpjResponsible(command: PixCnpjCommand, userContext: W
     replyName: titleCaseShortName(hintedUser.displayName) || titleCaseShortName(hintedUser.username) || hintedUser.displayName,
     actorUserId: hintedUser.id,
     publicObservation: safeOutboundText(observationParts.join(' '), 180),
-    auditObservation: 'Responsavel resolvido por nome informado no texto manual.',
+    auditObservation: safeOutboundText([
+      'Responsavel resolvido por nome informado no texto manual.',
+      ...auditParts,
+    ].join(' '), 700),
   };
 }
 
@@ -12703,9 +12786,12 @@ function saoPauloShortNowLabel(date = new Date()): string {
 }
 
 function pixCnpjFinanceiroObservation(command: PixCnpjCommand, resolved: ResolvedPixCnpjResponsible, dateTimeLabel: string): string {
+  const origin = safeText(command.origin, 40);
   const parts = [
     'Origem: Miauby WhatsApp.',
-    'Lancamento Pix CNPJ por texto manual.',
+    origin === 'media_ocr'
+      ? 'Lancamento Pix CNPJ por comprovante lido por midia.'
+      : 'Lancamento Pix CNPJ por texto manual.',
     dateTimeLabel ? `Data/hora WhatsApp: ${dateTimeLabel}.` : '',
     resolved.publicObservation ? `Obs do usuario: ${resolved.publicObservation}.` : '',
     resolved.auditObservation,
