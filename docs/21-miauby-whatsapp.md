@@ -563,6 +563,13 @@ curl.exe -sS http://127.0.0.1:3002/miauw/whatsapp/
 
 Quando o login do painel estiver ativo, `/miauw/whatsapp/` deve retornar a tela de login sem cookie e deve abrir o painel apos `POST /miauw/whatsapp/login` com credenciais do ambiente. `/miauw/whatsapp/health` deve continuar respondendo JSON publico.
 
+## Auditoria de 2026-06-03
+
+- Producao foi validada com Evolution `state=open`, webhook ativo, fila e outbox atuais sem pendencia travada.
+- O VPS voltou a exigir prefixo operacional: `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`, `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=false` e `MIAUW_WHATSAPP_PREFIX=miauby`.
+- Comandos de Tarefas reconhecem `miauby concluir tarefa ...` como conclusao, limpando o texto da busca para usar apenas o trecho da tarefa.
+- Nao enviar teste real de WhatsApp sem controle; use dry-run dos endpoints internos para validar automacoes.
+
 ## Proximas etapas
 
 1. Conectar o numero por QR/codigo de pareamento.

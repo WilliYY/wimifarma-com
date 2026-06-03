@@ -82,7 +82,7 @@ function looksLikeCancel(clean: string): boolean {
 }
 
 function looksLikeComplete(clean: string): boolean {
-  return /\b(terminei|conclui|finalizar|finaliza|marcar como feito|ja fiz|fiz|concluida|feito|feita)\b/.test(clean)
+  return /\b(terminei|conclui|concluir|conclua|finalizar|finaliza|marcar como feito|ja fiz|fiz|concluida|feito|feita)\b/.test(clean)
     && (/\b(tarefa|tarefas|pendencia|pendencias)\b/.test(clean) || clean.length > 8);
 }
 
@@ -143,7 +143,7 @@ function cleanTaskQuery(raw: string, action: 'complete' | 'cancel' | 'show'): st
       .replace(/\bnao\s+preciso\s+mais\s+(da\s+)?(tarefa|pendencia)\b/gi, ' ');
   } else if (action === 'complete') {
     text = text
-      .replace(/\b(terminei|conclui|finalizar|finaliza|marcar\s+como\s+feito|pode\s+marcar\s+como\s+feito|ja\s+fiz|fiz)\s+(a\s+)?(tarefa|pendencia)?\b/gi, ' ')
+      .replace(/\b(terminei|conclui|concluir|conclua|finalizar|finaliza|marcar\s+como\s+feito|pode\s+marcar\s+como\s+feito|ja\s+fiz|fiz)\s+(a\s+)?(tarefa|pendencia)?\b/gi, ' ')
       .replace(/\b(tarefa|pendencia)\s+(concluida|feita|pronta)\b/gi, ' ');
   } else {
     text = text
