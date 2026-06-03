@@ -2248,14 +2248,36 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             outline: 0;
         }
 
+        .wf-access {
+            display: grid;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .wf-access.has-xp-profile {
+            grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+        }
+
         .wf-user-xp {
             display: flex;
-            justify-content: flex-end;
+            justify-content: flex-start;
+            min-width: 0;
             margin: 0 0 14px;
         }
 
         .wf-user-xp[hidden] {
             display: none;
+        }
+
+        .wf-access.has-xp-profile .wf-user-xp {
+            grid-column: 1;
+            grid-row: 1;
+            margin: 0;
+        }
+
+        .wf-access.has-xp-profile .wf-modules {
+            grid-column: 2;
+            grid-row: 1;
         }
 
         .wf-user-xp-card {
@@ -2376,8 +2398,8 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             position: relative;
             z-index: 2;
             display: flex;
-            align-items: flex-end;
-            padding: 20px 0 clamp(188px, 20vh, 260px);
+            align-items: center;
+            padding: clamp(22px, 5vh, 64px) 0 clamp(104px, 14vh, 180px);
         }
 
         .wf-visually-hidden {
@@ -2429,6 +2451,31 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 14px;
             align-items: stretch;
+        }
+
+        .wf-modules[data-card-count="1"] {
+            grid-template-columns: minmax(0, 220px);
+        }
+
+        .wf-modules[data-card-count="2"] {
+            grid-template-columns: repeat(2, minmax(0, 220px));
+        }
+
+        .wf-modules[data-card-count="3"] {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .wf-modules[data-card-count="4"] {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .wf-modules[data-card-count="6"] {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .wf-modules[data-card-count="7"],
+        .wf-modules[data-card-count="8"] {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
         .wf-card {
@@ -2630,12 +2677,32 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
                 flex-direction: column;
             }
 
+            .wf-access,
+            .wf-access.has-xp-profile {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .wf-access.has-xp-profile .wf-user-xp,
+            .wf-access.has-xp-profile .wf-modules {
+                grid-column: auto;
+                grid-row: auto;
+            }
+
             .wf-modules {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
-            .wf-user-xp {
-                justify-content: center;
+            .wf-modules[data-card-count] {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .wf-user-xp,
+            .wf-access.has-xp-profile .wf-user-xp {
+                justify-content: flex-start;
+            }
+
+            .wf-user-xp-card {
+                width: min(430px, 100%);
             }
         }
 
@@ -2818,14 +2885,14 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
     </header>
 
     <main class="wf-main">
-        <div class="wf-shell">
+        <div class="wf-shell wf-access" data-wf-access>
             <h1 class="wf-visually-hidden">Wimifarma</h1>
 
             <?php if ($homeCanUseXp): ?>
             <section class="wf-user-xp" data-wf-xp-profile hidden aria-live="polite"></section>
             <?php endif; ?>
 
-            <section class="wf-modules" aria-label="Sistemas Wimifarma">
+            <section class="wf-modules" aria-label="Sistemas Wimifarma" data-card-count="<?php echo (int) count($modules); ?>">
                 <?php foreach ($modules as $module): ?>
                     <?php
                     $cardClasses = array('wf-card');
@@ -3050,6 +3117,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
                 return;
             }
 
+            var access = holder.closest('[data-wf-access]');
             var currentHomeUser = String((document.body && document.body.dataset && document.body.dataset.wfHomeUserLogin) || '').trim().toLowerCase();
             var endpoints = [
                 '<?php echo wf_home_e(wf_home_url('/usuarios/api/me/xp-card')); ?>',
@@ -3085,6 +3153,9 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             function hide() {
                 holder.hidden = true;
                 holder.innerHTML = '';
+                if (access) {
+                    access.classList.remove('has-xp-profile');
+                }
             }
 
             function payloadBelongsToCurrentUser(payload) {
@@ -3123,6 +3194,9 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
                         '</div>' +
                     '</a>';
                 holder.hidden = false;
+                if (access) {
+                    access.classList.add('has-xp-profile');
+                }
             }
 
             function fetchEndpoint(index) {
