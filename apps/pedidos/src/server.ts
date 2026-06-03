@@ -39,7 +39,50 @@ type CoreUserRow = {
   active: boolean;
 };
 
+type InternalActorUserRow = {
+  id: string;
+  username: string;
+  role: string | null;
+  active: boolean;
+  can_access: boolean | null;
+};
+
 type OrderStatus = 'pedido' | 'confirmado' | 'historico';
+
+type CreateOrderItemInput = {
+  description: string;
+  cents: number;
+  dueDate: string | null;
+};
+
+type CreateOrderInput = {
+  supplier: string;
+  items: CreateOrderItemInput[];
+  legacyDueDate: string | null;
+  expectedArrivalAt: string | null;
+  month: string;
+  note: string;
+  paidNow: boolean;
+  arrivedNow: boolean;
+  registerOnly: boolean;
+  userId: number | null;
+  source: string;
+  idempotencyKey: string;
+  requestHash: string;
+  traceId: string;
+};
+
+type CreateOrderResult = {
+  paidNow: boolean;
+  arrivedNow: boolean;
+  registerOnly: boolean;
+  accountId: number;
+  orderId: number;
+  supplier: string;
+  totalCents: number;
+  status: 'pedido' | 'confirmado' | 'historico';
+  duplicate: boolean;
+};
 
 type OrderRow = {
   id: string;
@@ -235,6 +278,18 @@ function isAllowedUser(user: { username?: unknown; role?: unknown }): boolean {
   const username = String(user.username || '').trim().toLowerCase();
   const role = String(user.role || '').trim().toLowerCase();
   return username === 'adm' || role === 'admin' || role === 'gerente';
+}
+
+function boolFromBody(value: unknown): boolean {
+  if (value === true) return true;
+  const text = String(value ?? '').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'sim', 'on'].includes(text);
+}
+
+function statusFromCreateFlags(paidNow: boolean, arrivedNow: boolean): CreateOrderResult['status'] {
+  if (arrivedNow && paidNow) return 'historico';
+  if (arrivedNow) return 'confirmado';
+  return 'pedido';
 }
 
 function ensureCsrf(req: Request): string {
@@ -650,6 +705,30 @@ async function userByHomeSso(req: Request): Promise<User | null> {
   };
 }
 
+async function internalActorForPedidos(userId: unknown): Promise<User | null> {
+  const id = Number(userId || 0);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const result = await corePgPool.query<InternalActorUserRow>(
+    `SELECT u.id::text, u.username, u.role, u.active, p.can_access
+       FROM core_users u
+       LEFT JOIN core_user_module_permissions p
+         ON p.user_id = u.id AND p.module_key = 'pedidos'
+      WHERE u.id = $1 AND u.active = true
+      LIMIT 1`,
+    [id],
+  );
+  const user = result.rows[0];
+  if (!user) return null;
+  const candidate = {
+    id: Number(user.id),
+    username: String(user.username),
+    role: String(user.role || 'user'),
+  };
+  if (isAllowedUser(candidate)) return candidate;
+  if (user.can_access === false) return null;
+  return candidate;
+}
+
 function regenerateWithUser(req: Request, user: User): Promise<void> {
   const returnTo = req.session.returnTo;
   return new Promise((resolve, reject) => {
@@ -874,6 +953,21 @@ async function ensureSchema(): Promise<void> {
     WHERE order_id IS NOT NULL
   `);
   await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS pedidos_internal_idempotency (
+      idempotency_key varchar(180) PRIMARY KEY,
+      source varchar(80) NOT NULL,
+      status varchar(30) NOT NULL DEFAULT 'processing',
+      request_hash varchar(80) NOT NULL,
+      response_payload jsonb,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS pedidos_internal_idempotency_created_idx
+    ON pedidos_internal_idempotency (created_at DESC)
+  `);
+  await pgPool.query(`
     CREATE INDEX IF NOT EXISTS gestao_account_items_account_order_idx
     ON gestao_account_items (account_id, sort_order, id)
   `);
@@ -1045,7 +1139,7 @@ async function refreshAccountDue(client: pg.PoolClient, accountId: number): Prom
   );
 }
 
-async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow: boolean; registerOnly: boolean }> {
+async function createOrder(req: Request): Promise<CreateOrderResult> {
   const supplier = cleanText(req.body.fornecedor, 180);
   if (!supplier) throw new Error('Informe o nome do fornecedor.');
 
@@ -1062,21 +1156,114 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
   }
   if (!items.length) throw new Error('Informe pelo menos um valor maior que zero para o pedido.');
 
-  const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
-  const userId = req.session.user?.id || null;
   const registerOnly = req.body.chegou_pago_registrar === '1';
-  const paidNow = registerOnly || req.body.pago_agora === '1';
-  const arrivedNow = registerOnly || req.body.chegou_agora === '1';
-  const month = monthValue(req.body.competencia_mes);
-  const dueAt = accountDueFromDate(earliestDateOnly(items.map((item) => item.dueDate)) || legacyDueDate);
-  const expectedArrivalAt = parseArrivalDaysToDate(req.body.chegada_prevista);
-  const note = cleanText(req.body.observacao, 1200);
+  return createOrderFromInput({
+    supplier,
+    items,
+    legacyDueDate,
+    expectedArrivalAt: parseArrivalDaysToDate(req.body.chegada_prevista),
+    month: monthValue(req.body.competencia_mes),
+    note: cleanText(req.body.observacao, 1200),
+    paidNow: registerOnly || req.body.pago_agora === '1',
+    arrivedNow: registerOnly || req.body.chegou_agora === '1',
+    registerOnly,
+    userId: req.session.user?.id || null,
+    source: 'pedidos_ui',
+    idempotencyKey: '',
+    requestHash: '',
+    traceId: '',
+  });
+}
+
+function createOrderResultFromPayload(payload: unknown): CreateOrderResult | null {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
+  const data = payload as Record<string, unknown>;
+  const accountId = Number(data.accountId || data.account_id || 0);
+  const orderId = Number(data.orderId || data.order_id || 0);
+  const totalCents = Number(data.totalCents || data.total_cents || 0);
+  const status = String(data.status || 'pedido');
+  if (!accountId || !orderId || !['pedido', 'confirmado', 'historico'].includes(status)) return null;
+  return {
+    paidNow: data.paidNow === true || data.paid_now === true,
+    arrivedNow: data.arrivedNow === true || data.arrived_now === true,
+    registerOnly: data.registerOnly === true || data.register_only === true,
+    accountId,
+    orderId,
+    supplier: cleanText(data.supplier, 180),
+    totalCents,
+    status: status as CreateOrderResult['status'],
+    duplicate: true,
+  };
+}
+
+function createOrderResultPayload(result: CreateOrderResult): Record<string, unknown> {
+  return {
+    paidNow: result.paidNow,
+    arrivedNow: result.arrivedNow,
+    registerOnly: result.registerOnly,
+    accountId: result.accountId,
+    orderId: result.orderId,
+    supplier: result.supplier,
+    totalCents: result.totalCents,
+    status: result.status,
+  };
+}
+
+async function createOrderFromInput(input: CreateOrderInput): Promise<CreateOrderResult> {
+  const supplier = cleanText(input.supplier, 180);
+  if (!supplier) throw new Error('Informe o nome do fornecedor.');
+
+  const items = input.items
+    .slice(0, 30)
+    .map((item, index) => ({
+      description: cleanText(item.description, 180) || `${input.items.length > 1 ? `Parcela ${index + 1}` : 'Pedido'} - ${supplier}`.slice(0, 180),
+      cents: Math.max(0, Math.round(Number(item.cents || 0))),
+      dueDate: parseOptionalDateOnly(item.dueDate, `o vencimento da parcela ${index + 1}`),
+    }))
+    .filter((item) => item.cents > 0);
+  if (!items.length) throw new Error('Informe pelo menos um valor maior que zero para o pedido.');
+
+  const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
+  const userId = input.userId;
+  const registerOnly = input.registerOnly;
+  const paidNow = registerOnly || input.paidNow;
+  const arrivedNow = registerOnly || input.arrivedNow;
+  const month = monthValue(input.month);
+  const dueAt = accountDueFromDate(earliestDateOnly(items.map((item) => item.dueDate)) || input.legacyDueDate);
+  const expectedArrivalAt = parseOptionalDateOnly(input.expectedArrivalAt, 'a previsao de chegada');
+  const note = cleanText(input.note, 1200);
+  const source = cleanText(input.source, 80) || 'sistema';
+  const idempotencyKey = cleanText(input.idempotencyKey, 180);
+  const requestHash = cleanText(input.requestHash, 80);
   const client = await pgPool.connect();
   let accountId = 0;
   let orderId = 0;
+  const status = statusFromCreateFlags(paidNow, arrivedNow);
 
   try {
     await client.query('BEGIN');
+    if (idempotencyKey) {
+      const inserted = await client.query(
+        `INSERT INTO pedidos_internal_idempotency (idempotency_key, source, status, request_hash)
+         VALUES ($1, $2, 'processing', $3)
+         ON CONFLICT DO NOTHING
+         RETURNING idempotency_key`,
+        [idempotencyKey, source, requestHash],
+      );
+      if (inserted.rowCount === 0) {
+        const existing = await client.query<{ status: string; response_payload: unknown }>(
+          'SELECT status, response_payload FROM pedidos_internal_idempotency WHERE idempotency_key = $1 FOR UPDATE',
+          [idempotencyKey],
+        );
+        const previous = createOrderResultFromPayload(existing.rows[0]?.response_payload);
+        if (previous) {
+          await client.query('COMMIT');
+          return previous;
+        }
+        throw new Error('duplicate_processing');
+      }
+    }
+
     const accountResult = await client.query<{ id: string }>(
       `INSERT INTO gestao_accounts
         (title, category, status, total_cents, competence_month, note, due_at, created_by, generated_at, paid_at)
@@ -1140,24 +1327,45 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
     if (registerOnly) {
       await auditPg(client, accountId, userId, 'pedidos_pedido_registro_manual', 'Pedido registrado manualmente ja recebido e pago.');
     }
+    if (source !== 'pedidos_ui') {
+      await auditPg(client, accountId, userId, 'pedidos_pedido_origem_interna', `Origem interna: ${source}${input.traceId ? ` / trace ${input.traceId}` : ''}`);
+    }
+    const result: CreateOrderResult = {
+      paidNow,
+      arrivedNow,
+      registerOnly,
+      accountId,
+      orderId,
+      supplier,
+      totalCents,
+      status,
+      duplicate: false,
+    };
+    if (idempotencyKey) {
+      await client.query(
+        `UPDATE pedidos_internal_idempotency
+            SET status = 'completed', response_payload = $2::jsonb, updated_at = now()
+          WHERE idempotency_key = $1`,
+        [idempotencyKey, JSON.stringify(createOrderResultPayload(result))],
+      );
+    }
     await client.query('COMMIT');
+    await logAudit(
+      userId,
+      registerOnly ? 'pedidos_pedido_registro_manual' : 'pedidos_pedido_criado',
+      'pedidos_pedido',
+      orderId,
+      registerOnly
+        ? `Pedido registrado manualmente ja recebido e pago: ${supplier} / ${formatMoney(totalCents)}${source !== 'pedidos_ui' ? ` / ${source}` : ''}`
+        : `Pedido criado: ${supplier} / ${formatMoney(totalCents)}${source !== 'pedidos_ui' ? ` / ${source}` : ''}`,
+    );
+    return result;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally {
     client.release();
   }
-
-  await logAudit(
-    userId,
-    registerOnly ? 'pedidos_pedido_registro_manual' : 'pedidos_pedido_criado',
-    'pedidos_pedido',
-    orderId,
-    registerOnly
-      ? `Pedido registrado manualmente ja recebido e pago: ${supplier} / ${formatMoney(totalCents)}`
-      : `Pedido criado: ${supplier} / ${formatMoney(totalCents)}`,
-  );
-  return { paidNow, arrivedNow, registerOnly };
 }
 
 async function confirmArrivalByOrderId(id: number, userId: number | null, sourceLabel = 'sistema'): Promise<{ supplierName: string; movedToHistory: boolean; accountId: number }> {
@@ -2428,6 +2636,119 @@ app.get(`${BASE_PATH}/api/badge`, asyncRoute(async (_req, res) => {
     awaiting_arrival: badge.awaitingArrival,
     arriving_today: badge.arrivingToday,
   });
+}));
+
+function internalCreateOrderItems(value: unknown, supplier: string): CreateOrderItemInput[] {
+  const rawItems = Array.isArray(value) ? value : [];
+  return rawItems.slice(0, 30).map((item, index) => {
+    const record = typeof item === 'object' && item !== null && !Array.isArray(item)
+      ? item as Record<string, unknown>
+      : {};
+    const numericCents = Number(record.amount_cents ?? record.cents ?? 0);
+    const cents = Number.isFinite(numericCents) && numericCents > 0
+      ? Math.round(numericCents)
+      : parseMoneyToCents(record.amount ?? record.value ?? record.valor);
+    const dueDate = cleanText(record.due_date ?? record.dueDate, 20) || null;
+    const label = rawItems.length > 1 ? `Parcela ${index + 1}` : 'Pedido';
+    return {
+      description: cleanText(record.description, 180) || `${label} - ${supplier}`.slice(0, 180),
+      cents,
+      dueDate,
+    };
+  }).filter((item) => item.cents > 0);
+}
+
+function createOrderRequestHash(payload: Record<string, unknown>): string {
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+function internalCreateOrderMessage(result: CreateOrderResult): string {
+  const prefix = result.duplicate ? 'Pedido ja registrado' : result.registerOnly ? 'Pedido registrado' : 'Pedido criado';
+  const status = result.status === 'historico'
+    ? 'pago e recebido'
+    : result.status === 'confirmado'
+      ? 'recebido, falta pagar'
+      : result.paidNow
+        ? 'pago, aguardando chegada'
+        : 'aguardando chegada e pagamento';
+  return `${prefix}: ${result.supplier} - ${formatMoney(result.totalCents)} - ${status}.`;
+}
+
+app.post(`${BASE_PATH}/api/internal/create-order`, requireInternalToken, asyncRoute(async (req, res) => {
+  const actor = await internalActorForPedidos(req.body?.actor_user_id || req.body?.user_id);
+  if (!actor) {
+    return res.status(403).json({
+      ok: false,
+      status: 'forbidden',
+      message: 'Usuario sem permissao para criar Pedidos.',
+    });
+  }
+
+  const supplier = cleanText(req.body?.supplier_name || req.body?.fornecedor, 180);
+  const items = internalCreateOrderItems(req.body?.items, supplier);
+  const registerOnly = boolFromBody(req.body?.register_only);
+  const idempotencyKey = cleanText(req.body?.idempotency_key, 180);
+  if (!idempotencyKey) {
+    return res.status(400).json({
+      ok: false,
+      status: 'missing_idempotency_key',
+      message: 'Informe idempotency_key para criar pedido interno.',
+    });
+  }
+  const payloadForHash = {
+    supplier,
+    items,
+    expected_arrival_at: cleanText(req.body?.expected_arrival_at, 20) || null,
+    competence_month: monthValue(req.body?.competence_month || req.body?.competencia_mes),
+    paid_now: registerOnly || boolFromBody(req.body?.paid_now),
+    arrived_now: registerOnly || boolFromBody(req.body?.arrived_now),
+    register_only: registerOnly,
+    actor_user_id: actor.id,
+    source: cleanText(req.body?.source, 80) || 'internal',
+  };
+
+  try {
+    const result = await createOrderFromInput({
+      supplier,
+      items,
+      legacyDueDate: null,
+      expectedArrivalAt: payloadForHash.expected_arrival_at,
+      month: payloadForHash.competence_month,
+      note: cleanText(req.body?.note || req.body?.observacao, 1200),
+      paidNow: payloadForHash.paid_now,
+      arrivedNow: payloadForHash.arrived_now,
+      registerOnly,
+      userId: actor.id,
+      source: payloadForHash.source,
+      idempotencyKey,
+      requestHash: createOrderRequestHash(payloadForHash),
+      traceId: cleanText(req.body?.trace_id, 120),
+    });
+    return res.status(result.duplicate ? 200 : 201).json({
+      ok: true,
+      duplicate: result.duplicate,
+      status: result.status,
+      account_id: result.accountId,
+      order_id: result.orderId,
+      supplier_name: result.supplier,
+      total_cents: result.totalCents,
+      total_label: formatMoney(result.totalCents),
+      paid_now: result.paidNow,
+      arrived_now: result.arrivedNow,
+      register_only: result.registerOnly,
+      message: internalCreateOrderMessage(result),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === 'duplicate_processing') {
+      return res.status(409).json({
+        ok: false,
+        status: 'duplicate_processing',
+        message: 'Pedido ja esta em processamento para esta mensagem.',
+      });
+    }
+    throw error;
+  }
 }));
 
 app.get(`${BASE_PATH}/api/internal/arrival-summary`, requireInternalToken, asyncRoute(async (req, res) => {

@@ -392,6 +392,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.
 - `GET /pedidos/api/internal/arrival-summary`: lista pedidos aguardando chegada para Miauby WhatsApp/n8n, com valor total, previsao, `created_at` do pedido e ordenacao pelos mais antigos.
 - `POST /pedidos/api/internal/confirm-arrival`: confirma chegada por titulo/fornecedor via automacao autorizada.
+- `POST /pedidos/api/internal/create-order`: cria pedido por comando do Miauby Whats, revalidando token interno, `actor_user_id`, permissao do usuario no core e idempotencia por mensagem.
 
 ### Permissoes e sessao
 
@@ -410,6 +411,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 
 - `pedidos_orders`;
 - `pedidos_confirmed_orders`;
+- `pedidos_internal_idempotency`;
 - `gestao_accounts`;
 - `gestao_account_items`;
 - `gestao_account_payments`;
@@ -429,6 +431,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Criar pedido com fornecedor, parcelas, vencimentos, previsao de chegada, competencia, status inicial e observacao.
 - Criar pedido ja pago, ja recebido ou `Chegou e pago - Registrar`, movendo para Confirmados/Historico conforme status.
 - `Chegou e pago - Registrar` reutiliza o mesmo fluxo seguro de pago + recebido: cria a conta `Boleto`, itens, um unico pagamento total, registro em `pedidos_confirmed_orders` com lifecycle `historico` e auditoria de registro manual.
+- Criar pedido pelo Miauby Whats com mensagens como `miauby pedido anb 350`, `miauby pedido anb 350 chegada amanha`, `miauby pedido anb 350 ja pago so chegar`, `miauby pedido anb 350 ja chegou so pagar`, `miauby pedido anb 350 chegou e pago registrar` ou parcelas `miauby pedido anb em 2 parcelas 200 10/06 e 150 20/06`; o bridge exige allowlist/card `Pedidos`, vinculo com usuario e resposta curta, e o app Pedidos evita duplicidade por `pedidos_internal_idempotency`.
 - Marcar pedido em Aguardando chegada como ja pago, gravando somente o saldo aberto em `gestao_account_payments` e mantendo a chegada pendente.
 - Confirmar chegada, com movimento para Confirmados ou Historico se ja estava pago.
 - Editar fornecedor.
@@ -443,6 +446,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Home publica usa `/pedidos/api/badge`.
 - Gestao recebe contas, itens e pagamentos vinculados.
 - Miauby WhatsApp/n8n chama `arrival-summary` e `confirm-arrival` para rotina diaria de chegada; a mensagem usa `pedidos_orders.created_at` para exibir quando o pedido foi registrado e ha quanto tempo esta parado.
+- Miauby WhatsApp tambem chama `create-order` para criar pedidos por texto operacional. Esse fluxo nao passa pelo Gemini, nao aceita comando ambiguo e nao grava quando fornecedor/valor/permissao estiverem faltando.
 - Financeiro/Gestao consomem efeitos dos pagamentos por categoria `Boleto`.
 - Widget do Miauby aparece na tela.
 

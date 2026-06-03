@@ -18,6 +18,8 @@ Desde 2026-05-29, contatos da allowlist podem ser vinculados a usuarios do core 
 
 Desde 2026-06-02, o bridge respeita `Ferias do usuario`, cadastrado no modulo Usuarios. Antes de qualquer envio automatico por card, lembrete de Tarefa, encomenda da Cotacao, rotina n8n ou alerta operacional, o bridge consulta `core_user_vacations` pelo `linked_user_id` do contato. Se o usuario estiver em ferias no fuso `America/Sao_Paulo`, a mensagem nao e enviada, o contato continua na allowlist, o login continua liberado e o bloqueio fica registrado em `core_user_vacation_message_logs` e `core_audit_logs`. O primeiro dia de ferias e o dia do retorno tambem podem gerar uma saudacao curta automatica para o proprio usuario, com marcas de idempotencia no core.
 
+Desde 2026-06-03, o bridge cria Pedidos pelo WhatsApp sem passar pelo Gemini quando a mensagem autorizada vem no padrao `miauby pedido ...`. O contato precisa estar na allowlist, ter card `Pedidos` e estar vinculado a um usuario do core; o app Pedidos revalida `actor_user_id` e respeita `core_user_module_permissions`. A mesma mensagem usa `idempotency_key=whatsapp:{trace_id}` em `POST /pedidos/api/internal/create-order`, evitando duplicar conta financeira/pagamento em retry de webhook ou worker. Se faltar fornecedor/valor, houver data passada, parcela divergente ou permissao faltando, o bridge responde curto e nao grava nada.
+
 ## Componentes
 
 - `apps/miauw-whatsapp`: servico Node.js 22 + TypeScript.

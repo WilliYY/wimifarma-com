@@ -308,6 +308,7 @@ Tabelas principais:
 - Postgres `gestao_supplier_orders` (legado; Pedidos novo usa tabelas proprias)
 - Postgres `pedidos_orders`
 - Postgres `pedidos_confirmed_orders`
+- Postgres `pedidos_internal_idempotency`
 - `core_audit_logs` para auditoria curta do login/acoes de Pedidos
 
 Regras a preservar:
@@ -363,7 +364,8 @@ Modulo `Pedidos` em `/pedidos/`:
 - esses mesmos cards mostram icone de excluir para retirar da tela quando nao houver necessidade de registrar o boleto;
 - remover valores ou excluir um pedido da tela nao apaga dados financeiros: valores viram `cancelado` quando permitido, e pedidos inteiros usam arquivamento logico em `gestao_accounts.archived_at`/`archived_by` mais lifecycle/cancelamento nas tabelas de Pedidos;
 - a tela `/pedidos/` carrega o widget do Miauby como apoio operacional, sem transformar Pedidos em subview da Gestao;
-- endpoints internos tokenizados de Pedidos permitem a rotina n8n/Miauby: `GET /pedidos/api/internal/arrival-summary` lista `Aguardando chegada` com o valor total de cada pedido, e `POST /pedidos/api/internal/confirm-arrival` confirma chegada por `order_id` ou titulo de fornecedor; respostas WhatsApp como `cimed chegou` exigem card `Pedidos`, registram auditoria e nao marcam pagamento;
+- endpoints internos tokenizados de Pedidos permitem a rotina n8n/Miauby: `GET /pedidos/api/internal/arrival-summary` lista `Aguardando chegada` com o valor total de cada pedido, `POST /pedidos/api/internal/confirm-arrival` confirma chegada por `order_id` ou titulo de fornecedor, e `POST /pedidos/api/internal/create-order` cria pedido a partir do Miauby Whats usando o mesmo fluxo da tela, com `actor_user_id`, card `Pedidos`, auditoria e idempotencia em `pedidos_internal_idempotency`; respostas WhatsApp como `cimed chegou` exigem card `Pedidos`, registram auditoria e nao marcam pagamento;
+- no WhatsApp, comandos no formato `miauby pedido fornecedor valor` criam pedido diretamente sem Gemini. Exemplos seguros: `miauby pedido anb 350`, `miauby pedido anb 350 chegada amanha`, `miauby pedido anb 350 ja pago so chegar`, `miauby pedido anb 350 ja chegou so pagar` e `miauby pedido anb 350 chegou e pago registrar`. Parcelas podem ser informadas como `miauby pedido anb em 2 parcelas 200 10/06 e 150 20/06`. Se faltar fornecedor/valor, houver data passada ou total divergente, o bridge responde curto e nao grava;
 - no WhatsApp, perguntas como `miauby em pedidos o que falta chegar` devem retornar localmente a mesma tabela de pedidos aguardando chegada, sem rodar resposta generativa e sem mostrar instrucao extra no rodape da mensagem automatica;
 - o badge da home consulta `/pedidos/api/badge` e mostra quantos pedidos em `pedidos_orders` ainda estao em `Aguardando chegada`;
 - a URL antiga `/gestao/pedidos` redireciona para `/pedidos/` apenas por compatibilidade e nao deve receber novas features.

@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import pg from 'pg';
+import {
+  formatPedidosCreateError,
+  formatPedidosCreateSuccess,
+  parsePedidosCreateCommand,
+  type PedidosCreateCommand,
+} from './pedidos-command.js';
 
 const { Pool } = pg;
 
@@ -4971,6 +4977,31 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
   const arrivalReply = parsePedidosArrivalReply(message);
+  const pedidoCreate = parsePedidosCreateCommand(message);
+  if (pedidoCreate && (pedidoCreate.ok || pedidoCreate.error !== 'missing_amount' || !arrivalReply)) {
+    if (!moduleAllowed(allowedCards, 'pedidos')) {
+      return {
+        text: forbiddenModuleReply('pedidos', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:pedidos_create',
+      };
+    }
+    if (!pedidoCreate.ok) {
+      return {
+        text: formatPedidosCreateError(pedidoCreate),
+        engine: 'local',
+        reason: `pedidos_create_invalid:${pedidoCreate.error || 'unknown'}`,
+      };
+    }
+    if (!userContext.id || !userContext.linked) {
+      return {
+        text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de criar pedido.',
+        engine: 'blocked',
+        reason: 'pedidos_create_unlinked_user',
+      };
+    }
+    return createPedidoFromWhatsapp(pedidoCreate, traceId, senderMask, userContext);
+  }
   if (arrivalReply) {
     if (!moduleAllowed(allowedCards, 'pedidos')) {
       return {
@@ -10109,6 +10140,55 @@ async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: stri
     };
   }
   throw new Error(safeText(data.message || data.error, 180) || `pedidos_confirm_arrival_http_${response.status}`);
+}
+
+async function createPedidoFromWhatsapp(command: PedidosCreateCommand, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<ReplyResult> {
+  if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
+  const actorName = safeText(userContext.display_name || userContext.username || senderMask, 120) || 'Miauby WhatsApp';
+  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/create-order`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(),
+    body: JSON.stringify({
+      source: 'miauby_whatsapp',
+      trace_id: traceId,
+      idempotency_key: `whatsapp:${traceId}`,
+      actor: actorName,
+      actor_user_id: userContext.id,
+      supplier_name: command.supplier_name,
+      items: command.items,
+      expected_arrival_at: command.expected_arrival_at,
+      competence_month: command.competence_month,
+      paid_now: command.paid_now,
+      arrived_now: command.arrived_now,
+      register_only: command.register_only,
+      note: command.note,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!isRecord(data)) throw new Error(`pedidos_create_http_${response.status}`);
+  if (response.ok && data.ok === true) {
+    return {
+      text: safeText(data.message, 500) || formatPedidosCreateSuccess(command, data.duplicate === true),
+      engine: 'local',
+      reason: data.duplicate === true ? 'pedidos_create_duplicate' : 'pedidos_create_created',
+    };
+  }
+  const status = safeText(data.status || data.error, 80);
+  if (response.status === 403 || status === 'forbidden') {
+    return {
+      text: 'Esse usuario nao tem permissao para criar Pedidos pelo WhatsApp.',
+      engine: 'blocked',
+      reason: 'pedidos_create_forbidden',
+    };
+  }
+  if (status === 'duplicate_processing') {
+    return {
+      text: 'Esse pedido ja esta em processamento. Nao vou duplicar.',
+      engine: 'local',
+      reason: 'pedidos_create_duplicate_processing',
+    };
+  }
+  throw new Error(safeText(data.message || data.error, 180) || `pedidos_create_http_${response.status}`);
 }
 
 async function dashboardSummary(): Promise<DashboardSummary> {
