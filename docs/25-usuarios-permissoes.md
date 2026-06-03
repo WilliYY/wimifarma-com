@@ -31,6 +31,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 ## Regras
 
 - Acesso ao painel fica restrito a username `adm` ou role `admin`.
+- A Home principal (`site/home.php`) autentica primeiro em `core_users` ativo, usando `username_normalized` em minusculo e `password_hash` bcrypt. Assim `thiago`, `Thiago` e `THIAGO` entram no mesmo login canonico; `WIMIFARMA_HOME_LOGIN_USER`/`WIMIFARMA_HOME_LOGIN_PASSWORD` permanece apenas como fallback operacional.
 - Criar/atualizar/desativar usuario exige CSRF.
 - Senhas antigas importadas por hash continuam irrecuperaveis. A partir do painel Usuarios, sempre que o ADM cria ou troca uma senha, `core_users.password_hash` recebe o bcrypt oficial do login e `core_user_admin_passwords` recebe uma copia cifrada para consulta interna no bloco `Senha ADM`.
 - Senha simples/curta e permitida no cadastro e na troca feita pelo ADM. O painel pode avisar visualmente que a senha e fraca, mas nao bloqueia; a seguranca obrigatoria continua sendo hash `bcrypt` para login e cofre ADM cifrado. Nunca salvar senha em texto puro.
@@ -58,6 +59,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 - Linhas ausentes em `core_user_module_permissions` preservam acesso legado ate cada modulo ser cortado para enforcement.
 - A grade de modulos do painel deve manter os nomes legiveis sem quebrar palavras dentro dos chips; `Salvar` fica separado visualmente de `Excluir` para evitar clique confuso.
 - Desde 2026-06-03, o card expandido de usuario usa layout frontend em blocos responsivos: cabecalho com contagem separada, badges abaixo do nome, conta/senha/XP em grid proprio, cofre ADM e status compactos, modulos densos e integracoes ajustadas por largura. Essa regra e apenas visual; nao altera nomes de campos, CSRF, permissao, hash de senha, cofre ADM, ferias, tarefa privada, WhatsApp ou endpoints.
+- Desde 2026-06-03, cada card tambem mostra um resumo de acesso para ADM/admin: nome exibido, login canonico, senha ADM mascarada vinda do cofre cifrado quando existir, status, perfil, quantidade de WhatsApp e modulos liberados. O resumo nunca mostra hash; `Mostrar`/`Copiar` usa a mesma senha descriptografada do cofre administrativo ja restrito ao painel Usuarios.
 - Clicar no corpo/cabecalho do card de usuario deve abrir a edicao automaticamente. O script precisa ignorar cliques em `Editar`, `Historico`, botoes, links, campos, labels e formularios para preservar as acoes normais.
 - No card lateral `Novo usuario`, o controle de senha deve caber dentro do card: campo em linha propria e botoes `Gerar`, `Mostrar` e `Copiar` na linha seguinte, sem vazar sobre a lista de usuarios.
 - O historico geral e o historico por usuario devem ficar recolhidos por padrao para evitar poluir a tela; abrir `Historico` no card deve mostrar os eventos recentes daquele login automaticamente, inclusive quando um novo colaborador for criado. Eventos operacionais de outros modulos aparecem quando o modulo grava `core_audit_logs.actor_user_id` com o `core_users.id` do responsavel.

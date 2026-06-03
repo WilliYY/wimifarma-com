@@ -599,6 +599,80 @@ a {
   color: #92400e;
 }
 
+.users-access-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  padding: 12px 18px 14px;
+  border-bottom: 1px solid #edf2f7;
+  background: #ffffff;
+}
+
+.users-access-item {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid #e2eaf4;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f8fbff;
+}
+
+.users-access-item b {
+  color: #7b2444;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.users-access-item strong,
+.users-access-item span,
+.users-access-item code {
+  min-width: 0;
+  color: #243044;
+  font: inherit;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.users-access-item code {
+  border-radius: 6px;
+  padding: 2px 6px;
+  width: fit-content;
+  max-width: 100%;
+  background: #ffffff;
+  color: #285474;
+}
+
+.users-access-item small {
+  color: var(--wf-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.users-access-password {
+  grid-column: span 2;
+}
+
+.users-access-password-control {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+}
+
+.users-access-password-control .users-input {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.users-access-password-control .users-mini-action {
+  min-height: 36px;
+  padding: 7px 9px;
+  font-size: 0.78rem;
+}
+
 .users-user details {
   padding: 0 16px 16px;
 }
@@ -1301,6 +1375,10 @@ a {
     justify-self: start;
   }
 
+  .users-access-password {
+    grid-column: span 1;
+  }
+
   .users-account-grid {
     grid-template-areas:
       "display"
@@ -1395,6 +1473,15 @@ a {
   .users-user details {
     padding-right: 12px;
     padding-left: 12px;
+  }
+
+  .users-access-summary {
+    grid-template-columns: 1fr;
+    padding: 10px 12px 12px;
+  }
+
+  .users-access-password-control {
+    grid-template-columns: 1fr;
   }
 
   .users-user-form {

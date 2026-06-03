@@ -67,6 +67,11 @@ function wf_home_env_string(string $name, string $default = ''): string
     return $default;
 }
 
+function wf_home_normalize_core_username(string $username): string
+{
+    return strtolower(trim($username));
+}
+
 function wf_home_human_login_name(string $username): string
 {
     $username = trim($username);
@@ -87,13 +92,8 @@ function wf_home_human_login_name(string $username): string
     return ucwords(strtolower($name));
 }
 
-function wf_home_core_user_identity(string $username): ?array
+function wf_home_core_pdo(): ?PDO
 {
-    $username = strtolower(trim($username));
-    if ($username === '' || !preg_match('/^[a-z0-9._@-]{1,80}$/', $username)) {
-        return null;
-    }
-
     if (!class_exists(PDO::class)) {
         return null;
     }
@@ -121,8 +121,26 @@ function wf_home_core_user_identity(string $username): ?array
                 PDO::ATTR_TIMEOUT => 2,
             )
         );
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+function wf_home_core_user_identity(string $username): ?array
+{
+    $username = wf_home_normalize_core_username($username);
+    if ($username === '' || !preg_match('/^[a-z0-9._@-]{1,80}$/', $username)) {
+        return null;
+    }
+
+    $pdo = wf_home_core_pdo();
+    if (!$pdo) {
+        return null;
+    }
+
+    try {
         $stmt = $pdo->prepare(
-            'SELECT username, display_name
+            'SELECT username, username_normalized, display_name
                FROM core_users
               WHERE username_normalized = ?
                 AND active = true
@@ -135,6 +153,69 @@ function wf_home_core_user_identity(string $username): ?array
     }
 
     return is_array($row) ? $row : null;
+}
+
+function wf_home_password_verify(string $password, string $hash): bool
+{
+    if ($hash === '') {
+        return false;
+    }
+
+    if (password_verify($password, $hash)) {
+        return true;
+    }
+
+    if (preg_match('/^\$2[abxy]\$/', $hash) !== 1) {
+        return false;
+    }
+
+    foreach (array('$2y$', '$2a$') as $prefix) {
+        $compatibleHash = $prefix . substr($hash, 4);
+        if ($compatibleHash !== $hash && password_verify($password, $compatibleHash)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function wf_home_core_user_authenticate(string $username, string $password): ?array
+{
+    $username = wf_home_normalize_core_username($username);
+    if ($username === '' || $password === '' || !preg_match('/^[a-z0-9._@-]{1,80}$/', $username)) {
+        return null;
+    }
+
+    $pdo = wf_home_core_pdo();
+    if (!$pdo) {
+        return null;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT username, username_normalized, display_name, password_hash
+               FROM core_users
+              WHERE username_normalized = ?
+                AND active = true
+              LIMIT 1'
+        );
+        $stmt->execute(array($username));
+        $row = $stmt->fetch();
+    } catch (Throwable $error) {
+        return null;
+    }
+
+    if (!is_array($row)) {
+        return null;
+    }
+
+    $hash = (string) ($row['password_hash'] ?? '');
+    if (!wf_home_password_verify($password, $hash)) {
+        return null;
+    }
+
+    unset($row['password_hash']);
+    return $row;
 }
 
 function wf_home_logged_user_label(string $username): string
@@ -485,20 +566,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
     $postedCsrf = (string) ($_POST['wf_home_csrf'] ?? '');
     $user = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
-    $expectedUser = (string) (getenv('WIMIFARMA_HOME_LOGIN_USER') ?: 'adm');
+    $normalizedUser = wf_home_normalize_core_username($user);
+    $expectedUser = wf_home_normalize_core_username((string) (getenv('WIMIFARMA_HOME_LOGIN_USER') ?: 'adm'));
     $expectedPassword = (string) (getenv('WIMIFARMA_HOME_LOGIN_PASSWORD') ?: 'adm');
+    $coreUser = null;
 
     if (!hash_equals((string) $_SESSION['wf_home_csrf'], $postedCsrf)) {
         $homeLoginError = 'Sessao expirada. Atualize e tente de novo.';
-    } elseif (hash_equals($expectedUser, $user) && hash_equals($expectedPassword, $password)) {
+    } else {
+        $coreUser = wf_home_core_user_authenticate($user, $password);
+    }
+
+    if ($homeLoginError === '' && $coreUser) {
+        $sessionUser = wf_home_normalize_core_username((string) ($coreUser['username_normalized'] ?? $coreUser['username'] ?? $user));
         session_regenerate_id(true);
         $_SESSION['wf_home_authenticated'] = true;
-        $_SESSION['wf_home_user'] = $user;
+        $_SESSION['wf_home_user'] = $sessionUser;
         $_SESSION['wf_home_login_nonce'] = bin2hex(random_bytes(8));
         $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
-        wf_home_sso_issue($user, wf_home_is_https());
+        wf_home_sso_issue($sessionUser, wf_home_is_https());
         wf_home_redirect('/');
-    } else {
+    } elseif ($homeLoginError === '' && $expectedUser !== '' && hash_equals($expectedUser, $normalizedUser) && hash_equals($expectedPassword, $password)) {
+        session_regenerate_id(true);
+        $_SESSION['wf_home_authenticated'] = true;
+        $_SESSION['wf_home_user'] = $expectedUser;
+        $_SESSION['wf_home_login_nonce'] = bin2hex(random_bytes(8));
+        $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
+        wf_home_sso_issue($expectedUser, wf_home_is_https());
+        wf_home_redirect('/');
+    } elseif ($homeLoginError === '') {
         $homeLoginError = 'Login ou senha invalidos.';
     }
 }

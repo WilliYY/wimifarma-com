@@ -1732,7 +1732,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-card-open">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-core-login-card-access">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1799,7 +1799,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-user-card-open">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-core-login-card-access">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
   <script src="${BASE_PATH}/user-cards.js?v=20260603a" defer></script>
@@ -1906,6 +1906,50 @@ function renderAdminPasswordVault(row: UserViewRow): string {
   </div>`;
 }
 
+function renderUserAccessSummary(row: UserViewRow, whatsappLinks: WhatsappLinkRow[], enabledModules: string[]): string {
+  const displayName = displayNameForUser(row);
+  const login = normalizeUsername(row.username || row.username_normalized || '');
+  const passwordSummary = row.admin_password
+    ? `<div class="users-password-control users-access-password-control vault" data-password-control>
+        <input class="users-input" type="password" value="${e(row.admin_password)}" readonly data-password-input aria-label="Senha ADM de ${e(displayName)}">
+        <button class="users-mini-action" type="button" data-password-toggle>Mostrar</button>
+        <button class="users-mini-action" type="button" data-password-copy>Copiar</button>
+      </div>
+      <small>Definida em ${e(brDateTime(row.admin_password_updated_at))}</small>`
+    : `<span>${e(row.admin_password_unavailable ? 'Cofre indisponivel' : 'Defina uma nova senha')}</span>`;
+
+  return `<div class="users-access-summary" aria-label="Resumo de acesso do usuario">
+    <div class="users-access-item">
+      <b>Nome</b>
+      <strong>${e(displayName)}</strong>
+    </div>
+    <div class="users-access-item">
+      <b>Login</b>
+      <code>${e(login || row.username)}</code>
+    </div>
+    <div class="users-access-item users-access-password">
+      <b>Senha ADM</b>
+      ${passwordSummary}
+    </div>
+    <div class="users-access-item">
+      <b>Status</b>
+      <span>${row.active ? 'Ativo' : 'Inativo'}</span>
+    </div>
+    <div class="users-access-item">
+      <b>Perfil</b>
+      <span>${e(row.role || 'user')}</span>
+    </div>
+    <div class="users-access-item">
+      <b>WhatsApp</b>
+      <span>${e(whatsappLinks.length)}</span>
+    </div>
+    <div class="users-access-item">
+      <b>M&oacute;dulos</b>
+      <span>${e(enabledModules.length)}</span>
+    </div>
+  </div>`;
+}
+
 function renderVacationSection(req: Request, row: UserViewRow): string {
   const status = row.vacation_status || 'none';
   const statusClass = `status-${status}`;
@@ -1981,6 +2025,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
       </div>
       <div class="users-meta"><span>${e(enabledModules.length)} m&oacute;dulos</span></div>
     </div>
+    ${renderUserAccessSummary(row, whatsappLinks, enabledModules)}
     <details class="users-edit-details">
       <summary><span>Editar</span></summary>
       <form method="post" action="${BASE_PATH}/" class="users-user-form">
