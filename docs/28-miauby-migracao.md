@@ -338,6 +338,8 @@ Rollback:
 
 Esta etapa prepara o primeiro corte controlado do motor de resposta, sem transformar o Node em dono da escrita. O chat continua entrando por `site/miauw/api.php?action=send`; o PHP continua criando conversa, gravando mensagem do usuario e gravando mensagem do assistente em `miauw_mensagens`; a diferenca e que, para usuario liberado, o texto da resposta pode vir oficialmente do `wimifarma-miauw-agent`.
 
+Estado em 2026-06-03: ativada no VPS somente para `adm`. O `.env` oficial usa `MIAUBY_ENGINE=node`, `MIAUW_ENGINE=node` e `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`; os smokes confirmaram `adm` com resposta oficial Node, usuario comum fora da allowlist com resposta PHP, escrita `php_mysql`, rota `/miauw/`, proxy publico desligado e fallback PHP em caso de falha do agent.
+
 Novas/ajustadas configuracoes:
 
 - `MIAUBY_ENGINE`: nome novo do motor, aceitando `php`, `node_shadow` ou `node`.
@@ -367,6 +369,7 @@ Rollback:
 - Preferir `MIAUBY_ENGINE=php`; se a variavel nova nao existir no ambiente, voltar `MIAUW_ENGINE=php`.
 - Recriar `wimifarma-com-web`.
 - Se o agent Node tambem foi alterado, recriar `wimifarma-miauw-agent`.
+- Validar `sh scripts/miauby-node-cutover-smoke.sh php` apos rollback.
 
 ### Etapa 2026-06-02 - Consumidor sombra do contexto Node
 
@@ -447,7 +450,7 @@ Rollback:
 - `MIAUW_ENGINE` fica como fallback durante transicao.
 - Liberar `node` apenas para `adm`/usuarios listados.
 - Rollback por env deve voltar ao PHP sem alterar banco.
-- Estado iniciado em 2026-06-02: Etapa 6A preparou status por usuario, alias `MIAUBY_ENGINE` e smoke `scripts/miauby-node-cutover-smoke.sh`; escrita oficial continua PHP/MySQL.
+- Estado iniciado em 2026-06-02: Etapa 6A preparou status por usuario, alias `MIAUBY_ENGINE` e smoke `scripts/miauby-node-cutover-smoke.sh`; escrita oficial continua PHP/MySQL. Em 2026-06-03, a resposta Node oficial foi ativada no VPS apenas para `adm`, mantendo `MIAUBY_WRITES_ENABLED=false`, `/miauw/` como rota e usuarios fora da allowlist em PHP.
 
 ### Fase 7 - Corte de escrita e diagnostico
 
@@ -477,11 +480,10 @@ Rollback:
 
 ## Ordem recomendada agora
 
-1. Validar 5C com `adm` por envios reais e zero divergencia de dry-run.
-2. Ativar/validar 6A com `MIAUBY_ENGINE=node` apenas para `adm`.
-3. Observar latencia, confirmacoes, tools e traces por alguns dias.
-4. Migrar escrita oficial para `wimifarma_miauby` somente depois do corte de resposta estar estavel.
-5. Cortar por rota apenas depois de escrita Postgres validada.
+1. Observar 6A ativa com `MIAUBY_ENGINE=node` apenas para `adm`, acompanhando latencia, confirmacoes, tools, traces e fallback.
+2. Continuar validando 5C com `adm` por envios reais e zero divergencia de dry-run.
+3. Migrar escrita oficial para `wimifarma_miauby` somente depois do corte de resposta estar estavel.
+4. Cortar por rota apenas depois de escrita Postgres validada.
 
 ## Cuidados de rollback
 
