@@ -172,12 +172,20 @@ Fluxo:
 5. A mensagem e curta e interna, perguntando se a encomenda chegou, com criada em, hoje e contexto do produto/quantidade.
 6. O envio nao altera valor, fornecedor, ganhador, status ou linha da Cotacao.
 
+Como conferir sem enviar mensagem:
+
+1. Abrir `/miauw/whatsapp/`, secao `n8n automacoes`, card `Encomenda da Cotacao`.
+2. Ver `Status agora`: worker da Cotacao, ultima varredura, vencidos agora, proximo pendente, ultima tentativa e ultimo erro.
+3. Se precisar conferir direto no backend, chamar `GET /cotacao/api/internal/encomenda-reminders/status` com token interno. Esse endpoint e somente leitura e nao dispara WhatsApp.
+4. Se `vencidos agora` estiver `0`, o worker nao vai chamar o bridge naquele momento. Se houver vencidos e `ultima tentativa` nao mudar, investigar container/logs da Cotacao.
+
 Auditoria de 2026-06-02:
 
 - n8n em producao estava ativo com workflows de smoke, watchdog, Evolution/Baileys, Pix/OCR, Pedidos e Financeiro; nao havia workflow n8n dedicado para Cotacao, o que esta correto para o fluxo atual.
 - O painel/backend do Miauby Whats tinha `cotacao_encomenda_16h` cadastrado e ligado em `miauw_whatsapp_automation_settings`.
 - A Cotacao tinha 2 lembretes pendentes em `cotacao_v2_encomenda_reminders`, ambos previstos para 2026-06-03 16h America/Sao_Paulo, ainda sem execucao no bridge porque nao tinham vencido.
 - `miauw_whatsapp_automation_runs` e `miauw_whatsapp_error_logs` nao tinham registros de Cotacao no momento da auditoria; isso e esperado ate a primeira execucao real ou dry-run dessa rotina.
+- O painel do Miauby Whats passou a ler o status real da fila da Cotacao para evitar confundir `Ligado no backend` com prova de que havia lembrete vencido.
 - Nao mover autosave, precos, fornecedores, quantidades ou import/restore para n8n. Para Cotacao, n8n deve ficar restrito a smoke, watchdog, alerta de backend parado ou monitoramento de cotacao parada.
 
 ### Chegada de pedidos as 17h

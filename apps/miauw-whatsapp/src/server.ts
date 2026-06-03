@@ -567,6 +567,7 @@ type DashboardSummary = {
   automationSettings: DashboardAutomationSettingRow[];
   recentAutomationRuns: DashboardAutomationRunRow[];
   financeiroCashStatus: FinanceiroCashClosingStatus | null;
+  cotacaoEncomendaStatus: JsonRecord | null;
 };
 
 const env = process.env;
@@ -681,6 +682,8 @@ const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHO
 const N8N_WEBHOOK_SECRET_CONFIGURED = textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET') !== '';
 const PEDIDOS_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_PEDIDOS_INTERNAL_BASE_URL') || 'http://wimifarma-pedidos-app:3300/pedidos');
 const FINANCEIRO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL') || textEnv('FINANCEIRO_INTERNAL_BASE_URL') || 'http://wimifarma-financeiro-app:3800/financeiro');
+const COTACAO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_COTACAO_INTERNAL_BASE_URL') || textEnv('COTACAO_INTERNAL_BASE_URL') || 'http://wimifarma-cotacao-app:3000/cotacao');
+const COTACAO_INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_COTACAO_INTERNAL_TOKEN') || textEnv('COTACAO_INTERNAL_TOKEN') || INTERNAL_TOKEN;
 const PEDIDOS_ARRIVAL_AUTOMATION_KEY = 'pedidos_chegada_17h';
 const FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY = 'financeiro_fechamento_caixa_18h';
 const COTACAO_ENCOMENDA_AUTOMATION_KEY = 'cotacao_encomenda_16h';
@@ -9937,6 +9940,30 @@ async function fetchFinanceiroCashClosingStatus(date?: string): Promise<Financei
   }
 }
 
+async function fetchCotacaoEncomendaReminderStatus(): Promise<JsonRecord> {
+  if (!COTACAO_INTERNAL_TOKEN) throw new Error('cotacao_internal_token_not_configured');
+  const url = `${COTACAO_INTERNAL_BASE_URL}/api/internal/encomenda-reminders/status`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.min(REQUEST_TIMEOUT_MS, 5000));
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'X-Miauw-Internal-Token': COTACAO_INTERNAL_TOKEN,
+        'X-Internal-Token': COTACAO_INTERNAL_TOKEN,
+      },
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data) || data.ok !== true) {
+      throw new Error(safeText(isRecord(data) ? data.error || data.message : '', 180) || `cotacao_encomenda_status_http_${response.status}`);
+    }
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryRun: boolean, date?: string): Promise<JsonRecord> {
   const source = 'automation_financeiro_fechamento_caixa_18h';
   const enabled = await automationSettingEnabled(FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY, true);
@@ -10109,6 +10136,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     automationSettingsResult,
     recentAutomationRunsResult,
     financeiroCashStatusResult,
+    cotacaoEncomendaStatusResult,
   ] = await Promise.all([
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
@@ -10334,6 +10362,10 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         LIMIT 10`,
     ),
     INTERNAL_TOKEN ? fetchFinanceiroCashClosingStatus().catch(() => null) : Promise.resolve(null),
+    COTACAO_INTERNAL_TOKEN ? fetchCotacaoEncomendaReminderStatus().catch((error) => ({
+      ok: false,
+      error: safeError(error),
+    })) : Promise.resolve(null),
   ]);
   const allowlistCounts = countsByStatus(allowlistCountsResult.rows);
 
@@ -10358,6 +10390,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     automationSettings: automationSettingsResult.rows,
     recentAutomationRuns: recentAutomationRunsResult.rows,
     financeiroCashStatus: financeiroCashStatusResult,
+    cotacaoEncomendaStatus: cotacaoEncomendaStatusResult,
   };
 }
 
@@ -10817,11 +10850,40 @@ function financeiroCashClosingPanelText(status: FinanceiroCashClosingStatus | nu
   return `${financeiroOpenCashDaysLine(status)} Status da consulta (${dateLabel}): ${status.status_label || status.status || 'Aberto'}.`;
 }
 
+function recordField(value: unknown): JsonRecord {
+  return isRecord(value) ? value : {};
+}
+
+function cotacaoEncomendaPanelText(status: JsonRecord | null): string {
+  if (!status) {
+    return 'Status Cotacao: leitura ao vivo indisponivel nesta abertura do painel. O envio continua sendo decidido pelo worker da Cotacao.';
+  }
+  if (status.ok !== true) {
+    return `Status Cotacao: leitura indisponivel (${safeText(status.error, 140) || 'sem detalhe'}). O toggle abaixo ainda controla se o bridge aceita ou ignora o envio.`;
+  }
+  const worker = recordField(status.worker);
+  const reminders = recordField(status.reminders);
+  const counts = recordField(reminders.counts);
+  const nextPending = recordField(reminders.next_pending);
+  const lastAttempt = recordField(reminders.last_attempt);
+  const lastError = recordField(reminders.last_error);
+  const workerEnabled = worker.enabled === true ? 'ativo' : 'desligado';
+  const lastRun = safeText(worker.last_run_at, 80) ? formatDate(safeText(worker.last_run_at, 80)) : 'ainda sem varredura apos o boot';
+  const processed = Number(worker.last_processed_count || 0);
+  const pending = Number(counts.pendente || 0);
+  const dueNow = Number(reminders.due_now || 0);
+  const nextAt = safeText(nextPending.remind_at, 80) ? formatDate(safeText(nextPending.remind_at, 80)) : 'nenhum pendente';
+  const attemptAt = safeText(lastAttempt.last_attempt_at, 80) ? formatDate(safeText(lastAttempt.last_attempt_at, 80)) : 'nenhuma tentativa';
+  const errorSummary = safeText(lastError.error_summary || worker.last_error_summary, 140) || 'sem erro registrado';
+  return `Status Cotacao: worker ${workerEnabled}; ultima varredura ${lastRun} (${processed} vencido(s)); vencidos agora ${dueNow}; pendentes ${pending}; proximo ${nextAt}. Ultima tentativa: ${attemptAt}. Ultimo erro: ${errorSummary}.`;
+}
+
 function renderN8nWorkflows(
   rows: DashboardN8nRecipientRow[],
   settingsRows: DashboardAutomationSettingRow[],
   csrfToken: string,
   financeiroCashStatus: FinanceiroCashClosingStatus | null,
+  cotacaoEncomendaStatus: JsonRecord | null,
 ): string {
   const recipients = n8nRecipientByModule(rows);
   const settings = new Map(settingsRows.map((row) => [row.key, row]));
@@ -10836,6 +10898,8 @@ function renderN8nWorkflows(
     const hasPanelToggle = 'settingsKey' in workflow && workflow.settingsKey;
     const liveFinanceiroHtml = workflow.key === FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY ? `
         <div class="n8n-message-preview is-live"><b>Status agora</b><span>${htmlEscape(financeiroCashClosingPanelText(financeiroCashStatus))}</span></div>` : '';
+    const liveCotacaoHtml = workflow.key === COTACAO_ENCOMENDA_AUTOMATION_KEY ? `
+        <div class="n8n-message-preview is-live"><b>Status agora</b><span>${htmlEscape(cotacaoEncomendaPanelText(cotacaoEncomendaStatus))}</span></div>` : '';
     const toggleHtml = hasPanelToggle ? `
         <form class="n8n-control-box is-${enabled ? 'on' : 'off'}" method="post" action="${htmlEscape(BASE_PATH)}/automations/toggle">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
@@ -10879,6 +10943,7 @@ function renderN8nWorkflows(
         </div>
         <div class="n8n-message-preview"><b>Mensagem/estilo</b><span>${htmlEscape(workflow.messagePreview)}</span></div>
         ${liveFinanceiroHtml}
+        ${liveCotacaoHtml}
         <p>${htmlEscape(workflow.description)}</p>
         <div class="n8n-guardrail"><b>Limite</b><span>${htmlEscape(workflow.safety)}</span></div>
         ${toggleHtml}
@@ -12180,7 +12245,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           </div>
         </div>
         <div class="n8n-workflow-grid">
-          ${renderN8nWorkflows(summary.n8nRecipients, summary.automationSettings, csrfToken, summary.financeiroCashStatus)}
+          ${renderN8nWorkflows(summary.n8nRecipients, summary.automationSettings, csrfToken, summary.financeiroCashStatus, summary.cotacaoEncomendaStatus)}
         </div>
         <div class="table-wrap automation-runs-wrap">
           <table class="ops-table ops-automation-table">

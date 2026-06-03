@@ -55,6 +55,13 @@ const ENCOMENDA_REMINDER_MAX_ATTEMPTS = Math.max(
   1,
   Math.min(10, Number.parseInt(env.COTACAO_ENCOMENDA_REMINDER_MAX_ATTEMPTS || '3', 10) || 3)
 );
+const encomendaReminderWorkerState = {
+  lastRunAt: null,
+  lastFinishedAt: null,
+  lastErrorAt: null,
+  lastErrorSummary: '',
+  lastProcessedCount: 0
+};
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const INTERNAL_CLIENT_ID = 'miauby-internal';
@@ -2468,74 +2475,198 @@ async function retryEncomendaReminder(row, error, options = {}) {
 }
 
 async function processDueEncomendaReminders() {
-  if (!ENCOMENDA_REMINDER_ENABLED) return;
-  const result = await pgPool.query(
-    `WITH due AS (
-       SELECT id
-       FROM cotacao_v2_encomenda_reminders
-       WHERE status IN ('pendente', 'erro')
-         AND remind_at <= now()
-         AND attempts < max_attempts
-         AND (
-           status = 'pendente'
-           OR (next_attempt_at IS NOT NULL AND next_attempt_at <= now())
-         )
-        ORDER BY remind_at ASC, id ASC
-        LIMIT 10
-       FOR UPDATE SKIP LOCKED
-     )
-     UPDATE cotacao_v2_encomenda_reminders r
-     SET attempts = r.attempts + 1,
-         last_attempt_at = now(),
-         updated_at = now()
-     FROM due, cotacao_v2_rows row_data
-     WHERE r.id = due.id
-       AND row_data.id = r.row_id
-     RETURNING r.*, row_data.values AS current_values, row_data.deleted_at AS row_deleted_at`
-  );
+  encomendaReminderWorkerState.lastRunAt = new Date();
+  encomendaReminderWorkerState.lastProcessedCount = 0;
+  try {
+    if (!ENCOMENDA_REMINDER_ENABLED) {
+      encomendaReminderWorkerState.lastFinishedAt = new Date();
+      return;
+    }
+    const result = await pgPool.query(
+      `WITH due AS (
+         SELECT id
+         FROM cotacao_v2_encomenda_reminders
+         WHERE status IN ('pendente', 'erro')
+           AND remind_at <= now()
+           AND attempts < max_attempts
+           AND (
+             status = 'pendente'
+             OR (next_attempt_at IS NOT NULL AND next_attempt_at <= now())
+           )
+          ORDER BY remind_at ASC, id ASC
+          LIMIT 10
+         FOR UPDATE SKIP LOCKED
+       )
+       UPDATE cotacao_v2_encomenda_reminders r
+       SET attempts = r.attempts + 1,
+           last_attempt_at = now(),
+           updated_at = now()
+       FROM due, cotacao_v2_rows row_data
+       WHERE r.id = due.id
+         AND row_data.id = r.row_id
+       RETURNING r.*, row_data.values AS current_values, row_data.deleted_at AS row_deleted_at`
+    );
+    encomendaReminderWorkerState.lastProcessedCount = result.rows.length;
 
-  for (const row of result.rows) {
-    const context = encomendaContextFromValues(row.current_values || {});
-    if (row.row_deleted_at || !context.hasEncomenda) {
-      await cancelEncomendaReminder(row.quote_id, row.row_id, 'Linha removida ou deixou de ser encomenda antes do envio.', {
-        user: { id: null, username: 'Miauby Whats' },
-        clientId: 'miauby-whatsapp',
-        source: 'worker'
-      });
-      continue;
-    }
-    const rowForMessage = {
-      ...row,
-      produto: context.produto,
-      quantidade: context.quantidade,
-      categoria: context.categoria,
-      original_text: context.originalText
-    };
-    try {
-      const data = await postWhatsappEncomendaReminder(rowForMessage);
-      const sent = Number(data.sent || 0);
-      const recipients = Number(data.recipients || 0);
-      const errors = Array.isArray(data.errors) ? data.errors.map((item) => normalizeInternalText(item, 120)).filter(Boolean) : [];
-      if (sent > 0) {
-        await finishEncomendaReminder(rowForMessage, 'enviado', `Lembrete enviado para ${sent} contato(s).`, data);
-      } else {
-        const policy = encomendaReminderFailurePolicy(
-          errors[0] || (recipients === 0 ? 'Nenhum WhatsApp com card Cotacao configurado.' : 'Miauby Whats nao enviou o lembrete.'),
-          { recipients }
-        );
-        if (policy.action === 'final') {
-          await finishEncomendaReminder(rowForMessage, 'erro', policy.summary, data, {
-            final: true,
-            finalReason: policy.reason
-          });
-        } else {
-          await retryEncomendaReminder(rowForMessage, policy.summary, { policy });
-        }
+    for (const row of result.rows) {
+      const context = encomendaContextFromValues(row.current_values || {});
+      if (row.row_deleted_at || !context.hasEncomenda) {
+        await cancelEncomendaReminder(row.quote_id, row.row_id, 'Linha removida ou deixou de ser encomenda antes do envio.', {
+          user: { id: null, username: 'Miauby Whats' },
+          clientId: 'miauby-whatsapp',
+          source: 'worker'
+        });
+        continue;
       }
-    } catch (error) {
-      await retryEncomendaReminder(rowForMessage, error);
+      const rowForMessage = {
+        ...row,
+        produto: context.produto,
+        quantidade: context.quantidade,
+        categoria: context.categoria,
+        original_text: context.originalText
+      };
+      try {
+        const data = await postWhatsappEncomendaReminder(rowForMessage);
+        const sent = Number(data.sent || 0);
+        const recipients = Number(data.recipients || 0);
+        const errors = Array.isArray(data.errors) ? data.errors.map((item) => normalizeInternalText(item, 120)).filter(Boolean) : [];
+        if (sent > 0) {
+          await finishEncomendaReminder(rowForMessage, 'enviado', `Lembrete enviado para ${sent} contato(s).`, data);
+        } else {
+          const policy = encomendaReminderFailurePolicy(
+            errors[0] || (recipients === 0 ? 'Nenhum WhatsApp com card Cotacao configurado.' : 'Miauby Whats nao enviou o lembrete.'),
+            { recipients }
+          );
+          if (policy.action === 'final') {
+            await finishEncomendaReminder(rowForMessage, 'erro', policy.summary, data, {
+              final: true,
+              finalReason: policy.reason
+            });
+          } else {
+            await retryEncomendaReminder(rowForMessage, policy.summary, { policy });
+          }
+        }
+      } catch (error) {
+        await retryEncomendaReminder(rowForMessage, error);
+      }
     }
+    encomendaReminderWorkerState.lastFinishedAt = new Date();
+    encomendaReminderWorkerState.lastErrorSummary = '';
+  } catch (error) {
+    encomendaReminderWorkerState.lastErrorAt = new Date();
+    encomendaReminderWorkerState.lastErrorSummary = normalizeInternalText(error instanceof Error ? error.message : String(error), 220);
+    throw error;
   }
+}
+
+function isoDateOrNull(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function safeReminderStatusRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id || ''),
+    row_id: String(row.row_id || ''),
+    status: String(row.status || ''),
+    detected_at: isoDateOrNull(row.detected_at),
+    remind_at: isoDateOrNull(row.remind_at),
+    attempts: Number(row.attempts || 0),
+    max_attempts: Number(row.max_attempts || 0),
+    last_attempt_at: isoDateOrNull(row.last_attempt_at),
+    next_attempt_at: isoDateOrNull(row.next_attempt_at),
+    sent_at: isoDateOrNull(row.sent_at),
+    updated_at: isoDateOrNull(row.updated_at),
+    recipient_mode: String(row.recipient_mode || ''),
+    error_summary: normalizeInternalText(row.error_summary || '', 180)
+  };
+}
+
+async function encomendaReminderStatusSummary() {
+  const dueWhere = `status IN ('pendente', 'erro')
+    AND remind_at <= now()
+    AND attempts < max_attempts
+    AND (
+      status = 'pendente'
+      OR (next_attempt_at IS NOT NULL AND next_attempt_at <= now())
+    )`;
+  const [countsResult, dueResult, nextResult, lastAttemptResult, lastErrorResult, lastSentResult] = await Promise.all([
+    pgPool.query(
+      `SELECT status, COUNT(*)::int AS count
+         FROM cotacao_v2_encomenda_reminders
+        GROUP BY status
+        ORDER BY status`
+    ),
+    pgPool.query(`SELECT COUNT(*)::int AS due_now FROM cotacao_v2_encomenda_reminders WHERE ${dueWhere}`),
+    pgPool.query(
+      `SELECT id, row_id, status, detected_at, remind_at, attempts, max_attempts,
+              last_attempt_at, next_attempt_at, sent_at, updated_at, recipient_mode, error_summary
+         FROM cotacao_v2_encomenda_reminders
+        WHERE status IN ('pendente', 'erro')
+        ORDER BY remind_at ASC, id ASC
+        LIMIT 1`
+    ),
+    pgPool.query(
+      `SELECT id, row_id, status, detected_at, remind_at, attempts, max_attempts,
+              last_attempt_at, next_attempt_at, sent_at, updated_at, recipient_mode, error_summary
+         FROM cotacao_v2_encomenda_reminders
+        WHERE last_attempt_at IS NOT NULL
+        ORDER BY last_attempt_at DESC
+        LIMIT 1`
+    ),
+    pgPool.query(
+      `SELECT id, row_id, status, detected_at, remind_at, attempts, max_attempts,
+              last_attempt_at, next_attempt_at, sent_at, updated_at, recipient_mode, error_summary
+         FROM cotacao_v2_encomenda_reminders
+        WHERE error_summary <> '' OR status = 'erro'
+        ORDER BY updated_at DESC
+        LIMIT 1`
+    ),
+    pgPool.query(
+      `SELECT id, row_id, status, detected_at, remind_at, attempts, max_attempts,
+              last_attempt_at, next_attempt_at, sent_at, updated_at, recipient_mode, error_summary
+         FROM cotacao_v2_encomenda_reminders
+        WHERE sent_at IS NOT NULL
+        ORDER BY sent_at DESC
+        LIMIT 1`
+    )
+  ]);
+  const counts = {};
+  for (const row of countsResult.rows) {
+    counts[String(row.status || '')] = Number(row.count || 0);
+  }
+  return {
+    ok: true,
+    source: 'cotacao-postgres',
+    now: new Date().toISOString(),
+    worker: {
+      enabled: ENCOMENDA_REMINDER_ENABLED,
+      interval_ms: ENCOMENDA_REMINDER_WORKER_INTERVAL_MS,
+      max_attempts: ENCOMENDA_REMINDER_MAX_ATTEMPTS,
+      retry_delay_minutes: ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES,
+      transport_retry_delay_minutes: ENCOMENDA_REMINDER_TRANSPORT_RETRY_DELAY_MINUTES,
+      last_run_at: isoDateOrNull(encomendaReminderWorkerState.lastRunAt),
+      last_finished_at: isoDateOrNull(encomendaReminderWorkerState.lastFinishedAt),
+      last_processed_count: encomendaReminderWorkerState.lastProcessedCount,
+      last_error_at: isoDateOrNull(encomendaReminderWorkerState.lastErrorAt),
+      last_error_summary: encomendaReminderWorkerState.lastErrorSummary
+    },
+    transport: {
+      whatsapp_base_configured: Boolean(WHATSAPP_INTERNAL_BASE_URL),
+      whatsapp_token_configured: Boolean(WHATSAPP_INTERNAL_TOKEN),
+      explicit_recipients_configured: configuredEncomendaRecipientPhones().length > 0
+    },
+    reminders: {
+      counts,
+      due_now: Number(dueResult.rows[0]?.due_now || 0),
+      next_pending: safeReminderStatusRow(nextResult.rows[0]),
+      last_attempt: safeReminderStatusRow(lastAttemptResult.rows[0]),
+      last_error: safeReminderStatusRow(lastErrorResult.rows[0]),
+      last_sent: safeReminderStatusRow(lastSentResult.rows[0])
+    }
+  };
 }
 
 async function activePresence(quoteId) {
@@ -2919,6 +3050,10 @@ app.get(`${BASE_PATH}/api/internal/summary`, requireInternalToken, asyncRoute(as
     recent,
     lastEventId: sheet.lastEventId
   });
+}));
+
+app.get(`${BASE_PATH}/api/internal/encomenda-reminders/status`, requireInternalToken, asyncRoute(async (_req, res) => {
+  res.json(await encomendaReminderStatusSummary());
 }));
 
 app.get(`${BASE_PATH}/api/internal/search`, requireInternalToken, asyncRoute(async (req, res) => {

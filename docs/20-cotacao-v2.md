@@ -40,6 +40,7 @@ Rotas:
 - `GET /cotacao/health`
 - `GET /cotacao/api/internal/search` para consulta interna do Miauby por token
 - `POST /cotacao/api/internal/encomendas` para criar encomenda interna do Miauby por token
+- `GET /cotacao/api/internal/encomenda-reminders/status` para diagnostico interno/tokenizado da automacao de encomendas, sem enviar WhatsApp
 - `GET /cotacao/login.php`
 - `POST /cotacao/login.php`
 - `GET /cotacao/`
@@ -83,6 +84,7 @@ Postgres `wimifarma_cotacao`:
 - `cotacao_v2_styles`: estilos manuais por linha, coluna ou celula, usados pela paleta de cores da tela.
 - `cotacao_v2_column_audit`: auditoria de renomeacao e reordenacao de colunas de distribuidoras.
 - `cotacao_v2_encomenda_reminders`: lembretes operacionais criados quando uma linha contem `encomenda`, com cotacao, linha, texto original, produto/quantidade extraidos, data de deteccao, envio previsto, destinatarios mascarados, status (`pendente`, `enviado`, `erro`, `cancelado`, `resolvido`), tentativas e resultado do Miauby Whats. Importacoes Google Sheets e restores de backup recalculam esses lembretes para criar os faltantes e cancelar pendentes de linhas removidas.
+- O worker de encomendas roda dentro do app da Cotacao. O endpoint interno `GET /cotacao/api/internal/encomenda-reminders/status` mostra se o worker esta habilitado, ultima varredura apos o boot, quantos lembretes estao vencidos agora, proximo pendente, ultima tentativa, ultimo erro e ultimo envio, sem telefone cru e sem processar lembrete.
 
 Redis:
 
@@ -105,6 +107,7 @@ Core Postgres `wimifarma_core`:
 - Categoria e texto comum.
 - `geral`, `urgente`, `encomenda` e `cotacao` nao podem acionar cor, prioridade, ordem nem filtro por gatilho escondido.
 - Excecao documentada de 2026-06-01: `encomenda` gera apenas um lembrete operacional persistido para o Miauby Whats no dia seguinte as 16h. Esse lembrete nao muda valores, fornecedor, ganhador, prioridade, cor ou posicao da linha. Desde 2026-06-02, importacao Google Sheets e restore de backup tambem reconciliam a tabela de lembretes depois da substituicao em massa. Se a Cotacao enviar destinatarios explicitos ao bridge WhatsApp, eles nao autorizam envio por si so: o Miauby valida cada numero contra allowlist e card `Cotacao`.
+- O horario de 16h e calculado em `America/Sao_Paulo`. Se a palavra `encomenda` for salva depois da meia-noite, o lembrete fica para o dia seguinte dessa deteccao, nao para o dia anterior que o operador imaginou.
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`; regras criadas pela tela podem ser editadas ou apagadas no proprio modal.
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.
