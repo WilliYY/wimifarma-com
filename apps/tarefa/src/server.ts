@@ -1130,8 +1130,8 @@ async function finishReminder(row: DueTaskReminderRow, status: TaskReminderStatu
   const sent = status === 'sent';
   await pgPool.query(
     `UPDATE tarefa_reminders
-        SET status = $2,
-            sent_at = CASE WHEN $2 = 'sent' THEN NOW() ELSE sent_at END,
+        SET status = $2::varchar,
+            sent_at = CASE WHEN $2::varchar = 'sent' THEN NOW() ELSE sent_at END,
             error_summary = $3,
             whatsapp_result = $4::jsonb,
             updated_at = NOW()
