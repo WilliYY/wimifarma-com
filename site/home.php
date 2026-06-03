@@ -121,6 +121,7 @@ function wf_home_core_pdo(): ?PDO
                 PDO::ATTR_TIMEOUT => 2,
             )
         );
+        return $pdo;
     } catch (Throwable $error) {
         return null;
     }
