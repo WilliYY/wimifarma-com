@@ -16,6 +16,7 @@ Entrada publica:
 - O card `Usuarios` abre `/usuarios/` para administrar logins, modulos, vinculo XP e historico central.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
 - A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `XP`, `Gestao`, `Miauby`, `Miauby Whatsapp` e `Usuarios`; os dez primeiros fecham duas fileiras de cinco cards e `Usuarios` fica por ultimo na terceira fileira. Quando a home possui `WFHOME_SSO` valido ou o navegador possui sessao ativa no XP/Usuarios, e o login esta vinculado a um funcionario XP, a home exibe acima da grade um mini-card do XP desse usuario, com foto, nivel, ranking, XP do mes, XP total e barra de progresso atualizados por endpoint dos apps Node. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
+- Desde 2026-06-03, os cards da Home autenticada usam textos mais curtos, CTA `Abrir`, etiqueta compacta por modulo e acento visual por cor para melhorar leitura em desktop/mobile sem alterar links, ordem, SSO, logout ou permissoes.
 
 Identidade visual validada em 2026-05-21:
 

@@ -1885,82 +1885,82 @@ $homeGreetingSessionKey = $homeUserLogin !== ''
 $modules = array(
     array(
         'name' => 'Cashback',
-        'label' => 'Clientes e resgates',
-        'description' => 'Cadastro, compras, creditos e relatorios.',
+        'label' => 'Clientes',
+        'description' => 'Compras, creditos, saldos e resgates.',
         'href' => '/cashback/',
         'accent' => 'blue',
     ),
     array(
-        'name' => 'Cotacao',
-        'label' => 'Compras e fornecedores',
-        'description' => 'Itens, precos, status e comparacao.',
+        'name' => 'Cotação',
+        'label' => 'Compras',
+        'description' => 'Itens, fornecedores, precos e ganhadores.',
         'href' => '/cotacao/',
         'accent' => 'green',
     ),
     array(
         'name' => 'Pedidos',
-        'label' => 'Fornecedores e boletos',
-        'description' => 'Chegadas, vencimentos e pagamentos.',
+        'label' => 'Chegadas',
+        'description' => 'Pedidos para chegar, boletos e historico.',
         'href' => '/pedidos/',
         'accent' => 'wine',
         'order_badge' => true,
     ),
     array(
         'name' => 'Financeiro',
-        'label' => 'Fechamento diario',
-        'description' => 'Caixa, sangrias, PIX e auditoria.',
+        'label' => 'Caixa diario',
+        'description' => 'Fechamento, sangrias, PIX e maquininhas.',
         'href' => '/financeiro/',
         'accent' => 'amber',
     ),
     array(
         'name' => 'Tarefas',
-        'label' => 'Operacao interna',
-        'description' => 'Prioridades, historico e conclusoes.',
+        'label' => 'Equipe',
+        'description' => 'Prioridades, lembretes e conclusoes.',
         'href' => '/tarefa/',
         'accent' => 'rose',
         'task_badge' => true,
     ),
     array(
         'name' => 'Códigos',
-        'label' => 'Comissoes especiais',
-        'description' => 'Codigo, EAN e preco em lista rapida.',
+        'label' => 'Itens',
+        'description' => 'Codigos, EAN, precos e comissoes.',
         'href' => '/codigos/',
         'accent' => 'teal',
     ),
     array(
         'name' => 'XP',
-        'label' => 'Jogo dos atendentes',
-        'description' => 'Niveis, fotos, XP e ranking mensal.',
+        'label' => 'Ranking',
+        'description' => 'Niveis, vendas, fotos e XP mensal.',
         'href' => '/xp/',
         'accent' => 'gold',
         'xp_frame' => true,
     ),
     array(
-        'name' => 'Gestao',
-        'label' => 'Administrativo',
-        'description' => 'Contas a pagar, pagos do mes e pendencias.',
+        'name' => 'Gestão',
+        'label' => 'Contas',
+        'description' => 'Contas a pagar, pagos do mes e recorrencias.',
         'href' => '/gestao/',
         'accent' => 'wine',
     ),
     array(
         'name' => 'Miauby',
-        'label' => 'Assistente interno',
-        'description' => 'Chat, treino e apoio operacional.',
+        'label' => 'Fiscal interno',
+        'description' => 'Chat, diagnostico e apoio da equipe.',
         'href' => '/miauby/',
         'accent' => 'violet',
     ),
     array(
-        'name' => 'Miauby Whatsapp',
-        'label' => 'Canal e fila',
-        'description' => 'Webhook, Evolution, eventos e outbox.',
+        'name' => 'Miauby Whats',
+        'label' => 'Canal interno',
+        'description' => 'Fila, Evolution, automacoes e eventos.',
         'href' => '/miauby/whatsapp/',
         'accent' => 'teal',
         'home_class' => 'is-whatsapp-card',
     ),
     array(
         'name' => 'Usuários',
-        'label' => 'Acessos e auditoria',
-        'description' => 'Logins, permissoes, XP e historico.',
+        'label' => 'Acessos',
+        'description' => 'Logins, permissoes, WhatsApp e historico.',
         'href' => '/usuarios/',
         'accent' => 'blue',
         'home_class' => 'is-users-card',
@@ -2273,65 +2273,96 @@ $modules = array(
             display: grid;
             grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 14px;
+            align-items: stretch;
         }
 
         .wf-card {
+            --card-accent: #2563eb;
+            --card-accent-soft: rgba(37, 99, 235, 0.1);
             position: relative;
-            min-height: 186px;
+            min-height: 178px;
             display: grid;
-            grid-template-rows: auto auto 1fr auto;
-            gap: 10px;
-            padding: 18px;
-            border: 1px solid #d9e1ec;
+            grid-template-rows: auto auto minmax(2.9em, 1fr) auto;
+            gap: 9px;
+            overflow: hidden;
+            padding: 17px 17px 15px;
+            border: 1px solid rgba(203, 213, 225, 0.84);
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.92);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94)),
+                rgba(255, 255, 255, 0.94);
             backdrop-filter: blur(5px);
+            color: #0f172a;
             text-decoration: none;
-            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.05);
-            transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.07);
+            isolation: isolate;
+            transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
         }
 
         .wf-card:hover,
         .wf-card:focus-visible {
             transform: translateY(-3px);
-            border-color: #94a3b8;
-            box-shadow: 0 20px 42px rgba(15, 23, 42, 0.09);
+            border-color: var(--card-accent);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 0.98)),
+                var(--card-accent-soft);
+            box-shadow: 0 20px 42px rgba(15, 23, 42, 0.11);
             outline: 0;
         }
 
         .wf-card-mark {
-            width: 36px;
-            height: 8px;
+            width: 42px;
+            height: 9px;
             border-radius: 999px;
-            background: #2563eb;
+            background: var(--card-accent);
+            box-shadow: 0 8px 18px var(--card-accent-soft);
+            transition: width 160ms ease, transform 160ms ease;
         }
 
-        .wf-card[data-accent="green"] .wf-card-mark {
-            background: #16a34a;
+        .wf-card:hover .wf-card-mark,
+        .wf-card:focus-visible .wf-card-mark {
+            width: 54px;
+            transform: translateX(2px);
         }
 
-        .wf-card[data-accent="amber"] .wf-card-mark {
-            background: #d97706;
+        .wf-card[data-accent="blue"] {
+            --card-accent: #2563eb;
+            --card-accent-soft: rgba(37, 99, 235, 0.12);
         }
 
-        .wf-card[data-accent="rose"] .wf-card-mark {
-            background: #e11d48;
+        .wf-card[data-accent="green"] {
+            --card-accent: #16a34a;
+            --card-accent-soft: rgba(22, 163, 74, 0.13);
         }
 
-        .wf-card[data-accent="violet"] .wf-card-mark {
-            background: #7c3aed;
+        .wf-card[data-accent="amber"] {
+            --card-accent: #d97706;
+            --card-accent-soft: rgba(217, 119, 6, 0.15);
         }
 
-        .wf-card[data-accent="teal"] .wf-card-mark {
-            background: #0f766e;
+        .wf-card[data-accent="rose"] {
+            --card-accent: #e11d48;
+            --card-accent-soft: rgba(225, 29, 72, 0.13);
         }
 
-        .wf-card[data-accent="wine"] .wf-card-mark {
-            background: #a80f43;
+        .wf-card[data-accent="violet"] {
+            --card-accent: #7c3aed;
+            --card-accent-soft: rgba(124, 58, 237, 0.13);
         }
 
-        .wf-card[data-accent="gold"] .wf-card-mark {
-            background: #f59e0b;
+        .wf-card[data-accent="teal"] {
+            --card-accent: #0f766e;
+            --card-accent-soft: rgba(15, 118, 110, 0.13);
+        }
+
+        .wf-card[data-accent="wine"] {
+            --card-accent: #a80f43;
+            --card-accent-soft: rgba(168, 15, 67, 0.14);
+        }
+
+        .wf-card[data-accent="gold"] {
+            --card-accent: #f59e0b;
+            --card-accent-soft: rgba(245, 158, 11, 0.16);
         }
 
         .wf-card.is-xp-card {
@@ -2370,27 +2401,61 @@ $modules = array(
         .wf-card h2 {
             margin: 0;
             color: #0f172a;
-            font-size: 1.35rem;
-            line-height: 1.15;
+            font-size: clamp(1.12rem, 1.38vw, 1.35rem);
+            line-height: 1.08;
             letter-spacing: 0;
+            overflow-wrap: anywhere;
         }
 
         .wf-card span {
-            color: #64748b;
-            font-size: 0.88rem;
-            font-weight: 800;
+            width: fit-content;
+            max-width: 100%;
+            display: inline-flex;
+            align-items: center;
+            min-height: 25px;
+            border-radius: 999px;
+            padding: 0 9px;
+            background: var(--card-accent-soft);
+            color: var(--card-accent);
+            font-size: 0.78rem;
+            font-weight: 950;
+            line-height: 1.1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .wf-card p {
             margin: 0;
             color: #475569;
-            font-size: 0.96rem;
-            line-height: 1.42;
+            font-size: 0.9rem;
+            font-weight: 720;
+            line-height: 1.34;
         }
 
         .wf-card b {
+            width: fit-content;
+            min-height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(148, 163, 184, 0.5);
+            border-radius: 999px;
+            padding: 0 12px;
+            background: rgba(255, 255, 255, 0.72);
             color: #0f172a;
-            font-size: 0.9rem;
+            font-size: 0.82rem;
+            font-weight: 950;
+            line-height: 1;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+            transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+        }
+
+        .wf-card:hover b,
+        .wf-card:focus-visible b {
+            border-color: var(--card-accent);
+            background: var(--card-accent);
+            color: #ffffff;
         }
 
         .wf-card-badge {
@@ -2496,9 +2561,9 @@ $modules = array(
             }
 
             .wf-card {
-                min-height: 148px;
+                min-height: 144px;
                 gap: 7px;
-                padding: 13px 12px;
+                padding: 12px 11px;
                 box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
             }
 
@@ -2508,18 +2573,20 @@ $modules = array(
             }
 
             .wf-card-mark {
-                width: 30px;
+                width: 32px;
                 height: 7px;
             }
 
             .wf-card h2 {
-                font-size: clamp(1rem, 6vw, 1.18rem);
+                font-size: clamp(0.98rem, 5.5vw, 1.16rem);
                 line-height: 1.08;
                 overflow-wrap: anywhere;
             }
 
             .wf-card span {
-                font-size: 0.72rem;
+                min-height: 22px;
+                padding: 0 7px;
+                font-size: 0.68rem;
                 line-height: 1.18;
             }
 
@@ -2528,14 +2595,16 @@ $modules = array(
                 min-height: 2.2em;
                 overflow: hidden;
                 color: #526174;
-                font-size: 0.76rem;
+                font-size: 0.74rem;
                 line-height: 1.18;
                 -webkit-box-orient: vertical;
                 -webkit-line-clamp: 2;
             }
 
             .wf-card b {
-                font-size: 0.78rem;
+                min-height: 29px;
+                padding: 0 10px;
+                font-size: 0.74rem;
             }
 
             .wf-card-badge {
@@ -2642,7 +2711,7 @@ $modules = array(
                         <h2><?php echo wf_home_e($module['name']); ?></h2>
                         <span><?php echo wf_home_e($module['label']); ?></span>
                         <p><?php echo wf_home_e($module['description']); ?></p>
-                        <b>Entrar</b>
+                        <b>Abrir</b>
                     </a>
                 <?php endforeach; ?>
             </section>
