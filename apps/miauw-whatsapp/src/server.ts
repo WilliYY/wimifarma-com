@@ -8,6 +8,11 @@ import {
   type PedidosCreateCommand,
 } from './pedidos-command.js';
 import {
+  formatPixCnpjCreateError,
+  parsePixCnpjCommand,
+  type PixCnpjCommand,
+} from './pix-cnpj-command.js';
+import {
   formatSangriaCreateError,
   parseSangriaCommand,
   type SangriaCommand,
@@ -663,6 +668,7 @@ const DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES = [
 ];
 const PIX_RECEIPT_DESTINATION_ALIASES = parseTextListEnv(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES'), DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES);
 const PIX_RECEIPT_MIN_TARGET_SCORE = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100', 70, 40, 100) / 100;
+const PIX_CNPJ_MANUAL_HINT_REPLY = 'Nao consegui ler bem o comprovante \u{1F63F} Me mande assim: miauby pix cnpj 28,90 sueli.';
 const PIX_RECEIPT_NOT_LIKE_REPLY = 'Isso ai é um comprovante pix?';
 const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3000);
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
@@ -3785,7 +3791,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                 } else if (!targetMatch.ok) {
                   await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
                   mediaFailureReply = {
-                    text: `Li o comprovante, mas nao consegui confirmar que o destino e a Wimifarma (${maskDocument(PIX_RECEIPT_CNPJ)} ou nome cadastrado). Nao lancei. Se estiver certo, escreva os dados manualmente para eu confirmar.`,
+                    text: PIX_CNPJ_MANUAL_HINT_REPLY,
                     engine: 'blocked',
                     reason: 'pix_receipt_target_mismatch',
                   };
@@ -3842,7 +3848,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           },
         });
         mediaFailureReply = {
-          text: 'Nao consegui ler o comprovante com seguranca. Manda foto/print/PDF mais nitido ou escreve: pix cnpj valor - nome - obs opcional.',
+          text: PIX_CNPJ_MANUAL_HINT_REPLY,
           engine: 'blocked',
           reason: 'pix_receipt_ocr_failed',
         };
@@ -4272,7 +4278,7 @@ function cancellationReplyForPending(pending: PendingConfirmationRow): string {
     const category = normalizeIntentText(safeText(command.categoria, 80));
     const summary = normalizeIntentText(pending.summary || '');
     if (category === 'pix cnpj' || summary.includes('pix cnpj')) {
-      return 'Cancelado. Nada foi gravado. Se quiser corrigir, mande: pix cnpj 50,00 - Nome - obs opcional. Sem data/hora eu uso agora.';
+      return 'Cancelado. Nada foi gravado. Se quiser corrigir, mande: miauby pix cnpj 28,90 sueli.';
     }
   }
   return 'Cancelado. Nada foi gravado.';
@@ -4301,6 +4307,12 @@ function isPixReceiptFinanceiroCommand(command: JsonRecord): boolean {
   const observation = normalizeIntentText(financeiroCommandObservation(command));
   return observation.includes('comprovante pix cnpj lido por midia')
     || observation.includes('comprovante pix recebido');
+}
+
+function isPixReceiptGeneratedCommand(message: string): boolean {
+  const clean = normalizeIntentText(message);
+  return clean.includes('comprovante pix cnpj lido por midia')
+    || clean.includes('comprovante pix recebido');
 }
 
 function titleCaseShortName(value: unknown): string {
@@ -5108,6 +5120,32 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+  const pixCnpjCreate = isPixReceiptGeneratedCommand(message) ? null : parsePixCnpjCommand(message);
+  if (pixCnpjCreate) {
+    if (!moduleAllowed(allowedCards, 'financeiro')) {
+      await mergeWhatsappEventSummaryByTrace(traceId, {
+        pix_cnpj_manual_attempted: true,
+        pix_cnpj_manual_outcome: 'blocked_module',
+      });
+      return {
+        text: forbiddenModuleReply('financeiro', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:pix_cnpj_create',
+      };
+    }
+    if (!pixCnpjCreate.ok) {
+      await mergeWhatsappEventSummaryByTrace(traceId, {
+        pix_cnpj_manual_attempted: true,
+        pix_cnpj_manual_outcome: safeText(pixCnpjCreate.error || 'invalid', 60),
+      });
+      return {
+        text: formatPixCnpjCreateError(pixCnpjCreate),
+        engine: 'local',
+        reason: `pix_cnpj_invalid:${pixCnpjCreate.error || 'unknown'}`,
+      };
+    }
+    return createPixCnpjFromWhatsapp(pixCnpjCreate, traceId, senderMask, userContext);
+  }
   const sangriaCreate = parseSangriaCommand(message);
   if (sangriaCreate) {
     if (!moduleAllowed(allowedCards, 'financeiro')) {
@@ -5902,6 +5940,18 @@ async function mergePixReceiptEventSummary(eventId: string, summary: JsonRecord)
   );
 }
 
+async function mergeWhatsappEventSummaryByTrace(traceId: string, summary: JsonRecord): Promise<void> {
+  const cleanTrace = safeText(traceId, 32);
+  if (!cleanTrace) return;
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_events
+        SET payload_summary = payload_summary || $2::jsonb,
+            updated_at = NOW()
+      WHERE trace_id = $1`,
+    [cleanTrace, JSON.stringify(summary)],
+  );
+}
+
 function pixReceiptDuplicateSummary(match: PixReceiptDuplicateMatch, outcome: string): JsonRecord {
   return {
     pix_receipt_outcome: safeText(outcome, 60),
@@ -5975,19 +6025,19 @@ function pixReceiptDuplicateReply(match: PixReceiptDuplicateMatch, mediaOnly = f
   const source = mediaOnly ? 'arquivo' : 'ID Pix/E2E';
   const when = safeText(match.created_at, 19).replace('T', ' ');
   const suffix = when ? ` Eu ja tinha visto em ${when}.` : '';
-  return `Esse comprovante Pix parece repetido pelo mesmo ${source}.${suffix} Nao criei outra confirmacao para evitar duplicar o caixa. Se for outro pagamento, mande os dados em texto: pix cnpj valor - nome - obs opcional.`;
+  return `Esse comprovante Pix parece repetido pelo mesmo ${source}.${suffix} Se for outro pagamento, mande: miauby pix cnpj 28,90 sueli.`;
 }
 
 function pixReceiptMissingFieldsReply(missing: string[]): string {
   const clean = missing.map((item) => safeText(item, 60)).filter(Boolean);
   const joined = clean.join(', ');
   if (clean.length === 1 && normalizeIntentText(clean[0]).includes('valor')) {
-    return 'Li o comprovante, mas nao consegui confiar no valor pago. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.';
+    return PIX_CNPJ_MANUAL_HINT_REPLY;
   }
   if (clean.length === 1 && normalizeIntentText(clean[0]).includes('pagador')) {
-    return 'Li o comprovante, mas nao consegui confiar no nome do pagador. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.';
+    return PIX_CNPJ_MANUAL_HINT_REPLY;
   }
-  return `Li o comprovante, mas faltou ou ficou duvidoso: ${joined}. Escreve assim: pix cnpj valor - nome - obs opcional. Sem data/hora eu uso agora.`;
+  return joined ? `${PIX_CNPJ_MANUAL_HINT_REPLY} Faltou: ${joined}.` : PIX_CNPJ_MANUAL_HINT_REPLY;
 }
 
 function pixReceiptExtractionHints(row: QueueRow): PixReceiptExtractionHints {
@@ -10387,6 +10437,191 @@ async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: stri
     };
   }
   throw new Error(safeText(data.message || data.error, 180) || `pedidos_confirm_arrival_http_${response.status}`);
+}
+
+type ResolvedPixCnpjResponsible = {
+  responsibleName: string;
+  replyName: string;
+  actorUserId: number;
+  publicObservation: string;
+  auditObservation: string;
+};
+
+async function resolvePixCnpjResponsible(command: PixCnpjCommand, userContext: WhatsappUserContext): Promise<ResolvedPixCnpjResponsible> {
+  const hint = safeText(command.responsible_hint, 80);
+  const observationParts = [command.observation].map((item) => safeOutboundText(item, 180)).filter(Boolean);
+  const auditParts: string[] = [];
+
+  if (userContext.id && userContext.linked) {
+    const linkedName = safeText(userContext.display_name || userContext.username, 120) || 'Responsavel identificado';
+    const replyName = titleCaseShortName(linkedName) || titleCaseShortName(userContext.username) || linkedName;
+    if (hint && !samePersonLabel(hint, linkedName) && !samePersonLabel(hint, userContext.username)) {
+      const hintedUser = await resolveCoreUserByNameHint(hint).catch(async (error) => {
+        await recordErrorLog('pix_cnpj_responsible_lookup', 'warn', error, {
+          messagePreview: command.raw,
+          details: { hint: safeText(hint, 80), source: 'linked_user_hint' },
+        });
+        return null;
+      });
+      if (hintedUser) {
+        auditParts.push(`Responsavel citado no texto: ${hintedUser.displayName}.`);
+      } else {
+        observationParts.unshift(hint);
+      }
+    }
+    return {
+      responsibleName: linkedName,
+      replyName,
+      actorUserId: userContext.id,
+      publicObservation: safeOutboundText(observationParts.join(' '), 180),
+      auditObservation: safeOutboundText(auditParts.join(' '), 180),
+    };
+  }
+
+  if (!hint) throw new Error('pix_cnpj_missing_responsible');
+  const hintedUser = await resolveCoreUserByNameHint(hint);
+  if (!hintedUser) throw new Error('pix_cnpj_responsible_not_found');
+  return {
+    responsibleName: hintedUser.displayName,
+    replyName: titleCaseShortName(hintedUser.displayName) || titleCaseShortName(hintedUser.username) || hintedUser.displayName,
+    actorUserId: hintedUser.id,
+    publicObservation: safeOutboundText(observationParts.join(' '), 180),
+    auditObservation: 'Responsavel resolvido por nome informado no texto manual.',
+  };
+}
+
+function saoPauloShortNowLabel(date = new Date()): string {
+  const dateLabel = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+  }).format(date);
+  const timeLabel = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+  return `${dateLabel} \u00e0s ${timeLabel}`;
+}
+
+function pixCnpjFinanceiroObservation(command: PixCnpjCommand, resolved: ResolvedPixCnpjResponsible, dateTimeLabel: string): string {
+  const parts = [
+    'Origem: Miauby WhatsApp.',
+    'Lancamento Pix CNPJ por texto manual.',
+    dateTimeLabel ? `Data/hora WhatsApp: ${dateTimeLabel}.` : '',
+    resolved.publicObservation ? `Obs do usuario: ${resolved.publicObservation}.` : '',
+    resolved.auditObservation,
+    command.raw ? `Texto original: ${safeOutboundText(command.raw, 140)}.` : '',
+  ].filter(Boolean);
+  return safeOutboundText(parts.join(' '), 300);
+}
+
+function formatPixCnpjRegisteredReply(command: PixCnpjCommand, resolved: ResolvedPixCnpjResponsible, duplicate = false): string {
+  if (duplicate) return 'PIX CNPJ ja registrado. Nao dupliquei \u{1F63C}';
+  const obs = safeOutboundText(resolved.publicObservation, 90);
+  return `PIX CNPJ lancado: ${command.amount_label} - ${resolved.replyName}${obs ? ` - ${obs}` : ''}.`;
+}
+
+async function createPixCnpjFromWhatsapp(
+  command: PixCnpjCommand,
+  traceId: string,
+  senderMask: string,
+  userContext: WhatsappUserContext,
+  idempotencyKey = `whatsapp:pix-cnpj:${traceId}`,
+): Promise<ReplyResult> {
+  if (!INTERNAL_TOKEN) {
+    await mergeWhatsappEventSummaryByTrace(traceId, {
+      pix_cnpj_manual_attempted: true,
+      pix_cnpj_manual_outcome: 'internal_token_missing',
+    });
+    return {
+      text: 'Nao consegui registrar agora. Financeiro interno sem conexao segura.',
+      engine: 'blocked',
+      reason: 'pix_cnpj_internal_token_missing',
+    };
+  }
+
+  let resolved: ResolvedPixCnpjResponsible;
+  try {
+    resolved = await resolvePixCnpjResponsible(command, userContext);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    const missingResponsible = message === 'pix_cnpj_missing_responsible' || message === 'pix_cnpj_responsible_not_found';
+    await mergeWhatsappEventSummaryByTrace(traceId, {
+      pix_cnpj_manual_attempted: true,
+      pix_cnpj_manual_outcome: missingResponsible ? 'missing_responsible' : 'responsible_lookup_failed',
+      pix_cnpj_manual_amount_cents: command.amount_cents,
+      pix_cnpj_manual_has_linked_user: userContext.linked,
+    });
+    if (missingResponsible) {
+      return {
+        text: 'Faltou o responsavel. Me mande assim: miauby pix cnpj 28,90 sueli.',
+        engine: 'local',
+        reason: 'pix_cnpj_missing_responsible',
+      };
+    }
+    throw error;
+  }
+
+  await mergeWhatsappEventSummaryByTrace(traceId, {
+    pix_cnpj_manual_attempted: true,
+    pix_cnpj_manual_outcome: 'sending_to_financeiro',
+    pix_cnpj_manual_amount_cents: command.amount_cents,
+    pix_cnpj_manual_actor_user_id: resolved.actorUserId,
+    pix_cnpj_manual_origin: 'manual_text',
+  });
+
+  const dateTimeLabel = saoPauloShortNowLabel();
+  const response = await fetch(`${FINANCEIRO_INTERNAL_BASE_URL}/api/internal/lancamentos`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(),
+    body: JSON.stringify({
+      source: 'miauby_whatsapp',
+      trace_id: traceId,
+      idempotency_key: idempotencyKey,
+      categoria: 'Pix CNPJ',
+      amount_cents: command.amount_cents,
+      data: saoPauloTodayIso(),
+      responsavel: resolved.responsibleName,
+      observacao: pixCnpjFinanceiroObservation(command, resolved, dateTimeLabel),
+      actor_user_id: resolved.actorUserId,
+      raw_text: safeOutboundText(command.raw, 500),
+      contact_mask: senderMask,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!isRecord(data)) throw new Error(`financeiro_pix_cnpj_http_${response.status}`);
+  if (response.ok && data.ok === true) {
+    await mergeWhatsappEventSummaryByTrace(traceId, {
+      pix_cnpj_manual_outcome: data.idempotent === true ? 'duplicate' : 'created',
+      pix_cnpj_manual_financeiro_id: Number(data.id || 0) || undefined,
+    });
+    return {
+      text: formatPixCnpjRegisteredReply(command, resolved, data.idempotent === true),
+      engine: 'local',
+      reason: data.idempotent === true ? 'pix_cnpj_duplicate' : 'pix_cnpj_created',
+    };
+  }
+  const status = safeText(data.status || data.error || data.message, 100);
+  await mergeWhatsappEventSummaryByTrace(traceId, {
+    pix_cnpj_manual_outcome: response.status === 403 ? 'forbidden' : safeText(status || `http_${response.status}`, 80),
+  });
+  if (response.status === 403 || status === 'forbidden' || status === 'actor_without_financeiro_permission') {
+    return {
+      text: 'Esse usuario nao tem permissao para lancar PIX CNPJ pelo WhatsApp.',
+      engine: 'blocked',
+      reason: 'pix_cnpj_forbidden',
+    };
+  }
+  if (status === 'duplicate_processing') {
+    return {
+      text: 'PIX CNPJ ja esta em processamento. Nao vou duplicar.',
+      engine: 'local',
+      reason: 'pix_cnpj_duplicate_processing',
+    };
+  }
+  throw new Error(safeText(data.message || data.error, 180) || `financeiro_pix_cnpj_http_${response.status}`);
 }
 
 type ResolvedSangriaResponsible = {
