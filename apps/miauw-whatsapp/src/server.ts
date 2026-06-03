@@ -10418,10 +10418,8 @@ async function resolveSangriaResponsible(command: SangriaCommand, userContext: W
     });
     if (hintedUser) {
       auditParts.push(`Responsavel citado no texto: ${hintedUser.displayName}.`);
-    } else if (!command.observation) {
-      observationParts.push(hint);
     } else {
-      auditParts.push(`Pista de responsavel no texto: ${hint}.`);
+      observationParts.unshift(hint);
     }
   }
 

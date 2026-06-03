@@ -37,25 +37,63 @@ const SANGRIA_WORDS = new Set([
 const ACTION_WORDS = new Set([
   'faz',
   'fazer',
+  'fez',
+  'fiz',
   'registra',
   'registrar',
   'registre',
   'lancar',
   'lanca',
   'lance',
+  'lancou',
   'coloca',
   'coloque',
   'bota',
+  'baixa',
+  'baixar',
+  'baixei',
+  'baixe',
   'retirei',
   'retira',
   'retirar',
+  'retirou',
+  'retire',
   'tirei',
   'tira',
   'tirar',
+  'tirou',
   'saiu',
 ]);
-const OBS_PREFIXES = new Set(['para', 'pra', 'pro', 'por', 'motivo', 'obs', 'observacao', 'despesa']);
+const WITHDRAWAL_WORDS = new Set([
+  'retirada',
+  'retirei',
+  'retira',
+  'retirar',
+  'retirou',
+  'tirei',
+  'tira',
+  'tirar',
+  'tirou',
+  'saiu',
+  'sangrei',
+  'sangrou',
+  'sangra',
+]);
+const OBS_PREFIXES = new Set([
+  'para',
+  'pra',
+  'pro',
+  'por',
+  'motivo',
+  'obs',
+  'observacao',
+  'referente',
+  'usado',
+  'usada',
+  'despesa',
+]);
 const RESPONSIBLE_PREFIXES = new Set(['responsavel', 'resp', 'operador', 'atendente']);
+const MONEY_UNIT_WORDS = new Set(['reais', 'real', 'rs', 'conto', 'contos', 'pila', 'pilas']);
 const TAIL_NOISE = new Set([
   'de',
   'do',
@@ -73,7 +111,11 @@ const TAIL_NOISE = new Set([
   'saiu',
   'retirada',
   'retirei',
+  'retira',
+  'retirou',
   'tirei',
+  'tira',
+  'tirou',
   'feita',
   'feito',
   'agora',
@@ -81,6 +123,10 @@ const TAIL_NOISE = new Set([
   'reais',
   'real',
   'rs',
+  'conto',
+  'contos',
+  'pila',
+  'pilas',
 ]);
 const WORD_AMOUNT: Record<string, number> = {
   um: 1,
@@ -97,11 +143,22 @@ const WORD_AMOUNT: Record<string, number> = {
   dez: 10,
   onze: 11,
   doze: 12,
+  treze: 13,
+  catorze: 14,
+  quatorze: 14,
   quinze: 15,
+  dezesseis: 16,
+  dezessete: 17,
+  dezoito: 18,
+  dezenove: 19,
   vinte: 20,
   trinta: 30,
   quarenta: 40,
   cinquenta: 50,
+  sessenta: 60,
+  setenta: 70,
+  oitenta: 80,
+  noventa: 90,
   cem: 100,
   cento: 100,
 };
@@ -124,18 +181,20 @@ export function parseSangriaCommand(message: string): SangriaCommand | null {
 
   if (!amount) {
     if (hasConfusingAmount(normalized)) {
-      return invalidCommand(base, 'invalid_amount', 'Nao entendi o valor. Me mande assim: miauby sangria 10.');
+      return invalidCommand(base, 'invalid_amount', 'Nao registrei. Valor ficou confuso.');
     }
-    return invalidCommand(base, 'missing_amount', 'Faltou o valor. Me mande assim: miauby sangria 10.');
+    return invalidCommand(base, 'missing_amount', 'Faltou o valor. Me mande assim: miauby sangria 10 troco.');
   }
 
   if (amount.negative || amount.cents <= 0) {
     return invalidCommand(buildCommand(raw, Math.max(0, amount.cents), formatMoneyLabel(amount.cents), '', '', false), 'invalid_value', 'Valor invalido para sangria.');
   }
 
+  const beforeAmount = raw.slice(0, amount.index).trim();
   const tail = raw.slice(amount.end).trim();
   const tailParts = parseTail(tail);
-  const command = buildCommand(raw, amount.cents, formatMoneyLabel(amount.cents), tailParts.responsibleHint, tailParts.observation, false, tailParts.timeNote);
+  const responsibleHint = tailParts.responsibleHint || responsibleHintBeforeAmount(beforeAmount);
+  const command = buildCommand(raw, amount.cents, formatMoneyLabel(amount.cents), responsibleHint, tailParts.observation, false, tailParts.timeNote);
 
   if (amount.cents >= HIGH_VALUE_CENTS) {
     const messageText = `${formatMoneyLabel(amount.cents)} e alto. Confirma essa sangria?`;
@@ -146,7 +205,7 @@ export function parseSangriaCommand(message: string): SangriaCommand | null {
 }
 
 export function formatSangriaCreateError(command: SangriaCommand): string {
-  if (command.error === 'invalid_amount') return 'Nao entendi o valor. Me mande assim: miauby sangria 10.';
+  if (command.error === 'invalid_amount') return 'Nao registrei. Valor ficou confuso.';
   if (command.error === 'invalid_value') return 'Valor invalido para sangria.';
   return command.error_message || 'Nao registrei. Valor ficou confuso.';
 }
@@ -199,13 +258,17 @@ function hasSangriaIntent(normalized: string): boolean {
   const words = normalized.split(/\s+/g).map(canonicalWord).filter(Boolean);
   if (words.some((word) => SANGRIA_WORDS.has(word))) return true;
   const hasAction = words.some((word) => ACTION_WORDS.has(word));
+  const hasWithdrawal = words.some((word) => WITHDRAWAL_WORDS.has(word));
   const hasCashBox = words.includes('caixa');
   const hasMoney = findNumericAmount(normalized) !== null || findWordAmount(normalized) !== null;
-  return hasAction && hasCashBox && hasMoney;
+  const hasMoneyIntent = words.includes('dinheiro') || words.includes('valor');
+  return (hasAction && hasCashBox && (hasMoney || hasMoneyIntent))
+    || (hasWithdrawal && hasMoney)
+    || (hasAction && hasWithdrawal && (hasMoney || hasMoneyIntent));
 }
 
 function findNumericAmount(value: string): AmountMatch | null {
-  const pattern = /(?:r\$\s*)?[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:[,.]\d{1,2})?(?=\s*(?:reais?|rs)?(?:$|[\s.,;:!?-]))/giu;
+  const pattern = /(?:r\$\s*)?[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:[,.]\d{1,2})?(?=\s*(?:reais?|rs|conto?s?|pila?s?)?(?:$|[\s.,;:!?-]))/giu;
   for (const match of value.matchAll(pattern)) {
     const raw = match[0] || '';
     const index = match.index ?? -1;
@@ -228,18 +291,52 @@ function findNumericAmount(value: string): AmountMatch | null {
 
 function findWordAmount(value: string): AmountMatch | null {
   const normalized = normalizeIntentText(value);
-  const pattern = /\b(um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte|trinta|quarenta|cinquenta|cem|cento)\s+reais?\b/iu;
-  const match = pattern.exec(normalized);
-  if (!match) return null;
-  const amount = WORD_AMOUNT[match[1]] || 0;
-  if (amount <= 0) return null;
-  return {
-    cents: amount * 100,
-    raw: match[0],
-    index: match.index,
-    end: match.index + match[0].length,
-    negative: false,
-  };
+  const amountWords = Object.keys(WORD_AMOUNT).join('|');
+  const pattern = new RegExp(`\\b(${amountWords})\\b(?:\\s+(reais?|conto?s?|pila?s?))?(?=\\s*(?:$|[\\s.,;:!?-]))`, 'giu');
+  for (const match of normalized.matchAll(pattern)) {
+    const word = match[1] || '';
+    const unit = match[2] || '';
+    const index = match.index ?? -1;
+    if (index < 0) continue;
+    if (!unit && !wordAmountHasSafeContext(normalized, index, word.length)) continue;
+    const amount = WORD_AMOUNT[word] || 0;
+    if (amount <= 0) continue;
+    return {
+      cents: amount * 100,
+      raw: match[0],
+      index,
+      end: index + match[0].length,
+      negative: false,
+    };
+  }
+  return null;
+}
+
+function wordAmountHasSafeContext(value: string, index: number, length: number): boolean {
+  const before = value.slice(Math.max(0, index - 32), index);
+  const after = value.slice(index + length).trim();
+  if (/\b(?:sangria|sangra|sagria|sangira|sangriaa|retirada|retirei|retirou|tirei|tirou|caixa)\b/u.test(before)) return true;
+  if (!after) return false;
+  const firstAfter = canonicalWord(after.split(/\s+/g)[0] || '');
+  if (OBS_PREFIXES.has(firstAfter) || MONEY_UNIT_WORDS.has(firstAfter)) return true;
+  return /^[a-z]{3,}/u.test(firstAfter);
+}
+
+function wordAmountPatternSource(): string {
+  return Object.keys(WORD_AMOUNT).join('|');
+}
+
+function hasWordAmountMention(normalized: string): boolean {
+  return new RegExp(`\\b(?:${wordAmountPatternSource()})\\b`, 'u').test(normalized);
+}
+
+function hasMoneyUnitAfterWord(normalized: string): boolean {
+  return new RegExp(`\\b(?:${wordAmountPatternSource()})\\s+(?:reais?|conto?s?|pila?s?)\\b`, 'u').test(normalized);
+}
+
+function knownAmountWordValue(value: string): number {
+  const amount = WORD_AMOUNT[value] || 0;
+  return amount;
 }
 
 function parseMoneyToCents(value: string): { cents: number; negative: boolean } | null {
@@ -259,15 +356,16 @@ function parseMoneyToCents(value: string): { cents: number; negative: boolean } 
 }
 
 function hasConfusingAmount(normalized: string): boolean {
-  if (/\b(muito|alto|valor alto|valor)\b/.test(normalized)) return true;
-  return Object.keys(WORD_AMOUNT).some((word) => new RegExp(`\\b${word}\\b`).test(normalized));
+  if (/\b(muito|alto|valor\s+alto)\b/.test(normalized)) return true;
+  if (hasWordAmountMention(normalized) && !hasMoneyUnitAfterWord(normalized)) return true;
+  return false;
 }
 
 function parseTail(value: string): { responsibleHint: string; observation: string; timeNote: string } {
   const timeNote = timeNoteFromTail(value);
   const withoutTime = value.replace(/\b(?:as|a?s|ate)?\s*[0-2]?\d\s*h(?:[0-5]\d)?\b/giu, ' ');
   let clean = withoutTime
-    .replace(/^\s*(?:reais?|real|rs)\b/iu, ' ')
+    .replace(/^\s*(?:reais?|real|rs|conto?s?|pila?s?)\b/iu, ' ')
     .replace(/\b(?:do|da)\s+caixa\b/giu, ' ')
     .replace(/\b(?:como|de)\s+sangria\b/giu, ' ')
     .replace(/\bfeita\s+agora\b/giu, ' ')
@@ -325,6 +423,20 @@ function splitNameAndObservation(words: string[]): { responsibleHint: string; ob
   };
 }
 
+function responsibleHintBeforeAmount(value: string): string {
+  const words = normalizeIntentText(value)
+    .split(/\s+/g)
+    .map(canonicalWord)
+    .filter(Boolean);
+  if (words.length < 2) return '';
+  const actionIndex = words.findIndex((word) => ACTION_WORDS.has(word) || WITHDRAWAL_WORDS.has(word) || SANGRIA_WORDS.has(word));
+  if (actionIndex <= 0) return '';
+  const candidate = words[actionIndex - 1];
+  if (!candidate || TAIL_NOISE.has(candidate) || OBS_PREFIXES.has(candidate) || MONEY_UNIT_WORDS.has(candidate)) return '';
+  if (candidate.length < 2 || knownAmountWordValue(candidate) > 0) return '';
+  return candidate;
+}
+
 function timeNoteFromTail(value: string): string {
   const normalized = normalizeIntentText(value);
   const match = normalized.match(/\b(?:as|a?s|ate)?\s*([0-2]?\d)\s*h([0-5]\d)?\b/u);
@@ -347,6 +459,7 @@ function cleanName(value: string): string {
 function cleanObservation(value: string): string {
   return value
     .replace(/\b(?:obs|observacao|motivo)\s*[:,-]?\s*/giu, ' ')
+    .replace(/^\s*(?:para|pra|pro|por\s+causa\s+(?:do|da|de)?|referente\s+a|usad[oa]\s+para|retirada\s+para)\s+/iu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^[.,:;!?/-]+|[.,:;!?/-]+$/g, '')
