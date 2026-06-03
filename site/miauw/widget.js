@@ -12,7 +12,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260603-widget-compact';
+    link.href = '/miauw/widget.css?v=20260603-home-speech';
     document.head.appendChild(link);
   }
 
@@ -141,19 +141,32 @@
   let lastAmbientNudgeAt = 0;
   let activityTimer = null;
   let pendingNudge = null;
+  let homeGreetingTimer = null;
   let cotacaoRunnerActive = false;
   let cotacaoRunnerTimer = null;
   const recentInteractions = [];
   const NUDGE_ACTIVITY_WINDOW = 1000 * 18;
+  const HOME_GREETING_FIRST_DELAY_MIN_MS = 1000 * 3;
+  const HOME_GREETING_FIRST_DELAY_MAX_MS = 1000 * 6;
+  const HOME_GREETING_REPEAT_MIN_MS = 1000 * 45;
+  const HOME_GREETING_REPEAT_MAX_MS = 1000 * 120;
+  const HOME_GREETING_VISIBLE_MS = 7200;
   const HOME_GREETING_PHRASES = [
-    'Miauww, {nome}! Fiscal de plantao ativado.',
+    'Miauww, {nome}! Fiscal interno online.',
+    '{nome}, hoje o caos vai ter que pegar senha.',
     'Miauww, {nome}! Bora manter essa farmacia nos trilhos.',
-    'Cheguei, {nome}. Hoje eu fiscalizo, voce vende.',
-    'Miauww, {nome}! Sem caos no sistema hoje, combinado?',
-    'Ola, {nome}. Ja estou de olho nos modulos.',
-    'Miauww, {nome}! Se der erro, a culpa e do humano.',
-    'Bom te ver, {nome}. Vamos fazer esse turno render.',
-    'Miauww, {nome}! Miauby online e julgando planilhas.',
+    '{nome}, se o sistema aprontar, eu julgo primeiro.',
+    'Miauby de olho, {nome}. Sem bagunca hoje.',
+    '{nome}, turno iniciado. O gato fiscal esta atento.',
+    'Miauww, {nome}! Produtividade sem drama, combinado?',
+    '{nome}, se aparecer boleto perdido eu finjo surpresa.',
+    'Miauby online, {nome}. Planilhas suspeitas serao observadas.',
+    '{nome}, hoje e dia de vender e nao deixar pendencia criar raiz.',
+    'Miauww, {nome}! Ja conferiu se tem tarefa aberta?',
+    '{nome}, o sistema esta calmo... por enquanto.',
+    'Gato fiscal na area, {nome}. Pode trabalhar tranquilo.',
+    '{nome}, lembrete amigavel: pendencia nao se resolve sozinha.',
+    'Miauww, {nome}! Se der erro, respira. Depois culpa o humano.',
   ];
 
   const escapeHtml = (value) => String(value)
@@ -177,6 +190,8 @@
     .slice(0, max);
 
   const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
+
+  const randomBetween = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 
   const readHomeGreetingConfig = () => {
     const dataset = document.body && document.body.dataset ? document.body.dataset : {};
@@ -222,15 +237,38 @@
     }
   };
 
-  const homeGreetingText = (name) => {
-    const lastIndex = Number(localStorageGet('miauw_home_greeting_last_index') || -1);
+  const homeGreetingStorageKey = (config) => `miauw_home_greeting_state_v2_${config.key}`;
+
+  const readHomeGreetingState = (storageKey) => {
+    const raw = sessionStorageGet(storageKey);
+    if (!raw) return {};
+
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  };
+
+  const writeHomeGreetingState = (storageKey, value) => {
+    sessionStorageSet(storageKey, JSON.stringify(value || {}));
+  };
+
+  const homeGreetingText = (name, previousIndex = null) => {
+    const sessionIndex = Number(previousIndex);
+    const storedIndex = Number(localStorageGet('miauw_home_greeting_last_index') || -1);
+    const lastIndex = Number.isFinite(sessionIndex) && sessionIndex >= 0 ? sessionIndex : storedIndex;
     let index = Math.floor(Math.random() * HOME_GREETING_PHRASES.length);
     if (HOME_GREETING_PHRASES.length > 1 && index === lastIndex) {
       index = (index + 1 + Math.floor(Math.random() * (HOME_GREETING_PHRASES.length - 1))) % HOME_GREETING_PHRASES.length;
     }
     localStorageSet('miauw_home_greeting_last_index', String(index));
 
-    return HOME_GREETING_PHRASES[index].replace('{nome}', name);
+    return {
+      index,
+      text: HOME_GREETING_PHRASES[index].replace('{nome}', name),
+    };
   };
 
   const isWidgetTarget = (target) => target && root.contains(target);
@@ -733,26 +771,82 @@
     });
   };
 
-  const maybeShowHomeLoginGreeting = () => {
-    if (!alertNudge || state.open) return;
+  const scheduleHomeGreetingSpeech = (delayMs) => {
+    if (homeGreetingTimer) {
+      window.clearTimeout(homeGreetingTimer);
+      homeGreetingTimer = null;
+    }
+
+    const config = readHomeGreetingConfig();
+    if (!config || !alertNudge) return;
+
+    const delay = clampNumber(Number(delayMs) || HOME_GREETING_REPEAT_MIN_MS, 800, HOME_GREETING_REPEAT_MAX_MS);
+    homeGreetingTimer = window.setTimeout(() => {
+      homeGreetingTimer = null;
+      showHomeGreetingSpeech();
+    }, delay);
+  };
+
+  const showHomeGreetingSpeech = () => {
+    if (!alertNudge) return;
 
     const config = readHomeGreetingConfig();
     if (!config) return;
 
-    const storageKey = `miauw_home_login_greeting_seen_${config.key}`;
-    if (sessionStorageGet(storageKey)) return;
-    sessionStorageSet(storageKey, String(Date.now()));
+    if (state.open) {
+      scheduleHomeGreetingSpeech(1000 * 18);
+      return;
+    }
 
-    window.setTimeout(() => {
-      if (state.open) return;
-      showQueuedNudge({
-        text: homeGreetingText(config.name),
-        prompt: '',
-        view: 'chat',
-        kind: 'home-login-greeting',
-        timeoutMs: 6400,
-      });
-    }, reducedMotion ? 450 : 1250);
+    const now = Date.now();
+    const storageKey = homeGreetingStorageKey(config);
+    const greetingState = readHomeGreetingState(storageKey);
+    const blockedUntil = Number(greetingState.nextAt || 0);
+    if (greetingState.firstShown && Number.isFinite(blockedUntil) && blockedUntil > now + 250) {
+      scheduleHomeGreetingSpeech(blockedUntil - now);
+      return;
+    }
+
+    const greeting = homeGreetingText(config.name, greetingState.lastIndex);
+    const nextAt = now + randomBetween(HOME_GREETING_REPEAT_MIN_MS, HOME_GREETING_REPEAT_MAX_MS);
+    writeHomeGreetingState(storageKey, {
+      firstShown: true,
+      lastShownAt: now,
+      lastIndex: greeting.index,
+      nextAt,
+    });
+
+    showQueuedNudge({
+      text: greeting.text,
+      prompt: '',
+      view: 'chat',
+      kind: 'home-login-greeting',
+      timeoutMs: reducedMotion ? 5200 : HOME_GREETING_VISIBLE_MS,
+    });
+
+    scheduleHomeGreetingSpeech(nextAt - now);
+  };
+
+  const maybeShowHomeLoginGreeting = () => {
+    if (!alertNudge) return;
+
+    const config = readHomeGreetingConfig();
+    if (!config) return;
+
+    const now = Date.now();
+    const storageKey = homeGreetingStorageKey(config);
+    const greetingState = readHomeGreetingState(storageKey);
+    const nextAt = Number(greetingState.nextAt || 0);
+
+    if (greetingState.firstShown && Number.isFinite(nextAt) && nextAt > now) {
+      scheduleHomeGreetingSpeech(nextAt - now);
+      return;
+    }
+
+    const delay = greetingState.firstShown
+      ? randomBetween(6500, 16000)
+      : (reducedMotion ? 1200 : randomBetween(HOME_GREETING_FIRST_DELAY_MIN_MS, HOME_GREETING_FIRST_DELAY_MAX_MS));
+    scheduleHomeGreetingSpeech(delay);
   };
 
   const cotacaoRunnerHomePoint = () => {

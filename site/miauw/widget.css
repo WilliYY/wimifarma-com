@@ -240,7 +240,19 @@
 }
 
 .miauw-widget-nudge.is-home-greeting.is-visible {
+    animation: miauw-home-greeting-pop .28s cubic-bezier(.2, .88, .28, 1.18) both;
     pointer-events: none;
+}
+
+@keyframes miauw-home-greeting-pop {
+    0% {
+        opacity: 0;
+        transform: translateY(10px) scale(.96);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .miauw-widget-nudge.is-visible {
