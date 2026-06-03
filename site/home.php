@@ -2407,24 +2407,6 @@ $modules = array(
             overflow-wrap: anywhere;
         }
 
-        .wf-card span {
-            width: fit-content;
-            max-width: 100%;
-            display: inline-flex;
-            align-items: center;
-            min-height: 25px;
-            border-radius: 999px;
-            padding: 0 9px;
-            background: var(--card-accent-soft);
-            color: var(--card-accent);
-            font-size: 0.78rem;
-            font-weight: 950;
-            line-height: 1.1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
         .wf-card p {
             margin: 0;
             color: #475569;
@@ -2583,13 +2565,6 @@ $modules = array(
                 overflow-wrap: anywhere;
             }
 
-            .wf-card span {
-                min-height: 22px;
-                padding: 0 7px;
-                font-size: 0.68rem;
-                line-height: 1.18;
-            }
-
             .wf-card p {
                 display: -webkit-box;
                 min-height: 2.2em;
@@ -2709,7 +2684,6 @@ $modules = array(
                             <em class="wf-card-badge is-calm" data-wf-order-badge hidden aria-label="Pedidos aguardando chegada"></em>
                         <?php endif; ?>
                         <h2><?php echo wf_home_e($module['name']); ?></h2>
-                        <span><?php echo wf_home_e($module['label']); ?></span>
                         <p><?php echo wf_home_e($module['description']); ?></p>
                         <b>Abrir</b>
                     </a>
