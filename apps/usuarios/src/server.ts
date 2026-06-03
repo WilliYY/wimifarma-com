@@ -171,7 +171,7 @@ const MODULES: ModuleDefinition[] = [
 ];
 
 const MODULE_KEYS = new Set(MODULES.map((module) => module.key));
-const ROLE_OPTIONS = ['user', 'gerente', 'admin'];
+const ROLE_OPTIONS = ['user', 'gerente', 'admin', 'farmacia'];
 const WHATSAPP_MODULES: WhatsappModuleDefinition[] = [
   { key: 'cashback', label: 'Cashback' },
   { key: 'cotacao', label: 'Cotacao' },
@@ -356,6 +356,10 @@ function currentMonthBounds(): { start: string; end: string } {
 function normalizeRole(value: unknown): string {
   const role = normalizeUsername(value);
   return ROLE_OPTIONS.includes(role) ? role : 'user';
+}
+
+function isPharmacyRole(value: unknown): boolean {
+  return normalizeRole(value) === 'farmacia';
 }
 
 function normalizeHash(hash: unknown): string {
@@ -1404,7 +1408,7 @@ async function createUser(req: Request, actor: User): Promise<void> {
   if (role === 'admin' || normalized === 'adm') {
     modules.add('usuarios');
   }
-  const xpEmployeeId = Number(req.body.xp_employee_id || 0);
+  const xpEmployeeId = isPharmacyRole(role) ? 0 : Number(req.body.xp_employee_id || 0);
   const passwordHash = await bcrypt.hash(password, 12);
   const client = await corePgPool.connect();
   try {
@@ -1485,7 +1489,7 @@ async function updateUser(req: Request, actor: User): Promise<void> {
   const displayName = cleanText(req.body.display_name || target.display_name || target.username, 120) || target.username;
   const displayNameChanged = displayName !== displayNameForUser(target);
   const password = String(req.body.password || '');
-  const xpEmployeeId = Number(req.body.xp_employee_id || 0);
+  const xpEmployeeId = isPharmacyRole(role) ? 0 : Number(req.body.xp_employee_id || 0);
   const client = await corePgPool.connect();
   try {
     await client.query('BEGIN');
@@ -1577,6 +1581,9 @@ async function saveUserVacation(req: Request, actor: User): Promise<void> {
   if (!target) {
     throw new Error('Usuario nao encontrado.');
   }
+  if (isPharmacyRole(target.role)) {
+    throw new Error('Perfil Farmacia representa o numero institucional e nao usa ferias pessoais.');
+  }
   const startDate = normalizeDateInput(req.body.vacation_start_date);
   const returnDate = normalizeDateInput(req.body.vacation_return_date);
   if (!startDate || !returnDate) {
@@ -1635,6 +1642,9 @@ async function clearUserVacation(req: Request, actor: User): Promise<void> {
   if (!target) {
     throw new Error('Usuario nao encontrado.');
   }
+  if (isPharmacyRole(target.role)) {
+    throw new Error('Perfil Farmacia representa o numero institucional e nao usa ferias pessoais.');
+  }
   const summary = `Ferias de ${displayNameForUser(target)} canceladas/limpas.`;
   const client = await corePgPool.connect();
   try {
@@ -1685,6 +1695,9 @@ async function delegatePrivateTask(req: Request, actor: User): Promise<void> {
   const target = targetUserId > 0 ? await findCoreUser(targetUserId) : null;
   if (!target || !target.active) {
     throw new Error('Usuario de destino invalido.');
+  }
+  if (isPharmacyRole(target.role)) {
+    throw new Error('Perfil Farmacia nao recebe tarefa privada pessoal; use tarefa geral ou escolha um colaborador.');
   }
   const title = cleanText(req.body.titulo || req.body.title, 180);
   const description = String(req.body.descricao || '').trim().slice(0, 2000);
@@ -1837,7 +1850,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-integration-cards">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-farmacia-role">
   <script src="${BASE_PATH}/login-runner.js?v=20260529a" defer></script>
 </head>
 <body class="users-login-body">
@@ -1864,11 +1877,13 @@ function renderRoleOptions(selected: string): string {
 function roleLabel(role: string): string {
   switch (normalizeRole(role)) {
     case 'admin':
-      return 'Administrador';
+      return 'Admin';
     case 'gerente':
       return 'Gerente';
+    case 'farmacia':
+      return 'Farmacia';
     default:
-      return 'Usuario';
+      return 'Colaborador';
   }
 }
 
@@ -2118,6 +2133,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
   const permissions = permissionsForView(row);
   const userId = Number(row.id);
   const isAdm = normalizeUsername(row.username) === 'adm';
+  const isPharmacyProfile = isPharmacyRole(row.role);
   const effectivePermissions = isAdm
     ? Object.fromEntries(MODULES.map((module) => [module.key, true])) as Record<string, boolean>
     : permissions;
@@ -2137,9 +2153,9 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <span class="users-pill ${row.active ? 'ok' : 'off'}">${row.active ? 'Ativo' : 'Inativo'}</span>
         <span class="users-pill">${e(roleLabel(row.role || 'user'))}</span>
         <span class="users-pill data">Postgres</span>
-        ${row.xp_employee_name ? `<span class="users-pill ok">XP: ${e(row.xp_employee_name)}</span>` : '<span class="users-pill off">Sem XP</span>'}
+        ${isPharmacyProfile ? '<span class="users-pill data">Institucional</span>' : row.xp_employee_name ? `<span class="users-pill ok">XP: ${e(row.xp_employee_name)}</span>` : '<span class="users-pill off">Sem XP</span>'}
         <span class="users-pill ${whatsappLinks.length ? 'ok' : 'off'}">WhatsApp: ${e(whatsappLinks.length)}</span>
-        <span class="users-pill vacation status-${e(row.vacation_status || 'none')}">${e(vacationStatusLabel(row.vacation_status || 'none'))}</span>
+        ${isPharmacyProfile ? '' : `<span class="users-pill vacation status-${e(row.vacation_status || 'none')}">${e(vacationStatusLabel(row.vacation_status || 'none'))}</span>`}
       </div>
       <div class="users-meta"><span>${e(enabledModules.length)} m&oacute;dulos</span></div>
     </div>
@@ -2164,7 +2180,9 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
             </div>
             <small class="users-field-help" data-password-status>Senha atual protegida por hash. Para saber a senha, defina uma nova aqui.</small>
           </div>
-          <label class="users-label users-field-xp"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>
+          ${isPharmacyProfile
+            ? `<div class="users-label users-field-xp users-pharmacy-note"><span>Perfil institucional</span><p>Sem XP, ferias ou tarefas pessoais. O WhatsApp oficial pergunta quem fez a acao antes de registrar.</p><input type="hidden" name="xp_employee_id" value=""></div>`
+            : `<label class="users-label users-field-xp"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>`}
         </div>
         ${isAdm ? '<p class="users-master-note">Login tecnico protegido: pode trocar nome exibido, senha, XP e WhatsApp; nao pode desativar, perder admin ou ficar sem acesso aos modulos.</p>' : ''}
         ${isAdm ? `<input type="hidden" name="username" value="${e(row.username)}">` : ''}
@@ -2185,9 +2203,9 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <input type="hidden" name="user_id" value="${e(userId)}">
         <button class="users-button danger" type="submit"${isAdm ? ' disabled' : ''}>Desativar usuario</button>
       </form>
-      <div class="users-integrations">
-        ${renderVacationSection(req, row)}
-        <section class="users-subsection users-task-subsection">
+      <div class="users-integrations ${isPharmacyProfile ? 'pharmacy' : ''}">
+        ${isPharmacyProfile ? '' : renderVacationSection(req, row)}
+        ${isPharmacyProfile ? '' : `<section class="users-subsection users-task-subsection">
           <div class="users-subsection-head">
             <div>
               <h3>Tarefa privada</h3>
@@ -2215,10 +2233,12 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
             </div>
             <button class="users-button" type="submit">Criar tarefa privada</button>
           </form>
-        </section>
+        </section>`}
         <section class="users-subsection users-whatsapp-subsection">
-          <h3>WhatsApp do funcionario</h3>
-          <p>Vincula numeros a este usuario para o Miauby poder mandar aviso individual. O numero completo fica no bridge WhatsApp, nao no core.</p>
+          <h3>${isPharmacyProfile ? 'WhatsApp institucional' : 'WhatsApp do funcionario'}</h3>
+          <p>${isPharmacyProfile
+            ? 'Vincula o canal oficial da farmacia. Quando ele mandar comandos operacionais, o Miauby pergunta qual pessoa fez a acao.'
+            : 'Vincula numeros a este usuario para o Miauby poder mandar aviso individual. O numero completo fica no bridge WhatsApp, nao no core.'}</p>
           ${renderWhatsappLinks(req, whatsappLinks)}
           <form method="post" action="${BASE_PATH}/" class="users-inline-form users-whatsapp-form">
             ${csrfField(req)}

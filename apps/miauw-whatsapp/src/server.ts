@@ -2875,6 +2875,10 @@ function userContextPayload(context: WhatsappUserContext): JsonRecord {
   };
 }
 
+function isPharmacyUserContext(context: WhatsappUserContext): boolean {
+  return normalizeIntentText(context.role || '') === 'farmacia';
+}
+
 async function whatsappUserContextForHashes(phoneHashes: string[], senderMask: string): Promise<WhatsappUserContext> {
   const hashes = [...new Set(phoneHashes.map((hash) => safeText(hash, 64)).filter(Boolean))];
   if (!hashes.length) return fallbackWhatsappUserContext(senderMask);
@@ -2902,16 +2906,38 @@ async function whatsappUserContextForHashes(phoneHashes: string[], senderMask: s
     if (!row) return fallbackWhatsappUserContext(senderMask, hashes[0]);
     const linkedUserId = Number(row.linked_user_id || 0);
     const linkedUsername = safeText(row.linked_username_snapshot, 120);
-    const displayName = safeText(row.display_name, 120) || linkedUsername;
+    let coreUser: { username: string; display_name: string; role: string } | null = null;
+    if (Number.isFinite(linkedUserId) && linkedUserId > 0) {
+      const coreResult = await corePgPool.query<{ username: string; display_name: string; role: string | null }>(
+        `SELECT username,
+                COALESCE(NULLIF(display_name, ''), username) AS display_name,
+                COALESCE(NULLIF(role, ''), 'user') AS role
+           FROM core_users
+          WHERE id = $1
+            AND active = TRUE
+          LIMIT 1`,
+        [Math.trunc(linkedUserId)],
+      );
+      const coreRow = coreResult.rows[0];
+      if (coreRow) {
+        coreUser = {
+          username: safeText(coreRow.username, 120),
+          display_name: safeText(coreRow.display_name || coreRow.username, 120),
+          role: safeText(coreRow.role || 'user', 60),
+        };
+      }
+    }
+    const username = coreUser?.username || linkedUsername;
+    const displayName = coreUser?.display_name || safeText(row.display_name, 120) || linkedUsername;
     return {
-      id: Number.isFinite(linkedUserId) && linkedUserId > 0 ? Math.trunc(linkedUserId) : null,
-      username: linkedUsername || `whatsapp:${row.phone_mask || senderMask}`,
+      id: coreUser && Number.isFinite(linkedUserId) && linkedUserId > 0 ? Math.trunc(linkedUserId) : null,
+      username: username || `whatsapp:${row.phone_mask || senderMask}`,
       display_name: displayName,
-      role: linkedUsername ? 'whatsapp_core_user' : 'whatsapp_interno',
+      role: coreUser?.role || (linkedUsername ? 'whatsapp_core_user' : 'whatsapp_interno'),
       channel: 'whatsapp',
       contact_hash: safeText(row.phone_hash, 64) || hashes[0],
       contact_mask: row.phone_mask || senderMask,
-      linked: Boolean(linkedUsername && Number.isFinite(linkedUserId) && linkedUserId > 0),
+      linked: Boolean(coreUser && username && Number.isFinite(linkedUserId) && linkedUserId > 0),
     };
   } catch (error) {
     await recordErrorLog('whatsapp_user_context', 'warn', error, {
@@ -3902,7 +3928,8 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     }
     const taskSelectionReply = await maybeHandleTaskSelectionReply(row);
     const pedidoSelectionReply = taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row);
-    const confirmationReply = taskSelectionReply || pedidoSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const responsibleSelectionReply = taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
+    const confirmationReply = taskSelectionReply || pedidoSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
     const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
@@ -4200,6 +4227,21 @@ async function findPendingPedidoSelection(senderHash: string): Promise<PendingCo
   return result.rows[0] || null;
 }
 
+async function findPendingResponsibleSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+  await expireOldConfirmations();
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'
+        AND tool = 'selecionar_responsavel_whatsapp'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
 async function findRecentExpiredTaskSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
   const result = await pgPool.query<PendingConfirmationRow>(
     `SELECT id, short_id, tool, summary, risk, command_payload, attempts
@@ -4222,6 +4264,21 @@ async function findRecentExpiredPedidoSelection(senderHash: string): Promise<Pen
       WHERE sender_phone_hash = $1
         AND status = 'expired'
         AND tool = 'selecionar_pedido_whatsapp'
+        AND updated_at >= NOW() - INTERVAL '10 minutes'
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
+async function findRecentExpiredResponsibleSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'expired'
+        AND tool = 'selecionar_responsavel_whatsapp'
         AND updated_at >= NOW() - INTERVAL '10 minutes'
       ORDER BY updated_at DESC
       LIMIT 1`,
@@ -4296,6 +4353,220 @@ async function createPendingPedidoSelection(row: QueueRow, command: JsonRecord):
       row.trace_id,
     ],
   );
+}
+
+async function createPendingResponsibleSelection(row: QueueRow, command: JsonRecord): Promise<void> {
+  if (!whatsappConfirmationsReady()) return;
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'expired',
+            error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_new_responsible_selection' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'`,
+    [row.sender_phone_hash],
+  );
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_confirmations (
+      id, short_id, event_id, sender_phone_hash, sender_phone_mask, instance_name,
+      tool, summary, risk, command_payload, expires_at, trace_id
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      'selecionar_responsavel_whatsapp', $7, 'baixo', $8::jsonb, NOW() + ($9::int * INTERVAL '1 minute'), $10
+    )`,
+    [
+      crypto.randomUUID(),
+      confirmationShortId(),
+      row.id,
+      row.sender_phone_hash,
+      row.sender_phone_mask,
+      row.instance_name || defaultInstanceName(),
+      safeOutboundText('Selecionar responsavel humano para comando vindo do WhatsApp oficial.', 500),
+      JSON.stringify(command),
+      CONFIRMATION_TTL_MINUTES,
+      row.trace_id,
+    ],
+  );
+}
+
+async function listResponsibleCoreUsers(limit = 12): Promise<CoreUserIdentity[]> {
+  const result = await corePgPool.query<{
+    id: string;
+    username: string;
+    display_name: string;
+    role: string | null;
+  }>(
+    `SELECT id::text,
+            username,
+            COALESCE(NULLIF(display_name, ''), username) AS display_name,
+            COALESCE(NULLIF(role, ''), 'user') AS role
+       FROM core_users
+      WHERE active = TRUE
+        AND COALESCE(NULLIF(role, ''), 'user') <> 'farmacia'
+      ORDER BY username = 'adm' DESC, display_name ASC, username ASC
+      LIMIT $1`,
+    [Math.max(1, Math.min(40, Math.trunc(limit)))],
+  );
+  return result.rows.map((row) => ({
+    id: Number(row.id),
+    username: safeText(row.username, 120),
+    displayName: safeText(row.display_name || row.username, 120),
+    role: safeText(row.role || 'user', 60),
+  })).filter((user) => Number.isInteger(user.id) && user.id > 0 && user.username);
+}
+
+function responsiblePayloadFromUser(user: CoreUserIdentity): JsonRecord {
+  return {
+    id: user.id,
+    username: user.username,
+    display_name: user.displayName,
+    role: user.role,
+  };
+}
+
+function responsibleUserFromPayload(value: unknown): CoreUserIdentity | null {
+  if (!isRecord(value)) return null;
+  const id = Number(value.id);
+  const username = safeText(value.username, 120);
+  if (!Number.isInteger(id) || id <= 0 || !username) return null;
+  return {
+    id,
+    username,
+    displayName: safeText(value.display_name || username, 120),
+    role: safeText(value.role || 'user', 60),
+  };
+}
+
+function userContextForResponsible(base: WhatsappUserContext, user: CoreUserIdentity): WhatsappUserContext {
+  return {
+    ...base,
+    id: user.id,
+    username: user.username,
+    display_name: user.displayName,
+    role: user.role || 'user',
+    linked: true,
+  };
+}
+
+function userContextFromResponsiblePayload(payload: JsonRecord, base: WhatsappUserContext): WhatsappUserContext {
+  const user = responsibleUserFromPayload(payload.responsible_user);
+  return user ? userContextForResponsible(base, user) : base;
+}
+
+function responsibleActionQuestion(action: string): string {
+  if (action === 'pix_cnpj') return 'Quem fez esse PIX CNPJ?';
+  if (action === 'pedido_create') return 'Quem fez esse pedido?';
+  if (action === 'pagamento') return 'Quem fez esse pagamento?';
+  return 'Quem fez essa sangria?';
+}
+
+function responsibleActionExample(action: string): string {
+  if (action === 'pix_cnpj') return 'miauby pix cnpj 28,90 sueli';
+  if (action === 'pedido_create') return 'miauby pedido anb 350 will';
+  return 'miauby sangria 10 will';
+}
+
+function responsibleSelectionMessage(action: string, users: CoreUserIdentity[]): string {
+  const lines = users.map((user, index) => `${index + 1}. ${titleCaseShortName(user.displayName) || user.displayName || user.username}`);
+  return `${responsibleActionQuestion(action)}\n\n${lines.join('\n')}\n\nResponda com o numero ou nome.`;
+}
+
+function parseResponsibleChoiceIndex(message: string, users: CoreUserIdentity[]): number | null {
+  const clean = normalizeIntentText(message)
+    .replace(/^(responsavel|foi|fez|quem fez|feito por|feita por|e|eh|a|o)\s+/u, '')
+    .trim();
+  const digit = clean.match(/^\d+$/);
+  if (digit) {
+    const index = Number(digit[0]) - 1;
+    return index >= 0 && index < users.length ? index : null;
+  }
+  const ordinalMap: Array<[RegExp, number]> = [
+    [/^(primeira|primeiro|a primeira|o primeiro)$/, 0],
+    [/^(segunda|segundo|a segunda|o segundo)$/, 1],
+    [/^(terceira|terceiro|a terceira|o terceiro)$/, 2],
+    [/^(quarta|quarto|a quarta|o quarto)$/, 3],
+    [/^(quinta|quinto|a quinta|o quinto)$/, 4],
+  ];
+  for (const [pattern, index] of ordinalMap) {
+    if (pattern.test(clean) && index < users.length) return index;
+  }
+  const scored = users
+    .map((user, index) => ({
+      index,
+      score: responsibleTextMatchScore(clean, user),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+  return scored[0].index;
+}
+
+function responsibleTextMatchScore(query: string, user: CoreUserIdentity): number {
+  const needle = normalizedPersonLabel(query);
+  if (!needle) return 0;
+  const labels = [
+    user.username,
+    user.displayName,
+    user.displayName.split(/\s+/)[0] || '',
+  ].map(normalizedPersonLabel).filter(Boolean);
+  if (labels.some((label) => label === needle)) return 100;
+  if (needle.length >= 3 && labels.some((label) => label.startsWith(needle) || needle.startsWith(label))) return 85;
+  if (needle.length >= 3 && labels.some((label) => label.includes(needle) || needle.includes(label))) return 70;
+  if (needle.length >= 3 && labels.some((label) => levenshteinDistance(label, needle) <= 1)) return 60;
+  return 0;
+}
+
+async function requestResponsibleSelectionForPharmacy(
+  row: QueueRow | undefined,
+  action: 'sangria' | 'pix_cnpj' | 'pedido_create',
+  command: JsonRecord,
+): Promise<ReplyResult> {
+  if (!row || !whatsappConfirmationsReady()) {
+    return {
+      text: `${responsibleActionQuestion(action)} Mande o comando novamente com o nome. Ex.: ${responsibleActionExample(action)}.`,
+      engine: 'local',
+      reason: `responsible_selection_unavailable:${action}`,
+    };
+  }
+  const users = await listResponsibleCoreUsers();
+  if (!users.length) {
+    return {
+      text: 'Nao achei usuarios ativos para escolher o responsavel. Confira o modulo Usuarios.',
+      engine: 'blocked',
+      reason: `responsible_selection_no_users:${action}`,
+    };
+  }
+  await createPendingResponsibleSelection(row, {
+    action,
+    command,
+    users: users.map(responsiblePayloadFromUser),
+  });
+  return {
+    text: responsibleSelectionMessage(action, users),
+    engine: 'local',
+    reason: `responsible_selection_required:${action}`,
+  };
+}
+
+function textAfterFirstMoneyAmount(value: string): string {
+  const match = value.match(/(?:r\$\s*)?\d+(?:[.,]\d{1,2})?/iu);
+  if (!match || match.index === undefined) return '';
+  return value.slice(match.index + match[0].length).trim();
+}
+
+async function resolveResponsibleMentionAfterAmount(raw: string): Promise<CoreUserIdentity | null> {
+  const tail = normalizeIntentText(textAfterFirstMoneyAmount(raw));
+  const candidates = tail
+    .split(/\s+/g)
+    .map((word) => word.replace(/^(responsavel|resp|por|pela|pelo|feito|feita)$/u, ''))
+    .filter((word) => word.length >= 2);
+  const matches: CoreUserIdentity[] = [];
+  for (const candidate of candidates.slice(0, 8)) {
+    const match = await resolveCoreUserByNameHint(candidate);
+    if (match && !matches.some((user) => user.id === match.id)) matches.push(match);
+  }
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function groupAliasesFromChoice(clean: string): string[] {
@@ -4455,6 +4726,143 @@ function parsePedidoChoiceIndex(message: string, options: JsonRecord[]): number 
   if (!scored.length) return null;
   if (scored.length > 1 && scored[0].score === scored[1].score) return null;
   return scored[0].index;
+}
+
+async function maybeHandleResponsibleSelectionReply(row: QueueRow, userContext: WhatsappUserContext): Promise<ReplyResult | null> {
+  if (!whatsappConfirmationsReady()) return null;
+  const pending = await findPendingResponsibleSelection(row.sender_phone_hash);
+  if (!pending) {
+    const clean = normalizeIntentText(row.body_text);
+    const looksLikeLateChoice = /^\d+$/.test(clean)
+      || /^(a\s+)?(primeira|segunda|terceira|quarta|quinta)\b/.test(clean)
+      || /^[a-z]{2,}(?:\s+[a-z]{2,})?$/u.test(clean);
+    if (looksLikeLateChoice && await findRecentExpiredResponsibleSelection(row.sender_phone_hash)) {
+      return {
+        text: 'Essa escolha expirou. Manda o comando de novo com miauby para eu nao registrar com responsavel errado.',
+        engine: 'local',
+        reason: 'responsible_selection_expired',
+      };
+    }
+    return null;
+  }
+
+  const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const users = (Array.isArray(payload.users) ? payload.users : [])
+    .map(responsibleUserFromPayload)
+    .filter((user): user is CoreUserIdentity => Boolean(user));
+  const action = safeText(payload.action, 40);
+  const selectedIndex = parseResponsibleChoiceIndex(row.body_text, users);
+  if (selectedIndex === null) {
+    const clean = normalizeIntentText(row.body_text);
+    if (/^(nao|n|cancelar|cancela|deixa|esquece|errado|nao registra|nao registrar)(\s|$)/.test(clean)) {
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = 'cancelled',
+                cancelled_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [pending.id],
+      );
+      return {
+        text: 'Beleza, nao registrei nada.',
+        engine: 'local',
+        reason: 'responsible_selection_cancelled',
+      };
+    }
+    return {
+      text: 'Escolha pelo numero ou nome. Ex.: 1 ou Thiago.',
+      engine: 'local',
+      reason: 'responsible_selection_expected',
+    };
+  }
+
+  const selected = users[selectedIndex];
+  const commandPayload = isRecord(payload.command) ? payload.command : {};
+  const selectedContext = userContextForResponsible(userContext, selected);
+  const markExecuted = async () => {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'executed',
+              executed_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id],
+    );
+  };
+  const markFailed = async (error: unknown) => {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'failed',
+              error_summary = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [pending.id, safeError(error)],
+    );
+  };
+
+  try {
+    if (action === 'sangria') {
+      const command = sangriaCommandFromConfirmationPayload(commandPayload);
+      if (!command) throw new Error('sangria_responsible_payload_invalid');
+      await markExecuted();
+      if (commandPayload.needs_confirmation === true) {
+        return {
+          text: safeText(commandPayload.confirmation_message, 240) || `${command.amount_label} e alto. Confirma essa sangria?`,
+          engine: 'local',
+          reason: 'sangria_responsible_selected_confirmation_required',
+          confirmation: {
+            tool: 'registrar_sangria_whatsapp',
+            summary: safeText(commandPayload.confirmation_summary, 500) || `Registrar sangria de ${command.amount_label}.`,
+            risk: 'alto',
+            command: {
+              ...sangriaConfirmationPayload(command),
+              responsible_user: responsiblePayloadFromUser(selected),
+            },
+          },
+        };
+      }
+      return createSangriaFromWhatsapp(command, row.trace_id, row.sender_phone_mask, selectedContext, `whatsapp-responsavel:${pending.id}`);
+    }
+
+    if (action === 'pix_cnpj') {
+      const command = pixCnpjCommandFromPayload(commandPayload);
+      if (!command) throw new Error('pix_cnpj_responsible_payload_invalid');
+      await markExecuted();
+      return createPixCnpjFromWhatsapp(command, row.trace_id, row.sender_phone_mask, selectedContext, `whatsapp-responsavel:${pending.id}`);
+    }
+
+    if (action === 'pedido_create') {
+      const command = pedidoCommandFromConfirmationPayload(commandPayload);
+      if (!command) throw new Error('pedido_responsible_payload_invalid');
+      await markExecuted();
+      if (commandPayload.needs_confirmation === true) {
+        return {
+          text: safeText(commandPayload.confirmation_message, 360) || `Confirma criar pedido ${command.supplier_name} - ${command.total_label}?`,
+          engine: 'local',
+          reason: 'pedido_responsible_selected_confirmation_required',
+          confirmation: {
+            tool: 'criar_pedido_whatsapp',
+            summary: safeText(commandPayload.confirmation_summary, 500) || `Criar pedido ${command.supplier_name} (${command.total_label}).`,
+            risk: 'medio',
+            command: {
+              ...pedidoConfirmationPayload(command),
+              responsible_user: responsiblePayloadFromUser(selected),
+            },
+          },
+        };
+      }
+      return createPedidoFromWhatsapp(command, row.trace_id, row.sender_phone_mask, selectedContext, `whatsapp-responsavel:${pending.id}`);
+    }
+
+    throw new Error('responsible_selection_action_invalid');
+  } catch (error) {
+    await markFailed(error);
+    return {
+      text: `Nao consegui registrar agora. ${safeError(error)}`,
+      engine: 'miauw',
+      reason: 'responsible_selection_execution_failed',
+    };
+  }
 }
 
 async function maybeHandleTaskSelectionReply(row: QueueRow): Promise<ReplyResult | null> {
@@ -5591,10 +5999,11 @@ async function executeWhatsappAction(pending: PendingConfirmationRow, traceId: s
 }
 
 async function executeConfirmedPedidoCreate(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
-  if (!userContext.id || !userContext.linked) throw new Error('pedidos_create_unlinked_user');
+  const executionContext = userContextFromResponsiblePayload(pending.command_payload, userContext);
+  if (!executionContext.id || !executionContext.linked) throw new Error('pedidos_create_unlinked_user');
   const command = pedidoCommandFromConfirmationPayload(pending.command_payload);
   if (!command) throw new Error('pedidos_confirmation_payload_invalid');
-  const reply = await createPedidoFromWhatsapp(command, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
+  const reply = await createPedidoFromWhatsapp(command, traceId, senderMask, executionContext, `whatsapp-confirm:${pending.id}`);
   return reply.text;
 }
 
@@ -5609,10 +6018,11 @@ async function executeConfirmedPedidoCancel(pending: PendingConfirmationRow, tra
 }
 
 async function executeConfirmedSangriaCreate(pending: PendingConfirmationRow, traceId: string, senderMask: string, userContext: WhatsappUserContext): Promise<string> {
-  if (!userContext.id || !userContext.linked) throw new Error('sangria_unlinked_user');
+  const executionContext = userContextFromResponsiblePayload(pending.command_payload, userContext);
+  if (!executionContext.id || !executionContext.linked) throw new Error('sangria_unlinked_user');
   const command = sangriaCommandFromConfirmationPayload(pending.command_payload);
   if (!command) throw new Error('sangria_confirmation_payload_invalid');
-  const reply = await createSangriaFromWhatsapp(command, traceId, senderMask, userContext, `whatsapp-confirm:${pending.id}`);
+  const reply = await createSangriaFromWhatsapp(command, traceId, senderMask, executionContext, `whatsapp-confirm:${pending.id}`);
   return reply.text;
 }
 
@@ -6066,6 +6476,31 @@ function sangriaCommandFromConfirmationPayload(payload: JsonRecord): SangriaComm
   };
 }
 
+function pixCnpjCommandPayload(command: PixCnpjCommand): JsonRecord {
+  return {
+    raw: command.raw,
+    amount_cents: command.amount_cents,
+    amount_label: command.amount_label,
+    responsible_hint: command.responsible_hint,
+    observation: command.observation,
+  };
+}
+
+function pixCnpjCommandFromPayload(payload: JsonRecord): PixCnpjCommand | null {
+  const amountCents = Number(payload.amount_cents);
+  if (!Number.isInteger(amountCents) || amountCents <= 0) return null;
+  return {
+    ok: true,
+    error: '',
+    error_message: '',
+    raw: safeText(payload.raw, 1000),
+    amount_cents: amountCents,
+    amount_label: safeText(payload.amount_label, 80) || moneyForCommand(amountCents / 100),
+    responsible_hint: safeText(payload.responsible_hint, 80),
+    observation: safeOutboundText(payload.observation, 260),
+  };
+}
+
 function pedidoConfirmationPayload(command: PedidosCreateCommand): JsonRecord {
   return {
     raw: command.raw,
@@ -6172,6 +6607,9 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
         reason: `pix_cnpj_invalid:${pixCnpjCreate.error || 'unknown'}`,
       };
     }
+    if (isPharmacyUserContext(userContext) && !safeText(pixCnpjCreate.responsible_hint, 80)) {
+      return requestResponsibleSelectionForPharmacy(row, 'pix_cnpj', pixCnpjCommandPayload(pixCnpjCreate));
+    }
     return createPixCnpjFromWhatsapp(pixCnpjCreate, traceId, senderMask, userContext);
   }
   const sangriaCreate = parseSangriaCommand(message);
@@ -6189,6 +6627,14 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
         engine: 'blocked',
         reason: 'sangria_unlinked_user',
       };
+    }
+    if (isPharmacyUserContext(userContext) && !safeText(sangriaCreate.responsible_hint, 80) && (sangriaCreate.ok || sangriaCreate.needs_confirmation)) {
+      return requestResponsibleSelectionForPharmacy(row, 'sangria', {
+        ...sangriaConfirmationPayload(sangriaCreate),
+        needs_confirmation: sangriaCreate.needs_confirmation,
+        confirmation_message: sangriaCreate.confirmation_message,
+        confirmation_summary: sangriaCreate.confirmation_summary,
+      });
     }
     if (!sangriaCreate.ok) {
       if (sangriaCreate.needs_confirmation) {
@@ -6313,6 +6759,31 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
             reason: 'pedidos_create_unlinked_user',
           };
         }
+        if (isPharmacyUserContext(userContext)) {
+          const responsible = await resolveResponsibleMentionAfterAmount(pedidoCreate.raw);
+          if (!responsible) {
+            return requestResponsibleSelectionForPharmacy(row, 'pedido_create', {
+              ...pedidoConfirmationPayload(pedidoCreate),
+              needs_confirmation: true,
+              confirmation_message: pedidoCreate.confirmation_message,
+              confirmation_summary: pedidoCreate.confirmation_summary,
+            });
+          }
+          return {
+            text: pedidoCreate.confirmation_message || formatPedidosCreateError(pedidoCreate),
+            engine: 'local',
+            reason: `pedidos_create_confirmation_required:${pedidoCreate.error || 'unknown'}`,
+            confirmation: {
+              tool: 'criar_pedido_whatsapp',
+              summary: pedidoCreate.confirmation_summary || `Criar pedido ${pedidoCreate.supplier_name} (${pedidoCreate.total_label}).`,
+              risk: 'medio',
+              command: {
+                ...pedidoConfirmationPayload(pedidoCreate),
+                responsible_user: responsiblePayloadFromUser(responsible),
+              },
+            },
+          };
+        }
         return {
           text: pedidoCreate.confirmation_message || formatPedidosCreateError(pedidoCreate),
           engine: 'local',
@@ -6337,6 +6808,18 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
         engine: 'blocked',
         reason: 'pedidos_create_unlinked_user',
       };
+    }
+    if (isPharmacyUserContext(userContext)) {
+      const responsible = await resolveResponsibleMentionAfterAmount(pedidoCreate.raw);
+      if (!responsible) {
+        return requestResponsibleSelectionForPharmacy(row, 'pedido_create', pedidoConfirmationPayload(pedidoCreate));
+      }
+      return createPedidoFromWhatsapp(
+        pedidoCreate,
+        traceId,
+        senderMask,
+        userContextForResponsible(userContext, responsible),
+      );
     }
     return createPedidoFromWhatsapp(pedidoCreate, traceId, senderMask, userContext);
   }
@@ -11678,6 +12161,19 @@ async function resolvePixCnpjResponsible(command: PixCnpjCommand, userContext: W
   const observationParts = [command.observation].map((item) => safeOutboundText(item, 180)).filter(Boolean);
   const auditParts: string[] = [];
 
+  if (isPharmacyUserContext(userContext)) {
+    if (!hint) throw new Error('pix_cnpj_pharmacy_missing_responsible');
+    const hintedUser = await resolveCoreUserByNameHint(hint);
+    if (!hintedUser) throw new Error('pix_cnpj_responsible_not_found');
+    return {
+      responsibleName: hintedUser.displayName,
+      replyName: titleCaseShortName(hintedUser.displayName) || titleCaseShortName(hintedUser.username) || hintedUser.displayName,
+      actorUserId: hintedUser.id,
+      publicObservation: safeOutboundText(observationParts.join(' '), 180),
+      auditObservation: 'Responsavel resolvido pelo WhatsApp oficial da Farmacia.',
+    };
+  }
+
   if (userContext.id && userContext.linked) {
     const linkedName = safeText(userContext.display_name || userContext.username, 120) || 'Responsavel identificado';
     const replyName = titleCaseShortName(linkedName) || titleCaseShortName(userContext.username) || linkedName;
@@ -11773,7 +12269,9 @@ async function createPixCnpjFromWhatsapp(
     resolved = await resolvePixCnpjResponsible(command, userContext);
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
-    const missingResponsible = message === 'pix_cnpj_missing_responsible' || message === 'pix_cnpj_responsible_not_found';
+    const missingResponsible = message === 'pix_cnpj_missing_responsible'
+      || message === 'pix_cnpj_pharmacy_missing_responsible'
+      || message === 'pix_cnpj_responsible_not_found';
     await mergeWhatsappEventSummaryByTrace(traceId, {
       pix_cnpj_manual_attempted: true,
       pix_cnpj_manual_outcome: missingResponsible ? 'missing_responsible' : 'responsible_lookup_failed',
@@ -11863,11 +12361,25 @@ async function resolveSangriaResponsible(command: SangriaCommand, userContext: W
     throw new Error('sangria_unlinked_user');
   }
 
-  const linkedName = safeText(userContext.display_name || userContext.username, 120) || 'Responsavel identificado';
-  const replyName = titleCaseShortName(linkedName) || titleCaseShortName(userContext.username) || linkedName;
   const observationParts = [command.observation, command.time_note].map((item) => safeOutboundText(item, 160)).filter(Boolean);
   const auditParts: string[] = [];
   const hint = safeText(command.responsible_hint, 80);
+
+  if (isPharmacyUserContext(userContext)) {
+    if (!hint) throw new Error('sangria_pharmacy_missing_responsible');
+    const hintedUser = await resolveCoreUserByNameHint(hint);
+    if (!hintedUser) throw new Error('sangria_responsible_not_found');
+    return {
+      responsibleName: hintedUser.displayName,
+      replyName: titleCaseShortName(hintedUser.displayName) || titleCaseShortName(hintedUser.username) || hintedUser.displayName,
+      actorUserId: hintedUser.id,
+      publicObservation: safeOutboundText(observationParts.join(' '), 160),
+      auditObservation: 'Responsavel resolvido pelo WhatsApp oficial da Farmacia.',
+    };
+  }
+
+  const linkedName = safeText(userContext.display_name || userContext.username, 120) || 'Responsavel identificado';
+  const replyName = titleCaseShortName(linkedName) || titleCaseShortName(userContext.username) || linkedName;
 
   if (hint && !samePersonLabel(hint, linkedName) && !samePersonLabel(hint, userContext.username)) {
     const hintedUser = await resolveCoreUserByNameHint(hint).catch(async (error) => {
@@ -11908,6 +12420,7 @@ async function resolveCoreUserByNameHint(hint: string): Promise<CoreUserIdentity
             role
        FROM core_users
       WHERE active = true
+        AND COALESCE(NULLIF(role, ''), 'user') <> 'farmacia'
       ORDER BY username = 'adm' DESC, username ASC
       LIMIT 200`,
   );
@@ -12005,11 +12518,19 @@ async function createSangriaFromWhatsapp(
   try {
     resolved = await resolveSangriaResponsible(command, userContext);
   } catch (error) {
-    if (error instanceof Error && error.message === 'sangria_unlinked_user') {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'sangria_unlinked_user') {
       return {
         text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de registrar sangria.',
         engine: 'blocked',
         reason: 'sangria_unlinked_user',
+      };
+    }
+    if (message === 'sangria_pharmacy_missing_responsible' || message === 'sangria_responsible_not_found') {
+      return {
+        text: 'Quem fez essa sangria? Mande o nome do responsavel.',
+        engine: 'local',
+        reason: 'sangria_missing_responsible',
       };
     }
     throw error;
