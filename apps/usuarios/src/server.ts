@@ -1582,7 +1582,7 @@ async function saveUserVacation(req: Request, actor: User): Promise<void> {
     throw new Error('Usuario nao encontrado.');
   }
   if (isPharmacyRole(target.role)) {
-    throw new Error('Perfil Farmacia representa o numero institucional e nao usa ferias pessoais.');
+    throw new Error('Perfil Farmácia representa o numero institucional e nao usa ferias pessoais.');
   }
   const startDate = normalizeDateInput(req.body.vacation_start_date);
   const returnDate = normalizeDateInput(req.body.vacation_return_date);
@@ -1643,7 +1643,7 @@ async function clearUserVacation(req: Request, actor: User): Promise<void> {
     throw new Error('Usuario nao encontrado.');
   }
   if (isPharmacyRole(target.role)) {
-    throw new Error('Perfil Farmacia representa o numero institucional e nao usa ferias pessoais.');
+    throw new Error('Perfil Farmácia representa o numero institucional e nao usa ferias pessoais.');
   }
   const summary = `Ferias de ${displayNameForUser(target)} canceladas/limpas.`;
   const client = await corePgPool.connect();
@@ -1697,7 +1697,7 @@ async function delegatePrivateTask(req: Request, actor: User): Promise<void> {
     throw new Error('Usuario de destino invalido.');
   }
   if (isPharmacyRole(target.role)) {
-    throw new Error('Perfil Farmacia nao recebe tarefa privada pessoal; use tarefa geral ou escolha um colaborador.');
+    throw new Error('Perfil Farmácia nao recebe tarefa privada pessoal; use tarefa geral ou escolha um colaborador.');
   }
   const title = cleanText(req.body.titulo || req.body.title, 180);
   const description = String(req.body.descricao || '').trim().slice(0, 2000);
@@ -1881,7 +1881,7 @@ function roleLabel(role: string): string {
     case 'gerente':
       return 'Gerente';
     case 'farmacia':
-      return 'Farmacia';
+      return 'Farmácia';
     default:
       return 'Colaborador';
   }
@@ -2237,7 +2237,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <section class="users-subsection users-whatsapp-subsection">
           <h3>${isPharmacyProfile ? 'WhatsApp institucional' : 'WhatsApp do funcionario'}</h3>
           <p>${isPharmacyProfile
-            ? 'Vincula o canal oficial da farmacia. Quando ele mandar comandos operacionais, o Miauby pergunta qual pessoa fez a acao.'
+            ? 'Vincula o canal oficial da farmácia. Quando ele mandar comandos operacionais, o Miauby pergunta qual pessoa fez a acao.'
             : 'Vincula numeros a este usuario para o Miauby poder mandar aviso individual. O numero completo fica no bridge WhatsApp, nao no core.'}</p>
           ${renderWhatsappLinks(req, whatsappLinks)}
           <form method="post" action="${BASE_PATH}/" class="users-inline-form users-whatsapp-form">
