@@ -2120,6 +2120,7 @@ $modules = array_values(array_filter(
     static fn (array $module): bool => (bool) ($homeModulePermissions[(string) ($module['module_key'] ?? '')] ?? true)
 ));
 $homeCanUseMiauw = (bool) ($homeModulePermissions['miauw'] ?? true);
+$homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -2820,7 +2821,9 @@ $homeCanUseMiauw = (bool) ($homeModulePermissions['miauw'] ?? true);
         <div class="wf-shell">
             <h1 class="wf-visually-hidden">Wimifarma</h1>
 
+            <?php if ($homeCanUseXp): ?>
             <section class="wf-user-xp" data-wf-xp-profile hidden aria-live="polite"></section>
+            <?php endif; ?>
 
             <section class="wf-modules" aria-label="Sistemas Wimifarma">
                 <?php foreach ($modules as $module): ?>

@@ -375,6 +375,22 @@ function canManageUsers(user: User | null | undefined): boolean {
   return username === 'adm' || role === 'admin';
 }
 
+async function canAccessModule(user: User, moduleKey: string): Promise<boolean> {
+  const username = normalizeUsername(user.username);
+  const role = normalizeUsername(user.role);
+  if (username === 'adm' || role === 'admin') return true;
+  const result = await corePgPool.query<{ permission_count: string; can_access: boolean }>(
+    `SELECT COUNT(*)::text AS permission_count,
+            COALESCE(BOOL_OR(module_key = $2 AND can_access = TRUE), FALSE) AS can_access
+       FROM core_user_module_permissions
+      WHERE user_id = $1`,
+    [user.id, moduleKey],
+  );
+  const row = result.rows[0];
+  const explicitCount = Number(row?.permission_count || 0);
+  return explicitCount === 0 ? true : row?.can_access === true;
+}
+
 function userPublic(row: Pick<CoreUserRow, 'id' | 'username' | 'role'>): User {
   return {
     id: Number(row.id),
@@ -2328,6 +2344,10 @@ app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
   }
   if (!user) {
     res.status(401).json({ ok: false, authenticated: false, xp: null });
+    return;
+  }
+  if (!(await canAccessModule(user, 'xp'))) {
+    res.status(403).json({ ok: false, authenticated: true, xp: null });
     return;
   }
 
