@@ -1242,6 +1242,7 @@ ${body}
     <strong class="brand">Cashback</strong>
   </div>
   <nav class="nav">
+    <a href="/">Home</a>
     ${nav
       .map(([href, label]) => {
         const hash = href.includes('#') ? href.split('#')[1] : '';
@@ -1249,7 +1250,6 @@ ${body}
         return `<a href="${pageUrl(href)}"${data}>${e(label)}</a>`;
       })
       .join('')}
-    <a href="${pageUrl('logout.php')}">Sair</a>
   </nav>
 </header>
 <main class="container">

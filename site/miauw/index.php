@@ -54,11 +54,11 @@ try {
             <strong>Miauby</strong>
         </a>
         <nav class="topbar-actions" aria-label="Menu Miauby">
+            <a href="/">Home</a>
             <?php if ($canOpenDiagnostics) : ?>
                 <a href="/miauw/treino.php">Treino</a>
                 <a href="/miauw/diagnostico.php">Diagnostico</a>
             <?php endif; ?>
-            <a class="soft" href="/miauw/logout.php">Sair</a>
         </nav>
     </header>
 

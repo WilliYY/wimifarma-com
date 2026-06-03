@@ -1510,7 +1510,7 @@ async function renderApp(req: Request): Promise<string> {
             <strong>Tarefas</strong>
         </a>
         <nav class="task-nav" aria-label="Navegacao">
-            <a href="${BASE_PATH}/logout.php">Sair</a>
+            <a href="/">Home</a>
         </nav>
     </header>
 

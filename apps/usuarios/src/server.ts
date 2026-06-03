@@ -1810,8 +1810,6 @@ function renderDashboard(
       <a class="users-brand" href="${BASE_PATH}/"><img src="/financeiro/logo-wimifarma.svg" alt="Wimifarma"><strong>Usu&aacute;rios</strong></a>
       <nav class="users-nav" aria-label="Navegacao">
         <a href="/">Home</a>
-        <a href="/xp/">XP</a>
-        <a href="${BASE_PATH}/logout.php">Sair</a>
       </nav>
     </div>
   </header>

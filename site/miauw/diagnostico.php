@@ -163,9 +163,9 @@ function miauw_diag_review_buttons(string $kind, int $id): string
             <strong>Miauby</strong>
         </a>
         <nav class="topbar-actions" aria-label="Menu Miauby">
+            <a href="/">Home</a>
             <a href="/miauw/">Chat</a>
             <a href="/miauw/treino.php">Treino</a>
-            <a class="soft" href="/miauw/logout.php">Sair</a>
         </nav>
     </header>
 

@@ -1544,7 +1544,7 @@ function renderShell(req: Request, user: User, view: 'caixa' | 'relatorio', page
   <nav class="finance-nav" aria-label="Navegacao financeira">
     <a class="${view === 'caixa' ? 'active' : ''}" href="${BASE_PATH}/">Caixa</a>
     <a class="${view === 'relatorio' ? 'active' : ''}" href="${pageUrl({ view: 'relatorio', rel_ano: req.query.rel_ano || new Date().getFullYear(), rel_mes: req.query.rel_mes || new Date().getMonth() + 1 })}">Relatorio</a>
-    <a href="${BASE_PATH}/logout.php">Sair</a>
+    <a href="/">Home</a>
   </nav>
 </header>
 <main class="finance-shell">

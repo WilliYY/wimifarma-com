@@ -1121,7 +1121,6 @@ function renderMain(req: Request, user: User, data: { employees: EmployeeView[];
         </nav>
         <nav class="xp-nav" aria-label="Navegacao">
             <a href="/">Home</a>
-            <a href="${BASE_PATH}/logout.php">Sair</a>
         </nav>
     </header>
 

@@ -1570,12 +1570,8 @@ function dashboardFaviconLink(): string {
   return '<link rel="icon" type="image/png" href="/miauw/favicon.png">';
 }
 
-function dashboardLogoutAction(): string {
-  if (!DASHBOARD_AUTH_ENABLED) return '';
-  return `
-        <form method="post" action="${htmlEscape(BASE_PATH)}/logout">
-          <button type="submit">Sair</button>
-        </form>`;
+function dashboardHomeAction(): string {
+  return '<a href="/">Home</a>';
 }
 
 function payloadSummary(payload: JsonRecord, data: JsonRecord, messageType: string, provider: WhatsappProvider): JsonRecord {
@@ -12093,7 +12089,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         <p class="intro">Painel seguro do canal interno via WhatsApp: mostra atividade, fila, outbox e configuracoes sem expor token ou payload bruto.</p>
       </div>
       <nav class="actions" aria-label="Atalhos">
-        ${dashboardLogoutAction()}
+        ${dashboardHomeAction()}
       </nav>
     </header>
     ${noticeHtml}

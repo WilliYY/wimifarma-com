@@ -967,7 +967,6 @@ async function renderIndex(req: Request, flashOverride?: Flash): Promise<string>
         </a>
         <nav class="codes-nav" aria-label="Navegacao">
             <a href="/">Home</a>
-            <a href="${BASE_PATH}/logout.php">Sair</a>
         </nav>
     </header>
 

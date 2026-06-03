@@ -16,6 +16,8 @@ Este documento registra o inventario operacional antes de novas migracoes ou cor
 
 Use este inventario junto com `docs/22-migracao-mysql-postgres.md` e `docs/24-modernizacao-modulos.md`. Quando um modulo mudar de rota, banco, auth, escrita ou integracao, atualize este documento.
 
+Nota de navegacao: os modulos internos devem exibir `Home` para voltar a `/` sem encerrar sessao. O botao visual `Sair` fica apenas na Home principal; rotas de logout dos modulos podem existir por compatibilidade, mas nao devem aparecer como acao de navegacao.
+
 ## Limpeza de legado em 2026-05-29
 
 Legados comprovadamente fora das rotas oficiais foram movidos para `site/_legacy-disabled/2026-05-29/` e bloqueados por `.htaccess`: Gestao PHP antiga, PHP antigo de Codigos, PHP antigo de XP e financeiro antigo dentro de Cashback. Continuam ativos WordPress, Miauby PHP, helpers PHP ainda chamados pelo Miauby, `site/tarefa` e assets montados pelos apps Node. Em 2026-05-31, `site/cashback`, `site/financeiro` e `site/tarefa` ganharam `.htaccess` local bloqueando PHP direto por HTTP, para que essas pastas nao virem fallback operacional caso o proxy Node seja alterado errado. O inventario da limpeza fica em `docs/27-limpeza-legado.md`.

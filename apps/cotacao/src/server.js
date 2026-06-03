@@ -2750,7 +2750,6 @@ function renderApp(req) {
     <nav class="app-actions" aria-label="Acoes da cotacao">
       <a href="/">Home</a>
       <button type="button" id="exportCsvButton">Baixar</button>
-      <a href="${BASE_PATH}/logout.php">Sair</a>
     </nav>
   </header>
   <main class="sheet-shell" data-user-id="${e(user.id)}" data-username="${e(user.username)}">

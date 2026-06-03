@@ -2266,7 +2266,6 @@ async function renderApp(req: Request): Promise<string> {
     </a>
     <nav class="gestao-nav" aria-label="Navegacao">
       <a href="/">Home</a>
-      <a href="${BASE_PATH}/logout.php">Sair</a>
     </nav>
   </header>
   <main class="gestao-page">

@@ -328,7 +328,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 
 - A Cotacao V2 ganhou fluxo mais proximo do Google Sheets: selecao multipla, celula ativa, setas de navegacao, `Enter` descendo para a celula abaixo, digitacao direta ao selecionar celula, `Ctrl+V` para colar matriz, `Ctrl+Z`/`Ctrl+Y` e botoes de desfazer/refazer.
 - Os botoes visiveis `Adicionar linhas` e `Colar do Sheets` foram removidos; inserir linhas fica no menu de contexto e adicionar mais linhas em lote fica no rodape da grade.
-- O topo da Cotacao V2 ficou mais compacto, com apenas `Wimifarma Cotacao`, `Home`, `Baixar` e `Sair`; as abas temporarias `Farmacia Popular` e `Bebe` foram removidas, e o diagnostico saiu do menu principal.
+- O topo da Cotacao V2 ficou mais compacto, com apenas `Wimifarma Cotacao`, `Home` e `Baixar`; as abas temporarias `Farmacia Popular` e `Bebe` foram removidas, o diagnostico saiu do menu principal e o logout visual fica centralizado apenas na Home.
 - Filtros de `CATEGORIA` e `Ganhador` ficam nos icones do cabecalho da grade, com selecionar tudo, limpar tudo e aplicar selecao local por tela.
 - A API recebeu `PATCH /cotacao/api/cells/batch` para colagens em lote, endpoints de diagnostico, backup/restore do Postgres, import/export Google Sheets e renomear/reordenar distribuidoras com auditoria.
 - Import/export Google Sheets usa ID estavel de linha (`cotacao_row_id`) para reduzir risco de duplicar ou sobrescrever linhas durante sincronizacao.
@@ -379,7 +379,7 @@ Quando mexer em front-end ou fluxo visivel, abrir no navegador e validar visualm
 - Filtros da Cotacao V2 continuam locais por tela; filtrar em um computador nao muda a visao de outro. Duas pessoas na mesma celula seguem o comportamento pedido estilo Sheets: o ultimo salvamento vence, enquanto a presenca visual mostra quem esta na celula e o log de eventos permite recuperar valor anterior.
 - O topo da Cotacao V2 possui botao `Historico` ao lado do contador de linhas com dados; ele abre o historico da celula selecionada e permite restaurar o valor anterior por um save normal/auditado.
 - O modal de formatacao condicional usa layout largo e compacto: criacao de regra em faixa unica, regras existentes em linhas alinhadas e acoes `Salvar`/`Apagar` lado a lado no desktop.
-- O botao `Sair` da Cotacao V2 encerra a sessao da Cotacao e redireciona para a home inicial `/`, nao para a tela de login.
+- Os modulos internos nao exibem mais botao `Sair` no header; o botao `Home` volta para `/` sem encerrar sessao, e o logout real fica disponivel apenas na Home principal.
 - A home publica ganhou o card `Códigos` como sexto card, abaixo do Cashback no grid desktop de no maximo cinco cards por linha; os cards foram posicionados mais acima para acomodar a segunda linha.
 - O modulo `Codigos` controla atalhos de itens com comissao diferente em tabela simples editavel com `Código`, `EAN` e `Preço`; a rota oficial usa `apps/codigos` e Postgres, mantendo `site/codigos` apenas como assets da tela.
 
