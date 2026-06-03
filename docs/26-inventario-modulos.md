@@ -494,6 +494,7 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - `POST /tarefa/api/internal/tasks/status`: altera status para `concluida` ou `cancelada` por comando interno/WhatsApp apos confirmacao, revalidando visibilidade e permissao.
 - Desde 2026-06-01, ADM/admin na tela `/tarefa/` pode escolher o usuario que vera a tarefa. Usuarios comuns continuam vendo tarefas publicas e as privadas atribuidas ao proprio `core_users.id`; ADM/admin ve todas.
 - Lembretes Miauby ficam em `tarefa_reminders`. O worker do app Tarefa busca lembretes vencidos, chama `POST /miauw/whatsapp/internal/task-reminder`, registra tentativas/resultado em Postgres e grava auditoria. O bridge WhatsApp so envia para contato permitido, vinculado ao usuario e com card `tarefas` liberado. Se o dono da tarefa mudar, lembrete agendado antigo e cancelado ou recriado para o novo dono.
+- A tela `/tarefa/` deve mostrar usuarios pelo nome exibido em `core_users.display_name` no seletor `Quem vai ver`, com login apenas como fallback. O formulario do lembrete Miauby separa visualmente dia e horario, mas continua gravando/atualizando `tarefa_reminders.remind_at` no backend.
 
 ### Permissoes e sessao
 

@@ -715,6 +715,14 @@ function taskDisplayName(user: Partial<AssignableTaskUserRow | InternalTaskActor
   return cleanText(user?.display_name || user?.username || '', 120);
 }
 
+function taskUserLogin(user: Partial<AssignableTaskUserRow | InternalTaskActorRow> | null | undefined): string {
+  return cleanText(user?.username || '', 120);
+}
+
+function taskAssigneeLabel(user: Partial<AssignableTaskUserRow | InternalTaskActorRow> | null | undefined): string {
+  return taskDisplayName(user) || taskUserLogin(user);
+}
+
 function visibleTasksWhere(userId: number, canViewAll = false): string {
   if (canViewAll) return '';
   return userId > 0 ? 'WHERE assigned_core_user_id IS NULL OR assigned_core_user_id = $1' : 'WHERE assigned_core_user_id IS NULL';
@@ -787,7 +795,7 @@ async function listAssignableTaskUsers(): Promise<AssignableTaskUserRow[]> {
         )
       ORDER BY
         CASE WHEN u.username_normalized = 'adm' THEN 0 ELSE 1 END,
-        lower(u.username)
+        lower(COALESCE(NULLIF(u.display_name, ''), u.username))
       LIMIT 250`,
   );
   return result.rows;
@@ -1104,7 +1112,7 @@ async function createTask(req: Request): Promise<number> {
   const userId = req.session.user?.id || null;
   const canManageAll = isTaskAdmin(req.session.user);
   const assignee = await selectedAssigneeFromRequest(req, canManageAll);
-  const remindAt = parseReminderDate(req.body.remind_at);
+  const remindAt = parseReminderDate(reminderValueFromBody(req.body));
   if (!title) throw new Error('Informe o titulo da tarefa.');
   if (remindAt && !assignee) throw new Error('Escolha um usuario para o lembrete Miauby.');
 
@@ -1118,7 +1126,7 @@ async function createTask(req: Request): Promise<number> {
        )
        VALUES ($1, $2, $3, 'aberta', $4, $5, $6, $7, CASE WHEN $5::bigint IS NULL THEN NULL ELSE NOW() END)
        RETURNING *`,
-      [priority, title, description, userId, assignee ? Number(assignee.id) : null, assignee?.username || '', assignee ? userId : null],
+      [priority, title, description, userId, assignee ? Number(assignee.id) : null, assignee ? taskAssigneeLabel(assignee) : '', assignee ? userId : null],
     );
     const task = result.rows[0];
     const taskId = Number(task?.id || 0);
@@ -1127,13 +1135,14 @@ async function createTask(req: Request): Promise<number> {
       taskId,
       userId,
       assignee ? 'tarefa_privada_criada' : 'tarefa_criada',
-      assignee ? `Tarefa privada criada para ${assignee.username}: ${title}` : `Tarefa criada: ${title}`,
+      assignee ? `Tarefa privada criada para ${taskAssigneeLabel(assignee)}: ${title}` : `Tarefa criada: ${title}`,
     );
     if (remindAt) await insertTaskReminder(client, task, remindAt, userId);
     await client.query('COMMIT');
     void logCoreAudit(userId, assignee ? 'tarefa_privada_criada' : 'tarefa_criada', 'task', String(taskId), `Tarefa criada: ${title}`, {
       assigned_core_user_id: assignee ? Number(assignee.id) : null,
-      assigned_username: assignee?.username || null,
+      assigned_username: assignee ? taskUserLogin(assignee) : null,
+      assigned_display_name: assignee ? taskAssigneeLabel(assignee) : null,
       miauby_reminder_at: remindAt ? remindAt.toISOString() : null,
     });
     return taskId;
@@ -1170,6 +1179,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
   }
   const assignedUsername = cleanText(assignee.username, 120);
   const assignedDisplayName = taskDisplayName(assignee);
+  const assignedSnapshotName = assignedDisplayName || assignedUsername;
 
   const client = await pgPool.connect();
   try {
@@ -1181,7 +1191,7 @@ async function createPrivateTaskFromInternal(req: Request): Promise<TaskRow> {
        )
        VALUES ($1, $2, $3, 'aberta', $4, $5, $6, $7, NOW())
        RETURNING *`,
-      [priority, title, description, actorUserId, assignedUserId, assignedUsername, actorUserId],
+      [priority, title, description, actorUserId, assignedUserId, assignedSnapshotName, actorUserId],
     );
     const task = result.rows[0];
     if (remindAt) await insertTaskReminder(client, task, remindAt, actorUserId);
@@ -1265,10 +1275,54 @@ function renderAssigneeOptions(users: AssignableTaskUserRow[], selectedId: numbe
   const options = ['<option value="">Todos da equipe</option>'];
   for (const user of users) {
     const id = Number(user.id || 0);
-    const label = user.role ? `${user.username} (${user.role})` : user.username;
+    const label = taskAssigneeLabel(user);
     options.push(`<option value="${e(id)}" ${id === selectedId ? 'selected' : ''}>${e(label)}</option>`);
   }
   return options.join('');
+}
+
+function reminderParts(value: string): { date: string; time: string } {
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/);
+  return {
+    date: match?.[1] || '',
+    time: match?.[2] || '',
+  };
+}
+
+function reminderValueFromBody(body: Record<string, unknown>): string {
+  const hasDate = Object.prototype.hasOwnProperty.call(body || {}, 'remind_date');
+  const hasTime = Object.prototype.hasOwnProperty.call(body || {}, 'remind_time');
+  if (hasDate || hasTime) {
+    const date = cleanText(body?.remind_date, 10);
+    const time = cleanText(body?.remind_time, 5);
+    if (!date && !time) return '';
+    if (!date || !time) throw new Error('Informe dia e horario para o lembrete Miauby.');
+    return `${date}T${time}`;
+  }
+  return String(body?.remind_at || '').trim();
+}
+
+function renderReminderControl(value = '', help = 'Opcional. Para enviar lembrete, escolha um usuario privado.'): string {
+  const parts = reminderParts(value);
+  return `
+    <div class="task-field task-reminder-field" data-reminder-control>
+        <div class="task-field-title">
+            <span>Lembrete Miauby (WhatsApp)</span>
+            <strong>dia e horario</strong>
+        </div>
+        <input type="hidden" name="remind_at" value="${e(value)}" data-reminder-value>
+        <div class="task-reminder-grid">
+            <label>
+                <span>Dia</span>
+                <input type="date" name="remind_date" value="${e(parts.date)}" data-reminder-date>
+            </label>
+            <label>
+                <span>Horario</span>
+                <input type="time" name="remind_time" value="${e(parts.time)}" data-reminder-time>
+            </label>
+        </div>
+        <small class="task-form-help">${e(help)}</small>
+    </div>`;
 }
 
 function renderReminderPill(reminder: TaskReminderRow | undefined): string {
@@ -1276,6 +1330,12 @@ function renderReminderPill(reminder: TaskReminderRow | undefined): string {
   const status = reminder.status || 'scheduled';
   const when = brDate(status === 'sent' && reminder.sent_at ? reminder.sent_at : reminder.remind_at, true);
   return `<span class="task-reminder-pill status-${e(status)}">Miauby: ${e(reminderStatusLabel(status))} ${e(when)}</span>`;
+}
+
+function assigneeLabelForTask(task: TaskRow, users: AssignableTaskUserRow[]): string {
+  const assignedUserId = Number(task.assigned_core_user_id || 0);
+  const currentUser = users.find((user) => Number(user.id || 0) === assignedUserId);
+  return taskAssigneeLabel(currentUser) || cleanText(task.assigned_username_snapshot, 80);
 }
 
 async function updateTask(req: Request): Promise<void> {
@@ -1294,7 +1354,7 @@ async function updateTask(req: Request): Promise<void> {
   const selectedAssignee = canManageAll && assigneeFieldPresent
     ? await selectedAssigneeFromRequest(req, true)
     : undefined;
-  const remindAt = canManageAll && reminderFieldPresent ? parseReminderDate(req.body.remind_at) : undefined;
+  const remindAt = canManageAll && reminderFieldPresent ? parseReminderDate(reminderValueFromBody(req.body)) : undefined;
 
   const client = await pgPool.connect();
   try {
@@ -1314,7 +1374,7 @@ async function updateTask(req: Request): Promise<void> {
       ? (selectedAssignee ? Number(selectedAssignee.id) : null)
       : (current.assigned_core_user_id ? Number(current.assigned_core_user_id) : null);
     const nextAssignedName = assigneeFieldPresent
-      ? (selectedAssignee?.username || '')
+      ? (selectedAssignee ? taskAssigneeLabel(selectedAssignee) : '')
       : (current.assigned_username_snapshot || '');
     const assignmentChanged = assigneeFieldPresent
       && Number(current.assigned_core_user_id || 0) !== Number(nextAssignedId || 0);
@@ -1348,7 +1408,8 @@ async function updateTask(req: Request): Promise<void> {
     await client.query('COMMIT');
     void logCoreAudit(req.session.user?.id || null, 'tarefa_editada', 'task', String(id), `Tarefa editada: ${title}`, {
       assigned_core_user_id: nextAssignedId,
-      assigned_username: nextAssignedName || null,
+      assigned_username: selectedAssignee ? taskUserLogin(selectedAssignee) : nextAssignedName || null,
+      assigned_display_name: nextAssignedName || null,
       miauby_reminder_at: remindAt ? remindAt.toISOString() : null,
     });
   } catch (error) {
@@ -1412,7 +1473,7 @@ function renderTask(
   const date = brDate(task.created_at, true);
   const finishDate = status === 'concluida' ? brDate(task.completed_at, true) : brDate(task.canceled_at, true);
   const assignedUserId = Number(task.assigned_core_user_id || 0);
-  const assignedLabel = cleanText(task.assigned_username_snapshot, 80);
+  const assignedLabel = assigneeLabelForTask(task, assignableUsers);
   const reminder = reminders.get(id);
   const priorityOptions = (Object.entries(priorities) as Array<[TaskPriority, { label: string }]>)
     .map(([key, item]) => `<option value="${e(key)}" ${key === priority ? 'selected' : ''}>${e(item.label)}</option>`)
@@ -1455,15 +1516,11 @@ function renderTask(
                         </label>
                         ${
                           canManageAll
-                            ? `<label>
-                                <span>Quem ve esta tarefa</span>
+                            ? `<div class="task-field task-assignee-field">
+                                <span class="task-field-label">Quem ve esta tarefa</span>
                                 <select name="assigned_core_user_id">${assigneeOptions}</select>
-                            </label>
-                            <label>
-                                <span>Lembrete Miauby (WhatsApp)</span>
-                                <input type="datetime-local" name="remind_at" value="${e(reminderValue)}">
-                                <small class="task-form-help">Para lembrar por WhatsApp, selecione um usuario com card Tarefas liberado.</small>
-                            </label>`
+                            </div>
+                            ${renderReminderControl(reminderValue, 'Para lembrar por WhatsApp, selecione um usuario com card Tarefas liberado.')}`
                             : ''
                         }
                         <button type="submit" class="task-btn task-btn-secondary">Salvar ajuste</button>
@@ -1783,15 +1840,11 @@ async function renderApp(req: Request): Promise<string> {
                 </label>
                 ${
                   canManageAll
-                    ? `<label>
-                        <span>Quem vai ver</span>
+                    ? `<div class="task-field task-assignee-field">
+                        <span class="task-field-label">Quem vai ver</span>
                         <select name="assigned_core_user_id">${renderAssigneeOptions(assignableUsers, 0)}</select>
-                    </label>
-                    <label>
-                        <span>Lembrete Miauby (WhatsApp)</span>
-                        <input type="datetime-local" name="remind_at">
-                        <small class="task-form-help">Opcional. Para enviar lembrete, escolha um usuario privado.</small>
-                    </label>`
+                    </div>
+                    ${renderReminderControl('', 'Opcional. Para enviar lembrete, escolha um usuario privado.')}`
                     : ''
                 }
                 <button type="submit" class="task-btn task-btn-primary">Criar tarefa</button>
@@ -1819,7 +1872,7 @@ async function renderApp(req: Request): Promise<string> {
         </details>
     </main>
 
-    <script src="${BASE_PATH}/app.js?v=20260507b" defer></script>
+    <script src="${BASE_PATH}/app.js?v=20260603-reminder-fields" defer></script>
 </body>
 </html>`;
 }

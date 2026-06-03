@@ -93,7 +93,8 @@ a {
 
 .task-login-form label,
 .task-create label,
-.task-edit-form label {
+.task-edit-form label,
+.task-field {
     display: grid;
     gap: 6px;
     color: #713246;
@@ -377,6 +378,69 @@ a {
 
 .task-create-head select {
     width: 134px;
+    font-weight: 900;
+}
+
+.task-field {
+    min-width: 0;
+}
+
+.task-field-label,
+.task-field-title span {
+    color: #713246;
+    font-size: 0.88rem;
+    font-weight: 950;
+}
+
+.task-field-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.task-field-title strong {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: #fce7ef;
+    color: var(--wine);
+    font-size: 0.68rem;
+    font-weight: 950;
+    text-transform: uppercase;
+}
+
+.task-assignee-field select {
+    min-height: 45px;
+    font-weight: 900;
+}
+
+.task-reminder-field {
+    border: 1px solid #f4cad8;
+    border-radius: 10px;
+    padding: 12px;
+    background: linear-gradient(180deg, #fff, #fff7fa);
+}
+
+.task-reminder-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 10px;
+}
+
+.task-reminder-grid label {
+    min-width: 0;
+    gap: 5px;
+}
+
+.task-reminder-grid label span {
+    color: var(--muted);
+    font-size: 0.76rem;
+}
+
+.task-reminder-grid input {
+    min-height: 44px;
+    padding-inline: 11px;
     font-weight: 900;
 }
 
@@ -716,6 +780,10 @@ a {
     .task-login-card {
         min-height: auto;
         padding: 30px 22px;
+    }
+
+    .task-reminder-grid {
+        grid-template-columns: 1fr;
     }
 }
 

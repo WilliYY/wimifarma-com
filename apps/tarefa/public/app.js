@@ -115,9 +115,47 @@
         }
     }
 
+    function syncReminderControl(control) {
+        var hidden = control.querySelector('[data-reminder-value]');
+        var date = control.querySelector('[data-reminder-date]');
+        var time = control.querySelector('[data-reminder-time]');
+
+        if (!hidden || !date || !time) {
+            return;
+        }
+
+        hidden.value = date.value && time.value ? date.value + 'T' + time.value : '';
+    }
+
+    function initReminderControls() {
+        Array.prototype.forEach.call(document.querySelectorAll('[data-reminder-control]'), function (control) {
+            var date = control.querySelector('[data-reminder-date]');
+            var time = control.querySelector('[data-reminder-time]');
+            var form = control.closest('form');
+            var sync = function () {
+                syncReminderControl(control);
+            };
+
+            if (date) {
+                date.addEventListener('input', sync);
+                date.addEventListener('change', sync);
+            }
+
+            if (time) {
+                time.addEventListener('input', sync);
+                time.addEventListener('change', sync);
+            }
+
+            if (form) {
+                form.addEventListener('submit', sync);
+            }
+        });
+    }
+
     function init() {
         initTaskMotion();
         initEditGuards();
+        initReminderControls();
         initSubmitStates();
         initHistoryClosed();
     }
