@@ -243,6 +243,22 @@ function isAllowedUser(user: { username?: unknown; role?: unknown }): boolean {
   return username === 'adm' || role === 'admin' || role === 'gerente';
 }
 
+async function canAccessModule(user: User, moduleKey: string): Promise<boolean> {
+  const username = normalizeUsername(user.username);
+  const role = normalizeUsername(user.role);
+  if (username === 'adm' || role === 'admin') return true;
+  const result = await corePgPool.query<{ permission_count: string; can_access: boolean }>(
+    `SELECT COUNT(*)::text AS permission_count,
+            COALESCE(BOOL_OR(module_key = $2 AND can_access = TRUE), FALSE) AS can_access
+       FROM core_user_module_permissions
+      WHERE user_id = $1`,
+    [user.id, moduleKey],
+  );
+  const row = result.rows[0];
+  const explicitCount = Number(row?.permission_count || 0);
+  return explicitCount === 0 ? true : row?.can_access === true;
+}
+
 function ensureCsrf(req: Request): string {
   if (!req.session.csrfToken) {
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
@@ -286,8 +302,8 @@ function safeGestaoReturnPath(value: unknown): string {
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   Promise.resolve(ensureSessionUser(req))
-    .then((user) => {
-      if (!user || !isAllowedUser(user)) {
+    .then(async (user) => {
+      if (!user || !isAllowedUser(user) || !(await canAccessModule(user, 'gestao'))) {
         const returnTo = safeGestaoReturnPath(req.originalUrl);
         if (returnTo) req.session.returnTo = returnTo;
         res.redirect('/');
@@ -813,11 +829,16 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
 }
 
 async function ensureSessionUser(req: Request): Promise<User | null> {
+  const homeUser = await userByHomeSso(req);
+  if (hasHomeSsoCookie(req)) {
+    if (!homeUser) return null;
+    if (!req.session.user || req.session.user.id !== homeUser.id) {
+      await regenerateWithUser(req, homeUser);
+    }
+    return homeUser;
+  }
   if (req.session.user && isAllowedUser(req.session.user)) return req.session.user;
-  const user = await userByHomeSso(req);
-  if (!user) return null;
-  await regenerateWithUser(req, user);
-  return user;
+  return null;
 }
 
 async function coreAuthHealth(): Promise<Record<string, unknown>> {

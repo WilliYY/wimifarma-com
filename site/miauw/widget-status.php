@@ -21,7 +21,10 @@ function miauw_widget_json(array $payload, int $status = 200): void
 }
 
 try {
-    $user = current_user();
+    $user = function_exists('miauw_try_home_sso_user') ? miauw_try_home_sso_user() : current_user();
+    if ($user && function_exists('miauw_user_can_access_module') && !miauw_user_can_access_module($user, 'miauw')) {
+        $user = null;
+    }
     $payload = array(
         'ok' => true,
         'authenticated' => false,

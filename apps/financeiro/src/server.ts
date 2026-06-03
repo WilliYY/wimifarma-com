@@ -792,9 +792,13 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
 
 async function requireUser(req: Request, res: Response): Promise<User | null> {
   let user = await currentUser(req.session.user);
-  if (!user) {
-    user = await userByHomeSso(req);
-    if (user) await regenerateWithUser(req, user);
+  const homeUser = await userByHomeSso(req);
+  if (homeUser && (!user || user.id !== homeUser.id)) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
+  } else if (!user && homeUser) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
   }
   if (!user) {
     if (wantsJson(req)) {

@@ -765,6 +765,22 @@ async function userByHomeSso(req) {
   return user ? userPublic({ ...user, id: Number(user.id) }) : null;
 }
 
+async function canAccessModule(user, moduleKey) {
+  const username = normalizeUsername(user?.username);
+  const role = normalizeUsername(user?.role);
+  if (username === 'adm' || role === 'admin') return true;
+  const result = await corePgPool.query(
+    `SELECT COUNT(*)::text AS permission_count,
+            COALESCE(BOOL_OR(module_key = $2 AND can_access = TRUE), FALSE) AS can_access
+       FROM core_user_module_permissions
+      WHERE user_id = $1`,
+    [user.id, moduleKey]
+  );
+  const row = result.rows[0];
+  const explicitCount = Number(row?.permission_count || 0);
+  return explicitCount === 0 ? true : row?.can_access === true;
+}
+
 function regenerateWithUser(req, user) {
   const returnTo = req.session.returnTo;
   return new Promise((resolve, reject) => {
@@ -782,11 +798,14 @@ function regenerateWithUser(req, user) {
 }
 
 async function ensureSessionUser(req) {
-  if (req.session.user) return req.session.user;
-  const user = await userByHomeSso(req);
+  const homeUser = await userByHomeSso(req);
+  let user = req.session.user || null;
+  if (homeUser && (!user || user.id !== homeUser.id)) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
+  }
   if (!user) return null;
-  await regenerateWithUser(req, user);
-  return user;
+  return (await canAccessModule(user, 'cotacao')) ? user : null;
 }
 
 async function coreAuthHealth() {

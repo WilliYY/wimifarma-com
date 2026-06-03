@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
-if (current_user() || miauw_try_home_sso_user()) {
+if (miauw_try_home_sso_user()) {
     header('Location: /miauw/');
     exit;
 }
@@ -38,6 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($waitSeconds > 0 && !$user) {
                 $error = 'Muitas tentativas de login. Aguarde cerca de ' . max(1, (int) ceil($waitSeconds / 60)) . ' minuto(s).';
+            } elseif ($user && function_exists('miauw_user_can_access_module') && !miauw_user_can_access_module($user, 'miauw')) {
+                $error = 'Seu usuario nao tem permissao para abrir o Miauby.';
             } elseif ($user) {
                 clear_login_rate_limit($username);
                 session_regenerate_id(true);

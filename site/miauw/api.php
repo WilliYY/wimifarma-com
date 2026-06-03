@@ -30,8 +30,8 @@ function miauw_api_verify_csrf(): void
 }
 
 try {
-    $user = current_user();
-    if (!$user) {
+    $user = function_exists('miauw_try_home_sso_user') ? miauw_try_home_sso_user() : current_user();
+    if (!$user || (function_exists('miauw_user_can_access_module') && !miauw_user_can_access_module($user, 'miauw'))) {
         miauw_json(array(
             'ok' => false,
             'auth' => false,

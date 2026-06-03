@@ -247,6 +247,22 @@ function managerCanManage(user: User | null | undefined): boolean {
   return username === 'adm' || role === 'admin' || role === 'gerente';
 }
 
+async function canAccessModule(user: User, moduleKey: string): Promise<boolean> {
+  const username = normalizeUsername(user.username);
+  const role = normalizeUsername(user.role);
+  if (username === 'adm' || role === 'admin') return true;
+  const result = await corePgPool.query<{ permission_count: string; can_access: boolean }>(
+    `SELECT COUNT(*)::text AS permission_count,
+            COALESCE(BOOL_OR(module_key = $2 AND can_access = TRUE), FALSE) AS can_access
+       FROM core_user_module_permissions
+      WHERE user_id = $1`,
+    [user.id, moduleKey],
+  );
+  const row = result.rows[0];
+  const explicitCount = Number(row?.permission_count || 0);
+  return explicitCount === 0 ? true : row?.can_access === true;
+}
+
 function ensureManager(user: User): void {
   if (!managerCanManage(user)) {
     throw new Error('Seu usuario nao tem permissao para alimentar o XP.');
@@ -583,12 +599,20 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
 
 async function requireUser(req: Request, res: Response): Promise<User | null> {
   let user = await currentUser(req.session.user);
-  if (!user) {
-    user = await userByHomeSso(req);
-    if (user) await regenerateWithUser(req, user);
+  const homeUser = await userByHomeSso(req);
+  if (homeUser && (!user || user.id !== homeUser.id)) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
+  } else if (!user && homeUser) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
   }
   if (!user) {
     req.session.returnTo = req.originalUrl;
+    res.redirect('/');
+    return null;
+  }
+  if (!(await canAccessModule(user, 'xp'))) {
     res.redirect('/');
     return null;
   }
@@ -1396,12 +1420,20 @@ app.get(`${BASE_PATH}/internal/migration-status`, asyncRoute(async (_req, res) =
 
 app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
   let user = await currentUser(req.session.user);
-  if (!user) {
-    user = await userByHomeSso(req);
-    if (user) await regenerateWithUser(req, user);
+  const homeUser = await userByHomeSso(req);
+  if (homeUser && (!user || user.id !== homeUser.id)) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
+  } else if (!user && homeUser) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
   }
   if (!user) {
     res.status(401).json({ ok: false, authenticated: false, xp: null });
+    return;
+  }
+  if (!(await canAccessModule(user, 'xp'))) {
+    res.status(403).json({ ok: false, authenticated: true, xp: null });
     return;
   }
 
@@ -1417,9 +1449,13 @@ app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
 
 app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   let user = await currentUser(req.session.user);
-  if (!user) {
-    user = await userByHomeSso(req);
-    if (user) await regenerateWithUser(req, user);
+  const homeUser = await userByHomeSso(req);
+  if (homeUser && (!user || user.id !== homeUser.id)) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
+  } else if (!user && homeUser) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
   }
   if (user) {
     res.redirect(`${BASE_PATH}/`);

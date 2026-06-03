@@ -825,6 +825,22 @@ async function userByHomeSso(req: Request): Promise<User | null> {
   return row ? { id: num(row.id), username: String(row.username || username), role: String(row.role || 'user') } : null;
 }
 
+async function canAccessModule(user: User, moduleKey: string): Promise<boolean> {
+  const username = normalizeUsername(user.username);
+  const role = normalizeUsername(user.role);
+  if (username === 'adm' || role === 'admin') return true;
+  const result = await corePgPool.query(
+    `SELECT COUNT(*)::text AS permission_count,
+            COALESCE(BOOL_OR(module_key = $2 AND can_access = TRUE), FALSE) AS can_access
+       FROM core_user_module_permissions
+      WHERE user_id = $1`,
+    [user.id, moduleKey],
+  );
+  const row = result.rows[0] as DbRow | undefined;
+  const explicitCount = Number(row?.permission_count || 0);
+  return explicitCount === 0 ? true : Boolean(row?.can_access);
+}
+
 function regenerateWithUser(req: Request, user: User): Promise<void> {
   const returnTo = req.session.returnTo;
   return new Promise((resolve, reject) => {
@@ -842,11 +858,14 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
 }
 
 async function ensureSessionUser(req: Request): Promise<User | null> {
-  if (req.session.user) return req.session.user;
-  const user = await userByHomeSso(req);
+  const homeUser = await userByHomeSso(req);
+  let user = req.session.user || null;
+  if (homeUser && (!user || user.id !== homeUser.id)) {
+    await regenerateWithUser(req, homeUser);
+    user = homeUser;
+  }
   if (!user) return null;
-  await regenerateWithUser(req, user);
-  return user;
+  return (await canAccessModule(user, 'cashback')) ? user : null;
 }
 
 async function loginRateLimitWaitSeconds(req: Request, username: string): Promise<number> {

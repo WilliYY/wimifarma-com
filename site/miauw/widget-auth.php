@@ -57,6 +57,9 @@ try {
         register_login_failure($username);
         miauw_widget_auth_json(array('ok' => false, 'message' => 'Usuario ou senha incorretos. O bigode detectou erro humano.'), 401);
     }
+    if (function_exists('miauw_user_can_access_module') && !miauw_user_can_access_module($user, 'miauw')) {
+        miauw_widget_auth_json(array('ok' => false, 'message' => 'Seu usuario nao tem permissao para abrir o Miauby.'), 403);
+    }
 
     clear_login_rate_limit($username);
     session_regenerate_id(true);

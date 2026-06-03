@@ -4541,26 +4541,69 @@ function miauw_password_matches(array $user, string $password): bool
     return false;
 }
 
-function miauw_try_home_sso_user(): ?array
+function miauw_user_can_access_module(array $user, string $moduleKey = 'miauw'): bool
 {
-    $current = current_user();
-    if ($current) {
-        return $current;
+    $username = strtolower(trim((string) ($user['username'] ?? '')));
+    $role = strtolower(trim((string) ($user['role'] ?? '')));
+    if ($username === 'adm' || $role === 'admin') {
+        return true;
     }
 
     if (!internal_auth_uses_core()) {
-        return null;
+        return true;
+    }
+
+    $userId = (int) ($user['id'] ?? 0);
+    if ($userId <= 0) {
+        return true;
+    }
+
+    try {
+        $stmt = core_auth_db()->prepare(
+            'SELECT COUNT(*) AS permission_count,
+                    COALESCE(BOOL_OR(module_key = ? AND can_access = TRUE), FALSE) AS can_access
+               FROM core_user_module_permissions
+              WHERE user_id = ?'
+        );
+        $stmt->execute(array($moduleKey, $userId));
+        $row = $stmt->fetch();
+    } catch (Throwable $error) {
+        return true;
+    }
+
+    if (!is_array($row)) {
+        return true;
+    }
+
+    $explicitCount = (int) ($row['permission_count'] ?? 0);
+    if ($explicitCount === 0) {
+        return true;
+    }
+
+    $rawAccess = $row['can_access'] ?? false;
+    return $rawAccess === true
+        || $rawAccess === 1
+        || $rawAccess === '1'
+        || strtolower((string) $rawAccess) === 't'
+        || strtolower((string) $rawAccess) === 'true';
+}
+
+function miauw_try_home_sso_user(): ?array
+{
+    $current = current_user();
+    if (!internal_auth_uses_core()) {
+        return $current;
     }
 
     $homeSsoLib = __DIR__ . '/../home-sso-lib.php';
     if (!is_file($homeSsoLib)) {
-        return null;
+        return $current;
     }
 
     require_once $homeSsoLib;
     $sso = wf_home_sso_read();
     if (!$sso || empty($sso['username'])) {
-        return null;
+        return $current;
     }
 
     try {
@@ -4570,11 +4613,16 @@ function miauw_try_home_sso_user(): ?array
         }
 
         $normalized = internal_auth_normalize_user($user, 'core');
-        session_regenerate_id(true);
-        $_SESSION['user_id'] = (int) $normalized['id'];
-        $_SESSION['username'] = $normalized['username'];
-        $_SESSION['auth_provider'] = 'core';
-        log_action('login_miauw_home_sso', 'user', (int) $normalized['id'], 'Login Miauby via home SSO realizado.');
+        if (!miauw_user_can_access_module($normalized, 'miauw')) {
+            return null;
+        }
+        if (!$current || (int) ($current['id'] ?? 0) !== (int) $normalized['id']) {
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = (int) $normalized['id'];
+            $_SESSION['username'] = $normalized['username'];
+            $_SESSION['auth_provider'] = 'core';
+            log_action('login_miauw_home_sso', 'user', (int) $normalized['id'], 'Login Miauby via home SSO realizado.');
+        }
         return $normalized;
     } catch (Throwable $error) {
         return null;
@@ -4583,9 +4631,9 @@ function miauw_try_home_sso_user(): ?array
 
 function miauw_require_user(): array
 {
-    $user = current_user() ?: miauw_try_home_sso_user();
+    $user = miauw_try_home_sso_user();
 
-    if (!$user) {
+    if (!$user || !miauw_user_can_access_module($user, 'miauw')) {
         header('Location: /');
         exit;
     }

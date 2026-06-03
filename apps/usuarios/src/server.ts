@@ -870,11 +870,20 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
 }
 
 async function requireUser(req: Request, res: Response): Promise<User | null> {
-  let user = await currentUser(req.session.user);
-  if (!user) {
-    user = await userByHomeSso(req);
-    if (user) await regenerateWithUser(req, user);
+  const homeUser = await userByHomeSso(req);
+  if (hasHomeSsoCookie(req)) {
+    if (!homeUser) {
+      req.session.returnTo = req.originalUrl;
+      res.redirect('/');
+      return null;
+    }
+    if (!req.session.user || req.session.user.id !== homeUser.id) {
+      await regenerateWithUser(req, homeUser);
+    }
+    req.session.user = homeUser;
+    return homeUser;
   }
+  const user = await currentUser(req.session.user);
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect('/');
@@ -2302,10 +2311,20 @@ app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_r
 }));
 
 app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
-  let user = await currentSessionUser(req.session.user);
-  if (!user) {
-    user = await userByHomeSso(req);
+  let user: User | null = null;
+  const homeUsername = await homeSsoUsername(req);
+  if (homeUsername) {
+    const result = await corePgPool.query<CoreUserRow>(
+      `SELECT id::text, legacy_mysql_id::text, username, username_normalized, display_name, password_hash, role, active, source, created_at, updated_at
+         FROM core_users
+        WHERE username_normalized = $1 AND active = true
+        LIMIT 1`,
+      [homeUsername],
+    );
+    user = result.rows[0] ? userPublic(result.rows[0]) : null;
     if (user) await regenerateWithUser(req, user);
+  } else {
+    user = await currentSessionUser(req.session.user);
   }
   if (!user) {
     res.status(401).json({ ok: false, authenticated: false, xp: null });

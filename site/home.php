@@ -141,7 +141,7 @@ function wf_home_core_user_identity(string $username): ?array
 
     try {
         $stmt = $pdo->prepare(
-            'SELECT username, username_normalized, display_name
+            'SELECT id, username, username_normalized, display_name, role
                FROM core_users
               WHERE username_normalized = ?
                 AND active = true
@@ -194,7 +194,7 @@ function wf_home_core_user_authenticate(string $username, string $password): ?ar
 
     try {
         $stmt = $pdo->prepare(
-            'SELECT username, username_normalized, display_name, password_hash
+            'SELECT id, username, username_normalized, display_name, role, password_hash
                FROM core_users
               WHERE username_normalized = ?
                 AND active = true
@@ -235,6 +235,106 @@ function wf_home_logged_user_label(string $username): string
     }
 
     return wf_home_human_login_name($username);
+}
+
+function wf_home_is_core_admin(?array $identity): bool
+{
+    if (!$identity) {
+        return false;
+    }
+
+    $username = wf_home_normalize_core_username((string) ($identity['username_normalized'] ?? $identity['username'] ?? ''));
+    $role = wf_home_normalize_core_username((string) ($identity['role'] ?? ''));
+
+    return $username === 'adm' || $role === 'admin';
+}
+
+function wf_home_module_permissions(?array $identity, array $moduleKeys): array
+{
+    $moduleKeys = array_values(array_unique(array_filter(array_map('strval', $moduleKeys))));
+    $allowed = array_fill_keys($moduleKeys, true);
+
+    if (!$identity || wf_home_is_core_admin($identity)) {
+        return $allowed;
+    }
+
+    $userId = (int) ($identity['id'] ?? 0);
+    if ($userId <= 0) {
+        return $allowed;
+    }
+
+    $pdo = wf_home_core_pdo();
+    if (!$pdo) {
+        return $allowed;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT module_key, can_access
+               FROM core_user_module_permissions
+              WHERE user_id = ?'
+        );
+        $stmt->execute(array($userId));
+        $rows = $stmt->fetchAll();
+    } catch (Throwable $error) {
+        return $allowed;
+    }
+
+    if (!is_array($rows) || count($rows) === 0) {
+        return $allowed;
+    }
+
+    $allowed = array_fill_keys($moduleKeys, false);
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $key = (string) ($row['module_key'] ?? '');
+        if ($key !== '' && array_key_exists($key, $allowed)) {
+            $rawAccess = $row['can_access'] ?? false;
+            $allowed[$key] = $rawAccess === true
+                || $rawAccess === 1
+                || $rawAccess === '1'
+                || strtolower((string) $rawAccess) === 't'
+                || strtolower((string) $rawAccess) === 'true';
+        }
+    }
+
+    return $allowed;
+}
+
+function wf_home_expire_cookie(string $name, string $path): void
+{
+    setcookie($name, '', array(
+        'expires' => time() - 42000,
+        'path' => $path,
+        'secure' => wf_home_is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ));
+    unset($_COOKIE[$name]);
+}
+
+function wf_home_clear_module_session_cookies(): void
+{
+    $cookies = array(
+        'WFCASHBACK' => array('/', '/cashback', '/cashback/'),
+        'WFCOTACAOV2' => array('/', '/cotacao', '/cotacao/'),
+        'WFPEDIDOS' => array('/', '/pedidos', '/pedidos/'),
+        'WFFINANCEIRO' => array('/', '/financeiro', '/financeiro/'),
+        'WFTAREFA' => array('/', '/tarefa', '/tarefa/'),
+        'WFCODIGOS' => array('/', '/codigos', '/codigos/'),
+        'WFXP' => array('/', '/xp', '/xp/'),
+        'WFGESTAO' => array('/', '/gestao', '/gestao/'),
+        'WFUSUARIOS' => array('/', '/usuarios', '/usuarios/'),
+        'WFWCASHBACK' => array('/', '/cashback', '/cashback/', '/miauw', '/miauw/', '/miauby', '/miauby/'),
+    );
+
+    foreach ($cookies as $name => $paths) {
+        foreach ($paths as $path) {
+            wf_home_expire_cookie($name, $path);
+        }
+    }
 }
 
 function wf_home_send_security_headers(): void
@@ -559,12 +659,13 @@ $homeCounterStatus = $homeVisitorCount > 0
 if (isset($_GET['sair'])) {
     $_SESSION = array();
     wf_home_sso_clear(wf_home_is_https());
+    wf_home_clear_module_session_cookies();
     if (ini_get('session.use_cookies')) {
         $params = session_get_cookie_params();
         setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'] ?? '', (bool) $params['secure'], (bool) $params['httponly']);
     }
     session_destroy();
-    wf_home_redirect('/');
+    wf_home_redirect('/?logged_out=1');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] ?? '') === 'login') {
@@ -1755,6 +1856,40 @@ if (!$homeAuthenticated):
             </filter>
         </defs>
     </svg>
+    <?php if (isset($_GET['logged_out'])): ?>
+    <script>
+        (function () {
+            'use strict';
+
+            function clearStorage(storage, prefixes) {
+                if (!storage) {
+                    return;
+                }
+                try {
+                    for (var index = storage.length - 1; index >= 0; index -= 1) {
+                        var key = storage.key(index) || '';
+                        if (prefixes.some(function (prefix) { return key.indexOf(prefix) === 0; })) {
+                            storage.removeItem(key);
+                        }
+                    }
+                } catch (error) {
+                    // Storage may be unavailable in restricted browser modes.
+                }
+            }
+
+            clearStorage(window.sessionStorage, [
+                'miauw_home_greeting_state_v2_',
+                'miauw_widget_',
+                'wf_home_'
+            ]);
+            clearStorage(window.localStorage, [
+                'miauw_home_speech_last_',
+                'miauw_widget_',
+                'wf_home_'
+            ]);
+        }());
+    </script>
+    <?php endif; ?>
     <script>
         (function () {
             'use strict';
@@ -1877,6 +2012,7 @@ endif;
 $homeUserLogin = $homeAuthenticated && !empty($_SESSION['wf_home_user']) && is_string($_SESSION['wf_home_user'])
     ? strtolower(trim((string) $_SESSION['wf_home_user']))
     : '';
+$homeUserIdentity = $homeUserLogin !== '' ? wf_home_core_user_identity($homeUserLogin) : null;
 $homeUserLabel = $homeUserLogin !== '' ? wf_home_logged_user_label($homeUserLogin) : '';
 $homeGreetingSessionKey = $homeUserLogin !== ''
     ? substr(hash('sha256', $homeUserLogin . '|' . (string) ($_SESSION['wf_home_login_nonce'] ?? '')), 0, 24)
@@ -1884,6 +2020,7 @@ $homeGreetingSessionKey = $homeUserLogin !== ''
 
 $modules = array(
     array(
+        'module_key' => 'cashback',
         'name' => 'Cashback',
         'label' => 'Clientes',
         'description' => 'Compras, creditos, saldos e resgates.',
@@ -1894,6 +2031,7 @@ $modules = array(
         'name' => 'Cotação',
         'label' => 'Compras',
         'description' => 'Itens, fornecedores, precos e ganhadores.',
+        'module_key' => 'cotacao',
         'href' => '/cotacao/',
         'accent' => 'green',
     ),
@@ -1901,6 +2039,7 @@ $modules = array(
         'name' => 'Pedidos',
         'label' => 'Chegadas',
         'description' => 'Pedidos para chegar, boletos e historico.',
+        'module_key' => 'pedidos',
         'href' => '/pedidos/',
         'accent' => 'wine',
         'order_badge' => true,
@@ -1909,6 +2048,7 @@ $modules = array(
         'name' => 'Financeiro',
         'label' => 'Caixa diario',
         'description' => 'Fechamento, sangrias, PIX e maquininhas.',
+        'module_key' => 'financeiro',
         'href' => '/financeiro/',
         'accent' => 'amber',
     ),
@@ -1916,6 +2056,7 @@ $modules = array(
         'name' => 'Tarefas',
         'label' => 'Equipe',
         'description' => 'Prioridades, lembretes e conclusoes.',
+        'module_key' => 'tarefa',
         'href' => '/tarefa/',
         'accent' => 'rose',
         'task_badge' => true,
@@ -1924,6 +2065,7 @@ $modules = array(
         'name' => 'Códigos',
         'label' => 'Itens',
         'description' => 'Codigos, EAN, precos e comissoes.',
+        'module_key' => 'codigos',
         'href' => '/codigos/',
         'accent' => 'teal',
     ),
@@ -1931,6 +2073,7 @@ $modules = array(
         'name' => 'XP',
         'label' => 'Ranking',
         'description' => 'Niveis, vendas, fotos e XP mensal.',
+        'module_key' => 'xp',
         'href' => '/xp/',
         'accent' => 'gold',
         'xp_frame' => true,
@@ -1939,6 +2082,7 @@ $modules = array(
         'name' => 'Gestão',
         'label' => 'Contas',
         'description' => 'Contas a pagar, pagos do mes e recorrencias.',
+        'module_key' => 'gestao',
         'href' => '/gestao/',
         'accent' => 'wine',
     ),
@@ -1946,6 +2090,7 @@ $modules = array(
         'name' => 'Miauby',
         'label' => 'Fiscal interno',
         'description' => 'Chat, diagnostico e apoio da equipe.',
+        'module_key' => 'miauw',
         'href' => '/miauby/',
         'accent' => 'violet',
     ),
@@ -1953,6 +2098,7 @@ $modules = array(
         'name' => 'Miauby Whats',
         'label' => 'Canal interno',
         'description' => 'Fila, Evolution, automacoes e eventos.',
+        'module_key' => 'miauw_whatsapp',
         'href' => '/miauby/whatsapp/',
         'accent' => 'teal',
         'home_class' => 'is-whatsapp-card',
@@ -1961,11 +2107,21 @@ $modules = array(
         'name' => 'Usuários',
         'label' => 'Acessos',
         'description' => 'Logins, permissoes, WhatsApp e historico.',
+        'module_key' => 'usuarios',
         'href' => '/usuarios/',
         'accent' => 'blue',
         'home_class' => 'is-users-card',
     ),
 );
+$homeModulePermissions = wf_home_module_permissions(
+    $homeUserIdentity,
+    array_map(static fn (array $module): string => (string) ($module['module_key'] ?? ''), $modules)
+);
+$modules = array_values(array_filter(
+    $modules,
+    static fn (array $module): bool => (bool) ($homeModulePermissions[(string) ($module['module_key'] ?? '')] ?? true)
+));
+$homeCanUseMiauw = (bool) ($homeModulePermissions['miauw'] ?? true);
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -2629,12 +2785,16 @@ $modules = array(
             }
         }
     </style>
+    <?php if ($homeCanUseMiauw): ?>
     <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260603-home-jokes')); ?>">
+    <?php endif; ?>
 </head>
 <body
     data-miauw-home-greeting="1"
     data-miauw-user-name="<?php echo wf_home_e($homeUserLabel); ?>"
+    data-miauw-user-login="<?php echo wf_home_e($homeUserLogin); ?>"
     data-miauw-user-key="<?php echo wf_home_e($homeGreetingSessionKey); ?>"
+    data-wf-home-user-login="<?php echo wf_home_e($homeUserLogin); ?>"
 >
 <div class="wf-page">
     <div class="wf-backdrop" aria-hidden="true">
@@ -2675,7 +2835,7 @@ $modules = array(
                         $cardClasses[] = (string) $module['home_class'];
                     }
                     ?>
-                    <a class="<?php echo wf_home_e(implode(' ', $cardClasses)); ?>" href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>" data-accent="<?php echo wf_home_e($module['accent']); ?>">
+                    <a class="<?php echo wf_home_e(implode(' ', $cardClasses)); ?>" href="<?php echo wf_home_e(wf_home_url($module['href'])); ?>" data-accent="<?php echo wf_home_e($module['accent']); ?>" data-module-card="<?php echo wf_home_e((string) ($module['module_key'] ?? '')); ?>">
                         <i class="wf-card-mark" aria-hidden="true"></i>
                         <?php if (!empty($module['task_badge'])): ?>
                             <em class="wf-card-badge" data-wf-task-badge hidden aria-label="Tarefas abertas"></em>
@@ -2889,9 +3049,10 @@ $modules = array(
                 return;
             }
 
+            var currentHomeUser = String((document.body && document.body.dataset && document.body.dataset.wfHomeUserLogin) || '').trim().toLowerCase();
             var endpoints = [
-                '<?php echo wf_home_e(wf_home_url('/xp/api/me/xp-card')); ?>',
-                '<?php echo wf_home_e(wf_home_url('/usuarios/api/me/xp-card')); ?>'
+                '<?php echo wf_home_e(wf_home_url('/usuarios/api/me/xp-card')); ?>',
+                '<?php echo wf_home_e(wf_home_url('/xp/api/me/xp-card')); ?>'
             ];
             var loading = false;
 
@@ -2923,6 +3084,13 @@ $modules = array(
             function hide() {
                 holder.hidden = true;
                 holder.innerHTML = '';
+            }
+
+            function payloadBelongsToCurrentUser(payload) {
+                if (!currentHomeUser || !payload || !payload.user || !payload.user.username) {
+                    return true;
+                }
+                return String(payload.user.username || '').trim().toLowerCase() === currentHomeUser;
             }
 
             function render(payload) {
@@ -2965,7 +3133,10 @@ $modules = array(
                 return fetch(endpoints[index], {
                     credentials: 'same-origin',
                     cache: 'no-store',
-                    headers: { 'Accept': 'application/json' }
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Wimifarma-Home-User': currentHomeUser
+                    }
                 }).then(function (response) {
                     if (response.status === 401 || response.status === 403 || response.status === 404) {
                         return fetchEndpoint(index + 1);
@@ -2974,7 +3145,7 @@ $modules = array(
                         throw new Error('xp profile unavailable');
                     }
                     return response.json().then(function (payload) {
-                        if (payload && payload.xp) {
+                        if (payload && payload.xp && payloadBelongsToCurrentUser(payload)) {
                             render(payload);
                             return undefined;
                         }
@@ -3018,6 +3189,8 @@ $modules = array(
         }
     }());
 </script>
+<?php if ($homeCanUseMiauw): ?>
 <script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-5s')); ?>" defer></script>
+<?php endif; ?>
 </body>
 </html>
