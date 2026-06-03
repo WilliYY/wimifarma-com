@@ -253,8 +253,9 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - Criar/editar/inativar/excluir cliente.
 - Criar compra, calcular cashback gerado e criar credito.
 - Criar resgate, consumir creditos e gravar itens do resgate.
-- Atualizar status de mensagens (`aberta`, `copiada`, `enviada`, `cancelada`).
+- Atualizar status de mensagens (`aberta`, `copiada`, `enviada`, `cancelada`, `expirado_da_fila`).
 - Listar mensagens de expiracao apenas para creditos ativos com saldo, ainda nao vencidos e dentro da janela configurada, agrupando por cliente e data exata de vencimento para respeitar compras diferentes; ao vencer, o credito sai da lista pelo status `expirado`, sem apagar cliente nem credito historico.
+- Listar recompra para clientes com saldo ativo e sem compra recente com uma pendencia por cliente e ultima compra; a pendencia fica visivel por ate 14 dias e depois sai da fila principal com status `expirado_da_fila`. `Excluir da fila` usa `cancelada` como arquivamento manual e ambos bloqueiam retorno imediato, sem apagar cliente, saldo ou historico.
 - Criar/editar/inativar/excluir atendente.
 - Atualizar configuracoes (`cashback_percent`, validade, manutencao e afins).
 - Autoteste cria dados dentro de transacao controlada.
