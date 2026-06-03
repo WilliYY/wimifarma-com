@@ -10007,6 +10007,14 @@ function financeiroCashClosingReminderMessage(status: FinanceiroCashClosingStatu
   const statusLabel = financeiroCashStatusLabel(status.status || status.status_label, selectedDayOpen ? 'Aberto' : 'Fechado');
   const openBlock = financeiroOpenCashDaysBlock(status);
   if (!selectedDayOpen && !openBlock) {
+    const normalizedStatus = normalizeIntentText(status.status || status.status_label);
+    if (normalizedStatus !== 'fechado' && normalizedStatus !== 'sem_movimento' && normalizedStatus !== 'sem movimento') {
+      return [
+        'Miauby de olho 😼',
+        `Sem caixa aberto nos últimos ${status.open_days_lookback_days || 10} dias.`,
+        `Caixa de ${dateLabel}: *${statusLabel}*.`,
+      ].join('\n');
+    }
     return [
       'Miauby de olho 😼',
       `Tudo certo no Financeiro: caixa de ${dateLabel} está ${statusLabel.toLowerCase()}.`,
