@@ -328,8 +328,8 @@ a {
 
 .task-board {
     display: grid;
-    grid-template-columns: minmax(280px, 325px) minmax(0, 1fr);
-    gap: 22px;
+    grid-template-columns: minmax(340px, 390px) minmax(0, 1fr);
+    gap: 24px;
     margin-top: 22px;
     align-items: start;
     justify-content: center;
@@ -352,10 +352,10 @@ a {
     position: sticky;
     top: 18px;
     display: grid;
-    gap: 16px;
-    padding: 22px;
-    min-height: 320px;
-    overflow: hidden;
+    gap: 18px;
+    padding: 24px;
+    min-height: 340px;
+    overflow: visible;
 }
 
 .task-create::before {
@@ -394,13 +394,20 @@ a {
 
 .task-field-title {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 10px;
+    line-height: 1.18;
+}
+
+.task-field-title span {
+    min-width: 0;
 }
 
 .task-field-title strong {
     flex: 0 0 auto;
+    white-space: nowrap;
     border-radius: 999px;
     padding: 5px 9px;
     background: #fce7ef;
@@ -418,14 +425,16 @@ a {
 .task-reminder-field {
     border: 1px solid #f4cad8;
     border-radius: 10px;
-    padding: 12px;
+    gap: 11px;
+    padding: 14px;
     background: linear-gradient(180deg, #fff, #fff7fa);
 }
 
 .task-reminder-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-    gap: 10px;
+    grid-template-columns: minmax(150px, 1fr) minmax(116px, 0.78fr);
+    gap: 12px;
+    align-items: end;
 }
 
 .task-reminder-grid label {
@@ -439,6 +448,7 @@ a {
 }
 
 .task-reminder-grid input {
+    min-width: 0;
     min-height: 44px;
     padding-inline: 11px;
     font-weight: 900;
@@ -757,6 +767,11 @@ a {
 }
 
 @media (max-width: 720px) {
+    .task-page {
+        width: min(100%, calc(100vw - 22px));
+        margin-top: 24px;
+    }
+
     .task-topbar {
         height: auto;
         align-items: flex-start;
@@ -782,8 +797,38 @@ a {
         padding: 30px 22px;
     }
 
+    .task-create {
+        padding: 20px;
+    }
+
     .task-reminder-grid {
         grid-template-columns: 1fr;
+    }
+
+    .task-reminder-field .task-field-title {
+        flex-direction: column;
+        gap: 7px;
+    }
+}
+
+@media (max-width: 380px) {
+    .task-create {
+        padding: 18px;
+    }
+
+    .task-create-head {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .task-create-head select {
+        width: 100%;
+    }
+
+    .task-field-title {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
     }
 }
 
