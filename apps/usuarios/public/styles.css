@@ -813,10 +813,10 @@ a {
 }
 
 .users-account-grid {
-  grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.75fr) minmax(240px, 0.95fr);
+  grid-template-columns: minmax(170px, 1fr) minmax(170px, 1fr) minmax(240px, 0.95fr);
   grid-template-areas:
-    "display role password"
-    "xp xp password";
+    "display login password"
+    "role xp password";
   padding: 14px;
   border: 1px solid #e3eaf4;
   border-radius: 8px;
@@ -825,6 +825,10 @@ a {
 
 .users-field-display {
   grid-area: display;
+}
+
+.users-field-login {
+  grid-area: login;
 }
 
 .users-field-role {
@@ -1448,6 +1452,7 @@ a {
   .users-account-grid {
     grid-template-areas:
       "display"
+      "login"
       "role"
       "xp"
       "password";

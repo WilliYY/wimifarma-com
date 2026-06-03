@@ -32,6 +32,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 
 - Acesso ao painel fica restrito a username `adm` ou role `admin`.
 - A Home principal (`site/home.php`) autentica primeiro em `core_users` ativo, usando `username_normalized` em minusculo e `password_hash` bcrypt. Assim `thiago`, `Thiago` e `THIAGO` entram no mesmo login canonico; `WIMIFARMA_HOME_LOGIN_USER`/`WIMIFARMA_HOME_LOGIN_PASSWORD` permanece apenas como fallback operacional.
+- O painel Usuarios permite editar o login de usuarios comuns, atualizando `core_users.username` e `username_normalized` juntos, com normalizacao segura e bloqueio de duplicidade sem diferenciar maiuscula/minuscula. O login tecnico `adm` continua fixo e nao pode ser trocado pelo painel.
 - Criar/atualizar/desativar usuario exige CSRF.
 - Senhas antigas importadas por hash continuam irrecuperaveis. A partir do painel Usuarios, sempre que o ADM cria ou troca uma senha, `core_users.password_hash` recebe o bcrypt oficial do login e `core_user_admin_passwords` recebe uma copia cifrada para consulta interna no bloco `Senha ADM`.
 - Senha simples/curta e permitida no cadastro e na troca feita pelo ADM. O painel pode avisar visualmente que a senha e fraca, mas nao bloqueia; a seguranca obrigatoria continua sendo hash `bcrypt` para login e cofre ADM cifrado. Nunca salvar senha em texto puro.

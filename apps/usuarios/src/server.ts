@@ -1474,6 +1474,14 @@ async function updateUser(req: Request, actor: User): Promise<void> {
     role = target.role;
     active = true;
   }
+  const requestedUsername = targetIsAdm
+    ? target.username
+    : loginFromUserInput(req.body.username ?? target.username);
+  const requestedNormalized = normalizeUsername(requestedUsername);
+  if (!targetIsAdm && !/^[a-z0-9._-]{2,60}$/.test(requestedUsername)) {
+    throw new Error('Informe um login com 2 a 60 caracteres usando letras, numeros, ponto, traco ou underline.');
+  }
+  const usernameChanged = !targetIsAdm && requestedNormalized !== normalizeUsername(target.username_normalized || target.username);
   const displayName = cleanText(req.body.display_name || target.display_name || target.username, 120) || target.username;
   const displayNameChanged = displayName !== displayNameForUser(target);
   const password = String(req.body.password || '');
@@ -1488,21 +1496,30 @@ async function updateUser(req: Request, actor: User): Promise<void> {
         throw new Error('Mantenha pelo menos um administrador ativo.');
       }
     }
+    if (usernameChanged) {
+      const duplicate = await client.query<{ exists: string }>(
+        'SELECT 1::text AS exists FROM core_users WHERE username_normalized = $1 AND id <> $2 LIMIT 1',
+        [requestedNormalized, targetUserId],
+      );
+      if (duplicate.rows.length > 0) {
+        throw new Error('Ja existe um usuario com esse login.');
+      }
+    }
     if (password) {
       const passwordHash = await bcrypt.hash(password, 12);
       await client.query(
         `UPDATE core_users
-            SET role = $1, active = $2, display_name = $3, password_hash = $4, updated_at = NOW()
-          WHERE id = $5`,
-        [role, active, displayName, passwordHash, targetUserId],
+            SET username = $1, username_normalized = $2, role = $3, active = $4, display_name = $5, password_hash = $6, updated_at = NOW()
+          WHERE id = $7`,
+        [requestedUsername, requestedNormalized, role, active, displayName, passwordHash, targetUserId],
       );
       await saveAdminPasswordSecret(targetUserId, password, actor.id, client);
     } else {
       await client.query(
         `UPDATE core_users
-            SET role = $1, active = $2, display_name = $3, updated_at = NOW()
-          WHERE id = $4`,
-        [role, active, displayName, targetUserId],
+            SET username = $1, username_normalized = $2, role = $3, active = $4, display_name = $5, updated_at = NOW()
+          WHERE id = $6`,
+        [requestedUsername, requestedNormalized, role, active, displayName, targetUserId],
       );
     }
     await saveModulePermissions(targetUserId, selected, actor.id, client);
@@ -1529,6 +1546,9 @@ async function updateUser(req: Request, actor: User): Promise<void> {
       modules: Array.from(selected),
       role,
       active,
+      username: requestedUsername,
+      username_changed: usernameChanged,
+      username_previous: usernameChanged ? target.username : undefined,
       display_name: displayName,
       display_name_changed: displayNameChanged,
       xp_employee_id: xpEmployeeId || null,
@@ -1539,7 +1559,10 @@ async function updateUser(req: Request, actor: User): Promise<void> {
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
-    throw error;
+    const message = error instanceof Error && error.message.includes('duplicate key')
+      ? 'Ja existe um usuario com esse login.'
+      : error instanceof Error ? error.message : 'Nao consegui salvar o usuario.';
+    throw new Error(message);
   } finally {
     client.release();
   }
@@ -2118,6 +2141,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <input type="hidden" name="user_id" value="${e(userId)}">
         <div class="users-form-grid users-account-grid">
           <label class="users-label users-field-display"><span>Nome exibido</span><input class="users-input" type="text" name="display_name" maxlength="120" value="${e(displayName)}" placeholder="${e(row.username)}"></label>
+          <label class="users-label users-field-login"><span>Login</span><input class="users-input" type="text" name="username" maxlength="120" value="${e(row.username)}" autocomplete="off"${isAdm ? ' disabled' : ' required'}><small class="users-field-help">${isAdm ? 'Login tecnico protegido.' : 'Usado para entrar. Aceita maiuscula/minuscula.'}</small></label>
           <label class="users-label users-field-role"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select></label>
           <div class="users-label users-password-label users-field-password">
             <span>Senha nova</span>
@@ -2132,6 +2156,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
           <label class="users-label users-field-xp"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>
         </div>
         ${isAdm ? '<p class="users-master-note">Login tecnico protegido: pode trocar nome exibido, senha, XP e WhatsApp; nao pode desativar, perder admin ou ficar sem acesso aos modulos.</p>' : ''}
+        ${isAdm ? `<input type="hidden" name="username" value="${e(row.username)}">` : ''}
         ${isAdm ? `<input type="hidden" name="role" value="${e(row.role)}">` : ''}
         <div class="users-edit-security-row">
           ${renderAdminPasswordVault(row)}
