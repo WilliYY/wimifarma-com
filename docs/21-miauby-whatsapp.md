@@ -348,6 +348,7 @@ Nao existe garantia tecnica de banimento zero, principalmente quando o transport
 - responder somente a mensagens iniciadas pelo usuario autorizado;
 - manter uma resposta por mensagem recebida;
 - usar respostas curtas, sem campanhas, disparos em massa ou mensagens repetidas;
+- bloquear repeticao recente da mesma automacao/lembrete por origem + fingerprint/dedupe, inclusive quando `notify=always`, para que retry ou loop de n8n/app nao envie a mesma mensagem varias vezes;
 - respeitar pedidos para parar contato;
 - preferir Meta Cloud API oficial quando o objetivo deixar de ser uso interno controlado e virar atendimento amplo.
 
@@ -569,6 +570,7 @@ Quando o login do painel estiver ativo, `/miauw/whatsapp/` deve retornar a tela 
 - Producao foi validada com Evolution `state=open`, webhook ativo, fila e outbox atuais sem pendencia travada.
 - O VPS voltou a exigir prefixo operacional: `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`, `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=false` e `MIAUW_WHATSAPP_PREFIX=miauby`.
 - Comandos de Tarefas reconhecem `miauby concluir tarefa ...` como conclusao, limpando o texto da busca para usar apenas o trecho da tarefa.
+- A auditoria encontrou repeticao antiga de `tarefa_reminder` quando a chave de dedupe vinha vazia; o bridge passou a usar tambem fingerprint da mensagem e trava em memoria para Tarefa, Cotacao, Ferias e automacoes gerais. Automacoes com `notify=always` tambem respeitam guarda de repeticao recente.
 - Nao enviar teste real de WhatsApp sem controle; use dry-run dos endpoints internos para validar automacoes.
 
 ## Proximas etapas

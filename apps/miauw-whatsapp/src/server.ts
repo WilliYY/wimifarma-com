@@ -919,6 +919,7 @@ const N8N_WORKFLOW_CARDS = [
 const UNAUTHORIZED_REPLY_TEXT = 'Oiee! Miauby aqui!\u{1F63C} Esse WhatsApp \u00e9 s\u00f3 para a equipe interna da Wimifarma. Se voc\u00ea precisa falar com a farm\u00e1cia, chame no canal oficial de atendimento (44) 98413-4971.';
 const providerSendTimestamps: number[] = [];
 const activeTaskReminderSends = new Set<string>();
+const activeAutomationSends = new Set<string>();
 const replyCache = new Map<string, { text: string; expiresAt: number }>();
 const audioReplyCache = new Map<string, CachedAudioReply>();
 const sharedContextCache = new Map<string, { context: SharedMiauwContext; expiresAt: number }>();
@@ -9466,6 +9467,32 @@ async function automationRecentlyNotified(source: string, fingerprint: string): 
   return result.rows.length > 0;
 }
 
+function automationSendGuardKey(source: string, fingerprint: string, dedupeKey = ''): string {
+  const key = safeText(dedupeKey || fingerprint, 220);
+  return key ? `${safeText(source, 80)}:${key}` : '';
+}
+
+async function automationRecentlySentByKey(source: string, fingerprint: string, dedupeKey = ''): Promise<boolean> {
+  const cleanFingerprint = safeText(fingerprint, 280);
+  const cleanDedupeKey = safeText(dedupeKey, 180);
+  if (!cleanFingerprint && !cleanDedupeKey) return false;
+  const result = await pgPool.query<{ found: string }>(
+    `SELECT '1' AS found
+       FROM miauw_whatsapp_automation_runs
+      WHERE source = $1
+        AND status IN ('sent', 'partial')
+        AND created_at >= NOW() - ($4::text || ' minutes')::interval
+        AND (
+          ($2::text <> '' AND message_fingerprint = $2)
+          OR ($3::text <> '' AND details->>'dedupe_key' = $3)
+          OR ($3::text <> '' AND details->>'reminder_dedupe_key' = $3)
+        )
+      LIMIT 1`,
+    [safeText(source, 80), cleanFingerprint, cleanDedupeKey, String(AUTOMATION_NOTIFY_COOLDOWN_MINUTES)],
+  );
+  return result.rows.length > 0;
+}
+
 function saoPauloTodayIso(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
@@ -9696,7 +9723,8 @@ async function sendAutomationNotification(
     return { ...result, skipped: true };
   }
 
-  if (mode !== 'always' && await automationRecentlyNotified(source, fingerprint)) {
+  const guardKey = automationSendGuardKey(source, fingerprint);
+  if (guardKey && activeAutomationSends.has(guardKey)) {
     await recordAutomationRun(source, {
       moduleKey,
       status: 'skipped',
@@ -9706,11 +9734,28 @@ async function sendAutomationNotification(
       cooldown: true,
       messageFingerprint: fingerprint,
       messagePreview: message,
-      details: { reason: 'cooldown' },
+      details: { reason: 'duplicate_in_flight' },
     });
     return { ...result, skipped: true, cooldown: true };
   }
 
+  if (await automationRecentlySentByKey(source, fingerprint)) {
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: 'skipped',
+      severity,
+      notifyMode: mode,
+      hasProblems,
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { reason: mode === 'always' ? 'repeat_guard' : 'cooldown' },
+    });
+    return { ...result, skipped: true, cooldown: true };
+  }
+
+  if (guardKey) activeAutomationSends.add(guardKey);
+  try {
   const status = publicStatus();
   if (status.transport_configured !== true || status.enabled !== true) {
     result.skipped = true;
@@ -9827,6 +9872,9 @@ async function sendAutomationNotification(
     },
   });
   return result;
+  } finally {
+    if (guardKey) activeAutomationSends.delete(guardKey);
+  }
 }
 
 async function taskReminderRecipientsForUser(userId: number): Promise<AutomationRecipient[]> {
@@ -9986,7 +10034,8 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
     return { ...result, skipped: true };
   }
 
-  if (dedupeKey && activeTaskReminderSends.has(dedupeKey)) {
+  const reminderGuardKey = dedupeKey || fingerprint;
+  if (reminderGuardKey && activeTaskReminderSends.has(reminderGuardKey)) {
     result.skipped = true;
     result.cooldown = true;
     result.errors.push('task_reminder_in_flight');
@@ -10020,7 +10069,7 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
     return result;
   }
 
-  if (dedupeKey) activeTaskReminderSends.add(dedupeKey);
+  if (reminderGuardKey) activeTaskReminderSends.add(reminderGuardKey);
   try {
 
   const status = publicStatus();
@@ -10130,7 +10179,7 @@ async function sendTaskReminderNotification(payload: JsonRecord): Promise<Automa
   });
   return result;
   } finally {
-    if (dedupeKey) activeTaskReminderSends.delete(dedupeKey);
+    if (reminderGuardKey) activeTaskReminderSends.delete(reminderGuardKey);
   }
 }
 
@@ -10249,6 +10298,45 @@ async function sendVacationNotice(vacation: VacationState, kind: 'start' | 'retu
     return { ...result, skipped: true };
   }
 
+  const guardKey = automationSendGuardKey(source, fingerprint);
+  if (guardKey && activeAutomationSends.has(guardKey)) {
+    result.skipped = true;
+    result.cooldown = true;
+    result.errors.push('vacation_notice_in_flight');
+    await recordAutomationRun(source, {
+      moduleKey: 'miauw',
+      status: 'skipped',
+      severity: 'info',
+      cooldown: true,
+      recipients: result.recipients,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'vacation_notice_in_flight',
+      details: { user_id: vacation.userId, date, reason: 'duplicate_in_flight' },
+    });
+    return result;
+  }
+
+  if (await automationRecentlySentByKey(source, fingerprint)) {
+    result.skipped = true;
+    result.cooldown = true;
+    result.errors.push('duplicate_vacation_notice');
+    await recordAutomationRun(source, {
+      moduleKey: 'miauw',
+      status: 'skipped',
+      severity: 'info',
+      cooldown: true,
+      recipients: result.recipients,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'duplicate_vacation_notice',
+      details: { user_id: vacation.userId, date, reason: 'duplicate_already_sent' },
+    });
+    return result;
+  }
+
+  if (guardKey) activeAutomationSends.add(guardKey);
+  try {
   const status = publicStatus();
   if (status.transport_configured !== true || status.enabled !== true) {
     result.skipped = true;
@@ -10349,6 +10437,9 @@ async function sendVacationNotice(vacation: VacationState, kind: 'start' | 'retu
     details: { user_id: vacation.userId, date, errors: result.errors.slice(0, 5) },
   });
   return result;
+  } finally {
+    if (guardKey) activeAutomationSends.delete(guardKey);
+  }
 }
 
 async function runVacationNoticeCheck(dryRun = false): Promise<JsonRecord> {
@@ -10524,17 +10615,30 @@ function cotacaoRecipientResolutionDetails(resolution: CotacaoEncomendaRecipient
   };
 }
 
+function cotacaoEncomendaDedupeKey(payload: JsonRecord): string {
+  const explicit = safeText(
+    payload.dedupe_key || payload.dedupeKey || payload.reminder_dedupe_key || payload.reminderDedupeKey,
+    180,
+  );
+  if (explicit) return explicit;
+  const reminderId = safeText(payload.reminder_id || payload.reminderId, 80);
+  if (reminderId) return `cotacao-reminder:${reminderId}`;
+  return '';
+}
+
 async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Promise<AutomationSendResult> {
   const source = 'cotacao_encomenda_reminder';
   const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, blocked: 0, errors: [] };
   const enabled = await automationSettingEnabled(COTACAO_ENCOMENDA_AUTOMATION_KEY, true);
   const message = safeOutboundText(payload.message || payload.text || payload.body, 1200);
   const fingerprint = message ? automationFingerprint(source, message) : '';
+  const dedupeKey = cotacaoEncomendaDedupeKey(payload);
   const baseDetails = {
     reminder_id: payload.reminder_id || null,
     quote_id: payload.quote_id || null,
     row_id: payload.row_id || null,
     recipient_mode: payload.recipient_mode || payload.recipientMode || '',
+    dedupe_key: dedupeKey || null,
   };
   if (!enabled || !message) {
     await recordAutomationRun(source, {
@@ -10548,6 +10652,43 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
     return { ...result, skipped: true, errors: enabled ? [] : ['automation_disabled'] };
   }
 
+  const guardKey = automationSendGuardKey(source, fingerprint, dedupeKey);
+  if (guardKey && activeAutomationSends.has(guardKey)) {
+    result.skipped = true;
+    result.cooldown = true;
+    result.errors.push('cotacao_encomenda_in_flight');
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: 'info',
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'cotacao_encomenda_in_flight',
+      details: { ...baseDetails, reason: 'duplicate_in_flight' },
+    });
+    return result;
+  }
+
+  if (await automationRecentlySentByKey(source, fingerprint, dedupeKey)) {
+    result.skipped = true;
+    result.cooldown = true;
+    result.errors.push('duplicate_cotacao_encomenda_reminder');
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: 'info',
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'duplicate_cotacao_encomenda_reminder',
+      details: { ...baseDetails, reason: 'duplicate_already_sent' },
+    });
+    return result;
+  }
+
+  if (guardKey) activeAutomationSends.add(guardKey);
+  try {
   const status = publicStatus();
   if (status.transport_configured !== true || status.enabled !== true) {
     result.skipped = true;
@@ -10660,6 +10801,9 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
     },
   });
   return result;
+  } finally {
+    if (guardKey) activeAutomationSends.delete(guardKey);
+  }
 }
 
 async function fetchTextWithTimeout(url: string, init: RequestInit = {}, timeoutMs = SMOKE_CHECK_TIMEOUT_MS): Promise<{ status: number; text: string; ms: number; error: string }> {
