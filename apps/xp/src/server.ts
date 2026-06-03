@@ -616,6 +616,50 @@ async function auditPg(action: string, entityType: string, entityId: string | nu
   );
 }
 
+async function syncCoreUsersFromXpEmployee(employeeId: number, employeeName: string, actorUserId: number | null): Promise<void> {
+  const safeName = cleanText(employeeName, 180);
+  if (employeeId <= 0 || !safeName) return;
+  try {
+    await corePgPool.query(
+      'UPDATE core_user_xp_links SET xp_employee_name = $2, updated_at = NOW() WHERE xp_employee_id = $1',
+      [employeeId, safeName],
+    );
+    const updated = await corePgPool.query<{ id: string }>(
+      `UPDATE core_users u
+          SET display_name = $2,
+              updated_at = NOW()
+         FROM core_user_xp_links l
+        WHERE l.user_id = u.id
+          AND l.xp_employee_id = $1
+          AND u.active = true
+        RETURNING u.id::text`,
+      [employeeId, safeName],
+    );
+    for (const row of updated.rows) {
+      await corePgPool.query(
+        `INSERT INTO core_user_audit_events (actor_user_id, target_user_id, action, summary, metadata)
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          actorUserId,
+          Number(row.id),
+          'xp_sincronizou_usuario',
+          cleanText(`Nome sincronizado pelo modulo XP: ${safeName}.`, 500),
+          JSON.stringify({ service: SERVICE_NAME, xp_employee_id: employeeId }),
+        ],
+      );
+    }
+    await logCoreAudit(
+      actorUserId,
+      'xp_sincronizou_usuario',
+      'xp_employee',
+      String(employeeId),
+      `Nome XP sincronizado com Usuarios: ${safeName}.`,
+    );
+  } catch (error) {
+    console.warn('[xp] failed to sync linked core users', error);
+  }
+}
+
 async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS xp_employees (
@@ -921,6 +965,7 @@ async function updateAdminProfile(nameValue: unknown, file: Express.Multer.File 
   const photoPath = uploaded || photoUrl(current?.photo_path) || null;
   await pgPool.query('UPDATE xp_employees SET name = $1, photo_path = $2, updated_at = NOW() WHERE id = $3', [name, photoPath, adminId]);
   await auditPg('xp_adm_perfil_atualizado', 'xp_employee', String(adminId), `Perfil ADM do XP atualizado: ${name}.`, userId);
+  await syncCoreUsersFromXpEmployee(adminId, name, userId);
 }
 
 async function createEmployee(nameValue: unknown, file: Express.Multer.File | undefined, userId: number): Promise<number> {
@@ -955,6 +1000,7 @@ async function updateEmployee(id: number, nameValue: unknown, file: Express.Mult
   const action = isAdmin ? 'xp_adm_perfil_atualizado' : 'xp_funcionario_editado';
   const description = isAdmin ? `Perfil ADM do XP atualizado: ${name}.` : `Funcionario XP editado: ${name}`;
   await auditPg(action, 'xp_employee', String(id), description, userId);
+  await syncCoreUsersFromXpEmployee(id, name, userId);
 }
 
 async function deactivateEmployee(id: number, userId: number): Promise<void> {

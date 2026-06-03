@@ -1203,6 +1203,53 @@ async function findXpEmployee(employeeId: number): Promise<XpEmployeeRow | null>
   }
 }
 
+function xpEmployeeDisplayName(employee: Pick<XpEmployeeRow, 'name' | 'system_key'>): string {
+  return cleanText(employee.name, 180) || (employee.system_key === XP_ADMIN_SYSTEM_KEY ? 'ADM' : 'Funcionario');
+}
+
+async function syncCoreXpLinkSnapshot(
+  xpEmployeeId: number,
+  xpEmployeeName: string,
+  client: pg.Pool | pg.PoolClient = corePgPool,
+): Promise<void> {
+  const safeName = cleanText(xpEmployeeName, 180);
+  if (xpEmployeeId <= 0 || !safeName) return;
+  await client.query(
+    'UPDATE core_user_xp_links SET xp_employee_name = $2, updated_at = NOW() WHERE xp_employee_id = $1',
+    [xpEmployeeId, safeName],
+  );
+}
+
+async function syncXpEmployeeNameFromUser(
+  xpEmployeeId: number,
+  displayName: string,
+  actorUserId: number,
+): Promise<{ name: string | null; changed: boolean }> {
+  const safeName = cleanText(displayName, 180);
+  if (xpEmployeeId <= 0 || !safeName) return { name: null, changed: false };
+  const employee = await findXpEmployee(xpEmployeeId);
+  if (!employee) return { name: null, changed: false };
+  const currentName = xpEmployeeDisplayName(employee);
+  if (currentName === safeName) return { name: currentName, changed: false };
+
+  await xpPgPool.query(
+    "UPDATE xp_employees SET name = $1, updated_at = NOW() WHERE id = $2 AND status = 'ativo' AND deleted_at IS NULL",
+    [safeName, xpEmployeeId],
+  );
+  try {
+    const action = employee.system_key === XP_ADMIN_SYSTEM_KEY
+      ? 'xp_adm_sincronizado_usuarios'
+      : 'xp_funcionario_sincronizado_usuarios';
+    await xpPgPool.query(
+      'INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary) VALUES ($1, $2, $3, $4, $5)',
+      [actorUserId, action, 'xp_employee', String(xpEmployeeId), cleanText(`Nome XP sincronizado pelo modulo Usuarios: ${safeName}.`, 255)],
+    );
+  } catch (error) {
+    console.warn('[usuarios] failed to audit xp name sync', error);
+  }
+  return { name: safeName, changed: true };
+}
+
 async function saveXpLink(
   targetUserId: number,
   xpEmployeeId: number,
@@ -1225,7 +1272,7 @@ async function saveXpLink(
        xp_employee_name = EXCLUDED.xp_employee_name,
        linked_by = EXCLUDED.linked_by,
        updated_at = NOW()`,
-    [targetUserId, Number(employee.id), employee.system_key === 'adm' ? 'ADM' : cleanText(employee.name, 180), actorUserId],
+    [targetUserId, Number(employee.id), xpEmployeeDisplayName(employee), actorUserId],
   );
 }
 
@@ -1352,6 +1399,10 @@ async function createUser(req: Request, actor: User): Promise<void> {
     const created = result.rows[0];
     await saveModulePermissions(Number(created.id), modules, actor.id, client);
     await saveXpLink(Number(created.id), xpEmployeeId, actor.id, client);
+    const xpNameSync = await syncXpEmployeeNameFromUser(xpEmployeeId, displayName, actor.id);
+    if (xpNameSync.name) {
+      await syncCoreXpLinkSnapshot(xpEmployeeId, xpNameSync.name, client);
+    }
     await saveAdminPasswordSecret(Number(created.id), password, actor.id, client);
     await logUserAudit(actor.id, Number(created.id), 'usuarios_criou_usuario', `Usuario ${created.username} criado.`, {
       modules: Array.from(modules),
@@ -1359,6 +1410,7 @@ async function createUser(req: Request, actor: User): Promise<void> {
       active,
       display_name: displayName,
       xp_employee_id: xpEmployeeId || null,
+      xp_employee_name_synced: xpNameSync.changed,
       admin_password_vault_updated: true,
     }, client);
     await client.query('COMMIT');
@@ -1430,6 +1482,10 @@ async function updateUser(req: Request, actor: User): Promise<void> {
     }
     await saveModulePermissions(targetUserId, selected, actor.id, client);
     await saveXpLink(targetUserId, xpEmployeeId, actor.id, client);
+    const xpNameSync = await syncXpEmployeeNameFromUser(xpEmployeeId, displayName, actor.id);
+    if (xpNameSync.name) {
+      await syncCoreXpLinkSnapshot(xpEmployeeId, xpNameSync.name, client);
+    }
     if (displayNameChanged) {
       const links = await client.query<{ total: string }>(
         'SELECT COUNT(*)::text AS total FROM core_user_whatsapp_links WHERE user_id = $1',
@@ -1451,6 +1507,7 @@ async function updateUser(req: Request, actor: User): Promise<void> {
       display_name: displayName,
       display_name_changed: displayNameChanged,
       xp_employee_id: xpEmployeeId || null,
+      xp_employee_name_synced: xpNameSync.changed,
       password_changed: Boolean(password),
       admin_password_vault_updated: Boolean(password),
     }, client);
@@ -1759,7 +1816,9 @@ function renderRoleOptions(selected: string): string {
 function renderXpOptions(employees: XpEmployeeRow[], selectedId: string | null): string {
   const rows = ['<option value="">Sem vinculo XP</option>'];
   for (const employee of employees) {
-    const label = employee.system_key === 'adm' ? 'ADM - XP' : employee.name;
+    const label = employee.system_key === XP_ADMIN_SYSTEM_KEY
+      ? `${xpEmployeeDisplayName(employee)} - XP`
+      : xpEmployeeDisplayName(employee);
     rows.push(`<option value="${e(employee.id)}"${String(selectedId || '') === String(employee.id) ? ' selected' : ''}>${e(label)}</option>`);
   }
   return rows.join('');
