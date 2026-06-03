@@ -10270,7 +10270,7 @@ async function createPedidoFromWhatsapp(
   if (!isRecord(data)) throw new Error(`pedidos_create_http_${response.status}`);
   if (response.ok && data.ok === true) {
     return {
-      text: safeText(data.message, 500) || formatPedidosCreateSuccess(command, data.duplicate === true),
+      text: formatPedidosCreateSuccess(command, data.duplicate === true),
       engine: 'local',
       reason: data.duplicate === true ? 'pedidos_create_duplicate' : 'pedidos_create_created',
     };

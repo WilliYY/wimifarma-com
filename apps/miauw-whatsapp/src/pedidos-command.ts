@@ -56,9 +56,15 @@ const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
 const START_WORDS = new Set(['pedido', 'pedidos']);
 const CONNECTOR_WORDS = new Set(['de', 'do', 'da', 'dos', 'das', 'para', 'pro', 'pra', 'em', 'com', 'o', 'a', 'um', 'uma']);
 const SUPPLIER_PREFIX_WORDS = new Set(['fornecedor', 'distribuidora']);
-const VALUE_WORDS = new Set(['valor', 'total', 'deu', 'ficou', 'boleto']);
+const VALUE_WORDS = new Set(['valor', 'total', 'deu', 'ficou', 'boleto', 'boletos']);
 const SUPPLIER_STOP_WORDS = new Set([
   ...VALUE_WORDS,
+  'ja',
+  'e',
+  'mas',
+  'nao',
+  'deve',
+  'mercadoria',
   'parcela',
   'parcelas',
   'primeira',
@@ -81,6 +87,7 @@ const SUPPLIER_STOP_WORDS = new Set([
   'chegou',
   'chegada',
   'previsao',
+  'prev',
   'previsto',
   'prevista',
   'receber',
@@ -100,9 +107,10 @@ const SUPPLIER_STOP_WORDS = new Set([
   'pendente',
   'reais',
 ]);
-const DATE_CONTEXT_WORDS = new Set(['vence', 'vencimento', 'venc', 'boleto', 'pagar', 'pagamento', 'data', 'dia']);
+const DATE_CONTEXT_WORDS = new Set(['vence', 'vencimento', 'venc', 'boleto', 'boletos', 'pagar', 'pagamento', 'data', 'dia']);
 const ARRIVAL_CONTEXT_WORDS = new Set(['chega', 'chegar', 'chegou', 'chegada', 'previsao', 'previsto', 'prevista', 'receber', 'recebimento', 'entrega']);
 const PARCEL_MARKERS = new Set(['parcela', 'parcelas', 'primeira', 'segunda', 'terceira', 'quarta', 'quinta', 'sexta', 'setima', 'oitava', 'nona', 'decima']);
+const PARCEL_COUNT_LABELS = new Set(['parcela', 'parcelas', 'boleto', 'boletos']);
 const WEEKDAYS: Record<string, number> = {
   domingo: 0,
   segunda: 1,
@@ -134,6 +142,8 @@ const WORD_FIXES: Record<string, string> = {
   paracelas: 'parcelas',
   chego: 'chegou',
   pgou: 'pagou',
+  pgto: 'pagamento',
+  prev: 'previsao',
   paguei: 'paguei',
   venc: 'venc',
 };
@@ -163,6 +173,7 @@ export function parsePedidosCreateCommand(message: string, options: ParserOption
   const parsed = parseItems(commandTokens, supplierName, todayIso);
   const base = buildCommand(raw, supplierName, parsed.items, expectedArrivalAt, competenceMonth, state);
 
+  if (!supplierName && !parsed.items.length) return invalidCommand(base, 'missing_supplier_and_amount', 'Faltou fornecedor e valor. Mande assim: miauby pedido anb 350.');
   if (!supplierName) return invalidCommand(base, 'missing_supplier', 'Faltou o fornecedor. Mande assim: miauby pedido anb 350.');
   if (parsed.invalidDate) return invalidCommand(base, 'invalid_date', `Nao entendi a data "${parsed.invalidDate}". Use dia/mes, tipo 05/06.`);
   if (expectedArrivalAt && todayIso && expectedArrivalAt < todayIso) return invalidCommand(base, 'past_date', `A data ${formatDateBr(expectedArrivalAt)} ja passou. Confirme no painel ou mande com ano correto.`);
@@ -182,9 +193,19 @@ export function parsePedidosCreateCommand(message: string, options: ParserOption
 
 export function formatPedidosCreateSuccess(command: PedidosCreateCommand, duplicate = false): string {
   const supplier = displaySupplier(command.supplier_name);
-  const prefix = duplicate ? 'Pedido ja registrado' : command.register_only ? 'Pedido registrado' : 'Pedido criado';
+  if (duplicate) return `Pedido ja registrado: ${supplier} - ${command.total_label}.`;
+  if (command.items.length > 1) {
+    return `Pedido parcelado criado: ${supplier} - ${command.items.length} parcelas - ${command.total_label}.`;
+  }
+  if (command.register_only || (command.paid_now && command.arrived_now)) {
+    return `Pedido registrado: ${supplier} - ${command.total_label} - pago e recebido.`;
+  }
+  if (command.arrived_now) return `Pedido criado: ${supplier} - ${command.total_label} - ja chegou, falta pagar.`;
+  if (command.paid_now) return `Pedido criado: ${supplier} - ${command.total_label} - pago, falta chegar.`;
+  const dueDate = command.items[0]?.due_date || '';
+  if (dueDate) return `Pedido criado: ${supplier} - ${command.total_label} - vence ${formatDateBr(dueDate)}.`;
   const arrival = command.expected_arrival_at ? ` - chega ${formatDateBr(command.expected_arrival_at)}` : '';
-  return `${prefix}: ${supplier} - ${command.total_label} - ${command.status_label}${arrival}.`;
+  return `Pedido criado: ${supplier} - ${command.total_label}${arrival}.`;
 }
 
 export function formatPedidosCreateError(command: PedidosCreateCommand): string {
@@ -285,8 +306,9 @@ function collectSupplierTokens(tokens: Token[], start: number, end: number): str
     const token = tokens[index];
     if (!token.clean) continue;
     const leadingNoise = CONNECTOR_WORDS.has(token.clean) || SUPPLIER_PREFIX_WORDS.has(token.clean) || VALUE_WORDS.has(token.clean);
-    const parcelCountWord = Boolean(WORD_NUMBERS[token.clean] && tokens[index + 1]?.clean.startsWith('parcela'));
+    const parcelCountWord = Boolean(WORD_NUMBERS[token.clean] && PARCEL_COUNT_LABELS.has(tokens[index + 1]?.clean || ''));
     if (!supplierTokens.length && leadingNoise) continue;
+    if (supplierTokens.length && CONNECTOR_WORDS.has(token.clean) && (isParcelCountToken(tokens, index + 1) || isInstallmentLabel(tokens[index + 1]?.clean || ''))) break;
     if (
       isAmountToken(tokens, index)
       || parseAnyDateToken(token.clean, '2099-01-01')
@@ -298,7 +320,9 @@ function collectSupplierTokens(tokens: Token[], start: number, end: number): str
       if (supplierTokens.length) break;
       continue;
     }
-    supplierTokens.push(token.raw.replace(/[.,:;!?]+$/g, ''));
+    const supplierToken = token.raw.replace(/^[.,:;!?/-]+|[.,:;!?/-]+$/g, '');
+    if (!supplierToken) continue;
+    supplierTokens.push(supplierToken);
     if (supplierTokens.length >= 6) break;
   }
   const supplier = supplierTokens.join(' ').replace(/\s+/g, ' ').trim();
@@ -306,18 +330,17 @@ function collectSupplierTokens(tokens: Token[], start: number, end: number): str
 }
 
 function statusFromText(clean: string): ParsedStatus {
-  const registerOnly = /(registrar|registro|historico)/.test(clean) && hasPaidSignal(clean) && hasArrivedSignal(clean)
+  const hasPaid = hasPaidSignal(clean);
+  const hasUnpaid = hasUnpaidSignal(clean);
+  const hasArrived = hasArrivedSignal(clean);
+  const hasWaitingArrival = hasWaitingArrivalSignal(clean);
+  const registerOnly = /(registrar|registro|historico|passou batido)/.test(clean) && hasPaid && hasArrived
     || /chegou e (ja )?(foi )?pago/.test(clean)
     || /pago e (ja )?chegou/.test(clean)
     || /pago e recebido/.test(clean)
     || /recebido e pago/.test(clean)
     || /ja pago e ja chegou/.test(clean)
-    || /ja chegou e foi pago/.test(clean)
-    || /passou batido/.test(clean);
-  const hasPaid = hasPaidSignal(clean);
-  const hasUnpaid = hasUnpaidSignal(clean);
-  const hasArrived = hasArrivedSignal(clean);
-  const hasWaitingArrival = hasWaitingArrivalSignal(clean);
+    || /ja chegou e foi pago/.test(clean);
 
   if (!registerOnly && hasPaid && hasUnpaid) {
     return {
@@ -392,10 +415,11 @@ function findExpectedArrivalDate(tokens: Token[], todayIso: string): string | nu
     if (!token.clean) continue;
     const context = contextAround(tokens, index);
     const aroundArrival = context.some((word) => ARRIVAL_CONTEXT_WORDS.has(word));
+    const aroundPaymentDate = context.some((word) => DATE_CONTEXT_WORDS.has(word));
     if (aroundArrival && token.clean === 'semana' && tokens[index + 1]?.clean === 'que' && tokens[index + 2]?.clean === 'vem') {
       return addDaysIso(todayIso, 7);
     }
-    const isLooseRelativeDate = token.clean === 'amanha' || token.clean === 'hoje';
+    const isLooseRelativeDate = (token.clean === 'amanha' || token.clean === 'hoje') && !aroundPaymentDate;
     if (!aroundArrival && !isLooseRelativeDate) continue;
     if (isDayOnlyDateToken(tokens, index)) {
       const parsedDay = parseDayOnlyToken(token.clean, todayIso);
@@ -421,7 +445,7 @@ function parseItems(tokens: Token[], supplierName: string, todayIso: string): Pa
     }
   }
 
-  const items: Array<{ amount_cents: number; due_date: string | null }> = [];
+  const collectedItems: Array<{ amount_cents: number; due_date: string | null; source_index: number }> = [];
   let expectedTotalCents = 0;
   let invalidDate = '';
   let pastDate = '';
@@ -442,15 +466,48 @@ function parseItems(tokens: Token[], supplierName: string, todayIso: string): Pa
       pastDate = due.pastDate;
       continue;
     }
-    items.push({ amount_cents: cents, due_date: due.date });
+    collectedItems.push({ amount_cents: cents, due_date: due.date, source_index: index });
   }
 
+  const parcelCount = expectedParcelCount(tokens);
+  const items = expandSingleParcelAmount(tokens, collectedItems, parcelCount, firstParcelIndex);
   const actualTotalCents = items.reduce((sum, item) => sum + item.amount_cents, 0);
   const totalMismatch = expectedTotalCents > 0 && actualTotalCents > 0 && Math.abs(expectedTotalCents - actualTotalCents) > 1;
   if (!supplierName && items.length > 1) {
     return { items: [], invalidDate, pastDate, totalMismatch, expectedTotalCents, actualTotalCents };
   }
   return { items, invalidDate, pastDate, totalMismatch, expectedTotalCents, actualTotalCents };
+}
+
+function expandSingleParcelAmount(
+  tokens: Token[],
+  items: Array<{ amount_cents: number; due_date: string | null; source_index: number }>,
+  parcelCount: number,
+  firstParcelIndex: number,
+): Array<{ amount_cents: number; due_date: string | null }> {
+  if (parcelCount <= 1 || items.length !== 1) {
+    return items.map(({ amount_cents, due_date }) => ({ amount_cents, due_date }));
+  }
+  const [item] = items;
+  const amountIsTotal = item.source_index < firstParcelIndex || amountContextSuggestsTotal(tokens, item.source_index);
+  const amounts = amountIsTotal ? splitCents(item.amount_cents, parcelCount) : Array.from({ length: parcelCount }, () => item.amount_cents);
+  return amounts.map((amount_cents, index) => ({
+    amount_cents,
+    due_date: index === 0 ? item.due_date : null,
+  }));
+}
+
+function amountContextSuggestsTotal(tokens: Token[], amountIndex: number): boolean {
+  return tokens[amountIndex - 1]?.clean === 'total'
+    || tokens[amountIndex - 2]?.clean === 'total'
+    || tokens[amountIndex - 1]?.clean === 'valor'
+    || tokens[amountIndex - 2]?.clean === 'valor';
+}
+
+function splitCents(totalCents: number, count: number): number[] {
+  const base = Math.floor(totalCents / count);
+  const remainder = totalCents - base * count;
+  return Array.from({ length: count }, (_, index) => base + (index < remainder ? 1 : 0));
 }
 
 function dueDateAround(tokens: Token[], amountIndex: number, todayIso: string): { date: string | null; invalidDate: string; pastDate: string } {
@@ -493,7 +550,7 @@ function isParcelCountToken(tokens: Token[], index: number): boolean {
   const next = tokens[index + 1]?.clean || '';
   const previous = tokens[index - 1]?.clean || '';
   const value = Number.parseInt(token.clean, 10);
-  return Number.isInteger(value) && value > 0 && value <= 24 && (next === 'parcela' || next === 'parcelas' || previous === 'em');
+  return Number.isInteger(value) && value > 0 && value <= 24 && (PARCEL_COUNT_LABELS.has(next) || previous === 'em');
 }
 
 function isDayNumberToken(tokens: Token[], index: number): boolean {
@@ -514,9 +571,9 @@ function expectedParcelCount(tokens: Token[]): number {
   let maxInstallmentLabel = 0;
   for (let index = 0; index < tokens.length; index += 1) {
     const numeric = /^\d+$/.test(tokens[index].clean) ? Number.parseInt(tokens[index].clean, 10) : Number.NaN;
-    if (Number.isInteger(numeric) && numeric > 0 && numeric <= 24 && tokens[index + 1]?.clean.startsWith('parcela')) return numeric;
+    if (Number.isInteger(numeric) && numeric > 0 && numeric <= 24 && PARCEL_COUNT_LABELS.has(tokens[index + 1]?.clean || '')) return numeric;
     const wordValue = WORD_NUMBERS[tokens[index].clean] || 0;
-    if (wordValue > 0 && wordValue <= 24 && tokens[index + 1]?.clean.startsWith('parcela')) return wordValue;
+    if (wordValue > 0 && wordValue <= 24 && PARCEL_COUNT_LABELS.has(tokens[index + 1]?.clean || '')) return wordValue;
     const installment = /^(\d{1,2})x$/.exec(tokens[index].clean);
     if (installment) maxInstallmentLabel = Math.max(maxInstallmentLabel, Number.parseInt(installment[1], 10));
   }
@@ -628,7 +685,9 @@ function statusLabel(paidNow: boolean, arrivedNow: boolean, registerOnly: boolea
 }
 
 function formatMoneyLabel(cents: number): string {
-  return (Math.max(0, cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return (Math.max(0, cents) / 100)
+    .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    .replace(/\u00a0/g, ' ');
 }
 
 function formatDateBr(iso: string): string {
