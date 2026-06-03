@@ -190,7 +190,7 @@ Validar no VPS por dia/amostra: contagens, somatorios, fechamento, relatorio, ex
 - Nao ha fallback MySQL de autenticacao no app desde 2026-05-30.
 - Rotas operacionais exigem usuario autenticado.
 - Escritas usam CSRF.
-- Areas sensiveis como relatorio, exportacao e diagnostico usam senha operacional alem da sessao.
+- Relatorio, exportacao e diagnostico nao usam senha operacional extra; basta a sessao autenticada do Cashback. O modo manutencao tambem e liberado por usuario ja logado, sem senha fixa.
 - Limitador de login usa `core_login_rate_limits` quando a auth e core.
 
 ### Tabelas MySQL envolvidas

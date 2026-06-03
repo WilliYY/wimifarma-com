@@ -55,7 +55,6 @@ declare module 'express-session' {
     loginAttempts?: number[];
     loginBlockedUntil?: number;
     returnTo?: string;
-    sensitiveUnlocks?: Record<string, boolean>;
     user?: User;
   }
 }
@@ -270,14 +269,18 @@ router.post('/manutencao.php', async (req: Request, res: Response) => {
     res.status(403).send(renderMaintenance(req, 'Sessao expirada.'));
     return;
   }
-  if (String(req.body?.action || '') === 'disable_maintenance' && timingSafeStringEqual(String(req.body?.maintenance_password || ''), 'wimifarma')) {
+  if (String(req.body?.action || '') === 'disable_maintenance') {
+    if (!req.session.user) {
+      res.status(403).send(renderMaintenance(req, 'Entre pela Home para liberar o sistema.'));
+      return;
+    }
     await setSetting('maintenance_enabled', '0');
     await setSetting('maintenance_finished_at', sqlNowText());
-    await logAction(req, 'manutencao_desativada', 'system', null, 'Modo manutencao desativado pela tela publica de manutencao.');
-    res.redirect(req.session.user ? `${BASE_PATH}/dashboard.php#busca` : '/');
+    await logAction(req, 'manutencao_desativada', 'system', null, 'Modo manutencao desativado por usuario autenticado.');
+    res.redirect(`${BASE_PATH}/dashboard.php#busca`);
     return;
   }
-  res.send(renderMaintenance(req, 'Senha incorreta. O sistema continua em manutencao.'));
+  res.send(renderMaintenance(req, 'Acao invalida. O sistema continua em manutencao.'));
 });
 
 router.use((req: Request, res: Response, next: NextFunction) => {
@@ -376,12 +379,12 @@ router.get('/api-clientes.php', clearSensitive, maintenanceGuard, async (req: Re
   res.json({ clientes: await clientSearchPayload(req.query.q ?? req.query.term ?? '') });
 });
 
-router.get('/relatorio.php', sensitive('Configuracao e Relatorio'), maintenanceGuard, async (req: Request, res: Response) => {
+router.get('/relatorio.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
   res.send(await renderReport(req));
 });
 
-router.post('/relatorio.php', sensitive('Configuracao e Relatorio'), maintenanceGuard, async (req: Request, res: Response) => {
+router.post('/relatorio.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   if (!csrfMatches(req)) {
     setFlash(req, 'error', 'Sessao expirada.');
     res.redirect(`${BASE_PATH}/relatorio.php`);
@@ -390,19 +393,19 @@ router.post('/relatorio.php', sensitive('Configuracao e Relatorio'), maintenance
   await handleReportPost(req, res);
 });
 
-router.get('/exportar.php', sensitive('Configuracao e Relatorio'), maintenanceGuard, async (req: Request, res: Response) => {
+router.get('/exportar.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   await sendExport(req, res);
 });
 
-router.get('/diagnostico.php', sensitive('Diagnostico'), async (req: Request, res: Response) => {
+router.get('/diagnostico.php', clearSensitive, async (req: Request, res: Response) => {
   res.send(await renderDiagnostics(req));
 });
 
-router.get('/diagnostico-publico.php', sensitive('Diagnostico publico'), async (req: Request, res: Response) => {
+router.get('/diagnostico-publico.php', clearSensitive, async (req: Request, res: Response) => {
   res.send(await renderDiagnostics(req));
 });
 
-router.get('/autoteste.php', sensitive('Diagnostico'), async (req: Request, res: Response) => {
+router.get('/autoteste.php', clearSensitive, async (req: Request, res: Response) => {
   res.send(await renderSelfTest(req));
 });
 
@@ -727,8 +730,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
     .catch(next);
 }
 
-function clearSensitive(req: Request, _res: Response, next: NextFunction): void {
-  req.session.sensitiveUnlocks = {};
+function clearSensitive(_req: Request, _res: Response, next: NextFunction): void {
   next();
 }
 
@@ -739,32 +741,6 @@ async function maintenanceGuard(req: Request, res: Response, next: NextFunction)
     return;
   }
   next();
-}
-
-function sensitive(title: string) {
-  const key = `sensitive_area_unlocked_${title.toLowerCase().replace(/[^a-z0-9]+/gi, '_')}`;
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    req.session.sensitiveUnlocks ||= {};
-    if (req.session.sensitiveUnlocks[key]) {
-      next();
-      return;
-    }
-    if (req.method === 'POST' && String(req.body?.action || '') === 'unlock_sensitive_area') {
-      if (!csrfMatches(req)) {
-        res.status(403).send(renderSensitiveUnlock(req, title, 'Sessao expirada.'));
-        return;
-      }
-      if (timingSafeStringEqual(String(req.body?.access_password || ''), 'wimifarma')) {
-        req.session.sensitiveUnlocks[key] = true;
-        await logAction(req, 'area_sensivel_liberada', 'system', null, `Acesso liberado para ${title}.`);
-        res.redirect(req.originalUrl);
-        return;
-      }
-      res.send(renderSensitiveUnlock(req, title, 'Senha incorreta.'));
-      return;
-    }
-    res.send(renderSensitiveUnlock(req, title, ''));
-  };
 }
 
 function requireInternalToken(req: Request, res: Response, next: NextFunction): void {
@@ -1314,29 +1290,19 @@ function renderLogin(req: Request, error: string): string {
   );
 }
 
-function renderSensitiveUnlock(req: Request, title: string, error: string): string {
-  return htmlShell(
-    req,
-    title,
-    `<main class="login-card">
-  <img class="login-logo" src="${asset('logo-wimifarma.svg')}" alt="Wimifarma">
-  <span class="kicker">Area protegida</span>
-  <h1>${e(title)}</h1>
-  <p>Digite a senha interna para abrir esta area.</p>
-  ${error ? `<div class="alert error">${e(error)}</div>` : ''}
-  <form method="post" class="form-grid">
-    ${csrfField(req)}
-    <input type="hidden" name="action" value="unlock_sensitive_area">
-    <label><span>Senha</span><input type="password" name="access_password" required autofocus autocomplete="current-password"></label>
-    <button type="submit" class="btn primary full">Entrar</button>
-    <a class="btn full" href="${pageUrl('dashboard.php#busca')}">Voltar ao balcao</a>
-  </form>
-</main>`,
-    { login: true },
-  );
-}
-
 function renderMaintenance(req: Request, error: string): string {
+  const maintenanceAction = req.session.user
+    ? `<form method="post" class="maintenance-unlock">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="disable_maintenance">
+      <button class="btn primary full" type="submit">Liberar sistema</button>
+      ${error ? `<div class="alert error">${e(error)}</div>` : ''}
+    </form>`
+    : `<div class="maintenance-unlock">
+      <p>Entre pela Home para liberar o sistema.</p>
+      <a class="btn primary full" href="/">Ir para Home</a>
+      ${error ? `<div class="alert error">${e(error)}</div>` : ''}
+    </div>`;
   return htmlShell(
     req,
     'Manutencao',
@@ -1346,13 +1312,7 @@ function renderMaintenance(req: Request, error: string): string {
     <span class="kicker">Modo tecnico ativo</span>
     <h1>Cashback em manutencao.</h1>
     <p>Estamos ajustando o sistema para o balcao continuar rapido, seguro e sem bugs para a equipe.</p>
-    <form method="post" class="maintenance-unlock">
-      ${csrfField(req)}
-      <input type="hidden" name="action" value="disable_maintenance">
-      <label><span>Retirar da manutencao</span><input type="password" name="maintenance_password" placeholder="Digite a senha interna" required autofocus></label>
-      <button class="btn primary full" type="submit">Liberar sistema</button>
-      ${error ? `<div class="alert error">${e(error)}</div>` : ''}
-    </form>
+    ${maintenanceAction}
   </section>
   <section class="maintenance-visual" aria-label="Tecnico da farmacia ajustando o sistema">
     <div class="maintenance-orbit orbit-one"></div><div class="maintenance-orbit orbit-two"></div>
@@ -1368,7 +1328,7 @@ function renderMaintenance(req: Request, error: string): string {
 async function handleDashboardPost(req: Request, res: Response): Promise<void> {
   const action = String(req.body?.action || '');
   if (action === 'save_attendant') {
-    setFlash(req, 'error', 'Cadastro de atendente fica em Configuracao e Relatorio, area protegida pela senha interna.');
+    setFlash(req, 'error', 'Cadastro de atendente fica em Configuracao e Relatorio.');
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
     return;
   }
@@ -2584,7 +2544,7 @@ async function renderReport(req: Request): Promise<string> {
     ['whatsapp', 'Todos Whats'],
     ['atendentes', 'Atendentes'],
   ];
-  const body = `<section class="panel maintenance-control"><div><span class="kicker">Controle do sistema</span><h2>Modo manutencao</h2><p>Use quando precisar mexer no sistema sem deixar atendentes usando as telas.</p></div><form method="post" class="maintenance-control-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="action" value="enable_maintenance"><button class="btn primary" type="submit">Colocar site em manutencao</button><span class="soft-pill">Para retirar: senha wimifarma</span></form></section>
+  const body = `<section class="panel maintenance-control"><div><span class="kicker">Controle do sistema</span><h2>Modo manutencao</h2><p>Use quando precisar mexer no sistema sem deixar atendentes usando as telas.</p></div><form method="post" class="maintenance-control-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="action" value="enable_maintenance"><button class="btn primary" type="submit">Colocar site em manutencao</button><span class="soft-pill">Retirada por usuario logado</span></form></section>
 <section id="atendentes" class="panel team-manager"><div class="section-title"><div><span class="kicker">Equipe</span><h2>Atendentes do cashback</h2></div><span class="soft-pill">${attendants.rows.length} cadastrado(s)</span></div><div class="team-layout"><form method="post" action="${pageUrl('relatorio.php#atendentes')}" class="form-grid team-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="action" value="save_attendant"><h3>Novo atendente</h3><label><span>Nome *</span><input type="text" name="nome" required placeholder="Nome da equipe"></label><label><span>Status</span><select name="status"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select></label><label><span>Observacoes</span><textarea name="observacoes" rows="3" placeholder="Opcional"></textarea></label><button class="btn primary" type="submit">Cadastrar atendente</button><p class="muted">Depois de cadastrar, o nome aparece no cadastro de cliente e na Compra Cashback.</p></form><div class="team-list">${attendantCards || '<p class="muted">Nenhum atendente cadastrado ainda.</p>'}</div></div></section>
 <section id="usuarios" class="panel section-block"><div class="section-title"><div><span class="kicker">Acessos</span><h2>Usuarios do sistema</h2></div><span class="soft-pill">Centralizado no modulo Usuarios</span></div><p>Os logins individuais agora ficam no Postgres core. Para criar, bloquear, trocar acesso por modulo ou vincular XP, use o modulo Usuarios.</p><a class="btn primary" href="/usuarios/">Abrir Usuarios</a></section>
 <section class="operation-hero compact-hero"><div><span class="kicker">Exportacao Excel</span><h2>Baixe os dados reais do cashback.</h2><p>Use estes arquivos para conferencia, campanhas externas, backup operacional ou analise fora do sistema.</p></div><form method="get" action="${pageUrl('relatorio.php')}" class="inline-form hero-filter"><label><span>De</span><input type="date" name="start" value="${e(start)}"></label><label><span>Ate</span><input type="date" name="end" value="${e(end)}"></label><button class="btn primary" type="submit">Atualizar periodo</button></form></section>
