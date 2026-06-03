@@ -41,6 +41,7 @@ type AccountRow = {
   note: string | null;
   due_at: Date | string | null;
   repeat_next_month: boolean;
+  repeat_forever: boolean;
   monthly_sort_order: number;
   repeated_from_account_id: string | null;
   created_by: number | null;
@@ -136,7 +137,7 @@ const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const SERVICE_NAME = 'gestao';
-const SERVICE_VERSION = '1.6.2';
+const SERVICE_VERSION = '1.6.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/gestao');
 const PORT = Number.parseInt(env.PORT || '3200', 10);
 const SESSION_SECRET = env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -960,6 +961,7 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query('ALTER TABLE gestao_account_payments ADD COLUMN IF NOT EXISTS canceled_by integer');
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS due_at timestamptz');
   await pgPool.query("ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeat_next_month boolean NOT NULL DEFAULT false");
+  await pgPool.query("ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeat_forever boolean NOT NULL DEFAULT false");
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS monthly_sort_order integer NOT NULL DEFAULT 0');
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS repeated_from_account_id bigint');
   await pgPool.query('ALTER TABLE gestao_accounts ADD COLUMN IF NOT EXISTS archived_at timestamptz');
@@ -1049,8 +1051,8 @@ async function ensureSchema(): Promise<void> {
     ON gestao_accounts (repeated_from_account_id, competence_month)
   `);
   await pgPool.query(`
-    CREATE INDEX IF NOT EXISTS gestao_accounts_monthly_sort_idx
-    ON gestao_accounts (competence_month, repeat_next_month, monthly_sort_order, id)
+    CREATE INDEX IF NOT EXISTS gestao_accounts_monthly_sort_forever_idx
+    ON gestao_accounts (competence_month, repeat_forever, repeat_next_month, monthly_sort_order, id)
     WHERE archived_at IS NULL
   `);
   await pgPool.query(`
@@ -1301,6 +1303,8 @@ async function createAccount(req: Request): Promise<void> {
 
   const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
   const status = req.body.status === 'pago' ? 'pago' : 'pendente';
+  const repeatForever = req.body.repetir_sempre_mes === '1';
+  const repeatNextMonth = req.body.repetir_mes === '1' || repeatForever;
   const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
   let accountId = 0;
@@ -1308,8 +1312,8 @@ async function createAccount(req: Request): Promise<void> {
     await client.query('BEGIN');
     const accountResult = await client.query<{ id: string }>(
       `INSERT INTO gestao_accounts
-        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, created_by, generated_at, paid_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9, now(), CASE WHEN $3 = 'pago' THEN now() ELSE NULL END)
+        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, repeat_forever, created_by, generated_at, paid_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9, $10, now(), CASE WHEN $3 = 'pago' THEN now() ELSE NULL END)
        RETURNING id`,
       [
         title,
@@ -1319,7 +1323,8 @@ async function createAccount(req: Request): Promise<void> {
         monthValue(req.body.competencia_mes),
         cleanText(req.body.observacao, 5000) || null,
         parseOptionalDatetimeLocal(req.body.vencimento_em),
-        req.body.repetir_mes === '1',
+        repeatNextMonth,
+        repeatForever,
         userId,
       ],
     );
@@ -1337,8 +1342,8 @@ async function createAccount(req: Request): Promise<void> {
       );
     }
     await auditPg(client, accountId, userId, 'gestao_conta_criada', `Conta criada: ${title} / ${formatMoney(totalCents)}`);
-    if (req.body.repetir_mes === '1') {
-      await auditPg(client, accountId, userId, 'gestao_recorrencia_ativada', 'Conta marcada para repetir no proximo mes.');
+    if (repeatNextMonth) {
+      await ensureRepeatedAccountNextMonth(client, accountId, userId, { forever: repeatForever });
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -1348,15 +1353,6 @@ async function createAccount(req: Request): Promise<void> {
     client.release();
   }
   await logAudit(userId, 'gestao_conta_criada', 'gestao_conta', accountId, `Conta criada: ${title} / ${formatMoney(totalCents)}`);
-  if (req.body.repetir_mes === '1') {
-    const previousId = req.body.id;
-    req.body.id = String(accountId);
-    try {
-      await repeatAccountNextMonth(req);
-    } finally {
-      req.body.id = previousId;
-    }
-  }
 }
 
 async function createInternalAccount(req: Request): Promise<{ accountId: number; totalCents: number; title: string; month: string; status: 'pendente' | 'pago' }> {
@@ -1386,15 +1382,19 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
   const status = req.body.status === 'pago' ? 'pago' : 'pendente';
   const userId = Number(req.body.created_by || req.body.usuario_id || 0) || null;
   const month = monthValue(req.body.competencia_mes || req.body.month || req.body.mes);
-  const repeatNextMonth = req.body.repetir_mes === true || req.body.repetir_mes === '1' || req.body.repeat_next_month === true;
+  const repeatForever = req.body.repetir_sempre_mes === true
+    || req.body.repetir_sempre_mes === '1'
+    || req.body.repeat_forever === true
+    || req.body.repeat_always_next_month === true;
+  const repeatNextMonth = repeatForever || req.body.repetir_mes === true || req.body.repetir_mes === '1' || req.body.repeat_next_month === true;
   const client = await pgPool.connect();
   let accountId = 0;
   try {
     await client.query('BEGIN');
     const accountResult = await client.query<{ id: string }>(
       `INSERT INTO gestao_accounts
-        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, created_by, generated_at, paid_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9, now(), CASE WHEN $3 = 'pago' THEN now() ELSE NULL END)
+        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, repeat_forever, created_by, generated_at, paid_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8, $9, $10, now(), CASE WHEN $3 = 'pago' THEN now() ELSE NULL END)
        RETURNING id`,
       [
         title,
@@ -1405,6 +1405,7 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
         cleanText(req.body.observacao || req.body.note, 5000) || null,
         parseOptionalDatetimeLocal(req.body.vencimento_em || req.body.due_at),
         repeatNextMonth,
+        repeatForever,
         userId,
       ],
     );
@@ -1422,6 +1423,9 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
       );
     }
     await auditPg(client, accountId, userId, 'gestao_conta_criada_miauby', `Conta criada pelo Miauby: ${title} / ${formatMoney(totalCents)}`);
+    if (repeatNextMonth) {
+      await ensureRepeatedAccountNextMonth(client, accountId, userId, { forever: repeatForever });
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1519,6 +1523,7 @@ async function addPayment(req: Request): Promise<void> {
       [id, itemId > 0 ? itemId : null, description, cents, parseDatetimeLocal(req.body.pagamento_em), userId],
     );
     await syncPaymentStatus(client, id);
+    await ensureForeverRepeatAfterPayment(client, id, userId);
     await syncSupplierOrderAfterAccountChange(client, id, userId);
     await auditPg(client, id, userId, 'gestao_pagamento_criado', `Pagamento registrado: ${formatMoney(cents)}${itemId > 0 ? ` em ${itemDescription}` : ''}`);
     await client.query('COMMIT');
@@ -1555,6 +1560,7 @@ async function confirmRemaining(req: Request): Promise<void> {
       );
     }
     await syncPaymentStatus(client, id);
+    await ensureForeverRepeatAfterPayment(client, id, userId);
     await syncSupplierOrderAfterAccountChange(client, id, userId);
     await auditPg(client, id, userId, 'gestao_conta_quitada', 'Conta quitada na Gestao.');
     await client.query('COMMIT');
@@ -1605,6 +1611,7 @@ async function confirmItem(req: Request): Promise<void> {
       [id, itemId, `Quitacao de ${item.description}`, paidCents, userId],
     );
     await syncPaymentStatus(client, id);
+    await ensureForeverRepeatAfterPayment(client, id, userId);
     await syncSupplierOrderAfterAccountChange(client, id, userId);
     await auditPg(client, id, userId, 'gestao_item_quitado', `Lancamento quitado: ${item.description} / ${formatMoney(paidCents)}`);
     await client.query('COMMIT');
@@ -2032,77 +2039,157 @@ async function archiveCanceledCategoryGroup(req: Request): Promise<number> {
   return changed;
 }
 
-async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number; month: string; created: boolean }> {
+type RepeatAccountOptions = {
+  forever?: boolean;
+  titleOverride?: unknown;
+};
+
+type RepeatAccountResult = {
+  accountId: number;
+  month: string;
+  created: boolean;
+  forever: boolean;
+};
+
+async function ensureRepeatedAccountNextMonth(
+  client: pg.PoolClient,
+  accountId: number,
+  userId: number | null,
+  options: RepeatAccountOptions = {},
+): Promise<RepeatAccountResult> {
+  const forever = Boolean(options.forever);
+  const accountResult = await client.query<AccountRow>(
+    'SELECT * FROM gestao_accounts WHERE id = $1 FOR UPDATE',
+    [accountId],
+  );
+  const account = accountResult.rows[0];
+  if (!account) throw new Error('Conta nao encontrada.');
+  if (account.status === 'cancelado') throw new Error('Reabra a conta antes de repetir para o proximo mes.');
+
+  const targetMonth = nextMonthValue(account.competence_month);
+  const existing = await client.query<{ id: string }>(
+    `SELECT id
+     FROM gestao_accounts
+     WHERE repeated_from_account_id = $1
+       AND competence_month = $2
+       AND status <> 'cancelado'
+     ORDER BY id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [accountId, targetMonth],
+  );
+
+  if (existing.rowCount) {
+    const existingAccountId = Number(existing.rows[0].id);
+    await client.query(
+      `UPDATE gestao_accounts
+       SET repeat_next_month = true,
+           repeat_forever = CASE WHEN $2 THEN true ELSE repeat_forever END
+       WHERE id = $1`,
+      [accountId, forever],
+    );
+    if (forever) {
+      await client.query(
+        'UPDATE gestao_accounts SET repeat_next_month = true, repeat_forever = true WHERE id = $1',
+        [existingAccountId],
+      );
+    }
+    await auditPg(
+      client,
+      accountId,
+      userId,
+      forever ? 'gestao_recorrencia_permanente_mantida' : 'gestao_recorrencia_ativada',
+      forever
+        ? `Recorrencia permanente mantida para ${monthLabel(targetMonth)}.`
+        : `Recorrencia mantida para ${monthLabel(targetMonth)}.`,
+    );
+    return { accountId: existingAccountId, month: targetMonth, created: false, forever };
+  }
+
+  const itemResult = await client.query<ItemRow>(
+    `SELECT *
+     FROM gestao_account_items
+     WHERE account_id = $1
+       AND status = 'ativo'
+     ORDER BY sort_order ASC, id ASC`,
+    [accountId],
+  );
+  if (!itemResult.rowCount) throw new Error('Essa conta nao tem lancamento ativo para repetir.');
+
+  const totalCents = itemResult.rows.reduce((sum, item) => sum + Number(item.amount_cents || 0), 0);
+  const title = cleanText(options.titleOverride, 180) || account.title;
+  const repeatedResult = await client.query<{ id: string }>(
+    `INSERT INTO gestao_accounts
+      (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, repeat_forever, repeated_from_account_id, created_by, generated_at, paid_at, canceled_at)
+     VALUES ($1, $2, 'pendente', $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, now(), NULL, NULL)
+     RETURNING id`,
+    [title, account.category, totalCents, targetMonth, account.note, nextMonthDateTime(account.due_at), forever, forever, accountId, userId],
+  );
+  const newAccountId = Number(repeatedResult.rows[0].id);
+
+  for (const [index, item] of itemResult.rows.entries()) {
+    await client.query(
+      'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order) VALUES ($1, $2, $3, $4)',
+      [newAccountId, item.description, Number(item.amount_cents || 0), (index + 1) * 10],
+    );
+  }
+
+  await client.query(
+    `UPDATE gestao_accounts
+     SET repeat_next_month = true,
+         repeat_forever = CASE WHEN $2 THEN true ELSE repeat_forever END
+     WHERE id = $1`,
+    [accountId, forever],
+  );
+  await auditPg(
+    client,
+    accountId,
+    userId,
+    forever ? 'gestao_conta_repetida_permanente_origem' : 'gestao_conta_repetida_origem',
+    forever ? `Conta repetida sempre para ${monthLabel(targetMonth)}: ${title}` : `Conta repetida para ${monthLabel(targetMonth)}: ${title}`,
+  );
+  await auditPg(
+    client,
+    newAccountId,
+    userId,
+    forever ? 'gestao_conta_repetida_permanente' : 'gestao_conta_repetida',
+    forever ? `Conta criada por repeticao permanente de ${account.title}` : `Conta criada por repeticao de ${account.title}`,
+  );
+
+  return { accountId: newAccountId, month: targetMonth, created: true, forever };
+}
+
+async function ensureForeverRepeatAfterPayment(client: pg.PoolClient, accountId: number, userId: number | null): Promise<void> {
+  const accountResult = await client.query<{ status: string; repeat_forever: boolean }>(
+    'SELECT status, repeat_forever FROM gestao_accounts WHERE id = $1 LIMIT 1',
+    [accountId],
+  );
+  const account = accountResult.rows[0];
+  if (!account || account.status !== 'pago' || !account.repeat_forever) return;
+
+  const repeated = await ensureRepeatedAccountNextMonth(client, accountId, userId, { forever: true });
+  await auditPg(
+    client,
+    accountId,
+    userId,
+    'gestao_recorrencia_permanente_pagamento',
+    `Pagamento confirmou repeticao permanente para ${monthLabel(repeated.month)}.`,
+  );
+}
+
+async function repeatAccountNextMonth(req: Request, options: RepeatAccountOptions = {}): Promise<{ accountId: number; month: string; created: boolean }> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
 
   const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
-  let newAccountId = 0;
-  let targetMonth = '';
-  let created = false;
+  let repeated: RepeatAccountResult | null = null;
   try {
     await client.query('BEGIN');
-    const accountResult = await client.query<AccountRow>(
-      'SELECT * FROM gestao_accounts WHERE id = $1 FOR UPDATE',
-      [id],
-    );
-    const account = accountResult.rows[0];
-    if (!account) throw new Error('Conta nao encontrada.');
-    if (account.status === 'cancelado') throw new Error('Reabra a conta antes de repetir para o proximo mes.');
-
-    targetMonth = nextMonthValue(account.competence_month);
-    const existing = await client.query<{ id: string }>(
-      `SELECT id
-       FROM gestao_accounts
-       WHERE repeated_from_account_id = $1
-         AND competence_month = $2
-         AND status <> 'cancelado'
-       ORDER BY id DESC
-       LIMIT 1
-       FOR UPDATE`,
-      [id, targetMonth],
-    );
-    if (existing.rowCount) {
-      newAccountId = Number(existing.rows[0].id);
-      await client.query('UPDATE gestao_accounts SET repeat_next_month = true WHERE id = $1', [id]);
-      await auditPg(client, id, userId, 'gestao_recorrencia_ativada', `Recorrencia mantida para ${monthLabel(targetMonth)}.`);
-      await client.query('COMMIT');
-      return { accountId: newAccountId, month: targetMonth, created };
-    }
-
-    const itemResult = await client.query<ItemRow>(
-      `SELECT *
-       FROM gestao_account_items
-       WHERE account_id = $1
-         AND status = 'ativo'
-       ORDER BY sort_order ASC, id ASC`,
-      [id],
-    );
-    if (!itemResult.rowCount) throw new Error('Essa conta nao tem lancamento ativo para repetir.');
-
-    const totalCents = itemResult.rows.reduce((sum, item) => sum + Number(item.amount_cents || 0), 0);
-    const title = cleanText(req.body.titulo_repetir, 180) || account.title;
-    const repeatedResult = await client.query<{ id: string }>(
-      `INSERT INTO gestao_accounts
-        (title, category, status, total_cents, competence_month, note, due_at, repeat_next_month, repeated_from_account_id, created_by, generated_at, paid_at, canceled_at)
-       VALUES ($1, $2, 'pendente', $3, $4, $5, $6::timestamptz, false, $7, $8, now(), NULL, NULL)
-       RETURNING id`,
-      [title, account.category, totalCents, targetMonth, account.note, nextMonthDateTime(account.due_at), id, userId],
-    );
-    newAccountId = Number(repeatedResult.rows[0].id);
-    created = true;
-
-    for (const [index, item] of itemResult.rows.entries()) {
-      await client.query(
-        'INSERT INTO gestao_account_items (account_id, description, amount_cents, sort_order) VALUES ($1, $2, $3, $4)',
-        [newAccountId, item.description, Number(item.amount_cents || 0), (index + 1) * 10],
-      );
-    }
-
-    await client.query('UPDATE gestao_accounts SET repeat_next_month = true WHERE id = $1', [id]);
-    await auditPg(client, id, userId, 'gestao_conta_repetida_origem', `Conta repetida para ${monthLabel(targetMonth)}: ${title}`);
-    await auditPg(client, newAccountId, userId, 'gestao_conta_repetida', `Conta criada por repeticao de ${account.title}`);
+    repeated = await ensureRepeatedAccountNextMonth(client, id, userId, {
+      ...options,
+      titleOverride: options.titleOverride ?? req.body.titulo_repetir,
+    });
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -2110,16 +2197,25 @@ async function repeatAccountNextMonth(req: Request): Promise<{ accountId: number
   } finally {
     client.release();
   }
-  await logAudit(userId, 'gestao_conta_repetida', 'gestao_conta', newAccountId, `Conta repetida para ${monthLabel(targetMonth)} na Gestao.`);
-  return { accountId: newAccountId, month: targetMonth, created };
+
+  await logAudit(
+    userId,
+    repeated.forever ? 'gestao_conta_repetida_permanente' : 'gestao_conta_repetida',
+    'gestao_conta',
+    repeated.accountId,
+    repeated.forever
+      ? `Conta repetida sempre para ${monthLabel(repeated.month)} na Gestao.`
+      : `Conta repetida para ${monthLabel(repeated.month)} na Gestao.`,
+  );
+  return { accountId: repeated.accountId, month: repeated.month, created: repeated.created };
 }
 
 async function toggleRepeatNextMonth(req: Request): Promise<boolean> {
   const id = Number(req.body.id || 0);
   if (!id) throw new Error('Conta invalida.');
   const userId = req.session.user?.id || null;
-  const current = await pgPool.query<{ repeat_next_month: boolean; status: string }>(
-    'SELECT repeat_next_month, status FROM gestao_accounts WHERE id = $1 LIMIT 1',
+  const current = await pgPool.query<{ repeat_next_month: boolean; repeat_forever: boolean; status: string }>(
+    'SELECT repeat_next_month, repeat_forever, status FROM gestao_accounts WHERE id = $1 LIMIT 1',
     [id],
   );
   const account = current.rows[0];
@@ -2130,11 +2226,19 @@ async function toggleRepeatNextMonth(req: Request): Promise<boolean> {
     return true;
   }
 
-  await pgPool.query('UPDATE gestao_accounts SET repeat_next_month = false WHERE id = $1', [id]);
+  await pgPool.query('UPDATE gestao_accounts SET repeat_next_month = false, repeat_forever = false WHERE id = $1', [id]);
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
-    await auditPg(client, id, userId, 'gestao_recorrencia_desativada', 'Conta deixou de repetir automaticamente no proximo mes.');
+    await auditPg(
+      client,
+      id,
+      userId,
+      account.repeat_forever ? 'gestao_recorrencia_permanente_desativada' : 'gestao_recorrencia_desativada',
+      account.repeat_forever
+        ? 'Conta deixou de repetir sempre. Copias ja criadas ficam preservadas.'
+        : 'Conta deixou de repetir automaticamente no proximo mes.',
+    );
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -2142,7 +2246,45 @@ async function toggleRepeatNextMonth(req: Request): Promise<boolean> {
   } finally {
     client.release();
   }
-  await logAudit(userId, 'gestao_recorrencia_desativada', 'gestao_conta', id, 'Recorrencia da Gestao desativada.');
+  await logAudit(
+    userId,
+    account.repeat_forever ? 'gestao_recorrencia_permanente_desativada' : 'gestao_recorrencia_desativada',
+    'gestao_conta',
+    id,
+    account.repeat_forever ? 'Recorrencia permanente da Gestao desativada.' : 'Recorrencia da Gestao desativada.',
+  );
+  return false;
+}
+
+async function toggleRepeatForeverNextMonth(req: Request): Promise<boolean> {
+  const id = Number(req.body.id || 0);
+  if (!id) throw new Error('Conta invalida.');
+  const userId = req.session.user?.id || null;
+  const current = await pgPool.query<{ repeat_forever: boolean; status: string }>(
+    'SELECT repeat_forever, status FROM gestao_accounts WHERE id = $1 LIMIT 1',
+    [id],
+  );
+  const account = current.rows[0];
+  if (!account) throw new Error('Conta nao encontrada.');
+  if (account.status === 'cancelado') throw new Error('Reabra a conta antes de mexer na repeticao.');
+  if (!account.repeat_forever) {
+    await repeatAccountNextMonth(req, { forever: true });
+    return true;
+  }
+
+  await pgPool.query('UPDATE gestao_accounts SET repeat_forever = false, repeat_next_month = false WHERE id = $1', [id]);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    await auditPg(client, id, userId, 'gestao_recorrencia_permanente_desativada', 'Conta deixou de repetir sempre. Copias ja criadas ficam preservadas.');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await logAudit(userId, 'gestao_recorrencia_permanente_desativada', 'gestao_conta', id, 'Recorrencia permanente da Gestao desativada.');
   return false;
 }
 
@@ -2284,6 +2426,7 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
        )
      ORDER BY
        CASE a.status WHEN 'pendente' THEN 0 WHEN 'pago' THEN 1 ELSE 2 END ASC,
+       CASE WHEN a.repeat_forever THEN 0 ELSE 1 END ASC,
        CASE WHEN a.repeat_next_month THEN 0 ELSE 1 END ASC,
        CASE WHEN a.status = 'pendente' AND a.due_at IS NOT NULL THEN 0 ELSE 1 END ASC,
        CASE WHEN a.status = 'pendente' THEN a.due_at END ASC NULLS LAST,
@@ -2406,6 +2549,9 @@ function recurringAccountsForMonth(accounts: RenderAccount[], selectedMonth: str
   return accounts
     .filter((account) => account.competence_month === month && account.status !== 'cancelado' && Boolean(account.repeat_next_month))
     .sort((a, b) => {
+      const aForever = Boolean(a.repeat_forever) ? 0 : 1;
+      const bForever = Boolean(b.repeat_forever) ? 0 : 1;
+      if (aForever !== bForever) return aForever - bForever;
       const aOrder = Number(a.monthly_sort_order || 0);
       const bOrder = Number(b.monthly_sort_order || 0);
       if (aOrder > 0 || bOrder > 0) {
@@ -2593,6 +2739,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
   const remainingMoney = formatMoney(remainingCents);
   const due = dueStatus(account);
   const repeatEnabled = Boolean(account.repeat_next_month);
+  const repeatForever = Boolean(account.repeat_forever);
   const activePayments = account.payments.filter((payment) => payment.status !== 'cancelado');
   const historyPayments = account.payments.filter((payment) => payment.status === 'cancelado');
   const openItems = account.items.filter((item) => {
@@ -2825,13 +2972,23 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
        </form>`
     : '';
 
-  const repeatAction = canEdit ? `<form method="post" class="gestao-repeat-toggle-form" data-confirm="${repeatEnabled ? 'Parar a repeticao futura desta conta? A copia ja criada nao sera apagada.' : `Ativar repeticao e criar/garantir copia para ${e(monthLabel(nextMonthValue(account.competence_month || selectedMonth)))}?`}">
+  const repeatAction = canEdit && !repeatForever ? `<form method="post" class="gestao-repeat-toggle-form" data-confirm="${repeatEnabled ? 'Parar a repeticao futura desta conta? A copia ja criada nao sera apagada.' : `Ativar repeticao e criar/garantir copia para ${e(monthLabel(nextMonthValue(account.competence_month || selectedMonth)))}?`}">
     ${csrfField(req)}
     <input type="hidden" name="action" value="toggle_repeat_next_month">
     <input type="hidden" name="id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
     <button type="submit" class="gestao-repeat-toggle ${repeatEnabled ? 'is-on' : 'is-off'}">
       <span>${repeatEnabled ? 'Repetindo mes que vem' : 'Repetir mes que vem'}</span>
+    </button>
+  </form>` : '';
+
+  const repeatForeverAction = canEdit ? `<form method="post" class="gestao-repeat-toggle-form" data-confirm="${repeatForever ? 'Parar a repeticao permanente desta conta? Copias ja criadas ficam preservadas.' : `Ativar repeticao permanente e garantir copia para ${e(monthLabel(nextMonthValue(account.competence_month || selectedMonth)))}?`}">
+    ${csrfField(req)}
+    <input type="hidden" name="action" value="toggle_repeat_forever_next_month">
+    <input type="hidden" name="id" value="${e(id)}">
+    <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+    <button type="submit" class="gestao-repeat-toggle ${repeatForever ? 'is-forever-on' : 'is-forever-off'}">
+      <span>${repeatForever ? 'Repetindo sempre' : 'Repetir sempre mes que vem'}</span>
     </button>
   </form>` : '';
 
@@ -2919,12 +3076,12 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
       </form>`
     : `<span class="gestao-compact-state">${e(accountStatusLabel(status))}</span>`;
   const monthlyAttrs = options.monthly ? ` data-monthly-item data-monthly-account-id="${e(id)}" draggable="true"` : '';
-  const monthlyMeta = options.monthly ? `<em>Repete ${e(monthLabel(nextMonthValue(selectedMonth)))}</em>` : '';
+  const monthlyMeta = options.monthly ? `<em>${repeatForever ? 'Repete sempre' : `Repete ${e(monthLabel(nextMonthValue(selectedMonth)))}`}</em>` : '';
   const repeatMarker = repeatEnabled
-    ? '<span class="gestao-repeat-marker" title="Repete mes que vem" aria-label="Repete mes que vem">&#8635;</span>'
+    ? `<span class="gestao-repeat-marker ${repeatForever ? 'is-forever' : ''}" title="${repeatForever ? 'Repete sempre mes que vem' : 'Repete mes que vem'}" aria-label="${repeatForever ? 'Repete sempre mes que vem' : 'Repete mes que vem'}">${repeatForever ? '&#8734;' : '&#8635;'}</span>`
     : '';
 
-  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${repeatEnabled ? 'is-recurring' : ''} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
+  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${repeatEnabled ? 'is-recurring' : ''} ${repeatForever ? 'is-recurring-forever' : ''} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
     <div class="gestao-account-compact" data-account-toggle data-open-label="Abrir detalhes" data-close-label="Fechar detalhes" role="button" tabindex="0" aria-expanded="false">
       <span class="gestao-compact-category">${e(categoryLabel(account.category))}</span>
       <strong class="gestao-compact-title"><span class="gestao-compact-title-line">${repeatMarker}<span>${e(account.title)}</span></span>${due.label ? `<em>${e(due.label)}</em>` : ''}${monthlyMeta}</strong>
@@ -2965,6 +3122,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
           <span class="gestao-status">${e(accountStatusLabel(status))}</span>
           ${pendingActions}
           ${repeatAction}
+          ${repeatForeverAction}
           ${paidActions}
           ${canceledActions}
         </div>
@@ -3101,6 +3259,7 @@ async function renderApp(req: Request): Promise<string> {
         </div>
         <button type="button" class="gestao-btn gestao-btn-secondary" data-add-item>Adicionar item</button>
         <label class="gestao-check-row"><input type="checkbox" name="repetir_mes" value="1"><span>Repetir mes que vem</span></label>
+        <label class="gestao-check-row gestao-check-row-forever"><input type="checkbox" name="repetir_sempre_mes" value="1"><span>Repetir sempre mes que vem</span></label>
         <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Detalhe curto, se precisar."></textarea></label>
         <button type="submit" class="gestao-btn gestao-btn-primary">Lancar conta</button>
       </form>
@@ -3430,6 +3589,9 @@ async function handleGestaoPost(req: Request, res: Response): Promise<void> {
     } else if (action === 'toggle_repeat_next_month') {
       const enabled = await toggleRepeatNextMonth(req);
       setFlash(req, 'success', enabled ? 'Conta marcada para repetir mes que vem.' : 'Repeticao do proximo mes desativada.');
+    } else if (action === 'toggle_repeat_forever_next_month') {
+      const enabled = await toggleRepeatForeverNextMonth(req);
+      setFlash(req, 'success', enabled ? 'Conta marcada para repetir sempre mes que vem.' : 'Repeticao permanente desativada.');
     } else if (action === 'update_category_group') {
       const changed = await updateCategoryGroup(req);
       setFlash(req, 'success', `Categoria atualizada em ${changed} conta(s).`);
