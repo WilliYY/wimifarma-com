@@ -31,6 +31,7 @@ Criar uma base central para logins individuais, controle de acesso por modulo, v
 ## Regras
 
 - Acesso ao painel fica restrito a username `adm` ou role `admin`.
+- O campo `Perfil` no painel Usuarios mostra rotulos amigaveis (`Usuario`, `Gerente`, `Administrador`), mas os valores internos continuam `user`, `gerente` e `admin` em `core_users.role`. Esse campo nao e apenas cosmetico: altera permissao base em modulos que respeitam role. O usuario mestre `adm` continua com perfil bloqueado para nao perder acesso administrativo.
 - A Home principal (`site/home.php`) autentica primeiro em `core_users` ativo, usando `username_normalized` em minusculo e `password_hash` bcrypt. Assim `thiago`, `Thiago` e `THIAGO` entram no mesmo login canonico; `WIMIFARMA_HOME_LOGIN_USER`/`WIMIFARMA_HOME_LOGIN_PASSWORD` permanece apenas como fallback operacional.
 - O painel Usuarios permite editar o login de usuarios comuns, atualizando `core_users.username` e `username_normalized` juntos, com normalizacao segura e bloqueio de duplicidade sem diferenciar maiuscula/minuscula. O login tecnico `adm` continua fixo e nao pode ser trocado pelo painel.
 - Criar/atualizar/desativar usuario exige CSRF.

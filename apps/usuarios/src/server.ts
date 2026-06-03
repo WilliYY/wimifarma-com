@@ -1858,7 +1858,18 @@ function renderLogin(req: Request, message = ''): string {
 }
 
 function renderRoleOptions(selected: string): string {
-  return ROLE_OPTIONS.map((role) => `<option value="${e(role)}"${role === selected ? ' selected' : ''}>${e(role)}</option>`).join('');
+  return ROLE_OPTIONS.map((role) => `<option value="${e(role)}"${role === selected ? ' selected' : ''}>${e(roleLabel(role))}</option>`).join('');
+}
+
+function roleLabel(role: string): string {
+  switch (normalizeRole(role)) {
+    case 'admin':
+      return 'Administrador';
+    case 'gerente':
+      return 'Gerente';
+    default:
+      return 'Usuario';
+  }
 }
 
 function renderXpOptions(employees: XpEmployeeRow[], selectedId: string | null): string {
@@ -1968,7 +1979,7 @@ function renderDashboard(
                 </div>
                 <small class="users-field-help" data-password-status>Senha simples e permitida; ela fica com hash seguro e cofre ADM criptografado.</small>
               </div>
-              <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select></label>
+              <label class="users-label"><span>Perfil</span><select class="users-select" name="role">${renderRoleOptions('user')}</select><small class="users-field-help">Perfil muda permissao base; os modulos continuam controlados abaixo.</small></label>
               <label class="users-check users-status-check"><input type="checkbox" name="active" value="1" checked><span>Ativo</span></label>
               <label class="users-label"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, null)}</select></label>
               <fieldset class="users-fieldset"><legend>M&oacute;dulos</legend>${renderModuleChecks('modules', defaultModules)}</fieldset>
@@ -2044,7 +2055,7 @@ function renderUserAccessSummary(row: UserViewRow, whatsappLinks: WhatsappLinkRo
     </div>
     <div class="users-access-item">
       <b>Perfil</b>
-      <span>${e(row.role || 'user')}</span>
+      <span>${e(roleLabel(row.role || 'user'))}</span>
     </div>
     <div class="users-access-item">
       <b>WhatsApp</b>
@@ -2124,7 +2135,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
       <div class="users-pills">
         ${isAdm ? '<span class="users-pill master">Mestre</span>' : ''}
         <span class="users-pill ${row.active ? 'ok' : 'off'}">${row.active ? 'Ativo' : 'Inativo'}</span>
-        <span class="users-pill">${e(row.role || 'user')}</span>
+        <span class="users-pill">${e(roleLabel(row.role || 'user'))}</span>
         <span class="users-pill data">Postgres</span>
         ${row.xp_employee_name ? `<span class="users-pill ok">XP: ${e(row.xp_employee_name)}</span>` : '<span class="users-pill off">Sem XP</span>'}
         <span class="users-pill ${whatsappLinks.length ? 'ok' : 'off'}">WhatsApp: ${e(whatsappLinks.length)}</span>
@@ -2142,7 +2153,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
         <div class="users-form-grid users-account-grid">
           <label class="users-label users-field-display"><span>Nome exibido</span><input class="users-input" type="text" name="display_name" maxlength="120" value="${e(displayName)}" placeholder="${e(row.username)}"></label>
           <label class="users-label users-field-login"><span>Login</span><input class="users-input" type="text" name="username" maxlength="120" value="${e(row.username)}" autocomplete="off"${isAdm ? ' disabled' : ' required'}><small class="users-field-help">${isAdm ? 'Login tecnico protegido.' : 'Usado para entrar. Aceita maiuscula/minuscula.'}</small></label>
-          <label class="users-label users-field-role"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select></label>
+          <label class="users-label users-field-role"><span>Perfil</span><select class="users-select" name="role"${isAdm ? ' disabled' : ''}>${renderRoleOptions(row.role)}</select><small class="users-field-help">${isAdm ? 'Perfil mestre protegido para nao perder acesso.' : 'Muda permissao base; os modulos continuam controlados abaixo.'}</small></label>
           <div class="users-label users-password-label users-field-password">
             <span>Senha nova</span>
             <div class="users-password-control" data-password-control>
