@@ -427,7 +427,8 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 ### Fluxos de escrita
 
 - Criar pedido com fornecedor, parcelas, vencimentos, previsao de chegada, competencia, status inicial e observacao.
-- Criar pedido ja pago ou ja recebido, movendo para Confirmados/Historico conforme status.
+- Criar pedido ja pago, ja recebido ou `Chegou e pago - Registrar`, movendo para Confirmados/Historico conforme status.
+- `Chegou e pago - Registrar` reutiliza o mesmo fluxo seguro de pago + recebido: cria a conta `Boleto`, itens, um unico pagamento total, registro em `pedidos_confirmed_orders` com lifecycle `historico` e auditoria de registro manual.
 - Marcar pedido em Aguardando chegada como ja pago, gravando somente o saldo aberto em `gestao_account_payments` e mantendo a chegada pendente.
 - Confirmar chegada, com movimento para Confirmados ou Historico se ja estava pago.
 - Editar fornecedor.

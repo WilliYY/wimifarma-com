@@ -343,7 +343,7 @@ Regras a preservar:
 
 Modulo `Pedidos` em `/pedidos/`:
 
-- o formulario `Pedidos feitos` registra fornecedor, uma ou mais parcelas com valor e vencimento proprio opcional apenas por data, previsao opcional de chegada como numero de dias, competencia, observacao e opcoes `Ja foi pago, so falta chegar` e `Ja chegou, so pagar`;
+- o formulario `Pedidos feitos` registra fornecedor, uma ou mais parcelas com valor e vencimento proprio opcional apenas por data, previsao opcional de chegada como numero de dias, competencia, observacao e opcoes curtas `Pago, falta chegar`, `Chegou, falta pagar` e `Chegou e pago - Registrar`;
 - esse formulario deve ficar visualmente separado em blocos de fornecedor, parcelas, entrega, status inicial e observacao, mantendo o total no cabecalho e preservando nomes de campos, CSRF e validacoes existentes;
 - a previsao de chegada de novo pedido e digitada como numero de dias, nao como data manual: `2` significa dois dias a partir do dia atual local, e o sistema grava a data calculada em `pedidos_orders.expected_arrival_at`;
 - criar um pedido tambem cria uma conta vinculada em `gestao_accounts` com categoria `Boleto`; cada valor/parcela vira item em `gestao_account_items` com `due_at` proprio quando preenchido, e a menor data ativa alimenta `gestao_accounts.due_at` para ordenacao e resumo;
@@ -351,7 +351,7 @@ Modulo `Pedidos` em `/pedidos/`:
 - contas vinculadas a pedidos ficam travadas na categoria `Boleto`; recategorizacao em lote e bloqueada quando a categoria contem pedidos para preservar o controle financeiro automatico;
 - se o pedido ja foi pago na criacao, o pagamento entra imediatamente em `gestao_account_payments`, mas o pedido continua em `pedido` ate a chegada ser confirmada;
 - pedidos ainda em `Aguardando chegada` podem ser marcados como `Ja foi pago, so falta chegar`; essa acao grava somente o saldo aberto em `gestao_account_payments`, atualiza a conta para `pago` quando quitar e nao confirma chegada automaticamente;
-- se o pedido ja chegou na criacao, ele nasce em `Confirmados` para aguardar pagamento; se tambem ja estiver pago, nasce recebido e quitado em `Historico`;
+- se o pedido ja chegou na criacao, ele nasce em `Confirmados` para aguardar pagamento; se tambem ja estiver pago, ou se o operador escolher `Chegou e pago - Registrar`, nasce recebido e quitado em `Historico`, com um unico pagamento total em `gestao_account_payments`, sem pendencia de chegada ou cobranca;
 - ao clicar em `Confirmar chegada`, o pedido vai para `Confirmados` quando ainda existe saldo ou direto para `Historico` quando ja estava quitado;
 - `Confirmados` ordena os boletos pela menor data de vencimento ativa das parcelas primeiro e mostra alertas de vencido/urgente/atencao conforme a proximidade;
 - pagamentos parciais, botao `Pago` e ajustes de juros/diferenca reutilizam `gestao_account_payments` e `gestao_account_items`, alimentando automaticamente o total mensal e a categoria `Boleto`; a data de pagamento parcial e informada apenas por data na interface;

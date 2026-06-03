@@ -88,6 +88,32 @@
         });
     }
 
+    function bindOrderStatusInputs(form) {
+        var registerInput = form.querySelector('[data-order-status-register]');
+        var partialInputs = Array.prototype.slice.call(form.querySelectorAll('[data-order-status-partial]'));
+
+        if (!registerInput || registerInput.dataset.pedidosStatusBound === '1') {
+            return;
+        }
+
+        registerInput.dataset.pedidosStatusBound = '1';
+        registerInput.addEventListener('change', function () {
+            if (registerInput.checked) {
+                partialInputs.forEach(function (input) {
+                    input.checked = false;
+                });
+            }
+        });
+
+        partialInputs.forEach(function (input) {
+            input.addEventListener('change', function () {
+                if (input.checked) {
+                    registerInput.checked = false;
+                }
+            });
+        });
+    }
+
     function initTotals() {
         var form = document.querySelector('[data-gestao-form]');
         var totalNode = document.querySelector('[data-gestao-total]');
@@ -172,6 +198,7 @@
 
         bindMoneyInputs(form);
         bindArrivalDaysInputs(form);
+        bindOrderStatusInputs(form);
         document.addEventListener('gestao:money-change', refreshTotal);
 
         if (addButton) {

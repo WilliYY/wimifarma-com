@@ -1045,7 +1045,7 @@ async function refreshAccountDue(client: pg.PoolClient, accountId: number): Prom
   );
 }
 
-async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow: boolean }> {
+async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow: boolean; registerOnly: boolean }> {
   const supplier = cleanText(req.body.fornecedor, 180);
   if (!supplier) throw new Error('Informe o nome do fornecedor.');
 
@@ -1064,8 +1064,9 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
 
   const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
   const userId = req.session.user?.id || null;
-  const paidNow = req.body.pago_agora === '1';
-  const arrivedNow = req.body.chegou_agora === '1';
+  const registerOnly = req.body.chegou_pago_registrar === '1';
+  const paidNow = registerOnly || req.body.pago_agora === '1';
+  const arrivedNow = registerOnly || req.body.chegou_agora === '1';
   const month = monthValue(req.body.competencia_mes);
   const dueAt = accountDueFromDate(earliestDateOnly(items.map((item) => item.dueDate)) || legacyDueDate);
   const expectedArrivalAt = parseArrivalDaysToDate(req.body.chegada_prevista);
@@ -1095,7 +1096,7 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
     if (paidNow) {
       await client.query(
         'INSERT INTO gestao_account_payments (account_id, description, amount_cents, paid_at, created_by) VALUES ($1, $2, $3, now(), $4)',
-        [accountId, 'Pagamento confirmado na criacao do pedido', totalCents, userId],
+        [accountId, registerOnly ? 'Pagamento confirmado no registro manual do pedido' : 'Pagamento confirmado na criacao do pedido', totalCents, userId],
       );
     }
 
@@ -1136,6 +1137,9 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
     if (arrivedNow) {
       await auditPg(client, accountId, userId, 'pedidos_pedido_ja_recebido', paidNow ? 'Pedido criado ja recebido e quitado.' : 'Pedido criado ja recebido e enviado para Confirmados.');
     }
+    if (registerOnly) {
+      await auditPg(client, accountId, userId, 'pedidos_pedido_registro_manual', 'Pedido registrado manualmente ja recebido e pago.');
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1144,8 +1148,16 @@ async function createOrder(req: Request): Promise<{ paidNow: boolean; arrivedNow
     client.release();
   }
 
-  await logAudit(userId, 'pedidos_pedido_criado', 'pedidos_pedido', orderId, `Pedido criado: ${supplier} / ${formatMoney(totalCents)}`);
-  return { paidNow, arrivedNow };
+  await logAudit(
+    userId,
+    registerOnly ? 'pedidos_pedido_registro_manual' : 'pedidos_pedido_criado',
+    'pedidos_pedido',
+    orderId,
+    registerOnly
+      ? `Pedido registrado manualmente ja recebido e pago: ${supplier} / ${formatMoney(totalCents)}`
+      : `Pedido criado: ${supplier} / ${formatMoney(totalCents)}`,
+  );
+  return { paidNow, arrivedNow, registerOnly };
 }
 
 async function confirmArrivalByOrderId(id: number, userId: number | null, sourceLabel = 'sistema'): Promise<{ supplierName: string; movedToHistory: boolean; accountId: number }> {
@@ -2004,8 +2016,9 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
     <div class="gestao-order-form-section">
       <div class="gestao-order-form-section-head">Status inicial</div>
       <div class="gestao-order-checks">
-        <label class="gestao-check-row"><input type="checkbox" name="pago_agora" value="1"><span>Ja foi pago, so falta chegar</span></label>
-        <label class="gestao-check-row"><input type="checkbox" name="chegou_agora" value="1"><span>Ja chegou, so pagar</span></label>
+        <label class="gestao-check-row"><input type="checkbox" name="pago_agora" value="1" data-order-status-partial><span>Pago, falta chegar</span></label>
+        <label class="gestao-check-row"><input type="checkbox" name="chegou_agora" value="1" data-order-status-partial><span>Chegou, falta pagar</span></label>
+        <label class="gestao-check-row"><input type="checkbox" name="chegou_pago_registrar" value="1" data-order-status-register><span>Chegou e pago - Registrar</span></label>
       </div>
     </div>
     <div class="gestao-order-form-section">
@@ -2506,7 +2519,9 @@ async function handlePost(req: Request, res: Response): Promise<void> {
   try {
     if (action === 'create_order') {
       const created = await createOrder(req);
-      const message = created.arrivedNow
+      const message = created.registerOnly
+        ? 'Pedido registrado no historico como recebido e pago.'
+        : created.arrivedNow
         ? (created.paidNow ? 'Pedido registrado, recebido e enviado ao historico.' : 'Pedido registrado direto em Confirmados.')
         : 'Pedido registrado. Quando chegar, confirme no card Pedidos feitos.';
       setFlash(req, 'success', message);
