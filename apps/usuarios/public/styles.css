@@ -1258,10 +1258,8 @@ a {
 
 .users-integrations {
   display: grid;
-  grid-template-columns: minmax(260px, 0.86fr) minmax(340px, 1.14fr);
-  grid-template-areas:
-    "vacation task"
-    "whatsapp whatsapp";
+  grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+  grid-template-areas: "vacation whatsapp";
   gap: 16px;
   margin-top: 16px;
   align-items: start;
@@ -1336,78 +1334,6 @@ a {
 
 .users-vacation-subsection {
   grid-area: vacation;
-}
-
-.users-task-subsection {
-  grid-area: task;
-}
-
-.users-task-form {
-  position: relative;
-  gap: 14px;
-  overflow: hidden;
-  border: 1px solid #e7bfd0;
-  border-radius: 8px;
-  padding: 16px;
-  background: linear-gradient(180deg, #ffffff, #fffafe);
-}
-
-.users-task-form::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 4px;
-  background: linear-gradient(90deg, var(--wf-wine), var(--wf-green), var(--wf-blue));
-}
-
-.users-task-create-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding-top: 2px;
-}
-
-.users-task-create-head .users-select {
-  width: 134px;
-  min-height: 42px;
-  font-weight: 900;
-}
-
-.users-task-kicker {
-  color: var(--wf-wine);
-  font-size: 0.74rem;
-  font-weight: 950;
-  text-transform: uppercase;
-  letter-spacing: 0;
-}
-
-.users-task-form .users-textarea {
-  min-height: 104px;
-  resize: vertical;
-}
-
-.users-task-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.users-task-meta span {
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 0.78rem;
-  font-weight: 950;
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-}
-
-.users-task-form .users-button {
-  width: 100%;
 }
 
 .users-vacation-subsection {
@@ -1590,7 +1516,6 @@ a {
     grid-template-columns: 1fr;
     grid-template-areas:
       "vacation"
-      "task"
       "whatsapp";
   }
 
@@ -1689,19 +1614,16 @@ a {
   }
 
   .users-subsection-head,
-  .users-task-create-head,
   .users-whatsapp-link {
     grid-template-columns: 1fr;
     align-items: stretch;
   }
 
-  .users-subsection-head,
-  .users-task-create-head {
+  .users-subsection-head {
     flex-direction: column;
   }
 
   .users-mini-link,
-  .users-task-create-head .users-select,
   .users-whatsapp-form > .users-button,
   .users-whatsapp-link form,
   .users-whatsapp-link .users-mini-danger {

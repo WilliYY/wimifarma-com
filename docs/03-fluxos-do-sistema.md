@@ -93,7 +93,7 @@ Regras importantes:
 
 O modulo Usuarios administra os logins internos em `/usuarios/`. Ele e servido por `apps/usuarios` em Node.js + TypeScript, usa sessao propria `WFUSUARIOS`, autentica no Postgres core `core_users` e fica restrito a username `adm` ou role `admin`.
 
-A tela permite criar usuario com senha, perfil e status, desativar usuario sem apagar fisicamente, escolher quais modulos ficam liberados, associar o login a um funcionario do XP, delegar tarefa privada para aquele login, vincular numeros da allowlist do Miauby WhatsApp e consultar o historico central de mudancas. No cadastro, o campo de usuario aceita nome com espaco/acento e o backend normaliza para login seguro antes de gravar no core, por exemplo `Joao Silva` vira `joao.silva`. O historico geral fica minimizado na lateral, e cada card de usuario possui historico individual minimizado por padrao, mostrando tanto o que aquele login fez quanto alteracoes feitas nele. A associacao com XP usa `core_user_xp_links` apontando logicamente para `xp_employees.id`; a fonte oficial de XP continua sendo o modulo XP. Os endpoints `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` retornam somente o mini-card XP do usuario autenticado naquele app ou autenticado pela home via `WFHOME_SSO`, desde que o modulo `xp` esteja permitido, consultando o vinculo no core e os totais diretamente no Postgres do XP.
+A tela permite criar usuario com senha, perfil e status, desativar usuario sem apagar fisicamente, escolher quais modulos ficam liberados, associar o login a um funcionario do XP, vincular numeros da allowlist do Miauby WhatsApp e consultar o historico central de mudancas. No cadastro, o campo de usuario aceita nome com espaco/acento e o backend normaliza para login seguro antes de gravar no core, por exemplo `Joao Silva` vira `joao.silva`. O historico geral fica minimizado na lateral, e cada card de usuario possui historico individual minimizado por padrao, mostrando tanto o que aquele login fez quanto alteracoes feitas nele. A associacao com XP usa `core_user_xp_links` apontando logicamente para `xp_employees.id`; a fonte oficial de XP continua sendo o modulo XP. Os endpoints `/usuarios/api/me/xp-card` e `/xp/api/me/xp-card` retornam somente o mini-card XP do usuario autenticado naquele app ou autenticado pela home via `WFHOME_SSO`, desde que o modulo `xp` esteja permitido, consultando o vinculo no core e os totais diretamente no Postgres do XP.
 
 O card de cada usuario tambem possui o bloco `Ferias`, gravando inicio e retorno em `core_user_vacations`. O status e calculado pelo fuso `America/Sao_Paulo`: sem ferias, ferias agendadas, em ferias ou retornou. Enquanto o usuario estiver em ferias, o Miauby Whats consulta o `linked_user_id` do contato antes de mensagens automaticas e bloqueia lembretes/tarefas/rotinas para esse usuario, registrando o motivo em `core_user_vacation_message_logs` e no historico central. Isso nao remove allowlist, nao bloqueia login e nao interfere em mensagens manuais.
 
@@ -101,7 +101,7 @@ O painel de Usuarios deve deixar claro que a fonte oficial e o Postgres core; qu
 
 O login de Usuarios usa o happy cat zanzando pela tela e fugindo do cursor como detalhe visual, sem interferir no formulario ou na sessao.
 
-Tarefas privadas criadas por Usuarios sao gravadas no app Tarefa por endpoint interno tokenizado e aparecem somente para o login indicado. Tarefas criadas diretamente no modulo Tarefa continuam publicas para todos. Numeros do WhatsApp vinculados pelo painel ficam com telefone completo apenas no bridge do Miauby WhatsApp; o core guarda somente `contact_id`, mascara, status e cards liberados.
+Tarefas privadas devem ser criadas e gerenciadas no modulo `/tarefa/`, que valida o usuario de destino e controla visibilidade. Numeros do WhatsApp vinculados pelo painel ficam com telefone completo apenas no bridge do Miauby WhatsApp; o core guarda somente `contact_id`, mascara, status e cards liberados.
 
 Tabelas principais:
 
@@ -407,7 +407,7 @@ Regras:
 - `/tarefa/badge.php` retorna apenas a contagem de tarefas publicas abertas, para a home nao vazar volume de tarefas privadas;
 - criar, editar, concluir, cancelar e reabrir usam CSRF e sessao `WFTAREFA`;
 - tarefas com `assigned_core_user_id` aparecem somente para o usuario indicado e nao entram no espelho MySQL legado;
-- endpoint interno de tarefa privada tambem revalida no app Tarefa se o usuario de destino esta ativo e pode receber tarefa, mesmo quando a chamada veio do modulo Usuarios;
+- endpoint interno de tarefa privada tambem revalida no app Tarefa se o usuario de destino esta ativo e pode receber tarefa, mesmo quando a chamada veio de Miauby/WhatsApp ou de outro fluxo interno tokenizado;
 - ao mudar o dono de uma tarefa, lembretes Miauby agendados sao cancelados/recriados para impedir envio ao usuario anterior;
 - o formulario de criacao pode separar visualmente `Dia` e `Horario` do lembrete Miauby, mas deve continuar gravando o mesmo `remind_at`; o card precisa manter largura/respiro ou quebra responsiva para esses campos nao se sobreporem;
 - a tela visual deve continuar equivalente ao modulo antigo durante a migracao;

@@ -488,7 +488,7 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - `/tarefa/api/badge` e `/tarefa/badge.php`: total de tarefas abertas para home.
 - `GET /tarefa/api/internal/summary`: resumo interno de tarefas publicas para Miauby.
 - `POST /tarefa/api/internal/tasks`: cria tarefa publica por ponte interna Node/Postgres.
-- `POST /tarefa/api/internal/tasks/private`: cria tarefa privada delegada pelo modulo Usuarios, revalidando usuario ativo/com acesso no app Tarefa, e pode aceitar `remind_at` opcional.
+- `POST /tarefa/api/internal/tasks/private`: cria tarefa privada por fluxo interno tokenizado do app Tarefa/Miauby, revalidando usuario ativo/com acesso no app Tarefa, e pode aceitar `remind_at` opcional.
 - `GET /tarefa/api/internal/users`: lista usuarios ativos com acesso ao modulo, para resolver destino de comandos do Miauby sem consultar tabela diretamente.
 - `GET /tarefa/api/internal/tasks/visible`: lista tarefas abertas que o usuario identificado pode ver, separando tarefa privada do ADM, tarefa propria e tarefa geral; ADM/admin pode pedir visao ampliada.
 - `POST /tarefa/api/internal/tasks/status`: altera status para `concluida` ou `cancelada` por comando interno/WhatsApp apos confirmacao, revalidando visibilidade e permissao.
@@ -533,7 +533,7 @@ Legado historico/backup:
 
 - Criar tarefa normal visivel para todos.
 - Criar tarefa publica via Miauby por `POST /tarefa/api/internal/tasks`, com auditoria em Postgres e sem gravar `wf_tarefas`; somente ADM/admin pode criar geral por comando.
-- Criar tarefa privada para um usuario especifico via Usuarios ou por comando ADM/admin no Miauby; usuario comum cria privada para si por padrao.
+- Criar tarefa privada para um usuario especifico pelo modulo Tarefa ou por comando ADM/admin no Miauby; usuario comum cria privada para si por padrao.
 - Editar titulo, descricao e prioridade.
 - Concluir, reabrir ou cancelar tarefa.
 - Concluir/cancelar por Miauby usa `POST /tarefa/api/internal/tasks/status`, exige confirmacao humana, cancela lembrete pendente quando o status deixa de ser `aberta` e grava auditoria.
@@ -542,7 +542,7 @@ Legado historico/backup:
 ### Integracoes
 
 - Home publica usa badge de tarefas abertas.
-- Usuarios delega tarefas privadas por endpoint interno.
+- Usuarios fornece permissoes por modulo e nomes exibidos do core; a criacao de tarefa privada fica no modulo Tarefa.
 - Miauby interno e Miauby WhatsApp criam, listam, consultam, concluem e cancelam tarefas por endpoints internos tokenizados do app Tarefa; nao gravam nem consultam `wf_tarefas`. O parser textual aceita data/hora simples para `remind_at` de tarefa privada e guarda uma pendencia de escolha quando consultar/concluir/cancelar encontra varias tarefas parecidas.
 - Miauby interno usa a sessao logada como responsavel padrao. Miauby WhatsApp usa o numero vinculado/allowlist e exige card `Tarefas`.
 - Core auth centraliza login.
@@ -775,14 +775,12 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Alterar role, senha, status e permissoes por modulo.
 - Desativar usuario.
 - Vincular/desvincular funcionario XP.
-- Criar tarefa privada para usuario especifico por endpoint interno do Tarefa.
 - Vincular/desvincular numeros do Miauby WhatsApp por ponte interna, sem gravar telefone cru no core.
 - Registrar auditoria central de alteracoes.
 
 ### Integracoes
 
 - XP por `xp_employees` e `xp_sales`.
-- Tarefa por `/tarefa/api/internal/tasks/private`.
 - Miauby WhatsApp por `/miauw/whatsapp/internal/allowlist/link-user` e unlink.
 - Home publica e modulos podem usar permissoes por modulo em etapa futura.
 
@@ -795,7 +793,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 
 ### Proxima acao segura
 
-Validar login admin, criacao/desativacao, vinculo XP, tarefa privada e allowlist; depois aplicar enforcement de `core_user_module_permissions` modulo por modulo.
+Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privadas devem ser validadas no modulo Tarefa. Depois aplicar enforcement de `core_user_module_permissions` modulo por modulo.
 
 ## Cotacao
 

@@ -134,16 +134,6 @@ const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 const PASSWORD_VAULT_KEY_SOURCE = cleanEnv('USUARIOS_PASSWORD_VAULT_KEY') || SESSION_SECRET;
 const INTERNAL_HTTP_TIMEOUT_MS = Math.max(800, Math.min(12000, Number.parseInt(env.USUARIOS_INTERNAL_HTTP_TIMEOUT_MS || '4500', 10) || 4500));
-const TAREFA_INTERNAL_BASE_URL = trimTrailingSlash(
-  env.USUARIOS_TAREFA_INTERNAL_BASE_URL
-    || env.TAREFA_INTERNAL_BASE_URL
-    || 'http://wimifarma-tarefa-app:3500/tarefa',
-);
-const TAREFA_INTERNAL_TOKEN = cleanEnv('USUARIOS_TAREFA_INTERNAL_TOKEN')
-  || cleanEnv('TAREFA_INTERNAL_TOKEN')
-  || cleanEnv('MIAUW_GUARDIAN_TOKEN')
-  || cleanEnv('MIAUW_AGENT_INTERNAL_TOKEN')
-  || cleanEnv('MIAUW_WHATSAPP_INTERNAL_TOKEN');
 const MIAUW_WHATSAPP_INTERNAL_BASE_URL = trimTrailingSlash(
   env.USUARIOS_MIAUW_WHATSAPP_INTERNAL_BASE_URL
     || env.MIAUW_WHATSAPP_INTERNAL_BASE_URL
@@ -1690,45 +1680,6 @@ async function deactivateUser(req: Request, actor: User): Promise<void> {
   await logUserAudit(actor.id, targetUserId, 'usuarios_desativou_usuario', `Usuario ${target.username} desativado.`, {});
 }
 
-async function delegatePrivateTask(req: Request, actor: User): Promise<void> {
-  const targetUserId = Number(req.body.user_id || 0);
-  const target = targetUserId > 0 ? await findCoreUser(targetUserId) : null;
-  if (!target || !target.active) {
-    throw new Error('Usuario de destino invalido.');
-  }
-  if (isPharmacyRole(target.role)) {
-    throw new Error('Perfil Farmácia nao recebe tarefa privada pessoal; use tarefa geral ou escolha um colaborador.');
-  }
-  const title = cleanText(req.body.titulo || req.body.title, 180);
-  const description = String(req.body.descricao || '').trim().slice(0, 2000);
-  const priority = ['alta', 'normal', 'baixa'].includes(String(req.body.prioridade || ''))
-    ? String(req.body.prioridade)
-    : 'normal';
-  if (!title) {
-    throw new Error('Informe o titulo da tarefa.');
-  }
-  const payload = await postInternalJson(
-    `${TAREFA_INTERNAL_BASE_URL}/api/internal/tasks/private`,
-    TAREFA_INTERNAL_TOKEN,
-    {
-      assigned_core_user_id: targetUserId,
-      assigned_username: target.username,
-      actor_user_id: actor.id,
-      actor_username: actor.username,
-      priority,
-      title,
-      description,
-    },
-    'Tarefa',
-  );
-  const task = (payload.task && typeof payload.task === 'object') ? payload.task as Record<string, unknown> : {};
-  await logUserAudit(actor.id, targetUserId, 'usuarios_delegou_tarefa_privada', `Tarefa privada delegada para ${target.username}.`, {
-    task_id: task.id || null,
-    priority,
-    title,
-  });
-}
-
 async function linkWhatsappNumber(req: Request, actor: User): Promise<void> {
   const targetUserId = Number(req.body.user_id || 0);
   const target = targetUserId > 0 ? await findCoreUser(targetUserId) : null;
@@ -2251,7 +2202,7 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
             <small class="users-field-help" data-password-status>Senha atual protegida por hash. Para saber a senha, defina uma nova aqui.</small>
           </div>
           ${isPharmacyProfile
-            ? `<div class="users-label users-field-xp users-pharmacy-note"><span>Perfil institucional</span><p>Sem XP, ferias ou tarefas pessoais. O WhatsApp oficial pergunta quem fez a acao antes de registrar.</p><input type="hidden" name="xp_employee_id" value=""></div>`
+            ? `<div class="users-label users-field-xp users-pharmacy-note"><span>Perfil institucional</span><p>Sem XP ou ferias pessoais. O WhatsApp oficial pergunta quem fez a acao antes de registrar.</p><input type="hidden" name="xp_employee_id" value=""></div>`
             : `<label class="users-label users-field-xp"><span>XP</span><select class="users-select" name="xp_employee_id">${renderXpOptions(xpEmployees, row.xp_employee_id)}</select></label>`}
         </div>
         ${isAdm ? '<p class="users-master-note">Login tecnico protegido: pode trocar nome exibido, senha, XP e WhatsApp; nao pode desativar, perder admin ou ficar sem acesso aos modulos.</p>' : ''}
@@ -2275,35 +2226,6 @@ function renderUserRow(req: Request, row: UserViewRow, xpEmployees: XpEmployeeRo
       </form>
       <div class="users-integrations ${isPharmacyProfile ? 'pharmacy' : ''}">
         ${isPharmacyProfile ? '' : renderVacationSection(req, row)}
-        ${isPharmacyProfile ? '' : `<section class="users-subsection users-task-subsection">
-          <div class="users-subsection-head">
-            <div>
-              <h3>Tarefa privada</h3>
-              <p>Cria uma tarefa no mesmo modelo do m&oacute;dulo Tarefas, vis&iacute;vel somente para este login.</p>
-            </div>
-            <a class="users-mini-link" href="/tarefa/">Abrir Tarefas</a>
-          </div>
-          <form method="post" action="${BASE_PATH}/" class="users-inline-form users-task-form">
-            ${csrfField(req)}
-            <input type="hidden" name="action" value="delegate_task">
-            <input type="hidden" name="user_id" value="${e(userId)}">
-            <div class="users-task-create-head">
-              <span class="users-task-kicker">Nova tarefa</span>
-              <select class="users-select" name="prioridade" aria-label="Prioridade">
-                <option value="alta">Alta</option>
-                <option value="normal" selected>Normal</option>
-                <option value="baixa">Baixa</option>
-              </select>
-            </div>
-            <label class="users-label"><span>Titulo</span><input class="users-input" type="text" name="titulo" maxlength="180" placeholder="Ex.: Conferir pendencia do caixa" required></label>
-            <label class="users-label"><span>Descricao</span><textarea class="users-input users-textarea" name="descricao" rows="4" placeholder="Detalhe curto para ninguem precisar adivinhar."></textarea></label>
-            <div class="users-task-meta">
-              <span>Destino: ${e(row.username)}</span>
-              <span>Privada no m&oacute;dulo Tarefas</span>
-            </div>
-            <button class="users-button" type="submit">Criar tarefa privada</button>
-          </form>
-        </section>`}
         <section class="users-subsection users-whatsapp-subsection">
           <h3>${isPharmacyProfile ? 'WhatsApp institucional' : 'WhatsApp do funcionario'}</h3>
           <p>${isPharmacyProfile
@@ -2568,9 +2490,6 @@ app.post([`${BASE_PATH}/`, `${BASE_PATH}/index.php`, BASE_PATH], asyncRoute(asyn
     } else if (action === 'deactivate_user') {
       await deactivateUser(req, user);
       setFlash(req, 'success', 'Usuario excluido.');
-    } else if (action === 'delegate_task') {
-      await delegatePrivateTask(req, user);
-      setFlash(req, 'success', 'Tarefa privada criada para o usuario.');
     } else if (action === 'link_whatsapp') {
       await linkWhatsappNumber(req, user);
       setFlash(req, 'success', 'Numero vinculado ao usuario e colocado na allowlist.');
