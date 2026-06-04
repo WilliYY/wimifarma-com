@@ -66,6 +66,14 @@ type WhatsappLinkRow = {
   updated_at: string;
 };
 
+type BridgeWhatsappContact = {
+  id: string;
+  phone_mask: string;
+  display_name: string;
+  status: string;
+  module_keys: string[];
+};
+
 type XpEmployeeRow = {
   id: string;
   name: string;
@@ -1049,8 +1057,149 @@ async function postInternalJson(url: string, token: string, body: Record<string,
   return payload;
 }
 
+async function getInternalJson(url: string, token: string, serviceLabel: string): Promise<Record<string, unknown>> {
+  if (!token) {
+    throw new Error(`${serviceLabel} sem token interno configurado.`);
+  }
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+      'X-Miauw-Internal-Token': token,
+      'X-Tarefa-Internal-Token': token,
+    },
+    signal: AbortSignal.timeout(INTERNAL_HTTP_TIMEOUT_MS),
+  });
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok || payload.ok === false) {
+    const error = cleanText(payload.error || payload.message || `${serviceLabel} retornou erro.`, 180);
+    throw new Error(error || `${serviceLabel} retornou erro.`);
+  }
+  return payload;
+}
+
 function safeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => cleanText(item, 40)).filter(Boolean) : [];
+}
+
+function bridgeWhatsappContactFromPayload(value: unknown): BridgeWhatsappContact | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const id = cleanText(record.id, 80);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return null;
+  }
+  const moduleKeys = selectedWhatsappModuleKeys(record.module_keys);
+  return {
+    id,
+    phone_mask: cleanText(record.phone_mask, 40),
+    display_name: cleanText(record.display_name, 120),
+    status: cleanText(record.status || 'allowed', 20) || 'allowed',
+    module_keys: moduleKeys.length ? moduleKeys : ['miauw'],
+  };
+}
+
+async function bridgeWhatsappContactsByUser(userId: number): Promise<BridgeWhatsappContact[]> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) return [];
+  const url = `${MIAUW_WHATSAPP_INTERNAL_BASE_URL}/internal/allowlist/by-user?user_id=${encodeURIComponent(String(userId))}`;
+  const payload = await getInternalJson(url, MIAUW_WHATSAPP_INTERNAL_TOKEN, 'Miauby WhatsApp');
+  const contacts = Array.isArray(payload.contacts) ? payload.contacts : [];
+  return contacts.map(bridgeWhatsappContactFromPayload).filter((contact): contact is BridgeWhatsappContact => Boolean(contact));
+}
+
+async function upsertCoreWhatsappLinkFromBridge(
+  userId: number,
+  contact: BridgeWhatsappContact,
+  actorUserId: number | null,
+  client: pg.Pool | pg.PoolClient = corePgPool,
+): Promise<number> {
+  const modules = contact.module_keys.length ? contact.module_keys : ['miauw'];
+  const result = await client.query(
+    `INSERT INTO core_user_whatsapp_links (
+       user_id, contact_id, phone_mask, display_name, status, module_keys, linked_by, linked_at, updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, NOW(), NOW())
+     ON CONFLICT (user_id, contact_id) DO UPDATE SET
+       phone_mask = EXCLUDED.phone_mask,
+       display_name = EXCLUDED.display_name,
+       status = EXCLUDED.status,
+       module_keys = EXCLUDED.module_keys,
+       linked_by = COALESCE(core_user_whatsapp_links.linked_by, EXCLUDED.linked_by),
+       updated_at = NOW()
+     WHERE core_user_whatsapp_links.phone_mask IS DISTINCT FROM EXCLUDED.phone_mask
+        OR core_user_whatsapp_links.display_name IS DISTINCT FROM EXCLUDED.display_name
+        OR core_user_whatsapp_links.status IS DISTINCT FROM EXCLUDED.status
+        OR core_user_whatsapp_links.module_keys IS DISTINCT FROM EXCLUDED.module_keys`,
+    [
+      userId,
+      contact.id,
+      contact.phone_mask,
+      contact.display_name,
+      contact.status,
+      modules,
+      actorUserId,
+    ],
+  );
+  return result.rowCount || 0;
+}
+
+async function reconcileWhatsappLinksForUser(userId: number, actorUserId: number | null, reason: string): Promise<number> {
+  if (!MIAUW_WHATSAPP_INTERNAL_TOKEN) return 0;
+  const contacts = await bridgeWhatsappContactsByUser(userId);
+  const bridgeContactIds = contacts.map((contact) => contact.id);
+  let changed = 0;
+  const client = await corePgPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const contact of contacts) {
+      changed += await upsertCoreWhatsappLinkFromBridge(userId, contact, actorUserId, client);
+    }
+    const staleResult = bridgeContactIds.length
+      ? await client.query(
+        `UPDATE core_user_whatsapp_links
+            SET status = 'stale_bridge_missing',
+                updated_at = NOW()
+          WHERE user_id = $1
+            AND contact_id <> ALL($2::uuid[])
+            AND status IS DISTINCT FROM 'stale_bridge_missing'`,
+        [userId, bridgeContactIds],
+      )
+      : await client.query(
+        `UPDATE core_user_whatsapp_links
+            SET status = 'stale_bridge_missing',
+                updated_at = NOW()
+          WHERE user_id = $1
+            AND status IS DISTINCT FROM 'stale_bridge_missing'`,
+        [userId],
+      );
+    changed += staleResult.rowCount || 0;
+    if (changed > 0) {
+      await logUserAudit(actorUserId, userId, 'usuarios_reconciliou_whatsapp', 'Vinculos WhatsApp reconciliados com o bridge.', {
+        reason,
+        bridge_contacts: contacts.length,
+        changed,
+      }, client);
+    }
+    await client.query('COMMIT');
+    return changed;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function reconcileWhatsappLinksForUsers(users: UserViewRow[], actorUserId: number | null, reason: string): Promise<number> {
+  if (!MIAUW_WHATSAPP_INTERNAL_TOKEN) return 0;
+  let changed = 0;
+  for (const row of users) {
+    const userId = Number(row.id || 0);
+    if (!Number.isSafeInteger(userId) || userId <= 0 || !row.active) continue;
+    changed += await reconcileWhatsappLinksForUser(userId, actorUserId, reason);
+  }
+  return changed;
 }
 
 async function recentAudit(limit = 80): Promise<AuditRow[]> {
@@ -1716,33 +1865,28 @@ async function linkWhatsappNumber(req: Request, actor: User): Promise<void> {
     'DELETE FROM core_user_whatsapp_links WHERE contact_id = $1 AND user_id <> $2',
     [contactId, targetUserId],
   );
-  await corePgPool.query(
-    `INSERT INTO core_user_whatsapp_links (
-       user_id, contact_id, phone_mask, display_name, status, module_keys, linked_by, linked_at, updated_at
-     )
-     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, NOW(), NOW())
-     ON CONFLICT (user_id, contact_id) DO UPDATE SET
-       phone_mask = EXCLUDED.phone_mask,
-       display_name = EXCLUDED.display_name,
-       status = EXCLUDED.status,
-       module_keys = EXCLUDED.module_keys,
-       linked_by = EXCLUDED.linked_by,
-       updated_at = NOW()`,
-    [
-      targetUserId,
-      contactId,
-      cleanText(contact.phone_mask, 40),
-      cleanText(contact.display_name || displayName, 120),
-      cleanText(contact.status || 'allowed', 20),
-      safeModules,
-      actor.id,
-    ],
-  );
+  await upsertCoreWhatsappLinkFromBridge(targetUserId, {
+    id: contactId,
+    phone_mask: cleanText(contact.phone_mask, 40),
+    display_name: cleanText(contact.display_name || displayName, 120),
+    status: cleanText(contact.status || 'allowed', 20),
+    module_keys: safeModules,
+  }, actor.id);
   await logUserAudit(actor.id, targetUserId, 'usuarios_vinculou_whatsapp', `WhatsApp vinculado para ${target.username}.`, {
     contact_id: contactId,
     phone_mask: cleanText(contact.phone_mask, 40),
     modules: safeModules,
   });
+  try {
+    await reconcileWhatsappLinksForUser(targetUserId, actor.id, 'link_whatsapp');
+  } catch (error) {
+    console.warn('[usuarios] whatsapp post-link reconciliation skipped', error);
+    await logUserAudit(actor.id, targetUserId, 'usuarios_reconciliacao_whatsapp_falhou', 'Reconciliacao WhatsApp falhou apos vincular numero.', {
+      contact_id: contactId,
+      error: error instanceof Error ? cleanText(error.message, 180) : 'unknown',
+      reason: 'link_whatsapp',
+    });
+  }
 }
 
 async function syncWhatsappUserSnapshot(targetUserId: number, displayName: string, username: string): Promise<void> {
@@ -2258,11 +2402,16 @@ function renderWhatsappLinks(req: Request, links: WhatsappLinkRow[]): string {
   if (!links.length) {
     return '<p class="users-empty compact">Nenhum numero vinculado ainda.</p>';
   }
+  const statusLabel = (status: string) => {
+    if (status === 'allowed') return 'Autorizado';
+    if (status === 'stale_bridge_missing') return 'Pendente de reconciliacao';
+    return 'Bloqueado';
+  };
   return `<div class="users-whatsapp-links">${links.map((link) => `
     <div class="users-whatsapp-link">
       <div>
         <strong>${e(link.display_name || 'Sem nome')}</strong>
-        <span>${e(link.phone_mask || '****')} &middot; ${e(link.status === 'allowed' ? 'Autorizado' : 'Bloqueado')}</span>
+        <span>${e(link.phone_mask || '****')} &middot; ${e(statusLabel(link.status))}</span>
         <small>${e(whatsappModuleLabels(safeStringArray(link.module_keys)))}</small>
       </div>
       <form method="post" action="${BASE_PATH}/">
@@ -2303,13 +2452,18 @@ function renderUserAudit(audit: UserAuditRow[]): string {
 async function renderDashboardPage(req: Request, res: Response): Promise<void> {
   const user = await requireUser(req, res);
   if (!user) return;
-  const [users, xpEmployees, whatsappLinks, audit, stats] = await Promise.all([
+  const [users, xpEmployees, audit, stats] = await Promise.all([
     listUsers(),
     listXpEmployees(),
-    listWhatsappLinks(),
     recentAudit(),
     dashboardStats(),
   ]);
+  try {
+    await reconcileWhatsappLinksForUsers(users, user.id, 'dashboard_load');
+  } catch (error) {
+    console.warn('[usuarios] whatsapp reconciliation skipped', error);
+  }
+  const whatsappLinks = await listWhatsappLinks();
   const userAudit = await auditByUser(users.map((row) => Number(row.id)));
   res.type('html').send(renderDashboard(req, user, users, xpEmployees, whatsappLinks, audit, userAudit, stats));
 }
