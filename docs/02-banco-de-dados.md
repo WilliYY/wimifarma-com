@@ -99,7 +99,7 @@ A fonte oficial apos o corte e o Postgres `wimifarma_cashback`. Desde 2026-05-30
 
 Criadas por `apps/miauw-whatsapp/src/server.ts`:
 
-- `miauw_whatsapp_contacts`: contatos vistos/autorizados, com telefone em hash, mascara e numero cifrado quando necessario para envio/edicao logada, sem telefone cru em texto aberto. Tambem guarda vinculo opcional com `core_users` por `linked_user_id`, `linked_username_snapshot`, `linked_by`, `linked_at` e `link_updated_at`.
+- `miauw_whatsapp_contacts`: contatos vistos/autorizados, com telefone em hash, mascara e numero cifrado quando necessario para envio/edicao logada, sem telefone cru em texto aberto. Tambem guarda vinculo opcional com `core_users` por `linked_user_id`, `linked_username_snapshot`, `linked_by`, `linked_at` e `link_updated_at`; o `linked_user_id` e a fonte de verdade e o snapshot de username e sincronizado pelo modulo Usuarios para painel/log.
 - `miauw_whatsapp_events`: webhooks recebidos da Evolution API ou Meta Cloud API, dedupe por provider/instancia/message id, status da fila, tentativas, metadados sanitizados em `JSONB`, hash/mascara e identificadores cifrados para resposta. Midias como audio e imagem de comprovante Pix guardam somente referencia/metadados sanitizados, nunca bytes ou URL/token bruto.
 - `miauw_whatsapp_outbox`: respostas pendentes/enviadas, status de envio, tentativas e id retornado pelo provedor quando houver.
 

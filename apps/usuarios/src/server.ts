@@ -1522,14 +1522,14 @@ async function updateUser(req: Request, actor: User): Promise<void> {
     if (xpNameSync.name) {
       await syncCoreXpLinkSnapshot(xpEmployeeId, xpNameSync.name, client);
     }
-    if (displayNameChanged) {
+    if (displayNameChanged || usernameChanged) {
       const links = await client.query<{ total: string }>(
         'SELECT COUNT(*)::text AS total FROM core_user_whatsapp_links WHERE user_id = $1',
         [targetUserId],
       );
       const linkedContacts = Number(links.rows[0]?.total || 0);
       if (linkedContacts > 0) {
-        await syncWhatsappDisplayName(targetUserId, displayName);
+        await syncWhatsappUserSnapshot(targetUserId, displayName, requestedUsername);
         await client.query(
           'UPDATE core_user_whatsapp_links SET display_name = $2, updated_at = NOW() WHERE user_id = $1',
           [targetUserId, displayName],
@@ -1745,13 +1745,14 @@ async function linkWhatsappNumber(req: Request, actor: User): Promise<void> {
   });
 }
 
-async function syncWhatsappDisplayName(targetUserId: number, displayName: string): Promise<void> {
+async function syncWhatsappUserSnapshot(targetUserId: number, displayName: string, username: string): Promise<void> {
   await postInternalJson(
     `${MIAUW_WHATSAPP_INTERNAL_BASE_URL}/internal/allowlist/update-user-display-name`,
     MIAUW_WHATSAPP_INTERNAL_TOKEN,
     {
       user_id: targetUserId,
       display_name: displayName,
+      username,
     },
     'Miauby WhatsApp',
   );

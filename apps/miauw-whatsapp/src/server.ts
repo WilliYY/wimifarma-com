@@ -2666,7 +2666,7 @@ async function linkAllowlistContactToUser(
   return allowlistContactSnapshotById(contact.id);
 }
 
-async function updateLinkedUserDisplayName(userId: number, displayName: string): Promise<number> {
+async function updateLinkedUserDisplayName(userId: number, displayName: string, username: string): Promise<number> {
   if (!Number.isSafeInteger(userId) || userId <= 0) {
     throw new Error('invalid_user_id');
   }
@@ -2674,13 +2674,15 @@ async function updateLinkedUserDisplayName(userId: number, displayName: string):
   if (!label) {
     throw new Error('invalid_display_name');
   }
+  const usernameSnapshot = safeText(username, 120);
   const result = await pgPool.query(
     `UPDATE miauw_whatsapp_contacts
         SET display_name = $2,
+            linked_username_snapshot = CASE WHEN $3 <> '' THEN $3 ELSE linked_username_snapshot END,
             link_updated_at = NOW(),
             updated_at = NOW()
       WHERE linked_user_id = $1`,
-    [userId, label],
+    [userId, label, usernameSnapshot],
   );
   return result.rowCount || 0;
 }
@@ -16234,6 +16236,7 @@ app.post(`${BASE_PATH}/internal/allowlist/update-user-display-name`, requireInte
     const updated = await updateLinkedUserDisplayName(
       userId,
       safeText(req.body?.display_name || req.body?.name, 120),
+      safeText(req.body?.username || req.body?.user_username, 120),
     );
     res.json({ ok: true, updated });
   } catch (error) {
