@@ -2236,8 +2236,12 @@
     state.pendingCommit = saveTask;
     updatePendingSaveStatus();
     try {
-      await saveTask;
-      if (!hasDirtyActiveEdit()) status('Sincronizado');
+      const saved = await saveTask;
+      if (saved?.overwroteRemote === true) {
+        status('Ultimo salvamento venceu outra alteracao. Historico guardou o valor anterior.', 'warn');
+      } else if (!hasDirtyActiveEdit()) {
+        status('Sincronizado');
+      }
     } catch (error) {
       const currentRow = rowById(rowId);
       if (currentRow) {
@@ -2337,7 +2341,11 @@
           }))
         });
       }
-      status('Sincronizado');
+      if ((data.cells || []).some((cell) => cell?.overwroteRemote === true)) {
+        status('Lote salvou por cima de alteracoes recentes. Historico guardou os valores anteriores.', 'warn');
+      } else {
+        status('Sincronizado');
+      }
       if (optimistic || options.render === 'rows') refreshRenderedRows(affectedRowIds);
       else renderTable();
     } catch (error) {

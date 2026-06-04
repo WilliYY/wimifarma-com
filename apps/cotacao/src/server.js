@@ -1390,36 +1390,47 @@ async function activeRowExists(quoteId, rowId) {
   return Boolean(result.rows[0]);
 }
 
-async function addRows(quoteId, count, valuesList) {
-  const maxPosition = await pgPool.query(
-    'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
-    [quoteId]
-  );
+async function addRows(quoteId, count, valuesList = []) {
   const total = Math.max(1, Math.min(Number(count || valuesList.length || 1), 200));
-  const basePosition = maxPosition.rows[0].position;
-  const placeholders = [];
-  const params = [quoteId];
-  for (let index = 0; index < total; index += 1) {
-    params.push(basePosition + index + 1, JSON.stringify(valuesList[index] || {}));
-    const positionParam = params.length - 1;
-    const valuesParam = params.length;
-    placeholders.push(`($1, $${positionParam}, $${valuesParam}::jsonb)`);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
+    const maxPosition = await client.query(
+      'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
+      [quoteId]
+    );
+    const basePosition = maxPosition.rows[0].position;
+    const placeholders = [];
+    const params = [quoteId];
+    for (let index = 0; index < total; index += 1) {
+      params.push(basePosition + index + 1, JSON.stringify(valuesList[index] || {}));
+      const positionParam = params.length - 1;
+      const valuesParam = params.length;
+      placeholders.push(`($1, $${positionParam}, $${valuesParam}::jsonb)`);
+    }
+    const inserted = await client.query(
+      `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+       VALUES ${placeholders.join(', ')}
+       RETURNING id, position, values, version, updated_at`,
+      params
+    );
+    await client.query('COMMIT');
+    return inserted.rows
+      .sort((a, b) => Number(a.position) - Number(b.position))
+      .map((row) => ({
+        id: row.id,
+        position: row.position,
+        values: row.values || {},
+        version: Number(row.version),
+        updatedAt: row.updated_at
+      }));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-  const inserted = await pgPool.query(
-    `INSERT INTO cotacao_v2_rows (quote_id, position, values)
-     VALUES ${placeholders.join(', ')}
-     RETURNING id, position, values, version, updated_at`,
-    params
-  );
-  return inserted.rows
-    .sort((a, b) => Number(a.position) - Number(b.position))
-    .map((row) => ({
-      id: row.id,
-      position: row.position,
-      values: row.values || {},
-      version: Number(row.version),
-      updatedAt: row.updated_at
-    }));
 }
 
 async function insertRowsAt(quoteId, anchorRowId, placement = 'below', count = 1) {
@@ -2890,7 +2901,7 @@ function renderApp(req) {
     window.COTACAO_CONFIG = ${JSON.stringify({ basePath: BASE_PATH, user })};
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
-  <script src="${BASE_PATH}/app.js?v=20260601-autosave"></script>
+  <script src="${BASE_PATH}/app.js?v=20260604-concurrency"></script>
   <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </body>
 </html>`;
