@@ -722,6 +722,7 @@ const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIEN
 const RECIPIENT_ALIAS_SOURCE_HASHES = new Set(Array.from(RECIPIENT_ALIASES.keys()).map((source) => sha256(source)));
 const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', true);
 const PREFIX = (textEnv('MIAUW_WHATSAPP_PREFIX') || 'miauby').toLowerCase();
+const FORCED_GEMINI_PREFIX_PATTERN = /^(gemini|barato|simples)\b[\s,:-]*/i;
 const ALLOW_COMMANDS_WITHOUT_PREFIX = boolEnv('MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX', !REQUIRE_PREFIX);
 const DEFAULT_BRAZIL_AREA_CODE = normalizeBrazilAreaCode(textEnv('MIAUW_WHATSAPP_DEFAULT_DDD') || textEnv('MIAUW_WHATSAPP_DEFAULT_AREA_CODE') || '44');
 const GROUPS_ENABLED = boolEnv('MIAUW_WHATSAPP_GROUPS_ENABLED', false);
@@ -2017,6 +2018,9 @@ function stripActivationPrefix(text: string): { accepted: boolean; text: string;
   }
   if (lower.startsWith(`${PREFIX} `) || lower.startsWith(`${PREFIX},`) || lower.startsWith(`${PREFIX}:`)) {
     return { accepted: true, text: clean.slice(PREFIX.length).replace(/^[\s,:-]+/, '').trim(), reason: '' };
+  }
+  if (FORCED_GEMINI_PREFIX_PATTERN.test(clean)) {
+    return { accepted: true, text: clean, reason: '' };
   }
   return { accepted: false, text: '', reason: 'missing_prefix' };
 }
@@ -5897,8 +5901,17 @@ function looksLikeInternalReadCommand(message: string): boolean {
 
 function forcedReplyRoute(message: string): ReplyRoute | null {
   const clean = message.trim();
-  if (/^(gemini|barato|simples)\b/i.test(clean)) {
-    const forcedMessage = stripLeadingCommand(clean, [/^(gemini|barato|simples)\b[\s,:-]*/i]);
+  if (FORCED_GEMINI_PREFIX_PATTERN.test(clean)) {
+    const forcedMessage = clean.replace(FORCED_GEMINI_PREFIX_PATTERN, '').trim();
+    if (!forcedMessage) {
+      return {
+        engine: 'local',
+        intent: 'forced_gemini',
+        message: forcedMessage,
+        reason: 'forced_gemini_empty',
+        localText: 'Manda a pergunta depois de "gemini". Ex.: gemini me responde um teste.',
+      };
+    }
     if (!geminiConfigured()) {
       return {
         engine: 'miauw',
@@ -6140,6 +6153,17 @@ function buildWhatsappStyleContext(shared: SharedMiauwContext | null, route: Rep
 }
 
 function routeWhatsappReply(message: string): ReplyRoute {
+  const forced = forcedReplyRoute(message);
+  if (forced) {
+    if (looksLikeSensitiveRequest(forced.message)) {
+      return { engine: 'blocked', intent: 'sensitive', message: forced.message, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
+    }
+    if (looksLikeStrongWriteCommand(forced.message)) {
+      return { engine: 'blocked', intent: 'internal_write', message: forced.message, reason: 'blocked_write', localText: blockedReplyFor('internal_write') };
+    }
+    return forced;
+  }
+
   const activated = REQUIRE_PREFIX || activationMentioned(message);
   const routedMessage = activated ? stripActivationWord(message) : message;
 
@@ -6158,17 +6182,6 @@ function routeWhatsappReply(message: string): ReplyRoute {
       reason: 'activation_miauby',
       useTools: true,
     };
-  }
-
-  const forced = forcedReplyRoute(message);
-  if (forced) {
-    if (looksLikeSensitiveRequest(forced.message)) {
-      return { engine: 'blocked', intent: 'sensitive', message: forced.message, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
-    }
-    if (looksLikeStrongWriteCommand(forced.message)) {
-      return { engine: 'blocked', intent: 'internal_write', message: forced.message, reason: 'blocked_write', localText: blockedReplyFor('internal_write') };
-    }
-    return forced;
   }
 
   if (looksLikeSensitiveRequest(message)) {
