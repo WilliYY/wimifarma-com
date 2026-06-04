@@ -20,7 +20,7 @@ Nota de navegacao: os modulos internos devem exibir `Home` para voltar a `/` sem
 
 ## Limpeza de legado em 2026-05-29
 
-Legados comprovadamente fora das rotas oficiais foram movidos para `site/_legacy-disabled/2026-05-29/` e bloqueados por `.htaccess`: Gestao PHP antiga, PHP antigo de Codigos, PHP antigo de XP e financeiro antigo dentro de Cashback. Continuam ativos WordPress, Miauby PHP, helpers PHP ainda chamados pelo Miauby, `site/tarefa` e assets montados pelos apps Node. Em 2026-05-31, `site/cashback`, `site/financeiro` e `site/tarefa` ganharam `.htaccess` local bloqueando PHP direto por HTTP, para que essas pastas nao virem fallback operacional caso o proxy Node seja alterado errado. O inventario da limpeza fica em `docs/27-limpeza-legado.md`.
+Legados comprovadamente fora das rotas oficiais foram movidos para `site/_legacy-disabled/2026-05-29/` e bloqueados por `.htaccess`: Gestao PHP antiga, PHP antigo de Codigos, PHP antigo de XP e financeiro antigo dentro de Cashback. Em 2026-06-04, as telas/APIs/diagnosticos PHP antigos de Cashback e o Financeiro PHP antigo foram movidos para `site/_legacy-disabled/2026-06-04/`, deixando nas pastas oficiais apenas assets e helpers minimos ainda chamados pelo Miauby. Continuam ativos WordPress, Miauby PHP, `site/tarefa` e assets montados pelos apps Node. Em 2026-05-31, `site/cashback`, `site/financeiro` e `site/tarefa` ganharam `.htaccess` local bloqueando PHP direto por HTTP, para que essas pastas nao virem fallback operacional caso o proxy Node seja alterado errado. O inventario da limpeza fica em `docs/27-limpeza-legado.md`.
 
 ## Modelo de ficha
 
@@ -106,12 +106,8 @@ MySQL e legado historico/backup, nao a fonte principal:
 
 ### Arquivos PHP/legados relevantes
 
-- `site/financeiro/index.php`;
-- `site/financeiro/login.php`;
-- `site/financeiro/logout.php`;
-- `site/financeiro/exportar.php`;
-- `site/financeiro/bootstrap.php`;
-- `site/financeiro/financeiro-funcoes.php`;
+- `site/financeiro/financeiro-funcoes.php`, helper minimo sem banco para o Miauby;
+- `site/_legacy-disabled/2026-06-04/financeiro-php/`, PHP antigo completo arquivado;
 - `site/financeiro/app.js`;
 - `site/financeiro/styles.css`;
 - `site/financeiro/login-runner.js`.
@@ -224,24 +220,9 @@ MySQL e legado historico. Desde 2026-05-30 nao ha importacao, espelho, log, fall
 
 ### Arquivos PHP/legados relevantes
 
-- `site/cashback/config.php`;
-- `site/cashback/functions.php`;
-- `site/cashback/auth.php`;
-- `site/cashback/index.php`;
-- `site/cashback/login.php`;
-- `site/cashback/logout.php`;
-- `site/cashback/dashboard.php`;
-- `site/cashback/clientes.php`;
-- `site/cashback/cliente-detalhe.php`;
-- `site/cashback/compras.php`;
-- `site/cashback/resgates.php`;
-- `site/cashback/mensagens.php`;
-- `site/cashback/relatorio.php`;
-- `site/cashback/exportar.php`;
-- `site/cashback/api-clientes.php`;
-- `site/cashback/api-whatsapp-status.php`;
-- `site/cashback/autoteste.php`;
-- `site/cashback/diagnostico.php`;
+- `site/cashback/config.php`, bootstrap compartilhado ainda usado pelo Miauby PHP;
+- `site/cashback/functions.php`, helpers minimos de auth/core/CSRF/formato/schema para o Miauby, sem regra operacional de Cashback;
+- `site/_legacy-disabled/2026-06-04/cashback-php/`, PHP antigo de tela/API/diagnostico arquivado;
 - `site/cashback/styles.css`;
 - `site/cashback/app.js`;
 - `site/cashback/login-runner.js`.

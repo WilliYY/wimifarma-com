@@ -10,7 +10,6 @@ Arquivos:
 
 - `site/cashback/config.php`
 - `site/cashback/functions.php`
-- `site/cashback/auth.php`
 - `site/home-sso-lib.php`
 - `site/home-sso.php`
 - `apps/cashback/src/server.ts`
@@ -84,7 +83,7 @@ Tabelas:
 - O feedback de chat do Miauby (`api.php?action=train_feedback`) exige sessao interna e CSRF; usuario comum pode sugerir treino, mas exemplo so entra no contexto aprovado depois de revisao humana ou aprovacao rapida de usuario autorizado.
 - O audio do Miauby (`api.php?action=audio_transcribe`) exige a mesma sessao interna e CSRF do chat; o browser envia audio temporario para transcricao e nunca recebe chave de API.
 - O painel Miauby WhatsApp (`/miauw/whatsapp/`) usa login proprio por variaveis de ambiente `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` quando preenchidas; a sessao e cookie assinado do servico Node, separado de `wf_users` e do WordPress.
-- Login PHP interno do Miauby usa `core_users` e `core_login_rate_limits` no Postgres por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`; rollback MySQL fica opt-in por `WIMIFARMA_INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED=true`. Cashback usa login unico no core no app Node, com limitador persistente em `core_login_rate_limits`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
+- Login PHP interno do Miauby usa `core_users` e `core_login_rate_limits` no Postgres; desde 2026-06-04 o bootstrap compartilhado local nao possui fallback de autenticacao MySQL. Cashback usa login unico no core no app Node, com limitador persistente em `core_login_rate_limits`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
 - Na Cotacao V2, importar Google Sheets e restaurar backup sao operacoes fortes: alem de sessao e CSRF, exigem username `adm`, role `admin` ou role `gerente`. Exportar, criar backup, editar celula e restaurar distribuidora apagada seguem as regras existentes.
 - Desde 2026-06-03, a Home e os modulos internos tratam `WFHOME_SSO` valido como contexto mais atual do navegador. Ao trocar de operador pela Home, os endpoints e paginas nao devem reaproveitar sessoes antigas de modulos como `WFXP`, `WFUSUARIOS`, `WFCASHBACK`, `WFCOTACAOV2`, `WFCODIGOS`, `WFGESTAO`, `WFPEDIDOS`, `WFTAREFA`, `WFFINANCEIRO` ou `WFWCASHBACK` se o SSO atual apontar outro usuario. O logout da Home expira esses cookies de modulo e limpa chaves frontend do Miauby/Home para evitar fala, XP ou permissao do usuario anterior.
 - A Home filtra os cards por `core_user_module_permissions`: `adm`/role `admin` ve tudo; usuario sem linhas explicitas preserva acesso legado; usuario com permissoes salvas ve somente modulos marcados. O mesmo criterio passou a ser reforcado no backend de Cashback, Cotacao, Codigos, XP, Tarefa, Gestao, Pedidos, Financeiro e Miauby, respeitando tambem as restricoes fortes ja existentes de perfil em Gestao/Pedidos/Usuarios.
@@ -93,8 +92,8 @@ Tabelas:
 
 ## Decisoes tecnicas ja tomadas
 
-- Sessao dos modulos internos PHP e configurada em `site/cashback/config.php`.
-- Funcoes comuns legadas ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam o core Postgres por padrao quando um modulo PHP remanescente usa esse caminho.
+- Sessao dos modulos internos PHP remanescentes e configurada em `site/cashback/config.php`.
+- Funcoes comuns legadas ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam somente o core Postgres quando um modulo PHP remanescente usa esse caminho.
 - Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota. Quando recebem `WFHOME_SSO`, consultam `/home-sso.php`, buscam o usuario no `core_users` e regeneram a sessao do modulo antes de liberar a rota. Se ja existir sessao propria de outro usuario, o SSO atual vence. Miauby PHP tambem aceita o handoff da home, mas continua no caminho PHP ate seu corte. Sem sessao propria nem SSO valido, o navegador deve voltar para a home `/`, nao para formularios locais de login.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
@@ -110,7 +109,7 @@ Tabelas:
 ## Pendencias
 
 - Mapear perfis existentes e permissoes por modulo.
-- Manter fallbacks MySQL de login apenas como rollback opt-in e retirar codigo legado quando houver janela segura.
+- Manter rollback de login MySQL apenas por restauracao de versao anterior; o bootstrap compartilhado atual usa core Postgres.
 - Revisar fluxo de desbloqueio de areas sensiveis.
 - Aplicar `core_user_module_permissions` nos modulos existentes em etapas, com rollback e teste por modulo, para evitar bloquear a equipe sem plano de recuperacao.
 - Mapear formalmente quais usuarios alem de `admin`/`gerente` devem acessar diagnosticos do Miauby.

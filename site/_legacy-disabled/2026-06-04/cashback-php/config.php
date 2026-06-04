@@ -12,8 +12,8 @@ if (is_file($localConfig)) {
     require $localConfig;
 }
 
-if (!function_exists('wimifarma_env_string')) {
-    function wimifarma_env_string(string $name, string $default = ''): string
+if (!function_exists('wf_env_string')) {
+    function wf_env_string(string $name, string $default = ''): string
     {
         $value = getenv($name);
         if (is_string($value) && trim($value) !== '') {
@@ -33,39 +33,44 @@ if (!function_exists('wimifarma_env_string')) {
 }
 
 /*
- * Conexao MySQL legada usada pelo Miauby PHP enquanto a escrita oficial do
- * chat interno ainda nao foi cortada para Postgres. Cashback e Financeiro
- * oficiais nao usam este bootstrap como runtime operacional.
+ * Dados do banco MySQL no Oracle/Docker.
  */
 if (!defined('DB_HOST')) {
-    define('DB_HOST', wimifarma_env_string('WIMIFARMA_DB_HOST', 'wimifarma-com-db'));
+    define('DB_HOST', wf_env_string('WIMIFARMA_DB_HOST', 'wimifarma-com-db'));
 }
 if (!defined('DB_NAME')) {
-    define('DB_NAME', wimifarma_env_string('WIMIFARMA_APP_DB_NAME', 'wimifarma_app'));
+    define('DB_NAME', wf_env_string('WIMIFARMA_APP_DB_NAME', 'wimifarma_app'));
 }
 if (!defined('DB_USER')) {
-    define('DB_USER', wimifarma_env_string('WIMIFARMA_DB_USER', 'wimifarma_user'));
+    define('DB_USER', wf_env_string('WIMIFARMA_DB_USER', 'wimifarma_user'));
 }
 if (!defined('DB_PASS')) {
-    define('DB_PASS', wimifarma_env_string('WIMIFARMA_DB_PASSWORD', 'wimifarma_dev_pass'));
+    define('DB_PASS', wf_env_string('WIMIFARMA_DB_PASSWORD', 'wimifarma_dev_pass'));
 }
 if (!defined('CORE_DB_HOST')) {
-    define('CORE_DB_HOST', wimifarma_env_string('CORE_POSTGRES_HOST', 'wimifarma-core-db'));
+    define('CORE_DB_HOST', wf_env_string('CORE_POSTGRES_HOST', 'wimifarma-core-db'));
 }
 if (!defined('CORE_DB_PORT')) {
-    define('CORE_DB_PORT', wimifarma_env_string('CORE_POSTGRES_PORT', '5432'));
+    define('CORE_DB_PORT', wf_env_string('CORE_POSTGRES_PORT', '5432'));
 }
 if (!defined('CORE_DB_NAME')) {
-    define('CORE_DB_NAME', wimifarma_env_string('CORE_POSTGRES_DB', 'wimifarma_core'));
+    define('CORE_DB_NAME', wf_env_string('CORE_POSTGRES_DB', 'wimifarma_core'));
 }
 if (!defined('CORE_DB_USER')) {
-    define('CORE_DB_USER', wimifarma_env_string('CORE_POSTGRES_USER', 'wimifarma_core'));
+    define('CORE_DB_USER', wf_env_string('CORE_POSTGRES_USER', 'wimifarma_core'));
 }
 if (!defined('CORE_DB_PASS')) {
-    define('CORE_DB_PASS', wimifarma_env_string('CORE_POSTGRES_PASSWORD', ''));
+    define('CORE_DB_PASS', wf_env_string('CORE_POSTGRES_PASSWORD', ''));
 }
 if (!defined('INTERNAL_AUTH_PROVIDER')) {
-    define('INTERNAL_AUTH_PROVIDER', 'core');
+    define('INTERNAL_AUTH_PROVIDER', strtolower(wf_env_string('WIMIFARMA_INTERNAL_AUTH_PROVIDER', 'core')) === 'mysql' ? 'mysql' : 'core');
+}
+if (!defined('INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED')) {
+    define('INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED', in_array(
+        strtolower(wf_env_string('WIMIFARMA_INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED', 'false')),
+        array('1', 'true', 'on', 'yes'),
+        true
+    ));
 }
 
 define('APP_NAME', 'Wimifarma Cashback');
@@ -140,3 +145,30 @@ function core_auth_db(): PDO
 
     return $pdo;
 }
+
+function bootstrap_default_admin(): void
+{
+    if (!defined('ALLOW_DEFAULT_ADMIN_BOOTSTRAP') || ALLOW_DEFAULT_ADMIN_BOOTSTRAP !== true) {
+        return;
+    }
+
+    try {
+        $count = (int) db()->query('SELECT COUNT(*) FROM wf_users')->fetchColumn();
+
+        if ($count > 0) {
+            return;
+        }
+
+        $stmt = db()->prepare(
+            'INSERT INTO wf_users (username, password_hash, role, active) VALUES (?, ?, ?, 1)'
+        );
+        $stmt->execute(array('adm', password_hash('adm', PASSWORD_DEFAULT), 'admin'));
+    } catch (Throwable $error) {
+        /*
+         * Se o banco ainda nao foi importado, a tela de login vai mostrar erro
+         * de conexao. Nao interrompemos aqui para facilitar diagnostico.
+         */
+    }
+}
+
+bootstrap_default_admin();

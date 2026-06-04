@@ -218,7 +218,7 @@ Evolucao:
 
 Estado:
 
-- Existem APIs em `apps/cotacao/src/server.js`, `site/miauw/api.php`, `site/cashback/api-clientes.php` e outras.
+- Existem APIs em `apps/cotacao/src/server.js`, `site/miauw/api.php`, apps Node dos modulos e outras. A API PHP antiga `site/cashback/api-clientes.php` foi arquivada em `site/_legacy-disabled/2026-06-04/cashback-php/`.
 
 Evolucao:
 

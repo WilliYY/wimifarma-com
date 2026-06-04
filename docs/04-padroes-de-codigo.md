@@ -8,13 +8,13 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 
 - PHP procedural.
 - Um `bootstrap.php` por modulo quando necessario.
-- Funcoes comuns em `site/cashback/functions.php`.
-- Conexao PDO via helper `db()`.
+- Funcoes comuns em `site/cashback/functions.php` apenas para legados/Miauby PHP; modulos oficiais novos usam helpers proprios.
+- Conexao PDO via helper `db()` apenas nos legados PHP ainda ativos, principalmente Miauby.
 - HTML escapado com helper `e()`.
 - Sessao configurada em `site/cashback/config.php`.
 - CSRF em formularios internos.
 - Arquivos `app.js` e `styles.css` por modulo.
-- Criacao/ajuste de tabelas por funcoes `*_ensure_schema()`.
+- Criacao/ajuste de tabelas por funcoes `*_ensure_schema()` apenas nos legados PHP; apps Node usam migracao/DDL propria.
 - Modulos criticos novos ou migrados podem usar Node.js + TypeScript + Postgres dedicado, mantendo o Apache como proxy, `core_users` para login e MySQL apenas como importacao/espelho temporario de rollback quando necessario.
 - Integracoes externas com webhook/fila, como Miauby WhatsApp, devem preferir servico dedicado e Postgres proprio quando precisarem de idempotencia, outbox, retry e isolamento de dados.
 - Next.js e Prisma foram registrados em 2026-05-30 como stack desejada para evolucoes futuras, mas ainda nao sao padrao ativo do repositorio. Usar primeiro em piloto isolado ou modulo novo, com justificativa de dominio, sem alterar modulos Express/SQL estabilizados durante cortes sensiveis.
@@ -41,8 +41,9 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - `apps/tarefa/public/app.js`
 - `apps/tarefa/public/styles.css`
 - `apps/miauw-whatsapp/src/server.ts`
-- `site/financeiro/bootstrap.php`
-- `site/financeiro/financeiro-funcoes.php`
+- `site/financeiro/financeiro-funcoes.php` (helper minimo sem banco para o Miauby)
+- `site/_legacy-disabled/2026-06-04/cashback-php/` (legado PHP arquivado)
+- `site/_legacy-disabled/2026-06-04/financeiro-php/` (legado PHP arquivado)
 - `site/_legacy-disabled/2026-05-29/gestao/` (legado PHP arquivado)
 - `site/_legacy-disabled/2026-05-29/codigos-php/` (legado PHP arquivado)
 - `site/_legacy-disabled/2026-05-29/xp-php/` (legado PHP arquivado)
@@ -53,12 +54,12 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 
 ## Regras de negocio que precisam ser preservadas
 
-- Helpers comuns nao devem mudar comportamento sem testar todos os modulos.
+- Helpers comuns nao devem mudar comportamento sem testar Miauby PHP e qualquer legado que ainda inclua esses arquivos.
 - Alteracoes de banco precisam preservar dados importados.
 - Campos de auditoria devem continuar registrando usuario, acao, registro e data quando existirem.
 - Cashback deve preservar relacao compra -> credito -> resgate, saldo por cliente, FIFO de creditos, mensagens/WhatsApp, settings e exportacoes.
 - Cotacao deve preservar estado visual e ordem.
-- Financeiro deve preservar justificativas e divergencias; a sombra Node/Postgres so pode importar/comparar ate haver corte validado.
+- Financeiro deve preservar justificativas e divergencias no app oficial Node/Postgres; o PHP antigo fica apenas arquivado para referencia/rollback manual.
 - Gestao deve preservar conta, itens, pagamentos, auditoria e saldos em centavos, sem apagar historico.
 - XP deve preservar vendas em centavos, XP em inteiro, fotos validadas, remocao logica e logs de alimentacao.
 - Codigos deve preservar autosave, blocos por prefixo de EAN, reordenacao, exclusao logica e senha para excluir tabela nao padrao.
@@ -69,12 +70,12 @@ Este documento registra os padroes existentes para evitar mudancas grandes ou de
 - O codigo segue estrutura simples por pasta/modulo.
 - O WordPress continua como raiz principal.
 - Segredos entram por ambiente ou `config.local.php`.
-- Cashback adotou Node.js + TypeScript + Postgres dedicado, mantendo CSS/JS/assets de `site/cashback`, login core e sessoes `WFCASHBACK`; depois da paridade de 2026-05-29, o caminho `mysql2` foi removido em 2026-05-30 e rollback MySQL exige restaurar versao anterior.
+- Cashback adotou Node.js + TypeScript + Postgres dedicado, mantendo CSS/JS/assets de `site/cashback`, login core e sessoes `WFCASHBACK`; depois da paridade de 2026-05-29, o caminho `mysql2` foi removido em 2026-05-30 e, em 2026-06-04, os PHPs antigos de tela/API foram arquivados em `site/_legacy-disabled/2026-06-04/cashback-php/`.
 - Pedidos adotou Node.js + TypeScript + Postgres da Gestao com login unico em `core_users`; depois da limpeza de 2026-05-29, nao deve reintroduzir `mysql2`, pool MySQL, fallback `wf_users` nem espelho `wf_logs` sem rollback planejado.
 - A Gestao adotou Node.js + TypeScript + Postgres por ser modulo administrativo critico e estar no inicio, permitindo schema versionado, sessoes isoladas e evolucao mais segura.
 - A Tarefa adotou Node.js + TypeScript + Postgres dedicado para remover o primeiro modulo PHP pequeno do MySQL operacional, mantendo a tela visual. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
 - Codigos adotou Node.js + TypeScript + Postgres dedicado, mantendo o CSS/JS de `site/codigos`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
-- Financeiro adotou Node.js + TypeScript + Postgres dedicado como rota oficial `/financeiro/`, preservando assets de `site/financeiro`; depois da paridade de 2026-05-29, o caminho `mysql2` foi removido em 2026-05-30 e rollback MySQL exige restaurar versao anterior.
+- Financeiro adotou Node.js + TypeScript + Postgres dedicado como rota oficial `/financeiro/`, preservando assets de `site/financeiro`; depois da paridade de 2026-05-29, o caminho `mysql2` foi removido em 2026-05-30 e, em 2026-06-04, o PHP antigo completo foi arquivado em `site/_legacy-disabled/2026-06-04/financeiro-php/`.
 - O Miauby WhatsApp adotou Node.js + TypeScript + Postgres dedicado para webhook/fila/outbox, evitando misturar eventos externos com MySQL legado ou com o banco da Gestao.
 - O XP adotou Node.js + TypeScript + Postgres dedicado, mantendo assets/uploads de `site/xp`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users` nem flags MySQL.
 - Next.js e Prisma foram aceitos como direcao futura proposta, nao como migracao imediata. Next.js pode ser preferido para novo site publico ou modulo novo com UI rica; Prisma pode ser avaliado em schema novo controlado. Adoção em modulo existente exige ADR/registro, testes, rollback e validacao de frontend.
