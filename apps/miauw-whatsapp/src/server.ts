@@ -3052,15 +3052,37 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   const isConfirmationDecision = bodyText ? parseConfirmationDecision(bodyText) !== null : false;
   if (message.fromMe) ignoreReasons.push('from_me');
   if (message.isGroup && !GROUPS_ENABLED) ignoreReasons.push('group_blocked');
-  if (!message.senderPhone) ignoreReasons.push('missing_sender');
-  if (!(await phoneAllowed(message.senderPhone))) ignoreReasons.push('sender_not_allowed');
+  let senderAllowed = false;
+  if (!message.senderPhone) {
+    ignoreReasons.push('missing_sender');
+  } else {
+    senderAllowed = await phoneAllowed(message.senderPhone);
+    if (!senderAllowed) ignoreReasons.push('sender_not_allowed');
+  }
   if (!bodyText && isAudioMessage && AUDIO_INPUT_ENABLED) bodyText = '[audio recebido]';
   if (!bodyText && isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED) bodyText = '[comprovante pix recebido]';
   if (!bodyText) ignoreReasons.push('empty_or_unsupported_message');
 
+  const hasPendingSelectionContext = Boolean(
+    bodyText
+      && message.senderPhone
+      && senderAllowed
+      && !message.fromMe
+      && (!message.isGroup || GROUPS_ENABLED)
+      && await hasPendingSelectionReplyContext(message.senderPhone),
+  );
+  if (hasPendingSelectionContext) {
+    message.payloadSummary = {
+      ...message.payloadSummary,
+      pending_selection_reply_context: true,
+      activation_prefix_bypassed_for_pending_selection: true,
+    };
+  }
+
   if (
     bodyText
     && !isConfirmationDecision
+    && !hasPendingSelectionContext
     && !(isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED)
     && !((isAudioMessage || isPixReceiptMediaMessage) && !originalBodyText)
   ) {
@@ -4224,6 +4246,41 @@ async function expireOldConfirmations(): Promise<void> {
       WHERE status = 'pending'
         AND expires_at <= NOW()`,
   );
+}
+
+async function hasPendingSelectionReplyContext(phone: string): Promise<boolean> {
+  if (!whatsappConfirmationsReady()) return false;
+  const hashes = phoneHashCandidates(sha256(phone), phone).map((hash) => safeText(hash, 64)).filter(Boolean);
+  if (!hashes.length) return false;
+  const selectionTools = [
+    'selecionar_responsavel_whatsapp',
+    'selecionar_destino_tarefa_whatsapp',
+    'selecionar_tarefa_whatsapp',
+    'selecionar_pedido_whatsapp',
+  ];
+
+  try {
+    await expireOldConfirmations();
+    const result = await pgPool.query<{ exists: string }>(
+      `SELECT '1' AS exists
+         FROM miauw_whatsapp_confirmations
+        WHERE sender_phone_hash = ANY($1::text[])
+          AND tool = ANY($2::text[])
+          AND (
+            status = 'pending'
+            OR (status = 'expired' AND updated_at >= NOW() - INTERVAL '10 minutes')
+          )
+        LIMIT 1`,
+      [hashes, selectionTools],
+    );
+    return Boolean(result.rows[0]);
+  } catch (error) {
+    await recordErrorLog('pending_selection_context_lookup', 'warn', error, {
+      phoneMask: maskPhone(phone),
+      details: { hashes: hashes.length },
+    });
+    return false;
+  }
 }
 
 async function findPendingConfirmation(senderHash: string, shortId?: string): Promise<PendingConfirmationRow | null> {
