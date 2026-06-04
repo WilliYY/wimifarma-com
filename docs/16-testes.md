@@ -45,7 +45,7 @@ Rotas de smoke test:
 - `/miauw/treino.php` deve exigir sessao e perfil autorizado
 - `/miauw/diagnostico.php` deve exigir sessao e perfil autorizado
 - `/miauw/widget-status.php`
-- `/miauw/agent/health` deve responder JSON 200 sem segredo quando o servico sombra estiver ativo
+- `/miauw/agent/health` e o alias canonico publico `/miauby/health` devem responder JSON 200 sem segredo quando o servico sombra estiver ativo
 - `wimifarma-miauby-app:4100/miauby/health` deve responder JSON 200 dentro da rede Docker, com `mode=shadow_read_only`, `write_enabled=false` e sem segredo
 - `wimifarma-miauby-app:4100/miauby/api/internal/status`, `/miauby/api/internal/parity?sample=5`, `/miauby/api/internal/readiness?sample=20`, `/miauby/api/internal/context?limit=3`, `/miauby/api/internal/cutover` e `/miauby/api/internal/canonical-context?limit=3` devem exigir token interno e retornar contagens/checksums/amostras sanitizadas, inventario de corte e pacote contexto/persona/tools read-only sem payload bruto
 - `/miauw/whatsapp/` deve responder HTML 200 com painel seguro quando o login do painel estiver desligado, ou HTML de login/401 quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estiverem configurados

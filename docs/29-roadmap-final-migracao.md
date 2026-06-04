@@ -36,7 +36,7 @@ Validacoes executadas em `/home/ubuntu/projetos/wimifarma-com`:
 
 - `docker compose config --quiet`: passou.
 - `docker compose ps` e `docker ps -a`: os containers principais estavam `Up`; `wimifarma-cotacao-db` e `wimifarma-cotacao-redis` tambem estavam `Up` via `docker ps`, apesar de nao aparecerem na lista de servicos do Compose atual por diferenca de labels/deploy antigo.
-- Health publico via Apache local `127.0.0.1:3002`: `/`, `/cashback/health`, `/codigos/health`, `/cotacao/health`, `/financeiro/health`, `/gestao/health`, `/pedidos/health`, `/tarefa/health`, `/usuarios/health`, `/xp/health`, `/miauw/agent/health`, `/miauw/whatsapp/health`, `/miauby/agent/health` e `/miauby/whatsapp/health` responderam HTTP 200.
+- Health publico via Apache local `127.0.0.1:3002`: `/`, `/cashback/health`, `/codigos/health`, `/cotacao/health`, `/financeiro/health`, `/gestao/health`, `/pedidos/health`, `/tarefa/health`, `/usuarios/health`, `/xp/health`, `/miauw/agent/health`, `/miauby/health`, `/miauw/whatsapp/health`, `/miauby/agent/health` e `/miauby/whatsapp/health` responderam HTTP 200.
 - Logs dos apps principais nos ultimos 45 minutos filtrados por erro/falha fatal: sem ocorrencia retornada.
 - Readiness interna do `wimifarma-miauby-app`: HTTP 200, `ok=true`, `mode=shadow_readiness`, paridade 12/12 tabelas, zero divergencia de contagem/amostra e flags seguras (`write_enabled=false`, `route_cutover_enabled=false`, `public_proxy_enabled=false`).
 - Auditoria interna de leitura do Miauby: `site/miauw/module-status.php` foi criado para checar Cotacao, Financeiro, Gestao, Pedidos, Tarefas, Cashback, Codigos, XP, Usuarios e Miauby Whats por endpoint tokenizado, sem payload bruto e sem escrita real.

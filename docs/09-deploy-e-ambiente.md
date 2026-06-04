@@ -133,6 +133,7 @@ Higiene de pastas no VPS:
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/miauw/whatsapp/` para `wimifarma-miauw-whatsapp:3400`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`, e o painel `/miauw/whatsapp/` deve mostrar apenas dados seguros.
 - Manter os aliases Apache de `/miauby/agent/` e `/miauby/whatsapp/` para os mesmos servicos Node de `/miauw/agent/` e `/miauw/whatsapp/`; esses aliases sao o caminho canonico novo, mas nao removem as rotas legadas.
+- Manter `/miauby/health` como alias Apache publico e enxuto para `/miauw/agent/health`; ele valida o agente Node sem redirecionar para `/miauw/health` e sem expor o `wimifarma-miauby-app` sombra.
 - Manter `site/.htaccess` redirecionando `/miauby/` para `/miauw/` enquanto o chat interno ainda usa PHP/MySQL como motor oficial, preservando HTTPS quando a requisicao vier pelo proxy publico. Esse redirect e reversivel e nao altera dados.
 - `wimifarma-miauby-db`, `wimifarma-miauby-migrator` e `wimifarma-miauby-app` sao apenas sombra de migracao do Miauby interno. Nao apontar proxy para eles e nao trocar `/miauw/` para Postgres antes de validacao de paridade.
 - Manter a Evolution API fora do Nginx Proxy Manager por padrao; usar API interna `http://wimifarma-evolution-api:8080` e porta local `127.0.0.1:8080` apenas para operacao controlada.

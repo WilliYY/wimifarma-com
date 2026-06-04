@@ -28,7 +28,7 @@ Essa decisao atende o objetivo operacional de "um banco melhor para todos conver
 - Auth: `core_users` por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`.
 - Dados principais: MySQL `wimifarma_app`, tabelas `miauw_*`.
 - Postgres sombra: `wimifarma_miauby`, criado por `wimifarma-miauby-db`, com migrador idempotente em `apps/miauby`.
-- Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/` e `/miauby/agent/`, ainda depende de ponte PHP para tools e contexto.
+- Node agent: `apps/miauw-agent`, publicado em `/miauw/agent/`, `/miauby/agent/` e no health canonico `/miauby/health`, ainda depende de ponte PHP para tools e contexto.
 - Integracao com Gestao: ja usa endpoint interno tokenizado do app Node/Postgres; a tool `criar_conta_gestao` nao deve depender de `wf_logs` nem de tabela MySQL de Gestao.
 - Escritas fortes: continuam com confirmacao humana e auditoria.
 - Responsavel de acao: o PHP resolveu um helper central para identificar o operador por sessao logada, depois por `user_context` do WhatsApp vinculado, depois por nome manual. No Miauby interno, comandos usam automaticamente o usuario logado da sessao como responsavel padrao (`core_users.id`, `username`, `display_name`) e nao exigem que a pessoa informe o proprio nome; usuario comum nao pode registrar acao em nome de outro sem permissao validada. No WhatsApp, o responsavel vem do numero vinculado/allowlist. Financeiro/sangria usam o nome identificado pela sessao ou allowlist como responsavel visivel e gravam `usuario_id`/`actor_user_id`; se nada identificar, a acao continua pedindo confirmacao/dado em vez de gravar anonimo.
@@ -186,7 +186,8 @@ Proibido migrar para Postgres:
 ### Fase 2 - APIs de leitura em Node
 
 - Estado iniciado em 2026-05-30: `wimifarma-miauby-app` roda `apps/miauby` em Node.js 22 + TypeScript + Express, somente na rede Docker.
-- Estado iniciado em 2026-05-30: `/miauby/health` responde status seguro do servico sombra, sem segredo e sem proxy publico.
+- Estado iniciado em 2026-05-30: `wimifarma-miauby-app:4100/miauby/health` responde status seguro do servico sombra, sem segredo e sem proxy publico.
+- Estado iniciado em 2026-06-04: `/miauby/health` no Apache publico responde o health minimo do agente Node (`/miauw/agent/health`), sem redirecionar para `/miauw/health` e sem publicar o app sombra do Miauby interno.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/status` e `/miauby/api/internal/parity?sample=5` exigem token interno e comparam tabelas `miauby_*` contra `miauw_*` por contagem/checksum/amostra, sem retornar payload bruto.
 - Estado iniciado em 2026-05-30: `/miauby/api/internal/readiness?sample=20` consolida health/paridade para pos-deploy e `/miauby/api/internal/context?limit=3` retorna apenas amostras sanitizadas de treino, memoria, conhecimento, alertas, padroes, traces e configuracoes.
 - Validado em 2026-05-31 no VPS: apos rodar migracao sombra idempotente, `/miauby/api/internal/readiness?sample=10` respondeu `ok=true`, Postgres ok, paridade 12/12, zero divergencia de contagem/checksum/amostra, `write_enabled=false`, `route_cutover_enabled=false` e `public_proxy_enabled=false`. Desde 2026-06-02, a migracao/validacao deve ser rodada pelo `wimifarma-miauby-migrator` descartavel, nao dentro do app vivo.

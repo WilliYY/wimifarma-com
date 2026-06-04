@@ -40,6 +40,8 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/miauby/health" "http://wimifarma-miauw-agent:3100/miauw/agent/health"'; \
+        echo 'ProxyPassReverse "/miauby/health" "http://wimifarma-miauw-agent:3100/miauw/agent/health"'; \
         echo 'ProxyPass "/miauby/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
         echo 'ProxyPassReverse "/miauby/agent/" "http://wimifarma-miauw-agent:3100/miauw/agent/"'; \
         echo 'ProxyPass "/miauby/agent" "http://wimifarma-miauw-agent:3100/miauw/agent"'; \

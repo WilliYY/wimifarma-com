@@ -908,7 +908,7 @@ Manter Postgres/Redis como fonte oficial e seguir migracao JS -> TypeScript por 
 - `/miauw/agent-memory.php`: ponte de memoria de compatibilidade.
 - `/miauw/miauw-evals.php`: eval local do Miauby.
 - `/miauw/farmacia-popular-cron.php` e `/miauw/guardian-cron.php`: rotinas internas.
-- `/miauw/agent/health`: resumo publico minimo do agente Node. `/miauw/agent/status`, `/run` e `/stream`: endpoints internos detalhados/controlados que exigem token interno.
+- `/miauw/agent/health` e `/miauby/health`: resumo publico minimo do agente Node. `/miauw/agent/status`, `/run` e `/stream`: endpoints internos detalhados/controlados que exigem token interno.
 - `wimifarma-miauby-app:4100/miauby/health`: health interno do Postgres sombra do Miauby, sem segredo.
 - `wimifarma-miauby-app:4100/miauby/api/internal/status`: status interno tokenizado das tabelas `miauby_*`.
 - `wimifarma-miauby-app:4100/miauby/api/internal/parity?sample=5`: paridade interna tokenizada de contagens e checksums contra `miauw_*`, sem retornar payload bruto.

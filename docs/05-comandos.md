@@ -113,6 +113,7 @@ npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
 curl.exe -sS http://127.0.0.1:3002/miauw/agent/health
+curl.exe -sS http://127.0.0.1:3002/miauby/health
 curl.exe -i -X POST http://127.0.0.1:3002/miauw/agent/run -H "Content-Type: application/json" -d "{\"message\":\"teste\"}"
 ```
 
