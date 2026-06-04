@@ -188,6 +188,13 @@ Auditoria de 2026-06-02:
 - O painel do Miauby Whats passou a ler o status real da fila da Cotacao para evitar confundir `Ligado no backend` com prova de que havia lembrete vencido.
 - Nao mover autosave, precos, fornecedores, quantidades ou import/restore para n8n. Para Cotacao, n8n deve ficar restrito a smoke, watchdog, alerta de backend parado ou monitoramento de cotacao parada.
 
+Auditoria de incidente em 2026-06-03:
+
+- Os 2 lembretes de encomenda previstos para 2026-06-03 16h tiveram tentativas as 16:00 e 16:06 registradas na Cotacao com erro `unauthorized`.
+- A causa do `unauthorized` era configuracao: `wimifarma-cotacao-app` nao recebia `MIAUW_WHATSAPP_INTERNAL_TOKEN`, entao caia no `COTACAO_INTERNAL_TOKEN`, que o endpoint interno do Miauby Whats nao aceita para envio. O Compose passou a entregar `MIAUW_WHATSAPP_INTERNAL_TOKEN` tambem para a Cotacao; `COTACAO_MIAUW_WHATSAPP_INTERNAL_TOKEN` continua podendo sobrescrever quando preenchido.
+- Em seguida, as linhas foram limpas por `cells_batch_updated` com usuario `adm`, removendo `produto`, `quantidade` e `categoria` das duas encomendas. Como a palavra `encomenda` saiu da linha, a Cotacao cancelou os lembretes com motivo `Texto de encomenda removido da linha.`
+- O sistema nao deve restaurar essas linhas automaticamente: a correcao segura e manter o token certo para proximos avisos e usar o historico da celula/linha para recuperacao manual quando uma encomenda for limpa sem querer.
+
 ### Chegada de pedidos as 17h
 
 Agenda: todo dia as 17:00, timezone `America/Sao_Paulo`.
