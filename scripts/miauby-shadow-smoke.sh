@@ -37,7 +37,7 @@ async function readJson(path, headers = {}, options = {}) {
 const health = await readJson('/health');
 assert(health.response.ok && health.body.ok === true, 'health_failed');
 assert(health.body.write_enabled === false, 'health_must_be_read_only');
-assert(health.body.write_adapter?.write_enabled === false, 'health_write_adapter_must_stay_disabled');
+assert(typeof health.body.write_adapter?.write_enabled === 'boolean', 'health_write_adapter_flag_missing');
 
 const unauthorized = await readJson('/api/internal/status');
 assert(unauthorized.response.status === 401 || unauthorized.response.status === 503, 'internal_status_must_reject_without_token');
@@ -49,7 +49,7 @@ assert(readiness.response.ok && readiness.body.ok === true, 'readiness_failed');
 assert(readiness.body.write_enabled === false, 'readiness_must_be_read_only');
 assert(readiness.body.route_cutover_enabled === false, 'route_cutover_must_stay_disabled');
 assert(readiness.body.public_proxy_enabled === false, 'public_proxy_must_stay_disabled');
-assert(readiness.body.write_adapter?.write_enabled === false, 'readiness_write_adapter_must_stay_disabled');
+assert(typeof readiness.body.write_adapter?.write_enabled === 'boolean', 'readiness_write_adapter_flag_missing');
 assert(readiness.body.checks?.parity?.ok === true, 'parity_summary_failed');
 
 const context = await readJson(`/api/internal/context?limit=${contextLimit}`, headers);
@@ -84,14 +84,19 @@ assert(cutover.response.ok && cutover.body.ok === true, 'cutover_inventory_faile
 assert(cutover.body.mode === 'cutover_inventory_read_only', 'cutover_inventory_mode_invalid');
 assert(cutover.body.guards?.write_enabled === false, 'cutover_write_must_stay_disabled');
 assert(cutover.body.guards?.route_cutover_enabled === false, 'cutover_route_must_stay_disabled');
-assert(cutover.body.write_adapter_5c?.write_enabled === false, 'cutover_write_adapter_must_stay_disabled');
+assert(typeof cutover.body.write_adapter_5c?.write_enabled === 'boolean', 'cutover_write_adapter_flag_missing');
+assert(cutover.body.write_adapter_7a?.route_cutover_enabled === false, 'cutover_7a_route_must_stay_disabled');
 assert(Array.isArray(cutover.body.flows) && cutover.body.flows.length >= 5, 'cutover_flows_missing');
 
 const writeAdapter = await readJson('/api/internal/write-adapter', headers);
 assert(writeAdapter.response.ok && writeAdapter.body.ok === true, 'write_adapter_status_failed');
-assert(['shadow_write_dry_run_blocked', 'shadow_write_dry_run_controlled'].includes(writeAdapter.body.mode), 'write_adapter_mode_invalid');
-assert(writeAdapter.body.write_enabled === false, 'write_adapter_must_stay_disabled');
-assert(writeAdapter.body.real_write_supported === false, 'write_adapter_real_write_must_not_exist_in_5c');
+assert(['shadow_write_dry_run_blocked', 'shadow_write_dry_run_controlled', 'controlled_dual_write_message_cutover'].includes(writeAdapter.body.mode), 'write_adapter_mode_invalid');
+if (writeAdapter.body.write_enabled === true) {
+  assert(writeAdapter.body.real_write_supported === true, 'write_adapter_real_write_flag_invalid');
+  assert(Array.isArray(writeAdapter.body.real_write_operations), 'write_adapter_real_operations_missing');
+} else {
+  assert(writeAdapter.body.real_write_supported === false, 'write_adapter_real_write_must_stay_disabled_without_env');
+}
 assert(Array.isArray(writeAdapter.body.contracts) && writeAdapter.body.contracts.length >= 8, 'write_adapter_contracts_missing');
 
 const writePlan = await readJson('/api/internal/write-adapter/plan', {
@@ -110,8 +115,8 @@ const writePlan = await readJson('/api/internal/write-adapter/plan', {
   }),
 });
 assert(writePlan.response.ok && writePlan.body.ok === true, 'write_adapter_plan_failed');
-assert(writePlan.body.write_enabled === false, 'write_adapter_plan_must_stay_disabled');
-assert(writePlan.body.real_write_supported === false, 'write_adapter_plan_real_write_must_not_exist');
+assert(typeof writePlan.body.write_enabled === 'boolean', 'write_adapter_plan_write_flag_missing');
+assert(typeof writePlan.body.real_write_supported === 'boolean', 'write_adapter_plan_real_write_flag_missing');
 assert(writePlan.body.payload_sanitized?.telefone === '[redacted]', 'write_adapter_plan_must_redact_phone');
 
 const dryRun = await readJson('/api/internal/write-adapter/dry-run', {
@@ -135,6 +140,26 @@ if (writeAdapter.body.dry_run_enabled === true) {
   assert(dryRun.body.real_write_executed === false, 'write_adapter_dry_run_must_not_execute_real_write');
 } else {
   assert(dryRun.response.status === 409 && dryRun.body.status === 'blocked_by_env', 'write_adapter_dry_run_must_stay_blocked_by_env');
+}
+
+if (writeAdapter.body.write_enabled !== true) {
+  const blockedCommit = await readJson('/api/internal/write-adapter/commit', {
+    ...headers,
+    'content-type': 'application/json',
+  }, {
+    method: 'POST',
+    body: JSON.stringify({
+      operation: 'conversation_message',
+      idempotency_key: `smoke-7a-blocked-${Date.now()}`,
+      conversation_legacy_id: 1,
+      payload: {
+        role: 'user',
+        content_preview: 'teste seguro 7A bloqueado',
+        legacy_mysql_id: Date.now(),
+      },
+    }),
+  });
+  assert(blockedCommit.response.status === 409 && blockedCommit.body.real_write_executed === false, 'write_adapter_commit_must_stay_blocked_without_env');
 }
 
 console.log(JSON.stringify({

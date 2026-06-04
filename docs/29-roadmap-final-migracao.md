@@ -140,6 +140,8 @@ Ordem segura:
 
 Objetivo: `wimifarma_miauby` vira fonte oficial para conversas, mensagens, treino, memorias, alertas e traces.
 
+Estado em 2026-06-04: Etapa 7A preparada. O adaptador Node ganhou endpoint interno `/miauby/api/internal/write-adapter/commit`, ainda tokenizado e sem proxy publico, para gravar apenas `conversation_open` e `conversation_message` em `miauby_conversations`/`miauby_messages`. A gravacao real exige duas travas: `MIAUBY_WRITES_ENABLED=true` e a flag especifica (`MIAUBY_WRITE_ADAPTER_REAL_MESSAGE_ENABLED=true` ou `MIAUBY_WRITE_ADAPTER_REAL_CONVERSATION_ENABLED=true`). O PHP continua gravando MySQL primeiro e chama o adaptador depois; falha no adaptador nao quebra o chat.
+
 Regras:
 
 - congelar escrita nova em `miauw_*` somente depois de backup e delta final;
@@ -147,6 +149,7 @@ Regras:
 - manter dumps e checksums;
 - manter confirmacoes humanas para escrita forte;
 - nunca gravar telefone cru, midia, audio bruto, segredo, SQL bruto ou stack trace completo.
+- nao liberar treino, memoria, alertas, diagnostico ou rota publica junto com a 7A.
 
 ### Fase 5 - Remover dependencia MySQL do core-auth
 
@@ -181,8 +184,8 @@ Somente depois de Miauby interno e WordPress resolvidos:
 
 ## Ordem recomendada agora
 
-1. Observar Miauby interno Etapa 6A ativa para `adm` por alguns dias, verificando voz, latencia, tools, confirmacoes, fallback e divergencias do shadow write.
-2. Validar Miauby interno escrita oficial em Postgres em uma fatia pequena de mensagens/traces, sem remover PHP/MySQL antes de backup e delta final.
+1. Observar Miauby interno Etapa 6A ativa para `adm` e Etapa 7A de conversa/mensagem, verificando voz, latencia, tools, confirmacoes, fallback e divergencias.
+2. Validar escrita Postgres de `conversation_open`/`conversation_message` com `adm`, sem remover PHP/MySQL antes de backup e delta final.
 3. Remover sincronizador MySQL do core-auth.
 4. Decidir WordPress: manter como excecao ou substituir por site novo.
 5. Se substituir WordPress, iniciar piloto Next.js/Prisma/Postgres.

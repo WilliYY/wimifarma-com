@@ -37,6 +37,8 @@ export type MiaubyWriteAdapterEnv = {
   MIAUBY_WRITES_ENABLED?: string;
   MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED?: string;
   MIAUBY_WRITE_ADAPTER_AUDIT_ENABLED?: string;
+  MIAUBY_WRITE_ADAPTER_REAL_MESSAGE_ENABLED?: string;
+  MIAUBY_WRITE_ADAPTER_REAL_CONVERSATION_ENABLED?: string;
 };
 
 export type MiaubyWriteIntentInput = {
@@ -52,9 +54,10 @@ export type MiaubyWritePlan = {
   ok: boolean;
   mode: 'write_adapter_5c_plan';
   phase: 'Miauby Etapa 5C';
-  write_enabled: false;
+  write_enabled: boolean;
   dry_run_enabled: boolean;
-  real_write_supported: false;
+  real_write_supported: boolean;
+  real_write_operation_enabled: boolean;
   operation: MiaubyWriteOperation;
   target_table: string;
   idempotency_key: string;
@@ -366,13 +369,27 @@ function actorFromInput(value: unknown): { actor_user_id: number | null; actor_u
 
 export function writeAdapterFlags(env: MiaubyWriteAdapterEnv = process.env) {
   const writesEnabled = envBool(env.MIAUBY_WRITES_ENABLED, false);
+  const realMessageEnabled = writesEnabled && envBool(env.MIAUBY_WRITE_ADAPTER_REAL_MESSAGE_ENABLED, false);
+  const realConversationEnabled = writesEnabled && envBool(env.MIAUBY_WRITE_ADAPTER_REAL_CONVERSATION_ENABLED, false);
+  const enabledOperations = [
+    realMessageEnabled ? 'conversation_message' : '',
+    realConversationEnabled ? 'conversation_open' : '',
+  ].filter(Boolean);
+
   return {
-    write_enabled: false,
+    write_enabled: enabledOperations.length > 0,
     requested_write_enabled: writesEnabled,
     dry_run_enabled: envBool(env.MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED, false),
     audit_enabled: envBool(env.MIAUBY_WRITE_ADAPTER_AUDIT_ENABLED, true),
-    real_write_supported: false,
-    blocked_reason: writesEnabled ? 'real_write_not_supported_in_5c' : 'MIAUBY_WRITES_ENABLED=false',
+    real_write_supported: enabledOperations.length > 0,
+    real_message_write_enabled: realMessageEnabled,
+    real_conversation_write_enabled: realConversationEnabled,
+    real_write_operations: enabledOperations,
+    blocked_reason: writesEnabled
+      ? enabledOperations.length > 0
+        ? ''
+        : 'real_write_specific_operation_flag_disabled'
+      : 'MIAUBY_WRITES_ENABLED=false',
   };
 }
 
@@ -381,11 +398,15 @@ export function buildWriteAdapterStatus(env: MiaubyWriteAdapterEnv = process.env
   return {
     ok: true,
     service: 'miauby',
-    phase: 'Miauby Etapa 5C',
-    mode: flags.dry_run_enabled ? 'shadow_write_dry_run_controlled' : 'shadow_write_dry_run_blocked',
-    version: 'miauby-write-adapter-5c-2026-06-02',
+    phase: flags.write_enabled ? 'Miauby Etapa 7A' : 'Miauby Etapa 5C',
+    mode: flags.write_enabled
+      ? 'controlled_dual_write_message_cutover'
+      : flags.dry_run_enabled
+        ? 'shadow_write_dry_run_controlled'
+        : 'shadow_write_dry_run_blocked',
+    version: 'miauby-write-adapter-7a-2026-06-04',
     official_response_owner: 'site/miauw PHP',
-    official_write_owner: 'site/miauw PHP',
+    official_write_owner: flags.write_enabled ? 'site/miauw PHP + apps/miauby Postgres controlled dual-write' : 'site/miauw PHP',
     route_cutover_enabled: false,
     public_proxy_enabled: false,
     ...flags,
@@ -394,10 +415,21 @@ export function buildWriteAdapterStatus(env: MiaubyWriteAdapterEnv = process.env
       audit_table: 'miauby_write_audit_events',
       migration_owner: 'apps/miauby/src/shadow-migrate.ts',
     },
+    real_write_guard: {
+      endpoint: '/miauby/api/internal/write-adapter/commit',
+      supported_operations: ['conversation_message', 'conversation_open'],
+      requires: [
+        'MIAUBY_WRITES_ENABLED=true',
+        'MIAUBY_WRITE_ADAPTER_REAL_MESSAGE_ENABLED=true para mensagens',
+        'MIAUBY_WRITE_ADAPTER_REAL_CONVERSATION_ENABLED=true para conversas',
+        'PHP continua gravando MySQL antes de chamar o adaptador',
+      ],
+    },
     guarantees: [
       'nao troca /miauw/',
       'nao troca resposta oficial',
       'nao escreve em tabelas de dominio quando MIAUBY_WRITES_ENABLED=false',
+      'escrita real so existe para conversa/mensagem e exige flag especifica por operacao',
       'dry-run registra apenas intencao/auditoria quando MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=true',
       'idempotencia diferencia duplicidade segura de divergencia por checksum',
       'nao executa tools',
@@ -420,6 +452,7 @@ export function planWriteIntent(input: MiaubyWriteIntentInput, env: MiaubyWriteA
       write_enabled: false,
       dry_run_enabled: writeAdapterFlags(env).dry_run_enabled,
       real_write_supported: false,
+      real_write_operation_enabled: false,
       operation: fallback.operation,
       target_table: fallback.target_table,
       idempotency_key: '',
@@ -433,6 +466,7 @@ export function planWriteIntent(input: MiaubyWriteIntentInput, env: MiaubyWriteA
   }
 
   const actor = actorFromInput(input.actor);
+  const flags = writeAdapterFlags(env);
   const payload = sanitizeRecord(isRecord(input.payload) ? input.payload : {});
   const metadata = sanitizeRecord(isRecord(input.metadata) ? input.metadata : {});
   const validationErrors = contract.required_fields.filter((field) => !requiredValue(payload, field)).map((field) => `missing_required:${field}`);
@@ -452,9 +486,12 @@ export function planWriteIntent(input: MiaubyWriteIntentInput, env: MiaubyWriteA
     ok: validationErrors.length === 0,
     mode: 'write_adapter_5c_plan',
     phase: 'Miauby Etapa 5C',
-    write_enabled: false,
-    dry_run_enabled: writeAdapterFlags(env).dry_run_enabled,
-    real_write_supported: false,
+    write_enabled: flags.write_enabled,
+    dry_run_enabled: flags.dry_run_enabled,
+    real_write_supported: flags.real_write_supported,
+    real_write_operation_enabled:
+      (contract.operation === 'conversation_message' && flags.real_message_write_enabled) ||
+      (contract.operation === 'conversation_open' && flags.real_conversation_write_enabled),
     operation: contract.operation,
     target_table: contract.target_table,
     idempotency_key: idempotencyKey,
@@ -470,6 +507,13 @@ export function planWriteIntent(input: MiaubyWriteIntentInput, env: MiaubyWriteA
     contract,
     rollback_plan: contract.rollback,
   };
+}
+
+function pgIdent(value: string): string {
+  if (!/^[a-z][a-z0-9_]*$/i.test(value)) {
+    throw new Error(`unsafe identifier: ${value}`);
+  }
+  return `"${value}"`;
 }
 
 export function writeAdapterSchemaSql(): string[] {
@@ -524,6 +568,143 @@ export async function ensureWriteAdapterSchema(pool: Pool): Promise<void> {
   }
 }
 
+async function ensureShadowRecordTable(pool: Pool, tableName: 'miauby_conversations' | 'miauby_messages'): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${pgIdent(tableName)} (
+      id BIGSERIAL PRIMARY KEY,
+      legacy_mysql_id BIGINT NOT NULL UNIQUE,
+      legacy_source_key TEXT NOT NULL,
+      source_table TEXT NOT NULL,
+      user_legacy_id BIGINT,
+      conversation_legacy_id BIGINT,
+      role TEXT,
+      status TEXT,
+      content_preview TEXT,
+      payload_sanitized JSONB NOT NULL DEFAULT '{}'::jsonb,
+      source_checksum TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      migrated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS ${pgIdent(`idx_${tableName}_source_created`)}
+      ON ${pgIdent(tableName)} (source_table, created_at DESC)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS ${pgIdent(`idx_${tableName}_conversation`)}
+      ON ${pgIdent(tableName)} (conversation_legacy_id, created_at DESC)
+  `);
+}
+
+function numberFromPayload(plan: MiaubyWritePlan, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = plan.payload_sanitized[key] ?? plan.metadata_sanitized[key];
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.trunc(parsed);
+  }
+  return null;
+}
+
+function targetSourceForPlan(plan: MiaubyWritePlan): {
+  tableName: 'miauby_conversations' | 'miauby_messages';
+  sourceTable: 'miauw_conversas' | 'miauw_mensagens';
+  legacyId: number;
+  legacySourceKey: string;
+  userLegacyId: number | null;
+  conversationLegacyId: number | null;
+  role: string | null;
+  status: string | null;
+  contentPreview: string | null;
+} | null {
+  if (plan.operation === 'conversation_message') {
+    const legacyId = numberFromPayload(plan, ['legacy_mysql_id', 'id', 'message_legacy_id']);
+    if (legacyId === null) return null;
+    const conversationId = Number(plan.metadata_sanitized.conversation_legacy_id ?? plan.payload_sanitized.conversa_id ?? 0);
+    return {
+      tableName: 'miauby_messages',
+      sourceTable: 'miauw_mensagens',
+      legacyId,
+      legacySourceKey: `miauw_mensagens:id:${legacyId}`,
+      userLegacyId: numberFromPayload(plan, ['usuario_id', 'user_legacy_id', 'actor_user_id']),
+      conversationLegacyId: Number.isFinite(conversationId) && conversationId > 0 ? Math.trunc(conversationId) : null,
+      role: canonicalString(plan.payload_sanitized.role ?? plan.payload_sanitized.papel, 80) || null,
+      status: canonicalString(plan.payload_sanitized.status, 80) || null,
+      contentPreview: canonicalString(
+        plan.payload_sanitized.content_preview ?? plan.payload_sanitized.conteudo ?? plan.payload_sanitized.message,
+        700,
+      ) || null,
+    };
+  }
+
+  if (plan.operation === 'conversation_open') {
+    const legacyId = numberFromPayload(plan, ['legacy_mysql_id', 'id', 'conversation_legacy_id']);
+    if (legacyId === null) return null;
+    return {
+      tableName: 'miauby_conversations',
+      sourceTable: 'miauw_conversas',
+      legacyId,
+      legacySourceKey: `miauw_conversas:id:${legacyId}`,
+      userLegacyId: numberFromPayload(plan, ['usuario_id', 'user_legacy_id', 'actor_user_id']),
+      conversationLegacyId: legacyId,
+      role: null,
+      status: canonicalString(plan.payload_sanitized.status, 80) || 'aberta',
+      contentPreview: canonicalString(
+        plan.payload_sanitized.title ?? plan.payload_sanitized.titulo ?? plan.payload_sanitized.content_preview,
+        700,
+      ) || null,
+    };
+  }
+
+  return null;
+}
+
+async function upsertShadowRecord(pool: Pool, plan: MiaubyWritePlan): Promise<{ ok: boolean; status: string; target_table?: string }> {
+  const target = targetSourceForPlan(plan);
+  if (target === null) {
+    return { ok: false, status: 'missing_legacy_target' };
+  }
+
+  await ensureShadowRecordTable(pool, target.tableName);
+  await pool.query(
+    `INSERT INTO ${pgIdent(target.tableName)} (
+       legacy_mysql_id, legacy_source_key, source_table, user_legacy_id, conversation_legacy_id,
+       role, status, content_preview, payload_sanitized, source_checksum,
+       created_at, updated_at, migrated_at
+     ) VALUES (
+       $1, $2, $3, $4, $5,
+       $6, $7, $8, $9::jsonb, $10,
+       NOW(), NOW(), NOW()
+     )
+     ON CONFLICT (legacy_mysql_id) DO UPDATE SET
+       legacy_source_key = EXCLUDED.legacy_source_key,
+       source_table = EXCLUDED.source_table,
+       user_legacy_id = EXCLUDED.user_legacy_id,
+       conversation_legacy_id = EXCLUDED.conversation_legacy_id,
+       role = EXCLUDED.role,
+       status = EXCLUDED.status,
+       content_preview = EXCLUDED.content_preview,
+       payload_sanitized = EXCLUDED.payload_sanitized,
+       source_checksum = EXCLUDED.source_checksum,
+       updated_at = NOW(),
+       migrated_at = NOW()`,
+    [
+      target.legacyId,
+      target.legacySourceKey,
+      target.sourceTable,
+      target.userLegacyId,
+      target.conversationLegacyId,
+      target.role,
+      target.status,
+      target.contentPreview,
+      JSON.stringify(plan.payload_sanitized),
+      sha256(plan.payload_sanitized),
+    ],
+  );
+
+  return { ok: true, status: 'target_upserted', target_table: target.tableName };
+}
+
 export async function recordWriteAdapterDryRun(pool: Pool, input: MiaubyWriteIntentInput, env: MiaubyWriteAdapterEnv = process.env) {
   const flags = writeAdapterFlags(env);
   const plan = planWriteIntent(input, env);
@@ -532,9 +713,6 @@ export async function recordWriteAdapterDryRun(pool: Pool, input: MiaubyWriteInt
   }
   if (!flags.dry_run_enabled) {
     return { ok: false, status: 'blocked_by_env', blocked_reason: 'MIAUBY_WRITE_ADAPTER_DRY_RUN_ENABLED=false', plan };
-  }
-  if (flags.requested_write_enabled) {
-    return { ok: false, status: 'blocked_real_write_requested', blocked_reason: 'real_write_not_supported_in_5c', plan };
   }
 
   const actorUserId = Number(plan.metadata_sanitized.actor_user_id ?? 0);
@@ -596,6 +774,103 @@ export async function recordWriteAdapterDryRun(pool: Pool, input: MiaubyWriteInt
     status: recordedStatus,
     divergence_detected: recordedStatus === 'dry_run_divergence',
     real_write_executed: false,
+    plan,
+  };
+}
+
+export async function recordWriteAdapterCommit(pool: Pool, input: MiaubyWriteIntentInput, env: MiaubyWriteAdapterEnv = process.env) {
+  const plan = planWriteIntent(input, env);
+  if (!plan.ok) {
+    return { ok: false, status: 'validation_failed', real_write_executed: false, plan };
+  }
+  if (!plan.real_write_operation_enabled) {
+    return {
+      ok: false,
+      status: 'blocked_by_env',
+      blocked_reason: 'MIAUBY_WRITES_ENABLED=true e flag especifica da operacao sao obrigatorios',
+      real_write_executed: false,
+      plan,
+    };
+  }
+  if (!['conversation_message', 'conversation_open'].includes(plan.operation)) {
+    return { ok: false, status: 'real_write_operation_not_supported', real_write_executed: false, plan };
+  }
+
+  await ensureWriteAdapterSchema(pool);
+
+  const actorUserId = Number(plan.metadata_sanitized.actor_user_id ?? 0);
+  const conversationId = Number(plan.metadata_sanitized.conversation_legacy_id ?? 0);
+  const actorUsername = canonicalString(plan.metadata_sanitized.actor_username, 80) || null;
+
+  const insertResult = await pool.query<{ status: string }>(
+    `INSERT INTO miauby_write_intents (
+       idempotency_key, operation, target_table, actor_user_id, actor_username, conversation_legacy_id,
+       request_checksum, payload_sanitized, metadata_sanitized, status, dry_run,
+       writes_enabled_at_request, rollback_plan, updated_at
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6,
+       $7, $8::jsonb, $9::jsonb, 'real_write_recorded', false,
+       true, $10::jsonb, NOW()
+     )
+     ON CONFLICT (idempotency_key) DO UPDATE SET
+       status = CASE
+         WHEN miauby_write_intents.request_checksum <> EXCLUDED.request_checksum THEN 'real_write_divergence'
+         WHEN miauby_write_intents.status IN ('real_write_recorded', 'real_write_duplicate') THEN 'real_write_duplicate'
+         ELSE 'real_write_recorded'
+       END,
+       dry_run = false,
+       writes_enabled_at_request = true,
+       updated_at = NOW()
+     RETURNING status`,
+    [
+      plan.idempotency_key,
+      plan.operation,
+      plan.target_table,
+      Number.isFinite(actorUserId) && actorUserId > 0 ? actorUserId : null,
+      actorUsername,
+      Number.isFinite(conversationId) && conversationId > 0 ? conversationId : null,
+      plan.request_checksum,
+      JSON.stringify(plan.payload_sanitized),
+      JSON.stringify(plan.metadata_sanitized),
+      JSON.stringify(plan.rollback_plan),
+    ],
+  );
+
+  const recordedStatus = String(insertResult.rows[0]?.status || 'real_write_recorded');
+  let targetResult: { ok: boolean; status: string; target_table?: string } = { ok: false, status: 'not_attempted' };
+  if (recordedStatus !== 'real_write_divergence') {
+    targetResult = await upsertShadowRecord(pool, plan);
+  }
+
+  await pool.query(
+    `INSERT INTO miauby_write_audit_events (
+       idempotency_key, operation, event_type, actor_user_id, actor_username, status,
+       dry_run, writes_enabled_at_request, payload_sanitized, metadata_sanitized
+     ) VALUES ($1, $2, $3, $4, $5, $6, false, true, $7::jsonb, $8::jsonb)`,
+    [
+      plan.idempotency_key,
+      plan.operation,
+      targetResult.ok ? recordedStatus : targetResult.status,
+      Number.isFinite(actorUserId) && actorUserId > 0 ? actorUserId : null,
+      actorUsername,
+      recordedStatus === 'real_write_divergence' || !targetResult.ok ? 'error' : 'ok',
+      JSON.stringify(plan.payload_sanitized),
+      JSON.stringify({
+        ...plan.metadata_sanitized,
+        target_table: targetResult.target_table || plan.target_table,
+        target_status: targetResult.status,
+      }),
+    ],
+  );
+
+  const ok = recordedStatus !== 'real_write_divergence' && targetResult.ok;
+  return {
+    ok,
+    status: ok ? recordedStatus : targetResult.status,
+    divergence_detected: recordedStatus === 'real_write_divergence',
+    real_write_executed: ok,
+    target_status: targetResult.status,
+    target_table: targetResult.target_table || plan.target_table,
     plan,
   };
 }

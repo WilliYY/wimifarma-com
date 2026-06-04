@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { Pool, type PoolClient } from 'pg';
 import { buildTextCommandContracts } from './text-command-contracts.js';
 import { buildCanonicalToolContracts } from './tool-contracts.js';
-import { buildWriteAdapterStatus, planWriteIntent, recordWriteAdapterDryRun } from './write-adapter.js';
+import { buildWriteAdapterStatus, planWriteIntent, recordWriteAdapterCommit, recordWriteAdapterDryRun } from './write-adapter.js';
 
 type SourceTable = {
   source: string;
@@ -299,6 +299,7 @@ function summarizeParity(parity: Awaited<ReturnType<typeof buildParity>>) {
 }
 
 function buildCutoverInventory() {
+  const writeAdapter = buildWriteAdapterStatus(env);
   return {
     ok: true,
     service: 'miauby',
@@ -316,9 +317,9 @@ function buildCutoverInventory() {
       route: `${basePath}/api/internal/*`,
       runtime: 'apps/miauby Node.js 22 + TypeScript',
       database: 'Postgres wimifarma_miauby / miauby_*',
-      write_enabled: false,
+      write_enabled: writeAdapter.write_enabled,
       public_proxy_enabled: false,
-      write_adapter: buildWriteAdapterStatus(env),
+      write_adapter: writeAdapter,
     },
     guards: {
       token_required: true,
@@ -332,9 +333,19 @@ function buildCutoverInventory() {
       target: table.target,
     })),
     flows: cutoverFlows,
-    write_adapter_5c: buildWriteAdapterStatus(env),
+    write_adapter_5c: writeAdapter,
+    write_adapter_7a: {
+      prepared: true,
+      active: writeAdapter.write_enabled,
+      scope: ['conversation_open', 'conversation_message'],
+      route_cutover_enabled: false,
+      public_proxy_enabled: false,
+      rollback: ['MIAUBY_WRITES_ENABLED=false', 'voltar MIAUBY_WRITE_ADAPTER_INTERNAL_URL para /dry-run'],
+    },
     hard_blockers: [
-      'apps/miauby possui adaptador de escrita preparado, mas MIAUBY_WRITES_ENABLED=false e nenhuma escrita real e suportada nesta etapa',
+      writeAdapter.write_enabled
+        ? 'Etapa 7A permite somente dual-write controlado de conversa/mensagem; treino, memoria, alertas, diagnostico e rota ainda nao foram cortados'
+        : 'apps/miauby possui adaptador de escrita preparado, mas MIAUBY_WRITES_ENABLED=false e nenhuma escrita real e suportada nesta etapa',
       'apps/miauw-agent ainda depende de agent-context.php, agent-tools.php e agent-actions.php para contexto, tools e confirmacoes',
       'widget, diagnostico e treino continuam em PHP e precisam de compatibilidade de sessao/CSRF antes de trocar a rota',
       'antes de congelar miauw_* e preciso dump, migracao sombra, validacao de checksum e janela de observacao',
@@ -1416,6 +1427,15 @@ app.post(`${basePath}/api/internal/write-adapter/plan`, requireInternalToken, (r
 app.post(`${basePath}/api/internal/write-adapter/dry-run`, requireInternalToken, async (req, res, next) => {
   try {
     const result = await recordWriteAdapterDryRun(pgPool, req.body, env);
+    res.status(result.ok ? 200 : 409).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post(`${basePath}/api/internal/write-adapter/commit`, requireInternalToken, async (req, res, next) => {
+  try {
+    const result = await recordWriteAdapterCommit(pgPool, req.body, env);
     res.status(result.ok ? 200 : 409).json(result);
   } catch (error) {
     next(error);

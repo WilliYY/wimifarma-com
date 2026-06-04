@@ -458,6 +458,39 @@ Rollback:
 - PHP pode virar camada de compatibilidade temporaria.
 - Confirmacoes e auditoria precisam ficar equivalentes antes de desligar MySQL.
 
+### Etapa 2026-06-04 - Miauby Etapa 7A: dual-write controlado de conversas e mensagens
+
+Esta etapa abre a primeira fatia de escrita real em Postgres sem cortar o fluxo vivo. O PHP continua entrando por `/miauw/`, continua criando conversa/mensagem em `miauw_conversas` e `miauw_mensagens`, e so depois chama o adaptador Node. Se o adaptador falhar, o PHP registra trace sanitizado e a resposta ao operador continua pelo fluxo atual.
+
+Escopo permitido:
+
+- `conversation_open` para `miauby_conversations`;
+- `conversation_message` para `miauby_messages`.
+
+Escopo ainda bloqueado:
+
+- treino, memorias, conhecimentos, alertas, padroes, diagnostico e Farmacia Popular;
+- escrita direta em bancos de outros modulos;
+- corte de rota `/miauby/`;
+- remocao de `site/miauw` ou tabelas `miauw_*`.
+
+Novas travas de ambiente:
+
+- `MIAUBY_WRITES_ENABLED=true`: libera a camada de escrita real do adaptador;
+- `MIAUBY_WRITE_ADAPTER_REAL_MESSAGE_ENABLED=true`: libera somente mensagens;
+- `MIAUBY_WRITE_ADAPTER_REAL_CONVERSATION_ENABLED=true`: libera somente conversas;
+- `MIAUBY_WRITE_ADAPTER_INTERNAL_URL` deve apontar para `/miauby/api/internal/write-adapter/commit` para executar essa fatia; por padrao continua em `/dry-run`;
+- `MIAUBY_WRITE_SHADOW_ENABLED` e `MIAUBY_WRITE_SHADOW_ALLOWED_USERS` continuam controlando quais usuarios do PHP chamam o adaptador, inicialmente `adm`.
+
+Regras preservadas:
+
+- `MIAUBY_WRITES_ENABLED=false` desliga imediatamente qualquer escrita real em Postgres;
+- sem a flag especifica da operacao, a flag global sozinha nao grava nada;
+- idempotencia usa `php:mysql:miauw_conversas:{id}` e `php:mysql:miauw_mensagens:{id}`;
+- conflito com checksum diferente vira `real_write_divergence` e nao atualiza o alvo;
+- `dry-run` continua disponivel e nunca executa escrita real;
+- `scripts/miauby-shadow-smoke.sh` aceita tanto 5C desligada/controlada quanto 7A ativa, mantendo rota/proxy bloqueados.
+
 ### Fase 8 - Limpeza final
 
 - Congelar escrita em `miauw_*`.
@@ -481,9 +514,9 @@ Rollback:
 ## Ordem recomendada agora
 
 1. Observar 6A ativa com `MIAUBY_ENGINE=node` apenas para `adm`, acompanhando latencia, confirmacoes, tools, traces e fallback.
-2. Continuar validando 5C com `adm` por envios reais e zero divergencia de dry-run.
-3. Migrar escrita oficial para `wimifarma_miauby` somente depois do corte de resposta estar estavel.
-4. Cortar por rota apenas depois de escrita Postgres validada.
+2. Validar 7A para `adm`: conversa/mensagem em Postgres, sem divergencia, sem mudar rota e sem remover MySQL.
+3. Migrar traces e diagnostico em fatias pequenas depois que mensagens/conversas ficarem estaveis.
+4. Cortar por rota apenas depois de escrita Postgres validada e com dump/checksum final.
 
 ## Cuidados de rollback
 

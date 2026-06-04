@@ -3266,7 +3266,13 @@ function miauby_write_shadow_message(
         'payload' => array(
             'role' => $role,
             'content_preview' => miauby_write_shadow_payload_preview($content),
+            'id' => $messageId,
+            'conversa_id' => $conversationId,
+            'usuario_id' => $userId,
+            'papel' => $role,
+            'conteudo' => miauby_write_shadow_payload_preview($content, 4000),
             'model' => $model,
+            'modelo' => $model,
             'fallback' => $fallback,
             'legacy_mysql_id' => $messageId,
         ),
@@ -3285,9 +3291,12 @@ function miauby_write_shadow_message(
         $result = miauby_write_shadow_request($body);
         $durationMs = (int) round((microtime(true) - $started) * 1000);
         if (function_exists('miauw_trace_record')) {
-            miauw_trace_record('miauby_write_shadow_dry_run', !empty($result['ok']) ? 'ok' : 'blocked', array(
+            $realWriteExecuted = !empty($result['real_write_executed']);
+            miauw_trace_record($realWriteExecuted ? 'miauby_write_commit' : 'miauby_write_shadow_dry_run', !empty($result['ok']) ? 'ok' : 'blocked', array(
                 'type' => 'write_shadow',
-                'summary' => 'Mensagem oficial do PHP enviada como intencao dry-run para apps/miauby.',
+                'summary' => $realWriteExecuted
+                    ? 'Mensagem oficial do PHP tambem gravada em Postgres pelo adaptador Miauby.'
+                    : 'Mensagem oficial do PHP enviada como intencao dry-run para apps/miauby.',
                 'conversa_id' => $conversationId,
                 'mensagem_id' => $messageId,
                 'usuario_id' => $userId,
@@ -3308,6 +3317,7 @@ function miauby_write_shadow_message(
             'status' => (string) ($result['status'] ?? ''),
             'duration_ms' => $durationMs,
             'divergence_detected' => !empty($result['divergence_detected']),
+            'real_write_executed' => !empty($result['real_write_executed']),
         );
     } catch (Throwable $error) {
         $durationMs = (int) round((microtime(true) - $started) * 1000);
@@ -3322,6 +3332,121 @@ function miauby_write_shadow_message(
                 'error' => $error->getMessage(),
                 'payload' => array(
                     'role' => $role,
+                    'official_write_done' => true,
+                ),
+            ));
+        }
+
+        return array(
+            'ok' => false,
+            'status' => 'error',
+            'reason' => miauw_diagnostic_redact_string($error->getMessage()),
+            'duration_ms' => $durationMs,
+        );
+    }
+}
+
+function miauby_write_shadow_conversation(int $conversationId, int $userId, string $title): ?array
+{
+    $user = function_exists('current_user') ? current_user() : null;
+    $status = miauby_write_shadow_status(is_array($user) ? $user : null);
+    if (empty($status['enabled'])) {
+        return null;
+    }
+
+    if (empty($status['configured'])) {
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('miauby_write_shadow_dry_run', 'skipped', array(
+                'type' => 'write_shadow',
+                'summary' => 'Dry-run sombra de conversa Miauby ignorado por configuracao incompleta ou usuario nao liberado.',
+                'conversa_id' => $conversationId,
+                'usuario_id' => $userId,
+                'payload' => array(
+                    'status' => $status,
+                    'operation' => 'conversation_open',
+                ),
+            ));
+        }
+
+        return array(
+            'ok' => false,
+            'status' => 'skipped',
+            'reason' => 'not_configured_or_not_allowed',
+        );
+    }
+
+    $trace = function_exists('miauw_trace_context') ? miauw_trace_context() : array();
+    $body = array(
+        'operation' => 'conversation_open',
+        'idempotency_key' => 'php:mysql:miauw_conversas:' . $conversationId,
+        'actor' => array(
+            'user_id' => $userId,
+            'user_legacy_id' => $userId,
+            'username' => is_array($user) ? (string) ($user['username'] ?? '') : '',
+        ),
+        'conversation_legacy_id' => $conversationId,
+        'payload' => array(
+            'title' => $title,
+            'content_preview' => miauby_write_shadow_payload_preview($title),
+            'id' => $conversationId,
+            'usuario_id' => $userId,
+            'titulo' => $title,
+            'status' => 'aberta',
+            'legacy_mysql_id' => $conversationId,
+        ),
+        'metadata' => array(
+            'source' => 'site/miauw PHP',
+            'phase' => 'Miauby Etapa 7A',
+            'trace_id' => (string) ($trace['trace_id'] ?? ''),
+            'mysql_table' => 'miauw_conversas',
+            'official_write_done' => true,
+            'real_write_requested' => false,
+        ),
+    );
+
+    $started = microtime(true);
+    try {
+        $result = miauby_write_shadow_request($body);
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        $realWriteExecuted = !empty($result['real_write_executed']);
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record($realWriteExecuted ? 'miauby_write_commit' : 'miauby_write_shadow_dry_run', !empty($result['ok']) ? 'ok' : 'blocked', array(
+                'type' => 'write_shadow',
+                'summary' => $realWriteExecuted
+                    ? 'Conversa oficial do PHP tambem gravada em Postgres pelo adaptador Miauby.'
+                    : 'Conversa oficial do PHP enviada como intencao dry-run para apps/miauby.',
+                'conversa_id' => $conversationId,
+                'usuario_id' => $userId,
+                'duration_ms' => $durationMs,
+                'payload' => array(
+                    'adapter_status' => (string) ($result['status'] ?? ''),
+                    'operation' => 'conversation_open',
+                    'real_write_executed' => $realWriteExecuted,
+                    'divergence_detected' => !empty($result['divergence_detected']),
+                    'idempotency_key' => (string) ($result['plan']['idempotency_key'] ?? ''),
+                ),
+            ));
+        }
+
+        return array(
+            'ok' => !empty($result['ok']),
+            'status' => (string) ($result['status'] ?? ''),
+            'duration_ms' => $durationMs,
+            'divergence_detected' => !empty($result['divergence_detected']),
+            'real_write_executed' => $realWriteExecuted,
+        );
+    } catch (Throwable $error) {
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        if (function_exists('miauw_trace_record')) {
+            miauw_trace_record('miauby_write_shadow_dry_run', 'error', array(
+                'type' => 'write_shadow',
+                'summary' => 'Falha no adaptador de escrita de conversa Miauby; PHP segue oficial.',
+                'conversa_id' => $conversationId,
+                'usuario_id' => $userId,
+                'duration_ms' => $durationMs,
+                'error' => $error->getMessage(),
+                'payload' => array(
+                    'operation' => 'conversation_open',
                     'official_write_done' => true,
                 ),
             ));
@@ -4727,9 +4852,13 @@ function miauw_current_conversation_id(int $userId): int
         }
     }
 
+    $title = 'Conversa com Miauby';
     $stmt = db()->prepare('INSERT INTO miauw_conversas (usuario_id, titulo) VALUES (?, ?)');
-    $stmt->execute(array($userId, 'Conversa com Miauby'));
+    $stmt->execute(array($userId, $title));
     $conversationId = (int) db()->lastInsertId();
+    if (function_exists('miauby_write_shadow_conversation')) {
+        miauby_write_shadow_conversation($conversationId, $userId, $title);
+    }
     $_SESSION[$sessionKey] = $conversationId;
 
     return $conversationId;
