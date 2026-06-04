@@ -3181,6 +3181,7 @@ async function nextQueueRow(): Promise<QueueRow | null> {
 
 async function processQueue(limit = WORKER_BATCH_SIZE): Promise<{ processed: number; outbox_processed: number; outbox_expired: number }> {
   if (!ENABLED) return { processed: 0, outbox_processed: 0, outbox_expired: 0 };
+  await expireOldConfirmations();
   await recoverStaleProcessingEvents();
   await requeueStaleSendingOutbox();
   const outboxExpired = await expireOldPendingOutbox();
