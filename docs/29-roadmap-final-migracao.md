@@ -141,6 +141,7 @@ Ordem segura:
 Objetivo: `wimifarma_miauby` vira fonte oficial para conversas, mensagens, treino, memorias, alertas e traces.
 
 Estado em 2026-06-04: Etapa 7A preparada. O adaptador Node ganhou endpoint interno `/miauby/api/internal/write-adapter/commit`, ainda tokenizado e sem proxy publico, para gravar apenas `conversation_open` e `conversation_message` em `miauby_conversations`/`miauby_messages`. A gravacao real exige duas travas: `MIAUBY_WRITES_ENABLED=true` e a flag especifica (`MIAUBY_WRITE_ADAPTER_REAL_MESSAGE_ENABLED=true` ou `MIAUBY_WRITE_ADAPTER_REAL_CONVERSATION_ENABLED=true`). O PHP continua gravando MySQL primeiro e chama o adaptador depois; falha no adaptador nao quebra o chat.
+Como o `wimifarma-miauby-app` nao abre MySQL em runtime, o readiness aceita que somente `miauby_conversations` e `miauby_messages` fiquem a frente do ultimo snapshot de `validate` quando a 7A estiver ativa; qualquer divergencia nas demais tabelas continua bloqueante.
 
 Regras:
 

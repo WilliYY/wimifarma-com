@@ -459,11 +459,16 @@ async function tableParityFromSnapshot(client: PoolClient, table: SourceTable, s
   const sourceCount = snapshot?.source_count ?? currentTargetCount;
   const snapshotTargetCount = snapshot?.target_count ?? currentTargetCount;
   const issues = [...snapshotIssues];
+  const writeAdapter = buildWriteAdapterStatus(env);
+  const targetAheadAllowed =
+    writeAdapter.write_enabled === true &&
+    ['miauw_conversas', 'miauw_mensagens'].includes(table.source) &&
+    currentTargetCount >= snapshotTargetCount;
 
   if (!snapshot) {
     issues.push('latest_validate_snapshot_missing');
   }
-  if (snapshot && snapshotTargetCount !== currentTargetCount) {
+  if (snapshot && snapshotTargetCount !== currentTargetCount && !targetAheadAllowed) {
     issues.push(`target_count_changed_after_validate:${currentTargetCount}/${snapshotTargetCount}`);
   }
   if (snapshot && sourceCount !== snapshotTargetCount) {
@@ -477,6 +482,7 @@ async function tableParityFromSnapshot(client: PoolClient, table: SourceTable, s
     source_count: sourceCount,
     target_count: currentTargetCount,
     count_match: issues.length === 0,
+    target_ahead_allowed: targetAheadAllowed && snapshotTargetCount !== currentTargetCount,
     sample_checked: 0,
     sample_mismatches: 0,
     sample_missing_targets: 0,

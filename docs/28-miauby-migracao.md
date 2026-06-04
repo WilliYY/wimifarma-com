@@ -488,6 +488,7 @@ Regras preservadas:
 - sem a flag especifica da operacao, a flag global sozinha nao grava nada;
 - idempotencia usa `php:mysql:miauw_conversas:{id}` e `php:mysql:miauw_mensagens:{id}`;
 - conflito com checksum diferente vira `real_write_divergence` e nao atualiza o alvo;
+- readiness pode aceitar `miauby_conversations`/`miauby_messages` a frente do ultimo `validate`, porque o runtime nao abre MySQL e a 7A escreve novos registros antes do proximo migrador; isso nao vale para outras tabelas;
 - `dry-run` continua disponivel e nunca executa escrita real;
 - `scripts/miauby-shadow-smoke.sh` aceita tanto 5C desligada/controlada quanto 7A ativa, mantendo rota/proxy bloqueados.
 
