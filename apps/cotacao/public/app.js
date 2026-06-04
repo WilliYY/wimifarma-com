@@ -2134,7 +2134,11 @@
       updatePendingSaveStatus();
       return false;
     }
-    const saveTask = setCellValue(editing.rowId, editing.columnKey, value, { render: false });
+    const saveOptions = { render: false };
+    if (state.conflicts.has(cellKey(editing.rowId, editing.columnKey))) {
+      saveOptions.expectedValue = editing.originalValue;
+    }
+    const saveTask = setCellValue(editing.rowId, editing.columnKey, value, saveOptions);
     editing.autosaveTask = saveTask;
     try {
       await saveTask;
@@ -2203,6 +2207,9 @@
     const before = String(row.values?.[columnKey] ?? '');
     const after = String(value ?? '');
     if (before === after) return;
+    const expectedValue = Object.hasOwn(options, 'expectedValue')
+      ? String(options.expectedValue ?? '')
+      : before;
     const previousVersion = row.version;
     const previousUpdatedAt = row.updatedAt;
     applyLocalCellValue(row, columnKey, after, { render: options.render !== false });
@@ -2210,7 +2217,7 @@
     const saveTask = (async () => {
       const data = await api('/api/cells', {
         method: 'PATCH',
-        body: JSON.stringify({ rowId, columnKey, value: after, expectedValue: before, clientId })
+        body: JSON.stringify({ rowId, columnKey, value: after, expectedValue, clientId })
       });
       const currentRow = rowById(rowId);
       if (currentRow) {
@@ -2447,7 +2454,11 @@
       autosizeInput(input);
       input.blur();
     }
-    const commitPromise = setCellValue(editing.rowId, editing.columnKey, value)
+    const saveOptions = {};
+    if (state.conflicts.has(cellKey(editing.rowId, editing.columnKey))) {
+      saveOptions.expectedValue = editing.originalValue;
+    }
+    const commitPromise = setCellValue(editing.rowId, editing.columnKey, value, saveOptions)
       .catch((error) => {
         console.error(error);
       });

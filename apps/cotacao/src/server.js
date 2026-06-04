@@ -2142,8 +2142,8 @@ async function restoreBackup(backupName, quoteId) {
   }
 }
 
-async function appendEvent({ quoteId, type, rowId = null, columnKey = null, payload = {}, user, clientId = null }) {
-  const result = await pgPool.query(
+async function appendEvent({ quoteId, type, rowId = null, columnKey = null, payload = {}, user, clientId = null, db = pgPool }) {
+  const result = await db.query(
     `INSERT INTO cotacao_v2_events (quote_id, type, row_id, column_key, payload, user_id, username, client_id)
      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
      RETURNING id, created_at`,
@@ -3911,6 +3911,8 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
   const client = await pgPool.connect();
   let row;
   let previousValue = '';
+  let payload;
+  let event;
   try {
     await client.query('BEGIN');
     const current = await client.query(
@@ -3938,6 +3940,26 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
       [rowId, columnKey, value, quote.id]
     );
     row = updated.rows[0];
+    payload = {
+      rowId: row.id,
+      columnKey,
+      value,
+      previousValue,
+      expectedValue: hasExpectedValue ? expectedValue : null,
+      overwroteRemote: hasExpectedValue && previousValue !== expectedValue,
+      version: Number(row.version),
+      updatedAt: row.updated_at
+    };
+    event = await appendEvent({
+      quoteId: quote.id,
+      type: 'cell_updated',
+      rowId: row.id,
+      columnKey,
+      payload,
+      user: req.session.user,
+      clientId,
+      db: client
+    });
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -3945,32 +3967,13 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
   } finally {
     client.release();
   }
-  const payload = {
-    rowId: row.id,
-    columnKey,
-    value,
-    previousValue,
-    expectedValue: hasExpectedValue ? expectedValue : null,
-    overwroteRemote: hasExpectedValue && previousValue !== expectedValue,
-    version: Number(row.version),
-    updatedAt: row.updated_at
-  };
-  const event = await appendEvent({
-    quoteId: quote.id,
-    type: 'cell_updated',
-    rowId: row.id,
-    columnKey,
-    payload,
-    user: req.session.user,
-    clientId
-  });
   io.to(`quote:${quote.id}`).emit('cell:update', {
     ...payload,
     eventId: Number(event.id),
     user: userPublic(req.session.user),
     clientId
   });
-  await syncEncomendaReminderForRow(quote.id, row.id, {
+  await syncEncomendaRemindersForRows(quote.id, [row.id], {
     user: req.session.user,
     clientId,
     source: 'cell_updated'
@@ -3992,6 +3995,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
 
   const client = await pgPool.connect();
   const updatedCells = [];
+  let event = null;
   try {
     await client.query('BEGIN');
     for (const raw of changes) {
@@ -4036,6 +4040,16 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
         updatedAt: updated.rows[0].updated_at
       });
     }
+    if (updatedCells.length) {
+      event = await appendEvent({
+        quoteId: quote.id,
+        type: 'cells_batch_updated',
+        payload: { cells: updatedCells },
+        user: req.session.user,
+        clientId,
+        db: client
+      });
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -4048,13 +4062,6 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
     return res.json({ ok: true, cells: [], eventId: null, noop: true });
   }
 
-  const event = await appendEvent({
-    quoteId: quote.id,
-    type: 'cells_batch_updated',
-    payload: { cells: updatedCells },
-    user: req.session.user,
-    clientId
-  });
   io.to(`quote:${quote.id}`).emit('cells:update', {
     cells: updatedCells,
     eventId: Number(event.id),
