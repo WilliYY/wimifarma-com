@@ -1498,6 +1498,7 @@ async function insertRowsAt(quoteId, anchorRowId, placement = 'below', count = 1
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
     const current = await client.query(
       `SELECT id
        FROM cotacao_v2_rows
@@ -1509,6 +1510,10 @@ async function insertRowsAt(quoteId, anchorRowId, placement = 'below', count = 1
     );
     const ids = current.rows.map((row) => row.id);
     const anchorIndex = ids.indexOf(anchorRowId);
+    if (anchorIndex === -1) {
+      await client.query('ROLLBACK');
+      return { rows: [], positions: [], anchorMissing: true };
+    }
     const insertIndex = anchorIndex === -1
       ? ids.length
       : anchorIndex + (placement === 'above' ? 0 : 1);
@@ -1539,11 +1544,12 @@ async function insertRowsAt(quoteId, anchorRowId, placement = 'below', count = 1
         index + 1
       ]);
     }
+    const positions = ordered.map((id, index) => ({ id, position: index + 1 }));
     inserted.forEach((row) => {
       row.position = ordered.indexOf(row.id) + 1;
     });
     await client.query('COMMIT');
-    return inserted;
+    return { rows: inserted, positions, anchorMissing: false };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -3643,21 +3649,35 @@ app.post(`${BASE_PATH}/api/rows`, requireApiAuth, verifyCsrf, asyncRoute(async (
 app.post(`${BASE_PATH}/api/rows/insert`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
-  const rows = await insertRowsAt(
+  const anchorRowId = String(req.body.anchorRowId || '');
+  if (!isUuid(anchorRowId)) {
+    return res.status(422).json({ ok: false, error: 'Linha de referencia invalida.' });
+  }
+  const placement = String(req.body.placement || 'below') === 'above' ? 'above' : 'below';
+  const result = await insertRowsAt(
     quote.id,
-    String(req.body.anchorRowId || ''),
-    String(req.body.placement || 'below') === 'above' ? 'above' : 'below',
+    anchorRowId,
+    placement,
     req.body.count || 1
   );
+  if (result.anchorMissing) {
+    return res.status(404).json({ ok: false, error: 'Linha de referencia nao encontrada.' });
+  }
   const event = await appendEvent({
     quoteId: quote.id,
     type: 'rows_inserted',
-    payload: { rows },
+    payload: { rows: result.rows, positions: result.positions, anchorRowId, placement },
     user: req.session.user,
     clientId
   });
-  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId, mode: 'insert' });
-  res.json({ ok: true, rows, eventId: Number(event.id) });
+  io.to(`quote:${quote.id}`).emit('rows:added', {
+    rows: result.rows,
+    positions: result.positions,
+    eventId: Number(event.id),
+    clientId,
+    mode: 'insert'
+  });
+  res.json({ ok: true, rows: result.rows, positions: result.positions, eventId: Number(event.id) });
 }));
 
 app.delete(`${BASE_PATH}/api/rows/:id`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {

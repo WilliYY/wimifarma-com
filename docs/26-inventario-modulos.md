@@ -926,6 +926,7 @@ Validar no VPS `/login-senha/health` e `/login-senha-adm/health`, cards na Home,
 
 - Editar celula com eventos e historico.
 - Adicionar/inserir/remover linhas.
+- Inserir linha acima/abaixo pelo menu de contexto usa `cotacao_v2_rows.id` da linha real como ancora, nao o indice filtrado da tela; com filtro ativo, o frontend aplica as posicoes reais devolvidas pelo backend e mantem a nova linha vazia visivel para quem inseriu ate o filtro ser reaplicado.
 - Criar, renomear, mover, remover/restaurar e redimensionar colunas.
 - Aplicar/remover estilos unitarios ou em lote.
 - Repetir a ultima acao segura com `F4` apenas na tela da planilha: valor nao vazio, colagem sem celulas vazias, aplicar cor e limpar cor; a compatibilidade e revalidada contra a selecao atual.

@@ -128,6 +128,7 @@
     columnAutosizeJobs: new Map(),
     pendingCellSaves: new Map(),
     pendingBatchSaves: 0,
+    pendingRowInserts: new Set(),
     deferredRemoteRowIds: new Set(),
     deferredRemoteFullRender: false,
     sheetAutosizeJob: null,
@@ -365,6 +366,13 @@
     state.pinnedRows.clear();
   }
 
+  function pinRowsForCurrentFilter(rows) {
+    if (!hasActiveViewFilter()) return;
+    (rows || []).forEach((row) => {
+      if (row?.id) state.pinnedRows.add(row.id);
+    });
+  }
+
   function valueOf(row, column) {
     if (!row || !column) return '';
     if (column.key === WINNER_KEY || column.options?.computed === true) {
@@ -516,6 +524,29 @@
       if (state.pinnedRows.has(row.id)) return true;
       return rowMatchesView(row);
     });
+  }
+
+  function sortRowsByPosition() {
+    state.rows.sort((a, b) => (
+      Number(a.position || 0) - Number(b.position || 0)
+      || String(a.id || '').localeCompare(String(b.id || ''))
+    ));
+  }
+
+  function applyRowPositions(positions) {
+    if (!Array.isArray(positions) || !positions.length) return false;
+    let changed = false;
+    positions.forEach((item) => {
+      const row = rowById(item?.id);
+      const position = Number(item?.position);
+      if (!row || !Number.isFinite(position)) return;
+      if (Number(row.position) !== position) {
+        row.position = position;
+        changed = true;
+      }
+    });
+    if (changed) sortRowsByPosition();
+    return changed;
   }
 
   function rememberEditedRowInFilteredView(row) {
@@ -1714,7 +1745,7 @@
     return needsRender || (state.editing && rowIds.size > 0);
   }
 
-  function applyRemoteRowsAdded(rows) {
+  function applyRemoteRowsAdded(rows, positions = []) {
     if (!Array.isArray(rows) || !rows.length) return false;
     const addedRows = [];
     rows.forEach((row) => {
@@ -1724,8 +1755,9 @@
       }
     });
     applyRemoteRowsAdded.addedRows = addedRows;
-    if (!addedRows.length) return false;
-    state.rows.sort((a, b) => Number(a.position) - Number(b.position));
+    const positionsChanged = applyRowPositions(positions);
+    if (!addedRows.length) return positionsChanged;
+    sortRowsByPosition();
     return true;
   }
 
@@ -1828,7 +1860,7 @@
           (applyRemoteCellsUpdate.rowIds || new Set()).forEach((rowId) => changedRowIds.add(rowId));
         }
       } else if (event.type === 'rows_added' || event.type === 'rows_inserted') {
-        if (applyRemoteRowsAdded(payload.rows || [])) needsFullRender = true;
+        if (applyRemoteRowsAdded(payload.rows || [], payload.positions || [])) needsFullRender = true;
       } else if (event.type === 'row_deleted') {
         if (applyRemoteRowDeleted(payload.rowId || event.rowId)) needsFullRender = true;
       } else if (event.type === 'style_updated') {
@@ -1931,7 +1963,7 @@
     socket.on('rows:added', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      if (applyRemoteRowsAdded(payload.rows)) {
+      if (applyRemoteRowsAdded(payload.rows, payload.positions || [])) {
         if (payload.mode === 'insert') renderTable();
         else appendRenderedRows(applyRemoteRowsAdded.addedRows || payload.rows);
       }
@@ -2561,19 +2593,38 @@
   }
 
   async function addRows(anchorRowId, placement, count) {
+    const anchor = String(anchorRowId || '');
+    const direction = placement === 'above' ? 'above' : 'below';
+    const total = Math.max(1, Math.min(Number(count || 1), 50));
+    if (!anchor) {
+      status('Selecione uma linha para inserir.', 'error');
+      return [];
+    }
+    const insertKey = `${anchor}:${direction}:${total}`;
+    if (state.pendingRowInserts.has(insertKey)) {
+      status('Linha ja esta sendo adicionada...', 'busy');
+      return [];
+    }
+    state.pendingRowInserts.add(insertKey);
     status('Adicionando linhas...', 'busy');
-    const data = await api('/api/rows/insert', {
-      method: 'POST',
-      body: JSON.stringify({ anchorRowId, placement, count, clientId })
-    });
-    data.rows.forEach((row) => {
-      if (!state.rows.some((item) => item.id === row.id)) state.rows.push(row);
-    });
-    state.rows.sort((a, b) => Number(a.position) - Number(b.position));
-    rememberEventId(data.eventId);
-    renderTable();
-    status('Sincronizado');
-    return data.rows;
+    try {
+      const data = await api('/api/rows/insert', {
+        method: 'POST',
+        body: JSON.stringify({ anchorRowId: anchor, placement: direction, count: total, clientId })
+      });
+      data.rows.forEach((row) => {
+        if (!state.rows.some((item) => item.id === row.id)) state.rows.push(row);
+      });
+      pinRowsForCurrentFilter(data.rows);
+      applyRowPositions(data.positions || []);
+      sortRowsByPosition();
+      rememberEventId(data.eventId);
+      renderTable();
+      status('Sincronizado');
+      return data.rows;
+    } finally {
+      state.pendingRowInserts.delete(insertKey);
+    }
   }
 
   async function appendRows(count) {
@@ -2589,7 +2640,7 @@
         added.push(row);
       }
     });
-    state.rows.sort((a, b) => Number(a.position) - Number(b.position));
+    sortRowsByPosition();
     rememberEventId(data.eventId);
     appendRenderedRows(added);
     return data.rows;
