@@ -794,7 +794,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Telas e endpoints
 
-- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso.
+- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso; a auditoria de eventos recentes fica recolhida por padrao e abre no proprio card.
 - `/login-senha-adm/` e `/login-senha-adm/index.php`: mesmo fluxo visual para acessos administrativos, filtrado por `scope='adm'` e bloqueado para usuarios sem papel administrativo/gerencial.
 - `/login-senha/api/entries/:id/reveal`: revela senha para usuario autorizado e audita visualizacao.
 - `/login-senha/api/entries/:id/copy-login`: retorna login para copiar e audita copia.

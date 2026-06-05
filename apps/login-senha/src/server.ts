@@ -850,7 +850,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>${e(view.title)} - Wimifarma</title>
-  <link rel="stylesheet" href="${basePath}/styles.css?v=20260605d">
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20260605e">
   <script src="${basePath}/app.js?v=20260605c" defer></script>
 </head>
 <body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
@@ -915,13 +915,18 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
     </section>
 
     <section class="vault-section vault-audit">
-      <div class="vault-panel-head">
-        <div>
-          <span class="vault-kicker">Auditoria</span>
-          <h2>Eventos recentes</h2>
+      <details class="vault-audit-details">
+        <summary class="vault-audit-summary">
+          <span class="vault-audit-title">
+            <span class="vault-kicker">Auditoria</span>
+            <strong>Eventos recentes</strong>
+          </span>
+          <span class="vault-audit-count">${auditRows.length} evento(s)</span>
+        </summary>
+        <div class="vault-audit-body">
+          ${renderAuditRows(auditRows)}
         </div>
-      </div>
-      ${renderAuditRows(auditRows)}
+      </details>
     </section>
   </main>
 </body>

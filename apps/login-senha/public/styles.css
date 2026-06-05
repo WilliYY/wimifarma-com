@@ -469,7 +469,80 @@ input:focus {
 }
 
 .vault-audit {
+  padding: 0;
+  overflow: hidden;
+}
+
+.vault-audit-details {
+  display: block;
+}
+
+.vault-audit-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 64px;
+  padding: clamp(14px, 2vw, 18px);
+  cursor: pointer;
+  list-style: none;
+}
+
+.vault-audit-summary::-webkit-details-marker {
+  display: none;
+}
+
+.vault-audit-summary::after {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #efc1ce;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--vault-wine);
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.vault-audit-details[open] .vault-audit-summary::after {
+  content: "-";
+}
+
+.vault-audit-summary:hover {
+  background: #fff7fa;
+}
+
+.vault-audit-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vault-audit-title strong {
+  color: var(--vault-wine);
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.vault-audit-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #fff0f4;
+  color: var(--vault-wine);
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.vault-audit-body {
   overflow-x: auto;
+  padding: 0 clamp(14px, 2vw, 18px) clamp(14px, 2vw, 18px);
 }
 
 .vault-audit-table {
