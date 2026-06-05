@@ -9,6 +9,10 @@ import {
   type CotacaoEncomendasSummary,
 } from './cotacao-command.js';
 import {
+  WHATSAPP_COMMAND_HELP_REGISTRY,
+  formatWhatsappCommandHelp,
+} from './command-help.js';
+import {
   formatPedidosCreateError,
   formatPedidosCreateSuccess,
   parsePedidosOperationalCommand,
@@ -645,7 +649,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.32';
+const SERVICE_VERSION = '0.5.33';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -2041,6 +2045,10 @@ function stripActivationPrefix(text: string): { accepted: boolean; text: string;
   return { accepted: false, text: '', reason: 'missing_prefix' };
 }
 
+function isMissingPrefixHelpOnly(row?: QueueRow): boolean {
+  return Boolean(row && isRecord(row.payload_summary) && row.payload_summary.prefix_missing_help_only === true);
+}
+
 async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS miauw_whatsapp_contacts (
@@ -3110,7 +3118,24 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   ) {
     const prefix = stripActivationPrefix(bodyText);
     if (!prefix.accepted) {
-      ignoreReasons.push(prefix.reason);
+      if (
+        prefix.reason === 'missing_prefix'
+        && senderAllowed
+        && ignoreReasons.length === 0
+        && !message.fromMe
+        && (!message.isGroup || GROUPS_ENABLED)
+        && !isAudioMessage
+        && !isPixReceiptMediaMessage
+      ) {
+        message.payloadSummary = {
+          ...message.payloadSummary,
+          activation_prefix_missing: true,
+          prefix_missing_help_only: true,
+          help_registry_version: 'whatsapp-command-help-2026-06-05',
+        };
+      } else {
+        ignoreReasons.push(prefix.reason);
+      }
     } else {
       bodyText = prefix.text;
     }
@@ -7221,6 +7246,13 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+  if (isMissingPrefixHelpOnly(row)) {
+    return {
+      text: formatWhatsappCommandHelp(allowedModuleKeys(allowedCards)),
+      engine: 'local',
+      reason: 'missing_prefix_help_only',
+    };
+  }
   const cotacaoEncomendasCommand = parseCotacaoEncomendasCommand(message);
   if (cotacaoEncomendasCommand) {
     if (!moduleAllowed(allowedCards, 'cotacao')) {
@@ -9558,6 +9590,8 @@ function publicStatus(): JsonRecord {
     require_prefix: REQUIRE_PREFIX,
     prefix: REQUIRE_PREFIX ? PREFIX : '',
     allow_commands_without_prefix: ALLOW_COMMANDS_WITHOUT_PREFIX,
+    missing_prefix_help_enabled: REQUIRE_PREFIX,
+    command_help_categories: WHATSAPP_COMMAND_HELP_REGISTRY.length,
     groups_enabled: GROUPS_ENABLED,
     ai_mode: REPLY_ENGINE,
     gemini_configured: geminiConfigured(),
