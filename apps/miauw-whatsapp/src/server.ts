@@ -719,7 +719,15 @@ const DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES = [
 const PIX_RECEIPT_DESTINATION_ALIASES = parseTextListEnv(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES'), DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES);
 const PIX_RECEIPT_MIN_TARGET_SCORE = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100', 70, 40, 100) / 100;
 const PIX_RECEIPT_TARGET_NOT_FOUND_REPLY = 'Nao achei nosso CNPJ nesse comprovante. Nao gravei nada.';
-const PIX_CNPJ_MANUAL_HINT_REPLY = 'Nao consegui ler bem o comprovante \u{1F63F} Me mande assim: miauby pix cnpj 28,90 sueli.';
+const PIX_CNPJ_MANUAL_HINT_REPLY = [
+  'Não consegui ler esse comprovante com segurança 😿',
+  '',
+  'Para lançar manualmente, me envie:',
+  'miauby pix cnpj valor responsável',
+  '',
+  'Exemplo:',
+  'miauby pix cnpj 28,90 Sueli',
+].join('\n');
 const PIX_RECEIPT_NOT_LIKE_REPLY = 'Isso ai é um comprovante pix?';
 const AUDIO_TRANSCRIPTION_UNCLEAR_REPLY = 'Nao consegui entender bem esse audio. Me manda em texto ou grava de novo falando uma frase clara.';
 const AUDIO_TRANSCRIPTION_SEED_PHRASE = 'wimifarma miauby cotacao cashback sangria ean distribuidora encomenda farmacia popular';
@@ -8455,15 +8463,8 @@ function pixReceiptDuplicateReply(match: PixReceiptDuplicateMatch, mediaOnly = f
 }
 
 function pixReceiptMissingFieldsReply(missing: string[]): string {
-  const clean = missing.map((item) => safeText(item, 60)).filter(Boolean);
-  const joined = clean.join(', ');
-  if (clean.length === 1 && normalizeIntentText(clean[0]).includes('valor')) {
-    return PIX_CNPJ_MANUAL_HINT_REPLY;
-  }
-  if (clean.length === 1 && normalizeIntentText(clean[0]).includes('pagador')) {
-    return PIX_CNPJ_MANUAL_HINT_REPLY;
-  }
-  return joined ? `${PIX_CNPJ_MANUAL_HINT_REPLY} Faltou: ${joined}.` : PIX_CNPJ_MANUAL_HINT_REPLY;
+  void missing;
+  return PIX_CNPJ_MANUAL_HINT_REPLY;
 }
 
 function pixReceiptExtractionHints(row: QueueRow): PixReceiptExtractionHints {
