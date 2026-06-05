@@ -64,7 +64,7 @@ body {
   gap: 8px;
 }
 
-.vault-topbar a,
+.vault-topbar nav a,
 .vault-topbar span {
   display: inline-flex;
   align-items: center;

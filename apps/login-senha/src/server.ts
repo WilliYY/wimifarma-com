@@ -748,7 +748,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>Login / Senha - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605b">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605c">
   <script src="${BASE_PATH}/app.js?v=20260605b" defer></script>
 </head>
 <body data-base-path="${e(BASE_PATH)}">
