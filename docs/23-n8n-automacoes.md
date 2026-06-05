@@ -76,7 +76,7 @@ n8n --version
 
 O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos`, `Fechamento de caixa` e `Encomenda da Cotacao`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron/worker continue ativo. O card `Fechamento de caixa` tambem tenta mostrar a leitura atual do Financeiro, incluindo se existe caixa aberto nos ultimos 10 dias e quais dias estao pendentes.
 
-Desde 2026-06-05, a resposta WhatsApp de ajuda (`texto sem miauby` ou `miauby n8n`) nao lista todas as rotinas do painel. Ela mostra apenas avisos que podem ser enviados para usuarios autorizados: `Chegada de pedidos`, `Fechamento de caixa`, `Encomenda da Cotacao` e `Resumo Pix/OCR`. Rotinas internas como smoke pos-deploy, watchdog, Evolution/Baileys, deploy/checks e webhooks tecnicos continuam no painel/log, mas nao entram no menu enviado aos usuarios.
+Desde 2026-06-05, a resposta WhatsApp de ajuda (`texto sem miauby` ou `miauby n8n`) nao lista todas as rotinas do painel. Ela mostra apenas avisos que podem ser enviados para usuarios autorizados: `Chegada de pedidos`, `Fechamento de caixa`, `Encomenda da Cotacao` e `Resumo Pix/OCR`. Rotinas internas como smoke pos-deploy, watchdog, Evolution/Baileys, deploy/checks e webhooks tecnicos continuam no painel/log, mas nao entram no menu enviado aos usuarios. O alerta Evolution/Baileys tambem ficou log-only: mesmo se o workflow enviar `notify=problems`, o backend registra a checagem e nao cria outbox/WhatsApp.
 
 ## Rotinas iniciais
 
@@ -309,7 +309,7 @@ Se falhar, n8n envia alerta e pode abrir tarefa de erro. Ele nao faz rollback au
 
 Agenda: a cada 30 minutos.
 
-Destino: numeros autorizados com card `Miauby`, somente quando houver problema por padrao.
+Destino: sem envio por WhatsApp. O resultado fica em `miauw_whatsapp_automation_runs` e no painel interno.
 
 Workflow versionado:
 
@@ -329,7 +329,7 @@ Payload:
 { "notify": "problems", "lookback_minutes": 120 }
 ```
 
-O endpoint verifica, pelo bridge, se a Evolution esta conectada, se o provedor esta pausado e se houve outbox `failed/dead` recente pelo transporte `evolution`. Ele e a versao segura para rotina n8n ativa: nao monta Docker socket, nao executa shell no container do n8n e nao le segredo da Evolution diretamente.
+O endpoint verifica, pelo bridge, se a Evolution esta conectada, se o provedor esta pausado e se houve outbox `failed/dead` recente pelo transporte `evolution`. Desde 2026-06-05, ele ignora como falha ativa `dead/stale_pending_expired` e `dead/codex_test_wrong_instance_resolved`, porque representam pendencia expirada segura ou teste/instancia errada ja resolvido. Ele e a versao segura para rotina n8n ativa: nao monta Docker socket, nao executa shell no container do n8n, nao le segredo da Evolution diretamente e nao envia WhatsApp para a equipe.
 
 Para auditoria exata dos timeouts recorrentes do Baileys em `executeInitQueries`/`fetchProps`, o runbook de host continua sendo o script:
 
@@ -390,8 +390,8 @@ Esta tabela serve como cola operacional: o n8n agenda, mas quem decide destinata
 | Fechamento de caixa | Todo dia as 18h | Contatos reais autorizados com card `Financeiro` | Avisa dias de caixa em aberto/conferencia/sem registro nos ultimos 10 dias | Adicionar/remover numero autorizado, mudar horario, mudar janela de dias, mudar texto, pausar/ativar no painel | Nao fecha caixa, nao cria faturamento e nao grava sangria sem fluxo auditado |
 | Encomenda da Cotacao | Dia seguinte as 16h, criada pelo app da Cotacao | Contatos reais autorizados com card `Cotacao` | Pergunta se a encomenda marcada na Cotacao chegou, usando lembrete persistido no Postgres da Cotacao | Liberar/remover card `Cotacao`, pausar/ativar rotina no painel, mudar texto ou janela de retry | Nao altera cotacao e nao usa n8n para salvar dados |
 | Smoke check pos-deploy | Manual ou apos deploy | Contatos reais autorizados com card `Miauby` | Testa rotas/health principais e avisa problema | Enviar tambem sucesso, adicionar rota de health, mudar cooldown, adicionar numero com card `Miauby` | Nao faz rollback automatico |
-| Watchdog WhatsApp | A cada poucos minutos | Contatos reais autorizados com card `Miauby`, normalmente so com problema | Vigia fila, outbox, provider pausado e respostas travadas | Ajustar frequencia, cooldown, severidade, destinatarios e texto de alerta | Nao dispara mensagem atrasada fora de contexto; pendencias antigas viram `dead` |
-| Evolution/Baileys | A cada 30 min | Contatos reais autorizados com card `Miauby` | Avisa conexao ruim, provedor pausado ou falha recente de envio Evolution | Ajustar janela, horario/frequencia, texto e destinatarios por card `Miauby` | Nao executa Docker/shell pelo n8n e nao reinicia Evolution automaticamente |
+| Watchdog WhatsApp | A cada poucos minutos | Sem envio por WhatsApp; fica no painel/log | Vigia fila, outbox, provider pausado e respostas travadas | Ajustar frequencia, janela, severidade e criterios de log | Nao dispara mensagem atrasada fora de contexto; pendencias antigas viram `dead` |
+| Evolution/Baileys | A cada 30 min | Sem envio por WhatsApp; fica no painel/log | Registra conexao ruim, provedor pausado ou falha recente de envio Evolution | Ajustar janela, horario/frequencia e criterios de log | Nao executa Docker/shell pelo n8n e nao reinicia Evolution automaticamente |
 | Resumo Pix/OCR | Todo dia as 19h10 | Contatos reais autorizados com card `Financeiro` | Resume falhas/campos faltando na leitura Pix por midia | Mudar horario, janela, texto, criterios do resumo ou destinatarios por card `Financeiro` | Nao grava Pix, nao confirma lancamento e nao acessa banco financeiro |
 | Pedidos e boletos | Planejada/expansivel | Contatos com card `Pedidos` ou card definido pela rotina | Pode resumir boletos vencendo, pedidos de hoje e atrasos | Criar rotina nova, escolher horario, definir filtros e destinatarios por card | Baixa/pagamento continua exigindo sistema/core com confirmacao |
 | Financeiro operacional | Planejada/expansivel | Contatos com card `Financeiro` | Pode lembrar sangria, PIX, maquininha ou divergencia | Criar rotina nova, mudar horario, escolher quais alertas entram | Escrita de dinheiro continua em endpoint interno com confirmacao/auditoria |

@@ -869,10 +869,10 @@ const N8N_WORKFLOW_CARDS = [
     title: 'Evolution/Baileys',
     schedule: 'A cada 30 min',
     moduleKey: 'miauw',
-    description: 'Alerta quando o transporte Evolution/Baileys mostra conexao ruim, pausa de provedor ou falhas recentes.',
+    description: 'Registra internamente quando o transporte Evolution/Baileys mostra conexao ruim, pausa de provedor ou falhas recentes.',
     n8nAction: 'O n8n chama um endpoint interno seguro do bridge. Ele nao executa shell, nao monta Docker socket e nao acessa segredo da Evolution.',
-    miaubyAction: 'Miauby envia alerta apenas para contatos com card Miauby quando houver problema. O script de host continua como runbook para auditoria exata de logs.',
-    messagePreview: 'Ex.: "Alerta Evolution/Baileys: conexao nao esta open ou houve envio failed/dead recente."',
+    miaubyAction: 'Miauby registra o resultado no painel/log interno, sem enviar WhatsApp para a equipe. O script de host continua como runbook para auditoria exata de logs.',
+    messagePreview: 'Ex.: "Alerta Evolution/Baileys: conexao nao esta open ou houve envio failed/dead recente." fica apenas no log interno.',
     safety: 'Somente leitura e alerta; nao reinicia container nem atualiza a Evolution sozinho.',
     controlNote: 'Desligar aqui faz o backend ignorar o disparo mesmo que o workflow continue agendado.',
     settingsKey: EVOLUTION_BAILEYS_AUTOMATION_KEY,
@@ -11398,7 +11398,7 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
        FROM miauw_whatsapp_outbox
       WHERE status IN ('failed', 'dead')
         AND updated_at >= NOW() - ($1::text || ' minutes')::interval
-        AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+        AND NOT (status = 'dead' AND COALESCE(error_summary, '') IN ('stale_pending_expired', 'codex_test_wrong_instance_resolved'))
       GROUP BY status`,
     [String(WATCHDOG_LOOKBACK_MINUTES)],
   );
@@ -11587,7 +11587,7 @@ async function integrationDatabaseSnapshot(): Promise<JsonRecord> {
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
          FROM miauw_whatsapp_outbox
-        WHERE NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+        WHERE NOT (status = 'dead' AND COALESCE(error_summary, '') IN ('stale_pending_expired', 'codex_test_wrong_instance_resolved'))
         GROUP BY status
         ORDER BY status`,
     ),
@@ -12180,7 +12180,7 @@ async function evolutionDatabaseSnapshot(): Promise<JsonRecord> {
       `SELECT status, COUNT(*)::text AS count
          FROM miauw_whatsapp_outbox
         WHERE provider = 'evolution'
-          AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+          AND NOT (status = 'dead' AND COALESCE(error_summary, '') IN ('stale_pending_expired', 'codex_test_wrong_instance_resolved'))
         GROUP BY status
         ORDER BY status`,
     ),
@@ -12253,7 +12253,7 @@ async function evolutionDatabaseSnapshot(): Promise<JsonRecord> {
          FROM miauw_whatsapp_outbox
         WHERE provider = 'evolution'
           AND status IN ('failed', 'dead')
-          AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+          AND NOT (status = 'dead' AND COALESCE(error_summary, '') IN ('stale_pending_expired', 'codex_test_wrong_instance_resolved'))
         ORDER BY updated_at DESC
         LIMIT 1`,
     ),
@@ -12516,7 +12516,7 @@ async function runEvolutionBaileysAlert(mode: AutomationNotifyMode, dryRun: bool
       WHERE provider = 'evolution'
         AND status IN ('failed', 'dead')
         AND updated_at >= NOW() - ($1::text || ' minutes')::interval
-        AND NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+        AND NOT (status = 'dead' AND COALESCE(error_summary, '') IN ('stale_pending_expired', 'codex_test_wrong_instance_resolved'))
       GROUP BY status
       ORDER BY status`,
     [String(lookbackMinutes)],
@@ -12552,27 +12552,38 @@ async function runEvolutionBaileysAlert(mode: AutomationNotifyMode, dryRun: bool
       dry_run: true,
       enabled,
       notify: mode,
+      notify_effective: 'never',
+      log_only: true,
       lookback_minutes: lookbackMinutes,
       recipients: recipients.length,
       issues,
       preview: message,
-      note: 'Checagem segura via backend; o script de host permanece como runbook para contar timeouts em logs Docker.',
+      note: 'Checagem segura via backend; resultado fica em log interno. O script de host permanece como runbook para contar timeouts em logs Docker.',
     };
   }
 
-  const notification = await sendAutomationNotification(
+  const notification = await recordAutomationInternalLog(
     source,
     automationSeverity(issues, hasProblems),
     message,
     mode,
     hasProblems,
     'miauw',
+    {
+      issue_count: issues.length,
+      issue_types: issues.map((issue) => issue.type).slice(0, 12),
+      lookback_minutes: lookbackMinutes,
+      requested_notify_mode: mode,
+      delivery_policy: 'log_only',
+    },
   );
 
   return {
     ok: !hasProblems,
     enabled,
     notify: mode,
+    notify_effective: 'never',
+    log_only: true,
     lookback_minutes: lookbackMinutes,
     issues,
     notification,
@@ -14074,7 +14085,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     pgPool.query<CountRow>(
       `SELECT status, COUNT(*)::text AS count
          FROM miauw_whatsapp_outbox
-        WHERE NOT (status = 'dead' AND error_summary = 'stale_pending_expired')
+        WHERE NOT (status = 'dead' AND COALESCE(error_summary, '') IN ('stale_pending_expired', 'codex_test_wrong_instance_resolved'))
         GROUP BY status
         ORDER BY status`,
     ),
