@@ -606,6 +606,77 @@ a {
     overflow-wrap: anywhere;
 }
 
+.task-whatsapp-pill {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    max-width: 146px;
+    border-radius: 12px;
+    padding: 7px 9px;
+    border: 1px solid #bae6fd;
+    background: #f0f9ff;
+    color: #075985;
+    font-size: 0.68rem;
+    font-weight: 950;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+.task-whatsapp-pill strong,
+.task-whatsapp-pill span,
+.task-whatsapp-pill small {
+    display: block;
+}
+
+.task-whatsapp-pill strong {
+    color: #0c4a6e;
+    font-size: 0.7rem;
+}
+
+.task-whatsapp-pill span {
+    color: #075985;
+    font-size: 0.78rem;
+}
+
+.task-whatsapp-pill small {
+    color: #46606d;
+    font-size: 0.62rem;
+}
+
+.task-whatsapp-pill.status-sent {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.task-whatsapp-pill.status-sent strong,
+.task-whatsapp-pill.status-sent span {
+    color: #166534;
+}
+
+.task-whatsapp-pill.status-failed {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.task-whatsapp-pill.status-failed strong,
+.task-whatsapp-pill.status-failed span {
+    color: #991b1b;
+}
+
+.task-whatsapp-pill.status-skipped,
+.task-whatsapp-pill.status-cancelled {
+    border-color: #e2e8f0;
+    background: #f8fafc;
+}
+
+.task-whatsapp-pill.status-skipped strong,
+.task-whatsapp-pill.status-skipped span,
+.task-whatsapp-pill.status-cancelled strong,
+.task-whatsapp-pill.status-cancelled span {
+    color: #475569;
+}
+
 .task-reminder-pill.status-sent {
     background: #dcfce7;
     color: #166534;

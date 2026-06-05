@@ -85,6 +85,21 @@ type TaskReminderRow = {
   updated_at: Date | string | null;
 };
 
+type TaskReminderSummaryRow = {
+  task_id: string | number;
+  sent_count: string | number;
+  failed_count: string | number;
+  skipped_count: string | number;
+  cancelled_count: string | number;
+  total_attempts: string | number;
+  last_status: TaskReminderStatus | null;
+  last_kind: TaskReminderKind | null;
+  last_remind_at: Date | string | null;
+  last_sent_at: Date | string | null;
+  last_attempt_at: Date | string | null;
+  last_error_summary: string | null;
+};
+
 type DueTaskReminderRow = TaskReminderRow & {
   priority: TaskPriority;
   title: string;
@@ -982,6 +997,57 @@ async function latestReminderMap(taskIds: number[]): Promise<Map<number, TaskRem
   return map;
 }
 
+async function reminderSummaryMap(taskIds: number[]): Promise<Map<number, TaskReminderSummaryRow>> {
+  const uniqueIds = [...new Set(taskIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+  const map = new Map<number, TaskReminderSummaryRow>();
+  if (uniqueIds.length === 0) return map;
+  const result = await pgPool.query<TaskReminderSummaryRow>(
+    `WITH base AS (
+       SELECT *
+         FROM tarefa_reminders
+        WHERE task_id = ANY($1::bigint[])
+     ),
+     latest AS (
+       SELECT DISTINCT ON (task_id)
+              task_id,
+              status AS last_status,
+              kind AS last_kind,
+              remind_at AS last_remind_at,
+              sent_at AS last_sent_at,
+              last_attempt_at,
+              error_summary AS last_error_summary
+         FROM base
+        ORDER BY task_id,
+                 COALESCE(updated_at, last_attempt_at, sent_at, requested_at, created_at) DESC,
+                 id DESC
+     )
+     SELECT base.task_id,
+            COUNT(*) FILTER (WHERE base.status = 'sent')::int AS sent_count,
+            COUNT(*) FILTER (WHERE base.status = 'failed')::int AS failed_count,
+            COUNT(*) FILTER (WHERE base.status = 'skipped')::int AS skipped_count,
+            COUNT(*) FILTER (WHERE base.status = 'cancelled')::int AS cancelled_count,
+            COALESCE(SUM(base.attempts), 0)::int AS total_attempts,
+            latest.last_status,
+            latest.last_kind,
+            latest.last_remind_at,
+            latest.last_sent_at,
+            latest.last_attempt_at,
+            latest.last_error_summary
+       FROM base
+       JOIN latest ON latest.task_id = base.task_id
+      GROUP BY base.task_id,
+               latest.last_status,
+               latest.last_kind,
+               latest.last_remind_at,
+               latest.last_sent_at,
+               latest.last_attempt_at,
+               latest.last_error_summary`,
+    [uniqueIds],
+  );
+  for (const row of result.rows) map.set(Number(row.task_id), row);
+  return map;
+}
+
 async function auditTaskEvent(taskId: number | null, userId: number | null, action: string, summary: string): Promise<void> {
   await pgPool.query(
     'INSERT INTO tarefa_audit_events (task_id, user_id, action, summary) VALUES ($1, $2, $3, $4)',
@@ -1479,6 +1545,40 @@ function renderReminderPill(reminder: TaskReminderRow | undefined): string {
   return `<span class="task-reminder-pill status-${e(status)}">Miauby ${e(reminderKindLabel(kind))}: ${e(reminderStatusLabel(status))} ${e(when)}</span>`;
 }
 
+function countValue(value: unknown): number {
+  const count = Number(value || 0);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function renderWhatsappReminderStatus(summary: TaskReminderSummaryRow | undefined, canManageAll: boolean): string {
+  if (!canManageAll || !summary) return '';
+  const status = summary.last_status || 'scheduled';
+  const sentCount = countValue(summary.sent_count);
+  const failedCount = countValue(summary.failed_count);
+  const skippedCount = countValue(summary.skipped_count);
+  const cancelledCount = countValue(summary.cancelled_count);
+  const totalAttempts = countValue(summary.total_attempts);
+  const lastDate = summary.last_sent_at || summary.last_attempt_at || summary.last_remind_at;
+  const detail = sentCount > 0
+    ? `Ultimo envio: ${brDate(summary.last_sent_at || lastDate, true)}`
+    : `${reminderStatusLabel(status)}: ${brDate(lastDate, true)}`;
+  const title = [
+    `Miauby Whats`,
+    `${sentCount} envio(s) confirmado(s)`,
+    totalAttempts > 0 ? `${totalAttempts} tentativa(s)` : '',
+    failedCount > 0 ? `${failedCount} falha(s)` : '',
+    skippedCount > 0 ? `${skippedCount} ignorado(s)` : '',
+    cancelledCount > 0 ? `${cancelledCount} cancelado(s)` : '',
+    summary.last_error_summary ? `Ultimo detalhe: ${cleanText(summary.last_error_summary, 180)}` : '',
+  ].filter(Boolean).join(' | ');
+  return `
+    <span class="task-whatsapp-pill status-${e(status)}" title="${e(title)}">
+      <strong>Miauby Whats</strong>
+      <span>${e(sentCount)} envio(s)</span>
+      <small>${e(detail)}</small>
+    </span>`;
+}
+
 function assigneeLabelForTask(task: TaskRow, users: AssignableTaskUserRow[]): string {
   const assignedUserId = Number(task.assigned_core_user_id || 0);
   const currentUser = users.find((user) => Number(user.id || 0) === assignedUserId);
@@ -1612,6 +1712,7 @@ function renderTask(
   req: Request,
   task: TaskRow,
   reminders: Map<number, TaskReminderRow>,
+  reminderSummaries: Map<number, TaskReminderSummaryRow>,
   assignableUsers: AssignableTaskUserRow[],
   canManageAll: boolean,
   history = false,
@@ -1626,6 +1727,7 @@ function renderTask(
   const assignedUserId = Number(task.assigned_core_user_id || 0);
   const assignedLabel = assigneeLabelForTask(task, assignableUsers);
   const reminder = reminders.get(id);
+  const reminderSummary = reminderSummaries.get(id);
   const priorityOptions = (Object.entries(priorities) as Array<[TaskPriority, { label: string }]>)
     .map(([key, item]) => `<option value="${e(key)}" ${key === priority ? 'selected' : ''}>${e(item.label)}</option>`)
     .join('');
@@ -1640,6 +1742,7 @@ function renderTask(
             <span class="priority-pill">${e(priorityLabel(priority))}</span>
             ${assignedUserId > 0 ? `<span class="task-private-pill">Privada${assignedLabel ? `: ${e(assignedLabel)}` : ''}</span>` : ''}
             ${renderReminderPill(reminder)}
+            ${renderWhatsappReminderStatus(reminderSummary, canManageAll)}
             <small>${e(status === 'aberta' ? date : finishDate)}</small>
         </div>
         <div class="task-main">
@@ -1918,6 +2021,7 @@ async function renderApp(req: Request): Promise<string> {
   let history: TaskRow[] = [];
   let assignableUsers: AssignableTaskUserRow[] = [];
   let reminders = new Map<number, TaskReminderRow>();
+  let reminderSummaries = new Map<number, TaskReminderSummaryRow>();
   let loadError = '';
 
   try {
@@ -1927,7 +2031,11 @@ async function renderApp(req: Request): Promise<string> {
       historyTasks(viewerId, canManageAll),
       canManageAll ? listAssignableTaskUsers() : Promise.resolve([]),
     ]);
-    reminders = await latestReminderMap([...open, ...history].map((task) => Number(task.id || 0)));
+    const loadedTaskIds = [...open, ...history].map((task) => Number(task.id || 0));
+    reminders = await latestReminderMap(loadedTaskIds);
+    if (canManageAll) {
+      reminderSummaries = await reminderSummaryMap(loadedTaskIds);
+    }
   } catch {
     loadError = 'Nao consegui carregar as tarefas agora.';
   }
@@ -1941,7 +2049,7 @@ async function renderApp(req: Request): Promise<string> {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tarefas - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
-    <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-reminder-layout">
+    <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605-miauby-whats-status">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
     <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
@@ -2009,7 +2117,7 @@ async function renderApp(req: Request): Promise<string> {
                     <strong>${e(open.length)} na fila</strong>
                 </div>
                 <div class="task-list">
-                    ${open.length ? open.map((task) => renderTask(req, task, reminders, assignableUsers, canManageAll)).join('') : '<div class="task-empty">Sem tarefa aberta. Milagre administrativo, mas eu nao confio cegamente.</div>'}
+                    ${open.length ? open.map((task) => renderTask(req, task, reminders, reminderSummaries, assignableUsers, canManageAll)).join('') : '<div class="task-empty">Sem tarefa aberta. Milagre administrativo, mas eu nao confio cegamente.</div>'}
                 </div>
             </section>
         </section>
@@ -2020,7 +2128,7 @@ async function renderApp(req: Request): Promise<string> {
                 <strong>${e(history.length)}</strong>
             </summary>
             <div class="task-history-list">
-                ${history.length ? history.map((task) => renderTask(req, task, reminders, assignableUsers, canManageAll, true)).join('') : '<div class="task-empty">Nada no historico ainda.</div>'}
+                ${history.length ? history.map((task) => renderTask(req, task, reminders, reminderSummaries, assignableUsers, canManageAll, true)).join('') : '<div class="task-empty">Nada no historico ainda.</div>'}
             </div>
         </details>
     </main>
