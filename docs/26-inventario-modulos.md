@@ -786,24 +786,27 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 ### Rota atual
 
 - Rota publica oficial: `/login-senha/`.
-- Proxy Apache: `docker/php/Dockerfile` envia `/login-senha/` para `wimifarma-login-senha-app:3950/login-senha/`.
+- Rota administrativa oficial: `/login-senha-adm/`, usando o mesmo app e banco, mas com `scope='adm'`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/login-senha/` e `/login-senha-adm/` para `wimifarma-login-senha-app:3950`.
 - App oficial: `apps/login-senha`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres dedicado `wimifarma_login_senha`.
-- Auth/permissao: `core_users`, `WFHOME_SSO` e permissao `core_user_module_permissions.module_key='login_senha'`.
+- Auth/permissao: `core_users`, `WFHOME_SSO` e permissao `core_user_module_permissions.module_key='login_senha'` para o cofre comum; o cofre ADM exige `adm`, role `admin` ou role `gerente`.
 
 ### Telas e endpoints
 
 - `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso.
+- `/login-senha-adm/` e `/login-senha-adm/index.php`: mesmo fluxo visual para acessos administrativos, filtrado por `scope='adm'` e bloqueado para usuarios sem papel administrativo/gerencial.
 - `/login-senha/api/entries/:id/reveal`: revela senha para usuario autorizado e audita visualizacao.
 - `/login-senha/api/entries/:id/copy-login`: retorna login para copiar e audita copia.
 - `/login-senha/api/entries/:id/copy-password`: retorna senha para copiar e audita copia.
-- `/login-senha/health`: health do banco do cofre e do core.
+- `/login-senha/health` e `/login-senha-adm/health`: health do banco do cofre e do core.
 
 ### Permissoes e sessao
 
 - Sessao propria `WFLOGINSENHA`.
 - `adm`/role `admin` entram como recuperacao administrativa.
 - Usuario comum precisa permissao explicita `login_senha=true`; ausencia de linha nao libera o modulo.
+- O cofre ADM nao depende de permissao individual editavel; exige `adm`, role `admin` ou role `gerente` tambem na URL direta e nas APIs.
 - Escritas e APIs de reveal/copy usam CSRF.
 - Home limpa o cookie `WFLOGINSENHA` no logout central.
 
@@ -813,8 +816,8 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Tabelas Postgres oficiais
 
-- `login_senha_entries`: Nome, Login / Usuario e senha cifrada (`password_ciphertext`, `password_iv`, `password_tag`).
-- `login_senha_audit_events`: auditoria local com snapshot curto do ator e resumo sem senha.
+- `login_senha_entries`: Nome, Login / Usuario, `scope` e senha cifrada (`password_ciphertext`, `password_iv`, `password_tag`).
+- `login_senha_audit_events`: auditoria local com `scope`, snapshot curto do ator e resumo sem senha.
 - `login_senha_sessions`: sessao do Express.
 - `core_audit_logs`: espelho curto de auditoria.
 
@@ -834,11 +837,13 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 - Editar nome/login e, opcionalmente, trocar senha.
 - Arquivar acesso sem apagar registro.
 - Auditar revelar/copiar senha e copiar login.
+- Todas as operacoes filtram por `scope` da rota para impedir que um ID do cofre ADM seja aberto pela rota comum, ou vice-versa.
 
 ### Integracoes
 
-- Home publica exibe o card `Login / Senha` antes de `Usuarios`.
+- Home publica exibe `Login / Senha` e, para `adm`/`admin`/`gerente`, `Login / Senha ADM` antes de `Usuarios`.
 - Usuarios libera/bloqueia o modulo pelo card `Login / Senha`.
+- `Login / Senha ADM` nao aparece como checkbox comum no Usuarios; o acesso e por papel.
 - Nao ha integracao com Miauby WhatsApp, Gemini ou contexto generativo.
 
 ### Riscos
@@ -849,7 +854,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Proxima acao segura
 
-Validar no VPS `/login-senha/health`, card na Home, bloqueio por URL direta para usuario sem permissao, criar/editar/arquivar acesso e auditoria de mostrar/copiar sem senha em logs.
+Validar no VPS `/login-senha/health` e `/login-senha-adm/health`, cards na Home, bloqueio por URL direta para usuario sem permissao/papel, criar/editar/arquivar acesso nos dois scopes e auditoria de mostrar/copiar sem senha em logs.
 
 ## Cotacao
 

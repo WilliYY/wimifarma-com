@@ -51,7 +51,7 @@ O script mostra:
 | XP | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Financeiro | Node.js + TypeScript + Postgres oficial | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Usuarios | Node.js + TypeScript + Postgres core | sem MySQL operacional para usuarios novos | evoluir enforcement por modulo | moderno |
-| Login / Senha | Node.js + TypeScript + Postgres dedicado | sem legado MySQL/PHP | cofre cifrado + permissao explicita + auditoria | moderno |
+| Login / Senha | Node.js + TypeScript + Postgres dedicado | sem legado MySQL/PHP | cofre cifrado comum + cofre ADM por scope + permissao/auditoria | moderno |
 | Cashback | Node.js + TypeScript + Postgres + core auth | sem dependencia MySQL no app desde 2026-05-30 | Postgres puro + core auth/auditoria | moderno |
 | Miauby interno | PHP + Node agent sombra + servico/migrador Postgres sombra + core auth | `miauw_*` oficial em MySQL, copia sanitizada em `wimifarma_miauby` com paridade interna | Node/TypeScript + Postgres `wimifarma_miauby`, com alias/fallback `miauw` ate corte | 7 |
 | Miauby WhatsApp | Node.js + TypeScript + Postgres | sem MySQL operacional | manter/evoluir | moderno |
@@ -143,12 +143,12 @@ Usuarios foi criado em `apps/usuarios`:
 
 Login / Senha foi criado em `apps/login-senha`:
 
-- rota/proxy oficial em `/login-senha/`;
+- rota/proxy oficial em `/login-senha/` e `/login-senha-adm/`;
 - app Node.js 22 + TypeScript + Express;
 - banco/schema alvo `wimifarma_login_senha`;
-- tabelas `login_senha_entries`, `login_senha_audit_events` e sessoes `login_senha_sessions`;
+- tabelas `login_senha_entries`, `login_senha_audit_events` e sessoes `login_senha_sessions`, com `scope='geral'` e `scope='adm'`;
 - login unico por `core_users`/`WFHOME_SSO`;
-- permissao individual `login_senha` no painel Usuarios, default fechada para usuarios comuns;
+- permissao individual `login_senha` no painel Usuarios, default fechada para usuarios comuns; o cofre ADM nao usa checkbox comum e exige `adm`, `admin` ou `gerente`;
 - senhas cifradas por AES-256-GCM e auditoria sem valor de senha;
 - sem legado MySQL/PHP, importador, espelho ou fallback.
 

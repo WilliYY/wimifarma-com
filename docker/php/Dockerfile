@@ -141,6 +141,10 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/login-senha-adm/" "http://wimifarma-login-senha-app:3950/login-senha-adm/"'; \
+        echo 'ProxyPassReverse "/login-senha-adm/" "http://wimifarma-login-senha-app:3950/login-senha-adm/"'; \
+        echo 'ProxyPass "/login-senha-adm" "http://wimifarma-login-senha-app:3950/login-senha-adm"'; \
+        echo 'ProxyPassReverse "/login-senha-adm" "http://wimifarma-login-senha-app:3950/login-senha-adm"'; \
         echo 'ProxyPass "/login-senha/" "http://wimifarma-login-senha-app:3950/login-senha/"'; \
         echo 'ProxyPassReverse "/login-senha/" "http://wimifarma-login-senha-app:3950/login-senha/"'; \
         echo 'ProxyPass "/login-senha" "http://wimifarma-login-senha-app:3950/login-senha"'; \

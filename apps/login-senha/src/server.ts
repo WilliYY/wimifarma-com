@@ -32,6 +32,7 @@ type CoreUserRow = {
 
 type EntryRow = {
   id: string;
+  scope: VaultScope;
   name: string;
   login_username: string;
   password_ciphertext: string;
@@ -47,6 +48,7 @@ type EntryRow = {
 
 type AuditRow = {
   id: string;
+  scope: VaultScope;
   actor_user_id: string | number | null;
   actor_username: string | null;
   actor_display_name: string | null;
@@ -60,6 +62,19 @@ type EncryptedPassword = {
   ciphertext: string;
   iv: string;
   tag: string;
+};
+
+type VaultScope = 'geral' | 'adm';
+
+type VaultView = {
+  scope: VaultScope;
+  title: string;
+  navLabel: string;
+  kicker: string;
+  subtitle: string;
+  createKicker: string;
+  blockedAction: string;
+  blockedDetail: string;
 };
 
 declare module 'express-session' {
@@ -78,6 +93,8 @@ const MODULE_KEY = 'login_senha';
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/login-senha');
+const ADMIN_BASE_PATH = normalizeBasePath(env.LOGIN_SENHA_ADMIN_BASE_PATH || '/login-senha-adm');
+const ROUTE_BASES = Array.from(new Set([BASE_PATH, ADMIN_BASE_PATH]));
 const PORT = Number.parseInt(env.PORT || '3950', 10);
 const SESSION_SECRET = env.LOGIN_SENHA_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const VAULT_KEY_SOURCE = cleanEnv('LOGIN_SENHA_VAULT_KEY') || SESSION_SECRET;
@@ -87,6 +104,29 @@ const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIM
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
+
+const VAULT_VIEWS: Record<VaultScope, VaultView> = {
+  geral: {
+    scope: 'geral',
+    title: 'Login / Senha',
+    navLabel: 'Login / Senha',
+    kicker: 'Cofre interno',
+    subtitle: 'Acessos da farmacia com senha cifrada e auditoria de uso.',
+    createKicker: 'Novo acesso',
+    blockedAction: 'login_senha_acesso_bloqueado',
+    blockedDetail: 'Tentativa bloqueada no modulo Login / Senha.',
+  },
+  adm: {
+    scope: 'adm',
+    title: 'Login / Senha ADM',
+    navLabel: 'Login / Senha ADM',
+    kicker: 'Cofre administrativo',
+    subtitle: 'Acessos administrativos com senha cifrada e auditoria de uso.',
+    createKicker: 'Novo acesso ADM',
+    blockedAction: 'login_senha_adm_acesso_bloqueado',
+    blockedDetail: 'Tentativa bloqueada no modulo Login / Senha ADM.',
+  },
+};
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -129,6 +169,38 @@ const sessionMiddleware = session({
 function normalizeBasePath(value: string): string {
   const clean = value.trim().replace(/\/+$/, '');
   return clean.startsWith('/') ? clean || '/login-senha' : `/${clean || 'login-senha'}`;
+}
+
+function pathWithinBase(pathValue: string, basePath: string): boolean {
+  return pathValue === basePath || pathValue.startsWith(`${basePath}/`);
+}
+
+function requestBasePath(req: Request): string {
+  return pathWithinBase(req.path, ADMIN_BASE_PATH) ? ADMIN_BASE_PATH : BASE_PATH;
+}
+
+function requestScope(req: Request): VaultScope {
+  return requestBasePath(req) === ADMIN_BASE_PATH ? 'adm' : 'geral';
+}
+
+function requestView(req: Request): VaultView {
+  return VAULT_VIEWS[requestScope(req)];
+}
+
+function routePaths(suffix = ''): string[] {
+  return ROUTE_BASES.map((basePath) => `${basePath}${suffix}`);
+}
+
+function indexRoutePaths(): string[] {
+  return ROUTE_BASES.flatMap((basePath) => [basePath, `${basePath}/`, `${basePath}/index.php`]);
+}
+
+function isVaultPath(pathValue: string): boolean {
+  return ROUTE_BASES.some((basePath) => pathWithinBase(pathValue, basePath));
+}
+
+function isVaultApiPath(pathValue: string): boolean {
+  return ROUTE_BASES.some((basePath) => pathWithinBase(pathValue, `${basePath}/api`));
 }
 
 function cleanEnv(name: string): string {
@@ -203,7 +275,7 @@ function takeFlash(req: Request): Flash {
 
 function safeReturnPath(value: unknown): string {
   const text = String(value || '').trim();
-  if (!text.startsWith(BASE_PATH)) return '';
+  if (!ROUTE_BASES.some((basePath) => pathWithinBase(text, basePath))) return '';
   if (/^https?:\/\//i.test(text) || text.startsWith('//')) return '';
   return text;
 }
@@ -295,7 +367,15 @@ async function userByHomeSso(req: Request): Promise<User | null> {
   return row ? userFromRow(row) : null;
 }
 
-async function canAccessVault(user: User): Promise<boolean> {
+function canAccessAdminVault(user: User): boolean {
+  const username = normalizeUsername(user.username);
+  const role = normalizeUsername(user.role);
+  return username === 'adm' || role === 'admin' || role === 'gerente';
+}
+
+async function canAccessVault(user: User, scope: VaultScope): Promise<boolean> {
+  if (scope === 'adm') return canAccessAdminVault(user);
+
   const username = normalizeUsername(user.username);
   const role = normalizeUsername(user.role);
   if (username === 'adm' || role === 'admin') return true;
@@ -342,13 +422,14 @@ async function resolveRequestUser(req: Request): Promise<User | null> {
 
 async function requireUser(req: Request, res: Response): Promise<User | null> {
   const user = await resolveRequestUser(req);
+  const scope = requestScope(req);
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect('/');
     return null;
   }
-  if (!(await canAccessVault(user))) {
-    await auditBlockedAccess(user);
+  if (!(await canAccessVault(user, scope))) {
+    await auditBlockedAccess(user, scope);
     res.redirect('/');
     return null;
   }
@@ -357,20 +438,22 @@ async function requireUser(req: Request, res: Response): Promise<User | null> {
 
 async function requireJsonUser(req: Request, res: Response): Promise<User | null> {
   const user = await resolveRequestUser(req);
+  const scope = requestScope(req);
   if (!user) {
     res.status(401).json({ ok: false, error: 'Sessao invalida.' });
     return null;
   }
-  if (!(await canAccessVault(user))) {
-    await auditBlockedAccess(user);
+  if (!(await canAccessVault(user, scope))) {
+    await auditBlockedAccess(user, scope);
     res.status(403).json({ ok: false, error: 'Acesso bloqueado.' });
     return null;
   }
   return user;
 }
 
-async function auditBlockedAccess(user: User): Promise<void> {
-  await logCoreAudit(user.id, 'login_senha_acesso_bloqueado', 'login_senha', null, 'Tentativa bloqueada no modulo Login / Senha.');
+async function auditBlockedAccess(user: User, scope: VaultScope): Promise<void> {
+  const view = VAULT_VIEWS[scope];
+  await logCoreAudit(user.id, view.blockedAction, 'login_senha', null, view.blockedDetail, { vault_scope: scope });
 }
 
 async function logCoreAudit(
@@ -394,6 +477,7 @@ async function logCoreAudit(
 
 async function auditEvent(
   user: User | null,
+  scope: VaultScope,
   action: string,
   entryId: number | string | null,
   summary: string,
@@ -403,29 +487,31 @@ async function auditEvent(
   try {
     await pgPool.query(
       `INSERT INTO login_senha_audit_events
-        (actor_user_id, actor_username, actor_display_name, action, entry_id, summary, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        (scope, actor_user_id, actor_username, actor_display_name, action, entry_id, summary, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
       [
+        scope,
         user?.id || null,
         user?.username || null,
         user?.display_name || null,
         action,
         entryId === null ? null : String(entryId),
         safeSummary,
-        JSON.stringify(metadata),
+        JSON.stringify({ ...metadata, vault_scope: scope }),
       ],
     );
   } catch (error) {
     console.error('[login-senha] audit failed', error instanceof Error ? error.message : 'unknown');
   }
 
-  await logCoreAudit(user?.id || null, action, 'login_senha', entryId, safeSummary, metadata);
+  await logCoreAudit(user?.id || null, action, 'login_senha', entryId, safeSummary, { ...metadata, vault_scope: scope });
 }
 
 async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS login_senha_entries (
       id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+      scope VARCHAR(20) NOT NULL DEFAULT 'geral',
       name TEXT NOT NULL,
       login_username TEXT NOT NULL,
       password_ciphertext TEXT NOT NULL,
@@ -442,6 +528,7 @@ async function ensureSchema(): Promise<void> {
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS login_senha_audit_events (
       id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+      scope VARCHAR(20) NOT NULL DEFAULT 'geral',
       actor_user_id BIGINT,
       actor_username TEXT,
       actor_display_name TEXT,
@@ -452,39 +539,48 @@ async function ensureSchema(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pgPool.query("ALTER TABLE login_senha_entries ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT 'geral'");
+  await pgPool.query("ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT 'geral'");
   await pgPool.query('ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS actor_username TEXT');
   await pgPool.query('ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS actor_display_name TEXT');
-  await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_entries_active_name ON login_senha_entries (LOWER(name)) WHERE archived_at IS NULL');
+  await pgPool.query("UPDATE login_senha_entries SET scope = 'geral' WHERE scope IS NULL OR scope = ''");
+  await pgPool.query("UPDATE login_senha_audit_events SET scope = 'geral' WHERE scope IS NULL OR scope = ''");
+  await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_entries_scope_active_name ON login_senha_entries (scope, LOWER(name)) WHERE archived_at IS NULL');
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_entries_archived ON login_senha_entries (archived_at DESC) WHERE archived_at IS NOT NULL');
+  await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_audit_scope_created ON login_senha_audit_events (scope, created_at DESC)');
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_audit_created ON login_senha_audit_events (created_at DESC)');
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_audit_entry ON login_senha_audit_events (entry_id, created_at DESC)');
 }
 
-async function listEntries(): Promise<EntryRow[]> {
+async function listEntries(scope: VaultScope): Promise<EntryRow[]> {
   const result = await pgPool.query<EntryRow>(
     `SELECT *
        FROM login_senha_entries
       WHERE archived_at IS NULL
+        AND scope = $1
       ORDER BY LOWER(name), id`,
+    [scope],
   );
   return result.rows;
 }
 
-async function loadEntry(id: number, includeArchived = false): Promise<EntryRow | null> {
+async function loadEntry(id: number, scope: VaultScope, includeArchived = false): Promise<EntryRow | null> {
   const result = await pgPool.query<EntryRow>(
     `SELECT *
        FROM login_senha_entries
       WHERE id = $1
-        AND ($2::boolean = true OR archived_at IS NULL)
+        AND scope = $2
+        AND ($3::boolean = true OR archived_at IS NULL)
       LIMIT 1`,
-    [id, includeArchived],
+    [id, scope, includeArchived],
   );
   return result.rows[0] || null;
 }
 
-async function listAuditEvents(limit = 60): Promise<AuditRow[]> {
+async function listAuditEvents(scope: VaultScope, limit = 60): Promise<AuditRow[]> {
   const result = await pgPool.query<AuditRow>(
     `SELECT id::text,
+            scope,
             actor_user_id,
             actor_username,
             actor_display_name,
@@ -493,14 +589,15 @@ async function listAuditEvents(limit = 60): Promise<AuditRow[]> {
             summary,
             created_at
        FROM login_senha_audit_events
+      WHERE scope = $1
       ORDER BY created_at DESC, id DESC
-      LIMIT $1`,
-    [Math.max(1, Math.min(100, limit))],
+      LIMIT $2`,
+    [scope, Math.max(1, Math.min(100, limit))],
   );
   return result.rows;
 }
 
-async function createEntry(req: Request, user: User): Promise<void> {
+async function createEntry(req: Request, user: User, scope: VaultScope): Promise<void> {
   const name = cleanText(req.body?.name, 160);
   const loginUsername = cleanText(req.body?.login_username, 240);
   const password = String(req.body?.password ?? '');
@@ -515,19 +612,19 @@ async function createEntry(req: Request, user: User): Promise<void> {
   const encrypted = encryptPassword(password);
   const result = await pgPool.query<{ id: string }>(
     `INSERT INTO login_senha_entries
-      (name, login_username, password_ciphertext, password_iv, password_tag, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6)
+      (scope, name, login_username, password_ciphertext, password_iv, password_tag, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id::text`,
-    [name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id],
+    [scope, name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id],
   );
   const id = result.rows[0]?.id || null;
-  await auditEvent(user, 'login_senha_acesso_criado', id, `Acesso criado: ${name}.`, { name, login_username: loginUsername });
+  await auditEvent(user, scope, 'login_senha_acesso_criado', id, `Acesso criado: ${name}.`, { name, login_username: loginUsername });
   setFlash(req, 'success', 'Acesso salvo.');
 }
 
-async function updateEntry(req: Request, user: User): Promise<void> {
+async function updateEntry(req: Request, user: User, scope: VaultScope): Promise<void> {
   const id = toNumber(req.body?.id);
-  const entry = id > 0 ? await loadEntry(id) : null;
+  const entry = id > 0 ? await loadEntry(id, scope) : null;
   if (!entry) {
     setFlash(req, 'error', 'Acesso nao encontrado.');
     return;
@@ -556,8 +653,8 @@ async function updateEntry(req: Request, user: User): Promise<void> {
               password_tag = $5,
               updated_by = $6,
               updated_at = NOW()
-        WHERE id = $7`,
-      [name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id, id],
+        WHERE id = $7 AND scope = $8`,
+      [name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id, id, scope],
     );
   } else {
     await pgPool.query(
@@ -566,12 +663,12 @@ async function updateEntry(req: Request, user: User): Promise<void> {
               login_username = $2,
               updated_by = $3,
               updated_at = NOW()
-        WHERE id = $4`,
-      [name, loginUsername, user.id, id],
+        WHERE id = $4 AND scope = $5`,
+      [name, loginUsername, user.id, id, scope],
     );
   }
 
-  await auditEvent(user, 'login_senha_acesso_editado', id, `Acesso editado: ${name}.`, {
+  await auditEvent(user, scope, 'login_senha_acesso_editado', id, `Acesso editado: ${name}.`, {
     name,
     login_username: loginUsername,
     password_changed: password.length > 0,
@@ -579,9 +676,9 @@ async function updateEntry(req: Request, user: User): Promise<void> {
   setFlash(req, 'success', 'Acesso atualizado.');
 }
 
-async function archiveEntry(req: Request, user: User): Promise<void> {
+async function archiveEntry(req: Request, user: User, scope: VaultScope): Promise<void> {
   const id = toNumber(req.body?.id);
-  const entry = id > 0 ? await loadEntry(id) : null;
+  const entry = id > 0 ? await loadEntry(id, scope) : null;
   if (!entry) {
     setFlash(req, 'error', 'Acesso nao encontrado.');
     return;
@@ -593,36 +690,39 @@ async function archiveEntry(req: Request, user: User): Promise<void> {
             archived_at = NOW(),
             updated_by = $1,
             updated_at = NOW()
-      WHERE id = $2 AND archived_at IS NULL`,
-    [user.id, id],
+      WHERE id = $2 AND scope = $3 AND archived_at IS NULL`,
+    [user.id, id, scope],
   );
-  await auditEvent(user, 'login_senha_acesso_arquivado', id, `Acesso arquivado: ${entry.name}.`, { name: entry.name });
+  await auditEvent(user, scope, 'login_senha_acesso_arquivado', id, `Acesso arquivado: ${entry.name}.`, { name: entry.name });
   setFlash(req, 'success', 'Acesso arquivado.');
 }
 
 async function handlePost(req: Request, res: Response): Promise<void> {
   const user = await requireUser(req, res);
   if (!user) return;
+  const scope = requestScope(req);
+  const basePath = requestBasePath(req);
   if (!csrfMatches(req)) {
     setFlash(req, 'error', 'Sessao expirada. Reabra a tela e tente novamente.');
-    res.redirect(`${BASE_PATH}/`);
+    res.redirect(`${basePath}/`);
     return;
   }
 
   const action = cleanText(req.body?.action, 40);
   if (action === 'create') {
-    await createEntry(req, user);
+    await createEntry(req, user, scope);
   } else if (action === 'update') {
-    await updateEntry(req, user);
+    await updateEntry(req, user, scope);
   } else if (action === 'archive') {
-    await archiveEntry(req, user);
+    await archiveEntry(req, user, scope);
   } else {
     setFlash(req, 'error', 'Acao invalida.');
   }
-  res.redirect(`${BASE_PATH}/`);
+  res.redirect(`${basePath}/`);
 }
 
 function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
+  const basePath = requestBasePath(req);
   const id = toNumber(entry.id);
   const updatedText = entry.updated_at ? `Atualizado em ${e(brDateTime(entry.updated_at))}` : `Criado em ${e(brDateTime(entry.created_at))}`;
   return `
@@ -640,7 +740,7 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
     <tr class="vault-entry-edit-row" id="vault-entry-editor-${id}" data-entry-id="${id}" hidden>
       <td colspan="6">
         <article class="vault-entry vault-entry-editor" data-entry-id="${id}">
-          <form method="post" action="${BASE_PATH}/" class="vault-entry-form" autocomplete="off">
+          <form method="post" action="${basePath}/" class="vault-entry-form" autocomplete="off">
             ${csrfField(req)}
             <input type="hidden" name="action" value="update">
             <input type="hidden" name="id" value="${id}">
@@ -674,7 +774,7 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
               <button class="vault-btn vault-btn-primary" type="submit">Salvar alteracoes</button>
             </div>
           </form>
-          <form method="post" action="${BASE_PATH}/" class="vault-archive-form" data-confirm="Arquivar este acesso?">
+          <form method="post" action="${basePath}/" class="vault-archive-form" data-confirm="Arquivar este acesso?">
             ${csrfField(req)}
             <input type="hidden" name="action" value="archive">
             <input type="hidden" name="id" value="${id}">
@@ -741,33 +841,35 @@ function renderAuditRows(auditRows: AuditRow[]): string {
 function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: AuditRow[]): string {
   const flash = takeFlash(req);
   const csrf = ensureCsrf(req);
+  const basePath = requestBasePath(req);
+  const view = requestView(req);
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
-  <title>Login / Senha - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605c">
-  <script src="${BASE_PATH}/app.js?v=20260605b" defer></script>
+  <title>${e(view.title)} - Wimifarma</title>
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20260605d">
+  <script src="${basePath}/app.js?v=20260605c" defer></script>
 </head>
-<body data-base-path="${e(BASE_PATH)}">
+<body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
   <header class="vault-topbar">
     <a class="vault-brand" href="/" aria-label="Ir para Home">
       <img src="/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma.svg" alt="Wimifarma">
     </a>
     <nav>
       <a href="/">Home</a>
-      <span>Login / Senha</span>
+      <span>${e(view.navLabel)}</span>
     </nav>
   </header>
 
   <main class="vault-shell">
     <section class="vault-hero">
       <div>
-        <span class="vault-kicker">Cofre interno</span>
-        <h1>Login / Senha</h1>
-        <p>Acessos da farmacia com senha cifrada e auditoria de uso.</p>
+        <span class="vault-kicker">${e(view.kicker)}</span>
+        <h1>${e(view.title)}</h1>
+        <p>${e(view.subtitle)}</p>
       </div>
       <span class="vault-user">Usuario: ${e(userLabel(user))}</span>
     </section>
@@ -777,11 +879,11 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
     <section class="vault-panel">
       <div class="vault-panel-head">
         <div>
-          <span class="vault-kicker">Novo acesso</span>
+          <span class="vault-kicker">${e(view.createKicker)}</span>
           <h2>Cadastrar acesso</h2>
         </div>
       </div>
-      <form method="post" action="${BASE_PATH}/" class="vault-create-form" autocomplete="off">
+      <form method="post" action="${basePath}/" class="vault-create-form" autocomplete="off">
         ${csrfField(req)}
         <input type="hidden" name="action" value="create">
         <div class="vault-field-grid">
@@ -853,7 +955,7 @@ function asyncRoute(handler: (req: Request, res: Response, next: NextFunction) =
 }
 
 app.use((req, res, next) => {
-  if (req.path.startsWith(BASE_PATH)) {
+  if (isVaultPath(req.path)) {
     setSecurityHeaders(req, res);
   }
   next();
@@ -862,42 +964,45 @@ app.use((req, res, next) => {
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(express.json({ limit: '32kb' }));
 app.use(sessionMiddleware);
-app.use(BASE_PATH, express.static(publicDir, {
-  index: false,
-  dotfiles: 'ignore',
-  maxAge: STATIC_ASSET_MAX_AGE_MS,
-  setHeaders: setStaticAssetCacheHeaders,
-}));
+for (const basePath of ROUTE_BASES) {
+  app.use(basePath, express.static(publicDir, {
+    index: false,
+    dotfiles: 'ignore',
+    maxAge: STATIC_ASSET_MAX_AGE_MS,
+    setHeaders: setStaticAssetCacheHeaders,
+  }));
+}
 
-app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], asyncRoute(async (_req, res) => {
+app.get([...routePaths('/health'), ...routePaths('/health.php')], asyncRoute(async (_req, res) => {
   await pgPool.query('SELECT 1');
   await corePgPool.query('SELECT 1');
   res.json({ ok: true, service: SERVICE_NAME, version: SERVICE_VERSION, database: 'ok', core: 'ok' });
 }));
 
-app.get(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
+app.get(routePaths('/login.php'), asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
-  res.redirect(`${BASE_PATH}/`);
+  res.redirect(`${requestBasePath(req)}/`);
 }));
 
-app.get(`${BASE_PATH}/logout.php`, (req, res) => {
+app.get(routePaths('/logout.php'), (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('WFLOGINSENHA', { path: '/' });
     res.redirect('/');
   });
 });
 
-app.get([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(async (req, res) => {
+app.get(indexRoutePaths(), asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
-  const [entries, auditRows] = await Promise.all([listEntries(), listAuditEvents(60)]);
+  const scope = requestScope(req);
+  const [entries, auditRows] = await Promise.all([listEntries(scope), listAuditEvents(scope, 60)]);
   res.send(renderPage(req, user, entries, auditRows));
 }));
 
-app.post([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(handlePost));
+app.post(indexRoutePaths(), asyncRoute(handlePost));
 
-app.post(`${BASE_PATH}/api/entries/:id/reveal`, asyncRoute(async (req, res) => {
+app.post(routePaths('/api/entries/:id/reveal'), asyncRoute(async (req, res) => {
   const user = await requireJsonUser(req, res);
   if (!user) return;
   if (!csrfMatches(req)) {
@@ -905,22 +1010,23 @@ app.post(`${BASE_PATH}/api/entries/:id/reveal`, asyncRoute(async (req, res) => {
     return;
   }
   const id = toNumber(req.params.id);
-  const entry = id > 0 ? await loadEntry(id) : null;
+  const scope = requestScope(req);
+  const entry = id > 0 ? await loadEntry(id, scope) : null;
   if (!entry) {
     res.status(404).json({ ok: false, error: 'Acesso nao encontrado.' });
     return;
   }
   const password = decryptPassword(entry);
   if (password === null) {
-    await auditEvent(user, 'login_senha_senha_indisponivel', id, `Senha indisponivel para: ${entry.name}.`, { name: entry.name });
+    await auditEvent(user, scope, 'login_senha_senha_indisponivel', id, `Senha indisponivel para: ${entry.name}.`, { name: entry.name });
     res.status(500).json({ ok: false, error: 'Senha indisponivel. Confira a chave do cofre.' });
     return;
   }
-  await auditEvent(user, 'login_senha_senha_visualizada', id, `Senha visualizada: ${entry.name}.`, { name: entry.name });
+  await auditEvent(user, scope, 'login_senha_senha_visualizada', id, `Senha visualizada: ${entry.name}.`, { name: entry.name });
   res.json({ ok: true, password });
 }));
 
-app.post(`${BASE_PATH}/api/entries/:id/copy-login`, asyncRoute(async (req, res) => {
+app.post(routePaths('/api/entries/:id/copy-login'), asyncRoute(async (req, res) => {
   const user = await requireJsonUser(req, res);
   if (!user) return;
   if (!csrfMatches(req)) {
@@ -928,16 +1034,17 @@ app.post(`${BASE_PATH}/api/entries/:id/copy-login`, asyncRoute(async (req, res) 
     return;
   }
   const id = toNumber(req.params.id);
-  const entry = id > 0 ? await loadEntry(id) : null;
+  const scope = requestScope(req);
+  const entry = id > 0 ? await loadEntry(id, scope) : null;
   if (!entry) {
     res.status(404).json({ ok: false, error: 'Acesso nao encontrado.' });
     return;
   }
-  await auditEvent(user, 'login_senha_login_copiado', id, `Login copiado: ${entry.name}.`, { name: entry.name });
+  await auditEvent(user, scope, 'login_senha_login_copiado', id, `Login copiado: ${entry.name}.`, { name: entry.name });
   res.json({ ok: true, login_username: entry.login_username });
 }));
 
-app.post(`${BASE_PATH}/api/entries/:id/copy-password`, asyncRoute(async (req, res) => {
+app.post(routePaths('/api/entries/:id/copy-password'), asyncRoute(async (req, res) => {
   const user = await requireJsonUser(req, res);
   if (!user) return;
   if (!csrfMatches(req)) {
@@ -945,24 +1052,25 @@ app.post(`${BASE_PATH}/api/entries/:id/copy-password`, asyncRoute(async (req, re
     return;
   }
   const id = toNumber(req.params.id);
-  const entry = id > 0 ? await loadEntry(id) : null;
+  const scope = requestScope(req);
+  const entry = id > 0 ? await loadEntry(id, scope) : null;
   if (!entry) {
     res.status(404).json({ ok: false, error: 'Acesso nao encontrado.' });
     return;
   }
   const password = decryptPassword(entry);
   if (password === null) {
-    await auditEvent(user, 'login_senha_senha_indisponivel', id, `Senha indisponivel para: ${entry.name}.`, { name: entry.name });
+    await auditEvent(user, scope, 'login_senha_senha_indisponivel', id, `Senha indisponivel para: ${entry.name}.`, { name: entry.name });
     res.status(500).json({ ok: false, error: 'Senha indisponivel. Confira a chave do cofre.' });
     return;
   }
-  await auditEvent(user, 'login_senha_senha_copiada', id, `Senha copiada: ${entry.name}.`, { name: entry.name });
+  await auditEvent(user, scope, 'login_senha_senha_copiada', id, `Senha copiada: ${entry.name}.`, { name: entry.name });
   res.json({ ok: true, password });
 }));
 
 app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
   console.error('[login-senha] request failed', error instanceof Error ? error.message : 'unknown');
-  if (req.path.startsWith(`${BASE_PATH}/api/`)) {
+  if (isVaultApiPath(req.path)) {
     res.status(500).json({ ok: false, error: 'Erro interno.' });
     return;
   }
@@ -972,7 +1080,7 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
 ensureSchema()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`[login-senha] listening on ${PORT} at ${BASE_PATH}`);
+      console.log(`[login-senha] listening on ${PORT} at ${ROUTE_BASES.join(', ')}`);
     });
   })
   .catch((error) => {

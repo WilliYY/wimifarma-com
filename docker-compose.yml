@@ -630,6 +630,7 @@ services:
       NODE_ENV: production
       PORT: 3950
       BASE_PATH: /login-senha
+      LOGIN_SENHA_ADMIN_BASE_PATH: /login-senha-adm
       CORE_POSTGRES_HOST: wimifarma-core-db
       CORE_POSTGRES_PORT: 5432
       CORE_POSTGRES_DB: wimifarma_core

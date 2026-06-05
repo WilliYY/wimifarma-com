@@ -249,6 +249,18 @@ function wf_home_is_core_admin(?array $identity): bool
     return $username === 'adm' || $role === 'admin';
 }
 
+function wf_home_is_core_admin_or_manager(?array $identity): bool
+{
+    if (!$identity) {
+        return false;
+    }
+
+    $username = wf_home_normalize_core_username((string) ($identity['username_normalized'] ?? $identity['username'] ?? ''));
+    $role = wf_home_normalize_core_username((string) ($identity['role'] ?? ''));
+
+    return $username === 'adm' || $role === 'admin' || $role === 'gerente';
+}
+
 function wf_home_module_permissions(?array $identity, array $moduleKeys, array $defaultDeniedModuleKeys = array()): array
 {
     $moduleKeys = array_values(array_unique(array_filter(array_map('strval', $moduleKeys))));
@@ -2121,6 +2133,16 @@ $modules = array(
         'accent' => 'amber',
     ),
     array(
+        'name' => 'Login / Senha ADM',
+        'label' => 'Cofre ADM',
+        'description' => 'Acessos administrativos protegidos.',
+        'module_key' => 'login_senha_adm',
+        'href' => '/login-senha-adm/',
+        'accent' => 'wine',
+        'role_gate' => 'admin_or_gerente',
+        'permission_optional' => true,
+    ),
+    array(
         'name' => 'Usuários',
         'label' => 'Acessos',
         'description' => 'Logins, permissoes, WhatsApp e historico.',
@@ -2137,7 +2159,17 @@ $homeModulePermissions = wf_home_module_permissions(
 );
 $modules = array_values(array_filter(
     $modules,
-    static fn (array $module): bool => (bool) ($homeModulePermissions[(string) ($module['module_key'] ?? '')] ?? true)
+    static function (array $module) use ($homeModulePermissions, $homeUserIdentity): bool {
+        if (($module['role_gate'] ?? '') === 'admin_or_gerente' && !wf_home_is_core_admin_or_manager($homeUserIdentity)) {
+            return false;
+        }
+
+        if (!empty($module['permission_optional'])) {
+            return true;
+        }
+
+        return (bool) ($homeModulePermissions[(string) ($module['module_key'] ?? '')] ?? true);
+    }
 ));
 $homeCanUseMiauw = (bool) ($homeModulePermissions['miauw'] ?? true);
 $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
