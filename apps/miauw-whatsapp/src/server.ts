@@ -711,6 +711,7 @@ const DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES = [
 ];
 const PIX_RECEIPT_DESTINATION_ALIASES = parseTextListEnv(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES'), DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES);
 const PIX_RECEIPT_MIN_TARGET_SCORE = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100', 70, 40, 100) / 100;
+const PIX_RECEIPT_TARGET_NOT_FOUND_REPLY = 'Nao achei nosso CNPJ nesse comprovante. Nao gravei nada.';
 const PIX_CNPJ_MANUAL_HINT_REPLY = 'Nao consegui ler bem o comprovante \u{1F63F} Me mande assim: miauby pix cnpj 28,90 sueli.';
 const PIX_RECEIPT_NOT_LIKE_REPLY = 'Isso ai é um comprovante pix?';
 const AUDIO_TRANSCRIPTION_UNCLEAR_REPLY = 'Nao consegui entender bem esse audio. Me manda em texto ou grava de novo falando uma frase clara.';
@@ -3903,20 +3904,20 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                     reason: 'pix_receipt_duplicate_identifier',
                   };
                   effectiveBodyText = '';
+                } else if (!targetMatch.ok) {
+                  await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
+                  mediaFailureReply = {
+                    text: PIX_RECEIPT_TARGET_NOT_FOUND_REPLY,
+                    engine: 'blocked',
+                    reason: 'pix_receipt_target_mismatch',
+                  };
+                  effectiveBodyText = '';
                 } else if (missing.length > 0) {
                   await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'missing_fields', targetMatch));
                   mediaFailureReply = {
                     text: pixReceiptMissingFieldsReply(missing),
                     engine: 'blocked',
                     reason: 'pix_receipt_missing_fields',
-                  };
-                  effectiveBodyText = '';
-                } else if (!targetMatch.ok) {
-                  await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
-                  mediaFailureReply = {
-                    text: PIX_CNPJ_MANUAL_HINT_REPLY,
-                    engine: 'blocked',
-                    reason: 'pix_receipt_target_mismatch',
                   };
                   effectiveBodyText = '';
                 } else {
@@ -5692,15 +5693,51 @@ function pixReceiptPublicDateTimeLabel(command: JsonRecord, executedText = ''): 
   return '';
 }
 
+function pixReceiptPublicPayerLabel(command: JsonRecord): string {
+  const text = safeOutboundText([
+    command.public_observation,
+    financeiroCommandObservation(command),
+  ].filter(Boolean).join(' '), 1200);
+  const match = text.match(/\b(?:Feito por|Pagador):\s*([^.;\n]+)/iu);
+  return match ? cleanReceiptPart(match[1], 70) : '';
+}
+
+function pixReceiptPublicTargetTypeLabel(command: JsonRecord): string {
+  const text = safeOutboundText([
+    command.public_observation,
+    financeiroCommandObservation(command),
+  ].filter(Boolean).join(' '), 1200);
+  const normalized = normalizeIntentText(text);
+  if (normalized.includes('tipo foi no cnpj')) return 'foi no CNPJ';
+  if (normalized.includes('cnpj destino') || normalized.includes('chave pix destino validada')) return 'foi no CNPJ';
+  if (PIX_RECEIPT_CNPJ && onlyDigits(text).includes(PIX_RECEIPT_CNPJ)) return 'foi no CNPJ';
+  return '';
+}
+
 function pixReceiptPublicReply(command: JsonRecord, status: 'found' | 'launched', executedText = ''): string {
   const amount = financeiroCommandAmountLabel(command);
   const responsible = titleCaseShortName(command.responsavel || command.responsible);
   const dateTime = pixReceiptPublicDateTimeLabel(command, executedText);
+  const payer = pixReceiptPublicPayerLabel(command);
+  const targetType = pixReceiptPublicTargetTypeLabel(command);
+  const publicDetails = [
+    payer ? `Feito por: ${payer}` : '',
+    targetType ? `Tipo: ${targetType}` : '',
+  ].filter(Boolean);
   if (!responsible) {
-    return `Comprovante lido. Valor: ${amount} — Responsável não identificado. Confira no Financeiro.`;
+    const parts = [
+      ...publicDetails,
+      'Responsavel nao identificado',
+    ].filter(Boolean);
+    return `Comprovante lido. Valor: ${amount}${parts.length ? ` - ${parts.join(' - ')}` : ''}. Confira no Financeiro.`;
   }
-  const prefix = status === 'launched' ? 'PIX CNPJ lançado' : 'PIX CNPJ encontrado';
-  return `${prefix}: ${amount} — Responsável: ${responsible}${dateTime ? ` — ${dateTime}` : ''}.`;
+  const replyPrefix = status === 'launched' ? 'PIX CNPJ lancado' : 'PIX CNPJ encontrado';
+  const parts = [
+    `Responsavel: ${responsible}`,
+    ...publicDetails,
+    dateTime,
+  ].filter(Boolean);
+  return `${replyPrefix}: ${amount} - ${parts.join(' - ')}.`;
 }
 
 function shortCategoryObservationForWhatsapp(text: string): string {
@@ -8052,6 +8089,17 @@ function pixReceiptTargetMatch(extraction: PixReceiptExtraction): PixReceiptTarg
       nameMatch: false,
     };
   }
+  if (PIX_RECEIPT_CNPJ) {
+    return {
+      ok: false,
+      reason: 'configured_cnpj_not_found',
+      score: 0,
+      matched: maskDocument(PIX_RECEIPT_CNPJ),
+      cnpjMatch: false,
+      keyMatch: false,
+      nameMatch: false,
+    };
+  }
 
   const sourceText = [extraction.destinationName, pixReceiptTargetContextText(extraction.rawText)].filter(Boolean).join(' ');
   let bestAlias = '';
@@ -8084,6 +8132,19 @@ function pixReceiptTargetDetails(match: PixReceiptTargetMatch): string {
   return '';
 }
 
+function pixReceiptTargetTypeLabel(match: PixReceiptTargetMatch): string {
+  return match.cnpjMatch || match.keyMatch ? 'foi no CNPJ' : '';
+}
+
+function pixReceiptPublicObservationFromExtraction(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
+  const payer = cleanReceiptPart(extraction.payerName, 70);
+  const targetType = pixReceiptTargetTypeLabel(targetMatch);
+  return safeOutboundText([
+    payer ? `Feito por: ${payer}` : '',
+    targetType ? `Tipo: ${targetType}` : '',
+  ].filter(Boolean).join('; '), 180);
+}
+
 function pixReceiptObservationDetails(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
   const payer = cleanReceiptPart(extraction.payerName, 70);
   const destination = cleanReceiptPart(extraction.destinationName, 90);
@@ -8110,6 +8171,7 @@ function pixReceiptCommandFromExtraction(
   const amountCents = Math.round(Number(extraction.amount || 0) * 100);
   const amountLabel = moneyForCommand(extraction.amount);
   const observation = safeOutboundText(pixReceiptObservationDetails(extraction, targetMatch), 260);
+  const publicObservation = pixReceiptPublicObservationFromExtraction(extraction, targetMatch);
   const raw = safeOutboundText(
     [
       `pix cnpj ${amountLabel}`,
@@ -8126,7 +8188,7 @@ function pixReceiptCommandFromExtraction(
     amount_label: amountLabel,
     responsible_hint: safeText(responsibleHint, 80),
     observation: '',
-    public_observation: '',
+    public_observation: publicObservation,
     audit_observation: observation,
     origin: 'media_ocr',
   };
@@ -8136,11 +8198,15 @@ function pixReceiptResponsibleIntroFromExtraction(extraction: PixReceiptExtracti
   const amount = moneyForCommand(extraction.amount);
   const date = dateForCommand(extraction.paidDate);
   const destination = cleanReceiptPart(extraction.destinationName || (targetMatch.nameMatch ? targetMatch.matched : ''), 44);
+  const payer = cleanReceiptPart(extraction.payerName, 70);
+  const targetType = pixReceiptTargetTypeLabel(targetMatch);
   return [
     'PIX CNPJ encontrado:',
     `Valor: ${amount}`,
     `Data: ${date || 'nao informada'}`,
     `Destino: ${destination || 'destino validado'}`,
+    `Feito por: ${payer || 'nao identificado'}`,
+    `Tipo: ${targetType || 'destino validado'}`,
   ].join('\n');
 }
 
@@ -8877,7 +8943,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
           role: 'user',
           parts: [
             {
-              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes aceitos: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id e o identificador Pix/E2E/autenticacao quando existir, mas nao invente. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`,
+              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes conhecidos apenas como pista: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id e o identificador Pix/E2E/autenticacao quando existir, mas nao invente. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`,
             },
             {
               inlineData: {
