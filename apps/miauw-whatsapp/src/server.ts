@@ -11,6 +11,7 @@ import {
 import {
   WHATSAPP_COMMAND_HELP_REGISTRY,
   formatWhatsappCommandHelp,
+  type WhatsappCommandHelpAutomation,
 } from './command-help.js';
 import {
   formatPedidosCreateError,
@@ -4055,7 +4056,8 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
       : undefined;
-    const replyText = safeOutboundText(formatReplyTextWithConfirmation(reply.text, confirmation, canSendInteractiveConfirmation(confirmation)), 1800);
+    const replyLimit = ['missing_prefix_help_only', 'n8n_status'].includes(reply.reason) ? 4000 : 1800;
+    const replyText = safeOutboundText(formatReplyTextWithConfirmation(reply.text, confirmation, canSendInteractiveConfirmation(confirmation)), replyLimit);
     if (!replyText) throw new Error('miauby_empty_reply');
     const audioReply = shouldSendAudioReply(replyAsAudio, confirmation)
       ? await buildAudioReply(replyText, row).catch(async (error) => {
@@ -5818,8 +5820,117 @@ function looksLikeN8nStatusRequest(message: string): boolean {
     ]);
 }
 
-function formatN8nWhatsappSummary(cards: WhatsappModuleCard[]): string {
+function safeAutomationHelpRecipientName(value: unknown): string {
+  const clean = safeText(value, 80);
+  if (!clean || clean.includes('*')) return '';
+  const digits = onlyDigits(clean);
+  if (digits.length >= 4) return '';
+  return clean;
+}
+
+function moduleTitleForHelp(moduleKey: string): string {
+  return WHATSAPP_MODULE_CARDS.find((card) => card.key === moduleKey)?.label || moduleKey;
+}
+
+async function coreUserDisplayNamesById(ids: number[]): Promise<Map<number, string>> {
+  const uniqueIds = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  if (!uniqueIds.length) return new Map();
+  const result = await corePgPool.query<{ id: string; display_name: string }>(
+    `SELECT id::text AS id,
+            COALESCE(NULLIF(display_name, ''), username, '') AS display_name
+       FROM core_users
+      WHERE id = ANY($1::int[])`,
+    [uniqueIds],
+  );
+  return new Map(
+    result.rows
+      .map((row) => [Number(row.id), safeAutomationHelpRecipientName(row.display_name)] as const)
+      .filter(([, name]) => Boolean(name)),
+  );
+}
+
+async function whatsappAutomationHelpItemsForCards(cards: WhatsappModuleCard[]): Promise<WhatsappCommandHelpAutomation[]> {
   const allowed = allowedModuleKeys(cards);
+  const workflows = N8N_WORKFLOW_CARDS.filter((workflow) => allowed.has(workflow.moduleKey));
+  if (!workflows.length) return [];
+
+  try {
+    const settingKeys = [...new Set(workflows.map((workflow) => workflow.key))];
+    const [settingsResult, moduleRecipients] = await Promise.all([
+      pgPool.query<{ key: string; enabled: boolean }>(
+        `SELECT key, enabled
+           FROM miauw_whatsapp_automation_settings
+          WHERE key = ANY($1::text[])`,
+        [settingKeys],
+      ),
+      Promise.all(
+        [...new Set(workflows.map((workflow) => workflow.moduleKey))].map(async (moduleKey) => ({
+          moduleKey,
+          recipients: await automationRecipients(moduleKey),
+        })),
+      ),
+    ]);
+    const settings = new Map(settingsResult.rows.map((row) => [row.key, row.enabled]));
+    const recipientsByModule = new Map(moduleRecipients.map((row) => [row.moduleKey, row.recipients]));
+    const linkedUserIds = moduleRecipients.flatMap((row) => row.recipients.map((recipient) => recipient.linkedUserId || 0));
+    const coreNames = await coreUserDisplayNamesById(linkedUserIds);
+
+    return workflows.map((workflow) => {
+      const recipients = recipientsByModule.get(workflow.moduleKey) || [];
+      const allSafeRecipients = [
+        ...new Set(
+          recipients
+            .map((recipient) => {
+              const coreName = recipient.linkedUserId ? coreNames.get(recipient.linkedUserId) : '';
+              return coreName || safeAutomationHelpRecipientName(recipient.displayName);
+            })
+            .filter(Boolean),
+        ),
+      ];
+      const safeRecipients = allSafeRecipients.slice(0, 5);
+      if (allSafeRecipients.length > safeRecipients.length) {
+        safeRecipients.push(`+${allSafeRecipients.length - safeRecipients.length} usuarios`);
+      }
+      const hasPanelToggle = 'settingsKey' in workflow && Boolean(workflow.settingsKey);
+      const enabled = settings.get(workflow.key) ?? true;
+      const status = hasPanelToggle
+        ? enabled ? 'ligada no backend' : 'pausada no backend'
+        : 'controle pelo workflow n8n';
+      return {
+        title: workflow.title,
+        schedule: workflow.schedule,
+        moduleTitle: moduleTitleForHelp(workflow.moduleKey),
+        recipients: safeRecipients,
+        status,
+      };
+    });
+  } catch (error) {
+    await recordErrorLog('whatsapp_help_automations', 'warn', error, {
+      details: {
+        modules: [...new Set(workflows.map((workflow) => workflow.moduleKey))],
+      },
+    });
+    return [];
+  }
+}
+
+function formatN8nWhatsappSummary(cards: WhatsappModuleCard[], automations: WhatsappCommandHelpAutomation[] = []): string {
+  const allowed = allowedModuleKeys(cards);
+  if (automations.length) {
+    const lines = [
+      '*N8n / Automacoes*',
+      'Rotinas seguras por horario, passando pelo backend do Miauby.',
+      '',
+    ];
+    for (const automation of automations) {
+      const recipients = automation.recipients.length ? automation.recipients.join(', ') : 'nenhum usuario liberado agora';
+      lines.push(`• *${automation.title}* — _${automation.schedule}_ — Card: ${automation.moduleTitle}`);
+      lines.push(`  Vai para: ${recipients}`);
+      if (automation.status) lines.push(`  Status: ${automation.status}.`);
+    }
+    lines.push('', 'n8n orquestra; escrita forte passa pelo backend e confirmacao.');
+    return lines.join('\n').trim();
+  }
   const lines = N8N_WORKFLOW_CARDS.map((workflow) => {
     const enabledForSender = allowed.has(workflow.moduleKey);
     const status = enabledForSender ? 'liberado para voce' : 'sem acesso neste numero';
@@ -7247,8 +7358,9 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
   if (isMissingPrefixHelpOnly(row)) {
+    const automationHelp = await whatsappAutomationHelpItemsForCards(allowedCards);
     return {
-      text: formatWhatsappCommandHelp(allowedModuleKeys(allowedCards)),
+      text: formatWhatsappCommandHelp(allowedModuleKeys(allowedCards), { automations: automationHelp }),
       engine: 'local',
       reason: 'missing_prefix_help_only',
     };
@@ -7588,8 +7700,9 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     return prepareTarefaStatusConfirmation(taskCommand, userContext, row);
   }
   if (looksLikeN8nStatusRequest(message)) {
+    const automationHelp = await whatsappAutomationHelpItemsForCards(allowedCards);
     return {
-      text: formatN8nWhatsappSummary(allowedCards),
+      text: formatN8nWhatsappSummary(allowedCards, automationHelp),
       engine: 'local',
       reason: 'n8n_status',
     };
@@ -7791,6 +7904,7 @@ function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[], shared: 
     'Voce e o Miauby WhatsApp da Wimifarma: assistente interno com personalidade de gato fiscal, direto, esperto e util.',
     'Este caminho e conversa leve via Gemini; responda so quando for papo curto, duvida simples ou algo util para o trabalho na Wimifarma. Nao consulte nem finja consultar sistemas internos.',
     'Cards liberados para este telefone no WhatsApp: ' + cardsText + '. Para ver cards, o usuario pode mandar "miauby menu".',
+    'A tabela oficial do que o Miauby WhatsApp consegue fazer e o menu local de ajuda por card, acoes e automacoes n8n. Se perguntarem capacidades, nao invente comando: oriente mandar qualquer texto sem "miauby" ou "miauby n8n" para ver o catalogo atualizado.',
     'Comandos operacionais sao roteados antes daqui para o core interno quando a permissao do WhatsApp permitir. Se um comando chegar por engano aqui, peca somente o menor dado faltante e diga que o core vai pedir confirmacao.',
     'Responda em portugues do Brasil, natural, com 1 ou 2 frases curtas. Saudacao, teste, status e ajuda devem ficar secos e simples.',
     'Pode usar "meu bigode" ou tom de Miauby com moderacao, sem virar piada toda hora e sem atrapalhar.',

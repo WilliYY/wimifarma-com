@@ -10,7 +10,26 @@ export type WhatsappCommandHelpCategory = {
   actions: WhatsappCommandHelpAction[];
 };
 
+export type WhatsappCommandHelpAutomation = {
+  title: string;
+  schedule: string;
+  moduleTitle: string;
+  recipients: string[];
+  status?: string;
+};
+
+export type WhatsappCommandHelpOptions = {
+  automations?: WhatsappCommandHelpAutomation[];
+};
+
 export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
+  {
+    moduleKey: 'cashback',
+    title: 'Cashback (card)',
+    actions: [
+      { label: 'Consultar Cashback', example: 'miauby cashback' },
+    ],
+  },
   {
     moduleKey: 'financeiro',
     title: 'Financeiro (card)',
@@ -33,6 +52,14 @@ export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
     ],
   },
   {
+    moduleKey: 'gestao',
+    title: 'Gestao (card)',
+    actions: [
+      { label: 'Consultar Gestao', example: 'miauby gestao' },
+      { label: 'Criar conta com confirmacao', example: 'miauby gestao mercado 500 categoria geral', note: 'o core pede confirmacao antes de gravar' },
+    ],
+  },
+  {
     moduleKey: 'cotacao',
     title: 'Cotacao (card)',
     actions: [
@@ -46,10 +73,25 @@ export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
     title: 'Tarefas (card)',
     actions: [
       { label: 'Ver tarefas', example: 'miauby tarefas' },
+      { label: 'Consultar tarefa especifica', example: 'miauby tarefa conferir pedido' },
       { label: 'Criar tarefa para pessoa', example: 'miauby tarefa para Thiago conferir pedido' },
       { label: 'Criar tarefa geral', example: 'miauby tarefa geral limpar balcao' },
       { label: 'Concluir tarefa', example: 'miauby concluir tarefa conferir pedido' },
       { label: 'Cancelar tarefa', example: 'miauby cancelar tarefa conferir pedido' },
+    ],
+  },
+  {
+    moduleKey: 'xp',
+    title: 'XP (card)',
+    actions: [
+      { label: 'Consultar XP e ranking', example: 'miauby xp' },
+    ],
+  },
+  {
+    moduleKey: 'codigos',
+    title: 'Codigos (card)',
+    actions: [
+      { label: 'Consultar codigos e comissoes', example: 'miauby codigos' },
     ],
   },
   {
@@ -58,13 +100,15 @@ export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
     actions: [
       { label: 'Ver cards liberados', example: 'miauby menu' },
       { label: 'Ver automacoes n8n', example: 'miauby n8n' },
+      { label: 'Pergunta leve no Gemini', example: 'gemini me responde um teste', note: 'nao grava dados nem executa acao operacional' },
     ],
   },
 ];
 
-export function formatWhatsappCommandHelp(allowedModuleKeys: Iterable<string>): string {
+export function formatWhatsappCommandHelp(allowedModuleKeys: Iterable<string>, options: WhatsappCommandHelpOptions = {}): string {
   const allowed = new Set(Array.from(allowedModuleKeys, (key) => key.toLowerCase()));
   const categories = WHATSAPP_COMMAND_HELP_REGISTRY.filter((category) => allowed.has(category.moduleKey));
+  const automations = (options.automations || []).filter((automation) => automation.title && automation.schedule);
 
   if (!categories.length) {
     return [
@@ -87,9 +131,20 @@ export function formatWhatsappCommandHelp(allowedModuleKeys: Iterable<string>): 
   for (const [index, category] of categories.entries()) {
     lines.push(`*${index + 1}. ${category.title}*`);
     for (const action of category.actions) {
-      lines.push(`• *${action.label}*`);
-      lines.push(`  Exemplo: _${action.example}_`);
+      lines.push(`• *${action.label}* — exemplo: _${action.example}_`);
       if (action.note) lines.push(`  Obs: ${action.note}.`);
+    }
+    lines.push('');
+  }
+
+  if (automations.length) {
+    lines.push('*N8n / Automacoes*');
+    lines.push('Automacoes seguras por horario; destino aparece por usuario, sem numero.');
+    for (const automation of automations) {
+      const recipients = automation.recipients.length ? automation.recipients.join(', ') : 'nenhum usuario liberado agora';
+      lines.push(`• *${automation.title}* — _${automation.schedule}_ — Card: ${automation.moduleTitle}`);
+      lines.push(`  Vai para: ${recipients}`);
+      if (automation.status) lines.push(`  Status: ${automation.status}.`);
     }
     lines.push('');
   }
