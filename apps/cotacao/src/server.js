@@ -572,6 +572,66 @@ function encomendaContextFromValues(values = {}) {
   };
 }
 
+function encomendaTextParts(values = {}) {
+  const fields = [
+    ['produto', values.produto],
+    ['quantidade', values.quantidade],
+    ['categoria', values.categoria]
+  ];
+  const fallbackText = normalizeInternalText(rowReminderFragments(values).join(' | '), 700);
+  const source = fields
+    .map(([field, value]) => ({ field, text: normalizeInternalText(value, 700) }))
+    .find((item) => hasEncomendaWord(item.text))
+    || { field: 'linha', text: fallbackText };
+  const text = normalizeInternalText(source.text, 700);
+  const match = text.match(/\bencomendas?\b/i);
+  if (!match || match.index === undefined) {
+    return {
+      sourceField: source.field,
+      text,
+      before: '',
+      term: '',
+      after: ''
+    };
+  }
+  return {
+    sourceField: source.field,
+    text,
+    before: normalizeInternalText(text.slice(0, match.index), 260),
+    term: match[0],
+    after: normalizeInternalText(text.slice(match.index + match[0].length), 260)
+  };
+}
+
+function encomendaCreatedAtForItem(row) {
+  if (row.detected_at) {
+    return {
+      value: row.detected_at,
+      source: 'reminder_detected_at',
+      exact: true
+    };
+  }
+  if (row.updated_at) {
+    return {
+      value: row.updated_at,
+      source: 'row_updated_at_fallback',
+      exact: false
+    };
+  }
+  if (row.created_at) {
+    return {
+      value: row.created_at,
+      source: 'row_created_at_fallback',
+      exact: false
+    };
+  }
+  return {
+    value: null,
+    source: 'unavailable',
+    exact: false
+  };
+}
+
 function saoPauloDateParts(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -3083,6 +3143,115 @@ app.get(`${BASE_PATH}/api/internal/summary`, requireInternalToken, asyncRoute(as
 
 app.get(`${BASE_PATH}/api/internal/encomenda-reminders/status`, requireInternalToken, asyncRoute(async (_req, res) => {
   res.json(await encomendaReminderStatusSummary());
+}));
+
+app.get(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute(async (req, res) => {
+  const quote = await getOrCreateDefaultQuote();
+  const limit = Math.max(1, Math.min(Number.parseInt(String(req.query.limit || '30'), 10) || 30, 100));
+  const orderParam = normalizeInternalSearch(req.query.order || req.query.ordem || 'oldest');
+  const order = ['newest', 'recent', 'recentes', 'desc', 'nova', 'novas'].includes(orderParam) ? 'newest' : 'oldest';
+  const result = await pgPool.query(
+    `SELECT r.id,
+            r.position,
+            r.values,
+            r.created_at,
+            r.updated_at,
+            er.id AS reminder_id,
+            er.status AS reminder_status,
+            er.detected_at,
+            er.remind_at,
+            er.sent_at,
+            er.resolved_at,
+            er.canceled_at
+       FROM cotacao_v2_rows r
+       LEFT JOIN LATERAL (
+         SELECT id, status, detected_at, remind_at, sent_at, resolved_at, canceled_at, updated_at, created_at
+           FROM cotacao_v2_encomenda_reminders
+          WHERE quote_id = r.quote_id
+            AND row_id = r.id
+          ORDER BY CASE
+                     WHEN status IN ('pendente', 'erro', 'enviado', 'resolvido') THEN 0
+                     ELSE 1
+                   END,
+                   updated_at DESC,
+                   created_at DESC
+          LIMIT 1
+       ) er ON true
+      WHERE r.quote_id = $1
+        AND r.deleted_at IS NULL
+      ORDER BY r.position ASC, r.id ASC`,
+    [quote.id]
+  );
+
+  const items = [];
+  let itemsWithoutDetectedAt = 0;
+  for (const row of result.rows) {
+    const values = row.values || {};
+    const context = encomendaContextFromValues(values);
+    if (!context.hasEncomenda) continue;
+
+    const parts = encomendaTextParts(values);
+    const createdAt = encomendaCreatedAtForItem(row);
+    if (!createdAt.exact) itemsWithoutDetectedAt += 1;
+    const createdAtIso = isoDateOrNull(createdAt.value);
+    items.push({
+      rowId: String(row.id || ''),
+      line: Number(row.position || 0),
+      position: Number(row.position || 0),
+      ean: context.rowValues.ean,
+      produto: context.produto,
+      quantidade: context.quantidade,
+      categoria: context.categoria,
+      textoCompleto: context.originalText,
+      textoEncomenda: parts.text,
+      antesEncomenda: parts.before,
+      termoEncomenda: parts.term,
+      depoisEncomenda: parts.after,
+      campoEncomenda: parts.sourceField,
+      createdAt: createdAtIso,
+      createdAtBr: createdAt.value ? formatBrDateTime(createdAt.value) : '',
+      createdAtSource: createdAt.source,
+      createdAtExact: createdAt.exact,
+      rowCreatedAt: isoDateOrNull(row.created_at),
+      rowUpdatedAt: isoDateOrNull(row.updated_at),
+      reminder: row.reminder_id ? {
+        id: String(row.reminder_id || ''),
+        status: String(row.reminder_status || ''),
+        detectedAt: isoDateOrNull(row.detected_at),
+        remindAt: isoDateOrNull(row.remind_at),
+        sentAt: isoDateOrNull(row.sent_at),
+        resolvedAt: isoDateOrNull(row.resolved_at),
+        canceledAt: isoDateOrNull(row.canceled_at)
+      } : null,
+      _sortAt: createdAtIso ? new Date(createdAtIso).getTime() : Number.MAX_SAFE_INTEGER
+    });
+  }
+
+  items.sort((left, right) => {
+    const time = order === 'newest' ? right._sortAt - left._sortAt : left._sortAt - right._sortAt;
+    return time || left.position - right.position || left.rowId.localeCompare(right.rowId);
+  });
+  const limitedItems = items.slice(0, limit).map(({ _sortAt, ...item }) => item);
+
+  return res.json({
+    ok: true,
+    source: 'cotacao-postgres',
+    timezone: 'America/Sao_Paulo',
+    quoteId: quote.id,
+    quoteName: quote.name,
+    order,
+    limit,
+    total: items.length,
+    returned: limitedItems.length,
+    diagnostics: {
+      itemsWithoutDetectedAt,
+      dateFallbackUsed: itemsWithoutDetectedAt > 0,
+      fallbackMeaning: itemsWithoutDetectedAt > 0
+        ? 'Algumas linhas nao tinham detected_at em cotacao_v2_encomenda_reminders; usei updated_at/created_at da linha como fallback.'
+        : ''
+    },
+    items: limitedItems
+  });
 }));
 
 app.get(`${BASE_PATH}/api/internal/search`, requireInternalToken, asyncRoute(async (req, res) => {

@@ -257,6 +257,54 @@ export type InternalSearchResponse = ApiResult<{
   message?: string;
 }>;
 
+export interface InternalEncomendaItem {
+  rowId: RowId;
+  line: number;
+  position: number;
+  ean: string;
+  produto: string;
+  quantidade: string;
+  categoria: string;
+  textoCompleto: string;
+  textoEncomenda: string;
+  antesEncomenda: string;
+  termoEncomenda: string;
+  depoisEncomenda: string;
+  campoEncomenda: string;
+  createdAt: IsoDateTime | null;
+  createdAtBr: string;
+  createdAtSource: "reminder_detected_at" | "row_updated_at_fallback" | "row_created_at_fallback" | "unavailable";
+  createdAtExact: boolean;
+  rowCreatedAt: IsoDateTime | null;
+  rowUpdatedAt: IsoDateTime | null;
+  reminder: null | {
+    id: string;
+    status: string;
+    detectedAt: IsoDateTime | null;
+    remindAt: IsoDateTime | null;
+    sentAt: IsoDateTime | null;
+    resolvedAt: IsoDateTime | null;
+    canceledAt: IsoDateTime | null;
+  };
+}
+
+export type InternalEncomendasResponse = ApiResult<{
+  source: "cotacao-postgres";
+  timezone: "America/Sao_Paulo";
+  quoteId: QuoteId;
+  quoteName: string;
+  order: "oldest" | "newest";
+  limit: number;
+  total: number;
+  returned: number;
+  diagnostics: {
+    itemsWithoutDetectedAt: number;
+    dateFallbackUsed: boolean;
+    fallbackMeaning: string;
+  };
+  items: InternalEncomendaItem[];
+}>;
+
 export interface InternalActorPayload {
   usuario_id?: number | string;
   user_id?: number | string;
