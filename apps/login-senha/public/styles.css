@@ -292,14 +292,19 @@ input:focus {
   border: 1px solid var(--vault-line);
   border-radius: 8px;
   background: #fff;
+  transition: box-shadow 160ms ease, opacity 160ms ease;
+}
+
+.vault-entry-table-wrap.is-saving-order {
+  box-shadow: inset 0 0 0 2px rgba(17, 127, 118, 0.18);
 }
 
 .vault-entry-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 980px;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .vault-entry-table th,
@@ -323,20 +328,20 @@ input:focus {
 
 .vault-entry-table th:nth-child(1),
 .vault-entry-table td:nth-child(1) {
-  width: 46px;
+  width: 58px;
   text-align: center;
 }
 
 .vault-entry-table th:nth-child(2) {
-  width: 28%;
+  width: 30%;
 }
 
 .vault-entry-table th:nth-child(3) {
-  width: 32%;
+  width: 31%;
 }
 
 .vault-entry-table th:nth-child(4) {
-  width: 18%;
+  width: 21%;
 }
 
 .vault-entry-table th:nth-child(5) {
@@ -350,10 +355,21 @@ input:focus {
 .vault-entry-row {
   cursor: pointer;
   background: #fff;
+  transition: background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
 .vault-entry-row:hover,
 .vault-entry-row.is-selected {
+  background: #fff7fa;
+}
+
+.vault-entry-row.is-dragging {
+  opacity: 0.62;
+  background: #fff0f4;
+  box-shadow: inset 4px 0 0 var(--vault-teal);
+}
+
+.vault-entry-row.is-drop-target {
   background: #fff7fa;
 }
 
@@ -363,8 +379,42 @@ input:focus {
 }
 
 .vault-col-index {
-  color: var(--vault-muted);
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.vault-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 42px;
+  min-height: 30px;
+  border: 1px solid #efc1ce;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--vault-wine);
+  font: inherit;
   font-weight: 900;
+  cursor: grab;
+}
+
+.vault-drag-handle:active {
+  cursor: grabbing;
+}
+
+.vault-drag-icon {
+  width: 12px;
+  height: 18px;
+  opacity: 0.7;
+  background-image: radial-gradient(currentColor 1.3px, transparent 1.4px);
+  background-position: 0 0;
+  background-size: 6px 6px;
+}
+
+.vault-row-number {
+  min-width: 12px;
+  color: var(--vault-muted);
 }
 
 .vault-cell-main {
@@ -374,7 +424,8 @@ input:focus {
 .vault-cell-main strong,
 .vault-cell-main span,
 .vault-mono,
-.vault-password-mask {
+.vault-password-mask,
+.vault-row-password-output {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -383,7 +434,8 @@ input:focus {
 
 .vault-cell-main strong {
   color: var(--vault-wine);
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.1;
 }
 
 .vault-cell-main span {
@@ -399,10 +451,94 @@ input:focus {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.vault-cell-login .vault-mono {
+  color: #1c1317;
+  font-size: 15px;
+  font-weight: 900;
+}
+
 .vault-password-mask {
   color: var(--vault-muted);
   font-weight: 900;
   letter-spacing: 1px;
+}
+
+.vault-password-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
+  align-items: center;
+}
+
+.vault-row-password-output {
+  min-height: 32px;
+  border-color: #f0c7d2;
+  padding-right: 8px;
+  color: var(--vault-wine);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.vault-row-password-output[type="text"] {
+  letter-spacing: 0;
+}
+
+.vault-icon-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 32px;
+  border: 1px solid #efc1ce;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--vault-wine);
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.vault-icon-btn:hover,
+.vault-icon-btn.is-revealed {
+  background: #fff0f4;
+  border-color: #d99aac;
+  transform: translateY(-1px);
+}
+
+.vault-icon-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+  transform: none;
+}
+
+.vault-eye-icon {
+  position: relative;
+  width: 18px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.vault-eye-icon::after {
+  content: "";
+  position: absolute;
+  inset: 3px 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.vault-icon-btn.is-busy .vault-eye-icon {
+  animation: vaultPulse 700ms ease-in-out infinite;
+}
+
+@keyframes vaultPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .vault-edit-pill {
@@ -466,6 +602,27 @@ input:focus {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.vault-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.vault-entry-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #fff0f4;
+  color: var(--vault-wine);
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .vault-audit {

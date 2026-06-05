@@ -35,6 +35,7 @@ type EntryRow = {
   scope: VaultScope;
   name: string;
   login_username: string;
+  sort_order: number | null;
   password_ciphertext: string;
   password_iv: string;
   password_tag: string;
@@ -517,6 +518,7 @@ async function ensureSchema(): Promise<void> {
       password_ciphertext TEXT NOT NULL,
       password_iv TEXT NOT NULL,
       password_tag TEXT NOT NULL,
+      sort_order INTEGER,
       created_by BIGINT,
       updated_by BIGINT,
       archived_by BIGINT,
@@ -540,12 +542,26 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await pgPool.query("ALTER TABLE login_senha_entries ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT 'geral'");
+  await pgPool.query('ALTER TABLE login_senha_entries ADD COLUMN IF NOT EXISTS sort_order INTEGER');
   await pgPool.query("ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT 'geral'");
   await pgPool.query('ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS actor_username TEXT');
   await pgPool.query('ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS actor_display_name TEXT');
   await pgPool.query("UPDATE login_senha_entries SET scope = 'geral' WHERE scope IS NULL OR scope = ''");
   await pgPool.query("UPDATE login_senha_audit_events SET scope = 'geral' WHERE scope IS NULL OR scope = ''");
+  await pgPool.query(`
+    WITH ranked AS (
+      SELECT id,
+             (ROW_NUMBER() OVER (PARTITION BY scope ORDER BY LOWER(name), id) * 10)::integer AS next_order
+        FROM login_senha_entries
+       WHERE sort_order IS NULL
+    )
+    UPDATE login_senha_entries entry
+       SET sort_order = ranked.next_order
+      FROM ranked
+     WHERE entry.id = ranked.id
+  `);
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_entries_scope_active_name ON login_senha_entries (scope, LOWER(name)) WHERE archived_at IS NULL');
+  await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_entries_scope_sort ON login_senha_entries (scope, sort_order, LOWER(name), id) WHERE archived_at IS NULL');
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_entries_archived ON login_senha_entries (archived_at DESC) WHERE archived_at IS NOT NULL');
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_audit_scope_created ON login_senha_audit_events (scope, created_at DESC)');
   await pgPool.query('CREATE INDEX IF NOT EXISTS idx_login_senha_audit_created ON login_senha_audit_events (created_at DESC)');
@@ -555,10 +571,10 @@ async function ensureSchema(): Promise<void> {
 async function listEntries(scope: VaultScope): Promise<EntryRow[]> {
   const result = await pgPool.query<EntryRow>(
     `SELECT *
-       FROM login_senha_entries
+      FROM login_senha_entries
       WHERE archived_at IS NULL
         AND scope = $1
-      ORDER BY LOWER(name), id`,
+      ORDER BY COALESCE(sort_order, 2147483647), LOWER(name), id`,
     [scope],
   );
   return result.rows;
@@ -612,8 +628,12 @@ async function createEntry(req: Request, user: User, scope: VaultScope): Promise
   const encrypted = encryptPassword(password);
   const result = await pgPool.query<{ id: string }>(
     `INSERT INTO login_senha_entries
-      (scope, name, login_username, password_ciphertext, password_iv, password_tag, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+      (scope, name, login_username, password_ciphertext, password_iv, password_tag, sort_order, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6,
+             (SELECT COALESCE(MAX(sort_order), 0) + 10
+                FROM login_senha_entries
+               WHERE scope = $1 AND archived_at IS NULL),
+             $7)
      RETURNING id::text`,
     [scope, name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id],
   );
@@ -697,6 +717,49 @@ async function archiveEntry(req: Request, user: User, scope: VaultScope): Promis
   setFlash(req, 'success', 'Acesso arquivado.');
 }
 
+async function reorderEntries(user: User, scope: VaultScope, order: number[]): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const uniqueIds = new Set(order);
+  if (order.length === 0 || uniqueIds.size !== order.length) {
+    return { ok: false, status: 400, error: 'Ordem invalida.' };
+  }
+
+  const currentResult = await pgPool.query<{ id: string }>(
+    `SELECT id::text
+       FROM login_senha_entries
+      WHERE scope = $1
+        AND archived_at IS NULL`,
+    [scope],
+  );
+  const currentIds = new Set(currentResult.rows.map((row) => toNumber(row.id)));
+  if (order.length !== currentIds.size || order.some((id) => !currentIds.has(id))) {
+    return { ok: false, status: 409, error: 'A lista mudou. Recarregue a tela e tente de novo.' };
+  }
+
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (let index = 0; index < order.length; index += 1) {
+      await client.query(
+        `UPDATE login_senha_entries
+            SET sort_order = $1
+          WHERE id = $2
+            AND scope = $3
+            AND archived_at IS NULL`,
+        [(index + 1) * 10, order[index], scope],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await auditEvent(user, scope, 'login_senha_ordem_atualizada', null, 'Ordem dos acessos atualizada.', { count: order.length });
+  return { ok: true };
+}
+
 async function handlePost(req: Request, res: Response): Promise<void> {
   const user = await requireUser(req, res);
   if (!user) return;
@@ -726,14 +789,26 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
   const id = toNumber(entry.id);
   const updatedText = entry.updated_at ? `Atualizado em ${e(brDateTime(entry.updated_at))}` : `Criado em ${e(brDateTime(entry.created_at))}`;
   return `
-    <tr class="vault-entry-row" data-entry-id="${id}" tabindex="0" aria-expanded="false" aria-controls="vault-entry-editor-${id}">
-      <td class="vault-col-index">${index + 1}</td>
+    <tr class="vault-entry-row" data-entry-id="${id}" draggable="true" tabindex="0" aria-expanded="false" aria-controls="vault-entry-editor-${id}">
+      <td class="vault-col-index">
+        <button type="button" class="vault-drag-handle" data-vault-drag-handle aria-label="Arrastar ${e(entry.name)}" title="Arrastar">
+          <span class="vault-drag-icon" aria-hidden="true"></span>
+          <span class="vault-row-number">${index + 1}</span>
+        </button>
+      </td>
       <td class="vault-cell-main">
         <strong>${e(entry.name)}</strong>
         <span>${updatedText}</span>
       </td>
-      <td><span class="vault-mono">${e(entry.login_username)}</span></td>
-      <td><span class="vault-password-mask">********</span></td>
+      <td class="vault-cell-login"><span class="vault-mono">${e(entry.login_username)}</span></td>
+      <td class="vault-cell-password">
+        <div class="vault-password-inline">
+          <input class="vault-row-password-output" type="password" readonly tabindex="-1" value="********" aria-label="Senha de ${e(entry.name)}">
+          <button type="button" class="vault-icon-btn vault-secret-toggle" data-vault-action="row-reveal" data-entry-id="${id}" aria-label="Mostrar senha" title="Mostrar senha">
+            <span class="vault-eye-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+      </td>
       <td><span class="vault-pill">Ativo</span></td>
       <td><span class="vault-edit-pill">Editar</span></td>
     </tr>
@@ -850,8 +925,8 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>${e(view.title)} - Wimifarma</title>
-  <link rel="stylesheet" href="${basePath}/styles.css?v=20260605e">
-  <script src="${basePath}/app.js?v=20260605c" defer></script>
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20260605f">
+  <script src="${basePath}/app.js?v=20260605d" defer></script>
 </head>
 <body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
   <header class="vault-topbar">
@@ -905,11 +980,9 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
     </section>
 
     <section class="vault-section">
-      <div class="vault-panel-head">
-        <div>
-          <span class="vault-kicker">Acessos salvos</span>
-          <h2>${entries.length} registro(s) ativo(s)</h2>
-        </div>
+      <div class="vault-list-head">
+        <h2>Acessos</h2>
+        <span class="vault-entry-count">${entries.length === 1 ? '1 ativo' : `${entries.length} ativos`}</span>
       </div>
       ${renderEntryTable(req, entries)}
     </section>
@@ -1006,6 +1079,23 @@ app.get(indexRoutePaths(), asyncRoute(async (req, res) => {
 }));
 
 app.post(indexRoutePaths(), asyncRoute(handlePost));
+
+app.post(routePaths('/api/entries/reorder'), asyncRoute(async (req, res) => {
+  const user = await requireJsonUser(req, res);
+  if (!user) return;
+  if (!csrfMatches(req)) {
+    res.status(403).json({ ok: false, error: 'CSRF invalido.' });
+    return;
+  }
+  const rawOrder: unknown[] = Array.isArray(req.body?.order) ? req.body.order : [];
+  const order = rawOrder.map((value: unknown) => toNumber(value)).filter((id: number) => id > 0);
+  const result = await reorderEntries(user, requestScope(req), order);
+  if (!result.ok) {
+    res.status(result.status).json({ ok: false, error: result.error });
+    return;
+  }
+  res.json({ ok: true });
+}));
 
 app.post(routePaths('/api/entries/:id/reveal'), asyncRoute(async (req, res) => {
   const user = await requireJsonUser(req, res);

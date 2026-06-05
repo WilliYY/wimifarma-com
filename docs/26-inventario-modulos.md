@@ -794,11 +794,12 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Telas e endpoints
 
-- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso; a auditoria de eventos recentes fica recolhida por padrao e abre no proprio card.
+- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso; a lista permite reorganizar linhas por arrastar e salva apenas `sort_order`; a auditoria de eventos recentes fica recolhida por padrao e abre no proprio card.
 - `/login-senha-adm/` e `/login-senha-adm/index.php`: mesmo fluxo visual para acessos administrativos, filtrado por `scope='adm'` e bloqueado para usuarios sem papel administrativo/gerencial.
 - `/login-senha/api/entries/:id/reveal`: revela senha para usuario autorizado e audita visualizacao.
 - `/login-senha/api/entries/:id/copy-login`: retorna login para copiar e audita copia.
 - `/login-senha/api/entries/:id/copy-password`: retorna senha para copiar e audita copia.
+- `/login-senha/api/entries/reorder`: salva a ordem manual dos acessos ativos do mesmo `scope`, sem alterar senha, login ou arquivamento.
 - `/login-senha/health` e `/login-senha-adm/health`: health do banco do cofre e do core.
 
 ### Permissoes e sessao
@@ -816,7 +817,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Tabelas Postgres oficiais
 
-- `login_senha_entries`: Nome, Login / Usuario, `scope` e senha cifrada (`password_ciphertext`, `password_iv`, `password_tag`).
+- `login_senha_entries`: Nome, Login / Usuario, `scope`, `sort_order` e senha cifrada (`password_ciphertext`, `password_iv`, `password_tag`).
 - `login_senha_audit_events`: auditoria local com `scope`, snapshot curto do ator e resumo sem senha.
 - `login_senha_sessions`: sessao do Express.
 - `core_audit_logs`: espelho curto de auditoria.
@@ -835,6 +836,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 - Criar acesso.
 - Editar nome/login e, opcionalmente, trocar senha.
+- Reorganizar a ordem visual dos acessos ativos salvando `sort_order`.
 - Arquivar acesso sem apagar registro.
 - Auditar revelar/copiar senha e copiar login.
 - Todas as operacoes filtram por `scope` da rota para impedir que um ID do cofre ADM seja aberto pela rota comum, ou vice-versa.
