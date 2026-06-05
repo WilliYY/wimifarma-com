@@ -60,7 +60,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_xp`: XP em Postgres.
 - `wimifarma_codigos`: Codigos em Postgres.
 - `wimifarma_financeiro`: Financeiro oficial em Postgres.
-- `wimifarma_login_senha`: cofre Login / Senha oficial em Postgres, com senhas cifradas, auditoria local e separacao por `scope` entre cofre comum e cofre ADM.
+- `wimifarma_login_senha`: cofre Login / Senha oficial em Postgres, com senhas cifradas, auditoria local e separacao por `scope` entre cofre comum e aba restrita `Contas`.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 - `wimifarma_miauby`: banco sombra do Miauby interno, com tabelas canonicas `miauby_*`. `wimifarma-miauby-app` usa esse banco para status/contexto/readiness somente leitura e usa o ultimo `validate` salvo em `miauby_migration_runs` para resumir paridade; a comparacao contra MySQL `miauw_*` ocorre somente no `wimifarma-miauby-migrator`. O prefixo `miauw_*` permanece oficial no PHP ate corte validado; ver `docs/28-miauby-migracao.md`.
 
@@ -330,7 +330,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
 - `core_user_module_permissions` e a fonte central para liberar ou bloquear cards/modulos por usuario. Na primeira fase, linhas ausentes significam acesso legado preservado para modulos comuns; `login_senha` e excecao sensivel e exige permissao explicita para usuario comum.
-- `login_senha_entries` guarda Nome, Login / Usuario e senha cifrada por AES-256-GCM (`password_ciphertext`, `password_iv`, `password_tag`), com `scope='geral'` para `/login-senha/`; registros antigos com `scope='adm'` podem existir pela rota tecnica `/login-senha-adm/`, mas o card ADM foi removido da Home e esses dados nao devem ser apagados sem confirmacao. Nao gravar senha em texto puro, log, auditoria, console, erro, payload generativo ou WhatsApp.
+- `login_senha_entries` guarda Nome, Login / Usuario e senha cifrada por AES-256-GCM (`password_ciphertext`, `password_iv`, `password_tag`), com `scope='geral'` para `/login-senha/` e `scope='adm'` para a aba restrita `Contas` em `/login-senha-adm/`. Nao gravar senha em texto puro, log, auditoria, console, erro, payload generativo ou WhatsApp.
 - `login_senha_audit_events` registra criacao, edicao, visualizacao/copia e arquivamento de acessos, com `scope`, snapshot curto do ator e resumo sem senha. O modulo tambem espelha resumo seguro em `core_audit_logs`.
 - `core_user_xp_links.xp_employee_id` aponta logicamente para `xp_employees.id`; nao criar FK entre bancos. O nome do funcionario fica como snapshot operacional para auditoria e leitura rapida.
 - `core_user_audit_events` deve registrar mudancas de usuarios sem senha, token ou payload bruto. Excluir usuario no painel significa desativar (`active=false`), nao apagar fisicamente.

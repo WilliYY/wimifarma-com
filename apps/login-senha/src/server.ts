@@ -119,13 +119,13 @@ const VAULT_VIEWS: Record<VaultScope, VaultView> = {
   },
   adm: {
     scope: 'adm',
-    title: 'Login / Senha ADM',
-    navLabel: 'Login / Senha ADM',
-    kicker: 'Cofre administrativo',
-    subtitle: 'Acessos administrativos com senha cifrada e auditoria de uso.',
-    createKicker: 'Novo acesso ADM',
-    blockedAction: 'login_senha_adm_acesso_bloqueado',
-    blockedDetail: 'Tentativa bloqueada no modulo Login / Senha ADM.',
+    title: 'Contas',
+    navLabel: 'Contas',
+    kicker: 'Cofre restrito',
+    subtitle: 'Acessos especificos do sistema com senha cifrada e auditoria de uso.',
+    createKicker: 'Nova conta',
+    blockedAction: 'login_senha_contas_acesso_bloqueado',
+    blockedDetail: 'Tentativa bloqueada no modulo Contas.',
   },
 };
 
@@ -913,6 +913,24 @@ function renderAuditRows(auditRows: AuditRow[]): string {
     </table>`;
 }
 
+function renderTopNav(req: Request, user: User): string {
+  const basePath = requestBasePath(req);
+  const canSeeContas = canAccessAdminVault(user);
+  const loginSenhaItem = basePath === BASE_PATH
+    ? `<span>${e(VAULT_VIEWS.geral.navLabel)}</span>`
+    : `<a href="${BASE_PATH}/">${e(VAULT_VIEWS.geral.navLabel)}</a>`;
+  const contasItem = canSeeContas
+    ? (basePath === ADMIN_BASE_PATH
+      ? `<span>${e(VAULT_VIEWS.adm.navLabel)}</span>`
+      : `<a href="${ADMIN_BASE_PATH}/">${e(VAULT_VIEWS.adm.navLabel)}</a>`)
+    : '';
+
+  return `
+      <a href="/">Home</a>
+      ${loginSenhaItem}
+      ${contasItem}`;
+}
+
 function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: AuditRow[]): string {
   const flash = takeFlash(req);
   const csrf = ensureCsrf(req);
@@ -934,8 +952,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
       <img src="/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma.svg" alt="Wimifarma">
     </a>
     <nav>
-      <a href="/">Home</a>
-      <span>${e(view.navLabel)}</span>
+      ${renderTopNav(req, user)}
     </nav>
   </header>
 
