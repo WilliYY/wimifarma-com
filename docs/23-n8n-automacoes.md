@@ -76,6 +76,8 @@ n8n --version
 
 O painel `/miauw/whatsapp/` mostra se a stack/base e webhook estao configurados, resume o fluxo seguro `n8n agenda -> backend valida -> WhatsApp avisa` e lista as rotinas n8n planejadas em cards com Quando, Card, Destino, o que o n8n chama, o que o Miauby envia/faz, exemplo do estilo da mensagem, Limite e Controle. O publico continua calculado pelos cards da allowlist. Rotinas ja executadas pelo backend, como `Chegada de pedidos`, `Fechamento de caixa` e `Encomenda da Cotacao`, exibem box `Ligado/Desligado`; desligar no painel faz o backend ignorar o disparo mesmo que o cron/worker continue ativo. O card `Fechamento de caixa` tambem tenta mostrar a leitura atual do Financeiro, incluindo se existe caixa aberto nos ultimos 10 dias e quais dias estao pendentes.
 
+Desde 2026-06-05, a resposta WhatsApp de ajuda (`texto sem miauby` ou `miauby n8n`) nao lista todas as rotinas do painel. Ela mostra apenas avisos que podem ser enviados para usuarios autorizados: `Chegada de pedidos`, `Fechamento de caixa`, `Encomenda da Cotacao` e `Resumo Pix/OCR`. Rotinas internas como smoke pos-deploy, watchdog, Evolution/Baileys, deploy/checks e webhooks tecnicos continuam no painel/log, mas nao entram no menu enviado aos usuarios.
+
 ## Rotinas iniciais
 
 ### Smoke check pos-deploy

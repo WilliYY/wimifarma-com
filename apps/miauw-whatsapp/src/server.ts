@@ -939,6 +939,12 @@ const N8N_WORKFLOW_CARDS = [
     controlNote: 'Controle por workflow externo; escrita forte continua dependendo de confirmacao do Miauby.',
   },
 ] as const;
+const WHATSAPP_USER_FACING_AUTOMATION_KEYS = new Set<string>([
+  PEDIDOS_ARRIVAL_AUTOMATION_KEY,
+  FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
+  COTACAO_ENCOMENDA_AUTOMATION_KEY,
+  PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY,
+]);
 const UNAUTHORIZED_REPLY_TEXT = 'Oiee! Miauby aqui!\u{1F63C} Esse WhatsApp \u00e9 s\u00f3 para a equipe interna da Wimifarma. Se voc\u00ea precisa falar com a farm\u00e1cia, chame no canal oficial de atendimento (44) 98413-4971.';
 const providerSendTimestamps: number[] = [];
 const activeTaskReminderSends = new Set<string>();
@@ -3132,7 +3138,7 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
           ...message.payloadSummary,
           activation_prefix_missing: true,
           prefix_missing_help_only: true,
-          help_registry_version: 'whatsapp-command-help-2026-06-05',
+          help_registry_version: 'whatsapp-command-help-active-only-2026-06-05',
         };
       } else {
         ignoreReasons.push(prefix.reason);
@@ -5851,7 +5857,10 @@ async function coreUserDisplayNamesById(ids: number[]): Promise<Map<number, stri
 
 async function whatsappAutomationHelpItemsForCards(cards: WhatsappModuleCard[]): Promise<WhatsappCommandHelpAutomation[]> {
   const allowed = allowedModuleKeys(cards);
-  const workflows = N8N_WORKFLOW_CARDS.filter((workflow) => allowed.has(workflow.moduleKey));
+  const workflows = N8N_WORKFLOW_CARDS.filter((workflow) => (
+    WHATSAPP_USER_FACING_AUTOMATION_KEYS.has(workflow.key)
+    && allowed.has(workflow.moduleKey)
+  ));
   if (!workflows.length) return [];
 
   try {
@@ -5918,25 +5927,27 @@ function formatN8nWhatsappSummary(cards: WhatsappModuleCard[], automations: What
   const allowed = allowedModuleKeys(cards);
   if (automations.length) {
     const lines = [
-      '*N8n / Automacoes*',
-      'Rotinas seguras por horario, passando pelo backend do Miauby.',
+      '*N8n / avisos enviados*',
+      'Somente rotinas que podem mandar WhatsApp para usuarios autorizados.',
       '',
     ];
     for (const automation of automations) {
       const recipients = automation.recipients.length ? automation.recipients.join(', ') : 'nenhum usuario liberado agora';
-      lines.push(`• *${automation.title}* — _${automation.schedule}_ — Card: ${automation.moduleTitle}`);
+      lines.push(`- *${automation.title}* - _${automation.schedule}_ - Card: ${automation.moduleTitle}`);
       lines.push(`  Vai para: ${recipients}`);
       if (automation.status) lines.push(`  Status: ${automation.status}.`);
     }
-    lines.push('', 'n8n orquestra; escrita forte passa pelo backend e confirmacao.');
+    lines.push('', 'Rotina interna, watchdog, deploy e transporte nao entram neste resumo.');
     return lines.join('\n').trim();
   }
-  const lines = N8N_WORKFLOW_CARDS.map((workflow) => {
-    const enabledForSender = allowed.has(workflow.moduleKey);
-    const status = enabledForSender ? 'liberado para voce' : 'sem acesso neste numero';
-    return `- ${workflow.title}: ${workflow.description} (${status}).`;
-  });
-  return `n8n fica como automacao segura por tras do Miauby.\n${lines.join('\n')}\nEscrita forte nao roda cru no n8n: passa pelo backend e confirmacao.`;
+  const lines = N8N_WORKFLOW_CARDS
+    .filter((workflow) => WHATSAPP_USER_FACING_AUTOMATION_KEYS.has(workflow.key))
+    .map((workflow) => {
+      const enabledForSender = allowed.has(workflow.moduleKey);
+      const status = enabledForSender ? 'liberado para voce' : 'sem acesso neste numero';
+      return `- ${workflow.title}: ${workflow.description} (${status}).`;
+    });
+  return `n8n fica como automacao segura por tras do Miauby.\n${lines.join('\n')}\nEste resumo mostra so avisos que podem ir para usuarios; rotinas internas ficam no painel/log.`;
 }
 
 function looksLikeModuleMenuRequest(message: string): boolean {

@@ -24,20 +24,12 @@ export type WhatsappCommandHelpOptions = {
 
 export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
   {
-    moduleKey: 'cashback',
-    title: 'Cashback (card)',
-    actions: [
-      { label: 'Consultar Cashback', example: 'miauby cashback' },
-    ],
-  },
-  {
     moduleKey: 'financeiro',
     title: 'Financeiro (card)',
     actions: [
       { label: 'Sangria', example: 'miauby sangria 10 troco' },
       { label: 'PIX CNPJ manual', example: 'miauby pix cnpj 28,90 Sueli' },
       { label: 'Comprovante PIX foto/PDF', example: 'envie o comprovante Pix', note: 'leitura segura; se falhar, pede o comando manual' },
-      { label: 'Consultar caixa aberto', example: 'miauby caixa aberto' },
     ],
   },
   {
@@ -49,14 +41,6 @@ export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
       { label: 'Criar pedido parcelado', example: 'miauby pedido ANB 2 parcelas 200 10/06 e 150 20/06' },
       { label: 'Cancelar pedido', example: 'miauby cancelar pedido ANB' },
       { label: 'Confirmar chegada depois do alerta', example: 'miauby cimed chegou' },
-    ],
-  },
-  {
-    moduleKey: 'gestao',
-    title: 'Gestao (card)',
-    actions: [
-      { label: 'Consultar Gestao', example: 'miauby gestao' },
-      { label: 'Criar conta com confirmacao', example: 'miauby gestao mercado 500 categoria geral', note: 'o core pede confirmacao antes de gravar' },
     ],
   },
   {
@@ -81,26 +65,11 @@ export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
     ],
   },
   {
-    moduleKey: 'xp',
-    title: 'XP (card)',
-    actions: [
-      { label: 'Consultar XP e ranking', example: 'miauby xp' },
-    ],
-  },
-  {
-    moduleKey: 'codigos',
-    title: 'Codigos (card)',
-    actions: [
-      { label: 'Consultar codigos e comissoes', example: 'miauby codigos' },
-    ],
-  },
-  {
     moduleKey: 'miauw',
     title: 'Miauby / n8n (card)',
     actions: [
       { label: 'Ver cards liberados', example: 'miauby menu' },
-      { label: 'Ver automacoes n8n', example: 'miauby n8n' },
-      { label: 'Pergunta leve no Gemini', example: 'gemini me responde um teste', note: 'nao grava dados nem executa acao operacional' },
+      { label: 'Ver avisos n8n enviados para usuarios', example: 'miauby n8n' },
     ],
   },
 ];
@@ -114,16 +83,16 @@ export function formatWhatsappCommandHelp(allowedModuleKeys: Iterable<string>, o
     return [
       'Miauww 😼 Como posso te ajudar hoje?',
       '',
-      'Seu numero esta autorizado, mas ainda nao tem cards liberados para comandos no WhatsApp.',
+      'Seu numero esta autorizado, mas nenhum card liberado agora tem acao Whats confirmada neste menu.',
       '',
-      'Peca para liberar seus cards no painel Miauby WhatsApp.',
+      'Use *miauby menu* para ver seus cards liberados.',
     ].join('\n');
   }
 
   const lines = [
-    'Miauww 😼 *Tabela do Miauby Whats*',
+    'Miauww 😼 *Acoes ativas do Miauby Whats*',
     '',
-    'Mensagem de texto sem *miauby* mostra esta tabela e nao executa acao.',
+    'Texto sem *miauby* mostra este menu e nao executa acao.',
     'Para texto operacional, use *miauby* no comeco. Para comprovante, envie a foto/PDF.',
     '',
   ];
@@ -131,18 +100,18 @@ export function formatWhatsappCommandHelp(allowedModuleKeys: Iterable<string>, o
   for (const [index, category] of categories.entries()) {
     lines.push(`*${index + 1}. ${category.title}*`);
     for (const action of category.actions) {
-      lines.push(`• *${action.label}* — exemplo: _${action.example}_`);
+      lines.push(`- *${action.label}* - exemplo: _${action.example}_`);
       if (action.note) lines.push(`  Obs: ${action.note}.`);
     }
     lines.push('');
   }
 
   if (automations.length) {
-    lines.push('*N8n / Automacoes*');
-    lines.push('Automacoes seguras por horario; destino aparece por usuario, sem numero.');
+    lines.push('*N8n / avisos enviados*');
+    lines.push('Somente rotinas que podem mandar WhatsApp para usuarios autorizados.');
     for (const automation of automations) {
       const recipients = automation.recipients.length ? automation.recipients.join(', ') : 'nenhum usuario liberado agora';
-      lines.push(`• *${automation.title}* — _${automation.schedule}_ — Card: ${automation.moduleTitle}`);
+      lines.push(`- *${automation.title}* - _${automation.schedule}_ - Card: ${automation.moduleTitle}`);
       lines.push(`  Vai para: ${recipients}`);
       if (automation.status) lines.push(`  Status: ${automation.status}.`);
     }
