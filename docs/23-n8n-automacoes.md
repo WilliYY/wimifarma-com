@@ -118,9 +118,9 @@ Workflow versionado:
 ops/n8n/workflows/miauby-watchdog-5min.json
 ```
 
-Agenda: a cada 5 minutos, `notify=problems`.
+Agenda: a cada 5 minutos. Desde 2026-06-05, o payload pode continuar mandando `notify=problems`, mas o backend trata o watchdog como log interno e nao envia WhatsApp.
 
-Destino: numeros autorizados com card `Miauby`, somente quando houver problema por padrao.
+Destino: sem envio por WhatsApp. Os achados ficam em `miauw_whatsapp_automation_runs` para analise posterior.
 
 Endpoint interno:
 
@@ -134,9 +134,9 @@ Payload sugerido:
 { "notify": "problems" }
 ```
 
-O watchdog verifica fila travada, outbox `pending/sending`, falhas recentes, provider pausado, respostas lentas, `sent` sem id do provedor e o caso em que o WhatsApp marcou resposta como enviada mas o mesmo contato mandou nova mensagem e a conversa ficou sem novo `sent`. Alertas usam cooldown por `MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES` para nao floodar. O backend tenta recuperar outbox `pending` recente automaticamente e expira pendencias antigas para evitar envio atrasado demais.
+O watchdog verifica fila travada, outbox `pending/sending`, falhas recentes, provider pausado, respostas lentas, `sent` sem id do provedor e o caso em que o WhatsApp marcou resposta como enviada mas o mesmo contato mandou nova mensagem e a conversa ficou sem novo `sent`. O resultado e gravado como log interno com severidade, resumo, fingerprint e tipos dos problemas, sem criar outbox nem chamar o provedor. O backend tenta recuperar outbox `pending` recente automaticamente e expira pendencias antigas para evitar envio atrasado demais.
 
-O watchdog considera `next_attempt_at`: itens em backoff normal nao sao tratados como travados antes da hora de retry. Quando o provedor esta pausado por erro temporario, o worker nao fica segurando o processamento; ele devolve o envio para retry/backoff e deixa o watchdog avisar apenas a pausa do transporte.
+O watchdog considera `next_attempt_at`: itens em backoff normal nao sao tratados como travados antes da hora de retry. Quando o provedor esta pausado por erro temporario, o worker nao fica segurando o processamento; ele devolve o envio para retry/backoff e deixa o watchdog registrar internamente a pausa do transporte.
 
 ### Pedidos e boletos
 

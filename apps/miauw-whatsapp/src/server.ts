@@ -901,10 +901,10 @@ const N8N_WORKFLOW_CARDS = [
     moduleKey: 'miauw',
     description: 'Smoke checks de rotas, health e logs para avisar falha antes da equipe perceber.',
     n8nAction: 'Depois de deploy ou em modo manual, o n8n chama smoke-check/watchdog para conferir rotas, health do Miauby, apps internos e transporte WhatsApp.',
-    miaubyAction: 'Miauby avisa contatos com card Miauby somente quando encontrar problema, ou quando o n8n pedir sucesso tambem com notify=always.',
-    messagePreview: 'Ex.: "Miauby checou o deploy e encontrou uma rota com falha."',
-    safety: 'Nao altera dados; cria alerta/tarefa quando falha.',
-    controlNote: 'Controle operacional fica no workflow n8n e no modo notify; alertas respeitam cooldown.',
+    miaubyAction: 'Smoke-check pode avisar contatos com card Miauby. Watchdog fica em log interno para analise e nao envia WhatsApp.',
+    messagePreview: 'Ex.: "Miauby checou o deploy e encontrou uma rota com falha."; watchdog registra sem bolha.',
+    safety: 'Nao altera dados; smoke pode criar alerta controlado, watchdog apenas registra historico.',
+    controlNote: 'Controle operacional fica no workflow n8n e no modo notify; watchdog ignora envio e salva a execucao.',
   },
   {
     key: 'miauby_webhooks',
@@ -10026,6 +10026,35 @@ async function sendAutomationNotification(
   }
 }
 
+async function recordAutomationInternalLog(
+  source: string,
+  severity: 'info' | 'warn' | 'error',
+  text: string,
+  mode: AutomationNotifyMode,
+  hasProblems: boolean,
+  moduleKey = 'miauw',
+  details: JsonRecord = {},
+): Promise<AutomationSendResult> {
+  const message = safeOutboundText(text, 1200);
+  const fingerprint = message ? automationFingerprint(source, message) : '';
+  await recordAutomationRun(source, {
+    moduleKey,
+    status: 'skipped',
+    severity,
+    notifyMode: mode,
+    hasProblems,
+    messageFingerprint: fingerprint,
+    messagePreview: message,
+    errorSummary: hasProblems ? 'internal_log_only' : '',
+    details: {
+      ...details,
+      reason: 'internal_log_only',
+      delivery: 'none',
+    },
+  });
+  return { skipped: true, cooldown: false, recipients: 0, sent: 0, failed: 0, blocked: 0, errors: [] };
+}
+
 async function taskReminderRecipientsForUser(userId: number): Promise<AutomationRecipient[]> {
   if (!Number.isSafeInteger(userId) || userId <= 0) return [];
   const protectedAliasHashes = recipientAliasSourceHashList();
@@ -11222,12 +11251,21 @@ async function runWhatsappWatchdog(mode: AutomationNotifyMode): Promise<JsonReco
   }
 
   const hasProblems = issues.length > 0;
-  const notification = await sendAutomationNotification(
+  const message = watchdogMessage(issues);
+  const notification = await recordAutomationInternalLog(
     'automation_whatsapp_watchdog',
     automationSeverity(issues, hasProblems),
-    watchdogMessage(issues),
+    message,
     mode,
     hasProblems,
+    'miauw',
+    {
+      issue_count: issues.length,
+      issue_types: issues.map((issue) => issue.type).slice(0, 12),
+      lookback_minutes: WATCHDOG_LOOKBACK_MINUTES,
+      stuck_minutes: WATCHDOG_STUCK_MINUTES,
+      sent_count: Number(sentRow.sent_count || 0),
+    },
   );
 
   return {
