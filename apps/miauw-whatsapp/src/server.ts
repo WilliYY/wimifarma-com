@@ -3898,7 +3898,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                 effectiveBodyText = '';
               } else {
                 const targetMatch = pixReceiptTargetMatch(extraction);
-                const missing = missingPixReceiptFields(extraction);
+                const missing = missingPixReceiptFields(extraction, targetMatch);
                 const identifierDuplicate = await findRecentPixReceiptIdentifierDuplicate(row, extraction);
                 if (identifierDuplicate) {
                   await mergePixReceiptEventSummary(row.id, {
@@ -8256,7 +8256,30 @@ function pixReceiptCommandMessage(extraction: PixReceiptExtraction, targetMatch:
   return `pix cnpj ${moneyForCommand(extraction.amount)} - ${payer} - obs ${details}`;
 }
 
-function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
+function compactPixReceiptFieldLabel(value: string): string {
+  return normalizeIntentText(value).replace(/\s+/g, '');
+}
+
+function isOptionalPixReceiptMissingField(clean: string, normalized: string, compact: string): boolean {
+  const raw = clean.toLowerCase();
+  if (raw.includes('transaction_id') || raw.includes('end_to_end_id') || raw.includes('destination_key_digits')) {
+    return true;
+  }
+  return compact.includes('transactionid')
+    || compact.includes('idtransacao')
+    || compact.includes('codigotransacao')
+    || compact.includes('autenticacao')
+    || compact.includes('endtoendid')
+    || compact.includes('endtoend')
+    || compact.includes('e2eid')
+    || compact.includes('idpix')
+    || compact.includes('identificadorpix')
+    || compact.includes('destinationkey')
+    || compact.includes('chavedestino')
+    || (normalized.includes('chave') && normalized.includes('pix'));
+}
+
+function missingPixReceiptFields(extraction: PixReceiptExtraction, targetMatch?: PixReceiptTargetMatch): string[] {
   const missing = new Set<string>();
   if (!extraction.amount || extraction.amount <= 0) missing.add('valor');
   if (!extraction.payerName) missing.add('nome do pagador');
@@ -8269,6 +8292,25 @@ function missingPixReceiptFields(extraction: PixReceiptExtraction): string[] {
   for (const item of extraction.missing) {
     const clean = safeText(item, 60);
     const normalized = normalizeIntentText(clean);
+    const compact = compactPixReceiptFieldLabel(clean);
+    if (isOptionalPixReceiptMissingField(clean, normalized, compact)) {
+      continue;
+    }
+    if (extraction.amount > 0 && (normalized.includes('valor') || compact.includes('amount') || compact.includes('amountbrl'))) {
+      continue;
+    }
+    if (extraction.payerName && (normalized.includes('pagador') || compact.includes('payer') || compact.includes('payername'))) {
+      continue;
+    }
+    if (targetMatch?.ok && (
+      normalized.includes('cnpj')
+      || normalized.includes('destino')
+      || compact.includes('destination')
+      || compact.includes('recebedor')
+      || compact.includes('favorecido')
+    )) {
+      continue;
+    }
     if (normalized.includes('cnpj') || normalized.includes('destino') || (normalized.includes('chave') && normalized.includes('pix'))) {
       continue;
     }
@@ -8979,7 +9021,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
           role: 'user',
           parts: [
             {
-              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes conhecidos apenas como pista: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id e o identificador Pix/E2E/autenticacao quando existir, mas nao invente. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`,
+              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes conhecidos apenas como pista: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id, transaction_id e destination_key_digits sao opcionais: extraia quando existirem, mas nao coloque em missing se nao aparecerem. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`,
             },
             {
               inlineData: {
