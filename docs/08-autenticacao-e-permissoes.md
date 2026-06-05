@@ -15,6 +15,7 @@ Arquivos:
 - `apps/cashback/src/server.ts`
 - `apps/codigos/src/server.ts`
 - `apps/usuarios/src/server.ts`
+- `apps/login-senha/src/server.ts`
 - `site/*/login.php`
 - `site/*/logout.php`
 - `site/*/bootstrap.php`
@@ -28,6 +29,10 @@ Rotas:
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/usuarios/login.php`
+- `/login-senha/`
+- `/login-senha/api/entries/:id/reveal`
+- `/login-senha/api/entries/:id/copy-login`
+- `/login-senha/api/entries/:id/copy-password`
 - `/gestao/login.php`
 - `/pedidos/`
 - `/xp/login.php`
@@ -46,6 +51,9 @@ Tabelas:
 - `core_user_module_permissions`
 - `core_user_xp_links`
 - `core_user_admin_passwords`
+- `login_senha_entries`
+- `login_senha_audit_events`
+- `login_senha_sessions`
 - `core_user_audit_events`
 - `usuarios_sessions`
 - `cashback_sessions`
@@ -75,6 +83,7 @@ Tabelas:
 - Fotos do XP aceitam somente JPG, PNG ou WEBP validados no servidor, ate 3 MB, com caminho final limitado a `/xp/uploads/funcionarios/` ou `/xp/uploads/adm/`; as pastas continuam em `site/xp/uploads`, compartilhadas como volume pelo app Node para preservar arquivos e rollback.
 - Financeiro (`/financeiro/`) usa o servico Node `apps/financeiro`, sessao propria `WFFINANCEIRO` no Postgres do Financeiro e autentica somente contra `core_users` desde 2026-05-30, sem fallback `wf_users` ou `FINANCEIRO_AUTH_PROVIDER`. Desde 2026-06-02, permissao explicita `core_user_module_permissions.module_key='financeiro'` com `can_access=false` bloqueia login/SSO no modulo, enquanto ausencia de linha preserva compatibilidade legado e `adm` continua como recuperacao segura. Caixa, Relatorio, reabertura, CSV e endpoints internos continuam com CSRF/token conforme o tipo de rota.
 - Usuarios (`/usuarios/`) usa o servico Node `apps/usuarios`, sessao propria `WFUSUARIOS` no Postgres core e autentica contra `core_users`. O painel fica restrito a username `adm` ou role `admin`; criar, atualizar, vincular XP, alterar login comum, alterar permissoes e desativar usuario usa CSRF e registra `core_user_audit_events`/`core_audit_logs`. `core_users.display_name` e o nome exibido seguro do operador, separado do login tecnico.
+- Login / Senha (`/login-senha/`) usa o servico Node `apps/login-senha`, sessao propria `WFLOGINSENHA` no Postgres `wimifarma_login_senha` e autentica via `core_users`/`WFHOME_SSO`. `adm`/role `admin` entram como recuperacao administrativa; usuario comum precisa da permissao explicita `core_user_module_permissions.module_key='login_senha'` com `can_access=true`. Ausencia de linhas de permissao nao libera esse modulo. Criar, editar, arquivar, revelar/copiar senha e copiar login usam CSRF e registram auditoria sem senha.
 - Perfis em `core_users.role` aceitos pelo painel Usuarios: `user` (`Colaborador`), `gerente` (`Gerente`), `admin` (`Admin`) e `farmacia` (`Farmacia`). `farmacia` representa o WhatsApp institucional; nao ganha acesso administrativo automaticamente, nao deve ter XP/ferias pessoais e depende das permissoes por modulo marcadas como qualquer colaborador.
 - O login `adm` e o usuario mestre/padrao: nao pode ser excluido, desativado, perder admin nem perder acesso aos modulos pelo painel. Pode trocar nome exibido, senha, vinculo XP e numero de WhatsApp, mantendo `adm` como identificador tecnico.
 - O painel Usuarios nao recupera senha antiga importada por hash. Quando o administrador cria ou troca uma senha, inclusive do usuario mestre `adm`, o login continua validando `core_users.password_hash`, mas uma copia cifrada para consulta interna do ADM e gravada em `core_user_admin_passwords`. Se a senha ainda nao foi redefinida no painel, o ADM precisa definir uma nova para passar a saber qual senha esta valida.
@@ -86,7 +95,7 @@ Tabelas:
 - Login PHP interno do Miauby usa `core_users` e `core_login_rate_limits` no Postgres; desde 2026-06-04 o bootstrap compartilhado local nao possui fallback de autenticacao MySQL. Cashback usa login unico no core no app Node, com limitador persistente em `core_login_rate_limits`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
 - Na Cotacao V2, importar Google Sheets e restaurar backup sao operacoes fortes: alem de sessao e CSRF, exigem username `adm`, role `admin` ou role `gerente`. Exportar, criar backup, editar celula e restaurar distribuidora apagada seguem as regras existentes.
 - Desde 2026-06-03, a Home e os modulos internos tratam `WFHOME_SSO` valido como contexto mais atual do navegador. Ao trocar de operador pela Home, os endpoints e paginas nao devem reaproveitar sessoes antigas de modulos como `WFXP`, `WFUSUARIOS`, `WFCASHBACK`, `WFCOTACAOV2`, `WFCODIGOS`, `WFGESTAO`, `WFPEDIDOS`, `WFTAREFA`, `WFFINANCEIRO` ou `WFWCASHBACK` se o SSO atual apontar outro usuario. O logout da Home expira esses cookies de modulo e limpa chaves frontend do Miauby/Home para evitar fala, XP ou permissao do usuario anterior.
-- A Home filtra os cards por `core_user_module_permissions`: `adm`/role `admin` ve tudo; usuario sem linhas explicitas preserva acesso legado; usuario com permissoes salvas ve somente modulos marcados. O mesmo criterio passou a ser reforcado no backend de Cashback, Cotacao, Codigos, XP, Tarefa, Gestao, Pedidos, Financeiro e Miauby, respeitando tambem as restricoes fortes ja existentes de perfil em Gestao/Pedidos/Usuarios.
+- A Home filtra os cards por `core_user_module_permissions`: `adm`/role `admin` ve tudo; usuario sem linhas explicitas preserva acesso legado para modulos comuns; usuario com permissoes salvas ve somente modulos marcados. `login_senha` e excecao sensivel e fica oculto/bloqueado para usuario comum sem permissao explicita. O mesmo criterio passou a ser reforcado no backend de Cashback, Cotacao, Codigos, XP, Tarefa, Gestao, Pedidos, Financeiro e Miauby, respeitando tambem as restricoes fortes ja existentes de perfil em Gestao/Pedidos/Usuarios.
 - O mini-card XP da Home consulta primeiro o endpoint do Usuarios e depois o do XP, ambos em modo `no-store`, apenas quando o modulo `xp` esta liberado para o operador atual. Os dois endpoints revalidam permissao `xp`; a Home so renderiza se o payload pertence ao login atual. Se algum endpoint responder uma sessao antiga de outro usuario, a Home ignora a resposta em vez de mostrar XP incorreto.
 - O widget Miauby da Home so carrega quando o modulo `miauw` esta permitido para o operador atual. O Miauby PHP tambem resolve primeiro o SSO atual da Home quando ele existe e bloqueia `miauw` quando a permissao do modulo esta desmarcada, sem alterar motor de chat, ferramentas, Gemini ou historico.
 

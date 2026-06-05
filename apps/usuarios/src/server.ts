@@ -160,12 +160,13 @@ const MODULES: ModuleDefinition[] = [
   { key: 'pedidos', label: 'Pedidos', href: '/pedidos/' },
   { key: 'financeiro', label: 'Financeiro', href: '/financeiro/' },
   { key: 'tarefa', label: 'Tarefas', href: '/tarefa/' },
-  { key: 'usuarios', label: 'Usuarios', href: '/usuarios/' },
   { key: 'codigos', label: 'Codigos', href: '/codigos/' },
   { key: 'xp', label: 'XP', href: '/xp/' },
   { key: 'gestao', label: 'Gestao', href: '/gestao/' },
   { key: 'miauw', label: 'Miauby', href: '/miauw/' },
   { key: 'miauw_whatsapp', label: 'Miauby Whatsapp', href: '/miauw/whatsapp/' },
+  { key: 'login_senha', label: 'Login / Senha', href: '/login-senha/' },
+  { key: 'usuarios', label: 'Usuarios', href: '/usuarios/' },
 ];
 
 const MODULE_KEYS = new Set(MODULES.map((module) => module.key));
@@ -2089,7 +2090,7 @@ function renderDashboard(
   stats: Record<string, number>,
 ): string {
   const flash = takeFlash(req);
-  const defaultModules = Object.fromEntries(MODULES.map((module) => [module.key, module.key !== 'usuarios'])) as Record<string, boolean>;
+  const defaultModules = Object.fromEntries(MODULES.map((module) => [module.key, !['usuarios', 'login_senha'].includes(module.key)])) as Record<string, boolean>;
   return `<!doctype html>
 <html lang="pt-BR">
 <head>

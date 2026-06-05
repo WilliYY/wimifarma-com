@@ -249,12 +249,22 @@ function wf_home_is_core_admin(?array $identity): bool
     return $username === 'adm' || $role === 'admin';
 }
 
-function wf_home_module_permissions(?array $identity, array $moduleKeys): array
+function wf_home_module_permissions(?array $identity, array $moduleKeys, array $defaultDeniedModuleKeys = array()): array
 {
     $moduleKeys = array_values(array_unique(array_filter(array_map('strval', $moduleKeys))));
-    $allowed = array_fill_keys($moduleKeys, true);
+    $allAllowed = array_fill_keys($moduleKeys, true);
+    $allowed = $allAllowed;
+    foreach (array_unique(array_filter(array_map('strval', $defaultDeniedModuleKeys))) as $deniedKey) {
+        if (array_key_exists($deniedKey, $allowed)) {
+            $allowed[$deniedKey] = false;
+        }
+    }
 
-    if (!$identity || wf_home_is_core_admin($identity)) {
+    if (wf_home_is_core_admin($identity)) {
+        return $allAllowed;
+    }
+
+    if (!$identity) {
         return $allowed;
     }
 
@@ -327,6 +337,7 @@ function wf_home_clear_module_session_cookies(): void
         'WFXP',
         'WFGESTAO',
         'WFUSUARIOS',
+        'WFLOGINSENHA',
         'WFWCASHBACK',
     );
 
@@ -2102,6 +2113,14 @@ $modules = array(
         'home_class' => 'is-whatsapp-card',
     ),
     array(
+        'name' => 'Login / Senha',
+        'label' => 'Cofre',
+        'description' => 'Acessos internos protegidos e auditados.',
+        'module_key' => 'login_senha',
+        'href' => '/login-senha/',
+        'accent' => 'amber',
+    ),
+    array(
         'name' => 'Usuários',
         'label' => 'Acessos',
         'description' => 'Logins, permissoes, WhatsApp e historico.',
@@ -2113,7 +2132,8 @@ $modules = array(
 );
 $homeModulePermissions = wf_home_module_permissions(
     $homeUserIdentity,
-    array_map(static fn (array $module): string => (string) ($module['module_key'] ?? ''), $modules)
+    array_map(static fn (array $module): string => (string) ($module['module_key'] ?? ''), $modules),
+    array('login_senha')
 );
 $modules = array_values(array_filter(
     $modules,

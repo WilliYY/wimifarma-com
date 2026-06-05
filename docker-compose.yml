@@ -32,6 +32,7 @@ services:
       - wimifarma-financeiro-app
       - wimifarma-cashback-app
       - wimifarma-usuarios-app
+      - wimifarma-login-senha-app
       - wimifarma-miauw-agent
       - wimifarma-miauw-whatsapp
     environment:
@@ -213,6 +214,19 @@ services:
       POSTGRES_PASSWORD: ${CASHBACK_POSTGRES_PASSWORD:-wimifarma_cashback_dev_pass}
     volumes:
       - ./cashback-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-login-senha-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-login-senha-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_login_senha
+      POSTGRES_USER: wimifarma_login_senha
+      POSTGRES_PASSWORD: ${LOGIN_SENHA_POSTGRES_PASSWORD:-wimifarma_login_senha_dev_pass}
+    volumes:
+      - ./login-senha-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -600,6 +614,34 @@ services:
       MIAUW_WHATSAPP_INTERNAL_TOKEN: ${MIAUW_WHATSAPP_INTERNAL_TOKEN:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
       MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-login-senha-app:
+    build:
+      context: ./apps/login-senha
+      dockerfile: Dockerfile
+    container_name: wimifarma-login-senha-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-core-db
+      - wimifarma-login-senha-db
+    environment:
+      NODE_ENV: production
+      PORT: 3950
+      BASE_PATH: /login-senha
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      POSTGRES_HOST: wimifarma-login-senha-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_login_senha
+      POSTGRES_USER: wimifarma_login_senha
+      POSTGRES_PASSWORD: ${LOGIN_SENHA_POSTGRES_PASSWORD:-wimifarma_login_senha_dev_pass}
+      LOGIN_SENHA_SESSION_SECRET: ${LOGIN_SENHA_SESSION_SECRET:-wimifarma_login_senha_dev_secret_change_me}
+      LOGIN_SENHA_VAULT_KEY: ${LOGIN_SENHA_VAULT_KEY:-}
     networks:
       - wimifarma-com-network
 

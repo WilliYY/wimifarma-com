@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby agente e Miauby WhatsApp. O novo `wimifarma-miauby-app` fica apenas na rede Docker como servico sombra somente leitura para validar Postgres contra PHP/MySQL, sem proxy publico. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres sombra do Miauby interno, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
+A arquitetura atual empacota o sistema migrado do HostGator em Docker. O container web serve WordPress, modulos PHP internos remanescentes e faz proxy para Cashback, Cotacao V2, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Login / Senha, Miauby agente e Miauby WhatsApp. O novo `wimifarma-miauby-app` fica apenas na rede Docker como servico sombra somente leitura para validar Postgres contra PHP/MySQL, sem proxy publico. Os dados ficam separados entre MySQL legado/apps, Postgres do core de autenticacao, Postgres do Cashback, Postgres da Cotacao V2, Postgres da Gestao/Pedidos, Postgres da Tarefa, Postgres do XP, Postgres de Codigos, Postgres do Financeiro, Postgres do Login / Senha, Postgres sombra do Miauby interno, Postgres do WhatsApp do Miauby e Redis de sessoes/presenca.
 
 A direcao de arquitetura para a proxima etapa e manter uma plataforma Postgres integrada por `wimifarma_core`, sem juntar todos os dominios em um banco unico acoplado. A migracao do Miauby interno deve criar `wimifarma_miauby`/`apps/miauby` por fases, mantendo `/miauw/` e `MIAUW_*` como compatibilidade ate o corte validado.
 
@@ -130,6 +130,7 @@ Rede Docker:
 - Interno Codigos: `wimifarma-codigos-app:3700`
 - Interno Financeiro: `wimifarma-financeiro-app:3800`
 - Interno Usuarios: `wimifarma-usuarios-app:3900`
+- Interno Login / Senha: `wimifarma-login-senha-app:3950`
 - Interno Miauby agente: `wimifarma-miauw-agent:3100`
 - Interno Miauby WhatsApp: `wimifarma-miauw-whatsapp:3400`
 - Interno Miauby sombra leitura: `wimifarma-miauby-app:4100`
@@ -166,6 +167,7 @@ Tambem nao apontar o Nginx Proxy Manager nem o Apache para `wimifarma-miauby-app
 - Manter Codigos como modulo proprio em `/codigos/`, usando `apps/codigos`, container `wimifarma-codigos-app:3700`, Postgres dedicado, sessao propria `WFCODIGOS`, CSRF proprio e proxy Apache dedicado; `site/codigos` fica somente para assets.
 - Manter `/financeiro/` pelo proxy Apache para `apps/financeiro`; o espelho/import MySQL ja foi removido do runtime, entao validacoes devem focar Postgres oficial, login/sessao, fluxo de caixa/relatorio, CSV, Miauby Pix CNPJ e rollback por restauracao de versao/backup.
 - Manter `/usuarios/` pelo proxy Apache para `apps/usuarios`; o modulo deve usar `wimifarma_core` como fonte de verdade, restringir administracao a `adm`/`admin`, guardar permissoes por modulo em tabela propria e vincular XP sem copiar dados do XP para outro banco.
+- Manter `/login-senha/` pelo proxy Apache para `apps/login-senha`; o modulo deve usar `wimifarma_login_senha` como fonte de verdade do cofre, `core_users` para sessao/permissao e permissao explicita `login_senha` para usuarios comuns, sem expor senha em logs, WhatsApp ou contexto generativo.
 - Para futuras telas/cards com dominio proprio, escolher explicitamente o melhor desenho tecnico antes de implementar: linguagem/runtime, banco, schema, indices, permissoes, auditoria, healthcheck, deploy e integracoes. Preferir rota/app/servico separados em vez de transformar a Gestao em concentrador de subviews.
 - Cada modulo novo deve declarar sua fonte de verdade. Quando precisar alimentar outro dominio, integrar por tabelas/APIs estruturadas, nao por acoplamento visual ou reaproveitamento de tela.
 - Manter o Miauby agente sem escrita real; quando `MIAUW_ENGINE=node`, liberar primeiro apenas usuarios configurados e preservar rollback imediato para `php`.
@@ -189,6 +191,7 @@ Tambem nao apontar o Nginx Proxy Manager nem o Apache para `wimifarma-miauby-app
 - Codigos foi migrado para `apps/codigos` com Node.js + TypeScript e Postgres dedicado `wimifarma_codigos`. A tela visual foi preservada por assets de `site/codigos`; o PHP antigo fica em `site/_legacy-disabled/2026-05-29/codigos-php`.
 - Financeiro foi cortado para `apps/financeiro` com Node.js + TypeScript e Postgres dedicado `wimifarma_financeiro`. A tela preserva os assets de `site/financeiro`, expoe health/resumo/checksums internos e, desde 2026-05-30, roda sem `mysql2`, importador, espelho ou fallback MySQL; `financeiro_*` no MySQL fica somente como referencia historica/backup.
 - Usuarios foi criado em `apps/usuarios` com Node.js + TypeScript, sessao `WFUSUARIOS` e Postgres core `wimifarma_core`. O app nasce como painel central de criacao/desativacao de logins, permissoes por modulo, vinculo logico com `xp_employees` e historico em `core_user_audit_events`.
+- Login / Senha foi criado em `apps/login-senha` com Node.js + TypeScript, sessao `WFLOGINSENHA` e Postgres dedicado `wimifarma_login_senha`. O app guarda Nome, Login / Usuario e Senha cifrada em `login_senha_entries`, registra auditoria em `login_senha_audit_events` e espelha resumo seguro em `core_audit_logs`.
 - O Miauby interno iniciou fase 1 em sombra com `apps/miauby`, `wimifarma-miauby-db` e `wimifarma-miauby-migrator`: o migrador cria tabelas `miauby_*`, preserva `legacy_mysql_id`, grava checksum e payload sanitizado, mas nao muda rota, UI, widget nem engine.
 - O criterio para banco novo e: tabelas do dominio com FKs/constraints, dinheiro em centavos inteiros quando houver valor financeiro, indices em filtros/joins frequentes, indices parciais para filas/status, soft delete/arquivamento logico quando houver auditoria e migracao/compatibilidade documentada quando substituir tabela antiga.
 - A Fase 7/8/9 do Miauby cria um servico Node.js 22 + TypeScript com Agents SDK, adaptador PHP de comparacao e corte por `MIAUW_ENGINE`. O PHP continua dono de login, sessoes, widget, confirmacoes, registry e auditoria.
@@ -211,6 +214,7 @@ Tambem nao apontar o Nginx Proxy Manager nem o Apache para `wimifarma-miauby-app
 - Recriar `xp-data/` sem backup perde funcionarios, vendas, configuracoes, auditoria e sessoes do XP Node/Postgres.
 - Recriar `codigos-data/` sem backup perde itens, blocos, auditoria e sessoes de Codigos Node/Postgres.
 - Recriar `financeiro-data/` sem backup perde a fonte oficial atual do Financeiro em Postgres e o historico de importacao/checksum.
+- Recriar `login-senha-data/` sem backup perde o cofre Login / Senha, incluindo senhas cifradas e auditoria do modulo.
 - Recriar `miauby-data/` sem backup perde a copia sombra usada para validar a migracao do Miauby interno; isso nao derruba `/miauw/`, mas apaga reconciliacao/checksums da fase 1.
 - Rollback MySQL do Financeiro exige restaurar versao/imagem anterior e backup validado; antes de operar apos rollback, validar fechamentos, lancamentos, relatorio, CSV e integracao Pix CNPJ do Miauby WhatsApp.
 - Reconstruir NPM sem conectar a rede `wimifarma-com-network` pode impedir o proxy de enxergar `wimifarma-com-web`.

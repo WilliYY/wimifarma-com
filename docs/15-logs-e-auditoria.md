@@ -28,6 +28,7 @@ Tabelas de auditoria/log:
 - `cotacao_auditoria`
 - `financeiro_auditoria`
 - `financeiro_audit_events`
+- `login_senha_audit_events`
 - `core_user_audit_events`
 - `core_user_module_permissions`
 - `gestao_audit_events`
@@ -56,6 +57,7 @@ Arquivos:
 - `apps/cotacao/src/server.js`
 - `apps/financeiro/src/server.ts`
 - `apps/usuarios/src/server.ts`
+- `apps/login-senha/src/server.ts`
 - `apps/miauw-agent/src/server.ts`
 - `apps/miauw-whatsapp/src/server.ts`
 - `site/financeiro/financeiro-funcoes.php`
@@ -77,6 +79,7 @@ Arquivos:
 - Codigos registra criacao de blocos, criacao de itens, edicao, reordenacao, exclusao logica e exclusao de tabela em `codigos_audit_events` e `core_audit_logs`; desde 2026-05-30 nao espelha mais `wf_logs`. Autosave pode gerar mais eventos de edicao, entao logs devem continuar curtos e sem segredos.
 - XP registra criacao/edicao/inativacao de funcionarios, atualizacao do perfil ADM, lancamento e cancelamento de vendas em `xp_audit_events`, com resumo tambem em `core_audit_logs` quando aplicavel; desde 2026-05-30 nao espelha mais `wf_logs` e nao possui caminho `mysql2`. Logs devem guardar resumo curto, sem arquivo original, senha ou dado sensivel.
 - Usuarios registra login/falha, criacao, atualizacao, desativacao, permissoes, vinculo XP e se o cofre administrativo de senha foi atualizado em `core_user_audit_events`, espelhando resumo curto em `core_audit_logs`. A tela de Usuarios consulta `core_audit_logs` para historico geral/por usuario e por isso consegue mostrar acoes de outros modulos quando o ator e gravado como `core_users.id`. Nunca registrar senha nova/antiga, token, hash de senha, payload bruto ou dados sensiveis desnecessarios.
+- Login / Senha registra criacao, edicao, arquivamento, visualizacao de senha, copia de senha e copia de login em `login_senha_audit_events`, com snapshot curto do ator e espelho seguro em `core_audit_logs`. A auditoria deve registrar qual acesso foi usado e quem usou, nunca o valor da senha.
 - Eventos de Miauby devem preservar contexto suficiente para diagnostico sem expor segredos.
 - Guardrails do Miauby v2 que reescrevem resposta por vazamento de bastidor devem registrar diagnostico invisivel com termos detectados, origem, versao do agente e versao da politica, sem salvar a resposta completa nem segredo.
 - O painel `/miauw/diagnostico.php` mostra diagnosticos internos recentes em forma resumida e sanitizada, sem payload bruto nem stack trace.

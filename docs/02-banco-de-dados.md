@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Financeiro e de Usuarios. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Financeiro, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -34,6 +34,9 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - Container Financeiro: `wimifarma-financeiro-db`
 - Imagem Financeiro: `postgres:17-alpine`
 - Volume Financeiro: `financeiro-data/postgres/`
+- Container Login / Senha: `wimifarma-login-senha-db`
+- Imagem Login / Senha: `postgres:17-alpine`
+- Volume Login / Senha: `login-senha-data/postgres/`
 - Container Miauby WhatsApp: `wimifarma-miauw-whatsapp-db`
 - Imagem Miauby WhatsApp: `postgres:17-alpine`
 - Volume Miauby WhatsApp: `miauw-whatsapp-data/postgres/`
@@ -57,6 +60,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_xp`: XP em Postgres.
 - `wimifarma_codigos`: Codigos em Postgres.
 - `wimifarma_financeiro`: Financeiro oficial em Postgres.
+- `wimifarma_login_senha`: cofre Login / Senha oficial em Postgres, com senhas cifradas e auditoria local.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 - `wimifarma_miauby`: banco sombra do Miauby interno, com tabelas canonicas `miauby_*`. `wimifarma-miauby-app` usa esse banco para status/contexto/readiness somente leitura e usa o ultimo `validate` salvo em `miauby_migration_runs` para resumir paridade; a comparacao contra MySQL `miauw_*` ocorre somente no `wimifarma-miauby-migrator`. O prefixo `miauw_*` permanece oficial no PHP ate corte validado; ver `docs/28-miauby-migracao.md`.
 
@@ -285,6 +289,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `apps/financeiro/src/server.ts`; `site/financeiro` fica como legado/assets visuais.
 - Usuarios: `apps/usuarios/src/server.ts`
+- Login / Senha: `apps/login-senha/src/server.ts`
 - Gestao: `apps/gestao/src/server.ts`
 - XP: `apps/xp/src/server.ts`
 - Tarefas: `apps/tarefa/src/server.ts`
@@ -324,7 +329,9 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `cotacao_presencas` nao e historico permanente; registros antigos sao limpos automaticamente por atividade.
 - Redis de presenca da Cotacao V2 tambem nao e historico permanente.
 - `financeiro_*` precisa preservar auditoria e divergencias.
-- `core_user_module_permissions` e a fonte central para liberar ou bloquear cards/modulos por usuario. Na primeira fase, linhas ausentes significam acesso legado preservado; usuarios criados pelo painel ja recebem linhas explicitas por modulo.
+- `core_user_module_permissions` e a fonte central para liberar ou bloquear cards/modulos por usuario. Na primeira fase, linhas ausentes significam acesso legado preservado para modulos comuns; `login_senha` e excecao sensivel e exige permissao explicita para usuario comum.
+- `login_senha_entries` guarda Nome, Login / Usuario e senha cifrada por AES-256-GCM (`password_ciphertext`, `password_iv`, `password_tag`). Nao gravar senha em texto puro, log, auditoria, console, erro, payload generativo ou WhatsApp.
+- `login_senha_audit_events` registra criacao, edicao, visualizacao/copia e arquivamento de acessos, com snapshot curto do ator e resumo sem senha. O modulo tambem espelha resumo seguro em `core_audit_logs`.
 - `core_user_xp_links.xp_employee_id` aponta logicamente para `xp_employees.id`; nao criar FK entre bancos. O nome do funcionario fica como snapshot operacional para auditoria e leitura rapida.
 - `core_user_audit_events` deve registrar mudancas de usuarios sem senha, token ou payload bruto. Excluir usuario no painel significa desativar (`active=false`), nao apagar fisicamente.
 - `tarefa_tasks.status` aceita apenas `aberta`, `concluida` e `cancelada`; `priority` aceita `alta`, `normal` e `baixa`. Concluir/cancelar/reabrir nao apaga tarefa; apenas muda status, datas e auditoria.
@@ -390,6 +397,7 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Apagar `gestao-data/` perde dados oficiais da Gestao.
 - Apagar `codigos-data/` perde dados oficiais de Codigos.
 - Apagar `financeiro-data/` perde a fonte oficial atual do Financeiro em Postgres e o historico de importacao/checksum. Antes de qualquer limpeza, fazer backup e confirmar rollback.
+- Apagar `login-senha-data/` perde o cofre Login / Senha, incluindo senhas cifradas e auditoria. Antes de qualquer limpeza, fazer backup e confirmar a chave `LOGIN_SENHA_VAULT_KEY`.
 - Apagar `miauw-whatsapp-data/` perde fila, eventos e outbox do canal WhatsApp do Miauby.
 - Criar regras automáticas fora de `cotacao_v2_rules` reabre o bug de palavra-gatilho.
 

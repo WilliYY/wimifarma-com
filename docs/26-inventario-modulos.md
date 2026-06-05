@@ -781,6 +781,76 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 
 Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privadas devem ser validadas no modulo Tarefa. Depois aplicar enforcement de `core_user_module_permissions` modulo por modulo.
 
+## Login / Senha
+
+### Rota atual
+
+- Rota publica oficial: `/login-senha/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/login-senha/` para `wimifarma-login-senha-app:3950/login-senha/`.
+- App oficial: `apps/login-senha`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres dedicado `wimifarma_login_senha`.
+- Auth/permissao: `core_users`, `WFHOME_SSO` e permissao `core_user_module_permissions.module_key='login_senha'`.
+
+### Telas e endpoints
+
+- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro, edicao, mostrar/ocultar, copiar e arquivar acesso.
+- `/login-senha/api/entries/:id/reveal`: revela senha para usuario autorizado e audita visualizacao.
+- `/login-senha/api/entries/:id/copy-login`: retorna login para copiar e audita copia.
+- `/login-senha/api/entries/:id/copy-password`: retorna senha para copiar e audita copia.
+- `/login-senha/health`: health do banco do cofre e do core.
+
+### Permissoes e sessao
+
+- Sessao propria `WFLOGINSENHA`.
+- `adm`/role `admin` entram como recuperacao administrativa.
+- Usuario comum precisa permissao explicita `login_senha=true`; ausencia de linha nao libera o modulo.
+- Escritas e APIs de reveal/copy usam CSRF.
+- Home limpa o cookie `WFLOGINSENHA` no logout central.
+
+### Tabelas MySQL envolvidas
+
+- Nenhum MySQL operacional ou legado para este modulo.
+
+### Tabelas Postgres oficiais
+
+- `login_senha_entries`: Nome, Login / Usuario e senha cifrada (`password_ciphertext`, `password_iv`, `password_tag`).
+- `login_senha_audit_events`: auditoria local com snapshot curto do ator e resumo sem senha.
+- `login_senha_sessions`: sessao do Express.
+- `core_audit_logs`: espelho curto de auditoria.
+
+### Arquivos relevantes
+
+- `apps/login-senha/src/server.ts`;
+- `apps/login-senha/public/styles.css`;
+- `apps/login-senha/public/app.js`;
+- `docker-compose.yml`;
+- `docker/php/Dockerfile`;
+- `site/home.php`;
+- `apps/usuarios/src/server.ts`.
+
+### Fluxos de escrita
+
+- Criar acesso.
+- Editar nome/login e, opcionalmente, trocar senha.
+- Arquivar acesso sem apagar registro.
+- Auditar revelar/copiar senha e copiar login.
+
+### Integracoes
+
+- Home publica exibe o card `Login / Senha` antes de `Usuarios`.
+- Usuarios libera/bloqueia o modulo pelo card `Login / Senha`.
+- Nao ha integracao com Miauby WhatsApp, Gemini ou contexto generativo.
+
+### Riscos
+
+- Perder `LOGIN_SENHA_VAULT_KEY` impede descriptografar senhas antigas.
+- Expor senha em logs, console, erro ou contexto generativo viola a regra do modulo.
+- Liberar por compatibilidade legado exporia o cofre; manter default fechado para usuario comum.
+
+### Proxima acao segura
+
+Validar no VPS `/login-senha/health`, card na Home, bloqueio por URL direta para usuario sem permissao, criar/editar/arquivar acesso e auditoria de mostrar/copiar sem senha em logs.
+
 ## Cotacao
 
 ### Rota atual

@@ -8,6 +8,7 @@
 /codigos-data/
 /financeiro-data/
 /cashback-data/
+/login-senha-data/
 /miauw-whatsapp-data/
 /miauby-data/
 /ops/n8n/n8n-data/
@@ -25,6 +26,7 @@ apps/codigos/dist/
 apps/financeiro/dist/
 apps/cashback/dist/
 apps/usuarios/dist/
+apps/login-senha/dist/
 apps/miauw-whatsapp/dist/
 apps/miauby/dist/
 .env

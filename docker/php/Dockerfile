@@ -141,6 +141,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/login-senha/" "http://wimifarma-login-senha-app:3950/login-senha/"'; \
+        echo 'ProxyPassReverse "/login-senha/" "http://wimifarma-login-senha-app:3950/login-senha/"'; \
+        echo 'ProxyPass "/login-senha" "http://wimifarma-login-senha-app:3950/login-senha"'; \
+        echo 'ProxyPassReverse "/login-senha" "http://wimifarma-login-senha-app:3950/login-senha"'; \
+    } > /etc/apache2/conf-available/wimifarma-login-senha-proxy.conf \
+    && a2enconf wimifarma-login-senha-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPassReverse "/cotacao/socket.io/" "ws://wimifarma-cotacao-app:3000/cotacao/socket.io/"'; \
         echo 'ProxyPass "/cotacao/" "http://wimifarma-cotacao-app:3000/cotacao/"'; \
