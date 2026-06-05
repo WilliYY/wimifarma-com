@@ -622,54 +622,91 @@ async function handlePost(req: Request, res: Response): Promise<void> {
   res.redirect(`${BASE_PATH}/`);
 }
 
-function renderEntryCard(req: Request, entry: EntryRow): string {
+function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
   const id = toNumber(entry.id);
   const updatedText = entry.updated_at ? `Atualizado em ${e(brDateTime(entry.updated_at))}` : `Criado em ${e(brDateTime(entry.created_at))}`;
   return `
-    <article class="vault-entry" data-entry-id="${id}">
-      <form method="post" action="${BASE_PATH}/" class="vault-entry-form" autocomplete="off">
-        ${csrfField(req)}
-        <input type="hidden" name="action" value="update">
-        <input type="hidden" name="id" value="${id}">
-        <div class="vault-entry-head">
-          <div>
-            <span class="vault-kicker">Acesso</span>
-            <h2>${e(entry.name)}</h2>
-            <p>${updatedText}</p>
-          </div>
-          <span class="vault-pill">Ativo</span>
-        </div>
-        <div class="vault-field-grid">
-          <label>
-            <span>Nome</span>
-            <input name="name" maxlength="160" value="${e(entry.name)}" required>
-          </label>
-          <label>
-            <span>Login / Usuario</span>
-            <input name="login_username" maxlength="240" value="${e(entry.login_username)}" required>
-          </label>
-          <label>
-            <span>Nova senha</span>
-            <input name="password" type="password" maxlength="512" placeholder="Deixe em branco para manter" autocomplete="new-password">
-          </label>
-        </div>
-        <div class="vault-secret-row">
-          <input class="vault-secret-output" type="password" readonly value="********" aria-label="Senha">
-          <button type="button" class="vault-btn vault-btn-soft" data-vault-action="reveal" data-entry-id="${id}">Mostrar</button>
-          <button type="button" class="vault-btn vault-btn-soft" data-vault-action="copy-login" data-entry-id="${id}">Copiar login</button>
-          <button type="button" class="vault-btn vault-btn-soft" data-vault-action="copy-password" data-entry-id="${id}">Copiar senha</button>
-        </div>
-        <div class="vault-entry-actions">
-          <button class="vault-btn vault-btn-primary" type="submit">Salvar alteracoes</button>
-        </div>
-      </form>
-      <form method="post" action="${BASE_PATH}/" class="vault-archive-form" data-confirm="Arquivar este acesso?">
-        ${csrfField(req)}
-        <input type="hidden" name="action" value="archive">
-        <input type="hidden" name="id" value="${id}">
-        <button class="vault-btn vault-btn-danger" type="submit">Arquivar</button>
-      </form>
-    </article>`;
+    <tr class="vault-entry-row" data-entry-id="${id}" tabindex="0" aria-expanded="false" aria-controls="vault-entry-editor-${id}">
+      <td class="vault-col-index">${index + 1}</td>
+      <td class="vault-cell-main">
+        <strong>${e(entry.name)}</strong>
+        <span>${updatedText}</span>
+      </td>
+      <td><span class="vault-mono">${e(entry.login_username)}</span></td>
+      <td><span class="vault-password-mask">********</span></td>
+      <td><span class="vault-pill">Ativo</span></td>
+      <td><span class="vault-edit-pill">Editar</span></td>
+    </tr>
+    <tr class="vault-entry-edit-row" id="vault-entry-editor-${id}" data-entry-id="${id}" hidden>
+      <td colspan="6">
+        <article class="vault-entry vault-entry-editor" data-entry-id="${id}">
+          <form method="post" action="${BASE_PATH}/" class="vault-entry-form" autocomplete="off">
+            ${csrfField(req)}
+            <input type="hidden" name="action" value="update">
+            <input type="hidden" name="id" value="${id}">
+            <div class="vault-entry-head">
+              <div>
+                <span class="vault-kicker">Editar acesso</span>
+                <h2>${e(entry.name)}</h2>
+                <p>${updatedText}</p>
+              </div>
+              <span class="vault-status">Clique em salvar para aplicar</span>
+            </div>
+            <div class="vault-field-grid vault-edit-fields">
+              <label>
+                <span>Nome</span>
+                <input name="name" maxlength="160" value="${e(entry.name)}" required>
+              </label>
+              <label>
+                <span>Login / Usuario</span>
+                <input name="login_username" maxlength="240" value="${e(entry.login_username)}" required>
+              </label>
+              <label>
+                <span>Nova senha</span>
+                <input name="password" type="password" maxlength="512" placeholder="Deixe em branco para manter" autocomplete="new-password">
+              </label>
+            </div>
+            <div class="vault-secret-row">
+              <input class="vault-secret-output" type="password" readonly value="********" aria-label="Senha">
+              <button type="button" class="vault-btn vault-btn-soft" data-vault-action="reveal" data-entry-id="${id}">Mostrar</button>
+              <button type="button" class="vault-btn vault-btn-soft" data-vault-action="copy-login" data-entry-id="${id}">Copiar login</button>
+              <button type="button" class="vault-btn vault-btn-soft" data-vault-action="copy-password" data-entry-id="${id}">Copiar senha</button>
+              <button class="vault-btn vault-btn-primary" type="submit">Salvar alteracoes</button>
+            </div>
+          </form>
+          <form method="post" action="${BASE_PATH}/" class="vault-archive-form" data-confirm="Arquivar este acesso?">
+            ${csrfField(req)}
+            <input type="hidden" name="action" value="archive">
+            <input type="hidden" name="id" value="${id}">
+            <button class="vault-btn vault-btn-danger" type="submit">Arquivar</button>
+          </form>
+        </article>
+      </td>
+    </tr>`;
+}
+
+function renderEntryTable(req: Request, entries: EntryRow[]): string {
+  if (entries.length === 0) {
+    return '<p class="vault-empty">Nenhum acesso ativo cadastrado.</p>';
+  }
+  return `
+    <div class="vault-entry-table-wrap">
+      <table class="vault-entry-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Nome</th>
+            <th>Login / Usuario</th>
+            <th>Senha</th>
+            <th>Status</th>
+            <th>Acao</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entries.map((entry, index) => renderEntryRows(req, entry, index)).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function renderAuditRows(auditRows: AuditRow[]): string {
@@ -711,8 +748,8 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>Login / Senha - Wimifarma</title>
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605a">
-  <script src="${BASE_PATH}/app.js?v=20260605a" defer></script>
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605b">
+  <script src="${BASE_PATH}/app.js?v=20260605b" defer></script>
 </head>
 <body data-base-path="${e(BASE_PATH)}">
   <header class="vault-topbar">
@@ -772,9 +809,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
           <h2>${entries.length} registro(s) ativo(s)</h2>
         </div>
       </div>
-      <div class="vault-entry-grid">
-        ${entries.length > 0 ? entries.map((entry) => renderEntryCard(req, entry)).join('') : '<p class="vault-empty">Nenhum acesso ativo cadastrado.</p>'}
-      </div>
+      ${renderEntryTable(req, entries)}
     </section>
 
     <section class="vault-section vault-audit">

@@ -17,6 +17,43 @@
     return entry ? entry.querySelector('.vault-secret-output') : null;
   }
 
+  function closestEntryRow(target) {
+    return target && target.closest ? target.closest('.vault-entry-row') : null;
+  }
+
+  function closeEntryEditor(row) {
+    if (!row) return;
+    var id = row.getAttribute('data-entry-id') || '';
+    var editor = id ? document.getElementById('vault-entry-editor-' + id) : null;
+    row.classList.remove('is-selected');
+    row.setAttribute('aria-expanded', 'false');
+    if (editor) {
+      hidePassword(
+        editor.querySelector('.vault-secret-output'),
+        editor.querySelector('[data-vault-action="reveal"]')
+      );
+      editor.hidden = true;
+    }
+  }
+
+  function toggleEntryEditor(row) {
+    if (!row) return;
+    var id = row.getAttribute('data-entry-id') || '';
+    var editor = id ? document.getElementById('vault-entry-editor-' + id) : null;
+    if (!editor) return;
+    var willOpen = editor.hidden;
+    document.querySelectorAll('.vault-entry-row.is-selected').forEach(function (openRow) {
+      if (openRow !== row) closeEntryEditor(openRow);
+    });
+    row.classList.toggle('is-selected', willOpen);
+    row.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    editor.hidden = !willOpen;
+    if (willOpen) {
+      var firstInput = editor.querySelector('input[name="name"]');
+      if (firstInput) window.setTimeout(function () { firstInput.focus(); }, 30);
+    }
+  }
+
   function setBusy(button, busy, label) {
     if (!button) return;
     if (!button.dataset.originalLabel) {
@@ -74,7 +111,14 @@
 
   document.addEventListener('click', function (event) {
     var button = closestButton(event.target);
-    if (!button) return;
+    if (!button) {
+      var row = closestEntryRow(event.target);
+      if (row) {
+        event.preventDefault();
+        toggleEntryEditor(row);
+      }
+      return;
+    }
     var action = button.getAttribute('data-vault-action') || '';
     var id = button.getAttribute('data-entry-id') || '';
     var entry = entryFromButton(button);
@@ -118,6 +162,14 @@
       window.alert(error && error.message ? error.message : 'Falha na acao.');
       setBusy(button, false);
     });
+  });
+
+  document.addEventListener('keydown', function (event) {
+    var row = closestEntryRow(event.target);
+    if (!row) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggleEntryEditor(row);
   });
 
   document.addEventListener('submit', function (event) {
