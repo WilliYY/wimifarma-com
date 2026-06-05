@@ -353,6 +353,13 @@ textarea {
     min-width: 0;
 }
 
+.gestao-list-side-stack {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    min-width: 0;
+}
+
 .gestao-form,
 .gestao-list-panel,
 .gestao-orders-panel,
@@ -662,6 +669,41 @@ textarea {
 .gestao-monthly-total-inline strong {
     font-size: 0.98rem;
     white-space: nowrap;
+}
+
+.gestao-pedido-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 7px 10px;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+}
+
+.gestao-pedido-summary span {
+    min-width: 0;
+    color: #1d4ed8;
+    font-size: 0.74rem;
+    font-weight: 900;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.gestao-pedido-summary strong {
+    color: #1e40af;
+    font-size: 0.98rem;
+    white-space: nowrap;
+}
+
+.gestao-pedido-list-panel .gestao-list {
+    max-height: min(58vh, 620px);
+    overflow: auto;
+    padding-right: 3px;
 }
 
 .gestao-monthly-list {
@@ -1083,6 +1125,10 @@ textarea {
 
 .gestao-account.is-recurring-forever {
     border-color: #34d399;
+}
+
+.gestao-account.is-pedido-account {
+    border-left: 5px solid #2563eb;
 }
 
 .gestao-compact-title em {

@@ -52,6 +52,7 @@ type AccountRow = {
   archived_by: number | null;
   paid_cents?: string;
   last_payment_at?: Date | string | null;
+  is_pedido_account?: boolean;
 };
 
 type ItemRow = {
@@ -2421,10 +2422,22 @@ async function monthSummary(month: string) {
 
 async function listAccounts(month: string): Promise<RenderAccount[]> {
   const bounds = monthBounds(month);
+  const orderSourceChecks: string[] = [];
+  if (await pgTableExists('gestao_supplier_orders')) {
+    orderSourceChecks.push("EXISTS (SELECT 1 FROM gestao_supplier_orders so WHERE so.account_id = a.id AND so.status <> 'cancelado')");
+  }
+  if (await pgTableExists('pedidos_orders')) {
+    orderSourceChecks.push('EXISTS (SELECT 1 FROM pedidos_orders po WHERE po.account_id = a.id AND po.canceled_at IS NULL)');
+  }
+  if (await pgTableExists('pedidos_confirmed_orders')) {
+    orderSourceChecks.push("EXISTS (SELECT 1 FROM pedidos_confirmed_orders pc WHERE pc.account_id = a.id AND pc.lifecycle <> 'cancelado')");
+  }
+  const orderSourceSql = orderSourceChecks.length ? `(${orderSourceChecks.join(' OR ')}) AS is_pedido_account` : 'false AS is_pedido_account';
   const accountsResult = await pgPool.query<AccountRow>(
     `SELECT a.*,
             COALESCE(p.paid_cents, 0)::bigint AS paid_cents,
-            p.last_payment_at
+            p.last_payment_at,
+            ${orderSourceSql}
      FROM gestao_accounts a
      LEFT JOIN (
        SELECT account_id, SUM(amount_cents) AS paid_cents, MAX(paid_at) AS last_payment_at
@@ -2588,6 +2601,33 @@ function recurringAccountsForMonth(accounts: RenderAccount[], selectedMonth: str
       if (aDue !== bDue) return aDue - bDue;
       return a.title.localeCompare(b.title, 'pt-BR');
     });
+}
+
+function isPedidoAccount(account: RenderAccount): boolean {
+  return account.is_pedido_account === true;
+}
+
+function renderPedidoPanel(req: Request, accounts: RenderAccount[], selectedMonth: string): string {
+  const totalCents = accounts.reduce((sum, account) => {
+    const total = Number(account.total_cents || 0);
+    const paid = Number(account.paid_cents || 0);
+    return sum + Math.max(0, total - paid);
+  }, 0);
+  const rowsHtml = accounts.length
+    ? accounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
+    : '<p class="gestao-empty-line">Nenhum pedido nesta visao.</p>';
+
+  return `<section class="gestao-list-panel gestao-pedido-list-panel" aria-label="Contas vindas de Pedidos">
+    <div class="gestao-section-title">
+      <span class="gestao-kicker">Pedidos</span>
+      <strong>${e(accounts.length)}</strong>
+    </div>
+    <div class="gestao-pedido-summary">
+      <span>Vindos do card Pedidos</span>
+      <strong>${e(formatMoney(totalCents))}</strong>
+    </div>
+    <div class="gestao-list">${rowsHtml}</div>
+  </section>`;
 }
 
 function renderMonthlyPanel(req: Request, accounts: RenderAccount[], selectedMonth: string): string {
@@ -3102,7 +3142,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     ? `<span class="gestao-repeat-marker ${repeatForever ? 'is-forever' : ''}" title="${repeatForever ? 'Repete sempre mes que vem' : 'Repete mes que vem'}" aria-label="${repeatForever ? 'Repete sempre mes que vem' : 'Repete mes que vem'}">${repeatForever ? '&#8734;' : '&#8635;'}</span>`
     : '';
 
-  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${repeatEnabled ? 'is-recurring' : ''} ${repeatForever ? 'is-recurring-forever' : ''} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
+  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${repeatEnabled ? 'is-recurring' : ''} ${repeatForever ? 'is-recurring-forever' : ''} ${isPedidoAccount(account) ? 'is-pedido-account' : ''} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
     <div class="gestao-account-compact" data-account-toggle data-open-label="Abrir detalhes" data-close-label="Fechar detalhes" role="button" tabindex="0" aria-expanded="false">
       <span class="gestao-compact-category">${e(categoryLabel(account.category))}</span>
       <strong class="gestao-compact-title"><span class="gestao-compact-title-line">${repeatMarker}<span>${e(account.title)}</span></span>${due.label ? `<em>${e(due.label)}</em>` : ''}${monthlyMeta}</strong>
@@ -3239,10 +3279,20 @@ async function renderApp(req: Request): Promise<string> {
     : activeCategory
     ? allAccounts.filter((account) => categoryKey(account.category) === activeCategory)
     : allAccounts.filter((account) => account.status === 'pendente');
+  const visiblePedidoAccounts = visibleAccounts.filter(isPedidoAccount);
+  const visibleGeneralAccounts = visibleAccounts.filter((account) => !isPedidoAccount(account));
   const suggestions = summaries.map((summary) => `<option value="${e(summary.label)}">`).join('');
-  const accountsHtml = visibleAccounts.length
-    ? visibleAccounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
-    : `<div class="gestao-empty">${searchQuery ? 'Nada encontrado para essa busca.' : 'Nada lancado nesse mes ainda.'}</div>`;
+  const accountsEmptyText = visiblePedidoAccounts.length
+    ? searchQuery
+      ? 'Resultado de pedido aparece no bloco Pedidos.'
+      : 'Contas gerais aparecem aqui. Pedidos ficam no bloco Pedidos.'
+    : searchQuery
+    ? 'Nada encontrado para essa busca.'
+    : 'Nada lancado nesse mes ainda.';
+  const accountsHtml = visibleGeneralAccounts.length
+    ? visibleGeneralAccounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
+    : `<div class="gestao-empty">${accountsEmptyText}</div>`;
+  const pedidoPanelHtml = renderPedidoPanel(req, visiblePedidoAccounts, selectedMonth);
   const monthlyPanelHtml = renderMonthlyPanel(req, allAccounts, selectedMonth);
   const categoryPanelHtml = renderCategoryPanel(req, summaries, selectedMonth, activeCategory);
   const notepadHtml = renderNotepad(req, notes, selectedMonth);
@@ -3291,7 +3341,10 @@ async function renderApp(req: Request): Promise<string> {
           <div class="gestao-list">${accountsHtml}</div>
         </section>
 
-        ${monthlyPanelHtml}
+        <div class="gestao-list-side-stack">
+          ${pedidoPanelHtml}
+          ${monthlyPanelHtml}
+        </div>
       </div>
 
       <div class="gestao-side-stack">
@@ -3307,9 +3360,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260601-recurring-row">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605-pedidos-block">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
-  <script src="${BASE_PATH}/app.js?v=20260601-recurring-row" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260605-pedidos-block" defer></script>
   <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">

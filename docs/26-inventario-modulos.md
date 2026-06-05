@@ -338,11 +338,13 @@ Legado/rollback, nao fonte principal:
 - Repetir conta para mes seguinte e ordenar painel mensal.
 - Criar conta via Miauby por endpoint interno, com auditoria e confirmacao quando aplicavel.
 - Sincronizar status de contas vinculadas a Pedidos sem recategorizar boletos de pedidos.
+- Exibir contas vinculadas a Pedidos em bloco visual `Pedidos` na Gestao, separado da lista geral, sem mudar categoria `Boleto`, pagamentos, status, totais ou auditoria.
 
 ### Integracoes
 
 - Core auth e `core_audit_logs` em `wimifarma_core`.
 - Pedidos usa as tabelas da Gestao para boleto, parcelas e pagamentos.
+- A Gestao identifica contas vindas de Pedidos pelos vinculos em `gestao_supplier_orders`, `pedidos_orders` e `pedidos_confirmed_orders` para separar apenas a visualizacao no bloco `Pedidos`.
 - Miauby interno cria/consulta contas por endpoint interno tokenizado da Gestao; o contrato da tool `criar_conta_gestao` audita em `gestao_audit_events`, `core_audit_logs` e `miauw_tool_traces`, sem `wf_logs`.
 - Financeiro/Miauby podem usar resumo para diagnosticos.
 - Home publica aponta `Gestao` para `/gestao/`.
