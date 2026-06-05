@@ -865,6 +865,7 @@ Validar no VPS `/login-senha/health`, card na Home, bloqueio por URL direta para
 
 - `/cotacao/login.php`: login.
 - `/cotacao/` e `/cotacao/index.php`: planilha colaborativa.
+- No topo da planilha, `Home` ocupa o slot visual principal a direita, depois das acoes operacionais como `Baixar`.
 - `/cotacao/logout.php`: encerra sessao.
 - `/cotacao/health`: health com Postgres, Redis e auth.
 - `/cotacao/api/bootstrap`: carga inicial da planilha.

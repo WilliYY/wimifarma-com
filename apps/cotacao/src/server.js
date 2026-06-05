@@ -2838,8 +2838,8 @@ function renderApp(req) {
       <strong>Wimifarma Cotacao</strong>
     </div>
     <nav class="app-actions" aria-label="Acoes da cotacao">
-      <a href="/">Home</a>
       <button type="button" id="exportCsvButton">Baixar</button>
+      <a href="/">Home</a>
     </nav>
   </header>
   <main class="sheet-shell" data-user-id="${e(user.id)}" data-username="${e(user.username)}">
