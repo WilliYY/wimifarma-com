@@ -365,6 +365,8 @@ Payload:
 
 O backend le apenas `miauw_whatsapp_events.payload_summary`, `miauw_whatsapp_error_logs` e `miauw_whatsapp_automation_runs` sanitizados do proprio bridge WhatsApp. O resumo mostra tentativas, aceitos, campos faltando, destino divergente, duplicados, descartes rapidos, falhas de OCR e registra a execucao da rotina. Ele nao cria lancamento, nao confirma Pix, nao acessa o banco do Financeiro e nao guarda midia bruta.
 
+Campos opcionais de rastreio, como ID de transacao, E2E e chave Pix do destino, continuam no diagnostico sanitizado quando existirem, mas a falta apenas desses campos nao deve gerar alerta no resumo diario.
+
 ### Miauby + n8n
 
 Uso: webhooks controlados para rotinas repetiveis, como:

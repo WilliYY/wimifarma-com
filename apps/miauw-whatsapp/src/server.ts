@@ -12471,6 +12471,15 @@ function parsePixMissingFields(value: unknown): string[] {
   return text.split(/[,;\n]/g).map((item) => safeText(item, 60)).filter(Boolean).slice(0, 5);
 }
 
+function pixOcrActionableMissingFields(value: unknown): string[] {
+  return parsePixMissingFields(value).filter((field) => {
+    const clean = safeText(field, 60);
+    const normalized = normalizeIntentText(clean);
+    const compact = compactPixReceiptFieldLabel(clean);
+    return clean && !isOptionalPixReceiptMissingField(clean, normalized, compact);
+  });
+}
+
 function pixOcrOutcomeLabel(outcome: string): string {
   switch (outcome) {
     case 'accepted':
@@ -12492,7 +12501,7 @@ function pixOcrOutcomeLabel(outcome: string): string {
 }
 
 function pixOcrProblemLine(row: { created_at: string; sender_phone_mask: string; outcome: string; missing: unknown; target_reason: string }): string {
-  const missing = parsePixMissingFields(row.missing);
+  const missing = pixOcrActionableMissingFields(row.missing);
   const parts = [
     pixOcrOutcomeLabel(row.outcome),
     missing.length ? `campos: ${missing.join(', ')}` : '',
@@ -12591,7 +12600,7 @@ async function runPixOcrDailySummary(mode: AutomationNotifyMode, dryRun: boolean
       WHERE created_at >= NOW() - ($1::text || ' hours')::interval
         AND COALESCE(payload_summary->>'pix_receipt_outcome', '') IN ('missing_fields', 'target_mismatch')
       ORDER BY created_at DESC
-      LIMIT 8`,
+      LIMIT 80`,
     [String(lookbackHours)],
   );
 
@@ -12618,17 +12627,22 @@ async function runPixOcrDailySummary(mode: AutomationNotifyMode, dryRun: boolean
     [String(lookbackHours)],
   );
 
+  const problemRows = problemRowsResult.rows.filter((row) => {
+    if (row.outcome !== 'missing_fields') return true;
+    return pixOcrActionableMissingFields(row.missing).length > 0;
+  });
+
   const summary = {
     lookbackHours,
     attempts: Number(counts.attempts || 0),
     accepted: Number(counts.accepted || 0),
-    missingFields: Number(counts.missing_fields || 0),
+    missingFields: problemRows.filter((row) => row.outcome === 'missing_fields').length,
     targetMismatch: Number(counts.target_mismatch || 0),
     notDetected: Number(counts.not_detected || 0),
     skippedFastGate: Number(counts.skipped_fast_gate || 0),
     duplicates: Number(counts.duplicates || 0),
     ocrErrors: Number(errorCountResult.rows[0]?.count || errorRowsResult.rows.length),
-    problemRows: problemRowsResult.rows,
+    problemRows,
     errorRows: errorRowsResult.rows,
   };
   const hasProblems = summary.missingFields > 0 || summary.targetMismatch > 0 || summary.ocrErrors > 0;
