@@ -2234,16 +2234,6 @@ $modules = array(
         'accent' => 'amber',
     ),
     array(
-        'name' => 'Login / Senha ADM',
-        'label' => 'Cofre ADM',
-        'description' => 'Acessos administrativos protegidos.',
-        'module_key' => 'login_senha_adm',
-        'href' => '/login-senha-adm/',
-        'accent' => 'wine',
-        'role_gate' => 'admin_or_gerente',
-        'permission_optional' => true,
-    ),
-    array(
         'name' => 'Usuários',
         'label' => 'Acessos',
         'description' => 'Logins, permissoes, WhatsApp e historico.',

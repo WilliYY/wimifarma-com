@@ -787,7 +787,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 ### Rota atual
 
 - Rota publica oficial: `/login-senha/`.
-- Rota administrativa oficial: `/login-senha-adm/`, usando o mesmo app e banco, mas com `scope='adm'`.
+- Rota administrativa tecnica/legada: `/login-senha-adm/`, usando o mesmo app e banco, mas com `scope='adm'`; o card `Login / Senha ADM` foi removido da Home em 2026-06-05 e dados antigos desse escopo nao devem ser apagados sem confirmacao.
 - Proxy Apache: `docker/php/Dockerfile` envia `/login-senha/` e `/login-senha-adm/` para `wimifarma-login-senha-app:3950`.
 - App oficial: `apps/login-senha`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres dedicado `wimifarma_login_senha`.
@@ -796,7 +796,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 ### Telas e endpoints
 
 - `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso; a lista permite reorganizar linhas por arrastar e salva apenas `sort_order`; a auditoria de eventos recentes fica recolhida por padrao e abre no proprio card.
-- `/login-senha-adm/` e `/login-senha-adm/index.php`: mesmo fluxo visual para acessos administrativos, filtrado por `scope='adm'` e bloqueado para usuarios sem papel administrativo/gerencial.
+- `/login-senha-adm/` e `/login-senha-adm/index.php`: rota tecnica para acessos administrativos ja existentes, filtrada por `scope='adm'` e bloqueada para usuarios sem papel administrativo/gerencial; sem card na Home desde 2026-06-05.
 - `/login-senha/api/entries/:id/reveal`: revela senha para usuario autorizado e audita visualizacao.
 - `/login-senha/api/entries/:id/copy-login`: retorna login para copiar e audita copia.
 - `/login-senha/api/entries/:id/copy-password`: retorna senha para copiar e audita copia.
@@ -844,9 +844,9 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Integracoes
 
-- Home publica exibe `Login / Senha` e, para `adm`/`admin`/`gerente`, `Login / Senha ADM` antes de `Usuarios`.
+- Home publica exibe apenas `Login / Senha` antes de `Usuarios`; o card separado `Login / Senha ADM` foi removido em 2026-06-05.
 - Usuarios libera/bloqueia o modulo pelo card `Login / Senha`.
-- `Login / Senha ADM` nao aparece como checkbox comum no Usuarios; o acesso e por papel.
+- `Login / Senha ADM` nao aparece mais como card nem como checkbox comum no Usuarios; qualquer dado antigo de `scope='adm'` permanece preservado ate decisao explicita.
 - Nao ha integracao com Miauby WhatsApp, Gemini ou contexto generativo.
 
 ### Riscos
@@ -857,7 +857,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Proxima acao segura
 
-Validar no VPS `/login-senha/health` e `/login-senha-adm/health`, cards na Home, bloqueio por URL direta para usuario sem permissao/papel, criar/editar/arquivar acesso nos dois scopes e auditoria de mostrar/copiar sem senha em logs.
+Validar no VPS `/login-senha/health`, card unico `Login / Senha` na Home, ausencia do card `Login / Senha ADM`, bloqueio por URL direta para usuario sem permissao/papel, criar/editar/arquivar acesso no cofre comum e auditoria de mostrar/copiar sem senha em logs. A rota tecnica `/login-senha-adm/health` pode ser checada apenas para garantir que dados antigos preservados continuam acessiveis para administracao segura.
 
 ## Cotacao
 

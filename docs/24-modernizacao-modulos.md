@@ -143,12 +143,12 @@ Usuarios foi criado em `apps/usuarios`:
 
 Login / Senha foi criado em `apps/login-senha`:
 
-- rota/proxy oficial em `/login-senha/` e `/login-senha-adm/`;
+- rota/proxy oficial em `/login-senha/`; `/login-senha-adm/` fica apenas como rota tecnica/legada preservada sem card na Home;
 - app Node.js 22 + TypeScript + Express;
 - banco/schema alvo `wimifarma_login_senha`;
 - tabelas `login_senha_entries`, `login_senha_audit_events` e sessoes `login_senha_sessions`, com `scope='geral'` e `scope='adm'`;
 - login unico por `core_users`/`WFHOME_SSO`;
-- permissao individual `login_senha` no painel Usuarios, default fechada para usuarios comuns; o cofre ADM nao usa checkbox comum e exige `adm`, `admin` ou `gerente`;
+- permissao individual `login_senha` no painel Usuarios, default fechada para usuarios comuns; dados antigos de `scope='adm'` seguem preservados e a rota tecnica ADM exige `adm`, `admin` ou `gerente` se acessada diretamente;
 - senhas cifradas por AES-256-GCM e auditoria sem valor de senha;
 - sem legado MySQL/PHP, importador, espelho ou fallback.
 
