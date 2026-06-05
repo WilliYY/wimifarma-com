@@ -118,6 +118,7 @@ Core Postgres `wimifarma_core`:
 - Filtrar a planilha em uma tela nao causa conflito por si so: o filtro muda apenas a lista visivel daquela aba, enquanto os dados continuam sincronizados por evento/celula.
 - Edicoes simultaneas em celulas diferentes devem conviver normalmente. Na mesma celula, a regra operacional atual e estilo Sheets: o ultimo salvamento vence. A tela compensa isso com presenca visual forte, aviso quando o save sobrescreveu uma alteracao recente e historico de celula para recuperar o valor anterior.
 - Filtros de `PRODUTO`, `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local. O filtro de `Ganhador` mostra a contagem de linhas por resultado no formato `Nome (quantidade)` e lista primeiro vencedores individuais, depois empates e por ultimo `Sem vencedor`.
+- O filtro de `CATEGORIA` agrupa valores equivalentes por chave local normalizada (trim, espacos repetidos, quebras/invisiveis simples e caixa) apenas para exibicao/aplicacao do filtro. Essa regra nao altera automaticamente o valor original gravado em `cotacao_v2_rows`.
 - Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
 - Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
 - Texto longo deve quebrar linha dentro da celula e aumentar a altura da linha em vez de vazar ou ficar cortado.

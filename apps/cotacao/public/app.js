@@ -46,7 +46,9 @@
 
   const FIXED_KEYS = ['ean', 'produto', 'quantidade', 'categoria'];
   const WINNER_KEY = 'quem_ganhou';
+  const CATEGORY_KEY = 'categoria';
   const FILTERABLE_KEYS = ['produto', 'categoria', WINNER_KEY];
+  const CATEGORY_FILTER_INVISIBLE_CHARS = /[\u0000-\u001f\u007f\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/g;
   const RULE_OPERATORS = [
     ['contains', 'Contem'],
     ['equals', 'Igual'],
@@ -358,8 +360,9 @@
     return filter ? Array.from(filter) : null;
   }
 
-  function restoreFilter(values) {
-    return Array.isArray(values) ? new Set(values) : null;
+  function restoreFilter(values, columnKey = null) {
+    if (!Array.isArray(values)) return null;
+    return new Set(columnKey ? values.map((value) => filterValueKey(columnKey, value)) : values);
   }
 
   function clearPinnedRows() {
@@ -379,6 +382,35 @@
       return computeWinner(row).label;
     }
     return String(row.values?.[column.key] ?? '');
+  }
+
+  function normalizeCategoryFilterLabel(value) {
+    return String(value ?? '')
+      .replace(CATEGORY_FILTER_INVISIBLE_CHARS, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function filterValueKey(columnKey, value) {
+    const text = String(value ?? '');
+    if (columnKey !== CATEGORY_KEY) return text;
+    return normalizeCategoryFilterLabel(text).toLocaleLowerCase('pt-BR');
+  }
+
+  function filterValueLabel(columnKey, value) {
+    const text = String(value ?? '');
+    if (columnKey !== CATEGORY_KEY) return text;
+    return normalizeCategoryFilterLabel(text);
+  }
+
+  function preferredFilterLabel(current, next, key) {
+    const currentText = String(current ?? '');
+    const nextText = String(next ?? '');
+    if (!currentText) return nextText;
+    if (!nextText) return currentText;
+    if (nextText === key && currentText !== key) return nextText;
+    if (nextText.length < currentText.length) return nextText;
+    return currentText;
   }
 
   function columnLabel(columnKey) {
@@ -437,11 +469,19 @@
     const column = colByKey(columnKey);
     const counts = new Map();
     state.rows.forEach((row) => {
-      const value = valueOf(row, column);
-      counts.set(value, (counts.get(value) || 0) + 1);
+      const rawValue = valueOf(row, column);
+      const value = filterValueKey(columnKey, rawValue);
+      const label = filterValueLabel(columnKey, rawValue);
+      const current = counts.get(value);
+      if (current) {
+        current.count += 1;
+        current.label = preferredFilterLabel(current.label, label, value);
+        return;
+      }
+      counts.set(value, { value, label, count: 1 });
     });
-    return Array.from(counts, ([value, count]) => ({ value, count }))
-      .sort((a, b) => String(a.value).localeCompare(String(b.value)));
+    return Array.from(counts.values())
+      .sort((a, b) => String(a.label || a.value).localeCompare(String(b.label || b.value)));
   }
 
   function normalizeColorValue(value) {
@@ -504,7 +544,8 @@
       const filter = state.filters[key];
       if (!filter) continue;
       const column = colByKey(key);
-      const value = key === WINNER_KEY ? computeWinner(row).label : valueOf(row, column);
+      const rawValue = key === WINNER_KEY ? computeWinner(row).label : valueOf(row, column);
+      const value = filterValueKey(key, rawValue);
       if (!filter.has(value)) return false;
     }
     const styles = styleMap();
@@ -599,7 +640,7 @@
   }
 
   function applyFilterValue(columnKey, values, colorValues = null) {
-    state.filters[columnKey] = restoreFilter(values);
+    state.filters[columnKey] = restoreFilter(values, columnKey);
     state.colorFilters[columnKey] = restoreFilter(colorValues);
     clearPinnedRows();
     renderTable();
@@ -3301,7 +3342,9 @@
   function openFilter(columnKey, anchor) {
     const options = filterOptions(columnKey);
     const values = options.map((option) => option.value);
-    const current = state.filters[columnKey] || new Set(values);
+    const current = state.filters[columnKey]
+      ? new Set(Array.from(state.filters[columnKey]).map((value) => filterValueKey(columnKey, value)))
+      : new Set(values);
     const colorOptions = colorFilterOptions(columnKey);
     const colorValues = colorOptions.map((option) => option.value);
     const currentColors = state.colorFilters[columnKey] || new Set(colorValues);
@@ -3314,7 +3357,7 @@
       </div>
       <div class="filter-options">
         ${options.map((option) => {
-          const label = option.value || '(vazio)';
+          const label = option.label || option.value || '(vazio)';
           const text = columnKey === WINNER_KEY ? `${label} (${option.count})` : label;
           return `<label><input type="checkbox" data-filter-kind="value" value="${esc(option.value)}" ${current.has(option.value) ? 'checked' : ''}> ${esc(text)}</label>`;
         }).join('')}
