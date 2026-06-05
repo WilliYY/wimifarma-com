@@ -2455,8 +2455,8 @@ async function sendSystemReplyForEvent(message: IncomingMessage, eventId: string
   await pgPool.query(
     `INSERT INTO miauw_whatsapp_outbox (
       id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
-      recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms, max_attempts, trace_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'blocked', $9, 0, 1, $10)`,
+      recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms, status, max_attempts, trace_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'blocked', $9, 0, 'sending', 1, $10)`,
     [
       outboxId,
       eventId,
@@ -4033,8 +4033,8 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       `INSERT INTO miauw_whatsapp_outbox (
         id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
         recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms,
-        reply_media_type, reply_media_provider, reply_media_size, max_attempts, trace_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        reply_media_type, reply_media_provider, reply_media_size, status, max_attempts, trace_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'sending', $15, $16)`,
       [
         outboxId,
         row.id,

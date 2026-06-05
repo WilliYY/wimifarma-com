@@ -353,6 +353,8 @@ Nao existe garantia tecnica de banimento zero, principalmente quando o transport
 - respeitar pedidos para parar contato;
 - preferir Meta Cloud API oficial quando o objetivo deixar de ser uso interno controlado e virar atendimento amplo.
 
+Desde 2026-06-04, respostas geradas pelo proprio worker entram na outbox como `sending` antes do delay humano e do envio ao provider. Isso impede que a recuperacao de outbox `pending` pegue a mesma linha enquanto o envio original ainda esta aguardando, evitando duas bolhas iguais no WhatsApp; se o processo cair nesse intervalo, a rotina `stale_sending_recovered` continua recuperando depois da janela segura.
+
 Para o VPS em producao inicial, recomenda-se comecar ainda mais restrito que o default do repositorio: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=2500`, `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=5500` e `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=7000`. Esses limites podem subir depois de alguns dias sem erro, bloqueio, report ou queda de qualidade.
 
 ## Diagnostico rapido quando nao responde
