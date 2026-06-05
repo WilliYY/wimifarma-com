@@ -14,6 +14,9 @@ $homeLoginLogoUrl = $homeLogoUrl;
 $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
 $homeLoginError = '';
+$homeSwitchError = '';
+$homeSwitchSelected = '';
+$homeSwitchPanelOpen = false;
 $homeLoginShootingStarCount = 28;
 $homeLoginBubbleCount = 128;
 
@@ -217,6 +220,78 @@ function wf_home_core_user_authenticate(string $username, string $password): ?ar
 
     unset($row['password_hash']);
     return $row;
+}
+
+function wf_home_session_user_from_core(array $coreUser, string $fallback = ''): string
+{
+    return wf_home_normalize_core_username((string) ($coreUser['username_normalized'] ?? $coreUser['username'] ?? $fallback));
+}
+
+function wf_home_core_active_users(): array
+{
+    $pdo = wf_home_core_pdo();
+    if (!$pdo) {
+        return array();
+    }
+
+    try {
+        $stmt = $pdo->query(
+            "SELECT id, username, username_normalized, display_name, role
+               FROM core_users
+              WHERE active = true
+              ORDER BY lower(COALESCE(NULLIF(display_name, ''), username)), id
+              LIMIT 120"
+        );
+        $rows = $stmt ? $stmt->fetchAll() : array();
+    } catch (Throwable $error) {
+        return array();
+    }
+
+    return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : array();
+}
+
+function wf_home_core_role_label(string $role): string
+{
+    $role = wf_home_normalize_core_username($role);
+    if ($role === 'admin') {
+        return 'Admin';
+    }
+    if ($role === 'gerente') {
+        return 'Gerente';
+    }
+    if ($role === 'farmacia') {
+        return 'Farmacia';
+    }
+
+    return 'Colaborador';
+}
+
+function wf_home_switch_user_label(array $user): string
+{
+    $displayName = trim((string) ($user['display_name'] ?? ''));
+    if ($displayName !== '') {
+        return $displayName;
+    }
+
+    $username = trim((string) ($user['username'] ?? $user['username_normalized'] ?? ''));
+    return $username !== '' ? wf_home_human_login_name($username) : 'Usuario';
+}
+
+function wf_home_complete_login(string $sessionUser, bool $clearModules = false): void
+{
+    $sessionUser = wf_home_normalize_core_username($sessionUser);
+    session_regenerate_id(true);
+    $_SESSION['wf_home_authenticated'] = true;
+    $_SESSION['wf_home_user'] = $sessionUser;
+    $_SESSION['wf_home_login_nonce'] = bin2hex(random_bytes(8));
+    $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
+
+    if ($clearModules) {
+        wf_home_clear_module_session_cookies();
+        $_SESSION['wf_home_clear_frontend_state'] = true;
+    }
+
+    wf_home_sso_issue($sessionUser, wf_home_is_https());
 }
 
 function wf_home_logged_user_label(string $username): string
@@ -705,24 +780,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
     }
 
     if ($homeLoginError === '' && $coreUser) {
-        $sessionUser = wf_home_normalize_core_username((string) ($coreUser['username_normalized'] ?? $coreUser['username'] ?? $user));
-        session_regenerate_id(true);
-        $_SESSION['wf_home_authenticated'] = true;
-        $_SESSION['wf_home_user'] = $sessionUser;
-        $_SESSION['wf_home_login_nonce'] = bin2hex(random_bytes(8));
-        $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
-        wf_home_sso_issue($sessionUser, wf_home_is_https());
+        wf_home_complete_login(wf_home_session_user_from_core($coreUser, $user));
         wf_home_redirect('/');
     } elseif ($homeLoginError === '' && $expectedUser !== '' && hash_equals($expectedUser, $normalizedUser) && hash_equals($expectedPassword, $password)) {
-        session_regenerate_id(true);
-        $_SESSION['wf_home_authenticated'] = true;
-        $_SESSION['wf_home_user'] = $expectedUser;
-        $_SESSION['wf_home_login_nonce'] = bin2hex(random_bytes(8));
-        $_SESSION['wf_home_csrf'] = bin2hex(random_bytes(16));
-        wf_home_sso_issue($expectedUser, wf_home_is_https());
+        wf_home_complete_login($expectedUser);
         wf_home_redirect('/');
     } elseif ($homeLoginError === '') {
         $homeLoginError = 'Login ou senha invalidos.';
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] ?? '') === 'switch_user') {
+    $homeSwitchPanelOpen = true;
+    $postedCsrf = (string) ($_POST['wf_home_csrf'] ?? '');
+    $switchUser = wf_home_normalize_core_username((string) ($_POST['switch_username'] ?? ''));
+    $switchPassword = (string) ($_POST['switch_password'] ?? '');
+    $homeSwitchSelected = $switchUser;
+
+    if (empty($_SESSION['wf_home_authenticated'])) {
+        $homeLoginError = 'Sessao expirada. Entre novamente.';
+    } elseif (!hash_equals((string) ($_SESSION['wf_home_csrf'] ?? ''), $postedCsrf)) {
+        $homeSwitchError = 'Sessao expirada. Atualize e tente de novo.';
+    } elseif ($switchUser === '' || !preg_match('/^[a-z0-9._@-]{1,80}$/', $switchUser)) {
+        $homeSwitchError = 'Escolha um usuario valido.';
+    } else {
+        $coreUser = wf_home_core_user_authenticate($switchUser, $switchPassword);
+        if ($coreUser) {
+            wf_home_complete_login(wf_home_session_user_from_core($coreUser, $switchUser), true);
+            wf_home_redirect('/');
+        }
+
+        $homeSwitchError = 'Senha invalida para este usuario.';
     }
 }
 
@@ -2035,6 +2123,19 @@ $homeUserLogin = $homeAuthenticated && !empty($_SESSION['wf_home_user']) && is_s
     : '';
 $homeUserIdentity = $homeUserLogin !== '' ? wf_home_core_user_identity($homeUserLogin) : null;
 $homeUserLabel = $homeUserLogin !== '' ? wf_home_logged_user_label($homeUserLogin) : '';
+$homeShouldClearFrontendState = !empty($_SESSION['wf_home_clear_frontend_state']);
+unset($_SESSION['wf_home_clear_frontend_state']);
+$homeSwitchUsers = wf_home_core_active_users();
+$homeSwitchSelectedLabel = '';
+if ($homeSwitchSelected !== '') {
+    foreach ($homeSwitchUsers as $switchUserOption) {
+        $optionUsername = wf_home_session_user_from_core($switchUserOption);
+        if ($optionUsername === $homeSwitchSelected) {
+            $homeSwitchSelectedLabel = wf_home_switch_user_label($switchUserOption);
+            break;
+        }
+    }
+}
 $homeGreetingSessionKey = $homeUserLogin !== ''
     ? substr(hash('sha256', $homeUserLogin . '|' . (string) ($_SESSION['wf_home_login_nonce'] ?? '')), 0, 24)
     : '';
@@ -2276,28 +2377,275 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.22));
         }
 
-        .wf-home-logout {
+        .wf-home-switch-button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            flex-direction: column;
+            gap: 2px;
             min-height: 42px;
             border: 1px solid rgba(255, 255, 255, 0.78);
             border-radius: 999px;
-            padding: 0 18px;
+            padding: 7px 18px;
             background: rgba(255, 255, 255, 0.16);
             color: #ffffff;
             font-size: 0.9rem;
             font-weight: 900;
-            text-decoration: none;
+            font-family: inherit;
+            cursor: pointer;
             text-shadow: 0 1px 10px rgba(15, 23, 42, 0.3);
             box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
             backdrop-filter: blur(8px);
         }
 
-        .wf-home-logout:hover,
-        .wf-home-logout:focus-visible {
+        .wf-home-switch-button span {
+            line-height: 1;
+        }
+
+        .wf-home-switch-button b {
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 0.68rem;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .wf-home-switch-button:hover,
+        .wf-home-switch-button:focus-visible {
             background: rgba(168, 15, 67, 0.88);
             outline: 0;
+        }
+
+        .wf-switch-dialog[hidden] {
+            display: none;
+        }
+
+        .wf-switch-dialog {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .wf-switch-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.34);
+            backdrop-filter: blur(10px);
+        }
+
+        .wf-switch-card {
+            position: relative;
+            width: min(620px, 100%);
+            max-height: min(760px, calc(100vh - 42px));
+            overflow: auto;
+            border: 1px solid rgba(255, 255, 255, 0.72);
+            border-radius: 18px;
+            padding: 18px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 28px 70px rgba(15, 23, 42, 0.22);
+        }
+
+        .wf-switch-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+
+        .wf-switch-eyebrow {
+            display: block;
+            margin: 0 0 5px;
+            color: #9f1239;
+            font-size: 0.72rem;
+            font-weight: 950;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .wf-switch-top h2 {
+            margin: 0;
+            color: #8f0d2e;
+            font-size: clamp(1.35rem, 2.4vw, 1.9rem);
+            line-height: 1.05;
+        }
+
+        .wf-switch-top p {
+            margin: 7px 0 0;
+            max-width: 420px;
+            color: #334155;
+            font-size: 0.92rem;
+            line-height: 1.35;
+        }
+
+        .wf-switch-close {
+            width: 34px;
+            height: 34px;
+            flex: 0 0 auto;
+            border: 1px solid #fecdd3;
+            border-radius: 999px;
+            background: #fff1f2;
+            color: #9f1239;
+            cursor: pointer;
+            font-size: 1.25rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .wf-switch-current {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 0 0 14px;
+            border: 1px solid #fecdd3;
+            border-radius: 14px;
+            padding: 10px 12px;
+            background: #fff1f2;
+            color: #881337;
+            font-weight: 850;
+        }
+
+        .wf-switch-current span {
+            color: #9f1239;
+            font-size: 0.72rem;
+            font-weight: 950;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .wf-switch-error {
+            margin: 0 0 14px;
+            border: 1px solid #fecdd3;
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: #fff1f2;
+            color: #9f1239;
+            font-weight: 850;
+        }
+
+        .wf-switch-users {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 10px;
+            margin: 0 0 14px;
+        }
+
+        .wf-switch-user-option {
+            min-height: 72px;
+            border: 1px solid #fecdd3;
+            border-radius: 14px;
+            padding: 10px 12px;
+            background: #ffffff;
+            color: #111827;
+            cursor: pointer;
+            font: inherit;
+            text-align: left;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+        }
+
+        .wf-switch-user-option:hover,
+        .wf-switch-user-option:focus-visible,
+        .wf-switch-user-option.is-selected {
+            border-color: #be123c;
+            outline: 0;
+            box-shadow: 0 12px 28px rgba(159, 18, 57, 0.14);
+        }
+
+        .wf-switch-user-option strong,
+        .wf-switch-user-option span,
+        .wf-switch-user-option small {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .wf-switch-user-option strong {
+            color: #8f0d2e;
+            font-size: 1rem;
+            line-height: 1.15;
+        }
+
+        .wf-switch-user-option span {
+            margin-top: 3px;
+            color: #475569;
+            font-size: 0.8rem;
+        }
+
+        .wf-switch-user-option small {
+            margin-top: 6px;
+            color: #9f1239;
+            font-size: 0.72rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .wf-switch-form[hidden],
+        .wf-switch-empty[hidden] {
+            display: none;
+        }
+
+        .wf-switch-form {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: end;
+            border-top: 1px solid #fecdd3;
+            padding-top: 14px;
+        }
+
+        .wf-switch-form label {
+            display: grid;
+            gap: 6px;
+            color: #881337;
+            font-weight: 900;
+        }
+
+        .wf-switch-form input {
+            width: 100%;
+            min-height: 44px;
+            border: 1px solid #f9a8d4;
+            border-radius: 12px;
+            padding: 0 12px;
+            color: #111827;
+            font: inherit;
+            font-weight: 750;
+        }
+
+        .wf-switch-form input:focus {
+            border-color: #be123c;
+            outline: 3px solid rgba(190, 18, 60, 0.14);
+        }
+
+        .wf-switch-form button[type="submit"] {
+            min-height: 44px;
+            border: 0;
+            border-radius: 12px;
+            padding: 0 22px;
+            background: linear-gradient(135deg, #8f0d2e, #be1e4d);
+            color: #ffffff;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 950;
+            box-shadow: 0 14px 26px rgba(190, 18, 60, 0.2);
+        }
+
+        .wf-switch-empty {
+            margin: 0;
+            border: 1px dashed #fecdd3;
+            border-radius: 14px;
+            padding: 12px;
+            color: #7f1d1d;
+            background: #fff7f8;
+            font-weight: 800;
         }
 
         .wf-access {
@@ -2771,10 +3119,39 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
                 gap: 8px;
             }
 
-            .wf-home-logout {
+            .wf-home-switch-button {
                 min-height: 36px;
-                padding: 0 15px;
+                padding: 6px 14px;
                 font-size: 0.8rem;
+            }
+
+            .wf-home-switch-button b {
+                max-width: 132px;
+                font-size: 0.62rem;
+            }
+
+            .wf-switch-dialog {
+                align-items: start;
+                padding: 12px;
+            }
+
+            .wf-switch-card {
+                max-height: calc(100vh - 24px);
+                border-radius: 16px;
+                padding: 14px;
+            }
+
+            .wf-switch-current {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .wf-switch-users {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .wf-switch-form {
+                grid-template-columns: minmax(0, 1fr);
             }
 
             .wf-runner.is-nyan {
@@ -2932,9 +3309,75 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             <a class="wf-brand" href="<?php echo wf_home_e(wf_home_url('/')); ?>" aria-label="Wimifarma">
                 <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="1560" height="622">
             </a>
-            <a class="wf-home-logout" href="<?php echo wf_home_e(wf_home_url('/?sair=1')); ?>">Sair</a>
+            <button class="wf-home-switch-button" type="button" data-user-switch-open aria-haspopup="dialog" aria-expanded="false">
+                <span>Trocar usu&aacute;rio</span>
+                <b><?php echo wf_home_e($homeUserLabel !== '' ? $homeUserLabel : $homeUserLogin); ?></b>
+            </button>
         </div>
     </header>
+
+    <div class="wf-switch-dialog" data-user-switch-dialog data-open-on-load="<?php echo $homeSwitchPanelOpen ? '1' : '0'; ?>" hidden>
+        <div class="wf-switch-backdrop" data-user-switch-close aria-hidden="true"></div>
+        <section class="wf-switch-card" role="dialog" aria-modal="true" aria-labelledby="wf-switch-title">
+            <div class="wf-switch-top">
+                <div>
+                    <span class="wf-switch-eyebrow">Sessao da Home</span>
+                    <h2 id="wf-switch-title">Trocar usu&aacute;rio</h2>
+                    <p>Escolha quem vai usar o sistema agora. Depois, informe apenas a senha desse usu&aacute;rio.</p>
+                </div>
+                <button class="wf-switch-close" type="button" data-user-switch-close aria-label="Fechar">&times;</button>
+            </div>
+
+            <div class="wf-switch-current">
+                <span>Usu&aacute;rio atual</span>
+                <strong><?php echo wf_home_e($homeUserLabel !== '' ? $homeUserLabel : $homeUserLogin); ?></strong>
+            </div>
+
+            <?php if ($homeSwitchError !== ''): ?>
+                <p class="wf-switch-error"><?php echo wf_home_e($homeSwitchError); ?></p>
+            <?php endif; ?>
+
+            <?php if (count($homeSwitchUsers) > 0): ?>
+                <div class="wf-switch-users" aria-label="Usuarios ativos">
+                    <?php foreach ($homeSwitchUsers as $switchUserOption): ?>
+                        <?php
+                        $switchOptionUsername = wf_home_session_user_from_core($switchUserOption);
+                        if ($switchOptionUsername === '') {
+                            continue;
+                        }
+                        $switchOptionLabel = wf_home_switch_user_label($switchUserOption);
+                        $switchOptionRole = wf_home_core_role_label((string) ($switchUserOption['role'] ?? ''));
+                        $switchOptionIsCurrent = $switchOptionUsername === $homeUserLogin;
+                        $switchOptionIsSelected = $switchOptionUsername === $homeSwitchSelected;
+                        ?>
+                        <button
+                            class="wf-switch-user-option<?php echo $switchOptionIsSelected ? ' is-selected' : ''; ?>"
+                            type="button"
+                            data-switch-user="<?php echo wf_home_e($switchOptionUsername); ?>"
+                            data-switch-name="<?php echo wf_home_e($switchOptionLabel); ?>"
+                        >
+                            <strong><?php echo wf_home_e($switchOptionLabel); ?></strong>
+                            <span>@<?php echo wf_home_e((string) ($switchUserOption['username'] ?? $switchOptionUsername)); ?></span>
+                            <small><?php echo wf_home_e($switchOptionIsCurrent ? 'Atual' : $switchOptionRole); ?></small>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+
+                <form class="wf-switch-form" method="post" data-switch-form<?php echo $homeSwitchSelected === '' ? ' hidden' : ''; ?>>
+                    <input type="hidden" name="wf_home_action" value="switch_user">
+                    <input type="hidden" name="wf_home_csrf" value="<?php echo wf_home_e((string) $_SESSION['wf_home_csrf']); ?>">
+                    <input type="hidden" name="switch_username" value="<?php echo wf_home_e($homeSwitchSelected); ?>" data-switch-username>
+                    <label>
+                        Senha de <span data-switch-selected-name><?php echo wf_home_e($homeSwitchSelectedLabel !== '' ? $homeSwitchSelectedLabel : 'usuario'); ?></span>
+                        <input type="password" name="switch_password" autocomplete="current-password" required data-switch-password>
+                    </label>
+                    <button type="submit">Logar</button>
+                </form>
+            <?php else: ?>
+                <p class="wf-switch-empty">Nao consegui carregar os usuarios ativos agora. Atualize a pagina e tente novamente.</p>
+            <?php endif; ?>
+        </section>
+    </div>
 
     <main class="wf-main">
         <div class="wf-shell wf-access" data-wf-access>
@@ -2972,6 +3415,140 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
         </div>
     </main>
 </div>
+<script>
+    (function () {
+        'use strict';
+
+        function clearStorage(storage, prefixes) {
+            if (!storage) {
+                return;
+            }
+
+            try {
+                for (var index = storage.length - 1; index >= 0; index -= 1) {
+                    var key = storage.key(index) || '';
+                    if (prefixes.some(function (prefix) { return key.indexOf(prefix) === 0; })) {
+                        storage.removeItem(key);
+                    }
+                }
+            } catch (error) {
+                // Storage may be unavailable in restricted browser modes.
+            }
+        }
+
+        function clearHomeRuntimeState() {
+            clearStorage(window.sessionStorage, [
+                'miauw_home_greeting_state_v2_',
+                'miauw_widget_',
+                'wf_home_'
+            ]);
+            clearStorage(window.localStorage, [
+                'miauw_home_speech_last_',
+                'miauw_widget_',
+                'wf_home_'
+            ]);
+        }
+
+        function initUserSwitch() {
+            var dialog = document.querySelector('[data-user-switch-dialog]');
+            var openButton = document.querySelector('[data-user-switch-open]');
+
+            if (!dialog || !openButton) {
+                return;
+            }
+
+            var closeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-user-switch-close]'));
+            var userButtons = Array.prototype.slice.call(dialog.querySelectorAll('[data-switch-user]'));
+            var form = dialog.querySelector('[data-switch-form]');
+            var usernameInput = dialog.querySelector('[data-switch-username]');
+            var passwordInput = dialog.querySelector('[data-switch-password]');
+            var selectedName = dialog.querySelector('[data-switch-selected-name]');
+            var lastFocused = null;
+
+            function openDialog() {
+                lastFocused = document.activeElement;
+                dialog.hidden = false;
+                openButton.setAttribute('aria-expanded', 'true');
+
+                window.setTimeout(function () {
+                    var selected = dialog.querySelector('.wf-switch-user-option.is-selected');
+                    if (passwordInput && form && !form.hidden && usernameInput && usernameInput.value) {
+                        passwordInput.focus();
+                        return;
+                    }
+                    if (selected) {
+                        selected.focus();
+                        return;
+                    }
+                    if (userButtons[0]) {
+                        userButtons[0].focus();
+                    }
+                }, 0);
+            }
+
+            function closeDialog() {
+                dialog.hidden = true;
+                openButton.setAttribute('aria-expanded', 'false');
+                if (lastFocused && typeof lastFocused.focus === 'function') {
+                    lastFocused.focus();
+                }
+            }
+
+            function selectUser(button) {
+                var username = button.getAttribute('data-switch-user') || '';
+                var name = button.getAttribute('data-switch-name') || 'usuario';
+
+                userButtons.forEach(function (candidate) {
+                    candidate.classList.toggle('is-selected', candidate === button);
+                });
+
+                if (usernameInput) {
+                    usernameInput.value = username;
+                }
+                if (selectedName) {
+                    selectedName.textContent = name;
+                }
+                if (form) {
+                    form.hidden = false;
+                }
+                if (passwordInput) {
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+            }
+
+            openButton.addEventListener('click', openDialog);
+            closeButtons.forEach(function (button) {
+                button.addEventListener('click', closeDialog);
+            });
+            userButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    selectUser(button);
+                });
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && !dialog.hidden) {
+                    closeDialog();
+                }
+            });
+
+            if (dialog.getAttribute('data-open-on-load') === '1') {
+                openDialog();
+            }
+        }
+
+        if (<?php echo $homeShouldClearFrontendState ? 'true' : 'false'; ?>) {
+            clearHomeRuntimeState();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initUserSwitch);
+        } else {
+            initUserSwitch();
+        }
+    }());
+</script>
 <script>
     (function () {
         function clamp(value, min, max) {
