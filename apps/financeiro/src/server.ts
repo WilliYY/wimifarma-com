@@ -1436,6 +1436,91 @@ function categories(): string[] {
   return ['Sangria', 'Maquininha C/D', 'Maquininha Pix', 'Pix CNPJ', 'Dinheiro Fisico', 'Outros'];
 }
 
+type EntryCategorySummary = {
+  category: string;
+  count: number;
+  amountCents: number;
+  className: string;
+};
+
+function normalizeEntryCategory(value: unknown): string {
+  return cleanText(value, 80) || 'Outros';
+}
+
+function entryCategoryKey(value: unknown): string {
+  return normalizeEntryCategory(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'outros';
+}
+
+function entryCategoryClass(category: unknown): string {
+  const key = entryCategoryKey(category);
+  if (key.includes('pix-cnpj')) return 'entry-kind-pix-cnpj';
+  if (key.includes('sangria')) return 'entry-kind-sangria';
+  if (key.includes('maquininha-c-d')) return 'entry-kind-card';
+  if (key.includes('maquininha-pix')) return 'entry-kind-machine-pix';
+  if (key.includes('dinheiro')) return 'entry-kind-cash';
+  return 'entry-kind-other';
+}
+
+function pluralPt(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function summarizeEntryCategories(entries: AnyRow[]): EntryCategorySummary[] {
+  const order = new Map(categories().map((category, index) => [entryCategoryKey(category), index]));
+  const grouped = new Map<string, EntryCategorySummary>();
+
+  for (const entry of entries) {
+    const category = normalizeEntryCategory(entry.categoria);
+    const key = entryCategoryKey(category);
+    const current = grouped.get(key) || {
+      category,
+      count: 0,
+      amountCents: 0,
+      className: entryCategoryClass(category),
+    };
+    current.count += 1;
+    current.amountCents += moneyTextToCents(entry.valor);
+    grouped.set(key, current);
+  }
+
+  return Array.from(grouped.entries())
+    .sort(([leftKey, left], [rightKey, right]) => {
+      const leftOrder = order.get(leftKey) ?? 999;
+      const rightOrder = order.get(rightKey) ?? 999;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      return left.category.localeCompare(right.category, 'pt-BR');
+    })
+    .map(([, value]) => value);
+}
+
+function renderEntryCategorySummary(entries: AnyRow[]): string {
+  const summaries = summarizeEntryCategories(entries);
+  if (summaries.length === 0) return '';
+  const totalCount = summaries.reduce((sum, item) => sum + item.count, 0);
+  const totalCents = summaries.reduce((sum, item) => sum + item.amountCents, 0);
+
+  return `<div class="finance-category-summary" aria-label="Resumo por categoria">
+    <div class="finance-category-summary-head">
+      <div><span class="kicker">Categorias do dia</span><h3>${pluralPt(totalCount, 'lancamento', 'lancamentos')}</h3></div>
+      <div class="finance-category-total">${brMoneyFromCents(totalCents)}</div>
+    </div>
+    <div class="finance-category-chips">${summaries
+      .map(
+        (item) => `<div class="finance-category-chip ${e(item.className)}">
+          <span>${e(item.category)}</span>
+          <strong>${brMoneyFromCents(item.amountCents)}</strong>
+          <small>${pluralPt(item.count, 'item', 'itens')}</small>
+        </div>`,
+      )
+      .join('')}</div>
+  </div>`;
+}
+
 function closingMovementCents(closing: AnyRow): number {
   const values: unknown[] = [
     closing.caixa_fisico,
@@ -1511,7 +1596,7 @@ function renderLogin(req: Request, error = ''): string {
   <title>Login Financeiro - Wimifarma</title>
   <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
   <link rel="alternate icon" href="${BASE_PATH}/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-card">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605-categorias">
   <script src="${BASE_PATH}/app.js?v=20260529-node" defer></script>
   <script src="${BASE_PATH}/login-runner.js?v=20260504d" defer></script>
 </head>
@@ -1547,7 +1632,7 @@ function renderShell(req: Request, user: User, view: 'caixa' | 'relatorio', page
   <title>${e(pageTitle)} - Wimifarma</title>
   <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
   <link rel="alternate icon" href="${BASE_PATH}/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260520-card">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260605-categorias">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/app.js?v=20260529-node" defer></script>
   <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
@@ -1708,17 +1793,32 @@ async function renderCashier(req: Request): Promise<string> {
       </a>`;
     })
     .join('');
-  const entriesHtml = entries
-    .filter((entry) => entry.status !== 'cancelado')
+  const activeEntries = entries.filter((entry) => entry.status !== 'cancelado');
+  const categorySummaryHtml = renderEntryCategorySummary(activeEntries);
+  const entriesHtml = activeEntries
     .map(
-      (entry) => `<div class="entry-row">
-        <div class="entry-content"><span>${e(entry.categoria)}</span><strong>${brMoneyFromDecimal(entry.valor)}</strong><small>${e(formatPgTimestamp(entry.created_at, true))}${entry.observacao ? ` - ${e(entry.observacao)}` : ''}</small></div>
+      (entry) => {
+        const category = normalizeEntryCategory(entry.categoria);
+        const entryTime = formatPgTimestamp(entry.created_at, true) || '-';
+        const observation = cleanText(entry.observacao, 4000);
+        return `<article class="entry-row ${e(entryCategoryClass(category))}">
+        <div class="entry-content">
+          <div class="entry-card-head">
+            <span class="entry-category">${e(category)}</span>
+            <strong class="entry-value">${brMoneyFromDecimal(entry.valor)}</strong>
+          </div>
+          <dl class="entry-meta">
+            <div><dt>Horario</dt><dd>${e(entryTime)}</dd></div>
+            <div class="entry-note"><dt>Obs</dt><dd>${observation ? e(observation) : 'Sem observacao'}</dd></div>
+          </dl>
+        </div>
         ${
           locked
             ? ''
             : `<form method="post">${csrfField(req)}<input type="hidden" name="action" value="cancel_lancamento"><input type="hidden" name="data_fechamento" value="${e(date)}"><input type="hidden" name="id" value="${e(entry.id)}"><button class="link-danger" type="submit">Remover</button></form>`
         }
-      </div>`,
+      </article>`;
+      },
     )
     .join('');
   const categoryOptions = categories().map((category) => `<option value="${e(category)}">${e(category)}</option>`).join('');
@@ -1761,6 +1861,7 @@ async function renderCashier(req: Request): Promise<string> {
           ? ''
           : `<form class="entry-add-form" method="post" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="action" value="add_lancamento"><input type="hidden" name="data_fechamento" value="${e(date)}"><div class="form-grid entry-grid"><label>Categoria <select name="categoria">${categoryOptions}</select></label><label>Valor <input name="valor" inputmode="decimal" placeholder="0,00" required></label><label>Obs: <input name="observacao" placeholder="Opcional"></label><button class="btn secondary" type="submit">Adicionar</button></div></form>`
       }
+      ${categorySummaryHtml}
       <div class="entry-list launch-list">${entriesHtml || '<div class="empty-list">Nenhum lancamento adicionado neste dia.</div>'}</div>
     </section>
     <div class="finance-metrics compact result-metrics">

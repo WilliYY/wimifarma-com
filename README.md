@@ -14,6 +14,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Cotacao para controle de itens, fornecedores, precos e status de compras;
 - Pedidos para recebimento de fornecedores, vencimento de boletos, pagamentos parciais e historico;
 - Financeiro para fechamento, sangrias, PIX, maquininhas e rastreabilidade interna;
+- Desde 2026-06-05, o Caixa do Financeiro mostra resumo por categoria e cards de lancamento mais legiveis, mantendo as mesmas regras de gravacao, autosave e integracao Miauby.
 - Usuarios para logins individuais, permissoes por modulo, vinculo com XP e historico central;
 - Login / Senha para cofre interno simples de acessos da farmacia, e Login / Senha ADM para acessos administrativos restritos a admin/gerente, ambos com senha cifrada e auditoria;
 - Gestao para contas a pagar manuais, itens de composicao, pagamentos parciais, vencimentos, categorias livres e total pago por mes;
