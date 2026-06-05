@@ -2,6 +2,13 @@ import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import pg from 'pg';
 import {
+  formatCotacaoEncomendasMessage,
+  parseCotacaoEncomendasCommand,
+  type CotacaoEncomendaItem,
+  type CotacaoEncomendasCommand,
+  type CotacaoEncomendasSummary,
+} from './cotacao-command.js';
+import {
   formatPedidosCreateError,
   formatPedidosCreateSuccess,
   parsePedidosOperationalCommand,
@@ -7206,6 +7213,35 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+  const cotacaoEncomendasCommand = parseCotacaoEncomendasCommand(message);
+  if (cotacaoEncomendasCommand) {
+    if (!moduleAllowed(allowedCards, 'cotacao')) {
+      return {
+        text: forbiddenModuleReply('cotacao', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:cotacao_encomendas',
+      };
+    }
+    try {
+      const summary = await fetchCotacaoEncomendasSummary(cotacaoEncomendasCommand);
+      return {
+        text: formatCotacaoEncomendasMessage(summary),
+        engine: 'local',
+        reason: 'cotacao_encomendas_list',
+      };
+    } catch (error) {
+      await mergeWhatsappEventSummaryByTrace(traceId, {
+        cotacao_encomendas_attempted: true,
+        cotacao_encomendas_outcome: 'error',
+        cotacao_encomendas_error: safeError(error),
+      });
+      return {
+        text: 'Nao consegui consultar as encomendas da Cotacao agora. Tente de novo em instantes.',
+        engine: 'local',
+        reason: `cotacao_encomendas_error:${safeError(error)}`,
+      };
+    }
+  }
   const pixCnpjCreate = isPixReceiptGeneratedCommand(message) ? null : parsePixCnpjCommand(message);
   if (pixCnpjCreate) {
     if (!moduleAllowed(allowedCards, 'financeiro')) {
@@ -12752,6 +12788,48 @@ async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: Pedidos
     orders,
     totalLabel: safeText(data.total_label, 60) || `${orders.length} pedido(s)`,
     count: Number(data.count || orders.length),
+  };
+}
+
+async function fetchCotacaoEncomendasSummary(command: CotacaoEncomendasCommand, limit = 10): Promise<CotacaoEncomendasSummary> {
+  if (!COTACAO_INTERNAL_TOKEN) throw new Error('cotacao_internal_token_not_configured');
+  const params = new URLSearchParams({
+    order: command.order,
+    limit: String(limit),
+  });
+  const response = await fetch(`${COTACAO_INTERNAL_BASE_URL}/api/internal/encomendas?${params.toString()}`, {
+    headers: {
+      ...internalPhpJsonHeaders(COTACAO_INTERNAL_TOKEN),
+      'X-Internal-Token': COTACAO_INTERNAL_TOKEN,
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 180) || `cotacao_encomendas_http_${response.status}`);
+  }
+  const rawItems = Array.isArray(data.items) ? data.items : [];
+  const items = rawItems
+    .filter(isRecord)
+    .map(cotacaoEncomendaFromRecord);
+  return {
+    items,
+    total: Number(data.total || items.length),
+    returned: Number(data.returned || items.length),
+    order: safeText(data.order, 20) === 'newest' ? 'newest' : 'oldest',
+  };
+}
+
+function cotacaoEncomendaFromRecord(item: JsonRecord): CotacaoEncomendaItem {
+  return {
+    rowId: safeText(item.rowId, 80),
+    line: Number(item.line || 0) || undefined,
+    ean: safeText(item.ean, 80),
+    produto: safeText(item.produto, 160),
+    quantidade: safeText(item.quantidade, 80),
+    depoisEncomenda: safeText(item.depoisEncomenda, 220),
+    textoEncomenda: safeText(item.textoEncomenda, 260),
+    createdAtBr: safeText(item.createdAtBr, 80),
+    createdAt: safeText(item.createdAt, 80),
   };
 }
 

@@ -87,6 +87,7 @@ Postgres `wimifarma_cotacao`:
 - `cotacao_v2_encomenda_reminders`: lembretes operacionais criados quando uma linha contem `encomenda`, com cotacao, linha, texto original, produto/quantidade extraidos, data de deteccao, envio previsto, destinatarios mascarados, status (`pendente`, `enviado`, `erro`, `cancelado`, `resolvido`), tentativas e resultado do Miauby Whats. Importacoes Google Sheets e restores de backup recalculam esses lembretes para criar os faltantes e cancelar pendentes de linhas removidas.
 - O worker de encomendas roda dentro do app da Cotacao. O endpoint interno `GET /cotacao/api/internal/encomenda-reminders/status` mostra se o worker esta habilitado, ultima varredura apos o boot, quantos lembretes estao vencidos agora, proximo pendente, ultima tentativa, ultimo erro e ultimo envio, sem telefone cru e sem processar lembrete.
 - O endpoint interno `GET /cotacao/api/internal/encomendas` lista somente linhas ativas cujo texto atual contem `encomenda`, ordena por data mais antiga por padrao, usa `cotacao_v2_encomenda_reminders.detected_at` como data exata quando existir e informa fallback quando precisa usar `updated_at`/`created_at` da linha.
+- O Miauby WhatsApp consulta esse endpoint para `miauby encomendas` e variacoes de lista, com permissao pelo card `Cotacao`, sem alterar a planilha, sem cancelar lembrete e sem marcar entrega.
 
 Redis:
 
