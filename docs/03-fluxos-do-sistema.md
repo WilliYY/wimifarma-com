@@ -413,6 +413,7 @@ Regras:
 - endpoint interno de tarefa privada tambem revalida no app Tarefa se o usuario de destino esta ativo e pode receber tarefa, mesmo quando a chamada veio de Miauby/WhatsApp ou de outro fluxo interno tokenizado;
 - ao mudar o dono de uma tarefa, lembretes Miauby agendados sao cancelados/recriados para impedir envio ao usuario anterior;
 - o formulario de criacao pode separar visualmente `Dia` e `Horario` do lembrete Miauby, mas deve continuar gravando o mesmo `remind_at`; o card precisa manter largura/respiro ou quebra responsiva para esses campos nao se sobreporem;
+- desde 2026-06-06, a tela `/tarefa/` separa melhor visualmente criacao, fila aberta, badges de prioridade/Miauby Whats e historico recolhido por CSS, sem alterar escrita, status, filtros de visibilidade, CSRF, endpoints internos ou envio WhatsApp;
 - a tela visual deve continuar equivalente ao modulo antigo durante a migracao;
 - Desde 2026-05-30, Tarefa nao possui `mysql2`, importador, espelho ou fallback `wf_users`; rollback MySQL exige restaurar versao anterior e backup validado, sem mudar a fonte oficial de verdade do Postgres.
 
