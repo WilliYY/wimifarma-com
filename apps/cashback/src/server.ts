@@ -1334,7 +1334,6 @@ ${body}
     ['dashboard.php#resgate', 'Gastar/Usar Cashback'],
     ['mensagens.php', 'Mensagens'],
     ['relatorio.php', 'Configuracao e Relatorio'],
-    ['diagnostico.php', 'Diagnostico'],
   ];
 
   return `<!doctype html>
