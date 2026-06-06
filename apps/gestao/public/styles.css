@@ -354,7 +354,7 @@ textarea {
 }
 
 .gestao-lists-grid {
-    grid-template-columns: minmax(430px, 1.05fr) minmax(290px, 0.72fr);
+    grid-template-columns: minmax(400px, 1.05fr) minmax(320px, 0.72fr);
     align-items: start;
     gap: 16px;
     min-width: 0;
@@ -757,8 +757,10 @@ textarea {
 
 .gestao-pedido-list-panel .gestao-list {
     max-height: min(58vh, 620px);
-    overflow: auto;
-    padding-right: 3px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 8px;
+    scrollbar-gutter: stable;
 }
 
 .gestao-monthly-list {
@@ -1263,6 +1265,31 @@ textarea {
 
 .gestao-account.is-pedido-account {
     border-left: 5px solid #2563eb;
+}
+
+.gestao-account.is-pedido-account .gestao-account-compact {
+    grid-template-columns: minmax(52px, max-content) minmax(0, 1fr) minmax(74px, max-content) minmax(56px, max-content);
+    gap: 6px;
+    padding: 7px;
+}
+
+.gestao-account.is-pedido-account .gestao-compact-title {
+    font-size: 0.84rem;
+}
+
+.gestao-account.is-pedido-account .gestao-compact-title em {
+    font-size: 0.64rem;
+}
+
+.gestao-account.is-pedido-account .gestao-compact-value {
+    font-size: 0.78rem;
+}
+
+.gestao-account.is-pedido-account .gestao-compact-pay {
+    min-width: 54px;
+    min-height: 28px;
+    padding: 0 7px;
+    font-size: 0.64rem;
 }
 
 .gestao-compact-title em {
@@ -2125,6 +2152,14 @@ textarea {
         grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
     }
 
+    .gestao-lists-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-list-side-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .gestao-side-stack {
         grid-column: 1 / -1;
         position: static;
@@ -2183,6 +2218,11 @@ textarea {
     .gestao-quick-pay,
     .gestao-compact-state {
         width: 100%;
+    }
+
+    .gestao-list-side-stack,
+    .gestao-account.is-pedido-account .gestao-account-compact {
+        grid-template-columns: 1fr;
     }
 
     .gestao-compact-value {
