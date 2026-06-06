@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Financeiro, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Calendario, do Financeiro, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Calendario, Financeiro, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -31,6 +31,9 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - Container Codigos: `wimifarma-codigos-db`
 - Imagem Codigos: `postgres:17-alpine`
 - Volume Codigos: `codigos-data/postgres/`
+- Container Calendario: `wimifarma-calendario-db`
+- Imagem Calendario: `postgres:17-alpine`
+- Volume Calendario: `calendario-data/postgres/`
 - Container Financeiro: `wimifarma-financeiro-db`
 - Imagem Financeiro: `postgres:17-alpine`
 - Volume Financeiro: `financeiro-data/postgres/`
@@ -59,6 +62,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_tarefa`: Tarefa em Postgres.
 - `wimifarma_xp`: XP em Postgres.
 - `wimifarma_codigos`: Codigos em Postgres.
+- `wimifarma_calendario`: Calendario em Postgres.
 - `wimifarma_financeiro`: Financeiro oficial em Postgres.
 - `wimifarma_login_senha`: cofre Login / Senha oficial em Postgres, com senhas cifradas, auditoria local e separacao por `scope` entre cofre comum e aba restrita `Contas`.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
@@ -183,6 +187,18 @@ Criadas por `apps/codigos/src/server.ts`:
 - `codigos_sessions`: sessoes web do modulo Codigos gerenciadas por `connect-pg-simple`.
 
 A fonte oficial apos o corte e o Postgres `wimifarma_codigos`. O MySQL `wf_codigos_comissao` e `wf_codigos_blocos` fica apenas como referencia historica/backup; desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `CODIGOS_AUTH_PROVIDER` nem flags `CODIGOS_LEGACY_MYSQL_*`.
+
+## Tabelas do Calendario em Postgres
+
+Criadas por `apps/calendario/src/server.ts`:
+
+- `calendario_calendars`: anos disponiveis, ano do template visual e usuario criador.
+- `calendario_colors`: paleta por calendario, com cor, significado, ordem e arquivamento logico.
+- `calendario_day_notes`: anotacao e cor por ano/mes/dia, com autosave e `UNIQUE(calendar_id, month, day)`.
+- `calendario_audit_events`: auditoria curta de acesso bloqueado, dia salvo, cor criada/editada/arquivada e novo ano criado.
+- `calendario_sessions`: sessoes web do app Node (`WFCALENDARIO`).
+
+A fonte oficial e o Postgres `wimifarma_calendario`. As imagens mensais geradas do PDF ficam versionadas em `apps/calendario/public/months`; o conteudo editavel nao fica na imagem e salva somente nessas tabelas.
 
 ## Tabelas do Financeiro em Postgres
 

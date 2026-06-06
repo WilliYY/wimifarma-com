@@ -262,6 +262,24 @@ docker exec wimifarma-codigos-db psql -U wimifarma_codigos -d wimifarma_codigos 
 
 O app `apps/codigos` atende a rota oficial `/codigos/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_codigos`; desde 2026-05-30 o servico nao possui `mysql2`, importador, espelho, logs ou fallback MySQL. Rollback MySQL exige restaurar versao anterior e backup validado. O endpoint interno sem `X-Miauw-Internal-Token` deve responder 401 ou 503; nao colar token real em comando versionado.
 
+## Local - Calendario Node/Postgres
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\calendario
+npm.cmd run typecheck
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-calendario-db
+docker compose up -d --no-deps --build wimifarma-calendario-app wimifarma-com-web
+docker exec wimifarma-calendario-app wget -qO- http://127.0.0.1:4105/calendario/health
+curl.exe -sS http://127.0.0.1:3002/calendario/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" http://127.0.0.1:3002/calendario/
+curl.exe -i http://127.0.0.1:3002/calendario/api/internal/summary
+docker exec wimifarma-calendario-db psql -U wimifarma_calendario -d wimifarma_calendario -c "\dt"
+```
+
+O app `apps/calendario` atende a rota oficial `/calendario/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_calendario`; as imagens mensais ficam em `apps/calendario/public/months/` e as anotacoes/cores ficam sempre no banco. O endpoint interno sem token deve responder 401 ou 503; nao colar token real em comando versionado.
+
 ## Local - Usuarios Node/Postgres core
 
 ```powershell

@@ -598,6 +598,10 @@
       return ['Cotacao fica aqui. Use produto, categoria, distribuidora e vencedor sem misturar com financeiro.', 'a[href*="/cotacao/"], [data-module-card="cotacao"]'];
     }
 
+    if (normalized.includes('calendario') || normalized.includes('calendário') || normalized.includes('plantao') || normalized.includes('plantão')) {
+      return ['Calendario fica aqui. Meses, plantoes, cores e anotacoes ficam nesse modulo.', 'a[href*="/calendario/"], [data-module-card="calendario"]'];
+    }
+
     if (normalized.includes('cashback') || normalized.includes('cliente')) {
       return ['Cashback fica aqui. Cliente, saldo e recompra ficam nesse caminho.', 'a[href*="/cashback/"], [data-module-card="cashback"]'];
     }

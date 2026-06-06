@@ -438,6 +438,7 @@ function wf_home_clear_module_session_cookies(): void
         'WFFINANCEIRO',
         'WFTAREFA',
         'WFCODIGOS',
+        'WFCALENDARIO',
         'WFXP',
         'WFGESTAO',
         'WFUSUARIOS',
@@ -2222,6 +2223,14 @@ $modules = array(
         'module_key' => 'codigos',
         'href' => '/codigos/',
         'accent' => 'teal',
+    ),
+    array(
+        'name' => 'Calendário',
+        'label' => 'Escala',
+        'description' => 'Meses, cores, plantoes e anotacoes.',
+        'module_key' => 'calendario',
+        'href' => '/calendario/',
+        'accent' => 'blue',
     ),
     array(
         'name' => 'XP',

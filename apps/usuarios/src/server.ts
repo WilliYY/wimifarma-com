@@ -161,6 +161,7 @@ const MODULES: ModuleDefinition[] = [
   { key: 'financeiro', label: 'Financeiro', href: '/financeiro/' },
   { key: 'tarefa', label: 'Tarefas', href: '/tarefa/' },
   { key: 'codigos', label: 'Codigos', href: '/codigos/' },
+  { key: 'calendario', label: 'Calendario', href: '/calendario/' },
   { key: 'xp', label: 'XP', href: '/xp/' },
   { key: 'gestao', label: 'Gestao', href: '/gestao/' },
   { key: 'miauw', label: 'Miauby', href: '/miauw/' },
@@ -666,6 +667,22 @@ async function ensureCoreSchema(): Promise<void> {
   await corePgPool.query(`
     CREATE INDEX IF NOT EXISTS idx_core_user_module_permissions_user
       ON core_user_module_permissions (user_id)
+  `);
+  await corePgPool.query(`
+    INSERT INTO core_user_module_permissions (user_id, module_key, can_access, granted_by, granted_at, updated_at)
+    SELECT u.id, 'calendario', true, NULL, NOW(), NOW()
+      FROM core_users u
+     WHERE u.active = true
+       AND EXISTS (
+         SELECT 1
+           FROM core_user_module_permissions existing
+          WHERE existing.user_id = u.id
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM core_user_module_permissions current
+          WHERE current.user_id = u.id AND current.module_key = 'calendario'
+       )
   `);
   await corePgPool.query(`
     CREATE TABLE IF NOT EXISTS core_user_xp_links (

@@ -29,6 +29,7 @@ services:
       - wimifarma-tarefa-app
       - wimifarma-xp-app
       - wimifarma-codigos-app
+      - wimifarma-calendario-app
       - wimifarma-financeiro-app
       - wimifarma-cashback-app
       - wimifarma-usuarios-app
@@ -92,6 +93,8 @@ services:
       GESTAO_INTERNAL_BASE_URL: ${GESTAO_INTERNAL_BASE_URL:-http://wimifarma-gestao-app:3200/gestao}
       CODIGOS_INTERNAL_TOKEN: ${CODIGOS_INTERNAL_TOKEN:-}
       CODIGOS_INTERNAL_BASE_URL: ${CODIGOS_INTERNAL_BASE_URL:-http://wimifarma-codigos-app:3700/codigos}
+      CALENDARIO_INTERNAL_TOKEN: ${CALENDARIO_INTERNAL_TOKEN:-}
+      CALENDARIO_INTERNAL_BASE_URL: ${CALENDARIO_INTERNAL_BASE_URL:-http://wimifarma-calendario-app:4105/calendario}
       FINANCEIRO_INTERNAL_TOKEN: ${FINANCEIRO_INTERNAL_TOKEN:-}
       FINANCEIRO_INTERNAL_BASE_URL: ${FINANCEIRO_INTERNAL_BASE_URL:-http://wimifarma-financeiro-app:3800/financeiro}
       TAREFA_INTERNAL_TOKEN: ${TAREFA_INTERNAL_TOKEN:-}
@@ -188,6 +191,19 @@ services:
       POSTGRES_PASSWORD: ${CODIGOS_POSTGRES_PASSWORD:-wimifarma_codigos_dev_pass}
     volumes:
       - ./codigos-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-calendario-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-calendario-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_calendario
+      POSTGRES_USER: wimifarma_calendario
+      POSTGRES_PASSWORD: ${CALENDARIO_POSTGRES_PASSWORD:-wimifarma_calendario_dev_pass}
+    volumes:
+      - ./calendario-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -501,6 +517,36 @@ services:
       - ./site/codigos/styles.css:/app/public/styles.css:ro
       - ./site/codigos/app.js:/app/public/app.js:ro
       - ./site/codigos/login-runner.js:/app/public/login-runner.js:ro
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-calendario-app:
+    build:
+      context: ./apps/calendario
+      dockerfile: Dockerfile
+    container_name: wimifarma-calendario-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-core-db
+      - wimifarma-calendario-db
+    environment:
+      NODE_ENV: production
+      PORT: 4105
+      BASE_PATH: /calendario
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      POSTGRES_HOST: wimifarma-calendario-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_calendario
+      POSTGRES_USER: wimifarma_calendario
+      POSTGRES_PASSWORD: ${CALENDARIO_POSTGRES_PASSWORD:-wimifarma_calendario_dev_pass}
+      CALENDARIO_SESSION_SECRET: ${CALENDARIO_SESSION_SECRET:-wimifarma_calendario_dev_secret_change_me}
+      CALENDARIO_INTERNAL_TOKEN: ${CALENDARIO_INTERNAL_TOKEN:-}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
     networks:
       - wimifarma-com-network
 

@@ -193,7 +193,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - Nginx Proxy Manager no VPS para publicar dominios
 - OpenAI API usada pelo Miauby
 - Node.js 22 + Express + Socket.IO para Cotacao V2
-- Node.js 22 + TypeScript + Express para Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios
+- Node.js 22 + TypeScript + Express para Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Calendario, Financeiro, Usuarios e Login / Senha
 - Node.js 22 + TypeScript + Agents SDK para Miauby em modo sombra/corte controlado com adaptador PHP, tools Node por ponte PHP interna, contexto de treino aprovado, perfil compilado, perfis de voz/tom e audio por gravacao temporaria/transcricao confirmada, bolha/player de audio, resposta falada temporaria e seletor seguro de voz no diagnostico
 - Node.js 22 + TypeScript para o bridge WhatsApp do Miauby via Evolution API ou Meta Cloud API
 - PostgreSQL 17 para o core compartilhado de autenticacao
@@ -201,6 +201,7 @@ Pontos ainda pendentes ficam registrados em `docs/06-pendencias.md`.
 - PostgreSQL 17 para dados da Cotacao V2
 - PostgreSQL 17 para dados do XP
 - PostgreSQL 17 para dados de Codigos
+- PostgreSQL 17 para dados do Calendario
 - PostgreSQL 17 para dados do Financeiro
 - PostgreSQL 17 dedicado para fila/eventos/outbox do Miauby WhatsApp
 - Redis 7 para sessoes e presenca da Cotacao V2
@@ -320,6 +321,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |   |-- tarefa/              # Tarefa Node.js/TypeScript/Postgres
 |   |-- xp/                  # XP Node.js/TypeScript/Postgres oficial
 |   |-- codigos/             # Codigos Node.js/TypeScript/Postgres oficial
+|   |-- calendario/          # Calendario Node.js/TypeScript/Postgres oficial
 |   |-- financeiro/          # Financeiro Node.js/TypeScript/Postgres oficial
 |   |-- usuarios/            # Usuarios Node.js/TypeScript no core Postgres
 |   |-- login-senha/         # Cofre Login / Senha Node.js/TypeScript/Postgres
@@ -334,6 +336,7 @@ Mais comandos ficam em `docs/05-comandos.md`.
 |-- tarefa-data/             # volume Postgres do Tarefa ignorado pelo Git
 |-- xp-data/                 # volume Postgres do XP ignorado pelo Git
 |-- codigos-data/            # volume Postgres de Codigos ignorado pelo Git
+|-- calendario-data/         # volume Postgres do Calendario ignorado pelo Git
 |-- financeiro-data/         # volume Postgres do Financeiro ignorado pelo Git
 |-- login-senha-data/        # volume Postgres do cofre Login / Senha ignorado pelo Git
 |-- docker/
@@ -602,6 +605,8 @@ Para XP, `apps/xp` e `wimifarma-xp-app:3600` sao a rota oficial `/xp/` via proxy
 
 Para Codigos, `apps/codigos` e `wimifarma-codigos-app:3700` sao a rota oficial `/codigos/` via proxy Apache. Manter `CODIGOS_POSTGRES_PASSWORD` e `CODIGOS_SESSION_SECRET` por ambiente; o login usa somente `core_users`. `CODIGOS_INTERNAL_TOKEN` pode ficar igual ao `MIAUW_GUARDIAN_TOKEN` para o Miauby ler Codigos direto do Postgres por endpoint interno. Desde 2026-05-30 nao ha `CODIGOS_AUTH_PROVIDER`, flags `CODIGOS_LEGACY_MYSQL_*`, importador, espelho, logs, fallback `wf_users` ou dependencia `mysql2`; rollback MySQL exige restaurar versao anterior e backup validado.
 
+Para Calendario, `apps/calendario` e `wimifarma-calendario-app:4105` atendem a rota oficial `/calendario/` via proxy Apache. O app usa `wimifarma_calendario` para anos, cores nomeadas, anotacoes por dia, auditoria e sessao `WFCALENDARIO`; as imagens mensais vieram de `Calendario.pdf` e ficam em `apps/calendario/public/months`. `CALENDARIO_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN` libera apenas o resumo interno `/calendario/api/internal/summary` para o Miauby, sem expor texto completo.
+
 Para Financeiro, `apps/financeiro` e `wimifarma-financeiro-app:3800` sao a rota oficial `/financeiro/` via proxy Apache. Manter `FINANCEIRO_POSTGRES_PASSWORD`, `FINANCEIRO_SESSION_SECRET` e, se quiser trocar a senha de reabertura, `FINANCEIRO_REOPEN_PASSWORD` por ambiente. O login usa somente `core_users`; rollback MySQL exige restaurar versao/imagem anterior e backup validado. `FINANCEIRO_INTERNAL_TOKEN` pode ficar igual ao `MIAUW_GUARDIAN_TOKEN` para o Miauby/WhatsApp gravar `Pix CNPJ` e faturamento por endpoints internos Node/Postgres.
 
 Para Usuarios, `apps/usuarios` e `wimifarma-usuarios-app:3900` sao a rota oficial `/usuarios/` via proxy Apache. Manter `USUARIOS_SESSION_SECRET` por ambiente; o app usa `CORE_POSTGRES_PASSWORD`, consulta o Postgres do XP para associar logins a funcionarios e chama Miauby WhatsApp por `USUARIOS_MIAUW_WHATSAPP_INTERNAL_*` para vincular/remover numeros da allowlist. Tarefas privadas devem ser criadas pelo modulo `/tarefa/`. O painel fica restrito a `adm` ou role `admin`.
@@ -625,6 +630,7 @@ Portas importantes:
 - app interno Tarefa: `wimifarma-tarefa-app:3500`
 - app interno XP: `wimifarma-xp-app:3600`
 - app interno Codigos: `wimifarma-codigos-app:3700`
+- app interno Calendario: `wimifarma-calendario-app:4105`
 - app interno Financeiro oficial: `wimifarma-financeiro-app:3800`
 - app interno Usuarios: `wimifarma-usuarios-app:3900`
 - app interno Miauby sombra leitura: `wimifarma-miauby-app:4100`

@@ -6,6 +6,7 @@
 /tarefa-data/
 /xp-data/
 /codigos-data/
+/calendario-data/
 /financeiro-data/
 /cashback-data/
 /login-senha-data/
@@ -23,6 +24,7 @@ apps/pedidos/dist/
 apps/tarefa/dist/
 apps/xp/dist/
 apps/codigos/dist/
+apps/calendario/dist/
 apps/financeiro/dist/
 apps/cashback/dist/
 apps/usuarios/dist/

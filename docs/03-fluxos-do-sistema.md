@@ -15,7 +15,7 @@ Entrada publica:
 - O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card como `border-image` de borda/cantos para destacar a entrada sem cortar a arte nem cobrir o texto.
 - O card `Usuarios` abre `/usuarios/` para administrar logins, modulos, vinculo XP e historico central.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
-- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `XP`, `Gestao`, `Miauby`, `Miauby Whatsapp`, `Login / Senha` e `Usuarios`; `Usuarios` fica por ultimo quando todos estiverem visiveis. O card separado `Login / Senha ADM` foi removido da Home em 2026-06-05; a area restrita para logins/senhas especificos do sistema agora aparece como aba `Contas` dentro de `/login-senha/` somente para `adm`, `admin` ou `gerente`. Quando a home possui `WFHOME_SSO` valido ou o navegador possui sessao ativa no XP/Usuarios, o login esta vinculado a um funcionario XP e o modulo `xp` esta liberado, a home exibe no desktop um mini-card do XP a esquerda da grade, com foto, nivel, ranking, XP do mes, XP total e barra de progresso atualizados por endpoint dos apps Node. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
+- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `Calendario`, `XP`, `Gestao`, `Miauby`, `Miauby Whatsapp`, `Login / Senha` e `Usuarios`; `Usuarios` fica por ultimo quando todos estiverem visiveis. O card separado `Login / Senha ADM` foi removido da Home em 2026-06-05; a area restrita para logins/senhas especificos do sistema agora aparece como aba `Contas` dentro de `/login-senha/` somente para `adm`, `admin` ou `gerente`. Quando a home possui `WFHOME_SSO` valido ou o navegador possui sessao ativa no XP/Usuarios, o login esta vinculado a um funcionario XP e o modulo `xp` esta liberado, a home exibe no desktop um mini-card do XP a esquerda da grade, com foto, nivel, ranking, XP do mes, XP total e barra de progresso atualizados por endpoint dos apps Node. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 - Desde 2026-06-03, os cards da Home autenticada usam textos mais curtos, CTA `Abrir` e acento visual por cor para melhorar leitura em desktop/mobile sem alterar links, ordem, SSO, troca de usuario ou permissoes. As etiquetas circulares internas dos cards foram removidas para voltar a uma leitura mais limpa; a barra/acento e a animacao de hover permanecem. Quando poucos cards ficam visiveis por permissao, a grade ajusta o numero de colunas para evitar linhas isoladas e excesso de espaco vertical.
 
 Identidade visual validada em 2026-05-21:
@@ -160,6 +160,12 @@ Regras a preservar:
 - apagar pela tela deve fazer exclusao logica (`ativo=0`) para reduzir risco de perda acidental;
 - apagar uma tabela inteira so e permitido para blocos numericos nao padrao, exige card de confirmacao, CSRF, sessao ativa e senha operacional `wimifarma`, com suporte a override por `CODIGOS_GROUP_DELETE_PASSWORD`;
 - acoes de criar, editar, reordenar e apagar registram `codigos_audit_events` e `core_audit_logs`, sem espelho em `wf_logs`.
+
+## Fluxo Calendario
+
+O modulo Calendario abre em `/calendario/` e usa as imagens mensais geradas de `Calendario.pdf` como base visual. Os dias sao camadas editaveis sobre a imagem: clicar no quadrado permite escrever no proprio dia e abre o painel lateral com o texto completo. A paleta salva cores nomeadas por calendario, como `Plantao`, e a cor aplicada ao dia fica em `calendario_day_notes`.
+
+O autosave grava texto/cor no Postgres pelo app Node `apps/calendario`, com sessao `WFCALENDARIO`, CSRF, permissao `core_user_module_permissions.module_key='calendario'` e auditoria local/core. O botao `Criar proximo calendario` cria o proximo ano, reutiliza a paleta e deixa as anotacoes/marcacoes vazias. O endpoint interno `/calendario/api/internal/summary` ensina o Miauby sobre o modulo sem retornar o texto completo das notas.
 
 ## Fluxo XP
 

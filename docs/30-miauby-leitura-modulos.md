@@ -29,6 +29,7 @@ Regra importante: o Miauby nao deve abrir conexao direta para bancos de outros m
 | Tarefas | OK | `/tarefa/api/internal/summary` | sem tool de leitura exportada; existe `criar_tarefa` controlada |
 | Cashback | OK | `/cashback/api/internal/summary` e `/clients/search` | `resumo_cashback`, `buscar_cliente` |
 | Codigos | OK | `/codigos/api/internal/summary` e `/search` | `resumo_codigos`, `buscar_codigo_comissao` |
+| Calendario | OK no endpoint interno | `/calendario/api/internal/summary` | sem tool de leitura no contrato do Miauby |
 | XP | Limitado | health/migration-status | sem tool de leitura de dados do XP |
 | Usuarios | Limitado por seguranca | health do app Usuarios | sem tool de leitura de dados de usuarios |
 | Miauby Whats | OK | `/miauw/whatsapp/internal/integration-status` e `/memory` | sem tool direta; usado como ponte/canal |
@@ -87,6 +88,7 @@ curl -fsS -H "X-Miauw-Agent-Token: ${TOKEN}" \
 ## Pontos fracos conhecidos
 
 - Pedidos tem endpoint interno funcionando, mas ainda nao tem tool de leitura no contrato do Miauby.
+- Calendario tem endpoint interno sanitizado para existencia/status, mas ainda nao tem comando operacional nem tool de leitura de notas.
 - Tarefas tem resumo interno funcionando, mas o contrato do Node ainda nao exporta uma tool `resumo_tarefas`.
 - XP e Usuarios aparecem como `limited`: health OK, mas sem leitura operacional exposta ao Miauby. Para Usuarios isso e esperado por seguranca; qualquer ampliacao deve ser endpoint minimo, mascarado e auditado.
 - Miauby Whats tem status/memoria interna OK, mas nao aparece como tool de leitura; ele funciona como canal e ponte.

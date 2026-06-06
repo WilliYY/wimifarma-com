@@ -16,6 +16,7 @@ Arquivos:
 - `apps/codigos/src/server.ts`
 - `apps/usuarios/src/server.ts`
 - `apps/login-senha/src/server.ts`
+- `apps/calendario/src/server.ts`
 - `site/*/login.php`
 - `site/*/logout.php`
 - `site/*/bootstrap.php`
@@ -58,6 +59,7 @@ Tabelas:
 - `usuarios_sessions`
 - `cashback_sessions`
 - `codigos_sessions`
+- `calendario_sessions`
 - `wptl_users`
 - `wptl_usermeta`
 
@@ -74,6 +76,7 @@ Tabelas:
 - WordPress nao deve ser confundido com login dos modulos internos.
 - Cashback (`/cashback/`) usa o servico Node `apps/cashback`, sessao propria `WFCASHBACK` no Postgres `wimifarma_cashback` e autentica somente contra `core_users`; desde 2026-05-30 nao ha fallback MySQL nem `CASHBACK_AUTH_PROVIDER` no app. Criar cliente, registrar compra, usar cashback, atualizar configuracoes, editar atendentes e marcar WhatsApp usam CSRF. Areas sensiveis como relatorio/exportacao/diagnostico continuam com senha operacional.
 - Codigos (`/codigos/`) usa o servico Node `apps/codigos`, sessao propria `WFCODIGOS` no Postgres `wimifarma_codigos` e autentica somente contra `core_users` desde 2026-05-30, sem fallback `wf_users` ou `CODIGOS_AUTH_PROVIDER`. Criar bloco, salvar linha, reordenar, excluir item e excluir tabela usa CSRF. A exclusao de tabelas inteiras exige senha operacional `wimifarma`, alteravel por `CODIGOS_GROUP_DELETE_PASSWORD` no `.env`.
+- Calendario (`/calendario/`) usa o servico Node `apps/calendario`, sessao propria `WFCALENDARIO` no Postgres `wimifarma_calendario` e autentica por `core_users`/`WFHOME_SSO`. Acesso segue `core_user_module_permissions.module_key='calendario'`: linha explicita `can_access=false` bloqueia; ausencia de linha preserva acesso legado para modulo comum. Salvar anotacao/cor, criar cor e criar proximo ano usam CSRF e registram auditoria.
 - A Gestao (`/gestao/`) usa o servico Node `apps/gestao`, autentica somente contra `core_users`, cria sessao propria `WFGESTAO` no Postgres da Gestao e fica restrita a username `adm`, role `admin` ou role `gerente`; desde 2026-05-30 nao ha fallback `wf_users` nem variaveis `GESTAO_AUTH_*` no app. Lancar conta, adicionar item/juros, registrar pagamento parcial, confirmar saldo, cancelar ou reabrir conta usa CSRF.
 - Pedidos (`/pedidos/`) usa o servico Node separado `apps/pedidos`, autentica somente contra `core_users`, cria sessao propria `WFPEDIDOS` no Postgres da Gestao e fica restrito a username `adm`, role `admin` ou role `gerente`; o app nao possui fallback `wf_users` nem dependencia MySQL em runtime. Criar pedido, confirmar chegada, atualizar vencimento, adicionar juros/valor, registrar parcial e marcar pago usa CSRF.
 - Quando uma rota protegida de Pedidos envia o operador para `/pedidos/login.php`, o destino seguro original e preservado na sessao; entrar pelo card `Pedidos` deve voltar para `/pedidos/`, nao para a tela principal de Gestao.
@@ -95,8 +98,8 @@ Tabelas:
 - O painel Miauby WhatsApp (`/miauw/whatsapp/`) usa login proprio por variaveis de ambiente `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` quando preenchidas; a sessao e cookie assinado do servico Node, separado de `wf_users` e do WordPress.
 - Login PHP interno do Miauby usa `core_users` e `core_login_rate_limits` no Postgres; desde 2026-06-04 o bootstrap compartilhado local nao possui fallback de autenticacao MySQL. Cashback usa login unico no core no app Node, com limitador persistente em `core_login_rate_limits`. Cotacao V2 usa bloqueio equivalente em sessao/memoria e regenera a sessao apos login valido.
 - Na Cotacao V2, importar Google Sheets e restaurar backup sao operacoes fortes: alem de sessao e CSRF, exigem username `adm`, role `admin` ou role `gerente`. Exportar, criar backup, editar celula e restaurar distribuidora apagada seguem as regras existentes.
-- Desde 2026-06-03, a Home e os modulos internos tratam `WFHOME_SSO` valido como contexto mais atual do navegador. Ao trocar de operador pela Home, os endpoints e paginas nao devem reaproveitar sessoes antigas de modulos como `WFXP`, `WFUSUARIOS`, `WFCASHBACK`, `WFCOTACAOV2`, `WFCODIGOS`, `WFGESTAO`, `WFPEDIDOS`, `WFTAREFA`, `WFFINANCEIRO` ou `WFWCASHBACK` se o SSO atual apontar outro usuario. Desde 2026-06-05, a troca visual da Home expira esses cookies de modulo, renova nonce/CSRF da Home e limpa chaves frontend do Miauby/Home para evitar fala, XP ou permissao do usuario anterior; `/?sair=1` continua apenas como logout tecnico.
-- A Home filtra os cards por `core_user_module_permissions`: `adm`/role `admin` ve tudo; usuario sem linhas explicitas preserva acesso legado para modulos comuns; usuario com permissoes salvas ve somente modulos marcados. `login_senha` e excecao sensivel e fica oculto/bloqueado para usuario comum sem permissao explicita. O mesmo criterio passou a ser reforcado no backend de Cashback, Cotacao, Codigos, XP, Tarefa, Gestao, Pedidos, Financeiro e Miauby, respeitando tambem as restricoes fortes ja existentes de perfil em Gestao/Pedidos/Usuarios.
+- Desde 2026-06-03, a Home e os modulos internos tratam `WFHOME_SSO` valido como contexto mais atual do navegador. Ao trocar de operador pela Home, os endpoints e paginas nao devem reaproveitar sessoes antigas de modulos como `WFXP`, `WFUSUARIOS`, `WFCASHBACK`, `WFCOTACAOV2`, `WFCODIGOS`, `WFCALENDARIO`, `WFGESTAO`, `WFPEDIDOS`, `WFTAREFA`, `WFFINANCEIRO` ou `WFWCASHBACK` se o SSO atual apontar outro usuario. Desde 2026-06-05, a troca visual da Home expira esses cookies de modulo, renova nonce/CSRF da Home e limpa chaves frontend do Miauby/Home para evitar fala, XP ou permissao do usuario anterior; `/?sair=1` continua apenas como logout tecnico.
+- A Home filtra os cards por `core_user_module_permissions`: `adm`/role `admin` ve tudo; usuario sem linhas explicitas preserva acesso legado para modulos comuns; usuario com permissoes salvas ve somente modulos marcados. `login_senha` e excecao sensivel e fica oculto/bloqueado para usuario comum sem permissao explicita. O mesmo criterio passou a ser reforcado no backend de Cashback, Cotacao, Codigos, Calendario, XP, Tarefa, Gestao, Pedidos, Financeiro e Miauby, respeitando tambem as restricoes fortes ja existentes de perfil em Gestao/Pedidos/Usuarios.
 - O mini-card XP da Home consulta primeiro o endpoint do Usuarios e depois o do XP, ambos em modo `no-store`, apenas quando o modulo `xp` esta liberado para o operador atual. Os dois endpoints revalidam permissao `xp`; a Home so renderiza se o payload pertence ao login atual. Se algum endpoint responder uma sessao antiga de outro usuario, a Home ignora a resposta em vez de mostrar XP incorreto.
 - O widget Miauby da Home so carrega quando o modulo `miauw` esta permitido para o operador atual. O Miauby PHP tambem resolve primeiro o SSO atual da Home quando ele existe e bloqueia `miauw` quando a permissao do modulo esta desmarcada, sem alterar motor de chat, ferramentas, Gemini ou historico.
 
@@ -104,7 +107,7 @@ Tabelas:
 
 - Sessao dos modulos internos PHP remanescentes e configurada em `site/cashback/config.php`.
 - Funcoes comuns legadas ficam em `site/cashback/functions.php`; `internal_authenticate_user()` e `current_user()` consultam somente o core Postgres quando um modulo PHP remanescente usa esse caminho.
-- Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Financeiro e Usuarios usam sessoes Node proprias por rota. Quando recebem `WFHOME_SSO`, consultam `/home-sso.php`, buscam o usuario no `core_users` e regeneram a sessao do modulo antes de liberar a rota. Se ja existir sessao propria de outro usuario, o SSO atual vence. Miauby PHP tambem aceita o handoff da home, mas continua no caminho PHP ate seu corte. Sem sessao propria nem SSO valido, o navegador deve voltar para a home `/`, nao para formularios locais de login.
+- Cashback, Tarefa, Cotacao, Gestao, Pedidos, XP, Codigos, Calendario, Financeiro e Usuarios usam sessoes Node proprias por rota. Quando recebem `WFHOME_SSO`, consultam `/home-sso.php`, buscam o usuario no `core_users` e regeneram a sessao do modulo antes de liberar a rota. Se ja existir sessao propria de outro usuario, o SSO atual vence. Miauby PHP tambem aceita o handoff da home, mas continua no caminho PHP ate seu corte. Sem sessao propria nem SSO valido, o navegador deve voltar para a home `/`, nao para formularios locais de login.
 - O servico sombra `/miauw/agent/run` e `/miauw/agent/stream` nao usa sessao de operador diretamente; ele exige token interno e deve ser chamado pelo PHP/adaptador, nao por usuario final.
 - Em Codigos, blocos `EAN 20`, `EAN 40` e `Outros` sao protegidos contra exclusao de tabela inteira pela interface e pela API.
 

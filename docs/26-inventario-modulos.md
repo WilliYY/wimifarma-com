@@ -707,6 +707,66 @@ Legado/rollback:
 
 Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e reordenacao. Depois repetir o mesmo corte cuidadoso em XP.
 
+## Calendario
+
+### Rota atual
+
+- Rota publica oficial: `/calendario/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/calendario/` para `wimifarma-calendario-app:4105/calendario/`.
+- App oficial: `apps/calendario`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres dedicado `wimifarma_calendario`.
+- Imagens mensais: `apps/calendario/public/months/month-01.png` ate `month-12.png`, geradas de `Calendario.pdf`.
+
+### Telas e endpoints
+
+- `/calendario/` e `/calendario/index.php`: tela do calendario com navegacao por seta/arraste, edicao por dia e painel lateral.
+- `/calendario/health`: health do app.
+- `/calendario/api/state`: estado do ano, cores e anotacoes.
+- `/calendario/api/day`: autosave de anotacao/cor por dia.
+- `/calendario/api/colors`: cria/edita cores nomeadas.
+- `/calendario/api/colors/:id/archive`: arquiva uma cor e limpa vinculos.
+- `/calendario/api/create-next-year`: cria o proximo ano limpo, copiando a paleta.
+- `/calendario/api/internal/summary`: resumo interno tokenizado para Miauby/status.
+
+### Permissoes e sessao
+
+- Sessao propria `WFCALENDARIO`.
+- Login oficial por `core_users` e `WFHOME_SSO`.
+- Permissao por `core_user_module_permissions.module_key='calendario'`; linha explicita `can_access=false` bloqueia, ausencia de linha preserva acesso legado para modulo comum.
+- Escritas usam CSRF.
+
+### Tabelas Postgres oficiais
+
+- `calendario_calendars`;
+- `calendario_colors`;
+- `calendario_day_notes`;
+- `calendario_audit_events`;
+- `calendario_sessions`.
+
+### Fluxos de escrita
+
+- Clicar/digitar em um quadrado cria ou atualiza `calendario_day_notes`.
+- Escolher cor no painel lateral salva `color_id` do dia.
+- Criar/editar cor grava significado em `calendario_colors`.
+- `Criar proximo calendario` cria novo ano com paleta copiada e sem notas/marcacoes.
+
+### Integracoes
+
+- Home publica aponta `Calendario` para `/calendario/`, logo depois de `Codigos`.
+- Usuarios libera/bloqueia o modulo pelo card `Calendario`.
+- Miauby status consulta `/calendario/api/internal/summary` sem retornar texto completo das notas.
+- Widget Miauby aponta para o card quando o texto mencionar calendario/plantao.
+
+### Riscos
+
+- As anotacoes nao fazem parte da imagem do PDF; perda do volume `calendario-data/` remove o conteudo editavel.
+- Meses de seis semanas podem dividir o ultimo quadrado visual em duas datas; a UI separa os overlays para nao misturar notas.
+- O endpoint interno do Miauby deve continuar sanitizado para nao vazar notas completas.
+
+### Proxima acao segura
+
+Validar no VPS `/calendario/health`, acesso via Home/SSO, autosave de nota/cor, criacao de proximo ano, permissao por usuario e resumo interno Miauby.
+
 ## Usuarios
 
 ### Rota atual

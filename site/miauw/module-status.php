@@ -382,6 +382,10 @@ $period = function_exists('miauw_skill_period_from_message')
 $contractsByModule = miauw_module_status_contracts_by_module();
 $agentToken = miauw_constant_string('MIAUW_AGENT_INTERNAL_TOKEN');
 $guardianToken = miauw_constant_string('MIAUW_GUARDIAN_TOKEN');
+$calendarioToken = miauw_constant_string('CALENDARIO_INTERNAL_TOKEN');
+if ($calendarioToken === '') {
+    $calendarioToken = $guardianToken !== '' ? $guardianToken : $agentToken;
+}
 $whatsappToken = miauw_constant_string('MIAUW_WHATSAPP_INTERNAL_TOKEN');
 if ($whatsappToken === '') {
     $whatsappToken = $agentToken !== '' ? $agentToken : $guardianToken;
@@ -466,6 +470,19 @@ $modules = array(
         $contractsByModule,
         'codigos_node_postgres',
         function_exists('miauw_skill_codigos_internal_configured') ? miauw_skill_codigos_internal_configured() : null
+    ),
+    miauw_module_status_check(
+        'calendario',
+        'Calendario',
+        'calendario',
+        true,
+        static fn() => miauw_module_status_http_json('GET', 'http://wimifarma-calendario-app:4105/calendario/api/internal/summary', array(
+            'X-Miauw-Internal-Token: ' . $calendarioToken,
+            'X-Miauw-Agent-Token: ' . $calendarioToken,
+        )),
+        $contractsByModule,
+        'calendario_node_postgres',
+        $calendarioToken !== ''
     ),
     miauw_module_status_check(
         'xp',
