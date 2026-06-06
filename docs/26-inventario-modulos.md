@@ -375,6 +375,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 
 - `/pedidos/login.php`: login.
 - `/pedidos/` e `/pedidos/index.php`: tela de fornecedores, novo pedido, aguardando chegada, confirmados e historico.
+- Desde 2026-06-06, cards recolhidos de `Aguardando chegada` e `Confirmados` mostram chip de criacao com data/hora baseada em `created_at`, mantendo o detalhe expandido e sem alterar status/pagamento.
 - `/pedidos/logout.php`: encerra sessao.
 - `/pedidos/health`: health com `mysql_dependency=false`.
 - `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.

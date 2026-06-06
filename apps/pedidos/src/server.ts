@@ -559,6 +559,25 @@ function brDate(value: Date | string | null | undefined, withTime = false): stri
   });
 }
 
+function brShortDateTime(value: Date | string | null | undefined): string {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: TZ,
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value || '';
+  const day = part('day');
+  const month = part('month');
+  const hour = part('hour');
+  const minute = part('minute');
+  return day && month && hour && minute ? `${day}/${month} ${hour}:${minute}` : '';
+}
+
 function brDateOnly(value: Date | string | null | undefined): string {
   return brDate(value, false);
 }
@@ -2563,6 +2582,10 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     : order.status === 'pedido' && order.account_status === 'pago'
       ? '<span class="gestao-order-mini-chip paid">Ja pago</span>'
       : `<span class="gestao-order-mini-chip balance">Saldo ${e(formatMoney(remainingCents))}</span>`;
+  const createdCompactText = brShortDateTime(order.created_at);
+  const createdCompactHtml = createdCompactText
+    ? `<span class="gestao-order-mini-chip created" title="Criado em ${e(brDate(order.created_at, true))}">Criado ${e(createdCompactText)}</span>`
+    : '';
 
   const arrivalAction = order.status === 'pedido' ? `<form method="post" class="gestao-order-primary-action" data-confirm="Confirmar que o pedido de ${e(order.supplier_name)} chegou?">
     ${csrfField(req)}
@@ -2667,7 +2690,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <span>
           <span class="gestao-pill">${e(statusLabel)}</span>
           <h2>${e(order.supplier_name)}</h2>
-          <small class="gestao-order-compact-meta">${compactStatusHtml}${compactBalanceHtml}</small>
+          <small class="gestao-order-compact-meta">${compactStatusHtml}${compactBalanceHtml}${createdCompactHtml}</small>
         </span>
         <strong>${e(formatMoney(totalCents))}</strong>
       </div>

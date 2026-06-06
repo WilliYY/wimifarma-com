@@ -661,7 +661,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     gap: 4px;
     font-size: 0.66rem;
     line-height: 1.1;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-mini-chip {
@@ -835,6 +835,17 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     font-weight: 950;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.gestao-order-mini-chip.created {
+    display: none;
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+
+.gestao-order-card.is-order-collapsed .gestao-order-mini-chip.created {
+    display: inline-flex;
 }
 
 .gestao-order-mini-chip.due-overdue,
