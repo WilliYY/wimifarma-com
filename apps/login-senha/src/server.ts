@@ -847,6 +847,20 @@ async function handlePost(req: Request, res: Response): Promise<void> {
   res.redirect(`${basePath}/`);
 }
 
+function renderEyeIcon(): string {
+  return `
+            <svg class="vault-eye-icon vault-eye-open" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M2.8 12s3.2-5.2 9.2-5.2S21.2 12 21.2 12s-3.2 5.2-9.2 5.2S2.8 12 2.8 12Z"></path>
+              <circle cx="12" cy="12" r="2.7"></circle>
+            </svg>
+            <svg class="vault-eye-icon vault-eye-closed" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M3.5 3.5l17 17"></path>
+              <path d="M9.9 5.1A10.5 10.5 0 0 1 12 4.8c6 0 9.2 5.2 9.2 5.2a16 16 0 0 1-3 3.4"></path>
+              <path d="M14.4 14.6a3.2 3.2 0 0 1-4.1-4.1"></path>
+              <path d="M6.4 7.4C3.8 9.3 2.8 12 2.8 12s3.2 5.2 9.2 5.2c1.5 0 2.9-.3 4.1-.9"></path>
+            </svg>`;
+}
+
 function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
   const basePath = requestBasePath(req);
   const id = toNumber(entry.id);
@@ -868,7 +882,7 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
         <div class="vault-password-inline">
           <input class="vault-row-password-output" type="password" readonly tabindex="-1" value="********" aria-label="Senha de ${e(entry.name)}">
           <button type="button" class="vault-icon-btn vault-secret-toggle" data-vault-action="row-reveal" data-entry-id="${id}" aria-label="Mostrar senha" title="Mostrar senha">
-            <span class="vault-eye-icon" aria-hidden="true"></span>
+            ${renderEyeIcon()}
           </button>
         </div>
       </td>
@@ -1056,7 +1070,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntri
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>${e(view.title)} - Wimifarma</title>
-  <link rel="stylesheet" href="${basePath}/styles.css?v=20260606a">
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20260606b">
   <script src="${basePath}/app.js?v=20260605d" defer></script>
 </head>
 <body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
