@@ -243,7 +243,8 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - Listar recompra para clientes com saldo ativo e sem compra recente com uma pendencia por cliente e ultima compra; a pendencia fica visivel por ate 14 dias e depois sai da fila principal com status `expirado_da_fila`. `Excluir da fila` usa `cancelada` como arquivamento manual e ambos bloqueiam retorno imediato, sem apagar cliente, saldo ou historico.
 - Em `/cashback/mensagens.php`, os cards pendentes mostram campanha, cliente, telefone/detalhe e mensagem; abrir WhatsApp, copiar texto ou excluir da fila grava status em `cashback_whatsapp_messages`, remove visualmente o card da fila e preserva historico.
 - Em `/cashback/mensagens.php`, o bloco `Todos Whats` fica recolhido por padrao e, ao abrir, mostra somente os 10 registros salvos mais recentes.
-- Na navegacao superior do Cashback, o atalho `Diagnostico` nao aparece para a operacao diaria, e `Home` fica por ultimo para manter o fluxo operacional primeiro.
+- Na navegacao superior do Cashback, o atalho `Diagnostico` nao aparece para a operacao diaria, `Home` fica por ultimo para manter o fluxo operacional primeiro, e a pagina/secao atual fica destacada por classe ativa/`aria-current` para orientar o operador.
+- Em `/cashback/relatorio.php`, `Configuracao e Relatorio` usa layout compacto com atalhos internos, cards menores, lista de atendentes com altura controlada e microanimacoes CSS; os POSTs de manutencao/atendentes, CSRF e exportacoes CSV seguem os mesmos.
 - Criar/editar/inativar/excluir atendente.
 - Atualizar configuracoes (`cashback_percent`, alertas, manutencao e afins); a validade de novos creditos e regra fixa de 45 dias por compra.
 - Autoteste cria dados dentro de transacao controlada.

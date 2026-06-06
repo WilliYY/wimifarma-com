@@ -91,10 +91,16 @@ button {
 }
 
 .nav a {
+    position: relative;
     color: #fff;
     padding: 9px 13px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.12);
+    transition:
+        background-color 0.22s ease,
+        color 0.22s ease,
+        box-shadow 0.22s ease,
+        transform 0.22s ease;
 }
 
 .nav a.active,
@@ -102,6 +108,25 @@ button {
 .nav a:hover {
     background: #fff;
     color: var(--red-800);
+}
+
+.nav a.active,
+.nav a.is-active {
+    box-shadow: 0 12px 28px rgba(109, 16, 34, 0.2);
+    transform: translateY(-1px);
+}
+
+.nav a.active::after,
+.nav a.is-active::after {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: -7px;
+    height: 3px;
+    border-radius: 999px;
+    background: #fff;
+    opacity: 0.95;
 }
 
 .container {
@@ -562,6 +587,214 @@ th {
 
 .report-metrics {
     margin-top: -4px;
+}
+
+.report-page {
+    display: grid;
+    gap: 14px;
+}
+
+.report-page > * {
+    margin-bottom: 0;
+    animation: reportPanelIn 0.34s cubic-bezier(0.2, 0.85, 0.2, 1) both;
+}
+
+.report-page > *:nth-child(2) {
+    animation-delay: 0.03s;
+}
+
+.report-page > *:nth-child(3) {
+    animation-delay: 0.06s;
+}
+
+.report-page > *:nth-child(4) {
+    animation-delay: 0.09s;
+}
+
+.report-page > *:nth-child(5) {
+    animation-delay: 0.12s;
+}
+
+.report-nav.anchor-bar {
+    gap: 8px;
+    margin: 0;
+    padding: 8px;
+    border-radius: 18px;
+    box-shadow: 0 14px 36px rgba(109, 16, 34, 0.08);
+}
+
+.report-nav a {
+    min-height: 38px;
+    padding: 9px 13px;
+    border-radius: 999px;
+    color: var(--red-800);
+}
+
+.report-nav a:hover {
+    background: var(--red-100);
+}
+
+.report-page .panel {
+    padding: 18px;
+    border-radius: 18px;
+    box-shadow: 0 16px 38px rgba(109, 16, 34, 0.09);
+}
+
+.report-page .operation-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: end;
+    margin-bottom: 0;
+    padding: 18px;
+    border-radius: 20px;
+    box-shadow: 0 16px 38px rgba(109, 16, 34, 0.09);
+}
+
+.report-page .operation-hero h2 {
+    max-width: 520px;
+    margin: 5px 0 6px;
+    font-size: clamp(1.35rem, 2.2vw, 2.1rem);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+}
+
+.report-page .operation-hero p {
+    max-width: 700px;
+    margin: 0;
+}
+
+.report-page .maintenance-control {
+    padding: 16px 18px;
+    gap: 14px;
+}
+
+.report-page .maintenance-control h2,
+.report-page .section-title h2 {
+    margin-bottom: 6px;
+    font-size: clamp(1.15rem, 1.8vw, 1.45rem);
+    letter-spacing: -0.02em;
+}
+
+.report-page .maintenance-control p,
+.report-page .section-block p {
+    margin: 0;
+}
+
+.report-page .maintenance-control-form {
+    grid-auto-flow: column;
+    align-items: center;
+}
+
+.report-page .section-title {
+    margin-bottom: 12px;
+}
+
+.report-page .team-layout {
+    grid-template-columns: minmax(240px, 0.55fr) minmax(0, 1.45fr);
+    gap: 12px;
+}
+
+.report-page .team-form {
+    gap: 10px;
+    padding: 14px;
+    border-radius: 16px;
+}
+
+.report-page .team-form h3 {
+    margin: 0;
+    color: var(--red-800);
+}
+
+.report-page .team-form textarea,
+.report-page .attendant-notes textarea {
+    min-height: 56px;
+}
+
+.report-page .team-list {
+    max-height: 520px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.report-page .attendant-card {
+    gap: 10px;
+    padding: 12px;
+    border-radius: 16px;
+    box-shadow: 0 8px 22px rgba(109, 16, 34, 0.055);
+}
+
+.report-page .attendant-edit-form {
+    gap: 10px;
+}
+
+.report-page .attendant-card-head {
+    grid-template-columns: minmax(0, 1fr) minmax(120px, 140px);
+}
+
+.report-page .attendant-card dl {
+    gap: 7px;
+}
+
+.report-page .attendant-card dl div {
+    padding: 8px;
+    border-radius: 12px;
+    background: #fff7f8;
+}
+
+.report-page .attendant-actions {
+    justify-content: flex-end;
+}
+
+.report-page .attendant-actions .btn,
+.report-page .message-actions .btn,
+.report-page .maintenance-control .btn,
+.report-page .hero-filter .btn {
+    min-height: 38px;
+    padding-inline: 14px;
+}
+
+.report-page .metrics {
+    grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+    gap: 10px;
+    margin-bottom: 0;
+}
+
+.report-page .metric {
+    padding: 14px;
+    border-radius: 18px;
+}
+
+.report-page .metric span {
+    margin-bottom: 5px;
+    font-size: 0.88rem;
+}
+
+.report-page .metric strong {
+    font-size: clamp(1.25rem, 2vw, 1.65rem);
+}
+
+.report-page .message-grid {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+}
+
+.report-page .message-card {
+    min-height: auto;
+    padding: 14px;
+    border-radius: 16px;
+}
+
+@keyframes reportPanelIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.992);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .anchor-bar a.is-active {
@@ -2171,6 +2404,14 @@ body.sections-ready .workspace-section.is-active {
     }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .nav a,
+    .report-page > * {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
 @media (max-width: 850px) {
     .topbar,
     .page-heading,
@@ -2206,6 +2447,16 @@ body.sections-ready .workspace-section.is-active {
 
     .maintenance-control-form {
         justify-items: stretch;
+    }
+
+    .report-page .maintenance-control-form {
+        grid-auto-flow: row;
+        justify-items: stretch;
+    }
+
+    .report-page .team-list {
+        max-height: none;
+        padding-right: 0;
     }
 
     .maintenance-shell {

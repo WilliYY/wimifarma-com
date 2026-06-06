@@ -110,6 +110,11 @@
 
             link.classList.toggle('is-active', isActive);
             link.classList.toggle('active', isActive);
+            if (isActive) {
+                link.setAttribute('aria-current', 'page');
+            } else {
+                link.removeAttribute('aria-current');
+            }
         });
 
         if (shouldPushState) {
@@ -161,6 +166,33 @@
 
         window.addEventListener('hashchange', function () {
             activateSection(window.location.hash.replace('#', '') || 'busca', false);
+        });
+    }
+
+    function bindActiveNav() {
+        if (document.querySelector('.workspace-section[id]')) {
+            return;
+        }
+
+        var links = Array.prototype.slice.call(document.querySelectorAll('[data-nav-link]'));
+
+        if (!links.length) {
+            return;
+        }
+
+        var current = (window.location.pathname || '').split('/').filter(Boolean).pop() || 'dashboard.php';
+
+        links.forEach(function (link) {
+            var targetPath = link.getAttribute('data-nav-path') || '';
+            var isActive = targetPath === current;
+
+            link.classList.toggle('is-active', isActive);
+            link.classList.toggle('active', isActive);
+            if (isActive) {
+                link.setAttribute('aria-current', 'page');
+            } else {
+                link.removeAttribute('aria-current');
+            }
         });
     }
 
@@ -1004,6 +1036,7 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         bindMoneyFields();
+        bindActiveNav();
         bindSections();
         bindCashbackPreview();
         bindInitialPurchasePreview();
