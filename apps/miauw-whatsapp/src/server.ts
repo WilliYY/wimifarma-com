@@ -946,7 +946,6 @@ const WHATSAPP_USER_FACING_AUTOMATION_KEYS = new Set<string>([
   PEDIDOS_ARRIVAL_AUTOMATION_KEY,
   FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
   COTACAO_ENCOMENDA_AUTOMATION_KEY,
-  PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY,
 ]);
 const UNAUTHORIZED_REPLY_TEXT = 'Oiee! Miauby aqui!\u{1F63C} Esse WhatsApp \u00e9 s\u00f3 para a equipe interna da Wimifarma. Se voc\u00ea precisa falar com a farm\u00e1cia, chame no canal oficial de atendimento (44) 98413-4971.';
 const providerSendTimestamps: number[] = [];
