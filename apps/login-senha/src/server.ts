@@ -580,6 +580,18 @@ async function listEntries(scope: VaultScope): Promise<EntryRow[]> {
   return result.rows;
 }
 
+async function listArchivedEntries(scope: VaultScope): Promise<EntryRow[]> {
+  const result = await pgPool.query<EntryRow>(
+    `SELECT *
+      FROM login_senha_entries
+      WHERE archived_at IS NOT NULL
+        AND scope = $1
+      ORDER BY archived_at DESC, LOWER(name), id`,
+    [scope],
+  );
+  return result.rows;
+}
+
 async function loadEntry(id: number, scope: VaultScope, includeArchived = false): Promise<EntryRow | null> {
   const result = await pgPool.query<EntryRow>(
     `SELECT *
@@ -717,6 +729,53 @@ async function archiveEntry(req: Request, user: User, scope: VaultScope): Promis
   setFlash(req, 'success', 'Acesso arquivado.');
 }
 
+async function deleteArchivedEntry(req: Request, user: User, scope: VaultScope): Promise<void> {
+  const id = toNumber(req.body?.id);
+  const entry = id > 0 ? await loadEntry(id, scope, true) : null;
+  if (!entry) {
+    setFlash(req, 'error', 'Acesso nao encontrado.');
+    return;
+  }
+  if (!entry.archived_at) {
+    setFlash(req, 'error', 'Arquive o acesso antes de excluir do historico.');
+    return;
+  }
+
+  await pgPool.query(
+    `DELETE FROM login_senha_entries
+      WHERE id = $1
+        AND scope = $2
+        AND archived_at IS NOT NULL`,
+    [id, scope],
+  );
+  await auditEvent(user, scope, 'login_senha_acesso_excluido', id, `Acesso excluido do historico: ${entry.name}.`, { name: entry.name });
+  setFlash(req, 'success', 'Acesso excluido do historico.');
+}
+
+async function clearArchivedEntries(req: Request, user: User, scope: VaultScope): Promise<void> {
+  const archived = await listArchivedEntries(scope);
+  if (archived.length === 0) {
+    setFlash(req, 'error', 'Historico ja esta vazio.');
+    return;
+  }
+
+  await pgPool.query(
+    `DELETE FROM login_senha_entries
+      WHERE scope = $1
+        AND archived_at IS NOT NULL`,
+    [scope],
+  );
+  await auditEvent(
+    user,
+    scope,
+    'login_senha_historico_limpo',
+    null,
+    `Historico limpo: ${archived.length} acesso(s) excluido(s).`,
+    { count: archived.length },
+  );
+  setFlash(req, 'success', 'Historico de senhas limpo.');
+}
+
 async function reorderEntries(user: User, scope: VaultScope, order: number[]): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const uniqueIds = new Set(order);
   if (order.length === 0 || uniqueIds.size !== order.length) {
@@ -778,6 +837,10 @@ async function handlePost(req: Request, res: Response): Promise<void> {
     await updateEntry(req, user, scope);
   } else if (action === 'archive') {
     await archiveEntry(req, user, scope);
+  } else if (action === 'delete_archived') {
+    await deleteArchivedEntry(req, user, scope);
+  } else if (action === 'clear_archived') {
+    await clearArchivedEntries(req, user, scope);
   } else {
     setFlash(req, 'error', 'Acao invalida.');
   }
@@ -884,6 +947,56 @@ function renderEntryTable(req: Request, entries: EntryRow[]): string {
     </div>`;
 }
 
+function renderArchivedTable(req: Request, archivedEntries: EntryRow[]): string {
+  const basePath = requestBasePath(req);
+  if (archivedEntries.length === 0) {
+    return '<p class="vault-empty">Nenhum acesso arquivado no historico.</p>';
+  }
+  return `
+    <div class="vault-history-toolbar">
+      <p>Arquivados ficam fora da lista principal. Excluir remove o registro do cofre e preserva apenas a auditoria sem senha.</p>
+      <form method="post" action="${basePath}/" data-confirm="Limpar todo o historico de senhas arquivadas deste cofre? Essa acao remove os acessos arquivados e mantem apenas a auditoria sem senha.">
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="clear_archived">
+        <button class="vault-btn vault-btn-soft vault-btn-danger-line" type="submit">Limpar historico</button>
+      </form>
+    </div>
+    <div class="vault-history-table-wrap">
+      <table class="vault-history-table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Login / Usuario</th>
+            <th>Arquivado em</th>
+            <th>Acao</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${archivedEntries.map((entry) => {
+            const id = toNumber(entry.id);
+            return `
+              <tr>
+                <td>
+                  <strong>${e(entry.name)}</strong>
+                  <span>Historico de senha arquivada</span>
+                </td>
+                <td><span class="vault-mono">${e(entry.login_username)}</span></td>
+                <td>${e(brDateTime(entry.archived_at))}</td>
+                <td>
+                  <form method="post" action="${basePath}/" class="vault-inline-form" data-confirm="Excluir este acesso do historico? Essa acao remove o registro do cofre e mantem apenas a auditoria sem senha.">
+                    ${csrfField(req)}
+                    <input type="hidden" name="action" value="delete_archived">
+                    <input type="hidden" name="id" value="${id}">
+                    <button class="vault-btn vault-btn-soft vault-btn-danger-line" type="submit">Excluir</button>
+                  </form>
+                </td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 function renderAuditRows(auditRows: AuditRow[]): string {
   if (auditRows.length === 0) {
     return '<p class="vault-empty">Nenhum evento registrado ainda.</p>';
@@ -931,7 +1044,7 @@ function renderTopNav(req: Request, user: User): string {
       ${contasItem}`;
 }
 
-function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: AuditRow[]): string {
+function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntries: EntryRow[], auditRows: AuditRow[]): string {
   const flash = takeFlash(req);
   const csrf = ensureCsrf(req);
   const basePath = requestBasePath(req);
@@ -943,7 +1056,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>${e(view.title)} - Wimifarma</title>
-  <link rel="stylesheet" href="${basePath}/styles.css?v=20260605f">
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20260606a">
   <script src="${basePath}/app.js?v=20260605d" defer></script>
 </head>
 <body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
@@ -1002,6 +1115,21 @@ function renderPage(req: Request, user: User, entries: EntryRow[], auditRows: Au
         <span class="vault-entry-count">${entries.length === 1 ? '1 ativo' : `${entries.length} ativos`}</span>
       </div>
       ${renderEntryTable(req, entries)}
+    </section>
+
+    <section class="vault-section vault-audit vault-history">
+      <details class="vault-audit-details">
+        <summary class="vault-audit-summary">
+          <span class="vault-audit-title">
+            <span class="vault-kicker">Historico</span>
+            <strong>Senhas arquivadas</strong>
+          </span>
+          <span class="vault-audit-count">${archivedEntries.length === 1 ? '1 arquivado' : `${archivedEntries.length} arquivados`}</span>
+        </summary>
+        <div class="vault-audit-body">
+          ${renderArchivedTable(req, archivedEntries)}
+        </div>
+      </details>
     </section>
 
     <section class="vault-section vault-audit">
@@ -1091,8 +1219,8 @@ app.get(indexRoutePaths(), asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
   const scope = requestScope(req);
-  const [entries, auditRows] = await Promise.all([listEntries(scope), listAuditEvents(scope, 60)]);
-  res.send(renderPage(req, user, entries, auditRows));
+  const [entries, archivedEntries, auditRows] = await Promise.all([listEntries(scope), listArchivedEntries(scope), listAuditEvents(scope, 60)]);
+  res.send(renderPage(req, user, entries, archivedEntries, auditRows));
 }));
 
 app.post(indexRoutePaths(), asyncRoute(handlePost));

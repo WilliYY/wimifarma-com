@@ -287,6 +287,12 @@ input:focus {
   background: var(--vault-danger);
 }
 
+.vault-btn-danger-line {
+  color: var(--vault-danger);
+  border-color: #e7a8b8;
+  background: #fff7fa;
+}
+
 .vault-entry-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--vault-line);
@@ -702,6 +708,98 @@ input:focus {
   padding: 0 clamp(14px, 2vw, 18px) clamp(14px, 2vw, 18px);
 }
 
+.vault-history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.vault-history-toolbar p {
+  margin: 0;
+  max-width: 680px;
+  font-size: 13px;
+}
+
+.vault-history-toolbar form,
+.vault-inline-form {
+  margin: 0;
+}
+
+.vault-history-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--vault-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.vault-history-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.vault-history-table th,
+.vault-history-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0d5dc;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.vault-history-table th {
+  background: #fff3f6;
+  color: var(--vault-wine);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vault-history-table th:nth-child(1) {
+  width: 31%;
+}
+
+.vault-history-table th:nth-child(2) {
+  width: 31%;
+}
+
+.vault-history-table th:nth-child(3) {
+  width: 20%;
+}
+
+.vault-history-table th:nth-child(4) {
+  width: 120px;
+}
+
+.vault-history-table strong,
+.vault-history-table span,
+.vault-history-table .vault-mono {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-history-table strong {
+  color: var(--vault-wine);
+  font-size: 15px;
+}
+
+.vault-history-table td > span:not(.vault-mono) {
+  margin-top: 2px;
+  color: var(--vault-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vault-history-table .vault-mono {
+  color: #1c1317;
+  font-weight: 900;
+}
+
 .vault-audit-table {
   width: 100%;
   min-width: 760px;
@@ -786,8 +884,14 @@ input:focus {
   }
 
   .vault-entry-actions,
-  .vault-archive-form {
+  .vault-archive-form,
+  .vault-history-toolbar {
     justify-content: stretch;
+  }
+
+  .vault-history-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .vault-btn {

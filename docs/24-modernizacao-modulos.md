@@ -150,6 +150,7 @@ Login / Senha foi criado em `apps/login-senha`:
 - login unico por `core_users`/`WFHOME_SSO`;
 - permissao individual `login_senha` no painel Usuarios, default fechada para usuarios comuns; a aba `Contas` usa `scope='adm'` e exige `adm`, `admin` ou `gerente`;
 - senhas cifradas por AES-256-GCM e auditoria sem valor de senha;
+- `Arquivar` envia para historico de senhas, e `Excluir`/`Limpar historico` remove somente registros arquivados do cofre mantendo auditoria sem senha;
 - sem legado MySQL/PHP, importador, espelho ou fallback.
 
 A proxima fatia segura e validar Gestao e Cashback no VPS com `/gestao/health`, `/cashback/health`, login, fluxos principais e logs. Em paralelo, validar Usuarios com `/usuarios/health`, login admin, criacao/desativacao controlada, vinculo XP e auditoria. Depois, aplicar `core_user_module_permissions` em cada modulo existente por etapa, sem bloquear todos de uma vez.

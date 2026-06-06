@@ -797,7 +797,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Telas e endpoints
 
-- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso; a lista permite reorganizar linhas por arrastar e salva apenas `sort_order`; a auditoria de eventos recentes fica recolhida por padrao e abre no proprio card.
+- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso; arquivar envia para `Historico de senhas`, recolhido por padrao, onde acessos arquivados podem ser excluidos individualmente ou limpos em lote sem revelar/copiar senha arquivada; a lista permite reorganizar linhas por arrastar e salva apenas `sort_order`; a auditoria de eventos recentes fica recolhida por padrao e abre no proprio card.
 - `/login-senha-adm/` e `/login-senha-adm/index.php`: aba `Contas` para acessos especificos do sistema, filtrada por `scope='adm'` e bloqueada para usuarios sem papel administrativo/gerencial; sem card na Home desde 2026-06-05.
 - `/login-senha/api/entries/:id/reveal`: revela senha para usuario autorizado e audita visualizacao.
 - `/login-senha/api/entries/:id/copy-login`: retorna login para copiar e audita copia.
@@ -840,7 +840,8 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 - Criar acesso.
 - Editar nome/login e, opcionalmente, trocar senha.
 - Reorganizar a ordem visual dos acessos ativos salvando `sort_order`.
-- Arquivar acesso sem apagar registro.
+- Arquivar acesso sem apagar registro, movendo para `Historico de senhas`.
+- Excluir acesso ja arquivado ou limpar o historico de arquivados, removendo somente registros arquivados do cofre e mantendo auditoria sem senha.
 - Auditar revelar/copiar senha e copiar login.
 - Todas as operacoes filtram por `scope` da rota para impedir que um ID da aba `Contas` seja aberto pela rota comum, ou vice-versa.
 
@@ -859,7 +860,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Proxima acao segura
 
-Validar no VPS `/login-senha/health`, card unico `Login / Senha` na Home, ausencia do card `Login / Senha ADM`, aba `Contas` visivel para admin/gerente no topo de `/login-senha/`, bloqueio por URL direta para usuario sem permissao/papel, criar/editar/arquivar acesso nos dois scopes e auditoria de mostrar/copiar sem senha em logs.
+Validar no VPS `/login-senha/health`, card unico `Login / Senha` na Home, ausencia do card `Login / Senha ADM`, aba `Contas` visivel para admin/gerente no topo de `/login-senha/`, bloqueio por URL direta para usuario sem permissao/papel, criar/editar/arquivar acesso nos dois scopes, historico de arquivados, exclusao/limpeza apenas de arquivados e auditoria de mostrar/copiar sem senha em logs.
 
 ## Cotacao
 
