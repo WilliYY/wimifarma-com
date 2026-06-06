@@ -3128,7 +3128,7 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
   </div>`;
 
   const quickPayControl = status === 'pendente'
-    ? `<form method="post" class="gestao-quick-pay" data-confirm="${remainingCents > 0 ? `Registrar ${e(remainingMoney)} como pagamento final desta conta?` : 'Marcar esta conta como paga novamente?'}">
+    ? `<form method="post" class="gestao-quick-pay">
         ${csrfField(req)}
         <input type="hidden" name="action" value="confirm_paid">
         <input type="hidden" name="id" value="${e(id)}">
