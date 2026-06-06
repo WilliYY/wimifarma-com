@@ -12,6 +12,11 @@
     --green: #059669;
     --amber: #b45309;
     --danger: #dc2626;
+    --blue: #2563eb;
+    --blue-dark: #1e40af;
+    --blue-soft: #eff6ff;
+    --panel-shadow: 0 24px 58px rgba(127, 9, 46, 0.08);
+    --panel-shadow-soft: 0 12px 28px rgba(111, 15, 54, 0.07);
 }
 
 * {
@@ -213,7 +218,7 @@ textarea {
     border: 1px solid var(--line);
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 24px 60px rgba(127, 9, 46, 0.08);
+    box-shadow: var(--panel-shadow);
 }
 
 .gestao-stats div {
@@ -284,8 +289,9 @@ textarea {
     margin: 0 0 18px;
     padding: 14px;
     border: 1px solid var(--line);
+    border-left: 5px solid var(--wine);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.92);
+    background: linear-gradient(90deg, #fff7fb 0%, rgba(255, 255, 255, 0.94) 42%);
     box-shadow: 0 18px 44px rgba(127, 9, 46, 0.07);
 }
 
@@ -342,21 +348,22 @@ textarea {
 }
 
 .gestao-layout {
-    grid-template-columns: minmax(330px, 390px) minmax(760px, 1fr) minmax(260px, 300px);
+    grid-template-columns: minmax(310px, 360px) minmax(760px, 1fr) minmax(290px, 340px);
     align-items: start;
+    gap: 18px;
 }
 
 .gestao-lists-grid {
-    grid-template-columns: minmax(420px, 1fr) minmax(310px, 0.78fr);
+    grid-template-columns: minmax(430px, 1.05fr) minmax(290px, 0.72fr);
     align-items: start;
-    gap: 12px;
+    gap: 16px;
     min-width: 0;
 }
 
 .gestao-list-side-stack {
     display: grid;
     align-content: start;
-    gap: 12px;
+    gap: 16px;
     min-width: 0;
 }
 
@@ -366,21 +373,68 @@ textarea {
 .gestao-monthly-panel,
 .gestao-category-panel,
 .gestao-notepad {
+    position: relative;
     min-width: 0;
     padding: 20px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.96);
 }
 
 .gestao-list-panel {
-    padding: 14px;
+    padding: 16px;
 }
 
 .gestao-list-panel .gestao-section-title {
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
 .gestao-form {
     display: grid;
     gap: 18px;
+}
+
+.gestao-form::before,
+.gestao-list-panel::before,
+.gestao-category-panel::before,
+.gestao-notepad::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 5px;
+    background: var(--panel-accent, var(--wine));
+    pointer-events: none;
+}
+
+.gestao-form {
+    --panel-accent: var(--wine);
+}
+
+.gestao-lists-grid > .gestao-list-panel:not(.gestao-pedido-list-panel):not(.gestao-monthly-list-panel) {
+    --panel-accent: #0f766e;
+}
+
+.gestao-pedido-list-panel {
+    --panel-accent: var(--blue);
+    border-color: #bfdbfe;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.gestao-monthly-list-panel {
+    --panel-accent: #d97706;
+    border-color: #f7d78a;
+    background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+}
+
+.gestao-category-panel {
+    --panel-accent: var(--green);
+    border-color: #bbf7d0;
+    background: linear-gradient(180deg, #ffffff 0%, #f7fffb 100%);
+}
+
+.gestao-notepad {
+    --panel-accent: #7c3aed;
+    border-color: #ddd6fe;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfaff 100%);
 }
 
 .gestao-orders-summary {
@@ -625,7 +679,7 @@ textarea {
     position: sticky;
     top: 92px;
     display: grid;
-    gap: 14px;
+    gap: 16px;
 }
 
 .gestao-notepad,
@@ -660,13 +714,14 @@ textarea {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     margin-bottom: 10px;
-    padding: 7px 10px;
+    padding: 9px 11px;
     border-radius: 8px;
-    background: #fff8fb;
-    border: 1px solid #f5bed0;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
 }
 
 .gestao-monthly-total-inline strong {
+    color: #92400e;
     font-size: 0.98rem;
     white-space: nowrap;
 }
@@ -677,7 +732,7 @@ textarea {
     align-items: center;
     gap: 8px;
     margin-bottom: 10px;
-    padding: 7px 10px;
+    padding: 9px 11px;
     border: 1px solid #bfdbfe;
     border-radius: 8px;
     background: #eff6ff;
@@ -771,6 +826,7 @@ textarea {
 .gestao-category-legend {
     display: flex;
     justify-content: space-between;
+    padding: 0 4px;
     color: var(--muted);
     font-size: 0.72rem;
     font-weight: 900;
@@ -790,10 +846,10 @@ textarea {
     gap: 7px;
     max-width: 100%;
     padding: 5px 9px;
-    border: 1px solid #f4bfd0;
+    border: 1px solid #c7f0d8;
     border-radius: 999px;
-    background: #fff8fb;
-    color: var(--wine);
+    background: #f8fffb;
+    color: #075f46;
     text-decoration: none;
     font-size: 0.78rem;
     font-weight: 950;
@@ -807,9 +863,9 @@ textarea {
 }
 
 .gestao-category-chip.is-active {
-    border-color: var(--wine);
-    background: #fff0f5;
-    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.08);
+    border-color: var(--green);
+    background: #ecfdf5;
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
 .gestao-category-open,
@@ -881,9 +937,9 @@ textarea {
 
 .gestao-note-card {
     padding: 12px;
-    border: 1px solid #f7c0d2;
+    border: 1px solid #ddd6fe;
     border-radius: 8px;
-    background: #fff8fb;
+    background: #fbfaff;
 }
 
 .gestao-note-card textarea,
@@ -919,10 +975,76 @@ textarea {
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(242, 169, 194, 0.55);
 }
 
 .gestao-section-title strong {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    max-width: 100%;
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: rgba(168, 15, 67, 0.08);
     color: var(--wine);
+    font-size: 0.88rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gestao-pedido-list-panel .gestao-section-title {
+    border-bottom-color: #dbeafe;
+}
+
+.gestao-pedido-list-panel .gestao-section-title span,
+.gestao-pedido-list-panel .gestao-section-title strong {
+    color: var(--blue-dark);
+}
+
+.gestao-pedido-list-panel .gestao-section-title strong {
+    background: #dbeafe;
+}
+
+.gestao-monthly-list-panel .gestao-section-title {
+    border-bottom-color: #fde68a;
+}
+
+.gestao-monthly-list-panel .gestao-section-title span,
+.gestao-monthly-list-panel .gestao-section-title strong {
+    color: #92400e;
+}
+
+.gestao-monthly-list-panel .gestao-section-title strong {
+    background: #fef3c7;
+}
+
+.gestao-category-panel .gestao-section-title {
+    border-bottom-color: #bbf7d0;
+}
+
+.gestao-category-panel .gestao-section-title span,
+.gestao-category-panel .gestao-section-title strong {
+    color: #047857;
+}
+
+.gestao-category-panel .gestao-section-title strong {
+    background: #dcfce7;
+}
+
+.gestao-notepad .gestao-section-title {
+    border-bottom-color: #ddd6fe;
+}
+
+.gestao-notepad .gestao-section-title span,
+.gestao-notepad .gestao-section-title strong {
+    color: #6d28d9;
+}
+
+.gestao-notepad .gestao-section-title strong {
+    background: #ede9fe;
 }
 
 .gestao-form-grid {
@@ -1010,7 +1132,7 @@ textarea {
     overflow: hidden;
     background: rgba(255, 255, 255, 0.96);
     border-color: #f1b6ca;
-    box-shadow: 0 8px 22px rgba(111, 15, 54, 0.08);
+    box-shadow: var(--panel-shadow-soft);
 }
 
 .gestao-account-main {
@@ -1027,14 +1149,15 @@ textarea {
 
 .gestao-account-compact {
     display: grid;
-    grid-template-columns: minmax(58px, 0.55fr) minmax(126px, 1fr) minmax(78px, 0.64fr) 58px;
+    grid-template-columns: minmax(70px, 0.6fr) minmax(150px, 1fr) minmax(86px, 0.58fr) 64px;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
-    min-height: 44px;
-    padding: 6px 8px;
+    min-height: 48px;
+    padding: 7px 9px;
     cursor: pointer;
     transition: background-color 160ms ease, box-shadow 160ms ease;
+    background: linear-gradient(180deg, #ffffff, #fffbfd);
 }
 
 .gestao-account-compact:hover,
@@ -1071,10 +1194,21 @@ textarea {
     white-space: nowrap;
 }
 
+.gestao-account.is-pedido-account .gestao-compact-category {
+    background: #dbeafe;
+    color: var(--blue-dark);
+}
+
+.gestao-account.is-pedido-account .gestao-account-compact:hover,
+.gestao-account.is-pedido-account .gestao-account-compact:focus-visible {
+    background: #eff6ff;
+    box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.32);
+}
+
 .gestao-compact-title {
     min-width: 0;
     color: var(--ink);
-    font-size: 0.86rem;
+    font-size: 0.9rem;
     font-weight: 950;
     line-height: 1.1;
     overflow: hidden;
@@ -1145,7 +1279,7 @@ textarea {
 
 .gestao-compact-value {
     color: var(--wine);
-    font-size: 0.8rem;
+    font-size: 0.84rem;
     font-weight: 950;
     white-space: nowrap;
     text-align: right;
@@ -1158,11 +1292,11 @@ textarea {
 
 .gestao-compact-pay {
     width: 100%;
-    min-height: 28px;
+    min-height: 30px;
     border-radius: 999px;
-    padding: 0 5px;
+    padding: 0 8px;
     cursor: pointer;
-    font-size: 0.65rem;
+    font-size: 0.68rem;
     font-weight: 950;
 }
 
@@ -1172,14 +1306,40 @@ textarea {
     color: #ffffff;
 }
 
+.gestao-account.is-pedido-account .gestao-compact-pay {
+    border-color: var(--blue);
+    background: var(--blue);
+}
+
 .gestao-account.is-monthly-item .gestao-account-compact {
-    grid-template-columns: auto minmax(0, 1fr) 56px;
+    grid-template-columns: auto minmax(0, 1fr) 64px;
     grid-template-areas:
         "category title value"
         "category title pay";
     align-items: center;
     row-gap: 3px;
     min-height: 56px;
+}
+
+.gestao-account.is-monthly-item {
+    border-color: #f3d16b;
+    background: #fffdf5;
+}
+
+.gestao-account.is-monthly-item .gestao-compact-category {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.gestao-account.is-monthly-item .gestao-compact-pay {
+    border-color: #d97706;
+    background: #d97706;
+}
+
+.gestao-account.is-monthly-item .gestao-account-compact:hover,
+.gestao-account.is-monthly-item .gestao-account-compact:focus-visible {
+    background: #fffbeb;
+    box-shadow: inset 3px 0 0 rgba(217, 119, 6, 0.35);
 }
 
 .gestao-account.is-monthly-item .gestao-compact-category {
