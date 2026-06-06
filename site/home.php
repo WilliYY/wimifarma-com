@@ -2499,16 +2499,17 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             justify-content: space-between;
             gap: 12px;
             margin: 0 0 14px;
-            border: 1px solid #fecdd3;
+            border: 1px solid rgba(20, 184, 166, 0.44);
             border-radius: 14px;
             padding: 10px 12px;
-            background: #fff1f2;
-            color: #881337;
+            background: linear-gradient(135deg, #ecfeff 0%, #ffffff 62%, #f0fdf4 100%);
+            color: #0f766e;
             font-weight: 850;
+            box-shadow: inset 4px 0 0 #14b8a6, 0 12px 24px rgba(15, 118, 110, 0.08);
         }
 
         .wf-switch-current span {
-            color: #9f1239;
+            color: #0f766e;
             font-size: 0.72rem;
             font-weight: 950;
             letter-spacing: 0.06em;
@@ -2533,6 +2534,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
         }
 
         .wf-switch-user-option {
+            position: relative;
             min-height: 72px;
             border: 1px solid #fecdd3;
             border-radius: 14px;
@@ -2543,6 +2545,19 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             font: inherit;
             text-align: left;
             box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+            transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background 160ms ease;
+            isolation: isolate;
+        }
+
+        .wf-switch-user-option::before {
+            content: "";
+            position: absolute;
+            inset: 8px auto 8px 8px;
+            width: 4px;
+            border-radius: 999px;
+            background: transparent;
+            opacity: 0;
+            transition: opacity 160ms ease;
         }
 
         .wf-switch-user-option:hover,
@@ -2551,6 +2566,33 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             border-color: #be123c;
             outline: 0;
             box-shadow: 0 12px 28px rgba(159, 18, 57, 0.14);
+        }
+
+        .wf-switch-user-option:hover,
+        .wf-switch-user-option:focus-visible {
+            transform: translateY(-1px);
+        }
+
+        .wf-switch-user-option.is-selected {
+            background: #fff7fb;
+        }
+
+        .wf-switch-user-option.is-current {
+            border-color: rgba(20, 184, 166, 0.68);
+            background: linear-gradient(135deg, #ecfeff 0%, #ffffff 62%, #f0fdfa 100%);
+            box-shadow: 0 14px 32px rgba(15, 118, 110, 0.16);
+            padding-left: 18px;
+        }
+
+        .wf-switch-user-option.is-current::before {
+            background: linear-gradient(180deg, #06b6d4, #14b8a6);
+            opacity: 1;
+        }
+
+        .wf-switch-user-option.is-current.is-selected {
+            border-color: #0891b2;
+            outline: 3px solid rgba(8, 145, 178, 0.14);
+            background: linear-gradient(135deg, #cffafe 0%, #ffffff 58%, #ecfdf5 100%);
         }
 
         .wf-switch-user-option strong,
@@ -2580,6 +2622,25 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             font-size: 0.72rem;
             font-weight: 900;
             text-transform: uppercase;
+        }
+
+        .wf-switch-user-option.is-current strong {
+            color: #0f766e;
+        }
+
+        .wf-switch-user-option.is-current span {
+            color: #0f766e;
+        }
+
+        .wf-switch-user-option.is-current small {
+            display: inline-flex;
+            width: fit-content;
+            max-width: 100%;
+            border-radius: 999px;
+            padding: 3px 8px;
+            background: #0f766e;
+            color: #ffffff;
+            box-shadow: 0 8px 16px rgba(15, 118, 110, 0.16);
         }
 
         .wf-switch-form[hidden],
@@ -3345,10 +3406,11 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
                         $switchOptionIsSelected = $switchOptionUsername === $homeSwitchSelected;
                         ?>
                         <button
-                            class="wf-switch-user-option<?php echo $switchOptionIsSelected ? ' is-selected' : ''; ?>"
+                            class="wf-switch-user-option<?php echo $switchOptionIsCurrent ? ' is-current' : ''; ?><?php echo $switchOptionIsSelected ? ' is-selected' : ''; ?>"
                             type="button"
                             data-switch-user="<?php echo wf_home_e($switchOptionUsername); ?>"
                             data-switch-name="<?php echo wf_home_e($switchOptionLabel); ?>"
+                            <?php echo $switchOptionIsCurrent ? 'aria-current="true"' : ''; ?>
                         >
                             <strong><?php echo wf_home_e($switchOptionLabel); ?></strong>
                             <span>@<?php echo wf_home_e((string) ($switchUserOption['username'] ?? $switchOptionUsername)); ?></span>
