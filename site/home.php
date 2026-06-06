@@ -159,6 +159,12 @@ function wf_home_core_user_identity(string $username): ?array
     return is_array($row) ? $row : null;
 }
 
+function wf_home_core_user_can_login_home(array $coreUser): bool
+{
+    $role = wf_home_normalize_core_username((string) ($coreUser['role'] ?? ''));
+    return $role !== 'farmacia';
+}
+
 function wf_home_password_verify(string $password, string $hash): bool
 {
     if ($hash === '') {
@@ -213,6 +219,10 @@ function wf_home_core_user_authenticate(string $username, string $password): ?ar
         return null;
     }
 
+    if (!wf_home_core_user_can_login_home($row)) {
+        return null;
+    }
+
     $hash = (string) ($row['password_hash'] ?? '');
     if (!wf_home_password_verify($password, $hash)) {
         return null;
@@ -239,6 +249,7 @@ function wf_home_core_active_users(): array
             "SELECT id, username, username_normalized, display_name, role
                FROM core_users
               WHERE active = true
+                AND lower(COALESCE(role, '')) <> 'farmacia'
               ORDER BY lower(COALESCE(NULLIF(display_name, ''), username)), id
               LIMIT 120"
         );
@@ -247,7 +258,13 @@ function wf_home_core_active_users(): array
         return array();
     }
 
-    return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : array();
+    if (!is_array($rows)) {
+        return array();
+    }
+
+    return array_values(array_filter($rows, static function ($row): bool {
+        return is_array($row) && wf_home_core_user_can_login_home($row);
+    }));
 }
 
 function wf_home_core_role_label(string $role): string
@@ -786,7 +803,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
     if ($homeLoginError === '' && $coreUser) {
         wf_home_complete_login(wf_home_session_user_from_core($coreUser, $user));
         wf_home_redirect('/');
-    } elseif ($homeLoginError === '' && $expectedUser !== '' && hash_equals($expectedUser, $normalizedUser) && hash_equals($expectedPassword, $password)) {
+    } elseif ($homeLoginError === '' && $expectedUser !== '' && $expectedUser !== 'farmacia' && hash_equals($expectedUser, $normalizedUser) && hash_equals($expectedPassword, $password)) {
         wf_home_complete_login($expectedUser);
         wf_home_redirect('/');
     } elseif ($homeLoginError === '') {
@@ -2126,6 +2143,17 @@ $homeUserLogin = $homeAuthenticated && !empty($_SESSION['wf_home_user']) && is_s
     ? strtolower(trim((string) $_SESSION['wf_home_user']))
     : '';
 $homeUserIdentity = $homeUserLogin !== '' ? wf_home_core_user_identity($homeUserLogin) : null;
+if ($homeUserIdentity !== null && !wf_home_core_user_can_login_home($homeUserIdentity)) {
+    $_SESSION = array();
+    wf_home_sso_clear(wf_home_is_https());
+    wf_home_clear_module_session_cookies();
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'] ?? '', (bool) $params['secure'], (bool) $params['httponly']);
+    }
+    session_destroy();
+    wf_home_redirect('/');
+}
 $homeUserLabel = $homeUserLogin !== '' ? wf_home_logged_user_label($homeUserLogin) : '';
 $homeShouldClearFrontendState = !empty($_SESSION['wf_home_clear_frontend_state']);
 unset($_SESSION['wf_home_clear_frontend_state']);
