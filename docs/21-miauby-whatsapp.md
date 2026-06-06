@@ -107,6 +107,8 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_DASHBOARD_USER`
 - `MIAUW_WHATSAPP_DASHBOARD_PASSWORD`
 - `MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES=720`
+- `WIMIFARMA_HOME_SSO_INTERNAL_URL=http://wimifarma-com-web/home-sso.php`
+- `WIMIFARMA_HOME_SSO_TIMEOUT_MS=1200`
 - `MIAUW_WHATSAPP_DEFAULT_DDD=44`
 - `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`
 - `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=false`
@@ -207,7 +209,7 @@ Principais variaveis:
 
 ## Endpoints
 
-- `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox, allowlist, status de OCR Pix CNPJ, n8n automacoes, demora de resposta e eventos recentes, sem segredo nem payload bruto; quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos, exige login por cookie assinado. A allowlist do painel logado mostra e edita o telefone completo decifrado para operacao, e a Sincronia recente pode mostrar o numero completo resolvido por alias para conferir se a Evolution entregou LID ou telefone real.
+- `GET /miauw/whatsapp/`: painel operacional seguro com canal, transporte, fila, outbox, allowlist, status de OCR Pix CNPJ, n8n automacoes, demora de resposta e eventos recentes, sem segredo nem payload bruto; quando `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` estao preenchidos, aceita `WFHOME_SSO` revalidado no core/permissao `miauw_whatsapp` ou exige login por cookie assinado do dashboard. A allowlist do painel logado mostra e edita o telefone completo decifrado para operacao, e a Sincronia recente pode mostrar o numero completo resolvido por alias para conferir se a Evolution entregou LID ou telefone real.
 - `GET /miauw/whatsapp/login`: tela de login do painel, com a foto atual do Miauby e favicon proprio.
 - `POST /miauw/whatsapp/login`: autentica o painel com usuario/senha do ambiente.
 - `POST /miauw/whatsapp/logout`: encerra a sessao do painel e volta para a home `/`.
@@ -248,7 +250,7 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 
 - O repositorio mantem o servico desligado por `MIAUW_WHATSAPP_ENABLED=false`; cada ambiente pode ligar por `.env`.
 - Com o servico ligado, `MIAUW_WHATSAPP_WEBHOOK_TOKEN` e uma chave de cifragem precisam estar configurados.
-- O painel `/miauw/whatsapp/` deve ficar protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` nos ambientes operacionais. Health continua publico e sem segredo para smoke test.
+- O painel `/miauw/whatsapp/` deve ficar protegido por `MIAUW_WHATSAPP_DASHBOARD_USER` e `MIAUW_WHATSAPP_DASHBOARD_PASSWORD` nos ambientes operacionais. Quando o operador ja esta logado na Home com `WFHOME_SSO`, o painel aceita esse handoff somente apos revalidar `core_users` ativo e permissao individual `miauw_whatsapp` ou `adm`/`admin`; sem SSO valido, o login do dashboard continua como fallback. Health continua publico e sem segredo para smoke test.
 - Mesmo protegido por login, o painel nao deve exibir segredos nem payload bruto. Telefone completo pode aparecer apenas na edicao da allowlist e na Sincronia recente do painel logado, para auditoria operacional do remetente resolvido; status publico, health e logs recentes continuam com mascara/hash.
 - A allowlist fixa por `MIAUW_WHATSAPP_ALLOWED_SENDERS` continua sendo a base por ambiente. O painel tambem permite autorizar/bloquear contatos no Postgres; bloqueio salvo no Postgres vence sobre a allowlist fixa, e autorizacao salva no Postgres permite adicionar remetentes sem editar `.env`. A comparacao de numero aceita equivalencia operacional com/sem DDI brasileiro `55` e com/sem o nono digito depois do DDD, para evitar bloqueio indevido quando Evolution/Baileys entrega formatos diferentes. O cadastro aceita formatos como `44997641531`, `44 99764 1531`, `997641531` e `97641531`; se faltar DDD, o bridge usa `MIAUW_WHATSAPP_DEFAULT_DDD`, e se faltar DDI o bridge normaliza para `55` por padrao operacional do Brasil. Numeros de outro pais devem ser cadastrados completos.
 - Cada contato salvo no Postgres pode ter cards/modulos liberados. Ao pedir `miauby menu`, `miauby cards` ou equivalente, o bridge retorna apenas os cards autorizados para aquele telefone, considerando hash direto, alias da Evolution e equivalencia operacional com/sem DDI `55`. O bridge tambem bloqueia chamadas do core/tools quando o card detectado na mensagem ou na tool retornada nao esta liberado para o telefone.

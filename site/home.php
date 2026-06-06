@@ -431,6 +431,10 @@ function wf_home_clear_module_session_cookies(): void
     foreach ($cookies as $name) {
         wf_home_expire_cookie($name, '/');
     }
+
+    foreach (array('/miauw/whatsapp', '/miauby/whatsapp') as $path) {
+        wf_home_expire_cookie('MIAUW_WHATSAPP_DASH', $path);
+    }
 }
 
 function wf_home_send_security_headers(): void

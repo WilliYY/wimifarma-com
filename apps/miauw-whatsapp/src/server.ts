@@ -651,6 +651,7 @@ type DashboardSummary = {
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
 const SERVICE_VERSION = '0.5.33';
+const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
 const ENABLED = boolEnv('MIAUW_WHATSAPP_ENABLED', false);
@@ -768,6 +769,8 @@ const DASHBOARD_PASSWORD = textEnv('MIAUW_WHATSAPP_DASHBOARD_PASSWORD');
 const DASHBOARD_AUTH_ENABLED = DASHBOARD_USER !== '' && DASHBOARD_PASSWORD !== '';
 const DASHBOARD_COOKIE_NAME = 'MIAUW_WHATSAPP_DASH';
 const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSION_TTL_MINUTES', 720, 5, 10080);
+const HOME_SSO_INTERNAL_URL = textEnv('WIMIFARMA_HOME_SSO_INTERNAL_URL') || 'http://wimifarma-com-web/home-sso.php';
+const HOME_SSO_TIMEOUT_MS = numberEnv('WIMIFARMA_HOME_SSO_TIMEOUT_MS', 1200, 300, 5000);
 const N8N_ENABLED = boolEnv('MIAUW_WHATSAPP_N8N_ENABLED', false);
 const N8N_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_BASE_URL') || textEnv('N8N_BASE_URL'));
 const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL') || textEnv('N8N_WEBHOOK_URL'));
@@ -1625,8 +1628,89 @@ function dashboardSessionValid(req: Request): boolean {
   }
 }
 
+function normalizeCoreUsername(value: unknown): string {
+  return safeText(value, 120).toLowerCase();
+}
+
+function hasHomeSsoCookie(req: Request): boolean {
+  return /(?:^|;\s*)WFHOME_SSO=/.test(String(req.get('cookie') || ''));
+}
+
+async function homeSsoUsername(req: Request): Promise<string | null> {
+  if (!HOME_SSO_INTERNAL_URL || !hasHomeSsoCookie(req)) return null;
+  const cookie = String(req.get('cookie') || '');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HOME_SSO_TIMEOUT_MS);
+  try {
+    const response = await fetch(HOME_SSO_INTERNAL_URL, { headers: { cookie }, signal: controller.signal });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { ok?: boolean; username?: unknown };
+    const username = normalizeCoreUsername(data.username);
+    return data.ok === true && username ? username : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function dashboardUserByHomeSso(req: Request): Promise<CoreUserIdentity | null> {
+  const username = await homeSsoUsername(req);
+  if (!username) return null;
+  const result = await corePgPool.query<{
+    id: string;
+    username: string;
+    display_name: string;
+    role: string | null;
+  }>(
+    `SELECT id::text,
+            username,
+            COALESCE(NULLIF(display_name, ''), username) AS display_name,
+            role
+       FROM core_users
+      WHERE username_normalized = $1
+        AND active = true
+      LIMIT 1`,
+    [username],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    username: safeText(row.username, 120),
+    displayName: safeText(row.display_name || row.username, 120),
+    role: safeText(row.role || 'user', 60),
+  };
+}
+
+async function dashboardUserCanAccess(user: CoreUserIdentity): Promise<boolean> {
+  const username = normalizeCoreUsername(user.username);
+  const role = normalizeCoreUsername(user.role);
+  if (username === 'adm' || role === 'admin') return true;
+  const result = await corePgPool.query<{ can_access: boolean }>(
+    `SELECT can_access
+       FROM core_user_module_permissions
+      WHERE user_id = $1
+        AND module_key = $2
+      LIMIT 1`,
+    [user.id, MODULE_KEY],
+  );
+  return result.rows[0]?.can_access === true;
+}
+
+async function dashboardHomeSsoValid(req: Request): Promise<boolean> {
+  const user = await dashboardUserByHomeSso(req);
+  if (!user) return false;
+  return dashboardUserCanAccess(user);
+}
+
+async function dashboardRequestAuthorized(req: Request): Promise<boolean> {
+  if (dashboardSessionValid(req)) return true;
+  return dashboardHomeSsoValid(req);
+}
+
 function dashboardCsrfToken(req: Request): string {
-  const sessionToken = cookieValue(req, DASHBOARD_COOKIE_NAME) || 'dashboard-open';
+  const sessionToken = cookieValue(req, DASHBOARD_COOKIE_NAME) || cookieValue(req, 'WFHOME_SSO') || 'dashboard-open';
   return signDashboardPayload(`csrf:${sessionToken}`);
 }
 
@@ -1663,8 +1747,12 @@ function clearDashboardCookie(req: Request, res: Response): void {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-function requireDashboardAuth(req: Request, res: Response, next: NextFunction) {
-  if (dashboardSessionValid(req)) return next();
+async function requireDashboardAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (await dashboardRequestAuthorized(req)) return next();
+  } catch (error) {
+    console.error('[miauw-whatsapp] dashboard auth failed', error instanceof Error ? error.message : 'unknown');
+  }
   res.status(401).type('html').send(renderDashboardLogin(''));
 }
 
@@ -16417,10 +16505,14 @@ async function dashboardHandler(req: Request, res: Response): Promise<void> {
   }
 }
 
-app.get(`${BASE_PATH}/login`, (req, res) => {
-  if (dashboardSessionValid(req)) {
-    res.redirect(303, BASE_PATH);
-    return;
+app.get(`${BASE_PATH}/login`, async (req, res) => {
+  try {
+    if (await dashboardRequestAuthorized(req)) {
+      res.redirect(303, BASE_PATH);
+      return;
+    }
+  } catch (error) {
+    console.error('[miauw-whatsapp] dashboard login sso failed', error instanceof Error ? error.message : 'unknown');
   }
   res.type('html').send(renderDashboardLogin(''));
 });
