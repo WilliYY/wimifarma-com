@@ -232,6 +232,7 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 ### Fluxos de escrita
 
 - Criar/editar/inativar/excluir cliente.
+- O cadastro rapido `Novo cliente` do Balcao e apenas uma organizacao visual em blocos de dados do cliente e compra inicial opcional; continua usando o mesmo POST `save_client`, CSRF, calculo de compra inicial e atendente travado pelo usuario logado.
 - Criar compra, calcular cashback gerado e criar credito vinculado a compra; novo credito expira sempre 45 dias apos `cashback_purchases.purchased_at::date`.
 - Criar resgate, marcando creditos vencidos antes da escrita, consumir somente creditos ativos dentro da validade e gravar itens do resgate.
 - Compra, Compra Cashback e resgate manual registram `cashback_purchases.attendant_id`/`cashback_redemptions.attendant_id` pelo usuario logado da sessao core, via `cashback_attendants.core_user_id`; o seletor Atendente aparece preenchido/travado para a operacao e postagem manual de outro `atendente_id` nao troca o responsavel.

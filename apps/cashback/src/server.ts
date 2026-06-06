@@ -1964,22 +1964,30 @@ async function renderDashboard(req: Request): Promise<string> {
       </form>
     </section>
 
-    <section id="cadastro" class="panel section-block workspace-section">
-      <div class="section-title"><div><span class="kicker">Cadastro rapido</span><h2>Novo cliente com compra inicial opcional</h2></div><span class="soft-pill">Atendentes: Configuracao e Relatorio</span></div>
-      <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}">
+    <section id="cadastro" class="panel section-block workspace-section quick-client-panel">
+      <div class="section-title quick-client-title"><div><span class="kicker">Cadastro rapido</span><h2>Novo cliente</h2></div><span class="soft-pill">Compra inicial opcional</span></div>
+      <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_client">
-        <h3 class="full">Dados do cliente</h3>
-        <label><span>Nome *</span><input type="text" name="nome" required placeholder="Nome do cliente"></label>
-        <label><span>Telefone</span><input type="text" name="telefone" inputmode="numeric" placeholder="11999999999"></label>
-        <label><span>Data de nascimento</span><input type="date" name="nascimento"></label>
-        ${attendantSelect(attendants, 'Atendente responsavel', loggedAttendantId, true)}
-        <h3 class="full">Compra no cadastro (opcional)</h3>
-        <label><span>Valor que o cliente vai gastar agora</span><input type="text" name="valor_compra_inicial" data-money placeholder="100,00"></label>
-        <label><span>% Cashback</span><input type="text" name="percentual_cashback_inicial" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label>
-        <div class="charge-summary full compact-summary"><div><span>Valor a cobrar</span><strong class="js-initial-charge">R$ 0,00</strong></div><div><span>Cashback gerado</span><strong class="js-initial-cashback">R$ 0,00</strong></div><div><span>Validade</span><strong>${e(settings.validityDays)} dias</strong></div></div>
-        <div class="live-preview full js-initial-preview">Se o cliente ja estiver comprando, informe o valor para cadastrar e registrar tudo em uma vez.</div>
-        <button type="submit" class="btn primary full">Cadastrar cliente</button>
+        <div class="quick-client-block full">
+          <div class="quick-client-block-title"><span class="step-badge">1</span><h3>Dados do cliente</h3></div>
+          <div class="quick-client-fields">
+            <label><span>Nome *</span><input type="text" name="nome" required placeholder="Nome do cliente"></label>
+            <label><span>Telefone</span><input type="text" name="telefone" inputmode="numeric" placeholder="11999999999"></label>
+            <label><span>Data de nascimento</span><input type="date" name="nascimento"></label>
+            ${attendantSelect(attendants, 'Atendente responsavel', loggedAttendantId, true)}
+          </div>
+        </div>
+        <div class="quick-client-block quick-client-purchase full">
+          <div class="quick-client-block-title"><span class="step-badge">2</span><h3>Compra inicial</h3><span class="optional-chip">Opcional</span></div>
+          <div class="quick-client-fields">
+            <label><span>Valor que o cliente vai gastar agora</span><input type="text" name="valor_compra_inicial" data-money placeholder="100,00"></label>
+            <label><span>% Cashback</span><input type="text" name="percentual_cashback_inicial" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label>
+          </div>
+          <div class="charge-summary quick-client-summary compact-summary"><div><span>Valor a cobrar</span><strong class="js-initial-charge">R$ 0,00</strong></div><div><span>Cashback gerado</span><strong class="js-initial-cashback">R$ 0,00</strong></div><div><span>Validade</span><strong>${e(settings.validityDays)} dias</strong></div></div>
+          <div class="live-preview js-initial-preview">Se o cliente ja estiver comprando, informe o valor para cadastrar e registrar tudo em uma vez.</div>
+        </div>
+        <div class="quick-client-action full"><button type="submit" class="btn primary">Cadastrar cliente</button></div>
       </form>
     </section>
   </div>
