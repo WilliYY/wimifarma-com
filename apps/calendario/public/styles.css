@@ -267,36 +267,21 @@ button {
   pointer-events: none;
 }
 
-.cal-year-overlay {
-  position: absolute;
-  left: 4.4%;
-  top: 24.5%;
-  min-width: 10%;
-  padding: 0.12em 0.35em;
-  color: #f97316;
-  background: rgba(255, 250, 235, 0.92);
-  border-radius: 0.2em;
-  font-size: clamp(28px, 4.8vw, 88px);
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0;
-  transform: rotate(-1deg);
-}
-
 .cal-day-layer {
   position: absolute;
   inset: 0;
+  --cal-day-number-space: clamp(16px, 2vw, 34px);
 }
 
 .cal-day-cell {
   position: absolute;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 2px;
-  padding: 4px;
+  grid-template-rows: var(--cal-day-number-space) minmax(0, 1fr);
+  gap: 3px;
+  padding: 6px 8px 7px;
   border: 2px solid transparent;
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.08);
+  background: transparent;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
@@ -306,24 +291,11 @@ button {
 }
 
 .cal-day-cell.has-note textarea {
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.cal-day-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  min-height: 20px;
-  border-radius: 999px;
-  color: var(--wine-dark);
-  background: rgba(255, 255, 255, 0.82);
-  font-size: clamp(10px, 0.95vw, 14px);
-  font-weight: 900;
-  pointer-events: none;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .cal-cell-input {
+  grid-row: 2;
   width: 100%;
   min-width: 0;
   height: 100%;
@@ -334,7 +306,7 @@ button {
   border-radius: 4px;
   padding: 4px 5px;
   color: #361122;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0);
   font-size: clamp(10px, 0.88vw, 13px);
   font-weight: 900;
   line-height: 1.14;
@@ -556,7 +528,17 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .cal-year-overlay {
-    font-size: clamp(20px, 8vw, 48px);
+  .cal-day-layer {
+    --cal-day-number-space: clamp(10px, 3.2vw, 18px);
+  }
+
+  .cal-day-cell {
+    gap: 1px;
+    padding: 3px 4px 4px;
+  }
+
+  .cal-cell-input {
+    padding: 2px 3px;
+    font-size: 10px;
   }
 }

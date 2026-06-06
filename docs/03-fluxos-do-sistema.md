@@ -163,7 +163,7 @@ Regras a preservar:
 
 ## Fluxo Calendario
 
-O modulo Calendario abre em `/calendario/` e usa as imagens mensais geradas de `Calendario.pdf` como base visual. Os dias sao camadas editaveis sobre a imagem: clicar no quadrado permite escrever no proprio dia e abre o painel lateral com o texto completo. A paleta salva cores nomeadas por calendario, como `Plantao`, e a cor aplicada ao dia fica em `calendario_day_notes`.
+O modulo Calendario abre em `/calendario/` e usa as imagens mensais geradas de `Calendario.pdf` como base visual. A arte ja contem o ano `2026` e os numeros dos dias; por isso o frontend nao redesenha esses textos e usa a propria imagem como referencia para posicionar as areas editaveis. Clicar no quadrado permite escrever no proprio dia e abre o painel lateral com o texto completo. A paleta salva cores nomeadas por calendario, como `Plantao`, e a cor aplicada ao dia fica em `calendario_day_notes`.
 
 O autosave grava texto/cor no Postgres pelo app Node `apps/calendario`, com sessao `WFCALENDARIO`, CSRF, permissao `core_user_module_permissions.module_key='calendario'` e auditoria local/core. O botao `Criar proximo calendario` cria o proximo ano, reutiliza a paleta e deixa as anotacoes/marcacoes vazias. O endpoint interno `/calendario/api/internal/summary` ensina o Miauby sobre o modulo sem retornar o texto completo das notas.
 

@@ -37,7 +37,6 @@
     yearSelect: document.getElementById('year-select'),
     monthLabel: document.getElementById('month-label'),
     monthImage: document.getElementById('month-image'),
-    yearOverlay: document.getElementById('year-overlay'),
     dayLayer: document.getElementById('day-layer'),
     stage: document.getElementById('calendar-stage'),
     prev: document.getElementById('prev-month'),
@@ -90,13 +89,21 @@
     state.notes.set(key(note.month, note.day), note);
   }
 
-  function daysInMonth(year, month) {
-    return new Date(year, month, 0).getDate();
-  }
-
-  function firstCol(year, month) {
-    return (new Date(year, month - 1, 1).getDay() + 6) % 7;
-  }
+  // The PNG artwork already prints the year and day numbers; these hitboxes follow that visual grid.
+  const visualMonthLayouts = {
+    1: { totalDays: 31, startCol: 4 },
+    2: { totalDays: 28, startCol: 0 },
+    3: { totalDays: 31, startCol: 0 },
+    4: { totalDays: 30, startCol: 3 },
+    5: { totalDays: 31, startCol: 5 },
+    6: { totalDays: 30, startCol: 1 },
+    7: { totalDays: 31, startCol: 3 },
+    8: { totalDays: 31, startCol: 6 },
+    9: { totalDays: 30, startCol: 2 },
+    10: { totalDays: 31, startCol: 4 },
+    11: { totalDays: 30, startCol: 0 },
+    12: { totalDays: 31, startCol: 2 },
+  };
 
   function rgba(hex, alpha) {
     const clean = String(hex || '').replace('#', '');
@@ -123,9 +130,10 @@
     }
   }
 
-  function positionsForMonth(year, month) {
-    const totalDays = daysInMonth(year, month);
-    const offset = firstCol(year, month);
+  function positionsForMonth(month) {
+    const layout = visualMonthLayouts[month] || visualMonthLayouts[1];
+    const totalDays = layout.totalDays;
+    const offset = layout.startCol;
     const raw = [];
     const overflowCols = new Set();
     for (let day = 1; day <= totalDays; day += 1) {
@@ -149,14 +157,13 @@
 
   function renderDays() {
     if (!state.calendar) return;
-    const year = Number(state.calendar.year);
     const month = state.month;
-    const grid = { left: 32.35, top: 21.75, width: 64.55, height: 72.2 };
+    const grid = { left: 32.05, top: 12.15, width: 66.25, height: 85.7 };
     const colWidth = grid.width / 7;
     const rowHeight = grid.height / 5;
     els.dayLayer.innerHTML = '';
 
-    for (const position of positionsForMonth(year, month)) {
+    for (const position of positionsForMonth(month)) {
       const note = noteFor(month, position.day);
       const color = colorById(note.color_id);
       const cell = document.createElement('label');
@@ -169,18 +176,14 @@
       cell.style.width = `${colWidth}%`;
       cell.style.height = `${position.half ? rowHeight / 2 : rowHeight}%`;
       if (color) {
-        cell.style.background = rgba(color.color_hex, 0.38);
+        cell.style.background = rgba(color.color_hex, 0.28);
         cell.style.borderColor = rgba(color.color_hex, 0.75);
       }
-
-      const number = document.createElement('span');
-      number.className = 'cal-day-number';
-      number.textContent = String(position.day);
 
       const input = document.createElement('textarea');
       input.className = 'cal-cell-input';
       input.value = note.note_text || '';
-      input.setAttribute('aria-label', `${position.day} de ${monthNames[month - 1]}`);
+      input.setAttribute('aria-label', `${position.day} de ${monthNames[month - 1]} de ${state.calendar.year}`);
       input.addEventListener('focus', () => selectDay(month, position.day, false, false));
       input.addEventListener('click', () => selectDay(month, position.day, false, false));
       input.addEventListener('input', () => {
@@ -194,7 +197,6 @@
         scheduleSave(month, position.day);
       });
 
-      cell.appendChild(number);
       cell.appendChild(input);
       els.dayLayer.appendChild(cell);
     }
@@ -204,8 +206,7 @@
     if (!state.calendar) return;
     els.monthLabel.textContent = `${monthNames[state.month - 1]} ${state.calendar.year}`;
     els.monthImage.src = `${basePath}/months/month-${String(state.month).padStart(2, '0')}.png`;
-    els.monthImage.alt = `${monthNames[state.month - 1]} ${state.calendar.year}`;
-    els.yearOverlay.textContent = String(state.calendar.year);
+    els.monthImage.alt = `Imagem base de ${monthNames[state.month - 1]} com ano e numeros dos dias impressos`;
     renderDays();
     updateSidePanel();
   }

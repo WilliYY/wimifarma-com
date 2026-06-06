@@ -620,7 +620,6 @@ function pageHtml(req: Request, user: User): string {
       <div class="cal-calendar-panel">
         <div class="cal-image-stage" id="calendar-stage">
           <img id="month-image" src="${BASE_PATH}/months/month-01.png" alt="Calendario mensal">
-          <div class="cal-year-overlay" id="year-overlay">2026</div>
           <div class="cal-day-layer" id="day-layer"></div>
         </div>
       </div>
