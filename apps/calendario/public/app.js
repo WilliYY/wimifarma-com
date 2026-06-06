@@ -31,6 +31,12 @@
     saving: false,
     pointerStartX: 0,
     pointerStartY: 0,
+    dragPending: false,
+    dragging: false,
+    dragPointerId: null,
+    dragStartTarget: null,
+    dragSettleTimer: null,
+    suppressNextClick: false,
   };
 
   const els = {
@@ -419,6 +425,93 @@
     renderColors();
   }
 
+  function setStageDragOffset(x, y) {
+    els.stage.style.setProperty('--drag-x', `${x}px`);
+    els.stage.style.setProperty('--drag-y', `${y}px`);
+  }
+
+  function settleStageDrag() {
+    window.clearTimeout(state.dragSettleTimer);
+    els.stage.classList.remove('is-drag-ready', 'is-dragging');
+    els.stage.classList.add('is-settling');
+    setStageDragOffset(0, 0);
+    state.dragSettleTimer = window.setTimeout(() => {
+      els.stage.classList.remove('is-settling');
+    }, 190);
+  }
+
+  function resetStageDrag() {
+    state.dragPending = false;
+    state.dragging = false;
+    state.dragPointerId = null;
+    state.dragStartTarget = null;
+    settleStageDrag();
+  }
+
+  function beginStageDrag(event) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    state.pointerStartX = event.clientX;
+    state.pointerStartY = event.clientY;
+    state.dragPending = true;
+    state.dragging = false;
+    state.dragPointerId = event.pointerId;
+    state.dragStartTarget = event.target;
+    window.clearTimeout(state.dragSettleTimer);
+    els.stage.classList.remove('is-settling');
+    els.stage.classList.add('is-drag-ready');
+    setStageDragOffset(0, 0);
+    try {
+      els.stage.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Pointer capture is only visual polish; drag still works without it.
+    }
+  }
+
+  function moveStageDrag(event) {
+    if (!state.dragPending || state.dragPointerId !== event.pointerId) return;
+    const dx = event.clientX - state.pointerStartX;
+    const dy = event.clientY - state.pointerStartY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (!state.dragging) {
+      if (absX < 10 && absY < 10) return;
+      if (absX < absY * 1.15) return;
+      state.dragging = true;
+      els.stage.classList.remove('is-drag-ready');
+      els.stage.classList.add('is-dragging');
+      if (state.dragStartTarget && state.dragStartTarget.matches && state.dragStartTarget.matches('.cal-cell-input')) {
+        state.dragStartTarget.blur();
+      }
+    }
+
+    event.preventDefault();
+    const easedX = Math.max(-118, Math.min(118, dx * 0.42));
+    const easedY = Math.max(-18, Math.min(18, dy * 0.12));
+    setStageDragOffset(easedX, easedY);
+  }
+
+  function endStageDrag(event) {
+    if (!state.dragPending || state.dragPointerId !== event.pointerId) return;
+    const dx = event.clientX - state.pointerStartX;
+    const dy = event.clientY - state.pointerStartY;
+    const changedMonth = state.dragging && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.35;
+    if (state.dragging) {
+      event.preventDefault();
+      state.suppressNextClick = true;
+      window.setTimeout(() => {
+        state.suppressNextClick = false;
+      }, 180);
+    }
+    try {
+      els.stage.releasePointerCapture(event.pointerId);
+    } catch (error) {
+      // It is harmless if the browser already released the pointer.
+    }
+    resetStageDrag();
+    if (changedMonth) changeMonth(dx < 0 ? 1 : -1);
+  }
+
   async function loadState(year, keepMonth) {
     const data = await api(`/api/state?year=${encodeURIComponent(year || '')}`);
     state.calendar = data.calendar;
@@ -484,18 +577,20 @@
     }
   });
 
-  els.stage.addEventListener('pointerdown', (event) => {
-    state.pointerStartX = event.clientX;
-    state.pointerStartY = event.clientY;
-  });
-
-  els.stage.addEventListener('pointerup', (event) => {
-    const dx = event.clientX - state.pointerStartX;
-    const dy = event.clientY - state.pointerStartY;
-    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-      changeMonth(dx < 0 ? 1 : -1);
-    }
-  });
+  els.stage.addEventListener('pointerdown', beginStageDrag);
+  els.stage.addEventListener('pointermove', moveStageDrag);
+  els.stage.addEventListener('pointerup', endStageDrag);
+  els.stage.addEventListener('pointercancel', resetStageDrag);
+  els.stage.addEventListener(
+    'click',
+    (event) => {
+      if (!state.suppressNextClick) return;
+      event.preventDefault();
+      event.stopPropagation();
+      state.suppressNextClick = false;
+    },
+    true
+  );
 
   window.addEventListener('beforeunload', (event) => {
     if (state.dirty || state.saving) {

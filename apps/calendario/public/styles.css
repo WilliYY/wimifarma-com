@@ -251,13 +251,51 @@ button {
 }
 
 .cal-image-stage {
+  --drag-x: 0px;
+  --drag-y: 0px;
   position: relative;
   overflow: hidden;
   width: 100%;
   border: 1px solid #ead0d9;
   border-radius: 8px;
   background: #fff;
+  cursor: grab;
   touch-action: pan-y;
+  user-select: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.cal-image-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, rgba(168, 15, 67, 0.1), transparent 16%, transparent 84%, rgba(168, 15, 67, 0.1)),
+    radial-gradient(circle at 18% 50%, rgba(168, 15, 67, 0.1), transparent 24%),
+    radial-gradient(circle at 82% 50%, rgba(168, 15, 67, 0.1), transparent 24%);
+  transition: opacity 0.16s ease;
+}
+
+.cal-image-stage.is-drag-ready,
+.cal-image-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.cal-image-stage.is-dragging {
+  border-color: rgba(168, 15, 67, 0.48);
+  box-shadow: 0 20px 42px rgba(94, 28, 53, 0.18);
+  transform: scale(0.998);
+}
+
+.cal-image-stage.is-dragging::after {
+  opacity: 1;
+}
+
+.cal-image-stage.is-dragging * {
+  cursor: grabbing !important;
 }
 
 .cal-image-stage img {
@@ -265,12 +303,28 @@ button {
   width: 100%;
   user-select: none;
   pointer-events: none;
+  transform: translate3d(var(--drag-x), var(--drag-y), 0);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 
 .cal-day-layer {
   position: absolute;
   inset: 0;
   --cal-day-number-space: clamp(16px, 2vw, 34px);
+  transform: translate3d(var(--drag-x), var(--drag-y), 0);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.cal-image-stage.is-dragging img,
+.cal-image-stage.is-dragging .cal-day-layer {
+  transition: none;
+}
+
+.cal-image-stage.is-settling img,
+.cal-image-stage.is-settling .cal-day-layer {
+  transition-duration: 0.22s;
 }
 
 .cal-day-cell {
@@ -282,6 +336,7 @@ button {
   border: 2px solid transparent;
   border-radius: 5px;
   background: transparent;
+  cursor: grab;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
@@ -310,11 +365,13 @@ button {
   font-size: clamp(10px, 0.88vw, 13px);
   font-weight: 900;
   line-height: 1.14;
+  cursor: grab;
 }
 
 .cal-cell-input:focus {
   background: rgba(255, 255, 255, 0.94);
   outline: 2px solid rgba(168, 15, 67, 0.38);
+  cursor: text;
 }
 
 .cal-side-panel {
