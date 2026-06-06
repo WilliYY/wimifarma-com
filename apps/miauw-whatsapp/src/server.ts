@@ -2701,6 +2701,52 @@ async function linkAllowlistContactToUser(
   return allowlistContactSnapshotById(contact.id);
 }
 
+async function updateLinkedAllowlistContactForUser(
+  id: string,
+  phone: string,
+  displayName: string,
+  moduleKeys: string[],
+  userId: number,
+  username: string,
+  actorUsername: string,
+): Promise<AllowlistContactSnapshot> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    throw new Error('invalid_user_id');
+  }
+  const currentHash = await contactHashById(id);
+  if (isRecipientAliasSourceHash(currentHash)) {
+    throw new Error('protected_alias_contact');
+  }
+  const current = await pgPool.query<{ linked_user_id: string | null }>(
+    `SELECT linked_user_id::text
+       FROM miauw_whatsapp_contacts
+      WHERE id = $1
+      LIMIT 1`,
+    [id],
+  );
+  if (Number(current.rows[0]?.linked_user_id || 0) !== userId) {
+    throw new Error('allowlist_user_mismatch');
+  }
+  await updateAllowlistContact(
+    id,
+    phone,
+    safeText(displayName || username, 120),
+    moduleKeys.length ? moduleKeys : defaultModuleKeys(),
+  );
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_contacts
+        SET linked_user_id = $2,
+            linked_username_snapshot = $3,
+            linked_by = $4,
+            status = 'allowed',
+            link_updated_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [id, userId, safeText(username, 120), safeText(actorUsername, 120)],
+  );
+  return allowlistContactSnapshotById(id);
+}
+
 async function updateLinkedUserDisplayName(userId: number, displayName: string, username: string): Promise<number> {
   if (!Number.isSafeInteger(userId) || userId <= 0) {
     throw new Error('invalid_user_id');
@@ -16648,6 +16694,39 @@ app.post(`${BASE_PATH}/internal/allowlist/link-user`, requireInternalHeaderToken
   } catch (error) {
     const message = error instanceof Error ? error.message : 'allowlist_link_failed';
     const status = ['invalid_allowlist_phone', 'invalid_user_id', 'protected_alias_contact'].includes(message) ? 400 : 500;
+    res.status(status).json({ ok: false, error: safeText(message, 180) });
+  }
+});
+
+app.post(`${BASE_PATH}/internal/allowlist/update-linked-user-contact`, requireInternalHeaderToken, async (req, res) => {
+  try {
+    const userId = Number(req.body?.user_id || req.body?.userId || 0);
+    const username = safeText(req.body?.username || req.body?.user_username, 120);
+    const actorUsername = safeText(req.body?.actor_username || req.body?.actor || 'usuarios', 120);
+    const contact = await updateLinkedAllowlistContactForUser(
+      safeText(req.body?.contact_id || req.body?.id, 80),
+      safeText(req.body?.phone || req.body?.numero, 80),
+      safeText(req.body?.display_name || req.body?.name || username, 120),
+      normalizeModuleKeys(req.body?.modules || req.body?.module_keys),
+      userId,
+      username,
+      actorUsername,
+    );
+    res.json({ ok: true, contact: publicAllowlistContact(contact) });
+  } catch (error) {
+    if (isRecord(error) && error.code === '23505') {
+      res.status(409).json({ ok: false, error: 'allowlist_duplicate_phone' });
+      return;
+    }
+    const message = error instanceof Error ? error.message : 'allowlist_update_linked_failed';
+    const status = [
+      'invalid_allowlist_id',
+      'invalid_allowlist_phone',
+      'invalid_user_id',
+      'allowlist_contact_not_found',
+      'allowlist_user_mismatch',
+      'protected_alias_contact',
+    ].includes(message) ? 400 : 500;
     res.status(status).json({ ok: false, error: safeText(message, 180) });
   }
 });

@@ -1890,6 +1890,89 @@ async function linkWhatsappNumber(req: Request, actor: User): Promise<void> {
   }
 }
 
+async function findCoreWhatsappLink(linkId: number): Promise<WhatsappLinkRow | null> {
+  if (!Number.isSafeInteger(linkId) || linkId <= 0) return null;
+  const result = await corePgPool.query<WhatsappLinkRow>(
+    `SELECT id::text, user_id::text, contact_id::text, phone_mask, display_name, status, module_keys,
+            NULL::text AS linked_by_username, linked_at::text, updated_at::text
+       FROM core_user_whatsapp_links
+      WHERE id = $1
+      LIMIT 1`,
+    [linkId],
+  );
+  return result.rows[0] || null;
+}
+
+async function updateWhatsappNumber(req: Request, actor: User): Promise<void> {
+  const linkId = Number(req.body.link_id || 0);
+  const link = await findCoreWhatsappLink(linkId);
+  if (!link) {
+    throw new Error('Vinculo de WhatsApp nao encontrado.');
+  }
+  const targetUserId = Number(link.user_id || 0);
+  const target = targetUserId > 0 ? await findCoreUser(targetUserId) : null;
+  if (!target || !target.active) {
+    throw new Error('Usuario de destino invalido.');
+  }
+  const phone = cleanText(req.body.phone || req.body.numero, 80);
+  const displayName = cleanText(req.body.display_name || link.display_name || displayNameForUser(target), 120);
+  const currentModules = selectedWhatsappModuleKeys(link.module_keys);
+  const moduleKeys = selectedWhatsappModuleKeys(req.body.whatsapp_modules);
+  let payload: Record<string, unknown>;
+  try {
+    payload = await postInternalJson(
+      `${MIAUW_WHATSAPP_INTERNAL_BASE_URL}/internal/allowlist/update-linked-user-contact`,
+      MIAUW_WHATSAPP_INTERNAL_TOKEN,
+      {
+        user_id: targetUserId,
+        username: target.username,
+        actor_user_id: actor.id,
+        actor_username: actor.username,
+        contact_id: link.contact_id,
+        phone,
+        display_name: displayName,
+        modules: moduleKeys.length ? moduleKeys : (currentModules.length ? currentModules : ['miauw']),
+      },
+      'Miauby WhatsApp',
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'allowlist_duplicate_phone') {
+      throw new Error('Esse numero ja esta vinculado na allowlist do Miauby WhatsApp.');
+    }
+    throw error;
+  }
+  const contact = (payload.contact && typeof payload.contact === 'object') ? payload.contact as Record<string, unknown> : {};
+  const contactId = cleanText(contact.id, 80);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(contactId)) {
+    throw new Error('Miauby WhatsApp nao retornou contato valido.');
+  }
+  const safeModules = selectedWhatsappModuleKeys(contact.module_keys || moduleKeys);
+  await upsertCoreWhatsappLinkFromBridge(targetUserId, {
+    id: contactId,
+    phone_mask: cleanText(contact.phone_mask, 40),
+    display_name: cleanText(contact.display_name || displayName, 120),
+    status: cleanText(contact.status || 'allowed', 20),
+    module_keys: safeModules.length ? safeModules : ['miauw'],
+  }, actor.id);
+  await logUserAudit(actor.id, targetUserId, 'usuarios_atualizou_whatsapp', `WhatsApp atualizado para ${target.username}.`, {
+    contact_id: contactId,
+    phone_mask: cleanText(contact.phone_mask, 40),
+    phone_changed: Boolean(phone),
+    modules: safeModules,
+  });
+  try {
+    await reconcileWhatsappLinksForUser(targetUserId, actor.id, 'update_whatsapp');
+  } catch (error) {
+    console.warn('[usuarios] whatsapp post-update reconciliation skipped', error);
+    await logUserAudit(actor.id, targetUserId, 'usuarios_reconciliacao_whatsapp_falhou', 'Reconciliacao WhatsApp falhou apos atualizar numero.', {
+      contact_id: contactId,
+      error: error instanceof Error ? cleanText(error.message, 180) : 'unknown',
+      reason: 'update_whatsapp',
+    });
+  }
+}
+
 async function syncWhatsappUserSnapshot(targetUserId: number, displayName: string, username: string): Promise<void> {
   await postInternalJson(
     `${MIAUW_WHATSAPP_INTERNAL_BASE_URL}/internal/allowlist/update-user-display-name`,
@@ -1905,18 +1988,7 @@ async function syncWhatsappUserSnapshot(targetUserId: number, displayName: strin
 
 async function unlinkWhatsappNumber(req: Request, actor: User): Promise<void> {
   const linkId = Number(req.body.link_id || 0);
-  if (!Number.isSafeInteger(linkId) || linkId <= 0) {
-    throw new Error('Vinculo de WhatsApp invalido.');
-  }
-  const result = await corePgPool.query<WhatsappLinkRow>(
-    `SELECT id::text, user_id::text, contact_id::text, phone_mask, display_name, status, module_keys,
-            NULL::text AS linked_by_username, linked_at::text, updated_at::text
-       FROM core_user_whatsapp_links
-      WHERE id = $1
-      LIMIT 1`,
-    [linkId],
-  );
-  const link = result.rows[0];
+  const link = await findCoreWhatsappLink(linkId);
   if (!link) {
     throw new Error('Vinculo de WhatsApp nao encontrado.');
   }
@@ -2077,6 +2149,13 @@ function whatsappModuleLabels(keys: string[]): string {
   const selected = new Set(keys);
   const labels = WHATSAPP_MODULES.filter((module) => selected.has(module.key)).map((module) => module.label);
   return labels.length ? labels.join(', ') : 'Sem cards';
+}
+
+function renderWhatsappModuleChips(keys: string[]): string {
+  const selected = new Set(keys);
+  const labels = WHATSAPP_MODULES.filter((module) => selected.has(module.key)).map((module) => module.label);
+  if (!labels.length) return '<span class="users-whatsapp-chip muted">Sem cards</span>';
+  return labels.map((label) => `<span class="users-whatsapp-chip">${e(label)}</span>`).join('');
 }
 
 function renderDashboard(
@@ -2408,20 +2487,43 @@ function renderWhatsappLinks(req: Request, links: WhatsappLinkRow[]): string {
     if (status === 'stale_bridge_missing') return 'Pendente de reconciliacao';
     return 'Bloqueado';
   };
+  const statusClass = (status: string) => {
+    if (status === 'allowed') return 'ok';
+    if (status === 'stale_bridge_missing') return 'warn';
+    return 'off';
+  };
   return `<div class="users-whatsapp-links">${links.map((link) => `
-    <div class="users-whatsapp-link">
-      <div>
-        <strong>${e(link.display_name || 'Sem nome')}</strong>
-        <span>${e(link.phone_mask || '****')} &middot; ${e(statusLabel(link.status))}</span>
-        <small>${e(whatsappModuleLabels(safeStringArray(link.module_keys)))}</small>
-      </div>
-      <form method="post" action="${BASE_PATH}/">
+    <details class="users-whatsapp-link">
+      <summary class="users-whatsapp-summary">
+        <span class="users-whatsapp-identity">
+          <strong>${e(link.display_name || 'Sem nome')}</strong>
+          <span>${e(link.phone_mask || '****')}</span>
+          <small>${e(whatsappModuleLabels(safeStringArray(link.module_keys)))}</small>
+        </span>
+        <span class="users-whatsapp-status ${e(statusClass(link.status))}">${e(statusLabel(link.status))}</span>
+        <span class="users-whatsapp-edit-hint">Editar</span>
+      </summary>
+      <form method="post" action="${BASE_PATH}/" class="users-whatsapp-edit-form">
+        ${csrfField(req)}
+        <input type="hidden" name="action" value="update_whatsapp">
+        <input type="hidden" name="link_id" value="${e(link.id)}">
+        <div class="users-whatsapp-module-chips">${renderWhatsappModuleChips(safeStringArray(link.module_keys))}</div>
+        <div class="users-form-grid two">
+          <label class="users-label"><span>Novo numero</span><input class="users-input" type="tel" name="phone" inputmode="tel" autocomplete="off" placeholder="Opcional: 44 99999-9999"><small>Deixe em branco para manter o numero atual.</small></label>
+          <label class="users-label"><span>Nome no Miauby</span><input class="users-input" type="text" name="display_name" maxlength="120" value="${e(link.display_name || '')}" placeholder="Nome para aparecer nos paineis"></label>
+        </div>
+        <fieldset class="users-fieldset"><legend>Cards no WhatsApp</legend>${renderWhatsappModuleChecks(safeStringArray(link.module_keys))}</fieldset>
+        <div class="users-whatsapp-actions">
+          <button class="users-button secondary" type="submit">Salvar vinculo</button>
+        </div>
+      </form>
+      <form method="post" action="${BASE_PATH}/" class="users-whatsapp-remove-form">
         ${csrfField(req)}
         <input type="hidden" name="action" value="unlink_whatsapp">
         <input type="hidden" name="link_id" value="${e(link.id)}">
         <button class="users-mini-danger" type="submit">Remover</button>
       </form>
-    </div>`).join('')}</div>`;
+    </details>`).join('')}</div>`;
 }
 
 function renderAudit(audit: AuditRow[]): string {
@@ -2649,6 +2751,9 @@ app.post([`${BASE_PATH}/`, `${BASE_PATH}/index.php`, BASE_PATH], asyncRoute(asyn
     } else if (action === 'link_whatsapp') {
       await linkWhatsappNumber(req, user);
       setFlash(req, 'success', 'Numero vinculado ao usuario e colocado na allowlist.');
+    } else if (action === 'update_whatsapp') {
+      await updateWhatsappNumber(req, user);
+      setFlash(req, 'success', 'Vinculo WhatsApp atualizado.');
     } else if (action === 'unlink_whatsapp') {
       await unlinkWhatsappNumber(req, user);
       setFlash(req, 'success', 'Numero removido da allowlist do usuario.');

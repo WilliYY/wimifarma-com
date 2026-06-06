@@ -764,13 +764,13 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Alterar role, senha, status e permissoes por modulo.
 - Desativar usuario.
 - Vincular/desvincular funcionario XP.
-- Vincular/desvincular numeros do Miauby WhatsApp por ponte interna, sem gravar telefone cru no core.
+- Vincular, editar e desvincular numeros do Miauby WhatsApp por ponte interna, sem gravar telefone cru no core. A correcao de numero chama o bridge, atualiza o contato cifrado e reconcilia apenas mascara/status/cards em `core_user_whatsapp_links`.
 - Registrar auditoria central de alteracoes.
 
 ### Integracoes
 
 - XP por `xp_employees` e `xp_sales`.
-- Miauby WhatsApp por `/miauw/whatsapp/internal/allowlist/link-user` e unlink.
+- Miauby WhatsApp por `/miauw/whatsapp/internal/allowlist/link-user`, `/update-linked-user-contact` e unlink.
 - Home publica e modulos podem usar permissoes por modulo em etapa futura.
 
 ### Riscos

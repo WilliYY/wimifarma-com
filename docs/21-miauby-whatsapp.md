@@ -215,6 +215,7 @@ Principais variaveis:
 - `POST /miauw/whatsapp/allowlist/update`: edita nome, troca numero digitado novamente e ajusta os cards liberados do contato.
 - `POST /miauw/whatsapp/allowlist/block`: bloqueia um contato salvo no Postgres e faz esse bloqueio vencer sobre a allowlist fixa do ambiente.
 - `POST /miauw/whatsapp/allowlist/allow`: reautoriza um contato salvo no Postgres.
+- `POST /miauw/whatsapp/internal/allowlist/update-linked-user-contact`: endpoint interno usado pelo modulo Usuarios para corrigir numero/nome/cards de um contato ja vinculado a `core_users`, atualizando o telefone cifrado no bridge e retornando somente mascara/status/cards para reconciliacao no core.
 - `POST /miauw/whatsapp/errors/resolve`: marca erro aberto como resolvido no painel, depois que a correcao operacional/codigo foi feita.
 - `GET /miauw/whatsapp/health`: status seguro do servico.
 - `GET /miauw/whatsapp/status`: status seguro do servico, protegido pelo login do painel quando ele esta configurado.
