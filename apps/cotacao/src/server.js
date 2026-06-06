@@ -523,6 +523,10 @@ function hasEncomendaWord(value) {
   return /\bencomendas?\b/.test(normalizeInternalSearch(value));
 }
 
+function hasUrgenteWord(value) {
+  return /\burgentes?\b/.test(normalizeInternalSearch(value));
+}
+
 function rowReminderFragments(values = {}) {
   const fields = [
     ['EAN', values.ean],
@@ -3110,10 +3114,9 @@ app.get(`${BASE_PATH}/api/internal/summary`, requireInternalToken, asyncRoute(as
     sem_vencedor: 0
   };
   for (const row of sheet.rows) {
-    const category = normalizeInternalSearch(row.values?.categoria || '');
     const winner = computeWinnerForRow(row, sheet.columns);
-    if (category.includes('urgente')) counts.urgentes += 1;
-    if (category.includes('encomenda')) counts.encomendas += 1;
+    if (hasUrgenteWord(row.values?.categoria || '')) counts.urgentes += 1;
+    if (hasEncomendaWord(row.values?.categoria || '')) counts.encomendas += 1;
     if (winner && winner !== 'Sem vencedor') counts.com_vencedor += 1;
   }
   counts.sem_vencedor = Math.max(0, counts.total - counts.com_vencedor);
