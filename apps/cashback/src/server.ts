@@ -2437,8 +2437,8 @@ async function renderMessages(req: Request): Promise<string> {
       .map((row: DbRow) => `<tr><td>${e(brDate(row.created_at, true))}</td><td>${e(campaignLabel(row.campaign))}</td><td>${e(row.client_name)}<br><small>${e(formatPhone(row.phone))}</small></td><td><span class="badge">${e(statusLabel(row.status))}</span></td><td>${e(shortMessage(row.message))}</td></tr>`)
       .join('') || '<tr><td colspan="5">Nenhum WhatsApp salvo ainda.</td></tr>';
 
-  const body = `<section class="metrics compact"><article class="metric highlight"><span>Compraram hoje</span><strong>${comprasHoje.length}</strong></article><article class="metric"><span>Recompra</span><strong>${retorno.length}</strong></article><article class="metric"><span>Aniversarios em ate 5 dias</span><strong>${aniversarios.length}</strong></article><article class="metric"><span>Expirando em ate ${e(settings.expirationAlertDays)} dias</span><strong>${expirando.length}</strong></article></section>
-<nav class="anchor-bar" aria-label="Atalhos de mensagens"><a class="btn primary" href="#compras-hoje">Compras de hoje</a><a class="btn" href="#retorno">Recompra</a><a class="btn" href="#aniversarios">Aniversarios</a><a class="btn" href="#expiracao">Expiracao</a><a class="btn" href="#todos-whats">Todos Whats</a></nav>
+  const body = `<section class="metrics compact whatsapp-metrics"><article class="metric highlight whatsapp-metric"><span>Compraram hoje</span><strong data-whatsapp-metric-count="compras-hoje">${comprasHoje.length}</strong><small>Obrigado pela compra</small></article><article class="metric whatsapp-metric"><span>Recompra</span><strong data-whatsapp-metric-count="retorno">${retorno.length}</strong><small>Saldo ativo sem compra recente</small></article><article class="metric whatsapp-metric"><span>Aniversarios</span><strong data-whatsapp-metric-count="aniversarios">${aniversarios.length}</strong><small>Janela de ate 5 dias</small></article><article class="metric whatsapp-metric"><span>Expirando</span><strong data-whatsapp-metric-count="expiracao">${expirando.length}</strong><small>Ate ${e(settings.expirationAlertDays)} dias</small></article></section>
+<nav class="anchor-bar whatsapp-tabs" aria-label="Atalhos de mensagens"><a class="btn primary" href="#compras-hoje">Compras de hoje</a><a class="btn" href="#retorno">Recompra</a><a class="btn" href="#aniversarios">Aniversarios</a><a class="btn" href="#expiracao">Expiracao</a><a class="btn" href="#todos-whats">Todos Whats</a></nav>
 ${messageSection('compras-hoje', 'Obrigado pela compra', 'Clientes que compraram hoje', comprasHoje)}
 ${messageSection('retorno', 'Retorno e recompra', 'Clientes com saldo e sem compra recente', retorno)}
 ${messageSection('aniversarios', 'Aniversario', 'Clientes com aniversario em ate 5 dias', aniversarios)}
@@ -2448,14 +2448,16 @@ ${messageSection('expiracao', 'Expiracao', `Cashback vencendo em ate ${settings.
 }
 
 function messageSection(id: string, kicker: string, title: string, rows: DbRow[]): string {
-  return `<section id="${e(id)}" class="panel section-block"><div class="section-title"><div><span class="kicker">${e(kicker)}</span><h2>${e(title)}</h2></div></div><div class="message-grid">${rows
+  const emptyState = '<div class="message-empty" data-message-empty><strong>Nenhuma mensagem pendente agora.</strong><span>A fila vai aparecer aqui quando houver cliente dentro da regra.</span></div>';
+  return `<section id="${e(id)}" class="panel section-block message-section" data-message-section><div class="section-title message-section-title"><div><span class="kicker">${e(kicker)}</span><h2>${e(title)}</h2></div><span class="soft-pill" data-message-section-count>${e(rows.length)} na fila</span></div><div class="message-grid">${rows
     .map((row: DbRow) => messageCard(row, String(row.subtitle || '')))
-    .join('') || '<p>Nenhuma mensagem pendente agora.</p>'}</div></section>`;
+    .join('')}${rows.length ? emptyState.replace('<div class="message-empty"', '<div class="message-empty" hidden') : emptyState}</div></section>`;
 }
 
 function messageCard(message: DbRow, subtitle: string): string {
   const wa = whatsappLink(message.phone, message.message);
-  return `<article class="message-card" data-whatsapp-card data-message-id="${e(message.id)}"><div class="message-card-head"><div><strong>${e(message.client_name)}</strong><span>${e(subtitle)}</span></div><span class="soft-pill">${e(campaignLabel(message.campaign))}</span></div><p>${e(message.message)}</p><div class="message-actions">${wa ? `<a class="btn primary" href="${e(wa)}" target="_blank" rel="noopener" data-whatsapp-send data-message-id="${e(message.id)}">Abrir WhatsApp</a>` : '<span class="soft-pill">Sem telefone</span>'}<button class="btn" type="button" data-copy-message="${e(message.message)}" data-message-id="${e(message.id)}">Copiar texto</button><button class="btn danger" type="button" data-cancel-message data-message-id="${e(message.id)}">Excluir da fila</button></div></article>`;
+  const phone = formatPhone(message.phone);
+  return `<article class="message-card" data-whatsapp-card data-message-id="${e(message.id)}"><div class="message-card-head"><div><span class="message-card-label">${e(campaignLabel(message.campaign))}</span><strong>${e(message.client_name)}</strong></div><span class="soft-pill">Pendente</span></div><div class="message-card-meta"><span>${e(subtitle || 'Sem detalhe adicional')}</span>${phone ? `<span>${e(phone)}</span>` : '<span>Sem telefone</span>'}</div><p class="message-card-body">${e(message.message)}</p><div class="message-actions">${wa ? `<a class="btn primary" href="${e(wa)}" target="_blank" rel="noopener" data-whatsapp-send data-message-id="${e(message.id)}">Abrir WhatsApp</a>` : '<span class="soft-pill">Sem telefone</span>'}<button class="btn" type="button" data-copy-message="${e(message.message)}" data-message-id="${e(message.id)}">Copiar texto</button><button class="btn danger" type="button" data-cancel-message data-message-id="${e(message.id)}">Excluir da fila</button></div></article>`;
 }
 
 function recompraDedupeKey(clientId: number, lastPurchase: unknown): string {

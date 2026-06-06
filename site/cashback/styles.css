@@ -875,6 +875,33 @@ body.sections-ready .workspace-section.is-active {
     font-size: 1.35rem;
 }
 
+.whatsapp-metrics {
+    position: relative;
+    z-index: 3;
+}
+
+.whatsapp-metric {
+    display: grid;
+    align-content: center;
+    min-height: 104px;
+    gap: 3px;
+}
+
+.whatsapp-metric small {
+    display: block;
+    color: var(--muted);
+    font-weight: 800;
+    line-height: 1.3;
+}
+
+.whatsapp-metric.highlight small {
+    color: rgba(255, 255, 255, 0.86);
+}
+
+.whatsapp-tabs {
+    align-items: center;
+}
+
 .form-grid.two-cols {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1302,17 +1329,54 @@ body.sections-ready .workspace-section.is-active {
 
 .message-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 14px;
+}
+
+.message-section {
+    border-color: #e9bdc8;
+}
+
+.message-section-title {
+    padding-bottom: 14px;
+    border-bottom: 1px solid #f3d9df;
+}
+
+.message-empty {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 5px;
+    min-height: 84px;
+    align-content: center;
+    padding: 18px;
+    border: 1px dashed #e9bdc8;
+    border-radius: 18px;
+    background: #fff7f8;
+}
+
+.message-empty strong,
+.message-empty span {
+    display: block;
+}
+
+.message-empty strong {
+    color: var(--red-800);
+}
+
+.message-empty span {
+    color: var(--muted);
+    font-weight: 800;
 }
 
 .message-card {
     display: grid;
     gap: 12px;
-    padding: 18px;
+    align-content: start;
+    padding: 16px;
     border: 1px solid var(--line);
-    border-radius: 22px;
+    border-radius: 18px;
     background: #fff;
+    box-shadow: 0 12px 30px rgba(109, 16, 34, 0.06);
     transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
@@ -1329,15 +1393,44 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .message-card-head > div:first-child {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    align-items: baseline;
+    display: grid;
+    gap: 5px;
+    min-width: 0;
 }
 
 .message-card strong,
 .message-card span {
     display: block;
+}
+
+.message-card strong {
+    color: var(--ink);
+    font-size: 1.04rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.message-card-label {
+    color: var(--red-800);
+    font-size: 0.76rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.message-card-meta {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: #fff7f8;
+}
+
+.message-card-meta span {
+    color: var(--muted);
+    font-size: .9rem;
+    font-weight: 800;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
 }
 
 .message-phone {
@@ -1354,9 +1447,11 @@ body.sections-ready .workspace-section.is-active {
     color: var(--muted);
 }
 
-.message-card p {
+.message-card-body {
     margin: 0;
-    line-height: 1.5;
+    min-height: 96px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
 }
 
 .message-actions {
@@ -1364,6 +1459,12 @@ body.sections-ready .workspace-section.is-active {
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
+    padding-top: 2px;
+}
+
+.message-actions .btn,
+.message-actions .soft-pill {
+    min-height: 40px;
 }
 
 .user-access-card .user-delete-form {

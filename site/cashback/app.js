@@ -605,7 +605,33 @@
         card.classList.add('is-sent');
         window.setTimeout(function () {
             card.hidden = true;
+            refreshWhatsappSection(card);
         }, 260);
+    }
+
+    function refreshWhatsappSection(card) {
+        var section = card && card.closest('[data-message-section]');
+
+        if (!section) {
+            return;
+        }
+
+        var visibleCards = section.querySelectorAll('[data-whatsapp-card]:not([hidden])').length;
+        var count = section.querySelector('[data-message-section-count]');
+        var empty = section.querySelector('[data-message-empty]');
+        var metric = document.querySelector('[data-whatsapp-metric-count="' + section.id + '"]');
+
+        if (count) {
+            count.textContent = visibleCards + ' na fila';
+        }
+
+        if (metric) {
+            metric.textContent = String(visibleCards);
+        }
+
+        if (empty) {
+            empty.hidden = visibleCards > 0;
+        }
     }
 
     function bindWhatsappStatus() {
@@ -646,6 +672,8 @@
             button.addEventListener('click', function () {
                 var message = button.getAttribute('data-copy-message') || '';
                 var id = button.getAttribute('data-message-id') || '';
+                var card = button.closest('[data-whatsapp-card]');
+                var previous = button.textContent;
 
                 if (!message) {
                     return;
@@ -657,18 +685,33 @@
                 }
 
                 navigator.clipboard.writeText(message).then(function () {
-                    var previous = button.textContent;
+                    button.disabled = true;
                     button.textContent = 'Texto copiado';
 
                     if (id) {
-                        postWhatsappStatus(id, 'copied').catch(function (error) {
-                            console.error('Wimifarma Cashback: erro ao salvar copia WhatsApp', error);
-                        });
+                        postWhatsappStatus(id, 'copied')
+                            .then(function (response) {
+                                if (!response.ok) {
+                                    throw new Error('Falha HTTP ' + response.status);
+                                }
+
+                                hideWhatsappCard(card);
+                            })
+                            .catch(function (error) {
+                                console.error('Wimifarma Cashback: erro ao salvar copia WhatsApp', error);
+                                button.disabled = false;
+                                button.textContent = previous;
+                            });
+                        return;
                     }
 
                     window.setTimeout(function () {
-                        button.textContent = previous;
+                        hideWhatsappCard(card);
                     }, 1600);
+                }).catch(function (error) {
+                    console.error('Wimifarma Cashback: erro ao copiar mensagem WhatsApp', error);
+                    button.disabled = false;
+                    button.textContent = previous;
                 });
             });
         });
