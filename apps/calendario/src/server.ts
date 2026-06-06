@@ -74,8 +74,10 @@ const INTERNAL_TOKEN = cleanEnv('CALENDARIO_INTERNAL_TOKEN') || cleanEnv('MIAUW_
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
-const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const STATIC_CODE_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
+const STATIC_CODE_MAX_AGE_MS = 1000 * 60;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|png|svg|webp|woff2?)$/i;
+const STATIC_CODE_FILE_RE = /\.(?:css|js)$/i;
 
 const DEFAULT_COLORS = [
   { color_hex: '#f97373', label: 'Plantao' },
@@ -668,10 +670,14 @@ app.use(
   BASE_PATH,
   express.static(publicDir, {
     fallthrough: true,
-    maxAge: STATIC_ASSET_MAX_AGE_MS,
+    maxAge: STATIC_CODE_MAX_AGE_MS,
     setHeaders: (res, filePath) => {
       if (STATIC_ASSET_FILE_RE.test(filePath)) {
         res.setHeader('Cache-Control', STATIC_ASSET_CACHE_CONTROL);
+      } else if (STATIC_CODE_FILE_RE.test(filePath)) {
+        res.setHeader('Cache-Control', STATIC_CODE_CACHE_CONTROL);
+      } else {
+        res.setHeader('Cache-Control', 'no-store');
       }
     },
   }),
