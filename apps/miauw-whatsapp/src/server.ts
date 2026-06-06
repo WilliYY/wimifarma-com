@@ -6068,7 +6068,6 @@ function formatN8nWhatsappSummary(cards: WhatsappModuleCard[], automations: What
       const recipients = automation.recipients.length ? automation.recipients.join(', ') : 'nenhum usuario liberado agora';
       lines.push(`- *${automation.title}* - _${automation.schedule}_ - Card: ${automation.moduleTitle}`);
       lines.push(`  Vai para: ${recipients}`);
-      if (automation.status) lines.push(`  Status: ${automation.status}.`);
     }
     lines.push('', 'Rotina interna, watchdog, deploy e transporte nao entram neste resumo.');
     return lines.join('\n').trim();
