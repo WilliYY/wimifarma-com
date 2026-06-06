@@ -564,6 +564,29 @@ function digitsOnly(value: unknown): string {
   return String(value ?? '').replace(/\D+/g, '');
 }
 
+function appendClientSearchCondition(params: unknown[], search: string, alias = 'c'): string {
+  const term = cleanText(search, 180);
+  if (!term) return '';
+
+  const conditions: string[] = [];
+  const digits = digitsOnly(term);
+
+  params.push(`%${term}%`);
+  conditions.push(`${alias}.name ILIKE $${params.length}`);
+
+  if (digits) {
+    params.push(`%${digits}%`);
+    conditions.push(`regexp_replace(COALESCE(${alias}.phone, ''), '\\D', '', 'g') LIKE $${params.length}`);
+
+    if (digits.length <= 12) {
+      params.push(Number(digits));
+      conditions.push(`${alias}.id = $${params.length}`);
+    }
+  }
+
+  return `(${conditions.join(' OR ')})`;
+}
+
 function num(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1813,10 +1836,10 @@ async function saveWhatsappMessage(input: {
 
 async function renderDashboard(req: Request): Promise<string> {
   const settings = await loadSettings();
-  const selectedClientId = num(req.query.cliente_id);
   const search = cleanText(req.query.q, 180);
+  const selectedClientId = search ? 0 : num(req.query.cliente_id);
   const initialClientResultCount = 5;
-  const searchResults = await queryClients(search, 20);
+  const searchResults = await queryClients(search, 20, { activeOnly: true });
   const loggedAttendantId = await loggedUserAttendantId(req);
   const attendants = await attendantOptions();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
@@ -1984,14 +2007,13 @@ function attendantSelect(attendants: DbRow[], label = 'Atendente', selectedId: n
   return `<label><span>${e(label)}</span><select name="${selectName}"${locked ? ' disabled aria-readonly="true"' : ''}>${options}</select>${hidden}</label>`;
 }
 
-async function queryClients(search: string, limit: number): Promise<DbRow[]> {
+async function queryClients(search: string, limit: number, options: { activeOnly?: boolean } = {}): Promise<DbRow[]> {
   const params: unknown[] = [];
-  let where = '';
-  if (search) {
-    const digits = digitsOnly(search);
-    params.push(`%${search}%`, `%${digits}%`, /^\d+$/.test(search) ? Number(search) : 0);
-    where = 'WHERE c.name ILIKE $1 OR c.phone LIKE $2 OR c.id = $3';
-  }
+  const whereParts: string[] = [];
+  if (options.activeOnly) whereParts.push("c.status = 'ativo'");
+  const searchCondition = appendClientSearchCondition(params, search);
+  if (searchCondition) whereParts.push(searchCondition);
+  const where = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
   params.push(limit);
   const result = await pgPool.query(
     `SELECT c.*, a.name AS attendant_name, COALESCE(c.updated_at, c.created_at) AS changed_at
@@ -2057,6 +2079,10 @@ async function clientSearchPayload(value: unknown): Promise<unknown[]> {
   const term = cleanText(value, 180);
   const digits = digitsOnly(term);
   if (!term || (term.length < 2 && !digits)) return [];
+  const params: unknown[] = [];
+  const searchCondition = appendClientSearchCondition(params, term);
+  if (!searchCondition) return [];
+  params.push(`${term}%`);
   const rows = await pgPool.query(
     `SELECT c.id, c.name, c.phone, c.birth_date, c.status, a.name AS attendant_name,
             (SELECT MAX(p.purchased_at) FROM cashback_purchases p WHERE p.client_id = c.id) AS last_purchase_at,
@@ -2064,10 +2090,10 @@ async function clientSearchPayload(value: unknown): Promise<unknown[]> {
      FROM cashback_clients c
      LEFT JOIN cashback_attendants a ON a.id = c.attendant_id
      WHERE c.status = 'ativo'
-       AND (c.name ILIKE $1 OR c.phone LIKE $2 OR c.id = $3)
-     ORDER BY CASE WHEN c.name ILIKE $4 THEN 0 ELSE 1 END, c.name ASC
+       AND ${searchCondition}
+     ORDER BY CASE WHEN c.name ILIKE $${params.length} THEN 0 ELSE 1 END, c.name ASC
      LIMIT 8`,
-    [`%${term}%`, `%${digits}%`, /^\d+$/.test(digits) ? Number(digits) : 0, `${term}%`],
+    params,
   );
   const payload = [];
   for (const row of rows.rows as DbRow[]) {
