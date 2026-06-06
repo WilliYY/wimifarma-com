@@ -2582,7 +2582,9 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     : order.status === 'pedido' && order.account_status === 'pago'
       ? '<span class="gestao-order-mini-chip paid">Ja pago</span>'
       : `<span class="gestao-order-mini-chip balance">Saldo ${e(formatMoney(remainingCents))}</span>`;
-  const createdCompactText = brShortDateTime(order.created_at);
+  const createdCompactText = order.status === 'pedido' || order.status === 'confirmado'
+    ? brShortDateTime(order.created_at)
+    : '';
   const createdCompactHtml = createdCompactText
     ? `<span class="gestao-order-mini-chip created" title="Criado em ${e(brDate(order.created_at, true))}">Criado ${e(createdCompactText)}</span>`
     : '';
