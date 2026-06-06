@@ -1945,22 +1945,30 @@ async function renderDashboard(req: Request): Promise<string> {
       ${selectedHtml}
     </section>
 
-    <section id="resgate" class="panel section-block workspace-section">
-      <div class="section-title"><div><span class="kicker">Compra Cashback</span><h2>Registrar compra, aplicar cashback e gerar novo saldo</h2></div><span class="soft-pill">Uso automatico pela regra ${e(settings.redeemMultiplier)}x</span></div>
-      <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
+    <section id="resgate" class="panel section-block workspace-section redeem-panel">
+      <div class="section-title redeem-title"><div><span class="kicker">Compra Cashback</span><h2>Gastar/Usar Cashback</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
+      <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols redeem-form" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_redeem">
-        <div class="client-picker full" data-client-picker-root>
-          <label><span>Cliente *</span><input type="search" value="${e(selectedLabel)}" placeholder="Digite nome ou telefone do cliente" data-client-picker data-results="#redeem-client-results" data-target="#redeem-client-id" data-selected="#redeem-selected-client" autocomplete="off" required><input type="hidden" id="redeem-client-id" name="cliente_id" value="${e(selectedClientId > 0 ? selectedClientId : '')}"></label>
-          <div id="redeem-client-results" class="live-client-results picker-results" hidden></div>
-          <div id="redeem-selected-client" class="selected-client-note" data-balance="${e(centsToMoney(selectedBalance))}">${selected?.client ? `Selecionado: ${e(selected.client.name)} | Saldo disponivel ${brMoneyCents(selectedBalance)}` : 'Nenhum cliente selecionado.'}</div>
+        <div class="redeem-block redeem-client-block full">
+          <div class="redeem-block-title"><span class="step-badge">1</span><h3>Cliente</h3></div>
+          <div class="client-picker redeem-client-picker" data-client-picker-root>
+            <label><span>Buscar cliente *</span><input type="search" value="${e(selectedLabel)}" placeholder="Digite nome, telefone ou ID do cliente" data-client-picker data-results="#redeem-client-results" data-target="#redeem-client-id" data-selected="#redeem-selected-client" autocomplete="off" required><input type="hidden" id="redeem-client-id" name="cliente_id" value="${e(selectedClientId > 0 ? selectedClientId : '')}"></label>
+            <div id="redeem-client-results" class="live-client-results picker-results" hidden></div>
+            <div id="redeem-selected-client" class="selected-client-note" data-balance="${e(centsToMoney(selectedBalance))}">${selected?.client ? `Selecionado: ${e(selected.client.name)} | Saldo disponivel ${brMoneyCents(selectedBalance)}` : 'Nenhum cliente selecionado.'}</div>
+          </div>
         </div>
-        ${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}
-        <label><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
-        <label><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
-        <div class="charge-summary full"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback previsto</span><strong class="js-new-cashback">R$ 0,00</strong></div></div>
-        <div class="live-preview full js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
-        <button type="submit" class="btn primary full">Gastar/Usar Cashback</button>
+        <div class="redeem-block redeem-operation-block full">
+          <div class="redeem-block-title"><span class="step-badge">2</span><h3>Compra atual</h3><span class="optional-chip">Calculo automatico</span></div>
+          <div class="redeem-fields">
+            ${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}
+            <label><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
+            <label><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
+          </div>
+          <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback previsto</span><strong class="js-new-cashback">R$ 0,00</strong></div></div>
+          <div class="live-preview js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
+        </div>
+        <div class="redeem-action full"><button type="submit" class="btn primary">Gastar/Usar Cashback</button></div>
       </form>
     </section>
 
