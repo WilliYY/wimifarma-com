@@ -638,7 +638,7 @@ function pageHtml(req: Request, user: User): string {
       </aside>
     </section>
 
-    <section class="cal-palette-panel">
+    <section class="cal-palette-panel" aria-label="Paleta de cores">
       <div class="cal-section-head">
         <div>
           <span class="cal-kicker">Paleta</span>
@@ -648,8 +648,8 @@ function pageHtml(req: Request, user: User): string {
       <div class="cal-palette-grid" id="palette-list"></div>
       <form class="cal-add-color" id="color-form">
         <input type="color" name="color_hex" value="#f97373" aria-label="Cor">
-        <input type="text" name="label" maxlength="80" placeholder="Significado da cor">
-        <button type="submit">Adicionar cor</button>
+        <input type="hidden" name="label" value="">
+        <button type="submit" aria-label="Adicionar cor" title="Adicionar cor">+</button>
       </form>
     </section>
   </main>

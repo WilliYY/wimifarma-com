@@ -345,23 +345,31 @@ button {
 }
 
 .cal-color-picker {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .cal-color-choice {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 42px;
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 999px;
+  padding: 0;
   color: var(--ink);
   background: #fff;
   font-weight: 900;
-  text-align: left;
+  box-shadow: 0 10px 20px rgba(168, 15, 67, 0.07);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.cal-color-choice:hover,
+.cal-color-choice:focus-visible {
+  border-color: var(--wine);
+  box-shadow: 0 14px 28px rgba(168, 15, 67, 0.16);
+  transform: translateY(-1px);
 }
 
 .cal-color-choice.is-active {
@@ -369,10 +377,16 @@ button {
   box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.12);
 }
 
+.cal-color-clear .cal-color-dot {
+  background:
+    linear-gradient(135deg, transparent 44%, #be123c 45%, #be123c 55%, transparent 56%),
+    #fff !important;
+}
+
 .cal-color-dot {
-  flex: 0 0 20px;
-  width: 20px;
-  height: 20px;
+  display: block;
+  width: 26px;
+  height: 26px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 999px;
 }
@@ -396,14 +410,23 @@ button {
 
 .cal-palette-panel {
   margin-top: 18px;
-  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(255, 246, 249, 0.9)),
+    var(--paper);
 }
 
 .cal-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .cal-section-head h2 {
@@ -413,59 +436,130 @@ button {
 }
 
 .cal-palette-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  min-width: 0;
 }
 
 .cal-palette-item {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-  background: #fff;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(168, 15, 67, 0.18);
+  border-radius: 999px;
+  padding: 0;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.95), transparent 32%),
+    #fff;
+  box-shadow: 0 12px 26px rgba(80, 18, 43, 0.1);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.cal-palette-item:hover,
+.cal-palette-item:focus-within {
+  border-color: var(--wine);
+  box-shadow: 0 18px 34px rgba(168, 15, 67, 0.16);
+  transform: translateY(-1px);
 }
 
 .cal-palette-item input[type="color"] {
-  width: 42px;
-  height: 42px;
-  padding: 2px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  cursor: pointer;
 }
 
-.cal-palette-item input[type="text"] {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 10px;
+.cal-palette-item input[type="color"]::-webkit-color-swatch-wrapper,
+.cal-add-color input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
 }
 
-.cal-palette-item button {
-  min-height: 38px;
+.cal-palette-item input[type="color"]::-webkit-color-swatch,
+.cal-add-color input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 999px;
+}
+
+.cal-color-label-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.cal-palette-archive {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
   border: 1px solid #fecdd3;
   border-radius: 999px;
   color: #be123c;
-  background: #fff1f2;
+  background: #fff;
+  font-size: 12px;
   font-weight: 900;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0.82);
+  transition: opacity 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.cal-palette-item:hover .cal-palette-archive,
+.cal-palette-item:focus-within .cal-palette-archive,
+.cal-palette-archive:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.cal-palette-archive:hover,
+.cal-palette-archive:focus-visible {
+  box-shadow: 0 8px 18px rgba(190, 18, 60, 0.16);
 }
 
 .cal-add-color {
   display: grid;
-  grid-template-columns: 58px minmax(180px, 1fr) auto;
-  gap: 10px;
-  margin-top: 12px;
+  grid-template-columns: 44px 44px;
+  gap: 8px;
+  align-items: center;
+  margin-top: 0;
 }
 
 .cal-add-color input[type="color"] {
-  width: 58px;
-  height: 46px;
-  padding: 2px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(168, 15, 67, 0.18);
+  border-radius: 999px;
+  padding: 6px;
+  background: #fff;
+  box-shadow: 0 12px 26px rgba(80, 18, 43, 0.1);
+  cursor: pointer;
 }
 
-.cal-add-color input[type="text"] {
-  min-height: 46px;
-  padding: 0 12px;
+.cal-add-color input[type="hidden"] {
+  display: none;
+}
+
+.cal-add-color button {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 22px;
+  line-height: 1;
 }
 
 @media (max-width: 1120px) {
@@ -523,9 +617,17 @@ button {
   }
 
   .cal-color-picker,
-  .cal-add-color,
-  .cal-palette-item {
+  .cal-add-color {
     grid-template-columns: 1fr;
+  }
+
+  .cal-palette-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .cal-add-color {
+    grid-template-columns: 44px 44px;
+    justify-content: start;
   }
 
   .cal-day-layer {

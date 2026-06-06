@@ -215,8 +215,10 @@
     els.dayColors.innerHTML = '';
     const clear = document.createElement('button');
     clear.type = 'button';
-    clear.className = 'cal-color-choice';
-    clear.innerHTML = '<span class="cal-color-dot" style="background:#fff"></span><span>Sem cor</span>';
+    clear.className = 'cal-color-choice cal-color-clear';
+    clear.setAttribute('aria-label', 'Sem cor');
+    clear.title = 'Sem cor';
+    clear.innerHTML = '<span class="cal-color-dot" style="background:#fff"></span>';
     clear.addEventListener('click', () => applySelectedColor(null));
     els.dayColors.appendChild(clear);
 
@@ -226,13 +228,12 @@
       button.type = 'button';
       button.className = 'cal-color-choice';
       if (selectedNote && String(selectedNote.color_id || '') === String(color.id)) button.classList.add('is-active');
+      button.setAttribute('aria-label', `Aplicar cor ${color.label}`);
+      button.title = color.label;
       const dot = document.createElement('span');
       dot.className = 'cal-color-dot';
       dot.style.background = color.color_hex;
-      const label = document.createElement('span');
-      label.textContent = color.label;
       button.appendChild(dot);
-      button.appendChild(label);
       button.addEventListener('click', () => applySelectedColor(color.id));
       els.dayColors.appendChild(button);
     }
@@ -250,12 +251,18 @@
 
       const labelInput = document.createElement('input');
       labelInput.type = 'text';
+      labelInput.className = 'cal-color-label-input';
       labelInput.maxLength = 80;
       labelInput.value = color.label;
+      labelInput.setAttribute('aria-label', `Nome da cor ${color.label}`);
+      labelInput.tabIndex = -1;
 
       const archive = document.createElement('button');
       archive.type = 'button';
-      archive.textContent = 'Arquivar';
+      archive.className = 'cal-palette-archive';
+      archive.textContent = 'x';
+      archive.setAttribute('aria-label', `Arquivar cor ${color.label}`);
+      archive.title = `Arquivar ${color.label}`;
 
       const save = debounce(() => saveColor(color.id, colorInput.value, labelInput.value), 500);
       colorInput.addEventListener('input', save);
@@ -449,9 +456,9 @@
     event.preventDefault();
     if (!state.calendar) return;
     const form = new FormData(els.colorForm);
-    const label = String(form.get('label') || '').trim();
-    if (!label) return;
-    await saveColor('', String(form.get('color_hex') || '#93c5fd'), label);
+    const colorHex = String(form.get('color_hex') || '#93c5fd');
+    const label = String(form.get('label') || '').trim() || `Cor ${state.colors.length + 1}`;
+    await saveColor('', colorHex, label);
     els.colorForm.reset();
   });
 
