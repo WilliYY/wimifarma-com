@@ -2765,11 +2765,11 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260530-parcel-edit">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260606-pedidos-polish">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
   <script src="${BASE_PATH}/app.js?v=20260530-history-collapse" defer></script>
 </head>
-<body>
+<body class="pedidos-body">
   <header class="gestao-topbar">
     <a class="gestao-brand" href="/">
       <img src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
@@ -2794,16 +2794,16 @@ async function renderApp(req: Request): Promise<string> {
     ${flash.message ? `<div class="gestao-alert ${flash.type === 'error' ? 'error' : ''}">${e(flash.message)}</div>` : ''}
     <section class="gestao-orders-workspace">
       <div class="gestao-orders-summary">
-        <div><span>Chegam hoje</span><strong>${e(arrivingToday)}</strong></div>
-        <div><span>Aguardando chegada</span><strong>${e(waitingOrders.length)}</strong></div>
-        <div><span>Valor para chegar</span><strong>${e(formatMoney(waitingTicketValue))}</strong></div>
-        <div><span>Boletos em aberto</span><strong>${e(openTickets)}</strong></div>
-        <div><span>Valor boletos abertos</span><strong>${e(formatMoney(openTicketsValue))}</strong></div>
-        <div><span>Pago em pedidos</span><strong>${e(formatMoney(paidMonth))}</strong></div>
+        <div class="gestao-orders-metric metric-today"><span>Chegam hoje</span><strong>${e(arrivingToday)}</strong></div>
+        <div class="gestao-orders-metric metric-waiting"><span>Aguardando chegada</span><strong>${e(waitingOrders.length)}</strong></div>
+        <div class="gestao-orders-metric metric-waiting-value"><span>Valor para chegar</span><strong>${e(formatMoney(waitingTicketValue))}</strong></div>
+        <div class="gestao-orders-metric metric-open"><span>Boletos em aberto</span><strong>${e(openTickets)}</strong></div>
+        <div class="gestao-orders-metric metric-open-value"><span>Valor boletos abertos</span><strong>${e(formatMoney(openTicketsValue))}</strong></div>
+        <div class="gestao-orders-metric metric-paid"><span>Pago em pedidos</span><strong>${e(formatMoney(paidMonth))}</strong></div>
       </div>
       <div class="gestao-orders-layout">
         <aside class="gestao-orders-side">
-          <div class="gestao-orders-panel">
+          <div class="gestao-orders-panel gestao-orders-form-panel">
             <div class="gestao-section-title"><span class="gestao-kicker">Pedidos feitos</span><strong>${e(waitingOrders.length)}</strong></div>
             ${renderOrderForm(req, selectedMonth)}
           </div>

@@ -12,6 +12,12 @@
     --green: #059669;
     --amber: #b45309;
     --danger: #dc2626;
+    --blue: #2563eb;
+    --blue-soft: #eff6ff;
+    --green-soft: #ecfdf5;
+    --amber-soft: #fffbeb;
+    --shadow-soft: 0 18px 44px rgba(127, 9, 46, 0.08);
+    --shadow-hover: 0 22px 52px rgba(127, 9, 46, 0.13);
 }
 
 * {
@@ -21,6 +27,7 @@
 body {
     margin: 0;
     min-height: 100vh;
+    overflow-x: hidden;
     color: var(--ink);
     font-family: "Segoe UI", Arial, sans-serif;
     background:
@@ -376,6 +383,101 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     white-space: nowrap;
 }
 
+.pedidos-body .gestao-page {
+    width: min(1840px, calc(100% - 24px));
+    padding-top: 24px;
+}
+
+.pedidos-body .gestao-hero {
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(242, 169, 194, 0.45);
+}
+
+.pedidos-body .gestao-hero h1 {
+    font-size: clamp(2.2rem, 4.8vw, 3.8rem);
+    line-height: 0.98;
+}
+
+.pedidos-body .gestao-hero p {
+    max-width: 760px;
+}
+
+.gestao-orders-workspace {
+    gap: 14px;
+}
+
+.gestao-orders-metric {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    border-color: rgba(242, 169, 194, 0.7);
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    animation: pedidos-card-in 220ms ease-out both;
+}
+
+.gestao-orders-metric::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    background: var(--metric-accent, var(--wine));
+}
+
+.gestao-orders-metric::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--metric-wash, rgba(168, 15, 67, 0.08)), transparent 46%);
+    opacity: 0.7;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.gestao-orders-metric > * {
+    position: relative;
+    z-index: 1;
+}
+
+.gestao-orders-metric:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-hover);
+}
+
+.metric-today,
+.metric-waiting,
+.metric-waiting-value {
+    --metric-accent: var(--blue);
+    --metric-wash: rgba(37, 99, 235, 0.09);
+}
+
+.metric-open,
+.metric-open-value {
+    --metric-accent: var(--danger);
+    --metric-wash: rgba(220, 38, 38, 0.08);
+}
+
+.metric-paid {
+    --metric-accent: var(--green);
+    --metric-wash: rgba(5, 150, 105, 0.1);
+}
+
+.metric-today strong,
+.metric-waiting strong,
+.metric-waiting-value strong {
+    color: var(--blue);
+}
+
+.metric-open strong,
+.metric-open-value strong {
+    color: var(--danger);
+}
+
+.metric-paid strong {
+    color: var(--green);
+}
+
 .gestao-orders-summary div:nth-child(3),
 .gestao-orders-summary div:nth-child(5),
 .gestao-orders-summary div:nth-child(6) {
@@ -390,11 +492,11 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 
 .gestao-orders-layout {
     display: grid;
-    grid-template-columns: minmax(285px, 0.85fr) minmax(300px, 1fr) minmax(360px, 1.25fr) minmax(260px, 0.8fr);
+    grid-template-columns: minmax(300px, 0.82fr) minmax(330px, 1.02fr) minmax(390px, 1.22fr) minmax(290px, 0.86fr);
     grid-template-areas:
         "form waiting confirmed history";
     align-items: start;
-    gap: 14px;
+    gap: 18px;
 }
 
 .gestao-orders-side,
@@ -410,6 +512,96 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-orders-panel {
     min-width: 0;
     padding: 14px;
+}
+
+.gestao-orders-form-panel {
+    border-color: rgba(168, 15, 67, 0.34);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 249, 251, 0.96)),
+        #ffffff;
+    box-shadow: var(--shadow-soft);
+}
+
+.gestao-orders-waiting,
+.gestao-orders-confirmed,
+.gestao-orders-history {
+    --lane-accent: var(--wine);
+    --lane-soft: rgba(168, 15, 67, 0.08);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.gestao-orders-waiting {
+    --lane-accent: var(--blue);
+    --lane-soft: rgba(37, 99, 235, 0.08);
+}
+
+.gestao-orders-confirmed {
+    --lane-accent: var(--danger);
+    --lane-soft: rgba(220, 38, 38, 0.07);
+}
+
+.gestao-orders-history {
+    --lane-accent: var(--green);
+    --lane-soft: rgba(5, 150, 105, 0.08);
+}
+
+.gestao-orders-waiting > .gestao-section-title,
+.gestao-orders-confirmed > .gestao-section-title,
+.gestao-orders-history > .gestao-section-title {
+    position: sticky;
+    top: 86px;
+    z-index: 8;
+    min-height: 42px;
+    margin: 0 0 8px;
+    padding: 9px 10px;
+    border: 1px solid rgba(242, 169, 194, 0.44);
+    border-left: 5px solid var(--lane-accent);
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, var(--lane-soft), rgba(255, 255, 255, 0.96) 54%),
+        rgba(255, 255, 255, 0.94);
+    box-shadow: 0 10px 24px rgba(127, 9, 46, 0.05);
+    backdrop-filter: blur(10px);
+}
+
+.gestao-orders-waiting > .gestao-section-title strong,
+.gestao-orders-confirmed > .gestao-section-title strong,
+.gestao-orders-history > .gestao-section-title strong {
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 3px 9px;
+    background: #ffffff;
+    color: var(--lane-accent);
+    font-size: 0.76rem;
+    font-weight: 950;
+    white-space: nowrap;
+}
+
+.gestao-orders-stack {
+    align-content: start;
+    gap: 9px;
+    padding-bottom: 4px;
+}
+
+.gestao-orders-stack::-webkit-scrollbar,
+.gestao-orders-form-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.gestao-orders-stack::-webkit-scrollbar-thumb,
+.gestao-orders-form-panel::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #e9a7bb;
+}
+
+.gestao-orders-stack::-webkit-scrollbar-track,
+.gestao-orders-form-panel::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.64);
 }
 
 .gestao-orders-form {
@@ -446,8 +638,9 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     display: grid;
     gap: 9px;
     min-width: 0;
-    padding-top: 10px;
+    padding: 10px 0 0 12px;
     border-top: 1px solid #fbe0e9;
+    border-left: 3px solid #f8ccda;
 }
 
 .gestao-order-form-head + .gestao-order-form-section {
@@ -470,7 +663,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 
 .gestao-order-form-section-head::before {
     content: "";
-    width: 18px;
+    width: 16px;
     height: 4px;
     flex: 0 0 auto;
     border-radius: 999px;
@@ -489,6 +682,12 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     border: 1px solid #f8ccda;
     border-radius: 8px;
     background: #fffafd;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.gestao-order-parcel:focus-within {
+    border-color: var(--wine);
+    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.08);
 }
 
 .gestao-order-parcel-head {
@@ -583,11 +782,43 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card {
+    --order-accent: var(--wine);
+    position: relative;
     display: grid;
     gap: 12px;
     padding: 16px;
     min-width: 0;
+    overflow: hidden;
     background: rgba(255, 255, 255, 0.96);
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    animation: pedidos-card-in 180ms ease-out both;
+}
+
+.gestao-order-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    background: var(--order-accent);
+}
+
+.gestao-order-card:hover,
+.gestao-order-card:focus-within {
+    transform: translateY(-1px);
+    border-color: rgba(168, 15, 67, 0.38);
+    box-shadow: var(--shadow-hover);
+}
+
+.gestao-order-card:nth-child(2) {
+    animation-delay: 35ms;
+}
+
+.gestao-order-card:nth-child(3) {
+    animation-delay: 70ms;
+}
+
+.gestao-order-card:nth-child(4) {
+    animation-delay: 105ms;
 }
 
 .gestao-order-card > * {
@@ -604,7 +835,8 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
+    min-height: 62px;
+    padding: 9px 10px 9px 14px;
     box-shadow: 0 12px 28px rgba(127, 9, 46, 0.06);
 }
 
@@ -626,7 +858,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     margin: -2px;
     padding: 2px;
 }
@@ -644,7 +876,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-head h2 {
-    font-size: 0.94rem;
+    font-size: 0.96rem;
     line-height: 1.08;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -654,7 +886,9 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle > strong,
 .gestao-order-card.is-order-collapsed .gestao-order-summary-static > strong {
     align-self: center;
-    font-size: 0.88rem;
+    padding-left: 8px;
+    border-left: 1px solid rgba(242, 169, 194, 0.72);
+    font-size: 0.92rem;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-order-compact-meta {
@@ -721,13 +955,16 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.status-pedido {
-    border-left: 5px solid #2563eb;
+    --order-accent: var(--blue);
+    border-left: 0;
 }
 
 .gestao-order-card.status-confirmado.due-overdue,
 .gestao-order-card.status-confirmado.due-urgent {
-    border-left: 5px solid var(--danger);
+    --order-accent: var(--danger);
+    border-left: 0;
     box-shadow: 0 24px 60px rgba(220, 38, 38, 0.1);
+    animation: pedidos-card-in 180ms ease-out both, pedidos-urgent-pulse 2200ms ease-in-out infinite;
 }
 
 .gestao-order-card.is-order-collapsed.status-confirmado.due-overdue,
@@ -736,12 +973,43 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-order-card.status-confirmado.due-attention {
-    border-left: 5px solid var(--amber);
+    --order-accent: var(--amber);
+    border-left: 0;
 }
 
 .gestao-order-card.status-historico {
+    --order-accent: var(--green);
     border-color: rgba(5, 150, 105, 0.24);
     background: #fcfffd;
+}
+
+.gestao-order-card.status-confirmado:not(.due-overdue):not(.due-urgent):not(.due-attention) {
+    --order-accent: var(--wine);
+}
+
+.gestao-order-card.status-pedido.arrival-today,
+.gestao-order-card.status-pedido.arrival-late {
+    --order-accent: var(--danger);
+    animation: pedidos-card-in 180ms ease-out both, pedidos-urgent-pulse 2400ms ease-in-out infinite;
+}
+
+.gestao-order-card.status-pedido.arrival-soon {
+    --order-accent: var(--amber);
+}
+
+.gestao-order-card.status-pedido .gestao-pill {
+    background: var(--blue-soft);
+    color: var(--blue);
+}
+
+.gestao-order-card.status-confirmado .gestao-pill {
+    background: #fff1f2;
+    color: var(--danger);
+}
+
+.gestao-order-card.status-historico .gestao-pill {
+    background: var(--green-soft);
+    color: var(--green);
 }
 
 .gestao-order-head {
@@ -835,6 +1103,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     font-weight: 950;
     overflow: hidden;
     text-overflow: ellipsis;
+    border: 1px solid transparent;
 }
 
 .gestao-order-mini-chip.created {
@@ -853,24 +1122,28 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-order-mini-chip.arrival-today,
 .gestao-order-mini-chip.arrival-late {
     background: #fff1f2;
+    border-color: #fecdd3;
     color: var(--danger);
 }
 
 .gestao-order-mini-chip.due-attention,
 .gestao-order-mini-chip.arrival-soon {
     background: #fffbeb;
+    border-color: #fde68a;
     color: var(--amber);
 }
 
 .gestao-order-mini-chip.due-scheduled,
 .gestao-order-mini-chip.arrival-scheduled {
     background: #eff6ff;
+    border-color: #bfdbfe;
     color: #2563eb;
 }
 
 .gestao-order-mini-chip.balance,
 .gestao-order-mini-chip.paid {
     background: #ecfdf5;
+    border-color: #bbf7d0;
     color: #047857;
 }
 
@@ -910,6 +1183,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     line-height: 1;
     text-decoration: none;
     box-shadow: 0 10px 22px rgba(168, 15, 67, 0.1);
+    transition: transform 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
 }
 
 .gestao-order-card.is-order-collapsed .gestao-icon-btn {
@@ -930,6 +1204,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     border-color: var(--wine);
     background: #fff0f5;
     outline: 0;
+    transform: translateY(-1px);
 }
 
 .gestao-icon-btn-danger {
@@ -1419,6 +1694,18 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     cursor: pointer;
     text-decoration: none;
     font-weight: 950;
+    transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.gestao-btn:hover,
+.gestao-btn:focus-visible {
+    transform: translateY(-1px);
+    outline: 0;
+}
+
+.gestao-btn-primary:hover,
+.gestao-btn-primary:focus-visible {
+    box-shadow: 0 16px 32px rgba(168, 15, 67, 0.22);
 }
 
 .gestao-btn-primary {
@@ -2195,6 +2482,44 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     will-change: transform;
 }
 
+@keyframes pedidos-card-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pedidos-urgent-pulse {
+    0%,
+    100% {
+        box-shadow: 0 12px 28px rgba(127, 9, 46, 0.06);
+    }
+
+    50% {
+        box-shadow: 0 16px 36px rgba(220, 38, 38, 0.16);
+    }
+}
+
+@media (min-width: 1051px) {
+    .gestao-orders-form-panel {
+        position: sticky;
+        top: 92px;
+        max-height: calc(100vh - 112px);
+        overflow: auto;
+    }
+
+    .gestao-orders-stack {
+        max-height: calc(100vh - 318px);
+        overflow: auto;
+        padding-right: 4px;
+    }
+}
+
 @media (max-width: 1320px) {
     .gestao-orders-layout {
         grid-template-columns: minmax(270px, 0.72fr) minmax(0, 1fr);
@@ -2246,6 +2571,18 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     .gestao-layout,
     .gestao-hero {
         grid-template-columns: 1fr;
+    }
+
+    .gestao-orders-form-panel,
+    .gestao-orders-stack {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .gestao-orders-waiting > .gestao-section-title,
+    .gestao-orders-confirmed > .gestao-section-title,
+    .gestao-orders-history > .gestao-section-title {
+        position: static;
     }
 
     .gestao-orders-layout {
