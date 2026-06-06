@@ -1815,21 +1815,37 @@ async function renderDashboard(req: Request): Promise<string> {
   const settings = await loadSettings();
   const selectedClientId = num(req.query.cliente_id);
   const search = cleanText(req.query.q, 180);
-  const searchResults = await queryClients(search, 12);
+  const initialClientResultCount = 5;
+  const searchResults = await queryClients(search, 20);
   const loggedAttendantId = await loggedUserAttendantId(req);
   const attendants = await attendantOptions();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
+  const visibleClientResultCount = Math.min(initialClientResultCount, searchResults.length);
+  const resultSummary = search
+    ? `${searchResults.length} resultado(s) para "${search}"`
+    : `${visibleClientResultCount} de ${searchResults.length} cliente(s) recentes`;
 
   const searchCards = await Promise.all(
-    searchResults.map(async (client: DbRow) => {
+    searchResults.map(async (client: DbRow, index: number) => {
+      const clientId = num(client.id);
       const balance = await balanceForClient(num(client.id));
-      return `<article class="client-result ${selectedClientId === num(client.id) ? 'is-selected' : ''}">
-        <div><strong>${e(client.name)}</strong><span>#${e(client.id)} | ${e(formatPhone(client.phone))} | ${e(client.attendant_name || 'Sem atendente')}</span></div>
+      const isSelected = selectedClientId === clientId;
+      const isExtra = index >= initialClientResultCount && !isSelected;
+      const changedAt = client.changed_at || client.updated_at || client.created_at;
+      return `<article class="client-result ${isSelected ? 'is-selected' : ''}" data-client-result-item${isExtra ? ' hidden' : ''}>
+        <div class="client-result-main">
+          <div class="client-result-title">
+            <strong>${e(client.name)}</strong>
+            <span class="client-status-pill">${e(client.status || 'ativo')}</span>
+          </div>
+          <span class="client-meta">#${e(client.id)} | ${e(formatPhone(client.phone))} | ${e(client.attendant_name || 'Sem atendente')}</span>
+          <span class="client-updated">Atualizado em ${e(brDate(changedAt, true))}</span>
+        </div>
         <div class="result-balance"><span>Disponivel</span><strong>${brMoneyCents(balance.saldoDisponivel)}</strong></div>
         <div class="result-actions">
-          <a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${num(client.id)}#cliente-atual`)}">Selecionar</a>
-          <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${num(client.id)}#resgate`)}">Gastar/Usar Cashback</a>
-          <a class="btn" href="${pageUrl(`cliente-detalhe.php?id=${num(client.id)}`)}">Historico completo</a>
+          <a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${clientId}#cliente-atual`)}">Selecionar</a>
+          <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${clientId}#resgate`)}">Gastar/Usar Cashback</a>
+          <a class="btn" href="${pageUrl(`cliente-detalhe.php?id=${clientId}`)}">Historico completo</a>
         </div>
       </article>`;
     }),
@@ -1881,7 +1897,21 @@ async function renderDashboard(req: Request): Promise<string> {
         <a class="btn" href="${pageUrl(`dashboard.php${selectedClientId > 0 ? `?cliente_id=${selectedClientId}` : ''}#busca`)}">Limpar</a>
         <div id="live-client-results" class="live-client-results" hidden></div>
       </form>
-      <div class="client-results">${searchCards.join('') || '<p>Nenhum cliente encontrado. Use o cadastro rapido abaixo.</p>'}</div>
+      <div class="client-results-shell" data-client-results-list data-visible-step="${e(initialClientResultCount)}">
+        <div class="client-results-head">
+          <div>
+            <span class="kicker">${search ? 'Resultado da busca' : 'Clientes alterados'}</span>
+            <h3>${search ? 'Clientes encontrados' : 'Ultimos clientes alterados'}</h3>
+          </div>
+          <span class="soft-pill" data-client-results-count>${e(resultSummary)}</span>
+        </div>
+        <div class="client-results">${searchCards.join('') || '<p class="muted">Nenhum cliente encontrado. Use o cadastro rapido abaixo.</p>'}</div>
+        ${
+          searchResults.length > visibleClientResultCount
+            ? `<div class="client-show-more-wrap"><button class="btn client-show-more" type="button" data-show-more-clients>Mostrar mais</button></div>`
+            : ''
+        }
+      </div>
     </section>
 
     <section id="cliente-atual" class="panel section-block workspace-section">
@@ -1964,11 +1994,11 @@ async function queryClients(search: string, limit: number): Promise<DbRow[]> {
   }
   params.push(limit);
   const result = await pgPool.query(
-    `SELECT c.*, a.name AS attendant_name
+    `SELECT c.*, a.name AS attendant_name, COALESCE(c.updated_at, c.created_at) AS changed_at
      FROM cashback_clients c
      LEFT JOIN cashback_attendants a ON a.id = c.attendant_id
      ${where}
-     ORDER BY c.created_at DESC
+     ORDER BY COALESCE(c.updated_at, c.created_at) DESC, c.id DESC
      LIMIT $${params.length}`,
     params,
   );

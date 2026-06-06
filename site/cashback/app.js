@@ -531,6 +531,52 @@
         });
     }
 
+    function bindClientResultsShowMore() {
+        document.querySelectorAll('[data-client-results-list]').forEach(function (list) {
+            var items = Array.prototype.slice.call(list.querySelectorAll('[data-client-result-item]'));
+            var button = list.querySelector('[data-show-more-clients]');
+            var counter = list.querySelector('[data-client-results-count]');
+            var step = Number(list.getAttribute('data-visible-step')) || 5;
+
+            if (!items.length || !button) {
+                return;
+            }
+
+            function visibleCount() {
+                return items.filter(function (item) {
+                    return !item.hidden;
+                }).length;
+            }
+
+            function updateCounter() {
+                var visible = visibleCount();
+
+                if (counter) {
+                    counter.textContent = visible + ' de ' + items.length + ' visiveis';
+                }
+
+                button.hidden = visible >= items.length;
+            }
+
+            button.addEventListener('click', function () {
+                var opened = 0;
+
+                items.forEach(function (item) {
+                    if (opened >= step || !item.hidden) {
+                        return;
+                    }
+
+                    item.hidden = false;
+                    opened += 1;
+                });
+
+                updateCounter();
+            });
+
+            updateCounter();
+        });
+    }
+
     function postWhatsappStatus(id, eventName) {
         var csrfMeta = document.querySelector('meta[name="wfwc-csrf"]');
         var csrfToken = window.WFWC_CSRF || (csrfMeta ? csrfMeta.getAttribute('content') : '');
@@ -920,6 +966,7 @@
         bindInitialPurchasePreview();
         bindRedeemPreview();
         bindLiveClientSearch();
+        bindClientResultsShowMore();
         bindClientPickers();
         bindWhatsappStatus();
         bindCopyMessages();
