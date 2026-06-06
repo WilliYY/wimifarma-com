@@ -121,6 +121,7 @@ Core Postgres `wimifarma_core`:
 - O filtro de `CATEGORIA` agrupa valores equivalentes por chave local normalizada (trim, espacos repetidos, quebras/invisiveis simples e caixa) apenas para exibicao/aplicacao do filtro. Essa regra nao altera automaticamente o valor original gravado em `cotacao_v2_rows`.
 - Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
 - Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
+- Desde 2026-06-06, essa protecao tambem vale para atualizacoes recebidas por evento de outra aba/usuario; eventos internos de lembrete de encomenda (`encomenda_reminder_*`) nao forcam reload visual da planilha.
 - Texto longo deve quebrar linha dentro da celula e aumentar a altura da linha em vez de vazar ou ficar cortado.
 - O auto-ajuste de altura durante a digitacao deve ser agendado por frame do navegador, para evitar recalcular layout da grade a cada tecla.
 - Clicar no cabecalho seleciona a coluna inteira; clicar no numero seleciona a linha inteira. Arrastar pelos cabecalhos deve ampliar a selecao para varias colunas ou varias linhas.

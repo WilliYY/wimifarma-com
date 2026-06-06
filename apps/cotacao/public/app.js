@@ -1762,6 +1762,7 @@
     }
     row.values = { ...(row.values || {}), [payload.columnKey]: payload.value };
     row.version = payload.version;
+    rememberEditedRowInFilteredView(row);
     state.conflicts.delete(key);
     if (state.editing) {
       deferRemoteRender([payload.rowId]);
@@ -1936,6 +1937,8 @@
         if (applyRemoteRuleChange({ mode: event.type === 'rule_created' ? 'created' : 'updated', rules: [payload.rule] })) needsFullRender = true;
       } else if (event.type === 'rule_deleted') {
         if (applyRemoteRuleChange({ mode: 'deleted', id: payload.id })) needsFullRender = true;
+      } else if (event.type.startsWith('encomenda_reminder_')) {
+        continue;
       } else if (event.type.startsWith('column_')) {
         if (!applyRemoteColumnChange({ ...payload, type: event.type })) return false;
       } else if (event.type === 'backup_created' || event.type === 'google_sheets_exported') {
