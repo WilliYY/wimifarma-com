@@ -98,7 +98,7 @@ button {
 
 .cal-shell {
   width: min(1820px, calc(100% - 40px));
-  margin: 24px auto 56px;
+  margin: 12px auto 48px;
 }
 
 .cal-hero,
@@ -115,8 +115,22 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 20px 28px;
+  gap: 14px;
+  padding: 8px 14px;
+  box-shadow: 0 12px 34px rgba(69, 26, 45, 0.08);
+}
+
+.cal-hero > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.cal-hero .cal-kicker {
+  font-size: 9px;
+  letter-spacing: 0.06em;
 }
 
 .cal-kicker {
@@ -129,9 +143,9 @@ button {
 }
 
 .cal-hero h1 {
-  margin: 5px 0 6px;
+  margin: 0;
   color: var(--wine);
-  font-size: clamp(32px, 3.4vw, 48px);
+  font-size: clamp(24px, 2vw, 32px);
   line-height: 1;
   letter-spacing: 0;
 }
@@ -139,8 +153,14 @@ button {
 .cal-hero p {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
+}
+
+.cal-hero .cal-user {
+  min-height: 24px;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .cal-user,
@@ -164,7 +184,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  margin-top: 14px;
+  margin-top: 10px;
   padding: 12px 14px;
 }
 
@@ -1001,7 +1021,7 @@ button {
 
   .cal-shell {
     width: min(100% - 20px, 100%);
-    margin-top: 16px;
+    margin-top: 10px;
   }
 
   .cal-hero,
@@ -1013,7 +1033,28 @@ button {
 
   .cal-hero {
     display: grid;
-    gap: 10px;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .cal-hero > div:first-child {
+    gap: 6px;
+  }
+
+  .cal-hero .cal-kicker {
+    font-size: 8px;
+  }
+
+  .cal-hero h1 {
+    font-size: 24px;
+  }
+
+  .cal-hero .cal-user {
+    width: max-content;
+    max-width: 100%;
+    min-height: 22px;
+    padding: 3px 8px;
+    font-size: 11px;
   }
 
   .cal-hero p {

@@ -724,7 +724,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 
 ### Telas e endpoints
 
-- `/calendario/` e `/calendario/index.php`: tela do calendario com navegacao por seta/arraste, edicao por dia, painel lateral e barra superior com controles de mes agrupados.
+- `/calendario/` e `/calendario/index.php`: tela do calendario com cabecalho introdutorio compacto, navegacao por seta/arraste, edicao por dia, painel lateral e barra superior com controles de mes agrupados.
 - `/calendario/health`: health do app.
 - `/calendario/api/state`: estado do ano, cores e anotacoes.
 - `/calendario/api/day`: autosave de anotacao/cor por dia.
