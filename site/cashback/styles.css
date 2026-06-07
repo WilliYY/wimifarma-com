@@ -591,7 +591,7 @@ th {
 
 .report-page {
     display: grid;
-    gap: 14px;
+    gap: 12px;
 }
 
 .report-page > * {
@@ -691,14 +691,14 @@ th {
 }
 
 .report-page .team-layout {
-    grid-template-columns: minmax(240px, 0.55fr) minmax(0, 1.45fr);
-    gap: 12px;
+    grid-template-columns: minmax(210px, 0.38fr) minmax(0, 1.62fr);
+    gap: 10px;
 }
 
 .report-page .team-form {
-    gap: 10px;
-    padding: 14px;
-    border-radius: 16px;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 14px;
 }
 
 .report-page .team-form h3 {
@@ -706,52 +706,93 @@ th {
     color: var(--red-800);
 }
 
+.report-page .team-form input,
+.report-page .team-form select,
+.report-page .team-form textarea,
+.report-page .attendant-card input,
+.report-page .attendant-card select,
+.report-page .attendant-card textarea {
+    min-height: 32px;
+    padding: 6px 9px;
+    font-size: .82rem;
+    line-height: 1.15;
+}
+
 .report-page .team-form textarea,
 .report-page .attendant-notes textarea {
-    min-height: 56px;
+    min-height: 46px;
+    height: 46px;
+}
+
+.report-page .team-form .btn {
+    min-height: 36px;
+}
+
+.report-page .team-form .muted {
+    font-size: .78rem;
+    line-height: 1.35;
 }
 
 .report-page .team-list {
-    max-height: 520px;
-    overflow: auto;
-    padding-right: 4px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 10px;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
 }
 
 .report-page .attendant-card {
-    gap: 10px;
-    padding: 12px;
-    border-radius: 16px;
-    box-shadow: 0 8px 22px rgba(109, 16, 34, 0.055);
+    gap: 6px;
+    padding: 8px;
+    border-radius: 14px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 250, 0.9));
+    box-shadow: 0 8px 20px rgba(109, 16, 34, 0.05);
 }
 
 .report-page .attendant-edit-form {
-    gap: 10px;
+    gap: 6px;
 }
 
 .report-page .attendant-card-head {
-    grid-template-columns: minmax(0, 1fr) minmax(120px, 140px);
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 120px);
+    gap: 8px;
 }
 
 .report-page .attendant-card dl {
-    gap: 7px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
 }
 
 .report-page .attendant-card dl div {
-    padding: 8px;
-    border-radius: 12px;
+    min-width: 0;
+    padding: 6px;
+    border-radius: 9px;
     background: #fff7f8;
+}
+
+.report-page .attendant-card dt {
+    font-size: .6rem;
+    line-height: 1.05;
+}
+
+.report-page .attendant-card dd {
+    font-size: .72rem;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
 }
 
 .report-page .attendant-actions {
     justify-content: flex-end;
+    gap: 6px;
 }
 
 .report-page .attendant-actions .btn,
 .report-page .message-actions .btn,
 .report-page .maintenance-control .btn,
 .report-page .hero-filter .btn {
-    min-height: 38px;
-    padding-inline: 14px;
+    min-height: 30px;
+    padding-inline: 10px;
+    font-size: .78rem;
 }
 
 .report-page .metrics {
