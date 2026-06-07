@@ -721,6 +721,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - App oficial: `apps/calendario`, Node.js 22 + TypeScript + Express.
 - Fonte oficial: Postgres dedicado `wimifarma_calendario`.
 - Imagens mensais: `apps/calendario/public/months/month-01.png` ate `month-12.png`, geradas de `Calendario.pdf`.
+- Decisao 2027: usar outro PDF/modelo visual vindo do Canva quando o usuario fornecer, mantendo as mesmas features de 2026; a troca deve focar em imagens mensais, design e recalibragem das areas editaveis/alinhamentos, sem trocar backend, autosave, revisoes, paleta, botao direito, tooltip, arraste, permissoes ou resumo Miauby.
 
 ### Telas e endpoints
 
