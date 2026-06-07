@@ -756,7 +756,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Clicar com o botao direito em um quadrado abre uma paleta flutuante para pintar ou limpar `color_id`, reutilizando o mesmo autosave de `/calendario/api/day`.
 - Textos longos sem espaco devem quebrar linha no painel lateral e no resumo, sem rolagem horizontal.
 - Ao deixar o mouse parado sobre um quadrado com anotacao, um tooltip visual mostra o texto completo; o `title` nativo fica como fallback.
-- A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
+- A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, com pintura translucida em lavagem suave tipo marcador, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
 - A selecao visual do dia deve acompanhar clique/foco direto na caixa, e os botoes de mes usam entidades HTML para evitar caracteres quebrados.
 - O arraste horizontal desloca imagem e camada editavel juntas; ao cruzar o limiar, a troca de mes usa animacao lateral de saida/entrada e respeita `prefers-reduced-motion`.
 - O autosave de dia usa timer independente por dia no frontend, roda em transacao com lock por dia, registra revisao antes/depois em `calendario_day_note_revisions` e recusa sobrescrita quando o `updated_at` enviado pela tela esta antigo.

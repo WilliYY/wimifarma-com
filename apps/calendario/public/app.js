@@ -160,11 +160,14 @@
   }
 
   function paintVars(element, hex, prefix) {
+    const isDayPaint = prefix === 'day';
     element.style.setProperty(`--${prefix}-color`, hex);
-    element.style.setProperty(`--${prefix}-wash`, rgba(hex, 0.26));
-    element.style.setProperty(`--${prefix}-wash-strong`, rgba(hex, 0.38));
-    element.style.setProperty(`--${prefix}-line`, rgba(hex, 0.78));
-    element.style.setProperty(`--${prefix}-glow`, rgba(hex, 0.2));
+    element.style.setProperty(`--${prefix}-wash`, rgba(hex, isDayPaint ? 0.18 : 0.26));
+    element.style.setProperty(`--${prefix}-wash-soft`, rgba(hex, isDayPaint ? 0.08 : 0.16));
+    element.style.setProperty(`--${prefix}-wash-strong`, rgba(hex, isDayPaint ? 0.27 : 0.38));
+    element.style.setProperty(`--${prefix}-line`, rgba(hex, isDayPaint ? 0.42 : 0.78));
+    element.style.setProperty(`--${prefix}-edge`, rgba(hex, isDayPaint ? 0.28 : 0.58));
+    element.style.setProperty(`--${prefix}-glow`, rgba(hex, isDayPaint ? 0.12 : 0.2));
   }
 
   function colorById(id) {
