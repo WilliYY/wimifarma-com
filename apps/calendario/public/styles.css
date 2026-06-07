@@ -160,24 +160,53 @@ button {
   position: sticky;
   top: 78px;
   z-index: 35;
-  display: grid;
-  grid-template-columns: 48px minmax(220px, 1fr) 48px auto auto;
+  display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 18px;
   margin-top: 14px;
-  padding: 12px;
+  padding: 12px 14px;
+}
+
+.cal-month-controls,
+.cal-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.cal-month-controls {
+  justify-content: center;
+  gap: 12px;
+}
+
+.cal-toolbar-actions {
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.cal-toolbar .cal-secondary,
+.cal-toolbar .cal-save-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
 }
 
 .cal-icon-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  padding: 0 0 3px;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: #fff;
   background: var(--wine);
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 900;
   line-height: 1;
   box-shadow: 0 16px 26px rgba(168, 15, 67, 0.2);
@@ -186,8 +215,9 @@ button {
 .cal-month-title {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
+  padding: 0 2px;
 }
 
 .cal-month-title strong {
@@ -768,12 +798,25 @@ button {
   }
 
   .cal-toolbar {
-    grid-template-columns: 44px minmax(180px, 1fr) 44px;
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+    gap: 10px;
+  }
+
+  .cal-month-controls {
+    width: 100%;
+  }
+
+  .cal-toolbar-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: center;
+    flex-wrap: wrap;
   }
 
   .cal-secondary,
   .cal-save-state {
-    grid-column: 1 / -1;
     justify-content: center;
   }
 
@@ -817,10 +860,39 @@ button {
   .cal-month-title {
     display: grid;
     gap: 8px;
+    justify-items: center;
+    text-align: center;
   }
 
   .cal-month-title strong {
     font-size: 22px;
+  }
+
+  .cal-month-title label {
+    justify-content: center;
+  }
+
+  .cal-month-controls {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 8px;
+  }
+
+  .cal-icon-btn {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+    font-size: 30px;
+  }
+
+  .cal-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .cal-toolbar .cal-secondary,
+  .cal-toolbar .cal-save-state {
+    width: 100%;
   }
 
   .cal-add-color {

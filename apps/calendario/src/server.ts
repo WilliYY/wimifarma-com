@@ -644,17 +644,21 @@ function pageHtml(req: Request, user: User): string {
     </section>
 
     <section class="cal-toolbar" aria-label="Controles do calendario">
-      <button class="cal-icon-btn" id="prev-month" type="button" aria-label="Mes anterior" title="Mes anterior">&lsaquo;</button>
-      <div class="cal-month-title">
-        <strong id="month-label">Janeiro</strong>
-        <label>
-          <span>Ano</span>
-          <select id="year-select"></select>
-        </label>
+      <div class="cal-month-controls">
+        <button class="cal-icon-btn" id="prev-month" type="button" aria-label="Mes anterior" title="Mes anterior">&lsaquo;</button>
+        <div class="cal-month-title">
+          <strong id="month-label">Janeiro</strong>
+          <label>
+            <span>Ano</span>
+            <select id="year-select"></select>
+          </label>
+        </div>
+        <button class="cal-icon-btn" id="next-month" type="button" aria-label="Proximo mes" title="Proximo mes">&rsaquo;</button>
       </div>
-      <button class="cal-icon-btn" id="next-month" type="button" aria-label="Proximo mes" title="Proximo mes">&rsaquo;</button>
-      <button class="cal-secondary" id="create-next-year" type="button">Criar proximo calendario</button>
-      <span class="cal-save-state" id="save-state">Sincronizado</span>
+      <div class="cal-toolbar-actions">
+        <button class="cal-secondary" id="create-next-year" type="button">Criar proximo calendario</button>
+        <span class="cal-save-state" id="save-state">Sincronizado</span>
+      </div>
     </section>
 
     <section class="cal-workspace">
