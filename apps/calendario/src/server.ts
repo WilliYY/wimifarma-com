@@ -674,7 +674,7 @@ function pageHtml(req: Request, user: User): string {
           <span class="cal-kicker">Dia selecionado</span>
           <strong id="selected-title">Escolha um dia</strong>
         </div>
-        <textarea id="note-input" rows="10" placeholder="Digite a anotacao deste dia"></textarea>
+        <textarea id="note-input" rows="10" wrap="soft" placeholder="Digite a anotacao deste dia"></textarea>
         <div class="cal-color-picker" id="day-colors"></div>
         <div class="cal-note-preview">
           <span class="cal-kicker">Texto completo</span>
