@@ -185,6 +185,8 @@
       const cell = document.createElement('label');
       const selected = state.selected && state.selected.month === month && state.selected.day === position.day;
       cell.className = 'cal-day-cell';
+      cell.dataset.month = String(month);
+      cell.dataset.day = String(position.day);
       if (selected) cell.classList.add('is-selected');
       if ((note.note_text || '').trim() !== '' || note.color_id) cell.classList.add('has-note');
       if (color) {
@@ -233,6 +235,7 @@
 
   function renderColors() {
     els.dayColors.innerHTML = '';
+    const selectedNote = state.selected ? noteFor(state.selected.month, state.selected.day) : null;
     const clear = document.createElement('button');
     clear.type = 'button';
     clear.className = 'cal-color-choice cal-color-clear';
@@ -243,7 +246,6 @@
     clear.addEventListener('click', () => applySelectedColor(null));
     els.dayColors.appendChild(clear);
 
-    const selectedNote = state.selected ? noteFor(state.selected.month, state.selected.day) : null;
     for (const color of state.colors) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -307,11 +309,25 @@
     renderPalette();
   }
 
+  function syncSelectedDayClasses() {
+    for (const cell of els.dayLayer.querySelectorAll('.cal-day-cell')) {
+      const isSelected =
+        state.selected &&
+        cell.dataset.month === String(state.selected.month) &&
+        cell.dataset.day === String(state.selected.day);
+      cell.classList.toggle('is-selected', Boolean(isSelected));
+    }
+  }
+
   function selectDay(month, day, focusSide, rerenderDays) {
     state.selected = { month, day };
     updateSidePanel();
     renderColors();
-    if (rerenderDays !== false) renderDays();
+    if (rerenderDays !== false) {
+      renderDays();
+    } else {
+      syncSelectedDayClasses();
+    }
     if (focusSide) els.noteInput.focus();
   }
 

@@ -754,6 +754,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Clicar/digitar em um quadrado cria ou atualiza `calendario_day_notes`.
 - Escolher cor no painel lateral salva `color_id` do dia.
 - A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
+- A selecao visual do dia deve acompanhar clique/foco direto na caixa, e os botoes de mes usam entidades HTML para evitar caracteres quebrados.
 - O autosave de dia roda em transacao com lock por dia, registra revisao antes/depois em `calendario_day_note_revisions` e recusa sobrescrita quando o `updated_at` enviado pela tela esta antigo.
 - Criar/editar cor grava significado em `calendario_colors`.
 - Arquivar cor limpa o vinculo dos dias afetados somente depois de registrar revisoes desses dias.
