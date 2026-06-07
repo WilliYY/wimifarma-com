@@ -752,6 +752,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 
 - Clicar/digitar em um quadrado cria ou atualiza `calendario_day_notes`.
 - Escolher cor no painel lateral salva `color_id` do dia.
+- A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
 - Criar/editar cor grava significado em `calendario_colors`.
 - `Criar proximo calendario` cria novo ano com paleta copiada e sem notas/marcacoes.
 

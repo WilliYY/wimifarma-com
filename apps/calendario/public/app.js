@@ -120,6 +120,14 @@
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
+  function paintVars(element, hex, prefix) {
+    element.style.setProperty(`--${prefix}-color`, hex);
+    element.style.setProperty(`--${prefix}-wash`, rgba(hex, 0.26));
+    element.style.setProperty(`--${prefix}-wash-strong`, rgba(hex, 0.38));
+    element.style.setProperty(`--${prefix}-line`, rgba(hex, 0.78));
+    element.style.setProperty(`--${prefix}-glow`, rgba(hex, 0.2));
+  }
+
   function colorById(id) {
     return state.colors.find((color) => String(color.id) === String(id)) || null;
   }
@@ -177,18 +185,22 @@
       cell.className = 'cal-day-cell';
       if (selected) cell.classList.add('is-selected');
       if ((note.note_text || '').trim() !== '' || note.color_id) cell.classList.add('has-note');
+      if (color) {
+        cell.classList.add('has-color');
+        paintVars(cell, color.color_hex, 'day');
+      }
       cell.style.left = `${grid.left + position.col * colWidth}%`;
       cell.style.top = `${grid.top + position.visualRow * rowHeight + (position.half && position.bottom ? rowHeight / 2 : 0)}%`;
       cell.style.width = `${colWidth}%`;
       cell.style.height = `${position.half ? rowHeight / 2 : rowHeight}%`;
-      if (color) {
-        cell.style.background = rgba(color.color_hex, 0.28);
-        cell.style.borderColor = rgba(color.color_hex, 0.75);
-      }
 
       const input = document.createElement('textarea');
       input.className = 'cal-cell-input';
       input.value = note.note_text || '';
+      input.spellcheck = false;
+      input.autocomplete = 'off';
+      input.setAttribute('autocorrect', 'off');
+      input.setAttribute('autocapitalize', 'none');
       input.setAttribute('aria-label', `${position.day} de ${monthNames[month - 1]} de ${state.calendar.year}`);
       input.addEventListener('focus', () => selectDay(month, position.day, false, false));
       input.addEventListener('click', () => selectDay(month, position.day, false, false));
@@ -224,6 +236,7 @@
     clear.className = 'cal-color-choice cal-color-clear';
     clear.setAttribute('aria-label', 'Sem cor');
     clear.title = 'Sem cor';
+    if (!selectedNote || !selectedNote.color_id) clear.classList.add('is-active');
     clear.innerHTML = '<span class="cal-color-dot" style="background:#fff"></span>';
     clear.addEventListener('click', () => applySelectedColor(null));
     els.dayColors.appendChild(clear);
@@ -236,9 +249,9 @@
       if (selectedNote && String(selectedNote.color_id || '') === String(color.id)) button.classList.add('is-active');
       button.setAttribute('aria-label', `Aplicar cor ${color.label}`);
       button.title = color.label;
+      paintVars(button, color.color_hex, 'swatch');
       const dot = document.createElement('span');
       dot.className = 'cal-color-dot';
-      dot.style.background = color.color_hex;
       button.appendChild(dot);
       button.addEventListener('click', () => applySelectedColor(color.id));
       els.dayColors.appendChild(button);
@@ -250,10 +263,13 @@
     for (const color of state.colors) {
       const item = document.createElement('div');
       item.className = 'cal-palette-item';
+      item.title = color.label;
+      paintVars(item, color.color_hex, 'swatch');
 
       const colorInput = document.createElement('input');
       colorInput.type = 'color';
       colorInput.value = color.color_hex;
+      colorInput.setAttribute('aria-label', `Editar cor ${color.label}`);
 
       const labelInput = document.createElement('input');
       labelInput.type = 'text';
@@ -529,6 +545,11 @@
 
   els.prev.addEventListener('click', () => changeMonth(-1));
   els.next.addEventListener('click', () => changeMonth(1));
+
+  els.noteInput.spellcheck = false;
+  els.noteInput.autocomplete = 'off';
+  els.noteInput.setAttribute('autocorrect', 'off');
+  els.noteInput.setAttribute('autocapitalize', 'none');
 
   els.yearSelect.addEventListener('change', () => {
     state.selected = null;
