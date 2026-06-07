@@ -106,6 +106,49 @@ const MONTH_NAMES = [
   'Dezembro',
 ];
 
+const CALENDARIO_MIAUBY_CONTEXT = {
+  module_key: MODULE_KEY,
+  route: `${BASE_PATH}/`,
+  purpose: 'Calendario visual da farmacia para escala, plantoes, entregas, anotacoes e marcacoes operacionais por dia.',
+  source_of_truth: 'Postgres wimifarma_calendario; a arte mensal vem dos PNGs gerados do Calendario.pdf.',
+  visual_reference: [
+    'A imagem mensal e a referencia oficial de layout.',
+    'O ano 2026 e os numeros dos dias ja estao impressos no PNG; a camada web so alinha caixas editaveis.',
+    'Texto e cor devem parecer escritos dentro do quadrado do dia, preservando os riscos pretos da arte.',
+  ],
+  current_features: [
+    'autosave de texto e cor por dia',
+    'historico de revisoes antes/depois em calendario_day_note_revisions',
+    'paleta inferior de swatches nomeados',
+    'paleta por botao direito para pintar ou limpar a celula',
+    'tooltip no dia para ver texto completo na interface',
+    'arraste horizontal da arte para trocar de mes',
+    'criacao do proximo ano mantendo paleta e sem copiar anotacoes',
+  ],
+  privacy_rules: [
+    'Este resumo interno nao retorna texto completo das anotacoes.',
+    'O Miauby pode citar dia, mes, presenca de texto, cor e atualizacao recente.',
+    'Para ler, editar ou confirmar o conteudo completo, orientar a pessoa a abrir /calendario/.',
+    'Nao inventar plantao, entrega, responsavel ou texto de nota sem dado vindo da tela ou do usuario.',
+  ],
+  supported_user_intents: [
+    'abrir calendario',
+    'status do calendario',
+    'dias marcados no calendario',
+    'como pintar um dia',
+    'como escrever no dia',
+    'como trocar de mes',
+    'como criar proximo calendario',
+    'o calendario salva sozinho?',
+  ],
+  unsupported_user_intents: [
+    'editar anotacao pelo Miauby',
+    'apagar anotacao pelo Miauby',
+    'ler texto completo das notas pelo resumo interno',
+    'enviar aviso WhatsApp sobre nota sem automacao propria aprovada',
+  ],
+} as const;
+
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
   port: Number.parseInt(env.POSTGRES_PORT || '5432', 10),
@@ -739,29 +782,52 @@ app.get(`${BASE_PATH}/api/internal/summary`, requireInternalToken, async (req, r
     const payload = await loadCalendarPayload(req.query.year);
     const notes = (payload.notes as NoteRow[]).filter((note) => cleanText(note.note_text, 1000) !== '' || note.color_id);
     const colors = payload.colors as ColorRow[];
+    const colorLabelById = new Map(colors.map((color) => [String(color.id), color.label]));
+    const markedDaysByMonth = MONTH_NAMES
+      .map((monthName, index) => {
+        const month = index + 1;
+        return {
+          month,
+          month_name: monthName,
+          marked_days: notes.filter((note) => note.month === month).length,
+          days_with_text: notes.filter((note) => note.month === month && cleanText(note.note_text, 1000) !== '').length,
+          days_with_color: notes.filter((note) => note.month === month && note.color_id).length,
+        };
+      })
+      .filter((entry) => entry.marked_days > 0);
     res.json({
       ok: true,
       source: 'calendario_node_postgres',
       service: SERVICE_NAME,
       version: SERVICE_VERSION,
+      context: CALENDARIO_MIAUBY_CONTEXT,
       calendar: payload.calendar,
       totals: {
         years: (payload.calendars as CalendarRow[]).length,
         active_colors: colors.length,
         marked_days: notes.length,
+        days_with_text: notes.filter((note) => cleanText(note.note_text, 1000) !== '').length,
+        days_with_color: notes.filter((note) => note.color_id).length,
       },
       active_colors: colors.map((color) => ({ id: color.id, color_hex: color.color_hex, label: color.label })),
+      marked_days_by_month: markedDaysByMonth,
       recent_updates: notes
         .slice()
         .sort((left, right) => String(right.updated_at || '').localeCompare(String(left.updated_at || '')))
         .slice(0, 8)
         .map((note) => ({
           month: note.month,
+          month_name: MONTH_NAMES[note.month - 1] || String(note.month),
           day: note.day,
           has_text: cleanText(note.note_text, 1000) !== '',
           color_id: note.color_id,
+          color_label: note.color_id ? colorLabelById.get(String(note.color_id)) || null : null,
           updated_at: note.updated_at,
         })),
+      safe_response_guidance: {
+        can_answer: ['status do modulo', 'quantidade de dias marcados', 'meses com marcacao', 'cores ativas', 'datas atualizadas recentemente sem texto completo'],
+        must_redirect_to_ui: ['ler texto completo', 'editar texto', 'pintar celula', 'confirmar conteudo exato de anotacao'],
+      },
     });
   } catch (error) {
     next(error);

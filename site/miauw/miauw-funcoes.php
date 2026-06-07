@@ -344,6 +344,22 @@ if (!defined('COTACAO_INTERNAL_BASE_URL')) {
     define('COTACAO_INTERNAL_BASE_URL', $cotacaoInternalBaseUrl !== '' ? $cotacaoInternalBaseUrl : 'http://wimifarma-cotacao-app:3000/cotacao');
 }
 
+if (!defined('CALENDARIO_INTERNAL_TOKEN')) {
+    $calendarioInternalToken = miauw_env_string(array('CALENDARIO_INTERNAL_TOKEN'));
+    if ($calendarioInternalToken === '' && defined('MIAUW_GUARDIAN_TOKEN')) {
+        $calendarioInternalToken = trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+    if ($calendarioInternalToken === '' && defined('MIAUW_AGENT_INTERNAL_TOKEN')) {
+        $calendarioInternalToken = trim((string) MIAUW_AGENT_INTERNAL_TOKEN);
+    }
+    define('CALENDARIO_INTERNAL_TOKEN', $calendarioInternalToken);
+}
+
+if (!defined('CALENDARIO_INTERNAL_BASE_URL')) {
+    $calendarioInternalBaseUrl = miauw_env_string(array('CALENDARIO_INTERNAL_BASE_URL'));
+    define('CALENDARIO_INTERNAL_BASE_URL', $calendarioInternalBaseUrl !== '' ? $calendarioInternalBaseUrl : 'http://wimifarma-calendario-app:4105/calendario');
+}
+
 function miauw_schema_statements(): array
 {
     return array(
@@ -829,6 +845,7 @@ function miauw_agent_node_read_tool_names(): array
         'resumo_cashback',
         'resumo_codigos',
         'resumo_gestao',
+        'resumo_calendario',
         'buscar_codigo_comissao',
         'buscar_cotacao',
     );
@@ -2527,6 +2544,20 @@ function miauw_agent_text_command_catalog(): array
             'response_examples' => array('Achei na Cotacao: confira fornecedor/preco no modulo.'),
             'rules' => array('consulta nao inventa preco ou fornecedor sem dado do backend'),
             'keywords' => array('cotacao', 'cotar', 'preco', 'ean', 'urgente', 'encomenda'),
+        ),
+        array(
+            'intent' => 'consultar_calendario',
+            'module' => 'calendario',
+            'tool' => 'resumo_calendario',
+            'risk' => 'baixo',
+            'required_fields' => array(),
+            'optional_fields' => array('mes', 'ano', 'dia', 'cor'),
+            'internal_examples' => array('calendario', 'status do calendario', 'tem plantao no calendario?', 'dias marcados no calendario', 'como pintar um dia no calendario'),
+            'whatsapp_examples' => array('miauby calendario', 'miauby status do calendario', 'miauby dias marcados no calendario'),
+            'missing_data_replies' => array('Abra /calendario/ para ler ou editar o texto completo das anotacoes.'),
+            'response_examples' => array('CALENDARIO 2026: 4 dias marcados. Texto completo fica em /calendario/.'),
+            'rules' => array('consulta usa apenas resumo interno tokenizado', 'nao retornar texto completo das anotacoes', 'nao criar, apagar ou pintar dia pelo Miauby', 'orientar a abrir /calendario/ para ler ou editar conteudo'),
+            'keywords' => array('calendario', 'agenda', 'plantao', 'plantoes', 'escala', 'anotacao', 'dia marcado'),
         ),
         array(
             'intent' => 'fechamento_caixa',
@@ -7426,6 +7457,19 @@ function miauw_openai_tools(): array
         ),
         array(
             'type' => 'function',
+            'name' => 'resumo_calendario',
+            'description' => 'Consulta resumo seguro do Calendario: anos, cores, dias marcados, meses com marcacao e atualizacoes recentes, sem retornar texto completo das anotacoes.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'mes' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 12),
+                    'ano' => array('type' => 'integer', 'minimum' => 2020, 'maximum' => 2035),
+                ),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
             'name' => 'buscar_cliente',
             'description' => 'Busca cliente por nome ou telefone parcial no cashback, sem expor telefone completo.',
             'parameters' => array(
@@ -7850,6 +7894,13 @@ function miauw_openai_tool_result(string $name, array $args): string
             ? miauw_skill_period_from_message(sprintf('%02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))))
             : array('mes' => (int) ($args['mes'] ?? date('n')), 'ano' => (int) ($args['ano'] ?? date('Y')));
         return implode("\n", miauw_skill_gestao_summary($period));
+    }
+
+    if ($name === 'resumo_calendario') {
+        $period = function_exists('miauw_skill_period_from_message')
+            ? miauw_skill_period_from_message(sprintf('%02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))))
+            : array('month' => (int) ($args['mes'] ?? date('n')), 'year' => (int) ($args['ano'] ?? date('Y')), 'label' => sprintf('%02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))));
+        return implode("\n", miauw_skill_calendario_summary($period));
     }
 
     if ($name === 'buscar_cliente') {

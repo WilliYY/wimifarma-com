@@ -442,6 +442,46 @@ const textCommandContracts: TextCommandContract[] = [
     keywords: ['cotacao', 'cotar', 'preco', 'ean', 'urgente', 'encomenda'],
   },
   {
+    intent: 'consultar_calendario',
+    title: 'Consultar calendario',
+    module: 'calendario',
+    tool: 'resumo_calendario',
+    risk: 'baixo',
+    origins: ['miauby_interno', 'miauby_whatsapp'],
+    internal_requires_prefix: false,
+    whatsapp_requires_prefix: true,
+    internal_supports_media: false,
+    whatsapp_supports_media: false,
+    required_fields: [],
+    optional_fields: ['mes', 'ano', 'dia', 'cor'],
+    internal_examples: [
+      'calendario',
+      'status do calendario',
+      'dias marcados no calendario',
+      'tem plantao no calendario?',
+      'como pintar um dia no calendario',
+    ],
+    whatsapp_examples: [
+      'miauby calendario',
+      'miauby status do calendario',
+      'miauby dias marcados no calendario',
+    ],
+    missing_data_replies: ['Abra /calendario/ para ler ou editar o texto completo das anotacoes.'],
+    ambiguity_rules: [
+      'consulta usa apenas resumo interno tokenizado',
+      'nao retornar texto completo das anotacoes',
+      'nao criar, apagar ou pintar dia pelo Miauby',
+      'orientar a abrir /calendario/ para ler ou editar conteudo',
+    ],
+    response_examples: ['CALENDARIO 2026: 4 dias marcados. Texto completo fica em /calendario/.'],
+    notes: [
+      'o endpoint interno informa presenca de texto, cor, mes/dia e atualizacao recente',
+      'a imagem mensal do PDF e a referencia visual oficial',
+      'Miauby nao deve inventar plantao, entrega, responsavel ou texto de nota',
+    ],
+    keywords: ['calendario', 'agenda', 'plantao', 'plantoes', 'escala', 'anotacao', 'dia marcado'],
+  },
+  {
     intent: 'fechamento_caixa',
     title: 'Fechamento de caixa',
     module: 'financeiro',
@@ -527,7 +567,7 @@ export function buildTextCommandContracts(options: { message?: string; origin?: 
   const fallback = selected.length > 0 ? selected : scored.slice(0, limit);
 
   return {
-    version: 'miauby-text-command-contracts-2026-06-03-pedidos',
+    version: 'miauby-text-command-contracts-2026-06-07-calendario',
     source: 'apps/miauby/src/text-command-contracts.ts',
     mode: 'text_only_shared_training',
     origin,
