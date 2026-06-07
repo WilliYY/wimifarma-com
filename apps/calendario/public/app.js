@@ -69,7 +69,9 @@
     return fetch(`${basePath}${path}`, Object.assign({}, options, { headers })).then(async (response) => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.ok === false) {
-        throw new Error(data.error || 'Falha ao comunicar com o Calendario.');
+        const error = new Error(data.error || 'Falha ao comunicar com o Calendario.');
+        error.payload = data;
+        throw error;
       }
       return data;
     });
@@ -372,12 +374,17 @@
           day,
           note_text: note.note_text || '',
           color_id: note.color_id || null,
+          client_updated_at: note.updated_at || null,
         }),
       });
       setNote(data.note);
       state.dirty = false;
       setSaveState('ok', 'Sincronizado');
     } catch (error) {
+      if (error.payload && error.payload.conflict) {
+        setSaveState('error', error.message || 'Este dia mudou em outra janela. Recarregue antes de sobrescrever.');
+        return;
+      }
       setSaveState('error', error.message || 'Falha ao salvar');
     } finally {
       state.saving = false;

@@ -745,6 +745,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - `calendario_calendars`;
 - `calendario_colors`;
 - `calendario_day_notes`;
+- `calendario_day_note_revisions`;
 - `calendario_audit_events`;
 - `calendario_sessions`.
 
@@ -753,7 +754,9 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Clicar/digitar em um quadrado cria ou atualiza `calendario_day_notes`.
 - Escolher cor no painel lateral salva `color_id` do dia.
 - A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
+- O autosave de dia roda em transacao com lock por dia, registra revisao antes/depois em `calendario_day_note_revisions` e recusa sobrescrita quando o `updated_at` enviado pela tela esta antigo.
 - Criar/editar cor grava significado em `calendario_colors`.
+- Arquivar cor limpa o vinculo dos dias afetados somente depois de registrar revisoes desses dias.
 - `Criar proximo calendario` cria novo ano com paleta copiada e sem notas/marcacoes.
 
 ### Integracoes
@@ -766,6 +769,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 ### Riscos
 
 - As anotacoes nao fazem parte da imagem do PDF; perda do volume `calendario-data/` remove o conteudo editavel.
+- Revisoes reduzem perda por erro humano/aba antiga, mas nao substituem backup do volume Postgres.
 - Meses de seis semanas podem dividir o ultimo quadrado visual em duas datas; a UI separa os overlays para nao misturar notas.
 - O endpoint interno do Miauby deve continuar sanitizado para nao vazar notas completas.
 

@@ -195,10 +195,11 @@ Criadas por `apps/calendario/src/server.ts`:
 - `calendario_calendars`: anos disponiveis, ano do template visual e usuario criador.
 - `calendario_colors`: paleta por calendario, com cor, significado, ordem e arquivamento logico.
 - `calendario_day_notes`: anotacao e cor por ano/mes/dia, com autosave e `UNIQUE(calendar_id, month, day)`.
+- `calendario_day_note_revisions`: historico antes/depois de texto e cor dos dias, gravado em autosave e arquivamento de cor para recuperar alteracoes indevidas.
 - `calendario_audit_events`: auditoria curta de acesso bloqueado, dia salvo, cor criada/editada/arquivada e novo ano criado.
 - `calendario_sessions`: sessoes web do app Node (`WFCALENDARIO`).
 
-A fonte oficial e o Postgres `wimifarma_calendario`. As imagens mensais geradas do PDF ficam versionadas em `apps/calendario/public/months`; o conteudo editavel nao fica na imagem e salva somente nessas tabelas.
+A fonte oficial e o Postgres `wimifarma_calendario`. As imagens mensais geradas do PDF ficam versionadas em `apps/calendario/public/months`; o conteudo editavel nao fica na imagem e salva somente nessas tabelas. O autosave usa transacao e lock por dia para evitar concorrencia cega, e uma aba desatualizada recebe conflito em vez de sobrescrever silenciosamente uma anotacao mais nova.
 
 ## Tabelas do Financeiro em Postgres
 
