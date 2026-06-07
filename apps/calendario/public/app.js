@@ -42,6 +42,8 @@
     monthAnimating: false,
     monthAnimationTimer: null,
     contextMenuDay: null,
+    hoverTimer: null,
+    hoverDay: null,
   };
 
   const els = {
@@ -61,6 +63,7 @@
     paletteList: document.getElementById('palette-list'),
     colorForm: document.getElementById('color-form'),
     contextMenu: document.getElementById('day-context-menu'),
+    hoverNote: document.getElementById('day-hover-note'),
   };
 
   function key(month, day) {
@@ -101,6 +104,22 @@
 
   function setNote(note) {
     state.notes.set(key(note.month, note.day), note);
+  }
+
+  function dayLabel(month, day) {
+    const year = state.calendar ? state.calendar.year : '';
+    return `${day} de ${monthNames[month - 1]}${year ? ` de ${year}` : ''}`;
+  }
+
+  function fullNoteText(month, day) {
+    return String(noteFor(month, day).note_text || '');
+  }
+
+  function updateDayHoverTitle(cell, input, month, day) {
+    const label = dayLabel(month, day);
+    const text = fullNoteText(month, day).trim() ? fullNoteText(month, day) : label;
+    cell.title = text;
+    input.title = text;
   }
 
   function setSyncStateAfterSave() {
@@ -223,7 +242,10 @@
       input.autocomplete = 'off';
       input.setAttribute('autocorrect', 'off');
       input.setAttribute('autocapitalize', 'none');
-      input.setAttribute('aria-label', `${position.day} de ${monthNames[month - 1]} de ${state.calendar.year}`);
+      input.setAttribute('aria-label', dayLabel(month, position.day));
+      updateDayHoverTitle(cell, input, month, position.day);
+      cell.addEventListener('mouseenter', () => scheduleDayHoverNote(month, position.day, cell));
+      cell.addEventListener('mouseleave', hideDayHoverNote);
       const openColorMenu = (event) => openDayContextMenu(event, month, position.day, cell);
       cell.addEventListener('contextmenu', openColorMenu);
       input.addEventListener('contextmenu', openColorMenu);
@@ -232,12 +254,17 @@
           openDayContextMenu(event, month, position.day, cell);
         }
       });
+      input.addEventListener('focus', hideDayHoverNote);
       input.addEventListener('focus', () => selectDay(month, position.day, false, false));
       input.addEventListener('click', () => selectDay(month, position.day, false, false));
       input.addEventListener('input', () => {
         const current = noteFor(month, position.day);
         current.note_text = input.value;
         setNote(current);
+        updateDayHoverTitle(cell, input, month, position.day);
+        if (state.hoverDay && state.hoverDay.month === month && state.hoverDay.day === position.day && !els.hoverNote.hidden) {
+          els.hoverNote.textContent = input.value;
+        }
         if (state.selected && state.selected.month === month && state.selected.day === position.day) {
           els.noteInput.value = input.value;
           updatePreview();
@@ -253,6 +280,7 @@
   function renderMonth() {
     if (!state.calendar) return;
     closeDayContextMenu();
+    hideDayHoverNote();
     els.monthLabel.textContent = `${monthNames[state.month - 1]} ${state.calendar.year}`;
     els.monthImage.src = `${basePath}/months/month-${String(state.month).padStart(2, '0')}.png`;
     els.monthImage.alt = `Imagem base de ${monthNames[state.month - 1]} com ano e numeros dos dias impressos`;
@@ -580,6 +608,46 @@
     animateMonthChange(delta);
   }
 
+  function positionDayHoverNote(anchor) {
+    const margin = 10;
+    const anchorRect = anchor.getBoundingClientRect();
+    const tooltipRect = els.hoverNote.getBoundingClientRect();
+    const preferredLeft = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
+    const left = Math.max(margin, Math.min(preferredLeft, window.innerWidth - tooltipRect.width - margin));
+    let top = anchorRect.top - tooltipRect.height - 10;
+    if (top < margin) {
+      top = anchorRect.bottom + 10;
+    }
+    top = Math.max(margin, Math.min(top, window.innerHeight - tooltipRect.height - margin));
+    els.hoverNote.style.left = `${left}px`;
+    els.hoverNote.style.top = `${top}px`;
+  }
+
+  function showDayHoverNote(month, day, anchor) {
+    if (state.monthAnimating || state.dragging) return;
+    const text = fullNoteText(month, day).trim();
+    if (!text) return;
+    state.hoverDay = { month, day };
+    els.hoverNote.textContent = fullNoteText(month, day);
+    els.hoverNote.hidden = false;
+    els.hoverNote.classList.add('is-open');
+    positionDayHoverNote(anchor);
+  }
+
+  function scheduleDayHoverNote(month, day, anchor) {
+    window.clearTimeout(state.hoverTimer);
+    state.hoverTimer = window.setTimeout(() => showDayHoverNote(month, day, anchor), 520);
+  }
+
+  function hideDayHoverNote() {
+    window.clearTimeout(state.hoverTimer);
+    state.hoverTimer = null;
+    state.hoverDay = null;
+    if (!els.hoverNote || els.hoverNote.hidden) return;
+    els.hoverNote.classList.remove('is-open');
+    els.hoverNote.hidden = true;
+  }
+
   function renderDayContextMenu(month, day) {
     const note = noteFor(month, day);
     els.contextMenu.innerHTML = '';
@@ -642,6 +710,7 @@
     if (state.monthAnimating) return;
     event.preventDefault();
     event.stopPropagation();
+    hideDayHoverNote();
     selectDay(month, day, false, false);
     state.contextMenuDay = { month, day };
     renderDayContextMenu(month, day);
@@ -693,6 +762,7 @@
   function beginStageDrag(event) {
     if (state.monthAnimating) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    hideDayHoverNote();
     state.pointerStartX = event.clientX;
     state.pointerStartY = event.clientY;
     state.dragPending = true;
@@ -844,10 +914,23 @@
     }
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeDayContextMenu();
+    if (event.key === 'Escape') {
+      closeDayContextMenu();
+      hideDayHoverNote();
+    }
   });
-  window.addEventListener('resize', closeDayContextMenu);
-  document.addEventListener('scroll', closeDayContextMenu, true);
+  window.addEventListener('resize', () => {
+    closeDayContextMenu();
+    hideDayHoverNote();
+  });
+  document.addEventListener(
+    'scroll',
+    () => {
+      closeDayContextMenu();
+      hideDayHoverNote();
+    },
+    true
+  );
 
   els.stage.addEventListener('pointerdown', beginStageDrag);
   els.stage.addEventListener('pointermove', moveStageDrag);

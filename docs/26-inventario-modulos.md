@@ -755,6 +755,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Escolher cor no painel lateral salva `color_id` do dia.
 - Clicar com o botao direito em um quadrado abre uma paleta flutuante para pintar ou limpar `color_id`, reutilizando o mesmo autosave de `/calendario/api/day`.
 - Textos longos sem espaco devem quebrar linha no painel lateral e no resumo, sem rolagem horizontal.
+- Ao deixar o mouse parado sobre um quadrado com anotacao, um tooltip visual mostra o texto completo; o `title` nativo fica como fallback.
 - A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
 - A selecao visual do dia deve acompanhar clique/foco direto na caixa, e os botoes de mes usam entidades HTML para evitar caracteres quebrados.
 - O arraste horizontal desloca imagem e camada editavel juntas; ao cruzar o limiar, a troca de mes usa animacao lateral de saida/entrada e respeita `prefers-reduced-motion`.
