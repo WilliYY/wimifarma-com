@@ -1310,6 +1310,7 @@ async function logAction(req: Request, action: string, entityType: string | null
 function htmlShell(req: Request, title: string, body: string, options: { login?: boolean; maintenance?: boolean } = {}): string {
   const flash = takeFlash(req);
   const user = req.session.user;
+  const pageClass = title === 'WhatsApp' ? ' whatsapp-page' : '';
   if (options.login || options.maintenance) {
     return `<!doctype html>
 <html lang="pt-BR">
@@ -1377,7 +1378,7 @@ ${body}
     <a href="/">Home</a>
   </nav>
 </header>
-<main class="container">
+<main class="container${pageClass}">
   <div class="page-heading">
     <div><span class="kicker">Operacao real</span><h1>${e(title)}</h1></div>
     <div class="user-pill">Usuario: ${e(user?.username || '')}</div>
