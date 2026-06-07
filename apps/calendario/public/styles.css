@@ -255,6 +255,8 @@ button {
 .cal-image-stage {
   --drag-x: 0px;
   --drag-y: 0px;
+  --swipe-out-x: 0px;
+  --swipe-enter-x: 0px;
   position: relative;
   overflow: hidden;
   width: 100%;
@@ -292,8 +294,19 @@ button {
   transform: scale(0.998);
 }
 
+.cal-image-stage.is-month-exiting,
+.cal-image-stage.is-month-entering {
+  border-color: rgba(168, 15, 67, 0.42);
+  box-shadow: 0 18px 40px rgba(94, 28, 53, 0.14);
+}
+
 .cal-image-stage.is-dragging::after {
   opacity: 1;
+}
+
+.cal-image-stage.is-month-exiting::after,
+.cal-image-stage.is-month-entering::after {
+  opacity: 0.58;
 }
 
 .cal-image-stage.is-dragging * {
@@ -306,8 +319,11 @@ button {
   user-select: none;
   pointer-events: none;
   transform: translate3d(var(--drag-x), var(--drag-y), 0);
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  opacity: 1;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease;
+  will-change: transform, opacity;
 }
 
 .cal-day-layer {
@@ -317,13 +333,41 @@ button {
   --cal-day-edge-x: clamp(7px, 0.72vw, 14px);
   --cal-day-edge-y: clamp(7px, 0.64vw, 12px);
   transform: translate3d(var(--drag-x), var(--drag-y), 0);
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  opacity: 1;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease;
+  will-change: transform, opacity;
 }
 
 .cal-image-stage.is-dragging img,
 .cal-image-stage.is-dragging .cal-day-layer {
   transition: none;
+}
+
+.cal-image-stage.is-month-exiting img,
+.cal-image-stage.is-month-exiting .cal-day-layer {
+  opacity: 0.28;
+  transform: translate3d(var(--swipe-out-x), 0, 0) scale(0.985);
+  transition:
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.18s ease;
+}
+
+.cal-image-stage.is-month-entering img,
+.cal-image-stage.is-month-entering .cal-day-layer {
+  opacity: 0.18;
+  transform: translate3d(var(--swipe-enter-x), 0, 0) scale(0.988);
+  transition: none;
+}
+
+.cal-image-stage.is-month-entering.is-month-entered img,
+.cal-image-stage.is-month-entering.is-month-entered .cal-day-layer {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.24s ease;
 }
 
 .cal-image-stage.is-settling img,
@@ -821,6 +865,6 @@ button {
   .cal-color-choice,
   .cal-palette-item,
   .cal-palette-archive {
-    transition: none;
+    transition: none !important;
   }
 }

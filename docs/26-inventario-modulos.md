@@ -755,6 +755,7 @@ Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e re
 - Escolher cor no painel lateral salva `color_id` do dia.
 - A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
 - A selecao visual do dia deve acompanhar clique/foco direto na caixa, e os botoes de mes usam entidades HTML para evitar caracteres quebrados.
+- O arraste horizontal desloca imagem e camada editavel juntas; ao cruzar o limiar, a troca de mes usa animacao lateral de saida/entrada e respeita `prefers-reduced-motion`.
 - O autosave de dia usa timer independente por dia no frontend, roda em transacao com lock por dia, registra revisao antes/depois em `calendario_day_note_revisions` e recusa sobrescrita quando o `updated_at` enviado pela tela esta antigo.
 - Ao trocar de ano ou criar o proximo calendario, a tela tenta salvar pendencias antes de carregar outro calendario.
 - Criar/editar cor grava significado em `calendario_colors`.

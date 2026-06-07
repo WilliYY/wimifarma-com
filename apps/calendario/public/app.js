@@ -39,6 +39,8 @@
     dragStartTarget: null,
     dragSettleTimer: null,
     suppressNextClick: false,
+    monthAnimating: false,
+    monthAnimationTimer: null,
   };
 
   const els = {
@@ -502,7 +504,11 @@
     }
   }
 
-  function changeMonth(delta) {
+  function prefersReducedMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function applyMonthChange(delta) {
     let next = state.month + delta;
     if (next < 1) next = 12;
     if (next > 12) next = 1;
@@ -510,6 +516,47 @@
     state.selected = null;
     renderMonth();
     renderColors();
+  }
+
+  function finishMonthAnimation() {
+    window.clearTimeout(state.monthAnimationTimer);
+    els.stage.classList.remove('is-month-exiting', 'is-month-entering', 'is-month-entered');
+    els.stage.style.setProperty('--swipe-out-x', '0px');
+    els.stage.style.setProperty('--swipe-enter-x', '0px');
+    state.monthAnimating = false;
+  }
+
+  function animateMonthChange(delta) {
+    if (state.monthAnimating) return;
+    if (prefersReducedMotion()) {
+      applyMonthChange(delta);
+      return;
+    }
+
+    state.monthAnimating = true;
+    window.clearTimeout(state.monthAnimationTimer);
+    const distance = Math.max(150, Math.min(280, els.stage.clientWidth * 0.26));
+    const outX = delta > 0 ? -distance : distance;
+    const enterX = -outX;
+    els.stage.style.setProperty('--swipe-out-x', `${outX}px`);
+    els.stage.style.setProperty('--swipe-enter-x', `${enterX}px`);
+    els.stage.classList.remove('is-settling', 'is-month-entering', 'is-month-entered');
+    els.stage.classList.add('is-month-exiting');
+
+    state.monthAnimationTimer = window.setTimeout(() => {
+      applyMonthChange(delta);
+      setStageDragOffset(0, 0);
+      els.stage.classList.remove('is-month-exiting');
+      els.stage.classList.add('is-month-entering');
+      window.requestAnimationFrame(() => {
+        els.stage.classList.add('is-month-entered');
+      });
+      state.monthAnimationTimer = window.setTimeout(finishMonthAnimation, 360);
+    }, 210);
+  }
+
+  function changeMonth(delta) {
+    animateMonthChange(delta);
   }
 
   function setStageDragOffset(x, y) {
@@ -527,15 +574,22 @@
     }, 190);
   }
 
-  function resetStageDrag() {
+  function resetStageDrag(shouldSettle) {
     state.dragPending = false;
     state.dragging = false;
     state.dragPointerId = null;
     state.dragStartTarget = null;
+    if (shouldSettle === false) {
+      window.clearTimeout(state.dragSettleTimer);
+      els.stage.classList.remove('is-drag-ready', 'is-dragging', 'is-settling');
+      setStageDragOffset(0, 0);
+      return;
+    }
     settleStageDrag();
   }
 
   function beginStageDrag(event) {
+    if (state.monthAnimating) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     state.pointerStartX = event.clientX;
     state.pointerStartY = event.clientY;
@@ -555,6 +609,7 @@
   }
 
   function moveStageDrag(event) {
+    if (state.monthAnimating) return;
     if (!state.dragPending || state.dragPointerId !== event.pointerId) return;
     const dx = event.clientX - state.pointerStartX;
     const dy = event.clientY - state.pointerStartY;
@@ -573,7 +628,8 @@
     }
 
     event.preventDefault();
-    const easedX = Math.max(-118, Math.min(118, dx * 0.42));
+    const dragLimitX = Math.max(118, Math.min(190, els.stage.clientWidth * 0.16));
+    const easedX = Math.max(-dragLimitX, Math.min(dragLimitX, dx * 0.52));
     const easedY = Math.max(-18, Math.min(18, dy * 0.12));
     setStageDragOffset(easedX, easedY);
   }
@@ -582,7 +638,8 @@
     if (!state.dragPending || state.dragPointerId !== event.pointerId) return;
     const dx = event.clientX - state.pointerStartX;
     const dy = event.clientY - state.pointerStartY;
-    const changedMonth = state.dragging && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.35;
+    const monthThreshold = Math.max(70, Math.min(120, els.stage.clientWidth * 0.08));
+    const changedMonth = state.dragging && Math.abs(dx) > monthThreshold && Math.abs(dx) > Math.abs(dy) * 1.35;
     if (state.dragging) {
       event.preventDefault();
       state.suppressNextClick = true;
@@ -595,7 +652,7 @@
     } catch (error) {
       // It is harmless if the browser already released the pointer.
     }
-    resetStageDrag();
+    resetStageDrag(!changedMonth);
     if (changedMonth) changeMonth(dx < 0 ? 1 : -1);
   }
 
