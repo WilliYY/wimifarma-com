@@ -26,7 +26,9 @@
     notes: new Map(),
     month: Number(boot.currentMonth || 1),
     selected: null,
-    saveTimer: null,
+    saveTimers: new Map(),
+    dirtyDays: new Set(),
+    savingCount: 0,
     dirty: false,
     saving: false,
     pointerStartX: 0,
@@ -95,6 +97,18 @@
 
   function setNote(note) {
     state.notes.set(key(note.month, note.day), note);
+  }
+
+  function setSyncStateAfterSave() {
+    state.dirty = state.dirtyDays.size > 0;
+    state.saving = state.savingCount > 0;
+    if (state.saving) {
+      setSaveState('saving', 'Salvando...');
+    } else if (state.dirty) {
+      setSaveState('dirty', 'Alteracoes nao salvas');
+    } else {
+      setSaveState('ok', 'Sincronizado');
+    }
   }
 
   // The PNG artwork already prints the year and day numbers; these hitboxes follow that visual grid.
@@ -362,10 +376,13 @@
   }
 
   function scheduleSave(month, day) {
+    const saveKey = key(month, day);
     state.dirty = true;
+    state.dirtyDays.add(saveKey);
     setSaveState('dirty', 'Alteracoes nao salvas');
-    clearTimeout(state.saveTimer);
-    state.saveTimer = setTimeout(() => saveDay(month, day), 650);
+    const existingTimer = state.saveTimers.get(saveKey);
+    if (existingTimer) clearTimeout(existingTimer);
+    state.saveTimers.set(saveKey, setTimeout(() => saveDay(month, day), 650));
   }
 
   async function saveSelectedDay() {
@@ -374,11 +391,19 @@
   }
 
   async function saveDay(month, day) {
-    if (!state.calendar) return;
-    clearTimeout(state.saveTimer);
+    if (!state.calendar) return false;
+    const saveKey = key(month, day);
+    const existingTimer = state.saveTimers.get(saveKey);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      state.saveTimers.delete(saveKey);
+    }
     const note = noteFor(month, day);
+    state.savingCount += 1;
     state.saving = true;
     setSaveState('saving', 'Salvando...');
+    let failed = false;
+    let failureMessage = '';
     try {
       const data = await api('/api/day', {
         method: 'POST',
@@ -394,16 +419,39 @@
         }),
       });
       setNote(data.note);
-      state.dirty = false;
-      setSaveState('ok', 'Sincronizado');
+      state.dirtyDays.delete(saveKey);
     } catch (error) {
+      failed = true;
+      state.dirtyDays.add(saveKey);
       if (error.payload && error.payload.conflict) {
-        setSaveState('error', error.message || 'Este dia mudou em outra janela. Recarregue antes de sobrescrever.');
-        return;
+        failureMessage = error.message || 'Este dia mudou em outra janela. Recarregue antes de sobrescrever.';
+      } else {
+        failureMessage = error.message || 'Falha ao salvar';
       }
-      setSaveState('error', error.message || 'Falha ao salvar');
     } finally {
-      state.saving = false;
+      state.savingCount = Math.max(0, state.savingCount - 1);
+      if (failed) {
+        state.dirty = true;
+        state.saving = state.savingCount > 0;
+        setSaveState('error', failureMessage);
+      } else {
+        setSyncStateAfterSave();
+      }
+    }
+    return !failed;
+  }
+
+  async function flushPendingDaySaves() {
+    const pending = Array.from(state.dirtyDays);
+    if (pending.length === 0) return;
+    const results = await Promise.all(
+      pending.map((saveKey) => {
+        const parts = saveKey.split(':');
+        return saveDay(Number(parts[0]), Number(parts[1]));
+      })
+    );
+    if (results.some((saved) => saved === false)) {
+      throw new Error('Existem anotacoes pendentes que ainda nao foram salvas.');
     }
   }
 
@@ -574,9 +622,14 @@
   els.noteInput.setAttribute('autocorrect', 'off');
   els.noteInput.setAttribute('autocapitalize', 'none');
 
-  els.yearSelect.addEventListener('change', () => {
+  els.yearSelect.addEventListener('change', async () => {
     state.selected = null;
-    loadState(els.yearSelect.value, true).catch((error) => setSaveState('error', error.message));
+    try {
+      await flushPendingDaySaves();
+      await loadState(els.yearSelect.value, true);
+    } catch (error) {
+      setSaveState('error', error.message || 'Falha ao trocar calendario');
+    }
   });
 
   els.noteInput.addEventListener('input', () => {
@@ -602,6 +655,8 @@
   els.createNextYear.addEventListener('click', async () => {
     setSaveState('saving', 'Criando calendario...');
     try {
+      await flushPendingDaySaves();
+      setSaveState('saving', 'Criando calendario...');
       const data = await api('/api/create-next-year', {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrfToken },
