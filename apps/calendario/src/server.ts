@@ -683,6 +683,8 @@ function pageHtml(req: Request, user: User): string {
       </aside>
     </section>
 
+    <div class="cal-context-menu" id="day-context-menu" role="menu" aria-label="Pintar dia" hidden></div>
+
     <section class="cal-palette-panel" aria-label="Paleta de cores">
       <div class="cal-section-head">
         <div>

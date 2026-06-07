@@ -41,6 +41,7 @@
     suppressNextClick: false,
     monthAnimating: false,
     monthAnimationTimer: null,
+    contextMenuDay: null,
   };
 
   const els = {
@@ -59,6 +60,7 @@
     dayColors: document.getElementById('day-colors'),
     paletteList: document.getElementById('palette-list'),
     colorForm: document.getElementById('color-form'),
+    contextMenu: document.getElementById('day-context-menu'),
   };
 
   function key(month, day) {
@@ -222,6 +224,14 @@
       input.setAttribute('autocorrect', 'off');
       input.setAttribute('autocapitalize', 'none');
       input.setAttribute('aria-label', `${position.day} de ${monthNames[month - 1]} de ${state.calendar.year}`);
+      const openColorMenu = (event) => openDayContextMenu(event, month, position.day, cell);
+      cell.addEventListener('contextmenu', openColorMenu);
+      input.addEventListener('contextmenu', openColorMenu);
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+          openDayContextMenu(event, month, position.day, cell);
+        }
+      });
       input.addEventListener('focus', () => selectDay(month, position.day, false, false));
       input.addEventListener('click', () => selectDay(month, position.day, false, false));
       input.addEventListener('input', () => {
@@ -242,6 +252,7 @@
 
   function renderMonth() {
     if (!state.calendar) return;
+    closeDayContextMenu();
     els.monthLabel.textContent = `${monthNames[state.month - 1]} ${state.calendar.year}`;
     els.monthImage.src = `${basePath}/months/month-${String(state.month).padStart(2, '0')}.png`;
     els.monthImage.alt = `Imagem base de ${monthNames[state.month - 1]} com ano e numeros dos dias impressos`;
@@ -369,12 +380,21 @@
 
   function applySelectedColor(colorId) {
     if (!state.selected) return;
-    const note = noteFor(state.selected.month, state.selected.day);
+    applyDayColor(state.selected.month, state.selected.day, colorId);
+  }
+
+  function applyDayColor(month, day, colorId) {
+    const note = noteFor(month, day);
     note.color_id = colorId;
     setNote(note);
-    saveDay(state.selected.month, state.selected.day);
+    saveDay(month, day);
+    if (!state.selected || state.selected.month !== month || state.selected.day !== day) {
+      state.selected = { month, day };
+      updateSidePanel();
+    }
     renderColors();
     renderDays();
+    closeDayContextMenu();
   }
 
   function scheduleSave(month, day) {
@@ -528,6 +548,7 @@
 
   function animateMonthChange(delta) {
     if (state.monthAnimating) return;
+    closeDayContextMenu();
     if (prefersReducedMotion()) {
       applyMonthChange(delta);
       return;
@@ -557,6 +578,87 @@
 
   function changeMonth(delta) {
     animateMonthChange(delta);
+  }
+
+  function renderDayContextMenu(month, day) {
+    const note = noteFor(month, day);
+    els.contextMenu.innerHTML = '';
+
+    const head = document.createElement('div');
+    head.className = 'cal-context-head';
+    const label = document.createElement('span');
+    label.textContent = 'Pintar';
+    const dayLabel = document.createElement('strong');
+    dayLabel.textContent = String(day);
+    head.appendChild(label);
+    head.appendChild(dayLabel);
+
+    const grid = document.createElement('div');
+    grid.className = 'cal-context-grid';
+
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'cal-color-choice cal-color-clear';
+    clear.setAttribute('role', 'menuitemradio');
+    clear.setAttribute('aria-label', 'Sem cor');
+    clear.setAttribute('aria-checked', String(!note.color_id));
+    clear.title = 'Sem cor';
+    if (!note.color_id) clear.classList.add('is-active');
+    clear.innerHTML = '<span class="cal-color-dot" style="background:#fff"></span>';
+    clear.addEventListener('click', () => applyDayColor(month, day, null));
+    grid.appendChild(clear);
+
+    for (const color of state.colors) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cal-color-choice';
+      button.setAttribute('role', 'menuitemradio');
+      button.setAttribute('aria-label', `Aplicar cor ${color.label}`);
+      button.setAttribute('aria-checked', String(String(note.color_id || '') === String(color.id)));
+      button.title = color.label;
+      if (String(note.color_id || '') === String(color.id)) button.classList.add('is-active');
+      paintVars(button, color.color_hex, 'swatch');
+      const dot = document.createElement('span');
+      dot.className = 'cal-color-dot';
+      button.appendChild(dot);
+      button.addEventListener('click', () => applyDayColor(month, day, color.id));
+      grid.appendChild(button);
+    }
+
+    els.contextMenu.appendChild(head);
+    els.contextMenu.appendChild(grid);
+  }
+
+  function positionDayContextMenu(x, y) {
+    const margin = 10;
+    const rect = els.contextMenu.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin));
+    const top = Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin));
+    els.contextMenu.style.left = `${left}px`;
+    els.contextMenu.style.top = `${top}px`;
+  }
+
+  function openDayContextMenu(event, month, day, sourceElement) {
+    if (state.monthAnimating) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectDay(month, day, false, false);
+    state.contextMenuDay = { month, day };
+    renderDayContextMenu(month, day);
+
+    const sourceRect = sourceElement.getBoundingClientRect();
+    const x = event.clientX || sourceRect.left + sourceRect.width / 2;
+    const y = event.clientY || sourceRect.top + sourceRect.height / 2;
+    els.contextMenu.hidden = false;
+    els.contextMenu.classList.add('is-open');
+    positionDayContextMenu(x + 8, y + 8);
+  }
+
+  function closeDayContextMenu() {
+    if (!els.contextMenu || els.contextMenu.hidden) return;
+    els.contextMenu.classList.remove('is-open');
+    els.contextMenu.hidden = true;
+    state.contextMenuDay = null;
   }
 
   function setStageDragOffset(x, y) {
@@ -732,6 +834,20 @@
       setSaveState('error', error.message || 'Falha ao criar calendario');
     }
   });
+
+  els.contextMenu.addEventListener('pointerdown', (event) => event.stopPropagation());
+  els.contextMenu.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', closeDayContextMenu);
+  document.addEventListener('contextmenu', (event) => {
+    if (!event.target.closest('.cal-day-cell') && !event.target.closest('#day-context-menu')) {
+      closeDayContextMenu();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeDayContextMenu();
+  });
+  window.addEventListener('resize', closeDayContextMenu);
+  document.addEventListener('scroll', closeDayContextMenu, true);
 
   els.stage.addEventListener('pointerdown', beginStageDrag);
   els.stage.addEventListener('pointermove', moveStageDrag);
