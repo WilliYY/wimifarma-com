@@ -1871,8 +1871,12 @@ async function renderDashboard(req: Request): Promise<string> {
             <strong>${e(client.name)}</strong>
             <span class="client-status-pill">${e(client.status || 'ativo')}</span>
           </div>
-          <span class="client-meta">#${e(client.id)} | ${e(formatPhone(client.phone))} | ${e(client.attendant_name || 'Sem atendente')}</span>
-          <span class="client-updated">Atualizado em ${e(brDate(changedAt, true))}</span>
+          <div class="client-result-details">
+            <span><small>ID</small><strong>#${e(client.id)}</strong></span>
+            <span><small>Telefone</small><strong>${e(formatPhone(client.phone))}</strong></span>
+            <span><small>Atendente</small><strong>${e(client.attendant_name || 'Sem atendente')}</strong></span>
+            <span><small>Atualizado</small><strong>${e(brDate(changedAt, true))}</strong></span>
+          </div>
         </div>
         <div class="result-balance"><span>Disponivel</span><strong>${brMoneyCents(balance.saldoDisponivel)}</strong></div>
         <div class="result-actions">
