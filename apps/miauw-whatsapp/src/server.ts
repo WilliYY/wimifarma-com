@@ -68,6 +68,8 @@ type AudioMedia = {
 
 type PixReceiptExtraction = {
   isPixReceipt: boolean;
+  ocrProvider?: string;
+  ocrModel?: string;
   destinationCnpj: string;
   destinationKey: string;
   destinationName: string;
@@ -697,6 +699,9 @@ const GEMINI_MODEL = textEnv('MIAUW_WHATSAPP_GEMINI_MODEL') || textEnv('GEMINI_M
 const GEMINI_MAX_OUTPUT_TOKENS = numberEnv('MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS', 220, 80, 1200);
 const GEMINI_TEMPERATURE = numberEnv('MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100', 35, 0, 100) / 100;
 const GEMINI_THINKING_BUDGET = numberEnv('MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET', 0, 0, 8192);
+const OPENAI_API_KEY = textEnv('MIAUW_WHATSAPP_OPENAI_API_KEY') || textEnv('MIAUW_OPENAI_API_KEY') || textEnv('OPENAI_API_KEY');
+const OPENAI_API_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_OPENAI_API_BASE_URL') || textEnv('OPENAI_API_BASE_URL') || 'https://api.openai.com/v1');
+const OPENAI_MODEL = textEnv('MIAUW_WHATSAPP_OPENAI_MODEL') || textEnv('MIAUW_OPENAI_MODEL') || textEnv('OPENAI_MODEL') || 'gpt-5.4-mini';
 const AUDIO_INPUT_ENABLED = boolEnv('MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED', false);
 const AUDIO_REPLY_ENABLED = boolEnv('MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED', false);
 const AUDIO_REPLY_MODE = audioReplyModeEnv();
@@ -715,6 +720,7 @@ const AUDIO_TTS_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TT
 const PIX_RECEIPT_IMAGE_ENABLED = boolEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED', false);
 const PIX_RECEIPT_CNPJ = onlyDigits(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ') || '07676534000181');
 const PIX_RECEIPT_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL') || GEMINI_MODEL;
+const PIX_RECEIPT_OPENAI_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OPENAI_MODEL') || OPENAI_MODEL;
 const PIX_RECEIPT_IMAGE_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES', 10000000, 100000, 20000000);
 const PIX_RECEIPT_OCR_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS', 30000, 3000, 90000);
 const DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES = [
@@ -4128,7 +4134,8 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                         pix_receipt_cnpj_match: targetMatch.cnpjMatch,
                         pix_receipt_key_match: targetMatch.keyMatch,
                         pix_receipt_name_match: targetMatch.nameMatch,
-                        pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+                        pix_receipt_ocr_provider: extraction.ocrProvider || 'gemini',
+                        pix_receipt_ocr_model: extraction.ocrModel || PIX_RECEIPT_OCR_MODEL,
                         pix_receipt_confidence: extraction.confidence,
                         ...pixReceiptExtractionSummary(extraction, 'accepted', targetMatch),
                       }),
@@ -6267,6 +6274,14 @@ function geminiConfigured(): boolean {
   return GEMINI_API_KEY !== '' && GEMINI_API_BASE_URL !== '' && GEMINI_MODEL !== '';
 }
 
+function openAiConfigured(): boolean {
+  return OPENAI_API_KEY !== '' && OPENAI_API_BASE_URL !== '' && OPENAI_MODEL !== '';
+}
+
+function pixReceiptOcrConfigured(): boolean {
+  return geminiConfigured() || openAiConfigured();
+}
+
 function geminiModelPathFor(model: string): string {
   const clean = safeText(model, 120).replace(/^models\//, '').trim();
   return `models/${clean || GEMINI_MODEL.replace(/^models\//, '').trim()}`;
@@ -8142,7 +8157,7 @@ function audioProviderFromSummary(summary: JsonRecord): string {
 }
 
 function shouldAttemptPixReceiptMedia(bodyText: string, hasMedia = false): boolean {
-  if (!PIX_RECEIPT_IMAGE_ENABLED || !geminiConfigured() || !PIX_RECEIPT_CNPJ) return false;
+  if (!PIX_RECEIPT_IMAGE_ENABLED || !pixReceiptOcrConfigured() || !PIX_RECEIPT_CNPJ) return false;
   if (hasMedia) return true;
   const clean = normalizeIntentText(bodyText);
   return clean === ''
@@ -8650,7 +8665,8 @@ function pixReceiptExtractionSummary(
     pix_receipt_payer_confidence: extraction.payerConfidence,
     pix_receipt_target_confidence: extraction.targetConfidence,
     pix_receipt_missing: extraction.missing.slice(0, 8).map((item) => safeText(item, 60)).filter(Boolean),
-    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+    pix_receipt_ocr_provider: safeText(extraction.ocrProvider || 'gemini', 40),
+    pix_receipt_ocr_model: safeText(extraction.ocrModel || PIX_RECEIPT_OCR_MODEL, 120),
   };
 }
 
@@ -8771,7 +8787,7 @@ async function extractPixReceiptFromQueuedMedia(row: QueueRow): Promise<PixRecei
   const media = mediaProviderFromSummary(row.payload_summary) === 'meta'
     ? await fetchMetaReceiptMedia(row)
     : await fetchEvolutionReceiptMedia(row);
-  return requestGeminiPixReceiptExtraction(media, row.trace_id, pixReceiptExtractionHints(row));
+  return requestPixReceiptExtraction(media, row.trace_id, pixReceiptExtractionHints(row));
 }
 
 function isRetriablePixReceiptError(error: unknown, row: QueueRow): boolean {
@@ -9286,17 +9302,142 @@ async function fetchMetaReceiptMedia(row: QueueRow): Promise<AudioMedia> {
   }
 }
 
+function pixReceiptExtractionHintText(hints: PixReceiptExtractionHints): string {
+  return [
+    hints.caption ? `Legenda/mensagem enviada junto: ${hints.caption}.` : '',
+    hints.fileName ? `Nome do arquivo: ${hints.fileName}.` : '',
+    hints.mediaKind ? `Tipo operacional: ${hints.mediaKind}.` : '',
+  ].filter(Boolean).join(' ');
+}
+
+function pixReceiptExtractionPrompt(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): string {
+  const hintText = pixReceiptExtractionHintText(hints);
+  return `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes conhecidos apenas como pista: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id, transaction_id e destination_key_digits sao opcionais: extraia quando existirem, mas nao coloque em missing se nao aparecerem. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`;
+}
+
+function parsePixReceiptExtractionText(text: string, ocrProvider: string, ocrModel: string): PixReceiptExtraction {
+  const parsed = JSON.parse(extractJsonObjectText(text)) as unknown;
+  if (!isRecord(parsed)) throw new Error('pix_receipt_json_invalid');
+  return {
+    ...normalizePixReceiptExtraction(parsed),
+    ocrProvider,
+    ocrModel,
+  };
+}
+
+function openAiTextFromResponse(data: JsonRecord, partLimit = 8000): string {
+  const outputText = safeText(data.output_text, partLimit);
+  if (outputText) return outputText;
+
+  const output = Array.isArray(data.output) ? data.output : [];
+  const chunks: string[] = [];
+  for (const itemRaw of output) {
+    if (!isRecord(itemRaw)) continue;
+    const content = Array.isArray(itemRaw.content) ? itemRaw.content : [];
+    for (const partRaw of content) {
+      if (!isRecord(partRaw)) continue;
+      const text = safeText(partRaw.text || partRaw.value || partRaw.output_text, partLimit);
+      if (text) chunks.push(text);
+    }
+  }
+  const text = chunks.join(' ').trim();
+  if (text) return safeText(text, partLimit);
+  throw new Error('openai_empty_reply');
+}
+
+async function requestOpenAiPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
+  if (!openAiConfigured()) throw new Error('openai_not_configured_for_pix_receipt');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
+  try {
+    const isPdf = media.mimeType === 'application/pdf';
+    const filename = safeText(hints.fileName, 120) || (isPdf ? 'comprovante-pix.pdf' : 'comprovante-pix.jpg');
+    const mediaPart = isPdf
+      ? {
+          type: 'input_file',
+          filename,
+          file_data: `data:${media.mimeType};base64,${media.base64}`,
+        }
+      : {
+          type: 'input_image',
+          image_url: `data:${media.mimeType};base64,${media.base64}`,
+          detail: 'high',
+        };
+    const response = await fetch(`${OPENAI_API_BASE_URL}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: PIX_RECEIPT_OPENAI_OCR_MODEL,
+        instructions: 'Voce extrai dados de comprovantes Pix brasileiros para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes e nao use saldo, limite, agencia, conta, tarifa ou comprovantes de outra operacao como valor pago.',
+        input: [{
+          role: 'user',
+          content: [
+            { type: 'input_text', text: pixReceiptExtractionPrompt(media, traceId, hints) },
+            mediaPart,
+          ],
+        }],
+        max_output_tokens: 1200,
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !isRecord(data)) {
+      const error = isRecord(data) && isRecord(data.error) ? data.error : data;
+      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `openai_pix_receipt_http_${response.status}`);
+    }
+    return parsePixReceiptExtractionText(openAiTextFromResponse(data), 'openai', PIX_RECEIPT_OPENAI_OCR_MODEL);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isPixReceiptOcrFallbackError(error: unknown): boolean {
+  const message = safeError(error).toLowerCase();
+  return message.includes('spending cap')
+    || message.includes('quota')
+    || message.includes('exceeded')
+    || message.includes('429')
+    || message.includes('503')
+    || message.includes('502')
+    || message.includes('500')
+    || message.includes('timeout')
+    || message.includes('abort')
+    || message.includes('gemini_pix_receipt_http_5')
+    || message.includes('gemini_pix_receipt_http_429')
+    || message.includes('gemini_empty_')
+    || message.includes('pix_receipt_json_invalid');
+}
+
+async function requestPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
+  if (geminiConfigured()) {
+    try {
+      return await requestGeminiPixReceiptExtraction(media, traceId, hints);
+    } catch (error) {
+      if (!openAiConfigured() || !isPixReceiptOcrFallbackError(error)) throw error;
+      await recordErrorLog('pix_receipt_ocr_fallback', 'warn', error, {
+        traceId,
+        details: {
+          from_provider: 'gemini',
+          to_provider: 'openai',
+          media_kind: safeText(hints.mediaKind, 40),
+          media_mimetype: safeText(media.mimeType, 80),
+          media_size_bytes: media.sizeBytes,
+        },
+      });
+    }
+  }
+  return requestOpenAiPixReceiptExtraction(media, traceId, hints);
+}
+
 async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured_for_pix_receipt');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
   try {
     const endpoint = `${GEMINI_API_BASE_URL}/${geminiModelPathFor(PIX_RECEIPT_OCR_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const hintText = [
-      hints.caption ? `Legenda/mensagem enviada junto: ${hints.caption}.` : '',
-      hints.fileName ? `Nome do arquivo: ${hints.fileName}.` : '',
-      hints.mediaKind ? `Tipo operacional: ${hints.mediaKind}.` : '',
-    ].filter(Boolean).join(' ');
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -9312,7 +9453,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
           role: 'user',
           parts: [
             {
-              text: `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes conhecidos apenas como pista: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id, transaction_id e destination_key_digits sao opcionais: extraia quando existirem, mas nao coloque em missing se nao aparecerem. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`,
+              text: pixReceiptExtractionPrompt(media, traceId, hints),
             },
             {
               inlineData: {
@@ -9339,9 +9480,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
       throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_pix_receipt_http_${response.status}`);
     }
     const text = geminiTextFromResponse(data, 8000);
-    const parsed = JSON.parse(extractJsonObjectText(text)) as unknown;
-    if (!isRecord(parsed)) throw new Error('pix_receipt_json_invalid');
-    return normalizePixReceiptExtraction(parsed);
+    return parsePixReceiptExtractionText(text, 'gemini', PIX_RECEIPT_OCR_MODEL);
   } finally {
     clearTimeout(timeout);
   }
@@ -9828,6 +9967,11 @@ function publicStatus(): JsonRecord {
   const evolutionConfigured = EVOLUTION_API_BASE_URL !== '' && EVOLUTION_API_KEY !== '' && EVOLUTION_INSTANCE !== '';
   const metaConfigured = META_ACCESS_TOKEN !== '' && META_PHONE_NUMBER_ID !== '';
   const providerPauseMsRemaining = providerPauseRemainingMs();
+  const geminiReady = geminiConfigured();
+  const openAiReady = openAiConfigured();
+  const pixReceiptOcrProvider = geminiReady
+    ? (openAiReady ? 'gemini/openai-fallback' : 'gemini')
+    : (openAiReady ? 'openai' : 'none');
   pruneProviderSendWindow();
   return {
     ok: true,
@@ -9852,9 +9996,11 @@ function publicStatus(): JsonRecord {
     command_help_categories: WHATSAPP_COMMAND_HELP_REGISTRY.length,
     groups_enabled: GROUPS_ENABLED,
     ai_mode: REPLY_ENGINE,
-    gemini_configured: geminiConfigured(),
+    gemini_configured: geminiReady,
     gemini_model: GEMINI_MODEL,
     gemini_max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
+    openai_configured: openAiReady,
+    openai_model: OPENAI_MODEL,
     audio_input_enabled: AUDIO_INPUT_ENABLED,
     audio_reply_enabled: AUDIO_REPLY_ENABLED,
     audio_reply_mode: AUDIO_REPLY_MODE,
@@ -9871,7 +10017,10 @@ function publicStatus(): JsonRecord {
     pix_receipt_image_enabled: PIX_RECEIPT_IMAGE_ENABLED,
     pix_receipt_media_enabled: PIX_RECEIPT_IMAGE_ENABLED,
     pix_receipt_cnpj_configured: PIX_RECEIPT_CNPJ !== '',
+    pix_receipt_ocr_provider: pixReceiptOcrProvider,
     pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+    pix_receipt_openai_fallback_configured: openAiReady,
+    pix_receipt_openai_ocr_model: PIX_RECEIPT_OPENAI_OCR_MODEL,
     pix_receipt_image_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
     pix_receipt_media_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
     pix_receipt_destination_alias_count: PIX_RECEIPT_DESTINATION_ALIASES.length,
@@ -15182,6 +15331,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const aiMode = textStatus(status, 'ai_mode') || 'miauw';
   const geminiReady = boolStatus(status, 'gemini_configured');
   const geminiModel = textStatus(status, 'gemini_model') || '-';
+  const openAiReady = boolStatus(status, 'openai_configured');
+  const openAiModel = textStatus(status, 'openai_model') || '-';
   const aliasCount = numberStatus(status, 'recipient_alias_count');
   const cacheTtl = numberStatus(status, 'reply_cache_ttl_seconds');
   const cacheEntries = numberStatus(status, 'reply_cache_entries');
@@ -15196,7 +15347,10 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const evolutionConfigured = boolStatus(status, 'evolution_configured');
   const pixReceiptEnabled = boolStatus(status, 'pix_receipt_image_enabled');
   const pixReceiptConfigured = boolStatus(status, 'pix_receipt_cnpj_configured');
+  const pixReceiptProvider = textStatus(status, 'pix_receipt_ocr_provider') || '-';
   const pixReceiptModel = textStatus(status, 'pix_receipt_ocr_model') || '-';
+  const pixReceiptOpenAiFallback = boolStatus(status, 'pix_receipt_openai_fallback_configured');
+  const pixReceiptOpenAiModel = textStatus(status, 'pix_receipt_openai_ocr_model') || '-';
   const pixReceiptMaxMb = Math.round(numberStatus(status, 'pix_receipt_image_max_bytes') / 1024 / 1024);
   const pixReceiptAliasCount = numberStatus(status, 'pix_receipt_destination_alias_count');
   const pixReceiptMinScore = Math.round(numberStatus(status, 'pix_receipt_min_target_score') * 100);
@@ -16266,6 +16420,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           ${renderConfigCard('Agente Miauby', (agentConfigured || geminiReady) ? 'ok' : 'warn', (agentConfigured || geminiReady) ? (aiMode === 'hybrid' ? 'Hibrido' : aiMode) : 'Pendente', [
             ['Modo IA', aiMode],
             ['Gemini', geminiReady ? geminiModel : 'sem chave'],
+            ['OpenAI', openAiReady ? openAiModel : 'sem chave'],
             ['Core', agentConfigured ? 'ok' : 'pendente'],
             ['Alias', aliasCount],
           ])}
@@ -16298,7 +16453,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           ])}
           ${renderConfigCard('Pix CNPJ midia', (pixReceiptEnabled && pixReceiptConfigured) ? 'ok' : pixReceiptConfigured ? 'muted' : 'warn', (pixReceiptEnabled && pixReceiptConfigured) ? 'Ativo' : pixReceiptConfigured ? 'Desligado' : 'Pendente', [
             ['Midia', 'foto/print/PDF'],
-            ['OCR', pixReceiptModel],
+            ['OCR', pixReceiptProvider],
+            ['Modelo 1', pixReceiptModel],
+            ['Fallback', pixReceiptOpenAiFallback ? pixReceiptOpenAiModel : 'sem OpenAI'],
             ['Limite', `${pixReceiptMaxMb} MB`],
             ['Alvo', `CNPJ/chave ou ${pixReceiptAliasCount} nomes (${pixReceiptMinScore}%)`],
           ])}

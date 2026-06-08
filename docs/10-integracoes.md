@@ -22,6 +22,10 @@ Variaveis/configuracoes:
 
 - `MIAUW_OPENAI_API_KEY`
 - `MIAUW_OPENAI_MODEL`
+- `MIAUW_WHATSAPP_OPENAI_API_KEY`
+- `MIAUW_WHATSAPP_OPENAI_API_BASE_URL`
+- `MIAUW_WHATSAPP_OPENAI_MODEL`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OPENAI_MODEL`
 - `MIAUW_GUARDIAN_TOKEN`
 - `MIAUW_AGENT_INTERNAL_TOKEN`
 - `MIAUW_AGENT_INTERNAL_BASE_URL`
@@ -158,7 +162,7 @@ Desenho:
 - o modo `MIAUW_WHATSAPP_AI_MODE=gemini` usa Gemini para conversa curta, sem liberar comandos internos diretos;
 - o modo `MIAUW_WHATSAPP_AI_MODE=hybrid` usa Gemini para conversa solta quando `GEMINI_API_KEY` estiver configurada, roteia mensagens com `miauby` em qualquer posicao para o core Miauby e, quando `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`, tambem roteia comandos operacionais detectados sem prefixo para o core;
 - quando audio estiver habilitado, audio de remetente autorizado e baixado do transporte somente no worker, transcrito por Gemini, descartado em memoria e roteado como texto; resposta em audio usa Gemini TTS, segue o estilo configuravel `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` e cai para texto se o envio falhar;
-- quando leitura de comprovante Pix estiver habilitada, foto, print, imagem encaminhada ou PDF/documento de remetente autorizado e baixado somente no worker, extraido por Gemini, descartado em memoria e convertido em pendencia `Pix CNPJ` para o Financeiro apenas se o destino bater por CNPJ/chave Pix `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`; nome correlato em `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES` serve apenas como pista de OCR, comprovante sem nosso CNPJ/chave responde `Nao achei nosso CNPJ nesse comprovante. Nao gravei nada.`, e imagem que nao parece comprovante recebe `Isso ai é um comprovante pix?` sem criar pendencia;
+- quando leitura de comprovante Pix estiver habilitada, foto, print, imagem encaminhada ou PDF/documento de remetente autorizado e baixado somente no worker, extraido por Gemini com fallback OpenAI em cota/spending cap/429/timeout/5xx/resposta vazia, descartado em memoria e convertido em pendencia `Pix CNPJ` para o Financeiro apenas se o destino bater por CNPJ/chave Pix `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`; nome correlato em `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES` serve apenas como pista de OCR, comprovante sem nosso CNPJ/chave responde `Nao achei nosso CNPJ nesse comprovante. Nao gravei nada.`, e imagem que nao parece comprovante recebe `Isso ai é um comprovante pix?` sem criar pendencia;
 - antes de chamar o core, o bridge usa `MIAUW_WHATSAPP_CONTEXT_URL` para buscar no PHP o mesmo treino aprovado, perfil de voz, memoria curta multicanal e contratos de tools do Miauby interno;
 - depois de enviar uma resposta, o worker WhatsApp grava a entrada/saida direto no Postgres do bridge em `miauw_whatsapp_channel_events`; falha nessa gravacao nao pode bloquear fila nem reenviar mensagem. O endpoint PHP `site/miauw/agent-memory.php` permanece para compatibilidade e consulta externa tokenizada;
 - para acoes fortes permitidas, o bridge usa `MIAUW_WHATSAPP_ACTIONS_URL` para preparar uma pendencia auditada e, apos botao `Sim`, executar pela mesma camada PHP que o Miauby interno usa;
@@ -233,6 +237,7 @@ Variaveis:
 - `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OPENAI_MODEL`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
