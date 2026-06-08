@@ -5158,6 +5158,18 @@ async function maybeHandleResponsibleSelectionReply(row: QueueRow, userContext: 
     return null;
   }
   if (pending.event_id === row.id) return null;
+  if (hasExplicitActivationPrefix(row.body_text)) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'expired',
+              error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_explicit_command' ELSE error_summary END,
+              updated_at = NOW()
+        WHERE id = $1
+          AND status = 'pending'`,
+      [pending.id],
+    );
+    return null;
+  }
 
   const payload = isRecord(pending.command_payload) ? pending.command_payload : {};
   const users = (Array.isArray(payload.users) ? payload.users : [])
@@ -5732,6 +5744,14 @@ function hasAnyIntentTerm(message: string, terms: string[]): boolean {
 
 function activationMentioned(message: string): boolean {
   return hasAnyIntentTerm(message, [PREFIX]);
+}
+
+function hasExplicitActivationPrefix(message: string): boolean {
+  const clean = message.trim().toLowerCase();
+  return clean === PREFIX
+    || clean.startsWith(`${PREFIX} `)
+    || clean.startsWith(`${PREFIX},`)
+    || clean.startsWith(`${PREFIX}:`);
 }
 
 function stripActivationWord(message: string): string {
@@ -14257,10 +14277,31 @@ async function createPedidoFromWhatsapp(
   senderMask: string,
   userContext: WhatsappUserContext,
   idempotencyKey = `whatsapp:${traceId}`,
-  includeResponsibleInReply = false,
+  includeResponsibleInReply = true,
 ): Promise<ReplyResult> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
-  const actorName = safeText(userContext.display_name || userContext.username || senderMask, 120) || 'Miauby WhatsApp';
+  if (!userContext.id || !userContext.linked) {
+    return {
+      text: 'Esse WhatsApp esta liberado, mas ainda nao esta vinculado a um usuario. Vincule em Usuarios antes de criar pedido.',
+      engine: 'blocked',
+      reason: 'pedidos_create_unlinked_user',
+    };
+  }
+  if (isPharmacyUserContext(userContext)) {
+    return {
+      text: 'Quem esta registrando esse pedido? Mande o comando com o responsavel. Ex.: miauby pedido ANB 350 Thiago.',
+      engine: 'local',
+      reason: 'pedidos_create_pharmacy_missing_responsible',
+    };
+  }
+  const actorName = safeText(userContext.display_name || userContext.username, 120);
+  if (!actorName) {
+    return {
+      text: 'Nao consegui identificar o responsavel desse pedido. Confira o vinculo do WhatsApp no modulo Usuarios.',
+      engine: 'blocked',
+      reason: 'pedidos_create_missing_actor_name',
+    };
+  }
   const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/create-order`, {
     method: 'POST',
     headers: internalPhpJsonHeaders(),
