@@ -29,6 +29,10 @@ Riscos/cuidados:
 
 ## 2026-06-08 - Home restaura GIF animado original
 
+Status:
+
+- Substituida ainda em 2026-06-08 pela decisao "Home usa SVG nitido com + girando".
+
 Decisao:
 
 - Restaurar a variacao animada da marca da Home para `assets/img/logo-wimifarma-home-animated.gif`.
@@ -38,7 +42,7 @@ Decisao:
 
 Motivo:
 
-- A tentativa de SVG animado recriado mudou o movimento visual e nao bateu com a primeira referencia aprovada pelo usuario. O GIF existente no projeto preserva a animacao original em loop.
+- A tentativa de SVG animado recriado mudou o movimento visual e nao bateu com a primeira referencia interpretada naquele momento. O GIF existente no projeto preservava outra animacao em loop, mas depois o usuario esclareceu que a referencia correta era o `+` girando.
 
 Impacto:
 
@@ -50,7 +54,34 @@ Impacto:
 
 Riscos/cuidados:
 
-- O GIF tem 19 frames e cerca de 225 KB; validar login central, rodape e header autenticado depois de deploy. Os SVGs oficiais dos modulos internos nao devem ser trocados por essa variacao animada.
+- O GIF tem 19 frames e cerca de 225 KB; nao usar essa decisao como referencia atual para a Home quando o pedido for melhorar a animacao do `+`.
+
+## 2026-06-08 - Home usa SVG nitido com + girando
+
+Decisao:
+
+- Usar `assets/img/logo-wimifarma-home-animated.svg` como variacao animada da marca da Home.
+- Preservar a referencia visual correta: o sinal `+` gira antes de formar a logo completa.
+- Manter fundo transparente, preload `image/svg+xml`, cache-bust proprio e proporcao `1024 / 400`.
+- Aplicar o mesmo asset no login central, no rodape do login e no header autenticado.
+
+Motivo:
+
+- O usuario esclareceu que a animacao correta nao era o GIF antigo, mas sim a versao com o `+` girando, pedindo apenas melhoria de qualidade/fluidez.
+
+Impacto:
+
+- `site/home.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma-home-animated.svg`
+- `README.md`
+- `AGENTS.md`
+- `docs/03-fluxos-do-sistema.md`
+- `docs/17-performance.md`
+
+Riscos/cuidados:
+
+- Nao trocar esse fluxo por GIF quando o pedido for melhorar nitidez da animacao do `+`.
+- Validar login, rodape e header autenticado apos deploy, porque o mesmo asset aparece em tres tamanhos diferentes.
 
 ## 2026-06-08 - Home usa SVG animado transparente
 
