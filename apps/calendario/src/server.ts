@@ -691,7 +691,7 @@ function pageHtml(req: Request, user: User): string {
         <button class="cal-icon-btn" id="prev-month" type="button" aria-label="Mes anterior" title="Mes anterior">&lsaquo;</button>
         <div class="cal-month-title">
           <strong id="month-label">Janeiro</strong>
-          <label>
+          <label class="cal-year-field">
             <span>Ano</span>
             <select id="year-select"></select>
           </label>

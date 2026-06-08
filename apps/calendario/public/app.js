@@ -284,7 +284,7 @@
     if (!state.calendar) return;
     closeDayContextMenu();
     hideDayHoverNote();
-    els.monthLabel.textContent = `${monthNames[state.month - 1]} ${state.calendar.year}`;
+    els.monthLabel.textContent = monthNames[state.month - 1];
     els.monthImage.src = `${basePath}/months/month-${String(state.month).padStart(2, '0')}.png`;
     els.monthImage.alt = `Imagem base de ${monthNames[state.month - 1]} com ano e numeros dos dias impressos`;
     renderDays();
