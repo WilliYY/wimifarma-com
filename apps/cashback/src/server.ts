@@ -66,7 +66,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.0.1';
+const SERVICE_VERSION = '1.0.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1961,12 +1961,12 @@ async function renderDashboard(req: Request): Promise<string> {
     </section>
 
     <section id="resgate" class="panel section-block workspace-section redeem-panel">
-      <div class="section-title redeem-title"><div><span class="kicker">Compra Cashback</span><h2>Gastar/Usar Cashback</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
+      <div class="section-title redeem-title"><div class="redeem-title-copy"><span class="kicker">Compra Cashback</span><h2>Gastar/Usar Cashback</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
       <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols redeem-form" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_redeem">
         <div class="redeem-block redeem-client-block full">
-          <div class="redeem-block-title"><span class="step-badge">1</span><h3>Cliente</h3></div>
+          <div class="redeem-block-title"><span class="step-badge">1</span><div><h3>Cliente</h3><small>Saldo e identificacao</small></div></div>
           <div class="client-picker redeem-client-picker" data-client-picker-root>
             <label><span>Buscar cliente *</span><input type="search" value="${e(selectedLabel)}" placeholder="Digite nome, telefone ou ID do cliente" data-client-picker data-results="#redeem-client-results" data-target="#redeem-client-id" data-selected="#redeem-selected-client" autocomplete="off" required><input type="hidden" id="redeem-client-id" name="cliente_id" value="${e(selectedClientId > 0 ? selectedClientId : '')}"></label>
             <div id="redeem-client-results" class="live-client-results picker-results" hidden></div>
@@ -1974,7 +1974,7 @@ async function renderDashboard(req: Request): Promise<string> {
           </div>
         </div>
         <div class="redeem-block redeem-operation-block full">
-          <div class="redeem-block-title"><span class="step-badge">2</span><h3>Compra atual</h3><span class="optional-chip">Calculo automatico</span></div>
+          <div class="redeem-block-title"><span class="step-badge">2</span><div><h3>Compra atual</h3><small>Uso permitido pela regra ${e(settings.redeemMultiplier)}x</small></div><span class="optional-chip">Calculo automatico</span></div>
           <div class="redeem-fields">
             ${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}
             <label><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>

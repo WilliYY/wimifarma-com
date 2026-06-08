@@ -1531,18 +1531,56 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-panel {
+    position: relative;
+    isolation: isolate;
     overflow: hidden;
     border-color: #e8bdc8;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(255, 247, 248, 0.88)),
+        linear-gradient(180deg, #fff, #fff8fa);
+    box-shadow: 0 30px 76px rgba(109, 16, 34, 0.13);
+}
+
+.redeem-panel::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 0 0 auto;
+    height: 126px;
+    background:
+        linear-gradient(90deg, rgba(181, 37, 67, 0.1), rgba(19, 107, 47, 0.08), rgba(40, 92, 134, 0.08));
+    opacity: 0.94;
 }
 
 .redeem-title {
+    position: relative;
     align-items: flex-start;
-    padding-bottom: 16px;
-    border-bottom: 1px solid #f3d9df;
+    padding: 2px 0 18px;
+    border-bottom: 1px solid rgba(243, 217, 223, 0.9);
+}
+
+.redeem-title::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: min(260px, 60%);
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--red-800), rgba(19, 107, 47, 0.18));
+}
+
+.redeem-title-copy {
+    min-width: 0;
 }
 
 .redeem-title h2 {
     font-size: clamp(1.9rem, 3vw, 2.55rem);
+}
+
+.redeem-title .soft-pill {
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 12px 28px rgba(109, 16, 34, 0.08);
 }
 
 .redeem-title p {
@@ -1554,21 +1592,56 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-form {
-    gap: 16px;
+    position: relative;
+    gap: 14px;
 }
 
 .redeem-block {
+    position: relative;
     display: grid;
-    gap: 16px;
-    padding: 18px;
-    border: 1px solid #efd1d9;
-    border-radius: 20px;
+    gap: 15px;
+    overflow: hidden;
+    padding: 18px 18px 18px 20px;
+    border: 1px solid rgba(239, 209, 217, 0.95);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 16px 34px rgba(109, 16, 34, 0.07);
+    animation: quickClientRise 0.36s cubic-bezier(0.2, 0.85, 0.2, 1) both;
+    transition:
+        transform 0.24s ease,
+        border-color 0.24s ease,
+        background-color 0.24s ease;
+}
+
+.redeem-block::before {
+    content: "";
+    position: absolute;
+    inset: 14px auto 14px 0;
+    width: 4px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--red-800), #ff8aa1);
+}
+
+.redeem-block:hover,
+.redeem-block:focus-within {
+    border-color: #e7aab8;
     background: #fff;
+    transform: translateY(-2px);
+}
+
+.redeem-client-block {
+    animation-delay: 0.02s;
 }
 
 .redeem-operation-block {
-    background: #fbfdff;
+    animation-delay: 0.06s;
+    background:
+        linear-gradient(135deg, rgba(251, 253, 255, 0.97), rgba(255, 247, 248, 0.82));
     border-color: #d7e5f3;
+}
+
+.redeem-operation-block::before {
+    background: linear-gradient(180deg, #3b82c4, #8ee0ae);
 }
 
 .redeem-block-title {
@@ -1584,10 +1657,18 @@ body.sections-ready .workspace-section.is-active {
     font-size: 1.08rem;
 }
 
+.redeem-block-title small {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
 .redeem-fields {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    gap: 12px;
     align-items: end;
 }
 
@@ -1595,11 +1676,38 @@ body.sections-ready .workspace-section.is-active {
     gap: 12px;
 }
 
+.redeem-panel label {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(239, 211, 218, 0.78);
+    border-radius: 17px;
+    background: rgba(255, 247, 248, 0.6);
+    transition:
+        border-color 0.22s ease,
+        background-color 0.22s ease,
+        transform 0.22s ease;
+}
+
+.redeem-panel label:focus-within {
+    border-color: #e7aab8;
+    background: #fff;
+    transform: translateY(-1px);
+}
+
+.redeem-panel label > span {
+    color: #7d4f5b;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
 .redeem-panel input,
 .redeem-panel select {
     min-height: 50px;
     border-radius: 13px;
+    border-color: rgba(239, 211, 218, 0.9);
+    background: rgba(255, 255, 255, 0.94);
     font-weight: 700;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .redeem-panel input:focus,
@@ -1610,7 +1718,8 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-panel input[readonly] {
-    background: #fff7f8;
+    background:
+        linear-gradient(135deg, rgba(255, 247, 248, 0.96), rgba(255, 240, 243, 0.9));
     color: var(--red-800);
 }
 
@@ -1619,15 +1728,31 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-summary div {
-    min-height: 94px;
+    position: relative;
+    min-height: 90px;
+    overflow: hidden;
     border-color: #e8c5ce;
-    background: #fff;
+    background:
+        linear-gradient(135deg, rgba(255, 240, 243, 0.92), rgba(255, 255, 255, 0.94));
     box-shadow: 0 10px 24px rgba(109, 16, 34, 0.06);
+}
+
+.redeem-summary div::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 4px;
+    background: linear-gradient(90deg, var(--red-800), rgba(181, 37, 67, 0.22));
 }
 
 .redeem-summary div:nth-child(2) {
     border-color: #cdebd4;
-    background: #f5fcf7;
+    background:
+        linear-gradient(135deg, rgba(245, 252, 247, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.redeem-summary div:nth-child(2)::before {
+    background: linear-gradient(90deg, #17864b, rgba(23, 134, 75, 0.2));
 }
 
 .redeem-summary div:nth-child(2) strong {
@@ -1636,7 +1761,12 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-summary div:nth-child(3) {
     border-color: #d7e5f3;
-    background: #fbfdff;
+    background:
+        linear-gradient(135deg, rgba(251, 253, 255, 0.96), rgba(239, 246, 255, 0.92));
+}
+
+.redeem-summary div:nth-child(3)::before {
+    background: linear-gradient(90deg, #3b82c4, rgba(59, 130, 196, 0.2));
 }
 
 .redeem-summary span {
@@ -1650,11 +1780,43 @@ body.sections-ready .workspace-section.is-active {
 .redeem-action {
     display: flex;
     justify-content: flex-end;
-    padding-top: 2px;
+    padding-top: 0;
+    animation: quickClientRise 0.36s cubic-bezier(0.2, 0.85, 0.2, 1) 0.1s both;
 }
 
 .redeem-action .btn {
-    min-width: min(340px, 100%);
+    min-width: min(380px, 100%);
+    min-height: 48px;
+    box-shadow: 0 18px 34px rgba(181, 37, 67, 0.2);
+    transition:
+        transform 0.22s ease,
+        box-shadow 0.22s ease;
+}
+
+.redeem-action .btn:hover,
+.redeem-action .btn:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 42px rgba(181, 37, 67, 0.24);
+}
+
+.redeem-panel .selected-client-note {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    border: 1px solid rgba(239, 211, 218, 0.9);
+    background:
+        linear-gradient(135deg, rgba(255, 247, 248, 0.95), rgba(255, 240, 243, 0.78));
+    overflow-wrap: anywhere;
+}
+
+.redeem-panel .live-preview {
+    border-color: rgba(239, 211, 218, 0.95);
+    background: rgba(255, 247, 248, 0.74);
+}
+
+.redeem-panel .live-preview.ok {
+    border-color: #cdebd4;
+    background: #f2fbf4;
 }
 
 .quick-client-panel {
@@ -3049,6 +3211,8 @@ body.sections-ready .workspace-section.is-active {
     .nav a,
     .client-result,
     .message-card,
+    .redeem-block,
+    .redeem-action,
     .quick-client-block,
     .quick-client-action,
     .report-download-card,
@@ -3191,6 +3355,15 @@ body.sections-ready .workspace-section.is-active {
 
     .redeem-block {
         padding: 15px;
+    }
+
+    .redeem-title .soft-pill {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .redeem-panel label {
+        padding: 9px;
     }
 
     .redeem-title p {
