@@ -55,6 +55,10 @@ const ENCOMENDA_REMINDER_MAX_ATTEMPTS = Math.max(
   1,
   Math.min(10, Number.parseInt(env.COTACAO_ENCOMENDA_REMINDER_MAX_ATTEMPTS || '3', 10) || 3)
 );
+const ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(60000, Number.parseInt(env.COTACAO_ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS || '25000', 10) || 25000)
+);
 const encomendaReminderWorkerState = {
   lastRunAt: null,
   lastFinishedAt: null,
@@ -2460,7 +2464,7 @@ async function postWhatsappEncomendaReminder(row) {
   if (!WHATSAPP_INTERNAL_TOKEN) throw new Error('whatsapp_internal_token_not_configured');
   if (!WHATSAPP_INTERNAL_BASE_URL) throw new Error('whatsapp_internal_base_url_not_configured');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4500);
+  const timeout = setTimeout(() => controller.abort(), ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS);
   const message = encomendaReminderMessage(row);
   try {
     const response = await fetch(`${WHATSAPP_INTERNAL_BASE_URL}/internal/cotacao-encomenda-reminder`, {
@@ -2630,8 +2634,14 @@ async function processDueEncomendaReminders() {
         const sent = Number(data.sent || 0);
         const recipients = Number(data.recipients || 0);
         const errors = Array.isArray(data.errors) ? data.errors.map((item) => normalizeInternalText(item, 120)).filter(Boolean) : [];
-        if (sent > 0) {
-          await finishEncomendaReminder(rowForMessage, 'enviado', `Lembrete enviado para ${sent} contato(s).`, data);
+        const alreadySent = data.already_sent === true
+          || data.alreadySent === true
+          || errors.includes('duplicate_cotacao_encomenda_reminder');
+        if (sent > 0 || alreadySent) {
+          const summary = alreadySent && sent <= 0
+            ? 'Lembrete ja tinha sido enviado anteriormente; nao foi reenviado.'
+            : `Lembrete enviado para ${sent} contato(s).`;
+          await finishEncomendaReminder(rowForMessage, 'enviado', summary, data);
         } else {
           const policy = encomendaReminderFailurePolicy(
             errors[0] || (recipients === 0 ? 'Nenhum WhatsApp com card Cotacao configurado.' : 'Miauby Whats nao enviou o lembrete.'),
@@ -2747,6 +2757,7 @@ async function encomendaReminderStatusSummary() {
       max_attempts: ENCOMENDA_REMINDER_MAX_ATTEMPTS,
       retry_delay_minutes: ENCOMENDA_REMINDER_RETRY_DELAY_MINUTES,
       transport_retry_delay_minutes: ENCOMENDA_REMINDER_TRANSPORT_RETRY_DELAY_MINUTES,
+      whatsapp_timeout_ms: ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS,
       last_run_at: isoDateOrNull(encomendaReminderWorkerState.lastRunAt),
       last_finished_at: isoDateOrNull(encomendaReminderWorkerState.lastFinishedAt),
       last_processed_count: encomendaReminderWorkerState.lastProcessedCount,

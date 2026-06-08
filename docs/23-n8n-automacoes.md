@@ -173,6 +173,7 @@ Fluxo:
 4. O Miauby Whats confere se a rotina `cotacao_encomenda_16h` esta ativa no painel.
 5. A mensagem e curta e interna, perguntando se a encomenda chegou, com criada em, hoje e contexto do produto/quantidade.
 6. O envio nao altera valor, fornecedor, ganhador, status ou linha da Cotacao.
+7. O aviso deve sair uma unica vez por `cotacao_v2_encomenda_reminders.id`: a Cotacao espera ate `COTACAO_ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS` pelo bridge e o Miauby Whats bloqueia reenvio por `reminder_id` ja enviado, mesmo se uma tentativa anterior tiver estourado timeout na Cotacao.
 
 Como conferir sem enviar mensagem:
 
@@ -196,6 +197,13 @@ Auditoria de incidente em 2026-06-03:
 - A causa do `unauthorized` era configuracao: `wimifarma-cotacao-app` nao recebia `MIAUW_WHATSAPP_INTERNAL_TOKEN`, entao caia no `COTACAO_INTERNAL_TOKEN`, que o endpoint interno do Miauby Whats nao aceita para envio. O Compose passou a entregar `MIAUW_WHATSAPP_INTERNAL_TOKEN` tambem para a Cotacao; `COTACAO_MIAUW_WHATSAPP_INTERNAL_TOKEN` continua podendo sobrescrever quando preenchido.
 - Em seguida, as linhas foram limpas por `cells_batch_updated` com usuario `adm`, removendo `produto`, `quantidade` e `categoria` das duas encomendas. Como a palavra `encomenda` saiu da linha, a Cotacao cancelou os lembretes com motivo `Texto de encomenda removido da linha.`
 - O sistema nao deve restaurar essas linhas automaticamente: a correcao segura e manter o token certo para proximos avisos e usar o historico da celula/linha para recuperacao manual quando uma encomenda for limpa sem querer.
+
+Auditoria de incidente em 2026-06-07:
+
+- Um lembrete real de encomenda (`lisdexanfetamina 50`) foi enviado 3 vezes no WhatsApp as 16:00, 16:16 e 16:32.
+- A causa foi timeout curto na chamada Cotacao -> Miauby Whats: a Cotacao abortava a requisicao antes do bridge terminar o envio; o bridge enviava a mensagem depois, mas a Cotacao registrava `This operation was aborted` e reagendava.
+- O retry de transporte era 15 minutos e o cooldown global do bridge tambem era 15 minutos. Como a mensagem inclui o horario atual (`Hoje`), o fingerprint mudava, e o dedupe por `reminder_id` expirava antes da proxima tentativa.
+- A correcao segura aumentou o timeout padrao da chamada para 25 segundos, manteve configuravel por `COTACAO_ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS`, tornou o dedupe por `reminder_id` permanente para essa automacao e faz a Cotacao encerrar como enviado quando o bridge informa duplicata ja enviada. Isso preserva a regra: uma encomenda ativa gera no maximo um aviso.
 
 ### Chegada de pedidos as 17h
 

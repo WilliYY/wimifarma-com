@@ -437,6 +437,7 @@ type AutomationSendResult = {
   failed: number;
   blocked: number;
   errors: string[];
+  already_sent?: boolean;
 };
 
 type AutomationRunContext = {
@@ -10012,6 +10013,24 @@ async function automationRecentlySentByKey(source: string, fingerprint: string, 
   return result.rows.length > 0;
 }
 
+async function automationSentByDedupeKey(source: string, dedupeKey: string): Promise<boolean> {
+  const cleanDedupeKey = safeText(dedupeKey, 180);
+  if (!cleanDedupeKey) return false;
+  const result = await pgPool.query<{ found: string }>(
+    `SELECT '1' AS found
+       FROM miauw_whatsapp_automation_runs
+      WHERE source = $1
+        AND status IN ('sent', 'partial')
+        AND (
+          details->>'dedupe_key' = $2
+          OR details->>'reminder_dedupe_key' = $2
+        )
+      LIMIT 1`,
+    [safeText(source, 80), cleanDedupeKey],
+  );
+  return result.rows.length > 0;
+}
+
 function saoPauloTodayIso(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
@@ -11201,6 +11220,24 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
   }
 
   const guardKey = automationSendGuardKey(source, fingerprint, dedupeKey);
+  if (await automationSentByDedupeKey(source, dedupeKey)) {
+    result.skipped = true;
+    result.cooldown = true;
+    result.already_sent = true;
+    result.errors.push('duplicate_cotacao_encomenda_reminder');
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: 'info',
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: 'duplicate_cotacao_encomenda_reminder',
+      details: { ...baseDetails, reason: 'duplicate_already_sent', already_sent: true },
+    });
+    return result;
+  }
+
   if (guardKey && activeAutomationSends.has(guardKey)) {
     result.skipped = true;
     result.cooldown = true;
