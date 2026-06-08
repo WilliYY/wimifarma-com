@@ -14870,14 +14870,20 @@ function renderFocusItem(title: string, tone: DashboardTone, value: string | num
     </article>`;
 }
 
-function panelSummary(title: string, detail: string): string {
+function panelSummary(title: string, detail: string, meta = ''): string {
+  const metaHtml = meta
+    ? `<i class="summary-meta">${htmlEscape(meta)}</i>`
+    : '';
   return `
     <summary class="panel-summary">
       <span>
         <b>${htmlEscape(title)}</b>
         <small>${htmlEscape(detail)}</small>
       </span>
-      <em aria-hidden="true"></em>
+      <span class="panel-summary-actions">
+        ${metaHtml}
+        <em aria-hidden="true"></em>
+      </span>
     </summary>`;
 }
 
@@ -15594,13 +15600,35 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     body {
       margin: 0;
       min-height: 100vh;
-      background: #f7f8fb;
+      background:
+        linear-gradient(135deg, #f7f8fb 0, #fff8fb 48%, #f6fbff 100%);
       color: #211722;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     a { color: inherit; text-decoration: none; }
-    .shell { width: min(1380px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 40px; }
-    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .shell { width: min(1320px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 40px; }
+    .topbar {
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 16px;
+      border: 1px solid #ead5df;
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, .98), rgba(255, 247, 251, .92));
+      padding: 20px 22px;
+      overflow: hidden;
+      box-shadow: 0 18px 42px rgba(89, 27, 57, .08);
+    }
+    .topbar::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 4px;
+      background: linear-gradient(90deg, #b10647, #21a66b, #f0a000);
+    }
+    .topbar > * { position: relative; }
     .eyebrow { margin: 0 0 6px; color: #9b174e; font-size: 12px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
     h1 { margin: 0; font-size: 46px; line-height: .95; letter-spacing: 0; color: #a70643; }
     .intro { max-width: 720px; margin: 10px 0 0; color: #5e4b59; font-size: 15px; line-height: 1.45; }
@@ -15624,15 +15652,15 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
-      margin: 0 0 14px;
+      margin: 0 0 12px;
     }
     .focus-item {
       min-width: 0;
-      min-height: 118px;
+      min-height: 106px;
       border: 1px solid #ead5df;
       border-left: 5px solid #d8c8d0;
       border-radius: 8px;
-      background: #fff;
+      background: linear-gradient(180deg, #fff, #fffafb);
       padding: 14px;
       box-shadow: 0 14px 28px rgba(89, 27, 57, .07);
     }
@@ -15650,9 +15678,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     }
     .focus-item strong {
       display: block;
-      margin: 11px 0 8px;
+      margin: 9px 0 7px;
       color: #251827;
-      font-size: 22px;
+      font-size: 24px;
       line-height: 1.08;
       overflow-wrap: anywhere;
     }
@@ -15669,7 +15697,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .metric, .panel {
       border: 1px solid #ead5df;
       border-radius: 8px;
-      background: #fff;
+      background: rgba(255, 255, 255, .96);
       box-shadow: 0 16px 32px rgba(89, 27, 57, .08);
     }
     .metric { min-height: 112px; padding: 15px; }
@@ -15700,6 +15728,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     }
     .panel-summary::-webkit-details-marker { display: none; }
     .panel-summary span { min-width: 0; }
+    .panel-summary > span:first-child { flex: 1 1 auto; }
     .panel-summary b {
       display: block;
       color: #8d0f43;
@@ -15731,9 +15760,32 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       font-weight: 900;
       white-space: nowrap;
     }
+    .panel-summary-actions {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+      min-width: max-content;
+    }
+    .summary-meta {
+      display: inline-flex;
+      min-height: 28px;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #edd5df;
+      border-radius: 999px;
+      background: #f8f1f5;
+      color: #7a596c;
+      padding: 0 10px;
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 900;
+      white-space: nowrap;
+    }
     .panel-summary em::before { content: "Abrir"; }
     details[open] > .panel-summary {
       border-bottom: 1px solid #f0dbe4;
+      background: linear-gradient(180deg, #fff8fb, #fff);
     }
     details[open] > .panel-summary em::before { content: "Fechar"; }
     .panel-body { padding: 16px; }
@@ -16121,7 +16173,10 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     th { color: #8f0e42; font-size: 11px; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
     td { color: #2e2430; }
     .text-cell { max-width: 360px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
-    .sync-panel { background: #fffdfd; overflow: hidden; }
+    .sync-panel {
+      background: linear-gradient(180deg, #fffdfd, #fff8fb);
+      overflow: hidden;
+    }
     .sync-list {
       display: grid;
       gap: 10px;
@@ -16130,7 +16185,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       background: #fffafb;
       padding: 12px;
       min-width: 0;
-      overflow: hidden;
+      max-height: min(600px, 64vh);
+      overflow: auto;
+      scrollbar-width: thin;
     }
     .sync-list-head,
     .sync-row {
@@ -16153,7 +16210,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       border: 1px solid #f0dbe4;
       border-left: 4px solid #d8c8d0;
       border-radius: 8px;
-      background: #fff;
+      background: linear-gradient(180deg, #fff, #fffdfd);
       padding: 10px;
       box-shadow: 0 8px 18px rgba(89, 27, 57, .04);
     }
@@ -16289,6 +16346,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       border-radius: 8px;
       background: #fffafb;
       padding: 0 10px 10px;
+      max-height: min(560px, 62vh);
+      overflow: auto;
+      scrollbar-width: thin;
     }
     .ops-table {
       border-collapse: separate;
@@ -16468,6 +16528,32 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     .inline-form { display: flex; justify-content: flex-end; margin: 10px 0 0; }
     .inline-form button { background: #fff; color: #8f0e42; }
     .allowlist-row > .inline-form { margin: 10px 12px 0; }
+    @media (prefers-reduced-motion: no-preference) {
+      .focus-item,
+      .metric,
+      .panel,
+      .status-item,
+      .sync-row,
+      .ops-table tbody tr td,
+      .panel-summary,
+      .actions a,
+      .actions button {
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+      }
+      .focus-item:hover,
+      .metric:hover,
+      .status-item:hover,
+      .sync-row:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 34px rgba(89, 27, 57, .10);
+      }
+      details.panel:not([open]) > .panel-summary:hover,
+      .actions a:hover,
+      .actions button:hover {
+        background: #fff3f7;
+        border-color: #efb8cc;
+      }
+    }
     @media (max-width: 1120px) {
       .focus-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .n8n-summary { grid-template-columns: 1fr; }
@@ -16486,8 +16572,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       .metrics,
       .grid { grid-template-columns: 1fr; }
       .panel, .panel.is-wide { grid-column: auto; }
-      .panel-summary { align-items: flex-start; }
-      .panel-summary em { margin-top: 2px; }
+      .panel-summary { align-items: flex-start; flex-wrap: wrap; }
+      .panel-summary-actions { width: 100%; justify-content: flex-start; }
+      .panel-summary em { margin-top: 0; }
       .allowlist-form, .allowlist-edit, .allowlist-list { grid-template-columns: 1fr; }
       .status-list { grid-template-columns: 1fr; }
       .config-details,
@@ -16523,7 +16610,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
     </section>
 
     <details class="panel is-wide panel-collapsible compact-panel">
-      ${panelSummary('Indicadores', 'contadores completos do canal')}
+      ${panelSummary('Indicadores', 'contadores completos do canal', '6 cards')}
       <div class="panel-body">
         <section class="metrics" aria-label="Resumo">
           ${renderMetric('Canal', enabled ? 'Ativo' : 'Desligado', `Prefixo: ${requirePrefix ? prefix : 'sem prefixo'} | ${allowlistHint}`)}
@@ -16538,7 +16625,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
 
     <section class="grid" aria-label="Status operacional">
       <details class="panel is-wide panel-collapsible">
-        ${panelSummary('Allowlist', 'autorizar numeros e cards liberados')}
+        ${panelSummary('Allowlist', 'autorizar numeros e cards liberados', `${summary.allowlistAllowed} liberados`)}
         <div class="panel-body">
         <form class="allowlist-form" method="post" action="${htmlEscape(BASE_PATH)}/allowlist">
           <input type="hidden" name="csrf" value="${htmlEscape(csrfToken)}">
@@ -16562,7 +16649,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       </details>
 
       <details class="panel config-panel panel-collapsible">
-        ${panelSummary('Configuracao', 'transporte, seguranca, roteador e OCR')}
+        ${panelSummary('Configuracao', 'transporte, seguranca, roteador e OCR', `${summary.replyEngines.length} motores`)}
         <div class="panel-body">
         <div class="status-list">
           ${renderConfigCard('Canal', enabled ? 'ok' : 'warn', enabled ? 'Ativo' : 'Desligado', [
@@ -16634,7 +16721,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       </details>
 
       <details class="panel state-panel panel-collapsible">
-        ${panelSummary('Estados', 'eventos recebidos, fila e problemas')}
+        ${panelSummary('Estados', 'eventos recebidos, fila e problemas', '4 estados')}
         <div class="panel-body">
         <div class="status-list">
           ${renderStateCard('Recebidos', countOf(summary.eventCounts, 'received'), 'Eventos brutos aceitos antes da decisao.', 'ok')}
@@ -16646,7 +16733,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       </details>
 
       <details class="panel is-wide n8n-panel panel-collapsible">
-        ${panelSummary('n8n automacoes', 'rotinas, destinatarios e ultimas execucoes')}
+        ${panelSummary('n8n automacoes', 'rotinas, destinatarios e ultimas execucoes', `${summary.recentAutomationRuns.length} execucoes`)}
         <div class="panel-body">
         <div class="n8n-summary">
           <div class="n8n-stack-card">
@@ -16680,8 +16767,9 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
         </div>
       </details>
 
-      <article class="panel is-wide sync-panel">
-        <h2>Sincronia recente</h2>
+      <details class="panel is-wide sync-panel panel-collapsible heavy-panel">
+        ${panelSummary('Sincronia recente', 'ultimas entradas e respostas do canal', `${summary.recentSync.length} registros`)}
+        <div class="panel-body">
         <div class="sync-list" role="list">
           <div class="sync-list-head" aria-hidden="true">
             <span>Quando</span>
@@ -16693,10 +16781,11 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           ${renderSyncRows(summary.recentSync)}
         </div>
         <p class="footnote">Comparacao curta para conferir se a mensagem recebida gerou a resposta esperada. O telefone continua mascarado.</p>
-      </article>
+        </div>
+      </details>
 
       <details class="panel is-wide ops-panel panel-collapsible"${errorsPanelOpen}>
-        ${panelSummary('Erros abertos', summary.recentErrors.length > 0 ? 'falhas acionaveis para corrigir' : 'sem falhas acionaveis agora')}
+        ${panelSummary('Erros abertos', summary.recentErrors.length > 0 ? 'falhas acionaveis para corrigir' : 'sem falhas acionaveis agora', `${summary.errorCount24h} abertos`)}
         <div class="panel-body">
         <div class="table-wrap">
           <table class="ops-table ops-errors-table">
@@ -16709,7 +16798,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       </details>
 
       <details class="panel ops-panel panel-collapsible">
-        ${panelSummary('Eventos recentes', 'ultimas entradas recebidas pelo webhook')}
+        ${panelSummary('Eventos recentes', 'ultimas entradas recebidas pelo webhook', `${summary.recentEvents.length} linhas`)}
         <div class="panel-body">
         <div class="table-wrap">
           <table class="ops-table ops-events-table">
@@ -16721,7 +16810,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
       </details>
 
       <details class="panel ops-panel panel-collapsible">
-        ${panelSummary('Outbox recente', 'ultimas saidas enviadas pelo transporte')}
+        ${panelSummary('Outbox recente', 'ultimas saidas enviadas pelo transporte', `${summary.recentOutbox.length} linhas`)}
         <div class="panel-body">
         <div class="table-wrap">
           <table class="ops-table ops-outbox-table">
