@@ -496,6 +496,7 @@ Manter Pedidos como Postgres puro; validar badge, n8n de chegada, edicao de parc
 - A tela `/tarefa/` deve mostrar usuarios pelo nome exibido em `core_users.display_name` no seletor `Quem vai ver`, com login apenas como fallback. O formulario do lembrete Miauby separa visualmente dia e horario, mas continua gravando/atualizando `tarefa_reminders.remind_at` no backend.
 - Desde 2026-06-05, a visao ADM da tela `/tarefa/` mostra um badge `Miauby Whats` por tarefa quando existe historico de lembrete, com contador de envios confirmados, ultimo envio/tentativa e status derivados de `tarefa_reminders`; o badge e somente leitura e nao dispara WhatsApp.
 - Desde 2026-06-06, o layout da tela `/tarefa/` separa a criacao, a fila aberta, os badges de prioridade/Miauby Whats e o historico recolhido em blocos mais legiveis, mantendo intactos formularios, endpoints, CSRF, banco, `remind_at` e worker de lembretes.
+- Desde 2026-06-08, os cards de tarefas abertas usam faixa lateral para prioridade/privacidade/Miauby, `Editar` em formato pill e layout expandido mais largo quando a edicao abre; a mudanca e apenas visual e preserva status, POSTs, CSRF, banco, auditoria e lembretes.
 
 ### Permissoes e sessao
 

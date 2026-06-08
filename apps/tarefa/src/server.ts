@@ -2049,7 +2049,7 @@ async function renderApp(req: Request): Promise<string> {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tarefas - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="${BASE_PATH}/favicon.svg">
-    <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260606-task-layout">
+    <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260608-task-card-polish">
     <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
     <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
