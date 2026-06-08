@@ -233,6 +233,7 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 
 - Criar/editar/inativar/excluir cliente.
 - O cadastro rapido `Novo cliente` do Balcao e apenas uma organizacao visual em blocos de dados do cliente e compra inicial opcional; continua usando o mesmo POST `save_client`, CSRF, calculo de compra inicial e atendente travado pelo usuario logado.
+- Desde 2026-06-08, esse cadastro rapido recebeu polimento de frontend: cabecalho destacado, blocos com acento visual, campos em caixas focadas, resumo financeiro com cards coloridos, microanimacoes leves e versao mobile ajustada, sem alterar dados, rotas, names dos inputs, POST, CSRF ou calculo.
 - A secao `Gastar/Usar Cashback` do Balcao e apenas uma organizacao visual em blocos de cliente, compra atual, resumo financeiro e acao; continua usando o mesmo POST `save_redeem`, CSRF, seletores do calculo automatico e atendente travado pelo usuario logado.
 - Criar compra, calcular cashback gerado e criar credito vinculado a compra; novo credito expira sempre 45 dias apos `cashback_purchases.purchased_at::date`.
 - Criar resgate, marcando creditos vencidos antes da escrita, consumir somente creditos ativos dentro da validade e gravar itens do resgate.

@@ -66,7 +66,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.0.1';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1988,12 +1988,12 @@ async function renderDashboard(req: Request): Promise<string> {
     </section>
 
     <section id="cadastro" class="panel section-block workspace-section quick-client-panel">
-      <div class="section-title quick-client-title"><div><span class="kicker">Cadastro rapido</span><h2>Novo cliente</h2></div><span class="soft-pill">Compra inicial opcional</span></div>
+      <div class="section-title quick-client-title"><div class="quick-client-title-copy"><span class="kicker">Cadastro rapido</span><h2>Novo cliente</h2></div><span class="soft-pill">Compra inicial opcional</span></div>
       <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_client">
-        <div class="quick-client-block full">
-          <div class="quick-client-block-title"><span class="step-badge">1</span><h3>Dados do cliente</h3></div>
+        <div class="quick-client-block quick-client-identity full">
+          <div class="quick-client-block-title"><span class="step-badge">1</span><div><h3>Dados do cliente</h3><small>Identificacao e contato</small></div></div>
           <div class="quick-client-fields">
             <label><span>Nome *</span><input type="text" name="nome" required placeholder="Nome do cliente"></label>
             <label><span>Telefone</span><input type="text" name="telefone" inputmode="numeric" placeholder="11999999999"></label>
@@ -2002,7 +2002,7 @@ async function renderDashboard(req: Request): Promise<string> {
           </div>
         </div>
         <div class="quick-client-block quick-client-purchase full">
-          <div class="quick-client-block-title"><span class="step-badge">2</span><h3>Compra inicial</h3><span class="optional-chip">Opcional</span></div>
+          <div class="quick-client-block-title"><span class="step-badge">2</span><div><h3>Compra inicial</h3><small>Venda do momento, se houver</small></div><span class="optional-chip">Opcional</span></div>
           <div class="quick-client-fields">
             <label><span>Valor que o cliente vai gastar agora</span><input type="text" name="valor_compra_inicial" data-money placeholder="100,00"></label>
             <label><span>% Cashback</span><input type="text" name="percentual_cashback_inicial" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label>
