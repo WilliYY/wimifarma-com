@@ -2730,6 +2730,41 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             box-shadow: 0 14px 26px rgba(190, 18, 60, 0.2);
         }
 
+        .wf-switch-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(254, 205, 211, 0.78);
+        }
+
+        .wf-switch-logout {
+            min-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #fecdd3;
+            border-radius: 999px;
+            padding: 0 16px;
+            background: #fff7f8;
+            color: #9f1239;
+            font-size: 0.84rem;
+            font-weight: 950;
+            text-decoration: none;
+            transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+        }
+
+        .wf-switch-logout:hover,
+        .wf-switch-logout:focus-visible {
+            border-color: #be123c;
+            background: #fff1f2;
+            outline: 0;
+            box-shadow: 0 10px 22px rgba(159, 18, 57, 0.12);
+            transform: translateY(-1px);
+        }
+
         .wf-switch-empty {
             margin: 0;
             border: 1px dashed #fecdd3;
@@ -3246,6 +3281,14 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
                 grid-template-columns: minmax(0, 1fr);
             }
 
+            .wf-switch-actions {
+                justify-content: stretch;
+            }
+
+            .wf-switch-logout {
+                width: 100%;
+            }
+
             .wf-runner.is-nyan {
                 width: clamp(150px, 52vw, 260px);
             }
@@ -3469,6 +3512,10 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             <?php else: ?>
                 <p class="wf-switch-empty">Nao consegui carregar os usuarios ativos agora. Atualize a pagina e tente novamente.</p>
             <?php endif; ?>
+
+            <div class="wf-switch-actions">
+                <a class="wf-switch-logout" href="<?php echo wf_home_e(wf_home_url('/?sair=1')); ?>">Sair</a>
+            </div>
         </section>
     </div>
 

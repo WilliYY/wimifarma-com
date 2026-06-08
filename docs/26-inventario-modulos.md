@@ -16,7 +16,7 @@ Este documento registra o inventario operacional antes de novas migracoes ou cor
 
 Use este inventario junto com `docs/22-migracao-mysql-postgres.md` e `docs/24-modernizacao-modulos.md`. Quando um modulo mudar de rota, banco, auth, escrita ou integracao, atualize este documento.
 
-Nota de navegacao: os modulos internos devem exibir `Home` para voltar a `/` sem encerrar sessao. O botao visual `Sair` fica apenas na Home principal; rotas de logout dos modulos podem existir por compatibilidade, mas nao devem aparecer como acao de navegacao.
+Nota de navegacao: os modulos internos devem exibir `Home` para voltar a `/` sem encerrar sessao. O botao visual `Sair` fica apenas na Home principal, dentro do modal `Trocar usuario`, usando `/?sair=1`; rotas de logout dos modulos podem existir por compatibilidade, mas nao devem aparecer como acao de navegacao.
 
 ## Limpeza de legado em 2026-05-29
 
