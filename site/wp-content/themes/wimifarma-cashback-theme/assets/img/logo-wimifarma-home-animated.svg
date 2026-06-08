@@ -7,10 +7,15 @@
       transform-origin: center;
     }
 
-    .logo-capsule,
-    .logo-divider {
-      stroke: #000000;
+    .logo-capsule {
+      stroke: #ffffff;
       fill: none;
+    }
+
+    .logo-plus image,
+    .logo-divider image,
+    .logo-text-wrapper image {
+      filter: url(#home-logo-white-cutout);
     }
 
     /* Animation mappings for a 4.0-second infinite loop (velocity 0.6) */
@@ -165,6 +170,14 @@
     <clipPath id="global-liquid-clip">
       <path class="liquid-wave-path" d="M 0 500 Q 150 480, 300 500 T 600 500 T 900 500 T 1024 500 L 1024 1024 L 0 1024 Z" />
     </clipPath>
+    <filter id="home-logo-white-cutout" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="
+        0 0 0 0 1
+        0 0 0 0 1
+        0 0 0 0 1
+        -0.333 -0.333 -0.333 0 1
+      " />
+    </filter>
   </defs>
 
   <!-- Fundo removido: a logo precisa ficar transparente na Home. -->

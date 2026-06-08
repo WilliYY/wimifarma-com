@@ -33,7 +33,7 @@ Decisao:
 
 - Trocar a variacao animada da marca da Home para `assets/img/logo-wimifarma-home-animated.svg`.
 - Usar o SVG nas duas logos visiveis da tela de login, no formulario central e no rodape, e manter o mesmo asset no header autenticado.
-- Remover do asset versionado a camada branca de fundo do SVG fornecido e ajustar a proporcao para `1024 / 400`.
+- Remover do asset versionado a camada branca externa do SVG fornecido, aplicar filtro interno para tirar o branco do PNG embutido e deixar a marca clara/transparente na Home, e ajustar a proporcao para `1024 / 400`.
 - Ajustar o loop para manter a marca completa legivel em todos os frames, inclusive no mobile.
 
 Motivo:
