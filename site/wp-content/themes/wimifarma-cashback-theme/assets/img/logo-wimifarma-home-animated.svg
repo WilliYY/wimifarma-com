@@ -51,14 +51,6 @@
       animation: kinetic-text 4s cubic-bezier(0.175, 0.885, 0.32, 1.15) infinite;
     }
 
-    .logo-capsule,
-    .capsule-reveal-rect,
-    .logo-plus,
-    .logo-divider,
-    .logo-text-wrapper {
-      animation-delay: -2.65s;
-    }
-
     @keyframes kinetic-plus {
       0% {
         transform: translate(377px, 0) scale(0) rotate(0deg);
