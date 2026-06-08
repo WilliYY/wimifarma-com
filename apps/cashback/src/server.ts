@@ -560,6 +560,14 @@ function cleanText(value: unknown, limit: number): string {
   return clean.length > limit ? clean.slice(0, limit) : clean;
 }
 
+function cssToken(value: unknown): string {
+  const token = cleanText(value, 40)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return token || 'generico';
+}
+
 function digitsOnly(value: unknown): string {
   return String(value ?? '').replace(/\D+/g, '');
 }
@@ -2472,7 +2480,10 @@ function messageSection(id: string, kicker: string, title: string, rows: DbRow[]
 function messageCard(message: DbRow, subtitle: string): string {
   const wa = whatsappLink(message.phone, message.message);
   const phone = formatPhone(message.phone);
-  return `<article class="message-card" data-whatsapp-card data-message-id="${e(message.id)}"><div class="message-card-head"><div><span class="message-card-label">${e(campaignLabel(message.campaign))}</span><strong>${e(message.client_name)}</strong></div><span class="soft-pill">Pendente</span></div><div class="message-card-meta"><span>${e(subtitle || 'Sem detalhe adicional')}</span>${phone ? `<span>${e(phone)}</span>` : '<span>Sem telefone</span>'}</div><p class="message-card-body">${e(message.message)}</p><div class="message-actions">${wa ? `<a class="btn primary" href="${e(wa)}" target="_blank" rel="noopener" data-whatsapp-send data-message-id="${e(message.id)}">Abrir WhatsApp</a>` : '<span class="soft-pill">Sem telefone</span>'}<button class="btn" type="button" data-copy-message="${e(message.message)}" data-message-id="${e(message.id)}">Copiar texto</button><button class="btn danger" type="button" data-cancel-message data-message-id="${e(message.id)}">Excluir da fila</button></div></article>`;
+  const campaignClass = `campaign-${cssToken(message.campaign)}`;
+  const createdAt = brDate(message.created_at, true);
+  const dueAt = brDate(message.due_date);
+  return `<article class="message-card ${e(campaignClass)}" data-whatsapp-card data-message-id="${e(message.id)}"><div class="message-card-head"><div><span class="message-card-label">${e(campaignLabel(message.campaign))}</span><strong>${e(message.client_name)}</strong></div><span class="soft-pill message-status-pill">Pendente</span></div><div class="message-card-meta"><span>${e(subtitle || 'Sem detalhe adicional')}</span>${phone ? `<span>${e(phone)}</span>` : '<span>Sem telefone</span>'}</div><p class="message-card-body" title="${e(message.message)}">${e(message.message)}</p><div class="message-card-timeline"><span>Criada ${e(createdAt)}</span>${dueAt !== '-' ? `<span>Data ${e(dueAt)}</span>` : ''}</div><div class="message-actions">${wa ? `<a class="btn primary" href="${e(wa)}" target="_blank" rel="noopener" data-whatsapp-send data-message-id="${e(message.id)}">Abrir WhatsApp</a>` : '<span class="soft-pill">Sem telefone</span>'}<button class="btn" type="button" data-copy-message="${e(message.message)}" data-message-id="${e(message.id)}">Copiar texto</button><button class="btn danger" type="button" data-cancel-message data-message-id="${e(message.id)}">Excluir da fila</button></div></article>`;
 }
 
 function recompraDedupeKey(clientId: number, lastPurchase: unknown): string {

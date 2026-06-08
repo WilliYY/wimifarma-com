@@ -56,6 +56,8 @@ O Cashback cobre:
 - mensagens/WhatsApp;
 - logs e configuracoes.
 
+Desde 2026-06-08, a tela `Mensagens` do Cashback usa cards de fila mais modernos e densos, com acento por campanha e metadados de criacao/data, preservando as mesmas regras de status, dedupe, CSRF, historico e expiracao da fila.
+
 Arquivos principais:
 
 - `apps/cashback/src/server.ts`
