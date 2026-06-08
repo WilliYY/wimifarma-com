@@ -9,7 +9,7 @@ $publicHosts = array('wimifarma.com', 'www.wimifarma.com');
 $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
-$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.svg') . '?v=20260608-animated-svg-readable';
+$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.svg') . '?v=20260608-animated-transparent-motion';
 $homeLoginLogoUrl = $homeLogoUrl;
 $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
@@ -1017,7 +1017,11 @@ if (!$homeAuthenticated):
             max-height: 116px;
             display: block;
             object-fit: contain;
+            mix-blend-mode: multiply;
             filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+            animation: wf-home-logo-float 3.6s ease-in-out infinite;
+            transform-origin: center;
+            will-change: transform;
         }
 
         .wf-login-only {
@@ -1278,7 +1282,12 @@ if (!$homeAuthenticated):
             width: min(272px, 72vw);
             height: auto;
             display: block;
+            mix-blend-mode: multiply;
             filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
+            animation: wf-home-logo-float 4.2s ease-in-out infinite;
+            animation-delay: -1.4s;
+            transform-origin: center;
+            will-change: transform;
         }
 
         .wf-login-whatsapp {
@@ -1510,6 +1519,18 @@ if (!$homeAuthenticated):
             }
             to {
                 transform: rotate(0deg);
+            }
+        }
+
+        @keyframes wf-home-logo-float {
+            0%, 100% {
+                transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+            }
+            34% {
+                transform: translate3d(0, -7px, 0) scale(1.025) rotate(-1.2deg);
+            }
+            68% {
+                transform: translate3d(0, 3px, 0) scale(0.992) rotate(1deg);
             }
         }
 
@@ -2405,7 +2426,23 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             width: 100%;
             height: auto;
             aspect-ratio: 1024 / 400;
+            mix-blend-mode: multiply;
             filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.22));
+            animation: wf-home-logo-float 3.8s ease-in-out infinite;
+            transform-origin: center;
+            will-change: transform;
+        }
+
+        @keyframes wf-home-logo-float {
+            0%, 100% {
+                transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+            }
+            34% {
+                transform: translate3d(0, -7px, 0) scale(1.025) rotate(-1.2deg);
+            }
+            68% {
+                transform: translate3d(0, 3px, 0) scale(0.992) rotate(1deg);
+            }
         }
 
         .wf-home-switch-button {
