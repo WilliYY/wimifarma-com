@@ -758,6 +758,7 @@ const GROUPS_ENABLED = boolEnv('MIAUW_WHATSAPP_GROUPS_ENABLED', false);
 const MAX_REPLIES_PER_INBOUND = numberEnv('MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND', 1, 0, 3);
 const USER_RATE_LIMIT_PER_MINUTE = numberEnv('MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE', 6, 1, 60);
 const USER_RATE_LIMIT_PER_DAY = numberEnv('MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY', 120, 1, 1000);
+const USER_RATE_LIMIT_DEFER_SECONDS = numberEnv('MIAUW_WHATSAPP_USER_RATE_LIMIT_DEFER_SECONDS', 70, 10, 120);
 const MIN_REPLY_DELAY_MS = numberEnv('MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS', 700, 0, 15000);
 const MAX_REPLY_DELAY_MS = Math.max(MIN_REPLY_DELAY_MS, numberEnv('MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS', 2200, 0, 30000));
 const GLOBAL_RATE_LIMIT_PER_MINUTE = numberEnv('MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE', 8, 1, 60);
@@ -3142,10 +3143,11 @@ async function whatsappUserContextForHashes(phoneHashes: string[], senderMask: s
   }
 }
 
-async function insertEvent(message: IncomingMessage, status: string, ignoreReason: string, bodyText: string): Promise<{ id: string; inserted: boolean }> {
+async function insertEvent(message: IncomingMessage, status: string, ignoreReason: string, bodyText: string, nextAttemptDelaySeconds = 0): Promise<{ id: string; inserted: boolean }> {
   const remoteHash = sha256(message.remoteJid);
   const phoneHash = sha256(message.senderPhone);
   const traceId = crypto.randomUUID().replace(/-/g, '');
+  const deferSeconds = Math.max(0, Math.min(120, Math.trunc(nextAttemptDelaySeconds)));
   const params = [
     crypto.randomUUID(),
     message.provider,
@@ -3167,6 +3169,7 @@ async function insertEvent(message: IncomingMessage, status: string, ignoreReaso
     status,
     ignoreReason,
     MAX_ATTEMPTS,
+    deferSeconds,
     traceId,
   ];
 
@@ -3177,15 +3180,15 @@ async function insertEvent(message: IncomingMessage, status: string, ignoreReaso
          remote_jid_hash, remote_jid_mask, remote_jid_ciphertext,
          sender_phone_hash, sender_phone_mask, sender_phone_ciphertext,
          push_name, message_type, body_text, body_size, payload_summary,
-         status, ignore_reason, max_attempts, trace_id
-       )
-       VALUES (
-         $1, $2, $3, $4, $5, $6,
-         $7, $8, $9,
-         $10, $11, $12,
-         $13, $14, $15, $16, $17::jsonb,
-         $18, $19, $20, $21
-       )
+          status, ignore_reason, max_attempts, next_attempt_at, trace_id
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9,
+          $10, $11, $12,
+          $13, $14, $15, $16, $17::jsonb,
+          $18, $19, $20, NOW() + ($21::int * INTERVAL '1 second'), $22
+        )
        ON CONFLICT (provider, instance_name, message_id) DO NOTHING
        RETURNING id, true AS inserted
      ), duplicate AS (
@@ -3224,6 +3227,8 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   const ignoreReasons: string[] = [];
   const originalBodyText = message.bodyText;
   let bodyText = originalBodyText;
+  let acceptedActivationPrefix = !REQUIRE_PREFIX;
+  let nextAttemptDelaySeconds = 0;
   const isAudioMessage = isAudioMessageType(message.messageType);
   const isPixReceiptMediaMessage = isPixReceiptMediaMessageType(message.messageType);
   const isConfirmationDecision = bodyText ? parseConfirmationDecision(bodyText) !== null : false;
@@ -3284,6 +3289,7 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
         ignoreReasons.push(prefix.reason);
       }
     } else {
+      acceptedActivationPrefix = true;
       bodyText = prefix.text;
     }
   }
@@ -3292,7 +3298,32 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
     const senderHash = sha256(message.senderPhone);
     const minuteCount = await countRecentMessages(senderHash, 'minute');
     const dayCount = await countRecentMessages(senderHash, 'day');
-    if (minuteCount >= USER_RATE_LIMIT_PER_MINUTE) ignoreReasons.push('rate_limited_minute');
+    if (minuteCount >= USER_RATE_LIMIT_PER_MINUTE) {
+      const canDeferMinuteRateLimit = Boolean(
+        senderAllowed
+          && bodyText
+          && !message.fromMe
+          && (!message.isGroup || GROUPS_ENABLED)
+          && (
+            acceptedActivationPrefix
+            || hasPendingSelectionContext
+            || isConfirmationDecision
+            || (isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED)
+            || (isAudioMessage && AUDIO_INPUT_ENABLED)
+          ),
+      );
+      if (canDeferMinuteRateLimit) {
+        nextAttemptDelaySeconds = USER_RATE_LIMIT_DEFER_SECONDS;
+        message.payloadSummary = {
+          ...message.payloadSummary,
+          rate_limited_minute_deferred: true,
+          rate_limited_minute_defer_seconds: USER_RATE_LIMIT_DEFER_SECONDS,
+          rate_limited_minute_count: minuteCount,
+        };
+      } else {
+        ignoreReasons.push('rate_limited_minute');
+      }
+    }
     if (dayCount >= USER_RATE_LIMIT_PER_DAY) ignoreReasons.push('rate_limited_day');
   }
 
@@ -3301,7 +3332,7 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   }
 
   const status = ignoreReasons.length > 0 ? 'ignored' : 'queued';
-  const inserted = await insertEvent(message, status, ignoreReasons[0] || '', bodyText);
+  const inserted = await insertEvent(message, status, ignoreReasons[0] || '', bodyText, nextAttemptDelaySeconds);
   if (inserted.inserted && status === 'queued') {
     queueMicrotask(() => {
       processQueue(WORKER_BATCH_SIZE).catch((error) => console.error(redact(String(error))));
@@ -6732,7 +6763,13 @@ async function executeConfirmedPedidoCancel(pending: PendingConfirmationRow, tra
 
 async function preparePedidoCancelFromWhatsapp(query: string, row: QueueRow | undefined, userContext: WhatsappUserContext, responsibleUser: CoreUserIdentity | null = null): Promise<ReplyResult> {
   const cleanQuery = safeText(query, 180);
-  const candidates = await fetchPedidosCancelCandidates(userContext, cleanQuery, 12);
+  const candidates = await fetchPedidosCancelCandidates(userContext, cleanQuery, 12).catch((error) => pedidosInternalFailureReply('cancel_lookup', error, {
+    eventId: row?.id,
+    traceId: row?.trace_id,
+    phoneMask: row?.sender_phone_mask || userContext.contact_mask,
+    messagePreview: row?.body_text || cleanQuery,
+  }));
+  if (!Array.isArray(candidates)) return candidates;
   if (!candidates.length) {
     return {
       text: cleanQuery
@@ -7697,7 +7734,12 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       };
     }
     if (pedidoOperation.action === 'list') {
-      const summary = await fetchPedidosArrivalSummary();
+      const summary = await fetchPedidosArrivalSummary().catch((error) => pedidosInternalFailureReply('list', error, {
+        traceId,
+        phoneMask: senderMask,
+        messagePreview: message,
+      }));
+      if ('text' in summary) return summary;
       return {
         text: pedidosArrivalQueryMessage(summary.orders),
         engine: 'local',
@@ -13298,6 +13340,40 @@ function pedidosArrivalQueryMessage(orders: PedidosArrivalOrder[]): string {
   return `Pedidos aguardando chegada 😼\n${lines.join('\n\n')}${extra}`;
 }
 
+type PedidosInternalAction = 'list' | 'create' | 'cancel_lookup' | 'cancel' | 'confirm_arrival';
+
+async function fetchPedidosInternal(url: string, init: RequestInit = {}): Promise<globalThis.Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function pedidosInternalFailureText(action: PedidosInternalAction): string {
+  if (action === 'create') {
+    return 'Nao consegui confirmar se o pedido foi gravado agora. Confira /pedidos/ antes de mandar de novo.';
+  }
+  if (action === 'cancel' || action === 'cancel_lookup') {
+    return 'Nao consegui consultar/cancelar o pedido agora. Tente de novo em instantes. Nao alterei nada.';
+  }
+  if (action === 'confirm_arrival') {
+    return 'Nao consegui confirmar a chegada agora. Tente de novo em instantes. Nao alterei nada.';
+  }
+  return 'Nao consegui consultar os pedidos agora. Tente de novo em instantes. Nao alterei nada.';
+}
+
+async function pedidosInternalFailureReply(action: PedidosInternalAction, error: unknown, context: ErrorLogContext): Promise<ReplyResult> {
+  await recordErrorLog(`pedidos_${action}_internal`, 'warn', error, context);
+  return {
+    text: pedidosInternalFailureText(action),
+    engine: 'blocked',
+    reason: `pedidos_${action}_internal_error:${safeText(safeError(error), 80)}`,
+  };
+}
+
 function pedidoCancelOptionLine(order: PedidosArrivalOrder, index: number): string {
   const created = brDateOnlyFromIso(order.created_at || '');
   const createdLabel = created === 'sem previsao' ? 'sem data' : created;
@@ -13324,7 +13400,7 @@ function pedidoCancelConfirmationText(order: PedidosArrivalOrder): string {
 async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: PedidosArrivalOrder[]; totalLabel: string; count: number }> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const url = `${PEDIDOS_INTERNAL_BASE_URL}/api/internal/arrival-summary?limit=${encodeURIComponent(String(limit))}`;
-  const response = await fetch(url, { headers: internalPhpJsonHeaders() });
+  const response = await fetchPedidosInternal(url, { headers: internalPhpJsonHeaders() });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !isRecord(data) || data.ok !== true) {
     throw new Error(safeText(isRecord(data) ? data.error || data.message : '', 180) || `pedidos_arrival_summary_http_${response.status}`);
@@ -13406,7 +13482,7 @@ async function fetchPedidosCancelCandidates(userContext: WhatsappUserContext, qu
     limit: String(limit),
   });
   if (query) params.set('q', query);
-  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/cancel-candidates?${params.toString()}`, {
+  const response = await fetchPedidosInternal(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/cancel-candidates?${params.toString()}`, {
     headers: internalPhpJsonHeaders(),
   });
   const data = await response.json().catch(() => ({}));
@@ -13792,7 +13868,7 @@ function pedidosArrivalOptionsText(options: unknown): string {
 
 async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: string, senderMask: string): Promise<ReplyResult> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
-  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/confirm-arrival`, {
+  const response = await fetchPedidosInternal(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/confirm-arrival`, {
     method: 'POST',
     headers: internalPhpJsonHeaders(),
     body: JSON.stringify({
@@ -13800,9 +13876,20 @@ async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: stri
       actor: `Miauby WhatsApp ${senderMask}`,
       trace_id: traceId,
     }),
-  });
+  }).catch((error) => pedidosInternalFailureReply('confirm_arrival', error, {
+    traceId,
+    phoneMask: senderMask,
+    messagePreview: supplier,
+  }));
+  if (!('ok' in response)) return response;
   const data = await response.json().catch(() => ({}));
-  if (!isRecord(data)) throw new Error(`pedidos_confirm_arrival_http_${response.status}`);
+  if (!isRecord(data)) {
+    return pedidosInternalFailureReply('confirm_arrival', new Error(`pedidos_confirm_arrival_http_${response.status}`), {
+      traceId,
+      phoneMask: senderMask,
+      messagePreview: supplier,
+    });
+  }
   if (response.ok && data.ok === true) {
     return {
       text: safeText(data.message, 500) || 'Chegada confirmada. O pedido ficou em Confirmados para pagar.',
@@ -13825,7 +13912,11 @@ async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: stri
       reason: 'pedidos_arrival_not_found',
     };
   }
-  throw new Error(safeText(data.message || data.error, 180) || `pedidos_confirm_arrival_http_${response.status}`);
+  return pedidosInternalFailureReply('confirm_arrival', new Error(safeText(data.message || data.error, 180) || `pedidos_confirm_arrival_http_${response.status}`), {
+    traceId,
+    phoneMask: senderMask,
+    messagePreview: supplier,
+  });
 }
 
 type ResolvedPixCnpjResponsible = {
@@ -14302,7 +14393,7 @@ async function createPedidoFromWhatsapp(
       reason: 'pedidos_create_missing_actor_name',
     };
   }
-  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/create-order`, {
+  const response = await fetchPedidosInternal(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/create-order`, {
     method: 'POST',
     headers: internalPhpJsonHeaders(),
     body: JSON.stringify({
@@ -14320,9 +14411,20 @@ async function createPedidoFromWhatsapp(
       register_only: command.register_only,
       note: command.note,
     }),
-  });
+  }).catch((error) => pedidosInternalFailureReply('create', error, {
+    traceId,
+    phoneMask: senderMask,
+    messagePreview: command.raw,
+  }));
+  if (!('ok' in response)) return response;
   const data = await response.json().catch(() => ({}));
-  if (!isRecord(data)) throw new Error(`pedidos_create_http_${response.status}`);
+  if (!isRecord(data)) {
+    return pedidosInternalFailureReply('create', new Error(`pedidos_create_http_${response.status}`), {
+      traceId,
+      phoneMask: senderMask,
+      messagePreview: command.raw,
+    });
+  }
   if (response.ok && data.ok === true) {
     const baseText = formatPedidosCreateSuccess(command, data.duplicate === true);
     const responsibleName = includeResponsibleInReply
@@ -14349,7 +14451,11 @@ async function createPedidoFromWhatsapp(
       reason: 'pedidos_create_duplicate_processing',
     };
   }
-  throw new Error(safeText(data.message || data.error, 180) || `pedidos_create_http_${response.status}`);
+  return pedidosInternalFailureReply('create', new Error(safeText(data.message || data.error, 180) || `pedidos_create_http_${response.status}`), {
+    traceId,
+    phoneMask: senderMask,
+    messagePreview: command.raw,
+  });
 }
 
 async function cancelPedidoFromWhatsapp(
@@ -14362,7 +14468,7 @@ async function cancelPedidoFromWhatsapp(
 ): Promise<ReplyResult> {
   if (!INTERNAL_TOKEN) throw new Error('internal_token_not_configured');
   const actorName = safeText(userContext.display_name || userContext.username || senderMask, 120) || 'Miauby WhatsApp';
-  const response = await fetch(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/cancel-order`, {
+  const response = await fetchPedidosInternal(`${PEDIDOS_INTERNAL_BASE_URL}/api/internal/cancel-order`, {
     method: 'POST',
     headers: internalPhpJsonHeaders(),
     body: JSON.stringify({
@@ -14374,9 +14480,20 @@ async function cancelPedidoFromWhatsapp(
       order_id: orderId,
       account_id: accountId,
     }),
-  });
+  }).catch((error) => pedidosInternalFailureReply('cancel', error, {
+    traceId,
+    phoneMask: senderMask,
+    messagePreview: `${orderId}:${accountId}`,
+  }));
+  if (!('ok' in response)) return response;
   const data = await response.json().catch(() => ({}));
-  if (!isRecord(data)) throw new Error(`pedidos_cancel_http_${response.status}`);
+  if (!isRecord(data)) {
+    return pedidosInternalFailureReply('cancel', new Error(`pedidos_cancel_http_${response.status}`), {
+      traceId,
+      phoneMask: senderMask,
+      messagePreview: `${orderId}:${accountId}`,
+    });
+  }
   if (response.ok && data.ok === true) {
     const supplier = safeText(data.supplier_name, 180) || 'pedido';
     const totalLabel = safeText(data.total_label, 60) || '';
@@ -14403,7 +14520,11 @@ async function cancelPedidoFromWhatsapp(
       reason: 'pedidos_cancel_duplicate_processing',
     };
   }
-  throw new Error(safeText(data.message || data.error, 180) || `pedidos_cancel_http_${response.status}`);
+  return pedidosInternalFailureReply('cancel', new Error(safeText(data.message || data.error, 180) || `pedidos_cancel_http_${response.status}`), {
+    traceId,
+    phoneMask: senderMask,
+    messagePreview: `${orderId}:${accountId}`,
+  });
 }
 
 async function dashboardSummary(): Promise<DashboardSummary> {
