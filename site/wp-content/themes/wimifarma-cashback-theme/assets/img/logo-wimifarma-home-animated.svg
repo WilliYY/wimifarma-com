@@ -1,10 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 400" width="1024" height="400" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="wimifarma-logo-title" id="wimifarma-home-logo">
   <title id="wimifarma-logo-title">Wimifarma</title>
-  <defs>
-    <clipPath id="wf-capsule-reveal">
-      <rect class="wf-capsule-reveal-rect" x="40" y="72" width="944" height="256" rx="128" />
-    </clipPath>
-  </defs>
   <style>
     #wimifarma-home-logo {
       background: transparent;
@@ -30,18 +25,11 @@
       stroke-width: 28;
       stroke-linecap: round;
       stroke-linejoin: round;
-      clip-path: url(#wf-capsule-reveal);
-      animation: wf-capsule-visible 4s ease-in-out infinite;
-    }
-
-    .wf-capsule-reveal-rect {
-      transform-origin: 512px 200px;
-      animation: wf-capsule-open 4s cubic-bezier(.18, .88, .32, 1.1) infinite;
     }
 
     .wf-plus {
       transform-origin: 158px 200px;
-      animation: wf-plus-spin 4s cubic-bezier(.25, 1, .5, 1) infinite;
+      animation: wf-plus-spin 2.8s cubic-bezier(.45, 0, .2, 1) infinite;
     }
 
     .wf-plus-bar {
@@ -51,12 +39,10 @@
 
     .wf-divider {
       fill: currentColor;
-      animation: wf-divider-draw 4s cubic-bezier(.18, .88, .32, 1.1) infinite;
       transform-origin: 236px 200px;
     }
 
     .wf-word-group {
-      animation: wf-word-enter 4s cubic-bezier(.18, .88, .32, 1.1) infinite;
       transform-origin: 596px 200px;
     }
 
@@ -79,87 +65,22 @@
 
     @keyframes wf-plus-spin {
       0% {
-        opacity: 0;
-        transform: translate(354px, 0) scale(.25) rotate(0deg);
+        transform: rotate(0deg) scale(1);
       }
-      16% {
-        opacity: 1;
-        transform: translate(354px, 0) scale(1.22) rotate(450deg);
+      42% {
+        transform: rotate(164deg) scale(1.045);
       }
-      31% {
-        opacity: 1;
-        transform: translate(354px, 0) scale(1.22) rotate(720deg);
-      }
-      47% {
-        opacity: 1;
-        transform: translate(0, 0) scale(1) rotate(1080deg);
-      }
-      88% {
-        opacity: 1;
-        transform: translate(0, 0) scale(1) rotate(1080deg);
+      58% {
+        transform: rotate(214deg) scale(1.045);
       }
       100% {
-        opacity: 0;
-        transform: translate(354px, 0) scale(.25) rotate(1440deg);
-      }
-    }
-
-    @keyframes wf-capsule-open {
-      0%, 24% {
-        transform: scaleX(.06);
-      }
-      48%, 88% {
-        transform: scaleX(1);
-      }
-      100% {
-        transform: scaleX(.06);
-      }
-    }
-
-    @keyframes wf-capsule-visible {
-      0%, 31%, 100% {
-        opacity: 0;
-      }
-      42%, 88% {
-        opacity: 1;
-      }
-    }
-
-    @keyframes wf-divider-draw {
-      0%, 41% {
-        opacity: 0;
-        transform: scaleY(.2);
-      }
-      52%, 88% {
-        opacity: 1;
-        transform: scaleY(1);
-      }
-      100% {
-        opacity: 0;
-        transform: scaleY(.2);
-      }
-    }
-
-    @keyframes wf-word-enter {
-      0%, 46% {
-        opacity: 0;
-        transform: translateX(-26px) scale(.97);
-      }
-      58%, 88% {
-        opacity: 1;
-        transform: translateX(0) scale(1);
-      }
-      100% {
-        opacity: 0;
-        transform: translateX(-18px) scale(.98);
+        transform: rotate(360deg) scale(1);
       }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .wf-animated,
-      .wf-capsule-reveal-rect {
+      .wf-animated {
         animation: none !important;
-        opacity: 1 !important;
         transform: none !important;
       }
     }

@@ -61,13 +61,13 @@ Riscos/cuidados:
 Decisao:
 
 - Usar `assets/img/logo-wimifarma-home-animated.svg` como variacao animada da marca da Home.
-- Preservar a referencia visual correta: o sinal `+` gira antes de formar a logo completa.
+- Preservar a referencia visual correta: marca completa sempre visivel e o sinal `+` girando em loop.
 - Manter fundo transparente, preload `image/svg+xml`, cache-bust proprio e proporcao `1024 / 400`.
 - Aplicar o mesmo asset no login central, no rodape do login e no header autenticado.
 
 Motivo:
 
-- O usuario esclareceu que a animacao correta nao era o GIF antigo, mas sim a versao com o `+` girando, pedindo apenas melhoria de qualidade/fluidez.
+- O usuario esclareceu que a animacao correta nao era o GIF antigo nem a marca desmontando, mas sim a logo inteira com o `+` girando, pedindo apenas melhoria de qualidade/fluidez.
 
 Impacto:
 
@@ -80,7 +80,7 @@ Impacto:
 
 Riscos/cuidados:
 
-- Nao trocar esse fluxo por GIF quando o pedido for melhorar nitidez da animacao do `+`.
+- Nao trocar esse fluxo por GIF nem por animacao de montagem quando o pedido for melhorar nitidez da animacao do `+`.
 - Validar login, rodape e header autenticado apos deploy, porque o mesmo asset aparece em tres tamanhos diferentes.
 
 ## 2026-06-08 - Home usa SVG animado transparente
