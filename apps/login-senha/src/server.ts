@@ -1070,7 +1070,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntri
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>${e(view.title)} - Wimifarma</title>
-  <link rel="stylesheet" href="${basePath}/styles.css?v=20260606b">
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20260608a">
   <script src="${basePath}/app.js?v=20260605d" defer></script>
 </head>
 <body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
