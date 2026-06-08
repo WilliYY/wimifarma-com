@@ -571,6 +571,67 @@
         });
     }
 
+    function initHistoryReveal() {
+        Array.prototype.slice.call(document.querySelectorAll('[data-history-reveal-panel]')).forEach(function (panel) {
+            var list = panel.querySelector('[data-history-reveal-list]');
+            var button = panel.querySelector('[data-history-reveal-more]');
+            var status = panel.querySelector('[data-history-reveal-status]');
+
+            if (!list || list.dataset.pedidosHistoryRevealBound === '1') {
+                return;
+            }
+
+            var items = Array.prototype.slice.call(list.querySelectorAll('[data-history-reveal-item]'));
+            var initial = Number.parseInt(list.getAttribute('data-history-initial') || '6', 10);
+            var step = Number.parseInt(list.getAttribute('data-history-step') || '6', 10);
+            var visible = Math.max(1, Number.isFinite(initial) ? initial : 6);
+            step = Math.max(1, Number.isFinite(step) ? step : 6);
+            visible = Math.min(visible, Math.max(items.length, 1));
+
+            function update(animateFrom) {
+                var visibleCount = Math.min(visible, items.length);
+                var remaining = Math.max(0, items.length - visibleCount);
+
+                items.forEach(function (item, index) {
+                    var shouldShow = index < visibleCount;
+                    var wasHidden = item.hidden;
+                    item.hidden = !shouldShow;
+
+                    if (shouldShow && wasHidden && index >= animateFrom) {
+                        item.classList.add('is-history-revealed');
+                        window.setTimeout(function () {
+                            item.classList.remove('is-history-revealed');
+                        }, 220);
+                    }
+                });
+
+                if (status) {
+                    status.textContent = visibleCount + ' de ' + items.length + ' visiveis';
+                }
+
+                if (button) {
+                    button.hidden = remaining <= 0;
+                    if (remaining > 0) {
+                        button.textContent = 'Mostrar mais (' + Math.min(step, remaining) + ')';
+                    }
+                }
+            }
+
+            list.dataset.pedidosHistoryRevealBound = '1';
+            update(Number.POSITIVE_INFINITY);
+
+            if (!button) {
+                return;
+            }
+
+            button.addEventListener('click', function () {
+                var previousVisible = visible;
+                visible = Math.min(items.length, visible + step);
+                update(previousVisible);
+            });
+        });
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
@@ -590,6 +651,7 @@
             initTitleEditors();
             initOrderEditPanels();
             initOrderCardCollapse();
+            initHistoryReveal();
         });
     } else {
         bindMoneyInputs(document);
@@ -609,5 +671,6 @@
         initTitleEditors();
         initOrderEditPanels();
         initOrderCardCollapse();
+        initHistoryReveal();
     }
 }());

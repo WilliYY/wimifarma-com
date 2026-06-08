@@ -46,6 +46,10 @@ textarea {
     font: inherit;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 .gestao-topbar {
     position: sticky;
     top: 0;
@@ -602,6 +606,82 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 .gestao-orders-stack::-webkit-scrollbar-track,
 .gestao-orders-form-panel::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.64);
+}
+
+.gestao-orders-history-stack {
+    gap: 8px;
+}
+
+.gestao-orders-history .gestao-order-card.is-order-collapsed {
+    min-height: 54px;
+    padding: 8px 9px 8px 13px;
+    border-color: rgba(5, 150, 105, 0.24);
+    background:
+        linear-gradient(90deg, rgba(236, 253, 245, 0.8), rgba(255, 255, 255, 0.98) 38%),
+        #ffffff;
+    box-shadow: 0 10px 22px rgba(5, 150, 105, 0.06);
+}
+
+.gestao-orders-history .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle,
+.gestao-orders-history .gestao-order-card.is-order-collapsed .gestao-order-summary-static {
+    gap: 8px;
+}
+
+.gestao-orders-history .gestao-order-card.is-order-collapsed .gestao-order-head h2 {
+    font-size: 0.9rem;
+}
+
+.gestao-orders-history .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle > strong,
+.gestao-orders-history .gestao-order-card.is-order-collapsed .gestao-order-summary-static > strong {
+    font-size: 0.86rem;
+}
+
+.gestao-orders-history .gestao-order-card.is-order-collapsed .gestao-order-mini-chip {
+    min-height: 17px;
+    padding: 1px 5px;
+    font-size: 0.58rem;
+}
+
+.gestao-history-reveal-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-top: 9px;
+    padding: 9px;
+    border: 1px solid rgba(5, 150, 105, 0.22);
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, rgba(236, 253, 245, 0.82), rgba(255, 255, 255, 0.98)),
+        #ffffff;
+    box-shadow: 0 10px 22px rgba(5, 150, 105, 0.05);
+}
+
+.gestao-history-reveal-controls span {
+    min-width: 0;
+    color: #047857;
+    font-size: 0.76rem;
+    font-weight: 950;
+    line-height: 1.2;
+}
+
+.gestao-history-reveal-more {
+    min-height: 32px;
+    padding: 0 12px;
+    border-color: #bbf7d0;
+    color: #047857;
+    background: #ffffff;
+    box-shadow: none;
+}
+
+.gestao-history-reveal-more:hover,
+.gestao-history-reveal-more:focus-visible {
+    border-color: #059669;
+    background: #ecfdf5;
+}
+
+.gestao-order-card.is-history-revealed {
+    animation: pedidos-history-reveal 180ms ease-out both;
 }
 
 .gestao-orders-form {
@@ -2505,6 +2585,18 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     }
 }
 
+@keyframes pedidos-history-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
 @media (min-width: 1051px) {
     .gestao-orders-form-panel {
         position: sticky;
@@ -2517,6 +2609,12 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
         max-height: calc(100vh - 318px);
         overflow: auto;
         padding-right: 4px;
+    }
+
+    .gestao-orders-history .gestao-orders-stack {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
     }
 }
 
@@ -2679,6 +2777,14 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
         grid-column: 1;
         grid-row: auto;
         justify-self: start;
+    }
+
+    .gestao-history-reveal-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-history-reveal-more {
+        width: 100%;
     }
 }
 

@@ -177,13 +177,15 @@ const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const SERVICE_NAME = 'pedidos';
-const SERVICE_VERSION = '1.0.3';
+const SERVICE_VERSION = '1.0.4';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/pedidos');
 const PORT = Number.parseInt(env.PORT || '3300', 10);
 const SESSION_SECRET = env.PEDIDOS_SESSION_SECRET || env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const TZ = 'America/Sao_Paulo';
+const HISTORY_INITIAL_VISIBLE = 6;
+const HISTORY_REVEAL_STEP = 6;
 const CORE_AUTH_TIMEOUT_MS = Math.max(
   500,
   Math.min(
@@ -2686,7 +2688,10 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     </form>
   </div>` : '';
 
-  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}" ${canCollapseOrder ? `data-order-card-collapse data-order-card-id="${e(accountId)}" data-order-card-kind="${e(order.status)}"` : ''}>
+  const collapseAttrs = canCollapseOrder ? ` data-order-card-collapse data-order-card-id="${e(accountId)}" data-order-card-kind="${e(order.status)}"` : '';
+  const historyRevealAttr = order.status === 'historico' ? ' data-history-reveal-item' : '';
+
+  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}"${historyRevealAttr}${collapseAttrs}>
     <div class="gestao-order-head">
       ${canCollapseOrder ? `<div class="gestao-order-summary-toggle" role="button" tabindex="0" title="Abrir ou recolher detalhes do pedido" aria-label="Abrir ou recolher detalhes do pedido" aria-controls="${e(detailsId)}" aria-expanded="true" data-order-collapse-toggle>` : '<div class="gestao-order-summary-static">'}
         <span>
@@ -2738,7 +2743,7 @@ async function renderApp(req: Request): Promise<string> {
   const paidMonth = await paidThisMonth(selectedMonth);
   const waitingOrders = orders.filter((order) => order.status === 'pedido');
   const confirmedOrders = orders.filter((order) => order.status === 'confirmado');
-  const historyOrders = orders.filter((order) => order.status === 'historico').slice(0, 12);
+  const historyOrders = orders.filter((order) => order.status === 'historico');
   const openTicketBalances = confirmedOrders
     .map((order) => Math.max(0, Number(order.total_cents || 0) - Number(order.paid_cents || 0)))
     .filter((remainingCents) => remainingCents > 0);
@@ -2757,6 +2762,12 @@ async function renderApp(req: Request): Promise<string> {
   const historyHtml = historyOrders.length
     ? historyOrders.map((order) => renderOrderCard(req, order, selectedMonth)).join('')
     : '<div class="gestao-empty">Historico de pedidos ainda vazio neste mes.</div>';
+  const historyRevealControls = historyOrders.length > HISTORY_INITIAL_VISIBLE
+    ? `<div class="gestao-history-reveal-controls">
+        <span data-history-reveal-status aria-live="polite">${e(Math.min(HISTORY_INITIAL_VISIBLE, historyOrders.length))} de ${e(historyOrders.length)} visiveis</span>
+        <button type="button" class="gestao-btn gestao-btn-secondary gestao-history-reveal-more" data-history-reveal-more>Mostrar mais</button>
+      </div>`
+    : '';
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -2765,9 +2776,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260606-pedidos-polish">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260607-history-reveal">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
-  <script src="${BASE_PATH}/app.js?v=20260530-history-collapse" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260607-history-reveal" defer></script>
 </head>
 <body class="pedidos-body">
   <header class="gestao-topbar">
@@ -2816,9 +2827,10 @@ async function renderApp(req: Request): Promise<string> {
           <div class="gestao-section-title"><span class="gestao-kicker">Confirmados</span><strong>vencimento primeiro</strong></div>
           <div class="gestao-orders-stack">${confirmedHtml}</div>
         </section>
-        <aside class="gestao-orders-panel gestao-orders-history">
+        <aside class="gestao-orders-panel gestao-orders-history" data-history-reveal-panel>
           <div class="gestao-section-title"><span class="gestao-kicker">Historico</span><strong>${e(historyOrders.length)}</strong></div>
-          <div class="gestao-orders-stack">${historyHtml}</div>
+          <div class="gestao-orders-stack gestao-orders-history-stack" data-history-reveal-list data-history-initial="${e(HISTORY_INITIAL_VISIBLE)}" data-history-step="${e(HISTORY_REVEAL_STEP)}">${historyHtml}</div>
+          ${historyRevealControls}
         </aside>
       </div>
     </section>
