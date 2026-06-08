@@ -13106,10 +13106,10 @@ function pedidosArrivalMessage(orders: PedidosArrivalOrder[], totalLabel: string
   const lines = sortedOrders.slice(0, 10).map((order, index) => {
     const date = pedidosArrivalForecastLabel(order.expected_arrival_at);
     const value = order.total_label || order.remaining_label || '';
-    return `${index + 1}. ${order.supplier_name} - ${value} - ${date}${pedidosCreatedSuffix(order.created_at)}`;
+    return `*Pedido ${index + 1}*\n${order.supplier_name} - ${value} - ${date}${pedidosCreatedSuffix(order.created_at)}`;
   });
   const extra = orders.length > 10 ? `\n+ ${orders.length - 10} pedido(s) no painel.` : '';
-  return `Pedidos aguardando chegada (${orders.length} / ${totalLabel}).\n${lines.join('\n')}${extra}`;
+  return `Pedidos aguardando chegada (${orders.length} / ${totalLabel}).\n${lines.join('\n\n')}${extra}`;
 }
 
 function pedidosArrivalQueryMessage(orders: PedidosArrivalOrder[]): string {
@@ -13117,16 +13117,16 @@ function pedidosArrivalQueryMessage(orders: PedidosArrivalOrder[]): string {
     return 'Nenhum pedido aguardando chegada. Milagre logistico detectado 😼';
   }
   const sortedOrders = [...orders].sort(comparePedidosArrivalCreatedAt);
-  const lines = sortedOrders.slice(0, 10).map((order) => {
+  const lines = sortedOrders.slice(0, 10).map((order, index) => {
     const created = brDateOnlyFromIso(order.created_at || '');
     const createdLabel = created === 'sem previsao' ? 'sem data' : created;
     const forecast = pedidosArrivalForecastLabel(order.expected_arrival_at);
     const status = order.account_status === 'pago' ? 'ja pago, falta chegar' : 'aguardando chegada';
     const value = order.total_label || order.remaining_label || '';
-    return `• ${order.supplier_name} - ${value} - pedido em ${createdLabel} - ${forecast} - ${status}`;
+    return `*Pedido ${index + 1}*\n${order.supplier_name} - ${value} - pedido em ${createdLabel} - ${forecast} - ${status}`;
   });
   const extra = orders.length > 10 ? `\n+ ${orders.length - 10} pedido(s) no painel.` : '';
-  return `Pedidos aguardando chegada 😼\n${lines.join('\n')}${extra}`;
+  return `Pedidos aguardando chegada 😼\n${lines.join('\n\n')}${extra}`;
 }
 
 function pedidoCancelOptionLine(order: PedidosArrivalOrder, index: number): string {

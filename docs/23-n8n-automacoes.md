@@ -171,7 +171,7 @@ Fluxo:
 2. O lembrete fica previsto para o dia seguinte as 16h, com produto, quantidade, texto original, status e destinatarios mascarados/modo.
 3. Antes do envio, a Cotacao confere a linha de novo; se `encomenda` sumiu ou a linha foi removida, cancela o lembrete.
 4. O Miauby Whats confere se a rotina `cotacao_encomenda_16h` esta ativa no painel.
-5. A mensagem e curta e interna, perguntando se a encomenda chegou, com criada em, hoje e contexto do produto/quantidade.
+5. A mensagem e curta e interna, perguntando se a encomenda chegou, com criada em, hoje e contexto do produto/quantidade, sem link `Abrir Cotacao`.
 6. O envio nao altera valor, fornecedor, ganhador, status ou linha da Cotacao.
 7. O aviso deve sair uma unica vez por `cotacao_v2_encomenda_reminders.id`: a Cotacao espera ate `COTACAO_ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS` pelo bridge e o Miauby Whats bloqueia reenvio por `reminder_id` ja enviado, mesmo se uma tentativa anterior tiver estourado timeout na Cotacao.
 
@@ -394,7 +394,7 @@ Esta tabela serve como cola operacional: o n8n agenda, mas quem decide destinata
 
 | Automacao | Quando roda | Quem recebe | O que ela faz | O que posso pedir para ajustar | Limite seguro |
 | --- | --- | --- | --- | --- | --- |
-| Chegada de pedidos | Todo dia as 17h | Contatos reais autorizados com card `Pedidos` | Envia tabela dos pedidos ainda em `Aguardando chegada`, com valor total, previsao e data/hora do pedido | Adicionar/remover numero autorizado, mudar horario, mudar texto, mudar regra de filtro, testar com `dry_run=true` | Nao confirma chegada sozinha; confirmacao vem por resposta validada pelo bridge |
+| Chegada de pedidos | Todo dia as 17h | Contatos reais autorizados com card `Pedidos` | Envia blocos dos pedidos ainda em `Aguardando chegada`, com titulo `*Pedido N*`, valor total, previsao e data/hora do pedido | Adicionar/remover numero autorizado, mudar horario, mudar texto, mudar regra de filtro, testar com `dry_run=true` | Nao confirma chegada sozinha; confirmacao vem por resposta validada pelo bridge |
 | Fechamento de caixa | Todo dia as 18h | Contatos reais autorizados com card `Financeiro` | Avisa dias de caixa em aberto/conferencia/sem registro nos ultimos 10 dias | Adicionar/remover numero autorizado, mudar horario, mudar janela de dias, mudar texto, pausar/ativar no painel | Nao fecha caixa, nao cria faturamento e nao grava sangria sem fluxo auditado |
 | Encomenda da Cotacao | Dia seguinte as 16h, criada pelo app da Cotacao | Contatos reais autorizados com card `Cotacao` | Pergunta se a encomenda marcada na Cotacao chegou, usando lembrete persistido no Postgres da Cotacao | Liberar/remover card `Cotacao`, pausar/ativar rotina no painel, mudar texto ou janela de retry | Nao altera cotacao e nao usa n8n para salvar dados |
 | Smoke check pos-deploy | Manual ou apos deploy | Contatos reais autorizados com card `Miauby` | Testa rotas/health principais e avisa problema | Enviar tambem sucesso, adicionar rota de health, mudar cooldown, adicionar numero com card `Miauby` | Nao faz rollback automatico |

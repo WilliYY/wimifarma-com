@@ -697,8 +697,7 @@ function encomendaReminderMessage(row) {
     `Criada: ${formatBrDateTime(createdAt)} (${ageLabel})`,
     `Hoje: ${formatBrDateTime(now)}`,
     ageDays >= 2 ? 'Da mais atencao, ja passou de 2 dias.' : '',
-    !row.produto && row.original_text ? `Texto: ${row.original_text}` : '',
-    'Abrir Cotacao: /cotacao/'
+    !row.produto && row.original_text ? `Texto: ${row.original_text}` : ''
   ];
   return safeMessageText(lines.filter(Boolean).join('\n'), 1200);
 }
