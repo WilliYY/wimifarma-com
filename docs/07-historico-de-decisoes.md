@@ -27,6 +27,31 @@ Riscos/cuidados:
 - Manter o MP4 leve; se o login ficar pesado em celular, reduzir dimensao/bitrate mantendo o arquivo original fora do Git.
 - Nao mexer no fluxo de autenticacao da home para ajustes apenas visuais.
 
+## 2026-06-08 - Home restaura GIF animado original
+
+Decisao:
+
+- Restaurar a variacao animada da marca da Home para `assets/img/logo-wimifarma-home-animated.gif`.
+- Usar o GIF no login central, no rodape do login e no header autenticado.
+- Manter preload como `image/gif`, cache-bust proprio e proporcao real `1560 / 622` em `site/home.php`.
+- Nao recriar a animacao por keyframes/SVG sem novo asset final aprovado pelo usuario.
+
+Motivo:
+
+- A tentativa de SVG animado recriado mudou o movimento visual e nao bateu com a primeira referencia aprovada pelo usuario. O GIF existente no projeto preserva a animacao original em loop.
+
+Impacto:
+
+- `site/home.php`
+- `README.md`
+- `AGENTS.md`
+- `docs/03-fluxos-do-sistema.md`
+- `docs/17-performance.md`
+
+Riscos/cuidados:
+
+- O GIF tem 19 frames e cerca de 225 KB; validar login central, rodape e header autenticado depois de deploy. Os SVGs oficiais dos modulos internos nao devem ser trocados por essa variacao animada.
+
 ## 2026-06-08 - Home usa SVG animado transparente
 
 Decisao:

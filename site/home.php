@@ -9,7 +9,7 @@ $publicHosts = array('wimifarma.com', 'www.wimifarma.com');
 $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
-$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.svg') . '?v=20260608-animated-original-timing';
+$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.gif') . '?v=20260608-restore-original-gif';
 $homeLoginLogoUrl = $homeLogoUrl;
 $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
@@ -853,7 +853,7 @@ if (!$homeAuthenticated):
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Entrar - Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="<?php echo wf_home_e(wf_home_asset('assets/img/favicon.svg')); ?>">
-    <link rel="preload" as="image" type="image/svg+xml" fetchpriority="high" href="<?php echo wf_home_e($homeLoginLogoUrl); ?>">
+    <link rel="preload" as="image" type="image/gif" fetchpriority="high" href="<?php echo wf_home_e($homeLoginLogoUrl); ?>">
     <style>
         * {
             box-sizing: border-box;
@@ -1014,7 +1014,7 @@ if (!$homeAuthenticated):
         .wf-login-logo {
             width: min(432px, 76vw);
             height: auto;
-            aspect-ratio: 1024 / 400;
+            aspect-ratio: 1560 / 622;
             max-height: 116px;
             display: block;
             object-fit: contain;
@@ -1285,7 +1285,7 @@ if (!$homeAuthenticated):
         .wf-login-footer-logo {
             width: min(272px, 72vw);
             height: auto;
-            aspect-ratio: 1024 / 400;
+            aspect-ratio: 1560 / 622;
             display: block;
             object-fit: contain;
             background: transparent;
@@ -1923,7 +1923,7 @@ if (!$homeAuthenticated):
                 <i style="--clr:#ff0057;" aria-hidden="true"></i>
                 <i style="--clr:#fffd44;" aria-hidden="true"></i>
                 <div class="wf-login-card">
-                    <img class="wf-login-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1024" height="400" decoding="sync" fetchpriority="high">
+                    <img class="wf-login-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1560" height="622" decoding="sync" fetchpriority="high">
                     <span class="wf-login-only">Apenas funcion&aacute;rios</span>
                     <h1 class="wf-login-title">Login</h1>
                     <?php if ($homeLoginError !== ''): ?>
@@ -1956,7 +1956,7 @@ if (!$homeAuthenticated):
         </div>
         <div class="wf-login-footer-content">
             <div class="wf-login-footer-brand">
-                <img class="wf-login-footer-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1024" height="400" decoding="async">
+                <img class="wf-login-footer-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1560" height="622" decoding="async">
                 <p>Atendimento local pelo WhatsApp para medicamentos, Farmacia Popular e entrega.</p>
                 <a class="wf-login-whatsapp" href="https://wa.me/5544984134971" target="_blank" rel="noopener">
                     <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
@@ -2343,7 +2343,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Wimifarma</title>
     <link rel="icon" type="image/svg+xml" href="<?php echo wf_home_e(wf_home_asset('assets/img/favicon.svg')); ?>">
-    <link rel="preload" as="image" type="image/svg+xml" fetchpriority="high" href="<?php echo wf_home_e($homeLogoUrl); ?>">
+    <link rel="preload" as="image" type="image/gif" fetchpriority="high" href="<?php echo wf_home_e($homeLogoUrl); ?>">
     <style>
         * {
             box-sizing: border-box;
@@ -2434,7 +2434,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             display: block;
             width: 100%;
             height: auto;
-            aspect-ratio: 1024 / 400;
+            aspect-ratio: 1560 / 622;
             background: transparent;
             filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.22));
             animation: wf-home-logo-float 4.8s ease-in-out infinite;
@@ -3491,7 +3491,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
     <header class="wf-header">
         <div class="wf-shell wf-header-inner">
             <a class="wf-brand" href="<?php echo wf_home_e(wf_home_url('/')); ?>" aria-label="Wimifarma">
-                <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="1024" height="400" decoding="sync" fetchpriority="high">
+                <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="1560" height="622" decoding="sync" fetchpriority="high">
             </a>
             <button class="wf-home-switch-button" type="button" data-user-switch-open aria-haspopup="dialog" aria-expanded="false">
                 <span>Trocar usu&aacute;rio</span>

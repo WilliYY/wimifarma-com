@@ -23,7 +23,7 @@ Identidade visual validada em 2026-05-21:
 - Home, Cashback, Codigos, Cotacao, Financeiro, Gestao, Pedidos, Tarefa e Miauw carregam a logo nova nas telas de login e nas telas internas autenticadas.
 - Nas telas internas dos modulos, clicar na logo/marca do topo deve voltar para a Home `/`, preservando os menus operacionais de cada modulo.
 - Os SVGs ativos desses modulos batem com o mesmo hash da logo oficial nova; a home publica pode usar o GIF animado sem fundo como variacao visual sem alterar a identidade dos modulos internos.
-- Desde 2026-06-08, a variacao animada da Home passou a ser `logo-wimifarma-home-animated.svg`, sem fundo branco no asset versionado, com filtro interno para transformar o PNG embutido em marca clara/transparente e com loop mantendo a marca legivel; ela substitui as logos do login/rodape e tambem alimenta o header autenticado.
+- Desde 2026-06-08, a variacao animada da Home voltou a ser `logo-wimifarma-home-animated.gif`, o GIF original aprovado pelo usuario, sem recriar o movimento por SVG/keyframes; ela alimenta as logos do login, rodape e header autenticado, enquanto os SVGs oficiais continuam nos modulos internos.
 - `/wp-login.php` e uma tela WordPress separada e continua podendo exibir o cabecalho/logo padrao do WordPress; isso nao e regressao dos modulos internos, salvo quando a tarefa pedir customizacao do login WordPress.
 
 Rotas de login:
