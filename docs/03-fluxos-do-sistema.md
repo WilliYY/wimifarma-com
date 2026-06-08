@@ -58,6 +58,8 @@ O Cashback cobre:
 
 Desde 2026-06-08, a tela `Mensagens` do Cashback usa cards de fila mais modernos e densos, com acento por campanha e metadados de criacao/data, preservando as mesmas regras de status, dedupe, CSRF, historico e expiracao da fila.
 
+Desde 2026-06-08, `Configuracao e Relatorio` tambem usa uma apresentacao mais moderna e compacta para manutencao, atendentes, acessos, metricas e exportacoes, com status visual nos cards de equipe e acentos por bloco sem alterar formularios, CSRF, POSTs, exportacao, inativacao/exclusao logica ou auditoria.
+
 Arquivos principais:
 
 - `apps/cashback/src/server.ts`
