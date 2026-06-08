@@ -9,7 +9,7 @@ $publicHosts = array('wimifarma.com', 'www.wimifarma.com');
 $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
-$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.gif') . '?v=20260524-visible-transparent-logo';
+$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.svg') . '?v=20260608-animated-svg-transparent';
 $homeLoginLogoUrl = $homeLogoUrl;
 $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
@@ -1012,9 +1012,9 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-logo {
-            width: min(420px, 76vw);
+            width: min(432px, 76vw);
             height: auto;
-            max-height: 120px;
+            max-height: 116px;
             display: block;
             object-fit: contain;
             filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
@@ -1275,7 +1275,7 @@ if (!$homeAuthenticated):
         }
 
         .wf-login-footer-logo {
-            width: min(260px, 72vw);
+            width: min(272px, 72vw);
             height: auto;
             display: block;
             filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.16));
@@ -1833,8 +1833,8 @@ if (!$homeAuthenticated):
             }
 
             .wf-login-logo {
-                width: min(340px, 72vw);
-                max-height: 92px;
+                width: min(328px, 72vw);
+                max-height: 88px;
             }
 
             .wf-login-input,
@@ -1893,7 +1893,7 @@ if (!$homeAuthenticated):
                 <i style="--clr:#ff0057;" aria-hidden="true"></i>
                 <i style="--clr:#fffd44;" aria-hidden="true"></i>
                 <div class="wf-login-card">
-                    <img class="wf-login-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1560" height="622">
+                    <img class="wf-login-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1024" height="400">
                     <span class="wf-login-only">Apenas funcion&aacute;rios</span>
                     <h1 class="wf-login-title">Login</h1>
                     <?php if ($homeLoginError !== ''): ?>
@@ -1926,7 +1926,7 @@ if (!$homeAuthenticated):
         </div>
         <div class="wf-login-footer-content">
             <div class="wf-login-footer-brand">
-                <img class="wf-login-footer-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma">
+                <img class="wf-login-footer-logo" src="<?php echo wf_home_e($homeLoginLogoUrl); ?>" alt="Wimifarma" width="1024" height="400">
                 <p>Atendimento local pelo WhatsApp para medicamentos, Farmacia Popular e entrega.</p>
                 <a class="wf-login-whatsapp" href="https://wa.me/5544984134971" target="_blank" rel="noopener">
                     <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
@@ -2404,7 +2404,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
             display: block;
             width: 100%;
             height: auto;
-            aspect-ratio: 1560 / 622;
+            aspect-ratio: 1024 / 400;
             filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.22));
         }
 
@@ -3442,7 +3442,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
     <header class="wf-header">
         <div class="wf-shell wf-header-inner">
             <a class="wf-brand" href="<?php echo wf_home_e(wf_home_url('/')); ?>" aria-label="Wimifarma">
-                <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="1560" height="622">
+                <img src="<?php echo wf_home_e($homeLogoUrl); ?>" alt="Wimifarma" width="1024" height="400">
             </a>
             <button class="wf-home-switch-button" type="button" data-user-switch-open aria-haspopup="dialog" aria-expanded="false">
                 <span>Trocar usu&aacute;rio</span>

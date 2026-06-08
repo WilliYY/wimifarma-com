@@ -27,6 +27,31 @@ Riscos/cuidados:
 - Manter o MP4 leve; se o login ficar pesado em celular, reduzir dimensao/bitrate mantendo o arquivo original fora do Git.
 - Nao mexer no fluxo de autenticacao da home para ajustes apenas visuais.
 
+## 2026-06-08 - Home usa SVG animado transparente
+
+Decisao:
+
+- Trocar a variacao animada da marca da Home para `assets/img/logo-wimifarma-home-animated.svg`.
+- Usar o SVG nas duas logos visiveis da tela de login, no formulario central e no rodape, e manter o mesmo asset no header autenticado.
+- Remover do asset versionado a camada branca de fundo do SVG fornecido e ajustar a proporcao para `1024 / 400`.
+
+Motivo:
+
+- O usuario forneceu uma nova logo animada em loop e pediu que ela substituisse as duas logos visiveis, sem fundo.
+
+Impacto:
+
+- `site/home.php`
+- `site/wp-content/themes/wimifarma-cashback-theme/assets/img/logo-wimifarma-home-animated.svg`
+- `README.md`
+- `AGENTS.md`
+- `docs/03-fluxos-do-sistema.md`
+- `docs/17-performance.md`
+
+Riscos/cuidados:
+
+- O SVG e maior que os favicons/SVGs oficiais dos modulos; manter cache-bust e validar visualmente desktop/mobile para garantir que nao sobreponha formulario, rodape ou header autenticado.
+
 ## 2026-05-30 - Next.js e Prisma ficam registrados como direcao futura proposta
 
 Decisao:
