@@ -148,9 +148,11 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ=07676534000181`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES=W Y Yoshiura Willian Produtos Farmaceuticos E Perfumaria,Yoshiura Willian,Wimifarma`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_MIN_TARGET_SCORE_X100=70`
-- `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL=gemini-2.5-flash`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL=gemini-2.5-flash-lite`
+- `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_DAILY_LIMIT=10`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES=10000000`
 - `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS=30000`
+- `MIAUW_WHATSAPP_GEMINI_SPEND_GUARD_PAUSE_MINUTES=1440`
 - `MIAUW_WHATSAPP_CONTEXT_PACK`
 - `MIAUW_WHATSAPP_CONTEXT_URL=http://wimifarma-com-web/miauw/agent-context.php`
 - `MIAUW_WHATSAPP_CONTEXT_CACHE_TTL_SECONDS=60`
@@ -332,6 +334,8 @@ Desde 2026-05-29, o smoke-check executa os checks de health/proxy/core/Evolution
 Quando a Evolution/Baileys entregar remetente como LID/identificador longo em vez do telefone E.164, usar `MIAUW_WHATSAPP_RECIPIENT_ALIASES` no `.env` para mapear identificador recebido para telefone real autorizado, no formato `origem=destino`, separado por virgula quando houver mais de um. Essa configuracao fica fora do Git. Exemplo: se o painel tem `5544984134971`, mas o evento chega como `234668507005157@lid`, configurar `234668507005157=5544984134971`. A checagem de cards liberados deve considerar o identificador recebido e o telefone alias-resolvido, para que o mesmo contato mantenha permissoes de comandos internos no WhatsApp. No painel, esses LIDs ficam ocultos e protegidos contra edicao, bloqueio ou reautorizacao manual; o operador deve ajustar apenas o telefone real vinculado. Desde 2026-05-29, novas mensagens ja entram no bridge com o remetente canonico quando o alias existir, e a Sincronia recente tambem resolve linhas antigas para mostrar o numero real no painel logado.
 
 ## Comprovante Pix CNPJ por midia
+
+Desde 2026-06-08, o OCR desse fluxo tem guard de custo: o modelo padrao e `gemini-2.5-flash-lite`, `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_DAILY_LIMIT` limita tentativas em 24h e `MIAUW_WHATSAPP_GEMINI_SPEND_GUARD_PAUSE_MINUTES` pausa Gemini quando detectar spending cap, cota, billing ou 429. Nessas pausas o WhatsApp responde com o formato manual `miauby pix cnpj valor responsavel`, sem fallback automatico para outro provedor pago. Fallback OpenAI fica restrito a falha transitoria de OCR, como timeout, 5xx ou resposta vazia, quando chave OpenAI existir. O painel mostra modelo, tentativas 24h, limite diario e status do guard.
 
 O fluxo de comprovante Pix por midia e opcional e desligado no Git. Quando `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED=true`, o bridge aceita foto, print, imagem encaminhada ou PDF/documento de remetente em allowlist, mas confere antes se o contato tem card `Financeiro` liberado. So depois disso aplica o filtro rapido por legenda/nome/extensao; se ainda parecer candidato, confere repeticao por hash salgado do arquivo quando disponivel; entao baixa a midia no worker, envia ao Gemini configurado em `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL` e espera um JSON com comprovante Pix, CNPJ/chave destino, nome destino, pagador, valor, data, horario, instituicao, ID Pix/E2E quando existir, texto OCR compacto, confianca geral e confianca por campo. Se o filtro rapido ou a extracao concluir que a imagem nao parece Pix, responde apenas `Isso ai é um comprovante pix?` e nao cria pendencia. A flag manteve `IMAGE` no nome por compatibilidade com ambientes ja configurados, mas o comportamento cobre tambem PDF/documento. Desde 2026-05-29, legenda/mensagem enviada junto e nome do arquivo entram como pistas de leitura, o prompt pede para ignorar saldo/limite/tarifa/agencia/conta como valor pago, e o backend tenta fallback deterministico de valor/data/hora a partir do `raw_text` retornado quando o JSON vier parcial. Desde 2026-06-01, o banco continua sem guardar `raw_text` completo, mas guarda resumo sanitizado da tentativa, incluindo motivo de aceite/recusa, score de destino, campos lidos, confiancas, decisao do filtro rapido e duplicidade por arquivo/ID Pix/E2E quando ocorrer, para auditoria operacional.
 

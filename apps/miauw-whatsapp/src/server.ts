@@ -649,11 +649,13 @@ type DashboardSummary = {
   recentAutomationRuns: DashboardAutomationRunRow[];
   financeiroCashStatus: FinanceiroCashClosingStatus | null;
   cotacaoEncomendaStatus: JsonRecord | null;
+  pixReceiptOcrAttempts24h: number;
+  geminiSpendGuardError: DashboardErrorRow | null;
 };
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.33';
+const SERVICE_VERSION = '0.5.34';
 const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
@@ -696,9 +698,11 @@ const REPLY_ENGINE = replyEngineEnv();
 const GEMINI_API_KEY = textEnv('GEMINI_API_KEY') || textEnv('GOOGLE_AI_API_KEY') || textEnv('GOOGLE_API_KEY') || textEnv('MIAUW_WHATSAPP_GEMINI_API_KEY');
 const GEMINI_API_BASE_URL = trimTrailingSlash(textEnv('GEMINI_API_BASE_URL') || textEnv('MIAUW_WHATSAPP_GEMINI_API_BASE_URL') || 'https://generativelanguage.googleapis.com/v1beta');
 const GEMINI_MODEL = textEnv('MIAUW_WHATSAPP_GEMINI_MODEL') || textEnv('GEMINI_MODEL') || 'gemini-2.5-flash';
+const GEMINI_LIGHT_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_MAX_OUTPUT_TOKENS = numberEnv('MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS', 220, 80, 1200);
 const GEMINI_TEMPERATURE = numberEnv('MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100', 35, 0, 100) / 100;
 const GEMINI_THINKING_BUDGET = numberEnv('MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET', 0, 0, 8192);
+const GEMINI_SPEND_GUARD_PAUSE_MINUTES = numberEnv('MIAUW_WHATSAPP_GEMINI_SPEND_GUARD_PAUSE_MINUTES', 1440, 1, 43200);
 const OPENAI_API_KEY = textEnv('MIAUW_WHATSAPP_OPENAI_API_KEY') || textEnv('MIAUW_OPENAI_API_KEY') || textEnv('OPENAI_API_KEY');
 const OPENAI_API_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_OPENAI_API_BASE_URL') || textEnv('OPENAI_API_BASE_URL') || 'https://api.openai.com/v1');
 const OPENAI_MODEL = textEnv('MIAUW_WHATSAPP_OPENAI_MODEL') || textEnv('MIAUW_OPENAI_MODEL') || textEnv('OPENAI_MODEL') || 'gpt-5.4-mini';
@@ -719,9 +723,10 @@ const AUDIO_TTS_MAX_CHARS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS', 700,
 const AUDIO_TTS_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS', 900, 0, 3600);
 const PIX_RECEIPT_IMAGE_ENABLED = boolEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED', false);
 const PIX_RECEIPT_CNPJ = onlyDigits(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ') || '07676534000181');
-const PIX_RECEIPT_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL') || GEMINI_MODEL;
+const PIX_RECEIPT_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL') || GEMINI_LIGHT_MODEL;
 const PIX_RECEIPT_OPENAI_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OPENAI_MODEL') || OPENAI_MODEL;
 const PIX_RECEIPT_IMAGE_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES', 10000000, 100000, 20000000);
+const PIX_RECEIPT_OCR_DAILY_LIMIT = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_DAILY_LIMIT', 10, 0, 500);
 const PIX_RECEIPT_OCR_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_TIMEOUT_MS', 30000, 3000, 90000);
 const DEFAULT_PIX_RECEIPT_DESTINATION_ALIASES = [
   'W Y Yoshiura Willian Produtos Farmaceuticos E Perfumaria',
@@ -966,6 +971,8 @@ let providerSendChain: Promise<void> = Promise.resolve();
 let lastProviderSendAt = 0;
 let providerPausedUntil = 0;
 let providerPauseReason = '';
+let geminiSpendGuardBlockedUntil = 0;
+let geminiSpendGuardReason = '';
 
 const pgPool = new Pool({
   host: env.POSTGRES_HOST || '127.0.0.1',
@@ -4035,6 +4042,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           }
         }
       } catch (error) {
+        markGeminiSpendGuardIfNeeded(error);
         audioFailureReason = safeError(error);
         await recordErrorLog('audio_transcription', 'warn', error, {
           eventId: row.id,
@@ -4098,89 +4106,100 @@ async function processQueueRow(row: QueueRow): Promise<void> {
               };
               effectiveBodyText = '';
             } else {
-              const extraction = await extractPixReceiptFromQueuedMedia(row);
-              if (!extraction.isPixReceipt) {
-                await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'not_detected'));
-                mediaFailureReply = {
-                  text: PIX_RECEIPT_NOT_LIKE_REPLY,
-                  engine: 'blocked',
-                  reason: 'pix_receipt_not_detected',
-                };
+              const blockedReason = await pixReceiptOcrBlockReason();
+              if (blockedReason) {
+                await mergePixReceiptEventSummary(row.id, {
+                  ...pixReceiptFastGateSummary(fastGate),
+                  pix_receipt_ocr_skipped: true,
+                  pix_receipt_outcome: blockedReason,
+                });
+                mediaFailureReply = pixReceiptOcrBlockedReply(blockedReason);
                 effectiveBodyText = '';
               } else {
-                const targetMatch = pixReceiptTargetMatch(extraction);
-                const missing = missingPixReceiptFields(extraction, targetMatch);
-                const identifierDuplicate = await findRecentPixReceiptIdentifierDuplicate(row, extraction);
-                if (identifierDuplicate) {
-                  await mergePixReceiptEventSummary(row.id, {
-                    ...pixReceiptExtractionSummary(extraction, 'duplicate_identifier', targetMatch),
-                    ...pixReceiptDuplicateSummary(identifierDuplicate, 'duplicate_identifier'),
-                  });
+                const extraction = await extractPixReceiptFromQueuedMedia(row);
+                if (!extraction.isPixReceipt) {
+                  await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'not_detected'));
                   mediaFailureReply = {
-                    text: pixReceiptDuplicateReply(identifierDuplicate),
+                    text: PIX_RECEIPT_NOT_LIKE_REPLY,
                     engine: 'blocked',
-                    reason: 'pix_receipt_duplicate_identifier',
-                  };
-                  effectiveBodyText = '';
-                } else if (!targetMatch.ok) {
-                  await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
-                  mediaFailureReply = {
-                    text: PIX_RECEIPT_TARGET_NOT_FOUND_REPLY,
-                    engine: 'blocked',
-                    reason: 'pix_receipt_target_mismatch',
-                  };
-                  effectiveBodyText = '';
-                } else if (missing.length > 0) {
-                  await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'missing_fields', targetMatch));
-                  mediaFailureReply = {
-                    text: pixReceiptMissingFieldsReply(missing),
-                    engine: 'blocked',
-                    reason: 'pix_receipt_missing_fields',
+                    reason: 'pix_receipt_not_detected',
                   };
                   effectiveBodyText = '';
                 } else {
-                  const pharmacyReceiptContext = isPharmacyUserContext(whatsappUserContext);
-                  const pixReceiptCommand = pixReceiptCommandFromExtraction(extraction, targetMatch);
-                  effectiveBodyText = pharmacyReceiptContext
-                    ? pixReceiptCommand.raw
-                    : pixReceiptCommandMessage(extraction, targetMatch);
-                  row.body_text = effectiveBodyText;
-                  await pgPool.query(
-                    `UPDATE miauw_whatsapp_events
-                        SET body_text = $2,
-                            body_size = $3,
-                            payload_summary = payload_summary || $4::jsonb,
-                            updated_at = NOW()
-                      WHERE id = $1`,
-                    [
-                      row.id,
-                      effectiveBodyText,
-                      effectiveBodyText.length,
-                      JSON.stringify({
-                        pix_receipt_extracted: true,
-                        pix_receipt_target_match: true,
-                        pix_receipt_target_reason: targetMatch.reason,
-                        pix_receipt_target_score: targetMatch.score,
-                        pix_receipt_target_label: targetMatch.matched,
-                        pix_receipt_cnpj_match: targetMatch.cnpjMatch,
-                        pix_receipt_key_match: targetMatch.keyMatch,
-                        pix_receipt_name_match: targetMatch.nameMatch,
-                        pix_receipt_ocr_provider: extraction.ocrProvider || 'gemini',
-                        pix_receipt_ocr_model: extraction.ocrModel || PIX_RECEIPT_OCR_MODEL,
-                        pix_receipt_confidence: extraction.confidence,
-                        ...pixReceiptExtractionSummary(extraction, 'accepted', targetMatch),
-                      }),
-                    ],
-                  );
-                  if (pharmacyReceiptContext) {
-                    mediaFailureReply = await requestResponsibleSelectionForPharmacy(
-                      row,
-                      'pix_cnpj',
-                      pixCnpjCommandPayload(pixReceiptCommand),
-                      pixReceiptResponsibleIntroFromExtraction(extraction, targetMatch),
-                      'Responda com o numero ou nome. Se nao for isso, digite cancelar.',
-                    );
+                  const targetMatch = pixReceiptTargetMatch(extraction);
+                  const missing = missingPixReceiptFields(extraction, targetMatch);
+                  const identifierDuplicate = await findRecentPixReceiptIdentifierDuplicate(row, extraction);
+                  if (identifierDuplicate) {
+                    await mergePixReceiptEventSummary(row.id, {
+                      ...pixReceiptExtractionSummary(extraction, 'duplicate_identifier', targetMatch),
+                      ...pixReceiptDuplicateSummary(identifierDuplicate, 'duplicate_identifier'),
+                    });
+                    mediaFailureReply = {
+                      text: pixReceiptDuplicateReply(identifierDuplicate),
+                      engine: 'blocked',
+                      reason: 'pix_receipt_duplicate_identifier',
+                    };
                     effectiveBodyText = '';
+                  } else if (!targetMatch.ok) {
+                    await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'target_mismatch', targetMatch));
+                    mediaFailureReply = {
+                      text: PIX_RECEIPT_TARGET_NOT_FOUND_REPLY,
+                      engine: 'blocked',
+                      reason: 'pix_receipt_target_mismatch',
+                    };
+                    effectiveBodyText = '';
+                  } else if (missing.length > 0) {
+                    await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, 'missing_fields', targetMatch));
+                    mediaFailureReply = {
+                      text: pixReceiptMissingFieldsReply(missing),
+                      engine: 'blocked',
+                      reason: 'pix_receipt_missing_fields',
+                    };
+                    effectiveBodyText = '';
+                  } else {
+                    const pharmacyReceiptContext = isPharmacyUserContext(whatsappUserContext);
+                    const pixReceiptCommand = pixReceiptCommandFromExtraction(extraction, targetMatch);
+                    effectiveBodyText = pharmacyReceiptContext
+                      ? pixReceiptCommand.raw
+                      : pixReceiptCommandMessage(extraction, targetMatch);
+                    row.body_text = effectiveBodyText;
+                    await pgPool.query(
+                      `UPDATE miauw_whatsapp_events
+                          SET body_text = $2,
+                              body_size = $3,
+                              payload_summary = payload_summary || $4::jsonb,
+                              updated_at = NOW()
+                        WHERE id = $1`,
+                      [
+                        row.id,
+                        effectiveBodyText,
+                        effectiveBodyText.length,
+                        JSON.stringify({
+                          pix_receipt_extracted: true,
+                          pix_receipt_target_match: true,
+                          pix_receipt_target_reason: targetMatch.reason,
+                          pix_receipt_target_score: targetMatch.score,
+                          pix_receipt_target_label: targetMatch.matched,
+                          pix_receipt_cnpj_match: targetMatch.cnpjMatch,
+                          pix_receipt_key_match: targetMatch.keyMatch,
+                          pix_receipt_name_match: targetMatch.nameMatch,
+                          pix_receipt_ocr_provider: extraction.ocrProvider || 'gemini',
+                          pix_receipt_ocr_model: extraction.ocrModel || PIX_RECEIPT_OCR_MODEL,
+                          pix_receipt_confidence: extraction.confidence,
+                          ...pixReceiptExtractionSummary(extraction, 'accepted', targetMatch),
+                        }),
+                      ],
+                    );
+                    if (pharmacyReceiptContext) {
+                      mediaFailureReply = await requestResponsibleSelectionForPharmacy(
+                        row,
+                        'pix_cnpj',
+                        pixCnpjCommandPayload(pixReceiptCommand),
+                        pixReceiptResponsibleIntroFromExtraction(extraction, targetMatch),
+                        'Responda com o numero ou nome. Se nao for isso, digite cancelar.',
+                      );
+                      effectiveBodyText = '';
+                    }
                   }
                 }
               }
@@ -4188,6 +4207,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           }
         }
       } catch (error) {
+        const spendGuardBlocked = markGeminiSpendGuardIfNeeded(error);
         if (isRetriablePixReceiptError(error, row)) throw error;
         const media = mediaSummaryFromPayload(row.payload_summary);
         await recordErrorLog('pix_receipt_ocr', 'warn', error, {
@@ -4205,9 +4225,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           },
         });
         mediaFailureReply = {
-          text: PIX_CNPJ_MANUAL_HINT_REPLY,
+          text: spendGuardBlocked ? pixReceiptOcrBlockedReply('gemini_spend_guard_paused').text : PIX_CNPJ_MANUAL_HINT_REPLY,
           engine: 'blocked',
-          reason: 'pix_receipt_ocr_failed',
+          reason: spendGuardBlocked ? 'pix_receipt_ocr_spend_guard' : 'pix_receipt_ocr_failed',
         };
         effectiveBodyText = '';
       }
@@ -4239,6 +4259,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     if (!replyText) throw new Error('miauby_empty_reply');
     const audioReply = shouldSendAudioReply(replyAsAudio, confirmation)
       ? await buildAudioReply(replyText, row).catch(async (error) => {
+        markGeminiSpendGuardIfNeeded(error);
         await recordErrorLog('audio_tts', 'warn', error, {
           eventId: row.id,
           traceId: row.trace_id,
@@ -6333,6 +6354,53 @@ function pixReceiptOcrConfigured(): boolean {
   return geminiConfigured() || openAiConfigured();
 }
 
+function geminiSpendGuardRemainingMs(): number {
+  const remaining = Math.max(0, geminiSpendGuardBlockedUntil - Date.now());
+  if (remaining === 0) geminiSpendGuardReason = '';
+  return remaining;
+}
+
+function isGeminiSpendGuardText(error: unknown): boolean {
+  const message = safeError(error).toLowerCase();
+  return message.includes('monthly spending cap')
+    || message.includes('spending cap')
+    || message.includes('spend cap')
+    || message.includes('exceeded its monthly')
+    || message.includes('no available credits')
+    || message.includes('available credit balance')
+    || message.includes('billing')
+    || message.includes('quota')
+    || message.includes('resource exhausted')
+    || message.includes('rate limit')
+    || message.includes('rate_limit')
+    || message.includes('429')
+    || message.includes('gemini_spend_guard');
+}
+
+function geminiSpendGuardStatusLabel(): string {
+  const remaining = geminiSpendGuardRemainingMs();
+  if (remaining <= 0) return 'normal';
+  const minutes = Math.max(1, Math.ceil(remaining / 60000));
+  const reason = safeText(geminiSpendGuardReason, 80) || 'limite/cota';
+  return `pausado ${minutes} min: ${reason}`;
+}
+
+function markGeminiSpendGuardIfNeeded(error: unknown): boolean {
+  if (!isGeminiSpendGuardText(error)) return false;
+  geminiSpendGuardBlockedUntil = Math.max(
+    geminiSpendGuardBlockedUntil,
+    Date.now() + GEMINI_SPEND_GUARD_PAUSE_MINUTES * 60000,
+  );
+  geminiSpendGuardReason = safeText(safeError(error), 160) || 'gemini_spend_guard';
+  return true;
+}
+
+function assertGeminiSpendGuardReady(scope: string): void {
+  const remaining = geminiSpendGuardRemainingMs();
+  if (remaining <= 0) return;
+  throw new Error(`gemini_spend_guard_paused:${safeText(scope, 40)}:${Math.ceil(remaining / 60000)}min`);
+}
+
 function geminiModelPathFor(model: string): string {
   const clean = safeText(model, 120).replace(/^models\//, '').trim();
   return `models/${clean || GEMINI_MODEL.replace(/^models\//, '').trim()}`;
@@ -7980,9 +8048,15 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       if (route.cacheable) setCachedReply(route.message, geminiReply.text);
       return { text: geminiReply.text, engine: 'gemini', reason: route.reason };
     } catch (error) {
-      if (REPLY_ENGINE === 'gemini') throw error;
+      const spendGuardBlocked = markGeminiSpendGuardIfNeeded(error);
+      if (REPLY_ENGINE === 'gemini' && !spendGuardBlocked) throw error;
       const miauwReply = await requestMiauwReply(message, traceId, senderMask, route, allowedCards, senderHashes, userContext);
-      return { text: miauwReply.text, engine: 'miauw', reason: `gemini_failed_fallback:${safeError(error)}`, confirmation: miauwReply.confirmation };
+      return {
+        text: miauwReply.text,
+        engine: 'miauw',
+        reason: `${spendGuardBlocked ? 'gemini_spend_guard_fallback' : 'gemini_failed_fallback'}:${safeError(error)}`,
+        confirmation: miauwReply.confirmation,
+      };
     }
   }
 
@@ -8165,6 +8239,7 @@ function geminiTextFromResponse(data: JsonRecord, partLimit = 1200): string {
 
 async function requestGeminiReply(message: string, _traceId: string, _senderMask: string, allowedCards: WhatsappModuleCard[], sharedContext: SharedMiauwContext | null = null): Promise<{ text: string }> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured');
+  assertGeminiSpendGuardReady('reply');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -8197,7 +8272,8 @@ async function requestGeminiReply(message: string, _traceId: string, _senderMask
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !isRecord(data)) {
       const error = isRecord(data) && isRecord(data.error) ? data.error : data;
-      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_http_${response.status}`);
+      const message = safeText(isRecord(error) ? error.message || error.error : '', 180);
+      throw new Error(message ? `${message} gemini_http_${response.status}` : `gemini_http_${response.status}`);
     }
     return { text: safeText(geminiTextFromResponse(data), 1800) };
   } finally {
@@ -8845,14 +8921,59 @@ function pixReceiptExtractionHints(row: QueueRow): PixReceiptExtractionHints {
   };
 }
 
+async function pixReceiptOcrAttempts24h(): Promise<number> {
+  const result = await pgPool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM miauw_whatsapp_events
+      WHERE created_at >= NOW() - INTERVAL '1 day'
+        AND payload_summary ? 'pix_receipt_ocr_attempted'`,
+  );
+  return Number(result.rows[0]?.count || 0);
+}
+
+async function markPixReceiptOcrAttempt(row: QueueRow): Promise<void> {
+  await mergePixReceiptEventSummary(row.id, {
+    pix_receipt_attempted: true,
+    pix_receipt_ocr_attempted: true,
+    pix_receipt_ocr_attempted_at: new Date().toISOString(),
+    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+  });
+}
+
+async function pixReceiptOcrBlockReason(): Promise<string> {
+  if (!pixReceiptOcrConfigured()) return 'pix_receipt_ocr_not_configured';
+  if (geminiSpendGuardRemainingMs() > 0) return 'gemini_spend_guard_paused';
+  if (PIX_RECEIPT_OCR_DAILY_LIMIT <= 0) return 'pix_receipt_ocr_disabled_by_daily_limit';
+  const attempts = await pixReceiptOcrAttempts24h();
+  if (attempts >= PIX_RECEIPT_OCR_DAILY_LIMIT) return 'pix_receipt_ocr_daily_limit_reached';
+  return '';
+}
+
+function pixReceiptOcrBlockedReply(reason: string): ReplyResult {
+  const reasonLabel = reason === 'gemini_spend_guard_paused'
+    ? 'Gemini pausado por limite/cota.'
+    : reason === 'pix_receipt_ocr_daily_limit_reached'
+      ? 'Limite diario de leitura de Pix atingido.'
+      : reason === 'pix_receipt_ocr_disabled_by_daily_limit'
+        ? 'Leitura automatica de Pix desligada por limite.'
+        : 'Leitura automatica de Pix indisponivel.';
+  return {
+    text: `${reasonLabel}\n\n${PIX_CNPJ_MANUAL_HINT_REPLY}`,
+    engine: 'blocked',
+    reason,
+  };
+}
+
 async function extractPixReceiptFromQueuedMedia(row: QueueRow): Promise<PixReceiptExtraction> {
   const media = mediaProviderFromSummary(row.payload_summary) === 'meta'
     ? await fetchMetaReceiptMedia(row)
     : await fetchEvolutionReceiptMedia(row);
+  await markPixReceiptOcrAttempt(row);
   return requestPixReceiptExtraction(media, row.trace_id, pixReceiptExtractionHints(row));
 }
 
 function isRetriablePixReceiptError(error: unknown, row: QueueRow): boolean {
+  if (isGeminiSpendGuardText(error)) return false;
   const attempts = Number(row.attempts || 0) + 1;
   if (attempts >= Math.min(MAX_ATTEMPTS, 3)) return false;
   if (error instanceof ProviderHttpError) {
@@ -9245,6 +9366,7 @@ function validateAudioTranscript(text: string, durationMs = 0): void {
 
 async function requestGeminiAudioTranscript(audio: AudioMedia, traceId: string): Promise<string> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured_for_audio');
+  assertGeminiSpendGuardReady('audio_transcribe');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AUDIO_TRANSCRIBE_TIMEOUT_MS);
   try {
@@ -9287,7 +9409,8 @@ async function requestGeminiAudioTranscript(audio: AudioMedia, traceId: string):
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !isRecord(data)) {
       const error = isRecord(data) && isRecord(data.error) ? data.error : data;
-      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_audio_http_${response.status}`);
+      const message = safeText(isRecord(error) ? error.message || error.error : '', 180);
+      throw new Error(message ? `${message} gemini_audio_http_${response.status}` : `gemini_audio_http_${response.status}`);
     }
     return cleanTranscript(geminiTextFromResponse(data));
   } finally {
@@ -9457,12 +9580,9 @@ async function requestOpenAiPixReceiptExtraction(media: AudioMedia, traceId: str
 }
 
 function isPixReceiptOcrFallbackError(error: unknown): boolean {
+  if (isGeminiSpendGuardText(error)) return false;
   const message = safeError(error).toLowerCase();
-  return message.includes('spending cap')
-    || message.includes('quota')
-    || message.includes('exceeded')
-    || message.includes('429')
-    || message.includes('503')
+  return message.includes('503')
     || message.includes('502')
     || message.includes('500')
     || message.includes('timeout')
@@ -9478,6 +9598,8 @@ async function requestPixReceiptExtraction(media: AudioMedia, traceId: string, h
     try {
       return await requestGeminiPixReceiptExtraction(media, traceId, hints);
     } catch (error) {
+      const spendGuardBlocked = markGeminiSpendGuardIfNeeded(error);
+      if (spendGuardBlocked) throw error;
       if (!openAiConfigured() || !isPixReceiptOcrFallbackError(error)) throw error;
       await recordErrorLog('pix_receipt_ocr_fallback', 'warn', error, {
         traceId,
@@ -9496,6 +9618,7 @@ async function requestPixReceiptExtraction(media: AudioMedia, traceId: string, h
 
 async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured_for_pix_receipt');
+  assertGeminiSpendGuardReady('pix_receipt');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
   try {
@@ -9539,7 +9662,8 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !isRecord(data)) {
       const error = isRecord(data) && isRecord(data.error) ? data.error : data;
-      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_pix_receipt_http_${response.status}`);
+      const message = safeText(isRecord(error) ? error.message || error.error : '', 180);
+      throw new Error(message ? `${message} gemini_pix_receipt_http_${response.status}` : `gemini_pix_receipt_http_${response.status}`);
     }
     const text = geminiTextFromResponse(data, 8000);
     return parsePixReceiptExtractionText(text, 'gemini', PIX_RECEIPT_OCR_MODEL);
@@ -9573,6 +9697,7 @@ function geminiInlineAudioFromResponse(data: JsonRecord): { base64: string; mime
 }
 
 async function synthesizeGeminiSpeech(text: string): Promise<OutboundAudio> {
+  assertGeminiSpendGuardReady('audio_tts');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AUDIO_TTS_TIMEOUT_MS);
   try {
@@ -9605,7 +9730,8 @@ async function synthesizeGeminiSpeech(text: string): Promise<OutboundAudio> {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !isRecord(data)) {
       const error = isRecord(data) && isRecord(data.error) ? data.error : data;
-      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `gemini_tts_http_${response.status}`);
+      const message = safeText(isRecord(error) ? error.message || error.error : '', 180);
+      throw new Error(message ? `${message} gemini_tts_http_${response.status}` : `gemini_tts_http_${response.status}`);
     }
     const inline = geminiInlineAudioFromResponse(data);
     const normalized = normalizeOutboundAudio(inline.base64, inline.mimeType);
@@ -10031,6 +10157,7 @@ function publicStatus(): JsonRecord {
   const providerPauseMsRemaining = providerPauseRemainingMs();
   const geminiReady = geminiConfigured();
   const openAiReady = openAiConfigured();
+  const geminiSpendGuardMsRemaining = geminiSpendGuardRemainingMs();
   const pixReceiptOcrProvider = geminiReady
     ? (openAiReady ? 'gemini/openai-fallback' : 'gemini')
     : (openAiReady ? 'openai' : 'none');
@@ -10061,6 +10188,11 @@ function publicStatus(): JsonRecord {
     gemini_configured: geminiReady,
     gemini_model: GEMINI_MODEL,
     gemini_max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
+    gemini_spend_guard_blocked: geminiSpendGuardMsRemaining > 0,
+    gemini_spend_guard_reason: geminiSpendGuardReason,
+    gemini_spend_guard_ms_remaining: geminiSpendGuardMsRemaining,
+    gemini_spend_guard_pause_minutes: GEMINI_SPEND_GUARD_PAUSE_MINUTES,
+    gemini_spend_guard_status: geminiSpendGuardStatusLabel(),
     openai_configured: openAiReady,
     openai_model: OPENAI_MODEL,
     audio_input_enabled: AUDIO_INPUT_ENABLED,
@@ -10081,6 +10213,7 @@ function publicStatus(): JsonRecord {
     pix_receipt_cnpj_configured: PIX_RECEIPT_CNPJ !== '',
     pix_receipt_ocr_provider: pixReceiptOcrProvider,
     pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+    pix_receipt_ocr_daily_limit: PIX_RECEIPT_OCR_DAILY_LIMIT,
     pix_receipt_openai_fallback_configured: openAiReady,
     pix_receipt_openai_ocr_model: PIX_RECEIPT_OPENAI_OCR_MODEL,
     pix_receipt_image_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
@@ -14547,6 +14680,8 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     n8nRecipientsResult,
     automationSettingsResult,
     recentAutomationRunsResult,
+    pixReceiptOcrAttemptsResult,
+    geminiSpendGuardErrorResult,
     financeiroCashStatusResult,
     cotacaoEncomendaStatusResult,
   ] = await Promise.all([
@@ -14773,6 +14908,35 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         ORDER BY created_at DESC
         LIMIT 10`,
     ),
+    pgPool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM miauw_whatsapp_events
+        WHERE created_at >= NOW() - INTERVAL '1 day'
+          AND payload_summary ? 'pix_receipt_ocr_attempted'`,
+    ),
+    pgPool.query<DashboardErrorRow>(
+      `SELECT id::text AS id,
+              source,
+              severity,
+              phone_mask,
+              trace_id,
+              message_preview,
+              error_summary,
+              created_at::text AS created_at
+         FROM miauw_whatsapp_error_logs
+        WHERE created_at >= NOW() - INTERVAL '1 day'
+          AND source = ANY($1::text[])
+          AND (
+            lower(error_summary) LIKE ANY($2::text[])
+            OR lower(message_preview) LIKE ANY($2::text[])
+          )
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [
+        ['pix_receipt_ocr', 'pix_receipt_ocr_fallback', 'audio_transcription', 'audio_tts'],
+        ['%spending cap%', '%spend cap%', '%quota%', '%resource exhausted%', '%billing%', '%429%', '%gemini_spend_guard%'],
+      ],
+    ),
     INTERNAL_TOKEN ? fetchFinanceiroCashClosingStatus().catch(() => null) : Promise.resolve(null),
     COTACAO_INTERNAL_TOKEN ? fetchCotacaoEncomendaReminderStatus().catch((error) => ({
       ok: false,
@@ -14803,6 +14967,8 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentAutomationRuns: recentAutomationRunsResult.rows,
     financeiroCashStatus: financeiroCashStatusResult,
     cotacaoEncomendaStatus: cotacaoEncomendaStatusResult,
+    pixReceiptOcrAttempts24h: Number(pixReceiptOcrAttemptsResult.rows[0]?.count || 0),
+    geminiSpendGuardError: geminiSpendGuardErrorResult.rows[0] || null,
   };
 }
 
@@ -15519,6 +15685,22 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const pixReceiptModel = textStatus(status, 'pix_receipt_ocr_model') || '-';
   const pixReceiptOpenAiFallback = boolStatus(status, 'pix_receipt_openai_fallback_configured');
   const pixReceiptOpenAiModel = textStatus(status, 'pix_receipt_openai_ocr_model') || '-';
+  const pixReceiptOcrDailyLimit = numberStatus(status, 'pix_receipt_ocr_daily_limit');
+  const pixReceiptOcrAttempts = summary.pixReceiptOcrAttempts24h;
+  const geminiSpendGuardBlocked = boolStatus(status, 'gemini_spend_guard_blocked');
+  const geminiSpendGuardStatus = textStatus(status, 'gemini_spend_guard_status') || 'normal';
+  const geminiSpendGuardRecent = summary.geminiSpendGuardError !== null;
+  const pixReceiptDailyBlocked = pixReceiptOcrDailyLimit >= 0 && pixReceiptOcrDailyLimit <= pixReceiptOcrAttempts;
+  const pixReceiptBlocked = geminiSpendGuardBlocked || pixReceiptDailyBlocked || geminiSpendGuardRecent;
+  const pixReceiptTone: DashboardTone = pixReceiptBlocked
+    ? 'warn'
+    : (pixReceiptEnabled && pixReceiptConfigured) ? 'ok' : pixReceiptConfigured ? 'muted' : 'warn';
+  const pixReceiptStatusLabel = pixReceiptBlocked
+    ? 'Protegido'
+    : (pixReceiptEnabled && pixReceiptConfigured) ? 'Ativo' : pixReceiptConfigured ? 'Desligado' : 'Pendente';
+  const pixReceiptDailyLabel = pixReceiptOcrDailyLimit > 0
+    ? `${pixReceiptOcrAttempts}/${pixReceiptOcrDailyLimit} em 24h`
+    : 'desligado';
   const pixReceiptMaxMb = Math.round(numberStatus(status, 'pix_receipt_image_max_bytes') / 1024 / 1024);
   const pixReceiptAliasCount = numberStatus(status, 'pix_receipt_destination_alias_count');
   const pixReceiptMinScore = Math.round(numberStatus(status, 'pix_receipt_min_target_score') * 100);
@@ -16700,11 +16882,13 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             ['Erros', summary.errorCount24h > 0 ? `${summary.errorCount24h} aberto(s)` : 'sem aberto 24h'],
             ['Check', integrationEndpoint],
           ])}
-          ${renderConfigCard('Pix CNPJ midia', (pixReceiptEnabled && pixReceiptConfigured) ? 'ok' : pixReceiptConfigured ? 'muted' : 'warn', (pixReceiptEnabled && pixReceiptConfigured) ? 'Ativo' : pixReceiptConfigured ? 'Desligado' : 'Pendente', [
+          ${renderConfigCard('Pix CNPJ midia', pixReceiptTone, pixReceiptStatusLabel, [
             ['Midia', 'foto/print/PDF'],
             ['OCR', pixReceiptProvider],
             ['Modelo 1', pixReceiptModel],
-            ['Fallback', pixReceiptOpenAiFallback ? pixReceiptOpenAiModel : 'sem OpenAI'],
+            ['Diario', pixReceiptDailyLabel],
+            ['Guard', geminiSpendGuardBlocked ? geminiSpendGuardStatus : geminiSpendGuardRecent ? 'erro de cota recente' : 'normal'],
+            ['Fallback', pixReceiptOpenAiFallback ? `${pixReceiptOpenAiModel} (so transitorio)` : 'sem OpenAI'],
             ['Limite', `${pixReceiptMaxMb} MB`],
             ['Alvo', `CNPJ/chave ou ${pixReceiptAliasCount} nomes (${pixReceiptMinScore}%)`],
           ])}

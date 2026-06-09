@@ -375,6 +375,8 @@ Payload:
 
 O backend le apenas `miauw_whatsapp_events.payload_summary`, `miauw_whatsapp_error_logs` e `miauw_whatsapp_automation_runs` sanitizados do proprio bridge WhatsApp. O resumo mostra tentativas, aceitos, campos faltando, destino divergente, duplicados, descartes rapidos, falhas de OCR e registra a execucao da rotina. Ele nao cria lancamento, nao confirma Pix, nao acessa o banco do Financeiro e nao guarda midia bruta.
 
+Desde 2026-06-08, tentativas bloqueadas por `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_DAILY_LIMIT` ou pelo guard `MIAUW_WHATSAPP_GEMINI_SPEND_GUARD_PAUSE_MINUTES` entram como diagnostico operacional do bridge: o Miauby responde com o formato manual de Pix CNPJ e o painel mostra modelo, tentativas 24h, limite diario e status do guard. Isso nao deve tentar OCR de novo pelo n8n.
+
 Campos opcionais de rastreio, como ID de transacao, E2E e chave Pix do destino, continuam no diagnostico sanitizado quando existirem, mas a falta apenas desses campos nao deve gerar alerta no resumo diario.
 
 ### Miauby + n8n
