@@ -806,24 +806,66 @@ tr.is-filtered {
   position: fixed;
   z-index: 250;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(420px, calc(100vw - 16px));
-  max-height: min(520px, calc(100vh - 20px));
-  gap: 10px;
+  max-height: min(540px, calc(100vh - 20px));
+  max-height: min(540px, calc(100dvh - 20px));
+  gap: 0;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
-  padding: 12px;
+  padding: 0;
   background: #fff;
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
 }
 
 .filter-menu[hidden] {
   display: none;
 }
 
-.filter-menu strong {
+.filter-menu-title {
+  display: block;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   color: #111827;
   font-size: 0.88rem;
   overflow-wrap: anywhere;
+}
+
+.filter-menu-scroll {
+  display: grid;
+  min-height: 0;
+  gap: 10px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
+  scrollbar-gutter: stable;
+}
+
+.filter-block {
+  display: grid;
+  min-height: 0;
+  gap: 8px;
+}
+
+.filter-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.filter-count {
+  min-width: 26px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-align: center;
 }
 
 .filter-actions {
@@ -838,12 +880,24 @@ tr.is-filtered {
   font-size: 0.78rem;
 }
 
+.filter-mini-actions button {
+  min-height: 28px;
+  background: #f8fafc;
+}
+
 .filter-options {
   display: grid;
-  max-height: 330px;
+  max-height: 180px;
   overflow: auto;
   gap: 6px;
-  padding: 2px;
+  padding: 2px 6px 2px 2px;
+  border-radius: 8px;
+  scrollbar-gutter: stable;
+}
+
+.filter-value-options {
+  max-height: min(230px, 38vh);
+  max-height: min(230px, 38dvh);
 }
 
 .filter-options label {
@@ -876,6 +930,10 @@ tr.is-filtered {
   align-items: center;
 }
 
+.filter-color-options {
+  max-height: 116px;
+}
+
 .filter-color-swatch {
   width: 16px;
   height: 16px;
@@ -888,6 +946,19 @@ tr.is-filtered {
   background:
     linear-gradient(135deg, transparent 45%, #ef4444 46%, #ef4444 54%, transparent 55%),
     #fff;
+}
+
+.filter-footer {
+  justify-content: flex-end;
+  padding: 10px 12px 12px;
+  border-top: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.filter-footer button[data-filter-apply] {
+  border-color: #1d4ed8;
+  background: #2563eb;
+  color: #fff;
 }
 
 dialog {

@@ -3352,37 +3352,49 @@
     const colorValues = colorOptions.map((option) => option.value);
     const currentColors = state.colorFilters[columnKey] || new Set(colorValues);
     filterMenu.innerHTML = `
-      <strong>Filtro: ${esc(colByKey(columnKey)?.label || columnKey)}</strong>
-      <span class="filter-section-title">Valores</span>
-      <div class="filter-actions">
-        <button type="button" data-filter-select="value-all">Selecionar tudo</button>
-        <button type="button" data-filter-select="value-none">Selecionar nada</button>
+      <strong class="filter-menu-title">Filtro: ${esc(colByKey(columnKey)?.label || columnKey)}</strong>
+      <div class="filter-menu-scroll">
+        <section class="filter-block">
+          <div class="filter-block-head">
+            <span class="filter-section-title">Valores</span>
+            <span class="filter-count">${options.length}</span>
+          </div>
+          <div class="filter-actions filter-mini-actions">
+            <button type="button" data-filter-select="value-all">Selecionar tudo</button>
+            <button type="button" data-filter-select="value-none">Selecionar nada</button>
+          </div>
+          <div class="filter-options filter-value-options">
+            ${options.map((option) => {
+              const label = option.label || option.value || '(vazio)';
+              const text = columnKey === WINNER_KEY ? `${label} (${option.count})` : label;
+              return `<label><input type="checkbox" data-filter-kind="value" value="${esc(option.value)}" ${current.has(option.value) ? 'checked' : ''}> ${esc(text)}</label>`;
+            }).join('')}
+          </div>
+        </section>
+        <section class="filter-block">
+          <div class="filter-block-head">
+            <span class="filter-section-title">Cor</span>
+            <span class="filter-count">${colorOptions.length}</span>
+          </div>
+          <div class="filter-actions filter-mini-actions">
+            <button type="button" data-filter-select="color-all">Selecionar tudo</button>
+            <button type="button" data-filter-select="color-none">Selecionar nada</button>
+          </div>
+          <div class="filter-options filter-color-options">
+            ${colorOptions.map((option) => {
+              const noColor = option.value === '__none__';
+              const label = noColor ? `Sem cor (${option.count})` : `${option.value.toUpperCase()} (${option.count})`;
+              const swatch = noColor
+                ? '<span class="filter-color-swatch is-empty"></span>'
+                : `<span class="filter-color-swatch" style="--filter-color:${esc(option.value)}"></span>`;
+              return `<label><input type="checkbox" data-filter-kind="color" value="${esc(option.value)}" ${currentColors.has(option.value) ? 'checked' : ''}> ${swatch}<span>${esc(label)}</span></label>`;
+            }).join('')}
+          </div>
+        </section>
       </div>
-      <div class="filter-options">
-        ${options.map((option) => {
-          const label = option.label || option.value || '(vazio)';
-          const text = columnKey === WINNER_KEY ? `${label} (${option.count})` : label;
-          return `<label><input type="checkbox" data-filter-kind="value" value="${esc(option.value)}" ${current.has(option.value) ? 'checked' : ''}> ${esc(text)}</label>`;
-        }).join('')}
-      </div>
-      <span class="filter-section-title">Cor</span>
-      <div class="filter-actions">
-        <button type="button" data-filter-select="color-all">Selecionar tudo</button>
-        <button type="button" data-filter-select="color-none">Selecionar nada</button>
-      </div>
-      <div class="filter-options filter-color-options">
-        ${colorOptions.map((option) => {
-          const noColor = option.value === '__none__';
-          const label = noColor ? `Sem cor (${option.count})` : `${option.value.toUpperCase()} (${option.count})`;
-          const swatch = noColor
-            ? '<span class="filter-color-swatch is-empty"></span>'
-            : `<span class="filter-color-swatch" style="--filter-color:${esc(option.value)}"></span>`;
-          return `<label><input type="checkbox" data-filter-kind="color" value="${esc(option.value)}" ${currentColors.has(option.value) ? 'checked' : ''}> ${swatch}<span>${esc(label)}</span></label>`;
-        }).join('')}
-      </div>
-      <div class="filter-actions">
-        <button type="button" data-filter-apply="${esc(columnKey)}">Aplicar</button>
+      <div class="filter-actions filter-footer">
         <button type="button" data-filter-clear="${esc(columnKey)}">Limpar</button>
+        <button type="button" data-filter-apply="${esc(columnKey)}">Aplicar</button>
       </div>`;
     const rect = anchor.getBoundingClientRect();
     filterMenu.hidden = false;

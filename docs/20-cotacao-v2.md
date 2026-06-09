@@ -120,6 +120,7 @@ Core Postgres `wimifarma_core`:
 - Filtros de `PRODUTO`, `CATEGORIA` e `Ganhador` devem ser acionados pelo icone do cabecalho, com selecionar tudo, limpar tudo e aplicacao local. O filtro de `Ganhador` mostra a contagem de linhas por resultado no formato `Nome (quantidade)` e lista primeiro vencedores individuais, depois empates e por ultimo `Sem vencedor`.
 - O filtro de `CATEGORIA` agrupa valores equivalentes por chave local normalizada (trim, espacos repetidos, quebras/invisiveis simples e caixa) apenas para exibicao/aplicacao do filtro. Essa regra nao altera automaticamente o valor original gravado em `cotacao_v2_rows`.
 - Filtros de cor devem existir no mesmo menu dos filtros por valor para as colunas que possuem filtro.
+- O popover de filtro precisa caber no viewport mesmo com muitas opcoes: titulo e botoes de aplicar/limpar ficam sempre visiveis, enquanto valores e cores rolam dentro do proprio menu sem vazar sobre a grade.
 - Ao editar uma linha que nao combina mais com filtro ativo, a tela deve manter a linha visivel ate o usuario alterar o filtro, evitando que a linha desapareca no meio da edicao.
 - Desde 2026-06-06, essa protecao tambem vale para atualizacoes recebidas por evento de outra aba/usuario; eventos internos de lembrete de encomenda (`encomenda_reminder_*`) nao forcam reload visual da planilha.
 - Texto longo deve quebrar linha dentro da celula e aumentar a altura da linha em vez de vazar ou ficar cortado.
