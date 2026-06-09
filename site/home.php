@@ -9,7 +9,7 @@ $publicHosts = array('wimifarma.com', 'www.wimifarma.com');
 $isPublicHost = in_array($hostName, $publicHosts, true);
 $baseUrl = $isPublicHost ? 'https://wimifarma.com' : '';
 $assetRoot = '/wp-content/themes/wimifarma-cashback-theme';
-$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.svg') . '?v=20260609-logo-animada-alpha';
+$homeLogoUrl = wf_home_asset('assets/img/logo-wimifarma-home-animated.svg') . '?v=20260609-logo-animada-use';
 $homeLoginLogoUrl = $homeLogoUrl;
 $homeLoginPromoVideoUrl = wf_home_asset('assets/video/login-redirecionado.mp4') . '?v=20260601-login-redirect';
 $homeLoginPromoUrl = 'https://wimifarma.com.br';
