@@ -2847,7 +2847,7 @@ function renderApp(req) {
   <title>Cotacao Wimifarma</title>
   <link rel="icon" href="${BASE_PATH}/favicon.svg">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
 </head>
 <body class="app-page">
   <header class="app-header">
@@ -2982,7 +2982,7 @@ function renderApp(req) {
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
   <script src="${BASE_PATH}/app.js?v=20260604-concurrency"></script>
-  <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
+  <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </body>
 </html>`;
 }

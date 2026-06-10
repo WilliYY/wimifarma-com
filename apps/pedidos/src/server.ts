@@ -2777,7 +2777,7 @@ async function renderApp(req: Request): Promise<string> {
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
   <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260608-orders-layout-polish">
-  <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
+  <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
   <script src="${BASE_PATH}/app.js?v=20260607-history-reveal" defer></script>
 </head>
 <body class="pedidos-body">
@@ -2835,7 +2835,7 @@ async function renderApp(req: Request): Promise<string> {
       </div>
     </section>
   </main>
-  <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
+  <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </body>
 </html>`;
 }

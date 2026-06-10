@@ -438,7 +438,7 @@ Miauby e o assistente interno. Ele guarda conversas, memorias, conhecimentos, al
 
 A navegacao superior do Miauby deve ficar focada no proprio modulo: Chat, Treino, Diagnostico e Sair conforme a tela/permissao. Nao recolocar atalhos diretos para Cashback, Cotacao ou Financeiro nesse topo sem pedido explicito.
 
-A imagem-fonte atual do Miauby e `site/miauw/miauby-novo.jpeg`; o avatar de interface preferencial e o derivado quadrado `site/miauw/miauby-avatar.jpeg`, usado no chat interno, widget global e login do painel WhatsApp para preencher melhor as molduras sem deixar miniatura pequena demais. No widget global, o ajuste visual fica centralizado em `site/miauw/widget.css` e usa cache-bust dos includes dos modulos para evitar CSS antigo.
+A imagem-fonte atual do Miauby e `site/miauw/miauby-novo.jpeg`; o avatar de interface preferencial e o derivado quadrado `site/miauw/miauby-avatar.jpeg`, usado no chat interno, no cabecalho/mensagens do widget global e no login do painel WhatsApp para preencher melhor as molduras sem deixar miniatura pequena demais. Desde 2026-06-10, o botao flutuante do widget global usa `site/miauw/miauby-widget-loop.mp4` em loop dentro de caixa quadrada arredondada, mantendo o label `Miauby`, falas da Home, clique para abrir e painel sem alterar sessao, chat, audio ou backend. No widget global, o ajuste visual fica centralizado em `site/miauw/widget.css` e usa cache-bust dos includes dos modulos para evitar CSS antigo.
 
 Arquivos principais:
 

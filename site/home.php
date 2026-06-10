@@ -3465,7 +3465,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
         }
     </style>
     <?php if ($homeCanUseMiauw): ?>
-    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260603-home-jokes')); ?>">
+    <link rel="stylesheet" href="<?php echo wf_home_e(wf_home_url('/miauw/widget.css?v=20260610-miauby-video')); ?>">
     <?php endif; ?>
 </head>
 <body
@@ -4083,7 +4083,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
     }());
 </script>
 <?php if ($homeCanUseMiauw): ?>
-<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260603-home-10s')); ?>" defer></script>
+<script src="<?php echo wf_home_e(wf_home_url('/miauw/widget.js?v=20260610-miauby-video')); ?>" defer></script>
 <?php endif; ?>
 </body>
 </html>

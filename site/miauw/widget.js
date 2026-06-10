@@ -4,6 +4,7 @@
 
   const currentPath = window.location.pathname || '';
   const isCotacaoPath = currentPath.startsWith('/cotacao');
+  const widgetAssetVersion = '20260610-miauby-video';
   const ALERTS_UI_ENABLED = false;
   if (currentPath.startsWith('/miauw/')) return;
 
@@ -12,7 +13,7 @@
     const link = document.createElement('link');
     link.id = cssId;
     link.rel = 'stylesheet';
-    link.href = '/miauw/widget.css?v=20260603-home-jokes';
+    link.href = `/miauw/widget.css?v=${widgetAssetVersion}`;
     document.head.appendChild(link);
   }
 
@@ -40,7 +41,9 @@
   root.className = 'miauw-widget';
   root.innerHTML = `
     <button class="miauw-widget-bubble" type="button" aria-label="Abrir Miauby" aria-expanded="false">
-      <img src="/miauw/miauby-avatar.jpeg" alt="">
+      <video class="miauw-widget-bubble-video" autoplay muted loop playsinline preload="metadata" poster="/miauw/miauby-avatar.jpeg" aria-hidden="true">
+        <source src="/miauw/miauby-widget-loop.mp4?v=${widgetAssetVersion}" type="video/mp4">
+      </video>
       <span>Miauby</span>
     </button>
     <button class="miauw-widget-nudge" type="button" data-miauw-nudge hidden aria-label="Recado do Miauby">Miauby esta de olho.</button>
