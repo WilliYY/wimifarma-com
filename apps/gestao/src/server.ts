@@ -3414,15 +3414,13 @@ async function renderApp(req: Request): Promise<string> {
 
       <div class="gestao-workspace">
         <div class="gestao-main-grid">
-          <div class="gestao-primary-stack" aria-label="Painel principal da Gestao">
+          <div class="gestao-board-row" aria-label="Paineis operacionais da Gestao">
             <section class="gestao-list-panel gestao-open-list-panel">
               ${listTitle}
               <div class="gestao-list">${accountsHtml}</div>
             </section>
-            ${pedidoPanelHtml}
             ${monthlyPanelHtml}
-          </div>
-          <div class="gestao-support-stack" aria-label="Apoios da Gestao">
+            ${pedidoPanelHtml}
             ${categoryPanelHtml}
             ${notepadHtml}
           </div>
@@ -3437,9 +3435,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260610-card-flow-layout">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260610-horizontal-board">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260610-card-flow-layout" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260610-horizontal-board" defer></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">
