@@ -346,7 +346,7 @@ Legado/rollback, nao fonte principal:
 - Criar conta via Miauby por endpoint interno, com auditoria e confirmacao quando aplicavel.
 - Sincronizar status de contas vinculadas a Pedidos sem recategorizar boletos de pedidos.
 - Exibir contas vinculadas a Pedidos em bloco visual `Pedidos` na Gestao, separado da lista geral, sem mudar categoria `Boleto`, pagamentos, status, totais ou auditoria.
-- Desde 2026-06-06, separar visualmente os blocos `Nova conta`, `Contas abertas`, `Pedidos`, `Mensal`, `Categorias` e `Notas` por acento/cor, mantendo os mesmos formularios, rotas, tabelas, filtros e integracoes. Desde 2026-06-10, `Pedidos`, `Mensal` e `Notas` ficam na faixa superior do desktop, com rolagem horizontal controlada em telas menores.
+- Desde 2026-06-06, separar visualmente os blocos `Nova conta`, `Contas abertas`, `Pedidos`, `Mensal`, `Categorias` e `Notas` por acento/cor, mantendo os mesmos formularios, rotas, tabelas, filtros e integracoes. Desde 2026-06-10, `Contas abertas`, `Pedidos` e `Mensal` ficam na pilha principal com a mesma largura operacional no desktop, enquanto `Categorias` e `Notas` ficam como apoios laterais/empilhados; a observacao da conta preserva visualmente quebras de linha ao ser exibida.
 
 ### Integracoes
 

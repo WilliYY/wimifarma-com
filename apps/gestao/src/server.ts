@@ -3169,10 +3169,13 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     <input type="hidden" name="action" value="update_note">
     <input type="hidden" name="id" value="${e(id)}">
     <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+    ${account.note ? `<pre class="gestao-note-preview">${e(account.note)}</pre>` : ''}
     <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Observacao desta conta.">${e(account.note || '')}</textarea></label>
     <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar observacao</button>
     </form>
   </div>`;
+  const primaryDueForm = account.due_at ? dueForm : '';
+  const secondaryDueForm = account.due_at ? '' : dueForm;
 
   const quickPayControl = status === 'pendente'
     ? `<form method="post" class="gestao-quick-pay">
@@ -3220,12 +3223,15 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
           <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
         </div>
         ${titleForm}
-        ${dueForm}
         ${itemHtml}
-        ${paymentHtml}
-        ${historyHtml}
-        ${noteForm}
-        ${forms}
+        ${primaryDueForm}
+        <div class="gestao-account-secondary">
+          ${noteForm}
+          ${forms}
+          ${secondaryDueForm}
+          ${paymentHtml}
+          ${historyHtml}
+        </div>
         <div class="gestao-account-actions">
           <span class="gestao-status">${e(accountStatusLabel(status))}</span>
           ${pendingActions}
@@ -3407,18 +3413,19 @@ async function renderApp(req: Request): Promise<string> {
       </form>
 
       <div class="gestao-workspace">
-        <div class="gestao-top-panels" aria-label="Atalhos operacionais da Gestao">
-          ${pedidoPanelHtml}
-          ${monthlyPanelHtml}
-          ${notepadHtml}
-        </div>
-
         <div class="gestao-main-grid">
-          <section class="gestao-list-panel">
-            ${listTitle}
-            <div class="gestao-list">${accountsHtml}</div>
-          </section>
-          ${categoryPanelHtml}
+          <div class="gestao-primary-stack" aria-label="Painel principal da Gestao">
+            <section class="gestao-list-panel gestao-open-list-panel">
+              ${listTitle}
+              <div class="gestao-list">${accountsHtml}</div>
+            </section>
+            ${pedidoPanelHtml}
+            ${monthlyPanelHtml}
+          </div>
+          <div class="gestao-support-stack" aria-label="Apoios da Gestao">
+            ${categoryPanelHtml}
+            ${notepadHtml}
+          </div>
         </div>
       </div>
     </section>`;
@@ -3430,9 +3437,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260610-repeat-months-layout">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260610-card-flow-layout">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
-  <script src="${BASE_PATH}/app.js?v=20260610-repeat-months-layout" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260610-card-flow-layout" defer></script>
   <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">

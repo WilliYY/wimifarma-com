@@ -375,6 +375,14 @@ textarea {
     min-width: 0;
 }
 
+.gestao-primary-stack,
+.gestao-support-stack {
+    display: grid;
+    align-content: start;
+    gap: 16px;
+    min-width: 0;
+}
+
 .gestao-lists-grid {
     grid-template-columns: minmax(400px, 1.05fr) minmax(320px, 0.72fr);
     align-items: start;
@@ -433,6 +441,10 @@ textarea {
 
 .gestao-lists-grid > .gestao-list-panel:not(.gestao-pedido-list-panel):not(.gestao-monthly-list-panel),
 .gestao-main-grid > .gestao-list-panel:not(.gestao-pedido-list-panel):not(.gestao-monthly-list-panel) {
+    --panel-accent: #0f766e;
+}
+
+.gestao-open-list-panel {
     --panel-accent: #0f766e;
 }
 
@@ -786,25 +798,37 @@ textarea {
     scrollbar-gutter: stable;
 }
 
-.gestao-top-panels .gestao-list,
-.gestao-top-panels .gestao-notes-list {
-    max-height: 258px;
+.gestao-primary-stack .gestao-open-list-panel .gestao-list {
+    max-height: min(64vh, 720px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 8px;
+    scrollbar-gutter: stable;
+}
+
+.gestao-primary-stack .gestao-pedido-list-panel .gestao-list,
+.gestao-primary-stack .gestao-monthly-list-panel .gestao-list {
+    max-height: min(52vh, 620px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 8px;
+    scrollbar-gutter: stable;
+}
+
+.gestao-primary-stack .gestao-list-panel,
+.gestao-support-stack > * {
+    min-height: 100%;
+}
+
+.gestao-support-stack .gestao-notes-list {
+    max-height: min(42vh, 420px);
     overflow-x: hidden;
     overflow-y: auto;
     padding-right: 6px;
     scrollbar-gutter: stable;
 }
 
-.gestao-top-panels .gestao-pedido-list-panel .gestao-list {
-    max-height: 258px;
-}
-
-.gestao-top-panels .gestao-list-panel,
-.gestao-top-panels .gestao-notepad {
-    min-height: 100%;
-}
-
-.gestao-top-panels .gestao-notepad-new textarea {
+.gestao-support-stack .gestao-notepad-new textarea {
     min-height: 74px;
 }
 
@@ -1411,9 +1435,9 @@ textarea {
 .gestao-account-main {
     min-width: 0;
     display: none;
-    padding: 10px;
+    padding: 12px;
     border-top: 1px solid var(--line-soft);
-    background: #fffdfd;
+    background: linear-gradient(180deg, #fffdfd 0%, #fff9fc 100%);
 }
 
 .gestao-account:not(.is-collapsed) .gestao-account-main {
@@ -1670,8 +1694,10 @@ textarea {
 .gestao-account-summary {
     display: block;
     min-width: 0;
-    padding: 2px;
-    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid rgba(247, 192, 210, 0.78);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.78);
     outline: 0;
 }
 
@@ -1792,13 +1818,23 @@ textarea {
 }
 
 .gestao-balance {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 14px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
     margin-top: 12px;
     color: #673046;
     font-size: 0.86rem;
     font-weight: 850;
+}
+
+.gestao-balance span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid #f6c8d7;
+    border-radius: 8px;
+    background: #fff8fb;
 }
 
 .gestao-balance strong {
@@ -1830,8 +1866,20 @@ textarea {
 
 .gestao-account-details {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     margin-top: 0;
+}
+
+.gestao-account-secondary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+}
+
+.gestao-account-secondary .gestao-note-block,
+.gestao-account-secondary .gestao-adjust-block {
+    grid-column: 1 / -1;
 }
 
 .gestao-ledger-block {
@@ -1948,10 +1996,10 @@ textarea {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
-    padding: 10px;
+    padding: 12px;
     border: 1px solid var(--line-soft);
-    border-radius: 8px;
-    background: #fff9fb;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #ffffff 0%, #fff8fb 100%);
 }
 
 .gestao-item-row.is-canceled {
@@ -1983,10 +2031,13 @@ textarea {
 
 .gestao-item-title,
 .gestao-item-numbers {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
     align-items: center;
-    gap: 8px 12px;
+    gap: 8px;
+}
+
+.gestao-item-title {
+    grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .gestao-item-title strong {
@@ -2030,10 +2081,21 @@ textarea {
 }
 
 .gestao-item-numbers {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     margin-top: 6px;
     color: #673046;
     font-size: 0.78rem;
     font-weight: 850;
+}
+
+.gestao-item-numbers span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    padding: 7px 8px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
 }
 
 .gestao-item-numbers strong {
@@ -2146,7 +2208,7 @@ textarea {
 .gestao-note-panel {
     display: grid;
     gap: 10px;
-    margin-top: 14px;
+    margin-top: 10px;
     padding: 12px;
     border: 1px solid #f7c0d2;
     border-radius: 8px;
@@ -2159,6 +2221,32 @@ textarea {
     color: #673046;
     font-size: 0.78rem;
     font-weight: 900;
+}
+
+.gestao-note-preview {
+    margin: 0;
+    min-height: 54px;
+    max-height: 180px;
+    overflow: auto;
+    padding: 10px 12px;
+    border: 1px solid #f7c0d2;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #2d1721;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 850;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.gestao-note-panel textarea {
+    min-height: 112px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    resize: vertical;
 }
 
 .gestao-account-actions {
@@ -2424,16 +2512,18 @@ textarea {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .gestao-top-panels {
-        grid-template-columns: repeat(3, minmax(250px, 1fr));
-        overflow-x: auto;
-        padding-bottom: 4px;
+    .gestao-support-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
 @media (min-width: 1051px) and (max-width: 1320px) {
     .gestao-layout {
         grid-template-columns: minmax(335px, 390px) minmax(0, 1fr);
+    }
+
+    .gestao-main-grid {
+        grid-template-columns: 1fr;
     }
 
     .gestao-lists-grid {
@@ -2450,8 +2540,8 @@ textarea {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .gestao-top-panels {
-        grid-template-columns: repeat(3, minmax(220px, 1fr));
+    .gestao-support-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
@@ -2514,18 +2604,12 @@ textarea {
         grid-template-columns: 1fr;
     }
 
-    .gestao-top-panels {
-        display: flex;
-        gap: 12px;
-        margin-inline: -2px;
-        overflow-x: auto;
-        padding: 2px 2px 8px;
-        scroll-snap-type: x proximity;
-    }
-
-    .gestao-top-panels > * {
-        flex: 0 0 min(86vw, 330px);
-        scroll-snap-align: start;
+    .gestao-support-stack,
+    .gestao-account-secondary,
+    .gestao-balance,
+    .gestao-item-title,
+    .gestao-item-numbers {
+        grid-template-columns: 1fr;
     }
 
     .gestao-compact-value {
