@@ -23,6 +23,53 @@
         });
     }
 
+    function formatMonthLabel(value) {
+        var text = String(value || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(text)) {
+            return '';
+        }
+        return text.slice(5, 7) + '/' + text.slice(0, 4);
+    }
+
+    function addMonthsToMonth(value, amount) {
+        var text = String(value || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(text)) {
+            var now = new Date();
+            text = String(now.getFullYear()) + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        }
+        var year = Number.parseInt(text.slice(0, 4), 10);
+        var month = Number.parseInt(text.slice(5, 7), 10) - 1;
+        var date = new Date(year, month + Number(amount || 0), 1);
+        return String(date.getFullYear()) + '-' + String(date.getMonth() + 1).padStart(2, '0');
+    }
+
+    function daysInMonth(year, monthIndex) {
+        return new Date(year, monthIndex + 1, 0).getDate();
+    }
+
+    function addMonthsToDate(value, amount) {
+        var text = String(value || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+            return '';
+        }
+        var year = Number.parseInt(text.slice(0, 4), 10);
+        var month = Number.parseInt(text.slice(5, 7), 10) - 1;
+        var day = Number.parseInt(text.slice(8, 10), 10);
+        var target = new Date(year, month + Number(amount || 0), 1);
+        var targetDay = Math.min(day, daysInMonth(target.getFullYear(), target.getMonth()));
+        target.setDate(targetDay);
+        return String(target.getDate()).padStart(2, '0') + '/' +
+            String(target.getMonth() + 1).padStart(2, '0') + '/' +
+            String(target.getFullYear());
+    }
+
+    function compactList(values) {
+        if (values.length <= 5) {
+            return values.join(', ');
+        }
+        return values.slice(0, 5).join(', ') + ' e mais ' + String(values.length - 5);
+    }
+
     function emitMoneyChange() {
         document.dispatchEvent(new CustomEvent('gestao:money-change'));
     }
@@ -106,6 +153,85 @@
         });
 
         refreshTotal();
+    }
+
+    function initRepeatPreview() {
+        var form = document.querySelector('[data-gestao-form]');
+        if (!form || form.dataset.gestaoRepeatPreviewBound === '1') {
+            return;
+        }
+
+        var monthInput = form.querySelector('input[name="competencia_mes"]');
+        var dueInput = form.querySelector('input[name="vencimento_em"]');
+        var repeatNext = form.querySelector('[data-repeat-next]');
+        var repeatForever = form.querySelector('[data-repeat-forever]');
+        var repeatCount = form.querySelector('[data-repeat-count]');
+        var preview = form.querySelector('[data-repeat-preview]');
+
+        if (!monthInput || !repeatNext || !repeatForever || !repeatCount || !preview) {
+            return;
+        }
+
+        form.dataset.gestaoRepeatPreviewBound = '1';
+
+        function countValue() {
+            var parsed = Number.parseInt(repeatCount.value || '0', 10);
+            if (!Number.isFinite(parsed)) {
+                return 0;
+            }
+            return Math.min(24, Math.max(0, parsed));
+        }
+
+        function refreshPreview() {
+            if (repeatForever.checked) {
+                repeatCount.value = '';
+                repeatCount.disabled = true;
+                repeatNext.checked = false;
+                var nextForeverMonth = addMonthsToMonth(monthInput.value, 1);
+                var foreverDate = dueInput && dueInput.value ? ' / vencimento ' + addMonthsToDate(dueInput.value, 1) : '';
+                preview.textContent = 'Sempre ativo: proxima copia em ' + formatMonthLabel(nextForeverMonth) + foreverDate + '.';
+                return;
+            }
+
+            repeatCount.disabled = false;
+            var count = countValue();
+            if (count > 0) {
+                repeatNext.checked = true;
+            }
+
+            var totalRepeats = count > 0 ? count : repeatNext.checked ? 1 : 0;
+            if (totalRepeats <= 0) {
+                preview.textContent = 'Sem repeticao programada.';
+                return;
+            }
+
+            var months = [];
+            var dates = [];
+            for (var index = 1; index <= totalRepeats; index += 1) {
+                var month = addMonthsToMonth(monthInput.value, index);
+                months.push(formatMonthLabel(month));
+                if (dueInput && dueInput.value) {
+                    dates.push(addMonthsToDate(dueInput.value, index));
+                }
+            }
+
+            var repeatLabel = totalRepeats === 1 ? '1x' : String(totalRepeats) + 'x';
+            var endMonth = months[months.length - 1] || '';
+            if (dates.length) {
+                preview.textContent = 'Vai repetir ' + repeatLabel + ' em ' + compactList(dates) + '. Termina em ' + endMonth + '.';
+            } else {
+                preview.textContent = 'Vai repetir ' + repeatLabel + ' nas competencias ' + compactList(months) + '. Termina em ' + endMonth + '.';
+            }
+        }
+
+        repeatCount.addEventListener('input', refreshPreview);
+        repeatNext.addEventListener('change', refreshPreview);
+        repeatForever.addEventListener('change', refreshPreview);
+        monthInput.addEventListener('change', refreshPreview);
+        if (dueInput) {
+            dueInput.addEventListener('change', refreshPreview);
+        }
+        refreshPreview();
     }
 
     function initMoneyValidation() {
@@ -443,6 +569,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
             initTotals();
+            initRepeatPreview();
             initMoneyValidation();
             initConfirmations();
             initAccountCollapse();
@@ -458,6 +585,7 @@
     } else {
         bindMoneyInputs(document);
         initTotals();
+        initRepeatPreview();
         initMoneyValidation();
         initConfirmations();
         initAccountCollapse();

@@ -506,6 +506,14 @@ function parseOptionalDate(value: unknown): string | null {
   return null;
 }
 
+function repeatMonthsCountValue(value: unknown): number {
+  const text = String(value || '').trim();
+  if (!text) return 0;
+  const parsed = Number.parseInt(text, 10);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(24, Math.max(0, parsed));
+}
+
 function queryValue(value: unknown): string {
   return cleanText(value, 120);
 }
@@ -1326,7 +1334,9 @@ async function createAccount(req: Request): Promise<void> {
   const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
   const status = req.body.status === 'pago' ? 'pago' : 'pendente';
   const repeatForever = req.body.repetir_sempre_mes === '1';
-  const repeatNextMonth = req.body.repetir_mes === '1' || repeatForever;
+  const requestedRepeatMonths = repeatMonthsCountValue(req.body.repetir_quantidade_meses);
+  const repeatNextMonth = req.body.repetir_mes === '1' || requestedRepeatMonths > 0 || repeatForever;
+  const repeatMonthsToCreate = repeatForever ? 1 : repeatNextMonth ? Math.max(1, requestedRepeatMonths) : 0;
   const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
   let accountId = 0;
@@ -1364,8 +1374,8 @@ async function createAccount(req: Request): Promise<void> {
       );
     }
     await auditPg(client, accountId, userId, 'gestao_conta_criada', `Conta criada: ${title} / ${formatMoney(totalCents)}`);
-    if (repeatNextMonth) {
-      await ensureRepeatedAccountNextMonth(client, accountId, userId, { forever: repeatForever });
+    if (repeatMonthsToCreate > 0) {
+      await ensureRepeatedAccountMonths(client, accountId, userId, repeatMonthsToCreate, { forever: repeatForever });
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -1408,7 +1418,13 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
     || req.body.repetir_sempre_mes === '1'
     || req.body.repeat_forever === true
     || req.body.repeat_always_next_month === true;
-  const repeatNextMonth = repeatForever || req.body.repetir_mes === true || req.body.repetir_mes === '1' || req.body.repeat_next_month === true;
+  const requestedRepeatMonths = repeatMonthsCountValue(req.body.repetir_quantidade_meses || req.body.repetir_meses || req.body.repeat_months || req.body.repeat_count);
+  const repeatNextMonth = repeatForever
+    || requestedRepeatMonths > 0
+    || req.body.repetir_mes === true
+    || req.body.repetir_mes === '1'
+    || req.body.repeat_next_month === true;
+  const repeatMonthsToCreate = repeatForever ? 1 : repeatNextMonth ? Math.max(1, requestedRepeatMonths) : 0;
   const client = await pgPool.connect();
   let accountId = 0;
   try {
@@ -1445,8 +1461,8 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
       );
     }
     await auditPg(client, accountId, userId, 'gestao_conta_criada_miauby', `Conta criada pelo Miauby: ${title} / ${formatMoney(totalCents)}`);
-    if (repeatNextMonth) {
-      await ensureRepeatedAccountNextMonth(client, accountId, userId, { forever: repeatForever });
+    if (repeatMonthsToCreate > 0) {
+      await ensureRepeatedAccountMonths(client, accountId, userId, repeatMonthsToCreate, { forever: repeatForever });
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -2179,6 +2195,37 @@ async function ensureRepeatedAccountNextMonth(
   );
 
   return { accountId: newAccountId, month: targetMonth, created: true, forever };
+}
+
+async function ensureRepeatedAccountMonths(
+  client: pg.PoolClient,
+  accountId: number,
+  userId: number | null,
+  months: number,
+  options: RepeatAccountOptions = {},
+): Promise<RepeatAccountResult | null> {
+  const totalMonths = Math.min(24, Math.max(0, Math.floor(months)));
+  if (totalMonths <= 0) return null;
+
+  let sourceAccountId = accountId;
+  let lastRepeated: RepeatAccountResult | null = null;
+  for (let index = 0; index < totalMonths; index += 1) {
+    lastRepeated = await ensureRepeatedAccountNextMonth(client, sourceAccountId, userId, options);
+    sourceAccountId = lastRepeated.accountId;
+    if (options.forever) break;
+  }
+
+  if (lastRepeated && totalMonths > 1) {
+    await auditPg(
+      client,
+      accountId,
+      userId,
+      'gestao_recorrencia_em_lote',
+      `Recorrencia programada por ${totalMonths} mes(es), ate ${monthLabel(lastRepeated.month)}.`,
+    );
+  }
+
+  return lastRepeated;
 }
 
 async function ensureForeverRepeatAfterPayment(client: pg.PoolClient, accountId: number, userId: number | null): Promise<void> {
@@ -3304,52 +3351,75 @@ async function renderApp(req: Request): Promise<string> {
       <form method="post" class="gestao-form" data-gestao-form>
         ${csrfField(req)}
         <input type="hidden" name="action" value="create">
-        <div class="gestao-section-title">
+        <div class="gestao-section-title gestao-form-title">
           <span class="gestao-kicker">Nova conta</span>
           <strong data-gestao-total>Total R$ 0,00</strong>
         </div>
-        <label><span>Nome ou titulo</span><input type="text" name="titulo" maxlength="180" placeholder="Rogerio, Boleto internet, Funcionario Thiago" required></label>
-        <div class="gestao-form-grid">
-          <label>
-            <span>Categoria</span>
-            <input type="text" name="categoria" maxlength="80" list="gestao-categorias" placeholder="Digite a categoria">
-            <datalist id="gestao-categorias">${suggestions}</datalist>
-          </label>
-          <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
-          <label>
-            <span>Status inicial</span>
-            <select name="status"><option value="pendente">Pendente</option><option value="pago">Pago agora</option></select>
-          </label>
-          <label><span>Vencimento opcional</span><input type="date" name="vencimento_em"></label>
-        </div>
-        <div class="gestao-line-items" data-line-items>
-          <div class="gestao-line-item">
-            <label><span>Descricao do item</span><input type="text" name="item_descricao[]" maxlength="180" placeholder="Salario, boleto, comissao, parcela"></label>
-            <label><span>Valor</span><input type="text" name="item_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
+        <div class="gestao-form-block gestao-form-block-main">
+          <div class="gestao-form-block-head"><span>1</span><strong>Dados da conta</strong></div>
+          <label class="gestao-title-field"><span>Nome ou titulo</span><input type="text" name="titulo" maxlength="180" placeholder="Rogerio, Boleto internet, Funcionario Thiago" required></label>
+          <div class="gestao-form-grid">
+            <label>
+              <span>Categoria</span>
+              <input type="text" name="categoria" maxlength="80" list="gestao-categorias" placeholder="Digite a categoria">
+              <datalist id="gestao-categorias">${suggestions}</datalist>
+            </label>
+            <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
+            <label>
+              <span>Status inicial</span>
+              <select name="status"><option value="pendente">Pendente</option><option value="pago">Ja pago</option></select>
+            </label>
+            <label><span>Vencimento opcional</span><input type="date" name="vencimento_em"></label>
           </div>
         </div>
-        <button type="button" class="gestao-btn gestao-btn-secondary" data-add-item>Adicionar item</button>
-        <label class="gestao-check-row"><input type="checkbox" name="repetir_mes" value="1"><span>Repetir mes que vem</span></label>
-        <label class="gestao-check-row gestao-check-row-forever"><input type="checkbox" name="repetir_sempre_mes" value="1"><span>Repetir sempre mes que vem</span></label>
-        <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Detalhe curto, se precisar."></textarea></label>
+        <div class="gestao-form-block gestao-form-block-items">
+          <div class="gestao-form-block-head"><span>2</span><strong>Itens e valor</strong></div>
+          <div class="gestao-line-items" data-line-items>
+            <div class="gestao-line-item">
+              <label><span>Descricao do item</span><input type="text" name="item_descricao[]" maxlength="180" placeholder="Salario, boleto, comissao, parcela"></label>
+              <label><span>Valor</span><input type="text" name="item_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
+            </div>
+          </div>
+          <button type="button" class="gestao-btn gestao-btn-secondary" data-add-item>Adicionar item</button>
+        </div>
+        <div class="gestao-form-block gestao-repeat-block" data-repeat-panel>
+          <div class="gestao-form-block-head"><span>3</span><strong>Repeticao</strong></div>
+          <label class="gestao-repeat-option">
+            <input type="checkbox" name="repetir_mes" value="1" data-repeat-next>
+            <span class="gestao-repeat-icon" aria-hidden="true">&#8635;</span>
+            <span><strong>Repetir mes que vem</strong><small>1 copia futura</small></span>
+          </label>
+          <div class="gestao-repeat-count">
+            <label><span>Repetir tantos meses</span><input type="number" name="repetir_quantidade_meses" min="0" max="24" step="1" inputmode="numeric" placeholder="Ex.: 4" data-repeat-count></label>
+            <output data-repeat-preview>Sem repeticao programada.</output>
+          </div>
+          <label class="gestao-repeat-option gestao-repeat-option-forever">
+            <input type="checkbox" name="repetir_sempre_mes" value="1" data-repeat-forever>
+            <span class="gestao-repeat-icon" aria-hidden="true">&#8734;</span>
+            <span><strong>Repetir sempre mes que vem</strong><small>recorrencia permanente</small></span>
+          </label>
+        </div>
+        <div class="gestao-form-block gestao-form-block-note">
+          <div class="gestao-form-block-head"><span>4</span><strong>Observacao</strong></div>
+          <label><span>Observacao</span><textarea name="observacao" rows="3" placeholder="Detalhe curto, se precisar."></textarea></label>
+        </div>
         <button type="submit" class="gestao-btn gestao-btn-primary">Lancar conta</button>
       </form>
 
-      <div class="gestao-lists-grid">
-        <section class="gestao-list-panel">
-          ${listTitle}
-          <div class="gestao-list">${accountsHtml}</div>
-        </section>
-
-        <div class="gestao-list-side-stack">
+      <div class="gestao-workspace">
+        <div class="gestao-top-panels" aria-label="Atalhos operacionais da Gestao">
           ${pedidoPanelHtml}
           ${monthlyPanelHtml}
+          ${notepadHtml}
         </div>
-      </div>
 
-      <div class="gestao-side-stack">
-        ${categoryPanelHtml}
-        ${notepadHtml}
+        <div class="gestao-main-grid">
+          <section class="gestao-list-panel">
+            ${listTitle}
+            <div class="gestao-list">${accountsHtml}</div>
+          </section>
+          ${categoryPanelHtml}
+        </div>
       </div>
     </section>`;
   return `<!doctype html>
@@ -3360,9 +3430,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260606-pedidos-zoom">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260610-repeat-months-layout">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260602-avatar-fit">
-  <script src="${BASE_PATH}/app.js?v=20260605-pedidos-block" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260610-repeat-months-layout" defer></script>
   <script src="/miauw/widget.js?v=20260602-avatar-fit" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">

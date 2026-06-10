@@ -289,7 +289,7 @@ Concluido em 2026-05-30: caminho `mysql2` dormente removido do Cashback. Proxima
 
 - `/gestao/login.php`: login.
 - `/gestao/` e `/gestao/index.php`: tela administrativa de contas, itens, pagamentos, busca e painel mensal.
-- Desde 2026-06-01, a lista compacta abre detalhes ao clicar na linha inteira, sem botao separado `Abrir`; contas com `Repetir mes que vem` ativo aparecem primeiro e recebem simbolo de repeticao. Desde 2026-06-06, o `Pagar` compacto da lista registra pelo fluxo financeiro existente sem popup nativo do navegador.
+- Desde 2026-06-01, a lista compacta abre detalhes ao clicar na linha inteira, sem botao separado `Abrir`; contas com `Repetir mes que vem` ativo aparecem primeiro e recebem simbolo de repeticao. Desde 2026-06-06, o `Pagar` compacto da lista registra pelo fluxo financeiro existente sem popup nativo do navegador. Desde 2026-06-10, o cadastro de conta aceita `Repetir tantos meses` com previa visual e cria a cadeia futura pela mesma regra idempotente do mes seguinte.
 - `/gestao/logout.php`: encerra sessao.
 - `/gestao/health`: health com auth core unico e Postgres.
 - `GET /gestao/api/internal/summary`: resumo interno para Miauby/rotinas.
@@ -346,7 +346,7 @@ Legado/rollback, nao fonte principal:
 - Criar conta via Miauby por endpoint interno, com auditoria e confirmacao quando aplicavel.
 - Sincronizar status de contas vinculadas a Pedidos sem recategorizar boletos de pedidos.
 - Exibir contas vinculadas a Pedidos em bloco visual `Pedidos` na Gestao, separado da lista geral, sem mudar categoria `Boleto`, pagamentos, status, totais ou auditoria.
-- Desde 2026-06-06, separar visualmente os blocos `Nova conta`, `Contas abertas`, `Pedidos`, `Mensal`, `Categorias` e `Notas` por acento/cor, mantendo os mesmos formularios, rotas, tabelas, filtros e integracoes.
+- Desde 2026-06-06, separar visualmente os blocos `Nova conta`, `Contas abertas`, `Pedidos`, `Mensal`, `Categorias` e `Notas` por acento/cor, mantendo os mesmos formularios, rotas, tabelas, filtros e integracoes. Desde 2026-06-10, `Pedidos`, `Mensal` e `Notas` ficam na faixa superior do desktop, com rolagem horizontal controlada em telas menores.
 
 ### Integracoes
 

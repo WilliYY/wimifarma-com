@@ -348,9 +348,31 @@ textarea {
 }
 
 .gestao-layout {
-    grid-template-columns: minmax(330px, 390px) minmax(760px, 1fr) minmax(290px, 340px);
+    grid-template-columns: minmax(330px, 390px) minmax(0, 1fr);
     align-items: start;
     gap: 18px;
+}
+
+.gestao-workspace {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+
+.gestao-top-panels {
+    display: grid;
+    grid-template-columns: minmax(250px, 0.9fr) minmax(250px, 0.9fr) minmax(260px, 0.8fr);
+    align-items: start;
+    gap: 14px;
+    min-width: 0;
+}
+
+.gestao-main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+    align-items: start;
+    gap: 16px;
+    min-width: 0;
 }
 
 .gestao-lists-grid {
@@ -390,7 +412,7 @@ textarea {
 
 .gestao-form {
     display: grid;
-    gap: 16px;
+    gap: 12px;
 }
 
 .gestao-form::before,
@@ -409,7 +431,8 @@ textarea {
     --panel-accent: var(--wine);
 }
 
-.gestao-lists-grid > .gestao-list-panel:not(.gestao-pedido-list-panel):not(.gestao-monthly-list-panel) {
+.gestao-lists-grid > .gestao-list-panel:not(.gestao-pedido-list-panel):not(.gestao-monthly-list-panel),
+.gestao-main-grid > .gestao-list-panel:not(.gestao-pedido-list-panel):not(.gestao-monthly-list-panel) {
     --panel-accent: #0f766e;
 }
 
@@ -763,6 +786,28 @@ textarea {
     scrollbar-gutter: stable;
 }
 
+.gestao-top-panels .gestao-list,
+.gestao-top-panels .gestao-notes-list {
+    max-height: 258px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 6px;
+    scrollbar-gutter: stable;
+}
+
+.gestao-top-panels .gestao-pedido-list-panel .gestao-list {
+    max-height: 258px;
+}
+
+.gestao-top-panels .gestao-list-panel,
+.gestao-top-panels .gestao-notepad {
+    min-height: 100%;
+}
+
+.gestao-top-panels .gestao-notepad-new textarea {
+    min-height: 74px;
+}
+
 .gestao-monthly-list {
     display: grid;
     gap: 10px;
@@ -1049,6 +1094,78 @@ textarea {
     background: #ede9fe;
 }
 
+.gestao-form-title {
+    margin-bottom: 2px;
+}
+
+.gestao-form-block {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(242, 169, 194, 0.72);
+    border-radius: 12px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 251, 0.92));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.gestao-form-block-main {
+    border-color: rgba(168, 15, 67, 0.28);
+}
+
+.gestao-form-block-items {
+    border-color: rgba(37, 99, 235, 0.24);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(239, 246, 255, 0.68));
+}
+
+.gestao-repeat-block {
+    border-color: rgba(217, 119, 6, 0.34);
+    background:
+        linear-gradient(135deg, #ffffff 0%, #fff7ed 100%);
+}
+
+.gestao-form-block-note {
+    border-color: rgba(124, 58, 237, 0.22);
+    background:
+        linear-gradient(135deg, #ffffff 0%, #fbfaff 100%);
+}
+
+.gestao-form-block-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.gestao-form-block-head span {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--wine);
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 950;
+}
+
+.gestao-form-block-head strong {
+    color: var(--ink);
+    font-size: 0.86rem;
+    font-weight: 950;
+}
+
+.gestao-title-field {
+    padding: 10px;
+    border: 1px solid rgba(242, 169, 194, 0.62);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.8);
+}
+
 .gestao-form-grid {
     display: grid;
     grid-template-columns: minmax(150px, 1fr) minmax(118px, 0.72fr);
@@ -1135,6 +1252,112 @@ textarea {
     width: 18px;
     min-height: 18px;
     accent-color: var(--wine);
+}
+
+.gestao-repeat-option {
+    display: grid !important;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #fed7aa;
+    border-radius: 12px;
+    background: rgba(255, 251, 235, 0.82);
+}
+
+.gestao-repeat-option input {
+    width: 18px;
+    min-height: 18px;
+    accent-color: #d97706;
+}
+
+.gestao-repeat-option > span:last-child {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.gestao-repeat-option strong {
+    color: #7c2d12;
+    font-size: 0.84rem;
+    font-weight: 950;
+    line-height: 1.16;
+}
+
+.gestao-repeat-option small {
+    color: #9a3412;
+    font-size: 0.68rem;
+    font-weight: 850;
+    line-height: 1.16;
+}
+
+.gestao-repeat-icon {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    background: #ffffff;
+    color: #d97706;
+    font-size: 1.05rem;
+    font-weight: 950;
+    box-shadow: 0 8px 18px rgba(217, 119, 6, 0.12);
+}
+
+.gestao-repeat-option-forever {
+    border-color: rgba(16, 185, 129, 0.52);
+    background:
+        radial-gradient(circle at 18% 20%, rgba(16, 185, 129, 0.16), transparent 34%),
+        linear-gradient(135deg, #ecfdf5 0%, #ffffff 68%);
+    box-shadow: 0 12px 28px rgba(4, 120, 87, 0.09);
+}
+
+.gestao-repeat-option-forever input {
+    accent-color: #059669;
+}
+
+.gestao-repeat-option-forever .gestao-repeat-icon {
+    border-color: rgba(5, 150, 105, 0.34);
+    color: #047857;
+    box-shadow: 0 10px 22px rgba(5, 150, 105, 0.14);
+}
+
+.gestao-repeat-option-forever strong {
+    color: #047857;
+}
+
+.gestao-repeat-option-forever small {
+    color: #0f766e;
+}
+
+.gestao-repeat-count {
+    display: grid;
+    grid-template-columns: minmax(132px, 0.72fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.gestao-repeat-count label,
+.gestao-repeat-count output {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(251, 191, 36, 0.42);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.82);
+}
+
+.gestao-repeat-count output {
+    display: flex;
+    align-items: center;
+    color: #7c2d12;
+    font-size: 0.76rem;
+    font-weight: 900;
+    line-height: 1.28;
+    overflow-wrap: anywhere;
 }
 
 .gestao-btn {
@@ -1298,9 +1521,14 @@ textarea {
 }
 
 .gestao-repeat-marker.is-forever {
-    background: #d1fae5;
+    width: 22px;
+    height: 22px;
+    background:
+        radial-gradient(circle at 35% 30%, #ffffff 0 16%, transparent 17%),
+        linear-gradient(135deg, #bbf7d0, #99f6e4);
     color: #047857;
     border-color: rgba(4, 120, 87, 0.28);
+    box-shadow: 0 6px 16px rgba(4, 120, 87, 0.16);
 }
 
 .gestao-account.is-recurring {
@@ -1309,6 +1537,7 @@ textarea {
 
 .gestao-account.is-recurring-forever {
     border-color: #34d399;
+    box-shadow: 0 16px 32px rgba(4, 120, 87, 0.08);
 }
 
 .gestao-account.is-pedido-account {
@@ -2170,6 +2399,7 @@ textarea {
 @media (max-width: 1050px) {
     .gestao-layout,
     .gestao-lists-grid,
+    .gestao-main-grid,
     .gestao-hero,
     .gestao-orders-layout {
         grid-template-columns: 1fr;
@@ -2193,6 +2423,12 @@ textarea {
     .gestao-orders-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .gestao-top-panels {
+        grid-template-columns: repeat(3, minmax(250px, 1fr));
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
 }
 
 @media (min-width: 1051px) and (max-width: 1320px) {
@@ -2213,6 +2449,10 @@ textarea {
         position: static;
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .gestao-top-panels {
+        grid-template-columns: repeat(3, minmax(220px, 1fr));
+    }
 }
 
 @media (max-width: 720px) {
@@ -2231,6 +2471,7 @@ textarea {
     .gestao-orders-summary,
     .gestao-search-form,
     .gestao-form-grid,
+    .gestao-repeat-count,
     .gestao-order-form-grid,
     .gestao-month-filter,
     .gestao-line-item,
@@ -2271,6 +2512,20 @@ textarea {
     .gestao-list-side-stack,
     .gestao-account.is-pedido-account .gestao-account-compact {
         grid-template-columns: 1fr;
+    }
+
+    .gestao-top-panels {
+        display: flex;
+        gap: 12px;
+        margin-inline: -2px;
+        overflow-x: auto;
+        padding: 2px 2px 8px;
+        scroll-snap-type: x proximity;
+    }
+
+    .gestao-top-panels > * {
+        flex: 0 0 min(86vw, 330px);
+        scroll-snap-align: start;
     }
 
     .gestao-compact-value {
