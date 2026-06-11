@@ -494,6 +494,110 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     font-size: clamp(0.98rem, 1.05vw, 1.26rem);
 }
 
+.pedidos-search-panel {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+    margin: 12px 0 16px;
+    padding: 12px;
+    border: 1px solid rgba(242, 169, 194, 0.76);
+    border-left: 5px solid var(--wine);
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, rgba(168, 15, 67, 0.08), rgba(255, 255, 255, 0.95)),
+        #ffffff;
+    box-shadow: 0 16px 36px rgba(127, 9, 46, 0.06);
+}
+
+.pedidos-search-panel label {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.pedidos-search-panel label span {
+    color: var(--wine);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.pedidos-search-panel input {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid rgba(241, 96, 145, 0.62);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 800;
+    outline: none;
+}
+
+.pedidos-search-panel input:focus {
+    border-color: var(--wine);
+    box-shadow: 0 0 0 4px rgba(168, 15, 67, 0.12);
+}
+
+.pedidos-search-panel p {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.pedidos-search-panel.is-searching p::after {
+    content: "";
+    display: inline-block;
+    width: 0.7em;
+    height: 0.7em;
+    margin-left: 8px;
+    border: 2px solid rgba(168, 15, 67, 0.24);
+    border-top-color: var(--wine);
+    border-radius: 50%;
+    vertical-align: -0.08em;
+    animation: pedidos-search-spin 700ms linear infinite;
+}
+
+.gestao-order-card.is-search-result {
+    border-color: rgba(37, 99, 235, 0.48);
+    box-shadow: 0 16px 32px rgba(37, 99, 235, 0.08);
+}
+
+.pedidos-search-result-line {
+    display: grid;
+    grid-template-columns: minmax(120px, 1.35fr) minmax(88px, auto) minmax(116px, 1fr) minmax(110px, 0.9fr) minmax(86px, auto);
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 9px;
+    padding: 8px 10px;
+    border: 1px solid rgba(37, 99, 235, 0.18);
+    border-radius: 8px;
+    background: rgba(239, 246, 255, 0.9);
+    color: #1e3a8a;
+    font-size: 0.74rem;
+    font-weight: 900;
+}
+
+.pedidos-search-result-line strong,
+.pedidos-search-result-line span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pedidos-search-result-line mark {
+    border-radius: 5px;
+    padding: 0 3px;
+    background: #fef08a;
+    color: inherit;
+}
+
 .gestao-orders-layout {
     display: grid;
     grid-template-columns: minmax(300px, 0.82fr) minmax(330px, 1.02fr) minmax(390px, 1.22fr) minmax(290px, 0.86fr);
@@ -2620,6 +2724,12 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     }
 }
 
+@keyframes pedidos-search-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 @media (min-width: 1051px) {
     .gestao-orders-form-panel {
         position: static;
@@ -2741,6 +2851,18 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 @media (max-width: 720px) {
+    .pedidos-search-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .pedidos-search-panel .gestao-btn {
+        width: 100%;
+    }
+
+    .pedidos-search-result-line {
+        grid-template-columns: minmax(0, 1fr) minmax(92px, auto);
+    }
+
     .gestao-topbar {
         align-items: flex-start;
         flex-direction: column;

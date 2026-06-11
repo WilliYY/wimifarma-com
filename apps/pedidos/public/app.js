@@ -262,6 +262,10 @@
 
     function initMoneyValidation() {
         Array.prototype.slice.call(document.querySelectorAll('form[data-require-money]')).forEach(function (form) {
+            if (form.dataset.pedidosMoneyValidationBound === '1') {
+                return;
+            }
+            form.dataset.pedidosMoneyValidationBound = '1';
             form.addEventListener('submit', function (event) {
                 var input = form.querySelector('[data-money-input]');
 
@@ -276,6 +280,10 @@
 
     function initConfirmations() {
         Array.prototype.slice.call(document.querySelectorAll('form[data-confirm]')).forEach(function (form) {
+            if (form.dataset.pedidosConfirmBound === '1') {
+                return;
+            }
+            form.dataset.pedidosConfirmBound = '1';
             form.addEventListener('submit', function (event) {
                 var message = form.getAttribute('data-confirm') || 'Confirmar acao?';
 
@@ -284,6 +292,167 @@
                 }
             });
         });
+    }
+
+    function refreshDynamicBindings() {
+        bindMoneyInputs(document);
+        bindDateInputs(document);
+        initMoneyValidation();
+        initConfirmations();
+        initOrderEditPanels();
+        initOrderCardCollapse();
+        initHistoryReveal();
+    }
+
+    function initPedidosSearch() {
+        var root = document.querySelector('[data-pedidos-search]');
+        if (!root || root.dataset.pedidosSearchBound === '1') {
+            return;
+        }
+
+        var input = root.querySelector('[data-pedidos-search-input]');
+        var clearButton = root.querySelector('[data-pedidos-search-clear]');
+        var status = root.querySelector('[data-pedidos-search-status]');
+        var monthInput = document.querySelector('.gestao-month-filter input[name="mes"]');
+        var waitingSlot = document.querySelector('[data-pedidos-results="waiting"]');
+        var confirmedSlot = document.querySelector('[data-pedidos-results="confirmed"]');
+        var historySlot = document.querySelector('[data-pedidos-results="history"]');
+        var historyControls = document.querySelector('[data-pedidos-history-controls]');
+        var waitingCount = document.querySelector('[data-pedidos-count="waiting"]');
+        var confirmedCount = document.querySelector('[data-pedidos-count="confirmed"]');
+        var historyCount = document.querySelector('[data-pedidos-count="history"]');
+
+        if (!input || !waitingSlot || !confirmedSlot || !historySlot) {
+            return;
+        }
+
+        var initial = {
+            waiting: waitingSlot.innerHTML,
+            confirmed: confirmedSlot.innerHTML,
+            history: historySlot.innerHTML,
+            historyControls: historyControls ? historyControls.innerHTML : '',
+            historyInitial: historySlot.getAttribute('data-history-initial') || '6',
+            waitingCount: waitingCount ? waitingCount.textContent : '',
+            confirmedCount: confirmedCount ? confirmedCount.textContent : '',
+            historyCount: historyCount ? historyCount.textContent : '',
+            status: status ? status.textContent : ''
+        };
+        var timer = 0;
+        var controller = null;
+
+        function setSearching(isSearching) {
+            root.classList.toggle('is-searching', isSearching);
+        }
+
+        function setStatus(text) {
+            if (status) {
+                status.textContent = text;
+            }
+        }
+
+        function setCounts(counts) {
+            if (waitingCount) waitingCount.textContent = String(counts.waiting || 0);
+            if (confirmedCount) confirmedCount.textContent = String(counts.confirmed || 0);
+            if (historyCount) historyCount.textContent = String(counts.history || 0);
+        }
+
+        function restore() {
+            if (controller) {
+                controller.abort();
+                controller = null;
+            }
+            waitingSlot.innerHTML = initial.waiting;
+            confirmedSlot.innerHTML = initial.confirmed;
+            historySlot.innerHTML = initial.history;
+            historySlot.setAttribute('data-history-initial', initial.historyInitial);
+            delete historySlot.dataset.pedidosHistoryRevealBound;
+            if (historyControls) historyControls.innerHTML = initial.historyControls;
+            if (waitingCount) waitingCount.textContent = initial.waitingCount;
+            if (confirmedCount) confirmedCount.textContent = initial.confirmedCount;
+            if (historyCount) historyCount.textContent = initial.historyCount;
+            if (clearButton) clearButton.hidden = true;
+            setStatus(initial.status);
+            setSearching(false);
+            refreshDynamicBindings();
+        }
+
+        function applyResults(payload, query) {
+            waitingSlot.innerHTML = payload.html && payload.html.waiting ? payload.html.waiting : '';
+            confirmedSlot.innerHTML = payload.html && payload.html.confirmed ? payload.html.confirmed : '';
+            historySlot.innerHTML = payload.html && payload.html.history ? payload.html.history : '';
+            historySlot.setAttribute('data-history-initial', String(payload.historyInitial || 1));
+            delete historySlot.dataset.pedidosHistoryRevealBound;
+            if (historyControls) {
+                historyControls.innerHTML = payload.html && payload.html.historyControls ? payload.html.historyControls : '';
+            }
+            setCounts(payload.counts || {});
+            if (clearButton) clearButton.hidden = false;
+            setStatus((payload.total || 0) + ' resultado(s) para "' + query + '".');
+            setSearching(false);
+            refreshDynamicBindings();
+        }
+
+        function runSearch() {
+            var query = String(input.value || '').trim();
+            window.clearTimeout(timer);
+
+            if (!query) {
+                restore();
+                return;
+            }
+
+            timer = window.setTimeout(function () {
+                if (controller) {
+                    controller.abort();
+                }
+
+                controller = new AbortController();
+                setSearching(true);
+                setStatus('Buscando...');
+
+                var url = new URL('/pedidos/api/search', window.location.origin);
+                var month = monthInput ? monthInput.value : '';
+                if (month) url.searchParams.set('mes', month);
+                url.searchParams.set('busca', query);
+
+                window.fetch(url.toString(), {
+                    credentials: 'same-origin',
+                    signal: controller.signal,
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('search_failed');
+                        }
+                        return response.json();
+                    })
+                    .then(function (payload) {
+                        if (String(input.value || '').trim() !== query) {
+                            return;
+                        }
+                        applyResults(payload, query);
+                    })
+                    .catch(function (error) {
+                        if (error && error.name === 'AbortError') {
+                            return;
+                        }
+                        setSearching(false);
+                        setStatus('Nao consegui buscar agora. A tela normal continua preservada.');
+                    });
+            }, 180);
+        }
+
+        root.dataset.pedidosSearchBound = '1';
+        input.addEventListener('input', runSearch);
+        if (clearButton) {
+            clearButton.addEventListener('click', function () {
+                input.value = '';
+                input.focus();
+                restore();
+            });
+        }
     }
 
     function initAccountCollapse() {
@@ -652,6 +821,7 @@
             initOrderEditPanels();
             initOrderCardCollapse();
             initHistoryReveal();
+            initPedidosSearch();
         });
     } else {
         bindMoneyInputs(document);
@@ -672,5 +842,6 @@
         initOrderEditPanels();
         initOrderCardCollapse();
         initHistoryReveal();
+        initPedidosSearch();
     }
 }());

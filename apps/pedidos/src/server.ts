@@ -113,6 +113,7 @@ type OrderRow = {
   created_at: Date | string;
   updated_at: Date | string;
   account_title: string;
+  account_note: string | null;
   account_status: 'pendente' | 'pago' | 'cancelado';
   total_cents: string;
   competence_month: string;
@@ -151,6 +152,15 @@ type PaymentRow = {
   created_at: Date | string;
 };
 
+type AuditRow = {
+  id: string;
+  account_id: string | null;
+  user_id: number | null;
+  action: string;
+  summary: string;
+  created_at: Date | string;
+};
+
 type ArrivalInternalOrder = {
   id: string;
   account_id: string;
@@ -166,6 +176,15 @@ type ArrivalInternalOrder = {
 type RenderOrder = OrderRow & {
   items: ItemRow[];
   payments: PaymentRow[];
+  auditEvents: AuditRow[];
+  searchMeta: {
+    actorNames: string[];
+  };
+};
+
+type OrderSearchResult = {
+  order: RenderOrder;
+  score: number;
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -267,6 +286,32 @@ function normalizeLookupText(value: unknown): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function searchNormalize(value: unknown): string {
+  return cleanText(value, 3000)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function searchTokens(query: string): string[] {
+  return Array.from(new Set(searchNormalize(query).split(' ').filter((token) => token.length >= 2)));
+}
+
+function queryValue(value: unknown): string {
+  return cleanText(value, 180);
+}
+
+function pushUnique(target: string[], value: unknown): void {
+  const text = cleanText(value, 180);
+  if (!text) return;
+  if (!target.some((existing) => searchNormalize(existing) === searchNormalize(text))) {
+    target.push(text);
+  }
 }
 
 function normalizeHash(hash: unknown): string {
@@ -462,6 +507,13 @@ function moneyInput(cents: number): string {
   });
 }
 
+function moneySearchCents(query: string): number | null {
+  const moneyMatch = query.match(/(?:r\$\s*)?\d+(?:\.\d{3})*(?:,\d{1,2})?|(?:r\$\s*)?\d+(?:\.\d{1,2})?/i);
+  if (!moneyMatch) return null;
+  const cents = parseMoneyToCents(moneyMatch[0]);
+  return cents > 0 ? cents : null;
+}
+
 function bodyArray(body: Record<string, unknown>, field: string): unknown[] {
   const value = body[field] ?? body[`${field}[]`];
   if (Array.isArray(value)) return value;
@@ -584,6 +636,18 @@ function brDateOnly(value: Date | string | null | undefined): string {
   return brDate(value, false);
 }
 
+function dateSearchFragments(value: Date | string | null | undefined): string[] {
+  if (!value) return [];
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const dateOnly = `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)}`;
+    return Array.from(new Set([dateOnly, dateOnly.slice(0, 5), dateOnly.replace(/\D/g, '')]));
+  }
+  const dateOnly = brDateOnly(value);
+  if (!dateOnly) return [];
+  const fragments = [dateOnly, dateOnly.slice(0, 5), dateOnly.replace(/\D/g, '')];
+  return Array.from(new Set(fragments.filter(Boolean)));
+}
+
 function effectiveDueText(order: OrderRow | RenderOrder): string {
   const fallback = dateInputValue(order.item_due_at || order.due_at);
   if (!('items' in order) || !('payments' in order) || order.account_status !== 'pendente') return fallback;
@@ -655,6 +719,179 @@ function arrivalStatus(order: OrderRow): { key: string; label: string } {
   if (days === 0) return { key: 'today', label: 'Chega hoje' };
   if (days === 1) return { key: 'soon', label: 'Chega amanha' };
   return { key: 'scheduled', label: `Chega em ${days} dia(s)` };
+}
+
+function orderStatusLabels(order: RenderOrder): string[] {
+  const due = dueStatus(order);
+  const arrival = arrivalStatus(order);
+  const labels = [
+    'pedido pedidos fornecedor fornecedores boleto boletos parcelas',
+    order.account_status === 'pendente' ? 'aberto em aberto pendente aguardando pagamento' : order.account_status,
+    due.label,
+    arrival.label,
+  ];
+
+  if (order.status === 'pedido') labels.push('aguardando chegada pedido feito falta chegar chegar');
+  if (order.status === 'confirmado') labels.push('confirmado chegou boleto aberto falta pagar aguardando pagamento');
+  if (order.status === 'historico') labels.push('historico finalizado finalizada pago quitado recebido');
+  if (order.account_status === 'pago') labels.push('pago quitado finalizado');
+  if (due.key === 'overdue') labels.push('vencido atrasado atraso boleto vencido');
+  if (due.key === 'urgent') labels.push('urgente vence hoje vencimento');
+  if (due.key === 'attention' || due.key === 'scheduled') labels.push('vencimento vencer vence');
+  if (arrival.key === 'late') labels.push('chegada atrasada atrasado aguardando chegada');
+  if (arrival.key === 'today') labels.push('chega hoje chegada hoje');
+
+  return labels;
+}
+
+function orderSearchText(order: RenderOrder, totalCents: number, paidCents: number, remainingCents: number): string {
+  const effectiveDue = effectiveDueText(order);
+  const pieces = [
+    order.supplier_name,
+    order.account_title,
+    order.account_note || '',
+    monthLabel(order.competence_month),
+    ...orderStatusLabels(order),
+    ...order.searchMeta.actorNames,
+    brDate(order.expected_arrival_at, true),
+    brDateOnly(order.expected_arrival_at),
+    ...dateSearchFragments(order.expected_arrival_at),
+    brDate(order.confirmed_at, true),
+    brDateOnly(order.confirmed_at),
+    ...dateSearchFragments(order.confirmed_at),
+    brDate(order.finished_at, true),
+    brDateOnly(order.finished_at),
+    ...dateSearchFragments(order.finished_at),
+    brDate(order.created_at, true),
+    brDateOnly(order.created_at),
+    ...dateSearchFragments(order.created_at),
+    brDate(order.generated_at, true),
+    brDateOnly(order.generated_at),
+    ...dateSearchFragments(order.generated_at),
+    brDate(order.due_at, true),
+    brDateOnly(order.due_at),
+    ...dateSearchFragments(order.due_at),
+    brDate(effectiveDue, true),
+    brDateOnly(effectiveDue),
+    ...dateSearchFragments(effectiveDue),
+    brDate(order.paid_at, true),
+    brDateOnly(order.paid_at),
+    ...dateSearchFragments(order.paid_at),
+    formatMoney(totalCents),
+    formatMoney(paidCents),
+    formatMoney(remainingCents),
+    moneyInput(totalCents),
+    moneyInput(paidCents),
+    moneyInput(remainingCents),
+    ...order.items.flatMap((item) => [
+      item.description,
+      item.status,
+      item.due_at ? 'parcela vencimento boleto' : 'parcela sem vencimento',
+      brDate(item.created_at, true),
+      brDateOnly(item.created_at),
+      ...dateSearchFragments(item.created_at),
+      brDate(item.due_at, true),
+      brDateOnly(item.due_at),
+      ...dateSearchFragments(item.due_at),
+      formatMoney(item.amount_cents),
+      moneyInput(Number(item.amount_cents || 0)),
+    ]),
+    ...order.payments.flatMap((payment) => [
+      payment.description,
+      payment.item_description || '',
+      payment.status,
+      'pagamento pago historico',
+      brDate(payment.paid_at, true),
+      brDateOnly(payment.paid_at),
+      ...dateSearchFragments(payment.paid_at),
+      brDate(payment.created_at, true),
+      brDateOnly(payment.created_at),
+      ...dateSearchFragments(payment.created_at),
+      formatMoney(payment.amount_cents),
+      moneyInput(Number(payment.amount_cents || 0)),
+    ]),
+    ...order.auditEvents.flatMap((event) => [
+      event.action,
+      event.summary,
+      'historico auditoria',
+      brDate(event.created_at, true),
+      brDateOnly(event.created_at),
+      ...dateSearchFragments(event.created_at),
+    ]),
+  ];
+  return searchNormalize(pieces.filter(Boolean).join(' '));
+}
+
+function moneyClosenessScore(target: number, candidates: number[]): number {
+  let best = 0;
+  for (const candidate of candidates) {
+    if (candidate <= 0) continue;
+    const diff = Math.abs(candidate - target);
+    if (diff === 0) {
+      best = Math.max(best, 120);
+    } else if (diff <= 500) {
+      best = Math.max(best, 85);
+    } else if (diff <= 2000) {
+      best = Math.max(best, 55);
+    } else {
+      const ratio = diff / Math.max(candidate, target, 1);
+      if (ratio <= 0.1) best = Math.max(best, 35);
+    }
+  }
+  return best;
+}
+
+function searchOrders(orders: RenderOrder[], query: string): OrderSearchResult[] {
+  const trimmed = queryValue(query);
+  if (!trimmed) return [];
+  const normalized = searchNormalize(trimmed);
+  const tokens = searchTokens(trimmed);
+  const searchedCents = moneySearchCents(trimmed);
+  const hasDateLikeQuery = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(trimmed);
+  const results: OrderSearchResult[] = [];
+
+  orders.forEach((order, index) => {
+    const totalCents = Number(order.total_cents || 0);
+    const paidCents = Number(order.paid_cents || 0);
+    const remainingCents = Math.max(0, totalCents - paidCents);
+    const supplierText = searchNormalize(order.supplier_name);
+    const statusText = searchNormalize(orderStatusLabels(order).join(' '));
+    const fullText = orderSearchText(order, totalCents, paidCents, remainingCents);
+    const candidates = [
+      Number(order.id || 0),
+      Number(order.account_id || 0),
+      totalCents,
+      paidCents,
+      remainingCents,
+      ...order.items.map((item) => Number(item.amount_cents || 0)),
+      ...order.payments.map((payment) => Number(payment.amount_cents || 0)),
+    ];
+    const moneyScore = searchedCents !== null ? moneyClosenessScore(searchedCents, candidates) : 0;
+    const allTokensMatch = tokens.length === 0 || tokens.every((token) => {
+      if (fullText.includes(token)) return true;
+      if (!hasDateLikeQuery && /^\d+$/.test(token) && moneyScore > 0) return true;
+      return false;
+    });
+    if (!allTokensMatch) return;
+
+    let score = 0;
+    if (normalized && fullText.includes(normalized)) score += 120;
+    if (normalized && supplierText.includes(normalized)) score += 95;
+    if (normalized && statusText.includes(normalized)) score += 45;
+
+    for (const token of tokens) {
+      if (supplierText.includes(token)) score += 30;
+      else if (statusText.includes(token)) score += 20;
+      else if (fullText.includes(token)) score += 10;
+    }
+
+    score += moneyScore;
+    if (score > 0) {
+      results.push({ order, score: score * 1000 - index });
+    }
+  });
+
+  return results.sort((left, right) => right.score - left.score);
 }
 
 function loginWaitSeconds(req: Request): number {
@@ -1988,6 +2225,7 @@ async function listOrders(month: string): Promise<RenderOrder[]> {
             o.created_at,
             o.updated_at,
             a.title AS account_title,
+            a.note AS account_note,
             a.status AS account_status,
             a.total_cents,
             a.competence_month,
@@ -2029,6 +2267,7 @@ async function listOrders(month: string): Promise<RenderOrder[]> {
             c.created_at,
             c.updated_at,
             a.title AS account_title,
+            a.note AS account_note,
             a.status AS account_status,
             a.total_cents,
             a.competence_month,
@@ -2091,6 +2330,13 @@ async function listOrders(month: string): Promise<RenderOrder[]> {
      ORDER BY p.account_id ASC, p.paid_at ASC, p.id ASC`,
     [accountIds],
   );
+  const auditResult = await pgPool.query<AuditRow>(
+    `SELECT id, account_id, user_id, action, summary, created_at
+     FROM gestao_audit_events
+     WHERE account_id = ANY($1::bigint[])
+     ORDER BY account_id ASC, created_at DESC, id DESC`,
+    [accountIds],
+  );
 
   const itemsByAccount = new Map<string, ItemRow[]>();
   for (const item of itemsResult.rows) {
@@ -2104,13 +2350,79 @@ async function listOrders(month: string): Promise<RenderOrder[]> {
     paymentsByAccount.set(key, [...(paymentsByAccount.get(key) || []), payment]);
   }
 
+  const auditByAccount = new Map<string, AuditRow[]>();
+  for (const event of auditResult.rows) {
+    if (!event.account_id) continue;
+    const key = String(event.account_id);
+    auditByAccount.set(key, [...(auditByAccount.get(key) || []), event]);
+  }
+
+  const namesByUserId = await loadCoreUserNames(orders, paymentsResult.rows, auditResult.rows);
+
   return orders
-    .map((order) => ({
-      ...order,
-      items: itemsByAccount.get(String(order.account_id)) || [],
-      payments: paymentsByAccount.get(String(order.account_id)) || [],
-    }))
+    .map((order) => {
+      const accountPayments = paymentsByAccount.get(String(order.account_id)) || [];
+      const accountAudit = auditByAccount.get(String(order.account_id)) || [];
+      return {
+        ...order,
+        items: itemsByAccount.get(String(order.account_id)) || [],
+        payments: accountPayments,
+        auditEvents: accountAudit,
+        searchMeta: {
+          actorNames: actorNamesForOrder(order, accountPayments, accountAudit, namesByUserId),
+        },
+      };
+    })
     .sort((left, right) => orderSortKey(left) - orderSortKey(right));
+}
+
+async function loadCoreUserNames(orders: OrderRow[], payments: PaymentRow[], auditEvents: AuditRow[]): Promise<Map<number, string[]>> {
+  const ids = new Set<number>();
+  const add = (value: unknown) => {
+    const id = Number(value || 0);
+    if (Number.isFinite(id) && id > 0) ids.add(id);
+  };
+  orders.forEach((order) => {
+    add(order.created_by);
+    add(order.confirmed_by);
+    add(order.finished_by);
+  });
+  payments.forEach((payment) => add(payment.created_by));
+  auditEvents.forEach((event) => add(event.user_id));
+
+  if (!ids.size) return new Map();
+
+  try {
+    const result = await corePgPool.query<{ id: string; username: string; display_name: string | null; role: string | null }>(
+      `SELECT id, username, display_name, role
+       FROM core_users
+       WHERE id = ANY($1::int[])`,
+      [Array.from(ids)],
+    );
+    const names = new Map<number, string[]>();
+    for (const row of result.rows) {
+      names.set(Number(row.id), [row.display_name || '', row.username || '', row.role || ''].filter(Boolean));
+    }
+    return names;
+  } catch (error) {
+    console.warn('[pedidos] failed to load core user names for search', error);
+    return new Map();
+  }
+}
+
+function actorNamesForOrder(order: OrderRow, payments: PaymentRow[], auditEvents: AuditRow[], namesByUserId: Map<number, string[]>): string[] {
+  const names: string[] = [];
+  const add = (value: unknown) => {
+    const id = Number(value || 0);
+    if (!Number.isFinite(id) || id <= 0) return;
+    (namesByUserId.get(id) || []).forEach((name) => pushUnique(names, name));
+  };
+  add(order.created_by);
+  add(order.confirmed_by);
+  add(order.finished_by);
+  payments.forEach((payment) => add(payment.created_by));
+  auditEvents.forEach((event) => add(event.user_id));
+  return names;
 }
 
 function orderSortKey(order: OrderRow | RenderOrder): number {
@@ -2523,7 +2835,62 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
   </form>`;
 }
 
-function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string): string {
+function brDateOnlySafe(value: Date | string | null | undefined): string {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)}`;
+  }
+  return brDateOnly(value);
+}
+
+function orderSearchTypeLabel(order: RenderOrder): string {
+  if (order.status === 'pedido') return 'aguardando chegada';
+  if (order.status === 'confirmado') return 'confirmado';
+  return 'historico';
+}
+
+function orderSearchStatusLabel(order: RenderOrder): string {
+  const due = dueStatus(order);
+  if (order.status === 'historico' || order.account_status === 'pago') return 'pago/finalizado';
+  if (order.account_status === 'pendente' && due.key === 'overdue') return 'vencido';
+  if (order.account_status === 'pendente') return 'aberto';
+  return order.account_status;
+}
+
+function orderSearchDateLabel(order: RenderOrder): string {
+  const effectiveDue = effectiveDueText(order);
+  if (effectiveDue) return `venc. ${brDateOnlySafe(effectiveDue)}`;
+  if (order.expected_arrival_at) return `prev. ${brDateOnlySafe(order.expected_arrival_at)}`;
+  return `criado ${brDateOnly(order.created_at)}`;
+}
+
+function highlightedSearchCell(text: string, query: string): string {
+  const tokens = searchTokens(query);
+  const normalized = searchNormalize(text);
+  const hit = tokens.some((token) => normalized.includes(token));
+  return hit ? `<mark>${e(text)}</mark>` : e(text);
+}
+
+function renderOrderSearchSummary(order: RenderOrder, query: string): string {
+  const totalCents = Number(order.total_cents || 0);
+  const paidCents = Number(order.paid_cents || 0);
+  const remainingCents = Math.max(0, totalCents - paidCents);
+  const amountCents = remainingCents > 0 ? remainingCents : totalCents;
+  const title = order.supplier_name;
+  const amount = formatMoney(amountCents);
+  const date = orderSearchDateLabel(order);
+  const type = orderSearchTypeLabel(order);
+  const status = orderSearchStatusLabel(order);
+
+  return `<div class="pedidos-search-result-line" aria-label="Resumo do resultado da busca">
+    <strong>${highlightedSearchCell(title, query)}</strong>
+    <span>${highlightedSearchCell(amount, query)}</span>
+    <span>${highlightedSearchCell(date, query)}</span>
+    <span>${highlightedSearchCell(type, query)}</span>
+    <span>${highlightedSearchCell(status, query)}</span>
+  </div>`;
+}
+
+function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string, options: { search?: boolean; query?: string } = {}): string {
   const id = Number(order.id);
   const accountId = Number(order.account_id);
   const totalCents = Number(order.total_cents || 0);
@@ -2690,8 +3057,10 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
 
   const collapseAttrs = canCollapseOrder ? ` data-order-card-collapse data-order-card-id="${e(accountId)}" data-order-card-kind="${e(order.status)}"` : '';
   const historyRevealAttr = order.status === 'historico' ? ' data-history-reveal-item' : '';
+  const searchSummary = options.search ? renderOrderSearchSummary(order, options.query || '') : '';
 
-  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}"${historyRevealAttr}${collapseAttrs}>
+  return `<article class="gestao-order-card status-${e(order.status)} due-${e(due.key)} arrival-${e(arrival.key)}${options.search ? ' is-search-result' : ''}"${historyRevealAttr}${collapseAttrs}>
+    ${searchSummary}
     <div class="gestao-order-head">
       ${canCollapseOrder ? `<div class="gestao-order-summary-toggle" role="button" tabindex="0" title="Abrir ou recolher detalhes do pedido" aria-label="Abrir ou recolher detalhes do pedido" aria-controls="${e(detailsId)}" aria-expanded="true" data-order-collapse-toggle>` : '<div class="gestao-order-summary-static">'}
         <span>
@@ -2734,6 +3103,40 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
   </article>`;
 }
 
+function renderOrderColumns(req: Request, orders: RenderOrder[], selectedMonth: string, options: { search?: boolean; query?: string } = {}) {
+  const waitingOrders = orders.filter((order) => order.status === 'pedido');
+  const confirmedOrders = orders.filter((order) => order.status === 'confirmado');
+  const historyOrders = orders.filter((order) => order.status === 'historico');
+  const renderOptions = { search: options.search, query: options.query || '' };
+  const waitingHtml = waitingOrders.length
+    ? waitingOrders.map((order) => renderOrderCard(req, order, selectedMonth, renderOptions)).join('')
+    : `<div class="gestao-empty">${options.search ? 'Nenhum pedido aguardando chegada nessa busca.' : 'Nenhum pedido aguardando chegada.'}</div>`;
+  const confirmedHtml = confirmedOrders.length
+    ? confirmedOrders.map((order) => renderOrderCard(req, order, selectedMonth, renderOptions)).join('')
+    : `<div class="gestao-empty">${options.search ? 'Nenhum confirmado nessa busca.' : 'Nenhum pedido confirmado aguardando pagamento.'}</div>`;
+  const historyHtml = historyOrders.length
+    ? historyOrders.map((order) => renderOrderCard(req, order, selectedMonth, renderOptions)).join('')
+    : `<div class="gestao-empty">${options.search ? 'Nenhum historico nessa busca.' : 'Historico de pedidos ainda vazio neste mes.'}</div>`;
+  const historyInitial = options.search ? Math.max(historyOrders.length, 1) : HISTORY_INITIAL_VISIBLE;
+  const historyRevealControls = !options.search && historyOrders.length > HISTORY_INITIAL_VISIBLE
+    ? `<div class="gestao-history-reveal-controls" data-history-reveal-controls>
+        <span data-history-reveal-status aria-live="polite">${e(Math.min(HISTORY_INITIAL_VISIBLE, historyOrders.length))} de ${e(historyOrders.length)} visiveis</span>
+        <button type="button" class="gestao-btn gestao-btn-secondary gestao-history-reveal-more" data-history-reveal-more>Mostrar mais</button>
+      </div>`
+    : '';
+
+  return {
+    waitingOrders,
+    confirmedOrders,
+    historyOrders,
+    waitingHtml,
+    confirmedHtml,
+    historyHtml,
+    historyInitial,
+    historyRevealControls,
+  };
+}
+
 async function renderApp(req: Request): Promise<string> {
   const selectedMonth = monthValue(req.query.mes);
   const flash = takeFlash(req);
@@ -2741,9 +3144,8 @@ async function renderApp(req: Request): Promise<string> {
   const badge = await ordersBadge();
   const arrivingToday = badge.arrivingToday;
   const paidMonth = await paidThisMonth(selectedMonth);
-  const waitingOrders = orders.filter((order) => order.status === 'pedido');
-  const confirmedOrders = orders.filter((order) => order.status === 'confirmado');
-  const historyOrders = orders.filter((order) => order.status === 'historico');
+  const columns = renderOrderColumns(req, orders, selectedMonth);
+  const { waitingOrders, confirmedOrders, historyOrders } = columns;
   const openTicketBalances = confirmedOrders
     .map((order) => Math.max(0, Number(order.total_cents || 0) - Number(order.paid_cents || 0)))
     .filter((remainingCents) => remainingCents > 0);
@@ -2753,21 +3155,6 @@ async function renderApp(req: Request): Promise<string> {
   );
   const openTickets = openTicketBalances.length;
   const openTicketsValue = openTicketBalances.reduce((sum, remainingCents) => sum + remainingCents, 0);
-  const waitingHtml = waitingOrders.length
-    ? waitingOrders.map((order) => renderOrderCard(req, order, selectedMonth)).join('')
-    : '<div class="gestao-empty">Nenhum pedido aguardando chegada.</div>';
-  const confirmedHtml = confirmedOrders.length
-    ? confirmedOrders.map((order) => renderOrderCard(req, order, selectedMonth)).join('')
-    : '<div class="gestao-empty">Nenhum pedido confirmado aguardando pagamento.</div>';
-  const historyHtml = historyOrders.length
-    ? historyOrders.map((order) => renderOrderCard(req, order, selectedMonth)).join('')
-    : '<div class="gestao-empty">Historico de pedidos ainda vazio neste mes.</div>';
-  const historyRevealControls = historyOrders.length > HISTORY_INITIAL_VISIBLE
-    ? `<div class="gestao-history-reveal-controls">
-        <span data-history-reveal-status aria-live="polite">${e(Math.min(HISTORY_INITIAL_VISIBLE, historyOrders.length))} de ${e(historyOrders.length)} visiveis</span>
-        <button type="button" class="gestao-btn gestao-btn-secondary gestao-history-reveal-more" data-history-reveal-more>Mostrar mais</button>
-      </div>`
-    : '';
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -2776,9 +3163,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260608-orders-layout-polish">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260611-smart-search">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260607-history-reveal" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260611-smart-search" defer></script>
 </head>
 <body class="pedidos-body">
   <header class="gestao-topbar">
@@ -2812,6 +3199,14 @@ async function renderApp(req: Request): Promise<string> {
         <div class="gestao-orders-metric metric-open-value"><span>Valor boletos abertos</span><strong>${e(formatMoney(openTicketsValue))}</strong></div>
         <div class="gestao-orders-metric metric-paid"><span>Pago em pedidos</span><strong>${e(formatMoney(paidMonth))}</strong></div>
       </div>
+      <section class="pedidos-search-panel" data-pedidos-search>
+        <label>
+          <span>Pesquisar</span>
+          <input type="search" name="busca" placeholder="Ex.: ANB, 307, vencido, 10/06" autocomplete="off" data-pedidos-search-input>
+        </label>
+        <button type="button" class="gestao-btn gestao-btn-secondary" data-pedidos-search-clear hidden>Limpar</button>
+        <p data-pedidos-search-status>Digite para filtrar fornecedores, valores, datas, parcelas e status.</p>
+      </section>
       <div class="gestao-orders-layout">
         <aside class="gestao-orders-side">
           <div class="gestao-orders-panel gestao-orders-form-panel">
@@ -2820,17 +3215,17 @@ async function renderApp(req: Request): Promise<string> {
           </div>
         </aside>
         <section class="gestao-orders-panel gestao-orders-waiting">
-          <div class="gestao-section-title"><span class="gestao-kicker">Aguardando chegada</span><strong>${e(waitingOrders.length)}</strong></div>
-          <div class="gestao-orders-stack gestao-orders-waiting-stack">${waitingHtml}</div>
+          <div class="gestao-section-title"><span class="gestao-kicker">Aguardando chegada</span><strong data-pedidos-count="waiting">${e(waitingOrders.length)}</strong></div>
+          <div class="gestao-orders-stack gestao-orders-waiting-stack" data-pedidos-results="waiting">${columns.waitingHtml}</div>
         </section>
         <section class="gestao-orders-panel gestao-orders-confirmed">
-          <div class="gestao-section-title"><span class="gestao-kicker">Confirmados</span><strong>vencimento primeiro</strong></div>
-          <div class="gestao-orders-stack">${confirmedHtml}</div>
+          <div class="gestao-section-title"><span class="gestao-kicker">Confirmados</span><strong data-pedidos-count="confirmed">vencimento primeiro</strong></div>
+          <div class="gestao-orders-stack" data-pedidos-results="confirmed">${columns.confirmedHtml}</div>
         </section>
         <aside class="gestao-orders-panel gestao-orders-history" data-history-reveal-panel>
-          <div class="gestao-section-title"><span class="gestao-kicker">Historico</span><strong>${e(historyOrders.length)}</strong></div>
-          <div class="gestao-orders-stack gestao-orders-history-stack" data-history-reveal-list data-history-initial="${e(HISTORY_INITIAL_VISIBLE)}" data-history-step="${e(HISTORY_REVEAL_STEP)}">${historyHtml}</div>
-          ${historyRevealControls}
+          <div class="gestao-section-title"><span class="gestao-kicker">Historico</span><strong data-pedidos-count="history">${e(historyOrders.length)}</strong></div>
+          <div class="gestao-orders-stack gestao-orders-history-stack" data-history-reveal-list data-history-initial="${e(columns.historyInitial)}" data-history-step="${e(HISTORY_REVEAL_STEP)}" data-pedidos-results="history">${columns.historyHtml}</div>
+          <div data-pedidos-history-controls>${columns.historyRevealControls}</div>
         </aside>
       </div>
     </section>
@@ -2937,6 +3332,34 @@ app.get(`${BASE_PATH}/api/badge`, asyncRoute(async (_req, res) => {
     count: badge.awaitingArrival,
     awaiting_arrival: badge.awaitingArrival,
     arriving_today: badge.arrivingToday,
+  });
+}));
+
+app.get(`${BASE_PATH}/api/search`, requireAuth, asyncRoute(async (req, res) => {
+  const selectedMonth = monthValue(req.query.mes);
+  const searchQuery = queryValue(req.query.busca);
+  const orders = await listOrders(selectedMonth);
+  const filteredOrders = searchQuery
+    ? searchOrders(orders, searchQuery).map((result) => result.order)
+    : orders;
+  const columns = renderOrderColumns(req, filteredOrders, selectedMonth, { search: Boolean(searchQuery), query: searchQuery });
+
+  res.json({
+    ok: true,
+    query: searchQuery,
+    total: filteredOrders.length,
+    counts: {
+      waiting: columns.waitingOrders.length,
+      confirmed: columns.confirmedOrders.length,
+      history: columns.historyOrders.length,
+    },
+    html: {
+      waiting: columns.waitingHtml,
+      confirmed: columns.confirmedHtml,
+      history: columns.historyHtml,
+      historyControls: columns.historyRevealControls,
+    },
+    historyInitial: columns.historyInitial,
   });
 }));
 

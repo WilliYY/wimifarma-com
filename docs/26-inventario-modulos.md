@@ -388,6 +388,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Desde 2026-06-06, cards recolhidos de `Aguardando chegada` e `Confirmados` mostram chip de criacao com data/hora baseada em `created_at`, mantendo o detalhe expandido e sem alterar status/pagamento.
 - Desde 2026-06-07, a coluna `Historico` mostra poucos cards por padrao e revela mais em blocos por `Mostrar mais`, com cards compactos e sem rolagem interna no desktop; todos os dados continuam vindo das mesmas consultas Postgres, sem arquivar, apagar ou mudar status.
 - Desde 2026-06-08, o desktop de `/pedidos/` nao usa mais rolagem interna no formulario de `Novo pedido` nem nas colunas `Aguardando chegada`/`Confirmados`; as colunas viraram lanes compactas com superficie propria, cards recolhidos mais densos e acao principal do formulario mais clara, sem alterar backend, consultas, status, pagamentos, CSRF ou auditoria.
+- Desde 2026-06-11, `/pedidos/` tem busca inteligente em tempo real por fornecedor, valor, vencimento, previsao de chegada, criacao, status, parcelas, observacao, responsaveis e auditoria/historico; o endpoint `GET /pedidos/api/search` apenas le as listas do mes, filtra e retorna HTML dos cards, sem gravar, pagar, confirmar, arquivar ou duplicar pedidos.
 - `/pedidos/logout.php`: encerra sessao.
 - `/pedidos/health`: health com `mysql_dependency=false`.
 - `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.
