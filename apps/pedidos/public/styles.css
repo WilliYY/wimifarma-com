@@ -1633,6 +1633,34 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     background: #fffafd;
 }
 
+.gestao-order-history-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    gap: 10px;
+    align-items: stretch;
+    padding: 12px;
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, rgba(236, 253, 245, 0.92), rgba(255, 255, 255, 0.98)),
+        #ffffff;
+}
+
+.gestao-order-history-actions form {
+    display: flex;
+    min-width: 0;
+    margin: 0;
+}
+
+.gestao-order-history-actions .gestao-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding-inline: 12px;
+    white-space: normal;
+    line-height: 1.12;
+}
+
 .gestao-order-pay-form {
     border-color: #bbf7d0;
     background: #f8fffb;
@@ -1931,6 +1959,18 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     border-color: #f7b6cb;
     background: #fff8fb;
     color: var(--wine);
+}
+
+.gestao-btn-danger {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: var(--danger);
+}
+
+.gestao-btn-danger:hover,
+.gestao-btn-danger:focus-visible {
+    border-color: var(--danger);
+    box-shadow: 0 14px 28px rgba(220, 38, 38, 0.14);
 }
 
 .gestao-list {

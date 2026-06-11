@@ -2050,6 +2050,109 @@ async function archiveOrder(req: Request): Promise<void> {
   await logAudit(userId, 'pedidos_pedido_arquivado', 'gestao_conta', accountId, `Pedido arquivado da tela: ${supplier}`);
 }
 
+async function reopenHistoryOrder(req: Request): Promise<'confirmed' | 'waiting'> {
+  const accountId = Number(req.body.id || 0);
+  const target = String(req.body.history_target || 'confirmed') === 'waiting' ? 'waiting' : 'confirmed';
+  if (!accountId) throw new Error('Pedido invalido.');
+
+  const userId = req.session.user?.id || null;
+  const client = await pgPool.connect();
+  let supplier = '';
+  let resultTarget: 'confirmed' | 'waiting' = target;
+  try {
+    await client.query('BEGIN');
+    const orderResult = await client.query<{
+      id: string;
+      order_id: string | null;
+      supplier_name: string;
+      lifecycle: 'confirmado' | 'historico' | 'cancelado';
+      archived_at: Date | string | null;
+      account_status: 'pendente' | 'pago' | 'cancelado';
+    }>(
+      `SELECT c.id,
+              c.order_id,
+              c.supplier_name,
+              c.lifecycle,
+              a.archived_at,
+              a.status AS account_status
+       FROM pedidos_confirmed_orders c
+       JOIN gestao_accounts a ON a.id = c.account_id
+       WHERE c.account_id = $1
+       FOR UPDATE OF c, a`,
+      [accountId],
+    );
+    const order = orderResult.rows[0];
+    if (!order) throw new Error('Pedido de historico nao encontrado.');
+    if (order.archived_at) throw new Error('Esse pedido ja saiu da tela.');
+    if (order.account_status === 'cancelado') throw new Error('Esse pedido esta cancelado.');
+    if (order.lifecycle !== 'historico') throw new Error('Esse pedido nao esta no historico.');
+
+    supplier = order.supplier_name;
+    if (target === 'waiting') {
+      if (!order.order_id) {
+        throw new Error('Esse pedido nasceu recebido; volte para Confirmados.');
+      }
+      const waitingResult = await client.query<{ id: string }>(
+        'SELECT id FROM pedidos_orders WHERE id = $1 AND account_id = $2 FOR UPDATE',
+        [Number(order.order_id), accountId],
+      );
+      if (!waitingResult.rows[0]) throw new Error('Pedido original de chegada nao encontrado.');
+
+      await client.query(
+        `UPDATE pedidos_confirmed_orders
+         SET lifecycle = 'cancelado',
+             confirmed_at = NULL,
+             confirmed_by = NULL,
+             finished_at = NULL,
+             finished_by = NULL,
+             updated_at = now()
+         WHERE id = $1`,
+        [Number(order.id)],
+      );
+      await client.query(
+        `UPDATE pedidos_orders
+         SET moved_to_confirmed_at = NULL,
+             canceled_at = NULL,
+             canceled_by = NULL,
+             updated_at = now()
+         WHERE id = $1`,
+        [Number(order.order_id)],
+      );
+      await auditPg(client, accountId, userId, 'pedidos_historico_reaberto', `Pedido retornou do historico para Aguardando chegada: ${supplier}`);
+      resultTarget = 'waiting';
+    } else {
+      await client.query(
+        `UPDATE pedidos_confirmed_orders
+         SET lifecycle = 'confirmado',
+             finished_at = NULL,
+             finished_by = NULL,
+             updated_at = now()
+         WHERE id = $1`,
+        [Number(order.id)],
+      );
+      await auditPg(client, accountId, userId, 'pedidos_historico_reaberto', `Pedido retornou do historico para Confirmados: ${supplier}`);
+      resultTarget = 'confirmed';
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await logAudit(
+    userId,
+    'pedidos_historico_reaberto',
+    'gestao_conta',
+    accountId,
+    resultTarget === 'waiting'
+      ? `Pedido retornou do historico para Aguardando chegada: ${supplier}`
+      : `Pedido retornou do historico para Confirmados: ${supplier}`,
+  );
+  return resultTarget;
+}
+
 async function addPayment(req: Request): Promise<void> {
   const id = Number(req.body.id || 0);
   const cents = parseMoneyToCents(req.body.pagamento_valor);
@@ -3055,6 +3158,32 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
     </form>
   </div>` : '';
 
+  const historyCorrectionActions = order.status === 'historico' ? `<div class="gestao-order-history-actions">
+    <form method="post" data-confirm="Retornar ${e(order.supplier_name)} do historico para Confirmados? Pagamentos ja registrados continuam preservados.">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="reopen_history_order">
+      <input type="hidden" name="history_target" value="confirmed">
+      <input type="hidden" name="id" value="${e(accountId)}">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <button type="submit" class="gestao-btn gestao-btn-secondary">Voltar para Confirmados</button>
+    </form>
+    ${order.order_id ? `<form method="post" data-confirm="Retornar ${e(order.supplier_name)} para Aguardando chegada? Use quando a chegada foi confirmada por engano. Pagamentos continuam preservados.">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="reopen_history_order">
+      <input type="hidden" name="history_target" value="waiting">
+      <input type="hidden" name="id" value="${e(accountId)}">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <button type="submit" class="gestao-btn gestao-btn-ghost">Voltar para Aguardando</button>
+    </form>` : ''}
+    <form method="post" data-confirm="Excluir ${e(order.supplier_name)} do Historico da tela? Pagamentos e auditoria continuam preservados.">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="archive_order">
+      <input type="hidden" name="id" value="${e(accountId)}">
+      <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
+      <button type="submit" class="gestao-btn gestao-btn-danger">Excluir da tela</button>
+    </form>
+  </div>` : '';
+
   const collapseAttrs = canCollapseOrder ? ` data-order-card-collapse data-order-card-id="${e(accountId)}" data-order-card-kind="${e(order.status)}"` : '';
   const historyRevealAttr = order.status === 'historico' ? ' data-history-reveal-item' : '';
   const searchSummary = options.search ? renderOrderSearchSummary(order, options.query || '') : '';
@@ -3093,6 +3222,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <span>Saldo <strong>${e(formatMoney(remainingCents))}</strong></span>
       </div>
       <div class="gestao-progress" aria-hidden="true"><span style="width:${progress.toFixed(2)}%"></span></div>
+      ${historyCorrectionActions}
       ${itemRows ? `<ul class="gestao-order-lines">${itemRows}</ul>` : ''}
       ${paymentRows ? `<ul class="gestao-order-payments">${paymentRows}</ul>` : ''}
       ${paidBeforeArrivalAction}
@@ -3704,6 +3834,9 @@ async function handlePost(req: Request, res: Response): Promise<void> {
     } else if (action === 'archive_order') {
       await archiveOrder(req);
       setFlash(req, 'success', 'Pedido saiu da tela, mantendo historico e auditoria.');
+    } else if (action === 'reopen_history_order') {
+      const reopenedTo = await reopenHistoryOrder(req);
+      setFlash(req, 'success', reopenedTo === 'waiting' ? 'Pedido voltou para Aguardando chegada.' : 'Pedido voltou para Confirmados.');
     }
   } catch (error) {
     setFlash(req, 'error', error instanceof Error ? error.message : 'Nao consegui salvar esse pedido agora.');

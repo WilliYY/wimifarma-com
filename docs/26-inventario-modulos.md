@@ -389,6 +389,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Desde 2026-06-07, a coluna `Historico` mostra poucos cards por padrao e revela mais em blocos por `Mostrar mais`, com cards compactos e sem rolagem interna no desktop; todos os dados continuam vindo das mesmas consultas Postgres, sem arquivar, apagar ou mudar status.
 - Desde 2026-06-08, o desktop de `/pedidos/` nao usa mais rolagem interna no formulario de `Novo pedido` nem nas colunas `Aguardando chegada`/`Confirmados`; as colunas viraram lanes compactas com superficie propria, cards recolhidos mais densos e acao principal do formulario mais clara, sem alterar backend, consultas, status, pagamentos, CSRF ou auditoria.
 - Desde 2026-06-11, `/pedidos/` tem busca inteligente em tempo real por fornecedor, valor, vencimento, previsao de chegada, criacao, status, parcelas, observacao, responsaveis e auditoria/historico; o endpoint `GET /pedidos/api/search` apenas le as listas do mes, filtra e retorna HTML dos cards, sem gravar, pagar, confirmar, arquivar ou duplicar pedidos.
+- Ainda em 2026-06-11, o card aberto do `Historico` permite voltar manualmente para `Confirmados`, voltar para `Aguardando chegada` quando existe `pedidos_orders.order_id` original, ou excluir da tela por arquivamento logico. As acoes gravam auditoria e nao cancelam nem apagam pagamentos.
 - `/pedidos/logout.php`: encerra sessao.
 - `/pedidos/health`: health com `mysql_dependency=false`.
 - `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.
@@ -445,6 +446,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Registrar pagamento parcial/total e atualizar saldo.
 - Atualizar vencimento do boleto.
 - Arquivar pedido da tela mantendo historico e auditoria.
+- Corrigir pedido no `Historico`, retornando para `Confirmados` ou `Aguardando chegada` sem desfazer pagamentos, ou excluindo da tela por arquivamento logico.
 - Confirmar chegada via Miauby/n8n apenas com token interno e titulo validado.
 
 ### Integracoes
