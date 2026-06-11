@@ -1340,7 +1340,7 @@ ${body}
   const nav = [
     ['dashboard.php#busca', 'Balcao'],
     ['dashboard.php#cadastro', 'Novo cliente'],
-    ['dashboard.php#resgate', 'Gastar/Usar Cashback'],
+    ['dashboard.php#resgate', 'Nova compra, Gastar/Usar CashBack'],
     ['mensagens.php', 'Mensagens'],
     ['relatorio.php', 'Configuracao e Relatorio'],
   ];
