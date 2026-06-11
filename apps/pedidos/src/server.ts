@@ -726,13 +726,13 @@ function orderStatusLabels(order: RenderOrder): string[] {
   const arrival = arrivalStatus(order);
   const labels = [
     'pedido pedidos fornecedor fornecedores boleto boletos parcelas',
-    order.account_status === 'pendente' ? 'aberto em aberto pendente aguardando pagamento' : order.account_status,
+    order.account_status === 'pendente' ? 'aberto em aberto pendente a pagar pagamento' : order.account_status,
     due.label,
     arrival.label,
   ];
 
   if (order.status === 'pedido') labels.push('aguardando chegada pedido feito falta chegar chegar');
-  if (order.status === 'confirmado') labels.push('confirmado chegou boleto aberto falta pagar aguardando pagamento');
+  if (order.status === 'confirmado') labels.push('confirmado chegou boleto aberto falta pagar pagamento');
   if (order.status === 'historico') labels.push('historico finalizado finalizada pago quitado recebido');
   if (order.account_status === 'pago') labels.push('pago quitado finalizado');
   if (due.key === 'overdue') labels.push('vencido atrasado atraso boleto vencido');
