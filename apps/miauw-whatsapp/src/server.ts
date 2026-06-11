@@ -10,6 +10,7 @@ import {
 } from './cotacao-command.js';
 import {
   WHATSAPP_COMMAND_HELP_REGISTRY,
+  WHATSAPP_MISSING_PREFIX_HELP_REPLY,
   formatWhatsappCommandHelp,
   type WhatsappCommandHelpAutomation,
 } from './command-help.js';
@@ -6168,14 +6169,6 @@ function looksLikeModuleMenuRequest(message: string): boolean {
     || hasAnyIntentTerm(clean, ['menu de cards', 'meus cards', 'meus acessos', 'cards liberados', 'modulos liberados']);
 }
 
-function formatModuleMenu(cards: WhatsappModuleCard[]): string {
-  if (!cards.length) {
-    return 'Esse numero esta autorizado, mas ainda nao tem cards liberados no painel do Miauby WhatsApp.';
-  }
-  const lines = cards.map((card, index) => `${index + 1}. ${card.label} - ${card.description}\n   Use: ${card.command}`);
-  return `Cards liberados para este WhatsApp:\n${lines.join('\n')}`;
-}
-
 function looksLikePedidosArrivalListRequest(message: string): boolean {
   const clean = normalizeIntentText(stripActivationWord(message));
   if (!hasAnyIntentTerm(clean, ['pedido', 'pedidos'])) return false;
@@ -7642,9 +7635,8 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
   if (isMissingPrefixHelpOnly(row)) {
-    const automationHelp = await whatsappAutomationHelpItemsForCards(allowedCards);
     return {
-      text: formatWhatsappCommandHelp(allowedModuleKeys(allowedCards), { automations: automationHelp }),
+      text: WHATSAPP_MISSING_PREFIX_HELP_REPLY,
       engine: 'local',
       reason: 'missing_prefix_help_only',
     };
@@ -7997,8 +7989,9 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     };
   }
   if (looksLikeModuleMenuRequest(message)) {
+    const automationHelp = await whatsappAutomationHelpItemsForCards(allowedCards);
     return {
-      text: formatModuleMenu(allowedCards),
+      text: formatWhatsappCommandHelp(allowedModuleKeys(allowedCards), { automations: automationHelp }),
       engine: 'local',
       reason: 'module_menu',
     };

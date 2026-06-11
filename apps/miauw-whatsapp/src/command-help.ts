@@ -22,6 +22,8 @@ export type WhatsappCommandHelpOptions = {
   automations?: WhatsappCommandHelpAutomation[];
 };
 
+export const WHATSAPP_MISSING_PREFIX_HELP_REPLY = '😺 Para acessar o Miauby é só digitar Miauby e seu comando! ✨';
+
 export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
   {
     moduleKey: 'financeiro',
