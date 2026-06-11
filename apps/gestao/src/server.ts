@@ -62,6 +62,7 @@ type ItemRow = {
   amount_cents: string;
   sort_order: number;
   status: 'ativo' | 'cancelado';
+  due_at: Date | string | null;
   canceled_at: Date | string | null;
   paid_cents?: string;
   created_at: Date | string;
@@ -110,10 +111,18 @@ type CategorySummary = {
   closedCents: number;
 };
 
+type AccountSearchMeta = {
+  supplierNames: string[];
+  originLabels: string[];
+  actorNames: string[];
+  sourceDates: string[];
+};
+
 type RenderAccount = AccountRow & {
   items: ItemRow[];
   payments: PaymentRow[];
   auditEvents: AuditEventRow[];
+  searchMeta: AccountSearchMeta;
 };
 
 type AccountSearchResult = {
@@ -545,18 +554,69 @@ function moneySearchCents(query: string): number | null {
   return cents > 0 ? cents : null;
 }
 
+function dateSearchFragments(value: Date | string | null | undefined): string[] {
+  if (!value) return [];
+  const dateOnly = brDateOnly(value);
+  if (!dateOnly || dateOnly === '-') return [];
+  const fragments = [dateOnly, dateOnly.slice(0, 5), dateOnly.replace(/\D/g, '')];
+  return Array.from(new Set(fragments.filter(Boolean)));
+}
+
+function pushUnique(target: string[], value: unknown): void {
+  const text = cleanText(value, 180);
+  if (!text) return;
+  if (!target.some((existing) => searchNormalize(existing) === searchNormalize(text))) {
+    target.push(text);
+  }
+}
+
+function accountEffectiveDue(account: RenderAccount): Date | string | null {
+  if (account.due_at) return account.due_at;
+  const activeItemWithDue = account.items.find((item) => item.status !== 'cancelado' && Boolean(item.due_at));
+  return activeItemWithDue?.due_at || null;
+}
+
+function accountTypeLabels(account: RenderAccount): string[] {
+  const labels = [
+    categoryLabel(account.category),
+    account.status === 'pendente' ? 'aberto em aberto pendente' : accountStatusLabel(account.status),
+    ...account.searchMeta.originLabels,
+  ];
+  if (isPedidoAccount(account)) labels.push('pedido pedidos pedido vinculado origem pedidos fornecedor distribuidor');
+  if (categoryKey(account.category).includes('boleto')) labels.push('boleto boletos');
+  if (account.repeat_next_month || account.repeat_forever) labels.push('mensal recorrente repeticao');
+  if (account.items.length > 1) labels.push('parcelas parcela itens lancamentos');
+  const due = dueStatus(account);
+  if (due.key === 'overdue') labels.push('vencido atrasado atraso');
+  if (due.key === 'today') labels.push('vence hoje urgente');
+  if (due.key === 'soon' || due.key === 'scheduled') labels.push('vencimento vencer vence');
+  return labels;
+}
+
 function accountSearchText(account: RenderAccount, totalCents: number, paidCents: number, remainingCents: number): string {
+  const effectiveDue = accountEffectiveDue(account);
   const pieces = [
     account.title,
     account.category,
+    account.note || '',
     accountStatusLabel(account.status),
+    ...accountTypeLabels(account),
+    ...account.searchMeta.supplierNames,
+    ...account.searchMeta.actorNames,
+    ...account.searchMeta.sourceDates,
     monthLabel(account.competence_month),
     brDate(account.generated_at, true),
     brDateOnly(account.generated_at),
+    ...dateSearchFragments(account.generated_at),
     brDate(account.due_at, true),
     brDateOnly(account.due_at),
+    ...dateSearchFragments(account.due_at),
+    brDate(effectiveDue, true),
+    brDateOnly(effectiveDue),
+    ...dateSearchFragments(effectiveDue),
     brDate(account.paid_at, true),
     brDateOnly(account.paid_at),
+    ...dateSearchFragments(account.paid_at),
     formatMoney(totalCents),
     formatMoney(paidCents),
     formatMoney(remainingCents),
@@ -568,6 +628,10 @@ function accountSearchText(account: RenderAccount, totalCents: number, paidCents
       item.status,
       brDate(item.created_at, true),
       brDateOnly(item.created_at),
+      ...dateSearchFragments(item.created_at),
+      brDate(item.due_at, true),
+      brDateOnly(item.due_at),
+      ...dateSearchFragments(item.due_at),
       formatMoney(item.amount_cents),
       moneyInput(Number(item.amount_cents || 0)),
     ]),
@@ -577,8 +641,16 @@ function accountSearchText(account: RenderAccount, totalCents: number, paidCents
       payment.status,
       brDate(payment.paid_at, true),
       brDateOnly(payment.paid_at),
+      ...dateSearchFragments(payment.paid_at),
       formatMoney(payment.amount_cents),
       moneyInput(Number(payment.amount_cents || 0)),
+    ]),
+    ...account.auditEvents.flatMap((event) => [
+      event.action,
+      event.summary,
+      brDate(event.created_at, true),
+      brDateOnly(event.created_at),
+      ...dateSearchFragments(event.created_at),
     ]),
   ];
   return searchNormalize(pieces.filter(Boolean).join(' '));
@@ -609,6 +681,7 @@ function searchAccounts(accounts: RenderAccount[], query: string): AccountSearch
   const normalized = searchNormalize(trimmed);
   const tokens = searchTokens(trimmed);
   const searchedCents = moneySearchCents(trimmed);
+  const hasDateLikeQuery = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(trimmed);
   const results: AccountSearchResult[] = [];
 
   accounts.forEach((account, index) => {
@@ -620,6 +693,21 @@ function searchAccounts(accounts: RenderAccount[], query: string): AccountSearch
     const statusText = searchNormalize(accountStatusLabel(account.status));
     const fullText = accountSearchText(account, totalCents, paidCents, remainingCents);
     let score = 0;
+    const candidates = [
+      totalCents,
+      paidCents,
+      remainingCents,
+      ...account.items.map((item) => Number(item.amount_cents || 0)),
+      ...account.payments.map((payment) => Number(payment.amount_cents || 0)),
+    ];
+    const moneyScore = searchedCents !== null ? moneyClosenessScore(searchedCents, candidates) : 0;
+    const allTokensMatch = tokens.length === 0 || tokens.every((token) => {
+      if (fullText.includes(token)) return true;
+      if (!hasDateLikeQuery && /^\d+$/.test(token) && moneyScore > 0) return true;
+      return false;
+    });
+
+    if (!allTokensMatch) return;
 
     if (normalized && fullText.includes(normalized)) score += 120;
     if (normalized && titleText.includes(normalized)) score += 90;
@@ -632,16 +720,7 @@ function searchAccounts(accounts: RenderAccount[], query: string): AccountSearch
       else if (fullText.includes(token)) score += 10;
     }
 
-    if (searchedCents !== null) {
-      const candidates = [
-        totalCents,
-        paidCents,
-        remainingCents,
-        ...account.items.map((item) => Number(item.amount_cents || 0)),
-        ...account.payments.map((payment) => Number(payment.amount_cents || 0)),
-      ];
-      score += moneyClosenessScore(searchedCents, candidates);
-    }
+    score += moneyScore;
 
     if (score > 0) {
       results.push({ account, score: score * 1000 - index });
@@ -2467,8 +2546,176 @@ async function monthSummary(month: string) {
   };
 }
 
-async function listAccounts(month: string): Promise<RenderAccount[]> {
+async function loadAccountSearchMeta(
+  ids: number[],
+  accounts: AccountRow[],
+  payments: PaymentRow[],
+  auditEvents: AuditEventRow[],
+): Promise<Map<string, AccountSearchMeta>> {
+  const metaByAccount = new Map<string, AccountSearchMeta>();
+  const userIds = new Set<number>();
+  const accountUserRefs: Array<{ accountId: string | number; userId: unknown }> = [];
+  const ensureMeta = (accountId: string | number): AccountSearchMeta => {
+    const key = String(accountId);
+    const existing = metaByAccount.get(key);
+    if (existing) return existing;
+    const meta = { supplierNames: [], originLabels: [], actorNames: [], sourceDates: [] };
+    metaByAccount.set(key, meta);
+    return meta;
+  };
+  const collectUser = (value: unknown): void => {
+    const id = Number(value || 0);
+    if (Number.isInteger(id) && id > 0) userIds.add(id);
+  };
+  const collectAccountUser = (accountId: string | number, value: unknown): void => {
+    collectUser(value);
+    const id = Number(value || 0);
+    if (Number.isInteger(id) && id > 0) accountUserRefs.push({ accountId, userId: id });
+  };
+
+  ids.forEach(ensureMeta);
+  accounts.forEach((account) => {
+    collectUser(account.created_by);
+    collectUser(account.archived_by);
+  });
+  payments.forEach((payment) => collectUser(payment.created_by));
+  auditEvents.forEach((event) => collectUser(event.user_id));
+
+  if (ids.length && await pgTableExists('gestao_supplier_orders')) {
+    const result = await pgPool.query<{
+      account_id: string;
+      supplier_name: string;
+      status: string;
+      expected_arrival_at: Date | string | null;
+      confirmed_at: Date | string | null;
+      finished_at: Date | string | null;
+      created_at: Date | string | null;
+      created_by: number | null;
+      confirmed_by: number | null;
+      finished_by: number | null;
+    }>(
+      `SELECT account_id, supplier_name, status, expected_arrival_at, confirmed_at, finished_at, created_at, created_by, confirmed_by, finished_by
+       FROM gestao_supplier_orders
+       WHERE account_id = ANY($1::bigint[])
+         AND status <> 'cancelado'`,
+      [ids],
+    );
+    for (const row of result.rows) {
+      const meta = ensureMeta(row.account_id);
+      pushUnique(meta.supplierNames, row.supplier_name);
+      pushUnique(meta.originLabels, 'pedido vinculado');
+      pushUnique(meta.originLabels, row.status);
+      pushUnique(meta.originLabels, 'fornecedor distribuidor');
+      [row.expected_arrival_at, row.confirmed_at, row.finished_at, row.created_at]
+        .flatMap(dateSearchFragments)
+        .forEach((fragment) => pushUnique(meta.sourceDates, fragment));
+      collectAccountUser(row.account_id, row.created_by);
+      collectAccountUser(row.account_id, row.confirmed_by);
+      collectAccountUser(row.account_id, row.finished_by);
+    }
+  }
+
+  if (ids.length && await pgTableExists('pedidos_orders')) {
+    const result = await pgPool.query<{
+      account_id: string;
+      supplier_name: string;
+      expected_arrival_at: Date | string | null;
+      moved_to_confirmed_at: Date | string | null;
+      created_at: Date | string | null;
+      created_by: number | null;
+    }>(
+      `SELECT account_id, supplier_name, expected_arrival_at, moved_to_confirmed_at, created_at, created_by
+       FROM pedidos_orders
+       WHERE account_id = ANY($1::bigint[])
+         AND canceled_at IS NULL`,
+      [ids],
+    );
+    for (const row of result.rows) {
+      const meta = ensureMeta(row.account_id);
+      pushUnique(meta.supplierNames, row.supplier_name);
+      pushUnique(meta.originLabels, 'pedido vinculado');
+      pushUnique(meta.originLabels, 'aguardando chegada');
+      pushUnique(meta.originLabels, 'fornecedor distribuidor');
+      [row.expected_arrival_at, row.moved_to_confirmed_at, row.created_at]
+        .flatMap(dateSearchFragments)
+        .forEach((fragment) => pushUnique(meta.sourceDates, fragment));
+      collectAccountUser(row.account_id, row.created_by);
+    }
+  }
+
+  if (ids.length && await pgTableExists('pedidos_confirmed_orders')) {
+    const result = await pgPool.query<{
+      account_id: string;
+      supplier_name: string;
+      lifecycle: string;
+      expected_arrival_at: Date | string | null;
+      confirmed_at: Date | string | null;
+      finished_at: Date | string | null;
+      created_at: Date | string | null;
+      created_by: number | null;
+      confirmed_by: number | null;
+      finished_by: number | null;
+    }>(
+      `SELECT account_id, supplier_name, lifecycle, expected_arrival_at, confirmed_at, finished_at, created_at, created_by, confirmed_by, finished_by
+       FROM pedidos_confirmed_orders
+       WHERE account_id = ANY($1::bigint[])
+         AND lifecycle <> 'cancelado'`,
+      [ids],
+    );
+    for (const row of result.rows) {
+      const meta = ensureMeta(row.account_id);
+      pushUnique(meta.supplierNames, row.supplier_name);
+      pushUnique(meta.originLabels, 'pedido vinculado');
+      pushUnique(meta.originLabels, row.lifecycle);
+      pushUnique(meta.originLabels, 'fornecedor distribuidor');
+      [row.expected_arrival_at, row.confirmed_at, row.finished_at, row.created_at]
+        .flatMap(dateSearchFragments)
+        .forEach((fragment) => pushUnique(meta.sourceDates, fragment));
+      collectAccountUser(row.account_id, row.created_by);
+      collectAccountUser(row.account_id, row.confirmed_by);
+      collectAccountUser(row.account_id, row.finished_by);
+    }
+  }
+
+  if (userIds.size) {
+    try {
+      const users = await corePgPool.query<{ id: string; username: string; display_name: string | null; role: string | null }>(
+        `SELECT id, username, display_name, role
+         FROM core_users
+         WHERE id = ANY($1::int[])`,
+        [[...userIds]],
+      );
+      const userNamesById = new Map<number, string[]>();
+      for (const user of users.rows) {
+        userNamesById.set(Number(user.id), [user.display_name || '', user.username || '', user.role || ''].filter(Boolean));
+      }
+      const addNames = (accountId: string | number, value: unknown): void => {
+        const id = Number(value || 0);
+        if (!Number.isInteger(id) || id <= 0) return;
+        const labels = userNamesById.get(id) || [];
+        const meta = ensureMeta(accountId);
+        labels.forEach((label) => pushUnique(meta.actorNames, label));
+      };
+      accountUserRefs.forEach((ref) => addNames(ref.accountId, ref.userId));
+      accounts.forEach((account) => {
+        addNames(account.id, account.created_by);
+        addNames(account.id, account.archived_by);
+      });
+      payments.forEach((payment) => addNames(payment.account_id, payment.created_by));
+      auditEvents.forEach((event) => {
+        if (event.account_id) addNames(event.account_id, event.user_id);
+      });
+    } catch (error) {
+      console.warn('[gestao] search user metadata unavailable', error);
+    }
+  }
+
+  return metaByAccount;
+}
+
+async function listAccounts(month: string, options: { searchQuery?: string } = {}): Promise<RenderAccount[]> {
   const bounds = monthBounds(month);
+  const searchMode = queryValue(options.searchQuery) !== '';
   const orderSourceChecks: string[] = [];
   if (await pgTableExists('gestao_supplier_orders')) {
     orderSourceChecks.push("EXISTS (SELECT 1 FROM gestao_supplier_orders so WHERE so.account_id = a.id AND so.status <> 'cancelado')");
@@ -2480,6 +2727,7 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
     orderSourceChecks.push("EXISTS (SELECT 1 FROM pedidos_confirmed_orders pc WHERE pc.account_id = a.id AND pc.lifecycle <> 'cancelado')");
   }
   const orderSourceSql = orderSourceChecks.length ? `(${orderSourceChecks.join(' OR ')}) AS is_pedido_account` : 'false AS is_pedido_account';
+  const accountParams = searchMode ? [month] : [month, bounds.start, bounds.end];
   const accountsResult = await pgPool.query<AccountRow>(
     `SELECT a.*,
             COALESCE(p.paid_cents, 0)::bigint AS paid_cents,
@@ -2493,7 +2741,7 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
        GROUP BY account_id
      ) p ON p.account_id = a.id
      WHERE a.archived_at IS NULL
-       AND (
+       ${searchMode ? '' : `AND (
         a.competence_month = $1
         OR (a.status = 'pendente' AND a.competence_month < $1)
         OR (a.paid_at >= $2::timestamptz AND a.paid_at < $3::timestamptz)
@@ -2504,8 +2752,9 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
             AND gp.paid_at >= $2::timestamptz
             AND gp.paid_at < $3::timestamptz
         )
-       )
+       )`}
      ORDER BY
+       ${searchMode ? 'CASE WHEN a.competence_month = $1 THEN 0 ELSE 1 END ASC,' : ''}
        CASE a.status WHEN 'pendente' THEN 0 WHEN 'pago' THEN 1 ELSE 2 END ASC,
        CASE WHEN a.repeat_forever THEN 0 ELSE 1 END ASC,
        CASE WHEN a.repeat_next_month THEN 0 ELSE 1 END ASC,
@@ -2513,8 +2762,8 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
        CASE WHEN a.status = 'pendente' THEN a.due_at END ASC NULLS LAST,
        COALESCE(a.paid_at, p.last_payment_at, a.generated_at) DESC,
        a.id DESC
-     LIMIT 500`,
-    [month, bounds.start, bounds.end],
+     LIMIT ${searchMode ? 2500 : 500}`,
+    accountParams,
   );
   const accounts = accountsResult.rows;
   if (!accounts.length) return [];
@@ -2551,6 +2800,9 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
      LIMIT 600`,
     [ids],
   );
+  const searchMetaByAccount = searchMode
+    ? await loadAccountSearchMeta(ids, accounts, paymentsResult.rows, auditResult.rows)
+    : new Map<string, AccountSearchMeta>();
 
   const itemsByAccount = new Map<string, ItemRow[]>();
   for (const item of itemsResult.rows) {
@@ -2575,6 +2827,7 @@ async function listAccounts(month: string): Promise<RenderAccount[]> {
     items: itemsByAccount.get(String(account.id)) || [],
     payments: paymentsByAccount.get(String(account.id)) || [],
     auditEvents: auditByAccount.get(String(account.id)) || [],
+    searchMeta: searchMetaByAccount.get(String(account.id)) || { supplierNames: [], originLabels: [], actorNames: [], sourceDates: [] },
   }));
 }
 
@@ -2654,14 +2907,47 @@ function isPedidoAccount(account: RenderAccount): boolean {
   return account.is_pedido_account === true;
 }
 
-function renderPedidoPanel(req: Request, accounts: RenderAccount[], selectedMonth: string): string {
+function searchResultTypeLabel(account: RenderAccount): string {
+  if (isPedidoAccount(account)) return 'pedido vinculado';
+  if (account.repeat_forever || account.repeat_next_month) return 'mensal';
+  return categoryLabel(account.category).toLowerCase();
+}
+
+function searchResultStatusLabel(account: RenderAccount): string {
+  const due = dueStatus(account);
+  if (account.status === 'pendente' && due.key === 'overdue') return 'vencido';
+  if (account.status === 'pendente') return 'aberto';
+  return accountStatusLabel(account.status).toLowerCase();
+}
+
+function renderSearchResultSummary(account: RenderAccount): string {
+  const totalCents = Number(account.total_cents || 0);
+  const paidCents = Number(account.paid_cents || 0);
+  const remainingCents = Math.max(0, totalCents - paidCents);
+  const amountCents = remainingCents > 0 ? remainingCents : totalCents;
+  const effectiveDue = accountEffectiveDue(account);
+  const title = account.searchMeta.supplierNames[0] || account.title;
+  const dueText = effectiveDue ? `venc. ${brDateOnly(effectiveDue)}` : `gerado ${brDateOnly(account.generated_at)}`;
+  const typeText = searchResultTypeLabel(account);
+  const statusText = searchResultStatusLabel(account);
+
+  return `<div class="gestao-search-result-line" aria-label="Resumo do resultado">
+    <strong>${e(title)}</strong>
+    <span>${e(formatMoney(amountCents))}</span>
+    <span>${e(dueText)}</span>
+    <span>${e(typeText)}</span>
+    <span>${e(statusText)}</span>
+  </div>`;
+}
+
+function renderPedidoPanel(req: Request, accounts: RenderAccount[], selectedMonth: string, options: { search?: boolean } = {}): string {
   const totalCents = accounts.reduce((sum, account) => {
     const total = Number(account.total_cents || 0);
     const paid = Number(account.paid_cents || 0);
     return sum + Math.max(0, total - paid);
   }, 0);
   const rowsHtml = accounts.length
-    ? accounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
+    ? accounts.map((account) => renderAccount(req, account, selectedMonth, { search: options.search })).join('')
     : '<p class="gestao-empty-line">Nenhum pedido nesta visao.</p>';
 
   return `<section class="gestao-list-panel gestao-pedido-list-panel" aria-label="Contas vindas de Pedidos">
@@ -2844,7 +3130,7 @@ async function updateMonthlyOrder(req: Request): Promise<void> {
   await logAudit(userId, 'gestao_mensal_ordem_atualizada', 'gestao', null, `Ordem mensal atualizada em ${selectedMonth}.`);
 }
 
-function renderAccount(req: Request, account: RenderAccount, selectedMonth: string, options: { monthly?: boolean } = {}): string {
+function renderAccount(req: Request, account: RenderAccount, selectedMonth: string, options: { monthly?: boolean; search?: boolean } = {}): string {
   const id = Number(account.id);
   const status = account.status || 'pendente';
   const totalCents = Number(account.total_cents || 0);
@@ -3201,7 +3487,10 @@ function renderAccount(req: Request, account: RenderAccount, selectedMonth: stri
     ? `<span class="gestao-repeat-marker ${repeatForever ? 'is-forever' : ''}" title="${repeatForever ? 'Repete sempre mes que vem' : 'Repete mes que vem'}" aria-label="${repeatForever ? 'Repete sempre mes que vem' : 'Repete mes que vem'}">${repeatForever ? '&#8734;' : '&#8635;'}</span>`
     : '';
 
-  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${repeatEnabled ? 'is-recurring' : ''} ${repeatForever ? 'is-recurring-forever' : ''} ${isPedidoAccount(account) ? 'is-pedido-account' : ''} ${options.monthly ? 'is-monthly-item' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
+  const searchSummary = options.search ? renderSearchResultSummary(account) : '';
+
+  return `<article class="gestao-account status-${e(status)} due-${e(due.key)} ${repeatEnabled ? 'is-recurring' : ''} ${repeatForever ? 'is-recurring-forever' : ''} ${isPedidoAccount(account) ? 'is-pedido-account' : ''} ${options.monthly ? 'is-monthly-item' : ''} ${options.search ? 'is-search-result' : ''}" data-account-card data-account-id="${e(id)}"${monthlyAttrs}>
+    ${searchSummary}
     <div class="gestao-account-compact" data-account-toggle data-open-label="Abrir detalhes" data-close-label="Fechar detalhes" role="button" tabindex="0" aria-expanded="false">
       <span class="gestao-compact-category">${e(categoryLabel(account.category))}</span>
       <strong class="gestao-compact-title"><span class="gestao-compact-title-line">${repeatMarker}<span>${e(account.title)}</span></span>${due.label ? `<em>${e(due.label)}</em>` : ''}${monthlyMeta}</strong>
@@ -3305,14 +3594,14 @@ function renderSearchPanel(selectedMonth: string, searchQuery: string, totalResu
   const moreUrl = gestaoListUrl(selectedMonth, '', searchQuery, nextLimit);
   const resultLine = hasSearch
     ? `<p>${e(totalResults)} resultado(s) encontrados. Mostrando ${e(shownResults)}.</p>`
-    : '<p>Procure por nome, valor, categoria, vencimento ou data de lancamento.</p>';
+    : '<p>Procure por nome, fornecedor, categoria, tipo, valor, vencimento, observacao ou status.</p>';
 
   return `<section class="gestao-search-panel" aria-label="Busca de contas">
     <form method="get" class="gestao-search-form">
       <input type="hidden" name="mes" value="${e(selectedMonth)}">
       <label>
         <span>Pesquisar</span>
-        <input type="search" name="busca" value="${e(searchQuery)}" placeholder="Ex: Rogerio, 82, boleto, 18/05">
+        <input type="search" name="busca" value="${e(searchQuery)}" placeholder="Ex: ANB boleto 18/05, Rogerio, 82">
       </label>
       <button type="submit" class="gestao-btn gestao-btn-primary">Buscar</button>
       ${hasSearch ? `<a class="gestao-btn gestao-btn-ghost" href="${e(clearUrl)}">Limpar</a>` : ''}
@@ -3332,10 +3621,11 @@ async function renderApp(req: Request): Promise<string> {
   const flash = takeFlash(req);
   const summary = await monthSummary(selectedMonth);
   const allAccounts = await listAccounts(selectedMonth);
+  const searchAccountsSource = searchQuery ? await listAccounts(selectedMonth, { searchQuery }) : allAccounts;
   const notes = await listNotepadNotes();
   const summaries = categorySummaries(allAccounts);
   const activeCategory = summaries.some((summary) => summary.key === selectedCategory) ? selectedCategory : '';
-  const searchResults = searchQuery ? searchAccounts(allAccounts, searchQuery) : [];
+  const searchResults = searchQuery ? searchAccounts(searchAccountsSource, searchQuery) : [];
   const visibleAccounts = searchQuery
     ? searchResults.slice(0, searchLimit).map((result) => result.account)
     : activeCategory
@@ -3352,9 +3642,9 @@ async function renderApp(req: Request): Promise<string> {
     ? 'Nada encontrado para essa busca.'
     : 'Nada lancado nesse mes ainda.';
   const accountsHtml = visibleGeneralAccounts.length
-    ? visibleGeneralAccounts.map((account) => renderAccount(req, account, selectedMonth)).join('')
+    ? visibleGeneralAccounts.map((account) => renderAccount(req, account, selectedMonth, { search: Boolean(searchQuery) })).join('')
     : `<div class="gestao-empty">${accountsEmptyText}</div>`;
-  const pedidoPanelHtml = renderPedidoPanel(req, visiblePedidoAccounts, selectedMonth);
+  const pedidoPanelHtml = renderPedidoPanel(req, visiblePedidoAccounts, selectedMonth, { search: Boolean(searchQuery) });
   const monthlyPanelHtml = renderMonthlyPanel(req, allAccounts, selectedMonth);
   const categoryPanelHtml = renderCategoryPanel(req, summaries, selectedMonth, activeCategory);
   const notepadHtml = renderNotepad(req, notes, selectedMonth);
@@ -3444,9 +3734,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260611-pedido-category-flow">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260611-smart-search">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260611-pedido-category-flow" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260611-smart-search" defer></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">
