@@ -378,7 +378,7 @@ textarea {
         minmax(360px, 410px)
         minmax(360px, 410px)
         minmax(470px, 560px)
-        minmax(230px, 260px)
+        minmax(300px, 340px)
         minmax(250px, 285px);
     align-items: start;
     gap: 12px;
@@ -488,6 +488,7 @@ textarea {
 
 .gestao-category-panel {
     --panel-accent: var(--green);
+    align-content: start;
     border-color: #bbf7d0;
     background: linear-gradient(180deg, #ffffff 0%, #f7fffb 100%);
 }
@@ -816,14 +817,6 @@ textarea {
     white-space: nowrap;
 }
 
-.gestao-pedido-list-panel .gestao-list {
-    max-height: min(58vh, 620px);
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding-right: 8px;
-    scrollbar-gutter: stable;
-}
-
 .gestao-board-row .gestao-open-list-panel .gestao-list {
     max-height: min(62vh, 660px);
     overflow-x: hidden;
@@ -832,7 +825,6 @@ textarea {
     scrollbar-gutter: stable;
 }
 
-.gestao-board-row .gestao-pedido-list-panel .gestao-list,
 .gestao-board-row .gestao-monthly-list-panel .gestao-list {
     max-height: min(62vh, 660px);
     overflow-x: hidden;
@@ -844,7 +836,7 @@ textarea {
 .gestao-board-row .gestao-list-panel,
 .gestao-board-row .gestao-category-panel,
 .gestao-board-row .gestao-notepad {
-    min-height: 100%;
+    min-height: 0;
 }
 
 .gestao-board-row .gestao-notes-list {
@@ -931,21 +923,63 @@ textarea {
     text-transform: uppercase;
 }
 
+.gestao-category-overview {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.gestao-category-metric {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    background: #f8fffb;
+}
+
+.gestao-category-metric.is-closed {
+    border-color: #fecdd3;
+    background: #fff8fb;
+}
+
+.gestao-category-metric span,
+.gestao-category-metric small {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.66rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.gestao-category-metric strong {
+    color: #047857;
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.gestao-category-metric.is-closed strong {
+    color: var(--danger);
+}
+
 .gestao-category-chips {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 8px;
 }
 
 .gestao-category-chip {
-    min-height: 36px;
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    max-width: 100%;
-    padding: 5px 9px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+    min-height: 0;
+    padding: 10px;
     border: 1px solid #c7f0d8;
-    border-radius: 999px;
+    border-radius: 8px;
     background: #f8fffb;
     color: #075f46;
     text-decoration: none;
@@ -955,9 +989,8 @@ textarea {
 
 .gestao-category-chip strong {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
 }
 
 .gestao-category-chip.is-active {
@@ -966,10 +999,35 @@ textarea {
     box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
+.gestao-category-counts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.gestao-category-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 4px 6px;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #047857;
+    font-size: 0.65rem;
+    font-weight: 950;
+}
+
+.gestao-category-count.is-closed {
+    background: #fff1f2;
+    color: var(--danger);
+}
+
 .gestao-category-open,
 .gestao-category-closed {
-    min-width: 22px;
-    min-height: 22px;
+    flex: 0 0 auto;
+    min-width: 20px;
+    min-height: 20px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -992,12 +1050,15 @@ textarea {
     gap: 10px;
 }
 
+.gestao-category-tools {
+    padding-top: 10px;
+    border-top: 1px solid #bbf7d0;
+}
+
 .gestao-category-focus {
     display: grid;
     gap: 3px;
-    padding: 10px;
-    border-radius: 8px;
-    background: #fff5f8;
+    padding: 0 0 2px;
 }
 
 .gestao-category-focus span,
@@ -2648,7 +2709,7 @@ textarea {
             350px
             350px
             450px
-            240px
+            310px
             260px;
     }
 }

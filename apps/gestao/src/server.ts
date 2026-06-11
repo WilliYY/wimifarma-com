@@ -2699,6 +2699,10 @@ function renderMonthlyPanel(req: Request, accounts: RenderAccount[], selectedMon
 }
 
 function renderCategoryPanel(req: Request, summaries: CategorySummary[], selectedMonth: string, selectedCategory: string): string {
+  const openTotal = summaries.reduce((sum, summary) => sum + summary.openCount, 0);
+  const closedTotal = summaries.reduce((sum, summary) => sum + summary.closedCount, 0);
+  const openCents = summaries.reduce((sum, summary) => sum + summary.openCents, 0);
+  const closedCents = summaries.reduce((sum, summary) => sum + summary.closedCents, 0);
   const chips = summaries.length
     ? summaries.map((summary) => {
       const active = selectedCategory === summary.key;
@@ -2706,9 +2710,11 @@ function renderCategoryPanel(req: Request, summaries: CategorySummary[], selecte
         ? `${BASE_PATH}/?mes=${encodeURIComponent(selectedMonth)}`
         : `${BASE_PATH}/?mes=${encodeURIComponent(selectedMonth)}&categoria=${encodeURIComponent(summary.key)}`;
       return `<a class="gestao-category-chip ${active ? 'is-active' : ''}" href="${href}">
-        <span class="gestao-category-open">${e(summary.openCount)}</span>
         <strong>${e(summary.label)}</strong>
-        <span class="gestao-category-closed">${e(summary.closedCount)}</span>
+        <span class="gestao-category-counts">
+          <span class="gestao-category-count is-open"><span class="gestao-category-open">${e(summary.openCount)}</span><span>Abertas</span></span>
+          <span class="gestao-category-count is-closed"><span class="gestao-category-closed">${e(summary.closedCount)}</span><span>Fechadas</span></span>
+        </span>
       </a>`;
     }).join('')
     : '<p class="gestao-empty-line">Sem categorias nesse mes ainda.</p>';
@@ -2717,7 +2723,7 @@ function renderCategoryPanel(req: Request, summaries: CategorySummary[], selecte
     <div class="gestao-category-focus">
       <span>Categoria selecionada</span>
       <strong>${e(active.label)}</strong>
-      <small>${e(active.openCount)} aberta(s) / ${e(active.closedCount)} fechada(s)${active.canceledCount > 0 ? ` / ${e(active.canceledCount)} cancelada(s)` : ''}</small>
+      <small>${e(active.openCount)} aberta(s) - ${e(formatMoney(active.openCents))} / ${e(active.closedCount)} fechada(s) - ${e(formatMoney(active.closedCents))}${active.canceledCount > 0 ? ` / ${e(active.canceledCount)} cancelada(s)` : ''}</small>
     </div>
     <form method="post" class="gestao-category-form">
       ${csrfField(req)}
@@ -2748,7 +2754,10 @@ function renderCategoryPanel(req: Request, summaries: CategorySummary[], selecte
       <span class="gestao-kicker">Categorias</span>
       <strong>${e(summaries.length)}</strong>
     </div>
-    <div class="gestao-category-legend"><span>abertas</span><span>fechadas</span></div>
+    <div class="gestao-category-overview" aria-label="Resumo de categorias">
+      <div class="gestao-category-metric is-open"><span>Abertas</span><strong>${e(openTotal)}</strong><small>${e(formatMoney(openCents))}</small></div>
+      <div class="gestao-category-metric is-closed"><span>Fechadas</span><strong>${e(closedTotal)}</strong><small>${e(formatMoney(closedCents))}</small></div>
+    </div>
     <div class="gestao-category-chips">${chips}</div>
     ${activeTools}
   </aside>`;
@@ -3435,9 +3444,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="csrf-token" content="${e(ensureCsrf(req))}">
   <title>Gestao - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260611-browser-rail">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260611-pedido-category-flow">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260611-browser-rail" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260611-pedido-category-flow" defer></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </head>
 <body class="gestao-app-body" data-gestao-base-path="${e(BASE_PATH)}">

@@ -347,6 +347,7 @@ Legado/rollback, nao fonte principal:
 - Sincronizar status de contas vinculadas a Pedidos sem recategorizar boletos de pedidos.
 - Exibir contas vinculadas a Pedidos em bloco visual `Pedidos` na Gestao, separado da lista geral, sem mudar categoria `Boleto`, pagamentos, status, totais ou auditoria.
 - Desde 2026-06-06, separar visualmente os blocos `Nova conta`, `Contas abertas`, `Mensal`, `Pedidos`, `Categorias` e `Notas` por acento/cor, mantendo os mesmos formularios, rotas, tabelas, filtros e integracoes. Desde 2026-06-11, no desktop, `Nova conta`, `Contas abertas`, `Mensal`, `Pedidos`, `Categorias` e `Notas` ficam em faixa horizontal livre, com rolagem lateral do proprio navegador quando passar da tela; em telas menores os paineis empilham. A observacao da conta preserva visualmente quebras de linha ao ser exibida.
+- Ainda em 2026-06-11, no bloco `Pedidos` exibido dentro da Gestao, a lista deixou de ter rolagem interna e limite de altura para mostrar todos os pedidos no fluxo da pagina. O painel `Categorias` passou a exibir resumo de abertas/fechadas com valores e linhas por categoria, sem alterar filtros, formularios, POSTs, CSRF, tabelas ou auditoria.
 
 ### Integracoes
 
