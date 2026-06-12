@@ -179,7 +179,7 @@ cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\cashback
 npm.cmd run check
 npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
-docker compose up -d wimifarma-cashback-db
+docker compose up -d wimifarma-cashback-db wimifarma-xp-db
 docker compose up -d --no-deps --build wimifarma-cashback-app wimifarma-com-web
 docker exec wimifarma-cashback-app wget -qO- http://127.0.0.1:4000/cashback/health
 curl.exe -sS http://127.0.0.1:3002/cashback/health
@@ -187,7 +187,7 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" h
 docker exec wimifarma-cashback-db psql -U wimifarma_cashback -d wimifarma_cashback -c "\dt"
 ```
 
-O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; desde 2026-05-30 o servico nao possui `mysql2`, importador, espelho, logs ou fallback MySQL. Rollback para MySQL exige restaurar commit/imagem anterior e backup validado, nao trocar `.env`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
+O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; desde 2026-05-30 o servico nao possui `mysql2`, importador, espelho, logs ou fallback MySQL. Desde 2026-06-11, o container tambem precisa enxergar `wimifarma-xp-db` para pontuar +500 XP por uso de cashback; indisponibilidade do XP nao bloqueia compra/resgate, mas deve aparecer no feedback. Rollback para MySQL exige restaurar commit/imagem anterior e backup validado, nao trocar `.env`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
 
 ## Local - Core auth Postgres oficial
 

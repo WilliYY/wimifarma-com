@@ -35,6 +35,20 @@ type Balance = {
   proximoVencimento: string | null;
 };
 
+type XpRewardStatus = {
+  available: boolean;
+  employeeName: string | null;
+  message: string;
+};
+
+type XpAwardResult = {
+  awarded: boolean;
+  alreadyAwarded?: boolean;
+  employeeName?: string;
+  saleId?: number;
+  message: string;
+};
+
 type Settings = {
   cashbackPercent: number;
   cashbackPercentBps: number;
@@ -76,6 +90,8 @@ const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'htt
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const RECOMPRA_QUEUE_VISIBLE_DAYS = 14;
 const CASHBACK_CREDIT_VALIDITY_DAYS = 45;
+const XP_CASHBACK_REDEEM_POINTS = 500;
+const XP_CASHBACK_REDEEM_SOURCE = 'cashback_redemption';
 
 function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
   if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
@@ -106,6 +122,15 @@ const corePgPool = new Pool({
   user: env.CORE_POSTGRES_USER || 'wimifarma_core',
   password: env.CORE_POSTGRES_PASSWORD || '',
   max: 4,
+});
+
+const xpPgPool = new Pool({
+  host: env.XP_POSTGRES_HOST || '127.0.0.1',
+  port: Number.parseInt(env.XP_POSTGRES_PORT || '5432', 10),
+  database: env.XP_POSTGRES_DB || 'wimifarma_xp',
+  user: env.XP_POSTGRES_USER || 'wimifarma_xp',
+  password: env.XP_POSTGRES_PASSWORD || '',
+  max: 3,
 });
 
 const app = express();
@@ -327,6 +352,16 @@ router.get('/cliente-detalhe.php', clearSensitive, maintenanceGuard, async (req:
   res.send(await renderClientDetail(req, res));
 });
 
+router.post('/cliente-detalhe.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
+  if (!csrfMatches(req)) {
+    setFlash(req, 'error', 'Sessao expirada.');
+    res.redirect(`${BASE_PATH}/clientes.php`);
+    return;
+  }
+  await refreshExpiredCredits();
+  await handleClientDetailPost(req, res);
+});
+
 router.get('/compras.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
   res.send(await renderPurchases(req));
@@ -434,7 +469,7 @@ router.get('/api/internal/summary', requireInternalToken, async (req: Request, r
        COALESCE(SUM(charged_cents), 0)::bigint AS charged,
        COALESCE(SUM(cashback_generated_cents), 0)::bigint AS generated,
        COALESCE((SELECT SUM(redeemed_cents) FROM cashback_redemptions), 0)::bigint AS redeemed,
-       COALESCE((SELECT SUM(remaining_cents) FROM cashback_credits WHERE status = 'ativo' AND expires_at >= CURRENT_DATE), 0)::bigint AS available
+       COALESCE((SELECT SUM(remaining_cents) FROM cashback_credits WHERE canceled_at IS NULL AND status = 'ativo' AND expires_at >= CURRENT_DATE), 0)::bigint AS available
      FROM cashback_purchases
      ${periodWhere}`,
     periodParams,
@@ -505,6 +540,7 @@ router.get('/api/internal/clients/search', requireInternalToken, async (req: Req
           SELECT SUM(cr.remaining_cents)
           FROM cashback_credits cr
           WHERE cr.client_id = c.id
+            AND cr.canceled_at IS NULL
             AND cr.status = 'ativo'
             AND cr.remaining_cents > 0
             AND cr.expires_at >= CURRENT_DATE
@@ -686,6 +722,37 @@ function dateDaysFromDate(value: unknown, days: number): string {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function daysUntilDate(value: unknown): number | null {
+  const iso = isoDate(value);
+  if (!iso) return null;
+  const [year, month, day] = iso.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const today = todayIso().split('-').map(Number);
+  const targetUtc = Date.UTC(year, month - 1, day);
+  const todayUtc = Date.UTC(today[0] || 1970, (today[1] || 1) - 1, today[2] || 1);
+  return Math.round((targetUtc - todayUtc) / 86400000);
+}
+
+function expirationText(value: unknown, canceled = false): string {
+  if (canceled) return 'Cashback cancelado';
+  const days = daysUntilDate(value);
+  if (days === null) return 'Sem vencimento';
+  if (days < 0) return `Expirou ha ${Math.abs(days)} dia(s)`;
+  if (days === 0) return 'Vence hoje';
+  if (days === 1) return 'Falta 1 dia';
+  return `Faltam ${days} dias`;
+}
+
+function purchaseCashbackKind(row: DbRow): string {
+  return String(row.cashback_generation_mode || '') === 'manual' ? 'Manual' : 'Automatico';
+}
+
+function purchaseCashbackPercentLabel(row: DbRow): string {
+  return String(row.cashback_generation_mode || '') === 'manual'
+    ? 'Manual'
+    : `${bpsToPercent(num(row.cashback_percent_bps)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}%`;
 }
 
 function isValidDateInput(value: unknown): boolean {
@@ -1044,11 +1111,19 @@ async function ensureSchema(): Promise<void> {
       redemption_id BIGINT REFERENCES cashback_redemptions(id) ON DELETE SET NULL,
       cashback_percent_bps INTEGER NOT NULL DEFAULT 500,
       cashback_generated_cents BIGINT NOT NULL DEFAULT 0,
+      cashback_generation_mode TEXT NOT NULL DEFAULT 'automatico',
+      manual_cashback_cents BIGINT NOT NULL DEFAULT 0,
       purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       notes TEXT,
       created_by BIGINT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE cashback_purchases ADD COLUMN IF NOT EXISTS cashback_generation_mode TEXT NOT NULL DEFAULT 'automatico';
+    ALTER TABLE cashback_purchases ADD COLUMN IF NOT EXISTS manual_cashback_cents BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE cashback_purchases DROP CONSTRAINT IF EXISTS cashback_purchases_generation_mode_check;
+    ALTER TABLE cashback_purchases
+      ADD CONSTRAINT cashback_purchases_generation_mode_check
+      CHECK (cashback_generation_mode IN ('automatico', 'manual'));
     CREATE INDEX IF NOT EXISTS idx_cashback_purchases_client ON cashback_purchases(client_id);
     CREATE INDEX IF NOT EXISTS idx_cashback_purchases_date ON cashback_purchases(purchased_at);
 
@@ -1062,10 +1137,17 @@ async function ensureSchema(): Promise<void> {
       expires_at DATE NOT NULL,
       status TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'usado', 'expirado')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ
+      updated_at TIMESTAMPTZ,
+      canceled_at TIMESTAMPTZ,
+      canceled_by BIGINT,
+      canceled_reason TEXT
     );
+    ALTER TABLE cashback_credits ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ;
+    ALTER TABLE cashback_credits ADD COLUMN IF NOT EXISTS canceled_by BIGINT;
+    ALTER TABLE cashback_credits ADD COLUMN IF NOT EXISTS canceled_reason TEXT;
     CREATE INDEX IF NOT EXISTS idx_cashback_credits_client_status ON cashback_credits(client_id, status);
     CREATE INDEX IF NOT EXISTS idx_cashback_credits_expire ON cashback_credits(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_cashback_credits_canceled ON cashback_credits(canceled_at);
 
     CREATE TABLE IF NOT EXISTS cashback_redemption_items (
       id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -1137,6 +1219,20 @@ async function ensureSchema(): Promise<void> {
   `);
 }
 
+let xpRewardSchemaReady = false;
+
+async function ensureXpRewardSchema(): Promise<void> {
+  if (xpRewardSchemaReady) return;
+  await xpPgPool.query(`
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source TEXT;
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source_entity_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_sales_source_entity
+      ON xp_sales(source, source_entity_id)
+      WHERE source IS NOT NULL AND source_entity_id IS NOT NULL;
+  `);
+  xpRewardSchemaReady = true;
+}
+
 async function tableCounts(): Promise<Record<string, number>> {
   const tables = [
     'cashback_clients',
@@ -1196,6 +1292,7 @@ async function refreshExpiredCredits(): Promise<void> {
     `UPDATE cashback_credits
      SET status = 'expirado', updated_at = NOW()
      WHERE status = 'ativo'
+       AND canceled_at IS NULL
        AND remaining_cents > 0
        AND expires_at < CURRENT_DATE`,
   );
@@ -1206,11 +1303,11 @@ async function balanceForClient(clientId: number): Promise<Balance> {
   const settings = await loadSettings();
   const result = await pgPool.query(
     `SELECT
-       COALESCE(SUM(original_cents), 0)::bigint AS total_gerado,
-       COALESCE(SUM(CASE WHEN status = 'ativo' AND expires_at >= CURRENT_DATE THEN remaining_cents ELSE 0 END), 0)::bigint AS saldo_disponivel,
-       COALESCE(SUM(CASE WHEN status = 'expirado' THEN remaining_cents ELSE 0 END), 0)::bigint AS saldo_expirado,
-       COALESCE(SUM(CASE WHEN status = 'ativo' AND expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + ($1::int * INTERVAL '1 day') THEN remaining_cents ELSE 0 END), 0)::bigint AS saldo_expirando,
-       MIN(CASE WHEN status = 'ativo' AND remaining_cents > 0 AND expires_at >= CURRENT_DATE THEN expires_at ELSE NULL END) AS proximo_vencimento
+       COALESCE(SUM(CASE WHEN canceled_at IS NULL THEN original_cents ELSE 0 END), 0)::bigint AS total_gerado,
+       COALESCE(SUM(CASE WHEN canceled_at IS NULL AND status = 'ativo' AND expires_at >= CURRENT_DATE THEN remaining_cents ELSE 0 END), 0)::bigint AS saldo_disponivel,
+       COALESCE(SUM(CASE WHEN canceled_at IS NULL AND status = 'expirado' THEN remaining_cents ELSE 0 END), 0)::bigint AS saldo_expirado,
+       COALESCE(SUM(CASE WHEN canceled_at IS NULL AND status = 'ativo' AND expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + ($1::int * INTERVAL '1 day') THEN remaining_cents ELSE 0 END), 0)::bigint AS saldo_expirando,
+       MIN(CASE WHEN canceled_at IS NULL AND status = 'ativo' AND remaining_cents > 0 AND expires_at >= CURRENT_DATE THEN expires_at ELSE NULL END) AS proximo_vencimento
      FROM cashback_credits
      WHERE client_id = $2`,
     [settings.expirationAlertDays, clientId],
@@ -1312,6 +1409,122 @@ async function logAction(req: Request, action: string, entityType: string | null
     );
   } catch {
     // Audit logging must not block the cashier flow.
+  }
+}
+
+async function linkedXpEmployeeForUser(userId: number): Promise<{ id: number; name: string } | null> {
+  if (userId <= 0) return null;
+  const link = await corePgPool.query<{ xp_employee_id: string | null; xp_employee_name: string | null }>(
+    `SELECT xp_employee_id::text, xp_employee_name
+       FROM core_user_xp_links
+      WHERE user_id = $1
+      LIMIT 1`,
+    [userId],
+  );
+  const employeeId = num(link.rows[0]?.xp_employee_id);
+  if (employeeId <= 0) return null;
+  const employee = await xpPgPool.query<{ id: string; name: string; system_key: string | null }>(
+    `SELECT id::text, name, system_key
+       FROM xp_employees
+      WHERE id = $1
+        AND status = 'ativo'
+        AND deleted_at IS NULL
+      LIMIT 1`,
+    [employeeId],
+  );
+  const row = employee.rows[0];
+  if (!row) return null;
+  return { id: num(row.id), name: cleanText(row.name, 180) || (row.system_key === 'adm' ? 'ADM' : 'Funcionario XP') };
+}
+
+async function currentUserXpRewardStatus(req: Request): Promise<XpRewardStatus> {
+  const userId = req.session.user?.id ?? 0;
+  if (userId <= 0) {
+    return { available: false, employeeName: null, message: 'XP indisponivel: usuario sem sessao.' };
+  }
+  try {
+    const employee = await linkedXpEmployeeForUser(userId);
+    if (!employee) {
+      return { available: false, employeeName: null, message: 'Sem XP vinculado: vincule este usuario no modulo Usuarios.' };
+    }
+    return { available: true, employeeName: employee.name, message: `+${XP_CASHBACK_REDEEM_POINTS} XP para ${employee.name} quando usar cashback.` };
+  } catch {
+    return { available: false, employeeName: null, message: 'XP indisponivel agora: compra continua funcionando.' };
+  }
+}
+
+async function awardXpForCashbackRedemption(req: Request, redemptionId: number, redeemedCents: number, clientId: number): Promise<XpAwardResult> {
+  if (redemptionId <= 0 || redeemedCents <= 0) {
+    return { awarded: false, message: 'Sem XP: nenhum cashback foi usado.' };
+  }
+  const userId = req.session.user?.id ?? 0;
+  if (userId <= 0) {
+    return { awarded: false, message: 'XP nao gerado: usuario sem sessao.' };
+  }
+  try {
+    await ensureXpRewardSchema();
+    const employee = await linkedXpEmployeeForUser(userId);
+    if (!employee) {
+      return { awarded: false, message: 'XP nao gerado: usuario sem vinculo XP.' };
+    }
+    const sourceEntityId = String(redemptionId);
+    const xpClient = await xpPgPool.connect();
+    try {
+      await xpClient.query('BEGIN');
+      const existing = await xpClient.query<{ id: string }>(
+        'SELECT id::text FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1',
+        [XP_CASHBACK_REDEEM_SOURCE, sourceEntityId],
+      );
+      if (existing.rows[0]) {
+        await xpClient.query('COMMIT');
+        return {
+          awarded: false,
+          alreadyAwarded: true,
+          employeeName: employee.name,
+          saleId: num(existing.rows[0].id),
+          message: `XP ja estava registrado para ${employee.name}.`,
+        };
+      }
+      const note = cleanText(`Cashback usado no Balcao: ${brMoneyCents(redeemedCents)} no cliente #${clientId}.`, 220);
+      const inserted = await xpClient.query<{ id: string }>(
+        `INSERT INTO xp_sales (employee_id, sale_date, amount_cents, xp_points, note, created_by, source, source_entity_id)
+         VALUES ($1, CURRENT_DATE, 0, $2, $3, $4, $5, $6)
+         RETURNING id::text`,
+        [employee.id, XP_CASHBACK_REDEEM_POINTS, note, userId, XP_CASHBACK_REDEEM_SOURCE, sourceEntityId],
+      );
+      const saleId = num(inserted.rows[0]?.id);
+      await xpClient.query(
+        `INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          userId,
+          'xp_cashback_resgate_lancado',
+          'xp_sale',
+          String(saleId),
+          cleanText(`+${XP_CASHBACK_REDEEM_POINTS} XP por uso de cashback no resgate #${redemptionId}.`, 255),
+        ],
+      );
+      await xpClient.query('COMMIT');
+      await logAction(req, 'xp_cashback_resgate_lancado', 'resgate', redemptionId, `XP gerado para ${employee.name}: +${XP_CASHBACK_REDEEM_POINTS}.`);
+      return {
+        awarded: true,
+        employeeName: employee.name,
+        saleId,
+        message: `XP gerado: +${XP_CASHBACK_REDEEM_POINTS} para ${employee.name}.`,
+      };
+    } catch (error) {
+      await xpClient.query('ROLLBACK').catch(() => undefined);
+      const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+      if (code === '23505') {
+        return { awarded: false, alreadyAwarded: true, employeeName: employee.name, message: `XP ja estava registrado para ${employee.name}.` };
+      }
+      throw error;
+    } finally {
+      xpClient.release();
+    }
+  } catch (error) {
+    await logAction(req, 'xp_cashback_resgate_falha', 'resgate', redemptionId, `Falha ao gerar XP do cashback: ${errorMessage(error)}`);
+    return { awarded: false, message: `XP nao gerado agora: ${errorMessage(error)}` };
   }
 }
 
@@ -1553,11 +1766,17 @@ async function createPurchaseFromDashboard(req: Request, res: Response): Promise
   const settings = await loadSettings();
   const clientId = num(req.body?.cliente_id);
   const amount = moneyToCents(req.body?.valor_total);
+  const manualCashbackCents = moneyToCents(req.body?.cashback_manual);
   const percentBps = percentToBps(req.body?.percentual_cashback || settings.cashbackPercent);
   const notes = cleanText(req.body?.observacoes, 5000);
   if (clientId <= 0 || amount <= 0) {
     setFlash(req, 'error', 'Selecione o cliente e informe valor/percentual validos.');
     res.redirect(`${BASE_PATH}/dashboard.php#resgate`);
+    return;
+  }
+  if (manualCashbackCents > amount) {
+    setFlash(req, 'error', 'Cashback Manual nao pode ser maior que o valor da compra.');
+    res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
     return;
   }
   if (!(await activeClientExists(clientId))) {
@@ -1577,12 +1796,14 @@ async function createPurchaseFromDashboard(req: Request, res: Response): Promise
         discountCents: 0,
         redemptionId: null,
         percentBps,
+        manualCashbackCents,
         notes,
         userId: req.session.user?.id ?? null,
       });
       await client.query('COMMIT');
       await logAction(req, 'compra_criada', 'compra', purchase.id, `Compra registrada no balcao com cashback de ${brMoneyCents(purchase.cashbackCents)}`);
-      setFlash(req, 'success', `Compra registrada. Cashback gerado: ${brMoneyCents(purchase.cashbackCents)} com validade ate ${brDate(purchase.expiresAt)}.`);
+      const generationLabel = manualCashbackCents > 0 ? 'Cashback Manual gerado' : 'Cashback gerado';
+      setFlash(req, 'success', `Compra registrada. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)} com validade ate ${brDate(purchase.expiresAt)}.`);
       res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -1600,10 +1821,16 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
   const settings = await loadSettings();
   const clientId = num(req.body?.cliente_id);
   const purchaseCents = moneyToCents(req.body?.valor_compra);
+  const manualCashbackCents = moneyToCents(req.body?.cashback_manual);
   const notes = cleanText(req.body?.observacoes, 5000);
   if (clientId <= 0 || purchaseCents <= 0) {
     setFlash(req, 'error', 'Informe cliente e valor da compra atual.');
     res.redirect(`${BASE_PATH}/dashboard.php#resgate`);
+    return;
+  }
+  if (manualCashbackCents > purchaseCents) {
+    setFlash(req, 'error', 'Cashback Manual nao pode ser maior que o valor da compra.');
+    res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
     return;
   }
   if (!(await activeClientExists(clientId))) {
@@ -1620,6 +1847,7 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
         `SELECT id, remaining_cents
          FROM cashback_credits
          WHERE client_id = $1
+           AND canceled_at IS NULL
            AND status = 'ativo'
            AND remaining_cents > 0
            AND expires_at >= CURRENT_DATE
@@ -1649,17 +1877,20 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
         discountCents: redeemedCents,
         redemptionId,
         percentBps: settings.cashbackPercentBps,
+        manualCashbackCents,
         notes: redeemedCents > 0 ? cleanText(`Compra com uso de cashback. ${notes}`, 5000) : notes,
         userId: req.session.user?.id ?? null,
       });
       await client.query('COMMIT');
       if (redemptionId) await logAction(req, 'resgate_criado', 'resgate', redemptionId, `Resgate registrado no balcao: ${brMoneyCents(redeemedCents)}`);
       await logAction(req, 'compra_cashback_criada', 'compra', purchase.id, `Valor cobrado ${brMoneyCents(purchase.chargedCents)} e novo cashback ${brMoneyCents(purchase.cashbackCents)}`);
+      const xpResult = redemptionId ? await awardXpForCashbackRedemption(req, redemptionId, redeemedCents, clientId) : null;
+      const generationLabel = manualCashbackCents > 0 ? 'Cashback Manual gerado' : 'Novo cashback gerado';
       const flash =
         redeemedCents > 0
-          ? `Cashback usado: ${brMoneyCents(redeemedCents)}. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. Novo cashback gerado: ${brMoneyCents(purchase.cashbackCents)}.`
-          : `Compra registrada sem uso de cashback. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. Novo cashback gerado: ${brMoneyCents(purchase.cashbackCents)}.`;
-      setFlash(req, 'success', flash);
+          ? `Cashback usado: ${brMoneyCents(redeemedCents)}. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)}.`
+          : `Compra registrada sem uso de cashback. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)}.`;
+      setFlash(req, 'success', `${flash}${xpResult ? ` ${xpResult.message}` : ''}`);
       res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -1682,17 +1913,25 @@ async function createPurchaseAndCredit(
     discountCents: number;
     redemptionId: number | null;
     percentBps: number;
+    manualCashbackCents?: number;
     notes: string;
     userId: number | null;
   },
 ): Promise<{ id: number; creditId: number | null; cashbackCents: number; chargedCents: number; expiresAt: string }> {
   const chargedCents = Math.max(input.grossCents - input.discountCents, 0);
-  const cashbackCents = Math.round(chargedCents * (input.percentBps / 10000));
+  const manualCashbackCents = Math.max(0, Math.floor(input.manualCashbackCents || 0));
+  if (manualCashbackCents > chargedCents) {
+    throw new Error('Cashback Manual nao pode ser maior que o valor a cobrar.');
+  }
+  const automaticCashbackCents = manualCashbackCents > 0 ? 0 : Math.round(chargedCents * (input.percentBps / 10000));
+  const cashbackCents = manualCashbackCents > 0 ? manualCashbackCents : automaticCashbackCents;
+  const generationMode = manualCashbackCents > 0 ? 'manual' : 'automatico';
+  const storedPercentBps = manualCashbackCents > 0 ? 0 : input.percentBps;
   const purchase = await client.query(
     `INSERT INTO cashback_purchases
       (client_id, attendant_id, gross_cents, cashback_discount_cents, charged_cents, redemption_id,
-       cashback_percent_bps, cashback_generated_cents, notes, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       cashback_percent_bps, cashback_generated_cents, cashback_generation_mode, manual_cashback_cents, notes, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING id, purchased_at::date AS purchase_date`,
     [
       input.clientId,
@@ -1701,8 +1940,10 @@ async function createPurchaseAndCredit(
       input.discountCents,
       chargedCents,
       input.redemptionId,
-      input.percentBps,
+      storedPercentBps,
       cashbackCents,
+      generationMode,
+      manualCashbackCents,
       input.notes || null,
       input.userId,
     ],
@@ -1862,6 +2103,7 @@ async function renderDashboard(req: Request): Promise<string> {
   const loggedAttendantId = await loggedUserAttendantId(req);
   const attendants = await attendantOptions();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
+  const xpReward = await currentUserXpRewardStatus(req);
   const visibleClientResultCount = Math.min(initialClientResultCount, searchResults.length);
   const resultSummary = search
     ? `${searchResults.length} resultado(s) para "${search}"`
@@ -1983,12 +2225,14 @@ async function renderDashboard(req: Request): Promise<string> {
         </div>
         <div class="redeem-block redeem-operation-block full">
           <div class="redeem-block-title"><span class="step-badge">2</span><div><h3>Compra atual</h3><small>Uso permitido pela regra ${e(settings.redeemMultiplier)}x</small></div><span class="optional-chip">Calculo automatico</span></div>
+          <div class="redeem-xp-note ${xpReward.available ? 'ok' : 'warn'}"><strong>${xpReward.available ? '+500 XP ativo' : 'XP'}</strong><span>${e(xpReward.message)}</span></div>
           <div class="redeem-fields">
             ${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}
             <label><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
             <label><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
+            <label class="manual-cashback-field"><span>Cashback Manual</span><input type="text" name="cashback_manual" data-money placeholder="0,00"><small>Preenchido, zera o novo cashback automatico.</small></label>
           </div>
-          <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback previsto</span><strong class="js-new-cashback">R$ 0,00</strong></div></div>
+          <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback automatico</span><strong class="js-new-cashback">R$ 0,00</strong></div><div><span>Novo cashback manual</span><strong class="js-manual-cashback">R$ 0,00</strong></div></div>
           <div class="live-preview js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
         </div>
         <div class="redeem-action full"><button type="submit" class="btn primary">Gastar/Usar Cashback</button></div>
@@ -2103,7 +2347,7 @@ async function loadClientBundle(clientId: number): Promise<{
        LIMIT 8`,
       [clientId],
     ),
-    pgPool.query('SELECT * FROM cashback_credits WHERE client_id = $1 ORDER BY expires_at ASC, id DESC LIMIT 8', [clientId]),
+    pgPool.query('SELECT * FROM cashback_credits WHERE client_id = $1 ORDER BY canceled_at NULLS FIRST, expires_at ASC, id DESC LIMIT 80', [clientId]),
   ]);
   return {
     client,
@@ -2265,6 +2509,82 @@ async function handleClientsPost(req: Request, res: Response): Promise<void> {
   res.redirect(`${BASE_PATH}/clientes.php`);
 }
 
+async function handleClientDetailPost(req: Request, res: Response): Promise<void> {
+  const action = String(req.body?.action || '');
+  if (action === 'cancel_credit') {
+    await cancelGeneratedCredit(req, res);
+    return;
+  }
+  setFlash(req, 'error', 'Acao invalida.');
+  res.redirect(`${BASE_PATH}/cliente-detalhe.php?id=${num(req.body?.client_id) || ''}`);
+}
+
+async function cancelGeneratedCredit(req: Request, res: Response): Promise<void> {
+  const clientId = num(req.body?.client_id);
+  const creditId = num(req.body?.credit_id);
+  const reason = cleanText(req.body?.motivo || 'Devolucao/cancelamento operacional.', 500);
+  if (clientId <= 0 || creditId <= 0) {
+    setFlash(req, 'error', 'Credito invalido para cancelamento.');
+    res.redirect(`${BASE_PATH}/clientes.php`);
+    return;
+  }
+  const db = await pgPool.connect();
+  try {
+    await db.query('BEGIN');
+    const result = await db.query(
+      `SELECT cr.*, p.cashback_generated_cents
+         FROM cashback_credits cr
+         INNER JOIN cashback_purchases p ON p.id = cr.purchase_id
+        WHERE cr.id = $1
+          AND cr.client_id = $2
+        FOR UPDATE`,
+      [creditId, clientId],
+    );
+    const credit = result.rows[0] as DbRow | undefined;
+    if (!credit) {
+      throw new Error('Credito nao encontrado para este cliente.');
+    }
+    if (credit.canceled_at) {
+      throw new Error('Este cashback ja esta cancelado.');
+    }
+    const originalCents = num(credit.original_cents);
+    const remainingCents = num(credit.remaining_cents);
+    if (originalCents <= 0 || remainingCents <= 0 || remainingCents < originalCents) {
+      throw new Error('Este cashback ja foi usado total ou parcialmente e nao pode ser excluido sem ajuste manual.');
+    }
+    await db.query(
+      `UPDATE cashback_credits
+          SET remaining_cents = 0,
+              canceled_at = NOW(),
+              canceled_by = $1,
+              canceled_reason = $2,
+              updated_at = NOW()
+        WHERE id = $3`,
+      [req.session.user?.id ?? null, reason || null, creditId],
+    );
+    await db.query(
+      `UPDATE cashback_purchases
+          SET cashback_generated_cents = GREATEST(cashback_generated_cents - $1, 0),
+              manual_cashback_cents = GREATEST(manual_cashback_cents - $1, 0)
+        WHERE id = $2`,
+      [originalCents, num(credit.purchase_id)],
+    );
+    await db.query(
+      "UPDATE cashback_whatsapp_messages SET status = 'cancelada', updated_at = NOW() WHERE credit_id = $1 AND status = 'pendente'",
+      [creditId],
+    );
+    await db.query('COMMIT');
+    await logAction(req, 'cashback_credito_cancelado', 'credito', creditId, `Cashback gerado cancelado: ${brMoneyCents(originalCents)}. Motivo: ${reason || '-'}`);
+    setFlash(req, 'success', `Cashback gerado excluido do saldo: ${brMoneyCents(originalCents)}.`);
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => undefined);
+    setFlash(req, 'error', `Nao foi possivel excluir o cashback: ${errorMessage(error)}`);
+  } finally {
+    db.release();
+  }
+  res.redirect(`${BASE_PATH}/cliente-detalhe.php?id=${clientId}#creditos`);
+}
+
 async function renderClientDetail(req: Request, res: Response): Promise<string> {
   const id = num(req.query.id);
   const bundle = await loadClientBundle(id);
@@ -2276,7 +2596,7 @@ async function renderClientDetail(req: Request, res: Response): Promise<string> 
   const rowsPurchases = bundle.purchases
     .map(
       (purchase: DbRow) =>
-        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td>${e(bpsToPercent(num(purchase.cashback_percent_bps)).toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}%</td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td>${e(purchase.attendant_name || '-')}</td></tr>`,
+        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td><span class="cashback-source-pill ${purchaseCashbackKind(purchase) === 'Manual' ? 'manual' : 'auto'}">${e(purchaseCashbackPercentLabel(purchase))}</span></td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td>${e(purchase.attendant_name || '-')}</td></tr>`,
     )
     .join('');
   const rowsRedemptions = bundle.redemptions
@@ -2285,16 +2605,32 @@ async function renderClientDetail(req: Request, res: Response): Promise<string> 
         `<tr><td>${e(brDate(redemption.redeemed_at, true))}</td><td>${brMoneyCents(redemption.purchase_cents)}</td><td>${brMoneyCents(redemption.redeemed_cents)}</td><td>${e(redemption.attendant_name || '-')}</td></tr>`,
     )
     .join('');
-  const rowsCredits = bundle.credits
+  const creditCards = bundle.credits
     .map(
-      (credit: DbRow) =>
-        `<tr><td>#${e(credit.id)}</td><td>${brMoneyCents(credit.original_cents)}</td><td>${brMoneyCents(credit.remaining_cents)}</td><td>${e(brDate(credit.expires_at))}</td><td><span class="badge ${e(credit.status)}">${e(credit.status)}</span></td><td>#${e(credit.purchase_id)}</td></tr>`,
+      (credit: DbRow) => {
+        const canceled = Boolean(credit.canceled_at);
+        const originalCents = num(credit.original_cents);
+        const remainingCents = num(credit.remaining_cents);
+        const status = canceled ? 'cancelado' : String(credit.status || 'ativo');
+        const canCancel = !canceled && originalCents > 0 && remainingCents >= originalCents;
+        const action = canCancel
+          ? `<form method="post" action="${pageUrl('cliente-detalhe.php#creditos')}" data-confirm-submit="Excluir este cashback do saldo do cliente? Use apenas em devolucao/cancelamento.">${csrfField(req)}<input type="hidden" name="action" value="cancel_credit"><input type="hidden" name="client_id" value="${e(bundle.client?.id)}"><input type="hidden" name="credit_id" value="${e(credit.id)}"><input type="hidden" name="motivo" value="Devolucao/cancelamento de compra"><button type="submit" class="btn danger compact">Excluir cashback</button></form>`
+          : `<span class="credit-action-note">${canceled ? 'Cancelado' : 'Nao excluivel'}</span>`;
+        return `<article class="cashback-credit-card credit-${e(cssToken(status))}">
+          <div class="credit-card-top"><strong>#${e(credit.id)}</strong><span class="badge ${e(cssToken(status))}">${e(status)}</span></div>
+          <div class="credit-card-money"><span>Original</span><strong>${brMoneyCents(originalCents)}</strong><small>Restante: ${brMoneyCents(remainingCents)}</small></div>
+          <div class="credit-card-date"><span>${e(brDate(credit.expires_at))}</span><strong>${e(expirationText(credit.expires_at, canceled))}</strong></div>
+          <div class="credit-card-footer"><span>Compra #${e(credit.purchase_id)}</span>${action}</div>
+          ${canceled && credit.canceled_reason ? `<p class="credit-cancel-reason">${e(credit.canceled_reason)}</p>` : ''}
+        </article>`;
+      },
     )
     .join('');
-  const body = `<section class="panel hero-client"><div><span class="kicker">Cliente #${e(bundle.client.id)}</span><h2>${e(bundle.client.name)}</h2><p>${e(formatPhone(bundle.client.phone))} | Status ${e(bundle.client.status)} | Atendente ${e(bundle.client.attendant_name || '-')}</p></div><div class="actions"><a class="btn primary" href="${pageUrl(`compras.php?cliente_id=${id}`)}">Nova compra</a><a class="btn" href="${pageUrl(`resgates.php?cliente_id=${id}`)}">Usar cashback</a><a class="btn" href="${pageUrl(`clientes.php?edit=${id}`)}">Editar cliente</a></div></section>
-<section class="metrics"><article class="metric highlight"><span>Saldo disponivel</span><strong>${brMoneyCents(bundle.balance.saldoDisponivel)}</strong></article><article class="metric"><span>Saldo expirando</span><strong>${brMoneyCents(bundle.balance.saldoExpirando)}</strong></article><article class="metric"><span>Saldo usado</span><strong>${brMoneyCents(bundle.balance.saldoUsado)}</strong></article><article class="metric"><span>Saldo expirado</span><strong>${brMoneyCents(bundle.balance.saldoExpirado)}</strong></article><article class="metric"><span>Total gerado</span><strong>${brMoneyCents(bundle.balance.totalGerado)}</strong></article><article class="metric"><span>Proximo vencimento</span><strong>${e(brDate(bundle.balance.proximoVencimento))}</strong></article></section>
-<section class="grid two"><div class="panel"><h2>Compras do cliente</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Valor</th><th>%</th><th>Cashback</th><th>Atendente</th></tr></thead><tbody>${rowsPurchases || '<tr><td colspan="5">Nenhuma compra registrada.</td></tr>'}</tbody></table></div></div><div class="panel"><h2>Resgates do cliente</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Compra</th><th>Usado</th><th>Atendente</th></tr></thead><tbody>${rowsRedemptions || '<tr><td colspan="4">Nenhum resgate registrado.</td></tr>'}</tbody></table></div></div></section>
-<section class="panel"><h2>Creditos de cashback</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Original</th><th>Restante</th><th>Vencimento</th><th>Status</th><th>Compra</th></tr></thead><tbody>${rowsCredits || '<tr><td colspan="6">Nenhum credito gerado.</td></tr>'}</tbody></table></div></section>`;
+  const nextExpirationText = bundle.balance.proximoVencimento ? expirationText(bundle.balance.proximoVencimento) : 'Sem credito ativo';
+  const body = `<section class="panel hero-client client-detail-hero"><div><span class="kicker">Cliente #${e(bundle.client.id)}</span><h2>${e(bundle.client.name)}</h2><p>${e(formatPhone(bundle.client.phone))} | Status ${e(bundle.client.status)} | Atendente ${e(bundle.client.attendant_name || '-')}</p></div><div class="actions"><a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${id}#resgate`)}">Nova compra, Gastar/Usar CashBack</a><a class="btn" href="${pageUrl(`clientes.php?edit=${id}`)}">Editar cliente</a></div></section>
+<section class="metrics client-detail-metrics"><article class="metric highlight"><span>Saldo disponivel</span><strong>${brMoneyCents(bundle.balance.saldoDisponivel)}</strong><small>Pronto para usar</small></article><article class="metric"><span>Expirando</span><strong>${brMoneyCents(bundle.balance.saldoExpirando)}</strong><small>${e(nextExpirationText)}</small></article><article class="metric"><span>Saldo usado</span><strong>${brMoneyCents(bundle.balance.saldoUsado)}</strong><small>Historico preservado</small></article><article class="metric"><span>Saldo expirado</span><strong>${brMoneyCents(bundle.balance.saldoExpirado)}</strong><small>Fora do saldo</small></article><article class="metric"><span>Total gerado</span><strong>${brMoneyCents(bundle.balance.totalGerado)}</strong><small>Sem cancelados</small></article><article class="metric"><span>Proximo vencimento</span><strong>${e(brDate(bundle.balance.proximoVencimento))}</strong><small>${e(nextExpirationText)}</small></article></section>
+<section class="grid two client-ledger-grid"><div class="panel"><h2>Compras do cliente</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Valor pago</th><th>Tipo</th><th>Cashback</th><th>Atendente</th></tr></thead><tbody>${rowsPurchases || '<tr><td colspan="5">Nenhuma compra registrada.</td></tr>'}</tbody></table></div></div><div class="panel"><h2>Resgates do cliente</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Compra</th><th>Usado</th><th>Atendente</th></tr></thead><tbody>${rowsRedemptions || '<tr><td colspan="4">Nenhum resgate registrado.</td></tr>'}</tbody></table></div></div></section>
+<section id="creditos" class="panel cashback-credit-panel"><div class="section-title"><div><span class="kicker">Cashback gerado</span><h2>Creditos do cliente</h2></div><span class="soft-pill">${e(bundle.credits.length)} registro(s)</span></div><div class="cashback-credit-grid">${creditCards || '<p class="muted">Nenhum credito gerado.</p>'}</div></section>`;
   return htmlShell(req, `Historico de ${String(bundle.client.name)}`, body);
 }
 
@@ -2316,12 +2652,12 @@ async function renderPurchases(req: Request): Promise<string> {
   const rows = (recent.rows as DbRow[])
     .map(
       (purchase: DbRow) =>
-        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${e(purchase.client_name)}</td><td>${e(purchase.attendant_name || '-')}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td>${e(bpsToPercent(num(purchase.cashback_percent_bps)).toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}%</td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td><a href="${pageUrl('mensagens.php#compras-hoje')}">Fila WhatsApp</a></td><td><a href="${pageUrl(`cliente-detalhe.php?id=${num(purchase.client_id)}`)}">Cliente</a></td></tr>`,
+        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${e(purchase.client_name)}</td><td>${e(purchase.attendant_name || '-')}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td><span class="cashback-source-pill ${purchaseCashbackKind(purchase) === 'Manual' ? 'manual' : 'auto'}">${e(purchaseCashbackPercentLabel(purchase))}</span></td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td><a href="${pageUrl('mensagens.php#compras-hoje')}">Fila WhatsApp</a></td><td><a href="${pageUrl(`cliente-detalhe.php?id=${num(purchase.client_id)}`)}">Cliente</a></td></tr>`,
     )
     .join('');
   const body = `<section class="grid two"><div class="panel"><h2>Registrar nova compra</h2><form method="post" class="form-grid" data-no-enter-submit>${csrfField(req)}<label><span>Cliente *</span><select name="cliente_id" required><option value="">Selecione</option>${clients
     .map((client: DbRow) => `<option value="${e(client.id)}" ${selectedClient === num(client.id) ? 'selected' : ''}>${e(client.name)} - ${e(formatPhone(client.phone))}</option>`)
-    .join('')}</select></label>${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}<label><span>Valor da compra *</span><input type="text" name="valor_total" data-money required placeholder="100,00"></label><label><span>% Cashback</span><input type="text" name="percentual_cashback" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label><label class="full"><span>Observacoes</span><textarea name="observacoes" rows="4"></textarea></label><button type="submit" class="btn primary">Salvar compra e gerar cashback</button></form></div><div class="panel"><h2>Regra aplicada</h2><ul class="info-list"><li>Cashback padrao: <strong>${e(settings.cashbackPercent)}%</strong></li><li>Validade padrao: <strong>${e(settings.validityDays)} dias</strong></li><li>Persistencia: <strong>Postgres oficial</strong></li></ul><a class="btn" href="${pageUrl('clientes.php')}">Cadastrar cliente</a></div></section><section class="panel"><h2>Compras recentes</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Cliente</th><th>Atendente</th><th>Compra</th><th>%</th><th>Cashback</th><th>WhatsApp</th><th>Acoes</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Nenhuma compra registrada.</td></tr>'}</tbody></table></div></section>`;
+    .join('')}</select></label>${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}<label><span>Valor da compra *</span><input type="text" name="valor_total" data-money required placeholder="100,00"></label><label><span>% Cashback</span><input type="text" name="percentual_cashback" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label><label class="manual-cashback-field"><span>Cashback Manual</span><input type="text" name="cashback_manual" data-money placeholder="0,00"><small>Preenchido, zera o cashback automatico.</small></label><label class="full"><span>Observacoes</span><textarea name="observacoes" rows="4"></textarea></label><button type="submit" class="btn primary">Salvar compra e gerar cashback</button></form></div><div class="panel"><h2>Regra aplicada</h2><ul class="info-list"><li>Cashback padrao: <strong>${e(settings.cashbackPercent)}%</strong></li><li>Cashback Manual substitui o automatico quando preenchido.</li><li>Validade padrao: <strong>${e(settings.validityDays)} dias</strong></li><li>Persistencia: <strong>Postgres oficial</strong></li></ul><a class="btn" href="${pageUrl('clientes.php')}">Cadastrar cliente</a></div></section><section class="panel"><h2>Compras recentes</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Cliente</th><th>Atendente</th><th>Compra</th><th>Tipo</th><th>Cashback</th><th>WhatsApp</th><th>Acoes</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Nenhuma compra registrada.</td></tr>'}</tbody></table></div></section>`;
   return htmlShell(req, 'Compras', body);
 }
 
@@ -2395,13 +2731,14 @@ async function handleManualRedemptionPost(req: Request, res: Response): Promise<
       const redemptionId = num(redemption.rows[0]?.id);
       await client.query('UPDATE cashback_redemptions SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [redemptionId]);
       const credits = await client.query(
-        `SELECT id, remaining_cents FROM cashback_credits WHERE client_id = $1 AND status = 'ativo' AND remaining_cents > 0 AND expires_at >= CURRENT_DATE ORDER BY expires_at ASC, id ASC FOR UPDATE`,
+        `SELECT id, remaining_cents FROM cashback_credits WHERE client_id = $1 AND canceled_at IS NULL AND status = 'ativo' AND remaining_cents > 0 AND expires_at >= CURRENT_DATE ORDER BY expires_at ASC, id ASC FOR UPDATE`,
         [clientId],
       );
       await consumeCredits(client, credits.rows as DbRow[], redemptionId, redeemedCents);
       await client.query('COMMIT');
       await logAction(req, 'resgate_criado', 'resgate', redemptionId, `Resgate de ${brMoneyCents(redeemedCents)} registrado.`);
-      setFlash(req, 'success', `Resgate registrado: ${brMoneyCents(redeemedCents)}.`);
+      const xpResult = await awardXpForCashbackRedemption(req, redemptionId, redeemedCents, clientId);
+      setFlash(req, 'success', `Resgate registrado: ${brMoneyCents(redeemedCents)}. ${xpResult.message}`);
       res.redirect(`${BASE_PATH}/cliente-detalhe.php?id=${clientId}`);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -2426,7 +2763,7 @@ async function renderMessages(req: Request): Promise<string> {
             COALESCE(SUM(p.cashback_generated_cents), 0)::bigint AS cashback, MAX(p.purchased_at) AS last_purchase, MAX(cr.expires_at) AS validity
      FROM cashback_purchases p
      INNER JOIN cashback_clients c ON c.id = p.client_id
-     LEFT JOIN cashback_credits cr ON cr.purchase_id = p.id
+     LEFT JOIN cashback_credits cr ON cr.purchase_id = p.id AND cr.canceled_at IS NULL
      WHERE p.purchased_at >= $1::date AND p.purchased_at < $2::date
        AND (p.notes IS NULL OR p.notes NOT ILIKE 'Saldo importado sistema antigo CSV.%')
      GROUP BY c.id, c.name, c.phone
@@ -2542,6 +2879,7 @@ async function generateRecompraMessages(req: Request, returnDays: number, today:
      FROM cashback_clients c
      INNER JOIN cashback_credits cr ON cr.client_id = c.id
      WHERE c.status = 'ativo'
+       AND cr.canceled_at IS NULL
        AND cr.status = 'ativo'
        AND cr.remaining_cents > 0
        AND cr.expires_at >= CURRENT_DATE
@@ -2616,7 +2954,7 @@ async function generateExpiringMessages(req: Request): Promise<DbRow[]> {
     `SELECT c.id, c.name, c.phone, cr.expires_at AS deadline, COALESCE(SUM(cr.remaining_cents), 0)::bigint AS expiring, COUNT(cr.id)::int AS credits
      FROM cashback_credits cr
      INNER JOIN cashback_clients c ON c.id = cr.client_id
-     WHERE c.status = 'ativo' AND cr.status = 'ativo' AND cr.remaining_cents > 0
+     WHERE c.status = 'ativo' AND cr.canceled_at IS NULL AND cr.status = 'ativo' AND cr.remaining_cents > 0
        AND cr.expires_at IS NOT NULL
        AND cr.expires_at >= CURRENT_DATE
        AND cr.expires_at <= CURRENT_DATE + ($1::int * INTERVAL '1 day')
@@ -2714,7 +3052,7 @@ async function renderReport(req: Request): Promise<string> {
       [start, end],
     ),
     pgPool.query('SELECT COALESCE(SUM(redeemed_cents), 0)::bigint AS used FROM cashback_redemptions WHERE redeemed_at::date BETWEEN $1::date AND $2::date', [start, end]),
-    pgPool.query("SELECT COALESCE(SUM(remaining_cents), 0)::bigint AS expired FROM cashback_credits WHERE status = 'expirado' AND updated_at::date BETWEEN $1::date AND $2::date", [start, end]),
+    pgPool.query("SELECT COALESCE(SUM(remaining_cents), 0)::bigint AS expired FROM cashback_credits WHERE canceled_at IS NULL AND status = 'expirado' AND updated_at::date BETWEEN $1::date AND $2::date", [start, end]),
     pgPool.query(
       `SELECT a.*,
          (SELECT COUNT(*) FROM cashback_clients c WHERE c.attendant_id = a.id)::int AS clients,
@@ -2893,7 +3231,7 @@ async function renderSelfTest(req: Request): Promise<string> {
     add('Geracao de cashback', cashbackCents > 0 && creditId > 0, `Cashback calculado: ${brMoneyCents(cashbackCents)}.`);
 
     const balance = await db.query(
-      "SELECT COALESCE(SUM(remaining_cents), 0)::bigint AS value FROM cashback_credits WHERE client_id = $1 AND status = 'ativo'",
+      "SELECT COALESCE(SUM(remaining_cents), 0)::bigint AS value FROM cashback_credits WHERE client_id = $1 AND canceled_at IS NULL AND status = 'ativo'",
       [clientId],
     );
     add('Consulta de saldo', num(balance.rows[0]?.value) === cashbackCents, `Saldo temporario encontrado: ${brMoneyCents(balance.rows[0]?.value)}.`);
@@ -2949,12 +3287,14 @@ async function sendExport(req: Request, res: Response): Promise<void> {
     },
     compras: {
       filename: 'compras',
-      headers: ['ID', 'Data', 'Cliente', 'Atendente', 'Valor bruto', 'Cashback usado', 'Valor cobrado', 'Percentual', 'Cashback gerado', 'Observacoes'],
+      headers: ['ID', 'Data', 'Cliente', 'Atendente', 'Valor bruto', 'Cashback usado', 'Valor cobrado', 'Tipo cashback', 'Percentual', 'Cashback manual', 'Cashback gerado', 'Observacoes'],
       sql: `SELECT p.id, p.purchased_at, c.name AS client, COALESCE(a.name, '') AS attendant,
                    ROUND(p.gross_cents::numeric / 100, 2) AS gross,
                    ROUND(p.cashback_discount_cents::numeric / 100, 2) AS cashback_discount,
                    ROUND(p.charged_cents::numeric / 100, 2) AS charged,
+                   p.cashback_generation_mode,
                    ROUND(p.cashback_percent_bps::numeric / 100, 2) AS cashback_percent,
+                   ROUND(p.manual_cashback_cents::numeric / 100, 2) AS manual_cashback,
                    ROUND(p.cashback_generated_cents::numeric / 100, 2) AS cashback_generated,
                    p.notes
             FROM cashback_purchases p INNER JOIN cashback_clients c ON c.id = p.client_id LEFT JOIN cashback_attendants a ON a.id = p.attendant_id
@@ -2975,11 +3315,15 @@ async function sendExport(req: Request, res: Response): Promise<void> {
     },
     creditos: {
       filename: 'creditos-cashback',
-      headers: ['ID', 'Cliente', 'Compra ID', 'Valor original', 'Valor restante', 'Vence em', 'Status', 'Criado em'],
+      headers: ['ID', 'Cliente', 'Compra ID', 'Valor original', 'Valor restante', 'Vence em', 'Status', 'Cancelado em', 'Motivo cancelamento', 'Criado em'],
       sql: `SELECT cr.id, c.name AS client, cr.purchase_id,
                    ROUND(cr.original_cents::numeric / 100, 2) AS original_value,
                    ROUND(cr.remaining_cents::numeric / 100, 2) AS remaining_value,
-                   cr.expires_at, cr.status, cr.created_at
+                   cr.expires_at,
+                   CASE WHEN cr.canceled_at IS NOT NULL THEN 'cancelado' ELSE cr.status END AS status,
+                   cr.canceled_at,
+                   COALESCE(cr.canceled_reason, '') AS canceled_reason,
+                   cr.created_at
             FROM cashback_credits cr INNER JOIN cashback_clients c ON c.id = cr.client_id ORDER BY cr.expires_at ASC, cr.id DESC`,
       params: [],
     },

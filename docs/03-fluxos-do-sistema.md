@@ -60,6 +60,8 @@ Desde 2026-06-08, a tela `Mensagens` do Cashback usa cards de fila mais modernos
 
 Desde 2026-06-08, `Configuracao e Relatorio` tambem usa uma apresentacao mais moderna e compacta para manutencao, atendentes, acessos, metricas e exportacoes, com status visual nos cards de equipe e acentos por bloco sem alterar formularios, CSRF, POSTs, exportacao, inativacao/exclusao logica ou auditoria.
 
+Desde 2026-06-11, a compra/resgate do Balcao e o registro simples de compra possuem `Cashback Manual`. Se o campo manual tiver valor maior que zero, o cashback automatico novo da compra fica em zero e o credito gerado usa o valor manual, preservando a regra de uso 4x, o consumo FIFO dos creditos usados e a transacao Postgres. O detalhe do cliente mostra os dias restantes de cada credito e permite excluir do saldo apenas cashback gerado ainda intacto; a exclusao e logica, cancela mensagens pendentes vinculadas ao credito e preserva historico/auditoria.
+
 Arquivos principais:
 
 - `apps/cashback/src/server.ts`
@@ -91,6 +93,8 @@ Regras importantes:
 - dinheiro fica em centavos inteiros no Postgres, exportado em CSV como valor decimal;
 - a relacao compra -> credito -> resgate deve continuar preservada com consumo FIFO dos creditos;
 - o resgate roda em transacao Postgres e bloqueia creditos ativos do cliente para evitar saldo duplicado;
+- cada resgate que usa cashback tenta gerar +500 XP para o usuario logado vinculado em `core_user_xp_links`, usando `xp_sales.source='cashback_redemption'` e `source_entity_id` para nao duplicar; falha do XP nao deve desfazer a compra/resgate;
+- creditos cancelados por devolucao/cancelamento usam `cashback_credits.canceled_at` e devem sair de saldo, fila de expiracao/recompra, mensagens e relatorios de saldo ativo sem apagar o registro historico;
 - `/cashback/health` mostra storage Postgres, auth core e contagens de migracao;
 - `/cashback/autoteste.php` cria compra/credito/resgate em transacao e desfaz tudo com rollback;
 - `atendentes.php` redireciona para `relatorio.php#atendentes`, como no legado.
@@ -214,6 +218,7 @@ Regras a preservar:
 - as pastas `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/` precisam existir e ficar gravaveis pelo app XP no VPS;
 - a pasta de uploads bloqueia listagem e execucao de scripts por `.htaccess`;
 - R$ 1.000,00 em vendas gera 2.500 XP, gravado como inteiro no lancamento;
+- uso real de cashback no Balcao gera um lancamento interno de +500 XP com `amount_cents=0`, `source='cashback_redemption'` e `source_entity_id` igual ao resgate, para pontuar o operador sem inflar venda monetaria;
 - o nivel 1 exige 30.000 XP para passar; os niveis seguintes ficam progressivamente mais dificeis e nao possuem limite fixo;
 - a trilha usa `Bloco XP` nos niveis comuns, `Nivel 5` a cada multiplo de 5 e `nivel 10` a cada multiplo de 10;
 - cancelar venda ou excluir/remover usuario/funcionario deve ser logico, sem apagar historico fisico; o botao `Excluir usuario` tira o atendente da lista e da trilha, preservando os lancamentos antigos.

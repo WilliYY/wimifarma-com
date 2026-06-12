@@ -271,10 +271,12 @@
     function updateRedeemForm(form) {
         var purchaseInput = form.querySelector('[name="valor_compra"]');
         var redeemInput = form.querySelector('[name="valor_resgate"]');
+        var manualInput = form.querySelector('[name="cashback_manual"]');
         var preview = form.querySelector('.js-redeem-preview');
         var applied = form.querySelector('.js-redeem-auto');
         var charged = form.querySelector('.js-amount-charged');
         var newCashback = form.querySelector('.js-new-cashback');
+        var manualCashback = form.querySelector('.js-manual-cashback');
         var multiplier = Number(form.getAttribute('data-multiplier')) || 4;
         var percent = Number(String(form.getAttribute('data-default-percent') || '5').replace(',', '.')) || 5;
         var available = Number(form.getAttribute('data-available-balance')) || 0;
@@ -287,7 +289,8 @@
         var maxByRule = Math.floor((purchase / multiplier) * 100) / 100;
         var redeem = Math.max(0, Math.min(available, maxByRule));
         var charge = Math.max(0, purchase - redeem);
-        var cashback = charge * (percent / 100);
+        var manual = manualInput ? parseMoney(manualInput.value) : 0;
+        var cashback = manual > 0 ? 0 : charge * (percent / 100);
 
         redeemInput.value = formatDecimalInput(redeem);
 
@@ -303,10 +306,35 @@
             newCashback.textContent = formatMoney(cashback);
         }
 
+        if (manualCashback) {
+            manualCashback.textContent = formatMoney(manual);
+        }
+
         if (purchase <= 0) {
             redeemInput.setCustomValidity('Informe o valor da compra.');
             preview.className = 'live-preview full js-redeem-preview';
             preview.textContent = 'Informe o valor da compra para calcular o cashback permitido.';
+            return;
+        }
+
+        if (manual > charge) {
+            redeemInput.setCustomValidity('');
+            if (manualInput) {
+                manualInput.setCustomValidity('Cashback Manual nao pode ser maior que o valor a cobrar.');
+            }
+            preview.className = 'live-preview full js-redeem-preview blocked';
+            preview.textContent = 'Ajuste o Cashback Manual: ele nao pode ser maior que o valor a cobrar (' + formatMoney(charge) + ').';
+            return;
+        }
+
+        if (manualInput) {
+            manualInput.setCustomValidity('');
+        }
+
+        if (manual > 0) {
+            redeemInput.setCustomValidity('');
+            preview.className = 'live-preview full js-redeem-preview ok';
+            preview.textContent = 'Manual ativo: o cashback automatico novo fica zerado e o cliente recebe ' + formatMoney(manual) + '. Valor a cobrar: ' + formatMoney(charge) + '.';
             return;
         }
 
@@ -332,6 +360,7 @@
     function bindRedeemPreview() {
         document.querySelectorAll('[data-redeem-form]').forEach(function (form) {
             var purchaseInput = form.querySelector('[name="valor_compra"]');
+            var manualInput = form.querySelector('[name="cashback_manual"]');
 
             if (!purchaseInput) {
                 return;
@@ -340,6 +369,11 @@
             purchaseInput.addEventListener('input', function () {
                 updateRedeemForm(form);
             });
+            if (manualInput) {
+                manualInput.addEventListener('input', function () {
+                    updateRedeemForm(form);
+                });
+            }
             updateRedeemForm(form);
         });
     }

@@ -710,16 +710,23 @@ async function ensureSchema(): Promise<void> {
       amount_cents BIGINT NOT NULL CHECK (amount_cents >= 0),
       xp_points BIGINT NOT NULL CHECK (xp_points >= 0),
       note VARCHAR(255),
+      source TEXT,
+      source_entity_id TEXT,
       created_by INTEGER,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       deleted_at TIMESTAMPTZ,
       deleted_by INTEGER
     )
   `);
+  await pgPool.query('ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source TEXT');
+  await pgPool.query('ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source_entity_id TEXT');
   await pgPool.query('CREATE INDEX IF NOT EXISTS xp_sales_employee_date_idx ON xp_sales (employee_id, sale_date)');
   await pgPool.query('CREATE INDEX IF NOT EXISTS xp_sales_date_idx ON xp_sales (sale_date)');
   await pgPool.query('CREATE INDEX IF NOT EXISTS xp_sales_active_date_idx ON xp_sales (deleted_at, sale_date)');
   await pgPool.query('CREATE INDEX IF NOT EXISTS xp_sales_active_employee_date_idx ON xp_sales (deleted_at, employee_id, sale_date)');
+  await pgPool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_sales_source_entity
+    ON xp_sales(source, source_entity_id)
+    WHERE source IS NOT NULL AND source_entity_id IS NOT NULL`);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS xp_settings (
       setting_key VARCHAR(80) PRIMARY KEY,

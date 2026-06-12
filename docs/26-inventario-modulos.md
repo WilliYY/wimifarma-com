@@ -208,8 +208,8 @@ MySQL e legado historico. Desde 2026-05-30 nao ha importacao, espelho, log, fall
 
 - `cashback_attendants` (com `core_user_id` para vincular atendente ao login core responsavel por operacoes);
 - `cashback_clients`;
-- `cashback_purchases`;
-- `cashback_credits`;
+- `cashback_purchases` (inclui `cashback_generation_mode` e `manual_cashback_cents` para distinguir automatico/manual);
+- `cashback_credits` (inclui `canceled_at`, `canceled_by` e `canceled_reason` para cancelamento logico de cashback gerado intacto);
 - `cashback_redemptions`;
 - `cashback_redemption_items`;
 - `cashback_settings`;
@@ -234,10 +234,12 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - Criar/editar/inativar/excluir cliente.
 - O cadastro rapido `Novo cliente` do Balcao e apenas uma organizacao visual em blocos de dados do cliente e compra inicial opcional; continua usando o mesmo POST `save_client`, CSRF, calculo de compra inicial e atendente travado pelo usuario logado.
 - Desde 2026-06-08, esse cadastro rapido recebeu polimento de frontend: cabecalho destacado, blocos com acento visual, campos em caixas focadas, resumo financeiro com cards coloridos, microanimacoes leves e versao mobile ajustada, sem alterar dados, rotas, names dos inputs, POST, CSRF ou calculo.
-- A secao `Gastar/Usar Cashback` do Balcao e apenas uma organizacao visual em blocos de cliente, compra atual, resumo financeiro e acao; continua usando o mesmo POST `save_redeem`, CSRF, seletores do calculo automatico e atendente travado pelo usuario logado.
+- A secao `Gastar/Usar Cashback` do Balcao e organizada em blocos de cliente, compra atual, resumo financeiro e acao; continua usando o POST `save_redeem`, CSRF, seletores do calculo automatico e atendente travado pelo usuario logado. Desde 2026-06-11, o campo `cashback_manual` substitui o cashback automatico novo quando preenchido, impedindo beneficio duplicado na mesma compra.
 - Desde 2026-06-08, essa secao tambem recebeu polimento visual com cabecalho destacado, campos em caixas focadas, resumo financeiro colorido, microanimacoes leves e mobile ajustado, sem alterar `data-redeem-form`, names dos inputs, POST, CSRF, regra 4x, consumo FIFO ou transacao Postgres.
 - Criar compra, calcular cashback gerado e criar credito vinculado a compra; novo credito expira sempre 45 dias apos `cashback_purchases.purchased_at::date`.
 - Criar resgate, marcando creditos vencidos antes da escrita, consumir somente creditos ativos dentro da validade e gravar itens do resgate.
+- Ao usar cashback, gerar +500 XP para o usuario logado se ele estiver vinculado ao XP em `core_user_xp_links`; a integracao grava `xp_sales.amount_cents=0`, `xp_points=500`, `source='cashback_redemption'` e `source_entity_id=<resgate>`, com idempotencia para nao pontuar duas vezes o mesmo resgate.
+- Em `/cashback/cliente-detalhe.php`, excluir cashback gerado significa cancelar logicamente apenas credito ainda intacto (`remaining_cents >= original_cents`), remover o valor do saldo e cancelar mensagens pendentes daquele credito, sem apagar compra, credito, resgate, auditoria ou historico CSV.
 - Compra, Compra Cashback e resgate manual registram `cashback_purchases.attendant_id`/`cashback_redemptions.attendant_id` pelo usuario logado da sessao core, via `cashback_attendants.core_user_id`; o seletor Atendente aparece preenchido/travado para a operacao e postagem manual de outro `atendente_id` nao troca o responsavel.
 - Em `/cashback/dashboard.php#busca`, o Balcao lista os ultimos clientes ativos alterados por `updated_at`/`created_at`, mostra 5 por padrao e revela mais em blocos de 5 pelo botao `Mostrar mais`, sem alterar saldo, compra ou resgate. A busca e o autocomplete normalizam telefone por digitos e aceitam ID com pontuacao como `#139`, sem usar telefone vazio quando o texto pesquisado nao tem numeros. Desde 2026-06-07, os cards dessa lista separam ID, telefone, atendente, atualizado, saldo e acoes em uma grade mais aberta, com saldo e botoes centralizados, para evitar texto espremido em nomes e informacoes.
 - Atualizar status de mensagens (`aberta`, `copiada`, `enviada`, `cancelada`, `expirado_da_fila`).
@@ -256,6 +258,7 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 ### Integracoes
 
 - Core auth em `wimifarma_core`.
+- XP em `wimifarma_xp` para lancamentos idempotentes de +500 XP por uso de cashback, usando as variaveis `XP_POSTGRES_*` no container do Cashback.
 - Home publica aponta o card `Cashback` para `/cashback/`.
 - Miauby interno consulta resumo/status e busca de cliente por endpoint interno tokenizado do Cashback Node/Postgres; se a ponte moderna falhar, ele nao cai em `wf_compras`, `wf_clientes`, `wf_cashback_creditos` ou `wf_resgates`.
 - Mensagens de WhatsApp do Cashback ainda sao operacionais/manuais dentro do modulo, nao o bridge Miauby WhatsApp.
@@ -264,6 +267,9 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 ### Riscos
 
 - Compra, credito e resgate precisam ser transacionais para nao gerar saldo errado.
+- Cashback Manual nao pode gerar junto com cashback automatico na mesma compra; a validacao frontend/backend deve comparar tambem o valor a cobrar depois de eventual uso de saldo.
+- A exclusao de cashback gerado deve permanecer logica e restrita a credito intacto; se o credito ja foi usado parcialmente, exige ajuste manual fora do botao rapido.
+- Falha de XP nao pode travar compra/resgate, mas deve aparecer no feedback e auditoria para manutencao.
 - Excluir fisicamente cliente/atendente e mais arriscado que inativar; validar se ainda precisa existir na UI.
 - Rollback para MySQL exige restaurar commit/imagem anterior e backup; nao existe mais chave de `.env` que religue o caminho no Cashback atual.
 - Telefone de cliente e mensagem WhatsApp sao dados sensiveis; nao expor em logs.

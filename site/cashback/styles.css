@@ -1758,9 +1758,47 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-fields {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     align-items: end;
+}
+
+.redeem-xp-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #bee5cc;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(246, 255, 249, 0.94), rgba(255, 255, 255, 0.9));
+    color: #155b31;
+    font-size: 0.84rem;
+    font-weight: 800;
+}
+
+.redeem-xp-note.warn {
+    border-color: #f4d2a3;
+    background: linear-gradient(135deg, rgba(255, 249, 239, 0.95), rgba(255, 255, 255, 0.9));
+    color: #87580a;
+}
+
+.redeem-xp-note strong {
+    white-space: nowrap;
+}
+
+.manual-cashback-field {
+    border-color: #d6d2f8 !important;
+    background: linear-gradient(135deg, rgba(247, 246, 255, 0.96), rgba(255, 255, 255, 0.9)) !important;
+}
+
+.manual-cashback-field small {
+    display: block;
+    margin-top: 6px;
+    color: #5b5586;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.25;
 }
 
 .redeem-client-picker {
@@ -1815,7 +1853,7 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-summary {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .redeem-summary div {
@@ -1858,6 +1896,20 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-summary div:nth-child(3)::before {
     background: linear-gradient(90deg, #3b82c4, rgba(59, 130, 196, 0.2));
+}
+
+.redeem-summary div:nth-child(4) {
+    border-color: #d6d2f8;
+    background:
+        linear-gradient(135deg, rgba(247, 246, 255, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.redeem-summary div:nth-child(4)::before {
+    background: linear-gradient(90deg, #6d5bd0, rgba(109, 91, 208, 0.18));
+}
+
+.redeem-summary div:nth-child(4) strong {
+    color: #5140a4;
 }
 
 .redeem-summary span {
@@ -2269,6 +2321,156 @@ body.sections-ready .workspace-section.is-active {
 .quick-client-action .btn:focus {
     transform: translateY(-2px);
     box-shadow: 0 22px 42px rgba(181, 37, 67, 0.24);
+}
+
+.client-detail-hero {
+    align-items: center;
+}
+
+.client-detail-metrics .metric small {
+    display: block;
+    margin-top: 5px;
+    color: rgba(109, 16, 34, 0.68);
+    font-weight: 800;
+}
+
+.client-ledger-grid .panel {
+    align-content: start;
+}
+
+.cashback-source-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid #d7e5f3;
+    background: #f3f8ff;
+    color: #255b8e;
+    font-weight: 900;
+    font-size: 0.78rem;
+}
+
+.cashback-source-pill.manual {
+    border-color: #d6d2f8;
+    background: #f7f6ff;
+    color: #5140a4;
+}
+
+.cashback-credit-panel {
+    scroll-margin-top: 90px;
+}
+
+.cashback-credit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.cashback-credit-card {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #efd3da;
+    border-left: 5px solid var(--red-700);
+    border-radius: 18px;
+    background: linear-gradient(135deg, #fff, rgba(255, 247, 248, 0.82));
+    box-shadow: 0 12px 28px rgba(109, 16, 34, 0.07);
+}
+
+.cashback-credit-card.credit-cancelado {
+    border-left-color: #89919d;
+    background: linear-gradient(135deg, #f7f8fa, #fff);
+    opacity: 0.82;
+}
+
+.cashback-credit-card.credit-expirado {
+    border-left-color: #d67921;
+}
+
+.credit-card-top,
+.credit-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.credit-card-footer form {
+    margin: 0;
+}
+
+.credit-card-footer .btn {
+    white-space: nowrap;
+}
+
+.credit-card-top strong {
+    color: var(--red-800);
+    font-size: 1rem;
+}
+
+.credit-card-money {
+    display: grid;
+    gap: 3px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255, 240, 243, 0.7);
+}
+
+.credit-card-money span,
+.credit-card-date span,
+.credit-card-footer span {
+    color: #7d4f5b;
+    font-size: 0.76rem;
+    font-weight: 900;
+}
+
+.credit-card-money strong {
+    color: var(--red-800);
+    font-size: 1.32rem;
+}
+
+.credit-card-money small {
+    color: #5f3f48;
+    font-weight: 800;
+}
+
+.credit-card-date {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid rgba(239, 211, 218, 0.75);
+}
+
+.credit-card-date strong {
+    color: #136b2f;
+    font-size: 0.88rem;
+}
+
+.credit-expirado .credit-card-date strong {
+    color: #9a4d0a;
+}
+
+.credit-cancelado .credit-card-date strong {
+    color: #68717d;
+}
+
+.credit-action-note {
+    color: #7d4f5b;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.credit-cancel-reason {
+    margin: 0;
+    padding: 9px 10px;
+    border-radius: 12px;
+    background: rgba(137, 145, 157, 0.12);
+    color: #59616d;
+    font-size: 0.82rem;
+    font-weight: 800;
 }
 
 .quick-client-panel .live-preview {
@@ -3539,6 +3741,19 @@ body.sections-ready .workspace-section.is-active {
     .redeem-fields,
     .redeem-summary {
         grid-template-columns: 1fr;
+    }
+
+    .redeem-xp-note,
+    .credit-card-top,
+    .credit-card-footer,
+    .credit-card-date {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .credit-card-footer .btn,
+    .credit-card-footer form {
+        width: 100%;
     }
 
     .redeem-action,
