@@ -984,10 +984,11 @@ Validar no VPS `/login-senha/health`, card unico `Login / Senha` na Home, ausenc
 - `GET /cotacao/api/internal/summary`: resumo interno da Cotacao V2 para Miauby/guardiao.
 - `GET /cotacao/api/internal/search`: busca interna tokenizada para Miauby.
 - `POST /cotacao/api/internal/encomendas`: criacao interna tokenizada de encomenda/urgencia.
+- `GET /cotacao/api/internal/encomendas`: lista interna tokenizada de encomendas ativas para comando `miauby encomendas` e resumo diario das 17h.
 - `POST /cotacao/api/internal/urgentes`: criacao interna tokenizada de item urgente.
 - `POST /cotacao/api/internal/cotacoes-rapidas`: criacao interna tokenizada de cotacao rapida, criando distribuidora V2 quando necessario.
 - Socket.IO em `/cotacao/socket.io`.
-- O app da Cotacao tambem agenda e envia lembretes de encomenda para `/miauw/whatsapp/internal/cotacao-encomenda-reminder` quando uma linha contem `encomenda`, sem alterar a planilha. Erro sem destinatario configurado encerra o lembrete como erro final; transporte indisponivel ou pausado reagenda por `next_attempt_at` com atraso conservador.
+- Desde 2026-06-12, a Cotacao nao envia mais lembrete individual de encomenda no dia seguinte as 16h. O Miauby Whats consulta a lista interna e envia um resumo diario as 17h para contatos autorizados com card `Cotacao`, sem alterar a planilha, marcar entrega ou apagar historico. `cotacao_v2_encomenda_reminders` fica preservada para historico/data de deteccao e diagnostico legado.
 
 ### Permissoes e sessao
 

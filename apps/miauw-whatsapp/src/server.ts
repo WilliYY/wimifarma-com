@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import pg from 'pg';
 import {
+  formatCotacaoEncomendasDailyMessage,
   formatCotacaoEncomendasMessage,
   parseCotacaoEncomendasCommand,
   type CotacaoEncomendaItem,
@@ -460,6 +461,11 @@ type AutomationRunContext = {
   details?: JsonRecord;
 };
 
+type AutomationNotificationOptions = {
+  dedupeKey?: string;
+  details?: JsonRecord;
+};
+
 type CotacaoEncomendaRecipientResolution = {
   recipients: AutomationRecipient[];
   recipientMode: string;
@@ -797,10 +803,15 @@ const COTACAO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_COTA
 const COTACAO_INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_COTACAO_INTERNAL_TOKEN') || textEnv('COTACAO_INTERNAL_TOKEN') || INTERNAL_TOKEN;
 const PEDIDOS_ARRIVAL_AUTOMATION_KEY = 'pedidos_chegada_17h';
 const FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY = 'financeiro_fechamento_caixa_18h';
-const COTACAO_ENCOMENDA_AUTOMATION_KEY = 'cotacao_encomenda_16h';
+const COTACAO_ENCOMENDA_LEGACY_AUTOMATION_KEY = 'cotacao_encomenda_16h';
+const COTACAO_ENCOMENDAS_DAILY_AUTOMATION_KEY = 'cotacao_encomendas_resumo_17h';
+const COTACAO_ENCOMENDAS_DAILY_SOURCE = 'automation_cotacao_encomendas_resumo_17h';
 const EVOLUTION_BAILEYS_AUTOMATION_KEY = 'evolution_baileys_alerta';
 const PIX_OCR_DAILY_SUMMARY_AUTOMATION_KEY = 'pix_ocr_resumo_diario';
 const AUTOMATION_NOTIFY_COOLDOWN_MINUTES = numberEnv('MIAUW_WHATSAPP_AUTOMATION_NOTIFY_COOLDOWN_MINUTES', 15, 1, 240);
+const COTACAO_ENCOMENDAS_DAILY_CHECK_INTERVAL_MS = numberEnv('MIAUW_WHATSAPP_COTACAO_ENCOMENDAS_DAILY_CHECK_INTERVAL_MS', 60000, 15000, 300000);
+const COTACAO_ENCOMENDAS_DAILY_WINDOW_MINUTES = numberEnv('MIAUW_WHATSAPP_COTACAO_ENCOMENDAS_DAILY_WINDOW_MINUTES', 90, 1, 240);
+const COTACAO_ENCOMENDAS_DAILY_LIMIT = numberEnv('MIAUW_WHATSAPP_COTACAO_ENCOMENDAS_DAILY_LIMIT', 60, 1, 100);
 const WATCHDOG_LOOKBACK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_LOOKBACK_MINUTES', 30, 5, 240);
 const WATCHDOG_STUCK_MINUTES = numberEnv('MIAUW_WHATSAPP_WATCHDOG_STUCK_MINUTES', 2, 1, 60);
 const WATCHDOG_SLOW_TOTAL_MS = numberEnv('MIAUW_WHATSAPP_WATCHDOG_SLOW_TOTAL_MS', 30000, 5000, 300000);
@@ -869,17 +880,17 @@ const N8N_WORKFLOW_CARDS = [
     settingsKey: FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
   },
   {
-    key: COTACAO_ENCOMENDA_AUTOMATION_KEY,
-    title: 'Encomenda da Cotacao',
-    schedule: 'Dia seguinte 16:00',
+    key: COTACAO_ENCOMENDAS_DAILY_AUTOMATION_KEY,
+    title: 'Encomendas da Cotacao',
+    schedule: 'Todo dia 17:00',
     moduleKey: 'cotacao',
-    description: 'Pergunta para a equipe se a encomenda marcada na Cotacao ja chegou.',
-    n8nAction: 'O app da Cotacao agenda e chama o endpoint interno do Miauby Whats quando o lembrete vence.',
-    miaubyAction: 'Miauby envia um texto curto para contatos com card Cotacao ou para destinatarios configurados no ambiente da Cotacao.',
-    messagePreview: 'Ex.: "Encomenda chegou? Produto: Dipirona. Quantidade: 20 caixas."',
-    safety: 'Somente alerta interno; nao altera valor, fornecedor, status ou linha da Cotacao.',
-    controlNote: 'Desligar aqui faz o Miauby ignorar o envio mesmo que a Cotacao continue registrando o lembrete.',
-    settingsKey: COTACAO_ENCOMENDA_AUTOMATION_KEY,
+    description: 'Envia um unico resumo diario com todas as encomendas ativas marcadas na Cotacao.',
+    n8nAction: 'As 17:00 o n8n pode chamar o endpoint interno de resumo. O bridge tambem tem trava diaria para cobrir reinicio perto do horario.',
+    miaubyAction: 'Miauby consulta a Cotacao em tempo real e envia uma lista unica para contatos autorizados com card Cotacao.',
+    messagePreview: 'Ex.: "Encomendas da Cotacao - 17h" com produto, qtd, EAN, observacao e criada em.',
+    safety: 'Somente leitura; nao altera linha da Cotacao, nao marca entrega e nao cancela historico.',
+    controlNote: 'Desligar aqui pausa o resumo diario; comandos manuais como "miauby encomendas" continuam apenas leitura.',
+    settingsKey: COTACAO_ENCOMENDAS_DAILY_AUTOMATION_KEY,
   },
   {
     key: EVOLUTION_BAILEYS_AUTOMATION_KEY,
@@ -959,7 +970,7 @@ const N8N_WORKFLOW_CARDS = [
 const WHATSAPP_USER_FACING_AUTOMATION_KEYS = new Set<string>([
   PEDIDOS_ARRIVAL_AUTOMATION_KEY,
   FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY,
-  COTACAO_ENCOMENDA_AUTOMATION_KEY,
+  COTACAO_ENCOMENDAS_DAILY_AUTOMATION_KEY,
 ]);
 const UNAUTHORIZED_REPLY_TEXT = 'Oiee! Miauby aqui!\u{1F63C} Esse WhatsApp \u00e9 s\u00f3 para a equipe interna da Wimifarma. Se voc\u00ea precisa falar com a farm\u00e1cia, chame no canal oficial de atendimento (44) 98413-4971.';
 const providerSendTimestamps: number[] = [];
@@ -2430,11 +2441,21 @@ async function ensureSchema(): Promise<void> {
     true,
   );
   await ensureAutomationSetting(
-    COTACAO_ENCOMENDA_AUTOMATION_KEY,
-    'Encomenda da Cotacao',
+    COTACAO_ENCOMENDAS_DAILY_AUTOMATION_KEY,
+    'Encomendas da Cotacao',
     'cotacao',
-    'Dia seguinte 16:00',
+    'Todo dia 17:00',
     true,
+  );
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_automation_settings
+        SET enabled = FALSE,
+            title = 'Encomenda da Cotacao (legado)',
+            schedule_label = 'Legado desativado',
+            updated_by = 'system',
+            updated_at = NOW()
+      WHERE key = $1`,
+    [COTACAO_ENCOMENDA_LEGACY_AUTOMATION_KEY],
   );
   await ensureAutomationSetting(
     EVOLUTION_BAILEYS_AUTOMATION_KEY,
@@ -10223,7 +10244,8 @@ function publicStatus(): JsonRecord {
     n8n_internal_watchdog: `${BASE_PATH}/internal/watchdog`,
     n8n_internal_pedidos_arrival_check: `${BASE_PATH}/internal/pedidos-arrival-check`,
     n8n_internal_financeiro_cash_closing_reminder: `${BASE_PATH}/internal/financeiro-cash-closing-reminder`,
-    n8n_internal_cotacao_encomenda_reminder: `${BASE_PATH}/internal/cotacao-encomenda-reminder`,
+    n8n_internal_cotacao_encomendas_daily_summary: `${BASE_PATH}/internal/cotacao-encomendas-daily-summary`,
+    n8n_internal_cotacao_encomenda_reminder_legacy: `${BASE_PATH}/internal/cotacao-encomenda-reminder`,
     n8n_internal_evolution_baileys_alert: `${BASE_PATH}/internal/evolution-baileys-alert`,
     n8n_internal_pix_ocr_daily_summary: `${BASE_PATH}/internal/pix-ocr-daily-summary`,
     pedidos_internal_base_configured: PEDIDOS_INTERNAL_BASE_URL !== '',
@@ -10580,10 +10602,16 @@ async function sendAutomationNotification(
   mode: AutomationNotifyMode,
   hasProblems: boolean,
   moduleKey = 'miauw',
+  options: AutomationNotificationOptions = {},
 ): Promise<AutomationSendResult> {
   const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, blocked: 0, errors: [] };
   const message = safeOutboundText(text, 1200);
   const fingerprint = message ? automationFingerprint(source, message) : '';
+  const dedupeKey = safeText(options.dedupeKey, 180);
+  const detailBase = {
+    ...(options.details || {}),
+    ...(dedupeKey ? { dedupe_key: dedupeKey } : {}),
+  };
   if (!message || !shouldNotifyAutomation(mode, hasProblems)) {
     await recordAutomationRun(source, {
       moduleKey,
@@ -10593,12 +10621,27 @@ async function sendAutomationNotification(
       hasProblems,
       messageFingerprint: fingerprint,
       messagePreview: message,
-      details: { reason: message ? 'notify_mode' : 'empty_message' },
+      details: { ...detailBase, reason: message ? 'notify_mode' : 'empty_message' },
     });
     return { ...result, skipped: true };
   }
 
-  const guardKey = automationSendGuardKey(source, fingerprint);
+  const guardKey = automationSendGuardKey(source, fingerprint, dedupeKey);
+  if (dedupeKey && await automationSentByDedupeKey(source, dedupeKey)) {
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: 'skipped',
+      severity,
+      notifyMode: mode,
+      hasProblems,
+      cooldown: true,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { ...detailBase, reason: 'duplicate_already_sent' },
+    });
+    return { ...result, skipped: true, cooldown: true, already_sent: true };
+  }
+
   if (guardKey && activeAutomationSends.has(guardKey)) {
     await recordAutomationRun(source, {
       moduleKey,
@@ -10609,12 +10652,12 @@ async function sendAutomationNotification(
       cooldown: true,
       messageFingerprint: fingerprint,
       messagePreview: message,
-      details: { reason: 'duplicate_in_flight' },
+      details: { ...detailBase, reason: 'duplicate_in_flight' },
     });
     return { ...result, skipped: true, cooldown: true };
   }
 
-  if (await automationRecentlySentByKey(source, fingerprint)) {
+  if (await automationRecentlySentByKey(source, fingerprint, dedupeKey)) {
     await recordAutomationRun(source, {
       moduleKey,
       status: 'skipped',
@@ -10624,129 +10667,130 @@ async function sendAutomationNotification(
       cooldown: true,
       messageFingerprint: fingerprint,
       messagePreview: message,
-      details: { reason: mode === 'always' ? 'repeat_guard' : 'cooldown' },
+      details: { ...detailBase, reason: mode === 'always' ? 'repeat_guard' : 'cooldown' },
     });
     return { ...result, skipped: true, cooldown: true };
   }
 
   if (guardKey) activeAutomationSends.add(guardKey);
   try {
-  const status = publicStatus();
-  if (status.transport_configured !== true || status.enabled !== true) {
-    result.skipped = true;
-    result.errors.push('whatsapp_transport_unavailable');
-    await recordErrorLog(source, severity, new Error('automation_notification_transport_unavailable'), {
-      messagePreview: fingerprint,
-      details: { mode, hasProblems },
-    });
-    await recordAutomationRun(source, {
-      moduleKey,
-      status: 'failed',
-      severity,
-      notifyMode: mode,
-      hasProblems,
-      recipients: result.recipients,
-      sent: result.sent,
-      failed: result.failed,
-      messageFingerprint: fingerprint,
-      messagePreview: message,
-      errorSummary: 'automation_notification_transport_unavailable',
-      details: { mode, hasProblems },
-    });
-    return result;
-  }
-
-  const pauseMs = providerPauseRemainingMs();
-  if (pauseMs > 0) {
-    result.skipped = true;
-    result.errors.push('provider_paused');
-    await recordErrorLog(source, severity, new Error('automation_notification_provider_paused'), {
-      messagePreview: fingerprint,
-      details: { mode, hasProblems, pause_ms: pauseMs },
-    });
-    await recordAutomationRun(source, {
-      moduleKey,
-      status: 'failed',
-      severity,
-      notifyMode: mode,
-      hasProblems,
-      recipients: result.recipients,
-      sent: result.sent,
-      failed: result.failed,
-      messageFingerprint: fingerprint,
-      messagePreview: message,
-      errorSummary: 'automation_notification_provider_paused',
-      details: { mode, hasProblems, pause_ms: pauseMs },
-    });
-    return result;
-  }
-
-  const recipients = await automationRecipients(moduleKey);
-  result.recipients = recipients.length;
-  if (recipients.length === 0) {
-    result.skipped = true;
-    result.errors.push(`no_${moduleKey}_recipients`);
-    await recordErrorLog(source, severity, new Error('automation_notification_no_recipient'), {
-      messagePreview: fingerprint,
-      details: { mode, hasProblems, module_key: moduleKey },
-    });
-    await recordAutomationRun(source, {
-      moduleKey,
-      status: 'failed',
-      severity,
-      notifyMode: mode,
-      hasProblems,
-      recipients: result.recipients,
-      sent: result.sent,
-      failed: result.failed,
-      messageFingerprint: fingerprint,
-      messagePreview: message,
-      errorSummary: `no_${moduleKey}_recipients`,
-      details: { mode, hasProblems, module_key: moduleKey },
-    });
-    return result;
-  }
-
-  for (const recipient of recipients) {
-    try {
-      if (await blockAutomaticRecipientIfVacation(recipient, source, moduleKey, message)) {
-        result.blocked += 1;
-        continue;
-      }
-      await sendProviderText(recipient.phone, message, defaultInstanceName());
-      result.sent += 1;
-    } catch (error) {
-      result.failed += 1;
-      result.errors.push(safeError(error));
-      await recordErrorLog(`${source}_send`, 'warn', error, {
-        phoneMask: recipient.phoneMask,
+    const status = publicStatus();
+    if (status.transport_configured !== true || status.enabled !== true) {
+      result.skipped = true;
+      result.errors.push('whatsapp_transport_unavailable');
+      await recordErrorLog(source, severity, new Error('automation_notification_transport_unavailable'), {
         messagePreview: fingerprint,
-        details: { display_name: recipient.displayName, module_key: moduleKey },
+        details: { ...detailBase, mode, hasProblems },
       });
+      await recordAutomationRun(source, {
+        moduleKey,
+        status: 'failed',
+        severity,
+        notifyMode: mode,
+        hasProblems,
+        recipients: result.recipients,
+        sent: result.sent,
+        failed: result.failed,
+        messageFingerprint: fingerprint,
+        messagePreview: message,
+        errorSummary: 'automation_notification_transport_unavailable',
+        details: { ...detailBase, mode, hasProblems },
+      });
+      return result;
     }
-  }
 
-  await recordAutomationRun(source, {
-    moduleKey,
-    status: automationRunStatus(result),
-    severity: result.failed > 0 ? 'warn' : severity,
-    notifyMode: mode,
-    hasProblems,
-    recipients: result.recipients,
-    sent: result.sent,
-    failed: result.failed,
-    messageFingerprint: fingerprint,
-    messagePreview: message,
-    errorSummary: result.errors[0] || '',
-    details: {
-      mode,
-      has_problems: hasProblems,
-      module_key: moduleKey,
-      blocked_by_vacation: result.blocked,
-      errors: result.errors.slice(0, 5),
-    },
-  });
-  return result;
+    const pauseMs = providerPauseRemainingMs();
+    if (pauseMs > 0) {
+      result.skipped = true;
+      result.errors.push('provider_paused');
+      await recordErrorLog(source, severity, new Error('automation_notification_provider_paused'), {
+        messagePreview: fingerprint,
+        details: { ...detailBase, mode, hasProblems, pause_ms: pauseMs },
+      });
+      await recordAutomationRun(source, {
+        moduleKey,
+        status: 'failed',
+        severity,
+        notifyMode: mode,
+        hasProblems,
+        recipients: result.recipients,
+        sent: result.sent,
+        failed: result.failed,
+        messageFingerprint: fingerprint,
+        messagePreview: message,
+        errorSummary: 'automation_notification_provider_paused',
+        details: { ...detailBase, mode, hasProblems, pause_ms: pauseMs },
+      });
+      return result;
+    }
+
+    const recipients = await automationRecipients(moduleKey);
+    result.recipients = recipients.length;
+    if (recipients.length === 0) {
+      result.skipped = true;
+      result.errors.push(`no_${moduleKey}_recipients`);
+      await recordErrorLog(source, severity, new Error('automation_notification_no_recipient'), {
+        messagePreview: fingerprint,
+        details: { ...detailBase, mode, hasProblems, module_key: moduleKey },
+      });
+      await recordAutomationRun(source, {
+        moduleKey,
+        status: 'failed',
+        severity,
+        notifyMode: mode,
+        hasProblems,
+        recipients: result.recipients,
+        sent: result.sent,
+        failed: result.failed,
+        messageFingerprint: fingerprint,
+        messagePreview: message,
+        errorSummary: `no_${moduleKey}_recipients`,
+        details: { ...detailBase, mode, hasProblems, module_key: moduleKey },
+      });
+      return result;
+    }
+
+    for (const recipient of recipients) {
+      try {
+        if (await blockAutomaticRecipientIfVacation(recipient, source, moduleKey, message)) {
+          result.blocked += 1;
+          continue;
+        }
+        await sendProviderText(recipient.phone, message, defaultInstanceName());
+        result.sent += 1;
+      } catch (error) {
+        result.failed += 1;
+        result.errors.push(safeError(error));
+        await recordErrorLog(`${source}_send`, 'warn', error, {
+          phoneMask: recipient.phoneMask,
+          messagePreview: fingerprint,
+          details: { display_name: recipient.displayName, module_key: moduleKey },
+        });
+      }
+    }
+
+    await recordAutomationRun(source, {
+      moduleKey,
+      status: automationRunStatus(result),
+      severity: result.failed > 0 ? 'warn' : severity,
+      notifyMode: mode,
+      hasProblems,
+      recipients: result.recipients,
+      sent: result.sent,
+      failed: result.failed,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      errorSummary: result.errors[0] || '',
+      details: {
+        ...detailBase,
+        mode,
+        has_problems: hasProblems,
+        module_key: moduleKey,
+        blocked_by_vacation: result.blocked,
+        errors: result.errors.slice(0, 5),
+      },
+    });
+    return result;
   } finally {
     if (guardKey) activeAutomationSends.delete(guardKey);
   }
@@ -11533,7 +11577,7 @@ function cotacaoEncomendaDedupeKey(payload: JsonRecord): string {
 async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Promise<AutomationSendResult> {
   const source = 'cotacao_encomenda_reminder';
   const result: AutomationSendResult = { skipped: false, cooldown: false, recipients: 0, sent: 0, failed: 0, blocked: 0, errors: [] };
-  const enabled = await automationSettingEnabled(COTACAO_ENCOMENDA_AUTOMATION_KEY, true);
+  const enabled = await automationSettingEnabled(COTACAO_ENCOMENDA_LEGACY_AUTOMATION_KEY, false);
   const message = safeOutboundText(payload.message || payload.text || payload.body, 1200);
   const fingerprint = message ? automationFingerprint(source, message) : '';
   const dedupeKey = cotacaoEncomendaDedupeKey(payload);
@@ -11544,6 +11588,18 @@ async function sendCotacaoEncomendaReminderNotification(payload: JsonRecord): Pr
     recipient_mode: payload.recipient_mode || payload.recipientMode || '',
     dedupe_key: dedupeKey || null,
   };
+  await recordAutomationRun(source, {
+    moduleKey: 'cotacao',
+    status: 'skipped',
+    severity: 'info',
+    cooldown: true,
+    messageFingerprint: fingerprint,
+    messagePreview: message,
+    errorSummary: 'legacy_individual_reminder_disabled',
+    details: { ...baseDetails, reason: 'legacy_individual_reminder_disabled', enabled },
+  });
+  return { ...result, skipped: true, cooldown: true, errors: ['legacy_individual_reminder_disabled'] };
+
   if (!enabled || !message) {
     await recordAutomationRun(source, {
       moduleKey: 'cotacao',
@@ -13593,11 +13649,226 @@ function cotacaoEncomendaFromRecord(item: JsonRecord): CotacaoEncomendaItem {
     ean: safeText(item.ean, 80),
     produto: safeText(item.produto, 160),
     quantidade: safeText(item.quantidade, 80),
+    antesEncomenda: safeText(item.antesEncomenda, 220),
     depoisEncomenda: safeText(item.depoisEncomenda, 220),
+    observacaoEncomenda: safeText(item.observacaoEncomenda, 260),
+    textoCompleto: safeText(item.textoCompleto, 320),
     textoEncomenda: safeText(item.textoEncomenda, 260),
     createdAtBr: safeText(item.createdAtBr, 80),
     createdAt: safeText(item.createdAt, 80),
   };
+}
+
+function saoPauloDateTimeParts(value = new Date()): { date: string; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(value);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value || '';
+  const date = `${get('year')}-${get('month')}-${get('day')}`;
+  return {
+    date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : value.toISOString().slice(0, 10),
+    hour: Number(get('hour') || 0),
+    minute: Number(get('minute') || 0),
+  };
+}
+
+function cotacaoEncomendasDailyDedupeKey(date: string): string {
+  return `cotacao-encomendas-summary:${safeText(date, 20)}`;
+}
+
+function cotacaoEncomendasDailyDueState(now = new Date()): { due: boolean; date: string; dedupeKey: string; minuteOfDay: number } {
+  const parts = saoPauloDateTimeParts(now);
+  const minuteOfDay = (parts.hour * 60) + parts.minute;
+  const targetMinute = 17 * 60;
+  const due = minuteOfDay >= targetMinute && minuteOfDay < targetMinute + COTACAO_ENCOMENDAS_DAILY_WINDOW_MINUTES;
+  return {
+    due,
+    date: parts.date,
+    dedupeKey: cotacaoEncomendasDailyDedupeKey(parts.date),
+    minuteOfDay,
+  };
+}
+
+async function cotacaoEncomendasDailyAlreadyProcessed(dedupeKey: string): Promise<boolean> {
+  const cleanDedupeKey = safeText(dedupeKey, 180);
+  if (!cleanDedupeKey) return false;
+  const result = await pgPool.query<{ found: string }>(
+    `SELECT '1' AS found
+       FROM miauw_whatsapp_automation_runs
+      WHERE source = $1
+        AND dry_run = FALSE
+        AND status IN ('skipped', 'sent', 'partial')
+        AND details->>'dedupe_key' = $2
+      LIMIT 1`,
+    [COTACAO_ENCOMENDAS_DAILY_SOURCE, cleanDedupeKey],
+  );
+  return result.rows.length > 0;
+}
+
+async function runCotacaoEncomendasDailySummary(
+  mode: AutomationNotifyMode,
+  dryRun: boolean,
+  options: { date?: string; dedupeKey?: string; trigger?: string } = {},
+): Promise<JsonRecord> {
+  const source = COTACAO_ENCOMENDAS_DAILY_SOURCE;
+  const date = normalizeDateText(options.date) || saoPauloTodayIso();
+  const dedupeKey = safeText(options.dedupeKey, 180) || cotacaoEncomendasDailyDedupeKey(date);
+  const trigger = safeText(options.trigger, 40) || 'manual';
+  const enabled = await automationSettingEnabled(COTACAO_ENCOMENDAS_DAILY_AUTOMATION_KEY, true);
+
+  if (!enabled) {
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: 'warn',
+      notifyMode: mode,
+      dryRun,
+      details: { reason: 'automation_disabled', date, trigger, dedupe_key: dedupeKey },
+    });
+    return { ok: true, skipped: true, reason: 'automation_disabled', enabled, date };
+  }
+
+  if (!dryRun && await cotacaoEncomendasDailyAlreadyProcessed(dedupeKey)) {
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: 'info',
+      notifyMode: mode,
+      cooldown: true,
+      details: { reason: 'duplicate_daily_summary', date, trigger, dedupe_key: dedupeKey },
+    });
+    return { ok: true, skipped: true, reason: 'duplicate_daily_summary', enabled, date, dedupe_key: dedupeKey };
+  }
+
+  const summary = await fetchCotacaoEncomendasSummary({ action: 'list', order: 'oldest', raw: 'daily-summary' }, COTACAO_ENCOMENDAS_DAILY_LIMIT);
+  const message = formatCotacaoEncomendasDailyMessage(summary);
+  const fingerprint = automationFingerprint(source, message);
+  const count = Number(summary.total || summary.items.length || 0);
+  const details = {
+    reason: count > 0 ? 'daily_summary' : 'no_active_encomendas',
+    date,
+    trigger,
+    dedupe_key: dedupeKey,
+    total: count,
+    returned: Number(summary.returned || summary.items.length || 0),
+    limit: COTACAO_ENCOMENDAS_DAILY_LIMIT,
+    order: summary.order,
+  };
+
+  if (count <= 0) {
+    const recipients = dryRun ? await automationRecipients('cotacao') : [];
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: 'info',
+      notifyMode: mode,
+      dryRun,
+      recipients: recipients.length,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details,
+    });
+    return {
+      ok: true,
+      skipped: true,
+      reason: 'no_active_encomendas',
+      enabled,
+      date,
+      count,
+      recipients: recipients.length,
+      preview: message,
+    };
+  }
+
+  if (dryRun) {
+    const recipients = await automationRecipients('cotacao');
+    await recordAutomationRun(source, {
+      moduleKey: 'cotacao',
+      status: 'skipped',
+      severity: 'info',
+      notifyMode: mode,
+      dryRun: true,
+      recipients: recipients.length,
+      messageFingerprint: fingerprint,
+      messagePreview: message,
+      details: { ...details, reason: 'dry_run' },
+    });
+    return {
+      ok: true,
+      dry_run: true,
+      enabled,
+      date,
+      count,
+      recipients: recipients.length,
+      preview: message,
+    };
+  }
+
+  const notification = await sendAutomationNotification(
+    source,
+    'info',
+    message,
+    mode,
+    true,
+    'cotacao',
+    { dedupeKey, details },
+  );
+  return {
+    ok: notification.failed === 0,
+    enabled,
+    date,
+    count,
+    notify: mode,
+    notification,
+    preview: message,
+  };
+}
+
+let cotacaoEncomendasDailyCheckInFlight = false;
+
+async function runCotacaoEncomendasDailyDueCheck(now = new Date()): Promise<void> {
+  if (cotacaoEncomendasDailyCheckInFlight) return;
+  const dueState = cotacaoEncomendasDailyDueState(now);
+  if (!dueState.due) return;
+  if (await cotacaoEncomendasDailyAlreadyProcessed(dueState.dedupeKey)) return;
+
+  cotacaoEncomendasDailyCheckInFlight = true;
+  try {
+    await runCotacaoEncomendasDailySummary('always', false, {
+      date: dueState.date,
+      dedupeKey: dueState.dedupeKey,
+      trigger: 'daily_worker',
+    });
+  } catch (error) {
+    await recordErrorLog(COTACAO_ENCOMENDAS_DAILY_SOURCE, 'error', error, {
+      details: {
+        reason: 'daily_worker_error',
+        date: dueState.date,
+        dedupe_key: dueState.dedupeKey,
+        minute_of_day: dueState.minuteOfDay,
+      },
+    });
+    await recordAutomationRun(COTACAO_ENCOMENDAS_DAILY_SOURCE, {
+      moduleKey: 'cotacao',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: {
+        reason: 'daily_worker_error',
+        date: dueState.date,
+        dedupe_key: dueState.dedupeKey,
+        minute_of_day: dueState.minuteOfDay,
+      },
+    });
+  } finally {
+    cotacaoEncomendasDailyCheckInFlight = false;
+  }
 }
 
 async function fetchPedidosCancelCandidates(userContext: WhatsappUserContext, query = '', limit = 12): Promise<PedidosArrivalOrder[]> {
@@ -15436,10 +15707,10 @@ function recordField(value: unknown): JsonRecord {
 
 function cotacaoEncomendaPanelText(status: JsonRecord | null): string {
   if (!status) {
-    return 'Status Cotacao: leitura ao vivo indisponivel nesta abertura do painel. O envio continua sendo decidido pelo worker da Cotacao.';
+    return 'Status Cotacao: leitura ao vivo indisponivel nesta abertura do painel. O resumo das 17h consulta a Cotacao no momento do envio.';
   }
   if (status.ok !== true) {
-    return `Status Cotacao: leitura indisponivel (${safeText(status.error, 140) || 'sem detalhe'}). O toggle abaixo ainda controla se o bridge aceita ou ignora o envio.`;
+    return `Status Cotacao: leitura indisponivel (${safeText(status.error, 140) || 'sem detalhe'}). O toggle abaixo controla o resumo diario das 17h.`;
   }
   const worker = recordField(status.worker);
   const reminders = recordField(status.reminders);
@@ -15455,7 +15726,7 @@ function cotacaoEncomendaPanelText(status: JsonRecord | null): string {
   const nextAt = safeText(nextPending.remind_at, 80) ? formatDate(safeText(nextPending.remind_at, 80)) : 'nenhum pendente';
   const attemptAt = safeText(lastAttempt.last_attempt_at, 80) ? formatDate(safeText(lastAttempt.last_attempt_at, 80)) : 'nenhuma tentativa';
   const errorSummary = safeText(lastError.error_summary || worker.last_error_summary, 140) || 'sem erro registrado';
-  return `Status Cotacao: worker ${workerEnabled}; ultima varredura ${lastRun} (${processed} vencido(s)); vencidos agora ${dueNow}; pendentes ${pending}; proximo ${nextAt}. Ultima tentativa: ${attemptAt}. Ultimo erro: ${errorSummary}.`;
+  return `Status Cotacao: resumo diario ativo no Miauby; worker individual legado ${workerEnabled}. Historico legado: ultima varredura ${lastRun}, vencidos agora ${dueNow}, pendentes ${pending}, proximo ${nextAt}. Ultima tentativa antiga: ${attemptAt}. Ultimo erro: ${errorSummary}.`;
 }
 
 function renderN8nWorkflows(
@@ -15478,7 +15749,7 @@ function renderN8nWorkflows(
     const hasPanelToggle = 'settingsKey' in workflow && workflow.settingsKey;
     const liveFinanceiroHtml = workflow.key === FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY ? `
         <div class="n8n-message-preview is-live"><b>Status agora</b><span>${htmlEscape(financeiroCashClosingPanelText(financeiroCashStatus))}</span></div>` : '';
-    const liveCotacaoHtml = workflow.key === COTACAO_ENCOMENDA_AUTOMATION_KEY ? `
+    const liveCotacaoHtml = workflow.key === COTACAO_ENCOMENDAS_DAILY_AUTOMATION_KEY ? `
         <div class="n8n-message-preview is-live"><b>Status agora</b><span>${htmlEscape(cotacaoEncomendaPanelText(cotacaoEncomendaStatus))}</span></div>` : '';
     const toggleHtml = hasPanelToggle ? `
         <form class="n8n-control-box is-${enabled ? 'on' : 'off'}" method="post" action="${htmlEscape(BASE_PATH)}/automations/toggle">
@@ -17508,6 +17779,32 @@ app.post(`${BASE_PATH}/internal/cotacao-encomenda-reminder`, requireInternalToke
   }
 });
 
+app.post(`${BASE_PATH}/internal/cotacao-encomendas-daily-summary`, requireInternalToken, async (req, res) => {
+  try {
+    const mode = automationNotifyMode(req.body?.notify || req.query.notify || 'always');
+    const dryRun = requestBooleanFlag(req.body?.dry_run, req.body?.dryRun, req.query.dry_run);
+    const date = safeText(req.body?.date || req.body?.data || req.query.date || req.query.data, 20);
+    const result = await runCotacaoEncomendasDailySummary(mode, dryRun, {
+      date,
+      trigger: dryRun ? 'dry_run' : 'endpoint',
+    });
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    await recordErrorLog(COTACAO_ENCOMENDAS_DAILY_SOURCE, 'error', error);
+    await recordAutomationRun(COTACAO_ENCOMENDAS_DAILY_SOURCE, {
+      moduleKey: 'cotacao',
+      status: 'failed',
+      severity: 'error',
+      errorSummary: safeError(error),
+      details: { reason: 'endpoint_error' },
+    });
+    res.status(500).json({
+      ok: false,
+      error: safeText(error instanceof Error ? error.message : String(error), 180) || 'internal_error',
+    });
+  }
+});
+
 app.post(`${BASE_PATH}/internal/smoke-check`, requireInternalToken, async (req, res) => {
   const mode = automationNotifyMode(req.body?.notify || req.query.notify);
   const result = await runSmokeCheck(mode);
@@ -17666,9 +17963,15 @@ async function main(): Promise<void> {
   setInterval(() => {
     runVacationNoticeCheck(false).catch((error) => console.error(safeError(error)));
   }, VACATION_NOTICE_INTERVAL_MS).unref();
+  setInterval(() => {
+    runCotacaoEncomendasDailyDueCheck().catch((error) => console.error(safeError(error)));
+  }, COTACAO_ENCOMENDAS_DAILY_CHECK_INTERVAL_MS).unref();
   setTimeout(() => {
     runVacationNoticeCheck(false).catch((error) => console.error(safeError(error)));
   }, 15_000).unref();
+  setTimeout(() => {
+    runCotacaoEncomendasDailyDueCheck().catch((error) => console.error(safeError(error)));
+  }, 20_000).unref();
 }
 
 main().catch((error) => {

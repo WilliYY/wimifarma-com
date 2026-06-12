@@ -297,10 +297,10 @@ Estado atual:
 - A integracao depende de `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_RANGE` e credencial de service account no `.env`.
 - O export inclui `cotacao_row_id` para preservar o ID estavel da linha.
 - O import usa `cotacao_row_id` quando presente; sem IDs, trata o range como substituicao controlada da cotacao ativa.
-- Desde 2026-06-01, linhas que contem a palavra `encomenda` criam/atualizam um lembrete persistido para o Miauby Whats no dia seguinte as 16h. O envio chama `/miauw/whatsapp/internal/cotacao-encomenda-reminder` por token interno, registra status/tentativas e nao altera dados da cotacao.
-- Desde 2026-06-05, `GET /cotacao/api/internal/encomendas` lista encomendas ativas por token interno, lendo as linhas atuais da Cotacao e a data de deteccao do lembrete quando houver, sem criar cadastro paralelo, sem alterar celulas e sem disparar WhatsApp. O Miauby WhatsApp usa esse endpoint para consultas como `miauby encomendas`, `miauby lista encomendas`, `miauby pedidos encomenda`, `miauby encomendas antigas` e `miauby encomendas recentes`, sempre exigindo card `Cotacao` no contato e retornando no maximo 10 blocos curtos.
-- Destinatarios do lembrete de encomenda podem ser definidos por `COTACAO_ENCOMENDA_REMINDER_RECIPIENTS`; se vazio, o Miauby Whats usa contatos autorizados com card `Cotacao`.
-- Desde 2026-06-02, falha sem destinatario configurado vira erro final e nao fica tentando em loop; falha de transporte/configuracao usa `next_attempt_at` com atraso maior por `COTACAO_ENCOMENDA_REMINDER_TRANSPORT_RETRY_DELAY_MINUTES` antes de nova tentativa.
+- Desde 2026-06-01, linhas que contem a palavra `encomenda` criam/atualizam contexto persistido em `cotacao_v2_encomenda_reminders`, usado como historico/data de deteccao sem alterar dados da cotacao.
+- Desde 2026-06-05, `GET /cotacao/api/internal/encomendas` lista encomendas ativas por token interno, lendo as linhas atuais da Cotacao e a data de deteccao quando houver, sem criar cadastro paralelo, sem alterar celulas e sem disparar WhatsApp. O Miauby WhatsApp usa esse endpoint para consultas como `miauby encomendas`, `miauby lista encomendas`, `miauby pedidos encomenda`, `miauby encomendas antigas` e `miauby encomendas recentes`, sempre exigindo card `Cotacao` no contato e retornando no maximo 10 blocos curtos.
+- Desde 2026-06-12, o lembrete individual do dia seguinte as 16h fica legado desativado por padrao. A automacao ativa e o resumo diario das 17h, em `America/Sao_Paulo`, enviado pelo endpoint `/miauw/whatsapp/internal/cotacao-encomendas-daily-summary` somente para contatos autorizados com card `Cotacao`, respeitando ferias/allowlist/permissoes e dedupe diario persistido.
+- `POST /miauw/whatsapp/internal/cotacao-encomenda-reminder` permanece apenas para compatibilidade diagnostica e registra `skipped` sem enviar WhatsApp.
 
 ### Miauby skills generativas
 

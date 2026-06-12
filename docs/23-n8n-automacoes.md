@@ -153,39 +153,57 @@ Fluxo:
 3. Miauby WhatsApp envia resumo curto para destinatarios autorizados.
 4. Pagamento ou baixa continua exigindo sistema/core com confirmacao.
 
-### Encomenda da Cotacao as 16h
+### Encomendas da Cotacao as 17h
 
-Agenda: criada pelo app da Cotacao para o dia seguinte as 16:00, timezone `America/Sao_Paulo`.
+Agenda: todo dia as 17:00, timezone `America/Sao_Paulo`.
 
-Destino: se `COTACAO_ENCOMENDA_REMINDER_RECIPIENTS` estiver preenchido, esses numeros viram apenas um filtro de destinatarios; o bridge ainda valida cada numero contra a allowlist real e exige card `Cotacao` liberado. Se vazio, usa todos os contatos autorizados com card `Cotacao`.
-
-Endpoint interno chamado pela Cotacao:
+Workflow versionado:
 
 ```text
-POST /miauw/whatsapp/internal/cotacao-encomenda-reminder
+ops/n8n/workflows/cotacao-encomendas-resumo-17h.json
+```
+
+Destino: todos os contatos reais autorizados no Miauby Whats com card `Cotacao`, respeitando allowlist, ferias e permissoes do usuario vinculado. O workflow nao define telefone direto.
+
+Endpoint interno chamado pelo n8n ou pelo worker diario do bridge:
+
+```text
+POST /miauw/whatsapp/internal/cotacao-encomendas-daily-summary
+```
+
+Payload padrao:
+
+```json
+{ "notify": "always" }
 ```
 
 Fluxo:
 
-1. A Cotacao detecta `encomenda` em uma linha salva e grava `cotacao_v2_encomenda_reminders`; importacao Google Sheets e restore de backup tambem reconciliam os lembretes depois da substituicao em massa.
-2. O lembrete fica previsto para o dia seguinte as 16h, com produto, quantidade, texto original, status e destinatarios mascarados/modo.
-3. Antes do envio, a Cotacao confere a linha de novo; se `encomenda` sumiu ou a linha foi removida, cancela o lembrete.
-4. O Miauby Whats confere se a rotina `cotacao_encomenda_16h` esta ativa no painel.
-5. A mensagem e curta e interna, perguntando se a encomenda chegou, com criada em, hoje e contexto do produto/quantidade, sem link `Abrir Cotacao`.
-6. O envio nao altera valor, fornecedor, ganhador, status ou linha da Cotacao.
-7. O aviso deve sair uma unica vez por `cotacao_v2_encomenda_reminders.id`: a Cotacao espera ate `COTACAO_ENCOMENDA_REMINDER_WHATSAPP_TIMEOUT_MS` pelo bridge e o Miauby Whats bloqueia reenvio por `reminder_id` ja enviado, mesmo se uma tentativa anterior tiver estourado timeout na Cotacao.
+1. O Miauby Whats consulta `GET /cotacao/api/internal/encomendas` com token interno, pedindo as linhas ativas mais antigas primeiro.
+2. A Cotacao considera linha ativa com variacao segura de encomenda na categoria ou no texto relevante da linha (`encomenda`, `encomendar`, `encomendado`, `enc.`); ela nao altera a planilha, nao marca entrega e nao cancela nada sozinha.
+3. A mensagem sai em bloco unico com titulo `Encomendas da Cotacao - 17h`, produto, quantidade quando houver, EAN quando houver, observacao antes/depois da palavra de encomenda e data/hora de criacao/deteccao.
+4. Se a lista ficar grande, o texto e limitado e informa quantos itens ficaram fora do resumo.
+5. Se nao houver encomenda ativa, o backend registra execucao `skipped` e nao envia WhatsApp.
+6. A duplicidade e bloqueada por chave diaria persistida em `miauw_whatsapp_automation_runs`, no formato `cotacao-encomendas-summary:AAAA-MM-DD`, para sobreviver a restart perto das 17h.
+7. A tabela `cotacao_v2_encomenda_reminders` permanece preservada como historico/data de deteccao e compatibilidade de diagnostico; ela nao deve disparar avisos individuais por linha.
 
 Como conferir sem enviar mensagem:
 
-1. Abrir `/miauw/whatsapp/`, secao `n8n automacoes`, card `Encomenda da Cotacao`.
-2. Ver `Status agora`: worker da Cotacao, ultima varredura, vencidos agora, proximo pendente, ultima tentativa e ultimo erro.
-3. Se precisar conferir direto no backend, chamar `GET /cotacao/api/internal/encomenda-reminders/status` com token interno. Esse endpoint e somente leitura e nao dispara WhatsApp.
-4. Se `vencidos agora` estiver `0`, o worker nao vai chamar o bridge naquele momento. Se houver vencidos e `ultima tentativa` nao mudar, investigar container/logs da Cotacao.
+1. Abrir `/miauw/whatsapp/`, secao `n8n automacoes`, card `Encomendas da Cotacao`.
+2. Chamar `POST /miauw/whatsapp/internal/cotacao-encomendas-daily-summary` com `dry_run=true` e token interno para gerar preview e contar destinatarios sem criar outbox real.
+3. Se precisar conferir a origem, chamar `GET /cotacao/api/internal/encomendas` com token interno. Esse endpoint e somente leitura.
+4. `GET /cotacao/api/internal/encomenda-reminders/status` continua disponivel apenas para diagnostico do historico legado.
+
+Legado desativado:
+
+- A rotina individual `cotacao_encomenda_16h` do dia seguinte as 16h fica desligada por padrao.
+- `POST /miauw/whatsapp/internal/cotacao-encomenda-reminder` continua existindo para compatibilidade interna, mas registra `skipped` com motivo `legacy_individual_reminder_disabled` e nao envia WhatsApp.
+- `COTACAO_ENCOMENDA_LEGACY_REMINDER_ENABLED=false` no app da Cotacao impede que o worker antigo processe pendencias individuais.
 
 Auditoria de 2026-06-02:
 
 - n8n em producao estava ativo com workflows de smoke, watchdog, Evolution/Baileys, Pix/OCR, Pedidos e Financeiro; nao havia workflow n8n dedicado para Cotacao, o que esta correto para o fluxo atual.
-- O painel/backend do Miauby Whats tinha `cotacao_encomenda_16h` cadastrado e ligado em `miauw_whatsapp_automation_settings`.
+- O painel/backend do Miauby Whats tinha `cotacao_encomenda_16h` cadastrado e ligado em `miauw_whatsapp_automation_settings`. Desde 2026-06-12, essa rotina e legado desativado e foi substituida por `cotacao_encomendas_resumo_17h`.
 - A Cotacao tinha 2 lembretes pendentes em `cotacao_v2_encomenda_reminders`, ambos previstos para 2026-06-03 16h America/Sao_Paulo, ainda sem execucao no bridge porque nao tinham vencido.
 - `miauw_whatsapp_automation_runs` e `miauw_whatsapp_error_logs` nao tinham registros de Cotacao no momento da auditoria; isso e esperado ate a primeira execucao real ou dry-run dessa rotina.
 - O painel do Miauby Whats passou a ler o status real da fila da Cotacao para evitar confundir `Ligado no backend` com prova de que havia lembrete vencido.
@@ -398,7 +416,7 @@ Esta tabela serve como cola operacional: o n8n agenda, mas quem decide destinata
 | --- | --- | --- | --- | --- | --- |
 | Chegada de pedidos | Todo dia as 17h | Contatos reais autorizados com card `Pedidos` | Envia blocos dos pedidos ainda em `Aguardando chegada`, com titulo `*Pedido N*`, valor total, previsao e data/hora do pedido | Adicionar/remover numero autorizado, mudar horario, mudar texto, mudar regra de filtro, testar com `dry_run=true` | Nao confirma chegada sozinha; confirmacao vem por resposta validada pelo bridge |
 | Fechamento de caixa | Todo dia as 18h | Contatos reais autorizados com card `Financeiro` | Avisa dias de caixa em aberto/conferencia/sem registro nos ultimos 10 dias | Adicionar/remover numero autorizado, mudar horario, mudar janela de dias, mudar texto, pausar/ativar no painel | Nao fecha caixa, nao cria faturamento e nao grava sangria sem fluxo auditado |
-| Encomenda da Cotacao | Dia seguinte as 16h, criada pelo app da Cotacao | Contatos reais autorizados com card `Cotacao` | Pergunta se a encomenda marcada na Cotacao chegou, usando lembrete persistido no Postgres da Cotacao | Liberar/remover card `Cotacao`, pausar/ativar rotina no painel, mudar texto ou janela de retry | Nao altera cotacao e nao usa n8n para salvar dados |
+| Encomendas da Cotacao | Todo dia as 17h | Contatos reais autorizados com card `Cotacao` | Envia um unico resumo das encomendas ativas da Cotacao, mais antigas primeiro, com produto, quantidade, EAN, observacao e data/hora de deteccao | Liberar/remover card `Cotacao`, pausar/ativar rotina no painel, mudar texto, limite ou horario, testar com `dry_run=true` | Nao altera cotacao, nao marca chegada e nao envia avisos separados por linha |
 | Smoke check pos-deploy | Manual ou apos deploy | Contatos reais autorizados com card `Miauby` | Testa rotas/health principais e avisa problema | Enviar tambem sucesso, adicionar rota de health, mudar cooldown, adicionar numero com card `Miauby` | Nao faz rollback automatico |
 | Watchdog WhatsApp | A cada poucos minutos | Sem envio por WhatsApp; fica no painel/log | Vigia fila, outbox, provider pausado e respostas travadas | Ajustar frequencia, janela, severidade e criterios de log | Nao dispara mensagem atrasada fora de contexto; pendencias antigas viram `dead` |
 | Evolution/Baileys | A cada 30 min | Sem envio por WhatsApp; fica no painel/log | Registra conexao ruim, provedor pausado ou falha recente de envio Evolution | Ajustar janela, horario/frequencia e criterios de log | Nao executa Docker/shell pelo n8n e nao reinicia Evolution automaticamente |

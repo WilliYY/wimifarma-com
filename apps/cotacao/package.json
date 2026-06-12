@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check public/app.js",
+    "test:encomendas": "node scripts/test-encomendas-extraction.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:ts": "tsc -p tsconfig.build.json"
   },

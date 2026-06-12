@@ -12,7 +12,10 @@ export type CotacaoEncomendaItem = {
   ean: string;
   produto: string;
   quantidade: string;
+  antesEncomenda?: string;
   depoisEncomenda: string;
+  observacaoEncomenda?: string;
+  textoCompleto?: string;
   textoEncomenda?: string;
   createdAtBr: string;
   createdAt: string;
@@ -62,7 +65,7 @@ export function formatCotacaoEncomendasMessage(summary: CotacaoEncomendasSummary
     const quantity = cleanLineText(item.quantidade, 60);
     const title = [`${index + 1}. ${ean}`, product, quantity].filter(Boolean).join(' — ');
     const lines = [title];
-    const obs = cleanLineText(item.depoisEncomenda, 160);
+    const obs = cleanLineText(item.observacaoEncomenda || item.depoisEncomenda, 180);
     if (obs) lines.push(`Obs: ${obs}`);
     const created = formatCreatedAt(item.createdAtBr || item.createdAt);
     if (created) lines.push(`Criada em: ${created}`);
@@ -72,6 +75,34 @@ export function formatCotacaoEncomendasMessage(summary: CotacaoEncomendasSummary
   const total = Number.isFinite(summary.total) ? summary.total : items.length;
   const extra = total > items.length ? `\n\nMostrei ${items.length} de ${total}.` : '';
   return `Encomendas da Cotação 😼\n\n${blocks.join('\n\n')}${extra}`;
+}
+
+export function formatCotacaoEncomendasDailyMessage(
+  summary: CotacaoEncomendasSummary,
+  maxLength = 1150,
+): string {
+  const sourceItems = Array.isArray(summary.items) ? summary.items : [];
+  if (!sourceItems.length) {
+    return 'Encomendas da Cotação — 17h 😼\n\nNenhuma encomenda ativa agora.';
+  }
+
+  const lines = ['Encomendas da Cotação — 17h 😼', ''];
+  let shown = 0;
+  for (const item of sourceItems) {
+    const block = cotacaoDailyItemBlock(item, shown + 1);
+    const total = Math.max(Number(summary.total || sourceItems.length), sourceItems.length);
+    const hiddenAfterThis = Math.max(0, total - (shown + 1));
+    const suffix = hiddenAfterThis > 0 ? `\n\nMais ${hiddenAfterThis} encomenda(s) ativa(s) em /cotacao/.` : '';
+    const candidate = [...lines, block].join('\n');
+    if (shown > 0 && `${candidate}${suffix}`.length > maxLength) break;
+    lines.push(block, '');
+    shown += 1;
+  }
+
+  const total = Math.max(Number(summary.total || sourceItems.length), sourceItems.length);
+  const hidden = Math.max(0, total - shown);
+  if (hidden > 0) lines.push(`Mais ${hidden} encomenda(s) ativa(s) em /cotacao/.`);
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function stripActivationWord(message: string): string {
@@ -95,6 +126,32 @@ function cleanLineText(value: string | undefined, maxLength: number): string {
   if (!clean) return '';
   if (clean.length <= maxLength) return clean;
   return `${clean.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
+}
+
+function cotacaoDailyItemBlock(item: CotacaoEncomendaItem, index: number): string {
+  const ean = cleanLineText(item.ean, 80);
+  const product = cleanLineText(item.produto, 120) || 'Sem produto';
+  const quantity = cleanLineText(item.quantidade, 60);
+  const title = `${index}. ${ean ? `EAN ${ean} — ` : ''}${product}${quantity ? ` — qtd ${quantity}` : ''}`;
+  const lines = [title];
+  const obs = cleanLineText(item.observacaoEncomenda, 220) || [
+    cleanLineText(item.antesEncomenda, 120),
+    cleanLineText(item.depoisEncomenda, 160),
+  ].filter(Boolean).join(' — ');
+  if (obs) lines.push(`Obs: ${obs}`);
+  const created = formatCreatedAtShort(item.createdAtBr || item.createdAt);
+  if (created) lines.push(`Criada em: ${created}`);
+  return lines.join('\n');
+}
+
+function formatCreatedAtShort(value: string | undefined): string {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const br = clean.match(/^(\d{2})\/(\d{2})(?:\/\d{4})?,?\s+(\d{2}:\d{2})/);
+  if (br) return `${br[1]}/${br[2]} ${br[3]}`;
+  const iso = clean.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]} ${iso[4]}:${iso[5]}`;
+  return clean.replace(',', '');
 }
 
 function formatCreatedAt(value: string | undefined): string {

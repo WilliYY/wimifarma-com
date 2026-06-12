@@ -78,9 +78,9 @@ Tambem foi removida a logica antiga de classes fixas para `urgente` e `encomenda
 
 Na revisao seguinte, foi removido outro acoplamento antigo: escrever `encomenda` na categoria nao muda mais `prioridade`, nao registra `encomenda_registrada_em` automaticamente e `urgente`/`encomenda` nao entram mais no filtro de cor por palavra-chave. O campo categoria pode continuar sendo usado pela regra condicional configurada pelo usuario. Naquele momento, alerta operacional do Miauby dependia de prioridade explicita `encomenda`; esse ponto historico foi superado pela excecao controlada de 2026-06-01.
 
-Antes da excecao de 2026-06-01, Miauby acompanhava encomenda apenas por prioridade explicita e idade do item. Esse comportamento nao deve voltar como gatilho visual escondido; a regra atual e somente lembrete persistido, auditado e cancelavel.
+Antes da excecao de 2026-06-01, Miauby acompanhava encomenda apenas por prioridade explicita e idade do item. Esse comportamento nao deve voltar como gatilho visual escondido; a regra atual e somente contexto persistido/auditado para leitura operacional.
 
-Em 2026-06-01, a regra foi ampliada de forma controlada: escrever `encomenda` em uma linha da Cotacao continua sem mudar cor, prioridade, ordem, filtro ou valor, mas agora cria/atualiza um lembrete persistido em `cotacao_v2_encomenda_reminders`. O lembrete pergunta pelo Miauby Whats no dia seguinte as 16h se a encomenda chegou, registra status/tentativas em banco e cancela se a palavra for removida antes do envio.
+Em 2026-06-01, a regra foi ampliada de forma controlada: escrever `encomenda` em uma linha da Cotacao continua sem mudar cor, prioridade, ordem, filtro ou valor, mas cria/atualiza contexto em `cotacao_v2_encomenda_reminders` para historico/data de deteccao. Desde 2026-06-12, esse contexto nao dispara mais lembrete individual no dia seguinte as 16h; o Miauby Whats envia apenas um resumo diario as 17h com as encomendas ativas, sem alterar a planilha.
 
 Na mesma auditoria local, o banco tinha 243 itens e 53 categorias, e a rota autenticada `/cotacao/` apareceu nos logs com cerca de 1,46 MB de HTML. Isso ainda funciona, mas indica que o proximo gargalo provavel sera peso inicial da tela/snapshot quando a planilha crescer.
 
@@ -148,7 +148,7 @@ Tabelas:
 - Precos por fornecedor devem continuar ligados a `item_id` e `fornecedor_id`.
 - Filtro ativo nao pode esconder conflito de dados; se outro usuario estiver em linha fora do filtro, a interface deve indicar isso.
 - Filtro de uma tela nao pode ser aplicado automaticamente em outra enquanto o modo local-first estiver ativo.
-- Encomenda da Cotacao nao deve mudar cor, prioridade, ordem, filtro, valor ou ganhador por texto livre. A unica excecao automatica permitida e o lembrete persistido em `cotacao_v2_encomenda_reminders`, com envio previsto para o dia seguinte as 16h via Miauby Whats, validando allowlist/card `Cotacao`.
+- Encomenda da Cotacao nao deve mudar cor, prioridade, ordem, filtro, valor ou ganhador por texto livre. A unica excecao automatica permitida e o contexto persistido em `cotacao_v2_encomenda_reminders`, usado como historico/data de deteccao e pelo resumo diario das 17h via Miauby Whats, validando allowlist/card `Cotacao`.
 - Presenca e dado temporario; nao deve ser usada como historico permanente.
 - A tela deve continuar funcional quando houver apenas um usuario, quando outro usuario fechar o navegador ou quando o ping falhar temporariamente.
 

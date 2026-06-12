@@ -10,6 +10,11 @@ import session from 'express-session';
 import pg from 'pg';
 import { createClient } from 'redis';
 import { Server } from 'socket.io';
+import {
+  encomendaContextFromValues,
+  encomendaTextParts,
+  hasEncomendaWord
+} from './encomendas.js';
 
 const { Pool } = pg;
 
@@ -37,7 +42,7 @@ const WHATSAPP_INTERNAL_TOKEN = String(
   || INTERNAL_TOKEN
   || ''
 ).trim();
-const ENCOMENDA_REMINDER_ENABLED = String(env.COTACAO_ENCOMENDA_REMINDER_ENABLED || 'true').toLowerCase() !== 'false';
+const ENCOMENDA_REMINDER_ENABLED = String(env.COTACAO_ENCOMENDA_LEGACY_REMINDER_ENABLED || 'false').toLowerCase() === 'true';
 const ENCOMENDA_REMINDER_RECIPIENTS = String(env.COTACAO_ENCOMENDA_REMINDER_RECIPIENTS || '').trim();
 const ENCOMENDA_REMINDER_WORKER_INTERVAL_MS = Math.max(
   15000,
@@ -523,92 +528,8 @@ function configuredEncomendaRecipientsForStorage() {
   }];
 }
 
-function hasEncomendaWord(value) {
-  return /\bencomendas?\b/.test(normalizeInternalSearch(value));
-}
-
 function hasUrgenteWord(value) {
   return /\burgentes?\b/.test(normalizeInternalSearch(value));
-}
-
-function rowReminderFragments(values = {}) {
-  const fields = [
-    ['EAN', values.ean],
-    ['Produto', values.produto],
-    ['Quantidade', values.quantidade],
-    ['Categoria', values.categoria]
-  ];
-  return fields
-    .map(([label, value]) => {
-      const clean = normalizeInternalText(value, 240);
-      return clean ? `${label}: ${clean}` : '';
-    })
-    .filter(Boolean);
-}
-
-function extractQuantityFromText(value) {
-  const match = String(value || '').match(/\b(\d+(?:[,.]\d+)?)\s*(caixas?|cx|un|und|unidades?|frascos?|cartelas?|cps|comp|comprimidos?)?\b/i);
-  if (!match) return '';
-  return normalizeInternalText(`${match[1]}${match[2] ? ` ${match[2]}` : ''}`, 80);
-}
-
-function encomendaContextFromValues(values = {}) {
-  const fragments = rowReminderFragments(values);
-  const originalText = normalizeInternalText(fragments.join(' | '), 700);
-  const combined = normalizeInternalText([
-    values.produto,
-    values.quantidade,
-    values.categoria,
-    originalText
-  ].filter(Boolean).join(' '), 900);
-  const produto = normalizeInternalText(values.produto, 220)
-    || normalizeInternalText(String(combined).replace(/\bencomendas?\b/ig, ' ').replace(/\s+/g, ' '), 220);
-  const quantidade = normalizeInternalText(values.quantidade, 120) || extractQuantityFromText(combined);
-  const categoria = normalizeInternalText(values.categoria, 220);
-  return {
-    hasEncomenda: hasEncomendaWord(combined),
-    produto,
-    quantidade,
-    categoria,
-    originalText: originalText || normalizeInternalText(combined, 700),
-    rowValues: {
-      ean: normalizeInternalText(values.ean, 120),
-      produto: normalizeInternalText(values.produto, 220),
-      quantidade: normalizeInternalText(values.quantidade, 120),
-      categoria
-    }
-  };
-}
-
-function encomendaTextParts(values = {}) {
-  const fields = [
-    ['produto', values.produto],
-    ['quantidade', values.quantidade],
-    ['categoria', values.categoria]
-  ];
-  const fallbackText = normalizeInternalText(rowReminderFragments(values).join(' | '), 700);
-  const source = fields
-    .map(([field, value]) => ({ field, text: normalizeInternalText(value, 700) }))
-    .find((item) => hasEncomendaWord(item.text))
-    || { field: 'linha', text: fallbackText };
-  const text = normalizeInternalText(source.text, 700);
-  const match = text.match(/\bencomendas?\b/i);
-  if (!match || match.index === undefined) {
-    return {
-      sourceField: source.field,
-      text,
-      before: '',
-      term: '',
-      after: ''
-    };
-  }
-  return {
-    sourceField: source.field,
-    text,
-    before: normalizeInternalText(text.slice(0, match.index), 260),
-    term: match[0],
-    after: normalizeInternalText(text.slice(match.index + match[0].length), 260)
-  };
 }
 
 function encomendaCreatedAtForItem(row) {
@@ -3226,6 +3147,7 @@ app.get(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute
       antesEncomenda: parts.before,
       termoEncomenda: parts.term,
       depoisEncomenda: parts.after,
+      observacaoEncomenda: context.observacaoEncomenda || parts.observation || '',
       campoEncomenda: parts.sourceField,
       createdAt: createdAtIso,
       createdAtBr: createdAt.value ? formatBrDateTime(createdAt.value) : '',
