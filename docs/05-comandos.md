@@ -372,6 +372,7 @@ ops\n8n\workflows\miauby-smoke-check-pos-deploy.json
 ops\n8n\workflows\miauby-watchdog-5min.json
 ops\n8n\workflows\evolution-baileys-alerta-30min.json
 ops\n8n\workflows\pix-ocr-resumo-diario-1910.json
+ops\n8n\workflows\cotacao-encomendas-resumo-17h.json
 ```
 
 Instalacao em stack separada no VPS:
@@ -400,12 +401,14 @@ docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miau
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miauby-watchdog-5min.json
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/evolution-baileys-alerta-30min.json
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pix-ocr-resumo-diario-1910.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/cotacao-encomendas-resumo-17h.json
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=pedidos-chegada-17h --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=financeiro-fechamento-caixa-18h --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-smoke-check-pos-deploy --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-watchdog-5min --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=evolution-baileys-alerta-30min --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=pix-ocr-resumo-diario-1910 --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=cotacao-encomendas-resumo-17h --active=true
 docker compose restart wimifarma-n8n
 ```
 

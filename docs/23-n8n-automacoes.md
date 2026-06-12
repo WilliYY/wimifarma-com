@@ -24,6 +24,7 @@ Template versionado:
 - `ops/n8n/workflows/miauby-watchdog-5min.json`
 - `ops/n8n/workflows/evolution-baileys-alerta-30min.json`
 - `ops/n8n/workflows/pix-ocr-resumo-diario-1910.json`
+- `ops/n8n/workflows/cotacao-encomendas-resumo-17h.json`
 
 O n8n deve rodar separado do Compose principal, com Postgres proprio, porta publicada apenas em `127.0.0.1:5678` e acesso publico somente por proxy/autenticacao quando estiver pronto.
 
@@ -44,12 +45,14 @@ docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miau
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/miauby-watchdog-5min.json
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/evolution-baileys-alerta-30min.json
 docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/pix-ocr-resumo-diario-1910.json
+docker compose exec -T wimifarma-n8n n8n import:workflow --input=/workflows/cotacao-encomendas-resumo-17h.json
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=pedidos-chegada-17h --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=financeiro-fechamento-caixa-18h --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-smoke-check-pos-deploy --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=miauby-watchdog-5min --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=evolution-baileys-alerta-30min --active=true
 docker compose exec -T wimifarma-n8n n8n update:workflow --id=pix-ocr-resumo-diario-1910 --active=true
+docker compose exec -T wimifarma-n8n n8n update:workflow --id=cotacao-encomendas-resumo-17h --active=true
 docker compose restart wimifarma-n8n
 ```
 
@@ -202,7 +205,7 @@ Legado desativado:
 
 Auditoria de 2026-06-02:
 
-- n8n em producao estava ativo com workflows de smoke, watchdog, Evolution/Baileys, Pix/OCR, Pedidos e Financeiro; nao havia workflow n8n dedicado para Cotacao, o que esta correto para o fluxo atual.
+- n8n em producao estava ativo com workflows de smoke, watchdog, Evolution/Baileys, Pix/OCR, Pedidos e Financeiro; em 2026-06-02 nao havia workflow n8n dedicado para Cotacao, o que era correto para aquele fluxo. Desde 2026-06-12, existe o workflow versionado `cotacao-encomendas-resumo-17h`, mas o bridge tambem tem worker/dedupe diario para cobrir reinicio perto do horario.
 - O painel/backend do Miauby Whats tinha `cotacao_encomenda_16h` cadastrado e ligado em `miauw_whatsapp_automation_settings`. Desde 2026-06-12, essa rotina e legado desativado e foi substituida por `cotacao_encomendas_resumo_17h`.
 - A Cotacao tinha 2 lembretes pendentes em `cotacao_v2_encomenda_reminders`, ambos previstos para 2026-06-03 16h America/Sao_Paulo, ainda sem execucao no bridge porque nao tinham vencido.
 - `miauw_whatsapp_automation_runs` e `miauw_whatsapp_error_logs` nao tinham registros de Cotacao no momento da auditoria; isso e esperado ate a primeira execucao real ou dry-run dessa rotina.
