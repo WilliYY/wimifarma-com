@@ -1684,15 +1684,15 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-form {
     position: relative;
-    gap: 14px;
+    gap: 16px;
 }
 
 .redeem-block {
     position: relative;
     display: grid;
-    gap: 15px;
+    gap: 16px;
     overflow: hidden;
-    padding: 18px 18px 18px 20px;
+    padding: 18px 20px 20px;
     border: 1px solid rgba(239, 209, 217, 0.95);
     border-radius: 22px;
     background: rgba(255, 255, 255, 0.92);
@@ -1725,9 +1725,11 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-operation-block {
+    container-type: inline-size;
     animation-delay: 0.06s;
     background:
-        linear-gradient(135deg, rgba(251, 253, 255, 0.97), rgba(255, 247, 248, 0.82));
+        radial-gradient(circle at 0 0, rgba(59, 130, 196, 0.1), transparent 34%),
+        linear-gradient(135deg, rgba(251, 253, 255, 0.98), rgba(255, 248, 250, 0.9));
     border-color: #d7e5f3;
 }
 
@@ -1740,6 +1742,12 @@ body.sections-ready .workspace-section.is-active {
     align-items: center;
     gap: 10px;
     min-width: 0;
+}
+
+.redeem-operation-block .redeem-block-title {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
 }
 
 .redeem-block-title h3 {
@@ -1758,9 +1766,9 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-fields {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1.05fr 0.92fr 1fr 0.96fr;
     gap: 12px;
-    align-items: end;
+    align-items: stretch;
 }
 
 .redeem-xp-note {
@@ -1784,7 +1792,19 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-xp-note strong {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
     white-space: nowrap;
+}
+
+.redeem-xp-note span {
+    flex: 1;
+    min-width: 180px;
+    text-align: right;
 }
 
 .manual-cashback-field {
@@ -1807,7 +1827,8 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-panel label {
     min-width: 0;
-    padding: 10px;
+    align-content: start;
+    padding: 11px;
     border: 1px solid rgba(239, 211, 218, 0.78);
     border-radius: 17px;
     background: rgba(255, 247, 248, 0.6);
@@ -1827,11 +1848,12 @@ body.sections-ready .workspace-section.is-active {
     color: #7d4f5b;
     font-size: 0.78rem;
     font-weight: 900;
+    line-height: 1.25;
 }
 
 .redeem-panel input,
 .redeem-panel select {
-    min-height: 50px;
+    min-height: 48px;
     border-radius: 13px;
     border-color: rgba(239, 211, 218, 0.9);
     background: rgba(255, 255, 255, 0.94);
@@ -1854,11 +1876,15 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-summary {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
 }
 
 .redeem-summary div {
     position: relative;
-    min-height: 90px;
+    display: grid;
+    align-content: center;
+    min-height: 84px;
+    padding: 14px 15px;
     overflow: hidden;
     border-color: #e8c5ce;
     background:
@@ -1914,22 +1940,25 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-summary span {
     color: #74515a;
+    min-height: 2.2em;
+    line-height: 1.1;
 }
 
 .redeem-summary strong {
-    font-size: 1.42rem;
+    font-size: clamp(1.2rem, 1.8vw, 1.42rem);
+    line-height: 1.05;
 }
 
 .redeem-action {
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     padding-top: 0;
     animation: quickClientRise 0.36s cubic-bezier(0.2, 0.85, 0.2, 1) 0.1s both;
 }
 
 .redeem-action .btn {
-    min-width: min(380px, 100%);
-    min-height: 48px;
+    min-width: min(430px, 100%);
+    min-height: 50px;
     box-shadow: 0 18px 34px rgba(181, 37, 67, 0.2);
     transition:
         transform 0.22s ease,
@@ -1955,11 +1984,47 @@ body.sections-ready .workspace-section.is-active {
 .redeem-panel .live-preview {
     border-color: rgba(239, 211, 218, 0.95);
     background: rgba(255, 247, 248, 0.74);
+    text-align: center;
 }
 
 .redeem-panel .live-preview.ok {
     border-color: #cdebd4;
     background: #f2fbf4;
+}
+
+@container (max-width: 780px) {
+    .redeem-operation-block .redeem-fields,
+    .redeem-operation-block .redeem-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .redeem-operation-block .redeem-block-title {
+        align-items: start;
+    }
+
+    .redeem-xp-note {
+        align-items: flex-start;
+    }
+
+    .redeem-xp-note span {
+        text-align: left;
+    }
+}
+
+@container (max-width: 520px) {
+    .redeem-operation-block .redeem-block-title,
+    .redeem-operation-block .redeem-fields,
+    .redeem-operation-block .redeem-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .redeem-operation-block .redeem-block-title .step-badge {
+        justify-self: start;
+    }
+
+    .redeem-operation-block .optional-chip {
+        justify-self: start;
+    }
 }
 
 .quick-client-panel {
