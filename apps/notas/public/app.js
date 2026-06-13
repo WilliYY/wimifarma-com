@@ -6,6 +6,8 @@
   let draggedCard = null;
   let dragStartOrder = '';
   let lastDropTarget = null;
+  let activePointer = null;
+  let dragFrame = 0;
   let saveTimer = 0;
 
   function setStatus(message, kind) {
@@ -80,18 +82,99 @@
     window.setTimeout(() => card.classList.remove('is-just-placed'), 520);
   }
 
-  function setDragImage(event, card) {
-    if (!event.dataTransfer) return;
-    const preview = card.cloneNode(true);
-    preview.classList.add('notes-drag-preview');
-    preview.style.width = `${card.offsetWidth}px`;
-    preview.style.position = 'fixed';
-    preview.style.left = '-9999px';
-    preview.style.top = '-9999px';
-    preview.style.pointerEvents = 'none';
-    document.body.appendChild(preview);
-    event.dataTransfer.setDragImage(preview, Math.min(card.offsetWidth / 2, 140), 34);
-    window.setTimeout(() => preview.remove(), 0);
+  function beginPointerDrag() {
+    if (!activePointer || activePointer.started) return;
+    activePointer.started = true;
+    draggedCard = activePointer.card;
+    dragStartOrder = currentIds().join(',');
+    draggedCard.classList.add('is-dragging', 'is-pointer-dragging');
+    grid.classList.add('is-reordering');
+    document.body.classList.add('is-notes-grabbing');
+    activePointer.handle.setAttribute('aria-grabbed', 'true');
+    setStatus('Segurando nota. Arraste ate a posicao e solte.', 'pending');
+  }
+
+  function scheduleDragMove(clientX, clientY) {
+    if (!activePointer?.started) return;
+    activePointer.clientX = clientX;
+    activePointer.clientY = clientY;
+    if (dragFrame) return;
+    dragFrame = window.requestAnimationFrame(() => {
+      dragFrame = 0;
+      if (!activePointer?.started || !draggedCard) return;
+      const next = insertionPoint(grid, activePointer.clientX, activePointer.clientY);
+      markDropTarget(next);
+      if (next) {
+        grid.insertBefore(draggedCard, next);
+      } else {
+        grid.appendChild(draggedCard);
+      }
+    });
+  }
+
+  function finishPointerDrag() {
+    const pointer = activePointer;
+    const droppedCard = draggedCard;
+    if (dragFrame) {
+      window.cancelAnimationFrame(dragFrame);
+      dragFrame = 0;
+    }
+    activePointer = null;
+    if (!pointer) return;
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+    document.removeEventListener('pointercancel', onPointerCancel);
+    try {
+      pointer.handle.releasePointerCapture(pointer.pointerId);
+    } catch (error) {
+      // Some browsers release capture automatically after pointerup.
+    }
+    pointer.handle.setAttribute('aria-grabbed', 'false');
+    if (!pointer.started || !droppedCard) {
+      grid.classList.remove('is-reordering');
+      document.body.classList.remove('is-notes-grabbing');
+      clearDropTarget();
+      draggedCard = null;
+      dragStartOrder = '';
+      setStatus('', '');
+      return;
+    }
+    droppedCard.classList.remove('is-dragging', 'is-pointer-dragging');
+    grid.classList.remove('is-reordering');
+    document.body.classList.remove('is-notes-grabbing');
+    clearDropTarget();
+    draggedCard = null;
+    markPlaced(droppedCard);
+    if (currentIds().join(',') !== dragStartOrder) {
+      setStatus('Soltei. Salvando nova ordem...', 'pending');
+      saveOrderSoon();
+    } else {
+      setStatus('', '');
+    }
+    dragStartOrder = '';
+  }
+
+  function onPointerMove(event) {
+    if (!activePointer || event.pointerId !== activePointer.pointerId) return;
+    const movement = Math.hypot(
+      event.clientX - activePointer.startX,
+      event.clientY - activePointer.startY,
+    );
+    if (!activePointer.started && movement < 6) return;
+    event.preventDefault();
+    beginPointerDrag();
+    scheduleDragMove(event.clientX, event.clientY);
+  }
+
+  function onPointerUp(event) {
+    if (!activePointer || event.pointerId !== activePointer.pointerId) return;
+    event.preventDefault();
+    finishPointerDrag();
+  }
+
+  function onPointerCancel(event) {
+    if (!activePointer || event.pointerId !== activePointer.pointerId) return;
+    finishPointerDrag();
   }
 
   async function saveOrder() {
@@ -137,66 +220,42 @@
   function initDrag() {
     if (!grid) return;
     document.querySelectorAll('[data-note-drag-handle]').forEach((handle) => {
-      handle.addEventListener('dragstart', (event) => {
-        draggedCard = cardFromHandle(handle);
-        if (!draggedCard) return;
-        dragStartOrder = currentIds().join(',');
-        draggedCard.classList.add('is-dragging');
-        grid.classList.add('is-reordering');
-        document.body.classList.add('is-notes-grabbing');
-        handle.setAttribute('aria-grabbed', 'true');
-        setStatus('Segurando nota. Solte na nova posicao.', 'pending');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', draggedCard.getAttribute('data-note-id') || '');
-        setDragImage(event, draggedCard);
-      });
-
-      handle.addEventListener('dragend', () => {
-        const droppedCard = draggedCard;
-        if (!droppedCard) return;
-        droppedCard.classList.remove('is-dragging');
-        handle.setAttribute('aria-grabbed', 'false');
-        grid.classList.remove('is-reordering');
-        document.body.classList.remove('is-notes-grabbing');
-        clearDropTarget();
-        draggedCard = null;
-        markPlaced(droppedCard);
-        if (currentIds().join(',') !== dragStartOrder) {
-          setStatus('Soltei. Salvando nova ordem...', 'pending');
-          saveOrderSoon();
-        } else {
-          setStatus('', '');
+      handle.setAttribute('aria-grabbed', 'false');
+      handle.addEventListener('dragstart', (event) => event.preventDefault());
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const card = cardFromHandle(handle);
+        if (!card || activePointer) return;
+        activePointer = {
+          card,
+          handle,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          started: false,
+        };
+        try {
+          handle.setPointerCapture(event.pointerId);
+        } catch (error) {
+          // Pointer capture is an enhancement; document listeners still keep the drag working.
         }
-        dragStartOrder = '';
+        document.addEventListener('pointermove', onPointerMove, { passive: false });
+        document.addEventListener('pointerup', onPointerUp);
+        document.addEventListener('pointercancel', onPointerCancel);
       });
-    });
-
-    grid.addEventListener('dragover', (event) => {
-      if (!draggedCard) return;
-      event.preventDefault();
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = 'move';
-      }
-      const next = insertionPoint(grid, event.clientX, event.clientY);
-      markDropTarget(next);
-      if (next) {
-        grid.insertBefore(draggedCard, next);
-      } else {
-        grid.appendChild(draggedCard);
-      }
-    });
-
-    grid.addEventListener('drop', (event) => {
-      if (!draggedCard) return;
-      event.preventDefault();
-      clearDropTarget();
     });
   }
 
   function initSubmitState() {
     document.querySelectorAll('form[data-note-form], .notes-paper-new form').forEach((form) => {
       form.addEventListener('submit', () => {
-        form.querySelectorAll('button[type="submit"]').forEach((button) => {
+        const buttons = Array.from(form.querySelectorAll('button[type="submit"]'));
+        if (form.id) {
+          buttons.push(...document.querySelectorAll(`button[type="submit"][form="${form.id}"]`));
+        }
+        buttons.forEach((button) => {
           button.disabled = true;
         });
       });

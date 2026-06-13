@@ -580,25 +580,30 @@ function noteRows(body: string): number {
 }
 
 function renderNote(req: Request, note: NoteRow): string {
+  const noteId = e(note.id);
+  const updateFormId = `note-update-${noteId}`;
+  const deleteFormId = `note-delete-${noteId}`;
   return `<article class="notes-paper" data-note-card data-note-id="${e(note.id)}">
     <span class="notes-paper-clip" aria-hidden="true"></span>
-    <button type="button" class="notes-drag-handle" draggable="true" data-note-drag-handle aria-label="Segurar e mover nota" title="Segurar e mover nota"></button>
-    <form method="post" action="${BASE_PATH}/" class="notes-form" data-note-form>
+    <button type="button" class="notes-drag-handle" data-note-drag-handle aria-label="Segurar e mover nota" title="Segurar e mover nota"></button>
+    <form id="${updateFormId}" method="post" action="${BASE_PATH}/" class="notes-form" data-note-form>
       ${csrfField(req)}
       <input type="hidden" name="action" value="update_note">
       <input type="hidden" name="note_id" value="${e(note.id)}">
       <textarea name="nota_texto" rows="${e(noteRows(note.body))}" maxlength="2000" data-autosize>${e(note.body)}</textarea>
-      <footer class="notes-card-foot">
-        <small><span>Editado</span>${e(brDate(note.updated_at))}</small>
-        <button type="submit" class="notes-btn notes-btn-soft">Salvar</button>
-      </footer>
     </form>
-    <form method="post" action="${BASE_PATH}/" class="notes-delete-form" data-confirm-submit="Apagar esta anotacao?">
+    <form id="${deleteFormId}" method="post" action="${BASE_PATH}/" class="notes-delete-form" data-confirm-submit="Apagar esta anotacao?">
       ${csrfField(req)}
       <input type="hidden" name="action" value="delete_note">
       <input type="hidden" name="note_id" value="${e(note.id)}">
-      <button type="submit" class="notes-link-danger" aria-label="Apagar anotacao">Apagar</button>
     </form>
+    <footer class="notes-card-actions">
+      <small><span>Editado</span>${e(brDate(note.updated_at))}</small>
+      <div class="notes-card-buttons">
+        <button type="submit" form="${updateFormId}" class="notes-btn notes-btn-soft">Salvar</button>
+        <button type="submit" form="${deleteFormId}" class="notes-link-danger" aria-label="Apagar anotacao">Apagar</button>
+      </div>
+    </footer>
   </article>`;
 }
 
@@ -618,9 +623,9 @@ function renderIndex(req: Request, notes: NoteRow[], counts: { active: number; d
   <meta name="csrf-token" content="${e(csrfToken)}">
   <title>Bloco de notas/lembretes - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-drag">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-pointer">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260613-notas-drag" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260613-notas-pointer" defer></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </head>
 <body class="notes-app-body" data-notas-base-path="${e(BASE_PATH)}">
@@ -673,7 +678,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Entrar - Bloco de notas</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-drag">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-pointer">
 </head>
 <body class="notes-login-body">
   <main class="notes-login-card">

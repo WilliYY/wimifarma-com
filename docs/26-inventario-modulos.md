@@ -389,7 +389,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 
 ### Telas e endpoints
 
-- `/notas/` e `/notas/index.php`: tela de notas em grade, com criacao, edicao, exclusao logica e reordenacao por arrastar.
+- `/notas/` e `/notas/index.php`: tela de notas em grade, com criacao, edicao, exclusao logica e reordenacao por arrastar. Desde 2026-06-13, o arrasto usa eventos de ponteiro com distancia minima antes de ativar, e os botoes `Salvar` e `Apagar` ficam alinhados no mesmo rodape do card para reduzir altura.
 - `/notas/login.php`: compatibilidade de login/SSO; sem sessao valida redireciona para `/`.
 - `/notas/health`: health de Postgres, auth core e importacao legado.
 - `POST /notas/api/order`: persiste a ordem manual das notas.

@@ -243,6 +243,7 @@ input {
     0 34px 68px rgba(46, 22, 34, 0.26),
     0 0 0 3px rgba(15, 118, 110, 0.12);
   animation: notes-pick-up 260ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  will-change: transform;
 }
 
 .notes-paper.is-drop-target {
@@ -288,6 +289,9 @@ input {
   border: 1px solid rgba(40, 21, 34, 0.08);
   border-radius: 999px;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 247, 251, 0.72));
   box-shadow:
@@ -341,7 +345,7 @@ input {
 
 .notes-drag-handle:hover::after,
 .notes-drag-handle:focus-visible::after,
-.notes-paper.is-dragging .notes-drag-handle::after {
+.notes-paper.is-pointer-dragging .notes-drag-handle::after {
   opacity: 1;
   transform: translateY(0);
 }
@@ -351,14 +355,14 @@ input {
   transform: translateY(1px) scale(0.94);
 }
 
-.notes-paper.is-dragging .notes-drag-handle {
+.notes-paper.is-pointer-dragging .notes-drag-handle {
   cursor: grabbing;
   background:
     linear-gradient(180deg, rgba(236, 253, 245, 0.98), rgba(209, 250, 229, 0.92));
   animation: notes-handle-pulse 720ms ease-in-out infinite;
 }
 
-.notes-paper.is-dragging .notes-drag-handle::after {
+.notes-paper.is-pointer-dragging .notes-drag-handle::after {
   content: "Soltar";
   color: var(--notes-teal);
 }
@@ -406,13 +410,13 @@ input {
   min-height: 148px;
 }
 
-.notes-card-foot {
-  display: flex;
+.notes-card-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
-  padding: 8px 8px 8px 10px;
+  padding: 8px;
   border: 1px solid rgba(177, 18, 79, 0.12);
   border-radius: 16px;
   background:
@@ -420,7 +424,7 @@ input {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
-.notes-card-foot small {
+.notes-card-actions small {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -430,11 +434,19 @@ input {
   line-height: 1.15;
 }
 
-.notes-card-foot small span {
+.notes-card-actions small span {
   color: var(--notes-wine);
   font-size: 0.62rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.notes-card-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
 }
 
 .notes-btn,
@@ -445,8 +457,8 @@ input {
 }
 
 .notes-btn {
-  min-height: 38px;
-  padding: 0 18px;
+  min-height: 36px;
+  padding: 0 16px;
   border-radius: 999px;
 }
 
@@ -469,8 +481,8 @@ input {
 }
 
 .notes-link-danger {
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: 36px;
+  padding: 0 11px;
   border: 1px solid rgba(185, 28, 28, 0.16);
   border-radius: 999px;
   color: #b91c1c;
@@ -491,9 +503,7 @@ input {
 }
 
 .notes-delete-form {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
+  display: none;
 }
 
 .notes-empty {
@@ -574,8 +584,18 @@ input {
     grid-template-columns: 1fr;
   }
 
-  .notes-card-foot {
+  .notes-card-actions {
+    grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  .notes-card-buttons {
+    justify-content: stretch;
+  }
+
+  .notes-card-buttons .notes-btn,
+  .notes-card-buttons .notes-link-danger {
+    flex: 1 1 auto;
   }
 }
 
@@ -590,7 +610,7 @@ input {
 
   .notes-paper.is-dragging,
   .notes-paper.is-just-placed,
-  .notes-paper.is-dragging .notes-drag-handle,
+  .notes-paper.is-pointer-dragging .notes-drag-handle,
   .notes-grid.is-drop-end::after {
     animation: none;
   }
