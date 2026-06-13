@@ -134,12 +134,18 @@
     }
 
     function postFormData(data) {
+        var body = new URLSearchParams();
+        data.forEach(function (value, key) {
+            body.append(key, String(value));
+        });
+
         return window.fetch(apiUrl, {
             method: 'POST',
             headers: {
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
             },
-            body: data
+            body: body.toString()
         }).then(function (response) {
             return response.json().catch(function () {
                 return { ok: false, message: 'Resposta invalida do servidor.' };
