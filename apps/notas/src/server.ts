@@ -196,7 +196,7 @@ function hasHomeSsoCookie(req: Request): boolean {
   return /(?:^|;\s*)WFHOME_SSO=/.test(String(req.get('cookie') || ''));
 }
 
-async function userByHomeSso(req: Request): Promise<User | null> {
+async function homeSsoUsername(req: Request): Promise<string | null> {
   if (!HOME_SSO_INTERNAL_URL || !hasHomeSsoCookie(req)) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HOME_SSO_TIMEOUT_MS);
@@ -206,18 +206,28 @@ async function userByHomeSso(req: Request): Promise<User | null> {
       signal: controller.signal,
     });
     if (!response.ok) return null;
-    const payload = await response.json() as { ok?: boolean; user?: { id?: unknown; username?: unknown; role?: unknown } };
-    if (!payload.ok || !payload.user?.id) return null;
-    return {
-      id: Number(payload.user.id),
-      username: String(payload.user.username || ''),
-      role: String(payload.user.role || 'user'),
-    };
+    const payload = await response.json() as { ok?: boolean; username?: unknown };
+    const username = normalizeUsername(payload.username);
+    return payload.ok && username ? username : null;
   } catch {
     return null;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function userByHomeSso(req: Request): Promise<User | null> {
+  const username = await homeSsoUsername(req);
+  if (!username) return null;
+  const result = await corePgPool.query<CoreUserRow>(
+    `SELECT id::text, username, password_hash, role, active
+       FROM core_users
+      WHERE username_normalized = $1 AND active = TRUE
+      LIMIT 1`,
+    [username],
+  );
+  const row = result.rows[0];
+  return row ? userPublic(row) : null;
 }
 
 async function canAccessModule(user: User, moduleKey: string): Promise<boolean> {
@@ -613,7 +623,7 @@ function renderIndex(req: Request, notes: NoteRow[], counts: { active: number; d
   <script src="${BASE_PATH}/app.js?v=20260612-notas" defer></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </head>
-<body class="notes-app-body" data-notes-base-path="${e(BASE_PATH)}">
+<body class="notes-app-body" data-notas-base-path="${e(BASE_PATH)}">
   <header class="notes-topbar">
     <a class="notes-brand" href="/">
       <img src="/financeiro/logo-wimifarma.svg" alt="Wimifarma">
