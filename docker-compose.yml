@@ -34,6 +34,7 @@ services:
       - wimifarma-cashback-app
       - wimifarma-usuarios-app
       - wimifarma-login-senha-app
+      - wimifarma-notas-app
       - wimifarma-miauw-agent
       - wimifarma-miauw-whatsapp
     environment:
@@ -97,6 +98,8 @@ services:
       CALENDARIO_INTERNAL_BASE_URL: ${CALENDARIO_INTERNAL_BASE_URL:-http://wimifarma-calendario-app:4105/calendario}
       FINANCEIRO_INTERNAL_TOKEN: ${FINANCEIRO_INTERNAL_TOKEN:-}
       FINANCEIRO_INTERNAL_BASE_URL: ${FINANCEIRO_INTERNAL_BASE_URL:-http://wimifarma-financeiro-app:3800/financeiro}
+      NOTAS_INTERNAL_TOKEN: ${NOTAS_INTERNAL_TOKEN:-}
+      NOTAS_INTERNAL_BASE_URL: ${NOTAS_INTERNAL_BASE_URL:-http://wimifarma-notas-app:3970/notas}
       TAREFA_INTERNAL_TOKEN: ${TAREFA_INTERNAL_TOKEN:-}
       TAREFA_INTERNAL_BASE_URL: ${TAREFA_INTERNAL_BASE_URL:-http://wimifarma-tarefa-app:3500/tarefa}
     ports:
@@ -243,6 +246,19 @@ services:
       POSTGRES_PASSWORD: ${LOGIN_SENHA_POSTGRES_PASSWORD:-wimifarma_login_senha_dev_pass}
     volumes:
       - ./login-senha-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-notas-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-notas-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_notas
+      POSTGRES_USER: wimifarma_notas
+      POSTGRES_PASSWORD: ${NOTAS_POSTGRES_PASSWORD:-wimifarma_notas_dev_pass}
+    volumes:
+      - ./notas-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -695,6 +711,42 @@ services:
       POSTGRES_PASSWORD: ${LOGIN_SENHA_POSTGRES_PASSWORD:-wimifarma_login_senha_dev_pass}
       LOGIN_SENHA_SESSION_SECRET: ${LOGIN_SENHA_SESSION_SECRET:-wimifarma_login_senha_dev_secret_change_me}
       LOGIN_SENHA_VAULT_KEY: ${LOGIN_SENHA_VAULT_KEY:-}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-notas-app:
+    build:
+      context: ./apps/notas
+      dockerfile: Dockerfile
+    container_name: wimifarma-notas-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-core-db
+      - wimifarma-notas-db
+      - wimifarma-gestao-db
+    environment:
+      NODE_ENV: production
+      PORT: 3970
+      BASE_PATH: /notas
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      POSTGRES_HOST: wimifarma-notas-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_notas
+      POSTGRES_USER: wimifarma_notas
+      POSTGRES_PASSWORD: ${NOTAS_POSTGRES_PASSWORD:-wimifarma_notas_dev_pass}
+      GESTAO_POSTGRES_HOST: wimifarma-gestao-db
+      GESTAO_POSTGRES_PORT: 5432
+      GESTAO_POSTGRES_DB: wimifarma_gestao
+      GESTAO_POSTGRES_USER: wimifarma_gestao
+      GESTAO_POSTGRES_PASSWORD: ${GESTAO_POSTGRES_PASSWORD:-wimifarma_gestao_dev_pass}
+      NOTAS_SESSION_SECRET: ${NOTAS_SESSION_SECRET:-wimifarma_notas_dev_secret_change_me}
+      NOTAS_INTERNAL_TOKEN: ${NOTAS_INTERNAL_TOKEN:-}
+      MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
     networks:
       - wimifarma-com-network
 

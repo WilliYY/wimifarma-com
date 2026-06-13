@@ -8,6 +8,7 @@
 /codigos-data/
 /calendario-data/
 /financeiro-data/
+/notas-data/
 /cashback-data/
 /login-senha-data/
 /miauw-whatsapp-data/
@@ -26,6 +27,7 @@ apps/xp/dist/
 apps/codigos/dist/
 apps/calendario/dist/
 apps/financeiro/dist/
+apps/notas/dist/
 apps/cashback/dist/
 apps/usuarios/dist/
 apps/login-senha/dist/

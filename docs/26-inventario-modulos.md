@@ -328,7 +328,7 @@ Legado/rollback, nao fonte principal:
 - `gestao_account_items`;
 - `gestao_account_payments`;
 - `gestao_audit_events`;
-- `gestao_notepad_notes`;
+- `gestao_notepad_notes`, apenas como historico/importacao do antigo bloco de notas;
 - `gestao_supplier_orders`;
 - `gestao_schema_migrations`;
 - tabela de sessao criada pelo store do Express.
@@ -353,7 +353,7 @@ Legado/rollback, nao fonte principal:
 - Criar conta via Miauby por endpoint interno, com auditoria e confirmacao quando aplicavel.
 - Sincronizar status de contas vinculadas a Pedidos sem recategorizar boletos de pedidos.
 - Exibir contas vinculadas a Pedidos em bloco visual `Pedidos` na Gestao, separado da lista geral, sem mudar categoria `Boleto`, pagamentos, status, totais ou auditoria.
-- Desde 2026-06-06, separar visualmente os blocos `Nova conta`, `Contas abertas`, `Mensal`, `Pedidos`, `Categorias` e `Notas` por acento/cor, mantendo os mesmos formularios, rotas, tabelas, filtros e integracoes. Desde 2026-06-11, no desktop, `Nova conta`, `Contas abertas`, `Mensal`, `Pedidos`, `Categorias` e `Notas` ficam em faixa horizontal livre, com rolagem lateral do proprio navegador quando passar da tela; em telas menores os paineis empilham. A observacao da conta preserva visualmente quebras de linha ao ser exibida.
+- Desde 2026-06-06, separar visualmente os blocos `Nova conta`, `Contas abertas`, `Mensal`, `Pedidos` e `Categorias` por acento/cor, mantendo os mesmos formularios, rotas, tabelas, filtros e integracoes. Desde 2026-06-11, no desktop, `Nova conta`, `Contas abertas`, `Mensal`, `Pedidos` e `Categorias` ficam em faixa horizontal livre, com rolagem lateral do proprio navegador quando passar da tela; em telas menores os paineis empilham. Desde 2026-06-12, o antigo bloco `Notas` foi movido para `/notas/`; `gestao_notepad_notes` fica apenas como historico importado e POSTs legados redirecionam para o novo modulo. A observacao da conta preserva visualmente quebras de linha ao ser exibida.
 - Ainda em 2026-06-11, no bloco `Pedidos` exibido dentro da Gestao, a lista deixou de ter rolagem interna e limite de altura para mostrar todos os pedidos no fluxo da pagina. O painel `Categorias` passou a exibir resumo de abertas/fechadas com valores e linhas por categoria, sem alterar filtros, formularios, POSTs, CSRF, tabelas ou auditoria.
 - Ainda em 2026-06-11, a busca da Gestao passou a carregar candidatos de leitura mais ampla quando ha termo e ranquear em memoria por texto livre normalizado, valor aproximado e datas; ela inclui metadados de Pedidos vinculados, responsaveis do core, observacao, parcelas, status e origem, sem duplicar contas nem executar escrita.
 
@@ -377,6 +377,82 @@ Legado/rollback, nao fonte principal:
 ### Proxima acao segura
 
 Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_users`, espelho `wf_logs` e envs `GESTAO_AUTH_*` removidos da Gestao. No corte complementar de 2026-05-30, o contrato do Miauby para `criar_conta_gestao` tambem deixou de referenciar `wf_logs`. Proxima acao e validar `/gestao/health`, login, contas, itens, pagamentos, Pedidos vinculados e comando Miauby no VPS.
+
+## Bloco de notas/lembretes
+
+### Rota atual
+
+- Rota publica oficial: `/notas/`.
+- Proxy Apache: `docker/php/Dockerfile` envia `/notas/` para `wimifarma-notas-app:3970/notas/`.
+- App oficial: `apps/notas`, Node.js 22 + TypeScript + Express.
+- Fonte oficial: Postgres `wimifarma_notas`.
+
+### Telas e endpoints
+
+- `/notas/` e `/notas/index.php`: tela de notas em grade, com criacao, edicao, exclusao logica e reordenacao por arrastar.
+- `/notas/login.php`: compatibilidade de login/SSO; sem sessao valida redireciona para `/`.
+- `/notas/health`: health de Postgres, auth core e importacao legado.
+- `POST /notas/api/order`: persiste a ordem manual das notas.
+- `GET /notas/api/internal/summary`: resumo interno tokenizado para Miauby, sem texto completo das notas.
+
+### Permissoes e sessao
+
+- Sessao propria `WFNOTAS`.
+- Login oficial por `core_users` e `WFHOME_SSO`.
+- Permissao por `core_user_module_permissions.module_key='notas'`; ausencia de linha preserva acesso legado, e `adm` continua como recuperacao segura.
+- Escritas de tela usam CSRF.
+- Endpoint interno exige `NOTAS_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`.
+
+### Tabelas MySQL envolvidas
+
+- Nenhum MySQL operacional.
+
+### Tabelas Postgres oficiais
+
+- `notas_notes`;
+- `notas_audit_events`;
+- tabela de sessao criada pelo store do Express.
+- `gestao_notepad_notes` em `wimifarma_gestao` e apenas fonte historica importada de forma idempotente.
+
+### Arquivos relevantes
+
+- `apps/notas/src/server.ts`;
+- `apps/notas/public/app.js`;
+- `apps/notas/public/styles.css`;
+- `apps/notas/public/assets/notepad-paper.png`;
+- `docker-compose.yml`;
+- `docker/php/Dockerfile`;
+- `site/home.php`;
+- `apps/usuarios/src/server.ts`;
+- `site/miauw/miauw-skills.php`;
+- `site/miauw/module-status.php`.
+
+### Fluxos de escrita
+
+- Criar nota.
+- Editar texto da nota.
+- Excluir nota por `deleted_at`.
+- Reordenar notas por arrasto, persistindo `sort_order`.
+- Importar historico legado de `gestao_notepad_notes` uma vez, sem duplicar notas ja importadas.
+- Auditoria local e espelho curto no core, sem expor conteudo ao Miauby.
+
+### Integracoes
+
+- Home publica mostra o card `Bloco de notas/lembretes` logo apos `Financeiro`.
+- Usuarios permite liberar/bloquear o modulo pelo card `Bloco de notas`.
+- Gestao redireciona POSTs legados de notas para `/notas/` e nao mostra mais o bloco antigo.
+- Miauby conhece a existencia do card e usa `resumo_notas`/module-status apenas para contagem, rota e status, sem ler texto das notas.
+
+### Riscos
+
+- Texto de nota pode conter informacao operacional sensivel; nao colocar conteudo em logs, Miauby, WhatsApp, health ou resumo interno.
+- Reordenacao por arrasto deve salvar somente IDs pertencentes ao usuario/sessao autorizada e ignorar IDs inexistentes/deletados.
+- A importacao de `gestao_notepad_notes` precisa continuar idempotente para nao duplicar historico apos rebuild.
+- Apagar `notas-data/` remove a fonte oficial nova; o legado da Gestao nao deve ser tratado como backup completo depois da migracao.
+
+### Proxima acao segura
+
+Validar no VPS `/notas/health`, proxy Apache, login via Home/SSO, permissao no Usuarios, importacao do historico da Gestao, criar/editar/excluir/reordenar nota e module-status do Miauby sem texto de nota.
 
 ## Pedidos
 
@@ -1211,6 +1287,7 @@ Inventarios detalhados ja registrados neste documento:
 - Financeiro;
 - Cashback;
 - Gestao;
+- Bloco de notas/lembretes;
 - Pedidos;
 - Tarefa;
 - XP;

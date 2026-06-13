@@ -360,6 +360,22 @@ if (!defined('CALENDARIO_INTERNAL_BASE_URL')) {
     define('CALENDARIO_INTERNAL_BASE_URL', $calendarioInternalBaseUrl !== '' ? $calendarioInternalBaseUrl : 'http://wimifarma-calendario-app:4105/calendario');
 }
 
+if (!defined('NOTAS_INTERNAL_TOKEN')) {
+    $notasInternalToken = miauw_env_string(array('NOTAS_INTERNAL_TOKEN'));
+    if ($notasInternalToken === '' && defined('MIAUW_GUARDIAN_TOKEN')) {
+        $notasInternalToken = trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+    if ($notasInternalToken === '' && defined('MIAUW_AGENT_INTERNAL_TOKEN')) {
+        $notasInternalToken = trim((string) MIAUW_AGENT_INTERNAL_TOKEN);
+    }
+    define('NOTAS_INTERNAL_TOKEN', $notasInternalToken);
+}
+
+if (!defined('NOTAS_INTERNAL_BASE_URL')) {
+    $notasInternalBaseUrl = miauw_env_string(array('NOTAS_INTERNAL_BASE_URL'));
+    define('NOTAS_INTERNAL_BASE_URL', $notasInternalBaseUrl !== '' ? $notasInternalBaseUrl : 'http://wimifarma-notas-app:3970/notas');
+}
+
 function miauw_schema_statements(): array
 {
     return array(
@@ -4692,6 +4708,11 @@ function miauw_seed_knowledge(): void
             'Financeiro',
             'O financeiro fica em /financeiro/. Use para fechamento de caixa, responsavel, total sistema, lancamentos como sangria, maquininha, pix, dinheiro fisico e outros, alem de total lancado e sobra ou falta. Frases como "pix cnpj 6 - willian", "maq pix 500 Ana" ou "sangria 33 isadora - pao de queijo" sao lancamentos financeiros, nao cotacao rapida.',
             'financeiro, caixa, sangria, pix, maquininha, total sistema'
+        ),
+        array(
+            'Bloco de notas/lembretes',
+            'O Bloco de notas/lembretes fica em /notas/. Use para anotacoes internas, notas rapidas e lembretes soltos. Cada nota pode ser editada, apagada e reordenada por arrasto no modulo. O Miauby deve reconhecer a existencia do card e orientar abrir /notas/, mas nao deve ler, inventar, repetir ou expor o texto das notas no chat.',
+            'notas, bloco de notas, lembretes, anotacoes, /notas'
         ),
         array(
             'Regras de seguranca',

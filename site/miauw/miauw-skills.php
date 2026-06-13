@@ -121,6 +121,24 @@ function miauw_skill_registry(): array
             'auditoria' => array(),
             'efeitos' => array(),
         ),
+        'resumo_notas' => array(
+            'nome' => 'resumo_notas',
+            'titulo' => 'Resumo Bloco de notas',
+            'modulo' => 'notas',
+            'nivel' => 'leitura',
+            'risco' => 'baixo',
+            'permissao' => 'autenticado',
+            'executor' => 'miauw_skill_notas_summary',
+            'openai_tool' => false,
+            'local_action' => false,
+            'fase' => 4,
+            'card' => 'Bloco de notas/lembretes',
+            'aliases' => array('notas', 'bloco de notas', 'lembretes', 'anotacoes'),
+            'entrada' => array(),
+            'saida' => 'Resumo seguro de existencia, rota e contagem, sem texto das notas.',
+            'auditoria' => array(),
+            'efeitos' => array('nao_expor_texto_das_notas'),
+        ),
         'resumo_cashback' => array(
             'nome' => 'resumo_cashback',
             'titulo' => 'Resumo cashback',
@@ -1149,6 +1167,44 @@ function miauw_skill_calendario_summary(array $period): array
     $lines[] = 'Regra: para ler, editar, pintar ou confirmar o conteudo exato, abra /calendario/. O Miauby nao deve inventar anotacao.';
 
     return $lines;
+}
+
+function miauw_skill_notas_summary(array $period): array
+{
+    unset($period);
+
+    if (!miauw_skill_notas_internal_configured()) {
+        return array(
+            'NOTAS: card Bloco de notas/lembretes existe em /notas/. Ponte interna sem token agora.',
+            'Regra: Miauby nao le nem repete o texto das notas; abra /notas/ para ler, editar, apagar ou reordenar.',
+        );
+    }
+
+    try {
+        $response = miauw_skill_notas_internal_request('GET', '/api/internal/summary');
+    } catch (Throwable $error) {
+        error_log('Miauby Notas summary failed: ' . $error->getMessage());
+        return array(
+            'NOTAS: nao consegui consultar o resumo seguro agora. Confira /notas/.',
+            'Regra: texto das notas nao sai no chat.',
+        );
+    }
+
+    if (!is_array($response) || empty($response['ok'])) {
+        return array('NOTAS: resumo interno indisponivel agora. Confira /notas/.');
+    }
+
+    $notes = is_array($response['notes'] ?? null) ? $response['notes'] : array();
+
+    return array(
+        'NOTAS',
+        'Card: Bloco de notas/lembretes em /notas/.',
+        'Notas ativas: ' . (int) ($notes['active'] ?? 0)
+            . ' | apagadas historicas: ' . (int) ($notes['deleted'] ?? 0)
+            . ' | importadas da Gestao: ' . (int) ($notes['imported_from_gestao'] ?? 0),
+        'Fonte: Notas Node/Postgres; resumo seguro sem texto das anotacoes.',
+        'Regra: para ler, editar, apagar ou arrastar notas, abra /notas/. O Miauby nao deve inventar conteudo de nota.',
+    );
 }
 
 function miauw_skill_codigos_lookup(string $message): array
@@ -3332,6 +3388,51 @@ function miauw_skill_calendario_internal_request(string $method, string $path, a
     );
 }
 
+function miauw_skill_notas_internal_token(): string
+{
+    if (defined('NOTAS_INTERNAL_TOKEN') && trim((string) NOTAS_INTERNAL_TOKEN) !== '') {
+        return trim((string) NOTAS_INTERNAL_TOKEN);
+    }
+
+    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
+        return trim((string) MIAUW_GUARDIAN_TOKEN);
+    }
+
+    if (defined('MIAUW_AGENT_INTERNAL_TOKEN') && trim((string) MIAUW_AGENT_INTERNAL_TOKEN) !== '') {
+        return trim((string) MIAUW_AGENT_INTERNAL_TOKEN);
+    }
+
+    return miauw_skill_env_value(array('NOTAS_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN', 'MIAUW_AGENT_INTERNAL_TOKEN'));
+}
+
+function miauw_skill_notas_internal_base_url(): string
+{
+    $url = defined('NOTAS_INTERNAL_BASE_URL') ? trim((string) NOTAS_INTERNAL_BASE_URL) : '';
+    if ($url === '') {
+        $url = miauw_skill_env_value(array('NOTAS_INTERNAL_BASE_URL'));
+    }
+
+    return rtrim($url !== '' ? $url : 'http://wimifarma-notas-app:3970/notas', '/');
+}
+
+function miauw_skill_notas_internal_configured(): bool
+{
+    return miauw_skill_notas_internal_token() !== '';
+}
+
+function miauw_skill_notas_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
+{
+    return miauw_skill_internal_json_request(
+        miauw_skill_notas_internal_token(),
+        miauw_skill_notas_internal_base_url(),
+        $method,
+        $path,
+        $payload,
+        $query,
+        5
+    );
+}
+
 function miauw_skill_cotacao_v2_internal_token(): string
 {
     if (defined('COTACAO_INTERNAL_TOKEN') && trim((string) COTACAO_INTERNAL_TOKEN) !== '') {
@@ -4608,6 +4709,10 @@ function miauw_skill_detect_modules(string $message): array
         $modules[] = 'calendario';
     }
 
+    if (miauw_skill_has_any($message, array('notas', 'nota', 'bloco de notas', 'lembrete', 'lembretes', 'anotacao', 'anotacoes', 'anotacoes internas'))) {
+        $modules[] = 'notas';
+    }
+
     if (miauw_skill_has_any($message, array('tarefa', 'tarefas', 'pendencia', 'pendencias', 'prioridade', 'concluida', 'concluidas', 'cancelada', 'canceladas'))) {
         $modules[] = 'tarefa';
     }
@@ -5716,7 +5821,7 @@ function miauw_skill_context_for_message(string $message): string
     }
 
     if (!$modules && $wantsReport) {
-        $modules = array('financeiro', 'cashback', 'codigos', 'cotacao', 'calendario', 'tarefa');
+        $modules = array('financeiro', 'cashback', 'codigos', 'cotacao', 'calendario', 'notas', 'tarefa');
     }
 
     if ($lookupLines && !$modules && !$wantsReport) {
@@ -5747,6 +5852,8 @@ function miauw_skill_context_for_message(string $message): string
             $lines = array_merge($lines, miauw_skill_cotacao_summary($period));
         } elseif ($module === 'calendario') {
             $lines = array_merge($lines, miauw_skill_calendario_summary($period));
+        } elseif ($module === 'notas') {
+            $lines = array_merge($lines, miauw_skill_notas_summary($period));
         } elseif ($module === 'tarefa') {
             $lines = array_merge($lines, miauw_skill_tarefa_summary($period));
         } elseif ($module === 'farmacia_popular' && function_exists('miauw_fp_context_for_message') && !$lookupLines) {

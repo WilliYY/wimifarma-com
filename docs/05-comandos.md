@@ -80,6 +80,8 @@ docker compose logs --tail=80 wimifarma-codigos-app
 docker compose logs --tail=80 wimifarma-codigos-db
 docker compose logs --tail=80 wimifarma-financeiro-app
 docker compose logs --tail=80 wimifarma-financeiro-db
+docker compose logs --tail=80 wimifarma-notas-app
+docker compose logs --tail=80 wimifarma-notas-db
 docker compose logs --tail=80 wimifarma-usuarios-app
 docker compose logs --tail=80 wimifarma-miauw-agent
 docker compose logs --tail=80 wimifarma-miauw-whatsapp
@@ -312,6 +314,24 @@ docker exec wimifarma-financeiro-db psql -U wimifarma_financeiro -d wimifarma_fi
 
 O app `apps/financeiro` atende a rota oficial `/financeiro/` via proxy Apache, usa somente `core_users` e grava em Postgres `wimifarma_financeiro`. Desde 2026-05-30, nao ha `mysql2`, importador, espelho, fallback `wf_users`, `FINANCEIRO_AUTH_PROVIDER` nem flags `FINANCEIRO_LEGACY_MYSQL_*`; rollback MySQL exige restaurar versao anterior e backup validado. Endpoints `/financeiro/internal/*` e `/financeiro/api/internal/*` exigem `X-Miauw-Internal-Token` ou `X-Financeiro-Internal-Token`; nao colar token real em comando versionado.
 
+## Local - Bloco de notas/lembretes Node/Postgres
+
+```powershell
+cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\notas
+npm.cmd run check
+npm.cmd run build
+cd C:\Users\Thiesen\Desktop\wimifarma-com
+docker compose up -d wimifarma-core-db wimifarma-gestao-db wimifarma-notas-db
+docker compose up -d --no-deps --build wimifarma-notas-app wimifarma-com-web
+docker exec wimifarma-notas-app wget -qO- http://127.0.0.1:3970/notas/health
+curl.exe -sS http://127.0.0.1:3002/notas/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total}`n" http://127.0.0.1:3002/notas/
+curl.exe -i http://127.0.0.1:3002/notas/api/internal/summary
+docker exec wimifarma-notas-db psql -U wimifarma_notas -d wimifarma_notas -c "\dt"
+```
+
+O app `apps/notas` atende `/notas/` via proxy Apache, usa `core_users`/`WFHOME_SSO`, permissao `notas` e grava em Postgres `wimifarma_notas`. A Gestao nao mostra mais o bloco antigo; `gestao_notepad_notes` fica apenas como fonte historica importada na primeira subida. O endpoint interno sem token deve responder 401 ou 503 e nunca deve retornar texto completo das notas para o Miauby.
+
 ## Local - Inventario de modernizacao
 
 ```powershell
@@ -472,6 +492,8 @@ curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=
 curl.exe -sS http://127.0.0.1:3002/cashback/health
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/cotacao/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/financeiro/login.php
+curl.exe -sS http://127.0.0.1:3002/notas/health
+curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/notas/
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/gestao/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/xp/login.php
 curl.exe -L --max-time 30 -o NUL -w "status=%{http_code} time=%{time_total} url=%{url_effective}`n" http://127.0.0.1:3002/tarefa/login.php

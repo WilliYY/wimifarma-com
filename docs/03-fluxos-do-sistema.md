@@ -15,7 +15,7 @@ Entrada publica:
 - O card `XP` abre `/xp/` e usa uma moldura visual propria, aplicada somente nesse card como `border-image` de borda/cantos para destacar a entrada sem cortar a arte nem cobrir o texto.
 - O card `Usuarios` abre `/usuarios/` para administrar logins, modulos, vinculo XP e historico central.
 - O card `Gestao` abre o modulo administrativo de contas a pagar manuais; os demais cards seguem na grade da home em desktop.
-- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Tarefas`, `Codigos`, `Calendario`, `XP`, `Gestao`, `Miauby`, `Miauby Whatsapp`, `Login / Senha` e `Usuarios`; `Usuarios` fica por ultimo quando todos estiverem visiveis. O card separado `Login / Senha ADM` foi removido da Home em 2026-06-05; a area restrita para logins/senhas especificos do sistema agora aparece como aba `Contas` dentro de `/login-senha/` somente para `adm`, `admin` ou `gerente`. Quando a home possui `WFHOME_SSO` valido ou o navegador possui sessao ativa no XP/Usuarios, o login esta vinculado a um funcionario XP e o modulo `xp` esta liberado, a home exibe no desktop um mini-card do XP a esquerda da grade, com foto, nivel, ranking, XP do mes, XP total e barra de progresso atualizados por endpoint dos apps Node. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
+- A home usa no maximo cinco cards por linha no desktop e a ordem dos acessos e: `Cashback`, `Cotacao`, `Pedidos`, `Financeiro`, `Bloco de notas/lembretes`, `Tarefas`, `Codigos`, `Calendario`, `XP`, `Gestao`, `Miauby`, `Miauby Whatsapp`, `Login / Senha` e `Usuarios`; `Usuarios` fica por ultimo quando todos estiverem visiveis. O card separado `Login / Senha ADM` foi removido da Home em 2026-06-05; a area restrita para logins/senhas especificos do sistema agora aparece como aba `Contas` dentro de `/login-senha/` somente para `adm`, `admin` ou `gerente`. Quando a home possui `WFHOME_SSO` valido ou o navegador possui sessao ativa no XP/Usuarios, o login esta vinculado a um funcionario XP e o modulo `xp` esta liberado, a home exibe no desktop um mini-card do XP a esquerda da grade, com foto, nivel, ranking, XP do mes, XP total e barra de progresso atualizados por endpoint dos apps Node. No mobile, os cards de acesso ficam em duas colunas compactas para reduzir rolagem e mostrar mais modulos na primeira tela.
 - Desde 2026-06-03, os cards da Home autenticada usam textos mais curtos, CTA `Abrir` e acento visual por cor para melhorar leitura em desktop/mobile sem alterar links, ordem, SSO, troca de usuario ou permissoes. As etiquetas circulares internas dos cards foram removidas para voltar a uma leitura mais limpa; a barra/acento e a animacao de hover permanecem. Quando poucos cards ficam visiveis por permissao, a grade ajusta o numero de colunas para evitar linhas isoladas e excesso de espaco vertical.
 
 Identidade visual validada em 2026-05-21:
@@ -29,11 +29,11 @@ Identidade visual validada em 2026-05-21:
 Rotas de login:
 
 - `/` (login inicial da home, sessao `WFHOME`)
-- `/cashback/login.php`, `/codigos/login.php`, `/cotacao/login.php`, `/financeiro/login.php`, `/usuarios/login.php`, `/gestao/login.php`, `/xp/login.php`, `/tarefa/login.php` e `/miauw/login.php` ficam como compatibilidade tecnica para SSO/sessoes existentes, mas um GET sem sessao valida redireciona para `/`.
+- `/cashback/login.php`, `/codigos/login.php`, `/cotacao/login.php`, `/financeiro/login.php`, `/notas/login.php`, `/usuarios/login.php`, `/gestao/login.php`, `/xp/login.php`, `/tarefa/login.php` e `/miauw/login.php` ficam como compatibilidade tecnica para SSO/sessoes existentes, mas um GET sem sessao valida redireciona para `/`.
 - `/pedidos/`
 - `/wp-login.php`
 
-Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
+Os modulos PHP remanescentes reaproveitam helpers proprios do Miauby/WordPress quando necessario. Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Bloco de notas/lembretes e Usuarios usam sessoes proprias nos seus servicos Node/Postgres; Cashback, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Bloco de notas/lembretes e Cotacao nao possuem rollback MySQL de autenticacao no codigo atual. Cotacao V2 usa sessao propria em Redis.
 
 Arquivos envolvidos:
 
@@ -306,6 +306,34 @@ Interface:
 - O Miauby WhatsApp pode preparar lancamento `Pix CNPJ` a partir de foto, print, imagem encaminhada ou PDF/documento de comprovante Pix quando a flag de OCR estiver ligada. O bridge valida remetente, card `Financeiro`, destino por CNPJ/chave Pix ou nome correlato, valor e pagador; data e horario sao usados quando a leitura trouxer. Depois envia confirmacao `Sim`/`Nao`. Somente o `Sim` grava no Financeiro Node por endpoint interno tokenizado, com categoria `Pix CNPJ` e observacao sanitizada. Se a leitura da midia falhar ou ficar incompleta, o WhatsApp responde curto pedindo `miauby pix cnpj 28,90 sueli`; esse comando manual tambem e parseado localmente, aceita valor antes/depois do responsavel, `R$`, `28.90`, `28 reais`, typo `cpnj` e observacao, e grava pelo mesmo endpoint interno com `source=miauby_whatsapp`, `actor_user_id` e idempotencia `whatsapp:pix-cnpj:{trace_id}`. A resposta publica do WhatsApp deve ficar curta, no padrao `PIX CNPJ lancado: valor - responsavel`, enquanto destino, pagador completo, instituicao, ID Pix, texto original e observacao completa ficam apenas nos registros internos. `Nao`, destino divergente, dado faltante ou permissao ausente nao gravam nada e pedem texto corrigido.
 - O Financeiro Node/Postgres atende `/financeiro/`, preserva o frontend visual, expoe health/resumo/checksums internos e roda sem `mysql2`, importador, espelho ou fallback MySQL desde 2026-05-30.
 
+## Fluxo Bloco de notas/lembretes
+
+O Bloco de notas/lembretes abre em `/notas/` e saiu da Gestao para virar um modulo proprio. Ele usa Node.js + TypeScript + Express, sessao `WFNOTAS`, permissao `core_user_module_permissions.module_key='notas'` e Postgres dedicado `wimifarma_notas`.
+
+Arquivos principais:
+
+- `apps/notas/src/server.ts`
+- `apps/notas/public/app.js`
+- `apps/notas/public/styles.css`
+- `apps/notas/public/assets/notepad-paper.png`
+
+Tabelas principais:
+
+- Postgres `notas_notes`
+- Postgres `notas_audit_events`
+- Postgres `notas_sessions`
+- Postgres `gestao_notepad_notes` apenas como fonte historica de importacao inicial.
+
+Regras a preservar:
+
+- o card da Home fica logo depois de `Financeiro`;
+- a tela usa visual de papeis/bloco de notas, sem fundo cinza dominante, com area interna editavel;
+- notas ficam em grade responsiva, com ate quatro notas por fileira no desktop;
+- cada nota pode ser editada, apagada por exclusao logica e reordenada por arrastar pelo mouse;
+- a altura do textarea acompanha o conteudo para notas curtas ocuparem menos espaco;
+- a importacao de `gestao_notepad_notes` para `notas_notes` e idempotente e nao deve duplicar historico;
+- o endpoint interno `/notas/api/internal/summary` e somente resumo seguro para Miauby, sem texto completo das notas.
+
 ## Fluxo Gestao
 
 A Gestao organiza contas a pagar manuais em um servico Node.js + TypeScript com Postgres dedicado. A conta principal guarda titulo, categoria livre, competencia, status e total em centavos; os itens internos guardam a composicao do valor, permitindo lancamentos como salario, aumento, comissao, boleto e juros na mesma conta. Pagamentos ficam separados e datados para permitir pagar em partes ate quitar o saldo, inclusive vinculados a um lancamento especifico quando o operador quer pagar item por item. Desde 2026-06-01, a visao mensal puxa contas pendentes de competencias anteriores para o mes selecionado ate serem pagas/canceladas, preservando a competencia original da conta; pagamentos datados no mes entram no total pago do mes.
@@ -325,7 +353,7 @@ Tabelas principais:
 - Postgres `gestao_account_payments`
 - Postgres `gestao_audit_events`
 - Postgres `gestao_sessions`
-- Postgres `gestao_notepad_notes`
+- Postgres `gestao_notepad_notes` apenas como historico/importacao do antigo bloco de notas, nao como tela ativa
 - Postgres `gestao_supplier_orders` (legado; Pedidos novo usa tabelas proprias)
 - Postgres `pedidos_orders`
 - Postgres `pedidos_confirmed_orders`
@@ -364,7 +392,7 @@ Regras a preservar:
 - a observacao da conta pode ser editada depois do lancamento, fica minimizada por padrao ate o operador abrir e preserva visualmente as quebras de linha/espacos digitados ao ser exibida no card;
 - os cards de conta ficam compactos por padrao e podem ser abertos individualmente pelo botao `Abrir`, mantendo a lista fina para caber mais contas por tela; dentro da conta, lancamentos abertos ficam como conteudo principal, enquanto vencimento sem data, pagamentos, observacao, historico e ajustes/pagamento ficam em blocos de opcoes recolhidos para reduzir poluicao visual;
 - lancamentos pagos, lancamentos cancelados, pagamentos cancelados e eventos de auditoria aparecem no bloco `Historico`, fechado por padrao, em vez de poluir a area principal da conta;
-- o bloco de notas lateral permite criar, editar e apagar lembretes administrativos por exclusao logica;
+- o antigo bloco de notas lateral foi movido para `/notas/`; POSTs legados de notas na Gestao apenas redirecionam para o modulo novo, sem gravar novos lembretes em `gestao_notepad_notes`;
 - acoes de login, criacao, adicao de item, pagamento e mudanca de status registram `gestao_audit_events` e/ou `core_audit_logs`; Gestao e Pedidos nao espelham mais em `wf_logs`.
 - o Miauby pode abrir a Gestao com o comando `gestao`/`abrir gestao` e preparar uma conta com ordens flexiveis como `gestao - titulo - valor - categoria`, `gestao - valor - titulo`, `gestao titulo valor` ou categoria antes/depois; se houver so nome + valor, a categoria vira `geral`, se faltar nome ou valor ele pergunta, e a gravacao so acontece depois de confirmacao humana pelo chat.
 

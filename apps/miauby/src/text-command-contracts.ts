@@ -482,6 +482,43 @@ const textCommandContracts: TextCommandContract[] = [
     keywords: ['calendario', 'agenda', 'plantao', 'plantoes', 'escala', 'anotacao', 'dia marcado'],
   },
   {
+    intent: 'abrir_notas',
+    title: 'Abrir Bloco de notas',
+    module: 'notas',
+    tool: 'abrir_modulo_notas',
+    risk: 'baixo',
+    origins: ['miauby_interno', 'miauby_whatsapp'],
+    internal_requires_prefix: false,
+    whatsapp_requires_prefix: true,
+    internal_supports_media: false,
+    whatsapp_supports_media: false,
+    required_fields: [],
+    optional_fields: [],
+    internal_examples: [
+      'abrir bloco de notas',
+      'onde ficam os lembretes?',
+      'notas',
+      'bloco de notas lembretes',
+    ],
+    whatsapp_examples: [
+      'miauby abrir bloco de notas',
+      'miauby onde ficam os lembretes?',
+    ],
+    missing_data_replies: ['O Bloco de notas/lembretes fica em /notas/.'],
+    ambiguity_rules: [
+      'orientar a abrir /notas/ para ler, escrever, editar, apagar ou reordenar',
+      'nao ler, repetir, inventar ou expor texto das notas no chat',
+      'consulta de status pode retornar somente contagem/resumo seguro',
+    ],
+    response_examples: ['O Bloco de notas/lembretes fica em /notas/. O conteudo das notas deve ser lido no modulo.'],
+    notes: [
+      'o modulo Notas e separado da Gestao',
+      'as notas podem ser editadas, apagadas e reordenadas por arrasto',
+      'Miauby conhece a existencia e a rota, mas nao deve expor conteudo das notas',
+    ],
+    keywords: ['notas', 'nota', 'bloco de notas', 'lembrete', 'lembretes', 'anotacao', 'anotacoes'],
+  },
+  {
     intent: 'fechamento_caixa',
     title: 'Fechamento de caixa',
     module: 'financeiro',
@@ -567,7 +604,7 @@ export function buildTextCommandContracts(options: { message?: string; origin?: 
   const fallback = selected.length > 0 ? selected : scored.slice(0, limit);
 
   return {
-    version: 'miauby-text-command-contracts-2026-06-07-calendario',
+    version: 'miauby-text-command-contracts-2026-06-12-notas',
     source: 'apps/miauby/src/text-command-contracts.ts',
     mode: 'text_only_shared_training',
     origin,

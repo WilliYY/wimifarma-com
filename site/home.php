@@ -2238,6 +2238,14 @@ $modules = array(
         'accent' => 'amber',
     ),
     array(
+        'name' => 'Bloco de notas/lembretes',
+        'label' => 'Lembretes',
+        'description' => 'Anotacoes internas, notas rapidas e ordem por arrasto.',
+        'module_key' => 'notas',
+        'href' => '/notas/',
+        'accent' => 'teal',
+    ),
+    array(
         'name' => 'Tarefas',
         'label' => 'Equipe',
         'description' => 'Prioridades, lembretes e conclusoes.',

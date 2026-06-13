@@ -386,6 +386,10 @@ $calendarioToken = miauw_constant_string('CALENDARIO_INTERNAL_TOKEN');
 if ($calendarioToken === '') {
     $calendarioToken = $guardianToken !== '' ? $guardianToken : $agentToken;
 }
+$notasToken = miauw_constant_string('NOTAS_INTERNAL_TOKEN');
+if ($notasToken === '') {
+    $notasToken = $guardianToken !== '' ? $guardianToken : $agentToken;
+}
 $whatsappToken = miauw_constant_string('MIAUW_WHATSAPP_INTERNAL_TOKEN');
 if ($whatsappToken === '') {
     $whatsappToken = $agentToken !== '' ? $agentToken : $guardianToken;
@@ -483,6 +487,19 @@ $modules = array(
         $contractsByModule,
         'calendario_node_postgres',
         $calendarioToken !== ''
+    ),
+    miauw_module_status_check(
+        'notas',
+        'Bloco de notas',
+        'notas',
+        true,
+        static fn() => miauw_module_status_http_json('GET', 'http://wimifarma-notas-app:3970/notas/api/internal/summary', array(
+            'X-Miauw-Internal-Token: ' . $notasToken,
+            'X-Notas-Internal-Token: ' . $notasToken,
+        )),
+        $contractsByModule,
+        'notas_node_postgres_summary_only',
+        $notasToken !== ''
     ),
     miauw_module_status_check(
         'xp',

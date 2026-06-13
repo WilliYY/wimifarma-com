@@ -42,6 +42,7 @@ Higiene de pastas no VPS:
 - `apps/tarefa/`
 - `apps/codigos/`
 - `apps/financeiro/`
+- `apps/notas/`
 - `apps/usuarios/`
 - `apps/miauw-agent/`
 - `apps/miauw-whatsapp/`
@@ -71,6 +72,7 @@ Higiene de pastas no VPS:
 - `codigos-data/`
 - `calendario-data/`
 - `financeiro-data/`
+- `notas-data/`
 - `miauw-whatsapp-data/`
 - `miauby-data/`
 - `/home/ubuntu/projetos/wimifarma-evolution-api` no VPS, com `.env`, Postgres, Redis e instancias da Evolution API fora do Git
@@ -89,6 +91,7 @@ Higiene de pastas no VPS:
 - `wimifarma-codigos-app:3700`: servico interno oficial de Codigos, acessado pelo Apache por proxy reverso em `/codigos`.
 - `wimifarma-calendario-app:4105`: servico interno oficial do Calendario, acessado pelo Apache por proxy reverso em `/calendario`.
 - `wimifarma-financeiro-app:3800`: servico interno oficial do Financeiro, acessado pelo Apache por proxy reverso em `/financeiro`.
+- `wimifarma-notas-app:3970`: servico interno oficial do Bloco de notas/lembretes, acessado pelo Apache por proxy reverso em `/notas`.
 - `wimifarma-usuarios-app:3900`: servico interno oficial de Usuarios, acessado pelo Apache por proxy reverso em `/usuarios`.
 - `wimifarma-login-senha-app:3950`: servico interno oficial do Login / Senha, acessado pelo Apache por proxy reverso em `/login-senha`.
 - `wimifarma-miauw-agent:3100`: servico interno do Miauby agente em modo sombra/corte controlado, acessado pelo Apache por proxy reverso em `/miauw/agent` e pelo alias canonico `/miauby/agent`.
@@ -133,6 +136,7 @@ Higiene de pastas no VPS:
 - Manter o proxy Apache de `/codigos/` para `wimifarma-codigos-app:3700`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. `site/codigos` fica apenas como assets; o PHP antigo fica em `site/_legacy-disabled/2026-05-29/codigos-php/`.
 - Manter o proxy Apache de `/calendario/` para `wimifarma-calendario-app:4105`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O app usa imagens versionadas do PDF e Postgres dedicado para o conteudo editavel.
 - Manter o proxy Apache de `/financeiro/` para `wimifarma-financeiro-app:3800`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O PHP legado em `site/financeiro` fica apenas como helper/assets e nao deve voltar a ser fonte oficial sem rollback deliberado; acesso web direto a PHP nessa pasta fica bloqueado por `.htaccess`.
+- Manter o proxy Apache de `/notas/` para `wimifarma-notas-app:3970`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O modulo usa Postgres dedicado, importa o historico da Gestao uma vez e nao deve ser publicado direto fora do Apache.
 - Manter o proxy Apache de `/usuarios/` para `wimifarma-usuarios-app:3900`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`. O modulo usa `wimifarma_core` e nao deve ser publicado direto fora do Apache.
 - Manter o proxy Apache de `/miauw/agent/` para `wimifarma-miauw-agent:3100`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`.
 - Manter o proxy Apache de `/miauw/whatsapp/` para `wimifarma-miauw-whatsapp:3400`; o Nginx Proxy Manager continua apontando somente para `wimifarma-com-web:80`, e o painel `/miauw/whatsapp/` deve mostrar apenas dados seguros.
@@ -160,6 +164,7 @@ Higiene de pastas no VPS:
 - Para Codigos, definir `CODIGOS_POSTGRES_PASSWORD` e `CODIGOS_SESSION_SECRET` no `.env` de cada ambiente. O login usa somente `core_users`. `CODIGOS_INTERNAL_TOKEN` pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby consultar `/codigos/api/internal/summary` e `/codigos/api/internal/search` direto no Postgres; sem token, essas rotas recusam. Desde 2026-05-30 nao ha `CODIGOS_AUTH_PROVIDER`, flags `CODIGOS_LEGACY_MYSQL_*`, importador, espelho, logs, fallback `wf_users` ou dependencia `mysql2`; rollback MySQL exige restaurar versao anterior e backup validado.
 - Para Calendario, definir `CALENDARIO_POSTGRES_PASSWORD` e `CALENDARIO_SESSION_SECRET` no `.env` de cada ambiente. `CALENDARIO_INTERNAL_TOKEN` pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby consultar `/calendario/api/internal/summary`; sem token, o endpoint interno recusa. O app usa `core_users`/`WFHOME_SSO` e permissao individual `calendario`.
 - Para Financeiro, definir `FINANCEIRO_POSTGRES_PASSWORD`, `FINANCEIRO_SESSION_SECRET` e, quando necessario, `FINANCEIRO_REOPEN_PASSWORD` no `.env` de cada ambiente. O login usa somente `core_users`; rollback MySQL exige restaurar versao/imagem anterior e backup validado. `FINANCEIRO_INTERNAL_TOKEN` pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby/WhatsApp gravar por endpoints internos Node/Postgres; sem token, `/financeiro/api/internal/*` e `/financeiro/internal/*` devem recusar.
+- Para Bloco de notas/lembretes, definir `NOTAS_POSTGRES_PASSWORD`, `NOTAS_SESSION_SECRET` e `NOTAS_INTERNAL_TOKEN` no `.env` de cada ambiente. O login usa `core_users`/`WFHOME_SSO`, permissao individual `notas` e Postgres `wimifarma_notas`; `NOTAS_INTERNAL_TOKEN` pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby consultar `/notas/api/internal/summary`, que retorna apenas contagens/metadados e nunca texto completo das notas.
 - Para Usuarios, definir `USUARIOS_SESSION_SECRET` no `.env` de cada ambiente e, se possivel, `USUARIOS_PASSWORD_VAULT_KEY` para o cofre administrativo de senhas redefinidas pelo ADM. O app usa `CORE_POSTGRES_PASSWORD` para gravar `core_users`, `core_user_module_permissions`, `core_user_xp_links`, `core_user_admin_passwords`, `core_user_whatsapp_links`, `core_user_audit_events` e `usuarios_sessions`, e usa `XP_POSTGRES_PASSWORD` para listar funcionarios do XP no vinculo. Para vincular WhatsApp, configurar `USUARIOS_MIAUW_WHATSAPP_INTERNAL_BASE_URL`, `USUARIOS_MIAUW_WHATSAPP_INTERNAL_TOKEN` e, opcionalmente, `USUARIOS_INTERNAL_HTTP_TIMEOUT_MS`; quando o token especifico estiver vazio, o app tenta reutilizar `MIAUW_WHATSAPP_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`.
 - Para Login / Senha, definir `LOGIN_SENHA_POSTGRES_PASSWORD`, `LOGIN_SENHA_SESSION_SECRET` e `LOGIN_SENHA_VAULT_KEY` no `.env` de cada ambiente. O app usa `CORE_POSTGRES_PASSWORD` para revalidar `core_users`/permissao `login_senha` e `POSTGRES_*` para gravar `login_senha_entries`, `login_senha_audit_events` e `login_senha_sessions`. A chave `LOGIN_SENHA_VAULT_KEY` deve ser longa, unica e preservada em backup operacional; trocar a chave sem migracao impede descriptografar senhas antigas.
 - Para comandos da Gestao pelo Miauby, manter `GESTAO_INTERNAL_TOKEN` preenchido nos servicos web e Gestao, ou usar `MIAUW_GUARDIAN_TOKEN` como fallback; o PHP chama `GESTAO_INTERNAL_BASE_URL` internamente e a Gestao rejeita `/gestao/api/internal/...` sem token.
@@ -178,7 +183,7 @@ Higiene de pastas no VPS:
 - Para corte acelerado do Miauby, definir `MIAUW_ENGINE=node_shadow` ou `MIAUW_ENGINE=node`, `MIAUW_AGENT_ENGINE_ALLOWED_USERS=adm`, `MIAUW_MAINTENANCE_MODE=true` e `MIAUW_MAINTENANCE_ALLOWED_USERS=adm`. Rollback: `MIAUW_ENGINE=php` e reiniciar `wimifarma-com-web`.
 - Para audio do Miauby, manter `MIAUW_OPENAI_API_KEY` somente no `.env`, usar `MIAUW_AUDIO_ENABLED=true` e `MIAUW_TRANSCRIPTION_MODEL=gpt-4o-transcribe`. O botao depende de HTTPS/navegador com microfone e o PHP transcreve o audio temporario sem expor chave no browser; `MIAUW_REALTIME_MODEL`/`MIAUW_REALTIME_VOICE` ficam reservados para evolucao futura de playback/voz.
 - Antes de deploy, fazer commit e push da alteracao. Por regra operacional atual, toda alteracao de arquivo deve ser commitada, enviada ao GitHub e publicada no VPS quando houver deploy aplicavel, salvo pedido explicito para nao publicar ou bloqueio tecnico relatado.
-- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cashback/health`, `http://127.0.0.1:3002/cashback/login.php`, `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health`, `http://127.0.0.1:3002/pedidos/health`, `http://127.0.0.1:3002/pedidos/api/badge`, `http://127.0.0.1:3002/tarefa/health`, `http://127.0.0.1:3002/tarefa/badge.php`, `http://127.0.0.1:3002/xp/health`, `http://127.0.0.1:3002/codigos/health`, `http://127.0.0.1:3002/calendario/health`, `http://127.0.0.1:3002/financeiro/health`, `http://127.0.0.1:3002/usuarios/health` e `http://127.0.0.1:3002/financeiro/login.php`.
+- Depois de deploy, rodar `docker compose ps`, logs dos servicos alterados e validar healths aplicaveis, como `http://127.0.0.1:3002/cashback/health`, `http://127.0.0.1:3002/cashback/login.php`, `http://127.0.0.1:3002/cotacao/health`, `http://127.0.0.1:3002/gestao/health`, `http://127.0.0.1:3002/pedidos/health`, `http://127.0.0.1:3002/pedidos/api/badge`, `http://127.0.0.1:3002/tarefa/health`, `http://127.0.0.1:3002/tarefa/badge.php`, `http://127.0.0.1:3002/xp/health`, `http://127.0.0.1:3002/codigos/health`, `http://127.0.0.1:3002/calendario/health`, `http://127.0.0.1:3002/financeiro/health`, `http://127.0.0.1:3002/notas/health`, `http://127.0.0.1:3002/usuarios/health` e `http://127.0.0.1:3002/financeiro/login.php`.
 - Quando o Codex estiver conduzindo o deploy, ele deve executar os comandos no VPS e informar comandos/validacoes realizados, sem precisar orientar o usuario a abrir PuTTY.
 
 ## Decisoes tecnicas ja tomadas
@@ -202,6 +207,7 @@ Higiene de pastas no VPS:
 - XP roda fora do PHP/WordPress: Apache faz proxy de `/xp/` para Node, Node usa Postgres para funcionarios, vendas, configuracoes, auditoria e sessoes. MySQL `wf_xp_*` fica apenas como referencia historica/backup; o app atual nao possui caminho MySQL de runtime.
 - Codigos roda fora do PHP/WordPress: Apache faz proxy de `/codigos/` para Node, Node usa Postgres para itens, blocos EAN, auditoria e sessoes. O app nao recebe MySQL no runtime normal.
 - Financeiro roda fora do PHP/WordPress: Apache faz proxy de `/financeiro/` para Node, Node usa Postgres para fechamentos, lancamentos, auditoria, idempotencia interna e sessoes; desde 2026-05-30 nao ha caminho runtime de MySQL, e rollback exige restaurar versao/imagem anterior com backup validado.
+- Bloco de notas/lembretes roda fora do PHP/WordPress: Apache faz proxy de `/notas/` para Node, Node usa Postgres dedicado para notas, ordem manual, auditoria e sessoes, e usa `core_users` como login unico. A Gestao preserva a tabela antiga apenas para importacao historica.
 - Usuarios roda fora do PHP/WordPress: Apache faz proxy de `/usuarios/` para Node, Node usa Postgres core para usuarios, permissoes, vinculo XP, vinculos seguros de WhatsApp, auditoria e sessoes, consulta o Postgres do XP apenas para listar funcionarios ativos e chama Miauby WhatsApp por endpoint interno tokenizado para allowlist por usuario.
 - Calendario roda fora do PHP/WordPress: Apache faz proxy de `/calendario/` para Node, Node usa Postgres dedicado para anos, cores, notas, auditoria e sessoes, revalidando usuario/permissao no core.
 - Login / Senha roda fora do PHP/WordPress: Apache faz proxy de `/login-senha/` para Node, Node usa Postgres dedicado para o cofre, revalida usuario/permissao no core e nao deve ser publicado direto fora do Apache.
@@ -242,6 +248,7 @@ Higiene de pastas no VPS:
 - Apagar `codigos-data/` remove itens, blocos, auditoria e sessoes oficiais de Codigos Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `calendario-data/` remove anos, paletas, notas por dia, auditoria e sessoes oficiais do Calendario Node/Postgres. Fazer backup antes de qualquer limpeza ou troca de volume.
 - Apagar `financeiro-data/` remove a fonte oficial atual do Financeiro em Postgres. Fazer backup antes de qualquer limpeza; MySQL `financeiro_*` e apenas referencia historica/backup.
+- Apagar `notas-data/` remove notas, ordem manual, auditoria e sessoes oficiais do Bloco de notas/lembretes. Fazer backup antes de qualquer limpeza; `gestao_notepad_notes` e apenas referencia historica importada.
 - Apagar `login-senha-data/` remove o cofre Login / Senha e sua auditoria. Fazer backup antes de qualquer limpeza e preservar `LOGIN_SENHA_VAULT_KEY` junto do plano de recuperacao.
 - Apagar `miauby-data/` remove a copia sombra do Miauby interno e os checksums de migracao. Isso nao derruba `/miauw/`, mas perde a base de paridade da migracao sombra.
 - Configurar credencial Google Sheets errada pode fazer import/export falhar ou atingir a planilha errada. Validar sempre com `/cotacao/api/google-sheets/status`.

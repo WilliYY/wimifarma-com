@@ -3622,7 +3622,6 @@ async function renderApp(req: Request): Promise<string> {
   const summary = await monthSummary(selectedMonth);
   const allAccounts = await listAccounts(selectedMonth);
   const searchAccountsSource = searchQuery ? await listAccounts(selectedMonth, { searchQuery }) : allAccounts;
-  const notes = await listNotepadNotes();
   const summaries = categorySummaries(allAccounts);
   const activeCategory = summaries.some((summary) => summary.key === selectedCategory) ? selectedCategory : '';
   const searchResults = searchQuery ? searchAccounts(searchAccountsSource, searchQuery) : [];
@@ -3647,7 +3646,6 @@ async function renderApp(req: Request): Promise<string> {
   const pedidoPanelHtml = renderPedidoPanel(req, visiblePedidoAccounts, selectedMonth, { search: Boolean(searchQuery) });
   const monthlyPanelHtml = renderMonthlyPanel(req, allAccounts, selectedMonth);
   const categoryPanelHtml = renderCategoryPanel(req, summaries, selectedMonth, activeCategory);
-  const notepadHtml = renderNotepad(req, notes, selectedMonth);
   const searchPanelHtml = renderSearchPanel(selectedMonth, searchQuery, searchResults.length, visibleAccounts.length, searchLimit);
   const listTitle = searchQuery
     ? `<div class="gestao-section-title"><span class="gestao-kicker">Busca</span><strong>${e(searchQuery)}</strong></div>`
@@ -3721,7 +3719,6 @@ async function renderApp(req: Request): Promise<string> {
             ${monthlyPanelHtml}
             ${pedidoPanelHtml}
             ${categoryPanelHtml}
-            ${notepadHtml}
           </div>
         </div>
       </div>
@@ -4049,15 +4046,9 @@ async function handleGestaoPost(req: Request, res: Response): Promise<void> {
     } else if (action === 'archive_canceled_category_group') {
       const changed = await archiveCanceledCategoryGroup(req);
       setFlash(req, 'success', `${changed} conta(s) cancelada(s) excluida(s) da tela. Historico preservado.`);
-    } else if (action === 'add_notepad_note') {
-      await addNotepadNote(req);
-      setFlash(req, 'success', 'Nota adicionada no bloco de lembretes.');
-    } else if (action === 'update_notepad_note') {
-      await updateNotepadNote(req);
-      setFlash(req, 'success', 'Nota atualizada.');
-    } else if (action === 'delete_notepad_note') {
-      await deleteNotepadNote(req);
-      setFlash(req, 'success', 'Nota apagada.');
+    } else if (['add_notepad_note', 'update_notepad_note', 'delete_notepad_note'].includes(action)) {
+      setFlash(req, 'error', 'O bloco de notas foi movido para o card Bloco de notas/lembretes.');
+      return res.redirect(303, '/notas/');
     } else if (action === 'cancel') {
       await setStatus(req, 'cancelado');
       setFlash(req, 'success', 'Conta cancelada sem apagar o historico.');

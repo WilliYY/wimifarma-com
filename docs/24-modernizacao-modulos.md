@@ -125,7 +125,7 @@ Cashback foi cortado para `apps/cashback`:
 Gestao esta cortada em `apps/gestao`:
 
 - banco/schema alvo `wimifarma_gestao`;
-- tabelas `gestao_accounts`, `gestao_account_items`, `gestao_account_payments`, `gestao_audit_events`, `gestao_notepad_notes`, `gestao_supplier_orders`, `gestao_schema_migrations` e `gestao_sessions`;
+- tabelas `gestao_accounts`, `gestao_account_items`, `gestao_account_payments`, `gestao_audit_events`, `gestao_supplier_orders`, `gestao_schema_migrations` e `gestao_sessions`; `gestao_notepad_notes` fica apenas como historico importado pelo modulo `/notas/`;
 - proxy Apache oficial em `/gestao/`;
 - login unico por `core_users`, restrito a `adm`, `admin` ou `gerente`;
 - auditoria em `gestao_audit_events` e `core_audit_logs`;

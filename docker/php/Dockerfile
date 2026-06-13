@@ -132,6 +132,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/notas/" "http://wimifarma-notas-app:3970/notas/"'; \
+        echo 'ProxyPassReverse "/notas/" "http://wimifarma-notas-app:3970/notas/"'; \
+        echo 'ProxyPass "/notas" "http://wimifarma-notas-app:3970/notas"'; \
+        echo 'ProxyPassReverse "/notas" "http://wimifarma-notas-app:3970/notas"'; \
+    } > /etc/apache2/conf-available/wimifarma-notas-proxy.conf \
+    && a2enconf wimifarma-notas-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
         echo 'ProxyPassReverse "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
         echo 'ProxyPass "/cashback" "http://wimifarma-cashback-app:4000/cashback"'; \

@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Calendario, do Financeiro, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Calendario, Financeiro, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Calendario, do Financeiro, do Bloco de notas/lembretes, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Calendario, Financeiro, Bloco de notas/lembretes, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -37,6 +37,9 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - Container Financeiro: `wimifarma-financeiro-db`
 - Imagem Financeiro: `postgres:17-alpine`
 - Volume Financeiro: `financeiro-data/postgres/`
+- Container Bloco de notas: `wimifarma-notas-db`
+- Imagem Bloco de notas: `postgres:17-alpine`
+- Volume Bloco de notas: `notas-data/postgres/`
 - Container Login / Senha: `wimifarma-login-senha-db`
 - Imagem Login / Senha: `postgres:17-alpine`
 - Volume Login / Senha: `login-senha-data/postgres/`
@@ -64,6 +67,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_codigos`: Codigos em Postgres.
 - `wimifarma_calendario`: Calendario em Postgres.
 - `wimifarma_financeiro`: Financeiro oficial em Postgres.
+- `wimifarma_notas`: Bloco de notas/lembretes oficial em Postgres, com notas, ordem, exclusao logica, auditoria e sessoes.
 - `wimifarma_login_senha`: cofre Login / Senha oficial em Postgres, com senhas cifradas, auditoria local e separacao por `scope` entre cofre comum e aba restrita `Contas`.
 - `wimifarma_miauw_whatsapp`: fila/eventos/outbox do canal WhatsApp do Miauby em Postgres.
 - `wimifarma_miauby`: banco sombra do Miauby interno, com tabelas canonicas `miauby_*`. `wimifarma-miauby-app` usa esse banco para status/contexto/readiness somente leitura e usa o ultimo `validate` salvo em `miauby_migration_runs` para resumir paridade; a comparacao contra MySQL `miauw_*` ocorre somente no `wimifarma-miauby-migrator`. O prefixo `miauw_*` permanece oficial no PHP ate corte validado; ver `docs/28-miauby-migracao.md`.
@@ -83,7 +87,7 @@ Criadas por `apps/core-auth/src/sync-users.ts`:
 - `core_user_audit_events`: historico central de criacao, atualizacao, desativacao, permissoes e vinculo XP do modulo Usuarios.
 - `usuarios_sessions`: sessoes web do modulo Usuarios gerenciadas por `connect-pg-simple`.
 
-Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback, XP, Financeiro e Usuarios usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Miauby PHP usa `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente enquanto existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
+Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback, XP, Financeiro, Bloco de notas/lembretes e Usuarios usam `core_users` como fonte unica de login, sem dependencia MySQL no app. Miauby PHP usa `core_users` como fonte principal, mantendo fallback MySQL apenas como rollback opt-in por variaveis de ambiente enquanto existir. Usuarios cria novos logins diretamente no core usando `legacy_mysql_id` negativo para evitar conflito com ids positivos vindos do MySQL legado.
 
 ## Tabelas do Cashback em Postgres
 
@@ -159,7 +163,7 @@ Criadas por `apps/gestao/src/server.ts`:
 - `gestao_account_payments`: pagamentos datados por conta, permitindo abater o saldo em partes, formar o extrato da conta e somar no mes correto; pagamentos podem ser gerais da conta ou vinculados a qualquer lancamento aberto por `item_id`, e tambem podem ser cancelados sem exclusao fisica.
 - `gestao_audit_events`: auditoria interna do modulo, com acao, usuario e resumo sanitizado.
 - `gestao_sessions`: sessoes web da Gestao gerenciadas por `connect-pg-simple`.
-- `gestao_notepad_notes`: bloco de notas administrativo lateral, com edicao e exclusao logica por `deleted_at`.
+- `gestao_notepad_notes`: historico do antigo bloco de notas lateral da Gestao. Desde 2026-06-12, a fonte oficial e `notas_notes` em `wimifarma_notas`; esta tabela fica apenas para importacao/rollback historico e nao deve receber novas notas.
 - `pedidos_sessions`: sessoes web do modulo Pedidos gerenciadas por `connect-pg-simple`.
 - `pedidos_orders`: pedidos registrados/aguardando chegada, vinculados por `account_id` a uma conta financeira da categoria `Boleto`.
 - `pedidos_confirmed_orders`: pedidos que ja tiveram chegada confirmada, com `lifecycle` `confirmado`, `historico` ou `cancelado`, datas de confirmacao/finalizacao e usuario responsavel por cada etapa.
@@ -217,6 +221,16 @@ Criadas por `apps/financeiro/src/server.ts`:
 - `financeiro_sessions`: sessoes do app Node (`WFFINANCEIRO`).
 
 A fonte oficial do Financeiro e o Postgres `wimifarma_financeiro`. Desde 2026-05-30, o app nao possui `mysql2`, importador, espelho, fallback `wf_users`, `FINANCEIRO_AUTH_PROVIDER` nem flags `FINANCEIRO_LEGACY_MYSQL_*`; o MySQL `financeiro_*` fica como referencia historica/backup, e rollback exige restaurar versao anterior e backup validado.
+
+## Tabelas do Bloco de notas/lembretes em Postgres
+
+Criadas por `apps/notas/src/server.ts`:
+
+- `notas_notes`: notas internas editaveis, com texto, ordem manual, exclusao logica por `deleted_at`, autor de criacao/edicao e vinculo opcional ao ID legado importado da Gestao.
+- `notas_audit_events`: auditoria curta de criacao, edicao, exclusao e reordenacao, sem enviar conteudo das notas para o Miauby.
+- `notas_sessions`: sessoes web do app Node (`WFNOTAS`).
+
+A fonte oficial do Bloco de notas/lembretes e o Postgres `wimifarma_notas`. Na primeira subida, o app importa de forma idempotente o historico de `gestao_notepad_notes` para `notas_notes`; depois disso, a Gestao nao deve receber novas notas.
 
 ## Tabelas em `wimifarma_app`
 
@@ -305,6 +319,7 @@ Alguns modulos criam ou ajustam tabelas automaticamente ao acessar funcoes:
 - Cashback: `site/cashback/functions.php`
 - Cotacao V2: `apps/cotacao/src/server.js`
 - Financeiro: `apps/financeiro/src/server.ts`; `site/financeiro` fica como legado/assets visuais.
+- Bloco de notas/lembretes: `apps/notas/src/server.ts`
 - Usuarios: `apps/usuarios/src/server.ts`
 - Login / Senha: `apps/login-senha/src/server.ts`
 - Gestao: `apps/gestao/src/server.ts`

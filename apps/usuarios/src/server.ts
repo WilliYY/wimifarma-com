@@ -159,6 +159,7 @@ const MODULES: ModuleDefinition[] = [
   { key: 'cotacao', label: 'Cotacao', href: '/cotacao/' },
   { key: 'pedidos', label: 'Pedidos', href: '/pedidos/' },
   { key: 'financeiro', label: 'Financeiro', href: '/financeiro/' },
+  { key: 'notas', label: 'Bloco de notas', href: '/notas/' },
   { key: 'tarefa', label: 'Tarefas', href: '/tarefa/' },
   { key: 'codigos', label: 'Codigos', href: '/codigos/' },
   { key: 'calendario', label: 'Calendario', href: '/calendario/' },
