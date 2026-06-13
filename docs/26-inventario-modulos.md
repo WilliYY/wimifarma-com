@@ -473,6 +473,7 @@ Validar no VPS `/notas/health`, proxy Apache, login via Home/SSO, permissao no U
 - Desde 2026-06-08, o desktop de `/pedidos/` nao usa mais rolagem interna no formulario de `Novo pedido` nem nas colunas `Aguardando chegada`/`Confirmados`; as colunas viraram lanes compactas com superficie propria, cards recolhidos mais densos e acao principal do formulario mais clara, sem alterar backend, consultas, status, pagamentos, CSRF ou auditoria.
 - Desde 2026-06-11, `/pedidos/` tem busca inteligente em tempo real por fornecedor, valor, vencimento, previsao de chegada, criacao, status, parcelas, observacao, responsaveis e auditoria/historico; o endpoint `GET /pedidos/api/search` apenas le as listas do mes, filtra e retorna HTML dos cards, sem gravar, pagar, confirmar, arquivar ou duplicar pedidos.
 - Ainda em 2026-06-11, o card aberto do `Historico` permite voltar manualmente para `Confirmados`, voltar para `Aguardando chegada` quando existe `pedidos_orders.order_id` original, ou excluir da tela por arquivamento logico. As acoes gravam auditoria e nao cancelam nem apagam pagamentos.
+- Desde 2026-06-13, o painel do lapis permite corrigir valor/vencimento/nome de parcela mesmo quando o pedido esta pago ou ja tem pagamento vinculado; pagamentos ficam preservados em `gestao_account_payments`, e `gestao_accounts`/status de Pedidos sao recalculados a partir dos itens ativos.
 - `/pedidos/logout.php`: encerra sessao.
 - `/pedidos/health`: health com `mysql_dependency=false`.
 - `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.
@@ -525,7 +526,7 @@ Validar no VPS `/notas/health`, proxy Apache, login via Home/SSO, permissao no U
 - Marcar pedido em Aguardando chegada como ja pago, gravando somente o saldo aberto em `gestao_account_payments` e mantendo a chegada pendente.
 - Confirmar chegada, com movimento para Confirmados ou Historico se ja estava pago.
 - Editar fornecedor.
-- Adicionar parcela/valor, editar valor, remover valor da tela por arquivamento logico.
+- Adicionar parcela/valor, editar valor/vencimento/nome inclusive quando ja pago, remover valor da tela por arquivamento logico quando permitido.
 - Registrar pagamento parcial/total e atualizar saldo.
 - Atualizar vencimento do boleto.
 - Arquivar pedido da tela mantendo historico e auditoria.

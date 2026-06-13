@@ -1908,24 +1908,20 @@ async function updateOrderItem(req: Request): Promise<void> {
     if (!item) throw new Error('Lancamento nao encontrado.');
     const dueDate = hasDueField ? requestedDueDate : (dateInputValue(item.due_at) || null);
 
-    const paidForItem = await client.query<{ paid_cents: string }>(
-      "SELECT COALESCE(SUM(amount_cents), 0)::bigint AS paid_cents FROM gestao_account_payments WHERE item_id = $1 AND status = 'ativo'",
-      [itemId],
-    );
-    if (cents < Number(paidForItem.rows[0]?.paid_cents || 0)) {
-      throw new Error('O valor nao pode ficar menor que o total ja pago nessa parcela.');
-    }
-
     await client.query('UPDATE gestao_account_items SET description = $1, amount_cents = $2, due_at = $3::date WHERE id = $4', [description, cents, dueDate, itemId]);
     const newTotal = await refreshAccountTotal(client, accountId);
     await refreshAccountDue(client, accountId);
     const paid = await paidTotal(client, accountId);
-    if (newTotal < paid) {
-      throw new Error('O total do pedido nao pode ficar menor que o valor ja pago.');
-    }
     await syncPaymentStatus(client, accountId);
     await syncPedidoAfterAccountChange(client, accountId, userId);
-    await auditPg(client, accountId, userId, 'pedidos_valor_atualizado', `Lancamento alterado: ${item.description} / ${formatMoney(item.amount_cents)} -> ${description} / ${formatMoney(cents)}`);
+    const preservedPaymentNote = paid > newTotal ? ` Pagamento preservado acima do total atual: ${formatMoney(paid)}.` : '';
+    await auditPg(
+      client,
+      accountId,
+      userId,
+      'pedidos_valor_atualizado',
+      `Lancamento alterado: ${item.description} / ${formatMoney(item.amount_cents)} -> ${description} / ${formatMoney(cents)}.${preservedPaymentNote}`,
+    );
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
