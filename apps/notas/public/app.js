@@ -4,6 +4,8 @@
   const grid = document.querySelector('[data-notes-grid]');
   const status = document.querySelector('[data-order-status]');
   let draggedCard = null;
+  let dragStartOrder = '';
+  let lastDropTarget = null;
   let saveTimer = 0;
 
   function setStatus(message, kind) {
@@ -49,6 +51,47 @@
   function saveOrderSoon() {
     window.clearTimeout(saveTimer);
     saveTimer = window.setTimeout(saveOrder, 220);
+  }
+
+  function clearDropTarget() {
+    if (lastDropTarget) {
+      lastDropTarget.classList.remove('is-drop-target');
+      lastDropTarget = null;
+    }
+    grid?.classList.remove('is-drop-end');
+  }
+
+  function markDropTarget(next) {
+    if (next === lastDropTarget) {
+      if (!next) grid?.classList.add('is-drop-end');
+      return;
+    }
+    clearDropTarget();
+    if (next) {
+      next.classList.add('is-drop-target');
+      lastDropTarget = next;
+    } else {
+      grid?.classList.add('is-drop-end');
+    }
+  }
+
+  function markPlaced(card) {
+    card.classList.add('is-just-placed');
+    window.setTimeout(() => card.classList.remove('is-just-placed'), 520);
+  }
+
+  function setDragImage(event, card) {
+    if (!event.dataTransfer) return;
+    const preview = card.cloneNode(true);
+    preview.classList.add('notes-drag-preview');
+    preview.style.width = `${card.offsetWidth}px`;
+    preview.style.position = 'fixed';
+    preview.style.left = '-9999px';
+    preview.style.top = '-9999px';
+    preview.style.pointerEvents = 'none';
+    document.body.appendChild(preview);
+    event.dataTransfer.setDragImage(preview, Math.min(card.offsetWidth / 2, 140), 34);
+    window.setTimeout(() => preview.remove(), 0);
   }
 
   async function saveOrder() {
@@ -97,28 +140,56 @@
       handle.addEventListener('dragstart', (event) => {
         draggedCard = cardFromHandle(handle);
         if (!draggedCard) return;
+        dragStartOrder = currentIds().join(',');
         draggedCard.classList.add('is-dragging');
+        grid.classList.add('is-reordering');
+        document.body.classList.add('is-notes-grabbing');
+        handle.setAttribute('aria-grabbed', 'true');
+        setStatus('Segurando nota. Solte na nova posicao.', 'pending');
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', draggedCard.getAttribute('data-note-id') || '');
+        setDragImage(event, draggedCard);
       });
 
       handle.addEventListener('dragend', () => {
-        if (!draggedCard) return;
-        draggedCard.classList.remove('is-dragging');
+        const droppedCard = draggedCard;
+        if (!droppedCard) return;
+        droppedCard.classList.remove('is-dragging');
+        handle.setAttribute('aria-grabbed', 'false');
+        grid.classList.remove('is-reordering');
+        document.body.classList.remove('is-notes-grabbing');
+        clearDropTarget();
         draggedCard = null;
-        saveOrderSoon();
+        markPlaced(droppedCard);
+        if (currentIds().join(',') !== dragStartOrder) {
+          setStatus('Soltei. Salvando nova ordem...', 'pending');
+          saveOrderSoon();
+        } else {
+          setStatus('', '');
+        }
+        dragStartOrder = '';
       });
     });
 
     grid.addEventListener('dragover', (event) => {
       if (!draggedCard) return;
       event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
       const next = insertionPoint(grid, event.clientX, event.clientY);
+      markDropTarget(next);
       if (next) {
         grid.insertBefore(draggedCard, next);
       } else {
         grid.appendChild(draggedCard);
       }
+    });
+
+    grid.addEventListener('drop', (event) => {
+      if (!draggedCard) return;
+      event.preventDefault();
+      clearDropTarget();
     });
   }
 
