@@ -389,7 +389,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 
 ### Telas e endpoints
 
-- `/notas/` e `/notas/index.php`: tela de notas em grade, com criacao, edicao, exclusao logica e reordenacao por arrastar. Desde 2026-06-13, o arrasto usa eventos de ponteiro com distancia minima antes de ativar, e os botoes `Salvar` e `Apagar` ficam alinhados no mesmo rodape do card para reduzir altura.
+- `/notas/` e `/notas/index.php`: tela de notas em grade, com criacao, edicao, exclusao logica e reordenacao por arrastar. Desde 2026-06-13, o topo ficou compacto sem rotulo duplicado, a grade desktop usa 5 lembretes por linha, o rodape dos cards ficou menor, o arrasto usa eventos de ponteiro com distancia minima antes de ativar, e o botao de mover tambem aceita setas quando focado.
 - `/notas/login.php`: compatibilidade de login/SSO; sem sessao valida redireciona para `/`.
 - `/notas/health`: health de Postgres, auth core e importacao legado.
 - `POST /notas/api/order`: persiste a ordem manual das notas.
@@ -432,7 +432,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Criar nota.
 - Editar texto da nota.
 - Excluir nota por `deleted_at`.
-- Reordenar notas por arrasto, persistindo `sort_order`.
+- Reordenar notas por arrasto ou setas no botao de mover, persistindo `sort_order`.
 - Importar historico legado de `gestao_notepad_notes` uma vez, sem duplicar notas ja importadas.
 - Auditoria local e espelho curto no core, sem expor conteudo ao Miauby.
 

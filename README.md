@@ -15,7 +15,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Pedidos para recebimento de fornecedores, vencimento de boletos, pagamentos parciais e historico;
 - Financeiro para fechamento, sangrias, PIX, maquininhas e rastreabilidade interna;
 - Desde 2026-06-05, o Caixa do Financeiro mostra resumo por categoria e cards de lancamento mais legiveis, mantendo as mesmas regras de gravacao, autosave e integracao Miauby.
-- Bloco de notas/lembretes para anotacoes internas rapidas, com edicao, exclusao logica e reordenacao por arrasto;
+- Bloco de notas/lembretes para anotacoes internas rapidas, com edicao, exclusao logica, grade compacta e reordenacao por arrasto;
 - Usuarios para logins individuais, permissoes por modulo, vinculo com XP e historico central;
 - Login / Senha para cofre interno simples de acessos da farmacia, com aba restrita `Contas` para admin/gerente, senha cifrada e auditoria;
 - Gestao para contas a pagar manuais, itens de composicao, pagamentos parciais, vencimentos, categorias livres e total pago por mes;
@@ -643,7 +643,7 @@ Decisao para 2027 no Calendario: quando o usuario trouxer o novo modelo/PDF feit
 
 Para Financeiro, `apps/financeiro` e `wimifarma-financeiro-app:3800` sao a rota oficial `/financeiro/` via proxy Apache. Manter `FINANCEIRO_POSTGRES_PASSWORD`, `FINANCEIRO_SESSION_SECRET` e, se quiser trocar a senha de reabertura, `FINANCEIRO_REOPEN_PASSWORD` por ambiente. O login usa somente `core_users`; rollback MySQL exige restaurar versao/imagem anterior e backup validado. `FINANCEIRO_INTERNAL_TOKEN` pode ficar igual ao `MIAUW_GUARDIAN_TOKEN` para o Miauby/WhatsApp gravar `Pix CNPJ` e faturamento por endpoints internos Node/Postgres.
 
-Para Bloco de notas/lembretes, `apps/notas` e `wimifarma-notas-app:3970` sao a rota oficial `/notas/` via proxy Apache. Manter `NOTAS_POSTGRES_PASSWORD`, `NOTAS_SESSION_SECRET` e `NOTAS_INTERNAL_TOKEN` por ambiente; o token pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby consultar somente o resumo seguro. O app usa `core_users`/`WFHOME_SSO`, permissao individual `notas`, Postgres `wimifarma_notas` e importa idempotentemente notas antigas de `gestao_notepad_notes` sem continuar gravando na Gestao.
+Para Bloco de notas/lembretes, `apps/notas` e `wimifarma-notas-app:3970` sao a rota oficial `/notas/` via proxy Apache. Manter `NOTAS_POSTGRES_PASSWORD`, `NOTAS_SESSION_SECRET` e `NOTAS_INTERNAL_TOKEN` por ambiente; o token pode reutilizar `MIAUW_GUARDIAN_TOKEN` para o Miauby consultar somente o resumo seguro. O app usa `core_users`/`WFHOME_SSO`, permissao individual `notas`, Postgres `wimifarma_notas` e importa idempotentemente notas antigas de `gestao_notepad_notes` sem continuar gravando na Gestao. Desde 2026-06-13, a tela usa topo compacto sem rotulo duplicado, grade de 5 lembretes por linha no desktop, rodape menor nos cards e arrasto reforcado pelo botao de mover, tambem com setas quando focado, sem alterar banco, CSRF, POSTs ou endpoint interno.
 
 Para Usuarios, `apps/usuarios` e `wimifarma-usuarios-app:3900` sao a rota oficial `/usuarios/` via proxy Apache. Manter `USUARIOS_SESSION_SECRET` por ambiente; o app usa `CORE_POSTGRES_PASSWORD`, consulta o Postgres do XP para associar logins a funcionarios e chama Miauby WhatsApp por `USUARIOS_MIAUW_WHATSAPP_INTERNAL_*` para vincular/remover numeros da allowlist. Tarefas privadas devem ser criadas pelo modulo `/tarefa/`. O painel fica restrito a `adm` ou role `admin`.
 

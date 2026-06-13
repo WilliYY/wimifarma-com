@@ -9,6 +9,8 @@
   let activePointer = null;
   let dragFrame = 0;
   let saveTimer = 0;
+  const pointerMoveOptions = { passive: false, capture: true };
+  const pointerEndOptions = { capture: true };
 
   function setStatus(message, kind) {
     if (!status) return;
@@ -48,6 +50,10 @@
     return Array.from(grid?.querySelectorAll('[data-note-card]') || [])
       .map((card) => Number(card.getAttribute('data-note-id') || 0))
       .filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  function noteCards() {
+    return Array.from(grid?.querySelectorAll('[data-note-card]') || []);
   }
 
   function saveOrderSoon() {
@@ -121,9 +127,9 @@
     }
     activePointer = null;
     if (!pointer) return;
-    document.removeEventListener('pointermove', onPointerMove);
-    document.removeEventListener('pointerup', onPointerUp);
-    document.removeEventListener('pointercancel', onPointerCancel);
+    document.removeEventListener('pointermove', onPointerMove, pointerMoveOptions);
+    document.removeEventListener('pointerup', onPointerUp, pointerEndOptions);
+    document.removeEventListener('pointercancel', onPointerCancel, pointerEndOptions);
     try {
       pointer.handle.releasePointerCapture(pointer.pointerId);
     } catch (error) {
@@ -154,13 +160,34 @@
     dragStartOrder = '';
   }
 
+  function moveCardByStep(card, direction) {
+    if (!grid || !card || !direction) return;
+    const cards = noteCards();
+    const currentIndex = cards.indexOf(card);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= cards.length) return;
+    dragStartOrder = currentIds().join(',');
+    const target = cards[targetIndex];
+    if (direction < 0) {
+      grid.insertBefore(card, target);
+    } else {
+      grid.insertBefore(card, target.nextSibling);
+    }
+    markPlaced(card);
+    if (currentIds().join(',') !== dragStartOrder) {
+      setStatus('Salvando nova ordem...', 'pending');
+      saveOrderSoon();
+    }
+    dragStartOrder = '';
+  }
+
   function onPointerMove(event) {
     if (!activePointer || event.pointerId !== activePointer.pointerId) return;
     const movement = Math.hypot(
       event.clientX - activePointer.startX,
       event.clientY - activePointer.startY,
     );
-    if (!activePointer.started && movement < 6) return;
+    if (!activePointer.started && movement < 4) return;
     event.preventDefault();
     beginPointerDrag();
     scheduleDragMove(event.clientX, event.clientY);
@@ -205,16 +232,20 @@
     const cards = Array.from(container.querySelectorAll('[data-note-card]:not(.is-dragging)'));
     return cards.reduce((closest, card) => {
       const box = card.getBoundingClientRect();
-      const verticalDistance = pointerY - box.top - box.height / 2;
-      const horizontalDistance = pointerX - box.left - box.width / 2;
-      const offset = Math.abs(verticalDistance) > box.height / 2
-        ? verticalDistance
-        : horizontalDistance;
-      if (offset < 0 && offset > closest.offset) {
-        return { offset, element: card };
+      const centerX = box.left + box.width / 2;
+      const centerY = box.top + box.height / 2;
+      const rowPadding = Math.min(32, box.height / 4);
+      const sameRow = pointerY >= box.top - rowPadding && pointerY <= box.bottom + rowPadding;
+      const offset = sameRow ? pointerX - centerX : pointerY - centerY;
+      if (offset < 0) {
+        const crossAxisDistance = sameRow ? Math.abs(pointerY - centerY) * 0.25 : Math.abs(pointerX - centerX) * 0.08;
+        const score = Math.abs(offset) + crossAxisDistance;
+        if (score < closest.score) {
+          return { score, element: card };
+        }
       }
       return closest;
-    }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }, { score: Number.POSITIVE_INFINITY, element: null }).element;
   }
 
   function initDrag() {
@@ -226,6 +257,8 @@
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         const card = cardFromHandle(handle);
         if (!card || activePointer) return;
+        event.preventDefault();
+        event.stopPropagation();
         activePointer = {
           card,
           handle,
@@ -236,14 +269,27 @@
           clientY: event.clientY,
           started: false,
         };
+        handle.focus({ preventScroll: true });
         try {
           handle.setPointerCapture(event.pointerId);
         } catch (error) {
           // Pointer capture is an enhancement; document listeners still keep the drag working.
         }
-        document.addEventListener('pointermove', onPointerMove, { passive: false });
-        document.addEventListener('pointerup', onPointerUp);
-        document.addEventListener('pointercancel', onPointerCancel);
+        document.addEventListener('pointermove', onPointerMove, pointerMoveOptions);
+        document.addEventListener('pointerup', onPointerUp, pointerEndOptions);
+        document.addEventListener('pointercancel', onPointerCancel, pointerEndOptions);
+      });
+      handle.addEventListener('keydown', (event) => {
+        const card = cardFromHandle(handle);
+        if (!card) return;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          moveCardByStep(card, -1);
+        }
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+          event.preventDefault();
+          moveCardByStep(card, 1);
+        }
       });
     });
   }

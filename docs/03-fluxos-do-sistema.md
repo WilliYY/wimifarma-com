@@ -328,8 +328,8 @@ Regras a preservar:
 
 - o card da Home fica logo depois de `Financeiro`;
 - a tela usa visual de papeis/bloco de notas, sem fundo cinza dominante, com area interna editavel;
-- notas ficam em grade responsiva, com ate quatro notas por fileira no desktop;
-- cada nota pode ser editada, apagada por exclusao logica e reordenada por arrastar pelo mouse; desde 2026-06-13, o arrasto usa ponteiro com pequena distancia minima antes de pegar a nota, evitando piscar em clique simples, e `Salvar`/`Apagar` ficam no mesmo rodape compacto do card;
+- notas ficam em grade responsiva, com topo compacto sem rotulo duplicado, ate cinco lembretes por fileira no desktop e rodape menor para caber mais conteudo;
+- cada nota pode ser editada, apagada por exclusao logica e reordenada por arrastar pelo mouse; desde 2026-06-13, o arrasto usa ponteiro com pequena distancia minima antes de pegar a nota, evitando piscar em clique simples, o botao de mover tambem aceita setas quando focado, e `Salvar`/`Apagar` ficam no mesmo rodape compacto do card;
 - a altura do textarea acompanha o conteudo para notas curtas ocuparem menos espaco;
 - a importacao de `gestao_notepad_notes` para `notas_notes` e idempotente e nao deve duplicar historico;
 - o endpoint interno `/notas/api/internal/summary` e somente resumo seguro para Miauby, sem texto completo das notas.

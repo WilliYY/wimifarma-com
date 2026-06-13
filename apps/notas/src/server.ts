@@ -585,7 +585,7 @@ function renderNote(req: Request, note: NoteRow): string {
   const deleteFormId = `note-delete-${noteId}`;
   return `<article class="notes-paper" data-note-card data-note-id="${e(note.id)}">
     <span class="notes-paper-clip" aria-hidden="true"></span>
-    <button type="button" class="notes-drag-handle" data-note-drag-handle aria-label="Segurar e mover nota" title="Segurar e mover nota"></button>
+    <button type="button" class="notes-drag-handle" data-note-drag-handle aria-label="Arrastar nota para reordenar" title="Arrastar ou usar setas para mover"></button>
     <form id="${updateFormId}" method="post" action="${BASE_PATH}/" class="notes-form" data-note-form>
       ${csrfField(req)}
       <input type="hidden" name="action" value="update_note">
@@ -623,16 +623,15 @@ function renderIndex(req: Request, notes: NoteRow[], counts: { active: number; d
   <meta name="csrf-token" content="${e(csrfToken)}">
   <title>Bloco de notas/lembretes - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-pointer">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-compact">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260613-notas-pointer" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260613-notas-compact" defer></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </head>
 <body class="notes-app-body" data-notas-base-path="${e(BASE_PATH)}">
   <header class="notes-topbar">
-    <a class="notes-brand" href="/">
+    <a class="notes-brand" href="/" aria-label="Voltar para Home">
       <img src="/financeiro/logo-wimifarma.svg" alt="Wimifarma">
-      <strong>Bloco de notas</strong>
     </a>
     <nav class="notes-nav" aria-label="Navegacao">
       <a href="/">Home</a>
@@ -643,7 +642,6 @@ function renderIndex(req: Request, notes: NoteRow[], counts: { active: number; d
     <section class="notes-hero" aria-label="Resumo">
       <img src="${BASE_PATH}/assets/notepad-paper.png" alt="" aria-hidden="true">
       <div>
-        <span>Bloco de notas</span>
         <h1>Lembretes</h1>
       </div>
       <strong>${e(counts.active)}</strong>
@@ -658,7 +656,7 @@ function renderIndex(req: Request, notes: NoteRow[], counts: { active: number; d
         <form method="post" action="${BASE_PATH}/" class="notes-form">
           ${csrfField(req)}
           <input type="hidden" name="action" value="create_note">
-          <textarea name="nota_texto" rows="4" maxlength="2000" placeholder="Anote algo para lembrar depois." data-autosize data-autosize-min="148"></textarea>
+          <textarea name="nota_texto" rows="3" maxlength="2000" placeholder="Anote algo para lembrar depois." data-autosize data-autosize-min="96"></textarea>
           <button type="submit" class="notes-btn notes-btn-primary">Adicionar nota</button>
         </form>
       </article>
@@ -678,7 +676,7 @@ function renderLogin(req: Request, message = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Entrar - Bloco de notas</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-pointer">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260613-notas-compact">
 </head>
 <body class="notes-login-body">
   <main class="notes-login-card">
