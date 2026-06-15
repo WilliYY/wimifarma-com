@@ -389,7 +389,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 
 ### Telas e endpoints
 
-- `/notas/` e `/notas/index.php`: tela de notas em grade, com criacao, edicao, exclusao logica e reordenacao por arrastar. Desde 2026-06-13, o topo ficou compacto sem rotulo duplicado, a grade desktop usa 5 lembretes por linha, o rodape dos cards ficou menor, o arrasto usa eventos de ponteiro com distancia minima antes de ativar, e o botao de mover tambem aceita setas quando focado.
+- `/notas/` e `/notas/index.php`: tela de notas em grade, com criacao, edicao, exclusao logica e reordenacao por arrastar. Desde 2026-06-15, a listagem, contagem, edicao, exclusao e reordenacao da tela filtram `notas_notes.created_by` pelo `core_users.id` logado, entao cada usuario ve e altera somente os proprios lembretes. Desde 2026-06-13, o topo ficou compacto sem rotulo duplicado, a grade desktop usa 5 lembretes por linha, o rodape dos cards ficou menor, o arrasto usa eventos de ponteiro com distancia minima antes de ativar, e o botao de mover tambem aceita setas quando focado.
 - `/notas/login.php`: compatibilidade de login/SSO; sem sessao valida redireciona para `/`.
 - `/notas/health`: health de Postgres, auth core e importacao legado.
 - `POST /notas/api/order`: persiste a ordem manual das notas.
@@ -400,6 +400,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Sessao propria `WFNOTAS`.
 - Login oficial por `core_users` e `WFHOME_SSO`.
 - Permissao por `core_user_module_permissions.module_key='notas'`; ausencia de linha preserva acesso legado, e `adm` continua como recuperacao segura.
+- Privacidade por usuario: permissao no modulo libera acesso ao app, mas nao libera leitura global. A posse do lembrete e `notas_notes.created_by`; usuario comum, gerente, admin e `adm` leem/editam/apagam/reordenam apenas os proprios lembretes na tela.
 - Escritas de tela usam CSRF.
 - Endpoint interno exige `NOTAS_INTERNAL_TOKEN`, `MIAUW_GUARDIAN_TOKEN` ou `MIAUW_AGENT_INTERNAL_TOKEN`.
 
@@ -433,6 +434,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 - Editar texto da nota.
 - Excluir nota por `deleted_at`.
 - Reordenar notas por arrasto ou setas no botao de mover, persistindo `sort_order`.
+- Criacao define `created_by` como o usuario logado; edicao, exclusao e reordenacao exigem que o ID enviado pertenca ao mesmo usuario.
 - Importar historico legado de `gestao_notepad_notes` uma vez, sem duplicar notas ja importadas.
 - Auditoria local e espelho curto no core, sem expor conteudo ao Miauby.
 
@@ -446,7 +448,7 @@ Concluido em 2026-05-30: dependencia `mysql2`, importacao antiga, fallback `wf_u
 ### Riscos
 
 - Texto de nota pode conter informacao operacional sensivel; nao colocar conteudo em logs, Miauby, WhatsApp, health ou resumo interno.
-- Reordenacao por arrasto deve salvar somente IDs pertencentes ao usuario/sessao autorizada e ignorar IDs inexistentes/deletados.
+- Reordenacao por arrasto deve salvar somente IDs pertencentes ao usuario/sessao autorizada; ID de outro usuario deve falhar sem alterar a ordem.
 - A importacao de `gestao_notepad_notes` precisa continuar idempotente para nao duplicar historico apos rebuild.
 - Apagar `notas-data/` remove a fonte oficial nova; o legado da Gestao nao deve ser tratado como backup completo depois da migracao.
 

@@ -456,28 +456,34 @@ async function migrateLegacyGestaoNotes(): Promise<number> {
   }
 }
 
-async function listNotes(): Promise<NoteRow[]> {
+async function listNotes(user: User): Promise<NoteRow[]> {
   const result = await pgPool.query<NoteRow>(
     `SELECT id::text, body, sort_order, created_by, created_at, updated_by, updated_at, legacy_gestao_note_id::text
        FROM notas_notes
       WHERE deleted_at IS NULL
+        AND created_by = $1
       ORDER BY
         CASE WHEN sort_order > 0 THEN 0 ELSE 1 END,
         sort_order ASC,
         updated_at DESC,
         id DESC
       LIMIT 200`,
+    [user.id],
   );
   return result.rows;
 }
 
-async function countNotes(): Promise<{ active: number; deleted: number; imported: number }> {
+async function countNotes(user?: User): Promise<{ active: number; deleted: number; imported: number }> {
+  const params = user?.id ? [user.id] : [];
+  const ownerWhere = user?.id ? 'WHERE created_by = $1' : '';
   const result = await pgPool.query<{ active: string; deleted: string; imported: string }>(
     `SELECT
       COUNT(*) FILTER (WHERE deleted_at IS NULL)::text AS active,
       COUNT(*) FILTER (WHERE deleted_at IS NOT NULL)::text AS deleted,
       COUNT(*) FILTER (WHERE legacy_gestao_note_id IS NOT NULL)::text AS imported
-     FROM notas_notes`,
+     FROM notas_notes
+     ${ownerWhere}`,
+    params,
   );
   return {
     active: Number(result.rows[0]?.active || 0),
@@ -490,7 +496,8 @@ async function createNote(req: Request, user: User): Promise<void> {
   const body = cleanNoteText(req.body.nota_texto, 2000);
   if (!body) throw new Error('Escreva uma anotacao antes de salvar.');
   const orderResult = await pgPool.query<{ next_order: string }>(
-    "SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM notas_notes WHERE deleted_at IS NULL",
+    "SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM notas_notes WHERE deleted_at IS NULL AND created_by = $1",
+    [user.id],
   );
   const sortOrder = Number(orderResult.rows[0]?.next_order || 1);
   const result = await pgPool.query<{ id: string }>(
@@ -510,10 +517,10 @@ async function updateNote(req: Request, user: User): Promise<void> {
   const result = await pgPool.query(
     `UPDATE notas_notes
         SET body = $1, updated_by = $2, updated_at = NOW()
-      WHERE id = $3 AND deleted_at IS NULL`,
-    [body, user.id, id],
+      WHERE id = $3 AND deleted_at IS NULL AND created_by = $4`,
+    [body, user.id, id, user.id],
   );
-  if (!result.rowCount) throw new Error('Nota nao encontrada.');
+  if (!result.rowCount) throw new Error('Nota nao encontrada para este usuario.');
   await logAudit(user.id, 'notas_nota_editada', id, 'Nota editada no Bloco de notas/lembretes.');
 }
 
@@ -523,10 +530,10 @@ async function deleteNote(req: Request, user: User): Promise<void> {
   const result = await pgPool.query(
     `UPDATE notas_notes
         SET deleted_at = NOW(), deleted_by = $1, updated_by = $1, updated_at = NOW()
-      WHERE id = $2 AND deleted_at IS NULL`,
-    [user.id, id],
+      WHERE id = $2 AND deleted_at IS NULL AND created_by = $3`,
+    [user.id, id, user.id],
   );
-  if (!result.rowCount) throw new Error('Nota nao encontrada.');
+  if (!result.rowCount) throw new Error('Nota nao encontrada para este usuario.');
   await logAudit(user.id, 'notas_nota_apagada', id, 'Nota apagada logicamente no Bloco de notas/lembretes.');
 }
 
@@ -544,10 +551,17 @@ async function updateNoteOrder(req: Request, user: User): Promise<void> {
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
+    const owned = await client.query<{ id: string }>(
+      'SELECT id::text FROM notas_notes WHERE deleted_at IS NULL AND created_by = $1 AND id = ANY($2::bigint[])',
+      [user.id, ids],
+    );
+    if (owned.rowCount !== ids.length) {
+      throw new Error('A ordem contem nota que nao pertence a este usuario.');
+    }
     for (const [index, id] of ids.entries()) {
       await client.query(
-        'UPDATE notas_notes SET sort_order = $1, updated_by = $2 WHERE id = $3 AND deleted_at IS NULL',
-        [index + 1, user.id, id],
+        'UPDATE notas_notes SET sort_order = $1, updated_by = $2 WHERE id = $3 AND deleted_at IS NULL AND created_by = $4',
+        [index + 1, user.id, id, user.id],
       );
     }
     await client.query('COMMIT');
@@ -767,7 +781,7 @@ app.get(`${BASE_PATH}/api/internal/summary`, requireInternalAuth, asyncRoute(asy
     module: 'notas',
     name: 'Bloco de notas/lembretes',
     route: `${BASE_PATH}/`,
-    privacy: 'summary_only_no_note_text',
+    privacy: 'summary_only_no_note_text_user_notes_are_private',
     notes: {
       active: counts.active,
       deleted: counts.deleted,
@@ -819,7 +833,7 @@ app.get(`${BASE_PATH}/logout.php`, (req, res) => {
 app.get([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
-  const [notes, counts] = await Promise.all([listNotes(), countNotes()]);
+  const [notes, counts] = await Promise.all([listNotes(user), countNotes(user)]);
   res.type('html').send(renderIndex(req, notes, counts));
 }));
 

@@ -2839,7 +2839,7 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
         }
 
         .wf-access.has-xp-profile {
-            grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+            grid-template-columns: minmax(0, 1fr);
         }
 
         .wf-user-xp {
@@ -2860,8 +2860,8 @@ $homeCanUseXp = (bool) ($homeModulePermissions['xp'] ?? true);
         }
 
         .wf-access.has-xp-profile .wf-modules {
-            grid-column: 2;
-            grid-row: 1;
+            grid-column: 1;
+            grid-row: 2;
         }
 
         .wf-user-xp-card {
