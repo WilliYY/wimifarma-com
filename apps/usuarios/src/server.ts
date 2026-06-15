@@ -2195,7 +2195,7 @@ function renderDashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usu&aacute;rios - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260603-profile-rules">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260615-layout">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
   <script src="${BASE_PATH}/password-tools.js?v=20260602a" defer></script>
   <script src="${BASE_PATH}/user-cards.js?v=20260603-toggle" defer></script>

@@ -895,6 +895,7 @@ Validar no VPS `/calendario/health`, acesso via Home/SSO, autosave de nota/cor, 
 - `/usuarios/` e `/usuarios/index.php`: painel de usuarios, permissoes, XP, allowlist WhatsApp e auditoria.
 - Bloco `Senha ADM`: mostra/copiar senha definida no painel quando houver registro cifrado; senhas antigas por hash exigem redefinicao.
 - Desde 2026-06-02, o card expandido de edicao usa painel visual compacto: perfil/senha/XP alinhados sem esticar selects, status `Ativo` ao lado do cofre ADM, modulos em grade mais densa e acao `Desativar usuario` como botao secundario vermelho. Essa mudanca e apenas frontend e nao altera permissoes, CSRF, sessao, senha ou auditoria.
+- Desde 2026-06-15, a tela `/usuarios/` usa topo mais baixo e solido, largura operacional maior, formulario lateral menos largo, cards/resumos mais alinhados e integracoes `Ferias`/`WhatsApp` sem sobreposicao por grid. A mudanca e frontend-only e preserva permissoes, CSRF, sessao, senha, XP, WhatsApp, ferias, auditoria e banco.
 - `/usuarios/logout.php`: encerra sessao.
 - `/usuarios/health`: health do core e alcance do XP.
 - `/usuarios/api/me/xp-card`: mini-card XP do usuario logado.
