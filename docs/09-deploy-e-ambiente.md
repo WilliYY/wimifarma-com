@@ -29,6 +29,7 @@ Higiene de pastas no VPS:
 - Pastas paradas devem ser movidas para uma quarentena de arquivo, como `/home/ubuntu/projetos/_arquivados-wimifarma/AAAA-MM-DD/`, e nao apagadas diretamente.
 - Depois da organizacao, o WinSCP deve mostrar a operacao ativa concentrada em `wimifarma-com`, com copias antigas guardadas dentro de `_arquivados-wimifarma`.
 - Em 2026-05-16, durante deploy do Miauby, o `wimifarma-com-db` foi encontrado em restart porque o `mysql/` oficial estava incompleto e sem `ibdata1`. O diretorio invalido foi movido para `/home/ubuntu/projetos/wimifarma-com/mysql-invalid-20260516113246`, e o `mysql/` oficial foi restaurado de `/home/ubuntu/projetos/wimifarma-com-runtime-disabled-2026-05-14-170039/mysql`. Preservar ambos ate decisao explicita.
+- Em 2026-06-15, o `wimifarma-com-db` foi reconciliado sem trocar dados: havia um container ativo com label Compose antiga `wimifarma-com-git`, embora montasse a pasta oficial `/home/ubuntu/projetos/wimifarma-com/mysql` e a rede `wimifarma-com-network`. Antes da troca foi gerado dump em `/home/ubuntu/projetos/_backups-wimifarma/compose-db-label-fix-20260615220028/`; o container antigo foi parado e renomeado para `wimifarma-com-db-rollback-20260615220028`; o container oficial foi recriado por `docker compose up -d wimifarma-com-db` com label `wimifarma-com`. Manter o rollback parado ate confirmacao futura de limpeza.
 
 ## Arquivos e servicos envolvidos
 

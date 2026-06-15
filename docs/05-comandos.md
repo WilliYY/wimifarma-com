@@ -599,6 +599,25 @@ curl -I http://127.0.0.1:3002/cotacao/login.php
 curl -I http://127.0.0.1:3002/xmlrpc.php
 ```
 
+## VPS - corrigir conflito de label do `wimifarma-com-db`
+
+Em 2026-06-15, o VPS tinha o container `wimifarma-com-db` com label antiga `com.docker.compose.project=wimifarma-com-git`, embora ele montasse a pasta oficial `./mysql`. Isso causava conflito de nome quando o Compose atual tentava subir dependencias. A correcao segura aplicada foi:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+backup_dir="/home/ubuntu/projetos/_backups-wimifarma/compose-db-label-fix-$(date +%Y%m%d%H%M%S)"
+mkdir -p "$backup_dir"
+docker exec wimifarma-com-db sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysqldump -u"$MYSQL_USER" --single-transaction --quick --no-tablespaces --routines --triggers --databases wimifarma_app wimifarma_wp' | gzip -9 > "$backup_dir/wimifarma-com-db.sql.gz"
+sha256sum "$backup_dir/wimifarma-com-db.sql.gz" > "$backup_dir/wimifarma-com-db.sql.gz.sha256"
+docker stop wimifarma-com-db
+docker rename wimifarma-com-db "wimifarma-com-db-rollback-$(date +%Y%m%d%H%M%S)"
+docker compose up -d wimifarma-com-db
+docker exec wimifarma-com-db sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" --silent'
+docker inspect wimifarma-com-db --format '{{ index .Config.Labels "com.docker.compose.project" }}'
+```
+
+Validar depois: `docker compose up -d --no-recreate wimifarma-com-db wimifarma-com-web`, `curl http://127.0.0.1:3002/`, `curl http://127.0.0.1:3002/wp-login.php` e `curl http://127.0.0.1:3002/miauw/widget-status.php`. Nao apagar o container rollback nem a pasta de backup sem confirmacao.
+
 Para mudancas no servico Gestao, usar rebuild direcionado e preservar os bancos existentes:
 
 ```bash
