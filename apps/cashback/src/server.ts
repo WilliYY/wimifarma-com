@@ -35,6 +35,13 @@ type Balance = {
   proximoVencimento: string | null;
 };
 
+type CreditExpirySlice = {
+  expiresAt: string;
+  amountCents: number;
+  credits: number;
+  daysUntil: number | null;
+};
+
 type XpRewardStatus = {
   available: boolean;
   employeeName: string | null;
@@ -745,6 +752,36 @@ function expirationText(value: unknown, canceled = false): string {
   return `Faltam ${days} dias`;
 }
 
+function expiryBreakdownSummary(slices: CreditExpirySlice[], maxItems = 2): string {
+  if (!slices.length) return 'Sem cashback ativo com vencimento.';
+  const visible = slices.slice(0, maxItems);
+  const parts = visible.map((slice) => `${brMoneyCents(slice.amountCents)} em ${brDate(slice.expiresAt)} (${expirationText(slice.expiresAt).toLowerCase()})`);
+  if (slices.length > visible.length) parts.push(`+${slices.length - visible.length} data(s)`);
+  return parts.join(' | ');
+}
+
+function renderExpiryBreakdown(
+  slices: CreditExpirySlice[],
+  options: { compact?: boolean; maxItems?: number; title?: string; emptyText?: string } = {},
+): string {
+  const maxItems = options.maxItems ?? slices.length;
+  const visible = slices.slice(0, maxItems);
+  const hiddenCount = Math.max(0, slices.length - visible.length);
+  const classes = ['cashback-expiry-list', options.compact ? 'compact' : ''].filter(Boolean).join(' ');
+  const title = options.title ? `<div class="expiry-list-title"><span>${e(options.title)}</span></div>` : '';
+  if (!visible.length) {
+    return `<div class="${e(classes)} is-empty">${title}<p>${e(options.emptyText || 'Sem cashback ativo com vencimento.')}</p></div>`;
+  }
+  const rows = visible
+    .map(
+      (slice) =>
+        `<div class="expiry-row"><strong>${brMoneyCents(slice.amountCents)}</strong><span>${e(brDate(slice.expiresAt))}</span><small>${e(expirationText(slice.expiresAt))}</small></div>`,
+    )
+    .join('');
+  const more = hiddenCount ? `<div class="expiry-row more"><strong>+${e(hiddenCount)}</strong><span>outras datas</span><small>Abra historico completo</small></div>` : '';
+  return `<div class="${e(classes)}">${title}${rows}${more}</div>`;
+}
+
 function purchaseCashbackKind(row: DbRow): string {
   return String(row.cashback_generation_mode || '') === 'manual' ? 'Manual' : 'Automatico';
 }
@@ -1324,6 +1361,45 @@ async function balanceForClient(clientId: number): Promise<Balance> {
     saldoUsado: num(used.rows[0]?.used),
     proximoVencimento: isoDate(row.proximo_vencimento) || null,
   };
+}
+
+async function expiryBreakdownForClients(clientIds: number[]): Promise<Map<number, CreditExpirySlice[]>> {
+  const ids = Array.from(new Set(clientIds.map((id) => Math.trunc(num(id))).filter((id) => id > 0)));
+  const byClient = new Map<number, CreditExpirySlice[]>();
+  if (!ids.length) return byClient;
+
+  await refreshExpiredCredits();
+  const result = await pgPool.query(
+    `SELECT client_id,
+            expires_at::date AS expires_at,
+            COALESCE(SUM(remaining_cents), 0)::bigint AS amount_cents,
+            COUNT(*)::int AS credits
+       FROM cashback_credits
+      WHERE client_id = ANY($1::bigint[])
+        AND canceled_at IS NULL
+        AND status = 'ativo'
+        AND remaining_cents > 0
+        AND expires_at >= CURRENT_DATE
+      GROUP BY client_id, expires_at::date
+      ORDER BY expires_at::date ASC, client_id ASC`,
+    [ids],
+  );
+
+  for (const row of result.rows as DbRow[]) {
+    const clientId = num(row.client_id);
+    const expiresAt = isoDate(row.expires_at);
+    if (!clientId || !expiresAt) continue;
+    const current = byClient.get(clientId) || [];
+    current.push({
+      expiresAt,
+      amountCents: num(row.amount_cents),
+      credits: num(row.credits),
+      daysUntil: daysUntilDate(expiresAt),
+    });
+    byClient.set(clientId, current);
+  }
+
+  return byClient;
 }
 
 async function activeClientExists(clientId: number): Promise<boolean> {
@@ -2105,6 +2181,10 @@ async function renderDashboard(req: Request): Promise<string> {
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
   const xpReward = await currentUserXpRewardStatus(req);
   const visibleClientResultCount = Math.min(initialClientResultCount, searchResults.length);
+  const expiryBreakdowns = await expiryBreakdownForClients([
+    ...searchResults.map((client: DbRow) => num(client.id)),
+    selectedClientId,
+  ]);
   const resultSummary = search
     ? `${searchResults.length} resultado(s) para "${search}"`
     : `${visibleClientResultCount} de ${searchResults.length} cliente(s) recentes`;
@@ -2113,6 +2193,7 @@ async function renderDashboard(req: Request): Promise<string> {
     searchResults.map(async (client: DbRow, index: number) => {
       const clientId = num(client.id);
       const balance = await balanceForClient(num(client.id));
+      const expirySlices = expiryBreakdowns.get(clientId) || [];
       const isSelected = selectedClientId === clientId;
       const isExtra = index >= initialClientResultCount && !isSelected;
       const changedAt = client.changed_at || client.updated_at || client.created_at;
@@ -2129,7 +2210,11 @@ async function renderDashboard(req: Request): Promise<string> {
             <span><small>Atualizado</small><strong>${e(brDate(changedAt, true))}</strong></span>
           </div>
         </div>
-        <div class="result-balance"><span>Disponivel</span><strong>${brMoneyCents(balance.saldoDisponivel)}</strong></div>
+        <div class="result-balance"><span>Disponivel</span><strong>${brMoneyCents(balance.saldoDisponivel)}</strong>${renderExpiryBreakdown(expirySlices, {
+          compact: true,
+          maxItems: 2,
+          emptyText: balance.saldoDisponivel > 0 ? 'Sem vencimento ativo encontrado.' : 'Sem saldo ativo.',
+        })}</div>
         <div class="result-actions">
           <a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${clientId}#cliente-atual`)}">Selecionar</a>
           <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${clientId}#resgate`)}">Gastar/Usar Cashback</a>
@@ -2139,6 +2224,7 @@ async function renderDashboard(req: Request): Promise<string> {
     }),
   );
 
+  const selectedExpiry = selectedClientId > 0 ? expiryBreakdowns.get(selectedClientId) || [] : [];
   const selectedHtml =
     selected && selected.client && selected.balance
       ? `<div class="selected-client-strip">
@@ -2152,6 +2238,10 @@ async function renderDashboard(req: Request): Promise<string> {
           <article class="metric"><span>Total gerado</span><strong>${brMoneyCents(selected.balance.totalGerado)}</strong></article>
           <article class="metric"><span>Proximo vencimento</span><strong>${e(brDate(selected.balance.proximoVencimento))}</strong></article>
         </div>
+        ${renderExpiryBreakdown(selectedExpiry, {
+          title: 'Validade do saldo ativo',
+          emptyText: selected.balance.saldoDisponivel > 0 ? 'Saldo ativo sem vencimento agrupado encontrado.' : 'Cliente sem saldo ativo agora.',
+        })}
         <div class="quick-actions">
           <a class="btn primary" href="#resgate" data-section-link="resgate">Gastar/Usar Cashback</a>
           <a class="btn" href="${pageUrl(`clientes.php?edit=${num(selected.client.id)}`)}">Editar dados</a>
@@ -2266,7 +2356,11 @@ async function renderDashboard(req: Request): Promise<string> {
       </form>
     </section>
   </div>
-  <aside class="balcao-side"><section class="panel sticky-panel"><span class="kicker">Resumo do cliente</span>${selected?.client && selected.balance ? `<h2>${e(selected.client.name)}</h2><div class="balance-box"><span>Saldo disponivel</span><strong>${brMoneyCents(selected.balance.saldoDisponivel)}</strong><small>Expirando: ${brMoneyCents(selected.balance.saldoExpirando)}</small></div><a class="btn primary" href="#resgate" data-section-link="resgate">Gastar/Usar Cashback</a>` : '<h2>Selecione um cliente</h2><p>Use a busca para puxar saldo, compras, vencimentos e abrir a Compra Cashback.</p>'}</section></aside>
+  <aside class="balcao-side"><section class="panel sticky-panel"><span class="kicker">Resumo do cliente</span>${selected?.client && selected.balance ? `<h2>${e(selected.client.name)}</h2><div class="balance-box"><span>Saldo disponivel</span><strong>${brMoneyCents(selected.balance.saldoDisponivel)}</strong><small>Expirando: ${brMoneyCents(selected.balance.saldoExpirando)}</small>${renderExpiryBreakdown(selectedExpiry, {
+    compact: true,
+    maxItems: 3,
+    emptyText: selected.balance.saldoDisponivel > 0 ? 'Sem vencimento ativo encontrado.' : 'Sem saldo ativo.',
+  })}</div><a class="btn primary" href="#resgate" data-section-link="resgate">Gastar/Usar Cashback</a>` : '<h2>Selecione um cliente</h2><p>Use a busca para puxar saldo, compras, vencimentos e abrir a Compra Cashback.</p>'}</section></aside>
 </section>`;
   return htmlShell(req, 'Balcao', body);
 }
@@ -2378,9 +2472,11 @@ async function clientSearchPayload(value: unknown): Promise<unknown[]> {
      LIMIT 8`,
     params,
   );
+  const expiryBreakdowns = await expiryBreakdownForClients((rows.rows as DbRow[]).map((row) => num(row.id)));
   const payload = [];
   for (const row of rows.rows as DbRow[]) {
     const balance = await balanceForClient(num(row.id));
+    const expirySlices = expiryBreakdowns.get(num(row.id)) || [];
     payload.push({
       id: num(row.id),
       nome: row.name,
@@ -2392,6 +2488,7 @@ async function clientSearchPayload(value: unknown): Promise<unknown[]> {
       saldo_expirando: brMoneyCents(balance.saldoExpirando),
       saldo_expirando_raw: centsToMoney(balance.saldoExpirando),
       proximo_vencimento: balance.proximoVencimento ? brDate(balance.proximoVencimento) : '-',
+      validade_resumo: expiryBreakdownSummary(expirySlices, 2),
       ultima_compra: row.last_purchase_at ? brDate(row.last_purchase_at, true) : 'Sem compra',
       ultima_compra_valor: row.last_purchase_cents !== null ? brMoneyCents(row.last_purchase_cents) : '-',
       selecionar_url: pageUrl(`dashboard.php?cliente_id=${num(row.id)}#cliente-atual`),
@@ -2753,6 +2850,7 @@ async function handleManualRedemptionPost(req: Request, res: Response): Promise<
 }
 
 async function renderMessages(req: Request): Promise<string> {
+  await expirePastDueWhatsappMessages(req);
   const settings = await loadSettings();
   const today = todayIso();
   const tomorrow = dateDaysFromNow(1);
@@ -2841,6 +2939,30 @@ async function expireStaleRecompraMessages(req: Request): Promise<void> {
   );
   for (const row of result.rows as DbRow[]) {
     await logAction(req, 'whatsapp_queue_expired', 'whatsapp', num(row.id), `Mensagem de recompra removida da fila principal apos ${RECOMPRA_QUEUE_VISIBLE_DAYS} dias.`);
+  }
+}
+
+async function expirePastDueWhatsappMessages(req: Request): Promise<void> {
+  const result = await pgPool.query(
+    `UPDATE cashback_whatsapp_messages
+     SET status = 'expirado_da_fila',
+         user_id = COALESCE(user_id, $1),
+         updated_at = NOW()
+     WHERE status = 'pendente'
+       AND campaign IN ('compra', 'aniversario', 'expiracao')
+       AND due_date IS NOT NULL
+       AND due_date < CURRENT_DATE
+     RETURNING id, campaign, due_date`,
+    [req.session.user?.id ?? null],
+  );
+  for (const row of result.rows as DbRow[]) {
+    await logAction(
+      req,
+      'whatsapp_queue_expired',
+      'whatsapp',
+      num(row.id),
+      `Mensagem ${campaignLabel(row.campaign)} removida da fila principal apos vencer em ${brDate(row.due_date)}.`,
+    );
   }
 }
 

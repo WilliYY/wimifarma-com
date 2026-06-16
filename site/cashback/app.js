@@ -415,6 +415,7 @@
                         '<strong>', escapeHtml(client.nome), '</strong>',
                         '<span>#', escapeHtml(client.id), ' | ', escapeHtml(client.telefone), ' | ', escapeHtml(client.atendente), '</span>',
                         '<small>Ultima compra: ', escapeHtml(client.ultima_compra), ' | ', escapeHtml(client.ultima_compra_valor), '</small>',
+                        '<small>Validade: ', escapeHtml(client.validade_resumo || 'Sem vencimentos ativos'), '</small>',
                         '</div>',
                         '<div class="live-client-balance">',
                         '<span>Disponivel</span>',
@@ -508,7 +509,7 @@
 
                 if (selected) {
                     selected.dataset.balance = String(balance);
-                    selected.innerHTML = 'Selecionado: <strong>' + escapeHtml(client.nome) + '</strong> | ' + escapeHtml(client.telefone) + ' | Saldo disponivel <strong>' + escapeHtml(client.saldo_disponivel) + '</strong>';
+                    selected.innerHTML = 'Selecionado: <strong>' + escapeHtml(client.nome) + '</strong> | ' + escapeHtml(client.telefone) + ' | Saldo disponivel <strong>' + escapeHtml(client.saldo_disponivel) + '</strong><br><span class="selected-client-expiry">Validade: ' + escapeHtml(client.validade_resumo || 'Sem vencimentos ativos') + '</span>';
                 }
 
                 if (form && form.hasAttribute('data-redeem-form')) {
@@ -532,7 +533,7 @@
                     return [
                         '<button type="button" class="client-picker-option" data-index="', index, '">',
                         '<span><strong>', escapeHtml(client.nome), '</strong><small>#', escapeHtml(client.id), ' | ', escapeHtml(client.telefone), ' | Ultima compra: ', escapeHtml(client.ultima_compra), '</small></span>',
-                        '<span><em>Disponivel</em><strong>', escapeHtml(client.saldo_disponivel), '</strong></span>',
+                        '<span><em>Disponivel</em><strong>', escapeHtml(client.saldo_disponivel), '</strong><small>', escapeHtml(client.validade_resumo || 'Sem vencimentos ativos'), '</small></span>',
                         '</button>'
                     ].join('');
                 }).join('');
