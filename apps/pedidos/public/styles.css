@@ -570,7 +570,7 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 
 .pedidos-search-result-line {
     display: grid;
-    grid-template-columns: minmax(120px, 1.35fr) minmax(88px, auto) minmax(116px, 1fr) minmax(110px, 0.9fr) minmax(86px, auto);
+    grid-template-columns: minmax(0, 1.35fr) minmax(78px, auto) minmax(0, 1fr) minmax(0, 0.9fr) minmax(74px, auto);
     gap: 8px;
     align-items: center;
     margin: 0 0 9px;
@@ -581,6 +581,45 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     color: #1e3a8a;
     font-size: 0.74rem;
     font-weight: 900;
+}
+
+.gestao-order-card.is-search-result.is-order-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    min-height: 0;
+    gap: 8px;
+    padding: 10px 11px 11px 15px;
+}
+
+.gestao-order-card.is-search-result.is-order-collapsed .pedidos-search-result-line {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-bottom: 0;
+}
+
+.gestao-order-card.is-search-result.is-order-collapsed .pedidos-search-result-line > :last-child {
+    grid-column: 1 / -1;
+}
+
+.gestao-order-card.is-search-result.is-order-collapsed .gestao-order-head {
+    grid-column: 1 / -1;
+    grid-row: auto;
+}
+
+.gestao-order-card.is-search-result.is-order-collapsed .gestao-order-summary-toggle,
+.gestao-order-card.is-search-result.is-order-collapsed .gestao-order-summary-static {
+    margin: 0;
+    padding: 0;
+}
+
+.gestao-order-card.is-search-result.is-order-collapsed .gestao-order-quick-action {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: stretch;
+}
+
+.gestao-order-card.is-search-result.is-order-collapsed .gestao-order-quick-action .gestao-btn {
+    width: 100%;
 }
 
 .pedidos-search-result-line strong,
