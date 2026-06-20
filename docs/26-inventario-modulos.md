@@ -117,7 +117,7 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 ### Fluxos de escrita
 
 - `save_day`: autosave do fechamento diario, responsavel e totais.
-- `close_day`: fecha o dia como `fechado` ou `divergente`, conforme limite; o backend aceita a acao real do botao mesmo se uma pagina antiga ainda enviar `save_day` junto.
+- `close_day`: fecha o dia como `fechado` ou `divergente`, conforme limite; o backend aceita a acao real do botao mesmo se uma pagina antiga ainda enviar `save_day` junto. Desde 2026-06-20, a primeira conclusao gera +1.000 XP para o usuario logado vinculado em `core_user_xp_links`, usando `source='financeiro_cash_closing'` e o ID estavel de `financeiro_closings` para nao repetir apos reabertura.
 - `save_report_faturamento` e `save_report_faturamento_auto`: salva faturamento diario do relatorio.
 - `close_empty` e `close_report_empty_day`: marcam `sem_movimento` somente quando o dia nao tem lancamento ativo nem valor/faturamento ja salvo.
 - `save_sangria`: cria lancamento de sangria.
@@ -131,6 +131,7 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 ### Integracoes
 
 - Core auth em `wimifarma_core`.
+- XP em `wimifarma_xp`: o Financeiro resolve `core_user_xp_links`, grava `xp_sales.amount_cents=0`/`xp_points=1000` e audita o premio; indisponibilidade ou ausencia de vinculo XP nao desfaz o fechamento.
 - Miauby interno usa endpoints internos para consultar/gravar financeiro.
 - Miauby WhatsApp usa `cash-closing-status`, `lancamentos` e `faturamentos`.
 - n8n chama o bridge WhatsApp para lembrete de fechamento de caixa as 18h; o bridge consulta o Financeiro.
@@ -141,6 +142,7 @@ Hoje estes arquivos PHP sao legado/fonte visual. A rota oficial passa pelo Node.
 - Dinheiro precisa continuar em centavos inteiros no backend.
 - Rollback para MySQL exige restaurar versao anterior e backup validado; nao existe mais flag de religamento no runtime atual.
 - Fechamento, divergencia e `sem_movimento` afetam automacoes do WhatsApp.
+- `close_empty`/sem movimento nao deve gerar XP; `close_day` deve manter idempotencia por `financeiro_closings.id`, inclusive depois de reabrir e fechar novamente.
 - Endpoints internos de escrita precisam continuar tokenizados e idempotentes.
 - Nao reativar tela antiga de auditoria para operador sem necessidade; auditoria deve continuar no banco.
 

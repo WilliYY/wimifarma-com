@@ -575,6 +575,7 @@ services:
     depends_on:
       - wimifarma-core-db
       - wimifarma-financeiro-db
+      - wimifarma-xp-db
     environment:
       NODE_ENV: production
       PORT: 3800
@@ -589,6 +590,11 @@ services:
       POSTGRES_DB: wimifarma_financeiro
       POSTGRES_USER: wimifarma_financeiro
       POSTGRES_PASSWORD: ${FINANCEIRO_POSTGRES_PASSWORD:-wimifarma_financeiro_dev_pass}
+      XP_POSTGRES_HOST: wimifarma-xp-db
+      XP_POSTGRES_PORT: 5432
+      XP_POSTGRES_DB: wimifarma_xp
+      XP_POSTGRES_USER: wimifarma_xp
+      XP_POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
       FINANCEIRO_SESSION_SECRET: ${FINANCEIRO_SESSION_SECRET:-wimifarma_financeiro_dev_secret_change_me}
       FINANCEIRO_REOPEN_PASSWORD: ${FINANCEIRO_REOPEN_PASSWORD:-wimifarma}
       FINANCEIRO_INTERNAL_TOKEN: ${FINANCEIRO_INTERNAL_TOKEN:-}

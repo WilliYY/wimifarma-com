@@ -13,6 +13,13 @@ type AnyRow = Record<string, unknown>;
 type Flash = { type: '' | 'success' | 'error' | 'warning'; message: string };
 type User = { id: number; username: string; role: string };
 type CoreUserRow = { id: string; username: string; password_hash?: string | null; role?: string | null; active?: boolean };
+type XpAwardResult = {
+  awarded: boolean;
+  alreadyAwarded?: boolean;
+  employeeName?: string;
+  saleId?: number;
+  message: string;
+};
 
 declare module 'express-session' {
   interface SessionData {
@@ -28,9 +35,11 @@ declare module 'express-session' {
 const env = process.env;
 const PORT = Number(env.PORT || 3800);
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/financeiro');
-const SERVICE_VERSION = '1.1.3';
+const SERVICE_VERSION = '1.1.4';
 const OPEN_CASH_CLOSING_LOOKBACK_DAYS = 10;
 const FINANCEIRO_FISCAL_YEARS = [2026, 2027, 2028];
+const XP_CASH_CLOSING_POINTS = 1000;
+const XP_CASH_CLOSING_SOURCE = 'financeiro_cash_closing';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
@@ -76,6 +85,15 @@ const corePgPool = new Pool({
   user: env.CORE_POSTGRES_USER || 'wimifarma_core',
   password: env.CORE_POSTGRES_PASSWORD || '',
   max: 4,
+});
+
+const xpPgPool = new Pool({
+  host: env.XP_POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.XP_POSTGRES_PORT || 5432),
+  database: env.XP_POSTGRES_DB || 'wimifarma_xp',
+  user: env.XP_POSTGRES_USER || 'wimifarma_xp',
+  password: env.XP_POSTGRES_PASSWORD || '',
+  max: 3,
 });
 
 function cleanText(value: unknown, max = 500): string {
@@ -1011,6 +1029,170 @@ async function auditEvent(
   }
 }
 
+let xpRewardSchemaReady = false;
+
+async function ensureXpRewardSchema(): Promise<void> {
+  if (xpRewardSchemaReady) return;
+  await xpPgPool.query(`
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source TEXT;
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source_entity_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_sales_source_entity
+      ON xp_sales(source, source_entity_id)
+      WHERE source IS NOT NULL AND source_entity_id IS NOT NULL;
+  `);
+  xpRewardSchemaReady = true;
+}
+
+async function linkedXpEmployeeForUser(userId: number): Promise<{ id: number; name: string } | null> {
+  if (userId <= 0) return null;
+  const link = await corePgPool.query<{ xp_employee_id: string | null }>(
+    `SELECT xp_employee_id::text
+       FROM core_user_xp_links
+      WHERE user_id = $1
+      LIMIT 1`,
+    [userId],
+  );
+  const employeeId = Number(link.rows[0]?.xp_employee_id || 0);
+  if (employeeId <= 0) return null;
+  const employee = await xpPgPool.query<{ id: string; name: string; system_key: string | null }>(
+    `SELECT id::text, name, system_key
+       FROM xp_employees
+      WHERE id = $1
+        AND status = 'ativo'
+        AND deleted_at IS NULL
+      LIMIT 1`,
+    [employeeId],
+  );
+  const row = employee.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    name: cleanText(row.name, 180) || (row.system_key === 'adm' ? 'ADM' : 'Funcionario XP'),
+  };
+}
+
+async function awardXpForCashClosing(req: Request, closing: AnyRow): Promise<XpAwardResult> {
+  const closingId = Number(closing.id || 0);
+  const closingDate = isoDate(closing.data_fechamento ?? closing.closing_date) || todayDate();
+  const userId = req.session.user?.id ?? 0;
+  if (closingId <= 0 || userId <= 0) {
+    return { awarded: false, message: 'XP nao gerado: fechamento ou usuario invalido.' };
+  }
+
+  try {
+    await ensureXpRewardSchema();
+    const employee = await linkedXpEmployeeForUser(userId);
+    if (!employee) {
+      await auditEvent(
+        'xp_fechamento_sem_vinculo',
+        'financeiro_fechamentos',
+        closingId,
+        null,
+        { points: XP_CASH_CLOSING_POINTS, user_id: userId, source: XP_CASH_CLOSING_SOURCE },
+        req,
+      );
+      return { awarded: false, message: 'XP nao gerado: usuario sem vinculo ativo no XP.' };
+    }
+
+    const sourceEntityId = String(closingId);
+    const xpClient = await xpPgPool.connect();
+    try {
+      await xpClient.query('BEGIN');
+      const existing = await xpClient.query<{ id: string; employee_name: string }>(
+        `SELECT s.id::text, e.name AS employee_name
+           FROM xp_sales s
+           INNER JOIN xp_employees e ON e.id = s.employee_id
+          WHERE s.source = $1 AND s.source_entity_id = $2
+          LIMIT 1`,
+        [XP_CASH_CLOSING_SOURCE, sourceEntityId],
+      );
+      if (existing.rows[0]) {
+        await xpClient.query('COMMIT');
+        await auditEvent(
+          'xp_fechamento_repetido_ignorado',
+          'financeiro_fechamentos',
+          closingId,
+          null,
+          { xp_sale_id: Number(existing.rows[0].id), points: XP_CASH_CLOSING_POINTS, source: XP_CASH_CLOSING_SOURCE },
+          req,
+        );
+        return {
+          awarded: false,
+          alreadyAwarded: true,
+          employeeName: cleanText(existing.rows[0].employee_name, 180),
+          saleId: Number(existing.rows[0].id),
+          message: 'XP deste fechamento ja havia sido creditado; nenhum ponto foi duplicado.',
+        };
+      }
+
+      const note = cleanText(`Fechamento de caixa de ${brDate(closingDate)}.`, 220);
+      const inserted = await xpClient.query<{ id: string }>(
+        `INSERT INTO xp_sales (employee_id, sale_date, amount_cents, xp_points, note, created_by, source, source_entity_id)
+         VALUES ($1, $2::date, 0, $3, $4, $5, $6, $7)
+         RETURNING id::text`,
+        [employee.id, closingDate, XP_CASH_CLOSING_POINTS, note, userId, XP_CASH_CLOSING_SOURCE, sourceEntityId],
+      );
+      const saleId = Number(inserted.rows[0]?.id || 0);
+      await xpClient.query(
+        `INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          userId,
+          'xp_financeiro_fechamento_lancado',
+          'xp_sale',
+          String(saleId),
+          cleanText(`+${XP_CASH_CLOSING_POINTS} XP pelo fechamento de caixa #${closingId}.`, 255),
+        ],
+      );
+      await xpClient.query('COMMIT');
+      await auditEvent(
+        'xp_fechamento_lancado',
+        'financeiro_fechamentos',
+        closingId,
+        null,
+        {
+          xp_sale_id: saleId,
+          xp_employee_id: employee.id,
+          user_id: userId,
+          points: XP_CASH_CLOSING_POINTS,
+          source: XP_CASH_CLOSING_SOURCE,
+        },
+        req,
+      );
+      return {
+        awarded: true,
+        employeeName: employee.name,
+        saleId,
+        message: `+${XP_CASH_CLOSING_POINTS.toLocaleString('pt-BR')} XP para ${employee.name}.`,
+      };
+    } catch (error) {
+      await xpClient.query('ROLLBACK').catch(() => undefined);
+      const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+      if (code === '23505') {
+        return {
+          awarded: false,
+          alreadyAwarded: true,
+          employeeName: employee.name,
+          message: 'XP deste fechamento ja havia sido creditado; nenhum ponto foi duplicado.',
+        };
+      }
+      throw error;
+    } finally {
+      xpClient.release();
+    }
+  } catch (error) {
+    await auditEvent(
+      'xp_fechamento_falha',
+      'financeiro_fechamentos',
+      closingId,
+      null,
+      { points: XP_CASH_CLOSING_POINTS, source: XP_CASH_CLOSING_SOURCE, reason: publicError(error) },
+      req,
+    );
+    return { awarded: false, message: 'XP nao gerado agora; o fechamento do caixa foi preservado.' };
+  }
+}
+
 async function getOrCreateClosing(date: string, req?: Request, client?: PoolClient): Promise<AnyRow> {
   const existing = await fetchClosingByDate(date, client);
   if (existing) return existing;
@@ -1874,7 +2056,7 @@ async function renderCashier(req: Request): Promise<string> {
       ${
         locked
           ? ''
-          : `<div class="close-actions"><button class="btn primary" type="submit" form="day-close-form" name="action" value="close_day">Fechar dia</button><button class="btn ghost" type="submit" form="day-close-form" name="action" value="close_empty" data-close-empty>Fechar sem movimento</button></div>`
+          : `<div class="close-actions"><button class="btn primary" type="submit" form="day-close-form" name="action" value="close_day">Fechar dia +1.000 XP</button><button class="btn ghost" type="submit" form="day-close-form" name="action" value="close_empty" data-close-empty>Fechar sem movimento</button></div>`
       }
       <details class="optional-note divergence-note${Math.abs(diffCents) > limitCents ? '' : ' is-hidden'}" data-divergence-justification data-limit="${centsToDecimal(limitCents).toFixed(2)}"><summary>Justificar Sobra/Falta</summary><label>Justificativa<textarea name="justificativa" form="day-close-form" ${locked ? 'disabled' : ''}>${e(selectedClosing.justificativa || '')}</textarea></label></details>
       <details class="optional-note" ${cleanText(selectedClosing.observacao, 4000) ? 'open' : ''}><summary>Adicionar observacao</summary><label>Observacao livre<textarea name="observacao" form="day-close-form" ${locked ? 'disabled' : ''}>${e(selectedClosing.observacao || '')}</textarea></label></details>
@@ -2080,8 +2262,10 @@ app.post([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(asyn
       if (action === 'close_day') {
         const limit = await divergenceLimitCents();
         const status = Math.abs(moneyTextToCents(updated.sobra_falta)) > limit ? 'divergente' : 'fechado';
-        await closeClosing(Number(closing.id), status, req);
-        setFlash(req, 'success', status === 'divergente' ? 'Dia fechado como divergente.' : 'Dia fechado com sucesso.');
+        const closed = await closeClosing(Number(closing.id), status, req);
+        const xpAward = await awardXpForCashClosing(req, closed);
+        const closingMessage = status === 'divergente' ? 'Dia fechado como divergente.' : 'Dia fechado com sucesso.';
+        setFlash(req, xpAward.awarded || xpAward.alreadyAwarded ? 'success' : 'warning', `${closingMessage} ${xpAward.message}`);
       } else {
         setFlash(req, 'success', 'Fechamento salvo como rascunho.');
       }
