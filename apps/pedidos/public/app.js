@@ -88,6 +88,96 @@
         });
     }
 
+    function formatDueDate(dateValue) {
+        var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateValue || ''));
+        return match ? match[3] + '/' + match[2] + '/' + match[1] : '';
+    }
+
+    function calculateDueDate(days) {
+        var baseMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(document.body.getAttribute('data-pedidos-today') || '');
+        var now = new Date();
+        var year = baseMatch ? Number(baseMatch[1]) : now.getFullYear();
+        var month = baseMatch ? Number(baseMatch[2]) - 1 : now.getMonth();
+        var day = baseMatch ? Number(baseMatch[3]) : now.getDate();
+        var due = new Date(year, month, day + days, 12, 0, 0, 0);
+        if (Number.isNaN(due.getTime()) || due.getFullYear() > 9999) {
+            return '';
+        }
+        return [
+            String(due.getFullYear()).padStart(4, '0'),
+            String(due.getMonth() + 1).padStart(2, '0'),
+            String(due.getDate()).padStart(2, '0')
+        ].join('-');
+    }
+
+    function bindDueDaysInputs(root) {
+        Array.prototype.slice.call((root || document).querySelectorAll('[data-due-days-group]')).forEach(function (group) {
+            var daysInput = group.querySelector('[data-due-days]');
+            var dateInput = group.querySelector('[data-due-date]');
+            var preview = group.querySelector('[data-due-preview]');
+            var invalidMessage = 'Informe um numero inteiro maior que zero.';
+
+            if (!daysInput || !dateInput || !preview || group.dataset.pedidosDueBound === '1') {
+                return;
+            }
+            group.dataset.pedidosDueBound = '1';
+
+            function setPreview(message, state) {
+                preview.textContent = message;
+                preview.setAttribute('data-state', state);
+            }
+
+            function showCurrentDate() {
+                var formatted = formatDueDate(dateInput.value);
+                if (formatted) {
+                    setPreview('Data definida: ' + formatted, 'manual');
+                } else {
+                    setPreview('Digite os dias para calcular a data.', 'hint');
+                }
+            }
+
+            function updateFromDays() {
+                var text = String(daysInput.value || '').trim();
+                daysInput.setCustomValidity('');
+                if (!text) {
+                    showCurrentDate();
+                    return;
+                }
+
+                if (!/^\d+$/.test(text)) {
+                    daysInput.setCustomValidity(invalidMessage);
+                    setPreview(invalidMessage, 'error');
+                    return;
+                }
+
+                var days = Number(text);
+                if (!Number.isSafeInteger(days) || days <= 0) {
+                    daysInput.setCustomValidity(invalidMessage);
+                    setPreview(invalidMessage, 'error');
+                    return;
+                }
+
+                var calculated = calculateDueDate(days);
+                if (!calculated) {
+                    daysInput.setCustomValidity('O numero de dias gera uma data invalida.');
+                    setPreview('O numero de dias gera uma data invalida.', 'error');
+                    return;
+                }
+
+                dateInput.value = calculated;
+                setPreview('Vencimento calculado: ' + formatDueDate(calculated), 'calculated');
+            }
+
+            daysInput.addEventListener('input', updateFromDays);
+            dateInput.addEventListener('input', function () {
+                daysInput.value = '';
+                daysInput.setCustomValidity('');
+                showCurrentDate();
+            });
+            updateFromDays();
+        });
+    }
+
     function bindOrderStatusInputs(form) {
         var registerInput = form.querySelector('[data-order-status-register]');
         var partialInputs = Array.prototype.slice.call(form.querySelectorAll('[data-order-status-partial]'));
@@ -219,14 +309,22 @@
                     '<span>Valor da parcela</span>',
                     '<input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input>',
                     '</label>',
+                    '<div class="gestao-due-entry" data-due-days-group>',
                     '<label>',
-                    '<span>Vencimento desta parcela</span>',
-                    '<input type="date" name="pedido_vencimento[]">',
-                    '</label>'
+                    '<span>Vencimento em quantos dias?</span>',
+                    '<input type="text" name="pedido_vencimento_dias[]" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Ex.: 30" data-due-days>',
+                    '</label>',
+                    '<p class="gestao-due-preview" data-due-preview data-state="hint" aria-live="polite">Digite os dias para calcular a data.</p>',
+                    '<label class="gestao-due-manual">',
+                    '<span>Ou escolha a data manualmente</span>',
+                    '<input type="date" name="pedido_vencimento[]" data-due-date>',
+                    '</label>',
+                    '</div>'
                 ].join('');
                 list.appendChild(row);
                 bindMoneyInputs(row);
                 bindDateInputs(row);
+                bindDueDaysInputs(row);
                 row.querySelector('[data-remove-order-item]').addEventListener('click', function () {
                     row.remove();
                     refreshTotal();
@@ -297,6 +395,7 @@
     function refreshDynamicBindings() {
         bindMoneyInputs(document);
         bindDateInputs(document);
+        bindDueDaysInputs(document);
         initMoneyValidation();
         initConfirmations();
         initOrderEditPanels();
@@ -806,6 +905,7 @@
             bindMoneyInputs(document);
             bindArrivalDaysInputs(document);
             bindDateInputs(document);
+            bindDueDaysInputs(document);
             initTotals();
             initOrderTotals();
             initMoneyValidation();
@@ -827,6 +927,7 @@
         bindMoneyInputs(document);
         bindArrivalDaysInputs(document);
         bindDateInputs(document);
+        bindDueDaysInputs(document);
         initTotals();
         initOrderTotals();
         initMoneyValidation();

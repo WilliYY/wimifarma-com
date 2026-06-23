@@ -961,6 +961,54 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     box-shadow: none;
 }
 
+.gestao-due-entry {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
+.gestao-due-preview {
+    min-height: 30px;
+    margin: 0;
+    padding: 7px 9px;
+    border: 1px solid #f3d3df;
+    border-radius: 6px;
+    background: #fff7fa;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.gestao-due-preview[data-state="calculated"] {
+    border-color: #a7e9c8;
+    background: #effcf5;
+    color: #087f5b;
+}
+
+.gestao-due-preview[data-state="manual"] {
+    border-color: #cbdcfb;
+    background: #f4f8ff;
+    color: #2458a6;
+}
+
+.gestao-due-preview[data-state="error"] {
+    border-color: #f4a8a8;
+    background: #fff4f4;
+    color: #b42318;
+}
+
+.gestao-due-entry [data-due-days]:invalid {
+    border-color: #dc6262;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.gestao-due-manual span {
+    color: #765d67;
+    font-size: 0.72rem;
+}
+
 .gestao-orders-side {
     grid-area: form;
     min-width: 0;
@@ -1641,6 +1689,24 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 
 .gestao-order-edit-add .gestao-order-edit-section-title {
     grid-column: 1 / -1;
+}
+
+.gestao-order-edit-item > .gestao-due-entry,
+.gestao-order-edit-add > .gestao-due-entry {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+}
+
+.gestao-order-edit-item > .gestao-due-entry .gestao-due-preview,
+.gestao-order-edit-add > .gestao-due-entry .gestao-due-preview {
+    grid-column: 1;
+}
+
+.gestao-order-edit-item > .gestao-due-entry .gestao-due-manual,
+.gestao-order-edit-add > .gestao-due-entry .gestao-due-manual {
+    grid-column: 2;
+    grid-row: 1 / span 2;
 }
 
 .gestao-order-edit-supplier .gestao-btn,
@@ -2977,6 +3043,19 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
     .gestao-account-head,
     .gestao-order-head {
         flex-direction: column;
+    }
+
+    .gestao-order-edit-item > .gestao-due-entry,
+    .gestao-order-edit-add > .gestao-due-entry {
+        grid-template-columns: 1fr;
+    }
+
+    .gestao-order-edit-item > .gestao-due-entry .gestao-due-preview,
+    .gestao-order-edit-add > .gestao-due-entry .gestao-due-preview,
+    .gestao-order-edit-item > .gestao-due-entry .gestao-due-manual,
+    .gestao-order-edit-add > .gestao-due-entry .gestao-due-manual {
+        grid-column: 1;
+        grid-row: auto;
     }
 
     .gestao-account-total {

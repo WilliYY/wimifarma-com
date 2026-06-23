@@ -479,6 +479,7 @@ Validar no VPS `/notas/health`, proxy Apache, login via Home/SSO, permissao no U
 - Desde 2026-06-11, `/pedidos/` tem busca inteligente em tempo real por fornecedor, valor, vencimento, previsao de chegada, criacao, status, parcelas, observacao, responsaveis e auditoria/historico; o endpoint `GET /pedidos/api/search` apenas le as listas do mes, filtra e retorna HTML dos cards, sem gravar, pagar, confirmar, arquivar ou duplicar pedidos.
 - Ainda em 2026-06-11, o card aberto do `Historico` permite voltar manualmente para `Confirmados`, voltar para `Aguardando chegada` quando existe `pedidos_orders.order_id` original, ou excluir da tela por arquivamento logico. As acoes gravam auditoria e nao cancelam nem apagam pagamentos.
 - Desde 2026-06-13, o painel do lapis permite corrigir valor/vencimento/nome de parcela mesmo quando o pedido esta pago ou ja tem pagamento vinculado; pagamentos ficam preservados em `gestao_account_payments`, e `gestao_accounts`/status de Pedidos sao recalculados a partir dos itens ativos.
+- Desde 2026-06-23, o vencimento de cada parcela pode ser informado por quantidade de dias na criacao, na adicao e na edicao. A tela mostra a data calculada, mantem o seletor manual e o backend aceita somente inteiro positivo; a fonte de verdade continua sendo a data real em `gestao_account_items.due_at`, sem vinculo de recalculo com a competencia.
 - `/pedidos/logout.php`: encerra sessao.
 - `/pedidos/health`: health com `mysql_dependency=false`.
 - `GET /pedidos/api/badge`: total de pedidos em `Aguardando chegada`, usado pela home.
@@ -522,7 +523,7 @@ Validar no VPS `/notas/health`, proxy Apache, login via Home/SSO, permissao no U
 
 ### Fluxos de escrita
 
-- Criar pedido com fornecedor, parcelas, vencimentos, previsao de chegada, competencia, status inicial e observacao.
+- Criar pedido com fornecedor, parcelas, vencimentos por dias ou data manual, previsao de chegada, competencia, status inicial e observacao.
 - Criar pedido ja pago, ja recebido ou `Chegou e pago - Registrar`, movendo para Confirmados/Historico conforme status.
 - `Chegou e pago - Registrar` reutiliza o mesmo fluxo seguro de pago + recebido: cria a conta `Boleto`, itens, um unico pagamento total, registro em `pedidos_confirmed_orders` com lifecycle `historico` e auditoria de registro manual.
 - Criar pedido pelo Miauby Whats com mensagens como `miauby pedido anb 350`, `miauby pedido anb 350 chegada amanha`, `miauby pedido anb 350 ja pago so chegar`, `miauby pedido anb 350 ja chegou so pagar`, `miauby pedido anb 350 chegou e pago registrar` ou parcelas `miauby pedido anb em 2 parcelas 200 10/06 e 150 20/06`; o bridge exige allowlist/card `Pedidos`, vinculo com usuario e resposta curta, e o app Pedidos evita duplicidade por `pedidos_internal_idempotency`.

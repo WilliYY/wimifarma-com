@@ -6,6 +6,7 @@ import connectPgSimple from 'connect-pg-simple';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
 import pg from 'pg';
+import { dueDateFromDays } from './due-date.js';
 
 const { Pool } = pg;
 
@@ -196,7 +197,7 @@ const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const SERVICE_NAME = 'pedidos';
-const SERVICE_VERSION = '1.0.4';
+const SERVICE_VERSION = '1.0.5';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/pedidos');
 const PORT = Number.parseInt(env.PORT || '3300', 10);
 const SESSION_SECRET = env.PEDIDOS_SESSION_SECRET || env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -547,6 +548,10 @@ function parseOptionalDateOnly(value: unknown, label = 'vencimento'): string | n
     throw new Error(`Informe ${label} valido.`);
   }
   return text;
+}
+
+function resolveParcelDueDate(daysValue: unknown, dateValue: unknown, label: string): string | null {
+  return dueDateFromDays(daysValue, localDateInput()) || parseOptionalDateOnly(dateValue, label);
 }
 
 function accountDueFromDate(date: string | null): string | null {
@@ -1426,13 +1431,18 @@ async function createOrder(req: Request): Promise<CreateOrderResult> {
 
   const values = bodyArray(req.body, 'pedido_valor');
   const dueValues = bodyArray(req.body, 'pedido_vencimento');
+  const dueDaysValues = bodyArray(req.body, 'pedido_vencimento_dias');
   const legacyDueDate = parseOptionalDateOnly(req.body.vencimento_em, 'o vencimento do boleto');
   const items: Array<{ description: string; cents: number; dueDate: string | null }> = [];
   for (let index = 0; index < Math.min(values.length, 30); index += 1) {
     const cents = parseMoneyToCents(values[index]);
     if (cents <= 0) continue;
     const label = values.length > 1 ? `Parcela ${index + 1}` : 'Pedido';
-    const dueDate = parseOptionalDateOnly(dueValues[index], `o vencimento da ${label.toLowerCase()}`) || (values.length === 1 ? legacyDueDate : null);
+    const dueDate = resolveParcelDueDate(
+      dueDaysValues[index],
+      dueValues[index],
+      `o vencimento da ${label.toLowerCase()}`,
+    ) || (values.length === 1 ? legacyDueDate : null);
     items.push({ description: `${label} - ${supplier}`.slice(0, 180), cents, dueDate });
   }
   if (!items.length) throw new Error('Informe pelo menos um valor maior que zero para o pedido.');
@@ -1770,7 +1780,11 @@ async function addItem(req: Request): Promise<void> {
   if (cents <= 0) throw new Error('Informe um valor maior que zero para adicionar.');
   const requestedDescription = cleanText(req.body.novo_item_descricao, 180);
   const itemType = cleanText(req.body.novo_item_tipo, 40);
-  const dueDate = parseOptionalDateOnly(req.body.novo_item_vencimento, 'o vencimento do novo valor');
+  const dueDate = resolveParcelDueDate(
+    req.body.novo_item_vencimento_dias,
+    req.body.novo_item_vencimento,
+    'o vencimento do novo valor',
+  );
   const userId = req.session.user?.id || null;
   const client = await pgPool.connect();
   let description = requestedDescription;
@@ -1882,8 +1896,12 @@ async function updateOrderItem(req: Request): Promise<void> {
   const itemId = Number(req.body.item_id || 0);
   const description = cleanText(req.body.item_descricao, 180);
   const cents = parseMoneyToCents(req.body.item_valor);
+  const hasDueDaysField = Object.prototype.hasOwnProperty.call(req.body, 'item_vencimento_dias');
   const hasDueField = Object.prototype.hasOwnProperty.call(req.body, 'item_vencimento');
-  const requestedDueDate = hasDueField ? parseOptionalDateOnly(req.body.item_vencimento, 'o vencimento da parcela') : null;
+  const hasDueInput = hasDueDaysField || hasDueField;
+  const requestedDueDate = hasDueInput
+    ? resolveParcelDueDate(req.body.item_vencimento_dias, req.body.item_vencimento, 'o vencimento da parcela')
+    : null;
   if (!accountId || !itemId) throw new Error('Lancamento invalido.');
   if (!description) throw new Error('Informe o nome do lancamento.');
   if (cents <= 0) throw new Error('Informe um valor maior que zero.');
@@ -1906,7 +1924,7 @@ async function updateOrderItem(req: Request): Promise<void> {
     );
     const item = itemResult.rows[0];
     if (!item) throw new Error('Lancamento nao encontrado.');
-    const dueDate = hasDueField ? requestedDueDate : (dateInputValue(item.due_at) || null);
+    const dueDate = hasDueInput ? requestedDueDate : (dateInputValue(item.due_at) || null);
 
     await client.query('UPDATE gestao_account_items SET description = $1, amount_cents = $2, due_at = $3::date WHERE id = $4', [description, cents, dueDate, itemId]);
     const newTotal = await refreshAccountTotal(client, accountId);
@@ -2883,6 +2901,16 @@ async function paidThisMonth(month: string): Promise<number> {
   return Number(result.rows[0]?.paid_cents || 0);
 }
 
+function renderParcelDueFields(daysName: string, dateName: string, currentDate: Date | string | null = null): string {
+  const dateValue = dateInputValue(currentDate);
+  const preview = dateValue ? `Data atual: ${brDateOnly(dateValue)}` : 'Digite os dias para calcular a data.';
+  return `<div class="gestao-due-entry" data-due-days-group>
+    <label><span>Vencimento em quantos dias?</span><input type="text" name="${e(daysName)}" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Ex.: 30" data-due-days></label>
+    <p class="gestao-due-preview" data-due-preview data-state="${dateValue ? 'manual' : 'hint'}" aria-live="polite">${e(preview)}</p>
+    <label class="gestao-due-manual"><span>Ou escolha a data manualmente</span><input type="date" name="${e(dateName)}" value="${e(dateValue)}" data-due-date></label>
+  </div>`;
+}
+
 function renderOrderForm(req: Request, selectedMonth: string): string {
   return `<form method="post" class="gestao-orders-form" data-gestao-order-form>
     ${csrfField(req)}
@@ -2906,7 +2934,7 @@ function renderOrderForm(req: Request, selectedMonth: string): string {
             <small>Valor e vencimento</small>
           </div>
           <label><span>Valor do boleto ou pedido</span><input type="text" name="pedido_valor[]" inputmode="decimal" placeholder="0,00" data-money-input></label>
-          <label><span>Vencimento desta parcela</span><input type="date" name="pedido_vencimento[]"></label>
+          ${renderParcelDueFields('pedido_vencimento_dias[]', 'pedido_vencimento[]')}
         </div>
       </div>
       <button type="button" class="gestao-btn gestao-btn-secondary" data-add-order-item>Adicionar parcela</button>
@@ -3016,7 +3044,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
         <label><span>Nome da parcela</span><input type="text" name="item_descricao" maxlength="180" value="${e(item.description)}" required></label>
         <label><span>Valor da parcela</span><input type="text" name="item_valor" inputmode="decimal" value="${e(moneyInput(Number(item.amount_cents || 0)))}" data-money-input required></label>
-        <label><span>Vencimento da parcela</span><input type="date" name="item_vencimento" value="${e(dateInputValue(item.due_at))}"></label>
+        ${renderParcelDueFields('item_vencimento_dias', 'item_vencimento', item.due_at)}
         <button type="submit" class="gestao-btn gestao-btn-secondary">Salvar parcela</button>
       </form>
       <form method="post" class="gestao-order-edit-remove" data-confirm="Remover este valor da tela? A auditoria e os dados ja pagos continuam preservados.">
@@ -3100,7 +3128,7 @@ function renderOrderCard(req: Request, order: RenderOrder, selectedMonth: string
         <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
         <div class="gestao-order-edit-section-title">Adicionar parcela</div>
         <label><span>Valor da nova parcela</span><input type="text" name="novo_item_valor" inputmode="decimal" placeholder="0,00" data-money-input required></label>
-        <label><span>Vencimento da nova parcela</span><input type="date" name="novo_item_vencimento"></label>
+        ${renderParcelDueFields('novo_item_vencimento_dias', 'novo_item_vencimento')}
         <label><span>Nome opcional</span><input type="text" name="novo_item_descricao" maxlength="180" placeholder="Ex.: Parcela extra, juros ou frete"></label>
         <button type="submit" class="gestao-btn gestao-btn-secondary">Adicionar parcela</button>
       </form>
@@ -3289,11 +3317,11 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260611-smart-search">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260623-due-days">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260611-smart-search" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260623-due-days" defer></script>
 </head>
-<body class="pedidos-body">
+<body class="pedidos-body" data-pedidos-today="${e(localDateInput())}">
   <header class="gestao-topbar">
     <a class="gestao-brand" href="/">
       <img src="/cashback/logo-wimifarma.svg" alt="Wimifarma">
