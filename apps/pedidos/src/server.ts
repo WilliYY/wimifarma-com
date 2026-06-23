@@ -197,7 +197,7 @@ const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 
 const SERVICE_NAME = 'pedidos';
-const SERVICE_VERSION = '1.0.5';
+const SERVICE_VERSION = '1.0.6';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/pedidos');
 const PORT = Number.parseInt(env.PORT || '3300', 10);
 const SESSION_SECRET = env.PEDIDOS_SESSION_SECRET || env.GESTAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -3317,9 +3317,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260623-due-days">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260623-orders-layout">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260623-due-days" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260623-orders-layout" defer></script>
 </head>
 <body class="pedidos-body" data-pedidos-today="${e(localDateInput())}">
   <header class="gestao-topbar">
@@ -3373,7 +3373,7 @@ async function renderApp(req: Request): Promise<string> {
           <div class="gestao-orders-stack gestao-orders-waiting-stack" data-pedidos-results="waiting">${columns.waitingHtml}</div>
         </section>
         <section class="gestao-orders-panel gestao-orders-confirmed">
-          <div class="gestao-section-title"><span class="gestao-kicker">Confirmados</span><strong data-pedidos-count="confirmed">vencimento primeiro</strong></div>
+          <div class="gestao-section-title"><span class="gestao-kicker">Confirmados <small class="gestao-section-note">vencimento primeiro</small></span><strong data-pedidos-count="confirmed">${e(confirmedOrders.length)}</strong></div>
           <div class="gestao-orders-stack" data-pedidos-results="confirmed">${columns.confirmedHtml}</div>
         </section>
         <aside class="gestao-orders-panel gestao-orders-history" data-history-reveal-panel>
