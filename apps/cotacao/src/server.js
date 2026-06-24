@@ -2902,7 +2902,7 @@ function renderApp(req) {
     window.COTACAO_CONFIG = ${JSON.stringify({ basePath: BASE_PATH, user })};
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
-  <script src="${BASE_PATH}/app.js?v=20260604-concurrency"></script>
+  <script src="${BASE_PATH}/app.js?v=20260624-color-filter"></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </body>
 </html>`;

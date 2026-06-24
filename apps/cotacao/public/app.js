@@ -48,6 +48,9 @@
   const WINNER_KEY = 'quem_ganhou';
   const CATEGORY_KEY = 'categoria';
   const FILTERABLE_KEYS = ['produto', 'categoria', WINNER_KEY];
+  const COLOR_NORMALIZATION_CONTEXT = document.createElement('canvas').getContext('2d');
+  const VISIBLE_COLOR_CACHE = new Map();
+  let visibleColorProbeCell = null;
   const CATEGORY_FILTER_INVISIBLE_CHARS = /[\u0000-\u001f\u007f\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/g;
   const RULE_OPERATORS = [
     ['contains', 'Contem'],
@@ -239,6 +242,14 @@
       && (column.options?.kind === 'distributor'
         || String(column.key || '').startsWith('fornecedor_')
         || String(column.key || '').startsWith('distribuidora_'));
+  }
+
+  function isFilterableColumn(column) {
+    return Boolean(column && (FILTERABLE_KEYS.includes(column.key) || isDistributorColumn(column)));
+  }
+
+  function filterableColumnKeys() {
+    return state.columns.filter(isFilterableColumn).map((column) => column.key);
   }
 
   function rowById(rowId) {
@@ -486,7 +497,62 @@
 
   function normalizeColorValue(value) {
     const color = String(value || '').trim().toLowerCase();
-    return /^#[0-9a-f]{6}$/i.test(color) ? color : '';
+    if (!color || color === 'transparent') return '';
+    if (!globalThis.CSS?.supports?.('color', color) || !COLOR_NORMALIZATION_CONTEXT) return '';
+
+    COLOR_NORMALIZATION_CONTEXT.fillStyle = '#000000';
+    COLOR_NORMALIZATION_CONTEXT.fillStyle = color;
+    const normalized = String(COLOR_NORMALIZATION_CONTEXT.fillStyle || '').trim().toLowerCase();
+    if (!normalized || normalized === 'transparent' || normalized === 'rgba(0, 0, 0, 0)') return '';
+    if (/^#[0-9a-f]{6}$/.test(normalized)) return normalized;
+    if (/^#[0-9a-f]{3}$/.test(normalized)) {
+      return `#${normalized.slice(1).split('').map((part) => `${part}${part}`).join('')}`;
+    }
+
+    const rgba = normalized.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?:\s*,\s*(\d+(?:\.\d+)?))?\s*\)$/);
+    if (!rgba) return '';
+    const channels = rgba.slice(1, 4).map((part) => Math.max(0, Math.min(255, Math.round(Number(part)))));
+    const alpha = rgba[4] === undefined ? 1 : Math.max(0, Math.min(1, Number(rgba[4])));
+    if (alpha <= 0) return '';
+    if (alpha < 1) return `rgba(${channels.join(',')},${Number(alpha.toFixed(3))})`;
+    return `#${channels.map((part) => part.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  function getVisibleColorProbeCell() {
+    if (visibleColorProbeCell?.isConnected) return visibleColorProbeCell;
+    const table = document.createElement('table');
+    table.className = 'sheet-table';
+    table.setAttribute('aria-hidden', 'true');
+    table.style.cssText = 'position:fixed;left:-10000px;top:-10000px;visibility:hidden;pointer-events:none';
+    const tbody = document.createElement('tbody');
+    const row = document.createElement('tr');
+    visibleColorProbeCell = document.createElement('td');
+    row.append(visibleColorProbeCell);
+    tbody.append(row);
+    table.append(tbody);
+    document.body.append(table);
+    return visibleColorProbeCell;
+  }
+
+  function visibleCellColorKey(row, column, styles, winner = computeWinner(row)) {
+    if (!row || !column) return '__none__';
+    const style = mergedStyle(row, column, styles);
+    const isWinnerPrice = winner.keys.includes(column.key);
+    const tone = String(column.options?.tone || '');
+    const cacheKey = JSON.stringify([tone, style.background || '', isWinnerPrice]);
+    if (VISIBLE_COLOR_CACHE.has(cacheKey)) return VISIBLE_COLOR_CACHE.get(cacheKey);
+
+    const probe = getVisibleColorProbeCell();
+    probe.className = ['sheet-cell', tone, isWinnerPrice ? 'is-best-price' : ''].filter(Boolean).join(' ');
+    probe.style.background = '';
+    if (style.background) probe.style.background = style.background;
+    const visibleColor = normalizeColorValue(window.getComputedStyle(probe).backgroundColor);
+    const explicitColor = normalizeColorValue(style.background);
+    const result = !explicitColor && !isWinnerPrice && visibleColor === '#ffffff'
+      ? '__none__'
+      : (visibleColor || '__none__');
+    VISIBLE_COLOR_CACHE.set(cacheKey, result);
+    return result;
   }
 
   function colorFilterOptions(columnKey) {
@@ -495,8 +561,7 @@
     const styles = styleMap();
     const counts = new Map();
     state.rows.forEach((row) => {
-      const background = normalizeColorValue(mergedStyle(row, column, styles).background);
-      const value = background || '__none__';
+      const value = visibleCellColorKey(row, column, styles);
       counts.set(value, (counts.get(value) || 0) + 1);
     });
     return Array.from(counts, ([value, count]) => ({ value, count }))
@@ -540,7 +605,8 @@
       ].join(' ').toLowerCase();
       if (!haystack.includes(term)) return false;
     }
-    for (const key of FILTERABLE_KEYS) {
+    const filterKeys = filterableColumnKeys();
+    for (const key of filterKeys) {
       const filter = state.filters[key];
       if (!filter) continue;
       const column = colByKey(key);
@@ -549,12 +615,13 @@
       if (!filter.has(value)) return false;
     }
     const styles = styleMap();
-    for (const key of FILTERABLE_KEYS) {
+    const winner = computeWinner(row);
+    for (const key of filterKeys) {
       const filter = state.colorFilters[key];
       if (!filter) continue;
       const column = colByKey(key);
       if (!column) continue;
-      const value = normalizeColorValue(mergedStyle(row, column, styles).background) || '__none__';
+      const value = visibleCellColorKey(row, column, styles, winner);
       if (!filter.has(value)) return false;
     }
     return true;
@@ -653,7 +720,7 @@
 
   function hasActiveViewFilter() {
     if (String(state.search || '').trim()) return true;
-    return FILTERABLE_KEYS.some((key) => state.filters[key] || state.colorFilters[key]);
+    return filterableColumnKeys().some((key) => state.filters[key] || state.colorFilters[key]);
   }
 
   function gridRows() {
@@ -1313,7 +1380,7 @@
   }
 
   function headerFilterButton(column) {
-    if (!FILTERABLE_KEYS.includes(column.key)) return '';
+    if (!isFilterableColumn(column)) return '';
     const active = state.filters[column.key] || state.colorFilters[column.key] ? ' is-active' : '';
     return `<button type="button" class="filter-button${active}" data-filter-column="${esc(column.key)}" title="Filtro" aria-label="Filtrar ${esc(column.label)}"></button>`;
   }
