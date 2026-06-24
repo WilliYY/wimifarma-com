@@ -3823,6 +3823,17 @@
       handleContextAction(button.dataset.action).catch(console.error);
     });
 
+    filterMenu.addEventListener('change', (event) => {
+      const colorInput = event.target.closest('input[data-filter-kind="color"]');
+      if (!colorInput || colorInput.checked) return;
+      const colorInputs = Array.from(filterMenu.querySelectorAll('input[data-filter-kind="color"]'));
+      const wasAllSelected = colorInputs.every((input) => input === colorInput || input.checked);
+      if (!wasAllSelected) return;
+      colorInputs.forEach((input) => {
+        input.checked = input === colorInput;
+      });
+    });
+
     filterMenu.addEventListener('click', (event) => {
       const select = event.target.closest('[data-filter-select]');
       if (select) {
