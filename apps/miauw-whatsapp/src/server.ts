@@ -9697,7 +9697,13 @@ function isPixReceiptOcrFallbackError(error: unknown): boolean {
     || message.includes('gemini_pix_receipt_http_5')
     || message.includes('gemini_pix_receipt_http_429')
     || message.includes('gemini_empty_')
-    || message.includes('pix_receipt_json_invalid');
+    || message.includes('pix_receipt_json_invalid')
+    || message.includes('high demand')
+    || message.includes('try again later')
+    || message.includes('overload')
+    || message.includes('temporar')
+    || message.includes('unavailable')
+    || message.includes('resource exhausted');
 }
 
 function isPixReceiptOcrContentError(error: unknown): boolean {
