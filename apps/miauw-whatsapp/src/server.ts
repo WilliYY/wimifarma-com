@@ -72,6 +72,9 @@ type PixReceiptExtraction = {
   isPixReceipt: boolean;
   ocrProvider?: string;
   ocrModel?: string;
+  ocrPass?: 'primary' | 'conservative' | 'fallback';
+  ocrRetryUsed?: boolean;
+  ocrRetryReason?: string;
   destinationCnpj: string;
   destinationKey: string;
   destinationName: string;
@@ -87,6 +90,10 @@ type PixReceiptExtraction = {
   amountConfidence: number;
   payerConfidence: number;
   targetConfidence: number;
+  dateConfidence: number;
+  idConfidence: number;
+  fieldConfidences: JsonRecord;
+  diagnostics: string[];
   missing: string[];
 };
 
@@ -751,7 +758,7 @@ const PIX_CNPJ_MANUAL_HINT_REPLY = [
   'miauby pix cnpj valor responsável',
   '',
   'Exemplo:',
-  'miauby pix cnpj 28,90 Sueli',
+  'miauby pix cnpj 65 Bruno',
 ].join('\n');
 const PIX_RECEIPT_NOT_LIKE_REPLY = 'Isso ai é um comprovante pix?';
 const AUDIO_TRANSCRIPTION_UNCLEAR_REPLY = 'Nao consegui entender bem esse audio. Me manda em texto ou grava de novo falando uma frase clara.';
@@ -6003,24 +6010,15 @@ function pixReceiptPublicReply(command: JsonRecord, status: 'found' | 'launched'
   const dateTime = pixReceiptPublicDateTimeLabel(command, executedText);
   const payer = pixReceiptPublicPayerLabel(command);
   const targetType = pixReceiptPublicTargetTypeLabel(command);
-  const publicDetails = [
-    payer ? `Feito por: ${payer}` : '',
+  const header = status === 'launched' ? 'PIX CNPJ lançado ✅' : 'PIX CNPJ identificado ✅';
+  return [
+    header,
+    `Valor: ${amount}`,
+    payer ? `Pagador: ${payer}` : '',
+    responsible ? `Responsável: ${responsible}` : 'Responsável não identificado',
     targetType ? `Tipo: ${targetType}` : '',
-  ].filter(Boolean);
-  if (!responsible) {
-    const parts = [
-      ...publicDetails,
-      'Responsavel nao identificado',
-    ].filter(Boolean);
-    return `Comprovante lido. Valor: ${amount}${parts.length ? ` - ${parts.join(' - ')}` : ''}. Confira no Financeiro.`;
-  }
-  const replyPrefix = status === 'launched' ? 'PIX CNPJ lancado' : 'PIX CNPJ encontrado';
-  const parts = [
-    `Responsavel: ${responsible}`,
-    ...publicDetails,
-    dateTime,
-  ].filter(Boolean);
-  return `${replyPrefix}: ${amount} - ${parts.join(' - ')}.`;
+    dateTime ? `Data: ${dateTime}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 function shortCategoryObservationForWhatsapp(text: string): string {
@@ -8698,17 +8696,15 @@ function pixReceiptCommandFromExtraction(
 function pixReceiptResponsibleIntroFromExtraction(extraction: PixReceiptExtraction, targetMatch: PixReceiptTargetMatch): string {
   const amount = moneyForCommand(extraction.amount);
   const date = dateForCommand(extraction.paidDate);
-  const destination = cleanReceiptPart(extraction.destinationName || (targetMatch.nameMatch ? targetMatch.matched : ''), 44);
   const payer = cleanReceiptPart(extraction.payerName, 70);
   const targetType = pixReceiptTargetTypeLabel(targetMatch);
   return [
-    'PIX CNPJ encontrado:',
+    'PIX CNPJ identificado ✅',
     `Valor: ${amount}`,
-    `Data: ${date || 'nao informada'}`,
-    `Destino: ${destination || 'destino validado'}`,
-    `Feito por: ${payer || 'nao identificado'}`,
-    `Tipo: ${targetType || 'destino validado'}`,
-  ].join('\n');
+    `Pagador: ${payer || 'nao identificado'}`,
+    date ? `Data: ${date}` : '',
+    targetType ? `Tipo: ${targetType}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 function pixCnpjResponsibleIntroFromCommand(command: PixCnpjCommand): string {
@@ -8816,6 +8812,12 @@ function pixReceiptExtractionSummary(
     pix_receipt_amount_confidence: extraction.amountConfidence,
     pix_receipt_payer_confidence: extraction.payerConfidence,
     pix_receipt_target_confidence: extraction.targetConfidence,
+    pix_receipt_date_confidence: extraction.dateConfidence,
+    pix_receipt_id_confidence: extraction.idConfidence,
+    pix_receipt_ocr_pass: safeText(extraction.ocrPass || '', 30) || undefined,
+    pix_receipt_ocr_retry_used: extraction.ocrRetryUsed === true,
+    pix_receipt_ocr_retry_reason: safeText(extraction.ocrRetryReason || '', 80) || undefined,
+    pix_receipt_diagnostics: extraction.diagnostics.slice(0, 8).map((item) => safeText(item, 80)).filter(Boolean),
     pix_receipt_missing: extraction.missing.slice(0, 8).map((item) => safeText(item, 60)).filter(Boolean),
     pix_receipt_ocr_provider: safeText(extraction.ocrProvider || 'gemini', 40),
     pix_receipt_ocr_model: safeText(extraction.ocrModel || PIX_RECEIPT_OCR_MODEL, 120),
@@ -9066,6 +9068,35 @@ function confidenceFromReceiptValue(value: unknown, fallback = 0): number {
   return Math.max(0, Math.min(1, normalized || fallback));
 }
 
+function receiptConfidenceObject(data: JsonRecord): JsonRecord {
+  const source = isRecord(data.field_confidences)
+    ? data.field_confidences
+    : isRecord(data.fieldConfidences)
+      ? data.fieldConfidences
+      : isRecord(data.confidences)
+        ? data.confidences
+        : {};
+  const entries: JsonRecord = {};
+  for (const [key, value] of Object.entries(source)) {
+    const cleanKey = safeText(key, 40);
+    if (!cleanKey) continue;
+    const confidence = confidenceFromReceiptValue(value, 0);
+    if (confidence > 0) entries[cleanKey] = confidence;
+  }
+  return entries;
+}
+
+function confidenceFromReceiptKeys(data: JsonRecord, keys: string[], fallback = 0): number {
+  const fieldConfidences = receiptConfidenceObject(data);
+  for (const key of keys) {
+    const direct = confidenceFromReceiptValue(data[key], 0);
+    if (direct > 0) return direct;
+    const nested = confidenceFromReceiptValue(fieldConfidences[key], 0);
+    if (nested > 0) return nested;
+  }
+  return fallback;
+}
+
 function amountFromReceiptRawText(value: unknown): number {
   const text = safeOutboundText(value, 2000);
   if (!text) return 0;
@@ -9119,11 +9150,27 @@ function stringArrayFromValue(value: unknown): string[] {
   return text ? text.split(/[;,|]/).map((item) => safeText(item, 80)).filter(Boolean) : [];
 }
 
+function sanitizePixReceiptDiagnostic(value: string): string {
+  return safeText(value, 80)
+    .replace(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g, '[documento]')
+    .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '[documento]')
+    .replace(/\b\d{11,14}\b/g, '[documento]')
+    .replace(/\bE\d{20,}\b/gi, '[id_pix]')
+    .replace(/\bR\$\s*\d[\d.,]*/gi, '[valor]')
+    .replace(/\b\d{1,3}(?:\.\d{3})*,\d{2}\b/g, '[valor]');
+}
+
 function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
   const rawText = stringFromKeys(data, ['raw_text', 'rawText', 'texto_bruto', 'ocr_text'], 2000);
   const amount = numberFromReceiptValue(data.amount_brl ?? data.amount ?? data.valor ?? data.value)
     || amountFromReceiptRawText(rawText);
   const confidence = confidenceFromReceiptValue(data.confidence ?? data.confianca ?? 0);
+  const fieldConfidences = receiptConfidenceObject(data);
+  const amountConfidence = confidenceFromReceiptKeys(data, ['amount_confidence', 'amountConfidence', 'confianca_valor', 'amount', 'amount_brl', 'valor'], confidence);
+  const payerConfidence = confidenceFromReceiptKeys(data, ['payer_confidence', 'payerConfidence', 'confianca_pagador', 'payer_name', 'payerName', 'pagador'], confidence);
+  const targetConfidence = confidenceFromReceiptKeys(data, ['target_confidence', 'targetConfidence', 'confianca_destino', 'destination_name', 'destination_cnpj_digits', 'destination_key_digits'], confidence);
+  const dateConfidence = confidenceFromReceiptKeys(data, ['paid_at_confidence', 'date_confidence', 'paidDateConfidence', 'confianca_data', 'paid_at_date', 'data_pagamento'], confidence);
+  const idConfidence = confidenceFromReceiptKeys(data, ['id_confidence', 'identifier_confidence', 'end_to_end_confidence', 'e2e_confidence', 'end_to_end_id', 'transaction_id'], confidence);
   return {
     isPixReceipt: boolFromKeys(data, ['is_pix_receipt', 'isPixReceipt', 'comprovante_pix']),
     destinationCnpj: onlyDigits(data.destination_cnpj_digits ?? data.destinationCnpj ?? data.cnpj_destino ?? data.destination_cnpj),
@@ -9138,9 +9185,16 @@ function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
     transactionId: stringFromKeys(data, ['transaction_id', 'transactionId', 'id_transacao', 'autenticacao', 'codigo_autenticacao'], 120),
     rawText,
     confidence: Math.max(0, Math.min(1, confidence)),
-    amountConfidence: confidenceFromReceiptValue(data.amount_confidence ?? data.amountConfidence ?? data.confianca_valor, confidence),
-    payerConfidence: confidenceFromReceiptValue(data.payer_confidence ?? data.payerConfidence ?? data.confianca_pagador, confidence),
-    targetConfidence: confidenceFromReceiptValue(data.target_confidence ?? data.targetConfidence ?? data.confianca_destino, confidence),
+    amountConfidence,
+    payerConfidence,
+    targetConfidence,
+    dateConfidence,
+    idConfidence,
+    fieldConfidences,
+    diagnostics: stringArrayFromValue(data.diagnostics ?? data.diagnostic_reasons ?? data.warnings ?? data.reason)
+      .map(sanitizePixReceiptDiagnostic)
+      .filter(Boolean)
+      .slice(0, 8),
     missing: stringArrayFromValue(data.missing ?? data.faltando),
   };
 }
@@ -9509,18 +9563,52 @@ function pixReceiptExtractionHintText(hints: PixReceiptExtractionHints): string 
   ].filter(Boolean).join(' ');
 }
 
-function pixReceiptExtractionPrompt(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): string {
-  const hintText = pixReceiptExtractionHintText(hints);
-  return `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${hintText} Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes conhecidos apenas como pista: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}. Leia toda area util da foto/print/PDF, inclusive textos pequenos, cabecalho, rodape e comprovantes com baixa nitidez. Extraia exatamente: is_pix_receipt, destination_cnpj_digits, destination_key_digits, destination_name, payer_name, amount_brl, paid_at_date em YYYY-MM-DD, paid_at_time em HH:MM, institution, end_to_end_id, transaction_id, amount_confidence, payer_confidence, target_confidence, raw_text compacto com no maximo 900 caracteres, confidence de 0 a 1 e missing como lista. Regras: amount_brl e o valor efetivamente transferido/pago no Pix; ignore saldo, limite, tarifa, taxa, agencia, conta, codigo, ID, CNPJ ou CPF. end_to_end_id, transaction_id e destination_key_digits sao opcionais: extraia quando existirem, mas nao coloque em missing se nao aparecerem. payer_name e quem pagou/origem/de; destination_name e recebedor/favorecido/destino/para. Se o CNPJ nao aparecer, use destination_cnpj_digits vazio e preserve nome/chave Pix/raw_text. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado. Se nao for comprovante Pix, use is_pix_receipt false.`;
+function pixReceiptExtractionSystemInstruction(pass: PixReceiptExtraction['ocrPass'] = 'primary'): string {
+  const conservative = pass === 'conservative'
+    ? ' Esta e uma segunda leitura conservadora: releia a midia inteira, procure campos cortados/pequenos e prefira vazio ou confianca baixa quando houver duvida.'
+    : '';
+  return `Voce extrai dados de comprovantes Pix brasileiros recebidos como foto, print, screenshot, imagem encaminhada ou PDF para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown.${conservative} Nao invente dados ausentes e nao use saldo, limite, agencia, conta, tarifa, documento, autenticacao ou comprovantes de outra operacao como valor pago.`;
 }
 
-function parsePixReceiptExtractionText(text: string, ocrProvider: string, ocrModel: string): PixReceiptExtraction {
+function pixReceiptExtractionPrompt(
+  media: AudioMedia,
+  traceId: string,
+  hints: PixReceiptExtractionHints,
+  pass: PixReceiptExtraction['ocrPass'] = 'primary',
+): string {
+  const hintText = pixReceiptExtractionHintText(hints);
+  const modeText = pass === 'conservative'
+    ? 'Modo: segunda leitura conservadora. Nao tente completar por memoria; confirme no visual cada campo.'
+    : 'Modo: primeira leitura detalhada.';
+  return [
+    `Trace ${traceId}. Midia recebida: ${media.mimeType}. ${modeText}`,
+    hintText,
+    `Alvo esperado do destino: CNPJ ou chave Pix ${PIX_RECEIPT_CNPJ}; nomes conhecidos apenas como pista, nunca como prova isolada: ${PIX_RECEIPT_DESTINATION_ALIASES.join(' | ')}.`,
+    'Leia toda area util da foto/print/PDF, incluindo print vertical longo, PDF de uma pagina, PDF convertido de imagem, cabecalho, rodape, fundo cinza/marca dagua, textos pequenos, campos cortados e campos muito afastados.',
+    'Nao dependa da ordem visual do OCR. Identifique campos por rotulos e contexto: Recebedor, Favorecido, Destino, Para e Chave Pix sao destino; Pagador, Origem, De e Remetente sao quem pagou.',
+    'Bancos/layouts esperados incluem Banco do Brasil, Itau, Bradesco, Santander, Caixa, Nubank, PicPay e Mercado Pago.',
+    'A data do Pix/pagamento tem prioridade sobre "comprovante emitido em", "documento", "autenticacao" ou rodape. Se so existir data de emissao e ela nao for claramente a data do Pix, deixe paid_at_date vazio ou baixa confianca.',
+    'amount_brl e o valor efetivamente transferido no Pix. Ignore saldo, limite, tarifa, taxa, agencia, conta, CPF, CNPJ, codigo, documento, autenticacao, ID Pix/E2E e valores de outras secoes.',
+    'CNPJ pode vir com mascara ou so digitos. Chave Pix pode ser igual ao CNPJ. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado.',
+    'end_to_end_id, transaction_id e destination_key_digits sao opcionais: extraia quando existirem, mas nao coloque em missing se nao aparecerem.',
+    'Retorne JSON com este formato exato: {"is_pix_receipt":boolean,"destination_cnpj_digits":"somente digitos ou vazio","destination_key_digits":"somente digitos ou vazio","destination_name":"nome do recebedor/favorecido/destino","payer_name":"nome do pagador/origem","amount_brl":65.00,"paid_at_date":"YYYY-MM-DD ou vazio","paid_at_time":"HH:MM ou vazio","institution":"banco/instituicao principal","end_to_end_id":"ID Pix/E2E ou vazio","transaction_id":"documento/autenticacao/id transacao ou vazio","confidence":0.0,"amount_confidence":0.0,"payer_confidence":0.0,"target_confidence":0.0,"date_confidence":0.0,"id_confidence":0.0,"field_confidences":{"amount":0.0,"payer_name":0.0,"destination":0.0,"paid_at":0.0,"end_to_end_id":0.0},"missing":["campos obrigatorios inseguros"],"diagnostics":["motivo curto sanitizado"],"raw_text":"trechos curtos relevantes, maximo 900 caracteres"}.',
+    'Se nao for comprovante Pix, use is_pix_receipt false, confidence baixa, missing com o motivo e nao invente campos.',
+  ].filter(Boolean).join(' ');
+}
+
+function parsePixReceiptExtractionText(
+  text: string,
+  ocrProvider: string,
+  ocrModel: string,
+  ocrPass: PixReceiptExtraction['ocrPass'] = 'primary',
+): PixReceiptExtraction {
   const parsed = JSON.parse(extractJsonObjectText(text)) as unknown;
   if (!isRecord(parsed)) throw new Error('pix_receipt_json_invalid');
   return {
     ...normalizePixReceiptExtraction(parsed),
     ocrProvider,
     ocrModel,
+    ocrPass,
   };
 }
 
@@ -9544,7 +9632,12 @@ function openAiTextFromResponse(data: JsonRecord, partLimit = 8000): string {
   throw new Error('openai_empty_reply');
 }
 
-async function requestOpenAiPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
+async function requestOpenAiPixReceiptExtraction(
+  media: AudioMedia,
+  traceId: string,
+  hints: PixReceiptExtractionHints,
+  pass: PixReceiptExtraction['ocrPass'] = 'fallback',
+): Promise<PixReceiptExtraction> {
   if (!openAiConfigured()) throw new Error('openai_not_configured_for_pix_receipt');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
@@ -9570,11 +9663,11 @@ async function requestOpenAiPixReceiptExtraction(media: AudioMedia, traceId: str
       },
       body: JSON.stringify({
         model: PIX_RECEIPT_OPENAI_OCR_MODEL,
-        instructions: 'Voce extrai dados de comprovantes Pix brasileiros para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes e nao use saldo, limite, agencia, conta, tarifa ou comprovantes de outra operacao como valor pago.',
+        instructions: pixReceiptExtractionSystemInstruction(pass),
         input: [{
           role: 'user',
           content: [
-            { type: 'input_text', text: pixReceiptExtractionPrompt(media, traceId, hints) },
+            { type: 'input_text', text: pixReceiptExtractionPrompt(media, traceId, hints, pass) },
             mediaPart,
           ],
         }],
@@ -9587,7 +9680,7 @@ async function requestOpenAiPixReceiptExtraction(media: AudioMedia, traceId: str
       const error = isRecord(data) && isRecord(data.error) ? data.error : data;
       throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `openai_pix_receipt_http_${response.status}`);
     }
-    return parsePixReceiptExtractionText(openAiTextFromResponse(data), 'openai', PIX_RECEIPT_OPENAI_OCR_MODEL);
+    return parsePixReceiptExtractionText(openAiTextFromResponse(data), 'openai', PIX_RECEIPT_OPENAI_OCR_MODEL, pass);
   } finally {
     clearTimeout(timeout);
   }
@@ -9607,13 +9700,119 @@ function isPixReceiptOcrFallbackError(error: unknown): boolean {
     || message.includes('pix_receipt_json_invalid');
 }
 
+function isPixReceiptOcrContentError(error: unknown): boolean {
+  const message = safeError(error).toLowerCase();
+  return message.includes('gemini_empty_')
+    || message.includes('pix_receipt_json_invalid')
+    || message.includes('pix_receipt_json_missing');
+}
+
+function pixReceiptConservativeRetryReason(extraction: PixReceiptExtraction): string {
+  const targetMatch = pixReceiptTargetMatch(extraction);
+  const missing = missingPixReceiptFields(extraction, targetMatch);
+  if (!extraction.isPixReceipt) return 'not_detected_primary';
+  if (!targetMatch.ok) return `target_${targetMatch.reason}`;
+  if (missing.length > 0) return `missing_${safeText(missing[0], 40).replace(/\s+/g, '_')}`;
+  if (extraction.confidence > 0 && extraction.confidence < 0.6) return 'low_overall_confidence';
+  if (extraction.amountConfidence > 0 && extraction.amountConfidence < 0.65) return 'low_amount_confidence';
+  if (extraction.payerConfidence > 0 && extraction.payerConfidence < 0.55) return 'low_payer_confidence';
+  if (extraction.targetConfidence > 0 && extraction.targetConfidence < 0.6) return 'low_target_confidence';
+  return '';
+}
+
+function pixReceiptExtractionReadinessScore(extraction: PixReceiptExtraction): number {
+  const targetMatch = pixReceiptTargetMatch(extraction);
+  const missing = missingPixReceiptFields(extraction, targetMatch);
+  let score = 0;
+  if (extraction.isPixReceipt) score += 20;
+  if (targetMatch.ok) score += 30;
+  if (extraction.amount > 0) score += 15 + Math.round(extraction.amountConfidence * 5);
+  if (extraction.payerName) score += 15 + Math.round(extraction.payerConfidence * 5);
+  if (extraction.paidDate) score += 4 + Math.round(extraction.dateConfidence * 2);
+  if (extraction.paidTime) score += 2;
+  if (extraction.endToEndId || extraction.transactionId) score += 4 + Math.round(extraction.idConfidence * 2);
+  score += Math.round(extraction.confidence * 10);
+  score -= missing.length * 6;
+  return score;
+}
+
+function uniqueShortReceiptDiagnostics(items: string[]): string[] {
+  return Array.from(new Set(items.map((item) => sanitizePixReceiptDiagnostic(item)).filter(Boolean))).slice(0, 8);
+}
+
+function annotatePixReceiptRetryChoice(
+  chosen: PixReceiptExtraction,
+  retryUsed: boolean,
+  retryReason: string,
+  retryError = '',
+): PixReceiptExtraction {
+  return {
+    ...chosen,
+    ocrRetryUsed: retryUsed,
+    ocrRetryReason: retryReason,
+    diagnostics: uniqueShortReceiptDiagnostics([
+      ...chosen.diagnostics,
+      retryUsed ? `retry_reason:${retryReason}` : '',
+      retryError ? `retry_error:${retryError}` : '',
+    ]),
+  };
+}
+
+function choosePixReceiptExtractionCandidate(
+  primary: PixReceiptExtraction,
+  secondary: PixReceiptExtraction,
+  retryReason: string,
+): PixReceiptExtraction {
+  const primaryScore = pixReceiptExtractionReadinessScore(primary);
+  const secondaryScore = pixReceiptExtractionReadinessScore(secondary);
+  const chosen = secondaryScore > primaryScore ? secondary : primary;
+  return annotatePixReceiptRetryChoice(chosen, true, retryReason);
+}
+
 async function requestPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
   if (geminiConfigured()) {
     try {
-      return await requestGeminiPixReceiptExtraction(media, traceId, hints);
+      const primary = await requestGeminiPixReceiptExtraction(media, traceId, hints, 'primary');
+      const retryReason = pixReceiptConservativeRetryReason(primary);
+      if (!retryReason) return primary;
+      try {
+        const secondary = await requestGeminiPixReceiptExtraction(media, traceId, hints, 'conservative');
+        return choosePixReceiptExtractionCandidate(primary, secondary, retryReason);
+      } catch (retryError) {
+        markGeminiSpendGuardIfNeeded(retryError);
+        await recordErrorLog('pix_receipt_ocr_retry', 'warn', retryError, {
+          traceId,
+          details: {
+            retry_reason: safeText(retryReason, 80),
+            media_kind: safeText(hints.mediaKind, 40),
+            media_mimetype: safeText(media.mimeType, 80),
+            media_size_bytes: media.sizeBytes,
+          },
+        });
+        return annotatePixReceiptRetryChoice(primary, true, retryReason, safeError(retryError));
+      }
     } catch (error) {
       const spendGuardBlocked = markGeminiSpendGuardIfNeeded(error);
       if (spendGuardBlocked) throw error;
+      if (isPixReceiptOcrContentError(error)) {
+        const retryReason = 'primary_content_error';
+        try {
+          const secondary = await requestGeminiPixReceiptExtraction(media, traceId, hints, 'conservative');
+          return annotatePixReceiptRetryChoice(secondary, true, retryReason);
+        } catch (retryError) {
+          markGeminiSpendGuardIfNeeded(retryError);
+          await recordErrorLog('pix_receipt_ocr_retry', 'warn', retryError, {
+            traceId,
+            details: {
+              retry_reason: retryReason,
+              primary_error: safeText(safeError(error), 80),
+              media_kind: safeText(hints.mediaKind, 40),
+              media_mimetype: safeText(media.mimeType, 80),
+              media_size_bytes: media.sizeBytes,
+            },
+          });
+        }
+      }
       if (!openAiConfigured() || !isPixReceiptOcrFallbackError(error)) throw error;
       await recordErrorLog('pix_receipt_ocr_fallback', 'warn', error, {
         traceId,
@@ -9627,10 +9826,15 @@ async function requestPixReceiptExtraction(media: AudioMedia, traceId: string, h
       });
     }
   }
-  return requestOpenAiPixReceiptExtraction(media, traceId, hints);
+  return requestOpenAiPixReceiptExtraction(media, traceId, hints, 'fallback');
 }
 
-async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
+async function requestGeminiPixReceiptExtraction(
+  media: AudioMedia,
+  traceId: string,
+  hints: PixReceiptExtractionHints,
+  pass: PixReceiptExtraction['ocrPass'] = 'primary',
+): Promise<PixReceiptExtraction> {
   if (!geminiConfigured()) throw new Error('gemini_not_configured_for_pix_receipt');
   assertGeminiSpendGuardReady('pix_receipt');
   const controller = new AbortController();
@@ -9645,14 +9849,14 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
       body: JSON.stringify({
         systemInstruction: {
           parts: [{
-            text: 'Voce extrai dados de comprovantes Pix brasileiros recebidos como foto, print, screenshot, imagem encaminhada ou PDF para registro interno da Wimifarma. Retorne somente JSON valido, sem markdown. Nao invente dados ausentes e nao use saldo, limite, agencia, conta, tarifa ou comprovantes de outra operacao como valor pago.',
+            text: pixReceiptExtractionSystemInstruction(pass),
           }],
         },
         contents: [{
           role: 'user',
           parts: [
             {
-              text: pixReceiptExtractionPrompt(media, traceId, hints),
+              text: pixReceiptExtractionPrompt(media, traceId, hints, pass),
             },
             {
               inlineData: {
@@ -9680,7 +9884,7 @@ async function requestGeminiPixReceiptExtraction(media: AudioMedia, traceId: str
       throw new Error(message ? `${message} gemini_pix_receipt_http_${response.status}` : `gemini_pix_receipt_http_${response.status}`);
     }
     const text = geminiTextFromResponse(data, 8000);
-    return parsePixReceiptExtractionText(text, 'gemini', PIX_RECEIPT_OCR_MODEL);
+    return parsePixReceiptExtractionText(text, 'gemini', PIX_RECEIPT_OCR_MODEL, pass);
   } finally {
     clearTimeout(timeout);
   }
