@@ -3317,9 +3317,9 @@ async function renderApp(req: Request): Promise<string> {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pedidos - Wimifarma</title>
   <link rel="icon" type="image/png" href="/cashback/favicon.png">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260623-orders-layout">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260625-orders-cards">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
-  <script src="${BASE_PATH}/app.js?v=20260623-orders-layout" defer></script>
+  <script src="${BASE_PATH}/app.js?v=20260625-orders-cards" defer></script>
 </head>
 <body class="pedidos-body" data-pedidos-today="${e(localDateInput())}">
   <header class="gestao-topbar">

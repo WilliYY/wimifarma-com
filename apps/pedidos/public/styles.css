@@ -1051,8 +1051,33 @@ input[type="month"]:hover::-webkit-calendar-picker-indicator {
 }
 
 .gestao-orders-waiting-stack {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
     align-items: start;
+}
+
+.gestao-orders-waiting .gestao-order-card.is-order-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+}
+
+.gestao-orders-waiting .gestao-order-card.is-order-collapsed .gestao-order-head {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.gestao-orders-waiting .gestao-order-card.is-order-collapsed .gestao-order-summary-toggle,
+.gestao-orders-waiting .gestao-order-card.is-order-collapsed .gestao-order-summary-static {
+    grid-template-columns: minmax(0, 1fr) minmax(max-content, auto);
+}
+
+.gestao-orders-waiting .gestao-order-card.is-order-collapsed .gestao-order-quick-action {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: stretch;
+}
+
+.gestao-orders-waiting .gestao-order-card.is-order-collapsed .gestao-order-quick-action .gestao-btn {
+    width: 100%;
 }
 
 .gestao-order-form-grid {
