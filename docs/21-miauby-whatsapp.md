@@ -119,7 +119,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND=1`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=6`
 - `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=120`
-- `MIAUW_WHATSAPP_USER_RATE_LIMIT_DEFER_SECONDS=70`
+- `MIAUW_WHATSAPP_USER_RATE_LIMIT_DEFER_SECONDS=35`
 - `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=700`
 - `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=2200`
 - `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=8`
@@ -369,7 +369,7 @@ Nao existe garantia tecnica de banimento zero, principalmente quando o transport
 
 Desde 2026-06-04, respostas geradas pelo proprio worker entram na outbox como `sending` antes do delay humano e do envio ao provider. Isso impede que a recuperacao de outbox `pending` pegue a mesma linha enquanto o envio original ainda esta aguardando, evitando duas bolhas iguais no WhatsApp; se o processo cair nesse intervalo, a rotina `stale_sending_recovered` continua recuperando depois da janela segura.
 
-Desde 2026-06-08, quando um contato autorizado estoura apenas o limite por minuto durante comando explicito, resposta de confirmacao/selecao pendente, audio ou comprovante Pix, o evento nao e descartado silenciosamente: ele entra como `queued` com `next_attempt_at` adiado por `MIAUW_WHATSAPP_USER_RATE_LIMIT_DEFER_SECONDS`, preservando o anti-flood e respondendo depois. Limite diario, remetente nao autorizado, grupo bloqueado e mensagem sem contexto operacional continuam sendo ignorados/bloqueados normalmente.
+Desde 2026-06-08, quando um contato autorizado estoura apenas o limite por minuto durante comando explicito, resposta de confirmacao/selecao pendente, audio ou comprovante Pix, o evento nao e descartado silenciosamente: ele entra como `queued` com `next_attempt_at` adiado por `MIAUW_WHATSAPP_USER_RATE_LIMIT_DEFER_SECONDS`, preservando o anti-flood e respondendo depois. Desde 2026-06-26, esse atraso tambem e repassado explicitamente pelo Compose e aparece no health como `rate_limit_defer_seconds`, facilitando validar producao. Limite diario, remetente nao autorizado, grupo bloqueado e mensagem sem contexto operacional continuam sendo ignorados/bloqueados normalmente.
 
 Para o VPS em producao inicial, recomenda-se comecar ainda mais restrito que o default do repositorio: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=2500`, `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=5500` e `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=7000`. Esses limites podem subir depois de alguns dias sem erro, bloqueio, report ou queda de qualidade.
 
@@ -590,7 +590,7 @@ Quando o login do painel estiver ativo, `/miauw/whatsapp/` deve retornar a tela 
 - O VPS voltou a exigir prefixo operacional: `MIAUW_WHATSAPP_REQUIRE_PREFIX=true`, `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=false` e `MIAUW_WHATSAPP_PREFIX=miauby`.
 - Comandos de Tarefas reconhecem `miauby concluir tarefa ...` como conclusao, limpando o texto da busca para usar apenas o trecho da tarefa.
 - A auditoria encontrou repeticao antiga de `tarefa_reminder` quando a chave de dedupe vinha vazia; o bridge passou a usar tambem fingerprint da mensagem e trava em memoria para Tarefa, Cotacao, Ferias e automacoes gerais. Automacoes com `notify=always` tambem respeitam guarda de repeticao recente.
-- O `.env` do VPS foi ajustado para operacao mais conservadora: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=3`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=6`, `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=5000`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=1200` e `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=3500`.
+- O `.env` do VPS foi ajustado em 2026-06-26 para reduzir latencia sem abrir mao do anti-flood: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=5`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_DEFER_SECONDS=25`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=8`, `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=3000`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=700` e `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=2200`.
 - Nao enviar teste real de WhatsApp sem controle; use dry-run dos endpoints internos para validar automacoes.
 
 ## Proximas etapas
