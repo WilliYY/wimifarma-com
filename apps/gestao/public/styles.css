@@ -1278,15 +1278,41 @@ textarea {
     background: rgba(255, 255, 255, 0.8);
 }
 
+.gestao-category-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid rgba(168, 15, 67, 0.2);
+    border-radius: 10px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 241, 246, 0.78));
+}
+
+.gestao-category-preview span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+}
+
+.gestao-category-preview strong {
+    min-width: 0;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(168, 15, 67, 0.1);
+    color: var(--wine);
+    font-size: 0.76rem;
+    font-weight: 950;
+    overflow-wrap: anywhere;
+}
+
 .gestao-form-grid {
     display: grid;
     grid-template-columns: minmax(150px, 1fr) minmax(118px, 0.72fr);
     align-items: end;
     gap: 10px;
-}
-
-.gestao-form-grid label:first-child {
-    grid-column: 1 / -1;
 }
 
 .gestao-form > label,

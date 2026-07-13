@@ -781,22 +781,66 @@ function categoryLabel(value: unknown): string {
   return category || 'Geral';
 }
 
-function categorySuggestions(): string[] {
-  return [
-    'Geral',
-    'Funcionario',
-    'Fornecedor',
-    'Boleto',
-    'Imposto',
-    'Comissao',
-    'Aluguel',
-    'Energia',
-    'Internet',
-    'Medicamentos',
-    'Servico',
-    'Manutencao',
-    'Outro',
-  ];
+const GESTAO_CATEGORY_RULES: Array<{ label: string; weight: number; terms: string[] }> = [
+  {
+    label: 'Funcionario',
+    weight: 90,
+    terms: ['funcionario', 'funcionaria', 'colaborador', 'colaboradora', 'salario', 'salarios', 'folha', 'pagamento funcionario', 'adiantamento'],
+  },
+  {
+    label: 'Comissao',
+    weight: 86,
+    terms: ['comissao', 'comissoes', 'comissionamento', 'bonus', 'premio venda', 'premiacao'],
+  },
+  { label: 'Aluguel', weight: 84, terms: ['aluguel', 'locacao', 'imovel'] },
+  { label: 'Energia', weight: 82, terms: ['energia', 'luz', 'copel', 'conta de luz'] },
+  { label: 'Internet', weight: 80, terms: ['internet', 'fibra', 'telefone', 'telefonia', 'vivo', 'claro', 'tim', 'oi', 'net'] },
+  {
+    label: 'Imposto',
+    weight: 78,
+    terms: ['imposto', 'taxa', 'das', 'simples', 'fgts', 'inss', 'irrf', 'gps', 'guia', 'alvara', 'tributo'],
+  },
+  {
+    label: 'Medicamentos',
+    weight: 76,
+    terms: ['medicamento', 'medicamentos', 'remedio', 'remedios', 'farmaco', 'distribuidora', 'fornecedor medicamento'],
+  },
+  { label: 'Manutencao', weight: 74, terms: ['manutencao', 'conserto', 'reparo', 'reforma', 'tecnico', 'instalacao'] },
+  {
+    label: 'Servico',
+    weight: 72,
+    terms: ['servico', 'servicos', 'software', 'sistema', 'mensalidade', 'consultoria', 'contador', 'contabilidade', 'honorario'],
+  },
+  { label: 'Fornecedor', weight: 70, terms: ['fornecedor', 'distribuidor', 'distribuidora', 'compra fornecedor'] },
+  { label: 'Boleto', weight: 68, terms: ['boleto', 'fatura', 'cobranca', 'parcela', 'duplicata'] },
+];
+
+function normalizedCategoryText(value: unknown): string {
+  return cleanText(value, 240)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function inferGestaoCategory(title: unknown): string {
+  const titleText = normalizedCategoryText(title);
+  if (!titleText) return 'Geral';
+
+  let best: { label: string; score: number } = { label: 'Geral', score: 0 };
+  for (const rule of GESTAO_CATEGORY_RULES) {
+    let score = 0;
+    for (const term of rule.terms) {
+      const normalizedTerm = normalizedCategoryText(term);
+      if (!normalizedTerm) continue;
+      if (titleText.includes(normalizedTerm)) score += rule.weight + normalizedTerm.length;
+    }
+    if (score > best.score) best = { label: rule.label, score };
+  }
+
+  return best.label;
 }
 
 function registerLoginFailure(req: Request): void {
@@ -1411,6 +1455,7 @@ async function createAccount(req: Request): Promise<void> {
   if (!items.length) throw new Error('Informe pelo menos um item com valor.');
 
   const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
+  const category = inferGestaoCategory(title);
   const status = req.body.status === 'pago' ? 'pago' : 'pendente';
   const repeatForever = req.body.repetir_sempre_mes === '1';
   const requestedRepeatMonths = repeatMonthsCountValue(req.body.repetir_quantidade_meses);
@@ -1428,7 +1473,7 @@ async function createAccount(req: Request): Promise<void> {
        RETURNING id`,
       [
         title,
-        categoryLabel(req.body.categoria),
+        category,
         status,
         totalCents,
         monthValue(req.body.competencia_mes),
@@ -1490,6 +1535,7 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
   }
 
   const totalCents = items.reduce((sum, item) => sum + item.cents, 0);
+  const category = categoryLabel(req.body.categoria || req.body.category || inferGestaoCategory(title));
   const status = req.body.status === 'pago' ? 'pago' : 'pendente';
   const userId = Number(req.body.created_by || req.body.usuario_id || 0) || null;
   const month = monthValue(req.body.competencia_mes || req.body.month || req.body.mes);
@@ -1515,7 +1561,7 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
        RETURNING id`,
       [
         title,
-        categoryLabel(req.body.categoria || req.body.category),
+        category,
         status,
         totalCents,
         month,
@@ -3632,7 +3678,6 @@ async function renderApp(req: Request): Promise<string> {
     : allAccounts.filter((account) => account.status === 'pendente');
   const visiblePedidoAccounts = visibleAccounts.filter(isPedidoAccount);
   const visibleGeneralAccounts = visibleAccounts.filter((account) => !isPedidoAccount(account));
-  const suggestions = summaries.map((summary) => `<option value="${e(summary.label)}">`).join('');
   const accountsEmptyText = visiblePedidoAccounts.length
     ? searchQuery
       ? 'Resultado de pedido aparece no bloco Pedidos.'
@@ -3660,13 +3705,12 @@ async function renderApp(req: Request): Promise<string> {
         </div>
         <div class="gestao-form-block gestao-form-block-main">
           <div class="gestao-form-block-head"><span>1</span><strong>Dados da conta</strong></div>
-          <label class="gestao-title-field"><span>Nome ou titulo</span><input type="text" name="titulo" maxlength="180" placeholder="Rogerio, Boleto internet, Funcionario Thiago" required></label>
+          <label class="gestao-title-field"><span>Nome ou titulo</span><input type="text" name="titulo" maxlength="180" placeholder="Rogerio, Boleto internet, Funcionario Thiago" required data-category-title></label>
+          <div class="gestao-category-preview" aria-live="polite">
+            <span>Categoria automatica</span>
+            <strong data-category-preview>Geral</strong>
+          </div>
           <div class="gestao-form-grid">
-            <label>
-              <span>Categoria</span>
-              <input type="text" name="categoria" maxlength="80" list="gestao-categorias" placeholder="Digite a categoria">
-              <datalist id="gestao-categorias">${suggestions}</datalist>
-            </label>
             <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
             <label>
               <span>Status inicial</span>
