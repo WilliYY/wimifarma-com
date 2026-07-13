@@ -3745,11 +3745,7 @@ async function renderApp(req: Request): Promise<string> {
         </div>
         <div class="gestao-form-block gestao-form-block-main">
           <div class="gestao-form-block-head"><span>1</span><strong>Dados da conta</strong></div>
-          <label class="gestao-title-field"><span>Nome ou titulo</span><input type="text" name="titulo" maxlength="180" placeholder="Rogerio, Boleto internet, Funcionario Thiago" required data-category-title></label>
-          <div class="gestao-category-preview" aria-live="polite">
-            <span>Categoria automatica</span>
-            <strong data-category-preview>Geral</strong>
-          </div>
+          <label class="gestao-title-field"><span>Nome ou titulo</span><input type="text" name="titulo" maxlength="180" placeholder="Rogerio, Boleto internet, Funcionario Thiago" required></label>
           <div class="gestao-form-grid">
             <div class="gestao-status-toggle" role="radiogroup" aria-labelledby="gestao-status-label">
               <span class="gestao-field-title" id="gestao-status-label">Status inicial</span>
@@ -3777,20 +3773,22 @@ async function renderApp(req: Request): Promise<string> {
         </div>
         <div class="gestao-form-block gestao-repeat-block" data-repeat-panel>
           <div class="gestao-form-block-head"><span>3</span><strong>Repeticao</strong></div>
-          <label class="gestao-repeat-option">
-            <input type="checkbox" name="repetir_mes" value="1" data-repeat-next>
-            <span class="gestao-repeat-icon" aria-hidden="true">&#8635;</span>
-            <span><strong>Repetir mes que vem</strong><small>1 copia futura</small></span>
-          </label>
-          <div class="gestao-repeat-count">
-            <label><span>Repetir tantos meses</span><input type="number" name="repetir_quantidade_meses" min="0" max="24" step="1" inputmode="numeric" placeholder="Ex.: 4" data-repeat-count></label>
-            <output data-repeat-preview>Sem repeticao programada.</output>
+          <div class="gestao-repeat-actions">
+            <label class="gestao-repeat-option">
+              <input type="checkbox" name="repetir_mes" value="1" data-repeat-next>
+              <span class="gestao-repeat-icon" aria-hidden="true">&#8635;</span>
+              <span><strong>Repetir mes que vem</strong><small>1 copia futura</small></span>
+            </label>
+            <label class="gestao-repeat-option gestao-repeat-option-forever">
+              <input type="checkbox" name="repetir_sempre_mes" value="1" data-repeat-forever>
+              <span class="gestao-repeat-icon" aria-hidden="true">&#8734;</span>
+              <span><strong>Repetir sempre</strong><small>todo mes automaticamente</small></span>
+            </label>
           </div>
-          <label class="gestao-repeat-option gestao-repeat-option-forever">
-            <input type="checkbox" name="repetir_sempre_mes" value="1" data-repeat-forever>
-            <span class="gestao-repeat-icon" aria-hidden="true">&#8734;</span>
-            <span><strong>Repetir sempre mes que vem</strong><small>recorrencia permanente</small></span>
-          </label>
+          <div class="gestao-repeat-count">
+            <label><span>Repetir por quantidade</span><span class="gestao-repeat-number"><input type="number" name="repetir_quantidade_meses" min="0" max="24" step="1" inputmode="numeric" placeholder="4" data-repeat-count><em>meses</em></span></label>
+            <output class="gestao-repeat-preview" data-repeat-preview hidden></output>
+          </div>
         </div>
         <div class="gestao-form-block gestao-form-block-note">
           <div class="gestao-form-block-head"><span>4</span><strong>Observacao</strong></div>

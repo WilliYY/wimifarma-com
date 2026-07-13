@@ -299,7 +299,7 @@ Concluido em 2026-05-30: caminho `mysql2` dormente removido do Cashback. Proxima
 
 - `/gestao/login.php`: login.
 - `/gestao/` e `/gestao/index.php`: tela administrativa de contas, itens, pagamentos, busca e painel mensal.
-- Desde 2026-06-01, a lista compacta abre detalhes ao clicar na linha inteira, sem botao separado `Abrir`; contas com `Repetir mes que vem` ativo aparecem primeiro e recebem simbolo de repeticao. Desde 2026-06-06, o `Pagar` compacto da lista registra pelo fluxo financeiro existente sem popup nativo do navegador. Desde 2026-06-10, o cadastro de conta aceita `Repetir tantos meses` com previa visual e cria a cadeia futura pela mesma regra idempotente do mes seguinte.
+- Desde 2026-06-01, a lista compacta abre detalhes ao clicar na linha inteira, sem botao separado `Abrir`; contas com `Repetir mes que vem` ativo aparecem primeiro e recebem simbolo de repeticao. Desde 2026-06-06, o `Pagar` compacto da lista registra pelo fluxo financeiro existente sem popup nativo do navegador. Desde 2026-06-10, o cadastro de conta aceita `Repetir tantos meses` com previa visual apenas quando ha repeticao ativa e cria a cadeia futura pela mesma regra idempotente do mes seguinte.
 - `/gestao/logout.php`: encerra sessao.
 - `/gestao/health`: health com auth core unico e Postgres.
 - `GET /gestao/api/internal/summary`: resumo interno para Miauby/rotinas.

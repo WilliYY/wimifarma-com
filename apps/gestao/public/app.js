@@ -31,53 +31,6 @@
         return text.slice(5, 7) + '/' + text.slice(0, 4);
     }
 
-    var categoryRules = [
-        { label: 'Funcionario', weight: 90, terms: ['funcionario', 'funcionaria', 'colaborador', 'colaboradora', 'salario', 'salarios', 'folha', 'pagamento funcionario', 'adiantamento'] },
-        { label: 'Comissao', weight: 86, terms: ['comissao', 'comissoes', 'comissionamento', 'bonus', 'premio venda', 'premiacao'] },
-        { label: 'Aluguel', weight: 84, terms: ['aluguel', 'locacao', 'imovel'] },
-        { label: 'Energia', weight: 82, terms: ['energia', 'luz', 'copel', 'conta de luz'] },
-        { label: 'Internet', weight: 80, terms: ['internet', 'fibra', 'telefone', 'telefonia', 'vivo', 'claro', 'tim', 'oi', 'net'] },
-        { label: 'Imposto', weight: 78, terms: ['imposto', 'taxa', 'das', 'simples', 'fgts', 'inss', 'irrf', 'gps', 'guia', 'alvara', 'tributo'] },
-        { label: 'Medicamentos', weight: 76, terms: ['medicamento', 'medicamentos', 'remedio', 'remedios', 'farmaco', 'distribuidora', 'fornecedor medicamento'] },
-        { label: 'Manutencao', weight: 74, terms: ['manutencao', 'conserto', 'reparo', 'reforma', 'tecnico', 'instalacao'] },
-        { label: 'Servico', weight: 72, terms: ['servico', 'servicos', 'software', 'sistema', 'mensalidade', 'consultoria', 'contador', 'contabilidade', 'honorario'] },
-        { label: 'Fornecedor', weight: 70, terms: ['fornecedor', 'distribuidor', 'distribuidora', 'compra fornecedor'] },
-        { label: 'Boleto', weight: 68, terms: ['boleto', 'fatura', 'cobranca', 'parcela', 'duplicata'] }
-    ];
-
-    function normalizeCategoryText(value) {
-        return String(value || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim()
-            .replace(/\s+/g, ' ');
-    }
-
-    function inferCategoryFromTitle(value) {
-        var text = normalizeCategoryText(value);
-        if (!text) {
-            return 'Geral';
-        }
-
-        var best = { label: 'Geral', score: 0 };
-        categoryRules.forEach(function (rule) {
-            var score = 0;
-            rule.terms.forEach(function (term) {
-                var normalizedTerm = normalizeCategoryText(term);
-                if (normalizedTerm && text.indexOf(normalizedTerm) !== -1) {
-                    score += rule.weight + normalizedTerm.length;
-                }
-            });
-            if (score > best.score) {
-                best = { label: rule.label, score: score };
-            }
-        });
-
-        return best.label;
-    }
-
     function addMonthsToMonth(value, amount) {
         var text = String(value || '').trim();
         if (!/^\d{4}-\d{2}$/.test(text)) {
@@ -253,6 +206,7 @@
                 var nextForeverMonth = addMonthsToMonth(monthInput.value, 1);
                 var foreverDate = dueInput && dueInput.value ? ' / vencimento ' + addMonthsToDate(dueInput.value, 1) : '';
                 preview.textContent = 'Sempre ativo: proxima copia em ' + formatMonthLabel(nextForeverMonth) + foreverDate + '.';
+                preview.hidden = false;
                 return;
             }
 
@@ -264,7 +218,8 @@
 
             var totalRepeats = count > 0 ? count : repeatNext.checked ? 1 : 0;
             if (totalRepeats <= 0) {
-                preview.textContent = 'Sem repeticao programada.';
+                preview.textContent = '';
+                preview.hidden = true;
                 return;
             }
 
@@ -285,6 +240,7 @@
             } else {
                 preview.textContent = 'Vai repetir ' + repeatLabel + ' nas competencias ' + compactList(months) + '. Termina em ' + endMonth + '.';
             }
+            preview.hidden = false;
         }
 
         repeatCount.addEventListener('input', refreshPreview);
@@ -356,28 +312,6 @@
                 refreshPreview();
             }
         });
-        refreshPreview();
-    }
-
-    function initCategoryPreview() {
-        var form = document.querySelector('[data-gestao-form]');
-        if (!form || form.dataset.gestaoCategoryPreviewBound === '1') {
-            return;
-        }
-
-        var titleInput = form.querySelector('[data-category-title]');
-        var preview = form.querySelector('[data-category-preview]');
-        if (!titleInput || !preview) {
-            return;
-        }
-
-        form.dataset.gestaoCategoryPreviewBound = '1';
-
-        function refreshPreview() {
-            preview.textContent = inferCategoryFromTitle(titleInput.value);
-        }
-
-        titleInput.addEventListener('input', refreshPreview);
         refreshPreview();
     }
 
@@ -716,7 +650,6 @@
         document.addEventListener('DOMContentLoaded', function () {
             bindMoneyInputs(document);
             initTotals();
-            initCategoryPreview();
             initDueDaysPreview();
             initRepeatPreview();
             initMoneyValidation();
@@ -734,7 +667,6 @@
     } else {
         bindMoneyInputs(document);
         initTotals();
-        initCategoryPreview();
         initDueDaysPreview();
         initRepeatPreview();
         initMoneyValidation();
