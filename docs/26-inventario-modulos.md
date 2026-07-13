@@ -352,7 +352,7 @@ Legado/rollback, nao fonte principal:
 - Puxar contas pendentes de competencias anteriores para a visao do mes selecionado ate pagamento/cancelamento, sem alterar a competencia original; pagamentos datados no mes compoem o total pago do mes.
 - Reabrir, cancelar, arquivar e marcar conta como paga.
 - Alterar vencimento, categoria, observacao e nome.
-- Repetir conta para mes seguinte e ordenar painel mensal.
+- Repetir conta para mes seguinte e ordenar painel mensal; vencimentos em dia 29, 30 ou 31 sao ajustados para o ultimo dia valido do mes seguinte quando necessario.
 - Criar conta via Miauby por endpoint interno, com auditoria e confirmacao quando aplicavel.
 - Sincronizar status de contas vinculadas a Pedidos sem recategorizar boletos de pedidos.
 - Exibir contas vinculadas a Pedidos em bloco visual `Pedidos` na Gestao, separado da lista geral, sem mudar categoria `Boleto`, pagamentos, status, totais ou auditoria.

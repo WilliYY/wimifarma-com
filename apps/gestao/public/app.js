@@ -320,7 +320,7 @@
             var text = String(daysInput.value || '').trim();
             if (!text) {
                 dueHidden.value = '';
-                preview.textContent = 'Sem vencimento definido.';
+                preview.textContent = 'Sem vencimento.';
                 emitDueChange();
                 return;
             }

@@ -385,8 +385,18 @@ function nextMonthDateTime(value: Date | string | null | undefined): string | nu
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.getTime())) return null;
-  const next = new Date(date.getTime());
-  next.setUTCMonth(next.getUTCMonth() + 1);
+  const target = new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth() + 1,
+    1,
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+    date.getUTCMilliseconds(),
+  ));
+  const lastDayOfTargetMonth = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(date.getUTCDate(), lastDayOfTargetMonth));
+  const next = target;
   return next.toISOString();
 }
 
@@ -3741,17 +3751,18 @@ async function renderApp(req: Request): Promise<string> {
             <strong data-category-preview>Geral</strong>
           </div>
           <div class="gestao-form-grid">
-            <fieldset class="gestao-status-toggle">
-              <legend>Status inicial</legend>
-              <label><input type="radio" name="status" value="pendente" checked><span>Pendente</span></label>
-              <label><input type="radio" name="status" value="pago"><span>Pago</span></label>
-            </fieldset>
-            <label class="gestao-due-days-field">
-              <span>Vence em quantos dias?</span>
-              <input type="number" name="vencimento_dias" min="0" max="3650" step="1" inputmode="numeric" placeholder="Ex.: 45" data-due-days>
+            <div class="gestao-status-toggle" role="radiogroup" aria-labelledby="gestao-status-label">
+              <span class="gestao-field-title" id="gestao-status-label">Status inicial</span>
+              <div class="gestao-status-options">
+                <label><input type="radio" name="status" value="pendente" checked><span><strong>Pendente</strong><small>fica aberto</small></span></label>
+                <label><input type="radio" name="status" value="pago"><span><strong>Pago</strong><small>quita agora</small></span></label>
+              </div>
+            </div>
+            <div class="gestao-due-days-field">
+              <label for="gestao-due-days"><span>Vencimento</span><span class="gestao-days-input"><input id="gestao-due-days" type="number" name="vencimento_dias" min="0" max="3650" step="1" inputmode="numeric" placeholder="45" data-due-days><em>dias</em></span></label>
               <input type="hidden" name="vencimento_em" data-due-date-hidden>
-              <small data-due-preview>Sem vencimento definido.</small>
-            </label>
+              <small data-due-preview>Sem vencimento.</small>
+            </div>
           </div>
         </div>
         <div class="gestao-form-block gestao-form-block-items">

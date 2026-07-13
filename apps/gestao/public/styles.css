@@ -1312,24 +1312,23 @@ textarea {
 
 .gestao-form-grid {
     display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
     gap: 10px;
 }
 
 .gestao-form > label,
-.gestao-form-grid > label,
 .gestao-line-item label {
     min-width: 0;
 }
 
-.gestao-form-grid > label,
 .gestao-line-item label {
     gap: 6px;
 }
 
-.gestao-form-grid > label,
-.gestao-status-toggle {
+.gestao-status-toggle,
+.gestao-due-days-field {
+    min-width: 0;
     padding: 10px;
     border: 1px solid rgba(242, 169, 194, 0.62);
     border-radius: 8px;
@@ -1338,58 +1337,67 @@ textarea {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-.gestao-form-grid > label > span,
+.gestao-field-title,
+.gestao-due-days-field label > span:first-child,
 .gestao-line-item label span {
     line-height: 1.18;
 }
 
-.gestao-form-grid > label input,
-.gestao-form-grid > label select {
-    min-height: 42px;
-    border-radius: 8px;
-    background: #ffffff;
-}
-
 .gestao-status-toggle {
-    min-width: 0;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-content: end;
-    gap: 8px;
-    margin: 0;
+    gap: 9px;
 }
 
-.gestao-status-toggle legend {
-    grid-column: 1 / -1;
-    padding: 0;
+.gestao-field-title,
+.gestao-due-days-field label > span:first-child {
     color: var(--ink);
     font-size: 0.82rem;
     font-weight: 950;
 }
 
+.gestao-status-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
 .gestao-status-toggle label {
     min-width: 0;
     display: block;
+    position: relative;
 }
 
 .gestao-status-toggle input {
     position: absolute;
+    width: 1px;
+    min-height: 0;
+    height: 1px;
     opacity: 0;
     pointer-events: none;
 }
 
 .gestao-status-toggle label span {
-    min-height: 42px;
-    display: flex;
+    min-height: 54px;
+    display: grid;
     align-items: center;
     justify-content: center;
-    padding: 9px 10px;
+    gap: 2px;
+    padding: 8px 10px;
     border: 1px solid rgba(168, 15, 67, 0.2);
     border-radius: 8px;
     background: #ffffff;
     color: #673046;
     font-weight: 950;
     text-align: center;
+}
+
+.gestao-status-toggle label small {
+    display: block;
+    color: inherit;
+    font-size: 0.66rem;
+    font-weight: 850;
+    line-height: 1.05;
+    opacity: 0.78;
 }
 
 .gestao-status-toggle input:checked + span {
@@ -1399,9 +1407,63 @@ textarea {
     box-shadow: 0 8px 16px rgba(168, 15, 67, 0.18);
 }
 
+.gestao-status-toggle input[value="pago"]:checked + span {
+    border-color: #0f766e;
+    background: #0f766e;
+    box-shadow: 0 8px 16px rgba(15, 118, 110, 0.18);
+}
+
 .gestao-status-toggle input:focus-visible + span {
     outline: 3px solid rgba(168, 15, 67, 0.22);
     outline-offset: 2px;
+}
+
+.gestao-due-days-field {
+    display: grid;
+    gap: 7px;
+}
+
+.gestao-due-days-field label {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.gestao-days-input {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.gestao-days-input input {
+    min-width: 0;
+    min-height: 42px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font-weight: 950;
+}
+
+.gestao-days-input input:focus {
+    box-shadow: none;
+}
+
+.gestao-days-input:focus-within {
+    border-color: var(--wine);
+    box-shadow: 0 0 0 3px rgba(168, 15, 67, 0.12);
+}
+
+.gestao-days-input em {
+    padding-right: 11px;
+    color: #7b4058;
+    font-size: 0.78rem;
+    font-style: normal;
+    font-weight: 950;
 }
 
 .gestao-due-days-field small {
@@ -1410,10 +1472,6 @@ textarea {
     font-size: 0.74rem;
     font-weight: 850;
     line-height: 1.25;
-}
-
-.gestao-due-days-field input[type="number"] {
-    font-weight: 950;
 }
 
 .gestao-form input[type="month"],
