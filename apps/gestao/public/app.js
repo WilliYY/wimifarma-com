@@ -110,6 +110,22 @@
             String(target.getFullYear());
     }
 
+    function isoDateAfterDays(days) {
+        var now = new Date();
+        var target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(days || 0), 12, 0, 0, 0);
+        return String(target.getFullYear()) + '-' +
+            String(target.getMonth() + 1).padStart(2, '0') + '-' +
+            String(target.getDate()).padStart(2, '0');
+    }
+
+    function formatIsoDateBr(value) {
+        var text = String(value || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+            return '';
+        }
+        return text.slice(8, 10) + '/' + text.slice(5, 7) + '/' + text.slice(0, 4);
+    }
+
     function compactList(values) {
         if (values.length <= 5) {
             return values.join(', ');
@@ -278,6 +294,68 @@
         if (dueInput) {
             dueInput.addEventListener('change', refreshPreview);
         }
+        refreshPreview();
+    }
+
+    function initDueDaysPreview() {
+        var form = document.querySelector('[data-gestao-form]');
+        if (!form || form.dataset.gestaoDueDaysBound === '1') {
+            return;
+        }
+
+        var daysInput = form.querySelector('[data-due-days]');
+        var dueHidden = form.querySelector('[data-due-date-hidden]');
+        var preview = form.querySelector('[data-due-preview]');
+        if (!daysInput || !dueHidden || !preview) {
+            return;
+        }
+
+        form.dataset.gestaoDueDaysBound = '1';
+
+        function emitDueChange() {
+            dueHidden.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function refreshPreview() {
+            var text = String(daysInput.value || '').trim();
+            if (!text) {
+                dueHidden.value = '';
+                preview.textContent = 'Sem vencimento definido.';
+                emitDueChange();
+                return;
+            }
+
+            if (!/^\d+$/.test(text)) {
+                dueHidden.value = '';
+                preview.textContent = 'Informe um numero de dias valido.';
+                emitDueChange();
+                return;
+            }
+
+            var parsed = Number.parseInt(text, 10);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                dueHidden.value = '';
+                preview.textContent = 'Informe um numero de dias valido.';
+                emitDueChange();
+                return;
+            }
+
+            parsed = Math.min(3650, parsed);
+            var isoDate = isoDateAfterDays(parsed);
+            dueHidden.value = isoDate;
+            preview.textContent = (parsed === 0 ? 'Vence hoje' : 'Vence em ' + String(parsed) + ' dia' + (parsed === 1 ? '' : 's')) +
+                ': ' + formatIsoDateBr(isoDate) + '.';
+            emitDueChange();
+        }
+
+        daysInput.addEventListener('input', refreshPreview);
+        daysInput.addEventListener('blur', function () {
+            var parsed = Number.parseInt(daysInput.value || '', 10);
+            if (Number.isFinite(parsed) && parsed > 3650) {
+                daysInput.value = '3650';
+                refreshPreview();
+            }
+        });
         refreshPreview();
     }
 
@@ -639,6 +717,7 @@
             bindMoneyInputs(document);
             initTotals();
             initCategoryPreview();
+            initDueDaysPreview();
             initRepeatPreview();
             initMoneyValidation();
             initConfirmations();
@@ -656,6 +735,7 @@
         bindMoneyInputs(document);
         initTotals();
         initCategoryPreview();
+        initDueDaysPreview();
         initRepeatPreview();
         initMoneyValidation();
         initConfirmations();

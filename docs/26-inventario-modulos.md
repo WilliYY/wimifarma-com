@@ -346,7 +346,7 @@ Legado/rollback, nao fonte principal:
 
 ### Fluxos de escrita
 
-- Criar conta manual com titulo, categoria inferida automaticamente do titulo, competencia, itens e observacao; a tela nao pede mais categoria no cadastro.
+- Criar conta manual com titulo, categoria inferida automaticamente do titulo, competencia gravada pelo mes selecionado, vencimento informado como quantidade de dias, status inicial por botoes, itens e observacao; a tela nao pede mais categoria nem competencia no cadastro.
 - Adicionar, editar, cancelar, reabrir e quitar itens.
 - Registrar e cancelar pagamentos parciais/totais.
 - Puxar contas pendentes de competencias anteriores para a visao do mes selecionado ate pagamento/cancelamento, sem alterar a competencia original; pagamentos datados no mes compoem o total pago do mes.

@@ -508,6 +508,35 @@ function parseOptionalDatetimeLocal(value: unknown): string | null {
   return parseDatetimeLocal(text);
 }
 
+function todayInSaoPauloDate(): Date {
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return new Date(Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day), 12, 0, 0));
+}
+
+function isoDateAfterDaysInSaoPaulo(days: number): string {
+  const date = todayInSaoPauloDate();
+  date.setUTCDate(date.getUTCDate() + days);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function parseDueDateFromDays(value: unknown): string | null {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (!/^\d+$/.test(text)) return null;
+  const days = Math.min(3650, Math.max(0, Number.parseInt(text, 10)));
+  return parseDatetimeLocal(isoDateAfterDaysInSaoPaulo(days));
+}
+
+function parseGestaoDueDate(body: Record<string, unknown>, dueField = 'vencimento_em'): string | null {
+  return parseDueDateFromDays(body.vencimento_dias) || parseOptionalDatetimeLocal(body[dueField]);
+}
+
 function parseOptionalDate(value: unknown): string | null {
   const text = String(value || '').trim();
   if (!text) return null;
@@ -1478,7 +1507,7 @@ async function createAccount(req: Request): Promise<void> {
         totalCents,
         monthValue(req.body.competencia_mes),
         cleanText(req.body.observacao, 5000) || null,
-        parseOptionalDatetimeLocal(req.body.vencimento_em),
+        parseGestaoDueDate(req.body),
         repeatNextMonth,
         repeatForever,
         userId,
@@ -1566,7 +1595,7 @@ async function createInternalAccount(req: Request): Promise<{ accountId: number;
         totalCents,
         month,
         cleanText(req.body.observacao || req.body.note, 5000) || null,
-        parseOptionalDatetimeLocal(req.body.vencimento_em || req.body.due_at),
+        parseGestaoDueDate(req.body, req.body.vencimento_em ? 'vencimento_em' : 'due_at'),
         repeatNextMonth,
         repeatForever,
         userId,
@@ -3699,6 +3728,7 @@ async function renderApp(req: Request): Promise<string> {
       <form method="post" class="gestao-form" data-gestao-form>
         ${csrfField(req)}
         <input type="hidden" name="action" value="create">
+        <input type="hidden" name="competencia_mes" value="${e(selectedMonth)}">
         <div class="gestao-section-title gestao-form-title">
           <span class="gestao-kicker">Nova conta</span>
           <strong data-gestao-total>Total R$ 0,00</strong>
@@ -3711,12 +3741,17 @@ async function renderApp(req: Request): Promise<string> {
             <strong data-category-preview>Geral</strong>
           </div>
           <div class="gestao-form-grid">
-            <label><span>Competencia</span><input type="month" name="competencia_mes" value="${e(selectedMonth)}"></label>
-            <label>
-              <span>Status inicial</span>
-              <select name="status"><option value="pendente">Pendente</option><option value="pago">Ja pago</option></select>
+            <fieldset class="gestao-status-toggle">
+              <legend>Status inicial</legend>
+              <label><input type="radio" name="status" value="pendente" checked><span>Pendente</span></label>
+              <label><input type="radio" name="status" value="pago"><span>Pago</span></label>
+            </fieldset>
+            <label class="gestao-due-days-field">
+              <span>Vence em quantos dias?</span>
+              <input type="number" name="vencimento_dias" min="0" max="3650" step="1" inputmode="numeric" placeholder="Ex.: 45" data-due-days>
+              <input type="hidden" name="vencimento_em" data-due-date-hidden>
+              <small data-due-preview>Sem vencimento definido.</small>
             </label>
-            <label><span>Vencimento opcional</span><input type="date" name="vencimento_em"></label>
           </div>
         </div>
         <div class="gestao-form-block gestao-form-block-items">
