@@ -589,6 +589,82 @@
         });
     }
 
+    function bindBestOffersPlacement() {
+        var catalog = document.querySelector('[data-wfwc-best-offers][data-wfwc-best-offers-auto="1"]');
+
+        if (!catalog || catalog.dataset.wfwcBestOffersPlaced === '1') {
+            return;
+        }
+
+        var root = catalog.closest('.entry-content') || document.querySelector('.entry-content') || document.querySelector('.site-main');
+
+        if (!root) {
+            return;
+        }
+
+        var children = Array.prototype.slice.call(root.children).filter(function (node) {
+            return node !== catalog;
+        });
+
+        if (!children.length) {
+            return;
+        }
+
+        function readNodeText(node) {
+            var parts = [
+                node.id || '',
+                node.className || '',
+                node.getAttribute('aria-label') || '',
+                node.textContent || ''
+            ];
+
+            Array.prototype.slice.call(node.querySelectorAll('img, video, iframe, source')).forEach(function (media) {
+                parts.push(media.getAttribute('alt') || '');
+                parts.push(media.getAttribute('title') || '');
+                parts.push(media.getAttribute('src') || '');
+                parts.push(media.getAttribute('poster') || '');
+            });
+
+            return parts.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        }
+
+        function hasBannerSignal(node) {
+            var text = readNodeText(node);
+            return /banner|generico|gen[eé]rico|dia do|barato|promo|farmacinha/.test(text);
+        }
+
+        function hasVideoSignal(node) {
+            var text = readNodeText(node);
+            return Boolean(node.querySelector('video, iframe')) || /video|hero|capcut|reels|short/.test(text);
+        }
+
+        var videoIndex = children.findIndex(hasVideoSignal);
+        var bannerIndex = children.findIndex(function (node, index) {
+            return (videoIndex < 0 || index > videoIndex) && hasBannerSignal(node);
+        });
+
+        if (bannerIndex >= 0) {
+            root.insertBefore(catalog, children[bannerIndex]);
+            catalog.dataset.wfwcBestOffersPlaced = '1';
+            return;
+        }
+
+        if (videoIndex >= 0 && children[videoIndex].nextSibling) {
+            root.insertBefore(catalog, children[videoIndex].nextSibling);
+            catalog.dataset.wfwcBestOffersPlaced = '1';
+            return;
+        }
+
+        if (children.length > 1) {
+            root.insertBefore(catalog, children[1]);
+            catalog.dataset.wfwcBestOffersPlaced = '1';
+            return;
+        }
+
+        root.appendChild(catalog);
+        catalog.dataset.wfwcBestOffersPlaced = '1';
+    }
+
     function init() {
         document.body.classList.add('wfwc-theme-ready');
         bindPortalNavigation();
@@ -596,6 +672,7 @@
         bindWhatsApp();
         bindHomeLaunchpad();
         bindTaskBadge();
+        bindBestOffersPlacement();
     }
 
     if (document.readyState === 'loading') {

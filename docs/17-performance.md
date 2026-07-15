@@ -214,6 +214,7 @@ Servicos:
 - `WP_CACHE` fica `false` por padrao durante migracao.
 - Hosts publicos usam `WIMIFARMA_PUBLIC_PAGE_CACHE=false` por padrao e so aceitam page cache quando essa variavel for `true`.
 - O tema `wimifarma-cashback-theme` gera assets e links da home por helpers proprios e filtra a saida publica para trocar `http://wimifarma.com` por `https://wimifarma.com`.
+- Desde 2026-07-15, o tema `wimifarma-cashback-theme` tambem fornece a vitrine `Melhor oferta` via `wfwc_best_offer_items()`/shortcode `[wimifarma_melhor_oferta]`; o JS move a secao automatica para ficar entre o bloco de video/hero e o banner da home WordPress quando o conteudo vier do banco.
 - A home publica da raiz usa `site/home.php` com CSS embutido e header `X-Served-By: wimifarma-static-home`; isso reduz dependencia de WordPress, SpeedyCache e ordem de carregamento de plugins na primeira tela.
 - `endurance-page-cache.php`, especifico de HostGator, foi removido/quarentenado fora do projeto.
 - Investigacao de performance deve comecar por plugins/cache/tema antes de reescrever codigo.
