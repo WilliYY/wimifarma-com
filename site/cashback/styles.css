@@ -3956,6 +3956,23 @@ body.sections-ready .workspace-section.is-active {
         position: static;
     }
 
+    .report-page .team-layout,
+    .report-page .attendant-card-head {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .report-page .team-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .report-page .attendant-card {
+        min-width: 0;
+    }
+
+    .report-page .attendant-card dl {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .current-attendant-banner {
         align-items: flex-start;
         flex-direction: column;
