@@ -76,6 +76,8 @@ Ainda em 2026-07-21, o Balcao recebeu contraste visual maior sem alterar o fluxo
 
 Na secao `Gastar/Usar CashBack`, o painel operacional ocupa a largura disponivel e o resumo lateral duplicado fica oculto somente enquanto essa secao esta ativa. Em desktop largo, campos e indicadores usam ate cinco colunas; em larguras intermediarias passam para tres ou duas, e no celular ficam em uma coluna. O resumo mostra tambem a validade padrao de seis meses, e os campos de codigo rapido usam `autocomplete="one-time-code"` para reduzir sugestoes indevidas do navegador sem mudar consulta, validacao ou consumo do voucher.
 
+Na secao inicial `#busca`, o Balcao tambem ocupa a largura operacional e oculta o resumo lateral vazio/duplicado somente enquanto a busca esta ativa. O formulario `Cashback rapido` diferencia valor, usuario, previa e acao por cores; a pesquisa usa uma faixa propria; e cada cliente diferencia ID, telefone, atendente, atualizacao, saldo e acoes. Em desktop largo a lista usa duas colunas, em notebook uma coluna com quatro metadados lado a lado e no celular uma coluna empilhada, preservando queries, limites, POST de voucher, links e saldos.
+
 Arquivos principais:
 
 - `apps/cashback/src/server.ts`

@@ -107,7 +107,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.1.3';
+const SERVICE_VERSION = '1.1.4';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -3140,10 +3140,10 @@ async function renderDashboard(req: Request): Promise<string> {
             <span class="client-status-pill">${e(client.status || 'ativo')}</span>
           </div>
           <div class="client-result-details">
-            <span><small>ID</small><strong>#${e(client.id)}</strong></span>
-            <span><small>Telefone</small><strong>${e(formatPhone(client.phone))}</strong></span>
-            <span><small>Atendente</small><strong>${e(client.attendant_name || 'Sem atendente')}</strong></span>
-            <span><small>Atualizado</small><strong>${e(brDate(changedAt, true))}</strong></span>
+            <span class="client-detail-id"><small>ID</small><strong>#${e(client.id)}</strong></span>
+            <span class="client-detail-phone"><small>Telefone</small><strong>${e(formatPhone(client.phone))}</strong></span>
+            <span class="client-detail-attendant"><small>Atendente</small><strong>${e(client.attendant_name || 'Sem atendente')}</strong></span>
+            <span class="client-detail-updated"><small>Atualizado</small><strong>${e(brDate(changedAt, true))}</strong></span>
           </div>
         </div>
         <div class="result-balance"><span>Disponivel</span><strong>${brMoneyCents(balance.saldoDisponivel)}</strong>${renderExpiryBreakdown(expirySlices, {
@@ -3153,8 +3153,8 @@ async function renderDashboard(req: Request): Promise<string> {
         })}</div>
         <div class="result-actions">
           <a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${clientId}#cliente-atual`)}">Selecionar</a>
-          <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${clientId}#resgate`)}">Gastar/Usar Cashback</a>
-          <a class="btn" href="${pageUrl(`cliente-detalhe.php?id=${clientId}`)}">Historico completo</a>
+          <a class="btn cashback-action" href="${pageUrl(`dashboard.php?cliente_id=${clientId}#resgate`)}">Gastar/Usar CashBack</a>
+          <a class="btn history-action" href="${pageUrl(`cliente-detalhe.php?id=${clientId}`)}">Historico completo</a>
         </div>
       </article>`;
     }),
@@ -3217,7 +3217,7 @@ async function renderDashboard(req: Request): Promise<string> {
       <input type="hidden" name="action" value="create_quick_cashback">
       <input type="hidden" name="request_token" value="${e(quickRequestToken)}">
       <label class="quick-cashback-amount"><span>Quanto o cliente gastou? *</span><input type="text" name="valor_compra_rapida" data-money inputmode="decimal" required placeholder="100,00" autofocus></label>
-      <label><span>Usuario que imprime *</span><select name="atendente_id" required><option value="">Selecione</option>${quickAttendantOptions}</select></label>
+      <label class="quick-cashback-attendant"><span>Usuario que imprime *</span><select name="atendente_id" required><option value="">Selecione</option>${quickAttendantOptions}</select></label>
       <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>Codigo unico por 6 meses</small></div>
       <button type="submit" class="btn primary quick-cashback-submit">Gerar codigo</button>
     </form>
@@ -3227,8 +3227,8 @@ async function renderDashboard(req: Request): Promise<string> {
   <div class="balcao-main">
     <section id="busca" class="panel section-block workspace-section">
       ${quickCashbackPanel}
-      <div class="section-title"><div><span class="kicker">Consulta rapida</span><h2>Buscar cliente por nome, telefone ou ID</h2></div></div>
-      <form method="get" action="${pageUrl('dashboard.php#busca')}" class="search-row live-search-wrap">
+      <div class="section-title client-search-title"><div><span class="kicker">Consulta rapida</span><h2>Buscar cliente por nome, telefone ou ID</h2></div></div>
+      <form method="get" action="${pageUrl('dashboard.php#busca')}" class="search-row live-search-wrap client-search-form">
         ${selectedClientId > 0 ? `<input type="hidden" name="cliente_id" value="${e(selectedClientId)}">` : ''}
         <input type="search" name="q" value="${e(search)}" placeholder="Digite nome, telefone ou ID interno" data-live-client-search data-results="#live-client-results" autocomplete="off">
         <button type="submit" class="btn primary">Buscar</button>
