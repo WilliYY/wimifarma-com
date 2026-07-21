@@ -642,6 +642,7 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 
 - Desde 2026-07-21, a regra anterior de 45 dias para creditos comuns e de um ano para vouchers rapidos foi substituida por uma validade unica de seis meses corridos a partir da data de cada nova emissao. A mudanca vale para cashback comum, manual, voucher rapido inicial e sucessores; datas ja gravadas permanecem intactas. Todos os comprovantes devem mostrar a data real de vencimento, usar o modelo termico compacto e nao exibir instrucao para informar o codigo a um atendente.
 - Ainda em 2026-07-21, o Balcao usa cores funcionais para dar leitura rapida aos cards: vermelho para cliente/cadastro, azul para compra, verde para cashback/saldo e amarelo para validade. Manter esses acentos responsivos sem mudar estrutura funcional, names de inputs, seletores JS, POSTs, CSRF, calculos, banco, XP ou impressao.
+- Ainda em 2026-07-21, a secao `Gastar/Usar CashBack` ocupa a largura operacional do Balcao e oculta somente o resumo lateral duplicado enquanto `#resgate` esta ativo. Campos e indicadores usam grade responsiva de ate cinco colunas e exibem a validade padrao de seis meses; preservar os mesmos names, seletores JS, POST `save_redeem`, CSRF, calculos, saldo, XP, banco e impressao.
 
 ## Fluxo de trabalho esperado
 

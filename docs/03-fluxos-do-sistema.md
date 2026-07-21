@@ -74,6 +74,8 @@ Desde 2026-07-21, a navegacao e o detalhe do cliente chamam esse fluxo somente d
 
 Ainda em 2026-07-21, o Balcao recebeu contraste visual maior sem alterar o fluxo operacional: cadastro/cliente usa vermelho, compra usa azul, cashback e saldo usam verde e validade usa amarelo. Os cards, resumos e estados de foco usam esses acentos de forma consistente em desktop e mobile, preservando HTML funcional, names de inputs, seletores JS, POSTs, CSRF, calculos, banco, XP e impressao.
 
+Na secao `Gastar/Usar CashBack`, o painel operacional ocupa a largura disponivel e o resumo lateral duplicado fica oculto somente enquanto essa secao esta ativa. Em desktop largo, campos e indicadores usam ate cinco colunas; em larguras intermediarias passam para tres ou duas, e no celular ficam em uma coluna. O resumo mostra tambem a validade padrao de seis meses, e os campos de codigo rapido usam `autocomplete="one-time-code"` para reduzir sugestoes indevidas do navegador sem mudar consulta, validacao ou consumo do voucher.
+
 Arquivos principais:
 
 - `apps/cashback/src/server.ts`

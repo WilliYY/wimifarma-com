@@ -98,6 +98,7 @@
         }
 
         document.body.classList.add('sections-ready');
+        document.body.setAttribute('data-cashback-section', sectionId);
 
         sections.forEach(function (section) {
             section.classList.toggle('is-active', section.id === sectionId);

@@ -1256,6 +1256,18 @@ th {
     align-items: start;
 }
 
+body.sections-ready[data-cashback-section="resgate"] .container {
+    width: min(1480px, calc(100% - 32px));
+}
+
+body.sections-ready[data-cashback-section="resgate"] .balcao-grid {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+body.sections-ready[data-cashback-section="resgate"] .balcao-side {
+    display: none;
+}
+
 .balcao-main {
     min-width: 0;
 }
@@ -2019,7 +2031,7 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-fields {
     display: grid;
-    grid-template-columns: 1.05fr 0.92fr 1fr 0.96fr;
+    grid-template-columns: 1.08fr 0.92fr 1fr 1.08fr 1fr;
     gap: 12px;
     align-items: stretch;
 }
@@ -2063,6 +2075,32 @@ body.sections-ready .workspace-section.is-active {
 .manual-cashback-field {
     border-color: #d6d2f8 !important;
     background: linear-gradient(135deg, rgba(247, 246, 255, 0.96), rgba(255, 255, 255, 0.9)) !important;
+}
+
+.redeem-panel .redeem-operation-block .quick-code-field {
+    border-color: #edcf98;
+    background: linear-gradient(135deg, #fff8e8, #ffffff);
+}
+
+.redeem-panel .redeem-operation-block .quick-code-field:focus-within {
+    border-color: #d89a2a;
+    box-shadow: 0 0 0 3px rgba(216, 154, 42, 0.11);
+}
+
+.redeem-panel .redeem-operation-block .redeem-purchase-field {
+    border-color: #b9d5f0;
+    background: linear-gradient(135deg, #edf6ff, #ffffff);
+}
+
+.redeem-panel .redeem-operation-block .redeem-applied-field {
+    border-color: #a9dbc7;
+    background: linear-gradient(135deg, #e9f9f2, #ffffff);
+}
+
+.redeem-panel .redeem-applied-field input[readonly] {
+    border-color: #9fd4bf;
+    background: #f3fcf8;
+    color: #075f48;
 }
 
 .manual-cashback-field small {
@@ -2127,8 +2165,8 @@ body.sections-ready .workspace-section.is-active {
     color: var(--red-800);
 }
 
-.redeem-summary {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+.charge-summary.redeem-summary {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
 }
 
@@ -2195,6 +2233,19 @@ body.sections-ready .workspace-section.is-active {
     color: #5140a4;
 }
 
+.redeem-summary div:nth-child(5) {
+    border-color: #edcf98;
+    background: linear-gradient(135deg, #fff5dc, #ffffff);
+}
+
+.redeem-summary div:nth-child(5)::before {
+    background: #d89a2a;
+}
+
+.redeem-summary div:nth-child(5) strong {
+    color: #8b5a08;
+}
+
 .redeem-summary span {
     color: #74515a;
     min-height: 2.2em;
@@ -2247,6 +2298,13 @@ body.sections-ready .workspace-section.is-active {
 .redeem-panel .live-preview.ok {
     border-color: #cdebd4;
     background: #f2fbf4;
+}
+
+@container (max-width: 1080px) {
+    .redeem-operation-block .redeem-fields,
+    .redeem-operation-block .redeem-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 @container (max-width: 780px) {

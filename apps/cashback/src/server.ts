@@ -107,7 +107,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.1.2';
+const SERVICE_VERSION = '1.1.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -3261,7 +3261,7 @@ async function renderDashboard(req: Request): Promise<string> {
     </section>
 
     <section id="resgate" class="panel section-block workspace-section redeem-panel">
-      <div class="section-title redeem-title"><div class="redeem-title-copy"><span class="kicker">Compra Cashback</span><h2>Gastar/Usar Cashback</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
+      <div class="section-title redeem-title"><div class="redeem-title-copy"><span class="kicker">Compra Cashback</span><h2>Gastar/Usar CashBack</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
       ${renderCashbackPurchaseReceipt(purchaseReceipt)}
       <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols redeem-form" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
         ${csrfField(req)}
@@ -3279,15 +3279,15 @@ async function renderDashboard(req: Request): Promise<string> {
           <div class="redeem-xp-note ${xpReward.available ? 'ok' : 'warn'}"><strong>${xpReward.available ? '+500 XP ativo' : 'XP'}</strong><span>${e(xpReward.message)}</span></div>
           <div class="redeem-fields">
             ${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}
-            <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000" autocomplete="off" data-quick-voucher-code><small data-quick-voucher-status>Opcional</small></label>
-            <label><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
-            <label><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
+            <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000" autocomplete="one-time-code" data-quick-voucher-code><small data-quick-voucher-status>Opcional</small></label>
+            <label class="redeem-purchase-field"><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
+            <label class="redeem-applied-field"><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
             <label class="manual-cashback-field"><span>Cashback Manual</span><input type="text" name="cashback_manual" data-money placeholder="0,00"><small>Preenchido, zera o novo cashback automatico.</small></label>
           </div>
-          <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback automatico</span><strong class="js-new-cashback">R$ 0,00</strong></div><div><span>Novo cashback manual</span><strong class="js-manual-cashback">R$ 0,00</strong></div></div>
+          <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback automatico</span><strong class="js-new-cashback">R$ 0,00</strong></div><div><span>Novo cashback manual</span><strong class="js-manual-cashback">R$ 0,00</strong></div><div class="redeem-validity-card"><span>Validade do novo cashback</span><strong>${CASHBACK_VALIDITY_MONTHS} meses</strong></div></div>
           <div class="live-preview js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
         </div>
-        <div class="redeem-action full"><button type="submit" class="btn primary">Gastar/Usar Cashback</button></div>
+        <div class="redeem-action full"><button type="submit" class="btn primary">Gastar/Usar CashBack</button></div>
       </form>
     </section>
 
@@ -3308,7 +3308,7 @@ async function renderDashboard(req: Request): Promise<string> {
         <div class="quick-client-block quick-client-purchase full">
           <div class="quick-client-block-title"><span class="step-badge">2</span><div><h3>Compra inicial</h3><small>Venda do momento, se houver</small></div><span class="optional-chip">Opcional</span></div>
           <div class="quick-client-fields">
-            <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000" autocomplete="off" data-quick-voucher-code><small data-quick-voucher-status>Opcional</small></label>
+            <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000" autocomplete="one-time-code" data-quick-voucher-code><small data-quick-voucher-status>Opcional</small></label>
             <label><span>Valor que o cliente vai gastar agora</span><input type="text" name="valor_compra_inicial" data-money placeholder="100,00"></label>
             <label><span>% Cashback</span><input type="text" name="percentual_cashback_inicial" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label>
           </div>
