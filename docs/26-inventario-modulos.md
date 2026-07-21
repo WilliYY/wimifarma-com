@@ -239,7 +239,7 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - A secao `Gastar/Usar Cashback` do Balcao e organizada em blocos de cliente, compra atual, resumo financeiro e acao; continua usando o POST `save_redeem`, CSRF, seletores do calculo automatico e atendente travado pelo usuario logado. Desde 2026-06-11, o campo `cashback_manual` substitui o cashback automatico novo quando preenchido, impedindo beneficio duplicado na mesma compra.
 - Desde 2026-06-08, essa secao tambem recebeu polimento visual com cabecalho destacado, campos em caixas focadas, resumo financeiro colorido, microanimacoes leves e mobile ajustado, sem alterar `data-redeem-form`, names dos inputs, POST, CSRF, regra 4x, consumo FIFO ou transacao Postgres.
 - Desde 2026-06-12, essa secao usa uma grade elastica por container para alinhar campos e cards de resumo quando a coluna principal fica estreita pelo resumo lateral; a mudanca e CSS-only e preserva seletores JS, POST, CSRF, calculos, XP e saldo.
-- Criar compra, calcular cashback gerado e criar credito vinculado a compra; novo credito expira sempre 45 dias apos `cashback_purchases.purchased_at::date`.
+- Criar compra, calcular cashback gerado e criar credito vinculado a compra; toda nova emissao comum ou manual expira seis meses corridos apos `cashback_purchases.purchased_at::date`, sem regravar validades historicas.
 - Criar resgate, marcando creditos vencidos antes da escrita, consumir somente creditos ativos dentro da validade e gravar itens do resgate.
 - Ao usar cashback, gerar +500 XP para o usuario logado se ele estiver vinculado ao XP em `core_user_xp_links`; a integracao grava `xp_sales.amount_cents=0`, `xp_points=500`, `source='cashback_redemption'` e `source_entity_id=<resgate>`, com idempotencia para nao pontuar duas vezes o mesmo resgate.
 - Em `/cashback/cliente-detalhe.php`, excluir cashback gerado significa cancelar logicamente apenas credito ainda intacto (`remaining_cents >= original_cents`), remover o valor do saldo e cancelar mensagens pendentes daquele credito, sem apagar compra, credito, resgate, auditoria ou historico CSV.
@@ -251,10 +251,10 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - Em `/cashback/mensagens.php`, indicadores, abas, secoes e cards foram compactados para caber mais fila por tela; os cards pendentes mostram campanha, cliente, telefone/detalhe e mensagem completa em grade compacta; abrir WhatsApp, copiar texto ou excluir da fila grava status em `cashback_whatsapp_messages`, remove visualmente o card da fila e preserva historico.
 - Desde 2026-06-16, ao abrir `/cashback/mensagens.php`, mensagens pendentes de compra, aniversario e expiracao com `due_date` passado sao marcadas como `expirado_da_fila`; mensagens abertas, copiadas, enviadas ou canceladas nao sao alteradas, e a recompra continua com sua janela propria de 14 dias.
 - Em `/cashback/mensagens.php`, o bloco `Todos Whats` fica recolhido por padrao e, ao abrir, mostra somente os 10 registros salvos mais recentes.
-- Na navegacao superior do Cashback, o atalho da compra/resgate aparece como `Nova compra, Gastar/Usar CashBack` e aponta para `dashboard.php#resgate`; o atalho `Diagnostico` nao aparece para a operacao diaria, `Home` fica por ultimo para manter o fluxo operacional primeiro, e a pagina/secao atual fica destacada por classe ativa/`aria-current` para orientar o operador.
+- Na navegacao superior do Cashback, o atalho da compra/resgate aparece como `Gastar/Usar CashBack` e aponta para `dashboard.php#resgate`; o atalho `Diagnostico` nao aparece para a operacao diaria, `Home` fica por ultimo para manter o fluxo operacional primeiro, e a pagina/secao atual fica destacada por classe ativa/`aria-current` para orientar o operador.
 - Em `/cashback/relatorio.php`, `Configuracao e Relatorio` usa layout compacto com atalhos internos, cards menores, lista de atendentes em grade sem rolagem interna, bloco de acessos/exportacao mais enxuto, metricas compactas e cards CSV menores com microanimacoes CSS; os POSTs de manutencao/atendentes, CSRF e exportacoes CSV seguem os mesmos.
 - Criar/editar/inativar/excluir atendente.
-- Atualizar configuracoes (`cashback_percent`, alertas, manutencao e afins); a validade de novos creditos e regra fixa de 45 dias por compra.
+- Atualizar configuracoes (`cashback_percent`, alertas, manutencao e afins); a validade de toda nova emissao e regra fixa de seis meses corridos.
 - Autoteste cria dados dentro de transacao controlada.
 - Auditoria oficial em `cashback_audit_events`.
 - Escritas nao sao espelhadas em MySQL; a trilha oficial fica em Postgres.
@@ -277,7 +277,7 @@ Hoje estes arquivos PHP sao legado/helper/fonte visual com execucao web direta b
 - Excluir fisicamente cliente/atendente e mais arriscado que inativar; validar se ainda precisa existir na UI.
 - Rollback para MySQL exige restaurar commit/imagem anterior e backup; nao existe mais chave de `.env` que religue o caminho no Cashback atual.
 - Telefone de cliente e mensagem WhatsApp sao dados sensiveis; nao expor em logs.
-- Mudancas em percentual alteram regra de negocio historica; a validade de novos creditos deve permanecer fixa em 45 dias por compra.
+- Mudancas em percentual alteram regra de negocio historica; a validade de novas emissoes deve permanecer fixa em seis meses corridos.
 - Em 2026-05-29, a validacao de corte bateu 89 clientes, 4 atendentes, 45 compras, 45 creditos, 7 resgates, 7 itens de resgate, 7 settings e 171 mensagens entre Postgres e MySQL; somatorios de compras, creditos, saldo disponivel, resgates e itens fecharam em centavos; sequencias e integridade referencial ficaram OK. A diferenca de `wf_logs` era de 11 eventos de Pedidos/XP gravados depois da importacao, nao de Cashback.
 
 ### Proxima acao segura

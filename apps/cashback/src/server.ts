@@ -59,7 +59,7 @@ type XpAwardResult = {
 type Settings = {
   cashbackPercent: number;
   cashbackPercentBps: number;
-  validityDays: number;
+  validityMonths: number;
   redeemMultiplier: number;
   expirationAlertDays: number;
 };
@@ -107,7 +107,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.1.0';
+const SERVICE_VERSION = '1.1.2';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -116,8 +116,7 @@ const INTERNAL_TOKEN = env.CASHBACK_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN |
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const RECOMPRA_QUEUE_VISIBLE_DAYS = 14;
-const CASHBACK_CREDIT_VALIDITY_DAYS = 45;
-const QUICK_VOUCHER_VALIDITY_YEARS = 1;
+const CASHBACK_VALIDITY_MONTHS = 6;
 const QUICK_VOUCHER_CODE_SPACE = 10000;
 const QUICK_VOUCHER_ADVISORY_LOCK = 20260721;
 const XP_CASHBACK_REDEEM_POINTS = 500;
@@ -635,7 +634,7 @@ router.get('/api/internal/summary', requireInternalToken, async (req: Request, r
     counts,
     settings: {
       cashback_percent: settings.cashbackPercent,
-      cashback_validity_days: settings.validityDays,
+      cashback_validity_months: settings.validityMonths,
       redeem_multiplier: settings.redeemMultiplier,
       expiration_alert_days: settings.expirationAlertDays,
     },
@@ -652,7 +651,7 @@ router.get('/api/internal/summary', requireInternalToken, async (req: Request, r
       available: centsToMoney(num(quickVouchers.rows[0]?.available)),
       used: num(quickVouchers.rows[0]?.used),
       expired: num(quickVouchers.rows[0]?.expired),
-      validity_years: QUICK_VOUCHER_VALIDITY_YEARS,
+      validity_months: CASHBACK_VALIDITY_MONTHS,
     },
   });
 });
@@ -841,8 +840,13 @@ function moneyInputCents(cents: unknown): string {
 
 function brDate(value: unknown, withTime = false): string {
   if (!value) return '-';
-  const text = String(value);
-  const date = text.length <= 10 ? new Date(`${text}T12:00:00-03:00`) : new Date(text.replace(' ', 'T'));
+  if (!withTime) {
+    const iso = isoDate(value);
+    if (!iso) return '-';
+    const [year, month, day] = iso.split('-');
+    return `${day}/${month}/${year}`;
+  }
+  const date = value instanceof Date ? value : new Date(String(value).replace(' ', 'T'));
   if (Number.isNaN(date.getTime())) return '-';
   return new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo',
@@ -873,11 +877,15 @@ function dateDaysFromNow(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function dateDaysFromDate(value: unknown, days: number): string {
+function dateMonthsFromDate(value: unknown, monthsToAdd: number): string {
   const base = isoDate(value) || todayIso();
   const [year, month, day] = base.split('-').map(Number);
-  if (!year || !month || !day) return dateDaysFromNow(days);
-  const date = new Date(Date.UTC(year, month - 1, day + days));
+  if (!year || !month || !day) return todayIso();
+  const targetMonthIndex = month - 1 + monthsToAdd;
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const targetMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const lastTargetDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const date = new Date(Date.UTC(targetYear, targetMonth, Math.min(day, lastTargetDay)));
   return date.toISOString().slice(0, 10);
 }
 
@@ -1571,7 +1579,7 @@ async function loadSettings(): Promise<Settings> {
   return {
     cashbackPercent,
     cashbackPercentBps: percentToBps(cashbackPercent),
-    validityDays: CASHBACK_CREDIT_VALIDITY_DAYS,
+    validityMonths: CASHBACK_VALIDITY_MONTHS,
     redeemMultiplier: boundedNumber(values.get('redeem_multiplier'), 4, 1, 20),
     expirationAlertDays: Math.round(boundedNumber(values.get('expiration_alert_days'), 10, 1, 365)),
   };
@@ -1748,7 +1756,7 @@ async function issueQuickVoucher(
          issued_attendant_id, issued_by, issued_client_id, parent_voucher_id,
          source_purchase_id, expires_at)
        VALUES ($1, $2, $3, $4, $5, 'ativo', $6, $7, $8, $9, $10,
-               (CURRENT_DATE + ($11::text || ' year')::interval)::date)
+               (CURRENT_DATE + ($11::text || ' months')::interval)::date)
        RETURNING id, code, gross_cents, cashback_cents, expires_at`,
     [
       code,
@@ -1761,7 +1769,7 @@ async function issueQuickVoucher(
       input.clientId || null,
       input.parentVoucherId || null,
       input.sourcePurchaseId || null,
-      QUICK_VOUCHER_VALIDITY_YEARS,
+      CASHBACK_VALIDITY_MONTHS,
     ],
   );
   const row = inserted.rows[0] as DbRow;
@@ -2762,7 +2770,7 @@ async function createPurchaseAndCredit(
     ],
   );
   const purchaseId = num(purchase.rows[0]?.id);
-  const expiresAt = dateDaysFromDate(purchase.rows[0]?.purchase_date, CASHBACK_CREDIT_VALIDITY_DAYS);
+  const expiresAt = dateMonthsFromDate(purchase.rows[0]?.purchase_date, CASHBACK_VALIDITY_MONTHS);
   await client.query('UPDATE cashback_purchases SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [purchaseId]);
   let creditId: number | null = null;
   if (cashbackCents > 0) {
@@ -3028,7 +3036,6 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
       <div class="receipt-code"><span>Codigo</span><strong>${e(voucher.code)}</strong></div>
       <p class="receipt-validity">Valido ate <strong>${e(brDate(voucher.expires_at))}</strong></p>
       <div class="receipt-contact"><strong>WhatsApp (44) 98413-4971</strong><span>Av. Minas Gerais, 2263</span></div>
-      <p class="receipt-instruction">* Para usar, informe o codigo a um atendente.</p>
       <small>Emitido por ${e(voucher.attendant_name || 'Wimifarma')} em ${e(brDate(voucher.issued_at, true))}</small>
     </article>
     <div class="quick-voucher-result-actions no-print">
@@ -3046,9 +3053,6 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null): string {
   const isQuickVoucher = String(receipt.cashback_generation_mode || '') === 'voucher_rapido';
   const expiresAt = isQuickVoucher ? receipt.successor_expires_at : receipt.credit_expires_at;
   const generatedLabel = isQuickVoucher ? 'Novo codigo gerado' : 'Novo cashback';
-  const instruction = isQuickVoucher
-    ? '* Para usar, informe o codigo a um atendente.'
-    : '* Para usar, informe seu nome ou telefone a um atendente.';
   const phone = formatPhone(receipt.client_phone);
   const validity = generatedCents > 0 && expiresAt ? `Valido ate <strong>${e(brDate(expiresAt))}</strong>` : 'Nenhum novo cashback gerado';
   const codeBlock = quickCode
@@ -3088,7 +3092,6 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null): string {
       ${codeBlock}
       <p class="receipt-validity">${validity}</p>
       <div class="receipt-contact"><strong>WhatsApp (44) 98413-4971</strong><span>Av. Minas Gerais, 2263</span></div>
-      <p class="receipt-instruction">${e(instruction)}</p>
       <small>Operacao #${e(purchaseId)} | ${e(receipt.attendant_name || 'Wimifarma')}<br>${e(brDate(receipt.purchased_at, true))}</small>
     </article>
   </div>`;
@@ -3205,7 +3208,7 @@ async function renderDashboard(req: Request): Promise<string> {
     .join('');
   const quickCashbackPanel = `<div id="cashback-rapido" class="quick-cashback-shell">
     <div class="quick-cashback-heading">
-      <div><span class="kicker">Sem cadastro agora</span><h2>Cashback rapido</h2><p>Informe somente o valor gasto. O codigo de 4 digitos vale por 1 ano.</p></div>
+      <div><span class="kicker">Sem cadastro agora</span><h2>Cashback rapido</h2><p>Informe somente o valor gasto. O codigo de 4 digitos vale por 6 meses.</p></div>
       <span class="quick-cashback-rate">${e(settings.cashbackPercent)}% automatico</span>
     </div>
     ${renderQuickVoucherReceipt(printedVoucher)}
@@ -3215,7 +3218,7 @@ async function renderDashboard(req: Request): Promise<string> {
       <input type="hidden" name="request_token" value="${e(quickRequestToken)}">
       <label class="quick-cashback-amount"><span>Quanto o cliente gastou? *</span><input type="text" name="valor_compra_rapida" data-money inputmode="decimal" required placeholder="100,00" autofocus></label>
       <label><span>Usuario que imprime *</span><select name="atendente_id" required><option value="">Selecione</option>${quickAttendantOptions}</select></label>
-      <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>Codigo unico por 1 ano</small></div>
+      <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>Codigo unico por 6 meses</small></div>
       <button type="submit" class="btn primary quick-cashback-submit">Gerar codigo</button>
     </form>
   </div>`;
@@ -3309,7 +3312,7 @@ async function renderDashboard(req: Request): Promise<string> {
             <label><span>Valor que o cliente vai gastar agora</span><input type="text" name="valor_compra_inicial" data-money placeholder="100,00"></label>
             <label><span>% Cashback</span><input type="text" name="percentual_cashback_inicial" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label>
           </div>
-          <div class="charge-summary quick-client-summary compact-summary"><div><span>Valor a cobrar</span><strong class="js-initial-charge">R$ 0,00</strong></div><div><span>Cashback gerado</span><strong class="js-initial-cashback">R$ 0,00</strong></div><div><span>Validade</span><strong>${e(settings.validityDays)} dias</strong></div></div>
+          <div class="charge-summary quick-client-summary compact-summary"><div><span>Valor a cobrar</span><strong class="js-initial-charge">R$ 0,00</strong></div><div><span>Cashback gerado</span><strong class="js-initial-cashback">R$ 0,00</strong></div><div><span>Validade</span><strong>${e(settings.validityMonths)} meses</strong></div></div>
           <div class="live-preview js-initial-preview">Se o cliente ja estiver comprando, informe o valor para cadastrar e registrar tudo em uma vez.</div>
         </div>
         <div class="quick-client-action full"><button type="submit" class="btn primary">Cadastrar cliente</button></div>
@@ -3714,7 +3717,7 @@ async function renderPurchases(req: Request): Promise<string> {
     .join('');
   const body = `<section class="grid two"><div class="panel"><h2>Registrar nova compra</h2><form method="post" class="form-grid" data-no-enter-submit>${csrfField(req)}<label><span>Cliente *</span><select name="cliente_id" required><option value="">Selecione</option>${clients
     .map((client: DbRow) => `<option value="${e(client.id)}" ${selectedClient === num(client.id) ? 'selected' : ''}>${e(client.name)} - ${e(formatPhone(client.phone))}</option>`)
-    .join('')}</select></label>${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}<label><span>Valor da compra *</span><input type="text" name="valor_total" data-money required placeholder="100,00"></label><label><span>% Cashback</span><input type="text" name="percentual_cashback" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label><label class="manual-cashback-field"><span>Cashback Manual</span><input type="text" name="cashback_manual" data-money placeholder="0,00"><small>Preenchido, zera o cashback automatico.</small></label><label class="full"><span>Observacoes</span><textarea name="observacoes" rows="4"></textarea></label><button type="submit" class="btn primary">Salvar compra e gerar cashback</button></form></div><div class="panel"><h2>Regra aplicada</h2><ul class="info-list"><li>Cashback padrao: <strong>${e(settings.cashbackPercent)}%</strong></li><li>Cashback Manual substitui o automatico quando preenchido.</li><li>Validade padrao: <strong>${e(settings.validityDays)} dias</strong></li><li>Persistencia: <strong>Postgres oficial</strong></li></ul><a class="btn" href="${pageUrl('clientes.php')}">Cadastrar cliente</a></div></section><section class="panel"><h2>Compras recentes</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Cliente</th><th>Atendente</th><th>Compra</th><th>Tipo</th><th>Cashback</th><th>WhatsApp</th><th>Acoes</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Nenhuma compra registrada.</td></tr>'}</tbody></table></div></section>`;
+    .join('')}</select></label>${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}<label><span>Valor da compra *</span><input type="text" name="valor_total" data-money required placeholder="100,00"></label><label><span>% Cashback</span><input type="text" name="percentual_cashback" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label><label class="manual-cashback-field"><span>Cashback Manual</span><input type="text" name="cashback_manual" data-money placeholder="0,00"><small>Preenchido, zera o cashback automatico.</small></label><label class="full"><span>Observacoes</span><textarea name="observacoes" rows="4"></textarea></label><button type="submit" class="btn primary">Salvar compra e gerar cashback</button></form></div><div class="panel"><h2>Regra aplicada</h2><ul class="info-list"><li>Cashback padrao: <strong>${e(settings.cashbackPercent)}%</strong></li><li>Cashback Manual substitui o automatico quando preenchido.</li><li>Validade padrao: <strong>${e(settings.validityMonths)} meses</strong></li><li>Persistencia: <strong>Postgres oficial</strong></li></ul><a class="btn" href="${pageUrl('clientes.php')}">Cadastrar cliente</a></div></section><section class="panel"><h2>Compras recentes</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Cliente</th><th>Atendente</th><th>Compra</th><th>Tipo</th><th>Cashback</th><th>WhatsApp</th><th>Acoes</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Nenhuma compra registrada.</td></tr>'}</tbody></table></div></section>`;
   return htmlShell(req, 'Compras', body);
 }
 
@@ -3829,7 +3832,7 @@ async function renderMessages(req: Request): Promise<string> {
     [today, tomorrow],
   );
   for (const row of comprasRows.rows as DbRow[]) {
-    const validity = isoDate(row.validity) || dateDaysFromNow(settings.validityDays);
+    const validity = isoDate(row.validity) || dateMonthsFromDate(today, settings.validityMonths);
     const message = `Oi ${row.name}, obrigado pela compra na Wimifarma! Voce recebeu ${brMoneyCents(row.cashback)} de cashback. Seu cashback vale ate ${brDate(validity)}.`;
     const saved = await saveWhatsappMessage({
       campaign: 'compra',
@@ -4364,17 +4367,23 @@ async function renderSelfTest(req: Request): Promise<string> {
       [clientId, attendantId, purchaseCents, settings.cashbackPercentBps, cashbackCents, 'Compra criada pelo autoteste.', req.session.user?.id ?? null],
     );
     const purchaseId = num(purchase.rows[0]?.id);
-    const expiresAt = await db.query('SELECT ($1::date + $2::int)::date AS value', [purchase.rows[0]?.purchase_date, settings.validityDays]);
+    const expiresAt = dateMonthsFromDate(purchase.rows[0]?.purchase_date, settings.validityMonths);
     add('Registro de compra', purchaseId > 0, 'Compra de R$ 100,00 gravada temporariamente no Postgres.');
 
     const credit = await db.query(
       `INSERT INTO cashback_credits (client_id, purchase_id, original_cents, remaining_cents, expires_at, status)
        VALUES ($1, $2, $3, $3, $4, 'ativo')
-       RETURNING id`,
-      [clientId, purchaseId, cashbackCents, expiresAt.rows[0]?.value],
+       RETURNING id, expires_at`,
+      [clientId, purchaseId, cashbackCents, expiresAt],
     );
     const creditId = num(credit.rows[0]?.id);
-    add('Geracao de cashback', cashbackCents > 0 && creditId > 0, `Cashback calculado: ${brMoneyCents(cashbackCents)}.`);
+    const storedExpiry = isoDate(credit.rows[0]?.expires_at);
+    const formattedExpiry = brDate(credit.rows[0]?.expires_at);
+    add(
+      'Geracao de cashback',
+      cashbackCents > 0 && creditId > 0 && storedExpiry === expiresAt && formattedExpiry !== '-',
+      `Cashback calculado: ${brMoneyCents(cashbackCents)}, valido por ${settings.validityMonths} meses ate ${formattedExpiry}.`,
+    );
 
     const balance = await db.query(
       "SELECT COALESCE(SUM(remaining_cents), 0)::bigint AS value FROM cashback_credits WHERE client_id = $1 AND canceled_at IS NULL AND status = 'ativo'",
@@ -4406,13 +4415,13 @@ async function renderSelfTest(req: Request): Promise<string> {
       requestToken: `autoteste:${suffix}`,
     });
     const quickExpiry = await db.query(
-      "SELECT $1::date = (CURRENT_DATE + INTERVAL '1 year')::date AS valid",
-      [quickVoucher.expiresAt],
+      "SELECT $1::date = (CURRENT_DATE + ($2::text || ' months')::interval)::date AS valid",
+      [quickVoucher.expiresAt, CASHBACK_VALIDITY_MONTHS],
     );
     add(
       'Cashback rapido: emissao',
       /^[0-9]{4}$/.test(quickVoucher.code) && quickVoucher.cashbackCents === cashbackCents && Boolean(quickExpiry.rows[0]?.valid),
-      `Codigo ${quickVoucher.code} criado com 4 digitos, ${brMoneyCents(quickVoucher.cashbackCents)} e validade de 1 ano.`,
+      `Codigo ${quickVoucher.code} criado com 4 digitos, ${brMoneyCents(quickVoucher.cashbackCents)} e validade de ${CASHBACK_VALIDITY_MONTHS} meses.`,
     );
 
     const quickPurchaseCents = Math.ceil(quickVoucher.cashbackCents * settings.redeemMultiplier);
