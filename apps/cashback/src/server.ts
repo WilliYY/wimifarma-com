@@ -2943,7 +2943,7 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
       <p>${active ? 'O codigo ja esta gravado. A impressao abre a tela da impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
     </div>
     <article class="quick-voucher-receipt" data-quick-voucher-receipt>
-      <img src="${asset('logo-wimifarma.svg')}" alt="Wimifarma">
+      <img class="receipt-brand" src="${asset('logo-wimifarma.png')}" alt="Wimifarma" width="1200" height="360">
       <h2>CashBack Wimifarma</h2>
       <span class="receipt-label">Voce ganhou</span>
       <strong class="receipt-value">${brMoneyCents(voucher.cashback_cents)}</strong>

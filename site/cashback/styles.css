@@ -4001,13 +4001,13 @@ body.sections-ready .workspace-section.is-active {
     text-align: center;
 }
 
-.quick-voucher-receipt img {
+.quick-voucher-receipt .receipt-brand {
     display: block;
     width: 54mm;
     max-width: 100%;
     height: auto;
     margin: 0 auto 4mm;
-    filter: grayscale(1) contrast(2) invert(1);
+    filter: grayscale(1) contrast(6) invert(1);
 }
 
 .quick-voucher-receipt h2 {
