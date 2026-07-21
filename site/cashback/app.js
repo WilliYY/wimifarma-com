@@ -247,49 +247,76 @@
         });
     }
 
-    function bindQuickVoucherPrint() {
+    function requestReceiptAudit(endpoint, fieldName, id) {
+        var csrfMeta = document.querySelector('meta[name="wfwc-csrf"]');
+        var body = new URLSearchParams();
+        body.set(fieldName, id || '');
+        body.set('csrf_token', window.WFWC_CSRF || (csrfMeta ? csrfMeta.getAttribute('content') : '') || '');
+        fetch(endpoint, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Accept': 'application/json'
+            },
+            body: body.toString(),
+            keepalive: true
+        }).catch(function (error) {
+            console.error('Wimifarma Cashback: nao foi possivel auditar a solicitacao de impressao', error);
+        });
+    }
+
+    function printCashbackReceipt(receipt) {
+        document.querySelectorAll('.cashback-receipt-print-root').forEach(function (oldRoot) {
+            oldRoot.remove();
+        });
+        var printRoot = document.createElement('div');
+        printRoot.className = 'cashback-receipt-print-root';
+        printRoot.setAttribute('aria-hidden', 'true');
+        printRoot.appendChild(receipt.cloneNode(true));
+        document.body.appendChild(printRoot);
+        document.body.classList.add('printing-cashback-receipt');
+
+        var cleaned = false;
+        var cleanup = function () {
+            if (cleaned) {
+                return;
+            }
+            cleaned = true;
+            document.body.classList.remove('printing-cashback-receipt');
+            printRoot.remove();
+        };
+        window.addEventListener('afterprint', cleanup, { once: true });
+        window.setTimeout(cleanup, 60000);
+        window.print();
+    }
+
+    function bindCashbackReceiptPrint() {
         document.querySelectorAll('[data-print-quick-voucher]').forEach(function (button) {
             button.addEventListener('click', function () {
-                var receipt = document.querySelector('[data-quick-voucher-receipt]');
+                var result = button.closest('.quick-voucher-result');
+                var receipt = result ? result.querySelector('[data-quick-voucher-receipt]') : null;
                 if (!receipt) {
                     return;
                 }
-                var csrfMeta = document.querySelector('meta[name="wfwc-csrf"]');
-                var body = new URLSearchParams();
-                body.set('voucher_id', button.getAttribute('data-voucher-id') || '');
-                body.set('csrf_token', window.WFWC_CSRF || (csrfMeta ? csrfMeta.getAttribute('content') : '') || '');
-                fetch('api-cashback-rapido-impressao.php', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept': 'application/json'
-                    },
-                    body: body.toString(),
-                    keepalive: true
-                }).catch(function (error) {
-                    console.error('Wimifarma Cashback: nao foi possivel auditar a solicitacao de impressao', error);
-                });
+                requestReceiptAudit('api-cashback-rapido-impressao.php', 'voucher_id', button.getAttribute('data-voucher-id') || '');
+                printCashbackReceipt(receipt);
+            });
+        });
 
-                var printRoot = document.createElement('div');
-                printRoot.className = 'quick-voucher-print-root';
-                printRoot.setAttribute('aria-hidden', 'true');
-                printRoot.appendChild(receipt.cloneNode(true));
-                document.body.appendChild(printRoot);
-                document.body.classList.add('printing-quick-voucher');
-
-                var cleaned = false;
-                var cleanup = function () {
-                    if (cleaned) {
-                        return;
-                    }
-                    cleaned = true;
-                    document.body.classList.remove('printing-quick-voucher');
-                    printRoot.remove();
-                };
-                window.addEventListener('afterprint', cleanup, { once: true });
-                window.setTimeout(cleanup, 60000);
-                window.print();
+        document.querySelectorAll('[data-print-cashback-purchase]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var result = button.closest('[data-cashback-operation-result]');
+                var receipt = result ? result.querySelector('[data-cashback-purchase-receipt]') : null;
+                if (!receipt) {
+                    return;
+                }
+                requestReceiptAudit(
+                    'api-comprovante-cashback-impressao.php',
+                    'purchase_id',
+                    button.getAttribute('data-purchase-id') || ''
+                );
+                printCashbackReceipt(receipt);
             });
         });
     }
@@ -1353,7 +1380,7 @@
         bindInitialPurchasePreview();
         bindRedeemPreview();
         bindQuickVoucherCodes();
-        bindQuickVoucherPrint();
+        bindCashbackReceiptPrint();
         bindLiveClientSearch();
         bindClientResultsShowMore();
         bindClientPickers();

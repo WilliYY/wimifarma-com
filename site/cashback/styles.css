@@ -3988,8 +3988,100 @@ body.sections-ready .workspace-section.is-active {
     flex: 1 1 150px;
 }
 
+.cashback-operation-result {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 304px);
+    gap: 20px;
+    align-items: start;
+    margin: 18px 0 22px;
+    padding: 18px;
+    border: 1px solid #adddc9;
+    border-left: 5px solid #16845f;
+    border-radius: 16px;
+    background: #f4fbf8;
+    box-shadow: 0 18px 42px rgba(21, 104, 76, 0.1);
+}
+
+.cashback-operation-result-copy {
+    min-width: 0;
+    padding-top: 14px;
+}
+
+.operation-success-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #dff5eb;
+    color: #075f48;
+    font-size: .76rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.cashback-operation-result-copy h3 {
+    margin: 10px 0 5px;
+    color: #174d3e;
+    font-size: 1.45rem;
+}
+
+.cashback-operation-result-copy > p {
+    max-width: 660px;
+    margin: 0;
+    color: #49655d;
+}
+
+.cashback-operation-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 18px 0;
+    border-block: 1px solid #cfe7de;
+}
+
+.cashback-operation-facts span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 11px 14px;
+}
+
+.cashback-operation-facts span:nth-child(odd) {
+    border-right: 1px solid #cfe7de;
+}
+
+.cashback-operation-facts span:nth-child(n + 3) {
+    border-top: 1px solid #cfe7de;
+}
+
+.cashback-operation-facts small {
+    color: #557269;
+    font-size: .7rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.cashback-operation-facts strong {
+    overflow-wrap: anywhere;
+    color: #153e33;
+    font-size: .98rem;
+}
+
+.cashback-operation-result-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cashback-operation-result-actions .btn {
+    min-height: 44px;
+}
+
 .quick-voucher-receipt {
     grid-row: span 2;
+}
+
+.cashback-thermal-receipt {
     width: 100%;
     max-width: 76mm;
     margin-inline: auto;
@@ -4001,7 +4093,7 @@ body.sections-ready .workspace-section.is-active {
     text-align: center;
 }
 
-.quick-voucher-receipt .receipt-brand {
+.cashback-thermal-receipt .receipt-brand {
     display: block;
     width: 54mm;
     max-width: 100%;
@@ -4010,11 +4102,62 @@ body.sections-ready .workspace-section.is-active {
     filter: grayscale(1) contrast(6) invert(1);
 }
 
-.quick-voucher-receipt h2 {
+.cashback-thermal-receipt h2 {
     margin: 0 0 5mm;
     color: #111;
     font-size: 19pt;
     line-height: 1.1;
+}
+
+.cashback-purchase-receipt h2 {
+    margin-bottom: 4mm;
+    font-size: 17pt;
+}
+
+.receipt-customer {
+    display: grid;
+    gap: 1mm;
+    padding: 3mm 2mm;
+    border-block: 1px dashed #555;
+    text-align: left;
+}
+
+.receipt-customer span,
+.receipt-customer small,
+.receipt-details small {
+    font-size: 8pt;
+}
+
+.receipt-customer span,
+.receipt-details small {
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.receipt-customer strong {
+    overflow-wrap: anywhere;
+    font-size: 12pt;
+}
+
+.receipt-details {
+    display: grid;
+    gap: 0;
+    margin: 3mm 0;
+    text-align: left;
+}
+
+.receipt-details > span {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 3mm;
+    padding: 1.5mm 0;
+    border-bottom: 1px dotted #999;
+}
+
+.receipt-details strong {
+    flex: 0 0 auto;
+    font-size: 11pt;
 }
 
 .receipt-label {
@@ -4073,13 +4216,13 @@ body.sections-ready .workspace-section.is-active {
     font-weight: 800;
 }
 
-.quick-voucher-receipt > small {
+.cashback-thermal-receipt > small {
     display: block;
     margin-top: 5mm;
     font-size: 8pt;
 }
 
-.quick-voucher-print-root {
+.cashback-receipt-print-root {
     display: none;
 }
 
@@ -4124,23 +4267,23 @@ body.sections-ready .workspace-section.is-active {
         border-color: #ddd;
     }
 
-    body.printing-quick-voucher {
+    body.printing-cashback-receipt {
         width: 80mm;
         margin: 0;
         background: #fff;
     }
 
-    body.printing-quick-voucher > * {
+    body.printing-cashback-receipt > * {
         display: none !important;
     }
 
-    body.printing-quick-voucher > .quick-voucher-print-root {
+    body.printing-cashback-receipt > .cashback-receipt-print-root {
         display: block !important;
         width: 80mm;
         margin: 0;
     }
 
-    body.printing-quick-voucher .quick-voucher-receipt {
+    body.printing-cashback-receipt .cashback-thermal-receipt {
         box-sizing: border-box;
         width: 76mm;
         max-width: 76mm;
@@ -4449,6 +4592,10 @@ body.sections-ready .workspace-section.is-active {
         grid-template-columns: 1fr;
     }
 
+    .cashback-operation-result {
+        grid-template-columns: 1fr;
+    }
+
     .quick-voucher-receipt {
         grid-row: auto;
     }
@@ -4527,6 +4674,27 @@ body.sections-ready .workspace-section.is-active {
 
     .quick-voucher-result-actions .btn {
         flex: none;
+        width: 100%;
+    }
+
+    .cashback-operation-result {
+        padding: 14px;
+    }
+
+    .cashback-operation-facts {
+        grid-template-columns: 1fr;
+    }
+
+    .cashback-operation-facts span:nth-child(odd) {
+        border-right: 0;
+    }
+
+    .cashback-operation-facts span:nth-child(n + 2) {
+        border-top: 1px solid #cfe7de;
+    }
+
+    .cashback-operation-result-actions,
+    .cashback-operation-result-actions .btn {
         width: 100%;
     }
 }

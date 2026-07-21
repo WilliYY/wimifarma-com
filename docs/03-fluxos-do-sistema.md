@@ -70,6 +70,8 @@ Consultas e tentativas de resgate compartilham limites persistentes por usuario,
 
 Desde 2026-06-11, a compra/resgate do Balcao e o registro simples de compra possuem `Cashback Manual`. Se o campo manual tiver valor maior que zero, o cashback automatico novo da compra fica em zero e o credito gerado usa o valor manual, preservando a regra de uso 4x, o consumo FIFO dos creditos usados e a transacao Postgres. O detalhe do cliente mostra os dias restantes de cada credito e permite excluir do saldo apenas cashback gerado ainda intacto; a exclusao e logica, cancela mensagens pendentes vinculadas ao credito e preserva historico/auditoria.
 
+Desde 2026-07-21, a navegacao e o detalhe do cliente chamam esse fluxo somente de `Gastar/Usar CashBack`. Depois que `save_redeem` confirma a transacao, o ID da compra fica temporariamente autorizado na sessao e o Balcao volta para `#resgate` com um resumo de sucesso e comprovante termico. O comprovante consulta a compra ja gravada e mostra logo, nome/telefone do cliente, valores bruto, usado, cobrado e gerado, validade do credito comum ou codigo/validade do sucessor rapido, atendente e data. `Imprimir comprovante` abre o dialogo do navegador isolando 76 mm uteis; o POST de auditoria registra apenas a solicitacao de impressao e nao repete compra, resgate, credito, voucher ou XP.
+
 Arquivos principais:
 
 - `apps/cashback/src/server.ts`

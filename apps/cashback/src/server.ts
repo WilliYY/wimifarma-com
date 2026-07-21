@@ -94,6 +94,7 @@ declare module 'express-session' {
     flash?: Flash;
     loginAttempts?: number[];
     loginBlockedUntil?: number;
+    cashbackPurchaseReceiptIds?: number[];
     quickVoucherReceiptIds?: number[];
     returnTo?: string;
     user?: User;
@@ -523,6 +524,41 @@ router.post('/api-cashback-rapido-impressao.php', clearSensitive, maintenanceGua
     voucherId,
     `Impressao solicitada para o codigo rapido ${String(updated.rows[0]?.code || '')}.`,
     { print_requests: num(updated.rows[0]?.print_requests) },
+  );
+  res.json({ ok: true });
+});
+
+router.post('/api-comprovante-cashback-impressao.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
+  if (!csrfMatches(req)) {
+    res.status(403).json({ ok: false, message: 'Sessao expirada.' });
+    return;
+  }
+  const purchaseId = num(req.body?.purchase_id);
+  const allowedReceiptIds = req.session.cashbackPurchaseReceiptIds || [];
+  if (purchaseId <= 0 || !allowedReceiptIds.includes(purchaseId)) {
+    res.status(400).json({ ok: false, message: 'Comprovante invalido.' });
+    return;
+  }
+  const purchase = await pgPool.query(
+    `SELECT p.id, p.client_id, c.name AS client_name
+       FROM cashback_purchases p
+       INNER JOIN cashback_clients c ON c.id = p.client_id
+      WHERE p.id = $1
+      LIMIT 1`,
+    [purchaseId],
+  );
+  if ((purchase.rowCount ?? 0) <= 0) {
+    res.status(404).json({ ok: false, message: 'Comprovante nao encontrado.' });
+    return;
+  }
+  const row = purchase.rows[0] as DbRow;
+  await logAction(
+    req,
+    'cashback_comprovante_impressao_solicitada',
+    'compra',
+    purchaseId,
+    `Impressao solicitada para a compra #${purchaseId} do cliente ${String(row.client_name || '')}.`,
+    { client_id: num(row.client_id) },
   );
   res.json({ ok: true });
 });
@@ -1758,6 +1794,48 @@ function rememberQuickVoucherReceipt(req: Request, voucherId: number): void {
   req.session.quickVoucherReceiptIds = [voucherId, ...ids].slice(0, 12);
 }
 
+async function cashbackPurchaseReceipt(purchaseId: number): Promise<DbRow | null> {
+  if (purchaseId <= 0) return null;
+  const result = await pgPool.query(
+    `SELECT p.*,
+            c.name AS client_name,
+            c.phone AS client_phone,
+            a.name AS attendant_name,
+            cr.expires_at AS credit_expires_at,
+            q.id AS successor_voucher_id,
+            q.code AS successor_code,
+            q.status AS successor_status,
+            q.expires_at AS successor_expires_at
+       FROM cashback_purchases p
+       INNER JOIN cashback_clients c ON c.id = p.client_id
+       LEFT JOIN cashback_attendants a ON a.id = p.attendant_id
+       LEFT JOIN LATERAL (
+         SELECT expires_at
+           FROM cashback_credits
+          WHERE purchase_id = p.id
+          ORDER BY id DESC
+          LIMIT 1
+       ) cr ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT id, code, status, expires_at
+           FROM cashback_quick_vouchers
+          WHERE source_purchase_id = p.id
+          ORDER BY id DESC
+          LIMIT 1
+       ) q ON TRUE
+      WHERE p.id = $1
+      LIMIT 1`,
+    [purchaseId],
+  );
+  return (result.rows[0] as DbRow | undefined) || null;
+}
+
+function rememberCashbackPurchaseReceipt(req: Request, purchaseId: number): void {
+  if (purchaseId <= 0) return;
+  const ids = (req.session.cashbackPurchaseReceiptIds || []).filter((id) => id !== purchaseId);
+  req.session.cashbackPurchaseReceiptIds = [purchaseId, ...ids].slice(0, 12);
+}
+
 async function balanceForClient(clientId: number): Promise<Balance> {
   await refreshExpiredCredits();
   const settings = await loadSettings();
@@ -2095,7 +2173,7 @@ ${body}
   const nav = [
     ['dashboard.php#busca', 'Balcao'],
     ['dashboard.php#cadastro', 'Novo cliente'],
-    ['dashboard.php#resgate', 'Nova compra, Gastar/Usar CashBack'],
+    ['dashboard.php#resgate', 'Gastar/Usar CashBack'],
     ['mensagens.php', 'Mensagens'],
     ['relatorio.php', 'Configuracao e Relatorio'],
   ];
@@ -2564,9 +2642,8 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
           'success',
           `Codigo usado: ${brMoneyCents(quickRedemption.redeemedCents)}. Valor a cobrar: ${brMoneyCents(quickRedemption.chargedCents)}.${successorText} ${xpResult.message}`,
         );
-        const voucherQuery = quickRedemption.successor ? `&voucher_id=${quickRedemption.successor.id}` : '';
-        if (quickRedemption.successor) rememberQuickVoucherReceipt(req, quickRedemption.successor.id);
-        res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}${voucherQuery}#${quickRedemption.successor ? 'busca' : 'cliente-atual'}`);
+        rememberCashbackPurchaseReceipt(req, quickRedemption.purchaseId);
+        res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${quickRedemption.purchaseId}#resgate`);
         return;
       } catch (error) {
         await quickClient.query('ROLLBACK').catch(() => undefined);
@@ -2626,7 +2703,8 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
           ? `Cashback usado: ${brMoneyCents(redeemedCents)}. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)}.`
           : `Compra registrada sem uso de cashback. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)}.`;
       setFlash(req, 'success', `${flash}${xpResult ? ` ${xpResult.message}` : ''}`);
-      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
+      rememberCashbackPurchaseReceipt(req, purchase.id);
+      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${purchase.id}#resgate`);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;
@@ -2942,7 +3020,7 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
       <h3>${active ? 'Confira e imprima o cashback' : 'Este cupom nao esta mais ativo'}</h3>
       <p>${active ? 'O codigo ja esta gravado. A impressao abre a tela da impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
     </div>
-    <article class="quick-voucher-receipt" data-quick-voucher-receipt>
+    <article class="quick-voucher-receipt cashback-thermal-receipt" data-quick-voucher-receipt>
       <img class="receipt-brand" src="${asset('logo-wimifarma-receipt.png')}" alt="Wimifarma" width="731" height="292">
       <h2>CashBack Wimifarma</h2>
       <span class="receipt-label">Voce ganhou</span>
@@ -2960,6 +3038,62 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
   </div>`;
 }
 
+function renderCashbackPurchaseReceipt(receipt: DbRow | null): string {
+  if (!receipt) return '';
+  const purchaseId = num(receipt.id);
+  const generatedCents = num(receipt.cashback_generated_cents);
+  const quickCode = String(receipt.successor_code || '');
+  const isQuickVoucher = String(receipt.cashback_generation_mode || '') === 'voucher_rapido';
+  const expiresAt = isQuickVoucher ? receipt.successor_expires_at : receipt.credit_expires_at;
+  const generatedLabel = isQuickVoucher ? 'Novo codigo gerado' : 'Novo cashback';
+  const instruction = isQuickVoucher
+    ? '* Para usar, informe o codigo a um atendente.'
+    : '* Para usar, informe seu nome ou telefone a um atendente.';
+  const phone = formatPhone(receipt.client_phone);
+  const validity = generatedCents > 0 && expiresAt ? `Valido ate <strong>${e(brDate(expiresAt))}</strong>` : 'Nenhum novo cashback gerado';
+  const codeBlock = quickCode
+    ? `<div class="receipt-code"><span>Novo codigo</span><strong>${e(quickCode)}</strong></div>`
+    : '';
+
+  return `<div class="cashback-operation-result" data-cashback-operation-result>
+    <div class="cashback-operation-result-copy no-print">
+      <span class="operation-success-pill">Operacao concluida</span>
+      <h3>Comprovante pronto para imprimir</h3>
+      <p>A compra foi gravada. Confira os dados do cliente e envie somente este comprovante para a Bematech.</p>
+      <div class="cashback-operation-facts">
+        <span><small>Cliente</small><strong>${e(receipt.client_name)}</strong></span>
+        <span><small>Telefone</small><strong>${e(phone)}</strong></span>
+        <span><small>Valor pago</small><strong>${brMoneyCents(receipt.charged_cents)}</strong></span>
+        <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
+      </div>
+      <div class="cashback-operation-result-actions">
+        <button type="button" class="btn primary" data-print-cashback-purchase data-purchase-id="${e(purchaseId)}">Imprimir comprovante</button>
+        <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${num(receipt.client_id)}#resgate`)}">Nova operacao</a>
+      </div>
+    </div>
+    <article class="cashback-purchase-receipt cashback-thermal-receipt" data-cashback-purchase-receipt>
+      <img class="receipt-brand" src="${asset('logo-wimifarma-receipt.png')}" alt="Wimifarma" width="731" height="292">
+      <h2>Comprovante CashBack</h2>
+      <div class="receipt-customer">
+        <span>Cliente</span>
+        <strong>${e(receipt.client_name)}</strong>
+        <small>${e(phone)}</small>
+      </div>
+      <div class="receipt-details">
+        <span><small>Compra</small><strong>${brMoneyCents(receipt.gross_cents)}</strong></span>
+        <span><small>Cashback usado</small><strong>${brMoneyCents(receipt.cashback_discount_cents)}</strong></span>
+        <span><small>Valor pago</small><strong>${brMoneyCents(receipt.charged_cents)}</strong></span>
+        <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
+      </div>
+      ${codeBlock}
+      <p class="receipt-validity">${validity}</p>
+      <div class="receipt-contact"><strong>WhatsApp (44) 98413-4971</strong><span>Av. Minas Gerais, 2263</span></div>
+      <p class="receipt-instruction">${e(instruction)}</p>
+      <small>Operacao #${e(purchaseId)} | ${e(receipt.attendant_name || 'Wimifarma')}<br>${e(brDate(receipt.purchased_at, true))}</small>
+    </article>
+  </div>`;
+}
+
 async function renderDashboard(req: Request): Promise<string> {
   const settings = await loadSettings();
   const search = cleanText(req.query.q, 180);
@@ -2971,6 +3105,10 @@ async function renderDashboard(req: Request): Promise<string> {
   const requestedVoucherId = num(req.query.voucher_id);
   const printedVoucher = (req.session.quickVoucherReceiptIds || []).includes(requestedVoucherId)
     ? await quickVoucherReceipt(requestedVoucherId)
+    : null;
+  const requestedPurchaseReceiptId = num(req.query.receipt_purchase_id);
+  const purchaseReceipt = (req.session.cashbackPurchaseReceiptIds || []).includes(requestedPurchaseReceiptId)
+    ? await cashbackPurchaseReceipt(requestedPurchaseReceiptId)
     : null;
   const quickRequestToken = crypto.randomUUID();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
@@ -3121,6 +3259,7 @@ async function renderDashboard(req: Request): Promise<string> {
 
     <section id="resgate" class="panel section-block workspace-section redeem-panel">
       <div class="section-title redeem-title"><div class="redeem-title-copy"><span class="kicker">Compra Cashback</span><h2>Gastar/Usar Cashback</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
+      ${renderCashbackPurchaseReceipt(purchaseReceipt)}
       <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols redeem-form" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_redeem">
@@ -3545,7 +3684,7 @@ async function renderClientDetail(req: Request, res: Response): Promise<string> 
     )
     .join('');
   const nextExpirationText = bundle.balance.proximoVencimento ? expirationText(bundle.balance.proximoVencimento) : 'Sem credito ativo';
-  const body = `<section class="panel hero-client client-detail-hero"><div><span class="kicker">Cliente #${e(bundle.client.id)}</span><h2>${e(bundle.client.name)}</h2><p>${e(formatPhone(bundle.client.phone))} | Status ${e(bundle.client.status)} | Atendente ${e(bundle.client.attendant_name || '-')}</p></div><div class="actions"><a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${id}#resgate`)}">Nova compra, Gastar/Usar CashBack</a><a class="btn" href="${pageUrl(`clientes.php?edit=${id}`)}">Editar cliente</a></div></section>
+  const body = `<section class="panel hero-client client-detail-hero"><div><span class="kicker">Cliente #${e(bundle.client.id)}</span><h2>${e(bundle.client.name)}</h2><p>${e(formatPhone(bundle.client.phone))} | Status ${e(bundle.client.status)} | Atendente ${e(bundle.client.attendant_name || '-')}</p></div><div class="actions"><a class="btn primary" href="${pageUrl(`dashboard.php?cliente_id=${id}#resgate`)}">Gastar/Usar CashBack</a><a class="btn" href="${pageUrl(`clientes.php?edit=${id}`)}">Editar cliente</a></div></section>
 <section class="metrics client-detail-metrics"><article class="metric highlight"><span>Saldo disponivel</span><strong>${brMoneyCents(bundle.balance.saldoDisponivel)}</strong><small>Pronto para usar</small></article><article class="metric"><span>Expirando</span><strong>${brMoneyCents(bundle.balance.saldoExpirando)}</strong><small>${e(nextExpirationText)}</small></article><article class="metric"><span>Saldo usado</span><strong>${brMoneyCents(bundle.balance.saldoUsado)}</strong><small>Historico preservado</small></article><article class="metric"><span>Saldo expirado</span><strong>${brMoneyCents(bundle.balance.saldoExpirado)}</strong><small>Fora do saldo</small></article><article class="metric"><span>Total gerado</span><strong>${brMoneyCents(bundle.balance.totalGerado)}</strong><small>Sem cancelados</small></article><article class="metric"><span>Proximo vencimento</span><strong>${e(brDate(bundle.balance.proximoVencimento))}</strong><small>${e(nextExpirationText)}</small></article></section>
 <section class="grid two client-ledger-grid"><div class="panel"><h2>Compras do cliente</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Valor pago</th><th>Tipo</th><th>Cashback</th><th>Atendente</th></tr></thead><tbody>${rowsPurchases || '<tr><td colspan="5">Nenhuma compra registrada.</td></tr>'}</tbody></table></div></div><div class="panel"><h2>Resgates do cliente</h2><div class="table-wrap"><table><thead><tr><th>Data</th><th>Compra</th><th>Usado</th><th>Atendente</th></tr></thead><tbody>${rowsRedemptions || '<tr><td colspan="4">Nenhum resgate registrado.</td></tr>'}</tbody></table></div></div></section>
 <section id="creditos" class="panel cashback-credit-panel"><div class="section-title"><div><span class="kicker">Cashback gerado</span><h2>Creditos do cliente</h2></div><span class="soft-pill">${e(bundle.credits.length)} registro(s)</span></div><div class="cashback-credit-grid">${creditCards || '<p class="muted">Nenhum credito gerado.</p>'}</div></section>`;
