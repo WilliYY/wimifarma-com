@@ -70,7 +70,7 @@ Arquivos:
 ## Regras que precisam ser preservadas
 
 - Acoes financeiras e de cotacao devem manter auditoria.
-- Cashback registra login/falha/logout, criacao/edicao de cliente, compra, resgate, mensagens, atendentes, configuracoes e manutencao em `cashback_audit_events`; desde 2026-05-30 nao espelha mais logs em `wf_logs` e nao possui caminho `mysql2`. Historico antigo de importacoes permanece em `cashback_migration_runs`.
+- Cashback registra login/falha/logout, criacao/edicao de cliente, compra, resgate, mensagens, atendentes, configuracoes e manutencao em `cashback_audit_events`; vouchers rapidos acrescentam `cashback_rapido_emitido`, `cashback_rapido_usado`, `cashback_rapido_impressao_solicitada` e `cashback_rapido_limite_tentativas`, mantendo valor/relacoes essenciais na propria tabela transacional e sem afirmar que o papel foi impresso. Desde 2026-05-30 nao espelha mais logs em `wf_logs` e nao possui caminho `mysql2`. Historico antigo de importacoes permanece em `cashback_migration_runs`.
 - O Financeiro nao exibe mais a aba/tela operacional de Auditoria no topo, mas deve continuar gravando `financeiro_audit_events` no Postgres.
 - O Financeiro Node/Postgres registra auditoria oficial em `financeiro_audit_events`. Desde 2026-05-30 nao existe mais espelho runtime para `financeiro_auditoria` no MySQL; esse historico fica apenas como referencia/backup. Desde 2026-06-02, acoes operacionais principais do Financeiro (`criar/alterar/fechar/reabrir fechamento`, `salvar faturamento diario`, `criar/cancelar lancamento`) tambem gravam resumo sanitizado em `core_audit_logs`, permitindo que o modulo Usuarios mostre o responsavel por login sem expor payload financeiro bruto.
 - Logs nao devem gravar senhas, tokens ou chaves.

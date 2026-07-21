@@ -64,6 +64,24 @@ type Settings = {
   expirationAlertDays: number;
 };
 
+type QuickVoucherIssue = {
+  id: number;
+  code: string;
+  grossCents: number;
+  cashbackCents: number;
+  expiresAt: string;
+};
+
+type QuickVoucherRedemption = {
+  voucherId: number;
+  code: string;
+  redeemedCents: number;
+  redemptionId: number;
+  purchaseId: number;
+  chargedCents: number;
+  successor: QuickVoucherIssue | null;
+};
+
 type MigrationStats = {
   lastRunAt: string | null;
   lastError: string | null;
@@ -76,6 +94,7 @@ declare module 'express-session' {
     flash?: Flash;
     loginAttempts?: number[];
     loginBlockedUntil?: number;
+    quickVoucherReceiptIds?: number[];
     returnTo?: string;
     user?: User;
   }
@@ -87,7 +106,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.0.3';
+const SERVICE_VERSION = '1.1.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -97,6 +116,9 @@ const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'htt
 const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIMIFARMA_HOME_SSO_TIMEOUT_MS || '1200', 10) || 1200));
 const RECOMPRA_QUEUE_VISIBLE_DAYS = 14;
 const CASHBACK_CREDIT_VALIDITY_DAYS = 45;
+const QUICK_VOUCHER_VALIDITY_YEARS = 1;
+const QUICK_VOUCHER_CODE_SPACE = 10000;
+const QUICK_VOUCHER_ADVISORY_LOCK = 20260721;
 const XP_CASHBACK_REDEEM_POINTS = 500;
 const XP_CASHBACK_REDEEM_SOURCE = 'cashback_redemption';
 
@@ -327,6 +349,7 @@ router.use((req: Request, res: Response, next: NextFunction) => {
 
 router.get('/dashboard.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
+  await refreshExpiredQuickVouchers();
   res.send(await renderDashboard(req));
 });
 
@@ -337,6 +360,7 @@ router.post('/dashboard.php', clearSensitive, maintenanceGuard, async (req: Requ
     return;
   }
   await refreshExpiredCredits();
+  await refreshExpiredQuickVouchers();
   await handleDashboardPost(req, res);
 });
 
@@ -426,8 +450,86 @@ router.get('/api-clientes.php', clearSensitive, maintenanceGuard, async (req: Re
   res.json({ clientes: await clientSearchPayload(req.query.q ?? req.query.term ?? '') });
 });
 
+router.get('/api-cashback-rapido.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
+  const code = normalizeQuickVoucherCode(req.query.codigo);
+  if (!code) {
+    res.status(400).json({ ok: false, message: 'Informe os 4 digitos do codigo.' });
+    return;
+  }
+  let waitSeconds = 0;
+  try {
+    waitSeconds = await consumeQuickVoucherAttempt(req, 'lookup', 30, 10 * 60, 15 * 60);
+  } catch {
+    res.status(503).json({ ok: false, message: 'Validacao de codigo indisponivel agora.' });
+    return;
+  }
+  if (waitSeconds > 0) {
+    await logAction(req, 'cashback_rapido_limite_tentativas', 'cashback_quick_voucher', null, 'Limite de consultas de codigo rapido atingido.');
+    res.status(429).json({ ok: false, message: `Muitas consultas. Aguarde ${Math.max(1, Math.ceil(waitSeconds / 60))} minuto(s).` });
+    return;
+  }
+  const voucher = await activeQuickVoucher(pgPool, code);
+  if (!voucher) {
+    res.status(404).json({ ok: false, message: 'Codigo invalido, usado ou expirado.' });
+    return;
+  }
+  const linkedClientId = num(voucher.issued_client_id);
+  const settings = await loadSettings();
+  const minimumPurchaseCents = Math.ceil(num(voucher.cashback_cents) * settings.redeemMultiplier);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    codigo: String(voucher.code || ''),
+    cashback: brMoneyCents(voucher.cashback_cents),
+    cashback_raw: centsToMoney(num(voucher.cashback_cents)),
+    compra_minima: brMoneyCents(minimumPurchaseCents),
+    compra_minima_raw: centsToMoney(minimumPurchaseCents),
+    validade: brDate(voucher.expires_at),
+    vinculado: linkedClientId > 0,
+    cliente_id: linkedClientId || null,
+  });
+});
+
+router.post('/api-cashback-rapido-impressao.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
+  if (!csrfMatches(req)) {
+    res.status(403).json({ ok: false, message: 'Sessao expirada.' });
+    return;
+  }
+  const voucherId = num(req.body?.voucher_id);
+  const allowedReceiptIds = req.session.quickVoucherReceiptIds || [];
+  if (voucherId <= 0 || !allowedReceiptIds.includes(voucherId)) {
+    res.status(400).json({ ok: false, message: 'Cupom invalido.' });
+    return;
+  }
+  const updated = await pgPool.query(
+    `UPDATE cashback_quick_vouchers
+        SET print_requests = print_requests + 1,
+            last_print_requested_at = NOW(),
+            last_print_requested_by = $1,
+            updated_at = NOW()
+      WHERE id = $2
+        AND status = 'ativo'
+      RETURNING id, code, print_requests`,
+    [req.session.user?.id ?? null, voucherId],
+  );
+  if ((updated.rowCount ?? 0) <= 0) {
+    res.status(404).json({ ok: false, message: 'Cupom nao encontrado.' });
+    return;
+  }
+  await logAction(
+    req,
+    'cashback_rapido_impressao_solicitada',
+    'cashback_quick_voucher',
+    voucherId,
+    `Impressao solicitada para o codigo rapido ${String(updated.rows[0]?.code || '')}.`,
+    { print_requests: num(updated.rows[0]?.print_requests) },
+  );
+  res.json({ ok: true });
+});
+
 router.get('/relatorio.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
+  await refreshExpiredQuickVouchers();
   res.send(await renderReport(req));
 });
 
@@ -463,6 +565,7 @@ router.get('/internal/migration-status', requireInternalToken, async (_req: Requ
 
 router.get('/api/internal/summary', requireInternalToken, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
+  await refreshExpiredQuickVouchers();
   const counts = await tableCounts();
   const settings = await loadSettings();
   const start = isValidDateInput(req.query.start) ? String(req.query.start) : '';
@@ -480,6 +583,14 @@ router.get('/api/internal/summary', requireInternalToken, async (req: Request, r
      FROM cashback_purchases
      ${periodWhere}`,
     periodParams,
+  );
+  const quickVouchers = await pgPool.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status = 'ativo' AND expires_at >= CURRENT_DATE)::bigint AS active,
+       COALESCE(SUM(cashback_cents) FILTER (WHERE status = 'ativo' AND expires_at >= CURRENT_DATE), 0)::bigint AS available,
+       COUNT(*) FILTER (WHERE status = 'usado')::bigint AS used,
+       COUNT(*) FILTER (WHERE status = 'expirado')::bigint AS expired
+     FROM cashback_quick_vouchers`,
   );
   res.json({
     ok: true,
@@ -499,6 +610,13 @@ router.get('/api/internal/summary', requireInternalToken, async (req: Request, r
       generated: centsToMoney(num(totals.rows[0]?.generated)),
       redeemed: centsToMoney(num(totals.rows[0]?.redeemed)),
       available: centsToMoney(num(totals.rows[0]?.available)),
+    },
+    quick_vouchers: {
+      active: num(quickVouchers.rows[0]?.active),
+      available: centsToMoney(num(quickVouchers.rows[0]?.available)),
+      used: num(quickVouchers.rows[0]?.used),
+      expired: num(quickVouchers.rows[0]?.expired),
+      validity_years: QUICK_VOUCHER_VALIDITY_YEARS,
     },
   });
 });
@@ -783,13 +901,23 @@ function renderExpiryBreakdown(
 }
 
 function purchaseCashbackKind(row: DbRow): string {
-  return String(row.cashback_generation_mode || '') === 'manual' ? 'Manual' : 'Automatico';
+  const mode = String(row.cashback_generation_mode || '');
+  if (mode === 'manual') return 'Manual';
+  if (mode === 'voucher_rapido') return 'Codigo rapido';
+  return 'Automatico';
 }
 
 function purchaseCashbackPercentLabel(row: DbRow): string {
-  return String(row.cashback_generation_mode || '') === 'manual'
-    ? 'Manual'
-    : `${bpsToPercent(num(row.cashback_percent_bps)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}%`;
+  const kind = purchaseCashbackKind(row);
+  if (kind === 'Manual') return kind;
+  const percent = `${bpsToPercent(num(row.cashback_percent_bps)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}%`;
+  return kind === 'Codigo rapido' ? `Codigo ${percent}` : percent;
+}
+
+function purchaseCashbackCssClass(row: DbRow): string {
+  const kind = purchaseCashbackKind(row);
+  if (kind === 'Manual') return 'manual';
+  return kind === 'Codigo rapido' ? 'quick' : 'auto';
 }
 
 function isValidDateInput(value: unknown): boolean {
@@ -1200,7 +1328,7 @@ async function ensureSchema(): Promise<void> {
     ALTER TABLE cashback_purchases DROP CONSTRAINT IF EXISTS cashback_purchases_generation_mode_check;
     ALTER TABLE cashback_purchases
       ADD CONSTRAINT cashback_purchases_generation_mode_check
-      CHECK (cashback_generation_mode IN ('automatico', 'manual'));
+      CHECK (cashback_generation_mode IN ('automatico', 'manual', 'voucher_rapido'));
     CREATE INDEX IF NOT EXISTS idx_cashback_purchases_client ON cashback_purchases(client_id);
     CREATE INDEX IF NOT EXISTS idx_cashback_purchases_date ON cashback_purchases(purchased_at);
 
@@ -1236,6 +1364,59 @@ async function ensureSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_cashback_redemption_items_redemption ON cashback_redemption_items(redemption_id);
     CREATE INDEX IF NOT EXISTS idx_cashback_redemption_items_credit ON cashback_redemption_items(credit_id);
+
+    CREATE TABLE IF NOT EXISTS cashback_quick_vouchers (
+      id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+      code TEXT NOT NULL CHECK (code ~ '^[0-9]{4}$'),
+      gross_cents BIGINT NOT NULL CHECK (gross_cents > 0),
+      cashback_cents BIGINT NOT NULL CHECK (cashback_cents > 0),
+      cashback_percent_bps INTEGER NOT NULL DEFAULT 500 CHECK (cashback_percent_bps >= 0 AND cashback_percent_bps <= 10000),
+      request_token TEXT,
+      status TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'usado', 'expirado', 'cancelado')),
+      issued_attendant_id BIGINT REFERENCES cashback_attendants(id) ON DELETE SET NULL,
+      issued_by BIGINT,
+      issued_client_id BIGINT REFERENCES cashback_clients(id) ON DELETE SET NULL,
+      parent_voucher_id BIGINT REFERENCES cashback_quick_vouchers(id) ON DELETE SET NULL,
+      source_purchase_id BIGINT REFERENCES cashback_purchases(id) ON DELETE SET NULL,
+      redeemed_client_id BIGINT REFERENCES cashback_clients(id) ON DELETE SET NULL,
+      redeemed_attendant_id BIGINT REFERENCES cashback_attendants(id) ON DELETE SET NULL,
+      redemption_id BIGINT UNIQUE REFERENCES cashback_redemptions(id) ON DELETE SET NULL,
+      print_requests INTEGER NOT NULL DEFAULT 0,
+      last_print_requested_at TIMESTAMPTZ,
+      last_print_requested_by BIGINT,
+      issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at DATE NOT NULL,
+      redeemed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ
+    );
+    ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS request_token TEXT;
+    ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS print_requests INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS last_print_requested_at TIMESTAMPTZ;
+    ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS last_print_requested_by BIGINT;
+    DROP INDEX IF EXISTS idx_cashback_quick_vouchers_active_code;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_code
+      ON cashback_quick_vouchers(code);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_request_token
+      ON cashback_quick_vouchers(request_token)
+      WHERE request_token IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_status_expiry
+      ON cashback_quick_vouchers(status, expires_at);
+    CREATE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_client
+      ON cashback_quick_vouchers(issued_client_id, redeemed_client_id);
+    CREATE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_attendant
+      ON cashback_quick_vouchers(issued_attendant_id, issued_at DESC);
+
+    CREATE TABLE IF NOT EXISTS cashback_quick_voucher_rate_limits (
+      rate_key TEXT PRIMARY KEY,
+      operation TEXT NOT NULL CHECK (operation IN ('lookup', 'redeem')),
+      attempts_count INTEGER NOT NULL DEFAULT 0,
+      window_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      blocked_until TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_cashback_quick_voucher_rate_limits_blocked
+      ON cashback_quick_voucher_rate_limits(blocked_until);
 
     CREATE TABLE IF NOT EXISTS cashback_settings (
       key TEXT PRIMARY KEY,
@@ -1318,6 +1499,8 @@ async function tableCounts(): Promise<Record<string, number>> {
     'cashback_credits',
     'cashback_redemptions',
     'cashback_redemption_items',
+    'cashback_quick_vouchers',
+    'cashback_quick_voucher_rate_limits',
     'cashback_settings',
     'cashback_whatsapp_messages',
     'cashback_audit_events',
@@ -1373,6 +1556,206 @@ async function refreshExpiredCredits(): Promise<void> {
        AND remaining_cents > 0
        AND expires_at < CURRENT_DATE`,
   );
+}
+
+async function refreshExpiredQuickVouchers(db: pg.Pool | pg.PoolClient = pgPool): Promise<void> {
+  await db.query(
+    `UPDATE cashback_quick_vouchers
+        SET status = 'expirado', updated_at = NOW()
+      WHERE status = 'ativo'
+        AND expires_at < CURRENT_DATE`,
+  );
+}
+
+function normalizeQuickVoucherCode(value: unknown): string {
+  const code = digitsOnly(value);
+  return code.length === 4 ? code : '';
+}
+
+async function consumeQuickVoucherAttempt(
+  req: Request,
+  operation: 'lookup' | 'redeem',
+  maxAttempts: number,
+  windowSeconds: number,
+  blockSeconds: number,
+): Promise<number> {
+  const userId = req.session.user?.id ?? 0;
+  const rateKey = `user:${userId}:${operation}`;
+  const db = await pgPool.connect();
+  try {
+    await db.query('BEGIN');
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [rateKey]);
+    const result = await db.query(
+      `SELECT attempts_count, window_started_at, blocked_until
+         FROM cashback_quick_voucher_rate_limits
+        WHERE rate_key = $1
+        FOR UPDATE`,
+      [rateKey],
+    );
+    const row = result.rows[0] as DbRow | undefined;
+    const now = Date.now();
+    const blockedUntil = row?.blocked_until ? new Date(String(row.blocked_until)).getTime() : 0;
+    if (blockedUntil > now) {
+      await db.query('COMMIT');
+      return Math.max(1, Math.ceil((blockedUntil - now) / 1000));
+    }
+
+    const windowStartedAt = row?.window_started_at ? new Date(String(row.window_started_at)).getTime() : 0;
+    const resetWindow = !row || blockedUntil > 0 || now - windowStartedAt >= windowSeconds * 1000;
+    const attempts = resetWindow ? 1 : num(row.attempts_count) + 1;
+    const nextBlockedUntil = attempts > maxAttempts ? new Date(now + blockSeconds * 1000) : null;
+    await db.query(
+      `INSERT INTO cashback_quick_voucher_rate_limits
+          (rate_key, operation, attempts_count, window_started_at, blocked_until, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (rate_key) DO UPDATE SET
+         operation = EXCLUDED.operation,
+         attempts_count = EXCLUDED.attempts_count,
+         window_started_at = EXCLUDED.window_started_at,
+         blocked_until = EXCLUDED.blocked_until,
+         updated_at = NOW()`,
+      [rateKey, operation, attempts, new Date(resetWindow ? now : windowStartedAt), nextBlockedUntil],
+    );
+    await db.query('COMMIT');
+    return nextBlockedUntil ? blockSeconds : 0;
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    db.release();
+  }
+}
+
+async function activeQuickVoucher(
+  db: pg.Pool | pg.PoolClient,
+  code: string,
+  lock = false,
+): Promise<DbRow | null> {
+  if (!code) return null;
+  await refreshExpiredQuickVouchers(db);
+  const result = await db.query(
+    `SELECT *
+       FROM cashback_quick_vouchers
+      WHERE code = $1
+        AND status = 'ativo'
+        AND expires_at >= CURRENT_DATE
+      ORDER BY id DESC
+      LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
+    [code],
+  );
+  return (result.rows[0] as DbRow | undefined) || null;
+}
+
+async function issueQuickVoucher(
+  client: pg.PoolClient,
+  input: {
+    grossCents: number;
+    cashbackCents: number;
+    percentBps: number;
+    attendantId: number;
+    userId: number | null;
+    requestToken?: string | null;
+    clientId?: number | null;
+    parentVoucherId?: number | null;
+    sourcePurchaseId?: number | null;
+  },
+): Promise<QuickVoucherIssue> {
+  const grossCents = Math.floor(input.grossCents);
+  const cashbackCents = Math.floor(input.cashbackCents);
+  if (grossCents <= 0 || cashbackCents <= 0) {
+    throw new Error('A compra precisa gerar pelo menos R$ 0,01 de cashback rapido.');
+  }
+
+  await client.query('SELECT pg_advisory_xact_lock($1)', [QUICK_VOUCHER_ADVISORY_LOCK]);
+  await refreshExpiredQuickVouchers(client);
+
+  const requestToken = cleanText(input.requestToken, 120) || null;
+  if (requestToken) {
+    const existing = await client.query(
+      `SELECT id, code, gross_cents, cashback_cents, expires_at
+         FROM cashback_quick_vouchers
+        WHERE request_token = $1
+        LIMIT 1`,
+      [requestToken],
+    );
+    if ((existing.rowCount ?? 0) > 0) {
+      const row = existing.rows[0] as DbRow;
+      return {
+        id: num(row.id),
+        code: String(row.code || ''),
+        grossCents: num(row.gross_cents),
+        cashbackCents: num(row.cashback_cents),
+        expiresAt: isoDate(row.expires_at),
+      };
+    }
+  }
+
+  const issuedCodes = new Set(
+    (await client.query('SELECT code FROM cashback_quick_vouchers')).rows.map((row: DbRow) => String(row.code || '')),
+  );
+  const firstCandidate = crypto.randomInt(0, QUICK_VOUCHER_CODE_SPACE);
+  let code = '';
+  for (let attempt = 0; attempt < QUICK_VOUCHER_CODE_SPACE; attempt += 1) {
+    const candidate = ((firstCandidate + attempt) % QUICK_VOUCHER_CODE_SPACE).toString().padStart(4, '0');
+    if (!issuedCodes.has(candidate)) {
+      code = candidate;
+      break;
+    }
+  }
+  if (!code) {
+    throw new Error('Todos os 10.000 codigos de 4 digitos ja foram emitidos. Sera necessario ampliar o codigo.');
+  }
+
+  const inserted = await client.query(
+    `INSERT INTO cashback_quick_vouchers
+        (code, gross_cents, cashback_cents, cashback_percent_bps, request_token, status,
+         issued_attendant_id, issued_by, issued_client_id, parent_voucher_id,
+         source_purchase_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, 'ativo', $6, $7, $8, $9, $10,
+               (CURRENT_DATE + ($11::text || ' year')::interval)::date)
+       RETURNING id, code, gross_cents, cashback_cents, expires_at`,
+    [
+      code,
+      grossCents,
+      cashbackCents,
+      input.percentBps,
+      requestToken,
+      input.attendantId,
+      input.userId,
+      input.clientId || null,
+      input.parentVoucherId || null,
+      input.sourcePurchaseId || null,
+      QUICK_VOUCHER_VALIDITY_YEARS,
+    ],
+  );
+  const row = inserted.rows[0] as DbRow;
+  return {
+    id: num(row.id),
+    code: String(row.code || ''),
+    grossCents: num(row.gross_cents),
+    cashbackCents: num(row.cashback_cents),
+    expiresAt: isoDate(row.expires_at),
+  };
+}
+
+async function quickVoucherReceipt(voucherId: number): Promise<DbRow | null> {
+  if (voucherId <= 0) return null;
+  await refreshExpiredQuickVouchers();
+  const result = await pgPool.query(
+    `SELECT q.*, a.name AS attendant_name
+       FROM cashback_quick_vouchers q
+       LEFT JOIN cashback_attendants a ON a.id = q.issued_attendant_id
+      WHERE q.id = $1
+      LIMIT 1`,
+    [voucherId],
+  );
+  return (result.rows[0] as DbRow | undefined) || null;
+}
+
+function rememberQuickVoucherReceipt(req: Request, voucherId: number): void {
+  if (voucherId <= 0) return;
+  const ids = (req.session.quickVoucherReceiptIds || []).filter((id) => id !== voucherId);
+  req.session.quickVoucherReceiptIds = [voucherId, ...ids].slice(0, 12);
 }
 
 async function balanceForClient(clientId: number): Promise<Balance> {
@@ -1551,13 +1934,20 @@ async function requireLoggedAttendantId(req: Request): Promise<number> {
   return attendantId;
 }
 
-async function logAction(req: Request, action: string, entityType: string | null, entityId: number | null, message: string): Promise<void> {
+async function logAction(
+  req: Request,
+  action: string,
+  entityType: string | null,
+  entityId: number | null,
+  message: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
   const userId = req.session.user?.id ?? null;
   try {
     await pgPool.query(
-      `INSERT INTO cashback_audit_events (user_id, action, entity_type, entity_id, message)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [userId, action, entityType, entityId, message],
+      `INSERT INTO cashback_audit_events (user_id, action, entity_type, entity_id, message, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [userId, action, entityType, entityId, message, JSON.stringify(metadata)],
     );
   } catch {
     // Audit logging must not block the cashier flow.
@@ -1826,6 +2216,10 @@ function renderMaintenance(req: Request, error: string): string {
 
 async function handleDashboardPost(req: Request, res: Response): Promise<void> {
   const action = String(req.body?.action || '');
+  if (action === 'create_quick_cashback') {
+    await createQuickVoucherFromDashboard(req, res);
+    return;
+  }
   if (action === 'save_attendant') {
     setFlash(req, 'error', 'Cadastro de atendente fica em Configuracao e Relatorio.');
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
@@ -1847,6 +2241,68 @@ async function handleDashboardPost(req: Request, res: Response): Promise<void> {
   res.redirect(`${BASE_PATH}/dashboard.php#busca`);
 }
 
+async function createQuickVoucherFromDashboard(req: Request, res: Response): Promise<void> {
+  const settings = await loadSettings();
+  const grossCents = moneyToCents(req.body?.valor_compra_rapida);
+  const requestToken = `issue:${cleanText(req.body?.request_token, 100) || crypto.randomUUID()}`;
+  if (grossCents <= 0) {
+    setFlash(req, 'error', 'Informe quanto o cliente gastou para gerar o cashback rapido.');
+    res.redirect(`${BASE_PATH}/dashboard.php#busca`);
+    return;
+  }
+  const cashbackCents = Math.round((grossCents * settings.cashbackPercentBps) / 10000);
+  if (cashbackCents <= 0) {
+    setFlash(req, 'error', 'O valor informado precisa gerar pelo menos R$ 0,01 de cashback.');
+    res.redirect(`${BASE_PATH}/dashboard.php#busca`);
+    return;
+  }
+
+  let attendantId: number | null = null;
+  try {
+    attendantId = await normalizeAttendantId(num(req.body?.atendente_id));
+  } catch (error) {
+    setFlash(req, 'error', errorMessage(error));
+    res.redirect(`${BASE_PATH}/dashboard.php#busca`);
+    return;
+  }
+  if (!attendantId) {
+    setFlash(req, 'error', 'Selecione o usuario que esta imprimindo o cupom.');
+    res.redirect(`${BASE_PATH}/dashboard.php#busca`);
+    return;
+  }
+
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const voucher = await issueQuickVoucher(client, {
+      grossCents,
+      cashbackCents,
+      percentBps: settings.cashbackPercentBps,
+      attendantId,
+      userId: req.session.user?.id ?? null,
+      requestToken,
+    });
+    await client.query('COMMIT');
+    rememberQuickVoucherReceipt(req, voucher.id);
+    await logAction(
+      req,
+      'cashback_rapido_emitido',
+      'cashback_quick_voucher',
+      voucher.id,
+      `Codigo rapido ${voucher.code} emitido por ${brMoneyCents(voucher.cashbackCents)}.`,
+      { attendant_id: attendantId, gross_cents: grossCents, expires_at: voucher.expiresAt },
+    );
+    setFlash(req, 'success', `Cashback rapido criado. Codigo ${voucher.code}, valido ate ${brDate(voucher.expiresAt)}.`);
+    res.redirect(`${BASE_PATH}/dashboard.php?voucher_id=${voucher.id}#busca`);
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    setFlash(req, 'error', `Erro ao gerar cashback rapido: ${errorMessage(error)}`);
+    res.redirect(`${BASE_PATH}/dashboard.php#busca`);
+  } finally {
+    client.release();
+  }
+}
+
 async function createClientFromDashboard(req: Request, res: Response): Promise<void> {
   const settings = await loadSettings();
   const name = cleanText(req.body?.nome, 180);
@@ -1855,6 +2311,8 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
   const notes = cleanText(req.body?.observacoes, 5000);
   const initialAmount = moneyToCents(req.body?.valor_compra_inicial);
   const initialPercentBps = percentToBps(req.body?.percentual_cashback_inicial || settings.cashbackPercent);
+  const quickCodeRaw = cleanText(req.body?.codigo_cashback, 20);
+  const quickCode = normalizeQuickVoucherCode(quickCodeRaw);
   if (!name) {
     setFlash(req, 'error', 'Informe o nome do cliente.');
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
@@ -1864,6 +2322,31 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
     setFlash(req, 'error', 'Data de nascimento invalida.');
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
     return;
+  }
+  if (quickCodeRaw && !quickCode) {
+    setFlash(req, 'error', 'O codigo de cashback precisa ter exatamente 4 digitos.');
+    res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
+    return;
+  }
+  if (quickCode && initialAmount <= 0) {
+    setFlash(req, 'error', 'Informe a compra atual para usar o codigo e cadastrar o cliente.');
+    res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
+    return;
+  }
+  if (quickCode) {
+    try {
+      const waitSeconds = await consumeQuickVoucherAttempt(req, 'redeem', 30, 10 * 60, 30 * 60);
+      if (waitSeconds > 0) {
+        await logAction(req, 'cashback_rapido_limite_tentativas', 'cashback_quick_voucher', null, 'Limite de tentativas de uso de codigo rapido atingido.');
+        setFlash(req, 'error', `Muitas tentativas de codigo. Aguarde ${Math.max(1, Math.ceil(waitSeconds / 60))} minuto(s).`);
+        res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
+        return;
+      }
+    } catch {
+      setFlash(req, 'error', 'Nao foi possivel validar tentativas de codigo agora. Tente novamente.');
+      res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
+      return;
+    }
   }
   let attendantId: number | null;
   try {
@@ -1886,7 +2369,19 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
     await client.query('UPDATE cashback_clients SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [clientId]);
     let message = `Cliente cadastrado e selecionado: ${name}.`;
     let purchase: { id: number; cashbackCents: number; expiresAt: string; chargedCents: number } | null = null;
-    if (initialAmount > 0) {
+    let quickRedemption: QuickVoucherRedemption | null = null;
+    if (quickCode) {
+      quickRedemption = await redeemQuickVoucherAndCreateSuccessor(client, {
+        code: quickCode,
+        clientId,
+        attendantId,
+        purchaseCents: initialAmount,
+        settings,
+        notes: `Cliente cadastrado no primeiro uso do codigo. ${notes}`,
+        userId: req.session.user?.id ?? null,
+      });
+      message += ` Codigo ${quickCode} usado: ${brMoneyCents(quickRedemption.redeemedCents)}. Valor a cobrar: ${brMoneyCents(quickRedemption.chargedCents)}.`;
+    } else if (initialAmount > 0) {
       purchase = await createPurchaseAndCredit(client, {
         clientId,
         attendantId,
@@ -1903,6 +2398,25 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
     }
     await client.query('COMMIT');
     await logAction(req, 'cliente_criado', 'cliente', clientId, `Cliente criado pela operacao de balcao: ${name}`);
+    if (quickRedemption) {
+      await logAction(
+        req,
+        'cashback_rapido_usado',
+        'cashback_quick_voucher',
+        quickRedemption.voucherId,
+        `Codigo rapido ${quickRedemption.code} usado no cadastro do cliente #${clientId}.`,
+        { redemption_id: quickRedemption.redemptionId, purchase_id: quickRedemption.purchaseId },
+      );
+      const xpResult = await awardXpForCashbackRedemption(req, quickRedemption.redemptionId, quickRedemption.redeemedCents, clientId);
+      const successorText = quickRedemption.successor
+        ? ` Novo codigo ${quickRedemption.successor.code}: ${brMoneyCents(quickRedemption.successor.cashbackCents)}.`
+        : ' A nova compra nao gerou outro codigo.';
+      setFlash(req, 'success', `${message}${successorText} ${xpResult.message}`);
+      const voucherQuery = quickRedemption.successor ? `&voucher_id=${quickRedemption.successor.id}` : '';
+      if (quickRedemption.successor) rememberQuickVoucherReceipt(req, quickRedemption.successor.id);
+      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}${voucherQuery}#${quickRedemption.successor ? 'busca' : 'cliente-atual'}`);
+      return;
+    }
     setFlash(req, 'success', message);
     res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
   } catch (error) {
@@ -1975,6 +2489,8 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
   const purchaseCents = moneyToCents(req.body?.valor_compra);
   const manualCashbackCents = moneyToCents(req.body?.cashback_manual);
   const notes = cleanText(req.body?.observacoes, 5000);
+  const quickCodeRaw = cleanText(req.body?.codigo_cashback, 20);
+  const quickCode = normalizeQuickVoucherCode(quickCodeRaw);
   if (clientId <= 0 || purchaseCents <= 0) {
     setFlash(req, 'error', 'Informe cliente e valor da compra atual.');
     res.redirect(`${BASE_PATH}/dashboard.php#resgate`);
@@ -1985,6 +2501,31 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
     res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
     return;
   }
+  if (quickCodeRaw && !quickCode) {
+    setFlash(req, 'error', 'O codigo de cashback precisa ter exatamente 4 digitos.');
+    res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
+    return;
+  }
+  if (quickCode && manualCashbackCents > 0) {
+    setFlash(req, 'error', 'Ao usar um codigo rapido, deixe o Cashback Manual vazio.');
+    res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
+    return;
+  }
+  if (quickCode) {
+    try {
+      const waitSeconds = await consumeQuickVoucherAttempt(req, 'redeem', 30, 10 * 60, 30 * 60);
+      if (waitSeconds > 0) {
+        await logAction(req, 'cashback_rapido_limite_tentativas', 'cashback_quick_voucher', null, 'Limite de tentativas de uso de codigo rapido atingido.');
+        setFlash(req, 'error', `Muitas tentativas de codigo. Aguarde ${Math.max(1, Math.ceil(waitSeconds / 60))} minuto(s).`);
+        res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
+        return;
+      }
+    } catch {
+      setFlash(req, 'error', 'Nao foi possivel validar tentativas de codigo agora. Tente novamente.');
+      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
+      return;
+    }
+  }
   if (!(await activeClientExists(clientId))) {
     setFlash(req, 'error', 'Cliente invalido ou inativo.');
     res.redirect(`${BASE_PATH}/dashboard.php#busca`);
@@ -1992,6 +2533,48 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
   }
   try {
     const attendantId = await requireLoggedAttendantId(req);
+    if (quickCode) {
+      const quickClient = await pgPool.connect();
+      try {
+        await quickClient.query('BEGIN');
+        const quickRedemption = await redeemQuickVoucherAndCreateSuccessor(quickClient, {
+          code: quickCode,
+          clientId,
+          attendantId,
+          purchaseCents,
+          settings,
+          notes,
+          userId: req.session.user?.id ?? null,
+        });
+        await quickClient.query('COMMIT');
+        await logAction(
+          req,
+          'cashback_rapido_usado',
+          'cashback_quick_voucher',
+          quickRedemption.voucherId,
+          `Codigo rapido ${quickRedemption.code} usado pelo cliente #${clientId}.`,
+          { redemption_id: quickRedemption.redemptionId, purchase_id: quickRedemption.purchaseId },
+        );
+        const xpResult = await awardXpForCashbackRedemption(req, quickRedemption.redemptionId, quickRedemption.redeemedCents, clientId);
+        const successorText = quickRedemption.successor
+          ? ` Novo codigo ${quickRedemption.successor.code}: ${brMoneyCents(quickRedemption.successor.cashbackCents)}.`
+          : ' A nova compra nao gerou outro codigo.';
+        setFlash(
+          req,
+          'success',
+          `Codigo usado: ${brMoneyCents(quickRedemption.redeemedCents)}. Valor a cobrar: ${brMoneyCents(quickRedemption.chargedCents)}.${successorText} ${xpResult.message}`,
+        );
+        const voucherQuery = quickRedemption.successor ? `&voucher_id=${quickRedemption.successor.id}` : '';
+        if (quickRedemption.successor) rememberQuickVoucherReceipt(req, quickRedemption.successor.id);
+        res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}${voucherQuery}#${quickRedemption.successor ? 'busca' : 'cliente-atual'}`);
+        return;
+      } catch (error) {
+        await quickClient.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        quickClient.release();
+      }
+    }
     const client = await pgPool.connect();
     try {
       await client.query('BEGIN');
@@ -2117,6 +2700,110 @@ async function createPurchaseAndCredit(
 
   await enqueuePurchaseWhatsapp(client, input.clientId, purchaseId, creditId, cashbackCents, expiresAt, input.discountCents, chargedCents);
   return { id: purchaseId, creditId, cashbackCents, chargedCents, expiresAt };
+}
+
+async function redeemQuickVoucherAndCreateSuccessor(
+  client: pg.PoolClient,
+  input: {
+    code: string;
+    clientId: number;
+    attendantId: number;
+    purchaseCents: number;
+    settings: Settings;
+    notes: string;
+    userId: number | null;
+  },
+): Promise<QuickVoucherRedemption> {
+  const voucher = await activeQuickVoucher(client, input.code, true);
+  if (!voucher) throw new Error('Codigo de cashback invalido, usado ou expirado.');
+
+  const issuedClientId = num(voucher.issued_client_id);
+  if (issuedClientId > 0 && issuedClientId !== input.clientId) {
+    throw new Error('Este codigo pertence a outro cliente cadastrado. Selecione o cliente correto.');
+  }
+
+  const redeemedCents = num(voucher.cashback_cents);
+  const requiredPurchaseCents = Math.ceil(redeemedCents * input.settings.redeemMultiplier);
+  if (input.purchaseCents < requiredPurchaseCents) {
+    throw new Error(`Para usar ${brMoneyCents(redeemedCents)}, a compra precisa ser de pelo menos ${brMoneyCents(requiredPurchaseCents)}.`);
+  }
+
+  const chargedCents = Math.max(input.purchaseCents - redeemedCents, 0);
+  const successorCashbackCents = Math.round((chargedCents * input.settings.cashbackPercentBps) / 10000);
+  const redemption = await client.query(
+    `INSERT INTO cashback_redemptions (client_id, attendant_id, purchase_cents, redeemed_cents, notes, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      input.clientId,
+      input.attendantId,
+      input.purchaseCents,
+      redeemedCents,
+      cleanText(`Codigo rapido ${input.code} utilizado. ${input.notes}`, 5000) || null,
+      input.userId,
+    ],
+  );
+  const redemptionId = num(redemption.rows[0]?.id);
+  await client.query('UPDATE cashback_redemptions SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [redemptionId]);
+
+  const purchase = await client.query(
+    `INSERT INTO cashback_purchases
+      (client_id, attendant_id, gross_cents, cashback_discount_cents, charged_cents, redemption_id,
+       cashback_percent_bps, cashback_generated_cents, cashback_generation_mode, manual_cashback_cents,
+       notes, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'voucher_rapido', 0, $9, $10)
+     RETURNING id`,
+    [
+      input.clientId,
+      input.attendantId,
+      input.purchaseCents,
+      redeemedCents,
+      chargedCents,
+      redemptionId,
+      input.settings.cashbackPercentBps,
+      successorCashbackCents,
+      cleanText(`Compra com codigo rapido ${input.code}. ${input.notes}`, 5000) || null,
+      input.userId,
+    ],
+  );
+  const purchaseId = num(purchase.rows[0]?.id);
+  await client.query('UPDATE cashback_purchases SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [purchaseId]);
+
+  const successor = successorCashbackCents > 0
+    ? await issueQuickVoucher(client, {
+        grossCents: chargedCents,
+        cashbackCents: successorCashbackCents,
+        percentBps: input.settings.cashbackPercentBps,
+        attendantId: input.attendantId,
+        userId: input.userId,
+        requestToken: `successor:${num(voucher.id)}`,
+        clientId: input.clientId,
+        parentVoucherId: num(voucher.id),
+        sourcePurchaseId: purchaseId,
+      })
+    : null;
+
+  await client.query(
+    `UPDATE cashback_quick_vouchers
+        SET status = 'usado',
+            redeemed_client_id = $1,
+            redeemed_attendant_id = $2,
+            redemption_id = $3,
+            redeemed_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $4`,
+    [input.clientId, input.attendantId, redemptionId, num(voucher.id)],
+  );
+
+  return {
+    voucherId: num(voucher.id),
+    code: String(voucher.code || ''),
+    redeemedCents,
+    redemptionId,
+    purchaseId,
+    chargedCents,
+    successor,
+  };
 }
 
 async function consumeCredits(client: pg.PoolClient, credits: DbRow[], redemptionId: number, amountCents: number): Promise<void> {
@@ -2246,6 +2933,33 @@ async function saveWhatsappMessage(input: {
   }
 }
 
+function renderQuickVoucherReceipt(voucher: DbRow | null): string {
+  if (!voucher) return '';
+  const active = String(voucher.status || '') === 'ativo' && isoDate(voucher.expires_at) >= todayIso();
+  return `<div class="quick-voucher-result ${active ? 'is-active' : 'is-inactive'}">
+    <div class="quick-voucher-result-copy no-print">
+      <span class="kicker">Cupom pronto</span>
+      <h3>${active ? 'Confira e imprima o cashback' : 'Este cupom nao esta mais ativo'}</h3>
+      <p>${active ? 'O codigo ja esta gravado. A impressao abre a tela da impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
+    </div>
+    <article class="quick-voucher-receipt" data-quick-voucher-receipt>
+      <img src="${asset('logo-wimifarma.svg')}" alt="Wimifarma">
+      <h2>CashBack Wimifarma</h2>
+      <span class="receipt-label">Voce ganhou</span>
+      <strong class="receipt-value">${brMoneyCents(voucher.cashback_cents)}</strong>
+      <div class="receipt-code"><span>Codigo</span><strong>${e(voucher.code)}</strong></div>
+      <p class="receipt-validity">Valido ate <strong>${e(brDate(voucher.expires_at))}</strong></p>
+      <div class="receipt-contact"><strong>WhatsApp (44) 98413-4971</strong><span>Av. Minas Gerais, 2263</span></div>
+      <p class="receipt-instruction">* Para usar, informe o codigo a um atendente.</p>
+      <small>Emitido por ${e(voucher.attendant_name || 'Wimifarma')} em ${e(brDate(voucher.issued_at, true))}</small>
+    </article>
+    <div class="quick-voucher-result-actions no-print">
+      ${active ? `<button type="button" class="btn primary" data-print-quick-voucher data-voucher-id="${e(voucher.id)}">Imprimir na Bematech</button>` : ''}
+      <a class="btn" href="${pageUrl('dashboard.php#busca')}">Gerar outro</a>
+    </div>
+  </div>`;
+}
+
 async function renderDashboard(req: Request): Promise<string> {
   const settings = await loadSettings();
   const search = cleanText(req.query.q, 180);
@@ -2254,6 +2968,11 @@ async function renderDashboard(req: Request): Promise<string> {
   const searchResults = await queryClients(search, 20, { activeOnly: true });
   const loggedAttendantId = await loggedUserAttendantId(req);
   const attendants = await attendantOptions();
+  const requestedVoucherId = num(req.query.voucher_id);
+  const printedVoucher = (req.session.quickVoucherReceiptIds || []).includes(requestedVoucherId)
+    ? await quickVoucherReceipt(requestedVoucherId)
+    : null;
+  const quickRequestToken = crypto.randomUUID();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
   const xpReward = await currentUserXpRewardStatus(req);
   const visibleClientResultCount = Math.min(initialClientResultCount, searchResults.length);
@@ -2325,7 +3044,8 @@ async function renderDashboard(req: Request): Promise<string> {
         <div class="client-history-grid">
           ${historyPanel('Ultimas compras', selected.purchases, (purchase) => {
             const row = purchase as DbRow;
-            return `<article><strong>${e(brDate(row.purchased_at, true))}</strong><span>Compra: ${brMoneyCents(row.gross_cents)} | Pago: ${brMoneyCents(row.charged_cents)}</span><span>Cashback usado: ${brMoneyCents(row.cashback_discount_cents)} | Gerado: ${brMoneyCents(row.cashback_generated_cents)}</span></article>`;
+            const generatedLabel = purchaseCashbackKind(row) === 'Codigo rapido' ? 'Proximo codigo' : 'Gerado';
+            return `<article><strong>${e(brDate(row.purchased_at, true))}</strong><span>Compra: ${brMoneyCents(row.gross_cents)} | Pago: ${brMoneyCents(row.charged_cents)}</span><span>Cashback usado: ${brMoneyCents(row.cashback_discount_cents)} | ${generatedLabel}: ${brMoneyCents(row.cashback_generated_cents)}</span></article>`;
           })}
           ${historyPanel('Resgates recentes', selected.redemptions, (redemption) => {
             const row = redemption as DbRow;
@@ -2339,14 +3059,37 @@ async function renderDashboard(req: Request): Promise<string> {
       ? `${selected.client.name} - ${formatPhone(selected.client.phone)}`
       : '';
   const selectedBalance = selected?.balance?.saldoDisponivel || 0;
+  const quickAttendantOptions = attendants
+    .map((attendant: DbRow) => {
+      const id = num(attendant.id);
+      return `<option value="${e(id)}" ${loggedAttendantId === id ? 'selected' : ''}>${e(attendant.name)}</option>`;
+    })
+    .join('');
+  const quickCashbackPanel = `<div id="cashback-rapido" class="quick-cashback-shell">
+    <div class="quick-cashback-heading">
+      <div><span class="kicker">Sem cadastro agora</span><h2>Cashback rapido</h2><p>Informe somente o valor gasto. O codigo de 4 digitos vale por 1 ano.</p></div>
+      <span class="quick-cashback-rate">${e(settings.cashbackPercent)}% automatico</span>
+    </div>
+    ${renderQuickVoucherReceipt(printedVoucher)}
+    <form method="post" action="${pageUrl('dashboard.php#busca')}" class="quick-cashback-form" data-no-enter-submit data-quick-cashback-form data-default-percent="${e(settings.cashbackPercent)}">
+      ${csrfField(req)}
+      <input type="hidden" name="action" value="create_quick_cashback">
+      <input type="hidden" name="request_token" value="${e(quickRequestToken)}">
+      <label class="quick-cashback-amount"><span>Quanto o cliente gastou? *</span><input type="text" name="valor_compra_rapida" data-money inputmode="decimal" required placeholder="100,00" autofocus></label>
+      <label><span>Usuario que imprime *</span><select name="atendente_id" required><option value="">Selecione</option>${quickAttendantOptions}</select></label>
+      <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>Codigo unico por 1 ano</small></div>
+      <button type="submit" class="btn primary quick-cashback-submit">Gerar codigo</button>
+    </form>
+  </div>`;
 
   const body = `<section class="balcao-grid">
   <div class="balcao-main">
     <section id="busca" class="panel section-block workspace-section">
+      ${quickCashbackPanel}
       <div class="section-title"><div><span class="kicker">Consulta rapida</span><h2>Buscar cliente por nome, telefone ou ID</h2></div></div>
       <form method="get" action="${pageUrl('dashboard.php#busca')}" class="search-row live-search-wrap">
         ${selectedClientId > 0 ? `<input type="hidden" name="cliente_id" value="${e(selectedClientId)}">` : ''}
-        <input type="search" name="q" value="${e(search)}" placeholder="Digite nome, telefone ou ID interno" data-live-client-search data-results="#live-client-results" autocomplete="off" autofocus>
+        <input type="search" name="q" value="${e(search)}" placeholder="Digite nome, telefone ou ID interno" data-live-client-search data-results="#live-client-results" autocomplete="off">
         <button type="submit" class="btn primary">Buscar</button>
         <a class="btn" href="${pageUrl(`dashboard.php${selectedClientId > 0 ? `?cliente_id=${selectedClientId}` : ''}#busca`)}">Limpar</a>
         <div id="live-client-results" class="live-client-results" hidden></div>
@@ -2394,6 +3137,7 @@ async function renderDashboard(req: Request): Promise<string> {
           <div class="redeem-xp-note ${xpReward.available ? 'ok' : 'warn'}"><strong>${xpReward.available ? '+500 XP ativo' : 'XP'}</strong><span>${e(xpReward.message)}</span></div>
           <div class="redeem-fields">
             ${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}
+            <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000" autocomplete="off" data-quick-voucher-code><small data-quick-voucher-status>Opcional</small></label>
             <label><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
             <label><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
             <label class="manual-cashback-field"><span>Cashback Manual</span><input type="text" name="cashback_manual" data-money placeholder="0,00"><small>Preenchido, zera o novo cashback automatico.</small></label>
@@ -2407,7 +3151,7 @@ async function renderDashboard(req: Request): Promise<string> {
 
     <section id="cadastro" class="panel section-block workspace-section quick-client-panel">
       <div class="section-title quick-client-title"><div class="quick-client-title-copy"><span class="kicker">Cadastro rapido</span><h2>Novo cliente</h2></div><span class="soft-pill">Compra inicial opcional</span></div>
-      <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}">
+      <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}" data-multiplier="${e(settings.redeemMultiplier)}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_client">
         <div class="quick-client-block quick-client-identity full">
@@ -2422,6 +3166,7 @@ async function renderDashboard(req: Request): Promise<string> {
         <div class="quick-client-block quick-client-purchase full">
           <div class="quick-client-block-title"><span class="step-badge">2</span><div><h3>Compra inicial</h3><small>Venda do momento, se houver</small></div><span class="optional-chip">Opcional</span></div>
           <div class="quick-client-fields">
+            <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="0000" autocomplete="off" data-quick-voucher-code><small data-quick-voucher-status>Opcional</small></label>
             <label><span>Valor que o cliente vai gastar agora</span><input type="text" name="valor_compra_inicial" data-money placeholder="100,00"></label>
             <label><span>% Cashback</span><input type="text" name="percentual_cashback_inicial" value="${e(settings.cashbackPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}"></label>
           </div>
@@ -2769,7 +3514,7 @@ async function renderClientDetail(req: Request, res: Response): Promise<string> 
   const rowsPurchases = bundle.purchases
     .map(
       (purchase: DbRow) =>
-        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td><span class="cashback-source-pill ${purchaseCashbackKind(purchase) === 'Manual' ? 'manual' : 'auto'}">${e(purchaseCashbackPercentLabel(purchase))}</span></td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td>${e(purchase.attendant_name || '-')}</td></tr>`,
+        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td><span class="cashback-source-pill ${purchaseCashbackCssClass(purchase)}">${e(purchaseCashbackPercentLabel(purchase))}</span></td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td>${e(purchase.attendant_name || '-')}</td></tr>`,
     )
     .join('');
   const rowsRedemptions = bundle.redemptions
@@ -2825,7 +3570,7 @@ async function renderPurchases(req: Request): Promise<string> {
   const rows = (recent.rows as DbRow[])
     .map(
       (purchase: DbRow) =>
-        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${e(purchase.client_name)}</td><td>${e(purchase.attendant_name || '-')}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td><span class="cashback-source-pill ${purchaseCashbackKind(purchase) === 'Manual' ? 'manual' : 'auto'}">${e(purchaseCashbackPercentLabel(purchase))}</span></td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td><a href="${pageUrl('mensagens.php#compras-hoje')}">Fila WhatsApp</a></td><td><a href="${pageUrl(`cliente-detalhe.php?id=${num(purchase.client_id)}`)}">Cliente</a></td></tr>`,
+        `<tr><td>${e(brDate(purchase.purchased_at, true))}</td><td>${e(purchase.client_name)}</td><td>${e(purchase.attendant_name || '-')}</td><td>${brMoneyCents(purchase.charged_cents)}</td><td><span class="cashback-source-pill ${purchaseCashbackCssClass(purchase)}">${e(purchaseCashbackPercentLabel(purchase))}</span></td><td>${brMoneyCents(purchase.cashback_generated_cents)}</td><td><a href="${pageUrl('mensagens.php#compras-hoje')}">Fila WhatsApp</a></td><td><a href="${pageUrl(`cliente-detalhe.php?id=${num(purchase.client_id)}`)}">Cliente</a></td></tr>`,
     )
     .join('');
   const body = `<section class="grid two"><div class="panel"><h2>Registrar nova compra</h2><form method="post" class="form-grid" data-no-enter-submit>${csrfField(req)}<label><span>Cliente *</span><select name="cliente_id" required><option value="">Selecione</option>${clients
@@ -3244,15 +3989,32 @@ async function renderReport(req: Request): Promise<string> {
   const end = safeDateInput(req.query.end, todayIso());
   const currentAttendantId = await loggedUserAttendantId(req);
   const currentUser = req.session.user;
-  const [clients, purchases, used, expired, attendants, coreUsers] = await Promise.all([
+  const [clients, purchases, used, expired, quickVouchers, attendants, coreUsers] = await Promise.all([
     pgPool.query("SELECT COUNT(*)::int AS count FROM cashback_clients WHERE status = 'ativo'"),
     pgPool.query(
-      `SELECT COUNT(*)::int AS count, COALESCE(SUM(charged_cents), 0)::bigint AS charged, COALESCE(SUM(cashback_generated_cents), 0)::bigint AS generated
+      `SELECT COUNT(*)::int AS count,
+              COALESCE(SUM(charged_cents), 0)::bigint AS charged,
+              COALESCE(SUM(cashback_generated_cents) FILTER (WHERE cashback_generation_mode <> 'voucher_rapido'), 0)::bigint AS common_generated,
+              COALESCE(SUM(cashback_generated_cents) FILTER (WHERE cashback_generation_mode = 'voucher_rapido'), 0)::bigint AS quick_generated
        FROM cashback_purchases WHERE purchased_at::date BETWEEN $1::date AND $2::date`,
       [start, end],
     ),
-    pgPool.query('SELECT COALESCE(SUM(redeemed_cents), 0)::bigint AS used FROM cashback_redemptions WHERE redeemed_at::date BETWEEN $1::date AND $2::date', [start, end]),
+    pgPool.query(
+      `SELECT
+         COALESCE(SUM(r.redeemed_cents) FILTER (WHERE COALESCE(p.cashback_generation_mode, 'automatico') <> 'voucher_rapido'), 0)::bigint AS common_used,
+         COALESCE(SUM(r.redeemed_cents) FILTER (WHERE p.cashback_generation_mode = 'voucher_rapido'), 0)::bigint AS quick_used
+       FROM cashback_redemptions r
+       LEFT JOIN cashback_purchases p ON p.redemption_id = r.id
+       WHERE r.redeemed_at::date BETWEEN $1::date AND $2::date`,
+      [start, end],
+    ),
     pgPool.query("SELECT COALESCE(SUM(remaining_cents), 0)::bigint AS expired FROM cashback_credits WHERE canceled_at IS NULL AND status = 'expirado' AND updated_at::date BETWEEN $1::date AND $2::date", [start, end]),
+    pgPool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'ativo' AND expires_at >= CURRENT_DATE)::int AS active,
+         COALESCE(SUM(cashback_cents) FILTER (WHERE status = 'ativo' AND expires_at >= CURRENT_DATE), 0)::bigint AS available
+       FROM cashback_quick_vouchers`,
+    ),
     pgPool.query(
       `SELECT a.*,
          (SELECT COUNT(*) FROM cashback_clients c WHERE c.attendant_id = a.id)::int AS clients,
@@ -3266,9 +4028,12 @@ async function renderReport(req: Request): Promise<string> {
     activeCashbackCoreUsers(),
   ]);
   const purchaseRow = purchases.rows[0] as DbRow;
-  const generated = num(purchaseRow.generated);
-  const usedCents = num(used.rows[0]?.used);
-  const roi = generated > 0 ? (usedCents / generated) * 100 : 0;
+  const commonGenerated = num(purchaseRow.common_generated);
+  const quickGenerated = num(purchaseRow.quick_generated);
+  const commonUsedCents = num(used.rows[0]?.common_used);
+  const quickUsedCents = num(used.rows[0]?.quick_used);
+  const quickVoucherRow = quickVouchers.rows[0] as DbRow;
+  const roi = commonGenerated > 0 ? (commonUsedCents / commonGenerated) * 100 : 0;
   const coreUsersById = new Map(coreUsers.map((user) => [user.id, user]));
   const attendantRows = (attendants.rows as DbRow[]).filter((attendant) => coreUsersById.has(num(attendant.core_user_id)));
   const linkedCoreUserIds = new Set(attendantRows.map((attendant) => num(attendant.core_user_id)));
@@ -3292,6 +4057,7 @@ async function renderReport(req: Request): Promise<string> {
     ['compras', 'Compras'],
     ['resgates', 'Resgates'],
     ['creditos', 'Creditos de cashback'],
+    ['codigos-rapidos', 'Codigos de cashback rapido'],
     ['whatsapp', 'Todos Whats'],
     ['atendentes', 'Atendentes'],
   ];
@@ -3300,7 +4066,7 @@ async function renderReport(req: Request): Promise<string> {
 <section id="atendentes" class="panel team-manager"><div class="section-title"><div><span class="kicker">Equipe</span><h2>Atendentes do cashback</h2><p>Somente contas ativas da Wimifarma com acesso ao Cashback.</p></div><span class="soft-pill">${attendantRows.length} conta(s) vinculada(s)</span></div>${currentAttendantBanner}<div class="team-layout">${newAttendantForm}<div class="team-list">${attendantCards || '<p class="muted">Nenhuma conta vinculada ao Cashback.</p>'}</div></div></section>
 <section id="usuarios" class="panel section-block report-access-panel"><div class="section-title"><div><span class="kicker">Acessos</span><h2>Usuarios do sistema</h2></div><span class="soft-pill">Centralizado no modulo Usuarios</span></div><p>Os logins individuais agora ficam no Postgres core. Para criar, bloquear, trocar acesso por modulo ou vincular XP, use o modulo Usuarios.</p><a class="btn primary" href="/usuarios/">Abrir Usuarios</a></section>
 <section id="relatorios" class="operation-hero compact-hero report-period-panel"><div><span class="kicker">Exportacao Excel</span><h2>Baixe os dados reais do cashback.</h2><p>Use estes arquivos para conferencia, campanhas externas, backup operacional ou analise fora do sistema.</p></div><form method="get" action="${pageUrl('relatorio.php')}" class="inline-form hero-filter report-period-form"><label><span>De</span><input type="date" name="start" value="${e(start)}"></label><label><span>Ate</span><input type="date" name="end" value="${e(end)}"></label><button class="btn primary" type="submit">Atualizar periodo</button></form></section>
-<section class="metrics report-metrics"><article class="metric highlight"><span>Clientes ativos</span><strong>${e(clients.rows[0]?.count)}</strong></article><article class="metric"><span>Compras no periodo</span><strong>${e(purchaseRow.count)}</strong></article><article class="metric"><span>Total vendido</span><strong>${brMoneyCents(purchaseRow.charged)}</strong></article><article class="metric"><span>Cashback gerado</span><strong>${brMoneyCents(generated)}</strong></article><article class="metric"><span>Cashback usado</span><strong>${brMoneyCents(usedCents)}</strong></article><article class="metric"><span>Cashback expirado</span><strong>${brMoneyCents(expired.rows[0]?.expired)}</strong></article><article class="metric"><span>ROI simples</span><strong>${e(roi.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}%</strong></article></section>
+<section class="metrics report-metrics"><article class="metric highlight"><span>Clientes ativos</span><strong>${e(clients.rows[0]?.count)}</strong></article><article class="metric"><span>Compras no periodo</span><strong>${e(purchaseRow.count)}</strong></article><article class="metric"><span>Total vendido</span><strong>${brMoneyCents(purchaseRow.charged)}</strong></article><article class="metric"><span>Cashback comum gerado</span><strong>${brMoneyCents(commonGenerated)}</strong></article><article class="metric"><span>Cashback comum usado</span><strong>${brMoneyCents(commonUsedCents)}</strong></article><article class="metric"><span>Cashback expirado</span><strong>${brMoneyCents(expired.rows[0]?.expired)}</strong></article><article class="metric"><span>Sucessores rapidos no periodo</span><strong>${brMoneyCents(quickGenerated)}</strong></article><article class="metric"><span>Codigos rapidos usados</span><strong>${brMoneyCents(quickUsedCents)}</strong></article><article class="metric"><span>Codigos rapidos ativos</span><strong>${e(quickVoucherRow.active)}</strong></article><article class="metric"><span>Valor em codigos rapidos</span><strong>${brMoneyCents(quickVoucherRow.available)}</strong></article><article class="metric"><span>ROI comum</span><strong>${e(roi.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}%</strong></article></section>
 <section class="panel report-downloads"><div class="section-title"><div><span class="kicker">Arquivos</span><h2>Baixar relatorios</h2></div><span class="soft-pill">${e(brDate(start))} ate ${e(brDate(end))}</span></div><div class="message-grid report-download-grid">${exports
     .map(([type, label]) => `<article class="message-card report-download-card"><div><span class="download-format">CSV</span><strong>${e(label)}</strong><span>Compativel com Excel</span></div><p>Gerado direto do Postgres oficial.</p><div class="message-actions"><a class="btn primary" href="${pageUrl(`exportar.php?tipo=${type}&start=${start}&end=${end}`)}">Baixar</a></div></article>`)
     .join('')}</div></section></div>`;
@@ -3492,6 +4258,52 @@ async function renderSelfTest(req: Request): Promise<string> {
     await db.query('INSERT INTO cashback_redemption_items (redemption_id, credit_id, used_cents) VALUES ($1, $2, $3)', [redemptionId, creditId, redeemCents]);
     add('Registro de resgate', redemptionId > 0, 'Resgate, item de consumo e atualizacao de credito passaram dentro da mesma transacao.');
 
+    const quickVoucher = await issueQuickVoucher(db, {
+      grossCents: purchaseCents,
+      cashbackCents,
+      percentBps: settings.cashbackPercentBps,
+      attendantId,
+      userId: req.session.user?.id ?? null,
+      requestToken: `autoteste:${suffix}`,
+    });
+    const quickExpiry = await db.query(
+      "SELECT $1::date = (CURRENT_DATE + INTERVAL '1 year')::date AS valid",
+      [quickVoucher.expiresAt],
+    );
+    add(
+      'Cashback rapido: emissao',
+      /^[0-9]{4}$/.test(quickVoucher.code) && quickVoucher.cashbackCents === cashbackCents && Boolean(quickExpiry.rows[0]?.valid),
+      `Codigo ${quickVoucher.code} criado com 4 digitos, ${brMoneyCents(quickVoucher.cashbackCents)} e validade de 1 ano.`,
+    );
+
+    const quickPurchaseCents = Math.ceil(quickVoucher.cashbackCents * settings.redeemMultiplier);
+    const quickRedemption = await redeemQuickVoucherAndCreateSuccessor(db, {
+      code: quickVoucher.code,
+      clientId,
+      attendantId,
+      purchaseCents: quickPurchaseCents,
+      settings,
+      notes: 'Resgate de codigo rapido criado pelo autoteste.',
+      userId: req.session.user?.id ?? null,
+    });
+    const consumedQuickVoucher = await db.query(
+      'SELECT status, redeemed_client_id FROM cashback_quick_vouchers WHERE id = $1',
+      [quickVoucher.id],
+    );
+    add(
+      'Cashback rapido: uso e sucessor',
+      consumedQuickVoucher.rows[0]?.status === 'usado'
+        && num(consumedQuickVoucher.rows[0]?.redeemed_client_id) === clientId
+        && Boolean(quickRedemption.successor)
+        && quickRedemption.successor?.code !== quickVoucher.code,
+      `Codigo consumido uma vez e sucessor ${quickRedemption.successor?.code || '-'} vinculado ao cliente.`,
+    );
+    add(
+      'Cashback rapido: bloqueio de reuso',
+      (await activeQuickVoucher(db, quickVoucher.code)) === null,
+      'O codigo usado deixou imediatamente a lista de codigos ativos.',
+    );
+
     await db.query('ROLLBACK');
     transactionOpen = false;
     add('Rollback seguro', true, 'Nenhum dado do autoteste foi persistido.');
@@ -3510,7 +4322,7 @@ async function renderSelfTest(req: Request): Promise<string> {
   return htmlShell(
     req,
     'Autoteste seguro',
-    `<section class="panel"><h2>Autoteste com rollback</h2><p>Este teste cria cliente, compra, credito e resgate em transacao Postgres e desfaz tudo no final.</p><div class="table-wrap"><table><thead><tr><th>Item</th><th>Status</th><th>Mensagem</th></tr></thead><tbody>${rows}</tbody></table></div></section>`,
+    `<section class="panel"><h2>Autoteste com rollback</h2><p>Este teste cria cliente, compra, credito, resgate e codigo rapido em transacao Postgres e desfaz tudo no final.</p><div class="table-wrap"><table><thead><tr><th>Item</th><th>Status</th><th>Mensagem</th></tr></thead><tbody>${rows}</tbody></table></div></section>`,
   );
 }
 
@@ -3568,6 +4380,30 @@ async function sendExport(req: Request, res: Response): Promise<void> {
             FROM cashback_credits cr INNER JOIN cashback_clients c ON c.id = cr.client_id ORDER BY cr.expires_at ASC, cr.id DESC`,
       params: [],
     },
+    'codigos-rapidos': {
+      filename: 'codigos-cashback-rapido',
+      headers: ['ID', 'Codigo', 'Status', 'Compra origem', 'Cashback', 'Percentual', 'Atendente emissor', 'Cliente vinculado', 'Cliente que usou', 'Codigo anterior', 'Compra sucessora', 'Impressoes solicitadas', 'Ultima impressao solicitada', 'Emitido em', 'Valido ate', 'Usado em'],
+      sql: `SELECT q.id, q.code, q.status,
+                   ROUND(q.gross_cents::numeric / 100, 2) AS gross,
+                   ROUND(q.cashback_cents::numeric / 100, 2) AS cashback,
+                   ROUND(q.cashback_percent_bps::numeric / 100, 2) AS cashback_percent,
+                   COALESCE(a.name, '') AS issued_attendant,
+                   COALESCE(ic.name, '') AS issued_client,
+                   COALESCE(rc.name, '') AS redeemed_client,
+                   q.parent_voucher_id,
+                   q.source_purchase_id,
+                   q.print_requests,
+                   q.last_print_requested_at,
+                   q.issued_at,
+                   q.expires_at,
+                   q.redeemed_at
+              FROM cashback_quick_vouchers q
+              LEFT JOIN cashback_attendants a ON a.id = q.issued_attendant_id
+              LEFT JOIN cashback_clients ic ON ic.id = q.issued_client_id
+              LEFT JOIN cashback_clients rc ON rc.id = q.redeemed_client_id
+             ORDER BY q.issued_at DESC, q.id DESC`,
+      params: [],
+    },
     whatsapp: {
       filename: 'todos-whats',
       headers: ['ID', 'Criado em', 'Campanha', 'Cliente', 'Telefone', 'Status', 'Vencimento/acao', 'Mensagem'],
@@ -3610,6 +4446,7 @@ function exportValue(value: unknown): string {
 async function main(): Promise<void> {
   await ensureSchema();
   await refreshExpiredCredits();
+  await refreshExpiredQuickVouchers();
   app.listen(PORT, () => {
     console.log(`[cashback] listening on ${PORT}${BASE_PATH}`);
   });

@@ -23,7 +23,9 @@ Rotas de smoke test:
 - `/wp-login.php`
 - `/cashback/login.php`
 - `/cashback/health` deve responder JSON 200 quando o servico Cashback e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core`, `storage.provider=postgres`, `legacy.mysqlImport=false`, `legacy.mysqlMirror=false`, `legacy.mysqlLogs=false` e contagens Postgres.
-- `/cashback/autoteste.php` deve exigir sessao/senha sensivel, confirmar que o atendente possui `core_user_id` igual ao usuario logado e executar criacao de cliente/compra/credito/resgate em transacao com rollback, sem deixar dado persistido.
+- `/cashback/autoteste.php` deve exigir sessao/senha sensivel, confirmar que o atendente possui `core_user_id` igual ao usuario logado e executar criacao de cliente/compra/credito/resgate, emissao de voucher rapido de quatro digitos, validade de um ano, uso unico, vinculacao do cliente e geracao de sucessor em transacao com rollback, sem deixar dado persistido.
+- O Balcao do Cashback deve ser conferido em desktop e mobile com `Cashback rapido` acima da consulta, previa de 5%, selecao de atendente, validacao do codigo em `Novo cliente` e `Gastar/Usar Cashback`, e bloqueio visual para codigo invalido, cliente divergente ou compra abaixo da regra 4x. A previa de impressao deve mostrar somente o recibo em 76 mm uteis; no driver da Bematech MP-4200 TH, selecionar papel de 80 mm e confirmar logo, valor, quatro digitos, validade, WhatsApp, endereco, instrucao e atendente sem cortes.
+- O teste de seguranca do voucher rapido deve confirmar limite persistente por usuario tanto no GET de consulta quanto nos POSTs de `Novo cliente` e `Gastar/Usar Cashback`, inclusive com requisicoes concorrentes; a impressao deve terminar logo apos o recibo, sem paginas ou avanco longo em branco.
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/financeiro/health` deve responder JSON 200 quando o servico Financeiro e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core`, `storage.provider=postgres` e flags legadas MySQL desligadas/removidas

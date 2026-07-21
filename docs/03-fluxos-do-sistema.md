@@ -62,6 +62,12 @@ Desde 2026-06-08, `Configuracao e Relatorio` tambem usa uma apresentacao mais mo
 
 Desde 2026-07-21, `Atendentes do cashback` usa `core_users` como fonte de verdade. A tela destaca a conta logada, permite adicionar somente uma conta humana Wimifarma ativa com acesso ao Cashback, exclui o perfil institucional `farmacia` e nao aceita mais nome livre. Cards e seletores operacionais mostram apenas `cashback_attendants` vinculados por `core_user_id`; registros antigos sem vinculo permanecem no Postgres para preservar clientes, compras, resgates, CSV e auditoria.
 
+Desde 2026-07-21, `Cashback rapido` aparece antes da consulta do Balcao. O operador informa o valor gasto e seleciona o usuario que imprime; o servidor recalcula o percentual padrao em centavos, gera um codigo aleatorio textual de quatro digitos e cria um voucher de um ano sem exigir cliente. O recibo usa 76 mm uteis em rolo de 80 mm, logo vetorial em alto contraste, valor, codigo, validade, WhatsApp, endereco, instrucao e atendente. `Imprimir na Bematech` abre o dialogo do navegador e audita somente a solicitacao, pois a aplicacao no VPS nao controla a USB nem confirma a saida do papel.
+
+O campo `Codigo cashback rapido` existe em `Novo cliente` e `Gastar/Usar Cashback`. O backend exige cliente no uso, trava o voucher ativo com `FOR UPDATE`, valida a compra minima pela regra configurada (4x por padrao), registra resgate e compra, marca o codigo como usado e gera o sucessor sobre o valor cobrado depois do desconto na mesma transacao. O primeiro voucher anonimo pode cadastrar o cliente; o sucessor fica vinculado a ele. Voucher rapido nao cria `cashback_credits` de 45 dias nem duplica saldo. Os quatro digitos sao permanentemente unicos para impedir que recibos antigos encontrem vouchers novos, limitando a 10.000 emissoes totais.
+
+Consultas e tentativas de resgate compartilham limites persistentes por usuario, inclusive entre abas e processos. `Configuracao e Relatorio` mostra o passivo de codigos ativos e separa cashback comum gerado/usado dos sucessores e usos de voucher rapido.
+
 Desde 2026-06-11, a compra/resgate do Balcao e o registro simples de compra possuem `Cashback Manual`. Se o campo manual tiver valor maior que zero, o cashback automatico novo da compra fica em zero e o credito gerado usa o valor manual, preservando a regra de uso 4x, o consumo FIFO dos creditos usados e a transacao Postgres. O detalhe do cliente mostra os dias restantes de cada credito e permite excluir do saldo apenas cashback gerado ainda intacto; a exclusao e logica, cancela mensagens pendentes vinculadas ao credito e preserva historico/auditoria.
 
 Arquivos principais:
@@ -82,6 +88,8 @@ Tabelas principais:
 - Postgres `cashback_credits`
 - Postgres `cashback_redemptions`
 - Postgres `cashback_redemption_items`
+- Postgres `cashback_quick_vouchers`
+- Postgres `cashback_quick_voucher_rate_limits`
 - Postgres `cashback_settings`
 - Postgres `cashback_whatsapp_messages`
 - Postgres `cashback_audit_events`
@@ -98,7 +106,7 @@ Regras importantes:
 - cada resgate que usa cashback tenta gerar +500 XP para o usuario logado vinculado em `core_user_xp_links`, usando `xp_sales.source='cashback_redemption'` e `source_entity_id` para nao duplicar; falha do XP nao deve desfazer a compra/resgate;
 - creditos cancelados por devolucao/cancelamento usam `cashback_credits.canceled_at` e devem sair de saldo, fila de expiracao/recompra, mensagens e relatorios de saldo ativo sem apagar o registro historico;
 - `/cashback/health` mostra storage Postgres, auth core e contagens de migracao;
-- `/cashback/autoteste.php` confirma o atendente vinculado ao usuario logado, cria compra/credito/resgate em transacao e desfaz os dados temporarios com rollback;
+- `/cashback/autoteste.php` confirma o atendente vinculado ao usuario logado, cria compra/credito/resgate e tambem emite, usa e substitui um voucher rapido em transacao, desfazendo os dados temporarios com rollback;
 - `atendentes.php` redireciona para `relatorio.php#atendentes`, como no legado.
 
 ## Fluxo Usuarios
