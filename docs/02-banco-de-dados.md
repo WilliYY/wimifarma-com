@@ -93,7 +93,7 @@ Cotacao, Gestao, Pedidos, Tarefa, Codigos, Cashback, XP, Financeiro, Bloco de no
 
 Criadas por `apps/cashback/src/server.ts`:
 
-- `cashback_attendants`: atendentes importados de `wf_atendentes`, com `legacy_mysql_id`.
+- `cashback_attendants`: atendentes importados de `wf_atendentes`, com `legacy_mysql_id`; para uso operacional novo, `core_user_id` deve apontar para uma conta humana ativa de `core_users` com acesso ao Cashback, excluindo o perfil institucional `farmacia`. Linhas legadas sem vinculo continuam preservadas apenas para historico.
 - `cashback_clients`: clientes importados de `wf_clientes`, com telefone, nascimento, status, atendente e `legacy_mysql_id`.
 - `cashback_purchases`: compras do Cashback, com dinheiro em centavos, percentual em basis points, `cashback_generation_mode`, `manual_cashback_cents`, compra vinculada ao cliente/atendente e opcionalmente ao resgate.
 - `cashback_credits`: creditos gerados, saldo restante, validade, status e cancelamento logico por `canceled_at`/`canceled_by`/`canceled_reason` quando um cashback gerado intacto precisa sair do saldo.

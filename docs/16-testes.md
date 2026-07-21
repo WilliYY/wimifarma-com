@@ -23,7 +23,7 @@ Rotas de smoke test:
 - `/wp-login.php`
 - `/cashback/login.php`
 - `/cashback/health` deve responder JSON 200 quando o servico Cashback e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core`, `storage.provider=postgres`, `legacy.mysqlImport=false`, `legacy.mysqlMirror=false`, `legacy.mysqlLogs=false` e contagens Postgres.
-- `/cashback/autoteste.php` deve exigir sessao/senha sensivel e executar criacao de cliente/compra/credito/resgate em transacao com rollback, sem deixar dado persistido.
+- `/cashback/autoteste.php` deve exigir sessao/senha sensivel, confirmar que o atendente possui `core_user_id` igual ao usuario logado e executar criacao de cliente/compra/credito/resgate em transacao com rollback, sem deixar dado persistido.
 - `/cotacao/login.php`
 - `/financeiro/login.php`
 - `/financeiro/health` deve responder JSON 200 quando o servico Financeiro e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core`, `storage.provider=postgres` e flags legadas MySQL desligadas/removidas

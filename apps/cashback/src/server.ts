@@ -87,7 +87,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.0.2';
+const SERVICE_VERSION = '1.0.3';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -984,6 +984,46 @@ async function canAccessModule(user: User, moduleKey: string): Promise<boolean> 
   return explicitCount === 0 ? true : Boolean(row?.can_access);
 }
 
+async function activeCashbackCoreUsers(): Promise<User[]> {
+  const result = await corePgPool.query(
+    `SELECT u.id, u.username, u.display_name, u.role
+      FROM core_users u
+      WHERE u.active = TRUE
+        AND LOWER(COALESCE(u.role, '')) <> 'farmacia'
+        AND (
+          u.username_normalized = 'adm'
+          OR LOWER(u.role) = 'admin'
+          OR NOT EXISTS (
+            SELECT 1
+              FROM core_user_module_permissions permission
+             WHERE permission.user_id = u.id
+          )
+          OR EXISTS (
+            SELECT 1
+              FROM core_user_module_permissions permission
+             WHERE permission.user_id = u.id
+               AND permission.module_key = 'cashback'
+               AND permission.can_access = TRUE
+          )
+        )
+      ORDER BY COALESCE(NULLIF(u.display_name, ''), u.username) ASC, u.username ASC`,
+  );
+  return (result.rows as DbRow[])
+    .map((row) => coreUserFromRow(row))
+    .filter((user): user is User => Boolean(user && user.id > 0));
+}
+
+async function cashbackCoreUserById(userId: number): Promise<User | null> {
+  if (userId <= 0) return null;
+  const result = await corePgPool.query(
+    'SELECT id, username, display_name, role FROM core_users WHERE id = $1 AND active = TRUE LIMIT 1',
+    [userId],
+  );
+  const user = coreUserFromRow(result.rows[0] as DbRow | undefined);
+  if (!user || normalizeUsername(user.role) === 'farmacia' || !(await canAccessModule(user, 'cashback'))) return null;
+  return user;
+}
+
 function regenerateWithUser(req: Request, user: User): Promise<void> {
   const returnTo = req.session.returnTo;
   return new Promise((resolve, reject) => {
@@ -1409,8 +1449,13 @@ async function activeClientExists(clientId: number): Promise<boolean> {
 
 async function normalizeAttendantId(attendantId: number | null): Promise<number | null> {
   if (!attendantId || attendantId <= 0) return null;
-  const result = await pgPool.query("SELECT id FROM cashback_attendants WHERE id = $1 AND status = 'ativo' LIMIT 1", [attendantId]);
+  const result = await pgPool.query(
+    "SELECT id, core_user_id FROM cashback_attendants WHERE id = $1 AND status = 'ativo' AND core_user_id IS NOT NULL LIMIT 1",
+    [attendantId],
+  );
   if ((result.rowCount ?? 0) <= 0) throw new Error('Atendente invalido ou inativo.');
+  const coreUser = await cashbackCoreUserById(num(result.rows[0]?.core_user_id));
+  if (!coreUser) throw new Error('Atendente sem conta Wimifarma ativa ou sem acesso ao Cashback.');
   return attendantId;
 }
 
@@ -1420,26 +1465,39 @@ async function clientOptions(): Promise<DbRow[]> {
 }
 
 async function attendantOptions(): Promise<DbRow[]> {
-  const result = await pgPool.query("SELECT id, name FROM cashback_attendants WHERE status = 'ativo' ORDER BY name ASC");
-  return result.rows as DbRow[];
+  const [result, coreUsers] = await Promise.all([
+    pgPool.query("SELECT id, core_user_id, name FROM cashback_attendants WHERE status = 'ativo' AND core_user_id IS NOT NULL ORDER BY name ASC"),
+    activeCashbackCoreUsers(),
+  ]);
+  const eligibleUsers = new Map(coreUsers.map((user) => [user.id, user]));
+  return (result.rows as DbRow[])
+    .filter((row) => eligibleUsers.has(num(row.core_user_id)))
+    .map((row) => ({ ...row, name: attendantNameForUser(eligibleUsers.get(num(row.core_user_id)) as User) }));
 }
 
 function attendantNameForUser(user: User): string {
   return cleanText(user.displayName || user.username, 160) || cleanText(user.username, 160) || `Usuario ${user.id}`;
 }
 
-async function loggedUserAttendantId(req: Request): Promise<number | null> {
-  const user = req.session.user;
-  if (!user) return null;
+async function ensureAttendantForCoreUser(
+  user: User,
+  notes: string,
+): Promise<{ id: number; result: 'existing' | 'linked' | 'created' }> {
   const attendantName = attendantNameForUser(user);
   const existingByCore = await pgPool.query('SELECT id, name, status FROM cashback_attendants WHERE core_user_id = $1 LIMIT 1', [user.id]);
   const coreRow = existingByCore.rows[0] as DbRow | undefined;
   if (coreRow) {
     const id = num(coreRow.id);
-    if (String(coreRow.status || '') !== 'ativo' || String(coreRow.name || '') !== attendantName) {
-      await pgPool.query("UPDATE cashback_attendants SET name = $1, status = 'ativo', updated_at = NOW() WHERE id = $2", [attendantName, id]);
-    }
-    return id;
+    await pgPool.query(
+      `UPDATE cashback_attendants
+          SET name = $1,
+              status = 'ativo',
+              notes = CASE WHEN $2 <> '' THEN $2 ELSE notes END,
+              updated_at = NOW()
+        WHERE id = $3`,
+      [attendantName, notes, id],
+    );
+    return { id, result: 'existing' };
   }
 
   const existingByName = await pgPool.query(
@@ -1449,24 +1507,42 @@ async function loggedUserAttendantId(req: Request): Promise<number | null> {
   const nameRow = existingByName.rows[0] as DbRow | undefined;
   if (nameRow && !nameRow.core_user_id) {
     const id = num(nameRow.id);
-    await pgPool.query("UPDATE cashback_attendants SET core_user_id = $1, status = 'ativo', updated_at = NOW() WHERE id = $2", [user.id, id]);
-    return id;
+    await pgPool.query(
+      `UPDATE cashback_attendants
+          SET core_user_id = $1,
+              name = $2,
+              status = 'ativo',
+              notes = CASE WHEN $3 <> '' THEN $3 ELSE notes END,
+              updated_at = NOW()
+        WHERE id = $4`,
+      [user.id, attendantName, notes, id],
+    );
+    return { id, result: 'linked' };
   }
 
   try {
     const inserted = await pgPool.query(
       "INSERT INTO cashback_attendants (core_user_id, name, status, notes) VALUES ($1, $2, 'ativo', $3) RETURNING id",
-      [user.id, attendantName, `Criado automaticamente a partir do login ${user.username}.`],
+      [user.id, attendantName, notes || `Criado automaticamente a partir do login ${user.username}.`],
     );
     const id = num(inserted.rows[0]?.id);
     await pgPool.query('UPDATE cashback_attendants SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [id]);
-    return id;
+    return { id, result: 'created' };
   } catch (error) {
     const retry = await pgPool.query('SELECT id FROM cashback_attendants WHERE core_user_id = $1 LIMIT 1', [user.id]);
     const retryId = num(retry.rows[0]?.id);
-    if (retryId > 0) return retryId;
+    if (retryId > 0) return { id: retryId, result: 'existing' };
     throw error;
   }
+}
+
+async function loggedUserAttendantId(req: Request): Promise<number | null> {
+  const user = req.session.user;
+  if (!user) return null;
+  const coreUser = await cashbackCoreUserById(user.id);
+  if (!coreUser) return null;
+  req.session.user = coreUser;
+  return (await ensureAttendantForCoreUser(coreUser, '')).id;
 }
 
 async function requireLoggedAttendantId(req: Request): Promise<number> {
@@ -3166,7 +3242,9 @@ async function handleWhatsappStatus(req: Request, res: Response): Promise<void> 
 async function renderReport(req: Request): Promise<string> {
   const start = safeDateInput(req.query.start, todayIso().slice(0, 8) + '01');
   const end = safeDateInput(req.query.end, todayIso());
-  const [clients, purchases, used, expired, attendants] = await Promise.all([
+  const currentAttendantId = await loggedUserAttendantId(req);
+  const currentUser = req.session.user;
+  const [clients, purchases, used, expired, attendants, coreUsers] = await Promise.all([
     pgPool.query("SELECT COUNT(*)::int AS count FROM cashback_clients WHERE status = 'ativo'"),
     pgPool.query(
       `SELECT COUNT(*)::int AS count, COALESCE(SUM(charged_cents), 0)::bigint AS charged, COALESCE(SUM(cashback_generated_cents), 0)::bigint AS generated
@@ -3182,18 +3260,33 @@ async function renderReport(req: Request): Promise<string> {
          COALESCE((SELECT SUM(p.charged_cents) FROM cashback_purchases p WHERE p.attendant_id = a.id), 0)::bigint AS charged,
          COALESCE((SELECT SUM(p.cashback_generated_cents) FROM cashback_purchases p WHERE p.attendant_id = a.id), 0)::bigint AS cashback
        FROM cashback_attendants a
+       WHERE a.core_user_id IS NOT NULL
        ORDER BY CASE WHEN a.status = 'ativo' THEN 0 ELSE 1 END, a.name ASC`,
     ),
+    activeCashbackCoreUsers(),
   ]);
   const purchaseRow = purchases.rows[0] as DbRow;
   const generated = num(purchaseRow.generated);
   const usedCents = num(used.rows[0]?.used);
   const roi = generated > 0 ? (usedCents / generated) * 100 : 0;
-  const attendantCards = (attendants.rows as DbRow[])
+  const coreUsersById = new Map(coreUsers.map((user) => [user.id, user]));
+  const attendantRows = (attendants.rows as DbRow[]).filter((attendant) => coreUsersById.has(num(attendant.core_user_id)));
+  const linkedCoreUserIds = new Set(attendantRows.map((attendant) => num(attendant.core_user_id)));
+  const availableCoreUsers = coreUsers.filter((user) => !linkedCoreUserIds.has(user.id));
+  const attendantCards = attendantRows
     .map(
-      (attendant: DbRow) => `<article class="attendant-card attendant-card-${e(cssToken(attendant.status))}"><form method="post" action="${pageUrl('relatorio.php#atendentes')}" class="attendant-edit-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="id" value="${e(attendant.id)}"><div class="attendant-card-top"><span>#${e(attendant.id)}</span><span>${e(attendant.status === 'ativo' ? 'Ativo' : 'Inativo')}</span></div><div class="attendant-card-head"><label><span>Nome</span><input type="text" name="nome" value="${e(attendant.name)}" required></label><label><span>Status</span><select name="status"><option value="ativo" ${attendant.status === 'ativo' ? 'selected' : ''}>Ativo</option><option value="inativo" ${attendant.status === 'inativo' ? 'selected' : ''}>Inativo</option></select></label></div><dl><div><dt>Clientes</dt><dd>${e(attendant.clients)}</dd></div><div><dt>Compras</dt><dd>${e(attendant.purchases)}</dd></div><div><dt>Vendido</dt><dd>${brMoneyCents(attendant.charged)}</dd></div><div><dt>Cashback</dt><dd>${brMoneyCents(attendant.cashback)}</dd></div></dl><label class="attendant-notes"><span>Observacoes</span><textarea name="observacoes" rows="2" placeholder="Opcional">${e(attendant.notes)}</textarea></label><div class="attendant-actions"><button class="btn primary" type="submit" name="action" value="update_attendant">Alterar</button><button class="btn danger" type="submit" name="action" value="delete_attendant" data-confirm-submit="Confirma excluir ou inativar este atendente?">Excluir</button></div></form></article>`,
+      (attendant: DbRow) => {
+        const coreUser = coreUsersById.get(num(attendant.core_user_id)) as User;
+        const isCurrent = num(attendant.id) === currentAttendantId;
+        return `<article class="attendant-card attendant-card-${e(cssToken(attendant.status))}${isCurrent ? ' attendant-card-current' : ''}"><form method="post" action="${pageUrl('relatorio.php#atendentes')}" class="attendant-edit-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="id" value="${e(attendant.id)}"><div class="attendant-card-top"><span>#${e(attendant.id)}</span><div class="attendant-card-badges">${isCurrent ? '<span class="current-user-badge">Voce esta logado</span>' : ''}<span>${e(attendant.status === 'ativo' ? 'Ativo' : 'Inativo')}</span></div></div><div class="attendant-card-head"><div class="attendant-account"><span>Conta Wimifarma</span><strong>${e(attendantNameForUser(coreUser))}</strong><small>@${e(coreUser.username)}</small></div><label><span>Status no Cashback</span><select name="status" ${isCurrent ? 'disabled aria-label="Ativo enquanto esta conta estiver logada"' : ''}><option value="ativo" ${attendant.status === 'ativo' ? 'selected' : ''}>Ativo</option><option value="inativo" ${attendant.status === 'inativo' ? 'selected' : ''}>Inativo</option></select>${isCurrent ? '<input type="hidden" name="status" value="ativo">' : ''}</label></div><dl><div><dt>Clientes</dt><dd>${e(attendant.clients)}</dd></div><div><dt>Compras</dt><dd>${e(attendant.purchases)}</dd></div><div><dt>Vendido</dt><dd>${brMoneyCents(attendant.charged)}</dd></div><div><dt>Cashback</dt><dd>${brMoneyCents(attendant.cashback)}</dd></div></dl><label class="attendant-notes"><span>Observacoes</span><textarea name="observacoes" rows="2" placeholder="Opcional">${e(attendant.notes)}</textarea></label><div class="attendant-actions"><button class="btn primary" type="submit" name="action" value="update_attendant">Salvar</button>${isCurrent ? '<span class="current-user-lock">Conta em uso agora</span>' : '<button class="btn danger" type="submit" name="action" value="delete_attendant" data-confirm-submit="Remover este usuario do Cashback? O historico sera preservado.">Remover do Cashback</button>'}</div></form></article>`;
+      },
     )
     .join('');
+  const currentUserName = currentUser ? attendantNameForUser(currentUser) : 'Usuario nao identificado';
+  const currentAttendantBanner = `<div class="current-attendant-banner"><div><span class="kicker">Conta em uso</span><strong>${e(currentUserName)}</strong><small>@${e(currentUser?.username || '')} · Atendente #${e(currentAttendantId || '-')}</small></div><span class="current-session-pill">Logado agora</span></div>`;
+  const newAttendantForm = availableCoreUsers.length > 0
+    ? `<form method="post" action="${pageUrl('relatorio.php#atendentes')}" class="form-grid team-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="action" value="save_attendant"><h3>Adicionar conta</h3><label><span>Usuario Wimifarma *</span><select name="core_user_id" required><option value="">Selecione uma conta</option>${availableCoreUsers.map((user) => `<option value="${e(user.id)}">${e(attendantNameForUser(user))} (@${e(user.username)})</option>`).join('')}</select></label><label><span>Observacoes</span><textarea name="observacoes" rows="3" placeholder="Opcional"></textarea></label><button class="btn primary" type="submit">Adicionar ao Cashback</button><a class="btn" href="/usuarios/">Gerenciar contas</a></form>`
+    : `<div class="team-form team-form-empty"><span class="kicker">Equipe vinculada</span><h3>Todas as contas elegiveis ja estao no Cashback.</h3><a class="btn primary" href="/usuarios/">Abrir Usuarios</a></div>`;
   const exports = [
     ['clientes', 'Clientes'],
     ['compras', 'Compras'],
@@ -3204,7 +3297,7 @@ async function renderReport(req: Request): Promise<string> {
   ];
   const body = `<div class="report-page"><nav class="anchor-bar report-nav" aria-label="Atalhos da configuracao"><a href="#sistema">Sistema</a><a href="#atendentes">Atendentes</a><a href="#usuarios">Usuarios</a><a href="#relatorios">Relatorios</a></nav>
 <section id="sistema" class="panel maintenance-control"><div><span class="kicker">Controle do sistema</span><h2>Modo manutencao</h2><p>Use quando precisar mexer no sistema sem deixar atendentes usando as telas.</p></div><form method="post" class="maintenance-control-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="action" value="enable_maintenance"><button class="btn primary" type="submit">Colocar site em manutencao</button><span class="soft-pill">Retirada por usuario logado</span></form></section>
-<section id="atendentes" class="panel team-manager"><div class="section-title"><div><span class="kicker">Equipe</span><h2>Atendentes do cashback</h2></div><span class="soft-pill">${attendants.rows.length} cadastrado(s)</span></div><div class="team-layout"><form method="post" action="${pageUrl('relatorio.php#atendentes')}" class="form-grid team-form" data-no-enter-submit>${csrfField(req)}<input type="hidden" name="action" value="save_attendant"><h3>Novo atendente</h3><label><span>Nome *</span><input type="text" name="nome" required placeholder="Nome da equipe"></label><label><span>Status</span><select name="status"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select></label><label><span>Observacoes</span><textarea name="observacoes" rows="3" placeholder="Opcional"></textarea></label><button class="btn primary" type="submit">Cadastrar atendente</button><p class="muted">Depois de cadastrar, o nome aparece no cadastro de cliente e na Compra Cashback.</p></form><div class="team-list">${attendantCards || '<p class="muted">Nenhum atendente cadastrado ainda.</p>'}</div></div></section>
+<section id="atendentes" class="panel team-manager"><div class="section-title"><div><span class="kicker">Equipe</span><h2>Atendentes do cashback</h2><p>Somente contas ativas da Wimifarma com acesso ao Cashback.</p></div><span class="soft-pill">${attendantRows.length} conta(s) vinculada(s)</span></div>${currentAttendantBanner}<div class="team-layout">${newAttendantForm}<div class="team-list">${attendantCards || '<p class="muted">Nenhuma conta vinculada ao Cashback.</p>'}</div></div></section>
 <section id="usuarios" class="panel section-block report-access-panel"><div class="section-title"><div><span class="kicker">Acessos</span><h2>Usuarios do sistema</h2></div><span class="soft-pill">Centralizado no modulo Usuarios</span></div><p>Os logins individuais agora ficam no Postgres core. Para criar, bloquear, trocar acesso por modulo ou vincular XP, use o modulo Usuarios.</p><a class="btn primary" href="/usuarios/">Abrir Usuarios</a></section>
 <section id="relatorios" class="operation-hero compact-hero report-period-panel"><div><span class="kicker">Exportacao Excel</span><h2>Baixe os dados reais do cashback.</h2><p>Use estes arquivos para conferencia, campanhas externas, backup operacional ou analise fora do sistema.</p></div><form method="get" action="${pageUrl('relatorio.php')}" class="inline-form hero-filter report-period-form"><label><span>De</span><input type="date" name="start" value="${e(start)}"></label><label><span>Ate</span><input type="date" name="end" value="${e(end)}"></label><button class="btn primary" type="submit">Atualizar periodo</button></form></section>
 <section class="metrics report-metrics"><article class="metric highlight"><span>Clientes ativos</span><strong>${e(clients.rows[0]?.count)}</strong></article><article class="metric"><span>Compras no periodo</span><strong>${e(purchaseRow.count)}</strong></article><article class="metric"><span>Total vendido</span><strong>${brMoneyCents(purchaseRow.charged)}</strong></article><article class="metric"><span>Cashback gerado</span><strong>${brMoneyCents(generated)}</strong></article><article class="metric"><span>Cashback usado</span><strong>${brMoneyCents(usedCents)}</strong></article><article class="metric"><span>Cashback expirado</span><strong>${brMoneyCents(expired.rows[0]?.expired)}</strong></article><article class="metric"><span>ROI simples</span><strong>${e(roi.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}%</strong></article></section>
@@ -3223,33 +3316,60 @@ async function handleReportPost(req: Request, res: Response): Promise<void> {
     res.redirect(`${BASE_PATH}/manutencao.php`);
     return;
   }
-  if (action === 'save_attendant' || action === 'update_attendant') {
-    const id = num(req.body?.id);
-    const name = cleanText(req.body?.nome, 160);
-    const status = String(req.body?.status) === 'inativo' ? 'inativo' : 'ativo';
+  if (action === 'save_attendant') {
+    const coreUserId = num(req.body?.core_user_id);
     const notes = cleanText(req.body?.observacoes, 5000);
-    if (!name) {
-      setFlash(req, 'error', 'Informe o nome do atendente.');
+    const coreUser = await cashbackCoreUserById(coreUserId);
+    if (!coreUser) {
+      setFlash(req, 'error', 'Selecione uma conta Wimifarma ativa com acesso ao Cashback.');
       res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
       return;
     }
-    let attendantId = id;
-    if (action === 'save_attendant') {
-      const inserted = await pgPool.query('INSERT INTO cashback_attendants (name, status, notes) VALUES ($1, $2, $3) RETURNING id', [name, status, notes || null]);
-      attendantId = num(inserted.rows[0]?.id);
-      await pgPool.query('UPDATE cashback_attendants SET legacy_mysql_id = COALESCE(legacy_mysql_id, id) WHERE id = $1', [attendantId]);
-      await logAction(req, 'atendente_criado', 'atendente', attendantId, `Atendente criado em Configuracao e Relatorio: ${name}`);
-      setFlash(req, 'success', `Atendente cadastrado: ${name}.`);
-    } else {
-      await pgPool.query('UPDATE cashback_attendants SET name = $1, status = $2, notes = $3, updated_at = NOW() WHERE id = $4', [name, status, notes || null, attendantId]);
-      await logAction(req, 'atendente_alterado', 'atendente', attendantId, `Atendente alterado em Configuracao e Relatorio: ${name}`);
-      setFlash(req, 'success', `Atendente atualizado: ${name}.`);
+    const linked = await ensureAttendantForCoreUser(coreUser, notes);
+    const name = attendantNameForUser(coreUser);
+    await logAction(req, 'atendente_vinculado', 'atendente', linked.id, `Conta Wimifarma vinculada ao Cashback: ${name} (@${coreUser.username}).`);
+    setFlash(req, 'success', linked.result === 'existing' ? `${name} ja estava vinculado e foi reativado.` : `${name} foi adicionado ao Cashback.`);
+    res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
+    return;
+  }
+  if (action === 'update_attendant') {
+    const id = num(req.body?.id);
+    const status = String(req.body?.status) === 'inativo' ? 'inativo' : 'ativo';
+    const notes = cleanText(req.body?.observacoes, 5000);
+    const attendantResult = await pgPool.query('SELECT id, core_user_id FROM cashback_attendants WHERE id = $1 AND core_user_id IS NOT NULL LIMIT 1', [id]);
+    const attendant = attendantResult.rows[0] as DbRow | undefined;
+    const coreUser = await cashbackCoreUserById(num(attendant?.core_user_id));
+    if (!attendant || !coreUser) {
+      setFlash(req, 'error', 'Atendente sem conta Wimifarma ativa ou sem acesso ao Cashback.');
+      res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
+      return;
     }
+    if (coreUser.id === req.session.user?.id && status === 'inativo') {
+      setFlash(req, 'error', 'O usuario logado precisa continuar ativo enquanto estiver usando o Cashback.');
+      res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
+      return;
+    }
+    const name = attendantNameForUser(coreUser);
+    await pgPool.query('UPDATE cashback_attendants SET name = $1, status = $2, notes = $3, updated_at = NOW() WHERE id = $4', [name, status, notes || null, id]);
+    await logAction(req, 'atendente_alterado', 'atendente', id, `Atendente vinculado atualizado no Cashback: ${name} (@${coreUser.username}).`);
+    setFlash(req, 'success', `Atendente atualizado: ${name}.`);
     res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
     return;
   }
   if (action === 'delete_attendant') {
     const id = num(req.body?.id);
+    const attendantResult = await pgPool.query('SELECT id, core_user_id FROM cashback_attendants WHERE id = $1 AND core_user_id IS NOT NULL LIMIT 1', [id]);
+    const attendant = attendantResult.rows[0] as DbRow | undefined;
+    if (!attendant) {
+      setFlash(req, 'error', 'Atendente sem conta Wimifarma vinculada.');
+      res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
+      return;
+    }
+    if (num(attendant.core_user_id) === req.session.user?.id) {
+      setFlash(req, 'error', 'O usuario logado nao pode remover a propria conta do Cashback.');
+      res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
+      return;
+    }
     const usage = await pgPool.query(
       `SELECT
         (SELECT COUNT(*) FROM cashback_clients WHERE attendant_id = $1) +
@@ -3260,11 +3380,11 @@ async function handleReportPost(req: Request, res: Response): Promise<void> {
     if (num(usage.rows[0]?.total) > 0) {
       await pgPool.query("UPDATE cashback_attendants SET status = 'inativo', updated_at = NOW() WHERE id = $1", [id]);
       await logAction(req, 'atendente_inativado', 'atendente', id, 'Atendente inativado porque possui historico vinculado.');
-      setFlash(req, 'success', 'Atendente possui historico e foi inativado para preservar os dados.');
+      setFlash(req, 'success', 'Usuario removido da operacao. O historico foi preservado.');
     } else {
       await pgPool.query('DELETE FROM cashback_attendants WHERE id = $1', [id]);
       await logAction(req, 'atendente_excluido', 'atendente', id, 'Atendente excluido sem historico vinculado.');
-      setFlash(req, 'success', 'Atendente excluido.');
+      setFlash(req, 'success', 'Usuario removido do Cashback.');
     }
     res.redirect(`${BASE_PATH}/relatorio.php#atendentes`);
     return;
@@ -3313,15 +3433,14 @@ async function renderSelfTest(req: Request): Promise<string> {
   try {
     const settings = await loadSettings();
     const suffix = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+    const attendantId = await requireLoggedAttendantId(req);
+    const attendant = await db.query(
+      'SELECT id, core_user_id FROM cashback_attendants WHERE id = $1 AND core_user_id = $2 LIMIT 1',
+      [attendantId, req.session.user?.id ?? null],
+    );
+    add('Atendente vinculado', (attendant.rowCount ?? 0) > 0, 'Usuario logado confirmado como atendente por core_user_id.');
     await db.query('BEGIN');
     transactionOpen = true;
-
-    const attendant = await db.query(
-      "INSERT INTO cashback_attendants (name, status, notes) VALUES ($1, 'ativo', $2) RETURNING id",
-      [`Teste Automatico ${suffix}`, 'Criado pelo autoteste com rollback.'],
-    );
-    const attendantId = num(attendant.rows[0]?.id);
-    add('Cadastro de atendente', attendantId > 0, 'INSERT em cashback_attendants executado dentro de transacao.');
 
     const client = await db.query(
       "INSERT INTO cashback_clients (name, phone, birth_date, notes, status, attendant_id) VALUES ($1, $2, $3, $4, 'ativo', $5) RETURNING id",

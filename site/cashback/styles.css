@@ -707,8 +707,60 @@ th {
     margin-bottom: 12px;
 }
 
+.report-page .team-manager .section-title p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: .86rem;
+}
+
+.current-attendant-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0 -18px 14px;
+    padding: 12px 18px;
+    border-block: 1px solid rgba(21, 132, 99, 0.2);
+    background: rgba(226, 248, 240, 0.58);
+}
+
+.current-attendant-banner > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.current-attendant-banner strong {
+    color: #075f48;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+.current-attendant-banner small {
+    color: #40675c;
+    font-weight: 700;
+}
+
+.current-session-pill,
+.current-user-badge,
+.current-user-lock {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    padding: 4px 9px;
+    border: 1px solid rgba(21, 132, 99, 0.24);
+    border-radius: 999px;
+    background: #e2f8f0;
+    color: #075f48;
+    font-size: .72rem;
+    font-weight: 900;
+    line-height: 1.15;
+    text-align: center;
+}
+
 .report-page .team-layout {
-    grid-template-columns: minmax(190px, 0.3fr) minmax(0, 1.7fr);
+    grid-template-columns: minmax(235px, 0.42fr) minmax(0, 1.58fr);
     gap: 12px;
 }
 
@@ -728,6 +780,11 @@ th {
     margin: 0;
     color: var(--red-800);
     font-size: 1rem;
+}
+
+.report-page .team-form-empty {
+    display: grid;
+    align-content: start;
 }
 
 .report-page .team-form input,
@@ -794,6 +851,13 @@ th {
     opacity: .9;
 }
 
+.report-page .attendant-card-current {
+    border-color: rgba(21, 132, 99, 0.42);
+    border-left-color: #158463;
+    background: #fbfffd;
+    box-shadow: 0 12px 26px rgba(7, 95, 72, 0.1);
+}
+
 .report-page .attendant-card-top {
     display: flex;
     justify-content: space-between;
@@ -816,6 +880,19 @@ th {
     box-shadow: inset 0 0 0 1px rgba(181, 37, 67, 0.12);
 }
 
+.report-page .attendant-card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+}
+
+.report-page .attendant-card-top .current-user-badge {
+    border-color: rgba(21, 132, 99, 0.24);
+    background: #e2f8f0;
+    color: #075f48;
+}
+
 .report-page .attendant-edit-form {
     gap: 7px;
 }
@@ -823,6 +900,51 @@ th {
 .report-page .attendant-card-head {
     grid-template-columns: minmax(0, 1fr) minmax(94px, 112px);
     gap: 8px;
+}
+
+.report-page .attendant-account {
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    min-width: 0;
+    min-height: 48px;
+    padding: 7px 9px;
+    border: 1px solid rgba(239, 211, 218, 0.8);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.report-page .attendant-account > span {
+    color: #7a5560;
+    font-size: .6rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.report-page .attendant-account strong {
+    color: var(--red-800);
+    font-size: .88rem;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+}
+
+.report-page .attendant-account small {
+    color: var(--muted);
+    font-size: .7rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.report-page .attendant-card-current .attendant-account {
+    border-color: rgba(21, 132, 99, 0.24);
+    background: rgba(226, 248, 240, 0.42);
+}
+
+.report-page .attendant-card select:disabled {
+    cursor: not-allowed;
+    opacity: 1;
+    background: #eef8f4;
+    color: #075f48;
 }
 
 .report-page .attendant-card dl {
@@ -869,6 +991,10 @@ th {
     justify-content: flex-end;
     gap: 6px;
     padding-top: 2px;
+}
+
+.report-page .current-user-lock {
+    margin-right: auto;
 }
 
 .report-page .attendant-actions .btn,
@@ -3828,6 +3954,15 @@ body.sections-ready .workspace-section.is-active {
 
     .report-page .team-form {
         position: static;
+    }
+
+    .current-attendant-banner {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .current-session-pill {
+        align-self: stretch;
     }
 
     .report-page .team-list {
