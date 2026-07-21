@@ -650,6 +650,7 @@ services:
       - ./site/cashback/login-runner.js:/app/public/login-runner.js:ro
       - ./site/cashback/logo-wimifarma.svg:/app/public/logo-wimifarma.svg:ro
       - ./site/cashback/logo-wimifarma.png:/app/public/logo-wimifarma.png:ro
+      - ./site/cashback/logo-wimifarma-receipt.png:/app/public/logo-wimifarma-receipt.png:ro
       - ./site/cashback/favicon.png:/app/public/favicon.png:ro
       - ./site/cashback/apple-touch-icon.png:/app/public/apple-touch-icon.png:ro
       - ./site/cashback/site-icon-512.png:/app/public/site-icon-512.png:ro
