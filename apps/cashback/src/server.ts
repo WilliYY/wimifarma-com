@@ -107,7 +107,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.1.4';
+const SERVICE_VERSION = '1.1.5';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -1438,6 +1438,13 @@ async function ensureSchema(): Promise<void> {
     ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS print_requests INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS last_print_requested_at TIMESTAMPTZ;
     ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS last_print_requested_by BIGINT;
+    UPDATE cashback_quick_vouchers
+       SET expires_at = ((issued_at AT TIME ZONE 'America/Sao_Paulo')::date
+                         + make_interval(months => ${CASHBACK_VALIDITY_MONTHS}))::date,
+           updated_at = NOW()
+     WHERE status = 'ativo'
+       AND expires_at IS DISTINCT FROM ((issued_at AT TIME ZONE 'America/Sao_Paulo')::date
+                                        + make_interval(months => ${CASHBACK_VALIDITY_MONTHS}))::date;
     DROP INDEX IF EXISTS idx_cashback_quick_vouchers_active_code;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_code
       ON cashback_quick_vouchers(code);
@@ -1756,7 +1763,7 @@ async function issueQuickVoucher(
          issued_attendant_id, issued_by, issued_client_id, parent_voucher_id,
          source_purchase_id, expires_at)
        VALUES ($1, $2, $3, $4, $5, 'ativo', $6, $7, $8, $9, $10,
-               (CURRENT_DATE + ($11::text || ' months')::interval)::date)
+               ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date + make_interval(months => $11::int))::date)
        RETURNING id, code, gross_cents, cashback_cents, expires_at`,
     [
       code,
@@ -1786,7 +1793,10 @@ async function quickVoucherReceipt(voucherId: number): Promise<DbRow | null> {
   if (voucherId <= 0) return null;
   await refreshExpiredQuickVouchers();
   const result = await pgPool.query(
-    `SELECT q.*, a.name AS attendant_name
+    `SELECT q.*,
+            a.name AS attendant_name,
+            TO_CHAR(q.expires_at, 'DD/MM/YYYY') AS receipt_expires_at,
+            TO_CHAR(q.issued_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS receipt_issued_at
        FROM cashback_quick_vouchers q
        LEFT JOIN cashback_attendants a ON a.id = q.issued_attendant_id
       WHERE q.id = $1
@@ -3021,7 +3031,12 @@ async function saveWhatsappMessage(input: {
 
 function renderQuickVoucherReceipt(voucher: DbRow | null): string {
   if (!voucher) return '';
-  const active = String(voucher.status || '') === 'ativo' && isoDate(voucher.expires_at) >= todayIso();
+  const expiresAt = isoDate(voucher.expires_at)
+    || dateMonthsFromDate(voucher.issued_at || voucher.created_at, CASHBACK_VALIDITY_MONTHS);
+  const expiresAtText = cleanText(voucher.receipt_expires_at, 20) || brDate(expiresAt);
+  const issuedAtText = cleanText(voucher.receipt_issued_at, 30)
+    || brDate(voucher.issued_at || voucher.created_at, true);
+  const active = String(voucher.status || '') === 'ativo' && expiresAt >= todayIso();
   return `<div class="quick-voucher-result ${active ? 'is-active' : 'is-inactive'}">
     <div class="quick-voucher-result-copy no-print">
       <span class="kicker">Cupom pronto</span>
@@ -3034,9 +3049,9 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
       <span class="receipt-label">Voce ganhou</span>
       <strong class="receipt-value">${brMoneyCents(voucher.cashback_cents)}</strong>
       <div class="receipt-code"><span>Codigo</span><strong>${e(voucher.code)}</strong></div>
-      <p class="receipt-validity">Valido ate <strong>${e(brDate(voucher.expires_at))}</strong></p>
+      <p class="receipt-validity">Valido ate <strong>${e(expiresAtText)}</strong></p>
       <div class="receipt-contact"><strong>WhatsApp (44) 98413-4971</strong><span>Av. Minas Gerais, 2263</span></div>
-      <small>Emitido por ${e(voucher.attendant_name || 'Wimifarma')} em ${e(brDate(voucher.issued_at, true))}</small>
+      <small>Emitido por ${e(voucher.attendant_name || 'Wimifarma')} em ${e(issuedAtText)}</small>
     </article>
     <div class="quick-voucher-result-actions no-print">
       ${active ? `<button type="button" class="btn primary" data-print-quick-voucher data-voucher-id="${e(voucher.id)}">Imprimir na Bematech</button>` : ''}
@@ -4415,7 +4430,7 @@ async function renderSelfTest(req: Request): Promise<string> {
       requestToken: `autoteste:${suffix}`,
     });
     const quickExpiry = await db.query(
-      "SELECT $1::date = (CURRENT_DATE + ($2::text || ' months')::interval)::date AS valid",
+      "SELECT $1::date = ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date + make_interval(months => $2::int))::date AS valid",
       [quickVoucher.expiresAt, CASHBACK_VALIDITY_MONTHS],
     );
     add(
