@@ -750,6 +750,10 @@
     }
 
     function bindLiveClientSearch() {
+        function termIsReady(term) {
+            return term.length >= 2 || /^#?\d+$/.test(term);
+        }
+
         document.querySelectorAll('[data-live-client-search]').forEach(function (input) {
             var resultsSelector = input.getAttribute('data-results');
             var results = resultsSelector ? document.querySelector(resultsSelector) : null;
@@ -784,7 +788,7 @@
                         '<article class="live-client-card">',
                         '<div>',
                         '<strong>', escapeHtml(client.nome), '</strong>',
-                        '<span>#', escapeHtml(client.id), ' | ', escapeHtml(client.telefone), ' | ', escapeHtml(client.atendente), '</span>',
+                        '<span>Codigo #', escapeHtml(client.id), ' | ', escapeHtml(client.telefone), ' | ', escapeHtml(client.atendente), '</span>',
                         '<small>Ultima compra: ', escapeHtml(client.ultima_compra), ' | ', escapeHtml(client.ultima_compra_valor), '</small>',
                         '<small>Validade: ', escapeHtml(client.validade_resumo || 'Sem vencimentos ativos'), '</small>',
                         '</div>',
@@ -807,7 +811,7 @@
 
                 clearTimeout(timer);
 
-                if (term.length < 2) {
+                if (!termIsReady(term)) {
                     hideResults();
                     return;
                 }
@@ -850,6 +854,10 @@
     }
 
     function bindClientPickers() {
+        function termIsReady(term) {
+            return term.length >= 2 || /^#?\d+$/.test(term);
+        }
+
         document.querySelectorAll('[data-client-picker]').forEach(function (input) {
             var results = document.querySelector(input.getAttribute('data-results') || '');
             var target = document.querySelector(input.getAttribute('data-target') || '');
@@ -876,11 +884,11 @@
                 var balance = Number(client.saldo_disponivel_raw || 0);
 
                 target.value = client.id;
-                input.value = client.nome + ' - ' + client.telefone;
+                input.value = 'Codigo #' + client.id + ' - ' + client.nome + ' - ' + client.telefone;
 
                 if (selected) {
                     selected.dataset.balance = String(balance);
-                    selected.innerHTML = 'Selecionado: <strong>' + escapeHtml(client.nome) + '</strong> | ' + escapeHtml(client.telefone) + ' | Saldo disponivel <strong>' + escapeHtml(client.saldo_disponivel) + '</strong><br><span class="selected-client-expiry">Validade: ' + escapeHtml(client.validade_resumo || 'Sem vencimentos ativos') + '</span>';
+                    selected.innerHTML = 'Codigo <strong>#' + escapeHtml(client.id) + '</strong> | <strong>' + escapeHtml(client.nome) + '</strong> | ' + escapeHtml(client.telefone) + ' | Saldo disponivel <strong>' + escapeHtml(client.saldo_disponivel) + '</strong><br><span class="selected-client-expiry">Validade: ' + escapeHtml(client.validade_resumo || 'Sem vencimentos ativos') + '</span>';
                 }
 
                 if (form && form.hasAttribute('data-redeem-form')) {
@@ -903,7 +911,7 @@
                 results.innerHTML = clientes.map(function (client, index) {
                     return [
                         '<button type="button" class="client-picker-option" data-index="', index, '">',
-                        '<span><strong>', escapeHtml(client.nome), '</strong><small>#', escapeHtml(client.id), ' | ', escapeHtml(client.telefone), ' | Ultima compra: ', escapeHtml(client.ultima_compra), '</small></span>',
+                        '<span><strong>', escapeHtml(client.nome), '</strong><small>Codigo #', escapeHtml(client.id), ' | ', escapeHtml(client.telefone), ' | Ultima compra: ', escapeHtml(client.ultima_compra), '</small></span>',
                         '<span><em>Disponivel</em><strong>', escapeHtml(client.saldo_disponivel), '</strong><small>', escapeHtml(client.validade_resumo || 'Sem vencimentos ativos'), '</small></span>',
                         '</button>'
                     ].join('');
@@ -927,7 +935,7 @@
 
                 clearTimeout(timer);
 
-                if (term.length < 2) {
+                if (!termIsReady(term)) {
                     hideResults();
                     return;
                 }

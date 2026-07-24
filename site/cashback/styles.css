@@ -4414,6 +4414,12 @@ body.sections-ready .workspace-section.is-active {
     font-size: 11pt;
 }
 
+.receipt-client-code {
+    margin-top: .8mm;
+    font-size: 10.5pt;
+    font-weight: 900;
+}
+
 .receipt-details {
     display: grid;
     gap: 0;

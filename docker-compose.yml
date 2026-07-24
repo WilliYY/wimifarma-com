@@ -647,7 +647,7 @@ services:
       CASHBACK_INTERNAL_TOKEN: ${CASHBACK_INTERNAL_TOKEN:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
       WIMI_PRINTER_INSTALLER_PATH: /opt/wimi-impressora/WimiImpressoraSetup.exe
-      WIMI_PRINTER_INSTALLER_VERSION: ${WIMI_PRINTER_INSTALLER_VERSION:-1.0.3}
+      WIMI_PRINTER_INSTALLER_VERSION: ${WIMI_PRINTER_INSTALLER_VERSION:-1.0.4}
     volumes:
       - ./site/cashback/styles.css:/app/public/styles.css:ro
       - ./site/cashback/app.js:/app/public/app.js:ro

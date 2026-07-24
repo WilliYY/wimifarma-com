@@ -18,8 +18,8 @@
     <SelfContained>true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
-    <Version>1.0.3</Version>
-    <InformationalVersion>1.0.3</InformationalVersion>
+    <Version>1.0.4</Version>
+    <InformationalVersion>1.0.4</InformationalVersion>
     <AssemblyTitle>Wimi Impressora</AssemblyTitle>
     <Product>Wimi Impressora</Product>
     <Description>Agente de impressao termica do Cashback Wimifarma.</Description>

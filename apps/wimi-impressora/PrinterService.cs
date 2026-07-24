@@ -102,7 +102,7 @@ internal sealed class PrinterService
             schema_version = 1,
             kind = "quick_voucher",
             cashback_cents = 250,
-            code = "7883",
+            code = "78831",
             expires_at = DateTime.Today.AddMonths(6).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             attendant_name = "Willian Y. Y.",
             issued_at = DateTimeOffset.Now,
@@ -118,6 +118,7 @@ internal sealed class PrinterService
             schema_version = 1,
             kind = "purchase",
             operation_id = 154,
+            client_code = 139,
             client_name = "Jaime Loreano",
             client_phone = "(44) 99855-4135",
             gross_cents = 4000,
@@ -176,6 +177,11 @@ internal sealed class PrinterService
         y = DrawCentered(graphics, "CLIENTE", y + 5, 7, FontStyle.Bold, 14);
         y = DrawCentered(graphics, ReadString(payload, "client_name"), y, 12, FontStyle.Bold, 24);
         y = DrawCentered(graphics, ReadString(payload, "client_phone"), y, 8, FontStyle.Regular, 17);
+        var clientCode = ReadLong(payload, "client_code");
+        if (clientCode > 0)
+        {
+            y = DrawCentered(graphics, $"CODIGO CLIENTE: #{clientCode}", y + 3, 10.5f, FontStyle.Bold, 22);
+        }
         y = DrawRule(graphics, y + 5);
         y = DrawAmountRow(graphics, "Compra", ReadLong(payload, "gross_cents"), y + 5);
         y = DrawAmountRow(graphics, "Cashback usado", ReadLong(payload, "cashback_used_cents"), y + 1);

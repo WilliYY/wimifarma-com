@@ -125,7 +125,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.3.0';
+const SERVICE_VERSION = '1.4.0';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -142,7 +142,7 @@ const QUICK_VOUCHER_ADVISORY_LOCK = 20260721;
 const XP_CASHBACK_REDEEM_POINTS = 500;
 const XP_CASHBACK_REDEEM_SOURCE = 'cashback_redemption';
 const WIMI_PRINTER_INSTALLER_PATH = String(env.WIMI_PRINTER_INSTALLER_PATH || '/opt/wimi-impressora/WimiImpressoraSetup.exe').trim();
-const WIMI_PRINTER_INSTALLER_VERSION = cleanVersion(env.WIMI_PRINTER_INSTALLER_VERSION || '1.0.3');
+const WIMI_PRINTER_INSTALLER_VERSION = cleanVersion(env.WIMI_PRINTER_INSTALLER_VERSION || '1.0.4');
 const WIMI_PRINTER_PAIRING_MINUTES = 30;
 const WIMI_PRINTER_ONLINE_SECONDS = 90;
 const WIMI_PRINTER_MAX_ATTEMPTS = 3;
@@ -2399,7 +2399,7 @@ function quickVoucherPrintPayload(receipt: DbRow): Record<string, unknown> {
     schema_version: 1,
     kind: 'quick_voucher',
     cashback_cents: num(receipt.cashback_cents),
-    code: cleanText(receipt.code, 4),
+    code: cleanText(receipt.code, CURRENT_QUICK_VOUCHER_CODE_DIGITS),
     expires_at: expiresAt,
     attendant_name: cleanText(receipt.attendant_name, 160) || 'Wimifarma',
     issued_at: String(receipt.issued_at || receipt.created_at || ''),
@@ -2415,6 +2415,7 @@ function purchasePrintPayload(receipt: DbRow): Record<string, unknown> {
     schema_version: 1,
     kind: 'purchase',
     operation_id: num(receipt.id),
+    client_code: num(receipt.client_id),
     client_name: cleanText(receipt.client_name, 180),
     client_phone: formatPhone(receipt.client_phone),
     gross_cents: num(receipt.gross_cents),
@@ -2422,7 +2423,7 @@ function purchasePrintPayload(receipt: DbRow): Record<string, unknown> {
     charged_cents: num(receipt.charged_cents),
     cashback_generated_cents: num(receipt.cashback_generated_cents),
     cashback_generation_mode: isQuickVoucher ? 'voucher_rapido' : 'credito',
-    successor_code: cleanText(receipt.successor_code, 4),
+    successor_code: cleanText(receipt.successor_code, CURRENT_QUICK_VOUCHER_CODE_DIGITS),
     expires_at: expiresAt || null,
     attendant_name: cleanText(receipt.attendant_name, 160) || 'Wimifarma',
     purchased_at: String(receipt.purchased_at || receipt.created_at || ''),
@@ -3238,13 +3239,25 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
         ? ` Novo codigo ${quickRedemption.successor.code}: ${brMoneyCents(quickRedemption.successor.cashbackCents)}.`
         : ' A nova compra nao gerou outro codigo.';
       setFlash(req, 'success', `${message}${successorText} ${xpResult.message}`);
-      const voucherQuery = quickRedemption.successor ? `&voucher_id=${quickRedemption.successor.id}` : '';
-      if (quickRedemption.successor) rememberQuickVoucherReceipt(req, quickRedemption.successor.id);
-      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}${voucherQuery}#${quickRedemption.successor ? 'busca' : 'cliente-atual'}`);
+      if (quickRedemption.successor) {
+        rememberCashbackPurchaseReceipt(req, quickRedemption.purchaseId);
+        res.redirect(
+          `${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${quickRedemption.purchaseId}&receipt_origin=cadastro#cadastro`,
+        );
+      } else {
+        res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
+      }
       return;
     }
     setFlash(req, 'success', message);
-    res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
+    if (purchase && purchase.cashbackCents > 0) {
+      rememberCashbackPurchaseReceipt(req, purchase.id);
+      res.redirect(
+        `${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${purchase.id}&receipt_origin=cadastro#cadastro`,
+      );
+    } else {
+      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
+    }
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     setFlash(req, 'error', `Erro ao cadastrar cliente: ${errorMessage(error)}`);
@@ -3793,6 +3806,7 @@ function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | '
 function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi' | 'local' = 'local'): string {
   if (!receipt) return '';
   const purchaseId = num(receipt.id);
+  const clientCode = num(receipt.client_id);
   const generatedCents = num(receipt.cashback_generated_cents);
   const quickCode = String(receipt.successor_code || '');
   const isQuickVoucher = String(receipt.cashback_generation_mode || '') === 'voucher_rapido';
@@ -3811,9 +3825,11 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
       <p>A compra foi gravada. Confira os dados do cliente e envie somente este comprovante para a Bematech.</p>
       <div class="cashback-operation-facts">
         <span><small>Cliente</small><strong>${e(receipt.client_name)}</strong></span>
+        <span><small>Codigo do cliente</small><strong>#${e(clientCode)}</strong></span>
         <span><small>Telefone</small><strong>${e(phone)}</strong></span>
         <span><small>Valor pago</small><strong>${brMoneyCents(receipt.charged_cents)}</strong></span>
         <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
+        <span><small>Validade</small><strong>${e(expiresAt ? brDate(expiresAt) : '-')}</strong></span>
       </div>
       <div class="cashback-operation-result-actions">
         <button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="purchase" data-entity-id="${e(purchaseId)}">Imprimir</button>
@@ -3827,6 +3843,7 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
         <span>Cliente</span>
         <strong>${e(receipt.client_name)}</strong>
         <small>${e(phone)}</small>
+        <b class="receipt-client-code">Codigo do cliente: #${e(clientCode)}</b>
       </div>
       <div class="receipt-details">
         <span><small>Compra</small><strong>${brMoneyCents(receipt.gross_cents)}</strong></span>
@@ -3858,6 +3875,9 @@ async function renderDashboard(req: Request): Promise<string> {
   const purchaseReceipt = (req.session.cashbackPurchaseReceiptIds || []).includes(requestedPurchaseReceiptId)
     ? await cashbackPurchaseReceipt(requestedPurchaseReceiptId)
     : null;
+  const purchaseReceiptOrigin = cleanText(req.query.receipt_origin, 20);
+  const registrationPurchaseReceipt = purchaseReceiptOrigin === 'cadastro' ? purchaseReceipt : null;
+  const redeemPurchaseReceipt = purchaseReceiptOrigin === 'cadastro' ? null : purchaseReceipt;
   const printRoute: 'wimi' | 'local' = printedVoucher || purchaseReceipt
     ? (await defaultPrintDevice() ? 'wimi' : 'local')
     : 'local';
@@ -3888,7 +3908,7 @@ async function renderDashboard(req: Request): Promise<string> {
             <span class="client-status-pill">${e(client.status || 'ativo')}</span>
           </div>
           <div class="client-result-details">
-            <span class="client-detail-id"><small>ID</small><strong>#${e(client.id)}</strong></span>
+            <span class="client-detail-id"><small>Codigo cliente</small><strong>#${e(client.id)}</strong></span>
             <span class="client-detail-phone"><small>Telefone</small><strong>${e(formatPhone(client.phone))}</strong></span>
             <span class="client-detail-attendant"><small>Atendente</small><strong>${e(client.attendant_name || 'Sem atendente')}</strong></span>
             <span class="client-detail-updated"><small>Atualizado</small><strong>${e(brDate(changedAt, true))}</strong></span>
@@ -3912,7 +3932,7 @@ async function renderDashboard(req: Request): Promise<string> {
   const selectedHtml =
     selected && selected.client && selected.balance
       ? `<div class="selected-client-strip">
-          <span>#${e(selected.client.id)}</span><span>${e(formatPhone(selected.client.phone))}</span>
+          <span>Codigo #${e(selected.client.id)}</span><span>${e(formatPhone(selected.client.phone))}</span>
           <span>Atendente: ${e(selected.client.attendant_name || '-')}</span><span>Status: ${e(selected.client.status)}</span>
         </div>
         <div class="metrics compact">
@@ -3945,7 +3965,7 @@ async function renderDashboard(req: Request): Promise<string> {
 
   const selectedLabel =
     selected && selected.client
-      ? `${selected.client.name} - ${formatPhone(selected.client.phone)}`
+      ? `Codigo #${selected.client.id} - ${selected.client.name} - ${formatPhone(selected.client.phone)}`
       : '';
   const selectedBalance = selected?.balance?.saldoDisponivel || 0;
   const quickAttendantOptions = attendants
@@ -3975,10 +3995,10 @@ async function renderDashboard(req: Request): Promise<string> {
   <div class="balcao-main">
     <section id="busca" class="panel section-block workspace-section">
       ${quickCashbackPanel}
-      <div class="section-title client-search-title"><div><span class="kicker">Consulta rapida</span><h2>Buscar cliente por nome, telefone ou ID</h2></div></div>
+      <div class="section-title client-search-title"><div><span class="kicker">Consulta rapida</span><h2>Buscar cliente por codigo, nome ou telefone</h2></div></div>
       <form method="get" action="${pageUrl('dashboard.php#busca')}" class="search-row live-search-wrap client-search-form">
         ${selectedClientId > 0 ? `<input type="hidden" name="cliente_id" value="${e(selectedClientId)}">` : ''}
-        <input type="search" name="q" value="${e(search)}" placeholder="Digite nome, telefone ou ID interno" data-live-client-search data-results="#live-client-results" autocomplete="off">
+        <input type="search" name="q" value="${e(search)}" placeholder="Digite o codigo do cliente, nome ou telefone" data-live-client-search data-results="#live-client-results" autocomplete="off">
         <button type="submit" class="btn primary">Buscar</button>
         <a class="btn" href="${pageUrl(`dashboard.php${selectedClientId > 0 ? `?cliente_id=${selectedClientId}` : ''}#busca`)}">Limpar</a>
         <div id="live-client-results" class="live-client-results" hidden></div>
@@ -4010,14 +4030,14 @@ async function renderDashboard(req: Request): Promise<string> {
 
     <section id="resgate" class="panel section-block workspace-section redeem-panel">
       <div class="section-title redeem-title"><div class="redeem-title-copy"><span class="kicker">Compra Cashback</span><h2>Gastar/Usar CashBack</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
-      ${renderCashbackPurchaseReceipt(purchaseReceipt, printRoute)}
+      ${renderCashbackPurchaseReceipt(redeemPurchaseReceipt, printRoute)}
       <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols redeem-form" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_redeem">
         <div class="redeem-block redeem-client-block full">
           <div class="redeem-block-title"><span class="step-badge">1</span><div><h3>Cliente</h3><small>Saldo e identificacao</small></div></div>
           <div class="client-picker redeem-client-picker" data-client-picker-root>
-            <label><span>Buscar cliente *</span><input type="search" value="${e(selectedLabel)}" placeholder="Digite nome, telefone ou ID do cliente" data-client-picker data-results="#redeem-client-results" data-target="#redeem-client-id" data-selected="#redeem-selected-client" autocomplete="off" required><input type="hidden" id="redeem-client-id" name="cliente_id" value="${e(selectedClientId > 0 ? selectedClientId : '')}"></label>
+            <label><span>Buscar cliente *</span><input type="search" value="${e(selectedLabel)}" placeholder="Digite codigo, nome ou telefone" data-client-picker data-results="#redeem-client-results" data-target="#redeem-client-id" data-selected="#redeem-selected-client" autocomplete="off" required><input type="hidden" id="redeem-client-id" name="cliente_id" value="${e(selectedClientId > 0 ? selectedClientId : '')}"></label>
             <div id="redeem-client-results" class="live-client-results picker-results" hidden></div>
             <div id="redeem-selected-client" class="selected-client-note" data-balance="${e(centsToMoney(selectedBalance))}">${selected?.client ? `Selecionado: ${e(selected.client.name)} | Saldo disponivel ${brMoneyCents(selectedBalance)}` : 'Nenhum cliente selecionado.'}</div>
           </div>
@@ -4041,6 +4061,7 @@ async function renderDashboard(req: Request): Promise<string> {
 
     <section id="cadastro" class="panel section-block workspace-section quick-client-panel">
       <div class="section-title quick-client-title"><div class="quick-client-title-copy"><span class="kicker">Cadastro rapido</span><h2>Novo cliente</h2></div><span class="soft-pill">Compra inicial opcional</span></div>
+      ${renderCashbackPurchaseReceipt(registrationPurchaseReceipt, printRoute)}
       <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}" data-multiplier="${e(settings.redeemMultiplier)}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_client">
