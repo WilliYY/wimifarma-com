@@ -3388,16 +3388,17 @@ async function createQuickVoucherFromDashboard(req: Request, res: Response): Pro
 }
 
 async function cancelQuickVoucherFromDashboard(req: Request, res: Response): Promise<void> {
+  const historyUrl = `${BASE_PATH}/dashboard.php?quick_history=1#cashback-rapido`;
   if (!isMasterAdm(req)) {
     setFlash(req, 'error', 'Somente o ADM pode cancelar um cashback rapido.');
-    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    res.redirect(historyUrl);
     return;
   }
   const voucherId = num(req.body?.voucher_id);
   const reason = cleanText(req.body?.motivo || 'Cancelamento operacional pelo ADM.', 500);
   if (voucherId <= 0) {
     setFlash(req, 'error', 'Codigo invalido para cancelamento.');
-    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    res.redirect(historyUrl);
     return;
   }
 
@@ -3450,26 +3451,27 @@ async function cancelQuickVoucherFromDashboard(req: Request, res: Response): Pro
   } finally {
     db.release();
   }
-  res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+  res.redirect(historyUrl);
 }
 
 async function retryQuickVoucherXpRevocation(req: Request, res: Response): Promise<void> {
+  const historyUrl = `${BASE_PATH}/dashboard.php?quick_history=1#cashback-rapido`;
   if (!isMasterAdm(req)) {
     setFlash(req, 'error', 'Somente o ADM pode corrigir o XP de um cashback rapido.');
-    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    res.redirect(historyUrl);
     return;
   }
   const voucherId = num(req.body?.voucher_id);
   if (voucherId <= 0) {
     setFlash(req, 'error', 'Codigo invalido para correcao de XP.');
-    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    res.redirect(historyUrl);
     return;
   }
   const voucher = await pgPool.query('SELECT id, code, status FROM cashback_quick_vouchers WHERE id = $1 LIMIT 1', [voucherId]);
   const row = voucher.rows[0] as DbRow | undefined;
   if (!row || String(row.status) !== 'cancelado') {
     setFlash(req, 'error', 'O XP so pode ser corrigido depois que o codigo estiver cancelado.');
-    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    res.redirect(historyUrl);
     return;
   }
   const xpResult = await revokeXpForQuickVoucherIssue(req, voucherId);
@@ -3482,7 +3484,7 @@ async function retryQuickVoucherXpRevocation(req: Request, res: Response): Promi
     { xp_revoked: xpResult.revoked, xp_had_award: xpResult.hadAward },
   );
   setFlash(req, xpResult.revoked || xpResult.alreadyRevoked || !xpResult.hadAward ? 'success' : 'error', xpResult.message);
-  res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+  res.redirect(historyUrl);
 }
 
 async function createClientFromDashboard(req: Request, res: Response): Promise<void> {
@@ -4129,6 +4131,7 @@ async function saveWhatsappMessage(input: {
 
 function renderQuickVoucherHistory(req: Request, vouchers: DbRow[]): string {
   const master = isMasterAdm(req);
+  const historyOpen = cleanText(req.query.quick_history, 10) === '1';
   const statusMeta: Record<string, { label: string; className: string }> = {
     ativo: { label: 'Ativo', className: 'is-active' },
     usado: { label: 'Usado', className: 'is-used' },
@@ -4202,7 +4205,7 @@ function renderQuickVoucherHistory(req: Request, vouchers: DbRow[]): string {
     </article>`;
   }).join('');
 
-  return `<details class="quick-voucher-history" open>
+  return `<details class="quick-voucher-history"${historyOpen ? ' open' : ''}>
     <summary>
       <span><small>Controle operacional</small><strong>Historico do cashback rapido</strong></span>
       <span class="quick-voucher-history-count">${e(vouchers.length)} recente(s)</span>
