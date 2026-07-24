@@ -4148,6 +4148,22 @@ body.sections-ready .workspace-section.is-active {
     color: var(--muted);
 }
 
+.quick-cashback-heading .quick-cashback-xp-hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    margin-top: 8px;
+    color: #075f48;
+    font-size: .82rem;
+    font-weight: 800;
+}
+
+.quick-cashback-xp-hint strong {
+    color: #075f48;
+    font-size: .92rem;
+}
+
 .quick-cashback-rate {
     display: inline-flex;
     align-items: center;

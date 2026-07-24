@@ -14,6 +14,7 @@ import {
   findAvailableQuickVoucherCode,
   normalizeQuickVoucherCode,
 } from './quickVoucherCode.js';
+import { quickVoucherIssueXpReward } from './xpReward.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -125,7 +126,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.3';
+const SERVICE_VERSION = '1.4.4';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -2809,6 +2810,127 @@ async function linkedXpEmployeeForUser(userId: number): Promise<{ id: number; na
   return { id: num(row.id), name: cleanText(row.name, 180) || (row.system_key === 'adm' ? 'ADM' : 'Funcionario XP') };
 }
 
+async function coreUserIdForAttendant(attendantId: number): Promise<number | null> {
+  if (attendantId <= 0) return null;
+  const result = await pgPool.query<{ core_user_id: string | null }>(
+    `SELECT core_user_id::text
+       FROM cashback_attendants
+      WHERE id = $1
+        AND status = 'ativo'
+        AND core_user_id IS NOT NULL
+      LIMIT 1`,
+    [attendantId],
+  );
+  const coreUserId = num(result.rows[0]?.core_user_id);
+  return coreUserId > 0 ? coreUserId : null;
+}
+
+async function awardTrackedXp(
+  req: Request,
+  input: {
+    beneficiaryUserId: number;
+    points: number;
+    source: string;
+    sourceEntityId: string;
+    note: string;
+    xpAuditAction: string;
+    xpAuditSummary: string;
+    cashbackAuditAction: string;
+    cashbackFailureAction: string;
+    cashbackEntityType: string;
+    cashbackEntityId: number;
+  },
+): Promise<XpAwardResult> {
+  if (input.beneficiaryUserId <= 0) {
+    return { awarded: false, message: 'XP nao gerado: usuario selecionado sem conta Wimifarma valida.' };
+  }
+  const actorUserId = req.session.user?.id ?? 0;
+  try {
+    await ensureXpRewardSchema();
+    const employee = await linkedXpEmployeeForUser(input.beneficiaryUserId);
+    if (!employee) {
+      return { awarded: false, message: 'XP nao gerado: usuario selecionado sem vinculo XP.' };
+    }
+    const xpClient = await xpPgPool.connect();
+    try {
+      await xpClient.query('BEGIN');
+      const existing = await xpClient.query<{ id: string }>(
+        'SELECT id::text FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1',
+        [input.source, input.sourceEntityId],
+      );
+      if (existing.rows[0]) {
+        await xpClient.query('COMMIT');
+        return {
+          awarded: false,
+          alreadyAwarded: true,
+          employeeName: employee.name,
+          saleId: num(existing.rows[0].id),
+          message: `XP ja estava registrado para ${employee.name}.`,
+        };
+      }
+      const inserted = await xpClient.query<{ id: string }>(
+        `INSERT INTO xp_sales (employee_id, sale_date, amount_cents, xp_points, note, created_by, source, source_entity_id)
+         VALUES ($1, CURRENT_DATE, 0, $2, $3, $4, $5, $6)
+         RETURNING id::text`,
+        [
+          employee.id,
+          input.points,
+          cleanText(input.note, 220),
+          actorUserId || input.beneficiaryUserId,
+          input.source,
+          input.sourceEntityId,
+        ],
+      );
+      const saleId = num(inserted.rows[0]?.id);
+      await xpClient.query(
+        `INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          actorUserId || input.beneficiaryUserId,
+          input.xpAuditAction,
+          'xp_sale',
+          String(saleId),
+          cleanText(input.xpAuditSummary, 255),
+        ],
+      );
+      await xpClient.query('COMMIT');
+      await logAction(
+        req,
+        input.cashbackAuditAction,
+        input.cashbackEntityType,
+        input.cashbackEntityId,
+        `XP gerado para ${employee.name}: +${input.points}.`,
+        { beneficiary_user_id: input.beneficiaryUserId, xp_employee_id: employee.id, xp_sale_id: saleId },
+      );
+      return {
+        awarded: true,
+        employeeName: employee.name,
+        saleId,
+        message: `XP gerado: +${input.points} para ${employee.name}.`,
+      };
+    } catch (error) {
+      await xpClient.query('ROLLBACK').catch(() => undefined);
+      const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+      if (code === '23505') {
+        return { awarded: false, alreadyAwarded: true, employeeName: employee.name, message: `XP ja estava registrado para ${employee.name}.` };
+      }
+      throw error;
+    } finally {
+      xpClient.release();
+    }
+  } catch (error) {
+    await logAction(
+      req,
+      input.cashbackFailureAction,
+      input.cashbackEntityType,
+      input.cashbackEntityId,
+      `Falha ao gerar XP: ${errorMessage(error)}`,
+      { beneficiary_user_id: input.beneficiaryUserId, source: input.source, source_entity_id: input.sourceEntityId },
+    );
+    return { awarded: false, message: `XP nao gerado agora: ${errorMessage(error)}` };
+  }
+}
+
 async function currentUserXpRewardStatus(req: Request): Promise<XpRewardStatus> {
   const userId = req.session.user?.id ?? 0;
   if (userId <= 0) {
@@ -2833,70 +2955,48 @@ async function awardXpForCashbackRedemption(req: Request, redemptionId: number, 
   if (userId <= 0) {
     return { awarded: false, message: 'XP nao gerado: usuario sem sessao.' };
   }
+  return awardTrackedXp(req, {
+    beneficiaryUserId: userId,
+    points: XP_CASHBACK_REDEEM_POINTS,
+    source: XP_CASHBACK_REDEEM_SOURCE,
+    sourceEntityId: String(redemptionId),
+    note: `Cashback usado no Balcao: ${brMoneyCents(redeemedCents)} no cliente #${clientId}.`,
+    xpAuditAction: 'xp_cashback_resgate_lancado',
+    xpAuditSummary: `+${XP_CASHBACK_REDEEM_POINTS} XP por uso de cashback no resgate #${redemptionId}.`,
+    cashbackAuditAction: 'xp_cashback_resgate_lancado',
+    cashbackFailureAction: 'xp_cashback_resgate_falha',
+    cashbackEntityType: 'resgate',
+    cashbackEntityId: redemptionId,
+  });
+}
+
+async function awardXpForQuickVoucherIssue(req: Request, voucherId: number, attendantId: number): Promise<XpAwardResult> {
   try {
-    await ensureXpRewardSchema();
-    const employee = await linkedXpEmployeeForUser(userId);
-    if (!employee) {
-      return { awarded: false, message: 'XP nao gerado: usuario sem vinculo XP.' };
-    }
-    const sourceEntityId = String(redemptionId);
-    const xpClient = await xpPgPool.connect();
-    try {
-      await xpClient.query('BEGIN');
-      const existing = await xpClient.query<{ id: string }>(
-        'SELECT id::text FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1',
-        [XP_CASHBACK_REDEEM_SOURCE, sourceEntityId],
-      );
-      if (existing.rows[0]) {
-        await xpClient.query('COMMIT');
-        return {
-          awarded: false,
-          alreadyAwarded: true,
-          employeeName: employee.name,
-          saleId: num(existing.rows[0].id),
-          message: `XP ja estava registrado para ${employee.name}.`,
-        };
-      }
-      const note = cleanText(`Cashback usado no Balcao: ${brMoneyCents(redeemedCents)} no cliente #${clientId}.`, 220);
-      const inserted = await xpClient.query<{ id: string }>(
-        `INSERT INTO xp_sales (employee_id, sale_date, amount_cents, xp_points, note, created_by, source, source_entity_id)
-         VALUES ($1, CURRENT_DATE, 0, $2, $3, $4, $5, $6)
-         RETURNING id::text`,
-        [employee.id, XP_CASHBACK_REDEEM_POINTS, note, userId, XP_CASHBACK_REDEEM_SOURCE, sourceEntityId],
-      );
-      const saleId = num(inserted.rows[0]?.id);
-      await xpClient.query(
-        `INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [
-          userId,
-          'xp_cashback_resgate_lancado',
-          'xp_sale',
-          String(saleId),
-          cleanText(`+${XP_CASHBACK_REDEEM_POINTS} XP por uso de cashback no resgate #${redemptionId}.`, 255),
-        ],
-      );
-      await xpClient.query('COMMIT');
-      await logAction(req, 'xp_cashback_resgate_lancado', 'resgate', redemptionId, `XP gerado para ${employee.name}: +${XP_CASHBACK_REDEEM_POINTS}.`);
-      return {
-        awarded: true,
-        employeeName: employee.name,
-        saleId,
-        message: `XP gerado: +${XP_CASHBACK_REDEEM_POINTS} para ${employee.name}.`,
-      };
-    } catch (error) {
-      await xpClient.query('ROLLBACK').catch(() => undefined);
-      const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
-      if (code === '23505') {
-        return { awarded: false, alreadyAwarded: true, employeeName: employee.name, message: `XP ja estava registrado para ${employee.name}.` };
-      }
-      throw error;
-    } finally {
-      xpClient.release();
-    }
+    const reward = quickVoucherIssueXpReward(voucherId);
+    const beneficiaryUserId = await coreUserIdForAttendant(attendantId);
+    return awardTrackedXp(req, {
+      beneficiaryUserId: beneficiaryUserId ?? 0,
+      points: reward.points,
+      source: reward.source,
+      sourceEntityId: reward.sourceEntityId,
+      note: `Cashback rapido emitido no Balcao: cupom #${voucherId}.`,
+      xpAuditAction: 'xp_cashback_rapido_lancado',
+      xpAuditSummary: `+${reward.points} XP por emissao do cashback rapido #${voucherId}.`,
+      cashbackAuditAction: 'xp_cashback_rapido_lancado',
+      cashbackFailureAction: 'xp_cashback_rapido_falha',
+      cashbackEntityType: 'cashback_quick_voucher',
+      cashbackEntityId: voucherId,
+    });
   } catch (error) {
-    await logAction(req, 'xp_cashback_resgate_falha', 'resgate', redemptionId, `Falha ao gerar XP do cashback: ${errorMessage(error)}`);
-    return { awarded: false, message: `XP nao gerado agora: ${errorMessage(error)}` };
+    await logAction(
+      req,
+      'xp_cashback_rapido_falha',
+      'cashback_quick_voucher',
+      voucherId > 0 ? voucherId : null,
+      `Falha ao identificar usuario do XP: ${errorMessage(error)}`,
+      { attendant_id: attendantId },
+    );
+    return { awarded: false, message: `XP nao gerado: ${errorMessage(error)}` };
   }
 }
 
@@ -3123,7 +3223,12 @@ async function createQuickVoucherFromDashboard(req: Request, res: Response): Pro
       `Codigo rapido ${voucher.code} emitido por ${brMoneyCents(voucher.cashbackCents)}.`,
       { attendant_id: attendantId, gross_cents: grossCents, expires_at: voucher.expiresAt },
     );
-    setFlash(req, 'success', `Cashback rapido criado. Codigo ${voucher.code}, valido ate ${brDate(voucher.expiresAt)}.`);
+    const xpResult = await awardXpForQuickVoucherIssue(req, voucher.id, attendantId);
+    setFlash(
+      req,
+      'success',
+      `Cashback rapido criado. Codigo ${voucher.code}, valido ate ${brDate(voucher.expiresAt)}. ${xpResult.message}`,
+    );
     res.redirect(`${BASE_PATH}/dashboard.php?voucher_id=${voucher.id}#busca`);
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -3980,7 +4085,7 @@ async function renderDashboard(req: Request): Promise<string> {
     .join('');
   const quickCashbackPanel = `<div id="cashback-rapido" class="quick-cashback-shell">
     <div class="quick-cashback-heading">
-      <div><span class="kicker">Sem cadastro agora</span><h2>Cashback rapido</h2><p>Informe somente o valor gasto. O novo codigo de 5 digitos vale por 6 meses.</p></div>
+      <div><span class="kicker">Sem cadastro agora</span><h2>Cashback rapido</h2><p>Informe somente o valor gasto. O novo codigo de 5 digitos vale por 6 meses.</p><p class="quick-cashback-xp-hint"><strong>+250 XP</strong> para o usuario selecionado ao gerar o codigo.</p></div>
       <span class="quick-cashback-rate">${e(settings.cashbackPercent)}% automatico</span>
     </div>
     ${renderQuickVoucherReceipt(printedVoucher, printRoute)}
@@ -3990,7 +4095,7 @@ async function renderDashboard(req: Request): Promise<string> {
       <input type="hidden" name="request_token" value="${e(quickRequestToken)}">
       <label class="quick-cashback-amount"><span>Quanto o cliente gastou? *</span><input type="text" name="valor_compra_rapida" data-money inputmode="decimal" required placeholder="100,00" autofocus></label>
       <label class="quick-cashback-attendant"><span>Usuario que imprime *</span><select name="atendente_id" required><option value="">Selecione</option>${quickAttendantOptions}</select></label>
-      <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>5 digitos, reservado por 6 meses</small></div>
+      <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>5 digitos, 6 meses e +250 XP</small></div>
       <button type="submit" class="btn primary quick-cashback-submit">Gerar codigo</button>
     </form>
   </div>`;
