@@ -138,7 +138,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.5';
+const SERVICE_VERSION = '1.4.6';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -4228,11 +4228,25 @@ function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | '
   const issuedAtText = cleanText(voucher.receipt_issued_at, 30)
     || brDate(voucher.issued_at || voucher.created_at, true);
   const active = String(voucher.status || '') === 'ativo' && expiresAt >= todayIso();
+  const printDestination = printRoute === 'wimi' ? 'Fila Wimi' : 'Este computador';
   return `<div class="quick-voucher-result ${active ? 'is-active' : 'is-inactive'}">
     <div class="quick-voucher-result-copy no-print">
-      <span class="kicker">Cupom pronto</span>
-      <h3>${active ? 'Confira e imprima o cashback' : 'Este cupom nao esta mais ativo'}</h3>
+      <div class="quick-voucher-result-status">
+        <span class="quick-voucher-ready-pill">${active ? 'Cupom confirmado' : 'Cupom inativo'}</span>
+        <span class="quick-voucher-route">${active ? e(printDestination) : 'Somente historico'}</span>
+      </div>
+      <h3>${active ? `Codigo ${e(voucher.code)} pronto para imprimir` : 'Este cupom nao esta mais ativo'}</h3>
       <p>${active ? 'O codigo ja esta gravado. Ao imprimir, o sistema escolhe a Wimi conectada ou a impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
+      <div class="quick-voucher-result-facts">
+        <span class="is-code"><small>Codigo</small><strong>${e(voucher.code)}</strong></span>
+        <span class="is-value"><small>Cashback</small><strong>${brMoneyCents(voucher.cashback_cents)}</strong></span>
+        <span class="is-validity"><small>Valido ate</small><strong>${e(expiresAtText)}</strong></span>
+      </div>
+      <p class="quick-voucher-result-issued">Emitido por <strong>${e(voucher.attendant_name || 'Wimifarma')}</strong> em ${e(issuedAtText)}</p>
+      <div class="quick-voucher-result-actions">
+        ${active ? `<button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="quick_voucher" data-entity-id="${e(voucher.id)}">Imprimir</button>` : ''}
+        <a class="btn" href="${pageUrl('dashboard.php#busca')}">Gerar outro</a>
+      </div>
     </div>
     <article class="quick-voucher-receipt cashback-thermal-receipt" data-quick-voucher-receipt>
       <img class="receipt-brand" src="${asset('logo-wimifarma-receipt.png')}" alt="Wimifarma" width="731" height="292">
@@ -4244,10 +4258,6 @@ function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | '
       <div class="receipt-contact"><strong>WhatsApp (44) 98413-4971</strong><span>Av. Minas Gerais, 2263</span></div>
       <small>Emitido por ${e(voucher.attendant_name || 'Wimifarma')} em ${e(issuedAtText)}</small>
     </article>
-    <div class="quick-voucher-result-actions no-print">
-      ${active ? `<button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="quick_voucher" data-entity-id="${e(voucher.id)}">Imprimir</button>` : ''}
-      <a class="btn" href="${pageUrl('dashboard.php#busca')}">Gerar outro</a>
-    </div>
   </div>`;
 }
 
@@ -4433,6 +4443,7 @@ async function renderDashboard(req: Request): Promise<string> {
       ${csrfField(req)}
       <input type="hidden" name="action" value="create_quick_cashback">
       <input type="hidden" name="request_token" value="${e(quickRequestToken)}">
+      <div class="quick-cashback-form-intro"><span>Nova emissao</span><strong>${printedVoucher ? 'Gerar proximo codigo' : 'Gerar codigo rapido'}</strong></div>
       <label class="quick-cashback-amount"><span>Quanto o cliente gastou? *</span><input type="text" name="valor_compra_rapida" data-money inputmode="decimal" required placeholder="100,00" autofocus></label>
       <label class="quick-cashback-attendant"><span>Usuario que imprime *</span><select name="atendente_id" required><option value="">Selecione</option>${quickAttendantOptions}</select></label>
       <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>5 digitos, 6 meses e +250 XP</small></div>
