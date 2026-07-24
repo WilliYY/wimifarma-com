@@ -287,43 +287,46 @@ export function renderPrintStationPage(options: PrintStationPageOptions): string
     .station-preview-empty { max-width: 260px; text-align: center; color: #60717d; }
     .station-preview-empty strong { display: block; margin-bottom: 7px; color: #25171b; }
     .station-receipt {
+      box-sizing: border-box;
       width: 76mm;
       max-width: 100%;
-      padding: 5mm 4mm;
+      padding: 3mm 2mm;
       border: 1px dashed #67737a;
       background: #fff;
       color: #000;
       font-family: Arial, Helvetica, sans-serif;
+      font-variant-numeric: tabular-nums;
       text-align: center;
     }
     .station-receipt[hidden] { display: none; }
-    .station-receipt img { display: block; width: 42mm; max-height: 16mm; object-fit: contain; margin: 0 auto 4mm; }
-    .receipt-title { margin: 0 0 3mm; font-size: 16px; font-weight: 800; }
-    .receipt-eyebrow { margin: 0 0 1mm; font-size: 11px; font-weight: 800; text-transform: uppercase; }
-    .receipt-value { margin: 0 0 3mm; font-size: 30px; font-weight: 900; }
+    .station-receipt img { display: block; width: 48mm; max-height: 18mm; object-fit: contain; margin: 0 auto 1.5mm; }
+    .receipt-title { margin: 0 0 1.5mm; font-size: 16.5pt; font-weight: 800; line-height: 1.1; }
+    .receipt-eyebrow { margin: 0 0 .4mm; font-size: 9.5pt; font-weight: 800; text-transform: uppercase; }
+    .receipt-value { margin: 0 0 1.5mm; font-size: 29pt; font-weight: 900; line-height: 1; }
     .receipt-code {
-      margin: 2mm 0 3mm;
-      padding: 2mm 0;
+      margin: 1.2mm 0 1.5mm;
+      padding: 1.2mm 0;
       border-top: 1px solid #000;
       border-bottom: 1px solid #000;
     }
-    .receipt-code span { display: block; font-size: 10px; font-weight: 800; text-transform: uppercase; }
-    .receipt-code strong { display: block; margin-top: 1mm; font-size: 28px; letter-spacing: 1px; }
-    .receipt-customer { margin: 2mm 0; padding: 2mm 0; border-top: 1px dashed #555; border-bottom: 1px dashed #555; }
-    .receipt-customer strong, .receipt-customer span { display: block; font-size: 12px; font-weight: 800; }
+    .receipt-code span { display: block; font-size: 9.5pt; font-weight: 800; text-transform: uppercase; }
+    .receipt-code strong { display: block; margin-top: .5mm; font-size: 31pt; line-height: 1; letter-spacing: 0; }
+    .receipt-customer { margin: 1.2mm 0; padding: 1.2mm 0; border-top: 1px dashed #555; border-bottom: 1px dashed #555; }
+    .receipt-customer strong, .receipt-customer span { display: block; font-size: 10.5pt; font-weight: 800; line-height: 1.2; }
     .receipt-row {
       display: flex;
       justify-content: space-between;
-      gap: 6px;
-      padding: 1.4mm 0;
+      gap: 2mm;
+      padding: 1.1mm 0;
       border-bottom: 1px dotted #777;
-      font-size: 12px;
+      font-size: 10.5pt;
       font-weight: 800;
       text-align: left;
     }
     .receipt-row strong { text-align: right; }
-    .receipt-footer { margin-top: 3mm; font-size: 11px; font-weight: 800; line-height: 1.45; }
+    .receipt-footer { margin-top: 1.8mm; font-size: 10.5pt; font-weight: 800; line-height: 1.25; }
     .receipt-footer span { display: block; }
+    .receipt-footer span:last-child { margin-top: 1.4mm; padding-top: 1.4mm; border-top: 1px dotted #777; }
     .station-log { margin-top: 14px; color: #60717d; font-size: .82rem; }
     @media (max-width: 820px) {
       .station-grid { grid-template-columns: 1fr; }
@@ -338,9 +341,9 @@ export function renderPrintStationPage(options: PrintStationPageOptions): string
       .station-state-icon { width: 42px; height: 42px; }
       .station-button { width: 100%; }
     }
-    @page { margin: 2mm; }
+    @page { margin: 0; }
     @media print {
-      body { margin: 0; background: #fff; }
+      html, body { width: 80mm; margin: 0; background: #fff; }
       body * { visibility: hidden !important; }
       #station-receipt {
         visibility: visible !important;
@@ -349,9 +352,10 @@ export function renderPrintStationPage(options: PrintStationPageOptions): string
         inset: 0 auto auto 0;
         width: 76mm;
         max-width: 76mm;
-        margin: 0;
-        padding: 2mm;
+        margin: 0 2mm;
+        padding: 2mm 2mm 2.5mm;
         border: 0;
+        break-inside: avoid;
       }
       #station-receipt * { visibility: visible !important; }
     }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -61,7 +62,7 @@ test('station page contains single-tab locking, no installer and escaped station
       printerName: 'Bematech "Padrao"',
     },
     nonce: 'nonce-test',
-    serviceVersion: '1.6.0',
+    serviceVersion: '1.6.1',
   });
 
   assert.match(page, /navigator\.locks\.request/);
@@ -70,4 +71,28 @@ test('station page contains single-tab locking, no installer and escaped station
   assert.match(page, /Caixa &lt;script&gt;/);
   assert.doesNotMatch(page, /WimiImpressoraSetup|Baixar instalador|\.exe/i);
   assert.doesNotMatch(page, /Caixa <script>/);
+});
+
+test('station and browser fallback share the 72 mm printable area', async () => {
+  const page = renderPrintStationPage({
+    basePath: '/cashback',
+    csrfToken: 'csrf-test',
+    device: {
+      id: 7,
+      computerName: 'Caixa',
+      printerName: 'Bematech MP-4200 TH',
+    },
+    nonce: 'nonce-test',
+    serviceVersion: '1.6.1',
+  });
+  const fallbackCss = await readFile(
+    new URL('../../../site/cashback/styles.css', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(page, /@page\s*\{\s*margin:\s*0;\s*\}/);
+  assert.match(page, /#station-receipt\s*\{[\s\S]*?width:\s*76mm;[\s\S]*?margin:\s*0 2mm;[\s\S]*?padding:\s*2mm 2mm 2\.5mm;/);
+  assert.match(page, /\.receipt-code strong\s*\{[^}]*font-size:\s*31pt;/);
+  assert.match(fallbackCss, /body\.printing-cashback-receipt \.cashback-thermal-receipt\s*\{[\s\S]*?width:\s*76mm;[\s\S]*?margin:\s*0 2mm;[\s\S]*?padding:\s*2mm 2mm 2\.5mm;/);
+  assert.match(fallbackCss, /\.receipt-code strong\s*\{[^}]*font-size:\s*31pt;/);
 });

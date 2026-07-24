@@ -4858,43 +4858,46 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .cashback-thermal-receipt {
+    box-sizing: border-box;
     width: 100%;
     max-width: 76mm;
     margin-inline: auto;
-    padding: 6mm 4.5mm 5.5mm;
+    padding: 3mm 2mm;
     border: 1.25px dashed #60656d;
     border-radius: 5px;
     background: #fff;
     color: #111;
+    font-family: Arial, Helvetica, sans-serif;
+    font-variant-numeric: tabular-nums;
     text-align: center;
     box-shadow: 0 8px 18px rgba(15, 23, 42, .09);
 }
 
 .cashback-thermal-receipt .receipt-brand {
     display: block;
-    width: 45mm;
+    width: 48mm;
     max-width: 100%;
     height: auto;
-    margin: 0 auto 2.5mm;
+    margin: 0 auto 1.5mm;
     filter: grayscale(1) contrast(6) invert(1);
 }
 
 .cashback-thermal-receipt h2 {
-    margin: 0 0 3mm;
+    margin: 0 0 1.5mm;
     color: #111;
-    font-size: 16pt;
+    font-size: 16.5pt;
     line-height: 1.1;
 }
 
 .cashback-purchase-receipt h2 {
-    margin-bottom: 2.5mm;
+    margin-bottom: 1.5mm;
     font-size: 15pt;
 }
 
 .receipt-customer {
     display: grid;
-    gap: .7mm;
-    padding: 2.5mm 1mm;
+    gap: .4mm;
+    padding: 1.5mm .5mm;
     border-block: 1px dashed #555;
     text-align: center;
 }
@@ -4932,7 +4935,7 @@ body.sections-ready .workspace-section.is-active {
 .receipt-details {
     display: grid;
     gap: 0;
-    margin: 2mm 0;
+    margin: 1.5mm 0;
     text-align: left;
 }
 
@@ -4941,7 +4944,7 @@ body.sections-ready .workspace-section.is-active {
     align-items: baseline;
     justify-content: space-between;
     gap: 3mm;
-    padding: 1mm 0;
+    padding: .8mm 0;
     border-bottom: 1px dotted #999;
 }
 
@@ -4951,8 +4954,8 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .receipt-details > .receipt-cashback-generated {
-    min-height: 9mm;
-    padding: 1.6mm 1mm;
+    min-height: 8mm;
+    padding: 1.2mm .5mm;
     border-bottom: 1.5px solid #111;
 }
 
@@ -4962,27 +4965,27 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .receipt-cashback-generated strong {
-    font-size: 18pt;
+    font-size: 20pt;
     font-weight: 900;
     line-height: 1;
 }
 
 .receipt-label {
     display: block;
-    font-size: 10pt;
+    font-size: 9.5pt;
     font-weight: 700;
     text-transform: uppercase;
 }
 
 .receipt-value {
     display: block;
-    margin: .5mm 0 3mm;
-    font-size: 27pt;
+    margin: .3mm 0 1.5mm;
+    font-size: 29pt;
     line-height: 1;
 }
 
 .receipt-code {
-    padding: 2mm 1mm;
+    padding: 1.2mm .5mm;
     border-block: 2px solid #111;
 }
 
@@ -4999,26 +5002,26 @@ body.sections-ready .workspace-section.is-active {
 
 .receipt-code strong {
     font-family: Consolas, "Courier New", monospace;
-    font-size: 30pt;
-    line-height: 1.05;
+    font-size: 31pt;
+    line-height: 1;
     letter-spacing: 0;
 }
 
 .receipt-validity,
 .receipt-contact {
-    margin: 2.5mm 0 0;
+    margin: 1.8mm 0 0;
 }
 
 .receipt-validity {
-    font-size: 12pt;
+    font-size: 11.5pt;
     font-weight: 800;
     line-height: 1.35;
 }
 
 .receipt-contact {
     display: grid;
-    gap: 1mm;
-    padding: 3mm 1.5mm .5mm;
+    gap: .5mm;
+    padding: 1.8mm .5mm .3mm;
     border-top: 1px dashed #555;
     font-size: 12pt;
     font-weight: 700;
@@ -5037,8 +5040,8 @@ body.sections-ready .workspace-section.is-active {
 
 .cashback-thermal-receipt > small {
     display: block;
-    margin-top: 3.5mm;
-    padding: 2.5mm 1.5mm 0;
+    margin-top: 2mm;
+    padding: 1.5mm .5mm 0;
     border-top: 1px dotted #8c9199;
     font-size: 10.5pt;
     font-weight: 700;
@@ -5112,10 +5115,11 @@ body.sections-ready .workspace-section.is-active {
         max-width: 76mm;
         min-height: 0;
         margin: 0 2mm;
-        padding: 5mm 4mm 4mm;
+        padding: 2mm 2mm 2.5mm;
         border: 0;
         border-radius: 0;
         box-shadow: none;
+        break-inside: avoid;
     }
 }
 

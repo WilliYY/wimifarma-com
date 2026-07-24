@@ -8,6 +8,12 @@ Os outros computadores continuam usando somente o botao `Imprimir`. Quando a est
 
 O Chrome usa a impressora padrao do Windows. Com o atalho web fornecido pelo painel, ele abre em modo aplicativo com `--kiosk-printing`; sem o atalho, a mesma pagina funciona, mas o Chrome mostra o dialogo normal de impressao.
 
+## Papel e area util
+
+No rolo termico, `80x40` normalmente significa 80 mm de largura por 40 m de comprimento, nao uma etiqueta fixa de 80 x 40 mm. O comprovante usa altura variavel conforme os dados.
+
+Tanto a estacao web quanto a impressao local usam a mesma geometria: papel de 80 mm, bloco externo de 76 mm, margens laterais de 2 mm e area interna util de 72 mm. A logo usa 48 mm; valor, codigo e validade ocupam a hierarquia principal, enquanto contato e emissor ficam compactos e legiveis. No driver da Bematech, manter papel continuo de 80 mm, escala 100%, margens desativadas e cabecalho/rodape do navegador desligados.
+
 ## Acesso
 
 - O card da Home e `/cashback/impressora.php` aparecem somente para o username normalizado exato `adm`.
@@ -86,7 +92,7 @@ Quando uma estacao web e um agente legado estiverem online, a fila nova prioriza
 
 ## Deploy
 
-O Cashback `1.6.0` nao monta `wimi-printer-release/` e nao usa `WIMI_PRINTER_INSTALLER_PATH` ou `WIMI_PRINTER_INSTALLER_VERSION`.
+O Cashback `1.6.1` nao monta `wimi-printer-release/` e nao usa `WIMI_PRINTER_INSTALLER_PATH` ou `WIMI_PRINTER_INSTALLER_VERSION`.
 
 Configuracao opcional:
 
