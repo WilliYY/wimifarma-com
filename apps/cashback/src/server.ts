@@ -617,7 +617,7 @@ router.post('/api-wimi-impressora.php', clearSensitive, maintenanceGuard, async 
 
     const device = await defaultPrintDevice();
     if (!device) {
-      res.status(409).json({ ok: false, message: 'A Wimi Impressora esta offline. Use a impressao deste computador ou avise o ADM.' });
+      res.status(409).json({ ok: false, code: 'wimi_offline', message: 'A Wimi Impressora esta offline.' });
       return;
     }
     const jobId = await createPrintJob(device.id, receiptKind, entityId, payload, req.session.user?.id ?? null);
@@ -3726,7 +3726,7 @@ async function saveWhatsappMessage(input: {
   }
 }
 
-function renderQuickVoucherReceipt(voucher: DbRow | null): string {
+function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | 'local' = 'local'): string {
   if (!voucher) return '';
   const expiresAt = isoDate(voucher.expires_at)
     || dateMonthsFromDate(voucher.issued_at || voucher.created_at, CASHBACK_VALIDITY_MONTHS);
@@ -3738,7 +3738,7 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
     <div class="quick-voucher-result-copy no-print">
       <span class="kicker">Cupom pronto</span>
       <h3>${active ? 'Confira e imprima o cashback' : 'Este cupom nao esta mais ativo'}</h3>
-      <p>${active ? 'O codigo ja esta gravado. A impressao abre a tela da impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
+      <p>${active ? 'O codigo ja esta gravado. Ao imprimir, o sistema escolhe a Wimi conectada ou a impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
     </div>
     <article class="quick-voucher-receipt cashback-thermal-receipt" data-quick-voucher-receipt>
       <img class="receipt-brand" src="${asset('logo-wimifarma-receipt.png')}" alt="Wimifarma" width="731" height="292">
@@ -3751,13 +3751,13 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
       <small>Emitido por ${e(voucher.attendant_name || 'Wimifarma')} em ${e(issuedAtText)}</small>
     </article>
     <div class="quick-voucher-result-actions no-print">
-      ${active ? `<button type="button" class="btn primary" data-wimi-print data-receipt-type="quick_voucher" data-entity-id="${e(voucher.id)}">Imprimir na Wimi</button><button type="button" class="btn" data-print-quick-voucher data-voucher-id="${e(voucher.id)}">Imprimir neste PC</button>` : ''}
+      ${active ? `<button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="quick_voucher" data-entity-id="${e(voucher.id)}">Imprimir</button>` : ''}
       <a class="btn" href="${pageUrl('dashboard.php#busca')}">Gerar outro</a>
     </div>
   </div>`;
 }
 
-function renderCashbackPurchaseReceipt(receipt: DbRow | null): string {
+function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi' | 'local' = 'local'): string {
   if (!receipt) return '';
   const purchaseId = num(receipt.id);
   const generatedCents = num(receipt.cashback_generated_cents);
@@ -3783,8 +3783,7 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null): string {
         <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
       </div>
       <div class="cashback-operation-result-actions">
-        <button type="button" class="btn primary" data-wimi-print data-receipt-type="purchase" data-entity-id="${e(purchaseId)}">Imprimir na Wimi</button>
-        <button type="button" class="btn" data-print-cashback-purchase data-purchase-id="${e(purchaseId)}">Imprimir neste PC</button>
+        <button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="purchase" data-entity-id="${e(purchaseId)}">Imprimir</button>
         <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${num(receipt.client_id)}#resgate`)}">Nova operacao</a>
       </div>
     </div>
@@ -3826,6 +3825,9 @@ async function renderDashboard(req: Request): Promise<string> {
   const purchaseReceipt = (req.session.cashbackPurchaseReceiptIds || []).includes(requestedPurchaseReceiptId)
     ? await cashbackPurchaseReceipt(requestedPurchaseReceiptId)
     : null;
+  const printRoute: 'wimi' | 'local' = printedVoucher || purchaseReceipt
+    ? (await defaultPrintDevice() ? 'wimi' : 'local')
+    : 'local';
   const quickRequestToken = crypto.randomUUID();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
   const xpReward = await currentUserXpRewardStatus(req);
@@ -3924,7 +3926,7 @@ async function renderDashboard(req: Request): Promise<string> {
       <div><span class="kicker">Sem cadastro agora</span><h2>Cashback rapido</h2><p>Informe somente o valor gasto. O codigo de 4 digitos vale por 6 meses.</p></div>
       <span class="quick-cashback-rate">${e(settings.cashbackPercent)}% automatico</span>
     </div>
-    ${renderQuickVoucherReceipt(printedVoucher)}
+    ${renderQuickVoucherReceipt(printedVoucher, printRoute)}
     <form method="post" action="${pageUrl('dashboard.php#busca')}" class="quick-cashback-form" data-no-enter-submit data-quick-cashback-form data-default-percent="${e(settings.cashbackPercent)}">
       ${csrfField(req)}
       <input type="hidden" name="action" value="create_quick_cashback">
@@ -3975,7 +3977,7 @@ async function renderDashboard(req: Request): Promise<string> {
 
     <section id="resgate" class="panel section-block workspace-section redeem-panel">
       <div class="section-title redeem-title"><div class="redeem-title-copy"><span class="kicker">Compra Cashback</span><h2>Gastar/Usar CashBack</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
-      ${renderCashbackPurchaseReceipt(purchaseReceipt)}
+      ${renderCashbackPurchaseReceipt(purchaseReceipt, printRoute)}
       <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols redeem-form" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_redeem">

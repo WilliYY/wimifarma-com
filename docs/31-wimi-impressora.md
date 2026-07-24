@@ -4,7 +4,7 @@
 
 `Wimi Impressora` conecta a Bematech MP-4200 TH de um computador Windows ao Cashback hospedado no VPS. Os outros computadores nao acessam a USB nem precisam estar na mesma rede: enviam o comprovante para a fila HTTPS e o agente instalado no PC da impressora consulta essa fila.
 
-O dialogo de impressao do navegador continua disponivel como fallback.
+Nos comprovantes existe somente o botao `Imprimir`: quando a Wimi Impressora esta online no momento em que o comprovante abre, ele envia para a fila HTTPS; sem agente online, abre imediatamente o dialogo de impressao deste computador. Se ocorrer uma falha de rede ou resposta incerta depois de tentar a fila, o sistema nao abre a impressao local automaticamente, evitando cupom duplicado.
 
 ## Acesso
 

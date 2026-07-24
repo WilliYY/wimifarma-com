@@ -4607,6 +4607,12 @@ body.sections-ready .workspace-section.is-active {
     color: #12613c;
 }
 
+.wimi-print-feedback.is-local {
+    border-color: #f2c879;
+    background: #fff8e7;
+    color: #7a4a06;
+}
+
 .wimi-print-feedback.is-error {
     border-color: #f2a5b6;
     background: #fff0f3;

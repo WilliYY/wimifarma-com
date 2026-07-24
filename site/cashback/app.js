@@ -292,57 +292,66 @@
         window.print();
     }
 
-    function bindCashbackReceiptPrint() {
-        document.querySelectorAll('[data-print-quick-voucher]').forEach(function (button) {
-            button.addEventListener('click', function () {
-                var result = button.closest('.quick-voucher-result');
-                var receipt = result ? result.querySelector('[data-quick-voucher-receipt]') : null;
-                if (!receipt) {
-                    return;
-                }
-                requestReceiptAudit('api-cashback-rapido-impressao.php', 'voucher_id', button.getAttribute('data-voucher-id') || '');
-                printCashbackReceipt(receipt);
-            });
-        });
+    function localReceiptFor(button) {
+        var receiptType = button.getAttribute('data-receipt-type') || '';
+        if (receiptType === 'quick_voucher') {
+            var quickResult = button.closest('.quick-voucher-result');
+            return {
+                receipt: quickResult ? quickResult.querySelector('[data-quick-voucher-receipt]') : null,
+                auditEndpoint: 'api-cashback-rapido-impressao.php',
+                auditField: 'voucher_id'
+            };
+        }
 
-        document.querySelectorAll('[data-print-cashback-purchase]').forEach(function (button) {
-            button.addEventListener('click', function () {
-                var result = button.closest('[data-cashback-operation-result]');
-                var receipt = result ? result.querySelector('[data-cashback-purchase-receipt]') : null;
-                if (!receipt) {
-                    return;
-                }
-                requestReceiptAudit(
-                    'api-comprovante-cashback-impressao.php',
-                    'purchase_id',
-                    button.getAttribute('data-purchase-id') || ''
-                );
-                printCashbackReceipt(receipt);
-            });
-        });
+        var purchaseResult = button.closest('[data-cashback-operation-result]');
+        return {
+            receipt: purchaseResult ? purchaseResult.querySelector('[data-cashback-purchase-receipt]') : null,
+            auditEndpoint: 'api-comprovante-cashback-impressao.php',
+            auditField: 'purchase_id'
+        };
     }
 
-    function bindWimiPrinter() {
-        document.querySelectorAll('[data-wimi-print]').forEach(function (button) {
+    function printOnThisComputer(button) {
+        var local = localReceiptFor(button);
+        if (!local.receipt) {
+            return false;
+        }
+        requestReceiptAudit(local.auditEndpoint, local.auditField, button.getAttribute('data-entity-id') || '');
+        printCashbackReceipt(local.receipt);
+        return true;
+    }
+
+    function printFeedback(button, text, className) {
+        var status = document.createElement('span');
+        status.className = 'wimi-print-feedback ' + className;
+        status.setAttribute('role', 'status');
+        button.parentNode.querySelectorAll('.wimi-print-feedback').forEach(function (oldStatus) {
+            oldStatus.remove();
+        });
+        status.textContent = text;
+        button.insertAdjacentElement('afterend', status);
+    }
+
+    function bindSmartPrinter() {
+        document.querySelectorAll('[data-smart-print]').forEach(function (button) {
             button.addEventListener('click', function () {
                 if (button.disabled) {
+                    return;
+                }
+
+                if (button.getAttribute('data-print-route') === 'local') {
+                    printOnThisComputer(button);
                     return;
                 }
 
                 var csrfMeta = document.querySelector('meta[name="wfwc-csrf"]');
                 var body = new URLSearchParams();
                 var originalText = button.textContent;
-                var status = document.createElement('span');
-                status.className = 'wimi-print-feedback';
-                status.setAttribute('role', 'status');
                 body.set('receipt_type', button.getAttribute('data-receipt-type') || '');
                 body.set('entity_id', button.getAttribute('data-entity-id') || '');
                 body.set('csrf_token', window.WFWC_CSRF || (csrfMeta ? csrfMeta.getAttribute('content') : '') || '');
                 button.disabled = true;
                 button.textContent = 'Enviando...';
-                button.parentNode.querySelectorAll('.wimi-print-feedback').forEach(function (oldStatus) {
-                    oldStatus.remove();
-                });
 
                 fetch('api-wimi-impressora.php', {
                     method: 'POST',
@@ -357,18 +366,22 @@
                         return { ok: false, message: 'Resposta invalida do servidor.' };
                     }).then(function (payload) {
                         if (!response.ok || !payload.ok) {
-                            throw new Error(payload.message || 'Nao foi possivel enviar para a impressora.');
+                            var error = new Error(payload.message || 'Nao foi possivel enviar para a impressora.');
+                            error.code = payload.code || '';
+                            error.status = response.status;
+                            throw error;
                         }
                         return payload;
                     });
                 }).then(function (payload) {
-                    status.classList.add('is-success');
-                    status.textContent = 'Enviado para ' + (payload.printer || 'Wimi Impressora') + ' | fila #' + payload.job_id;
-                    button.insertAdjacentElement('afterend', status);
+                    printFeedback(button, 'Enviado para ' + (payload.printer || 'Wimi Impressora') + ' | fila #' + payload.job_id, 'is-success');
                 }).catch(function (error) {
-                    status.classList.add('is-error');
-                    status.textContent = error && error.message ? error.message : 'Falha ao enviar.';
-                    button.insertAdjacentElement('afterend', status);
+                    if (error && error.code === 'wimi_offline') {
+                        printFeedback(button, 'Wimi indisponivel. Abrindo a impressao deste computador.', 'is-local');
+                        printOnThisComputer(button);
+                        return;
+                    }
+                    printFeedback(button, error && error.message ? error.message : 'Falha ao enviar. Tente novamente.', 'is-error');
                 }).finally(function () {
                     button.disabled = false;
                     button.textContent = originalText;
@@ -1436,8 +1449,7 @@
         bindInitialPurchasePreview();
         bindRedeemPreview();
         bindQuickVoucherCodes();
-        bindCashbackReceiptPrint();
-        bindWimiPrinter();
+        bindSmartPrinter();
         bindLiveClientSearch();
         bindClientResultsShowMore();
         bindClientPickers();
