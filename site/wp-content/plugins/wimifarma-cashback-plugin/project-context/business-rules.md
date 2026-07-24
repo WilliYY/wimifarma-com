@@ -10,7 +10,7 @@ Operar o programa de cashback da Wimifarma dentro do WordPress, com controle adm
 - O cálculo é feito sobre o valor bruto da compra (`gross_amount`).
 
 ## Validade do crédito
-- Cada crédito gerado expira em `45 dias` por padrão.
+- Cada crédito gerado expira em `6 meses` por padrão.
 - O prazo é configurável.
 - A data de expiração é calculada a partir da data da compra.
 

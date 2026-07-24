@@ -1,131 +1,121 @@
-# 31 - Wimi Impressora
+# 31 - Wimi Impressora Web
 
 ## Objetivo
 
-`Wimi Impressora` conecta a Bematech MP-4200 TH de um computador Windows ao Cashback hospedado no VPS. Os outros computadores nao acessam a USB nem precisam estar na mesma rede: enviam o comprovante para a fila HTTPS e o agente instalado no PC da impressora consulta essa fila.
+`Wimi Impressora Web` conecta a fila HTTPS do Cashback ao Chrome aberto no computador da Bematech MP-4200 TH. Nao existe EXE, servico do Windows, porta local, compartilhamento de rede ou atualizador nativo.
 
-Nos comprovantes existe somente o botao `Imprimir`: quando a Wimi Impressora esta online no momento em que o comprovante abre, ele envia para a fila HTTPS; sem agente online, abre imediatamente o dialogo de impressao deste computador. Se ocorrer uma falha de rede ou resposta incerta depois de tentar a fila, o sistema nao abre a impressao local automaticamente, evitando cupom duplicado.
+Os outros computadores continuam usando somente o botao `Imprimir`. Quando a estacao web esta online, o comprovante entra na fila central; sem estacao online, o sistema abre imediatamente a impressao do computador atual. Uma resposta incerta depois de tentar a fila nunca abre uma segunda via local automaticamente.
 
-O modelo termico prioriza leitura no balcao: validade, WhatsApp, endereco, atendente e data/hora usam fonte ampliada e em negrito. A Wimi Impressora reserva altura adicional para esse rodape sem cortar informacoes.
-O agente `1.0.8` imprime o codigo recebido como texto e suporta tanto os comprovantes historicos de quatro digitos quanto as novas emissoes de cinco digitos, sem recalcular ou alterar o voucher. Nos comprovantes de compra e uso de cashback, o nome salvo e o codigo permanente do cliente aparecem em destaque; o bloco financeiro mostra somente `Cashback gerado`, com o valor ampliado para leitura no balcao, sem expor compra, cashback usado ou valor pago. Vouchers rapidos anonimos continuam sem nome nem codigo de cliente.
-
-Na tela web, o resultado de uma compra confirmada mostra status, numero da operacao, destino da impressao, dados essenciais do cliente, cashback gerado com valor ampliado, validade e acoes ao lado da previa termica. Esse resumo e somente visual; os atributos `data-smart-print`, `data-print-route`, `data-receipt-type` e `data-entity-id` continuam obrigatorios e preservados.
-Em `Gastar/Usar CashBack`, `Concluir e imprimir` envia o mesmo POST da operacao com `print_after_save=1`. Somente depois do `COMMIT`, o redirect inclui o ID protegido do novo comprovante e pede ao navegador para acionar a rota inteligente. O parametro e removido da URL antes do acionamento e o ID fica marcado em `sessionStorage`, evitando nova impressao por recarregamento; qualquer nova tentativa permanece manual pelo botao `Imprimir`.
-O payload `purchase` inclui `client_code`, derivado de `cashback_clients.id`, e o mostra em destaque junto de nome e telefone. O payload `quick_voucher` permanece sem `client_code`, porque a emissao rapida pode ser anonima.
-O Cashback `1.4.2` renova os assets da interface, mostra o comprovante da compra inicial dentro de `Novo cliente`, explicita a busca por codigo do cliente, impede cache das telas autenticadas e destaca o nome cadastrado na impressao.
+O Chrome usa a impressora padrao do Windows. Com o atalho web fornecido pelo painel, ele abre em modo aplicativo com `--kiosk-printing`; sem o atalho, a mesma pagina funciona, mas o Chrome mostra o dialogo normal de impressao.
 
 ## Acesso
 
-- O card da Home e `/cashback/impressora.php` aparecem somente para o username exato `adm`.
-- Qualquer usuario autenticado no Cashback pode enviar um comprovante ja autorizado na propria sessao para a impressora conectada.
-- Download, teste, revogacao e reimpressao manual exigem sessao `adm` e CSRF.
+- O card da Home e `/cashback/impressora.php` aparecem somente para o username normalizado exato `adm`.
+- Ativar, renovar, baixar o atalho, testar, revogar e reimprimir exigem sessao `adm` e CSRF.
+- Qualquer usuario autenticado no Cashback pode enviar para a fila somente um comprovante cujo ID foi autorizado na sessao que concluiu a operacao.
+- Depois da ativacao, `/cashback/internal/print-station` usa uma credencial exclusiva de dispositivo e nao depende de manter a sessao administrativa aberta.
 
-## Instalacao no computador da Bematech
+## Ativacao no computador da Bematech
 
-1. Entrar na Home com `adm` e abrir `Wimi Impressora`.
-2. Confirmar em `Configuracoes > Impressoras e scanners` que a Bematech aparece instalada e esta com papel.
-3. Clicar em `Baixar instalador`.
-4. Abrir o EXE baixado e confirmar o controle de conta do Windows.
-5. Conferir o comprovante de teste e o dispositivo `Online` no painel.
+1. Instalar o driver normal da Bematech e deixa-la como impressora padrao do Windows.
+2. Abrir a Home no Google Chrome com o login `adm` e entrar em `Wimi Impressora`.
+3. Baixar `Iniciar Wimi Impressora Web.cmd` e abri-lo.
+4. Na janela exclusiva que abrir, entrar como `adm`, voltar a `Wimi Impressora`, informar um nome e clicar em `Ativar este navegador`.
+5. Manter a tela `Estacao de impressao` aberta.
+6. Voltar ao painel ADM em outra janela e usar `Imprimir teste`.
 
-O download recebe o nome `WimiImpressoraSetup--<ticket>.exe`. O ticket tem 32 bytes aleatorios, fica salvo no Postgres somente como SHA-256, vale 30 minutos e e consumido uma unica vez. Renomear o arquivo antes da primeira instalacao remove o pareamento automatico; nesse caso deve-se baixar outro.
+A ativacao grava no navegador um cookie `WFWIMIPRINT` com `HttpOnly`, `SameSite=Strict`, escopo `/cashback`, validade de um ano e `Secure` em producao. O token bruto nao entra em log nem no Postgres; o banco recebe somente SHA-256.
 
-O agente:
+Revogar a estacao remove o hash do banco, cancela apenas trabalhos ainda `pending` e invalida imediatamente o navegador. Trabalhos ja reservados continuam como `printing` e, se nao forem concluidos, viram `uncertain`.
 
-- procura nomes contendo `MP-4200 TH`, `MP-4200`, `Bematech` ou `Elgin`;
-- depende do driver da impressora ja instalado no Windows;
-- copia o executavel para `C:\Program Files\Wimifarma\Wimi Impressora\WimiImpressora.exe`;
-- salva configuracao em `C:\ProgramData\Wimifarma\Wimi Impressora\config.json`;
-- cifra o token do dispositivo com DPAPI `LocalMachine`;
-- registra o servico `WimiImpressora` com inicio atrasado automatico e recuperacao por reinicio;
-- usa apenas conexoes HTTPS de saida para `https://wimifarma.com/cashback`;
-- nao abre porta local nem exige regra de firewall ou rede compartilhada.
+## Atalho web e inicio com o Windows
+
+`Baixar atalho web` entrega `Iniciar Wimi Impressora Web.cmd`. O arquivo:
+
+- procura o Google Chrome nos caminhos padrao do Windows;
+- abre somente `https://wimifarma.com/cashback/internal/print-station`;
+- usa um perfil exclusivo em `%LocalAppData%\WimiFarma\ImpressoraWeb\ChromeProfile`, evitando que o Chrome comum ignore `--kiosk-printing` quando ja estiver aberto;
+- usa `--app`, `--kiosk-printing`, `--start-maximized` e `--no-first-run`;
+- nao contem token, senha, Base64, PowerShell, tarefa agendada, registro, elevacao ou processo oculto;
+- cria somente a pasta local do perfil do Chrome; nao instala programa nem altera configuracao do Windows.
+
+Para iniciar junto com o Windows, coloque uma copia do `.cmd` na pasta aberta por `Win + R` e `shell:startup`. A ativacao deve ser feita dentro da janela aberta por esse atalho. Atualizacoes da interface e da logica chegam pelo servidor no proximo carregamento; nao ha arquivo local para atualizar.
 
 ## Fila e garantias
 
-Tabelas:
+Tabelas preservadas:
 
-- `cashback_print_devices`: computador, impressora, versao, token com hash, sinal e revogacao;
-- `cashback_print_pairing_tickets`: downloads de uso unico e expiracao;
+- `cashback_print_devices`: estacao, transporte `web` ou `agent` legado, hash do token, sinal e revogacao;
+- `cashback_print_pairing_tickets`: historico de pareamentos do agente antigo, sem novos downloads;
 - `cashback_print_jobs`: payload estruturado e estados da fila.
 
-Estados do trabalho:
+Estados:
 
-- `pending`: aguardando agente;
-- `printing`: reservado pelo agente com `FOR UPDATE SKIP LOCKED`;
-- `printed`: enviado com sucesso ao spooler do Windows;
-- `failed`: driver ou spooler recusou o trabalho;
-- `uncertain`: o agente foi interrompido depois de reservar o trabalho;
-- `cancelled`: dispositivo foi revogado antes da impressao.
+- `pending`: aguardando uma estacao;
+- `printing`: reservado com `FOR UPDATE SKIP LOCKED`;
+- `printed`: a janela de impressao do navegador terminou;
+- `failed`: falha registrada por agente legado;
+- `uncertain`: a estacao foi fechada, caiu ou nao confirmou o fim em ate 15 minutos;
+- `cancelled`: dispositivo revogado antes de reservar o trabalho.
 
-Um trabalho `uncertain` ou `failed` nao e impresso novamente sozinho. O ADM deve conferir o papel e usar `Reimprimir`. Isso reduz o risco de cupom duplicado. Depois de o Windows aceitar um trabalho, o agente mantem o registro local e repete somente a confirmacao ao servidor; ele nao registra essa situacao como falha nem puxa outro cupom antes de a confirmacao. `printed` nao prova que o papel saiu fisicamente; prova que o driver/spooler aceitou.
+A estacao usa Web Locks para permitir somente uma aba consumindo a fila por dispositivo. Uma segunda aba fica aguardando a primeira liberar a trava.
 
-Os payloads aceitos sao fechados: `quick_voucher`, `purchase` e `test`. O agente nao executa comandos arbitrarios recebidos do servidor.
+Um trabalho `uncertain` ou `failed` nunca volta sozinho para `pending`. O ADM confere o papel e decide usar `Reimprimir`. `printed` significa que o navegador concluiu o fluxo de impressao; a Web nao consegue provar que houve papel, tinta termica ou corte fisico.
 
-## Atualizacao
+Os payloads continuam fechados em `quick_voucher`, `purchase` e `test`. O navegador nao recebe nem executa comando arbitrario. O comprovante de compra mostra nome, telefone, codigo permanente do cliente, cashback gerado, novo codigo quando houver, validade, contato, endereco, atendente e operacao. Voucher rapido anonimo continua sem nome e codigo de cliente.
 
-O agente consulta a versao periodicamente. Quando existe versao maior:
+## Seguranca da estacao
 
-1. baixa o EXE pelo endpoint autenticado;
-2. confere o SHA-256 informado pelo servidor;
-3. inicia o atualizador local;
-4. para o servico, troca o executavel de forma atomica e inicia novamente;
-5. se a troca ou a partida falhar, restaura a versao anterior e tenta religar o servico.
+- autenticacao por cookie de dispositivo separado de `WFCASHBACK`;
+- token aleatorio de 32 bytes, armazenado no servidor somente como SHA-256;
+- CSRF derivado por HMAC do segredo do Cashback e do token do dispositivo;
+- `SameSite=Strict`, conferencia de `Sec-Fetch-Site` e chamadas `fetch` somente para a mesma origem;
+- CSP exclusiva da pagina com nonce para script e estilo;
+- `Cache-Control: private, no-store`;
+- payload montado no DOM com `textContent`, sem inserir dados operacionais como HTML;
+- heartbeat e fila usam somente HTTPS de saida;
+- revogacao pelo `adm` sem precisar acessar o computador fisicamente.
 
-O primeiro teste de versao ocorre cerca de um minuto apos o servico iniciar; depois, a consulta acontece a cada seis horas. Arquivos temporarios antigos sao removidos automaticamente. O resultado local de cada troca fica em `C:\ProgramData\Wimifarma\Wimi Impressora\update.log`.
+O cookie da estacao permite imprimir os jobs destinados ao dispositivo, por isso o perfil do Chrome desse computador deve permanecer restrito ao balcao. Se o computador for perdido ou trocado, revogue a estacao no painel.
 
-O projeto ainda nao possui certificado comercial de assinatura de codigo. Por isso o Windows pode mostrar SmartScreen na primeira instalacao, mesmo com a verificacao SHA-256 usada nas atualizacoes. Assinar Authenticode e o hardening recomendado antes de distribuir fora da farmacia.
+## Compatibilidade com o agente antigo
 
-Desde a versao `1.0.2`, o agente le a propria versao do assembly, evitando divergencia entre o identificador enviado ao servidor e o EXE publicado. A versao `1.0.3` reforca a tipografia menor de validade, contato, endereco, atendente e data/hora na impressao termica. A versao `1.0.5` adiciona substituicao atomica, backup, rollback e log para atualizacoes.
+As APIs Bearer do agente antigo permanecem temporariamente para nao interromper uma maquina que ainda esteja conectada. Novos instaladores, downloads e atualizacoes EXE foram retirados. O endpoint antigo de download responde `410`, e o endpoint de atualizacao informa a migracao para a estacao web.
 
-## Build local
-
-Requer .NET SDK 8. O runtime nao basta.
-
-```powershell
-cd apps\wimi-impressora
-dotnet restore WimiImpressora.csproj
-dotnet build WimiImpressora.csproj -c Release
-dotnet publish WimiImpressora.csproj -c Release -r win-x64 --self-contained true -o ..\..\wimi-printer-release
-```
-
-O resultado publicado e `wimi-printer-release/WimiImpressoraSetup.exe`. `bin/`, `obj/` e `wimi-printer-release/` sao ignorados pelo Git.
-O projeto ativa os analisadores recomendados e trata warnings como erro; corrija a causa de qualquer novo aviso, sem desativar a regra.
-
-Validacao visual sem instalar servico:
-
-```powershell
-dotnet apps\wimi-impressora\bin\Release\net8.0-windows\win-x64\WimiImpressoraSetup.dll --render-preview "$env:TEMP\wimi-cupom.png"
-dotnet apps\wimi-impressora\bin\Release\net8.0-windows\win-x64\WimiImpressoraSetup.dll --render-preview "$env:TEMP\wimi-compra.png" purchase
-```
+Quando uma estacao web e um agente legado estiverem online, a fila nova prioriza a estacao web. Registros, jobs e auditorias antigas nao sao apagados.
 
 ## Deploy
 
-O Compose monta `./wimi-printer-release` como `/opt/wimi-impressora` somente leitura no container do Cashback. O EXE nao passa pelo Git.
+O Cashback `1.6.0` nao monta `wimi-printer-release/` e nao usa `WIMI_PRINTER_INSTALLER_PATH` ou `WIMI_PRINTER_INSTALLER_VERSION`.
 
-No deploy:
+Configuracao opcional:
 
-1. publicar o agente localmente;
-2. criar `wimi-printer-release/` no projeto oficial do VPS;
-3. enviar somente `WimiImpressoraSetup.exe` para essa pasta;
-4. definir `WIMI_PRINTER_INSTALLER_VERSION` com a mesma `<Version>` do projeto .NET;
-5. rebuildar `wimifarma-cashback-app` e `wimifarma-com-web` quando a Home mudar;
-6. conferir `/cashback/health`, painel ADM, download protegido e teste fisico.
+```env
+WIMI_PRINTER_PUBLIC_STATION_URL=https://wimifarma.com/cashback/internal/print-station
+```
 
-Nunca versionar EXE, token, `config.json` do agente ou arquivos de `ProgramData`.
+Deploy:
+
+```powershell
+npm run check --prefix apps/cashback
+npm test --prefix apps/cashback
+node --check site/cashback/app.js
+docker compose config
+```
+
+No VPS, rebuildar `wimifarma-cashback-app` e `wimifarma-com-web`, conferir `/cashback/health`, ativar o Chrome da Bematech e realizar um teste fisico controlado.
 
 ## Testes obrigatorios
 
-- `npm run check` e `npm run build` em `apps/cashback`;
-- build .NET sem warnings;
-- duas previews PNG sem corte ou sobreposicao;
-- `php -l site/home.php`;
-- `node --check site/cashback/app.js`;
-- `docker compose config`;
-- card invisivel para usuario comum e visivel para `adm`;
-- download sem `adm` recusado;
-- ticket usado/expirado recusado;
-- pareamento, heartbeat, claim e conclusao autenticados;
-- impressao fisica na MP-4200 TH, reinicio do Windows e retorno automatico do servico;
-- simulacao de interrupcao para confirmar estado `uncertain` sem reimpressao automatica.
-- simulacao de falha na atualizacao para confirmar rollback e retorno do servico.
+- card invisivel para usuario comum e visivel somente para `adm`;
+- ativacao recusada sem `adm` ou sem CSRF;
+- cookie com `HttpOnly`, `SameSite=Strict`, `Secure` e escopo correto;
+- heartbeat, claim e conclusao recusados sem cookie ou HMAC CSRF;
+- duas abas nao consomem simultaneamente a mesma fila;
+- claim concorrente nao duplica job;
+- fechamento durante impressao resulta em `uncertain`;
+- job `uncertain` nao e reimpresso automaticamente;
+- atalho nao contem segredo nem comando de instalacao/elevacao;
+- impressao fisica na MP-4200 TH com cupom rapido, compra identificada e teste;
+- reinicio do Windows com o atalho em `shell:startup`;
+- revogacao da estacao bloqueia o navegador sem apagar historico.

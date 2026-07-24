@@ -146,7 +146,7 @@ Nesse caso, a localizacao continua possivel por:
 Resultado esperado:
 - compra registrada
 - cashback gerado automaticamente
-- credito com validade de 45 dias por padrao
+- credito com validade de 6 meses por padrao
 - envio do evento de compra para o webhook, se configurado
 - log de sucesso ou falha com referencia do evento
 

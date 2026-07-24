@@ -5216,6 +5216,81 @@ body.sections-ready .workspace-section.is-active {
     min-height: 48px;
 }
 
+.printer-admin-copy {
+    max-width: 650px;
+}
+
+.printer-web-setup {
+    display: grid;
+    width: min(560px, 48%);
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid #b8d7e8;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.printer-admin-hero .printer-web-activate {
+    min-width: 0;
+    gap: 7px;
+    text-align: left;
+}
+
+.printer-web-activate label {
+    color: #405568;
+    font-size: .78rem;
+    font-weight: 900;
+}
+
+.printer-web-activate > div {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto;
+    gap: 8px;
+}
+
+.printer-web-activate input {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #9bbdd0;
+    border-radius: 6px;
+    background: #fbfdff;
+    color: #25171b;
+    font: inherit;
+    font-weight: 750;
+}
+
+.printer-web-activate input:focus {
+    border-color: #2475ad;
+    outline: 3px solid rgba(36, 117, 173, .15);
+}
+
+.printer-web-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.printer-web-actions > .btn,
+.printer-admin-hero .printer-web-actions form {
+    min-width: 0;
+    flex: 1 1 190px;
+}
+
+.printer-admin-hero .printer-web-actions form {
+    display: block;
+}
+
+.printer-web-actions .btn {
+    width: 100%;
+    min-height: 44px;
+}
+
+.printer-web-setup > small {
+    color: #52606d;
+    line-height: 1.45;
+}
+
 .printer-metrics {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5467,6 +5542,14 @@ body.sections-ready .workspace-section.is-active {
 
     .printer-admin-hero form {
         min-width: 0;
+    }
+
+    .printer-web-setup {
+        width: 100%;
+    }
+
+    .printer-web-activate > div {
+        grid-template-columns: 1fr;
     }
 
     .printer-metrics {

@@ -55,28 +55,30 @@ Resolvido sem apagar dados. Os cinco arquivos `/.env.codex-backup-*` foram movid
 
 ## Pendencias e fragilidades
 
-### P2 - Instalador Wimi ainda nao possui assinatura Authenticode
+### P2 - Instalador Wimi sem assinatura Authenticode
 
-O EXE publicado localmente e de arquivo unico, mas esta `NotSigned`. O hash SHA-256 protege a atualizacao pelo agente, porem o Windows pode exibir SmartScreen na primeira instalacao.
-
-**Recomendacao:** adquirir/configurar certificado de assinatura de codigo antes de distribuir o instalador fora do computador controlado da farmacia. A orientacao operacional esta em [docs/31-wimi-impressora.md](31-wimi-impressora.md#L56).
+Resolvido pela retirada do binario do fluxo operacional. O painel nao oferece mais EXE, o Compose nao monta `wimi-printer-release/` e os endpoints antigos de download/atualizacao respondem retirada/migracao. A Estacao Web usa somente Chrome, cookie seguro e um atalho `.cmd` transparente sem segredo ou elevacao. O codigo do agente antigo permanece no repositorio apenas como historico/compatibilidade e nao deve voltar a ser distribuido sem assinatura.
 
 ### P3 - Limites operacionais para acompanhar
 
 - O codigo novo possui cinco digitos e capacidade de 100.000 combinacoes simultaneamente reservadas. A capacidade deixou de ser um limite vitalicio: depois dos seis meses, a combinacao volta ao sorteio. Acompanhar apenas a quantidade de codigos com `expires_at >= CURRENT_DATE`; status usado ou cancelado nao libera o numero antes da data.
-- Se houver mais de uma Wimi Impressora online, a fila escolhe a que enviou sinal mais recente. Hoje isso atende ao unico computador da Bematech, mas o proximo passo deve ser definir uma impressora principal ou permitir escolha do destino. Veja [server.ts](../apps/cashback/src/server.ts#L2317).
+- Se houver mais de uma Wimi Impressora online, a fila prioriza transporte `web` e, entre estacoes do mesmo tipo, escolhe o sinal mais recente. O painel deve ser usado para revogar estacoes antigas e manter um unico computador operacional.
+- O navegador nao consegue confirmar papel, corte ou resultado fisico. `printed` significa fim do fluxo de impressao do Chrome; conferencia do papel continua obrigatoria em falha ou duvida.
 
-## Wimi Impressora antes do deploy
+## Wimi Impressora Web antes do deploy
 
-- O agente agora preserva o journal e repete somente a confirmacao ao servidor depois de o Windows aceitar o trabalho, evitando converter uma impressao ja enviada em `failed` por instabilidade de rede. Veja [AgentWorker.cs](../apps/wimi-impressora/AgentWorker.cs#L73).
+- A estacao usa cookie de dispositivo separado da sessao administrativa, HMAC CSRF, CSP com nonce e `Cache-Control: private, no-store`.
+- Web Locks impedem duas abas do mesmo dispositivo de consumir simultaneamente a fila.
+- O claim continua transacional com `FOR UPDATE SKIP LOCKED`.
 - Trabalhos em estado incerto continuam sem reimpressao automatica; o ADM decide reimprimir depois de conferir o papel.
-- Uma reinstalacao nao falha apenas porque o servico Windows ja esta em execucao. Veja [Installer.cs](../apps/wimi-impressora/Installer.cs#L137).
-- A versao do agente agora tem uma unica fonte no assembly; `AppConstants.Version` nao deve voltar a ser literal separado.
+- O atalho web nao usa PowerShell, registro, tarefa agendada, processo oculto ou permissao de administrador.
+- O transporte web e priorizado sobre eventual agente legado ainda online.
 
 ## Testes pendentes apos publicar
 
-1. Entrar com `adm`, confirmar que o card aparece apenas para ele e baixar o instalador.
-2. Executar o EXE no PC com a Bematech MP-4200 TH e conferir o cupom de teste.
-3. Reiniciar o computador da impressora e confirmar retorno automatico do servico.
+1. Entrar com `adm`, confirmar que o card aparece apenas para ele e ativar o Chrome da Bematech.
+2. Baixar/inspecionar o atalho web e conferir que abre somente a URL oficial com `--kiosk-printing`.
+3. Colocar o atalho em `shell:startup`, reiniciar o computador e confirmar retorno da estacao.
 4. Gerar voucher rapido e compra com dados reais de teste; conferir fila, papel e auditoria.
-5. Simular perda de internet depois de enviar ao spooler e conferir que o job nao e reimpresso automaticamente.
+5. Fechar a estacao durante um teste controlado e conferir `uncertain` sem reimpressao automatica.
+6. Abrir duas abas e confirmar que somente uma consome a fila.
