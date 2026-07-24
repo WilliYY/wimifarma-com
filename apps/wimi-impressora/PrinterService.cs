@@ -183,7 +183,7 @@ internal sealed class PrinterService
             y = DrawCentered(graphics, $"CODIGO CLIENTE: #{clientCode}", y + 3, 10.5f, FontStyle.Bold, 22);
         }
         y = DrawRule(graphics, y + 5);
-        y = DrawAmountRow(graphics, "Cashback gerado", ReadLong(payload, "cashback_generated_cents"), y + 5, bold: true);
+        y = DrawCashbackAmount(graphics, ReadLong(payload, "cashback_generated_cents"), y + 5);
         var code = ReadString(payload, "successor_code");
         if (!string.IsNullOrWhiteSpace(code))
         {
@@ -271,15 +271,16 @@ internal sealed class PrinterService
         return DrawCentered(graphics, value, y, fontSize, style, height);
     }
 
-    private static float DrawAmountRow(Graphics graphics, string label, long cents, float y, bool bold = false)
+    private static float DrawCashbackAmount(Graphics graphics, long cents, float y)
     {
-        using var labelFont = new Font("Arial", bold ? 9 : 8, bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Point);
-        using var valueFont = new Font("Arial", bold ? 11 : 9, FontStyle.Bold, GraphicsUnit.Point);
+        const float rowHeight = 30;
+        using var labelFont = new Font("Arial", 9.5f, FontStyle.Bold, GraphicsUnit.Point);
+        using var valueFont = new Font("Arial", 17, FontStyle.Bold, GraphicsUnit.Point);
         using var leftFormat = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
         using var rightFormat = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
-        graphics.DrawString(label, labelFont, Brushes.Black, new RectangleF(ContentLeft + 4, y, 170, 22), leftFormat);
-        graphics.DrawString(Money(cents), valueFont, Brushes.Black, new RectangleF(ContentLeft + 174, y, ContentWidth - 178, 22), rightFormat);
-        return y + 22;
+        graphics.DrawString("Cashback gerado", labelFont, Brushes.Black, new RectangleF(ContentLeft + 4, y, 150, rowHeight), leftFormat);
+        graphics.DrawString(Money(cents), valueFont, Brushes.Black, new RectangleF(ContentLeft + 158, y, ContentWidth - 162, rowHeight), rightFormat);
+        return y + rowHeight;
     }
 
     private static float DrawRule(Graphics graphics, float y, bool dashed = false)

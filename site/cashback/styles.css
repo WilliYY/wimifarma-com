@@ -4946,6 +4946,23 @@ body.sections-ready .workspace-section.is-active {
     font-size: 11pt;
 }
 
+.receipt-details > .receipt-cashback-generated {
+    min-height: 9mm;
+    padding: 1.6mm 1mm;
+    border-bottom: 1.5px solid #111;
+}
+
+.receipt-cashback-generated small {
+    font-size: 9pt;
+    font-weight: 900;
+}
+
+.receipt-cashback-generated strong {
+    font-size: 18pt;
+    font-weight: 900;
+    line-height: 1;
+}
+
 .receipt-label {
     display: block;
     font-size: 10pt;

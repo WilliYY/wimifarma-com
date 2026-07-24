@@ -138,7 +138,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.8';
+const SERVICE_VERSION = '1.4.9';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -155,7 +155,7 @@ const QUICK_VOUCHER_ADVISORY_LOCK = 20260721;
 const XP_CASHBACK_REDEEM_POINTS = 500;
 const XP_CASHBACK_REDEEM_SOURCE = 'cashback_redemption';
 const WIMI_PRINTER_INSTALLER_PATH = String(env.WIMI_PRINTER_INSTALLER_PATH || '/opt/wimi-impressora/WimiImpressoraSetup.exe').trim();
-const WIMI_PRINTER_INSTALLER_VERSION = cleanVersion(env.WIMI_PRINTER_INSTALLER_VERSION || '1.0.6');
+const WIMI_PRINTER_INSTALLER_VERSION = cleanVersion(env.WIMI_PRINTER_INSTALLER_VERSION || '1.0.8');
 const WIMI_PRINTER_PAIRING_MINUTES = 30;
 const WIMI_PRINTER_ONLINE_SECONDS = 90;
 const WIMI_PRINTER_MAX_ATTEMPTS = 3;
@@ -4307,7 +4307,7 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
         <b class="receipt-client-code">Codigo do cliente: #${e(clientCode)}</b>
       </div>
       <div class="receipt-details">
-        <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
+        <span class="receipt-cashback-generated"><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
       </div>
       ${codeBlock}
       <p class="receipt-validity">${validity}</p>
