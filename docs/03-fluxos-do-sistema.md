@@ -62,7 +62,9 @@ Desde 2026-06-08, `Configuracao e Relatorio` tambem usa uma apresentacao mais mo
 
 Desde 2026-07-21, `Atendentes do cashback` usa `core_users` como fonte de verdade. A tela destaca a conta logada, permite adicionar somente uma conta humana Wimifarma ativa com acesso ao Cashback, exclui o perfil institucional `farmacia` e nao aceita mais nome livre. Cards e seletores operacionais mostram apenas `cashback_attendants` vinculados por `core_user_id`; registros antigos sem vinculo permanecem no Postgres para preservar clientes, compras, resgates, CSV e auditoria.
 
-Desde 2026-07-21, `Cashback rapido` aparece antes da consulta do Balcao. O operador informa o valor gasto e seleciona o usuario que imprime; o servidor recalcula o percentual padrao em centavos, gera um codigo aleatorio textual de quatro digitos e cria um voucher de seis meses sem exigir cliente. O recibo usa 76 mm uteis em rolo de 80 mm, a marca completa `+ | WimiFarma` de `logo-wimifarma-receipt.png` convertida visualmente para preto sobre branco, valor, codigo, data real de vencimento, WhatsApp, endereco e atendente. O modelo usa espacos verticais compactos e nao mostra frase de instrucao. `Imprimir na Bematech` abre o dialogo do navegador e audita somente a solicitacao, pois a aplicacao no VPS nao controla a USB nem confirma a saida do papel.
+Desde 2026-07-21, `Cashback rapido` aparece antes da consulta do Balcao. O operador informa o valor gasto e seleciona o usuario que imprime; o servidor recalcula o percentual padrao em centavos, gera um codigo aleatorio textual de quatro digitos e cria um voucher de seis meses sem exigir cliente. O recibo usa 76 mm uteis em rolo de 80 mm, a marca completa `+ | WimiFarma` de `logo-wimifarma-receipt.png` convertida visualmente para preto sobre branco, valor, codigo, data real de vencimento, WhatsApp, endereco e atendente. O modelo usa espacos verticais compactos e nao mostra frase de instrucao. `Imprimir na Wimi` envia uma copia estruturada para a fila central e `Imprimir neste PC` preserva o dialogo do navegador como fallback. O agente confirma que o trabalho chegou ao spooler do Windows; nenhum dos dois caminhos consegue confirmar fisicamente que o papel saiu.
+
+O card `Wimi Impressora` aparece na Home e na navegacao do Cashback apenas para o login mestre `adm`. O ADM baixa o EXE pelo painel; o nome do arquivo contem um ticket aleatorio de pareamento, valido uma unica vez por 30 minutos. Ao abrir no PC ligado por USB, o agente detecta a impressora, protege a credencial local, instala o servico automatico, conecta por HTTPS e envia um teste. Depois disso, qualquer operador autenticado no Cashback pode enviar comprovantes para o dispositivo online. O painel mostra fila, falhas e trabalhos incertos; reimpressao e sempre manual para evitar duplicidade depois de queda de energia ou reinicio durante a impressao.
 
 O campo `Codigo cashback rapido` existe em `Novo cliente` e `Gastar/Usar Cashback`. O backend exige cliente no uso, trava o voucher ativo com `FOR UPDATE`, valida a compra minima pela regra configurada (4x por padrao), registra resgate e compra, marca o codigo como usado e gera o sucessor sobre o valor cobrado depois do desconto na mesma transacao. O primeiro voucher anonimo pode cadastrar o cliente; o sucessor fica vinculado a ele. Voucher rapido nao cria `cashback_credits` comuns nem duplica saldo. Vouchers e creditos comuns novos vencem seis meses corridos apos a data de geracao; vouchers rapidos ainda ativos com prazo antigo sao normalizados para seis meses a partir da emissao, preservando vouchers usados/cancelados e creditos comuns historicos. Os quatro digitos sao permanentemente unicos para impedir que recibos antigos encontrem vouchers novos, limitando a 10.000 emissoes totais.
 
@@ -98,6 +100,9 @@ Tabelas principais:
 - Postgres `cashback_redemption_items`
 - Postgres `cashback_quick_vouchers`
 - Postgres `cashback_quick_voucher_rate_limits`
+- Postgres `cashback_print_devices`
+- Postgres `cashback_print_pairing_tickets`
+- Postgres `cashback_print_jobs`
 - Postgres `cashback_settings`
 - Postgres `cashback_whatsapp_messages`
 - Postgres `cashback_audit_events`

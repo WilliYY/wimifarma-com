@@ -322,6 +322,61 @@
         });
     }
 
+    function bindWimiPrinter() {
+        document.querySelectorAll('[data-wimi-print]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (button.disabled) {
+                    return;
+                }
+
+                var csrfMeta = document.querySelector('meta[name="wfwc-csrf"]');
+                var body = new URLSearchParams();
+                var originalText = button.textContent;
+                var status = document.createElement('span');
+                status.className = 'wimi-print-feedback';
+                status.setAttribute('role', 'status');
+                body.set('receipt_type', button.getAttribute('data-receipt-type') || '');
+                body.set('entity_id', button.getAttribute('data-entity-id') || '');
+                body.set('csrf_token', window.WFWC_CSRF || (csrfMeta ? csrfMeta.getAttribute('content') : '') || '');
+                button.disabled = true;
+                button.textContent = 'Enviando...';
+                button.parentNode.querySelectorAll('.wimi-print-feedback').forEach(function (oldStatus) {
+                    oldStatus.remove();
+                });
+
+                fetch('api-wimi-impressora.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': 'application/json'
+                    },
+                    body: body.toString()
+                }).then(function (response) {
+                    return response.json().catch(function () {
+                        return { ok: false, message: 'Resposta invalida do servidor.' };
+                    }).then(function (payload) {
+                        if (!response.ok || !payload.ok) {
+                            throw new Error(payload.message || 'Nao foi possivel enviar para a impressora.');
+                        }
+                        return payload;
+                    });
+                }).then(function (payload) {
+                    status.classList.add('is-success');
+                    status.textContent = 'Enviado para ' + (payload.printer || 'Wimi Impressora') + ' | fila #' + payload.job_id;
+                    button.insertAdjacentElement('afterend', status);
+                }).catch(function (error) {
+                    status.classList.add('is-error');
+                    status.textContent = error && error.message ? error.message : 'Falha ao enviar.';
+                    button.insertAdjacentElement('afterend', status);
+                }).finally(function () {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                });
+            });
+        });
+    }
+
     function refreshQuickVoucherForm(form) {
         if (form.hasAttribute('data-redeem-form')) {
             updateRedeemForm(form);
@@ -1382,6 +1437,7 @@
         bindRedeemPreview();
         bindQuickVoucherCodes();
         bindCashbackReceiptPrint();
+        bindWimiPrinter();
         bindLiveClientSearch();
         bindClientResultsShowMore();
         bindClientPickers();

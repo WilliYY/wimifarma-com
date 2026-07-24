@@ -644,6 +644,8 @@ services:
       CASHBACK_SESSION_SECRET: ${CASHBACK_SESSION_SECRET:-wimifarma_cashback_dev_secret_change_me}
       CASHBACK_INTERNAL_TOKEN: ${CASHBACK_INTERNAL_TOKEN:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
+      WIMI_PRINTER_INSTALLER_PATH: /opt/wimi-impressora/WimiImpressoraSetup.exe
+      WIMI_PRINTER_INSTALLER_VERSION: ${WIMI_PRINTER_INSTALLER_VERSION:-1.0.0}
     volumes:
       - ./site/cashback/styles.css:/app/public/styles.css:ro
       - ./site/cashback/app.js:/app/public/app.js:ro
@@ -656,6 +658,7 @@ services:
       - ./site/cashback/site-icon-512.png:/app/public/site-icon-512.png:ro
       - ./site/cashback/gato-hapy.gif:/app/public/gato-hapy.gif:ro
       - ./site/cashback/mario.gif:/app/public/mario.gif:ro
+      - ./wimi-printer-release:/opt/wimi-impressora:ro
     networks:
       - wimifarma-com-network
 

@@ -29,6 +29,8 @@ apps/calendario/dist/
 apps/financeiro/dist/
 apps/notas/dist/
 apps/cashback/dist/
+apps/wimi-impressora/bin/
+apps/wimi-impressora/obj/
 apps/usuarios/dist/
 apps/login-senha/dist/
 apps/miauw-whatsapp/dist/
@@ -40,6 +42,7 @@ apps/miauby/dist/
 *.sql
 !/docker/mysql/init/*.sql
 *.zip
+/wimi-printer-release/
 
 # WordPress generated/runtime files.
 /site/wp-content/backuply/

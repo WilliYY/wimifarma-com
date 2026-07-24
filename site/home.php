@@ -2213,6 +2213,16 @@ $modules = array(
         'accent' => 'blue',
     ),
     array(
+        'module_key' => 'wimi_impressora',
+        'name' => 'Wimi Impressora',
+        'label' => 'Impressao',
+        'description' => 'Bematech conectada, fila e instalador automatico.',
+        'href' => '/cashback/impressora.php',
+        'accent' => 'teal',
+        'username_gate' => 'adm',
+        'permission_optional' => true,
+    ),
+    array(
         'name' => 'Cotação',
         'label' => 'Compras',
         'description' => 'Itens, fornecedores, precos e ganhadores.',
@@ -2329,7 +2339,11 @@ $homeModulePermissions = wf_home_module_permissions(
 );
 $modules = array_values(array_filter(
     $modules,
-    static function (array $module) use ($homeModulePermissions, $homeUserIdentity): bool {
+    static function (array $module) use ($homeModulePermissions, $homeUserIdentity, $homeUserLogin): bool {
+        if (($module['username_gate'] ?? '') === 'adm' && $homeUserLogin !== 'adm') {
+            return false;
+        }
+
         if (($module['role_gate'] ?? '') === 'admin_or_gerente' && !wf_home_is_core_admin_or_manager($homeUserIdentity)) {
             return false;
         }

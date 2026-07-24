@@ -101,6 +101,9 @@ Criadas por `apps/cashback/src/server.ts`:
 - `cashback_redemption_items`: relacao FIFO entre resgate e creditos consumidos.
 - `cashback_quick_vouchers`: vouchers rapidos independentes dos creditos comuns, com codigo textual unico de quatro digitos, valor gasto, valor do beneficio, percentual em basis points, estado, validade de seis meses, atendente escolhido, usuario real da emissao, cliente opcional, cadeia pai/sucessor, compra/resgate vinculados e contadores de solicitacao de impressao. O codigo possui unicidade permanente, inclusive depois de usado ou expirado. Ao iniciar o app, vouchers ainda ativos sao normalizados para `issued_at + 6 meses`; vouchers usados/cancelados permanecem historicos.
 - `cashback_quick_voucher_rate_limits`: janelas e bloqueios persistentes por usuario para consulta e tentativa de uso de codigo rapido, evitando que chamadas concorrentes ou outro navegador da mesma conta contornem o limite.
+- `cashback_print_devices`: dispositivos Windows pareados, impressora detectada, versao, token somente em hash, ultimo sinal, ultimo trabalho, erro resumido e revogacao.
+- `cashback_print_pairing_tickets`: tickets de instalador com hash, criador, expiracao, consumo unico e dispositivo resultante.
+- `cashback_print_jobs`: fila termica estruturada por dispositivo, tipo, entidade, payload JSONB, tentativas e estados `pending`, `printing`, `printed`, `failed`, `uncertain` ou `cancelled`.
 - `cashback_settings`: configuracoes como percentual, validade, multiplicador de resgate e manutencao.
 - `cashback_whatsapp_messages`: mensagens/campanhas do Cashback, status e datas de envio.
 - `cashback_audit_events`: auditoria curta do modulo.
