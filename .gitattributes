@@ -10,6 +10,7 @@
 *.json text eol=lf
 *.manifest text eol=lf
 *.md text eol=lf
+*.mjs text eol=lf
 *.php text eol=lf
 *.scss text eol=lf
 *.sh text eol=lf
