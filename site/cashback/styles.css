@@ -4359,12 +4359,13 @@ body.sections-ready .workspace-section.is-active {
     width: 100%;
     max-width: 76mm;
     margin-inline: auto;
-    padding: 6mm 4mm 5mm;
-    border: 1px dashed #7c7c7c;
-    border-radius: 6px;
+    padding: 6mm 4.5mm 5.5mm;
+    border: 1.25px dashed #60656d;
+    border-radius: 5px;
     background: #fff;
     color: #111;
     text-align: center;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .09);
 }
 
 .cashback-thermal-receipt .receipt-brand {
@@ -4477,24 +4478,37 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .receipt-validity {
-    font-size: 10.5pt;
-    line-height: 1.25;
+    font-size: 11.25pt;
+    font-weight: 600;
+    line-height: 1.35;
 }
 
 .receipt-contact {
     display: grid;
-    gap: .5mm;
-    padding-top: 2.5mm;
+    gap: 1mm;
+    padding: 3mm 1.5mm .5mm;
     border-top: 1px dashed #555;
-    font-size: 9.5pt;
-    line-height: 1.3;
+    font-size: 11.5pt;
+    line-height: 1.35;
+}
+
+.receipt-contact strong {
+    font-size: 12pt;
+}
+
+.receipt-contact span {
+    font-size: 10.75pt;
+    font-weight: 600;
 }
 
 .cashback-thermal-receipt > small {
     display: block;
-    margin-top: 3mm;
-    font-size: 8pt;
-    line-height: 1.3;
+    margin-top: 3.5mm;
+    padding: 2.5mm 1.5mm 0;
+    border-top: 1px dotted #8c9199;
+    font-size: 9.5pt;
+    font-weight: 600;
+    line-height: 1.45;
 }
 
 .cashback-receipt-print-root {

@@ -6,6 +6,8 @@
 
 Nos comprovantes existe somente o botao `Imprimir`: quando a Wimi Impressora esta online no momento em que o comprovante abre, ele envia para a fila HTTPS; sem agente online, abre imediatamente o dialogo de impressao deste computador. Se ocorrer uma falha de rede ou resposta incerta depois de tentar a fila, o sistema nao abre a impressao local automaticamente, evitando cupom duplicado.
 
+O modelo termico prioriza leitura no balcao: validade, WhatsApp, endereco e linha de emissao usam fonte ampliada, e a Wimi Impressora reserva altura adicional para esse rodape sem cortar informacoes.
+
 ## Acesso
 
 - O card da Home e `/cashback/impressora.php` aparecem somente para o username exato `adm`.
