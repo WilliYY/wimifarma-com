@@ -14,7 +14,12 @@ import {
   findAvailableQuickVoucherCode,
   normalizeQuickVoucherCode,
 } from './quickVoucherCode.js';
-import { quickVoucherIssueXpReward } from './xpReward.js';
+import {
+  XP_QUICK_VOUCHER_ISSUE_POINTS,
+  XP_QUICK_VOUCHER_ISSUE_SOURCE,
+  canCancelQuickVoucher,
+  quickVoucherIssueXpReward,
+} from './xpReward.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -62,6 +67,13 @@ type XpAwardResult = {
   alreadyAwarded?: boolean;
   employeeName?: string;
   saleId?: number;
+  message: string;
+};
+
+type XpRevocationResult = {
+  revoked: boolean;
+  alreadyRevoked?: boolean;
+  hadAward: boolean;
   message: string;
 };
 
@@ -126,7 +138,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.4';
+const SERVICE_VERSION = '1.4.5';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -1819,6 +1831,9 @@ async function ensureSchema(): Promise<void> {
       issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at DATE NOT NULL,
       redeemed_at TIMESTAMPTZ,
+      canceled_at TIMESTAMPTZ,
+      canceled_by BIGINT,
+      canceled_reason TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ
     );
@@ -1826,6 +1841,9 @@ async function ensureSchema(): Promise<void> {
     ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS print_requests INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS last_print_requested_at TIMESTAMPTZ;
     ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS last_print_requested_by BIGINT;
+    ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ;
+    ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS canceled_by BIGINT;
+    ALTER TABLE cashback_quick_vouchers ADD COLUMN IF NOT EXISTS canceled_reason TEXT;
     ALTER TABLE cashback_quick_vouchers DROP CONSTRAINT IF EXISTS cashback_quick_vouchers_code_check;
     ALTER TABLE cashback_quick_vouchers
       ADD CONSTRAINT cashback_quick_vouchers_code_check
@@ -1844,6 +1862,8 @@ async function ensureSchema(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_active_code
       ON cashback_quick_vouchers(code)
       WHERE status = 'ativo';
+    CREATE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_history
+      ON cashback_quick_vouchers(issued_at DESC, id DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_cashback_quick_vouchers_request_token
       ON cashback_quick_vouchers(request_token)
       WHERE request_token IS NOT NULL;
@@ -1986,6 +2006,8 @@ async function ensureXpRewardSchema(): Promise<void> {
   await xpPgPool.query(`
     ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source TEXT;
     ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source_entity_id TEXT;
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS deleted_by BIGINT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_sales_source_entity
       ON xp_sales(source, source_entity_id)
       WHERE source IS NOT NULL AND source_entity_id IS NOT NULL;
@@ -3000,6 +3022,124 @@ async function awardXpForQuickVoucherIssue(req: Request, voucherId: number, atte
   }
 }
 
+async function revokeXpForQuickVoucherIssue(req: Request, voucherId: number): Promise<XpRevocationResult> {
+  const reward = quickVoucherIssueXpReward(voucherId);
+  const actorUserId = req.session.user?.id ?? 0;
+  let xpClient: pg.PoolClient | null = null;
+  try {
+    await ensureXpRewardSchema();
+    xpClient = await xpPgPool.connect();
+    await xpClient.query('BEGIN');
+    const existing = await xpClient.query<{
+      id: string;
+      employee_id: string;
+      xp_points: number;
+      deleted_at: Date | string | null;
+    }>(
+      `SELECT id::text, employee_id::text, xp_points, deleted_at
+         FROM xp_sales
+        WHERE source = $1
+          AND source_entity_id = $2
+        ORDER BY id DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [reward.source, reward.sourceEntityId],
+    );
+    const sale = existing.rows[0];
+    if (!sale) {
+      await xpClient.query('COMMIT');
+      return { revoked: false, hadAward: false, message: 'Nenhum XP havia sido gerado para este codigo.' };
+    }
+    if (sale.deleted_at) {
+      await xpClient.query('COMMIT');
+      return { revoked: false, alreadyRevoked: true, hadAward: true, message: 'Os 250 XP ja estavam retirados.' };
+    }
+    await xpClient.query(
+      `UPDATE xp_sales
+          SET deleted_at = NOW(),
+              deleted_by = $1
+        WHERE id = $2`,
+      [actorUserId || null, num(sale.id)],
+    );
+    await xpClient.query(
+      `INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        actorUserId || null,
+        'xp_cashback_rapido_cancelado',
+        'xp_sale',
+        String(sale.id),
+        `-${Math.abs(num(sale.xp_points) || reward.points)} XP por cancelamento do cashback rapido #${voucherId}.`,
+      ],
+    );
+    await xpClient.query('COMMIT');
+    return { revoked: true, hadAward: true, message: `Os ${reward.points} XP foram retirados.` };
+  } catch (error) {
+    if (xpClient) await xpClient.query('ROLLBACK').catch(() => undefined);
+    return { revoked: false, hadAward: true, message: `Nao foi possivel retirar o XP agora: ${errorMessage(error)}` };
+  } finally {
+    xpClient?.release();
+  }
+}
+
+async function loadQuickVoucherHistory(limit = 20): Promise<DbRow[]> {
+  const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+  const result = await pgPool.query(
+    `SELECT q.*,
+            issued_attendant.name AS attendant_name,
+            COALESCE(redeemed_client.name, issued_client.name) AS client_name
+       FROM cashback_quick_vouchers q
+       LEFT JOIN cashback_attendants issued_attendant ON issued_attendant.id = q.issued_attendant_id
+       LEFT JOIN cashback_clients issued_client ON issued_client.id = q.issued_client_id
+       LEFT JOIN cashback_clients redeemed_client ON redeemed_client.id = q.redeemed_client_id
+      ORDER BY q.issued_at DESC, q.id DESC
+      LIMIT $1`,
+    [safeLimit],
+  );
+  const rows = result.rows as DbRow[];
+  const directVoucherIds = rows
+    .filter((row) => num(row.parent_voucher_id) <= 0 && num(row.source_purchase_id) <= 0)
+    .map((row) => String(num(row.id)))
+    .filter((id) => id !== '0');
+  if (directVoucherIds.length === 0) {
+    return rows.map((row) => ({ ...row, xp_status: 'nao_aplicavel', xp_points: 0 }));
+  }
+
+  try {
+    await ensureXpRewardSchema();
+    const xpRows = await xpPgPool.query<{
+      source_entity_id: string;
+      xp_points: number;
+      deleted_at: Date | string | null;
+    }>(
+      `SELECT DISTINCT ON (source_entity_id)
+              source_entity_id, xp_points, deleted_at
+         FROM xp_sales
+        WHERE source = $1
+          AND source_entity_id = ANY($2::text[])
+        ORDER BY source_entity_id, id DESC`,
+      [XP_QUICK_VOUCHER_ISSUE_SOURCE, directVoucherIds],
+    );
+    const xpByVoucher = new Map(xpRows.rows.map((row) => [row.source_entity_id, row]));
+    return rows.map((row) => {
+      const directIssue = num(row.parent_voucher_id) <= 0 && num(row.source_purchase_id) <= 0;
+      if (!directIssue) return { ...row, xp_status: 'nao_aplicavel', xp_points: 0 };
+      const xpSale = xpByVoucher.get(String(num(row.id)));
+      return {
+        ...row,
+        xp_status: !xpSale ? 'nao_gerado' : xpSale.deleted_at ? 'retirado' : 'aplicado',
+        xp_points: xpSale ? num(xpSale.xp_points) : 0,
+      };
+    });
+  } catch {
+    return rows.map((row) => ({
+      ...row,
+      xp_status: num(row.parent_voucher_id) <= 0 && num(row.source_purchase_id) <= 0 ? 'indisponivel' : 'nao_aplicavel',
+      xp_points: 0,
+    }));
+  }
+}
+
 function htmlShell(req: Request, title: string, body: string, options: { login?: boolean; maintenance?: boolean } = {}): string {
   const flash = takeFlash(req);
   const user = req.session.user;
@@ -3151,6 +3291,14 @@ async function handleDashboardPost(req: Request, res: Response): Promise<void> {
     await createQuickVoucherFromDashboard(req, res);
     return;
   }
+  if (action === 'cancel_quick_voucher') {
+    await cancelQuickVoucherFromDashboard(req, res);
+    return;
+  }
+  if (action === 'revoke_quick_voucher_xp') {
+    await retryQuickVoucherXpRevocation(req, res);
+    return;
+  }
   if (action === 'save_attendant') {
     setFlash(req, 'error', 'Cadastro de atendente fica em Configuracao e Relatorio.');
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
@@ -3237,6 +3385,104 @@ async function createQuickVoucherFromDashboard(req: Request, res: Response): Pro
   } finally {
     client.release();
   }
+}
+
+async function cancelQuickVoucherFromDashboard(req: Request, res: Response): Promise<void> {
+  if (!isMasterAdm(req)) {
+    setFlash(req, 'error', 'Somente o ADM pode cancelar um cashback rapido.');
+    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    return;
+  }
+  const voucherId = num(req.body?.voucher_id);
+  const reason = cleanText(req.body?.motivo || 'Cancelamento operacional pelo ADM.', 500);
+  if (voucherId <= 0) {
+    setFlash(req, 'error', 'Codigo invalido para cancelamento.');
+    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    return;
+  }
+
+  const db = await pgPool.connect();
+  try {
+    await db.query('BEGIN');
+    const result = await db.query(
+      `SELECT id, code, status, cashback_cents
+         FROM cashback_quick_vouchers
+        WHERE id = $1
+        FOR UPDATE`,
+      [voucherId],
+    );
+    const voucher = result.rows[0] as DbRow | undefined;
+    if (!voucher) throw new Error('Cashback rapido nao encontrado.');
+    if (!canCancelQuickVoucher(voucher.status)) {
+      const status = cleanText(voucher.status, 30) || 'desconhecido';
+      throw new Error(`Este codigo esta ${status} e nao pode mais ser cancelado.`);
+    }
+    await db.query(
+      `UPDATE cashback_quick_vouchers
+          SET status = 'cancelado',
+              canceled_at = NOW(),
+              canceled_by = $1,
+              canceled_reason = $2,
+              updated_at = NOW()
+        WHERE id = $3`,
+      [req.session.user?.id ?? null, reason || null, voucherId],
+    );
+    await db.query('COMMIT');
+
+    const xpResult = await revokeXpForQuickVoucherIssue(req, voucherId);
+    await logAction(
+      req,
+      'cashback_rapido_cancelado',
+      'cashback_quick_voucher',
+      voucherId,
+      `Codigo rapido ${voucher.code} cancelado. ${xpResult.message}`,
+      {
+        cashback_cents: num(voucher.cashback_cents),
+        reason,
+        xp_revoked: xpResult.revoked,
+        xp_had_award: xpResult.hadAward,
+      },
+    );
+    setFlash(req, 'success', `Codigo ${voucher.code} cancelado e preservado no historico. ${xpResult.message}`);
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => undefined);
+    setFlash(req, 'error', `Nao foi possivel cancelar o codigo: ${errorMessage(error)}`);
+  } finally {
+    db.release();
+  }
+  res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+}
+
+async function retryQuickVoucherXpRevocation(req: Request, res: Response): Promise<void> {
+  if (!isMasterAdm(req)) {
+    setFlash(req, 'error', 'Somente o ADM pode corrigir o XP de um cashback rapido.');
+    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    return;
+  }
+  const voucherId = num(req.body?.voucher_id);
+  if (voucherId <= 0) {
+    setFlash(req, 'error', 'Codigo invalido para correcao de XP.');
+    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    return;
+  }
+  const voucher = await pgPool.query('SELECT id, code, status FROM cashback_quick_vouchers WHERE id = $1 LIMIT 1', [voucherId]);
+  const row = voucher.rows[0] as DbRow | undefined;
+  if (!row || String(row.status) !== 'cancelado') {
+    setFlash(req, 'error', 'O XP so pode ser corrigido depois que o codigo estiver cancelado.');
+    res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
+    return;
+  }
+  const xpResult = await revokeXpForQuickVoucherIssue(req, voucherId);
+  await logAction(
+    req,
+    'cashback_rapido_xp_revisado',
+    'cashback_quick_voucher',
+    voucherId,
+    `XP do codigo ${row.code} revisado. ${xpResult.message}`,
+    { xp_revoked: xpResult.revoked, xp_had_award: xpResult.hadAward },
+  );
+  setFlash(req, xpResult.revoked || xpResult.alreadyRevoked || !xpResult.hadAward ? 'success' : 'error', xpResult.message);
+  res.redirect(`${BASE_PATH}/dashboard.php#cashback-rapido`);
 }
 
 async function createClientFromDashboard(req: Request, res: Response): Promise<void> {
@@ -3881,6 +4127,96 @@ async function saveWhatsappMessage(input: {
   }
 }
 
+function renderQuickVoucherHistory(req: Request, vouchers: DbRow[]): string {
+  const master = isMasterAdm(req);
+  const statusMeta: Record<string, { label: string; className: string }> = {
+    ativo: { label: 'Ativo', className: 'is-active' },
+    usado: { label: 'Usado', className: 'is-used' },
+    expirado: { label: 'Vencido', className: 'is-expired' },
+    cancelado: { label: 'Cancelado', className: 'is-canceled' },
+  };
+  const xpMeta: Record<string, { label: string; className: string }> = {
+    aplicado: { label: `+${XP_QUICK_VOUCHER_ISSUE_POINTS} XP aplicado`, className: 'is-applied' },
+    retirado: { label: 'XP retirado', className: 'is-revoked' },
+    nao_gerado: { label: 'XP nao gerado', className: 'is-missing' },
+    indisponivel: { label: 'XP a conferir', className: 'is-pending' },
+    nao_aplicavel: { label: 'Sem XP nesta etapa', className: 'is-neutral' },
+  };
+  const cards = vouchers.map((voucher) => {
+    const status = cleanText(voucher.status, 30) || 'desconhecido';
+    const statusInfo = statusMeta[status] || { label: status, className: 'is-neutral' };
+    const xpStatus = cleanText(voucher.xp_status, 30) || 'indisponivel';
+    const xpInfo = xpMeta[xpStatus] || xpMeta.indisponivel;
+    const directIssue = num(voucher.parent_voucher_id) <= 0 && num(voucher.source_purchase_id) <= 0;
+    const clientName = cleanText(voucher.client_name, 180);
+    const printRequests = Math.max(0, num(voucher.print_requests));
+    const cancelAction = master && canCancelQuickVoucher(status)
+      ? `<form method="post" action="${pageUrl('dashboard.php#cashback-rapido')}" class="quick-voucher-history-action" data-confirm-submit="Cancelar o codigo ${e(voucher.code)}? Ele deixara de valer e os 250 XP da emissao serao retirados quando existirem.">
+          ${csrfField(req)}
+          <input type="hidden" name="action" value="cancel_quick_voucher">
+          <input type="hidden" name="voucher_id" value="${e(voucher.id)}">
+          <input type="hidden" name="motivo" value="Cancelamento operacional pelo ADM.">
+          <button type="submit" class="btn danger compact">Cancelar codigo</button>
+        </form>`
+      : '';
+    const xpRepairAction = master
+      && status === 'cancelado'
+      && (xpStatus === 'aplicado' || xpStatus === 'indisponivel')
+      ? `<form method="post" action="${pageUrl('dashboard.php#cashback-rapido')}" class="quick-voucher-history-action">
+          ${csrfField(req)}
+          <input type="hidden" name="action" value="revoke_quick_voucher_xp">
+          <input type="hidden" name="voucher_id" value="${e(voucher.id)}">
+          <button type="submit" class="btn compact">Corrigir XP</button>
+        </form>`
+      : '';
+    const canceledNote = status === 'cancelado'
+      ? `<p class="quick-voucher-canceled-note"><strong>Cancelado em ${e(brDate(voucher.canceled_at, true))}:</strong> ${e(voucher.canceled_reason || 'Cancelamento operacional.')}</p>`
+      : '';
+
+    return `<article class="quick-voucher-history-card ${statusInfo.className}">
+      <div class="quick-voucher-history-main">
+        <div class="quick-voucher-history-code">
+          <span>Codigo</span>
+          <strong>${e(voucher.code)}</strong>
+        </div>
+        <div class="quick-voucher-history-value">
+          <span>Cashback</span>
+          <strong>${brMoneyCents(voucher.cashback_cents)}</strong>
+          <small>sobre ${brMoneyCents(voucher.gross_cents)}</small>
+        </div>
+        <span class="quick-voucher-status ${statusInfo.className}">${e(statusInfo.label)}</span>
+      </div>
+      <div class="quick-voucher-history-facts">
+        <span><small>Usuario</small><strong>${e(voucher.attendant_name || 'Sem usuario')}</strong></span>
+        <span><small>Gerado em</small><strong>${e(brDate(voucher.issued_at, true))}</strong></span>
+        <span><small>Valido ate</small><strong>${e(brDate(voucher.expires_at))}</strong></span>
+        <span><small>Origem</small><strong>${directIssue ? 'Emissao rapida' : 'Proximo codigo'}</strong></span>
+        <span><small>Cliente</small><strong>${clientName ? e(clientName) : 'Ainda sem cadastro'}</strong></span>
+        <span><small>Impressoes</small><strong>${e(printRequests)} solicitada(s)</strong></span>
+      </div>
+      ${canceledNote}
+      <div class="quick-voucher-history-footer">
+        <span class="quick-voucher-xp ${xpInfo.className}">${e(xpInfo.label)}</span>
+        <div class="quick-voucher-history-actions">${cancelAction}${xpRepairAction}</div>
+      </div>
+    </article>`;
+  }).join('');
+
+  return `<details class="quick-voucher-history" open>
+    <summary>
+      <span><small>Controle operacional</small><strong>Historico do cashback rapido</strong></span>
+      <span class="quick-voucher-history-count">${e(vouchers.length)} recente(s)</span>
+    </summary>
+    <div class="quick-voucher-history-note">
+      <span>Confira validade, uso, impressao e XP dos codigos recentes.</span>
+      ${master ? '<strong>Cancelar preserva o registro e impede o uso do codigo.</strong>' : '<strong>Somente o ADM pode cancelar codigos.</strong>'}
+    </div>
+    <div class="quick-voucher-history-list">
+      ${cards || '<p class="quick-voucher-history-empty">Nenhum cashback rapido foi gerado ainda.</p>'}
+    </div>
+  </details>`;
+}
+
 function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | 'local' = 'local'): string {
   if (!voucher) return '';
   const expiresAt = isoDate(voucher.expires_at)
@@ -3976,6 +4312,7 @@ async function renderDashboard(req: Request): Promise<string> {
   const searchResults = await queryClients(search, 20, { activeOnly: true });
   const loggedAttendantId = await loggedUserAttendantId(req);
   const attendants = await attendantOptions();
+  const quickVoucherHistory = await loadQuickVoucherHistory(20);
   const requestedVoucherId = num(req.query.voucher_id);
   const printedVoucher = (req.session.quickVoucherReceiptIds || []).includes(requestedVoucherId)
     ? await quickVoucherReceipt(requestedVoucherId)
@@ -4098,6 +4435,7 @@ async function renderDashboard(req: Request): Promise<string> {
       <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>5 digitos, 6 meses e +250 XP</small></div>
       <button type="submit" class="btn primary quick-cashback-submit">Gerar codigo</button>
     </form>
+    ${renderQuickVoucherHistory(req, quickVoucherHistory)}
   </div>`;
 
   const body = `<section class="balcao-grid">

@@ -4258,6 +4258,262 @@ body.sections-ready .workspace-section.is-active {
     white-space: nowrap;
 }
 
+.quick-voucher-history {
+    margin-top: 16px;
+    border: 1px solid #c8d9e8;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .92);
+}
+
+.quick-voucher-history > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 62px;
+    padding: 12px 14px;
+    cursor: pointer;
+    list-style-position: inside;
+    color: var(--red-900);
+}
+
+.quick-voucher-history > summary::marker {
+    color: #2f78b7;
+}
+
+.quick-voucher-history > summary > span:first-child {
+    display: inline-grid;
+    gap: 2px;
+}
+
+.quick-voucher-history > summary small {
+    color: #5c7388;
+    font-size: .68rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.quick-voucher-history > summary strong {
+    font-size: 1.03rem;
+}
+
+.quick-voucher-history-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 5px 10px;
+    border: 1px solid #b9d5f0;
+    border-radius: 999px;
+    background: #edf6ff;
+    color: #215d90;
+    font-size: .76rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.quick-voucher-history-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 10px 14px;
+    border-block: 1px solid #dbe6ef;
+    background: #f6f9fc;
+    color: #52687b;
+    font-size: .78rem;
+}
+
+.quick-voucher-history-note strong {
+    color: #7f2337;
+}
+
+.quick-voucher-history-list {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+}
+
+.quick-voucher-history-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #d7e2ea;
+    border-left: 4px solid #158463;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.quick-voucher-history-card.is-used {
+    border-left-color: #2f78b7;
+}
+
+.quick-voucher-history-card.is-expired {
+    border-left-color: #d18316;
+}
+
+.quick-voucher-history-card.is-canceled {
+    border-left-color: #b52543;
+    background: #fffafa;
+}
+
+.quick-voucher-history-main {
+    display: grid;
+    grid-template-columns: minmax(104px, .6fr) minmax(150px, 1fr) auto;
+    gap: 14px;
+    align-items: center;
+    padding: 12px 14px;
+}
+
+.quick-voucher-history-code,
+.quick-voucher-history-value {
+    display: grid;
+    gap: 1px;
+}
+
+.quick-voucher-history-code span,
+.quick-voucher-history-value span,
+.quick-voucher-history-facts small {
+    color: #66788a;
+    font-size: .66rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.quick-voucher-history-code strong {
+    color: #172b3a;
+    font-size: 1.42rem;
+    letter-spacing: .08em;
+}
+
+.quick-voucher-history-value strong {
+    color: #075f48;
+    font-size: 1.08rem;
+}
+
+.quick-voucher-history-value small {
+    color: #687986;
+    font-size: .72rem;
+}
+
+.quick-voucher-status,
+.quick-voucher-xp {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 5px 9px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.quick-voucher-status.is-active {
+    border-color: #8dccb4;
+    background: #e0f6ec;
+    color: #075f48;
+}
+
+.quick-voucher-status.is-used {
+    border-color: #a9cdea;
+    background: #eaf4fc;
+    color: #215d90;
+}
+
+.quick-voucher-status.is-expired {
+    border-color: #edcf98;
+    background: #fff6df;
+    color: #8a560d;
+}
+
+.quick-voucher-status.is-canceled {
+    border-color: #efb7c4;
+    background: #fdebf0;
+    color: #8f1832;
+}
+
+.quick-voucher-history-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-block: 1px solid #e1e9ef;
+    background: #f8fafc;
+}
+
+.quick-voucher-history-facts > span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    padding: 9px 12px;
+    border-right: 1px solid #e1e9ef;
+}
+
+.quick-voucher-history-facts > span:nth-child(3n) {
+    border-right: 0;
+}
+
+.quick-voucher-history-facts strong {
+    overflow-wrap: anywhere;
+    color: #314858;
+    font-size: .78rem;
+}
+
+.quick-voucher-canceled-note {
+    margin: 0;
+    padding: 9px 12px;
+    border-bottom: 1px solid #f0d5dc;
+    background: #fff2f5;
+    color: #7f3344;
+    font-size: .76rem;
+}
+
+.quick-voucher-history-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 12px;
+}
+
+.quick-voucher-xp.is-applied {
+    border-color: #a8d8bf;
+    background: #e7f8ef;
+    color: #075f48;
+}
+
+.quick-voucher-xp.is-revoked,
+.quick-voucher-xp.is-neutral {
+    border-color: #d5dde4;
+    background: #f1f4f6;
+    color: #52616c;
+}
+
+.quick-voucher-xp.is-missing,
+.quick-voucher-xp.is-pending {
+    border-color: #edcf98;
+    background: #fff6df;
+    color: #8a560d;
+}
+
+.quick-voucher-history-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+.quick-voucher-history-action {
+    margin: 0;
+}
+
+.quick-voucher-history-empty {
+    margin: 0;
+    padding: 18px;
+    border: 1px dashed #b9cad7;
+    border-radius: 8px;
+    color: #607486;
+    text-align: center;
+}
+
 @media (min-width: 1280px) {
     body.sections-ready[data-cashback-section="busca"] .client-results {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5280,6 +5536,18 @@ body.sections-ready .workspace-section.is-active {
         min-height: 52px;
     }
 
+    .quick-voucher-history-facts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .quick-voucher-history-facts > span:nth-child(3n) {
+        border-right: 1px solid #e1e9ef;
+    }
+
+    .quick-voucher-history-facts > span:nth-child(2n) {
+        border-right: 0;
+    }
+
     .quick-voucher-result {
         grid-template-columns: 1fr;
     }
@@ -5367,6 +5635,34 @@ body.sections-ready .workspace-section.is-active {
 
     .quick-cashback-rate {
         align-self: flex-start;
+    }
+
+    .quick-voucher-history > summary,
+    .quick-voucher-history-note,
+    .quick-voucher-history-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .quick-voucher-history-main,
+    .quick-voucher-history-facts {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .quick-voucher-history-facts > span,
+    .quick-voucher-history-facts > span:nth-child(2n),
+    .quick-voucher-history-facts > span:nth-child(3n) {
+        border-right: 0;
+    }
+
+    .quick-voucher-history-main .quick-voucher-status {
+        justify-self: start;
+    }
+
+    .quick-voucher-history-actions,
+    .quick-voucher-history-action,
+    .quick-voucher-history-action .btn {
+        width: 100%;
     }
 
     .quick-voucher-result-actions {

@@ -18,3 +18,7 @@ export function quickVoucherIssueXpReward(voucherId: number): XpRewardDescriptor
     sourceEntityId: String(normalizedVoucherId),
   };
 }
+
+export function canCancelQuickVoucher(status: unknown): boolean {
+  return String(status ?? '').trim().toLowerCase() === 'ativo';
+}
