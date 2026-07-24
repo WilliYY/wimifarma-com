@@ -55,6 +55,7 @@ internal sealed class AgentWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        CleanupOldUpdateFiles();
         await RecoverInterruptedJobAsync(stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -181,8 +182,32 @@ internal sealed class AgentWorker : BackgroundService
         };
         process.ArgumentList.Add("--apply-update");
         process.ArgumentList.Add(Installer.InstalledExecutable);
-        Process.Start(process);
+        using var updater = Process.Start(process)
+            ?? throw new InvalidOperationException("O Windows nao iniciou o atualizador da Wimi Impressora.");
         _lifetime.StopApplication();
+    }
+
+    private static void CleanupOldUpdateFiles()
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow.AddHours(-1);
+            foreach (var file in Directory.EnumerateFiles(Path.GetTempPath(), "WimiImpressoraUpdate-*.exe"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(file) < cutoff) File.Delete(file);
+                }
+                catch
+                {
+                    // Um atualizador ainda em uso sera removido na proxima inicializacao.
+                }
+            }
+        }
+        catch
+        {
+            // Limpeza de temporarios nao interfere na fila de impressao.
+        }
     }
 
     private static int CompareVersions(string left, string right)

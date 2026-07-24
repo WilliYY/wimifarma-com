@@ -125,7 +125,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.0';
+const SERVICE_VERSION = '1.4.1';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -142,7 +142,7 @@ const QUICK_VOUCHER_ADVISORY_LOCK = 20260721;
 const XP_CASHBACK_REDEEM_POINTS = 500;
 const XP_CASHBACK_REDEEM_SOURCE = 'cashback_redemption';
 const WIMI_PRINTER_INSTALLER_PATH = String(env.WIMI_PRINTER_INSTALLER_PATH || '/opt/wimi-impressora/WimiImpressoraSetup.exe').trim();
-const WIMI_PRINTER_INSTALLER_VERSION = cleanVersion(env.WIMI_PRINTER_INSTALLER_VERSION || '1.0.4');
+const WIMI_PRINTER_INSTALLER_VERSION = cleanVersion(env.WIMI_PRINTER_INSTALLER_VERSION || '1.0.5');
 const WIMI_PRINTER_PAIRING_MINUTES = 30;
 const WIMI_PRINTER_ONLINE_SECONDS = 90;
 const WIMI_PRINTER_MAX_ATTEMPTS = 3;
@@ -1434,7 +1434,10 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
     .catch(next);
 }
 
-function clearSensitive(_req: Request, _res: Response, next: NextFunction): void {
+function clearSensitive(_req: Request, res: Response, next: NextFunction): void {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   next();
 }
 
@@ -2503,13 +2506,14 @@ async function renderPrinterAdmin(req: Request): Promise<string> {
       const deviceId = num(device.id);
       const online = device.is_online === true;
       const revoked = String(device.status) === 'revoked';
+      const needsUpdate = compareVersions(String(device.agent_version || '0.0.0'), WIMI_PRINTER_INSTALLER_VERSION) < 0;
       return `<article class="printer-device ${online ? 'is-online' : revoked ? 'is-revoked' : 'is-offline'}">
         <div class="printer-device-head">
           <div><span class="printer-status-dot" aria-hidden="true"></span><div><h3>${e(device.computer_name)}</h3><p>${e(device.printer_name)}</p></div></div>
           <span class="printer-status-label">${online ? 'Online' : revoked ? 'Revogada' : 'Offline'}</span>
         </div>
         <dl class="printer-device-meta">
-          <div><dt>Agente</dt><dd>v${e(device.agent_version)}</dd></div>
+          <div><dt>Agente</dt><dd>v${e(device.agent_version)} <small class="printer-version-state ${needsUpdate ? 'needs-update' : 'is-current'}">${needsUpdate ? 'Atualizando' : 'Atualizado'}</small></dd></div>
           <div><dt>Ultimo sinal</dt><dd>${e(brDate(device.last_seen_at, true))}</dd></div>
           <div><dt>Fila</dt><dd>${e(num(device.pending_jobs) + num(device.printing_jobs))}</dd></div>
           <div><dt>Atencao</dt><dd>${e(device.attention_jobs)}</dd></div>
@@ -2549,11 +2553,11 @@ async function renderPrinterAdmin(req: Request): Promise<string> {
     .join('');
 
   const body = `<section class="printer-admin-hero">
-    <div><span class="kicker">ADM exclusivo</span><h2>Wimi Impressora</h2><p>Bematech conectada ao Cashback, com fila central e atualizacao automatica.</p></div>
+    <div><span class="kicker">ADM exclusivo</span><h2>Wimi Impressora</h2><p>Instale uma vez no computador da Bematech. Depois, o servico inicia com o Windows e recebe atualizacoes sozinho.</p><p class="printer-setup-hint"><strong>Antes de baixar:</strong> confirme que a impressora aparece nas Impressoras do Windows e esta com papel.</p></div>
     <form method="post" action="${pageUrl('impressora-download.php')}">
       ${csrfField(req)}
       <button class="btn primary printer-download" type="submit" ${artifact.available ? '' : 'disabled'}>Baixar instalador</button>
-      <small>${artifact.available ? `v${e(WIMI_PRINTER_INSTALLER_VERSION)}${installerSize ? ` | ${e(installerSize)}` : ''}` : 'Instalador ainda nao publicado'}</small>
+      <small>${artifact.available ? `v${e(WIMI_PRINTER_INSTALLER_VERSION)}${installerSize ? ` | ${e(installerSize)}` : ''} | atualizacao automatica` : 'Instalador ainda nao publicado'}</small>
     </form>
   </section>
   <section class="printer-metrics" aria-label="Resumo da impressao">
@@ -2563,7 +2567,7 @@ async function renderPrinterAdmin(req: Request): Promise<string> {
   </section>
   <section class="panel printer-devices-panel">
     <div class="section-title"><div><span class="kicker">Computador da impressora</span><h2>Dispositivos</h2></div><span class="soft-pill">Sinal a cada poucos segundos</span></div>
-    <div class="printer-devices">${deviceCards || '<div class="printer-empty"><strong>Nenhuma impressora conectada</strong><span>Baixe o instalador neste card e abra no computador ligado a Bematech.</span></div>'}</div>
+    <div class="printer-devices">${deviceCards || '<div class="printer-empty"><strong>Nenhuma impressora conectada</strong><span>Com a Bematech reconhecida pelo Windows, baixe o instalador acima, abra como administrador e confira o cupom de teste.</span></div>'}</div>
   </section>
   <section class="panel printer-jobs-panel">
     <div class="section-title"><div><span class="kicker">Ultimos trabalhos</span><h2>Fila de impressao</h2></div><span class="soft-pill">${e(jobs.length)} registro(s)</span></div>

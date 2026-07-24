@@ -4669,6 +4669,16 @@ body.sections-ready .workspace-section.is-active {
     margin: 0;
 }
 
+.printer-admin-hero .printer-setup-hint {
+    margin-top: 10px;
+    color: #405568;
+    font-size: .88rem;
+}
+
+.printer-admin-hero .printer-setup-hint strong {
+    color: #8f1832;
+}
+
 .printer-admin-hero form {
     display: grid;
     min-width: 220px;
@@ -4805,6 +4815,21 @@ body.sections-ready .workspace-section.is-active {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
     margin: 14px 0;
+}
+
+.printer-version-state {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: .68rem;
+    font-weight: 800;
+}
+
+.printer-version-state.is-current {
+    color: #0b7b4f;
+}
+
+.printer-version-state.needs-update {
+    color: #a25b00;
 }
 
 .printer-device-meta div {

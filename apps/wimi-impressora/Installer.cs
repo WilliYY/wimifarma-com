@@ -107,18 +107,59 @@ internal static partial class Installer
 
     public static int ApplyUpdate(string targetPath)
     {
+        var expectedTarget = Path.GetFullPath(InstalledExecutable);
+        var requestedTarget = Path.GetFullPath(targetPath);
+        if (!requestedTarget.Equals(expectedTarget, StringComparison.OrdinalIgnoreCase))
+        {
+            WriteUpdateLog($"Atualizacao recusada para destino inesperado: {requestedTarget}");
+            return 1;
+        }
+
+        var source = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            WriteUpdateLog("Atualizacao recusada porque o executavel temporario nao foi localizado.");
+            return 1;
+        }
+
+        var stagedPath = requestedTarget + ".update";
+        var backupPath = requestedTarget + ".previous";
+        var replacementStarted = false;
         try
         {
             RunSc(false, "stop", AppConstants.ServiceName);
-            WaitForServiceFile(targetPath, TimeSpan.FromSeconds(30));
-            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
-            File.Copy(Environment.ProcessPath!, targetPath, true);
-            RunSc(true, "start", AppConstants.ServiceName);
+            if (File.Exists(requestedTarget)) WaitForServiceFile(requestedTarget, TimeSpan.FromSeconds(30));
+            Directory.CreateDirectory(Path.GetDirectoryName(requestedTarget)!);
+            TryDeleteFile(stagedPath);
+            TryDeleteFile(backupPath);
+            File.Copy(source, stagedPath, true);
+
+            if (File.Exists(requestedTarget))
+            {
+                File.Replace(stagedPath, requestedTarget, backupPath, true);
+            }
+            else
+            {
+                File.Move(stagedPath, requestedTarget);
+            }
+            replacementStarted = true;
+
+            EnsureServiceStarted();
+            TryDeleteFile(backupPath);
+            WriteUpdateLog($"Atualizacao para v{AppConstants.Version} concluida.");
             return 0;
         }
-        catch
+        catch (Exception updateError)
         {
+            var rollbackResult = replacementStarted
+                ? RestorePreviousVersion(requestedTarget, backupPath)
+                : "substituicao nao iniciada";
+            WriteUpdateLog($"Atualizacao falhou: {updateError.Message}. Rollback: {rollbackResult}.");
             return 1;
+        }
+        finally
+        {
+            TryDeleteFile(stagedPath);
         }
     }
 
@@ -158,6 +199,63 @@ internal static partial class Installer
         if (exitCode != 0 && exitCode != ServiceAlreadyRunning)
         {
             throw new InvalidOperationException("Nao foi possivel iniciar o servico Wimi Impressora.");
+        }
+    }
+
+    private static string RestorePreviousVersion(string targetPath, string backupPath)
+    {
+        try
+        {
+            RunSc(false, "stop", AppConstants.ServiceName);
+            if (File.Exists(targetPath)) WaitForServiceFile(targetPath, TimeSpan.FromSeconds(30));
+            if (File.Exists(backupPath))
+            {
+                if (File.Exists(targetPath))
+                {
+                    File.Replace(backupPath, targetPath, null, true);
+                }
+                else
+                {
+                    File.Move(backupPath, targetPath);
+                }
+            }
+            EnsureServiceStarted();
+            return "versao anterior restaurada e servico iniciado";
+        }
+        catch (Exception rollbackError)
+        {
+            return $"falhou ({rollbackError.Message})";
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // A proxima instalacao tenta limpar novamente o arquivo auxiliar.
+        }
+    }
+
+    private static void WriteUpdateLog(string message)
+    {
+        try
+        {
+            var directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Wimifarma",
+                "Wimi Impressora");
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(
+                Path.Combine(directory, "update.log"),
+                $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Falha de diagnostico nao pode impedir a recuperacao do servico.
         }
     }
 

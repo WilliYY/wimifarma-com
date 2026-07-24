@@ -7,9 +7,9 @@
 Nos comprovantes existe somente o botao `Imprimir`: quando a Wimi Impressora esta online no momento em que o comprovante abre, ele envia para a fila HTTPS; sem agente online, abre imediatamente o dialogo de impressao deste computador. Se ocorrer uma falha de rede ou resposta incerta depois de tentar a fila, o sistema nao abre a impressao local automaticamente, evitando cupom duplicado.
 
 O modelo termico prioriza leitura no balcao: validade, WhatsApp, endereco, atendente e data/hora usam fonte ampliada e em negrito. A Wimi Impressora reserva altura adicional para esse rodape sem cortar informacoes.
-O agente `1.0.4` imprime o codigo recebido como texto e suporta tanto os comprovantes historicos de quatro digitos quanto as novas emissoes de cinco digitos, sem recalcular ou alterar o voucher.
+O agente `1.0.5` imprime o codigo recebido como texto e suporta tanto os comprovantes historicos de quatro digitos quanto as novas emissoes de cinco digitos, sem recalcular ou alterar o voucher.
 O payload `purchase` inclui `client_code`, derivado de `cashback_clients.id`, e o mostra em destaque junto de nome e telefone. O payload `quick_voucher` permanece sem `client_code`, porque a emissao rapida pode ser anonima.
-O Cashback `1.4.0` renova os assets da interface, mostra o comprovante da compra inicial dentro de `Novo cliente` e explicita a busca por codigo do cliente.
+O Cashback `1.4.1` renova os assets da interface, mostra o comprovante da compra inicial dentro de `Novo cliente`, explicita a busca por codigo do cliente e impede cache das telas autenticadas.
 
 ## Acesso
 
@@ -20,9 +20,10 @@ O Cashback `1.4.0` renova os assets da interface, mostra o comprovante da compra
 ## Instalacao no computador da Bematech
 
 1. Entrar na Home com `adm` e abrir `Wimi Impressora`.
-2. Clicar em `Baixar instalador`.
-3. Abrir o EXE baixado e confirmar o controle de conta do Windows.
-4. Conferir o comprovante de teste.
+2. Confirmar em `Configuracoes > Impressoras e scanners` que a Bematech aparece instalada e esta com papel.
+3. Clicar em `Baixar instalador`.
+4. Abrir o EXE baixado e confirmar o controle de conta do Windows.
+5. Conferir o comprovante de teste e o dispositivo `Online` no painel.
 
 O download recebe o nome `WimiImpressoraSetup--<ticket>.exe`. O ticket tem 32 bytes aleatorios, fica salvo no Postgres somente como SHA-256, vale 30 minutos e e consumido uma unica vez. Renomear o arquivo antes da primeira instalacao remove o pareamento automatico; nesse caso deve-se baixar outro.
 
@@ -65,11 +66,14 @@ O agente consulta a versao periodicamente. Quando existe versao maior:
 1. baixa o EXE pelo endpoint autenticado;
 2. confere o SHA-256 informado pelo servidor;
 3. inicia o atualizador local;
-4. para o servico, substitui o executavel e inicia novamente.
+4. para o servico, troca o executavel de forma atomica e inicia novamente;
+5. se a troca ou a partida falhar, restaura a versao anterior e tenta religar o servico.
+
+O primeiro teste de versao ocorre cerca de um minuto apos o servico iniciar; depois, a consulta acontece a cada seis horas. Arquivos temporarios antigos sao removidos automaticamente. O resultado local de cada troca fica em `C:\ProgramData\Wimifarma\Wimi Impressora\update.log`.
 
 O projeto ainda nao possui certificado comercial de assinatura de codigo. Por isso o Windows pode mostrar SmartScreen na primeira instalacao, mesmo com a verificacao SHA-256 usada nas atualizacoes. Assinar Authenticode e o hardening recomendado antes de distribuir fora da farmacia.
 
-Desde a versao `1.0.2`, o agente le a propria versao do assembly, evitando divergencia entre o identificador enviado ao servidor e o EXE publicado. A versao `1.0.3` reforca a tipografia menor de validade, contato, endereco, atendente e data/hora na impressao termica.
+Desde a versao `1.0.2`, o agente le a propria versao do assembly, evitando divergencia entre o identificador enviado ao servidor e o EXE publicado. A versao `1.0.3` reforca a tipografia menor de validade, contato, endereco, atendente e data/hora na impressao termica. A versao `1.0.5` adiciona substituicao atomica, backup, rollback e log para atualizacoes.
 
 ## Build local
 
@@ -121,3 +125,4 @@ Nunca versionar EXE, token, `config.json` do agente ou arquivos de `ProgramData`
 - pareamento, heartbeat, claim e conclusao autenticados;
 - impressao fisica na MP-4200 TH, reinicio do Windows e retorno automatico do servico;
 - simulacao de interrupcao para confirmar estado `uncertain` sem reimpressao automatica.
+- simulacao de falha na atualizacao para confirmar rollback e retorno do servico.
