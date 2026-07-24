@@ -1261,6 +1261,14 @@ body.sections-ready[data-cashback-section="busca"] .container {
     width: min(1480px, calc(100% - 32px));
 }
 
+body.sections-ready[data-cashback-section="cadastro"] .container {
+    width: min(1360px, calc(100% - 32px));
+}
+
+body.sections-ready[data-cashback-section="cadastro"] .balcao-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+}
+
 body.sections-ready[data-cashback-section="resgate"] .balcao-grid,
 body.sections-ready[data-cashback-section="busca"] .balcao-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -2446,11 +2454,11 @@ body.sections-ready .workspace-section.is-active {
     position: relative;
     isolation: isolate;
     overflow: hidden;
+    container-type: inline-size;
+    border-radius: 8px;
     border-color: #dda8b6;
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.9)),
-        linear-gradient(180deg, #fff, #fff7f8);
-    box-shadow: 0 30px 76px rgba(109, 16, 34, 0.16);
+    background: #fff;
+    box-shadow: 0 18px 42px rgba(109, 16, 34, 0.11);
 }
 
 .quick-client-panel::before {
@@ -2458,15 +2466,14 @@ body.sections-ready .workspace-section.is-active {
     position: absolute;
     z-index: -1;
     inset: 0 0 auto;
-    height: 118px;
-    background: linear-gradient(90deg, rgba(181, 37, 67, 0.15), rgba(37, 99, 167, 0.11), rgba(21, 132, 99, 0.12));
-    opacity: 0.9;
+    height: 4px;
+    background: var(--red-800);
 }
 
 .quick-client-title {
     position: relative;
     align-items: flex-start;
-    padding: 2px 0 18px;
+    padding: 4px 0 16px;
     border-bottom: 1px solid rgba(243, 217, 223, 0.9);
 }
 
@@ -2477,8 +2484,7 @@ body.sections-ready .workspace-section.is-active {
     bottom: -1px;
     width: min(210px, 56%);
     height: 3px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, var(--red-800), rgba(181, 37, 67, 0.15));
+    background: var(--red-800);
 }
 
 .quick-client-title-copy {
@@ -2486,12 +2492,13 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .quick-client-title h2 {
-    font-size: clamp(1.8rem, 3vw, 2.45rem);
+    font-size: 1.75rem;
 }
 
 .quick-client-title .soft-pill {
-    background: rgba(255, 255, 255, 0.82);
-    box-shadow: 0 12px 28px rgba(109, 16, 34, 0.08);
+    border-radius: 8px;
+    background: #fff6f8;
+    box-shadow: none;
 }
 
 .quick-client-form {
@@ -2504,34 +2511,27 @@ body.sections-ready .workspace-section.is-active {
     --client-accent-rgb: 168, 29, 61;
     position: relative;
     display: grid;
-    gap: 15px;
-    overflow: hidden;
-    padding: 18px 18px 18px 20px;
+    gap: 14px;
+    padding: 18px;
     border: 1px solid rgba(var(--client-accent-rgb), 0.3);
-    border-radius: 22px;
-    background: linear-gradient(135deg, rgba(var(--client-accent-rgb), 0.08), #fff 45%);
-    box-shadow: 0 16px 34px rgba(var(--client-accent-rgb), 0.11);
+    border-left: 4px solid var(--client-accent);
+    border-radius: 8px;
+    background: #fffafb;
+    box-shadow: none;
     animation: quickClientRise 0.36s cubic-bezier(0.2, 0.85, 0.2, 1) both;
     transition:
-        transform 0.24s ease,
         border-color 0.24s ease,
         background-color 0.24s ease;
 }
 
 .quick-client-block::before {
-    content: "";
-    position: absolute;
-    inset: 14px auto 14px 0;
-    width: 4px;
-    border-radius: 999px;
-    background: var(--client-accent);
+    display: none;
 }
 
 .quick-client-block:hover,
 .quick-client-block:focus-within {
     border-color: rgba(var(--client-accent-rgb), 0.52);
     background: #fff;
-    transform: translateY(-2px);
 }
 
 .quick-client-identity {
@@ -2542,8 +2542,9 @@ body.sections-ready .workspace-section.is-active {
     --client-accent: #2563a7;
     --client-accent-rgb: 37, 99, 167;
     animation-delay: 0.06s;
-    background: linear-gradient(135deg, #eaf4ff 0%, #ffffff 50%, #edf9f3 100%);
+    background: #f5f9fd;
     border-color: #b9d5f0;
+    border-left-color: #2563a7;
 }
 
 .quick-client-purchase::before {
@@ -2551,18 +2552,18 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .quick-client-purchase .step-badge {
-    background: linear-gradient(135deg, #164f80, #3b82c4);
-    box-shadow: 0 10px 20px rgba(37, 99, 167, 0.2);
+    background: #2563a7;
+    box-shadow: none;
 }
 
 .quick-client-panel .quick-client-purchase label {
-    border-color: #c7dcf0;
-    background: rgba(239, 247, 255, 0.78);
+    border-color: transparent;
+    background: transparent;
 }
 
 .quick-client-panel .quick-client-purchase label:focus-within {
-    border-color: #5595ce;
-    box-shadow: 0 0 0 3px rgba(37, 99, 167, 0.08);
+    border-color: transparent;
+    box-shadow: none;
 }
 
 .quick-client-panel .quick-client-purchase input:focus,
@@ -2576,6 +2577,8 @@ body.sections-ready .workspace-section.is-active {
     align-items: center;
     gap: 10px;
     min-width: 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(var(--client-accent-rgb), 0.17);
 }
 
 .quick-client-block-title h3 {
@@ -2598,14 +2601,15 @@ body.sections-ready .workspace-section.is-active {
     align-items: center;
     justify-content: center;
     min-height: 28px;
-    border-radius: 999px;
+    border-radius: 8px;
     font-weight: 900;
 }
 
 .step-badge {
     min-width: 28px;
-    box-shadow: 0 10px 20px rgba(109, 16, 34, 0.18);
-    background: linear-gradient(135deg, var(--red-900), var(--red-600));
+    border-radius: 50%;
+    box-shadow: none;
+    background: var(--red-800);
     color: #fff;
 }
 
@@ -2620,27 +2624,29 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-client-fields {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     align-items: end;
 }
 
+.quick-client-purchase .quick-client-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .quick-client-panel label {
     min-width: 0;
-    padding: 10px;
-    border: 1px solid rgba(239, 211, 218, 0.78);
-    border-radius: 17px;
-    background: rgba(255, 247, 248, 0.6);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     transition:
         border-color 0.22s ease,
-        background-color 0.22s ease,
-        transform 0.22s ease;
+        background-color 0.22s ease;
 }
 
 .quick-client-panel label:focus-within {
-    border-color: #e7aab8;
-    background: #fff;
-    transform: translateY(-1px);
+    border-color: transparent;
+    background: transparent;
 }
 
 .quick-client-panel label > span {
@@ -2651,10 +2657,10 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-client-panel input,
 .quick-client-panel select {
-    min-height: 50px;
-    border-radius: 13px;
+    min-height: 48px;
+    border-radius: 8px;
     border-color: rgba(239, 211, 218, 0.9);
-    background: rgba(255, 255, 255, 0.94);
+    background: #fff;
     font-weight: 700;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
@@ -2760,11 +2766,12 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-client-summary div {
     position: relative;
-    min-height: 84px;
+    min-height: 80px;
     overflow: hidden;
+    border-radius: 8px;
     border-color: #b9d5f0;
-    background: linear-gradient(135deg, #eaf4ff, #ffffff);
-    box-shadow: 0 10px 24px rgba(37, 99, 167, 0.1);
+    background: #f5faff;
+    box-shadow: none;
 }
 
 .quick-client-summary div::before {
@@ -2781,7 +2788,7 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-client-summary div:nth-child(2) {
     border-color: #b8dfcc;
-    background: linear-gradient(135deg, #e8f8f0, #ffffff);
+    background: #f2fbf6;
 }
 
 .quick-client-summary div:nth-child(2)::before {
@@ -2794,7 +2801,7 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-client-summary div:nth-child(3) {
     border-color: #efd2a6;
-    background: linear-gradient(135deg, #fff5df, #ffffff);
+    background: #fff9ed;
 }
 
 .quick-client-summary div:nth-child(3)::before {
@@ -2815,15 +2822,16 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-client-action {
     display: flex;
-    justify-content: flex-end;
-    padding-top: 0;
+    justify-content: center;
+    padding-top: 2px;
     animation: quickClientRise 0.36s cubic-bezier(0.2, 0.85, 0.2, 1) 0.1s both;
 }
 
 .quick-client-action .btn {
-    min-width: min(360px, 100%);
-    min-height: 48px;
-    box-shadow: 0 18px 34px rgba(181, 37, 67, 0.2);
+    width: 100%;
+    min-height: 50px;
+    border-radius: 8px;
+    box-shadow: 0 12px 24px rgba(181, 37, 67, 0.18);
     transition:
         transform 0.22s ease,
         box-shadow 0.22s ease;
@@ -2831,8 +2839,23 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-client-action .btn:hover,
 .quick-client-action .btn:focus {
-    transform: translateY(-2px);
-    box-shadow: 0 22px 42px rgba(181, 37, 67, 0.24);
+    transform: translateY(-1px);
+    box-shadow: 0 16px 30px rgba(181, 37, 67, 0.22);
+}
+
+@container (max-width: 760px) {
+    .quick-client-fields,
+    .quick-client-purchase .quick-client-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@container (max-width: 500px) {
+    .quick-client-fields,
+    .quick-client-purchase .quick-client-fields,
+    .quick-client-summary {
+        grid-template-columns: 1fr;
+    }
 }
 
 .client-detail-hero {
@@ -2992,8 +3015,9 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .quick-client-panel .live-preview {
+    border-radius: 8px;
     border-color: rgba(239, 211, 218, 0.95);
-    background: rgba(255, 247, 248, 0.74);
+    background: #fffafb;
 }
 
 .quick-client-panel .live-preview.ok {
@@ -4974,6 +4998,14 @@ body.sections-ready .workspace-section.is-active {
 }
 
 @media (max-width: 850px) {
+    body.sections-ready[data-cashback-section="cadastro"] .balcao-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    body.sections-ready[data-cashback-section="cadastro"] .quick-client-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .topbar,
     .page-heading,
     .hero-client,
@@ -5175,15 +5207,6 @@ body.sections-ready .workspace-section.is-active {
         justify-content: center;
     }
 
-    .quick-client-panel label {
-        padding: 9px;
-    }
-
-    .quick-client-fields,
-    .quick-client-summary {
-        grid-template-columns: 1fr;
-    }
-
     .quick-client-action,
     .quick-client-action .btn {
         width: 100%;
@@ -5255,6 +5278,10 @@ body.sections-ready .workspace-section.is-active {
 }
 
 @media (max-width: 560px) {
+    body.sections-ready[data-cashback-section="cadastro"] .quick-client-summary {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .container.whatsapp-page {
         width: calc(100% - 20px);
         padding-top: 14px;
