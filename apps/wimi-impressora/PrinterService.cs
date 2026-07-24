@@ -160,12 +160,12 @@ internal sealed class PrinterService
         y = DrawCentered(graphics, "CODIGO", y + 5, 7, FontStyle.Regular, 14);
         y = DrawCentered(graphics, ReadString(payload, "code"), y - 1, 24, FontStyle.Bold, 42);
         y = DrawRule(graphics, y + 2);
-        y = DrawCentered(graphics, $"Valido ate {Date(ReadString(payload, "expires_at"))}", y + 7, 10, FontStyle.Regular, 21);
+        y = DrawCentered(graphics, $"Valido ate {Date(ReadString(payload, "expires_at"))}", y + 7, 11, FontStyle.Bold, 23);
         y = DrawRule(graphics, y + 5, dashed: true);
-        y = DrawCentered(graphics, $"WhatsApp {ReadString(payload, "whatsapp")}", y + 7, 10, FontStyle.Bold, 21);
-        y = DrawCentered(graphics, ReadString(payload, "address"), y + 2, 9.5f, FontStyle.Regular, 20);
-        y = DrawCentered(graphics, $"Emitido por {ReadString(payload, "attendant_name")}", y + 9, 8.5f, FontStyle.Regular, 18);
-        DrawCentered(graphics, DateTimeText(ReadString(payload, "issued_at")), y, 8.5f, FontStyle.Regular, 18);
+        y = DrawCentered(graphics, $"WhatsApp {ReadString(payload, "whatsapp")}", y + 7, 10.5f, FontStyle.Bold, 22);
+        y = DrawCentered(graphics, ReadString(payload, "address"), y + 2, 10, FontStyle.Bold, 21);
+        y = DrawCentered(graphics, $"Emitido por {ReadString(payload, "attendant_name")}", y + 9, 9.5f, FontStyle.Bold, 20);
+        DrawCentered(graphics, DateTimeText(ReadString(payload, "issued_at")), y, 9.5f, FontStyle.Bold, 20);
     }
 
     private static void RenderPurchase(Graphics graphics, JsonElement payload)
@@ -190,12 +190,12 @@ internal sealed class PrinterService
             y = DrawCentered(graphics, code, y, 22, FontStyle.Bold, 38);
         }
         var expiresAt = ReadString(payload, "expires_at");
-        y = DrawCentered(graphics, string.IsNullOrWhiteSpace(expiresAt) ? "Nenhum novo cashback gerado" : $"Valido ate {Date(expiresAt)}", y + 6, 10, FontStyle.Regular, 21);
+        y = DrawCentered(graphics, string.IsNullOrWhiteSpace(expiresAt) ? "Nenhum novo cashback gerado" : $"Valido ate {Date(expiresAt)}", y + 6, 11, FontStyle.Bold, 23);
         y = DrawRule(graphics, y + 5, dashed: true);
-        y = DrawCentered(graphics, $"WhatsApp {ReadString(payload, "whatsapp")}", y + 6, 10, FontStyle.Bold, 21);
-        y = DrawCentered(graphics, ReadString(payload, "address"), y + 1, 9.5f, FontStyle.Regular, 20);
-        y = DrawCentered(graphics, $"Operacao #{ReadLong(payload, "operation_id")} | {ReadString(payload, "attendant_name")}", y + 8, 8.5f, FontStyle.Regular, 18);
-        DrawCentered(graphics, DateTimeText(ReadString(payload, "purchased_at")), y, 8.5f, FontStyle.Regular, 18);
+        y = DrawCentered(graphics, $"WhatsApp {ReadString(payload, "whatsapp")}", y + 6, 10.5f, FontStyle.Bold, 22);
+        y = DrawCentered(graphics, ReadString(payload, "address"), y + 1, 10, FontStyle.Bold, 21);
+        y = DrawCentered(graphics, $"Operacao #{ReadLong(payload, "operation_id")} | {ReadString(payload, "attendant_name")}", y + 8, 9.5f, FontStyle.Bold, 20);
+        DrawCentered(graphics, DateTimeText(ReadString(payload, "purchased_at")), y, 9.5f, FontStyle.Bold, 20);
     }
 
     private static void RenderTest(Graphics graphics, JsonElement payload)

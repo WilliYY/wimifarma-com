@@ -6,7 +6,7 @@
 
 Nos comprovantes existe somente o botao `Imprimir`: quando a Wimi Impressora esta online no momento em que o comprovante abre, ele envia para a fila HTTPS; sem agente online, abre imediatamente o dialogo de impressao deste computador. Se ocorrer uma falha de rede ou resposta incerta depois de tentar a fila, o sistema nao abre a impressao local automaticamente, evitando cupom duplicado.
 
-O modelo termico prioriza leitura no balcao: validade, WhatsApp, endereco e linha de emissao usam fonte ampliada, e a Wimi Impressora reserva altura adicional para esse rodape sem cortar informacoes.
+O modelo termico prioriza leitura no balcao: validade, WhatsApp, endereco, atendente e data/hora usam fonte ampliada e em negrito. A Wimi Impressora reserva altura adicional para esse rodape sem cortar informacoes.
 
 ## Acesso
 
@@ -66,7 +66,7 @@ O agente consulta a versao periodicamente. Quando existe versao maior:
 
 O projeto ainda nao possui certificado comercial de assinatura de codigo. Por isso o Windows pode mostrar SmartScreen na primeira instalacao, mesmo com a verificacao SHA-256 usada nas atualizacoes. Assinar Authenticode e o hardening recomendado antes de distribuir fora da farmacia.
 
-Desde a versao `1.0.2`, o agente le a propria versao do assembly, evitando divergencia entre o identificador enviado ao servidor e o EXE publicado.
+Desde a versao `1.0.2`, o agente le a propria versao do assembly, evitando divergencia entre o identificador enviado ao servidor e o EXE publicado. A versao `1.0.3` reforca a tipografia menor de validade, contato, endereco, atendente e data/hora na impressao termica.
 
 ## Build local
 
