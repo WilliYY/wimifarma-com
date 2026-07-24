@@ -390,6 +390,38 @@
         });
     }
 
+    function triggerRequestedReceiptPrint() {
+        var url = new URL(window.location.href);
+        if (url.searchParams.get('auto_print_receipt') !== '1') {
+            return;
+        }
+
+        var receiptId = url.searchParams.get('receipt_purchase_id') || '';
+        var button = document.querySelector(
+            '[data-cashback-operation-result] [data-smart-print][data-receipt-type="purchase"]'
+        );
+        if (!receiptId || !button || button.getAttribute('data-entity-id') !== receiptId) {
+            return;
+        }
+
+        url.searchParams.delete('auto_print_receipt');
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+
+        var storageKey = 'wfwc-auto-print-purchase:' + receiptId;
+        try {
+            if (window.sessionStorage.getItem(storageKey) === '1') {
+                return;
+            }
+            window.sessionStorage.setItem(storageKey, '1');
+        } catch (_error) {
+            // The consumed URL parameter still prevents reloads from printing twice.
+        }
+
+        window.requestAnimationFrame(function () {
+            button.click();
+        });
+    }
+
     function refreshQuickVoucherForm(form) {
         if (form.hasAttribute('data-redeem-form')) {
             updateRedeemForm(form);
@@ -1458,6 +1490,7 @@
         bindRedeemPreview();
         bindQuickVoucherCodes();
         bindSmartPrinter();
+        triggerRequestedReceiptPrint();
         bindLiveClientSearch();
         bindClientResultsShowMore();
         bindClientPickers();

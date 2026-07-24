@@ -138,7 +138,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.9';
+const SERVICE_VERSION = '1.5.0';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -3684,6 +3684,8 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
   const clientId = num(req.body?.cliente_id);
   const purchaseCents = moneyToCents(req.body?.valor_compra);
   const manualCashbackCents = moneyToCents(req.body?.cashback_manual);
+  const printAfterSave = String(req.body?.print_after_save || '') === '1';
+  const autoPrintQuery = printAfterSave ? '&auto_print_receipt=1' : '';
   const notes = cleanText(req.body?.observacoes, 5000);
   const quickCodeRaw = cleanText(req.body?.codigo_cashback, 20);
   const quickCode = normalizeQuickVoucherCode(quickCodeRaw);
@@ -3761,7 +3763,9 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
           `Codigo usado: ${brMoneyCents(quickRedemption.redeemedCents)}. Valor a cobrar: ${brMoneyCents(quickRedemption.chargedCents)}.${successorText} ${xpResult.message}`,
         );
         rememberCashbackPurchaseReceipt(req, quickRedemption.purchaseId);
-        res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${quickRedemption.purchaseId}#resgate`);
+        res.redirect(
+          `${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${quickRedemption.purchaseId}${autoPrintQuery}#resgate`,
+        );
         return;
       } catch (error) {
         await quickClient.query('ROLLBACK').catch(() => undefined);
@@ -3822,7 +3826,7 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
           : `Compra registrada sem uso de cashback. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)}.`;
       setFlash(req, 'success', `${flash}${xpResult ? ` ${xpResult.message}` : ''}`);
       rememberCashbackPurchaseReceipt(req, purchase.id);
-      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${purchase.id}#resgate`);
+      res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${purchase.id}${autoPrintQuery}#resgate`);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;
@@ -4516,7 +4520,10 @@ async function renderDashboard(req: Request): Promise<string> {
           <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback automatico</span><strong class="js-new-cashback">R$ 0,00</strong></div><div><span>Novo cashback manual</span><strong class="js-manual-cashback">R$ 0,00</strong></div><div class="redeem-validity-card"><span>Validade do novo cashback</span><strong>${CASHBACK_VALIDITY_MONTHS} meses</strong></div></div>
           <div class="live-preview js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
         </div>
-        <div class="redeem-action full"><button type="submit" class="btn primary">Gastar/Usar CashBack</button></div>
+        <div class="redeem-action full">
+          <button type="submit" class="btn primary">Gastar/Usar CashBack</button>
+          <button type="submit" class="btn redeem-print-submit" name="print_after_save" value="1">Concluir e imprimir</button>
+        </div>
       </form>
     </section>
 
