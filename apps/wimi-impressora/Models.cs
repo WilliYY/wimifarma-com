@@ -115,7 +115,7 @@ internal sealed class PendingJobJournal
 
 internal static class AppConstants
 {
-    public const string Version = "1.0.0";
+    public static string Version { get; } = typeof(AppConstants).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
     public const string ServerBaseUrl = "https://wimifarma.com/cashback";
     public const string ServiceName = "WimiImpressora";
     public const string ServiceDisplayName = "Wimi Impressora";

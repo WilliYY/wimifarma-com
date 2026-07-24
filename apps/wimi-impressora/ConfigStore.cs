@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -45,13 +46,13 @@ internal sealed class ConfigStore
         File.Move(temporary, ConfigPath, true);
     }
 
-    public string ProtectToken(string token)
+    public static string ProtectToken(string token)
     {
         var protectedBytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(token), Entropy, DataProtectionScope.LocalMachine);
         return Convert.ToBase64String(protectedBytes);
     }
 
-    public string UnprotectToken(AgentConfig config)
+    public static string UnprotectToken(AgentConfig config)
     {
         var bytes = Convert.FromBase64String(config.EncryptedDeviceToken);
         return Encoding.UTF8.GetString(ProtectedData.Unprotect(bytes, Entropy, DataProtectionScope.LocalMachine));
@@ -65,7 +66,7 @@ internal sealed class ConfigStore
             machineGuid = Convert.ToString(Registry.GetValue(
                 @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography",
                 "MachineGuid",
-                string.Empty)) ?? string.Empty;
+                string.Empty), CultureInfo.InvariantCulture) ?? string.Empty;
         }
         catch
         {

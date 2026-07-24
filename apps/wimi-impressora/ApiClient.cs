@@ -17,7 +17,7 @@ internal sealed class ApiClient : IDisposable
         _config = config;
         _store = store;
         _http = CreateHttpClient(config.ServerBaseUrl);
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", store.UnprotectToken(config));
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ConfigStore.UnprotectToken(config));
     }
 
     public static async Task<PairResponse> PairAsync(PairRequest request, CancellationToken cancellationToken)

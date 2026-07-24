@@ -6,6 +6,9 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>WimiImpressoraSetup</AssemblyName>
     <RootNamespace>WimiImpressora</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -15,8 +18,8 @@
     <SelfContained>true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
-    <Version>1.0.1</Version>
-    <InformationalVersion>1.0.1</InformationalVersion>
+    <Version>1.0.2</Version>
+    <InformationalVersion>1.0.2</InformationalVersion>
     <AssemblyTitle>Wimi Impressora</AssemblyTitle>
     <Product>Wimi Impressora</Product>
     <Description>Agente de impressao termica do Cashback Wimifarma.</Description>

@@ -120,9 +120,12 @@ const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalid
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
 const SERVICE_VERSION = '1.2.0';
+const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
 const SESSION_SECRET = env.CASHBACK_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const SESSION_COOKIE_SECURE = envBoolean(env.CASHBACK_SESSION_COOKIE_SECURE, IS_PRODUCTION);
+const TRUST_PROXY_HOPS = boundedInteger(env.CASHBACK_TRUST_PROXY_HOPS, IS_PRODUCTION ? 2 : 0, 0, 10);
 const AUTH_PROVIDER = 'core';
 const INTERNAL_TOKEN = env.CASHBACK_INTERNAL_TOKEN || env.MIAUW_GUARDIAN_TOKEN || '';
 const HOME_SSO_INTERNAL_URL = String(env.WIMIFARMA_HOME_SSO_INTERNAL_URL || 'http://wimifarma-com-web/home-sso.php').trim();
@@ -138,6 +141,23 @@ const WIMI_PRINTER_INSTALLER_VERSION = cleanVersion(env.WIMI_PRINTER_INSTALLER_V
 const WIMI_PRINTER_PAIRING_MINUTES = 30;
 const WIMI_PRINTER_ONLINE_SECONDS = 90;
 const WIMI_PRINTER_MAX_ATTEMPTS = 3;
+const HEALTH_COUNTS_CACHE_MS = 30_000;
+
+let healthCountsCache: { expiresAt: number; counts: Record<string, number> } | null = null;
+
+function envBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value.trim() === '') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function boundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt(value || '', 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
 
 function setStaticAssetCacheHeaders(res: Response, filePath: string): void {
   if (!STATIC_ASSET_FILE_RE.test(filePath)) return;
@@ -180,6 +200,7 @@ const xpPgPool = new Pool({
 });
 
 const app = express();
+if (TRUST_PROXY_HOPS > 0) app.set('trust proxy', TRUST_PROXY_HOPS);
 const PgSession = connectPgSimple(session);
 const sessionMiddleware = session({
   name: 'WFCASHBACK',
@@ -194,7 +215,7 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: SESSION_COOKIE_SECURE,
     maxAge: 1000 * 60 * 60 * 10,
   },
 });
@@ -224,8 +245,7 @@ app.use(
 
 app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], async (_req: Request, res: Response) => {
   try {
-    await ensureSchema();
-    const pgCounts = await tableCounts();
+    const pgCounts = await healthTableCounts();
     const coreReachable = await corePgPool
       .query('SELECT 1')
       .then(() => true)
@@ -247,7 +267,8 @@ app.get([`${BASE_PATH}/health`, `${BASE_PATH}/health.php`], async (_req: Request
       migration: migrationStats,
     });
   } catch (error) {
-    res.status(500).json({ ok: false, service: 'cashback', error: errorMessage(error) });
+    console.error('[cashback] health check failed:', error);
+    res.status(500).json({ ok: false, service: 'cashback', error: 'health_check_failed' });
   }
 });
 
@@ -1196,14 +1217,6 @@ function brMoneyCents(cents: unknown): string {
   return `R$ ${centsToMoney(num(cents)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function brMoney(value: unknown): string {
-  return `R$ ${num(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function moneyInputCents(cents: unknown): string {
-  return centsToMoney(num(cents)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 function brDate(value: unknown, withTime = false): string {
   if (!value) return '-';
   if (!withTime) {
@@ -1420,7 +1433,7 @@ function clearSensitive(_req: Request, _res: Response, next: NextFunction): void
   next();
 }
 
-async function maintenanceGuard(req: Request, res: Response, next: NextFunction): Promise<void> {
+async function maintenanceGuard(_req: Request, res: Response, next: NextFunction): Promise<void> {
   const enabled = (await getSetting('maintenance_enabled', '0')) === '1';
   if (enabled) {
     res.redirect(`${BASE_PATH}/manutencao.php`);
@@ -1985,6 +1998,14 @@ async function tableCounts(): Promise<Record<string, number>> {
     const result = await pgPool.query(`SELECT COUNT(*)::int AS count FROM ${table}`);
     counts[table] = num(result.rows[0]?.count);
   }
+  return counts;
+}
+
+async function healthTableCounts(): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (healthCountsCache && healthCountsCache.expiresAt > now) return healthCountsCache.counts;
+  const counts = await tableCounts();
+  healthCountsCache = { expiresAt: now + HEALTH_COUNTS_CACHE_MS, counts };
   return counts;
 }
 
@@ -5307,12 +5328,27 @@ function exportValue(value: unknown): string {
 }
 
 async function main(): Promise<void> {
+  validateRuntimeConfig();
   await ensureSchema();
   await refreshExpiredCredits();
   await refreshExpiredQuickVouchers();
   app.listen(PORT, () => {
     console.log(`[cashback] listening on ${PORT}${BASE_PATH}`);
   });
+}
+
+function validateRuntimeConfig(): void {
+  if (!IS_PRODUCTION) return;
+  if (
+    !env.CASHBACK_SESSION_SECRET ||
+    SESSION_SECRET.length < 32 ||
+    SESSION_SECRET === 'wimifarma_cashback_dev_secret_change_me'
+  ) {
+    throw new Error('CASHBACK_SESSION_SECRET precisa ser um segredo exclusivo com pelo menos 32 caracteres.');
+  }
+  if (SESSION_COOKIE_SECURE && TRUST_PROXY_HOPS < 1) {
+    throw new Error('CASHBACK_TRUST_PROXY_HOPS precisa ser maior que zero quando o cookie seguro estiver ativo.');
+  }
 }
 
 main().catch((error) => {

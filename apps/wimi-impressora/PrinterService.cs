@@ -103,7 +103,7 @@ internal sealed class PrinterService
             kind = "quick_voucher",
             cashback_cents = 250,
             code = "7883",
-            expires_at = DateTime.Today.AddMonths(6).ToString("yyyy-MM-dd"),
+            expires_at = DateTime.Today.AddMonths(6).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             attendant_name = "Willian Y. Y.",
             issued_at = DateTimeOffset.Now,
             whatsapp = "(44) 98413-4971",
@@ -126,7 +126,7 @@ internal sealed class PrinterService
             cashback_generated_cents = 200,
             cashback_generation_mode = "credito",
             successor_code = "",
-            expires_at = DateTime.Today.AddMonths(6).ToString("yyyy-MM-dd"),
+            expires_at = DateTime.Today.AddMonths(6).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             attendant_name = "Willian Y. Y.",
             purchased_at = DateTimeOffset.Now,
             whatsapp = "(44) 98413-4971",
@@ -308,14 +308,14 @@ internal sealed class PrinterService
     private static string Date(string value)
     {
         return DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var date)
-            ? date.ToString("dd/MM/yyyy")
+            ? date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
             : "-";
     }
 
     private static string DateTimeText(string value)
     {
         return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var date)
-            ? TimeZoneInfo.ConvertTime(date, BrazilTimeZone()).ToString("dd/MM/yyyy HH:mm")
+            ? TimeZoneInfo.ConvertTime(date, BrazilTimeZone()).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)
             : "-";
     }
 

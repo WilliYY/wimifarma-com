@@ -66,6 +66,8 @@ O agente consulta a versao periodicamente. Quando existe versao maior:
 
 O projeto ainda nao possui certificado comercial de assinatura de codigo. Por isso o Windows pode mostrar SmartScreen na primeira instalacao, mesmo com a verificacao SHA-256 usada nas atualizacoes. Assinar Authenticode e o hardening recomendado antes de distribuir fora da farmacia.
 
+Desde a versao `1.0.2`, o agente le a propria versao do assembly, evitando divergencia entre o identificador enviado ao servidor e o EXE publicado.
+
 ## Build local
 
 Requer .NET SDK 8. O runtime nao basta.
@@ -78,6 +80,7 @@ dotnet publish WimiImpressora.csproj -c Release -r win-x64 --self-contained true
 ```
 
 O resultado publicado e `wimi-printer-release/WimiImpressoraSetup.exe`. `bin/`, `obj/` e `wimi-printer-release/` sao ignorados pelo Git.
+O projeto ativa os analisadores recomendados e trata warnings como erro; corrija a causa de qualquer novo aviso, sem desativar a regra.
 
 Validacao visual sem instalar servico:
 
@@ -95,7 +98,7 @@ No deploy:
 1. publicar o agente localmente;
 2. criar `wimi-printer-release/` no projeto oficial do VPS;
 3. enviar somente `WimiImpressoraSetup.exe` para essa pasta;
-4. definir `WIMI_PRINTER_INSTALLER_VERSION` com a mesma versao de `AppConstants.Version`;
+4. definir `WIMI_PRINTER_INSTALLER_VERSION` com a mesma `<Version>` do projeto .NET;
 5. rebuildar `wimifarma-cashback-app` e `wimifarma-com-web` quando a Home mudar;
 6. conferir `/cashback/health`, painel ADM, download protegido e teste fisico.
 

@@ -67,7 +67,7 @@ internal static partial class Installer
                     DeviceUid = deviceUid,
                     ComputerName = Environment.MachineName,
                     PrinterName = printerName,
-                    EncryptedDeviceToken = store.ProtectToken(paired.DeviceToken),
+                    EncryptedDeviceToken = ConfigStore.ProtectToken(paired.DeviceToken),
                     PairedAt = DateTimeOffset.UtcNow,
                 };
             }

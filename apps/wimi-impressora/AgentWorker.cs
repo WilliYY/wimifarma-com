@@ -6,6 +6,27 @@ namespace WimiImpressora;
 
 internal sealed class AgentWorker : BackgroundService
 {
+    private static readonly Action<ILogger, Exception?> LogCycleFailure = LoggerMessage.Define(
+        LogLevel.Error,
+        new EventId(1001, nameof(LogCycleFailure)),
+        "Falha no ciclo da Wimi Impressora");
+    private static readonly Action<ILogger, long, Exception?> LogJobFailure = LoggerMessage.Define<long>(
+        LogLevel.Error,
+        new EventId(1002, nameof(LogJobFailure)),
+        "Falha no trabalho {JobId}");
+    private static readonly Action<ILogger, long, Exception?> LogJobSpoolerAccepted = LoggerMessage.Define<long>(
+        LogLevel.Information,
+        new EventId(1003, nameof(LogJobSpoolerAccepted)),
+        "Trabalho {JobId} enviado ao spooler");
+    private static readonly Action<ILogger, long, Exception?> LogCompletionRetry = LoggerMessage.Define<long>(
+        LogLevel.Warning,
+        new EventId(1004, nameof(LogCompletionRetry)),
+        "Nao foi possivel confirmar o trabalho {JobId}; nova tentativa em instantes");
+    private static readonly Action<ILogger, long, Exception?> LogRecoveryFailure = LoggerMessage.Define<long>(
+        LogLevel.Warning,
+        new EventId(1005, nameof(LogRecoveryFailure)),
+        "Nao foi possivel recuperar o trabalho {JobId}");
+
     private readonly AgentConfig _config;
     private readonly ConfigStore _store;
     private readonly ApiClient _api;
@@ -62,7 +83,7 @@ internal sealed class AgentWorker : BackgroundService
             catch (Exception error)
             {
                 _lastError = Limit(error.Message, 600);
-                _logger.LogError(error, "Falha no ciclo da Wimi Impressora");
+                LogCycleFailure(_logger, error);
                 await Task.Delay(TimeSpan.FromSeconds(8), stoppingToken);
             }
 
@@ -82,7 +103,7 @@ internal sealed class AgentWorker : BackgroundService
             var message = Limit(error.Message, 800);
             await CompleteJobWithRetryAsync(job.Id, "failed", message, cancellationToken);
             _lastError = message;
-            _logger.LogError(error, "Falha no trabalho {JobId}", job.Id);
+            LogJobFailure(_logger, job.Id, error);
             return;
         }
 
@@ -90,7 +111,7 @@ internal sealed class AgentWorker : BackgroundService
         // the acknowledgement instead of labelling it as failed or taking another job.
         await CompleteJobWithRetryAsync(job.Id, "printed", null, cancellationToken);
         _lastError = null;
-        _logger.LogInformation("Trabalho {JobId} enviado ao spooler", job.Id);
+        LogJobSpoolerAccepted(_logger, job.Id, null);
     }
 
     private async Task CompleteJobWithRetryAsync(long jobId, string status, string? error, CancellationToken cancellationToken)
@@ -112,7 +133,7 @@ internal sealed class AgentWorker : BackgroundService
                 _lastError = status == "printed"
                     ? "Comprovante enviado ao spooler; aguardando confirmacao segura do servidor."
                     : Limit(completionError.Message, 600);
-                _logger.LogWarning(completionError, "Nao foi possivel confirmar o trabalho {JobId}; nova tentativa em instantes", jobId);
+                LogCompletionRetry(_logger, jobId, completionError);
                 await Task.Delay(TimeSpan.FromSeconds(8), cancellationToken);
             }
         }
@@ -133,7 +154,7 @@ internal sealed class AgentWorker : BackgroundService
         }
         catch (Exception error)
         {
-            _logger.LogWarning(error, "Nao foi possivel recuperar o trabalho {JobId}", pending.JobId);
+            LogRecoveryFailure(_logger, pending.JobId, error);
         }
     }
 
