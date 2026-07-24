@@ -138,7 +138,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.6';
+const SERVICE_VERSION = '1.4.7';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -4269,7 +4269,7 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
   const quickCode = String(receipt.successor_code || '');
   const isQuickVoucher = String(receipt.cashback_generation_mode || '') === 'voucher_rapido';
   const expiresAt = isQuickVoucher ? receipt.successor_expires_at : receipt.credit_expires_at;
-  const generatedLabel = isQuickVoucher ? 'Novo codigo gerado' : 'Novo cashback';
+  const generatedLabel = 'Cashback gerado';
   const phone = formatPhone(receipt.client_phone);
   const validity = generatedCents > 0 && expiresAt ? `Valido ate <strong>${e(brDate(expiresAt))}</strong>` : 'Nenhum novo cashback gerado';
   const codeBlock = quickCode
@@ -4285,7 +4285,6 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
         <span><small>Cliente</small><strong>${e(receipt.client_name)}</strong></span>
         <span><small>Codigo do cliente</small><strong>#${e(clientCode)}</strong></span>
         <span><small>Telefone</small><strong>${e(phone)}</strong></span>
-        <span><small>Valor pago</small><strong>${brMoneyCents(receipt.charged_cents)}</strong></span>
         <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
         <span><small>Validade</small><strong>${e(expiresAt ? brDate(expiresAt) : '-')}</strong></span>
       </div>
@@ -4304,9 +4303,6 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
         <b class="receipt-client-code">Codigo do cliente: #${e(clientCode)}</b>
       </div>
       <div class="receipt-details">
-        <span><small>Compra</small><strong>${brMoneyCents(receipt.gross_cents)}</strong></span>
-        <span><small>Cashback usado</small><strong>${brMoneyCents(receipt.cashback_discount_cents)}</strong></span>
-        <span><small>Valor pago</small><strong>${brMoneyCents(receipt.charged_cents)}</strong></span>
         <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
       </div>
       ${codeBlock}

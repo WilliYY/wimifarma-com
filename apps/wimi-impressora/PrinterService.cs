@@ -183,11 +183,7 @@ internal sealed class PrinterService
             y = DrawCentered(graphics, $"CODIGO CLIENTE: #{clientCode}", y + 3, 10.5f, FontStyle.Bold, 22);
         }
         y = DrawRule(graphics, y + 5);
-        y = DrawAmountRow(graphics, "Compra", ReadLong(payload, "gross_cents"), y + 5);
-        y = DrawAmountRow(graphics, "Cashback usado", ReadLong(payload, "cashback_used_cents"), y + 1);
-        y = DrawAmountRow(graphics, "Valor pago", ReadLong(payload, "charged_cents"), y + 1, bold: true);
-        var generatedLabel = ReadString(payload, "cashback_generation_mode") == "voucher_rapido" ? "Novo codigo" : "Novo cashback";
-        y = DrawAmountRow(graphics, generatedLabel, ReadLong(payload, "cashback_generated_cents"), y + 1, bold: true);
+        y = DrawAmountRow(graphics, "Cashback gerado", ReadLong(payload, "cashback_generated_cents"), y + 5, bold: true);
         var code = ReadString(payload, "successor_code");
         if (!string.IsNullOrWhiteSpace(code))
         {
