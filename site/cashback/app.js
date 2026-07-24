@@ -425,7 +425,7 @@
             }
 
             input.addEventListener('input', function () {
-                var code = String(input.value || '').replace(/\D/g, '').slice(0, 4);
+                var code = String(input.value || '').replace(/\D/g, '').slice(0, 5);
                 input.value = code;
                 clearTimeout(timer);
                 requestVersion += 1;
@@ -440,9 +440,9 @@
                     delete form.dataset.quickVoucherCashback;
                     delete form.dataset.quickVoucherMinimum;
                     delete form.dataset.quickVoucherClientId;
-                    input.setCustomValidity('Informe os 4 digitos do codigo.');
+                    input.setCustomValidity('Informe os 4 ou 5 digitos do codigo.');
                     if (status) {
-                        status.textContent = 'Digite os 4 numeros';
+                        status.textContent = 'Digite 4 antigos ou 5 atuais';
                         status.className = 'is-pending';
                     }
                     refreshQuickVoucherForm(form);
@@ -488,7 +488,7 @@
                             form.dataset.quickVoucherClientId = String(linkedClientId || 0);
                             input.setCustomValidity(invalidMessage);
                             if (status) {
-                                status.textContent = invalidMessage || ('Valido: ' + payload.cashback + ' | compra minima ' + payload.compra_minima);
+                                status.textContent = invalidMessage || ('Valido ate ' + payload.validade + ': ' + payload.cashback + ' | compra minima ' + payload.compra_minima);
                                 status.className = invalidMessage ? 'is-error' : 'is-valid';
                             }
                             refreshQuickVoucherForm(form);
@@ -507,7 +507,7 @@
                             }
                             refreshQuickVoucherForm(form);
                         });
-                }, 160);
+                }, code.length === 4 ? 450 : 160);
             });
         });
     }

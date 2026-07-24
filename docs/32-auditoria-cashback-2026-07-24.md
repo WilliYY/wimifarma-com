@@ -12,7 +12,7 @@ Este documento nao registra senhas, tokens, numeros de clientes ou valores de pr
 - A navegacao publica redireciona HTTP para HTTPS e a resposta HTTPS possui HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` e `Permissions-Policy`.
 - Sem sessao, o dashboard e a consulta de codigo rapido redirecionam para a Home; o resumo interno recusou chamada sem token com `401`.
 - A verificacao somente leitura do Postgres retornou zero creditos negativos, zero saldo maior que o original, zero compras com valor inconsistente, zero divergencias entre resgates e itens, zero codigos rapidos duplicados e zero vouchers ativos expirados ou com validade diferente de seis meses.
-- O resgate comum usa transacao e `FOR UPDATE` dos creditos; o voucher rapido usa lock de transacao antes de ser consumido. O codigo de quatro digitos nao e reutilizado.
+- O resgate comum usa transacao e `FOR UPDATE` dos creditos; o voucher rapido usa lock de transacao antes de ser consumido. Novas emissoes usam cinco digitos e uma combinacao so pode ser reutilizada depois de `expires_at`.
 - A fonte passou em `npm run check`, `npm run build`, `node --check` e `git diff --check`; o TypeScript agora verifica declaracoes de dependencias e rejeita locais/parametros sem uso.
 - `npm audit` ficou com zero alertas depois da atualizacao pontual de `body-parser@1.20.6`.
 - O agente Wimi foi compilado com analisadores recomendados e warnings tratados como erro. Nao ha pacote NuGet depreciado, vulneravel ou desatualizado dentro da linha .NET 8.
@@ -63,7 +63,7 @@ O EXE publicado localmente e de arquivo unico, mas esta `NotSigned`. O hash SHA-
 
 ### P3 - Limites operacionais para acompanhar
 
-- O codigo de voucher tem quatro digitos e nao pode ser reutilizado por seguranca. A capacidade e de 10.000 emissoes permanentes; deve haver alerta operacional antes de aproximar desse limite. Veja [server.ts](../apps/cashback/src/server.ts#L135).
+- O codigo novo possui cinco digitos e capacidade de 100.000 combinacoes simultaneamente reservadas. A capacidade deixou de ser um limite vitalicio: depois dos seis meses, a combinacao volta ao sorteio. Acompanhar apenas a quantidade de codigos com `expires_at >= CURRENT_DATE`; status usado ou cancelado nao libera o numero antes da data.
 - Se houver mais de uma Wimi Impressora online, a fila escolhe a que enviou sinal mais recente. Hoje isso atende ao unico computador da Bematech, mas o proximo passo deve ser definir uma impressora principal ou permitir escolha do destino. Veja [server.ts](../apps/cashback/src/server.ts#L2317).
 
 ## Wimi Impressora antes do deploy

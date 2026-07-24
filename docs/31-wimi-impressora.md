@@ -8,6 +8,8 @@ Nos comprovantes existe somente o botao `Imprimir`: quando a Wimi Impressora est
 
 O modelo termico prioriza leitura no balcao: validade, WhatsApp, endereco, atendente e data/hora usam fonte ampliada e em negrito. A Wimi Impressora reserva altura adicional para esse rodape sem cortar informacoes.
 O Cashback `1.2.1` tambem atualiza a versao usada na URL dos assets, evitando que o navegador mantenha a tipografia anterior em cache.
+O agente imprime o codigo recebido como texto e suporta tanto os comprovantes historicos de quatro digitos quanto as novas emissoes de cinco digitos, sem recalcular ou alterar o voucher.
+O Cashback `1.3.0` introduz os cinco digitos e renova novamente os assets da interface para entregar a validacao atualizada sem cache antigo.
 
 ## Acesso
 
