@@ -2139,7 +2139,7 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-fields {
     display: grid;
-    grid-template-columns: 1.08fr 0.92fr 1fr 1.08fr 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     align-items: stretch;
 }
@@ -2274,7 +2274,7 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .charge-summary.redeem-summary {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
 }
 
@@ -2329,28 +2329,15 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .redeem-summary div:nth-child(4) {
-    border-color: #d4c8ef;
-    background: linear-gradient(135deg, #f3effc, #ffffff);
-}
-
-.redeem-summary div:nth-child(4)::before {
-    background: linear-gradient(90deg, #6d5bd0, rgba(109, 91, 208, 0.18));
-}
-
-.redeem-summary div:nth-child(4) strong {
-    color: #5140a4;
-}
-
-.redeem-summary div:nth-child(5) {
     border-color: #edcf98;
     background: linear-gradient(135deg, #fff5dc, #ffffff);
 }
 
-.redeem-summary div:nth-child(5)::before {
+.redeem-summary div:nth-child(4)::before {
     background: #d89a2a;
 }
 
-.redeem-summary div:nth-child(5) strong {
+.redeem-summary div:nth-child(4) strong {
     color: #8b5a08;
 }
 

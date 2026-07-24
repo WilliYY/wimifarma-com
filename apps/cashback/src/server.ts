@@ -138,7 +138,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.5.0';
+const SERVICE_VERSION = '1.5.1';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -3683,7 +3683,6 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
   const settings = await loadSettings();
   const clientId = num(req.body?.cliente_id);
   const purchaseCents = moneyToCents(req.body?.valor_compra);
-  const manualCashbackCents = moneyToCents(req.body?.cashback_manual);
   const printAfterSave = String(req.body?.print_after_save || '') === '1';
   const autoPrintQuery = printAfterSave ? '&auto_print_receipt=1' : '';
   const notes = cleanText(req.body?.observacoes, 5000);
@@ -3694,18 +3693,8 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
     res.redirect(`${BASE_PATH}/dashboard.php#resgate`);
     return;
   }
-  if (manualCashbackCents > purchaseCents) {
-    setFlash(req, 'error', 'Cashback Manual nao pode ser maior que o valor da compra.');
-    res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
-    return;
-  }
   if (quickCodeRaw && !quickCode) {
     setFlash(req, 'error', 'O codigo de cashback precisa ter 4 digitos antigos ou 5 digitos atuais.');
-    res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
-    return;
-  }
-  if (quickCode && manualCashbackCents > 0) {
-    setFlash(req, 'error', 'Ao usar um codigo rapido, deixe o Cashback Manual vazio.');
     res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#resgate`);
     return;
   }
@@ -3811,7 +3800,7 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
         discountCents: redeemedCents,
         redemptionId,
         percentBps: settings.cashbackPercentBps,
-        manualCashbackCents,
+        manualCashbackCents: 0,
         notes: redeemedCents > 0 ? cleanText(`Compra com uso de cashback. ${notes}`, 5000) : notes,
         userId: req.session.user?.id ?? null,
       });
@@ -3819,11 +3808,10 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
       if (redemptionId) await logAction(req, 'resgate_criado', 'resgate', redemptionId, `Resgate registrado no balcao: ${brMoneyCents(redeemedCents)}`);
       await logAction(req, 'compra_cashback_criada', 'compra', purchase.id, `Valor cobrado ${brMoneyCents(purchase.chargedCents)} e novo cashback ${brMoneyCents(purchase.cashbackCents)}`);
       const xpResult = redemptionId ? await awardXpForCashbackRedemption(req, redemptionId, redeemedCents, clientId) : null;
-      const generationLabel = manualCashbackCents > 0 ? 'Cashback Manual gerado' : 'Novo cashback gerado';
       const flash =
         redeemedCents > 0
-          ? `Cashback usado: ${brMoneyCents(redeemedCents)}. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)}.`
-          : `Compra registrada sem uso de cashback. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. ${generationLabel}: ${brMoneyCents(purchase.cashbackCents)}.`;
+          ? `Cashback usado: ${brMoneyCents(redeemedCents)}. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. Novo cashback gerado: ${brMoneyCents(purchase.cashbackCents)}.`
+          : `Compra registrada sem uso de cashback. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. Novo cashback gerado: ${brMoneyCents(purchase.cashbackCents)}.`;
       setFlash(req, 'success', `${flash}${xpResult ? ` ${xpResult.message}` : ''}`);
       rememberCashbackPurchaseReceipt(req, purchase.id);
       res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${purchase.id}${autoPrintQuery}#resgate`);
@@ -4515,9 +4503,8 @@ async function renderDashboard(req: Request): Promise<string> {
             <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="5" pattern="[0-9]{4,5}" placeholder="00000" autocomplete="one-time-code" data-quick-voucher-code><small data-quick-voucher-status>4 antigo ou 5 atual</small></label>
             <label class="redeem-purchase-field"><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
             <label class="redeem-applied-field"><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
-            <label class="manual-cashback-field"><span>Cashback Manual</span><input type="text" name="cashback_manual" data-money placeholder="0,00"><small>Preenchido, zera o novo cashback automatico.</small></label>
           </div>
-          <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback automatico</span><strong class="js-new-cashback">R$ 0,00</strong></div><div><span>Novo cashback manual</span><strong class="js-manual-cashback">R$ 0,00</strong></div><div class="redeem-validity-card"><span>Validade do novo cashback</span><strong>${CASHBACK_VALIDITY_MONTHS} meses</strong></div></div>
+          <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback gerado</span><strong class="js-new-cashback">R$ 0,00</strong></div><div class="redeem-validity-card"><span>Validade do novo cashback</span><strong>${CASHBACK_VALIDITY_MONTHS} meses</strong></div></div>
           <div class="live-preview js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
         </div>
         <div class="redeem-action full">
