@@ -174,8 +174,8 @@ internal sealed class PrinterService
         var y = DrawLogo(graphics, 10);
         y = DrawCentered(graphics, "Comprovante CashBack", y + 3, 15, FontStyle.Bold, 32);
         y = DrawRule(graphics, y + 4);
-        y = DrawCentered(graphics, "CLIENTE", y + 5, 7, FontStyle.Bold, 14);
-        y = DrawCentered(graphics, ReadString(payload, "client_name"), y, 12, FontStyle.Bold, 24);
+        y = DrawCentered(graphics, "CLIENTE CADASTRADO", y + 5, 8, FontStyle.Bold, 16);
+        y = DrawCenteredFitted(graphics, ReadString(payload, "client_name"), y, 14, 10, FontStyle.Bold, 28);
         y = DrawCentered(graphics, ReadString(payload, "client_phone"), y, 8, FontStyle.Regular, 17);
         var clientCode = ReadLong(payload, "client_code");
         if (clientCode > 0)
@@ -253,6 +253,26 @@ internal sealed class PrinterService
         using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisWord };
         graphics.DrawString(text ?? string.Empty, font, Brushes.Black, new RectangleF(ContentLeft, y, ContentWidth, height), format);
         return y + height;
+    }
+
+    private static float DrawCenteredFitted(
+        Graphics graphics,
+        string text,
+        float y,
+        float maximumFontSize,
+        float minimumFontSize,
+        FontStyle style,
+        float height)
+    {
+        var value = text ?? string.Empty;
+        var fontSize = maximumFontSize;
+        while (fontSize > minimumFontSize)
+        {
+            using var font = new Font("Arial", fontSize, style, GraphicsUnit.Point);
+            if (graphics.MeasureString(value, font).Width <= ContentWidth - 8) break;
+            fontSize -= .5f;
+        }
+        return DrawCentered(graphics, value, y, fontSize, style, height);
     }
 
     private static float DrawAmountRow(Graphics graphics, string label, long cents, float y, bool bold = false)

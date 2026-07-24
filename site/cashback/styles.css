@@ -4391,10 +4391,10 @@ body.sections-ready .workspace-section.is-active {
 
 .receipt-customer {
     display: grid;
-    gap: .5mm;
-    padding: 2mm 1mm;
+    gap: .7mm;
+    padding: 2.5mm 1mm;
     border-block: 1px dashed #555;
-    text-align: left;
+    text-align: center;
 }
 
 .receipt-customer span,
@@ -4411,7 +4411,14 @@ body.sections-ready .workspace-section.is-active {
 
 .receipt-customer strong {
     overflow-wrap: anywhere;
-    font-size: 11pt;
+    font-size: 13pt;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.receipt-customer small {
+    font-size: 9pt;
+    font-weight: 700;
 }
 
 .receipt-client-code {

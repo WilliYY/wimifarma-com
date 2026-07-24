@@ -7,9 +7,9 @@
 Nos comprovantes existe somente o botao `Imprimir`: quando a Wimi Impressora esta online no momento em que o comprovante abre, ele envia para a fila HTTPS; sem agente online, abre imediatamente o dialogo de impressao deste computador. Se ocorrer uma falha de rede ou resposta incerta depois de tentar a fila, o sistema nao abre a impressao local automaticamente, evitando cupom duplicado.
 
 O modelo termico prioriza leitura no balcao: validade, WhatsApp, endereco, atendente e data/hora usam fonte ampliada e em negrito. A Wimi Impressora reserva altura adicional para esse rodape sem cortar informacoes.
-O agente `1.0.5` imprime o codigo recebido como texto e suporta tanto os comprovantes historicos de quatro digitos quanto as novas emissoes de cinco digitos, sem recalcular ou alterar o voucher.
+O agente `1.0.6` imprime o codigo recebido como texto e suporta tanto os comprovantes historicos de quatro digitos quanto as novas emissoes de cinco digitos, sem recalcular ou alterar o voucher. Nos comprovantes de compra e uso de cashback, o nome salvo do cliente aparece em destaque e reduz a fonte somente quando necessario para caber; vouchers rapidos anonimos continuam sem nome.
 O payload `purchase` inclui `client_code`, derivado de `cashback_clients.id`, e o mostra em destaque junto de nome e telefone. O payload `quick_voucher` permanece sem `client_code`, porque a emissao rapida pode ser anonima.
-O Cashback `1.4.1` renova os assets da interface, mostra o comprovante da compra inicial dentro de `Novo cliente`, explicita a busca por codigo do cliente e impede cache das telas autenticadas.
+O Cashback `1.4.2` renova os assets da interface, mostra o comprovante da compra inicial dentro de `Novo cliente`, explicita a busca por codigo do cliente, impede cache das telas autenticadas e destaca o nome cadastrado na impressao.
 
 ## Acesso
 
