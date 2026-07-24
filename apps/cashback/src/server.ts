@@ -138,7 +138,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.4.7';
+const SERVICE_VERSION = '1.4.8';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -4271,6 +4271,7 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
   const expiresAt = isQuickVoucher ? receipt.successor_expires_at : receipt.credit_expires_at;
   const generatedLabel = 'Cashback gerado';
   const phone = formatPhone(receipt.client_phone);
+  const printDestination = printRoute === 'wimi' ? 'Wimi Impressora' : 'Este computador';
   const validity = generatedCents > 0 && expiresAt ? `Valido ate <strong>${e(brDate(expiresAt))}</strong>` : 'Nenhum novo cashback gerado';
   const codeBlock = quickCode
     ? `<div class="receipt-code"><span>Novo codigo</span><strong>${e(quickCode)}</strong></div>`
@@ -4278,15 +4279,18 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
 
   return `<div class="cashback-operation-result" data-cashback-operation-result>
     <div class="cashback-operation-result-copy no-print">
-      <span class="operation-success-pill">Operacao concluida</span>
+      <div class="cashback-operation-status">
+        <span class="operation-success-pill">Operacao #${e(purchaseId)} concluida</span>
+        <span class="cashback-operation-print-route">${e(printDestination)}</span>
+      </div>
       <h3>Comprovante pronto para imprimir</h3>
       <p>A compra foi gravada. Confira os dados do cliente e envie somente este comprovante para a Bematech.</p>
       <div class="cashback-operation-facts">
-        <span><small>Cliente</small><strong>${e(receipt.client_name)}</strong></span>
-        <span><small>Codigo do cliente</small><strong>#${e(clientCode)}</strong></span>
-        <span><small>Telefone</small><strong>${e(phone)}</strong></span>
-        <span><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
-        <span><small>Validade</small><strong>${e(expiresAt ? brDate(expiresAt) : '-')}</strong></span>
+        <span class="is-client"><small>Cliente</small><strong>${e(receipt.client_name)}</strong></span>
+        <span class="is-code"><small>Codigo do cliente</small><strong>#${e(clientCode)}</strong></span>
+        <span class="is-phone"><small>Telefone</small><strong>${e(phone)}</strong></span>
+        <span class="is-generated"><small>${e(generatedLabel)}</small><strong>${brMoneyCents(generatedCents)}</strong></span>
+        <span class="is-validity"><small>Validade</small><strong>${e(expiresAt ? brDate(expiresAt) : '-')}</strong></span>
       </div>
       <div class="cashback-operation-result-actions">
         <button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="purchase" data-entity-id="${e(purchaseId)}">Imprimir</button>

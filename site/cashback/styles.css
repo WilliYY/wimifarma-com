@@ -4699,20 +4699,29 @@ body.sections-ready .workspace-section.is-active {
 .cashback-operation-result {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(250px, 304px);
-    gap: 20px;
-    align-items: start;
+    gap: 18px;
+    align-items: stretch;
     margin: 18px 0 22px;
-    padding: 18px;
-    border: 1px solid #adddc9;
+    padding: 16px;
+    border: 1px solid #acd8c8;
     border-left: 5px solid #16845f;
-    border-radius: 16px;
-    background: #f4fbf8;
-    box-shadow: 0 18px 42px rgba(21, 104, 76, 0.1);
+    border-radius: 8px;
+    background: #f7fbfa;
+    box-shadow: 0 14px 34px rgba(21, 104, 76, .09);
 }
 
 .cashback-operation-result-copy {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
-    padding-top: 14px;
+    padding: 8px 2px 2px;
+}
+
+.cashback-operation-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
 }
 
 .operation-success-pill {
@@ -4728,10 +4737,23 @@ body.sections-ready .workspace-section.is-active {
     text-transform: uppercase;
 }
 
+.cashback-operation-print-route {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 5px 10px;
+    border: 1px solid #bdd9ed;
+    border-radius: 999px;
+    background: #eef7fd;
+    color: #245f89;
+    font-size: .75rem;
+    font-weight: 900;
+}
+
 .cashback-operation-result-copy h3 {
-    margin: 10px 0 5px;
+    margin: 14px 0 5px;
     color: #174d3e;
-    font-size: 1.45rem;
+    font-size: 1.35rem;
 }
 
 .cashback-operation-result-copy > p {
@@ -4742,24 +4764,50 @@ body.sections-ready .workspace-section.is-active {
 
 .cashback-operation-facts {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin: 18px 0;
-    border-block: 1px solid #cfe7de;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    margin: 16px 0 0;
+    overflow: hidden;
+    border: 1px solid #cfe3dc;
+    border-radius: 8px;
+    background: #fff;
 }
 
 .cashback-operation-facts span {
     display: grid;
     gap: 2px;
     min-width: 0;
-    padding: 11px 14px;
+    padding: 12px;
+    border-right: 1px solid #dce9e4;
+    border-bottom: 1px solid #dce9e4;
 }
 
-.cashback-operation-facts span:nth-child(odd) {
-    border-right: 1px solid #cfe7de;
+.cashback-operation-facts .is-client {
+    grid-column: span 3;
 }
 
-.cashback-operation-facts span:nth-child(n + 3) {
-    border-top: 1px solid #cfe7de;
+.cashback-operation-facts .is-code {
+    grid-column: span 1;
+    background: #f4f9fd;
+}
+
+.cashback-operation-facts .is-phone {
+    grid-column: span 2;
+    border-right: 0;
+}
+
+.cashback-operation-facts .is-generated,
+.cashback-operation-facts .is-validity {
+    grid-column: span 3;
+    border-bottom: 0;
+}
+
+.cashback-operation-facts .is-generated {
+    background: #eef9f4;
+}
+
+.cashback-operation-facts .is-validity {
+    border-right: 0;
+    background: #fff9ef;
 }
 
 .cashback-operation-facts small {
@@ -4775,13 +4823,29 @@ body.sections-ready .workspace-section.is-active {
     font-size: .98rem;
 }
 
+.cashback-operation-facts .is-code strong {
+    color: #235f8c;
+}
+
+.cashback-operation-facts .is-generated strong {
+    color: #087052;
+    font-size: 1.18rem;
+}
+
+.cashback-operation-facts .is-validity strong {
+    color: #8a560d;
+}
+
 .cashback-operation-result-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
+    margin-top: auto;
+    padding-top: 16px;
 }
 
 .cashback-operation-result-actions .btn {
+    flex: 1 1 180px;
     min-height: 44px;
 }
 
@@ -5706,6 +5770,10 @@ body.sections-ready .workspace-section.is-active {
         grid-template-columns: 1fr;
     }
 
+    .cashback-operation-result-copy {
+        padding: 2px;
+    }
+
     .quick-voucher-receipt {
         grid-row: auto;
     }
@@ -5846,16 +5914,27 @@ body.sections-ready .workspace-section.is-active {
         padding: 14px;
     }
 
+    .cashback-operation-status {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
     .cashback-operation-facts {
         grid-template-columns: 1fr;
     }
 
-    .cashback-operation-facts span:nth-child(odd) {
+    .cashback-operation-facts .is-client,
+    .cashback-operation-facts .is-code,
+    .cashback-operation-facts .is-phone,
+    .cashback-operation-facts .is-generated,
+    .cashback-operation-facts .is-validity {
+        grid-column: 1;
         border-right: 0;
+        border-bottom: 1px solid #dce9e4;
     }
 
-    .cashback-operation-facts span:nth-child(n + 2) {
-        border-top: 1px solid #cfe7de;
+    .cashback-operation-facts .is-validity {
+        border-bottom: 0;
     }
 
     .cashback-operation-result-actions,
