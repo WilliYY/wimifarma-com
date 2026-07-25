@@ -7,20 +7,6 @@ import path from 'path';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
 import {
-  PRINT_STATION_COOKIE,
-  PRINT_STATION_PROTOCOL_VERSION,
-  clearPrintStationCookie,
-  cookieValue,
-  createPrintStationToken,
-  isPrintStationToken,
-  printStationCsrfMatches,
-  printStationCsrfToken,
-  printStationShortcut,
-  printStationTokenHash,
-  renderPrintStationPage,
-  serializePrintStationCookie,
-} from './printStation.js';
-import {
   CURRENT_QUICK_VOUCHER_CODE_DIGITS,
   QUICK_VOUCHER_CODE_SPACE,
   findAvailableQuickVoucherCode,
@@ -115,22 +101,6 @@ type QuickVoucherRedemption = {
   successor: QuickVoucherIssue | null;
 };
 
-type PrintReceiptKind = 'quick_voucher' | 'purchase' | 'test';
-
-type PrintDeviceAuth = {
-  id: number;
-  deviceUid: string;
-  computerName: string;
-  printerName: string;
-  agentVersion: string;
-  transport: 'agent' | 'web';
-};
-
-type PrintStationAuth = {
-  device: PrintDeviceAuth;
-  token: string;
-};
-
 type MigrationStats = {
   lastRunAt: string | null;
   lastError: string | null;
@@ -156,7 +126,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.6.1';
+const SERVICE_VERSION = '1.7.0';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -172,11 +142,6 @@ const CASHBACK_VALIDITY_MONTHS = 6;
 const QUICK_VOUCHER_ADVISORY_LOCK = 20260721;
 const XP_CASHBACK_REDEEM_POINTS = 500;
 const XP_CASHBACK_REDEEM_SOURCE = 'cashback_redemption';
-const WIMI_PRINTER_PUBLIC_STATION_URL = String(
-  env.WIMI_PRINTER_PUBLIC_STATION_URL || `https://wimifarma.com${BASE_PATH}/internal/print-station`,
-).trim();
-const WIMI_PRINTER_ONLINE_SECONDS = 90;
-const WIMI_PRINTER_MAX_ATTEMPTS = 3;
 const HEALTH_COUNTS_CACHE_MS = 30_000;
 
 let healthCountsCache: { expiresAt: number; counts: Record<string, number> } | null = null;
@@ -636,538 +601,30 @@ router.post('/api-comprovante-cashback-impressao.php', clearSensitive, maintenan
   res.json({ ok: true });
 });
 
-router.post('/api-wimi-impressora.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
-  if (!csrfMatches(req)) {
-    res.status(403).json({ ok: false, message: 'Sessao expirada.' });
-    return;
-  }
-  const receiptKind = cleanText(req.body?.receipt_type, 40) as PrintReceiptKind;
-  const entityId = num(req.body?.entity_id);
-  try {
-    let payload: Record<string, unknown>;
-    if (receiptKind === 'quick_voucher') {
-      if (entityId <= 0 || !(req.session.quickVoucherReceiptIds || []).includes(entityId)) {
-        res.status(400).json({ ok: false, message: 'Cupom invalido para esta sessao.' });
-        return;
-      }
-      const receipt = await quickVoucherReceipt(entityId);
-      if (!receipt) {
-        res.status(404).json({ ok: false, message: 'Cupom nao encontrado.' });
-        return;
-      }
-      payload = quickVoucherPrintPayload(receipt);
-    } else if (receiptKind === 'purchase') {
-      if (entityId <= 0 || !(req.session.cashbackPurchaseReceiptIds || []).includes(entityId)) {
-        res.status(400).json({ ok: false, message: 'Comprovante invalido para esta sessao.' });
-        return;
-      }
-      const receipt = await cashbackPurchaseReceipt(entityId);
-      if (!receipt) {
-        res.status(404).json({ ok: false, message: 'Comprovante nao encontrado.' });
-        return;
-      }
-      payload = purchasePrintPayload(receipt);
-    } else {
-      res.status(400).json({ ok: false, message: 'Tipo de comprovante invalido.' });
-      return;
-    }
-
-    const device = await defaultPrintDevice();
-    if (!device) {
-      res.status(409).json({ ok: false, code: 'wimi_offline', message: 'A Wimi Impressora esta offline.' });
-      return;
-    }
-    const jobId = await createPrintJob(device.id, receiptKind, entityId, payload, req.session.user?.id ?? null);
-    await logAction(req, 'wimi_impressora_fila_criada', 'cashback_print_job', jobId, `Comprovante enviado para ${device.printerName}.`, {
-      receipt_type: receiptKind,
-      entity_id: entityId,
-      device_id: device.id,
-    });
-    res.json({ ok: true, job_id: jobId, printer: device.printerName, computer: device.computerName });
-  } catch (error) {
-    console.error('[cashback] falha ao criar trabalho da Wimi Impressora:', errorMessage(error));
-    res.status(500).json({ ok: false, message: 'Nao foi possivel enviar para a Wimi Impressora agora.' });
-  }
+router.all('/impressora.php', clearSensitive, (_req: Request, res: Response) => {
+  res.redirect(`${BASE_PATH}/dashboard.php#busca`);
 });
 
-router.get('/impressora.php', clearSensitive, async (req: Request, res: Response) => {
-  if (!isMasterAdm(req)) {
-    res.status(403).send(htmlShell(req, 'Acesso restrito', '<section class="panel"><h2>Somente o usuario adm pode abrir a Wimi Impressora.</h2><p>Volte para a Home e entre com o login mestre.</p><a class="btn primary" href="/">Voltar para Home</a></section>'));
-    return;
-  }
-  res.send(await renderPrinterAdmin(req));
-});
-
-router.post('/impressora.php', clearSensitive, async (req: Request, res: Response) => {
-  if (!isMasterAdm(req)) {
-    res.status(403).send('Acesso restrito.');
-    return;
-  }
-  if (!csrfMatches(req)) {
-    setFlash(req, 'error', 'Sessao expirada.');
-    res.redirect(`${BASE_PATH}/impressora.php`);
-    return;
-  }
-  const action = cleanText(req.body?.action, 40);
-  try {
-    if (action === 'activate_web_station') {
-      const stationName = cleanText(req.body?.station_name, 120) || 'Caixa da Bematech';
-      const currentStation = await printStationAuth(req);
-      const deviceToken = createPrintStationToken();
-      let deviceId = currentStation?.device.id || 0;
-      if (deviceId > 0) {
-        await pgPool.query(
-          `UPDATE cashback_print_devices
-              SET computer_name = $1,
-                  printer_name = 'Impressora padrao do Chrome',
-                  agent_version = '1.0.0-web',
-                  token_hash = $2,
-                  transport = 'web',
-                  status = 'active',
-                  created_by = $3,
-                  last_seen_at = NULL,
-                  last_error = NULL,
-                  updated_at = NOW()
-            WHERE id = $4`,
-          [stationName, printStationTokenHash(deviceToken), req.session.user?.id ?? null, deviceId],
-        );
-      } else {
-        const inserted = await pgPool.query(
-          `INSERT INTO cashback_print_devices
-             (device_uid, computer_name, printer_name, agent_version, token_hash, transport, status, created_by, last_seen_at, created_at, updated_at)
-           VALUES ($1, $2, 'Impressora padrao do Chrome', '1.0.0-web', $3, 'web', 'active', $4, NULL, NOW(), NOW())
-           RETURNING id`,
-          [`web-${crypto.randomUUID()}`, stationName, printStationTokenHash(deviceToken), req.session.user?.id ?? null],
-        );
-        deviceId = num(inserted.rows[0]?.id);
-      }
-      setPrintStationCookie(res, deviceToken);
-      await logAction(
-        req,
-        'wimi_impressora_web_ativada',
-        'cashback_print_device',
-        deviceId,
-        `Estacao web ${stationName} ativada neste navegador.`,
-        { transport: 'web' },
-      );
-      res.redirect(`${BASE_PATH}/internal/print-station`);
-      return;
-    } else if (action === 'test_print') {
-      const deviceId = num(req.body?.device_id);
-      const device = await activePrintDevice(deviceId);
-      if (!device) throw new Error('Impressora indisponivel ou revogada.');
-      const payload = testPrintPayload(device, req.session.user);
-      const jobId = await createPrintJob(device.id, 'test', null, payload, req.session.user?.id ?? null);
-      await logAction(req, 'wimi_impressora_teste_criado', 'cashback_print_job', jobId, `Teste enviado para ${device.printerName}.`, { device_id: device.id });
-      setFlash(req, 'success', `Teste #${jobId} enviado para ${device.printerName}.`);
-    } else if (action === 'revoke_device') {
-      const deviceId = num(req.body?.device_id);
-      const currentStation = await printStationAuth(req);
-      const updated = await pgPool.query(
-        `UPDATE cashback_print_devices
-            SET status = 'revoked', token_hash = NULL, updated_at = NOW()
-          WHERE id = $1 AND status = 'active'
-          RETURNING computer_name, printer_name`,
-        [deviceId],
-      );
-      if ((updated.rowCount ?? 0) <= 0) throw new Error('Dispositivo ativo nao encontrado.');
-      await pgPool.query(`UPDATE cashback_print_jobs SET status = 'cancelled', updated_at = NOW(), last_error = 'Dispositivo revogado pelo ADM.' WHERE device_id = $1 AND status = 'pending'`, [deviceId]);
-      if (currentStation?.device.id === deviceId) removePrintStationCookie(res);
-      await logAction(req, 'wimi_impressora_dispositivo_revogado', 'cashback_print_device', deviceId, 'Dispositivo da Wimi Impressora revogado.');
-      setFlash(req, 'success', 'Estacao revogada. Para reconectar, ative este navegador novamente.');
-    } else if (action === 'retry_job') {
-      const sourceJobId = num(req.body?.job_id);
-      const source = await pgPool.query(
-        `SELECT id, device_id, receipt_type, entity_id, payload
-           FROM cashback_print_jobs
-          WHERE id = $1 AND status IN ('failed', 'uncertain')
-          LIMIT 1`,
-        [sourceJobId],
-      );
-      const row = source.rows[0] as DbRow | undefined;
-      if (!row) throw new Error('Trabalho nao encontrado ou ainda em andamento.');
-      const device = await activePrintDevice(num(row.device_id));
-      if (!device) throw new Error('A impressora deste trabalho nao esta ativa.');
-      const jobId = await createPrintJob(device.id, String(row.receipt_type) as PrintReceiptKind, intOrNull(row.entity_id), row.payload as Record<string, unknown>, req.session.user?.id ?? null);
-      await logAction(req, 'wimi_impressora_fila_repetida', 'cashback_print_job', jobId, `Reimpressao criada a partir do trabalho #${sourceJobId}.`, { source_job_id: sourceJobId });
-      setFlash(req, 'success', `Reimpressao criada como trabalho #${jobId}.`);
-    } else {
-      throw new Error('Acao invalida.');
-    }
-  } catch (error) {
-    setFlash(req, 'error', errorMessage(error));
-  }
-  res.redirect(`${BASE_PATH}/impressora.php`);
-});
-
-router.post('/impressora-atalho.php', clearSensitive, async (req: Request, res: Response) => {
-  if (!isMasterAdm(req)) {
-    res.status(403).send('Acesso restrito.');
-    return;
-  }
-  if (!csrfMatches(req)) {
-    res.status(403).send('Sessao expirada.');
-    return;
-  }
-  await logAction(req, 'wimi_impressora_atalho_web_baixado', 'cashback_print_device', null, 'Atalho transparente da estacao web baixado pelo ADM.');
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Disposition', 'attachment; filename="Iniciar Wimi Impressora Web.cmd"');
-  res.send(printStationShortcut(WIMI_PRINTER_PUBLIC_STATION_URL));
-});
-
-router.all('/impressora-download.php', clearSensitive, (_req: Request, res: Response) => {
-  res.status(410).send('O instalador foi retirado. Use a Estacao Web no card Wimi Impressora.');
-});
-
-router.get('/internal/print-station', async (req: Request, res: Response) => {
-  const auth = await printStationAuth(req);
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.setHeader('Pragma', 'no-cache');
-  if (!auth) {
-    removePrintStationCookie(res);
-    res.status(401).send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Estacao desativada</title></head><body><main><h1>Estacao web nao ativada</h1><p>Entre com o login adm e ative este navegador no card Wimi Impressora.</p><a href="${BASE_PATH}/impressora.php">Abrir painel ADM</a></main></body></html>`);
-    return;
-  }
-  await pgPool.query(
-    `UPDATE cashback_print_devices
-        SET last_seen_at = NOW(), last_error = NULL, updated_at = NOW()
-      WHERE id = $1`,
-    [auth.device.id],
-  );
-  const nonce = crypto.randomBytes(18).toString('base64url');
-  res.setHeader(
-    'Content-Security-Policy',
-    `default-src 'none'; img-src 'self'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'`,
-  );
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.send(
-    renderPrintStationPage({
-      basePath: BASE_PATH,
-      csrfToken: printStationCsrfToken(SESSION_SECRET, auth.token),
-      device: {
-        id: auth.device.id,
-        computerName: auth.device.computerName,
-        printerName: auth.device.printerName,
-      },
-      nonce,
-      serviceVersion: SERVICE_VERSION,
-    }),
-  );
-});
-
-router.post('/internal/print-station/heartbeat', async (req: Request, res: Response) => {
-  const auth = await printStationAuth(req);
-  if (!auth) {
-    res.status(401).json({ ok: false, message: 'Estacao revogada ou nao ativada.' });
-    return;
-  }
-  if (!printStationRequestIsValid(req, auth)) {
-    res.status(403).json({ ok: false, message: 'Requisicao da estacao recusada.' });
-    return;
-  }
-  const updated = await pgPool.query(
-    `UPDATE cashback_print_devices
-        SET last_seen_at = NOW(), last_error = NULL, updated_at = NOW()
-      WHERE id = $1
-      RETURNING last_seen_at`,
-    [auth.device.id],
-  );
-  const queue = await pgPool.query(
-    `SELECT COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
-            COUNT(*) FILTER (WHERE status = 'printing')::int AS printing
-       FROM cashback_print_jobs
-      WHERE device_id = $1`,
-    [auth.device.id],
-  );
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.json({
-    ok: true,
-    device_id: auth.device.id,
-    protocol: PRINT_STATION_PROTOCOL_VERSION,
-    last_seen_at: updated.rows[0]?.last_seen_at || null,
-    pending: num(queue.rows[0]?.pending),
-    printing: num(queue.rows[0]?.printing),
+const retiredPrinterTransport = (_req: Request, res: Response): void => {
+  res.status(410).json({
+    ok: false,
+    message: 'A Wimi Impressora foi retirada. Use o botao Imprimir para abrir a impressao deste computador.',
   });
-});
+};
 
-router.post('/internal/print-station/jobs/next', async (req: Request, res: Response) => {
-  const auth = await printStationAuth(req);
-  if (!auth) {
-    res.status(401).json({ ok: false, message: 'Estacao revogada ou nao ativada.' });
-    return;
-  }
-  if (!printStationRequestIsValid(req, auth)) {
-    res.status(403).json({ ok: false, message: 'Requisicao da estacao recusada.' });
-    return;
-  }
-  const client = await pgPool.connect();
-  try {
-    await markStalePrintJobsUncertain();
-    await client.query('BEGIN');
-    await client.query(`UPDATE cashback_print_devices SET last_seen_at = NOW(), updated_at = NOW() WHERE id = $1`, [auth.device.id]);
-    const claimed = await client.query(
-      `WITH next_job AS (
-         SELECT id
-           FROM cashback_print_jobs
-          WHERE device_id = $1 AND status = 'pending' AND attempts_count < $2
-          ORDER BY created_at ASC, id ASC
-          FOR UPDATE SKIP LOCKED
-          LIMIT 1
-       )
-       UPDATE cashback_print_jobs j
-          SET status = 'printing', attempts_count = attempts_count + 1, claimed_at = NOW(), updated_at = NOW()
-         FROM next_job
-        WHERE j.id = next_job.id
-       RETURNING j.id, j.receipt_type, j.entity_id, j.payload, j.attempts_count`,
-      [auth.device.id, WIMI_PRINTER_MAX_ATTEMPTS],
-    );
-    await client.query('COMMIT');
-    const row = claimed.rows[0] as DbRow | undefined;
-    res.setHeader('Cache-Control', 'private, no-store');
-    res.json({
-      ok: true,
-      job: row
-        ? {
-            id: num(row.id),
-            receipt_type: row.receipt_type,
-            entity_id: intOrNull(row.entity_id),
-            payload: row.payload,
-            attempt: num(row.attempts_count),
-          }
-        : null,
-    });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    res.status(500).json({ ok: false, message: errorMessage(error) });
-  } finally {
-    client.release();
-  }
-});
-
-router.post('/internal/print-station/jobs/:id/complete', async (req: Request, res: Response) => {
-  const auth = await printStationAuth(req);
-  if (!auth) {
-    res.status(401).json({ ok: false, message: 'Estacao revogada ou nao ativada.' });
-    return;
-  }
-  if (!printStationRequestIsValid(req, auth)) {
-    res.status(403).json({ ok: false, message: 'Requisicao da estacao recusada.' });
-    return;
-  }
-  const jobId = num(req.params.id);
-  const status = cleanText(req.body?.status, 20);
-  if (jobId <= 0 || !['printed', 'uncertain'].includes(status)) {
-    res.status(400).json({ ok: false, message: 'Resultado de impressao invalido.' });
-    return;
-  }
-  const lastError = status === 'printed' ? null : cleanText(req.body?.error, 800) || 'A estacao web nao confirmou a impressao.';
-  const updated = await pgPool.query(
-    `UPDATE cashback_print_jobs
-        SET status = $1,
-            completed_at = NOW(),
-            printed_at = CASE WHEN $1 = 'printed' THEN NOW() ELSE printed_at END,
-            last_error = $2,
-            updated_at = NOW()
-      WHERE id = $3
-        AND device_id = $4
-        AND status IN ('printing', 'uncertain')
-      RETURNING id`,
-    [status, lastError, jobId, auth.device.id],
-  );
-  if ((updated.rowCount ?? 0) <= 0) {
-    res.status(409).json({ ok: false, message: 'O trabalho nao esta mais aguardando conclusao.' });
-    return;
-  }
-  await pgPool.query(
-    `UPDATE cashback_print_devices
-        SET last_seen_at = NOW(), last_job_at = NOW(), last_error = $1, updated_at = NOW()
-      WHERE id = $2`,
-    [lastError, auth.device.id],
-  );
-  await auditPrintAgent(
-    status === 'printed' ? 'wimi_impressora_web_solicitada' : 'wimi_impressora_trabalho_uncertain',
-    jobId,
-    status === 'printed'
-      ? `Trabalho #${jobId} enviado ao navegador da estacao web.`
-      : `Trabalho #${jobId} ficou sem confirmacao na estacao web.`,
-    { device_id: auth.device.id, transport: 'web', error: lastError },
-  );
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.json({ ok: true });
-});
-
-router.post('/api/internal/print-agent/pair', async (req: Request, res: Response) => {
-  const ticket = cleanToken(req.body?.ticket, 120);
-  const deviceUid = cleanIdentifier(req.body?.device_uid, 180);
-  const computerName = cleanText(req.body?.computer_name, 160);
-  const printerName = cleanText(req.body?.printer_name, 240);
-  const agentVersion = cleanVersion(req.body?.agent_version);
-  if (!ticket || !deviceUid || !computerName || !printerName || !agentVersion) {
-    res.status(400).json({ ok: false, message: 'Dados de pareamento incompletos.' });
-    return;
-  }
-  const client = await pgPool.connect();
-  try {
-    await client.query('BEGIN');
-    const ticketResult = await client.query(
-      `SELECT id, created_by
-         FROM cashback_print_pairing_tickets
-        WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
-        FOR UPDATE`,
-      [secretHash(ticket)],
-    );
-    const pairing = ticketResult.rows[0] as DbRow | undefined;
-    if (!pairing) {
-      await client.query('ROLLBACK');
-      res.status(401).json({ ok: false, message: 'Este pareamento legado expirou ou ja foi usado.' });
-      return;
-    }
-    const deviceToken = crypto.randomBytes(32).toString('base64url');
-    const deviceResult = await client.query(
-      `INSERT INTO cashback_print_devices
-         (device_uid, computer_name, printer_name, agent_version, token_hash, transport, status, created_by, last_seen_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'agent', 'active', $6, NOW(), NOW(), NOW())
-       ON CONFLICT (device_uid) DO UPDATE
-         SET computer_name = EXCLUDED.computer_name,
-             printer_name = EXCLUDED.printer_name,
-             agent_version = EXCLUDED.agent_version,
-             token_hash = EXCLUDED.token_hash,
-             transport = 'agent',
-             status = 'active',
-             created_by = EXCLUDED.created_by,
-             last_seen_at = NOW(),
-             last_error = NULL,
-             updated_at = NOW()
-       RETURNING id`,
-      [deviceUid, computerName, printerName, agentVersion, secretHash(deviceToken), intOrNull(pairing.created_by)],
-    );
-    const deviceId = num(deviceResult.rows[0]?.id);
-    await client.query(`UPDATE cashback_print_pairing_tickets SET used_at = NOW(), device_id = $1 WHERE id = $2`, [deviceId, num(pairing.id)]);
-    await client.query(
-      `INSERT INTO cashback_audit_events (user_id, action, entity_type, entity_id, message, metadata)
-       VALUES ($1, 'wimi_impressora_dispositivo_pareado', 'cashback_print_device', $2, $3, $4::jsonb)`,
-      [intOrNull(pairing.created_by), deviceId, `Wimi Impressora pareada em ${computerName}.`, JSON.stringify({ printer_name: printerName, agent_version: agentVersion })],
-    );
-    await client.query('COMMIT');
-    res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, device_id: deviceId, device_token: deviceToken, poll_seconds: 2, server_version: agentVersion });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    console.error('[cashback] falha ao parear Wimi Impressora:', errorMessage(error));
-    res.status(500).json({ ok: false, message: 'Falha temporaria no pareamento legado.' });
-  } finally {
-    client.release();
-  }
-});
-
-router.post('/api/internal/print-agent/heartbeat', async (req: Request, res: Response) => {
-  const device = await authenticatePrintDevice(req, res);
-  if (!device) return;
-  const printerName = cleanText(req.body?.printer_name, 240) || device.printerName;
-  const agentVersion = cleanVersion(req.body?.agent_version) || device.agentVersion;
-  const lastError = cleanText(req.body?.last_error, 600) || null;
-  await pgPool.query(
-    `UPDATE cashback_print_devices
-        SET printer_name = $1, agent_version = $2, last_seen_at = NOW(), last_error = $3, updated_at = NOW()
-      WHERE id = $4`,
-    [printerName, agentVersion, lastError, device.id],
-  );
-  res.json({ ok: true, server_version: agentVersion, update_available: false, web_station_available: true });
-});
-
-router.get('/api/internal/print-agent/jobs/next', async (req: Request, res: Response) => {
-  const device = await authenticatePrintDevice(req, res);
-  if (!device) return;
-  const client = await pgPool.connect();
-  try {
-    await markStalePrintJobsUncertain();
-    await client.query('BEGIN');
-    await client.query(`UPDATE cashback_print_devices SET last_seen_at = NOW(), updated_at = NOW() WHERE id = $1`, [device.id]);
-    const claimed = await client.query(
-      `WITH next_job AS (
-         SELECT id
-           FROM cashback_print_jobs
-          WHERE device_id = $1 AND status = 'pending' AND attempts_count < $2
-          ORDER BY created_at ASC, id ASC
-          FOR UPDATE SKIP LOCKED
-          LIMIT 1
-       )
-       UPDATE cashback_print_jobs j
-          SET status = 'printing', attempts_count = attempts_count + 1, claimed_at = NOW(), updated_at = NOW()
-         FROM next_job
-        WHERE j.id = next_job.id
-       RETURNING j.id, j.receipt_type, j.entity_id, j.payload, j.attempts_count`,
-      [device.id, WIMI_PRINTER_MAX_ATTEMPTS],
-    );
-    await client.query('COMMIT');
-    const row = claimed.rows[0] as DbRow | undefined;
-    res.json({ ok: true, job: row ? { id: num(row.id), receipt_type: row.receipt_type, entity_id: intOrNull(row.entity_id), payload: row.payload, attempt: num(row.attempts_count) } : null });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    res.status(500).json({ ok: false, message: errorMessage(error) });
-  } finally {
-    client.release();
-  }
-});
-
-router.post('/api/internal/print-agent/jobs/:id/complete', async (req: Request, res: Response) => {
-  const device = await authenticatePrintDevice(req, res);
-  if (!device) return;
-  const jobId = num(req.params.id);
-  const status = cleanText(req.body?.status, 20);
-  if (jobId <= 0 || !['printed', 'failed', 'uncertain'].includes(status)) {
-    res.status(400).json({ ok: false, message: 'Resultado de impressao invalido.' });
-    return;
-  }
-  const lastError = status === 'printed' ? null : cleanText(req.body?.error, 800) || 'Falha sem detalhe informada pelo agente.';
-  const updated = await pgPool.query(
-    `UPDATE cashback_print_jobs
-        SET status = $1,
-            completed_at = NOW(),
-            printed_at = CASE WHEN $1 = 'printed' THEN NOW() ELSE printed_at END,
-            last_error = $2,
-            updated_at = NOW()
-      WHERE id = $3 AND device_id = $4 AND status IN ('printing', 'uncertain')
-      RETURNING id, receipt_type`,
-    [status, lastError, jobId, device.id],
-  );
-  if ((updated.rowCount ?? 0) <= 0) {
-    res.status(409).json({ ok: false, message: 'O trabalho nao esta mais aguardando conclusao.' });
-    return;
-  }
-  await pgPool.query(
-    `UPDATE cashback_print_devices
-        SET last_seen_at = NOW(), last_job_at = NOW(), last_error = $1, updated_at = NOW()
-      WHERE id = $2`,
-    [lastError, device.id],
-  );
-  await auditPrintAgent(status === 'printed' ? 'wimi_impressora_trabalho_impresso' : `wimi_impressora_trabalho_${status}`, jobId, `Trabalho #${jobId}: ${status}.`, {
-    device_id: device.id,
-    error: lastError,
-  });
-  res.json({ ok: true });
-});
-
-router.get('/api/internal/print-agent/version', async (req: Request, res: Response) => {
-  const device = await authenticatePrintDevice(req, res);
-  if (!device) return;
-  res.json({
-    ok: true,
-    version: device.agentVersion,
-    available: false,
-    sha256: null,
-    download_url: null,
-    web_station_url: WIMI_PRINTER_PUBLIC_STATION_URL,
-  });
-});
-
-router.get('/api/internal/print-agent/update', async (req: Request, res: Response) => {
-  const device = await authenticatePrintDevice(req, res);
-  if (!device) return;
-  res.status(410).json({ ok: false, message: 'O agente instalavel foi substituido pela Estacao Web.' });
-});
-
+router.all('/api-wimi-impressora.php', clearSensitive, retiredPrinterTransport);
+router.all('/impressora-atalho.php', clearSensitive, retiredPrinterTransport);
+router.all('/impressora-download.php', clearSensitive, retiredPrinterTransport);
+router.all('/internal/print-station', retiredPrinterTransport);
+router.all('/internal/print-station/heartbeat', retiredPrinterTransport);
+router.all('/internal/print-station/jobs/next', retiredPrinterTransport);
+router.all('/internal/print-station/jobs/:id/complete', retiredPrinterTransport);
+router.all('/api/internal/print-agent/pair', retiredPrinterTransport);
+router.all('/api/internal/print-agent/heartbeat', retiredPrinterTransport);
+router.all('/api/internal/print-agent/jobs/next', retiredPrinterTransport);
+router.all('/api/internal/print-agent/jobs/:id/complete', retiredPrinterTransport);
+router.all('/api/internal/print-agent/version', retiredPrinterTransport);
+router.all('/api/internal/print-agent/update', retiredPrinterTransport);
 router.get('/relatorio.php', clearSensitive, maintenanceGuard, async (req: Request, res: Response) => {
   await refreshExpiredCredits();
   await refreshExpiredQuickVouchers();
@@ -1346,25 +803,6 @@ function normalizeBasePath(value: string): string {
 
 function normalizeUsername(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function cleanToken(value: unknown, limit: number): string {
-  const token = String(value ?? '').trim();
-  return token.length <= limit && /^[A-Za-z0-9_-]+$/.test(token) ? token : '';
-}
-
-function cleanIdentifier(value: unknown, limit: number): string {
-  const identifier = String(value ?? '').trim();
-  return identifier.length <= limit && /^[A-Za-z0-9._:-]+$/.test(identifier) ? identifier : '';
-}
-
-function cleanVersion(value: unknown): string {
-  const version = String(value ?? '').trim();
-  return /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[A-Za-z0-9.-]+)?$/.test(version) ? version : '';
-}
-
-function secretHash(value: string): string {
-  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function e(value: unknown): string {
@@ -2235,6 +1673,21 @@ async function ensureSchema(): Promise<void> {
       finished_at TIMESTAMPTZ
     );
   `);
+  await pgPool.query(`
+    UPDATE cashback_print_devices
+       SET status = 'revoked',
+           token_hash = NULL,
+           last_error = 'Transporte Wimi Impressora retirado; use a impressao local do navegador.',
+           updated_at = NOW()
+     WHERE status = 'active';
+
+    UPDATE cashback_print_jobs
+       SET status = 'cancelled',
+           completed_at = COALESCE(completed_at, NOW()),
+           last_error = 'Trabalho cancelado porque o transporte Wimi Impressora foi retirado.',
+           updated_at = NOW()
+     WHERE status IN ('pending', 'printing');
+  `);
 }
 
 let xpRewardSchemaReady = false;
@@ -2577,308 +2030,6 @@ function rememberCashbackPurchaseReceipt(req: Request, purchaseId: number): void
 
 function isMasterAdm(req: Request): boolean {
   return normalizeUsername(req.session.user?.username) === 'adm';
-}
-
-function printDeviceFromRow(row: DbRow): PrintDeviceAuth {
-  const transport = String(row.transport || 'agent') === 'web' ? 'web' : 'agent';
-  return {
-    id: num(row.id),
-    deviceUid: String(row.device_uid || ''),
-    computerName: String(row.computer_name || ''),
-    printerName: String(row.printer_name || ''),
-    agentVersion: String(row.agent_version || ''),
-    transport,
-  };
-}
-
-async function authenticatePrintDevice(req: Request, res: Response): Promise<PrintDeviceAuth | null> {
-  const authorization = String(req.get('authorization') || '');
-  const match = authorization.match(/^Bearer\s+([A-Za-z0-9_-]{32,160})$/i);
-  if (!match) {
-    res.status(401).json({ ok: false, message: 'Agente nao autenticado.' });
-    return null;
-  }
-  const result = await pgPool.query(
-    `SELECT id, device_uid, computer_name, printer_name, agent_version, transport
-       FROM cashback_print_devices
-      WHERE token_hash = $1 AND status = 'active'
-      LIMIT 1`,
-    [secretHash(match[1])],
-  );
-  const row = result.rows[0] as DbRow | undefined;
-  if (!row) {
-    res.status(401).json({ ok: false, message: 'Agente revogado ou invalido.' });
-    return null;
-  }
-  return printDeviceFromRow(row);
-}
-
-async function printStationAuth(req: Request): Promise<PrintStationAuth | null> {
-  const token = cookieValue(req.get('cookie'), PRINT_STATION_COOKIE);
-  if (!isPrintStationToken(token)) return null;
-  const result = await pgPool.query(
-    `SELECT id, device_uid, computer_name, printer_name, agent_version, transport
-       FROM cashback_print_devices
-      WHERE token_hash = $1
-        AND status = 'active'
-        AND transport = 'web'
-      LIMIT 1`,
-    [printStationTokenHash(token)],
-  );
-  const row = result.rows[0] as DbRow | undefined;
-  return row ? { device: printDeviceFromRow(row), token } : null;
-}
-
-function printStationRequestIsValid(req: Request, auth: PrintStationAuth): boolean {
-  const fetchSite = String(req.get('sec-fetch-site') || '').toLowerCase();
-  if (fetchSite && !['same-origin', 'none'].includes(fetchSite)) return false;
-  return printStationCsrfMatches(SESSION_SECRET, auth.token, req.get('x-wimi-csrf'));
-}
-
-function setPrintStationCookie(res: Response, token: string): void {
-  res.append('Set-Cookie', serializePrintStationCookie(token, BASE_PATH, SESSION_COOKIE_SECURE));
-}
-
-function removePrintStationCookie(res: Response): void {
-  res.append('Set-Cookie', clearPrintStationCookie(BASE_PATH, SESSION_COOKIE_SECURE));
-}
-
-async function markStalePrintJobsUncertain(): Promise<void> {
-  await pgPool.query(
-    `UPDATE cashback_print_jobs
-        SET status = 'uncertain',
-            completed_at = NOW(),
-            last_error = 'A estacao nao concluiu o trabalho em 15 minutos. Confira o papel antes de reimprimir.',
-            updated_at = NOW()
-      WHERE status = 'printing'
-        AND claimed_at < NOW() - INTERVAL '15 minutes'`,
-  );
-}
-
-async function defaultPrintDevice(): Promise<PrintDeviceAuth | null> {
-  const result = await pgPool.query(
-    `SELECT id, device_uid, computer_name, printer_name, agent_version, transport
-       FROM cashback_print_devices
-      WHERE status = 'active'
-        AND last_seen_at >= NOW() - ($1::int * INTERVAL '1 second')
-      ORDER BY (transport = 'web') DESC, last_seen_at DESC, id DESC
-      LIMIT 1`,
-    [WIMI_PRINTER_ONLINE_SECONDS],
-  );
-  const row = result.rows[0] as DbRow | undefined;
-  return row ? printDeviceFromRow(row) : null;
-}
-
-async function activePrintDevice(deviceId: number): Promise<PrintDeviceAuth | null> {
-  if (deviceId <= 0) return null;
-  const result = await pgPool.query(
-    `SELECT id, device_uid, computer_name, printer_name, agent_version, transport
-       FROM cashback_print_devices
-      WHERE id = $1
-        AND status = 'active'
-        AND last_seen_at >= NOW() - ($2::int * INTERVAL '1 second')
-      LIMIT 1`,
-    [deviceId, WIMI_PRINTER_ONLINE_SECONDS],
-  );
-  const row = result.rows[0] as DbRow | undefined;
-  return row ? printDeviceFromRow(row) : null;
-}
-
-async function createPrintJob(
-  deviceId: number,
-  receiptType: PrintReceiptKind,
-  entityId: number | null,
-  payload: Record<string, unknown>,
-  createdBy: number | null,
-): Promise<number> {
-  const inserted = await pgPool.query(
-    `INSERT INTO cashback_print_jobs (device_id, receipt_type, entity_id, payload, created_by)
-     VALUES ($1, $2, $3, $4::jsonb, $5)
-     RETURNING id`,
-    [deviceId, receiptType, entityId, JSON.stringify(payload), createdBy],
-  );
-  return num(inserted.rows[0]?.id);
-}
-
-function quickVoucherPrintPayload(receipt: DbRow): Record<string, unknown> {
-  const expiresAt = isoDate(receipt.expires_at)
-    || dateMonthsFromDate(receipt.issued_at || receipt.created_at, CASHBACK_VALIDITY_MONTHS);
-  return {
-    schema_version: 1,
-    kind: 'quick_voucher',
-    cashback_cents: num(receipt.cashback_cents),
-    code: cleanText(receipt.code, CURRENT_QUICK_VOUCHER_CODE_DIGITS),
-    expires_at: expiresAt,
-    attendant_name: cleanText(receipt.attendant_name, 160) || 'Wimifarma',
-    issued_at: String(receipt.issued_at || receipt.created_at || ''),
-    whatsapp: '(44) 98413-4971',
-    address: 'Av. Minas Gerais, 2263',
-  };
-}
-
-function purchasePrintPayload(receipt: DbRow): Record<string, unknown> {
-  const isQuickVoucher = String(receipt.cashback_generation_mode || '') === 'voucher_rapido';
-  const expiresAt = isoDate(isQuickVoucher ? receipt.successor_expires_at : receipt.credit_expires_at);
-  return {
-    schema_version: 1,
-    kind: 'purchase',
-    operation_id: num(receipt.id),
-    client_code: num(receipt.client_id),
-    client_name: cleanText(receipt.client_name, 180),
-    client_phone: formatPhone(receipt.client_phone),
-    gross_cents: num(receipt.gross_cents),
-    cashback_used_cents: num(receipt.cashback_discount_cents),
-    charged_cents: num(receipt.charged_cents),
-    cashback_generated_cents: num(receipt.cashback_generated_cents),
-    cashback_generation_mode: isQuickVoucher ? 'voucher_rapido' : 'credito',
-    successor_code: cleanText(receipt.successor_code, CURRENT_QUICK_VOUCHER_CODE_DIGITS),
-    expires_at: expiresAt || null,
-    attendant_name: cleanText(receipt.attendant_name, 160) || 'Wimifarma',
-    purchased_at: String(receipt.purchased_at || receipt.created_at || ''),
-    whatsapp: '(44) 98413-4971',
-    address: 'Av. Minas Gerais, 2263',
-  };
-}
-
-function testPrintPayload(device: PrintDeviceAuth, user: User | undefined): Record<string, unknown> {
-  return {
-    schema_version: 1,
-    kind: 'test',
-    computer_name: device.computerName,
-    printer_name: device.printerName,
-    agent_version: device.agentVersion,
-    requested_by: cleanText(user?.displayName || user?.username, 160) || 'adm',
-    requested_at: new Date().toISOString(),
-  };
-}
-
-async function auditPrintAgent(
-  action: string,
-  entityId: number,
-  message: string,
-  metadata: Record<string, unknown> = {},
-): Promise<void> {
-  try {
-    await pgPool.query(
-      `INSERT INTO cashback_audit_events (user_id, action, entity_type, entity_id, message, metadata)
-       VALUES (NULL, $1, 'cashback_print_job', $2, $3, $4::jsonb)`,
-      [action, entityId, message, JSON.stringify(metadata)],
-    );
-  } catch {
-    // Printing must keep working even if audit storage is temporarily unavailable.
-  }
-}
-
-async function renderPrinterAdmin(req: Request): Promise<string> {
-  await markStalePrintJobsUncertain();
-  const currentStation = await printStationAuth(req);
-  const devicesResult = await pgPool.query(
-    `SELECT d.*,
-            (d.status = 'active' AND d.last_seen_at >= NOW() - ($1::int * INTERVAL '1 second')) AS is_online,
-            COUNT(j.id) FILTER (WHERE j.status = 'pending')::int AS pending_jobs,
-            COUNT(j.id) FILTER (WHERE j.status = 'printing')::int AS printing_jobs,
-            COUNT(j.id) FILTER (WHERE j.status = 'failed' OR j.status = 'uncertain')::int AS attention_jobs
-       FROM cashback_print_devices d
-       LEFT JOIN cashback_print_jobs j ON j.device_id = d.id
-      GROUP BY d.id
-      ORDER BY (d.status = 'active') DESC, d.last_seen_at DESC NULLS LAST, d.id DESC`,
-    [WIMI_PRINTER_ONLINE_SECONDS],
-  );
-  const jobsResult = await pgPool.query(
-    `SELECT j.*, d.computer_name, d.printer_name, d.transport
-       FROM cashback_print_jobs j
-       INNER JOIN cashback_print_devices d ON d.id = j.device_id
-      ORDER BY j.created_at DESC, j.id DESC
-      LIMIT 40`,
-  );
-  const devices = devicesResult.rows as DbRow[];
-  const jobs = jobsResult.rows as DbRow[];
-  const onlineCount = devices.filter((row) => row.is_online === true).length;
-  const pendingCount = jobs.filter((row) => ['pending', 'printing'].includes(String(row.status))).length;
-  const attentionCount = jobs.filter((row) => ['failed', 'uncertain'].includes(String(row.status))).length;
-
-  const deviceCards = devices
-    .map((device) => {
-      const deviceId = num(device.id);
-      const online = device.is_online === true;
-      const revoked = String(device.status) === 'revoked';
-      const isWeb = String(device.transport || 'agent') === 'web';
-      return `<article class="printer-device ${online ? 'is-online' : revoked ? 'is-revoked' : 'is-offline'}">
-        <div class="printer-device-head">
-          <div><span class="printer-status-dot" aria-hidden="true"></span><div><h3>${e(device.computer_name)}</h3><p>${e(device.printer_name)}</p></div></div>
-          <span class="printer-status-label">${online ? 'Online' : revoked ? 'Revogada' : 'Offline'}</span>
-        </div>
-        <dl class="printer-device-meta">
-          <div><dt>Conexao</dt><dd>${isWeb ? 'Estacao Web' : 'Agente legado'}</dd></div>
-          <div><dt>Ultimo sinal</dt><dd>${e(brDate(device.last_seen_at, true))}</dd></div>
-          <div><dt>Fila</dt><dd>${e(num(device.pending_jobs) + num(device.printing_jobs))}</dd></div>
-          <div><dt>Atencao</dt><dd>${e(device.attention_jobs)}</dd></div>
-        </dl>
-        ${device.last_error ? `<p class="printer-device-error">${e(device.last_error)}</p>` : ''}
-        <div class="printer-device-actions">
-          ${online ? `<form method="post" action="${pageUrl('impressora.php')}">${csrfField(req)}<input type="hidden" name="action" value="test_print"><input type="hidden" name="device_id" value="${e(deviceId)}"><button class="btn primary" type="submit">Imprimir teste</button></form>` : ''}
-          ${!revoked ? `<form method="post" action="${pageUrl('impressora.php')}" data-confirm="Revogar esta estacao? Este navegador precisara ser ativado novamente.">${csrfField(req)}<input type="hidden" name="action" value="revoke_device"><input type="hidden" name="device_id" value="${e(deviceId)}"><button class="btn danger" type="submit">Revogar</button></form>` : ''}
-        </div>
-      </article>`;
-    })
-    .join('');
-
-  const jobRows = jobs
-    .map((job) => {
-      const status = String(job.status || 'pending');
-      const label: Record<string, string> = {
-        pending: 'Na fila',
-        printing: 'Imprimindo',
-        printed: 'Impresso',
-        failed: 'Falhou',
-        uncertain: 'Conferir',
-        cancelled: 'Cancelado',
-      };
-      if (status === 'printed' && String(job.transport || 'agent') === 'web') label.printed = 'Enviado ao navegador';
-      const receiptLabel: Record<string, string> = { quick_voucher: 'Cashback rapido', purchase: 'Compra CashBack', test: 'Teste' };
-      const retry = ['failed', 'uncertain'].includes(status)
-        ? `<form method="post" action="${pageUrl('impressora.php')}">${csrfField(req)}<input type="hidden" name="action" value="retry_job"><input type="hidden" name="job_id" value="${e(job.id)}"><button class="btn" type="submit">Reimprimir</button></form>`
-        : '';
-      return `<tr>
-        <td><strong>#${e(job.id)}</strong><small>${e(brDate(job.created_at, true))}</small></td>
-        <td><strong>${e(receiptLabel[String(job.receipt_type)] || job.receipt_type)}</strong><small>${job.entity_id ? `Registro #${e(job.entity_id)}` : 'Sem registro vinculado'}</small></td>
-        <td><strong>${e(job.computer_name)}</strong><small>${e(job.printer_name)}</small></td>
-        <td><span class="printer-job-status is-${e(cssToken(status))}">${e(label[status] || status)}</span>${job.last_error ? `<small class="printer-job-error">${e(job.last_error)}</small>` : ''}</td>
-        <td>${retry}</td>
-      </tr>`;
-    })
-    .join('');
-
-  const body = `<section class="printer-admin-hero">
-    <div class="printer-admin-copy"><span class="kicker">ADM exclusivo</span><h2>Wimi Impressora Web</h2><p>Use o Chrome do computador ligado a Bematech como estacao segura. Nao ha EXE, servico do Windows ou atualizacao para instalar.</p><p class="printer-setup-hint"><strong>Ordem recomendada:</strong> deixe a Bematech como padrao, baixe e abra o atalho; na janela exclusiva do Chrome, entre como adm e ative este navegador.</p></div>
-    <div class="printer-web-setup">
-      <form class="printer-web-activate" method="post" action="${pageUrl('impressora.php')}">
-        ${csrfField(req)}
-        <input type="hidden" name="action" value="activate_web_station">
-        <label for="printer-station-name">Nome desta estacao</label>
-        <div><input id="printer-station-name" name="station_name" maxlength="120" value="${e(currentStation?.device.computerName || 'Caixa da Bematech')}" required><button class="btn primary" type="submit">${currentStation ? 'Renovar ativacao' : 'Ativar este navegador'}</button></div>
-      </form>
-      <div class="printer-web-actions">
-        ${currentStation ? `<a class="btn primary" href="${pageUrl('internal/print-station')}">Abrir estacao web</a>` : ''}
-        <form method="post" action="${pageUrl('impressora-atalho.php')}">${csrfField(req)}<button class="btn" type="submit">Baixar atalho web</button></form>
-      </div>
-      <small>${currentStation ? `Este navegador esta ligado a ${e(currentStation.device.computerName)}.` : 'A ativacao fica protegida somente neste navegador.'} O atalho usa um perfil exclusivo do Chrome para manter a impressao automatica, sem permissao de administrador.</small>
-    </div>
-  </section>
-  <section class="printer-metrics" aria-label="Resumo da impressao">
-    <article class="is-green"><span>Estacoes online</span><strong>${e(onlineCount)}</strong><small>prontas para receber</small></article>
-    <article class="is-blue"><span>Em andamento</span><strong>${e(pendingCount)}</strong><small>fila e impressao</small></article>
-    <article class="is-amber"><span>Precisam conferir</span><strong>${e(attentionCount)}</strong><small>sem reimpressao automatica</small></article>
-  </section>
-  <section class="panel printer-devices-panel">
-    <div class="section-title"><div><span class="kicker">Computador da impressora</span><h2>Estacoes</h2></div><span class="soft-pill">Sinal automatico</span></div>
-    <div class="printer-devices">${deviceCards || '<div class="printer-empty"><strong>Nenhuma estacao conectada</strong><span>Abra este painel no Chrome do computador da Bematech e clique em Ativar este navegador.</span></div>'}</div>
-  </section>
-  <section class="panel printer-jobs-panel">
-    <div class="section-title"><div><span class="kicker">Ultimos trabalhos</span><h2>Fila de impressao</h2></div><span class="soft-pill">${e(jobs.length)} registro(s)</span></div>
-    <div class="printer-table-wrap"><table class="printer-jobs"><thead><tr><th>Trabalho</th><th>Comprovante</th><th>Destino</th><th>Status</th><th>Acao</th></tr></thead><tbody>${jobRows || '<tr><td colspan="5" class="printer-empty-cell">A fila ainda esta vazia.</td></tr>'}</tbody></table></div>
-  </section>`;
-  return htmlShell(req, 'Wimi Impressora', body);
 }
 
 async function balanceForClient(clientId: number): Promise<Balance> {
@@ -3413,7 +2564,7 @@ async function loadQuickVoucherHistory(limit = 20): Promise<DbRow[]> {
 function htmlShell(req: Request, title: string, body: string, options: { login?: boolean; maintenance?: boolean } = {}): string {
   const flash = takeFlash(req);
   const user = req.session.user;
-  const pageClass = title === 'WhatsApp' ? ' whatsapp-page' : title === 'Wimi Impressora' ? ' printer-page' : '';
+  const pageClass = title === 'WhatsApp' ? ' whatsapp-page' : '';
   if (options.login || options.maintenance) {
     return `<!doctype html>
 <html lang="pt-BR">
@@ -3439,7 +2590,6 @@ ${body}
     ['mensagens.php', 'Mensagens'],
     ['relatorio.php', 'Configuracao e Relatorio'],
   ];
-  if (isMasterAdm(req)) nav.push(['impressora.php', 'Wimi Impressora']);
   const currentFile = String(req.path || '').split('/').filter(Boolean).pop() || 'dashboard.php';
 
   return `<!doctype html>
@@ -4482,7 +3632,7 @@ function renderQuickVoucherHistory(req: Request, vouchers: DbRow[]): string {
   </details>`;
 }
 
-function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | 'local' = 'local'): string {
+function renderQuickVoucherReceipt(voucher: DbRow | null): string {
   if (!voucher) return '';
   const expiresAt = isoDate(voucher.expires_at)
     || dateMonthsFromDate(voucher.issued_at || voucher.created_at, CASHBACK_VALIDITY_MONTHS);
@@ -4490,15 +3640,14 @@ function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | '
   const issuedAtText = cleanText(voucher.receipt_issued_at, 30)
     || brDate(voucher.issued_at || voucher.created_at, true);
   const active = String(voucher.status || '') === 'ativo' && expiresAt >= todayIso();
-  const printDestination = printRoute === 'wimi' ? 'Fila Wimi' : 'Este computador';
   return `<div class="quick-voucher-result ${active ? 'is-active' : 'is-inactive'}">
     <div class="quick-voucher-result-copy no-print">
       <div class="quick-voucher-result-status">
         <span class="quick-voucher-ready-pill">${active ? 'Cupom confirmado' : 'Cupom inativo'}</span>
-        <span class="quick-voucher-route">${active ? e(printDestination) : 'Somente historico'}</span>
+        <span class="quick-voucher-route">${active ? 'Impressao local' : 'Somente historico'}</span>
       </div>
       <h3>${active ? `Codigo ${e(voucher.code)} pronto para imprimir` : 'Este cupom nao esta mais ativo'}</h3>
-      <p>${active ? 'O codigo ja esta gravado. Ao imprimir, o sistema escolhe a Wimi conectada ou a impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
+      <p>${active ? 'O codigo ja esta gravado. O botao Imprimir abre a impressora deste computador.' : 'Cupons usados ou expirados ficam somente no historico.'}</p>
       <div class="quick-voucher-result-facts">
         <span class="is-code"><small>Codigo</small><strong>${e(voucher.code)}</strong></span>
         <span class="is-value"><small>Cashback</small><strong>${brMoneyCents(voucher.cashback_cents)}</strong></span>
@@ -4506,7 +3655,7 @@ function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | '
       </div>
       <p class="quick-voucher-result-issued">Emitido por <strong>${e(voucher.attendant_name || 'Wimifarma')}</strong> em ${e(issuedAtText)}</p>
       <div class="quick-voucher-result-actions">
-        ${active ? `<button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="quick_voucher" data-entity-id="${e(voucher.id)}">Imprimir</button>` : ''}
+        ${active ? `<button type="button" class="btn primary" data-smart-print data-receipt-type="quick_voucher" data-entity-id="${e(voucher.id)}">Imprimir</button>` : ''}
         <a class="btn" href="${pageUrl('dashboard.php#busca')}">Gerar outro</a>
       </div>
     </div>
@@ -4523,7 +3672,7 @@ function renderQuickVoucherReceipt(voucher: DbRow | null, printRoute: 'wimi' | '
   </div>`;
 }
 
-function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi' | 'local' = 'local'): string {
+function renderCashbackPurchaseReceipt(receipt: DbRow | null): string {
   if (!receipt) return '';
   const purchaseId = num(receipt.id);
   const clientCode = num(receipt.client_id);
@@ -4533,7 +3682,6 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
   const expiresAt = isQuickVoucher ? receipt.successor_expires_at : receipt.credit_expires_at;
   const generatedLabel = 'Cashback gerado';
   const phone = formatPhone(receipt.client_phone);
-  const printDestination = printRoute === 'wimi' ? 'Wimi Impressora' : 'Este computador';
   const validity = generatedCents > 0 && expiresAt ? `Valido ate <strong>${e(brDate(expiresAt))}</strong>` : 'Nenhum novo cashback gerado';
   const codeBlock = quickCode
     ? `<div class="receipt-code"><span>Novo codigo</span><strong>${e(quickCode)}</strong></div>`
@@ -4543,10 +3691,10 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
     <div class="cashback-operation-result-copy no-print">
       <div class="cashback-operation-status">
         <span class="operation-success-pill">Operacao #${e(purchaseId)} concluida</span>
-        <span class="cashback-operation-print-route">${e(printDestination)}</span>
+        <span class="cashback-operation-print-route">Impressao local</span>
       </div>
       <h3>Comprovante pronto para imprimir</h3>
-      <p>A compra foi gravada. Confira os dados do cliente e envie somente este comprovante para a Bematech.</p>
+      <p>A compra foi gravada. Confira os dados do cliente e imprima somente este comprovante.</p>
       <div class="cashback-operation-facts">
         <span class="is-client"><small>Cliente</small><strong>${e(receipt.client_name)}</strong></span>
         <span class="is-code"><small>Codigo do cliente</small><strong>#${e(clientCode)}</strong></span>
@@ -4555,7 +3703,7 @@ function renderCashbackPurchaseReceipt(receipt: DbRow | null, printRoute: 'wimi'
         <span class="is-validity"><small>Validade</small><strong>${e(expiresAt ? brDate(expiresAt) : '-')}</strong></span>
       </div>
       <div class="cashback-operation-result-actions">
-        <button type="button" class="btn primary" data-smart-print data-print-route="${printRoute}" data-receipt-type="purchase" data-entity-id="${e(purchaseId)}">Imprimir</button>
+        <button type="button" class="btn primary" data-smart-print data-receipt-type="purchase" data-entity-id="${e(purchaseId)}">Imprimir</button>
         <a class="btn" href="${pageUrl(`dashboard.php?cliente_id=${num(receipt.client_id)}#resgate`)}">Nova operacao</a>
       </div>
     </div>
@@ -4599,9 +3747,6 @@ async function renderDashboard(req: Request): Promise<string> {
   const purchaseReceiptOrigin = cleanText(req.query.receipt_origin, 20);
   const registrationPurchaseReceipt = purchaseReceiptOrigin === 'cadastro' ? purchaseReceipt : null;
   const redeemPurchaseReceipt = purchaseReceiptOrigin === 'cadastro' ? null : purchaseReceipt;
-  const printRoute: 'wimi' | 'local' = printedVoucher || purchaseReceipt
-    ? (await defaultPrintDevice() ? 'wimi' : 'local')
-    : 'local';
   const quickRequestToken = crypto.randomUUID();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
   const xpReward = await currentUserXpRewardStatus(req);
@@ -4700,7 +3845,7 @@ async function renderDashboard(req: Request): Promise<string> {
       <div><span class="kicker">Sem cadastro agora</span><h2>Cashback rapido</h2><p>Informe somente o valor gasto. O novo codigo de 5 digitos vale por 6 meses.</p><p class="quick-cashback-xp-hint"><strong>+250 XP</strong> para o usuario selecionado ao gerar o codigo.</p></div>
       <span class="quick-cashback-rate">${e(settings.cashbackPercent)}% automatico</span>
     </div>
-    ${renderQuickVoucherReceipt(printedVoucher, printRoute)}
+    ${renderQuickVoucherReceipt(printedVoucher)}
     <form method="post" action="${pageUrl('dashboard.php#busca')}" class="quick-cashback-form" data-no-enter-submit data-quick-cashback-form data-default-percent="${e(settings.cashbackPercent)}">
       ${csrfField(req)}
       <input type="hidden" name="action" value="create_quick_cashback">
@@ -4753,7 +3898,7 @@ async function renderDashboard(req: Request): Promise<string> {
 
     <section id="resgate" class="panel section-block workspace-section redeem-panel">
       <div class="section-title redeem-title"><div class="redeem-title-copy"><span class="kicker">Compra Cashback</span><h2>Gastar/Usar CashBack</h2><p>Registre a compra, aplique saldo permitido e gere novo cashback em uma unica operacao.</p></div><span class="soft-pill">Regra ${e(settings.redeemMultiplier)}x automatica</span></div>
-      ${renderCashbackPurchaseReceipt(redeemPurchaseReceipt, printRoute)}
+      ${renderCashbackPurchaseReceipt(redeemPurchaseReceipt)}
       <form method="post" action="${pageUrl('dashboard.php#resgate')}" class="form-grid two-cols redeem-form" data-no-enter-submit data-redeem-form data-multiplier="${e(settings.redeemMultiplier)}" data-default-percent="${e(settings.cashbackPercent)}" data-available-balance="${e(centsToMoney(selectedBalance))}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_redeem">
@@ -4786,7 +3931,7 @@ async function renderDashboard(req: Request): Promise<string> {
 
     <section id="cadastro" class="panel section-block workspace-section quick-client-panel">
       <div class="section-title quick-client-title"><div class="quick-client-title-copy"><span class="kicker">Cadastro rapido</span><h2>Novo cliente</h2></div><span class="soft-pill">Compra inicial opcional</span></div>
-      ${renderCashbackPurchaseReceipt(registrationPurchaseReceipt, printRoute)}
+      ${renderCashbackPurchaseReceipt(registrationPurchaseReceipt)}
       <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}" data-multiplier="${e(settings.redeemMultiplier)}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_client">

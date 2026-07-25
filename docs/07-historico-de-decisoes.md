@@ -2,6 +2,34 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-25 - Wimi Impressora e estacao web retiradas
+
+Decisao:
+
+- Retirar o card, a navegacao, o painel, a estacao web e o agente de fila da `Wimi Impressora`.
+- Voltar todos os comprovantes ao fluxo unico de impressao local do navegador.
+- Preservar tabelas e eventos antigos para auditoria, revogando dispositivos ativos e cancelando somente trabalhos incompletos.
+
+Motivo:
+
+- A estacao nao ficou confiavel na operacao real e deixou trabalho preso na fila.
+- O fluxo local e mais simples enquanto uma futura ponte por porta local e estudada separadamente.
+
+Impacto:
+
+- `apps/cashback/src/server.ts`
+- `site/cashback/app.js`
+- `site/cashback/styles.css`
+- `site/home.php`
+- `docker-compose.yml`
+- documentacao do Cashback e da impressao termica
+
+Riscos/cuidados:
+
+- A impressao local depende do driver e da selecao da Bematech no computador em uso.
+- Nao apagar o historico das tabelas de impressao.
+- Nao reativar rotas, tokens ou fila antigos ao criar uma futura integracao local.
+
 ## 2026-06-01 - Login da home ganha video clicavel
 
 Decisao:

@@ -1,5 +1,7 @@
 # 32 - Auditoria Cashback - 2026-07-24
 
+> Nota de 2026-07-25: a arquitetura `Wimi Impressora` auditada abaixo foi retirada. Card, estacao web, agente e fila nao estao mais ativos; a impressao atual e local pelo navegador. O restante deste documento permanece como registro historico da auditoria feita em 24/07.
+
 ## Escopo e criterio
 
 Auditoria tecnica do Cashback Node/Postgres, vouchers rapidos e da integracao Wimi Impressora. Foram revisados controles de sessao, CSRF, autorizacao, transacoes de compra/resgate, validade, codigos, fila de impressao, dependencias e o estado operacional do VPS.

@@ -646,7 +646,6 @@ services:
       CASHBACK_TRUST_PROXY_HOPS: ${CASHBACK_TRUST_PROXY_HOPS:-2}
       CASHBACK_INTERNAL_TOKEN: ${CASHBACK_INTERNAL_TOKEN:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
-      WIMI_PRINTER_PUBLIC_STATION_URL: ${WIMI_PRINTER_PUBLIC_STATION_URL:-https://wimifarma.com/cashback/internal/print-station}
     volumes:
       - ./site/cashback/styles.css:/app/public/styles.css:ro
       - ./site/cashback/app.js:/app/public/app.js:ro

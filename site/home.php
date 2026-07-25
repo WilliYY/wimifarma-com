@@ -2213,16 +2213,6 @@ $modules = array(
         'accent' => 'blue',
     ),
     array(
-        'module_key' => 'wimi_impressora',
-        'name' => 'Wimi Impressora',
-        'label' => 'Impressao',
-        'description' => 'Estacao web da Bematech, fila e conferencias.',
-        'href' => '/cashback/impressora.php',
-        'accent' => 'teal',
-        'username_gate' => 'adm',
-        'permission_optional' => true,
-    ),
-    array(
         'name' => 'Cotação',
         'label' => 'Compras',
         'description' => 'Itens, fornecedores, precos e ganhadores.',

@@ -321,75 +321,15 @@
         return true;
     }
 
-    function printFeedback(button, text, className) {
-        var status = document.createElement('span');
-        status.className = 'wimi-print-feedback ' + className;
-        status.setAttribute('role', 'status');
-        button.parentNode.querySelectorAll('.wimi-print-feedback').forEach(function (oldStatus) {
-            oldStatus.remove();
-        });
-        status.textContent = text;
-        button.insertAdjacentElement('afterend', status);
-    }
-
     function bindSmartPrinter() {
         document.querySelectorAll('[data-smart-print]').forEach(function (button) {
             button.addEventListener('click', function () {
-                if (button.disabled) {
-                    return;
-                }
-
-                if (button.getAttribute('data-print-route') === 'local') {
+                if (!button.disabled) {
                     printOnThisComputer(button);
-                    return;
                 }
-
-                var csrfMeta = document.querySelector('meta[name="wfwc-csrf"]');
-                var body = new URLSearchParams();
-                var originalText = button.textContent;
-                body.set('receipt_type', button.getAttribute('data-receipt-type') || '');
-                body.set('entity_id', button.getAttribute('data-entity-id') || '');
-                body.set('csrf_token', window.WFWC_CSRF || (csrfMeta ? csrfMeta.getAttribute('content') : '') || '');
-                button.disabled = true;
-                button.textContent = 'Enviando...';
-
-                fetch('api-wimi-impressora.php', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept': 'application/json'
-                    },
-                    body: body.toString()
-                }).then(function (response) {
-                    return response.json().catch(function () {
-                        return { ok: false, message: 'Resposta invalida do servidor.' };
-                    }).then(function (payload) {
-                        if (!response.ok || !payload.ok) {
-                            var error = new Error(payload.message || 'Nao foi possivel enviar para a impressora.');
-                            error.code = payload.code || '';
-                            error.status = response.status;
-                            throw error;
-                        }
-                        return payload;
-                    });
-                }).then(function (payload) {
-                    printFeedback(button, 'Enviado para ' + (payload.printer || 'Wimi Impressora') + ' | fila #' + payload.job_id, 'is-success');
-                }).catch(function (error) {
-                    if (error && error.code === 'wimi_offline') {
-                        printFeedback(button, 'Wimi indisponivel. Abrindo a impressao deste computador.', 'is-local');
-                        printOnThisComputer(button);
-                        return;
-                    }
-                    printFeedback(button, error && error.message ? error.message : 'Falha ao enviar. Tente novamente.', 'is-error');
-                }).finally(function () {
-                    button.disabled = false;
-                    button.textContent = originalText;
-                });
             });
         });
     }
-
     function triggerRequestedReceiptPrint() {
         var url = new URL(window.location.href);
         if (url.searchParams.get('auto_print_receipt') !== '1') {
