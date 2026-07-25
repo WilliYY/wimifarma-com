@@ -2,6 +2,34 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-25 - Novo cliente escolhe responsavel, premia XP e imprime em uma acao
+
+Decisao:
+
+- Permitir que `Novo cliente` escolha um atendente elegivel, com revalidacao server-side.
+- Dar +250 XP ao usuario escolhido somente depois do cliente confirmado, usando origem idempotente por ID do cliente.
+- Unir cadastro e intencao de impressao no botao `Cadastrar e imprimir`.
+
+Motivo:
+
+- Registrar corretamente quem realizou o atendimento e reduzir passos no balcao.
+- Tornar o premio previsivel sem deixar falha do XP ou da impressora desfazer o cadastro.
+
+Impacto:
+
+- `apps/cashback/src/server.ts`
+- `apps/cashback/src/xpReward.ts`
+- `apps/cashback/test/`
+- `site/cashback/styles.css`
+- documentacao do Cashback, permissoes e auditoria
+
+Riscos/cuidados:
+
+- Somente contas humanas ativas, vinculadas e autorizadas podem ser escolhidas.
+- O ator de auditoria continua sendo o usuario real da sessao.
+- Sem cashback gerado nao existe comprovante para abrir; o cliente e o XP continuam confirmados.
+- Compras e resgates comuns continuam travados no usuario logado.
+
 ## 2026-07-25 - Wimi Impressora e estacao web retiradas
 
 Decisao:

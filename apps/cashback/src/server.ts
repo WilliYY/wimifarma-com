@@ -13,9 +13,11 @@ import {
   normalizeQuickVoucherCode,
 } from './quickVoucherCode.js';
 import {
+  XP_CLIENT_CREATION_POINTS,
   XP_QUICK_VOUCHER_ISSUE_POINTS,
   XP_QUICK_VOUCHER_ISSUE_SOURCE,
   canCancelQuickVoucher,
+  clientCreationXpReward,
   quickVoucherIssueXpReward,
 } from './xpReward.js';
 
@@ -126,7 +128,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.7.0';
+const SERVICE_VERSION = '1.8.0';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -2443,6 +2445,36 @@ async function awardXpForQuickVoucherIssue(req: Request, voucherId: number, atte
   }
 }
 
+async function awardXpForClientCreation(req: Request, clientId: number, attendantId: number): Promise<XpAwardResult> {
+  try {
+    const reward = clientCreationXpReward(clientId);
+    const beneficiaryUserId = await coreUserIdForAttendant(attendantId);
+    return awardTrackedXp(req, {
+      beneficiaryUserId: beneficiaryUserId ?? 0,
+      points: reward.points,
+      source: reward.source,
+      sourceEntityId: reward.sourceEntityId,
+      note: `Novo cliente cadastrado no Balcao: cliente #${clientId}.`,
+      xpAuditAction: 'xp_cliente_cadastrado_lancado',
+      xpAuditSummary: `+${reward.points} XP por cadastro do cliente #${clientId}.`,
+      cashbackAuditAction: 'xp_cliente_cadastrado_lancado',
+      cashbackFailureAction: 'xp_cliente_cadastrado_falha',
+      cashbackEntityType: 'cliente',
+      cashbackEntityId: clientId,
+    });
+  } catch (error) {
+    await logAction(
+      req,
+      'xp_cliente_cadastrado_falha',
+      'cliente',
+      clientId > 0 ? clientId : null,
+      `Falha ao identificar usuario do XP: ${errorMessage(error)}`,
+      { attendant_id: attendantId },
+    );
+    return { awarded: false, message: `XP nao gerado: ${errorMessage(error)}` };
+  }
+}
+
 async function revokeXpForQuickVoucherIssue(req: Request, voucherId: number): Promise<XpRevocationResult> {
   const reward = quickVoucherIssueXpReward(voucherId);
   const actorUserId = req.session.user?.id ?? 0;
@@ -2917,6 +2949,8 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
   const initialPercentBps = percentToBps(req.body?.percentual_cashback_inicial || settings.cashbackPercent);
   const quickCodeRaw = cleanText(req.body?.codigo_cashback, 20);
   const quickCode = normalizeQuickVoucherCode(quickCodeRaw);
+  const printAfterSave = String(req.body?.print_after_save || '') === '1';
+  const autoPrintQuery = printAfterSave ? '&auto_print_receipt=1' : '';
   if (!name) {
     setFlash(req, 'error', 'Informe o nome do cliente.');
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
@@ -2954,7 +2988,10 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
   }
   let attendantId: number | null;
   try {
-    attendantId = await requireLoggedAttendantId(req);
+    attendantId = await normalizeAttendantId(num(req.body?.atendente_id));
+    if (!attendantId) {
+      throw new Error('Selecione o usuario responsavel pelo cadastro.');
+    }
   } catch (error) {
     setFlash(req, 'error', errorMessage(error));
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
@@ -3002,6 +3039,7 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
     }
     await client.query('COMMIT');
     await logAction(req, 'cliente_criado', 'cliente', clientId, `Cliente criado pela operacao de balcao: ${name}`);
+    const clientXpResult = await awardXpForClientCreation(req, clientId, attendantId);
     if (quickRedemption) {
       await logAction(
         req,
@@ -3011,26 +3049,31 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
         `Codigo rapido ${quickRedemption.code} usado no cadastro do cliente #${clientId}.`,
         { redemption_id: quickRedemption.redemptionId, purchase_id: quickRedemption.purchaseId },
       );
-      const xpResult = await awardXpForCashbackRedemption(req, quickRedemption.redemptionId, quickRedemption.redeemedCents, clientId);
+      const redemptionXpResult = await awardXpForCashbackRedemption(
+        req,
+        quickRedemption.redemptionId,
+        quickRedemption.redeemedCents,
+        clientId,
+      );
       const successorText = quickRedemption.successor
         ? ` Novo codigo ${quickRedemption.successor.code}: ${brMoneyCents(quickRedemption.successor.cashbackCents)}.`
         : ' A nova compra nao gerou outro codigo.';
-      setFlash(req, 'success', `${message}${successorText} ${xpResult.message}`);
+      setFlash(req, 'success', `${message}${successorText} ${clientXpResult.message} ${redemptionXpResult.message}`);
       if (quickRedemption.successor) {
         rememberCashbackPurchaseReceipt(req, quickRedemption.purchaseId);
         res.redirect(
-          `${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${quickRedemption.purchaseId}&receipt_origin=cadastro#cadastro`,
+          `${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${quickRedemption.purchaseId}&receipt_origin=cadastro${autoPrintQuery}#cadastro`,
         );
       } else {
         res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
       }
       return;
     }
-    setFlash(req, 'success', message);
+    setFlash(req, 'success', `${message} ${clientXpResult.message}`);
     if (purchase && purchase.cashbackCents > 0) {
       rememberCashbackPurchaseReceipt(req, purchase.id);
       res.redirect(
-        `${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${purchase.id}&receipt_origin=cadastro#cadastro`,
+        `${BASE_PATH}/dashboard.php?cliente_id=${clientId}&receipt_purchase_id=${purchase.id}&receipt_origin=cadastro${autoPrintQuery}#cadastro`,
       );
     } else {
       res.redirect(`${BASE_PATH}/dashboard.php?cliente_id=${clientId}#cliente-atual`);
@@ -3941,7 +3984,7 @@ async function renderDashboard(req: Request): Promise<string> {
             <label><span>Nome *</span><input type="text" name="nome" required placeholder="Nome do cliente"></label>
             <label><span>Telefone</span><input type="text" name="telefone" inputmode="numeric" placeholder="11999999999"></label>
             <label><span>Data de nascimento</span><input type="date" name="nascimento"></label>
-            ${attendantSelect(attendants, 'Atendente responsavel', loggedAttendantId, true)}
+            ${attendantSelect(attendants, 'Atendente responsavel *', loggedAttendantId, false, true, 'quick-client-attendant')}
           </div>
         </div>
         <div class="quick-client-block quick-client-purchase full">
@@ -3954,7 +3997,15 @@ async function renderDashboard(req: Request): Promise<string> {
           <div class="charge-summary quick-client-summary compact-summary"><div><span>Valor a cobrar</span><strong class="js-initial-charge">R$ 0,00</strong></div><div><span>Cashback gerado</span><strong class="js-initial-cashback">R$ 0,00</strong></div><div><span>Validade</span><strong>${e(settings.validityMonths)} meses</strong></div></div>
           <div class="live-preview js-initial-preview">Se o cliente ja estiver comprando, informe o valor para cadastrar e registrar tudo em uma vez.</div>
         </div>
-        <div class="quick-client-action full"><button type="submit" class="btn primary">Cadastrar cliente</button></div>
+        <input type="hidden" name="print_after_save" value="1">
+        <div class="quick-client-action full">
+          <div class="quick-client-action-copy">
+            <span class="kicker">Acao unica</span>
+            <strong>Cadastrar e premiar o usuario selecionado</strong>
+            <small>+${XP_CLIENT_CREATION_POINTS} XP. Se houver cashback gerado, o comprovante abre para impressao.</small>
+          </div>
+          <button type="submit" class="btn primary">Cadastrar e imprimir</button>
+        </div>
       </form>
     </section>
   </div>
@@ -3973,9 +4024,17 @@ function historyPanel(title: string, rows: DbRow[], renderer: (row: DbRow) => st
   }</section>`;
 }
 
-function attendantSelect(attendants: DbRow[], label = 'Atendente', selectedId: number | null = null, locked = false): string {
+function attendantSelect(
+  attendants: DbRow[],
+  label = 'Atendente',
+  selectedId: number | null = null,
+  locked = false,
+  required = false,
+  className = '',
+): string {
   const selected = selectedId && selectedId > 0 ? selectedId : null;
-  const options = `<option value="" ${selected ? '' : 'selected'}>Sem atendente</option>${attendants
+  const emptyLabel = required ? 'Selecione o usuario' : 'Sem atendente';
+  const options = `<option value="" ${selected ? '' : 'selected'}${required ? ' disabled' : ''}>${emptyLabel}</option>${attendants
     .map((attendant: DbRow) => {
       const id = num(attendant.id);
       return `<option value="${e(id)}" ${selected === id ? 'selected' : ''}>${e(attendant.name)}</option>`;
@@ -3983,7 +4042,9 @@ function attendantSelect(attendants: DbRow[], label = 'Atendente', selectedId: n
     .join('')}`;
   const selectName = locked ? 'atendente_id_display' : 'atendente_id';
   const hidden = locked ? `<input type="hidden" name="atendente_id" value="${e(selected || '')}">` : '';
-  return `<label><span>${e(label)}</span><select name="${selectName}"${locked ? ' disabled aria-readonly="true"' : ''}>${options}</select>${hidden}</label>`;
+  const labelClass = className ? ` class="${e(className)}"` : '';
+  const selectAttributes = `${locked ? ' disabled aria-readonly="true"' : ''}${required && !locked ? ' required' : ''}`;
+  return `<label${labelClass}><span>${e(label)}</span><select name="${selectName}"${selectAttributes}>${options}</select>${hidden}</label>`;
 }
 
 async function queryClients(search: string, limit: number, options: { activeOnly?: boolean } = {}): Promise<DbRow[]> {

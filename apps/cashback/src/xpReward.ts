@@ -1,3 +1,5 @@
+export const XP_CLIENT_CREATION_POINTS = 250;
+export const XP_CLIENT_CREATION_SOURCE = 'cashback_client_creation';
 export const XP_QUICK_VOUCHER_ISSUE_POINTS = 250;
 export const XP_QUICK_VOUCHER_ISSUE_SOURCE = 'cashback_quick_voucher_issue';
 
@@ -6,6 +8,18 @@ export type XpRewardDescriptor = {
   source: string;
   sourceEntityId: string;
 };
+
+export function clientCreationXpReward(clientId: number): XpRewardDescriptor {
+  const normalizedClientId = Math.trunc(clientId);
+  if (!Number.isSafeInteger(normalizedClientId) || normalizedClientId <= 0) {
+    throw new Error('Cliente invalido para premiacao de XP.');
+  }
+  return {
+    points: XP_CLIENT_CREATION_POINTS,
+    source: XP_CLIENT_CREATION_SOURCE,
+    sourceEntityId: String(normalizedClientId),
+  };
+}
 
 export function quickVoucherIssueXpReward(voucherId: number): XpRewardDescriptor {
   const normalizedVoucherId = Math.trunc(voucherId);

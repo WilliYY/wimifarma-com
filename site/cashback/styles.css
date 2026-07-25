@@ -2653,6 +2653,28 @@ body.sections-ready .workspace-section.is-active {
     background: transparent;
 }
 
+.quick-client-panel .quick-client-attendant {
+    padding: 9px 10px 10px;
+    border: 1px solid #b8dfcc;
+    border-radius: 8px;
+    background: #f2fbf6;
+}
+
+.quick-client-panel .quick-client-attendant > span {
+    color: #075f48;
+}
+
+.quick-client-panel .quick-client-attendant select {
+    border-color: #84c9aa;
+    background-color: #fff;
+}
+
+.quick-client-panel .quick-client-attendant:focus-within {
+    border-color: #3aa57b;
+    background: #ecf9f2;
+    box-shadow: 0 0 0 3px rgba(21, 132, 99, 0.1);
+}
+
 .quick-client-panel label > span {
     color: #7d4f5b;
     font-size: 0.78rem;
@@ -2825,10 +2847,37 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .quick-client-action {
-    display: flex;
-    justify-content: center;
-    padding-top: 2px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.45fr);
+    align-items: center;
+    gap: 16px;
+    padding: 14px;
+    border: 1px solid #b8dfcc;
+    border-left: 4px solid #158463;
+    border-radius: 8px;
+    background: #f2fbf6;
     animation: quickClientRise 0.36s cubic-bezier(0.2, 0.85, 0.2, 1) 0.1s both;
+}
+
+.quick-client-action-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.quick-client-action-copy .kicker {
+    color: #087456;
+    font-size: 0.72rem;
+}
+
+.quick-client-action-copy strong {
+    color: #173e34;
+    font-size: 1rem;
+}
+
+.quick-client-action-copy small {
+    color: #46685f;
+    font-weight: 700;
 }
 
 .quick-client-action .btn {
@@ -2851,6 +2900,10 @@ body.sections-ready .workspace-section.is-active {
     .quick-client-fields,
     .quick-client-purchase .quick-client-fields {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .quick-client-action {
+        grid-template-columns: 1fr;
     }
 }
 
