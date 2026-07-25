@@ -74,7 +74,9 @@ Consultas e tentativas de resgate compartilham limites persistentes por usuario,
 
 Desde 2026-07-24, `Gastar/Usar CashBack` nao oferece nem processa `Cashback Manual`: o beneficio novo e sempre calculado automaticamente sobre o valor efetivamente cobrado. O registro simples de compra preserva a opcao manual administrativa e os creditos historicos continuam intactos. O detalhe do cliente mostra os dias restantes de cada credito e permite excluir do saldo apenas cashback gerado ainda intacto; a exclusao e logica, cancela mensagens pendentes vinculadas e preserva historico/auditoria.
 
-Desde 2026-07-21, a navegacao e o detalhe do cliente chamam esse fluxo somente de `Gastar/Usar CashBack`. Depois que `save_redeem` confirma a transacao, o ID da compra fica temporariamente autorizado na sessao e o Balcao volta para `#resgate` com um resumo de sucesso e comprovante termico. O comprovante consulta a compra ja gravada e mostra logo, nome/telefone do cliente, valores bruto, usado, cobrado e gerado, validade do credito comum ou codigo/validade do sucessor rapido, atendente e data. `Imprimir comprovante` abre o dialogo do navegador isolando 76 mm uteis; o POST de auditoria registra apenas a solicitacao de impressao e nao repete compra, resgate, credito, voucher ou XP.
+Desde 2026-07-25, o formulario `Gastar/Usar CashBack` preseleciona o usuario logado, permite escolher outro atendente elegivel e revalida `atendente_id` no backend. A acao unica `Usar CashBack e imprimir` inclui `print_after_save=1`: depois que `save_redeem` confirma a transacao, o ID da compra fica temporariamente autorizado na sessao e o Balcao volta para `#resgate` com resumo e comprovante termico. Quando houve cashback realmente usado, o usuario escolhido recebe +250 XP por origem idempotente `cashback_redemption`; sem resgate, nao existe premio. Falha de XP ou abertura da impressao nao desfaz nem repete a compra.
+
+O comprovante consulta a compra ja gravada e mostra logo, nome/telefone do cliente, valores bruto, usado, cobrado e gerado, validade do credito comum ou codigo/validade do sucessor rapido, atendente e data. `Imprimir comprovante` abre o dialogo do navegador isolando 76 mm uteis; o POST de auditoria registra apenas a solicitacao de impressao e nao repete compra, resgate, credito, voucher ou XP.
 
 Ainda em 2026-07-21, o Balcao recebeu contraste visual maior sem alterar o fluxo operacional: cadastro/cliente usa vermelho, compra usa azul, cashback e saldo usam verde e validade usa amarelo. Os cards, resumos e estados de foco usam esses acentos de forma consistente em desktop e mobile, preservando HTML funcional, names de inputs, seletores JS, POSTs, CSRF, calculos, banco, XP e impressao.
 
@@ -118,7 +120,7 @@ Regras importantes:
 - dinheiro fica em centavos inteiros no Postgres, exportado em CSV como valor decimal;
 - a relacao compra -> credito -> resgate deve continuar preservada com consumo FIFO dos creditos;
 - o resgate roda em transacao Postgres e bloqueia creditos ativos do cliente para evitar saldo duplicado;
-- cada resgate que usa cashback tenta gerar +500 XP para o usuario logado vinculado em `core_user_xp_links`, usando `xp_sales.source='cashback_redemption'` e `source_entity_id` para nao duplicar; falha do XP nao deve desfazer a compra/resgate;
+- cada resgate que usa cashback tenta gerar +250 XP para o usuario responsavel selecionado e vinculado em `core_user_xp_links`, usando `xp_sales.source='cashback_redemption'` e `source_entity_id` para nao duplicar; o ator continua sendo a sessao real e falha do XP nao deve desfazer a compra/resgate;
 - creditos cancelados por devolucao/cancelamento usam `cashback_credits.canceled_at` e devem sair de saldo, fila de expiracao/recompra, mensagens e relatorios de saldo ativo sem apagar o registro historico;
 - `/cashback/health` mostra storage Postgres, auth core e contagens de migracao;
 - `/cashback/autoteste.php` confirma o atendente vinculado ao usuario logado, cria compra/credito/resgate e tambem emite, usa e substitui um voucher rapido em transacao, desfazendo os dados temporarios com rollback;
@@ -243,7 +245,7 @@ Regras a preservar:
 - as pastas `site/xp/uploads/funcionarios/` e `site/xp/uploads/adm/` precisam existir e ficar gravaveis pelo app XP no VPS;
 - a pasta de uploads bloqueia listagem e execucao de scripts por `.htaccess`;
 - R$ 1.000,00 em vendas gera 2.500 XP, gravado como inteiro no lancamento;
-- uso real de cashback no Balcao gera um lancamento interno de +500 XP com `amount_cents=0`, `source='cashback_redemption'` e `source_entity_id` igual ao resgate, para pontuar o operador sem inflar venda monetaria;
+- uso real de cashback no Balcao gera um lancamento interno de +250 XP com `amount_cents=0`, `source='cashback_redemption'` e `source_entity_id` igual ao resgate, para pontuar o usuario responsavel sem inflar venda monetaria;
 - o nivel 1 exige 30.000 XP para passar; os niveis seguintes ficam progressivamente mais dificeis e nao possuem limite fixo;
 - a trilha usa `Bloco XP` nos niveis comuns, `Nivel 5` a cada multiplo de 5 e `nivel 10` a cada multiplo de 10;
 - cancelar venda ou excluir/remover usuario/funcionario deve ser logico, sem apagar historico fisico; o botao `Excluir usuario` tira o atendente da lista e da trilha, preservando os lancamentos antigos.

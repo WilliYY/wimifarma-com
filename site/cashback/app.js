@@ -668,14 +668,30 @@
     function bindRedeemPreview() {
         document.querySelectorAll('[data-redeem-form]').forEach(function (form) {
             var purchaseInput = form.querySelector('[name="valor_compra"]');
+            var attendantSelect = form.querySelector('[name="atendente_id"]');
+            var xpUser = form.querySelector('[data-redeem-xp-user]');
 
             if (!purchaseInput) {
                 return;
             }
 
+            function updateXpUser() {
+                if (!attendantSelect || !xpUser) {
+                    return;
+                }
+                var selectedOption = attendantSelect.options[attendantSelect.selectedIndex];
+                xpUser.textContent = selectedOption && selectedOption.value
+                    ? '+250 XP para ' + selectedOption.text + ' quando houver cashback usado.'
+                    : 'Selecione o usuario que recebera 250 XP ao usar cashback.';
+            }
+
             purchaseInput.addEventListener('input', function () {
                 updateRedeemForm(form);
             });
+            if (attendantSelect) {
+                attendantSelect.addEventListener('change', updateXpUser);
+            }
+            updateXpUser();
             updateRedeemForm(form);
         });
     }

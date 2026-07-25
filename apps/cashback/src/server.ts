@@ -13,9 +13,11 @@ import {
   normalizeQuickVoucherCode,
 } from './quickVoucherCode.js';
 import {
+  XP_CASHBACK_REDEMPTION_POINTS,
   XP_CLIENT_CREATION_POINTS,
   XP_QUICK_VOUCHER_ISSUE_POINTS,
   XP_QUICK_VOUCHER_ISSUE_SOURCE,
+  cashbackRedemptionXpReward,
   canCancelQuickVoucher,
   clientCreationXpReward,
   quickVoucherIssueXpReward,
@@ -54,12 +56,6 @@ type CreditExpirySlice = {
   amountCents: number;
   credits: number;
   daysUntil: number | null;
-};
-
-type XpRewardStatus = {
-  available: boolean;
-  employeeName: string | null;
-  message: string;
 };
 
 type XpAwardResult = {
@@ -128,7 +124,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.8.0';
+const SERVICE_VERSION = '1.9.0';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -142,8 +138,6 @@ const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIM
 const RECOMPRA_QUEUE_VISIBLE_DAYS = 14;
 const CASHBACK_VALIDITY_MONTHS = 6;
 const QUICK_VOUCHER_ADVISORY_LOCK = 20260721;
-const XP_CASHBACK_REDEEM_POINTS = 500;
-const XP_CASHBACK_REDEEM_SOURCE = 'cashback_redemption';
 const HEALTH_COUNTS_CACHE_MS = 30_000;
 
 let healthCountsCache: { expiresAt: number; counts: Record<string, number> } | null = null;
@@ -2376,43 +2370,43 @@ async function awardTrackedXp(
   }
 }
 
-async function currentUserXpRewardStatus(req: Request): Promise<XpRewardStatus> {
-  const userId = req.session.user?.id ?? 0;
-  if (userId <= 0) {
-    return { available: false, employeeName: null, message: 'XP indisponivel: usuario sem sessao.' };
-  }
-  try {
-    const employee = await linkedXpEmployeeForUser(userId);
-    if (!employee) {
-      return { available: false, employeeName: null, message: 'Sem XP vinculado: vincule este usuario no modulo Usuarios.' };
-    }
-    return { available: true, employeeName: employee.name, message: `+${XP_CASHBACK_REDEEM_POINTS} XP para ${employee.name} quando usar cashback.` };
-  } catch {
-    return { available: false, employeeName: null, message: 'XP indisponivel agora: compra continua funcionando.' };
-  }
-}
-
-async function awardXpForCashbackRedemption(req: Request, redemptionId: number, redeemedCents: number, clientId: number): Promise<XpAwardResult> {
+async function awardXpForCashbackRedemption(
+  req: Request,
+  redemptionId: number,
+  redeemedCents: number,
+  clientId: number,
+  attendantId: number,
+): Promise<XpAwardResult> {
   if (redemptionId <= 0 || redeemedCents <= 0) {
     return { awarded: false, message: 'Sem XP: nenhum cashback foi usado.' };
   }
-  const userId = req.session.user?.id ?? 0;
-  if (userId <= 0) {
-    return { awarded: false, message: 'XP nao gerado: usuario sem sessao.' };
+  try {
+    const reward = cashbackRedemptionXpReward(redemptionId);
+    const beneficiaryUserId = await coreUserIdForAttendant(attendantId);
+    return awardTrackedXp(req, {
+      beneficiaryUserId: beneficiaryUserId ?? 0,
+      points: reward.points,
+      source: reward.source,
+      sourceEntityId: reward.sourceEntityId,
+      note: `Cashback usado no Balcao: ${brMoneyCents(redeemedCents)} no cliente #${clientId}.`,
+      xpAuditAction: 'xp_cashback_resgate_lancado',
+      xpAuditSummary: `+${reward.points} XP por uso de cashback no resgate #${redemptionId}.`,
+      cashbackAuditAction: 'xp_cashback_resgate_lancado',
+      cashbackFailureAction: 'xp_cashback_resgate_falha',
+      cashbackEntityType: 'resgate',
+      cashbackEntityId: redemptionId,
+    });
+  } catch (error) {
+    await logAction(
+      req,
+      'xp_cashback_resgate_falha',
+      'resgate',
+      redemptionId > 0 ? redemptionId : null,
+      `Falha ao identificar usuario do XP: ${errorMessage(error)}`,
+      { attendant_id: attendantId },
+    );
+    return { awarded: false, message: `XP nao gerado: ${errorMessage(error)}` };
   }
-  return awardTrackedXp(req, {
-    beneficiaryUserId: userId,
-    points: XP_CASHBACK_REDEEM_POINTS,
-    source: XP_CASHBACK_REDEEM_SOURCE,
-    sourceEntityId: String(redemptionId),
-    note: `Cashback usado no Balcao: ${brMoneyCents(redeemedCents)} no cliente #${clientId}.`,
-    xpAuditAction: 'xp_cashback_resgate_lancado',
-    xpAuditSummary: `+${XP_CASHBACK_REDEEM_POINTS} XP por uso de cashback no resgate #${redemptionId}.`,
-    cashbackAuditAction: 'xp_cashback_resgate_lancado',
-    cashbackFailureAction: 'xp_cashback_resgate_falha',
-    cashbackEntityType: 'resgate',
-    cashbackEntityId: redemptionId,
-  });
 }
 
 async function awardXpForQuickVoucherIssue(req: Request, voucherId: number, attendantId: number): Promise<XpAwardResult> {
@@ -3054,6 +3048,7 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
         quickRedemption.redemptionId,
         quickRedemption.redeemedCents,
         clientId,
+        attendantId,
       );
       const successorText = quickRedemption.successor
         ? ` Novo codigo ${quickRedemption.successor.code}: ${brMoneyCents(quickRedemption.successor.cashbackCents)}.`
@@ -3182,7 +3177,8 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
     return;
   }
   try {
-    const attendantId = await requireLoggedAttendantId(req);
+    const attendantId = await normalizeAttendantId(num(req.body?.atendente_id));
+    if (!attendantId) throw new Error('Selecione o usuario responsavel pela operacao.');
     if (quickCode) {
       const quickClient = await pgPool.connect();
       try {
@@ -3205,7 +3201,13 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
           `Codigo rapido ${quickRedemption.code} usado pelo cliente #${clientId}.`,
           { redemption_id: quickRedemption.redemptionId, purchase_id: quickRedemption.purchaseId },
         );
-        const xpResult = await awardXpForCashbackRedemption(req, quickRedemption.redemptionId, quickRedemption.redeemedCents, clientId);
+        const xpResult = await awardXpForCashbackRedemption(
+          req,
+          quickRedemption.redemptionId,
+          quickRedemption.redeemedCents,
+          clientId,
+          attendantId,
+        );
         const successorText = quickRedemption.successor
           ? ` Novo codigo ${quickRedemption.successor.code}: ${brMoneyCents(quickRedemption.successor.cashbackCents)}.`
           : ' A nova compra nao gerou outro codigo.';
@@ -3270,7 +3272,9 @@ async function createAutomaticRedemption(req: Request, res: Response): Promise<v
       await client.query('COMMIT');
       if (redemptionId) await logAction(req, 'resgate_criado', 'resgate', redemptionId, `Resgate registrado no balcao: ${brMoneyCents(redeemedCents)}`);
       await logAction(req, 'compra_cashback_criada', 'compra', purchase.id, `Valor cobrado ${brMoneyCents(purchase.chargedCents)} e novo cashback ${brMoneyCents(purchase.cashbackCents)}`);
-      const xpResult = redemptionId ? await awardXpForCashbackRedemption(req, redemptionId, redeemedCents, clientId) : null;
+      const xpResult = redemptionId
+        ? await awardXpForCashbackRedemption(req, redemptionId, redeemedCents, clientId, attendantId)
+        : null;
       const flash =
         redeemedCents > 0
           ? `Cashback usado: ${brMoneyCents(redeemedCents)}. Valor a cobrar: ${brMoneyCents(purchase.chargedCents)}. Novo cashback gerado: ${brMoneyCents(purchase.cashbackCents)}.`
@@ -3792,7 +3796,6 @@ async function renderDashboard(req: Request): Promise<string> {
   const redeemPurchaseReceipt = purchaseReceiptOrigin === 'cadastro' ? null : purchaseReceipt;
   const quickRequestToken = crypto.randomUUID();
   const selected = selectedClientId > 0 ? await loadClientBundle(selectedClientId) : null;
-  const xpReward = await currentUserXpRewardStatus(req);
   const visibleClientResultCount = Math.min(initialClientResultCount, searchResults.length);
   const expiryBreakdowns = await expiryBreakdownForClients([
     ...searchResults.map((client: DbRow) => num(client.id)),
@@ -3955,9 +3958,9 @@ async function renderDashboard(req: Request): Promise<string> {
         </div>
         <div class="redeem-block redeem-operation-block full">
           <div class="redeem-block-title"><span class="step-badge">2</span><div><h3>Compra atual</h3><small>Uso permitido pela regra ${e(settings.redeemMultiplier)}x</small></div><span class="optional-chip">Calculo automatico</span></div>
-          <div class="redeem-xp-note ${xpReward.available ? 'ok' : 'warn'}"><strong>${xpReward.available ? '+500 XP ativo' : 'XP'}</strong><span>${e(xpReward.message)}</span></div>
+          <div class="redeem-xp-note ok"><strong>+${XP_CASHBACK_REDEMPTION_POINTS} XP ao concluir</strong><span data-redeem-xp-user>O usuario escolhido recebe o premio quando houver cashback usado.</span></div>
           <div class="redeem-fields">
-            ${attendantSelect(attendants, 'Atendente', loggedAttendantId, true)}
+            ${attendantSelect(attendants, 'Usuario responsavel *', loggedAttendantId, false, true, 'redeem-attendant')}
             <label class="quick-code-field"><span>Codigo cashback rapido</span><input type="text" name="codigo_cashback" inputmode="numeric" maxlength="5" pattern="[0-9]{4,5}" placeholder="00000" autocomplete="one-time-code" data-quick-voucher-code><small data-quick-voucher-status>4 antigo ou 5 atual</small></label>
             <label class="redeem-purchase-field"><span>Valor da compra atual *</span><input type="text" name="valor_compra" data-money required placeholder="40,00"></label>
             <label class="redeem-applied-field"><span>Cashback aplicado automaticamente</span><input type="text" name="valor_resgate" data-money readonly required placeholder="0,00"></label>
@@ -3965,9 +3968,9 @@ async function renderDashboard(req: Request): Promise<string> {
           <div class="charge-summary redeem-summary"><div><span>Cashback aplicado</span><strong class="js-redeem-auto">R$ 0,00</strong></div><div><span>Valor a cobrar</span><strong class="js-amount-charged">R$ 0,00</strong></div><div><span>Novo cashback gerado</span><strong class="js-new-cashback">R$ 0,00</strong></div><div class="redeem-validity-card"><span>Validade do novo cashback</span><strong>${CASHBACK_VALIDITY_MONTHS} meses</strong></div></div>
           <div class="live-preview js-redeem-preview">Busque o cliente e informe a compra. O sistema calcula sozinho se usa cashback, quanto cobrar e quanto gerar novamente.</div>
         </div>
-        <div class="redeem-action full">
-          <button type="submit" class="btn primary">Gastar/Usar CashBack</button>
-          <button type="submit" class="btn redeem-print-submit" name="print_after_save" value="1">Concluir e imprimir</button>
+        <input type="hidden" name="print_after_save" value="1">
+        <div class="redeem-action redeem-action-single full">
+          <button type="submit" class="btn primary redeem-primary-action"><span>Usar CashBack e imprimir</span><small>Conclui a operacao e premia o usuario selecionado</small></button>
         </div>
       </form>
     </section>
@@ -4497,7 +4500,7 @@ async function handleManualRedemptionPost(req: Request, res: Response): Promise<
       await consumeCredits(client, credits.rows as DbRow[], redemptionId, redeemedCents);
       await client.query('COMMIT');
       await logAction(req, 'resgate_criado', 'resgate', redemptionId, `Resgate de ${brMoneyCents(redeemedCents)} registrado.`);
-      const xpResult = await awardXpForCashbackRedemption(req, redemptionId, redeemedCents, clientId);
+      const xpResult = await awardXpForCashbackRedemption(req, redemptionId, redeemedCents, clientId, attendantId);
       setFlash(req, 'success', `Resgate registrado: ${brMoneyCents(redeemedCents)}. ${xpResult.message}`);
       res.redirect(`${BASE_PATH}/cliente-detalhe.php?id=${clientId}`);
     } catch (error) {

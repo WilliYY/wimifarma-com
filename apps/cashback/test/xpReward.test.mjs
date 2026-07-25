@@ -2,14 +2,32 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  XP_CASHBACK_REDEMPTION_POINTS,
+  XP_CASHBACK_REDEMPTION_SOURCE,
   XP_CLIENT_CREATION_POINTS,
   XP_CLIENT_CREATION_SOURCE,
   XP_QUICK_VOUCHER_ISSUE_POINTS,
   XP_QUICK_VOUCHER_ISSUE_SOURCE,
+  cashbackRedemptionXpReward,
   canCancelQuickVoucher,
   clientCreationXpReward,
   quickVoucherIssueXpReward,
 } from '../dist/xpReward.js';
+
+test('cashback use awards 250 XP with an idempotent redemption identity', () => {
+  assert.deepEqual(cashbackRedemptionXpReward(8), {
+    points: 250,
+    source: 'cashback_redemption',
+    sourceEntityId: '8',
+  });
+  assert.equal(XP_CASHBACK_REDEMPTION_POINTS, 250);
+  assert.equal(XP_CASHBACK_REDEMPTION_SOURCE, 'cashback_redemption');
+});
+
+test('cashback use XP rejects invalid redemption ids', () => {
+  assert.throws(() => cashbackRedemptionXpReward(0), /Resgate invalido/);
+  assert.throws(() => cashbackRedemptionXpReward(Number.NaN), /Resgate invalido/);
+});
 
 test('client creation awards 250 XP to the selected responsible user', () => {
   assert.deepEqual(clientCreationXpReward(139), {

@@ -2149,13 +2149,15 @@ body.sections-ready .workspace-section.is-active {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 10px 12px;
-    border: 1px solid #bee5cc;
-    border-radius: 16px;
-    background: linear-gradient(135deg, rgba(246, 255, 249, 0.94), rgba(255, 255, 255, 0.9));
+    padding: 12px 14px;
+    border: 1px solid #9fd7b8;
+    border-left: 4px solid #14825d;
+    border-radius: 8px;
+    background: #effaf4;
     color: #155b31;
     font-size: 0.84rem;
     font-weight: 800;
+    box-shadow: 0 8px 20px rgba(20, 130, 93, 0.08);
 }
 
 .redeem-xp-note.warn {
@@ -2168,9 +2170,10 @@ body.sections-ready .workspace-section.is-active {
     display: inline-flex;
     align-items: center;
     min-height: 26px;
-    padding: 4px 9px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.72);
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: #147a58;
+    color: #fff;
     white-space: nowrap;
 }
 
@@ -2188,6 +2191,20 @@ body.sections-ready .workspace-section.is-active {
 .redeem-panel .redeem-operation-block .quick-code-field {
     border-color: #edcf98;
     background: linear-gradient(135deg, #fff8e8, #ffffff);
+}
+
+.redeem-panel .redeem-operation-block .redeem-attendant {
+    border-color: #b9d5f0;
+    background: #edf6ff;
+}
+
+.redeem-panel .redeem-operation-block .redeem-attendant:focus-within {
+    border-color: #377fbe;
+    box-shadow: 0 0 0 3px rgba(55, 127, 190, 0.11);
+}
+
+.redeem-panel .redeem-operation-block .redeem-attendant > span {
+    color: #164f80;
 }
 
 .redeem-panel .redeem-operation-block .quick-code-field:focus-within {
@@ -2354,9 +2371,9 @@ body.sections-ready .workspace-section.is-active {
 
 .redeem-action {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
-    width: min(880px, 100%);
+    width: min(720px, 100%);
     margin-inline: auto;
     padding-top: 0;
     animation: quickClientRise 0.36s cubic-bezier(0.2, 0.85, 0.2, 1) 0.1s both;
@@ -2378,17 +2395,25 @@ body.sections-ready .workspace-section.is-active {
     box-shadow: 0 22px 42px rgba(181, 37, 67, 0.24);
 }
 
-.redeem-action .redeem-print-submit {
-    border: 2px solid rgba(181, 37, 67, 0.42);
-    background: #fff;
-    color: var(--red-900);
-    box-shadow: 0 14px 28px rgba(66, 123, 176, 0.12);
+.redeem-action .redeem-primary-action {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-height: 64px;
+    border-radius: 8px;
 }
 
-.redeem-action .redeem-print-submit:hover,
-.redeem-action .redeem-print-submit:focus {
-    border-color: var(--red-700);
-    background: #fff7f8;
+.redeem-primary-action span {
+    font-size: 1rem;
+    line-height: 1.1;
+}
+
+.redeem-primary-action small {
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.2;
+    opacity: 0.88;
 }
 
 .redeem-panel .selected-client-note {

@@ -2,6 +2,33 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-25 - Uso de cashback escolhe responsavel, premia XP e imprime em uma acao
+
+Decisao:
+
+- Exigir um atendente elegivel no formulario `Gastar/Usar CashBack`, preselecionando o login atual e permitindo a troca.
+- Dar +250 XP ao usuario escolhido somente quando a operacao consumiu cashback, com identidade idempotente pelo ID do resgate.
+- Substituir os dois botoes por `Usar CashBack e imprimir`, confirmando a transacao antes do XP e da impressao local.
+
+Motivo:
+
+- Registrar corretamente quem realizou o atendimento, deixar o premio evidente e eliminar a escolha ambigua entre concluir e concluir/imprimir.
+
+Impacto:
+
+- `apps/cashback/src/server.ts`
+- `apps/cashback/src/xpReward.ts`
+- `apps/cashback/test/`
+- `site/cashback/app.js`
+- `site/cashback/styles.css`
+- documentacao do Cashback, permissoes e auditoria
+
+Riscos/cuidados:
+
+- O atendente escolhido deve continuar limitado a conta humana ativa, vinculada e autorizada.
+- O usuario da sessao permanece como ator da auditoria; escolher o beneficiario nao troca a identidade logada.
+- Sem cashback consumido nao existe resgate nem XP; falha posterior do XP ou da impressao nao reverte a compra.
+
 ## 2026-07-25 - Novo cliente escolhe responsavel, premia XP e imprime em uma acao
 
 Decisao:
