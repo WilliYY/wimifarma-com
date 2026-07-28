@@ -4500,7 +4500,7 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-voucher-user-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
     gap: 9px;
 }
 
@@ -4558,6 +4558,13 @@ body.sections-ready .workspace-section.is-active {
     font-size: .62rem;
     font-weight: 900;
     text-transform: uppercase;
+}
+
+.quick-voucher-user-metrics small {
+    max-width: 100%;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+    text-align: center;
 }
 
 .quick-voucher-user-name strong {
