@@ -2,6 +2,30 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-28 - Configuracao do Cashback ganha grade operacional mais legivel
+
+Decisao:
+
+- Reaproveitar toda a largura da equipe quando nao houver nova conta elegivel para vincular.
+- Aumentar a largura minima dos cards de atendentes, indicadores e downloads CSV.
+- Usar acentos de cor discretos para diferenciar grupos sem alterar a identidade do modulo.
+
+Motivo:
+
+- Eliminar a coluna vazia da equipe vinculada e reduzir cards estreitos com texto pequeno.
+- Facilitar a conferencia de usuarios, totais e arquivos em desktop, tablet e celular.
+
+Impacto:
+
+- `site/cashback/styles.css`
+- documentacao do Cashback
+
+Riscos/cuidados:
+
+- Formularios, CSRF, POSTs, filtros, exportacoes, permissoes e auditoria permanecem inalterados.
+- O estado da conta atualmente logada deve continuar evidente.
+- A grade deve continuar sem rolagem interna e sem estouro horizontal em telas menores.
+
 ## 2026-07-28 - Historico do Cashback rapido resume cadastros por usuario
 
 Decisao:

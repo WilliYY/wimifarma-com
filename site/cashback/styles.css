@@ -598,9 +598,11 @@ th {
 .report-page {
     display: grid;
     gap: 10px;
+    min-width: 0;
 }
 
 .report-page > * {
+    min-width: 0;
     margin-bottom: 0;
     animation: reportPanelIn 0.34s cubic-bezier(0.2, 0.85, 0.2, 1) both;
 }
@@ -625,11 +627,11 @@ th {
     gap: 8px;
     margin: 0;
     padding: 8px;
-    border-radius: 18px;
+    border-radius: 8px;
     background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(255, 246, 248, 0.84)),
         rgba(255, 247, 248, 0.92);
-    box-shadow: 0 14px 36px rgba(109, 16, 34, 0.075);
+    box-shadow: 0 10px 24px rgba(109, 16, 34, 0.07);
 }
 
 .report-nav a {
@@ -651,8 +653,8 @@ th {
 
 .report-page .panel {
     padding: 18px;
-    border-radius: 18px;
-    box-shadow: 0 16px 38px rgba(109, 16, 34, 0.09);
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(109, 16, 34, 0.08);
 }
 
 .report-page .operation-hero {
@@ -662,8 +664,8 @@ th {
     align-items: end;
     margin-bottom: 0;
     padding: 18px;
-    border-radius: 20px;
-    box-shadow: 0 16px 38px rgba(109, 16, 34, 0.09);
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(109, 16, 34, 0.08);
 }
 
 .report-page .operation-hero h2 {
@@ -771,11 +773,11 @@ th {
     top: 74px;
     gap: 9px;
     padding: 14px;
-    border-radius: 16px;
+    border-radius: 8px;
     background:
         linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(255, 240, 243, 0.72)),
         #fff7f8;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 14px 30px rgba(109, 16, 34, 0.07);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 10px 22px rgba(109, 16, 34, 0.06);
 }
 
 .report-page .team-form h3 {
@@ -786,7 +788,28 @@ th {
 
 .report-page .team-form-empty {
     display: grid;
-    align-content: start;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    align-content: center;
+    column-gap: 20px;
+    position: static;
+    border-left: 4px solid rgba(37, 99, 235, 0.42);
+    background: #f7faff;
+}
+
+.report-page .team-form-empty .kicker,
+.report-page .team-form-empty h3 {
+    grid-column: 1;
+}
+
+.report-page .team-form-empty .btn {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-width: 170px;
+}
+
+.report-page .team-layout:has(.team-form-empty) {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .report-page .team-form input,
@@ -818,11 +841,15 @@ th {
 }
 
 .report-page .team-list {
-    grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
-    gap: 9px;
+    grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+    gap: 12px;
     max-height: none;
     overflow: visible;
     padding-right: 0;
+}
+
+.report-page .team-layout:has(.team-form-empty) .team-list {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .report-page .attendant-card {
@@ -832,11 +859,11 @@ th {
     padding: 10px;
     border-color: rgba(181, 37, 67, 0.18);
     border-left: 4px solid rgba(181, 37, 67, 0.52);
-    border-radius: 15px;
+    border-radius: 8px;
     background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(255, 250, 251, 0.9)),
         #fff;
-    box-shadow: 0 10px 22px rgba(109, 16, 34, 0.06);
+    box-shadow: 0 8px 18px rgba(109, 16, 34, 0.055);
     transition: transform .22s ease, border-color .22s ease, background .22s ease;
 }
 
@@ -1042,13 +1069,11 @@ th {
 .report-page .report-access-panel {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px 18px;
+    gap: 10px 20px;
     align-items: center;
     padding: 16px 18px;
     border-left: 4px solid rgba(37, 99, 235, 0.36);
-    background:
-        radial-gradient(circle at 5% 0, rgba(224, 238, 255, 0.78), transparent 32%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
+    background: #f7faff;
 }
 
 .report-page .report-access-panel .section-title {
@@ -1059,14 +1084,15 @@ th {
 .report-page .report-access-panel p {
     max-width: 760px;
     color: #6f3344;
-    font-size: .84rem;
-    line-height: 1.35;
+    font-size: .88rem;
+    line-height: 1.4;
 }
 
 .report-page .report-access-panel > .btn {
     justify-self: end;
-    min-height: 32px;
-    padding-inline: 14px;
+    min-width: 160px;
+    min-height: 38px;
+    padding-inline: 16px;
 }
 
 .report-page .report-period-panel {
@@ -1096,7 +1122,7 @@ th {
     gap: 8px;
     padding: 8px;
     border: 1px solid rgba(232, 184, 195, 0.78);
-    border-radius: 16px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.76);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
@@ -1122,17 +1148,33 @@ th {
 }
 
 .report-page .report-metrics {
-    grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: 10px;
 }
 
 .report-page .report-metrics .metric {
     display: grid;
     align-content: center;
-    min-height: 58px;
-    padding: 10px 12px;
-    border-radius: 14px;
+    min-height: 72px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(49, 27, 34, 0.055);
     transition: transform .22s ease, border-color .22s ease, background .22s ease;
+}
+
+.report-page .report-metrics .metric:nth-child(3n + 2) {
+    border-top: 3px solid #2d75bf;
+    background: #f5f9ff;
+}
+
+.report-page .report-metrics .metric:nth-child(3n) {
+    border-top: 3px solid #158363;
+    background: #f4fbf8;
+}
+
+.report-page .report-metrics .metric:nth-child(3n + 1):not(.highlight) {
+    border-top: 3px solid #c87513;
+    background: #fff9f1;
 }
 
 .report-page .report-metrics .metric:hover {
@@ -1146,13 +1188,13 @@ th {
 }
 
 .report-page .report-metrics .metric span {
-    margin-bottom: 3px;
-    font-size: .72rem;
-    line-height: 1.1;
+    margin-bottom: 5px;
+    font-size: .78rem;
+    line-height: 1.2;
 }
 
 .report-page .report-metrics .metric strong {
-    font-size: clamp(1.05rem, 1.45vw, 1.32rem);
+    font-size: clamp(1.12rem, 1.45vw, 1.38rem);
     line-height: 1.05;
 }
 
@@ -1165,18 +1207,31 @@ th {
 }
 
 .report-page .report-download-grid {
-    grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
 }
 
 .report-page .report-download-card {
     grid-template-rows: auto 1fr auto;
-    gap: 8px;
-    min-height: 128px;
-    padding: 10px;
-    border-radius: 14px;
-    background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 250, 251, 0.92));
+    gap: 10px;
+    min-height: 142px;
+    padding: 14px;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 8px 18px rgba(49, 27, 34, 0.05);
     transition: transform .22s ease, border-color .22s ease, background .22s ease;
+}
+
+.report-page .report-download-card:nth-child(3n + 1) {
+    border-top: 3px solid #b51f43;
+}
+
+.report-page .report-download-card:nth-child(3n + 2) {
+    border-top: 3px solid #2d75bf;
+}
+
+.report-page .report-download-card:nth-child(3n) {
+    border-top: 3px solid #158363;
 }
 
 .report-page .report-download-card:hover {
@@ -1206,14 +1261,14 @@ th {
 
 .report-page .report-download-card strong {
     color: var(--red-800);
-    font-size: .86rem;
-    line-height: 1.08;
+    font-size: .96rem;
+    line-height: 1.15;
 }
 
 .report-page .report-download-card span:not(.download-format),
 .report-page .report-download-card p {
-    font-size: .72rem;
-    line-height: 1.25;
+    font-size: .78rem;
+    line-height: 1.35;
 }
 
 .report-page .report-download-card p {
@@ -1226,9 +1281,9 @@ th {
 }
 
 .report-page .report-download-card .message-actions .btn {
-    width: max-content;
-    min-height: 30px;
-    padding-inline: 13px;
+    width: 100%;
+    min-height: 34px;
+    padding-inline: 14px;
 }
 
 @keyframes reportPanelIn {
@@ -5519,6 +5574,16 @@ body.sections-ready .workspace-section.is-active {
         position: static;
     }
 
+    .report-page .team-form-empty {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .report-page .team-form-empty .btn {
+        grid-column: 1;
+        grid-row: auto;
+        width: 100%;
+    }
+
     .report-page .team-layout,
     .report-page .attendant-card-head {
         grid-template-columns: minmax(0, 1fr);
@@ -5785,6 +5850,24 @@ body.sections-ready .workspace-section.is-active {
 
     .quick-voucher-receipt {
         grid-row: auto;
+    }
+}
+
+@media (max-width: 360px) {
+    .report-page .team-layout:has(.team-form-empty) .team-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .report-page .report-access-panel,
+    .report-page .report-period-panel,
+    .report-page .report-period-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .report-page .report-access-panel .soft-pill {
+        max-width: 100%;
+        white-space: normal;
+        text-align: center;
     }
 }
 
