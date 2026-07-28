@@ -2,6 +2,31 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-28 - Dados e historico do Cashback rapido ficam separados
+
+Decisao:
+
+- Manter `Dados do cashback rapido` aberto por padrao com o resumo de cadastros por usuario.
+- Colocar os 20 codigos recentes em `Historico do cashback rapido`, recolhido por padrao.
+- Preservar `quick_history=1` para abrir o historico depois de cancelamento ou correcao de XP.
+
+Motivo:
+
+- Deixar os indicadores usados diariamente visiveis sem carregar todos os registros operacionais na leitura inicial.
+- Reduzir a altura do Balcao e separar producao da equipe de conferencia administrativa.
+
+Impacto:
+
+- `apps/cashback/src/server.ts`
+- `apps/cashback/test/quickVoucherHistory.test.mjs`
+- `site/cashback/styles.css`
+- documentacao do Cashback
+
+Riscos/cuidados:
+
+- Os dois blocos usam a mesma consulta de leitura; nao duplicar contagens nem mover acoes administrativas para o resumo.
+- Cancelamento, correcao de XP, CSRF e auditoria devem permanecer somente nos cards do historico.
+
 ## 2026-07-28 - Configuracao do Cashback ganha grade operacional mais legivel
 
 Decisao:

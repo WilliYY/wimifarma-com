@@ -4419,8 +4419,14 @@ body.sections-ready .workspace-section.is-active {
     white-space: nowrap;
 }
 
-.quick-voucher-history {
+.quick-voucher-history-stack {
+    display: grid;
+    gap: 10px;
     margin-top: 16px;
+}
+
+.quick-voucher-history {
+    margin: 0;
     border: 1px solid #c8d9e8;
     border-radius: 8px;
     background: rgba(255, 255, 255, .92);
@@ -4441,6 +4447,14 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-voucher-history > summary:hover {
     background: #f8fbfd;
+}
+
+.quick-voucher-history[open] > summary {
+    border-bottom: 1px solid #dbe6ef;
+}
+
+.quick-voucher-history:not([open]) > summary {
+    min-height: 56px;
 }
 
 .quick-voucher-history > summary:focus-visible {
@@ -4495,6 +4509,38 @@ body.sections-ready .workspace-section.is-active {
     text-align: right;
 }
 
+.quick-voucher-data {
+    border-color: #b8dccc;
+    box-shadow: 0 12px 30px rgba(7, 95, 72, .08);
+}
+
+.quick-voucher-data > summary {
+    background: #f4fbf8;
+}
+
+.quick-voucher-data > summary:hover {
+    background: #edf8f3;
+}
+
+.quick-voucher-data > summary::marker {
+    color: #158463;
+}
+
+.quick-voucher-data .quick-voucher-history-count {
+    border-color: #add9c7;
+    background: #eaf8f2;
+    color: #075f48;
+}
+
+.quick-voucher-data .quick-voucher-history-count small {
+    color: #407866;
+}
+
+.quick-voucher-records:not([open]) {
+    background: #fbfcfd;
+    box-shadow: 0 7px 18px rgba(31, 74, 106, .055);
+}
+
 .quick-voucher-history-note {
     display: flex;
     align-items: center;
@@ -4512,9 +4558,8 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .quick-voucher-user-summary {
-    padding: 14px;
-    border-bottom: 1px solid #dbe6ef;
-    background: #fbfdff;
+    padding: 16px;
+    background: linear-gradient(180deg, #fbfefd 0%, #f7fbfd 100%);
 }
 
 .quick-voucher-user-summary-head {
@@ -4522,7 +4567,7 @@ body.sections-ready .workspace-section.is-active {
     align-items: flex-end;
     justify-content: space-between;
     gap: 18px;
-    margin-bottom: 11px;
+    margin-bottom: 14px;
 }
 
 .quick-voucher-user-summary-head > span {
@@ -4540,8 +4585,8 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-voucher-user-summary-head h3 {
     margin: 0;
-    color: #263b4b;
-    font-size: 1rem;
+    color: #18384a;
+    font-size: 1.08rem;
 }
 
 .quick-voucher-user-summary-head p {
@@ -4555,16 +4600,24 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-voucher-user-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-    gap: 9px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
 }
 
 .quick-voucher-user-card {
     overflow: hidden;
     border: 1px solid #cbdce9;
     border-top: 3px solid #2f78b7;
-    border-radius: 7px;
+    border-radius: 8px;
     background: #fff;
+    box-shadow: 0 7px 18px rgba(31, 74, 106, .055);
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.quick-voucher-user-card:hover {
+    border-color: #a9c7dc;
+    box-shadow: 0 10px 22px rgba(31, 74, 106, .09);
+    transform: translateY(-1px);
 }
 
 .quick-voucher-user-card.is-leading {
@@ -4575,8 +4628,8 @@ body.sections-ready .workspace-section.is-active {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 9px;
-    padding: 10px;
+    gap: 11px;
+    padding: 12px;
 }
 
 .quick-voucher-user-rank {
@@ -4630,6 +4683,10 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-voucher-user-total {
     justify-items: end;
+    min-width: 70px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    background: #fff3f6;
 }
 
 .quick-voucher-user-total strong {
@@ -4647,9 +4704,11 @@ body.sections-ready .workspace-section.is-active {
 .quick-voucher-user-metrics > span {
     display: grid;
     justify-items: center;
+    align-content: center;
     gap: 2px;
     min-width: 0;
-    padding: 7px 3px;
+    min-height: 58px;
+    padding: 8px 4px;
     border-right: 1px solid #e0e9ef;
 }
 
@@ -4681,8 +4740,9 @@ body.sections-ready .workspace-section.is-active {
 .quick-voucher-user-foot {
     display: grid;
     grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
-    gap: 8px;
-    padding: 9px 10px;
+    gap: 10px;
+    padding: 11px 12px;
+    background: #fcfefe;
 }
 
 .quick-voucher-user-foot > span:last-child {
@@ -5503,6 +5563,7 @@ body.sections-ready .workspace-section.is-active {
     .redeem-action,
     .quick-client-block,
     .quick-client-action,
+    .quick-voucher-user-card,
     .report-nav a,
     .report-page .attendant-card,
     .report-download-card,
@@ -5969,6 +6030,23 @@ body.sections-ready .workspace-section.is-active {
 
     .quick-voucher-user-grid {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .quick-voucher-user-head {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .quick-voucher-user-total {
+        grid-column: 1 / -1;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        justify-items: start;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .quick-voucher-user-total small {
+        justify-self: end;
     }
 
     .quick-voucher-user-metrics {

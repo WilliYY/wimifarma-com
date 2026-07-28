@@ -3718,32 +3718,40 @@ function renderQuickVoucherHistory(req: Request, vouchers: DbRow[], userSummarie
     </article>`;
   }).join('');
 
-  return `<details class="quick-voucher-history"${historyOpen ? ' open' : ''}>
-    <summary>
-      <span><small>Controle operacional</small><strong>Historico do cashback rapido</strong></span>
-      <span class="quick-voucher-history-count"><strong>${e(directIssuedCount)}</strong> cadastrado(s)<small>${e(vouchers.length)} recente(s)</small></span>
-    </summary>
-    <div class="quick-voucher-history-note">
-      <span>Confira validade, uso, impressao e XP dos codigos recentes.</span>
-      ${master ? '<strong>Cancelar preserva o registro e impede o uso do codigo.</strong>' : '<strong>Somente o ADM pode cancelar codigos.</strong>'}
-    </div>
-    <section class="quick-voucher-user-summary" aria-labelledby="quick-voucher-user-summary-title">
-      <header class="quick-voucher-user-summary-head">
-        <span><small>Equipe</small><h3 id="quick-voucher-user-summary-title">Cadastros por usuario</h3></span>
-        <p>Somente codigos criados diretamente no Cashback rapido. Codigos sucessores nao entram nesta contagem.</p>
-      </header>
-      <div class="quick-voucher-user-grid">
-        ${userCards || '<p class="quick-voucher-history-empty">Nenhum usuario cadastrou cashback rapido ainda.</p>'}
+  return `<div class="quick-voucher-history-stack">
+    <details class="quick-voucher-history quick-voucher-data" open>
+      <summary>
+        <span><small>Visao da equipe</small><strong>Dados do cashback rapido</strong></span>
+        <span class="quick-voucher-history-count"><strong>${e(userSummaries.length)}</strong> usuario(s)<small>${e(directIssuedCount)} cadastro(s)</small></span>
+      </summary>
+      <section class="quick-voucher-user-summary" aria-labelledby="quick-voucher-user-summary-title">
+        <header class="quick-voucher-user-summary-head">
+          <span><small>Equipe</small><h3 id="quick-voucher-user-summary-title">Cadastros por usuario</h3></span>
+          <p>Somente codigos criados diretamente no Cashback rapido. Codigos sucessores nao entram nesta contagem.</p>
+        </header>
+        <div class="quick-voucher-user-grid">
+          ${userCards || '<p class="quick-voucher-history-empty">Nenhum usuario cadastrou cashback rapido ainda.</p>'}
+        </div>
+      </section>
+    </details>
+    <details class="quick-voucher-history quick-voucher-records"${historyOpen ? ' open' : ''}>
+      <summary>
+        <span><small>Controle operacional</small><strong>Historico do cashback rapido</strong></span>
+        <span class="quick-voucher-history-count"><strong>${e(vouchers.length)}</strong> recente(s)<small>Abra para conferir</small></span>
+      </summary>
+      <div class="quick-voucher-history-note">
+        <span>Confira validade, uso, impressao e XP dos codigos recentes.</span>
+        ${master ? '<strong>Cancelar preserva o registro e impede o uso do codigo.</strong>' : '<strong>Somente o ADM pode cancelar codigos.</strong>'}
       </div>
-    </section>
-    <div class="quick-voucher-history-list-head">
-      <span><small>Conferencia</small><strong>Ultimos codigos gerados</strong></span>
-      <span>${e(vouchers.length)} registro(s)</span>
-    </div>
-    <div class="quick-voucher-history-list">
-      ${cards || '<p class="quick-voucher-history-empty">Nenhum cashback rapido foi gerado ainda.</p>'}
-    </div>
-  </details>`;
+      <div class="quick-voucher-history-list-head">
+        <span><small>Conferencia</small><strong>Ultimos codigos gerados</strong></span>
+        <span>${e(vouchers.length)} registro(s)</span>
+      </div>
+      <div class="quick-voucher-history-list">
+        ${cards || '<p class="quick-voucher-history-empty">Nenhum cashback rapido foi gerado ainda.</p>'}
+      </div>
+    </details>
+  </div>`;
 }
 
 function renderQuickVoucherReceipt(voucher: DbRow | null): string {

@@ -30,11 +30,18 @@ test('quick voucher history renders user totals and preserves operational action
   const historyRender = serverSource.slice(renderStart, renderEnd);
 
   assert.match(historyRender, /userSummaries: DbRow\[\]/);
+  assert.match(historyRender, /quick-voucher-history-stack/);
+  assert.match(historyRender, /quick-voucher-data" open/);
+  assert.match(historyRender, /Dados do cashback rapido/);
+  assert.match(historyRender, /quick-voucher-records/);
+  assert.match(historyRender, /historyOpen \? ' open' : ''/);
   assert.match(historyRender, /quick-voucher-user-summary/);
   assert.match(historyRender, /Cadastros por usuario/);
   assert.match(historyRender, /quick-voucher-user-card/);
   assert.match(historyRender, /name="action" value="cancel_quick_voucher"/);
   assert.match(historyRender, /name="action" value="revoke_quick_voucher_xp"/);
   assert.match(stylesSource, /\.quick-voucher-user-grid/);
+  assert.match(stylesSource, /\.quick-voucher-data/);
+  assert.match(stylesSource, /\.quick-voucher-records:not\(\[open\]\)/);
   assert.match(stylesSource, /\.quick-voucher-history-list\s*\{[^}]*grid-template-columns/s);
 });
