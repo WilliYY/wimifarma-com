@@ -26,6 +26,28 @@ test('new client registration selects an eligible attendant and uses one print a
   assert.equal((registrationSection.match(/<button type="submit"/g) || []).length, 1);
 });
 
+test('new client registration accepts either name or phone and rejects both empty', async () => {
+  const [serverSource, appSource] = await Promise.all([
+    readFile(serverUrl, 'utf8'),
+    readFile(new URL('../../../site/cashback/app.js', import.meta.url), 'utf8'),
+  ]);
+  const workflowStart = serverSource.indexOf('async function createClientFromDashboard');
+  const workflowEnd = serverSource.indexOf('async function createPurchaseFromDashboard', workflowStart);
+  const workflow = serverSource.slice(workflowStart, workflowEnd);
+  const sectionStart = serverSource.indexOf('<section id="cadastro"');
+  const sectionEnd = serverSource.indexOf('</section>', sectionStart);
+  const registrationSection = serverSource.slice(sectionStart, sectionEnd);
+
+  assert.match(workflow, /if \(!providedName && !phone\)/, 'backend must require at least one identifier');
+  assert.match(workflow, /const name = providedName \|\| `Cliente \$\{phone\}`;/, 'phone-only clients need a stable display name');
+  assert.doesNotMatch(registrationSection, /name="nome" required/, 'name alone must not remain mandatory');
+  assert.match(registrationSection, /data-client-identity-form/, 'registration form must expose grouped identity validation');
+  assert.match(registrationSection, /data-client-name/, 'name field must participate in grouped validation');
+  assert.match(registrationSection, /data-client-phone/, 'phone field must participate in grouped validation');
+  assert.match(registrationSection, /Preencha pelo menos o nome ou o telefone\./);
+  assert.match(appSource, /Informe o nome ou o telefone do cliente\./, 'browser must block an entirely empty identity');
+});
+
 test('client XP is awarded only after the client transaction commits', async () => {
   const serverSource = await readFile(serverUrl, 'utf8');
   const workflowStart = serverSource.indexOf('async function createClientFromDashboard');

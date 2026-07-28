@@ -124,7 +124,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.9.0';
+const SERVICE_VERSION = '1.9.1';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -2935,8 +2935,9 @@ async function retryQuickVoucherXpRevocation(req: Request, res: Response): Promi
 
 async function createClientFromDashboard(req: Request, res: Response): Promise<void> {
   const settings = await loadSettings();
-  const name = cleanText(req.body?.nome, 180);
+  const providedName = cleanText(req.body?.nome, 180);
   const phone = digitsOnly(req.body?.telefone) || null;
+  const name = providedName || `Cliente ${phone}`;
   const birthDate = cleanText(req.body?.nascimento, 10);
   const notes = cleanText(req.body?.observacoes, 5000);
   const initialAmount = moneyToCents(req.body?.valor_compra_inicial);
@@ -2945,8 +2946,8 @@ async function createClientFromDashboard(req: Request, res: Response): Promise<v
   const quickCode = normalizeQuickVoucherCode(quickCodeRaw);
   const printAfterSave = String(req.body?.print_after_save || '') === '1';
   const autoPrintQuery = printAfterSave ? '&auto_print_receipt=1' : '';
-  if (!name) {
-    setFlash(req, 'error', 'Informe o nome do cliente.');
+  if (!providedName && !phone) {
+    setFlash(req, 'error', 'Informe o nome ou o telefone do cliente.');
     res.redirect(`${BASE_PATH}/dashboard.php#cadastro`);
     return;
   }
@@ -3978,14 +3979,14 @@ async function renderDashboard(req: Request): Promise<string> {
     <section id="cadastro" class="panel section-block workspace-section quick-client-panel">
       <div class="section-title quick-client-title"><div class="quick-client-title-copy"><span class="kicker">Cadastro rapido</span><h2>Novo cliente</h2></div><span class="soft-pill">Compra inicial opcional</span></div>
       ${renderCashbackPurchaseReceipt(registrationPurchaseReceipt)}
-      <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}" data-multiplier="${e(settings.redeemMultiplier)}">
+      <form method="post" action="${pageUrl('dashboard.php#cadastro')}" class="form-grid two-cols quick-client-form" data-no-enter-submit data-client-identity-form data-initial-purchase-form data-default-percent="${e(settings.cashbackPercent)}" data-multiplier="${e(settings.redeemMultiplier)}">
         ${csrfField(req)}
         <input type="hidden" name="action" value="save_client">
         <div class="quick-client-block quick-client-identity full">
-          <div class="quick-client-block-title"><span class="step-badge">1</span><div><h3>Dados do cliente</h3><small>Identificacao e contato</small></div></div>
+          <div class="quick-client-block-title"><span class="step-badge">1</span><div><h3>Dados do cliente</h3><small>Preencha pelo menos o nome ou o telefone.</small></div></div>
           <div class="quick-client-fields">
-            <label><span>Nome *</span><input type="text" name="nome" required placeholder="Nome do cliente"></label>
-            <label><span>Telefone</span><input type="text" name="telefone" inputmode="numeric" placeholder="11999999999"></label>
+            <label><span>Nome</span><input type="text" name="nome" data-client-name placeholder="Nome do cliente"></label>
+            <label><span>Telefone</span><input type="text" name="telefone" data-client-phone inputmode="numeric" placeholder="11999999999"></label>
             <label><span>Data de nascimento</span><input type="date" name="nascimento"></label>
             ${attendantSelect(attendants, 'Atendente responsavel *', loggedAttendantId, false, true, 'quick-client-attendant')}
           </div>

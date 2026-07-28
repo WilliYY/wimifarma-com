@@ -59,6 +59,38 @@
         });
     }
 
+    function bindClientIdentityForms() {
+        document.querySelectorAll('[data-client-identity-form]').forEach(function (form) {
+            var nameInput = form.querySelector('[data-client-name]');
+            var phoneInput = form.querySelector('[data-client-phone]');
+
+            if (!nameInput || !phoneInput) {
+                return;
+            }
+
+            function validateIdentity() {
+                var hasName = String(nameInput.value || '').trim() !== '';
+                var hasPhone = String(phoneInput.value || '').replace(/\D/g, '') !== '';
+                var message = hasName || hasPhone ? '' : 'Informe o nome ou o telefone do cliente.';
+
+                nameInput.setCustomValidity(message);
+                phoneInput.setCustomValidity(message);
+                return message === '';
+            }
+
+            nameInput.addEventListener('input', validateIdentity);
+            phoneInput.addEventListener('input', validateIdentity);
+            form.addEventListener('submit', function (event) {
+                if (validateIdentity()) {
+                    return;
+                }
+
+                event.preventDefault();
+                nameInput.reportValidity();
+            });
+        });
+    }
+
     function sectionFromHref(href) {
         try {
             var url = new URL(href, window.location.href);
@@ -1397,6 +1429,7 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         bindMoneyFields();
+        bindClientIdentityForms();
         bindActiveNav();
         bindSections();
         bindCashbackPreview();

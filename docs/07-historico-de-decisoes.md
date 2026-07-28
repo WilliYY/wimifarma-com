@@ -2,6 +2,30 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-28 - Novo cliente aceita nome ou telefone
+
+Decisao:
+
+- Exigir pelo menos um dos campos `nome` ou `telefone` no navegador e no POST `save_client`.
+- Manter `cashback_clients.name NOT NULL`; quando houver somente telefone, gravar `Cliente <telefone>` como nome operacional.
+- Preservar telefone nulo quando o cadastro tiver somente nome.
+
+Motivo:
+
+- Permitir atendimento rapido quando o cliente fornece apenas uma das duas identificacoes sem enfraquecer o contrato do banco nem quebrar busca e comprovantes.
+
+Impacto:
+
+- `apps/cashback/src/server.ts`
+- `apps/cashback/test/clientRegistration.test.mjs`
+- `site/cashback/app.js`
+- documentacao do Cashback
+
+Riscos/cuidados:
+
+- Nome e telefone nao podem ficar vazios ao mesmo tempo.
+- O nome operacional deve continuar visivel para permitir correcao posterior sem fingir que um nome real foi informado.
+
 ## 2026-07-25 - Uso de cashback escolhe responsavel, premia XP e imprime em uma acao
 
 Decisao:
