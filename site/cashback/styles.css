@@ -4367,8 +4367,9 @@ body.sections-ready .workspace-section.is-active {
 .quick-voucher-history {
     margin-top: 16px;
     border: 1px solid #c8d9e8;
-    border-radius: 12px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, .92);
+    box-shadow: 0 10px 28px rgba(31, 74, 106, .08);
 }
 
 .quick-voucher-history > summary {
@@ -4381,6 +4382,15 @@ body.sections-ready .workspace-section.is-active {
     cursor: pointer;
     list-style-position: inside;
     color: var(--red-900);
+}
+
+.quick-voucher-history > summary:hover {
+    background: #f8fbfd;
+}
+
+.quick-voucher-history > summary:focus-visible {
+    outline: 3px solid rgba(47, 120, 183, .3);
+    outline-offset: -3px;
 }
 
 .quick-voucher-history > summary::marker {
@@ -4404,17 +4414,30 @@ body.sections-ready .workspace-section.is-active {
 }
 
 .quick-voucher-history-count {
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: auto auto;
     align-items: center;
-    min-height: 30px;
-    padding: 5px 10px;
+    gap: 2px 5px;
+    min-height: 38px;
+    padding: 5px 11px;
     border: 1px solid #b9d5f0;
-    border-radius: 999px;
+    border-radius: 7px;
     background: #edf6ff;
     color: #215d90;
     font-size: .76rem;
     font-weight: 900;
     white-space: nowrap;
+}
+
+.quick-voucher-history-count strong {
+    font-size: 1.1rem;
+}
+
+.quick-voucher-history-count small {
+    grid-column: 1 / -1;
+    color: #58758e;
+    font-size: .65rem;
+    text-align: right;
 }
 
 .quick-voucher-history-note {
@@ -4433,6 +4456,208 @@ body.sections-ready .workspace-section.is-active {
     color: #7f2337;
 }
 
+.quick-voucher-user-summary {
+    padding: 14px;
+    border-bottom: 1px solid #dbe6ef;
+    background: #fbfdff;
+}
+
+.quick-voucher-user-summary-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 11px;
+}
+
+.quick-voucher-user-summary-head > span {
+    display: grid;
+    gap: 2px;
+}
+
+.quick-voucher-user-summary-head small,
+.quick-voucher-history-list-head small {
+    color: #2b6c9e;
+    font-size: .65rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.quick-voucher-user-summary-head h3 {
+    margin: 0;
+    color: #263b4b;
+    font-size: 1rem;
+}
+
+.quick-voucher-user-summary-head p {
+    max-width: 520px;
+    margin: 0;
+    color: #617687;
+    font-size: .74rem;
+    line-height: 1.35;
+    text-align: right;
+}
+
+.quick-voucher-user-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 9px;
+}
+
+.quick-voucher-user-card {
+    overflow: hidden;
+    border: 1px solid #cbdce9;
+    border-top: 3px solid #2f78b7;
+    border-radius: 7px;
+    background: #fff;
+}
+
+.quick-voucher-user-card.is-leading {
+    border-top-color: #158463;
+}
+
+.quick-voucher-user-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 10px;
+}
+
+.quick-voucher-user-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #eaf4fc;
+    color: #215d90;
+    font-size: .78rem;
+    font-weight: 900;
+}
+
+.quick-voucher-user-card.is-leading .quick-voucher-user-rank {
+    background: #e4f6ee;
+    color: #075f48;
+}
+
+.quick-voucher-user-name,
+.quick-voucher-user-total,
+.quick-voucher-user-foot > span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.quick-voucher-user-name small,
+.quick-voucher-user-total small,
+.quick-voucher-user-metrics small,
+.quick-voucher-user-foot small {
+    color: #687c8c;
+    font-size: .62rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.quick-voucher-user-name strong {
+    overflow-wrap: anywhere;
+    color: #253b4b;
+    font-size: .84rem;
+}
+
+.quick-voucher-user-total {
+    justify-items: end;
+}
+
+.quick-voucher-user-total strong {
+    color: var(--red-800);
+    font-size: 1.38rem;
+    line-height: 1;
+}
+
+.quick-voucher-user-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-block: 1px solid #e0e9ef;
+}
+
+.quick-voucher-user-metrics > span {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-width: 0;
+    padding: 7px 3px;
+    border-right: 1px solid #e0e9ef;
+}
+
+.quick-voucher-user-metrics > span:last-child {
+    border-right: 0;
+}
+
+.quick-voucher-user-metrics strong {
+    color: #304a5d;
+    font-size: .9rem;
+}
+
+.quick-voucher-user-metrics .is-active {
+    background: #eefaf5;
+}
+
+.quick-voucher-user-metrics .is-used {
+    background: #f0f7fd;
+}
+
+.quick-voucher-user-metrics .is-expired {
+    background: #fff9eb;
+}
+
+.quick-voucher-user-metrics .is-canceled {
+    background: #fff2f5;
+}
+
+.quick-voucher-user-foot {
+    display: grid;
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+    gap: 8px;
+    padding: 9px 10px;
+}
+
+.quick-voucher-user-foot > span:last-child {
+    text-align: right;
+}
+
+.quick-voucher-user-foot strong {
+    overflow-wrap: anywhere;
+    color: #314858;
+    font-size: .73rem;
+}
+
+.quick-voucher-user-foot > span:first-child strong {
+    color: #075f48;
+    font-size: .84rem;
+}
+
+.quick-voucher-history-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px 0;
+    color: #415b6d;
+}
+
+.quick-voucher-history-list-head > span:first-child {
+    display: grid;
+    gap: 2px;
+}
+
+.quick-voucher-history-list-head > span:last-child {
+    color: #6b7e8b;
+    font-size: .72rem;
+    font-weight: 800;
+}
+
 .quick-voucher-history-list {
     display: grid;
     gap: 10px;
@@ -4441,6 +4666,8 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-voucher-history-card {
     position: relative;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     border: 1px solid #d7e2ea;
     border-left: 4px solid #158463;
@@ -4540,7 +4767,7 @@ body.sections-ready .workspace-section.is-active {
 
 .quick-voucher-history-facts {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     border-block: 1px solid #e1e9ef;
     background: #f8fafc;
 }
@@ -4553,7 +4780,7 @@ body.sections-ready .workspace-section.is-active {
     border-right: 1px solid #e1e9ef;
 }
 
-.quick-voucher-history-facts > span:nth-child(3n) {
+.quick-voucher-history-facts > span:nth-child(2n) {
     border-right: 0;
 }
 
@@ -4577,6 +4804,7 @@ body.sections-ready .workspace-section.is-active {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    margin-top: auto;
     padding: 9px 12px;
 }
 
@@ -4621,6 +4849,10 @@ body.sections-ready .workspace-section.is-active {
 }
 
 @media (min-width: 1280px) {
+    .quick-voucher-history-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     body.sections-ready[data-cashback-section="busca"] .client-results {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -5509,6 +5741,17 @@ body.sections-ready .workspace-section.is-active {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .quick-voucher-user-summary-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
+    }
+
+    .quick-voucher-user-summary-head p {
+        max-width: none;
+        text-align: left;
+    }
+
     .quick-voucher-history-facts > span:nth-child(3n) {
         border-right: 1px solid #e1e9ef;
     }
@@ -5616,9 +5859,38 @@ body.sections-ready .workspace-section.is-active {
 
     .quick-voucher-history > summary,
     .quick-voucher-history-note,
+    .quick-voucher-history-list-head,
     .quick-voucher-history-footer {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .quick-voucher-history-count {
+        align-self: stretch;
+    }
+
+    .quick-voucher-history-count small {
+        text-align: left;
+    }
+
+    .quick-voucher-user-summary {
+        padding: 12px;
+    }
+
+    .quick-voucher-user-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .quick-voucher-user-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .quick-voucher-user-metrics > span:nth-child(2) {
+        border-right: 0;
+    }
+
+    .quick-voucher-user-metrics > span:nth-child(-n + 2) {
+        border-bottom: 1px solid #e0e9ef;
     }
 
     .quick-voucher-history-main,

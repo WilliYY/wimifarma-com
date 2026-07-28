@@ -124,7 +124,7 @@ const publicDir = path.resolve(rootDir, 'public');
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
-const SERVICE_VERSION = '1.9.1';
+const SERVICE_VERSION = '1.10.0';
 const IS_PRODUCTION = env.NODE_ENV === 'production';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/cashback');
 const PORT = Number.parseInt(env.PORT || '4000', 10);
@@ -2529,6 +2529,33 @@ async function revokeXpForQuickVoucherIssue(req: Request, voucherId: number): Pr
   }
 }
 
+async function loadQuickVoucherUserSummary(): Promise<DbRow[]> {
+  const result = await pgPool.query(
+    `SELECT q.issued_attendant_id,
+            COALESCE(issued_attendant.name, 'Sem usuario') AS attendant_name,
+            COUNT(*)::integer AS issued_count,
+            COUNT(*) FILTER (
+              WHERE q.status = 'ativo'
+                AND q.expires_at >= CURRENT_DATE
+            )::integer AS active_count,
+            COUNT(*) FILTER (WHERE q.status = 'usado')::integer AS used_count,
+            COUNT(*) FILTER (WHERE q.status = 'cancelado')::integer AS canceled_count,
+            COUNT(*) FILTER (
+              WHERE q.status = 'expirado'
+                 OR (q.status = 'ativo' AND q.expires_at < CURRENT_DATE)
+            )::integer AS expired_count,
+            COALESCE(SUM(q.cashback_cents), 0)::bigint AS cashback_cents,
+            MAX(q.issued_at) AS last_issued_at
+       FROM cashback_quick_vouchers q
+       LEFT JOIN cashback_attendants issued_attendant ON issued_attendant.id = q.issued_attendant_id
+      WHERE COALESCE(q.parent_voucher_id, 0) = 0
+        AND COALESCE(q.source_purchase_id, 0) = 0
+      GROUP BY q.issued_attendant_id, issued_attendant.name
+      ORDER BY issued_count DESC, attendant_name ASC`,
+  );
+  return result.rows as DbRow[];
+}
+
 async function loadQuickVoucherHistory(limit = 20): Promise<DbRow[]> {
   const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
   const result = await pgPool.query(
@@ -3589,7 +3616,7 @@ async function saveWhatsappMessage(input: {
   }
 }
 
-function renderQuickVoucherHistory(req: Request, vouchers: DbRow[]): string {
+function renderQuickVoucherHistory(req: Request, vouchers: DbRow[], userSummaries: DbRow[]): string {
   const master = isMasterAdm(req);
   const historyOpen = cleanText(req.query.quick_history, 10) === '1';
   const statusMeta: Record<string, { label: string; className: string }> = {
@@ -3605,6 +3632,32 @@ function renderQuickVoucherHistory(req: Request, vouchers: DbRow[]): string {
     indisponivel: { label: 'XP a conferir', className: 'is-pending' },
     nao_aplicavel: { label: 'Sem XP nesta etapa', className: 'is-neutral' },
   };
+  const directIssuedCount = userSummaries.reduce((total, row) => total + num(row.issued_count), 0);
+  const userCards = userSummaries.map((summary, index) => {
+    const issuedCount = Math.max(0, num(summary.issued_count));
+    const activeCount = Math.max(0, num(summary.active_count));
+    const usedCount = Math.max(0, num(summary.used_count));
+    const canceledCount = Math.max(0, num(summary.canceled_count));
+    const expiredCount = Math.max(0, num(summary.expired_count));
+    const attendantName = cleanText(summary.attendant_name, 180) || 'Sem usuario';
+    return `<article class="quick-voucher-user-card${index === 0 ? ' is-leading' : ''}">
+      <header class="quick-voucher-user-head">
+        <span class="quick-voucher-user-rank" aria-label="Posicao ${e(index + 1)}">${e(index + 1)}</span>
+        <span class="quick-voucher-user-name"><small>Usuario responsavel</small><strong>${e(attendantName)}</strong></span>
+        <span class="quick-voucher-user-total"><strong>${e(issuedCount)}</strong><small>${issuedCount === 1 ? 'cadastro' : 'cadastros'}</small></span>
+      </header>
+      <div class="quick-voucher-user-metrics" aria-label="Situacao dos cadastros de ${e(attendantName)}">
+        <span class="is-active"><strong>${e(activeCount)}</strong><small>Ativos</small></span>
+        <span class="is-used"><strong>${e(usedCount)}</strong><small>Usados</small></span>
+        <span class="is-expired"><strong>${e(expiredCount)}</strong><small>Vencidos</small></span>
+        <span class="is-canceled"><strong>${e(canceledCount)}</strong><small>Cancelados</small></span>
+      </div>
+      <footer class="quick-voucher-user-foot">
+        <span><small>Cashback emitido</small><strong>${brMoneyCents(summary.cashback_cents)}</strong></span>
+        <span><small>Ultimo cadastro</small><strong>${e(brDate(summary.last_issued_at, true))}</strong></span>
+      </footer>
+    </article>`;
+  }).join('');
   const cards = vouchers.map((voucher) => {
     const status = cleanText(voucher.status, 30) || 'desconhecido';
     const statusInfo = statusMeta[status] || { label: status, className: 'is-neutral' };
@@ -3668,11 +3721,24 @@ function renderQuickVoucherHistory(req: Request, vouchers: DbRow[]): string {
   return `<details class="quick-voucher-history"${historyOpen ? ' open' : ''}>
     <summary>
       <span><small>Controle operacional</small><strong>Historico do cashback rapido</strong></span>
-      <span class="quick-voucher-history-count">${e(vouchers.length)} recente(s)</span>
+      <span class="quick-voucher-history-count"><strong>${e(directIssuedCount)}</strong> cadastrado(s)<small>${e(vouchers.length)} recente(s)</small></span>
     </summary>
     <div class="quick-voucher-history-note">
       <span>Confira validade, uso, impressao e XP dos codigos recentes.</span>
       ${master ? '<strong>Cancelar preserva o registro e impede o uso do codigo.</strong>' : '<strong>Somente o ADM pode cancelar codigos.</strong>'}
+    </div>
+    <section class="quick-voucher-user-summary" aria-labelledby="quick-voucher-user-summary-title">
+      <header class="quick-voucher-user-summary-head">
+        <span><small>Equipe</small><h3 id="quick-voucher-user-summary-title">Cadastros por usuario</h3></span>
+        <p>Somente codigos criados diretamente no Cashback rapido. Codigos sucessores nao entram nesta contagem.</p>
+      </header>
+      <div class="quick-voucher-user-grid">
+        ${userCards || '<p class="quick-voucher-history-empty">Nenhum usuario cadastrou cashback rapido ainda.</p>'}
+      </div>
+    </section>
+    <div class="quick-voucher-history-list-head">
+      <span><small>Conferencia</small><strong>Ultimos codigos gerados</strong></span>
+      <span>${e(vouchers.length)} registro(s)</span>
     </div>
     <div class="quick-voucher-history-list">
       ${cards || '<p class="quick-voucher-history-empty">Nenhum cashback rapido foi gerado ainda.</p>'}
@@ -3783,7 +3849,10 @@ async function renderDashboard(req: Request): Promise<string> {
   const searchResults = await queryClients(search, 20, { activeOnly: true });
   const loggedAttendantId = await loggedUserAttendantId(req);
   const attendants = await attendantOptions();
-  const quickVoucherHistory = await loadQuickVoucherHistory(20);
+  const [quickVoucherHistory, quickVoucherUserSummary] = await Promise.all([
+    loadQuickVoucherHistory(20),
+    loadQuickVoucherUserSummary(),
+  ]);
   const requestedVoucherId = num(req.query.voucher_id);
   const printedVoucher = (req.session.quickVoucherReceiptIds || []).includes(requestedVoucherId)
     ? await quickVoucherReceipt(requestedVoucherId)
@@ -3903,7 +3972,7 @@ async function renderDashboard(req: Request): Promise<string> {
       <div class="quick-cashback-preview" aria-live="polite"><span>Cashback previsto</span><strong class="js-quick-cashback-value">R$ 0,00</strong><small>5 digitos, 6 meses e +250 XP</small></div>
       <button type="submit" class="btn primary quick-cashback-submit">Gerar codigo</button>
     </form>
-    ${renderQuickVoucherHistory(req, quickVoucherHistory)}
+    ${renderQuickVoucherHistory(req, quickVoucherHistory, quickVoucherUserSummary)}
   </div>`;
 
   const body = `<section class="balcao-grid">

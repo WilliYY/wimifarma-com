@@ -2,6 +2,32 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-28 - Historico do Cashback rapido resume cadastros por usuario
+
+Decisao:
+
+- Agrupar todas as emissoes diretas de `cashback_quick_vouchers` pelo `issued_attendant_id` escolhido.
+- Mostrar total cadastrado, estados, cashback emitido e ultimo cadastro antes dos 20 registros recentes.
+- Excluir da contagem os vouchers sucessores ligados por `parent_voucher_id` ou `source_purchase_id`, mantendo-os visiveis na conferencia recente.
+
+Motivo:
+
+- Permitir conferir quanto cada usuario cadastrou sem confundir um atendimento rapido com o codigo sucessor automatico de um resgate.
+- Melhorar a leitura operacional sem criar tabela, duplicar dado ou alterar regras de voucher e XP.
+
+Impacto:
+
+- `apps/cashback/src/server.ts`
+- `apps/cashback/test/quickVoucherHistory.test.mjs`
+- `site/cashback/styles.css`
+- documentacao do Cashback
+
+Riscos/cuidados:
+
+- Cancelados e vencidos permanecem no total historico e aparecem separados por estado.
+- O valor exibido e a soma historica emitida, nao o saldo ativo atual.
+- Cancelamento, correcao de XP e os 20 registros recentes devem continuar preservados.
+
 ## 2026-07-28 - Novo cliente aceita nome ou telefone
 
 Decisao:
