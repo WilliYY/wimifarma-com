@@ -37,6 +37,7 @@ Rotas de smoke test:
 - `/financeiro/health` deve responder JSON 200 quando o servico Financeiro e seu Postgres estiverem ativos, com `mode=official`, `auth.provider=core`, `storage.provider=postgres` e flags legadas MySQL desligadas/removidas
 - `/usuarios/login.php` deve responder 200 e aceitar somente usuario `adm` ou role `admin`
 - `/usuarios/health` deve responder JSON 200 quando o servico Usuarios, o core Postgres e o schema central estiverem ativos
+- `/login-senha/health` deve responder JSON 200 com banco e core ativos. Em uma transacao com rollback, a consulta usada por `Salvar acesso` deve aceitar `scope='geral'`, calcular o proximo `sort_order` e inserir uma credencial cifrada sem `inconsistent types deduced for parameter $1`; nenhum valor de senha pode aparecer em logs ou saidas do teste.
 - `/tarefa/login.php`
 - `/tarefa/health` deve responder JSON 200 quando o servico de Tarefa e seu Postgres estiverem ativos
 - `/tarefa/badge.php` deve responder JSON sem segredo com a quantidade de tarefas abertas

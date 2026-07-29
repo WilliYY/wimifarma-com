@@ -89,7 +89,7 @@ declare module 'express-session' {
 
 const env = process.env;
 const SERVICE_NAME = 'login-senha';
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.0.1';
 const MODULE_KEY = 'login_senha';
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
@@ -641,10 +641,10 @@ async function createEntry(req: Request, user: User, scope: VaultScope): Promise
   const result = await pgPool.query<{ id: string }>(
     `INSERT INTO login_senha_entries
       (scope, name, login_username, password_ciphertext, password_iv, password_tag, sort_order, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6,
+     VALUES ($1::varchar(20), $2, $3, $4, $5, $6,
              (SELECT COALESCE(MAX(sort_order), 0) + 10
                 FROM login_senha_entries
-               WHERE scope = $1 AND archived_at IS NULL),
+               WHERE scope = $1::varchar(20) AND archived_at IS NULL),
              $7)
      RETURNING id::text`,
     [scope, name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id],
