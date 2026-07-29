@@ -2,6 +2,36 @@
 
 Este documento registra decisoes tecnicas importantes. Sempre que uma decisao for tomada, alterada ou substituida, registre data aproximada, decisao, motivo, arquivos/modulos impactados e riscos futuros.
 
+## 2026-07-29 - Uma compra pode consumir varios codigos de Cashback rapido
+
+Decisao:
+
+- Permitir de um a dez codigos de Cashback rapido em `Novo cliente` e `Gastar/Usar CashBack`.
+- Somar os beneficios e aplicar a regra de compra minima sobre o total.
+- Consumir todos os vouchers em uma unica transacao e gerar somente um resgate, uma compra, um sucessor e um comprovante.
+- Manter compatibilidade com o envio escalar antigo de `codigo_cashback`.
+
+Motivo:
+
+- Atender clientes que chegam com mais de um cupom sem criar varias operacoes artificiais.
+- Evitar consumo parcial, cashback duplicado, varios comprovantes ou divergencia entre saldo e compra.
+
+Impacto:
+
+- `apps/cashback/src/server.ts`
+- `apps/cashback/src/quickVoucherBatch.ts`
+- `site/cashback/app.js`
+- `site/cashback/styles.css`
+- `cashback_quick_vouchers.redemption_id`
+- testes e documentacao do Cashback
+
+Riscos/cuidados:
+
+- Todos os vouchers devem ser travados em ordem deterministica e validados antes da escrita.
+- Qualquer codigo invalido, repetido, vencido, usado ou de outro cliente deve reverter o conjunto inteiro.
+- O limite de dez codigos e o custo de uma tentativa por codigo evitam abuso e excesso de consultas; o XP continua sendo concedido uma unica vez por operacao concluida.
+- A compra minima deve arredondar uma unica vez sobre o beneficio somado para manter a previa igual ao servidor.
+
 ## 2026-07-28 - Dados e historico do Cashback rapido ficam separados
 
 Decisao:

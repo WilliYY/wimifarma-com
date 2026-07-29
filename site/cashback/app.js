@@ -395,6 +395,7 @@
     }
 
     function refreshQuickVoucherForm(form) {
+        updateQuickVoucherListSummary(form);
         if (form.hasAttribute('data-redeem-form')) {
             updateRedeemForm(form);
             return;
@@ -405,115 +406,277 @@
         }
     }
 
-    function bindQuickVoucherCodes() {
-        document.querySelectorAll('[data-quick-voucher-code]').forEach(function (input) {
-            var form = input.closest('form');
-            var status = form ? form.querySelector('[data-quick-voucher-status]') : null;
-            var timer = null;
-            var requestVersion = 0;
+    function quickVoucherInputs(form) {
+        return Array.prototype.slice.call(form.querySelectorAll('[data-quick-voucher-code]'));
+    }
 
-            if (!form) {
+    function quickVoucherFormState(form) {
+        var inputs = quickVoucherInputs(form);
+        var state = {
+            hasCodes: false,
+            count: 0,
+            allValid: true,
+            hasError: false,
+            cashback: 0,
+            minimum: 0,
+            linkedClientIds: []
+        };
+        var cashbackCents = 0;
+        var multiplier = Number(form.getAttribute('data-multiplier') || 4) || 4;
+
+        inputs.forEach(function (input) {
+            var code = String(input.value || '').trim();
+            if (!code) {
                 return;
             }
 
-            function clearVoucherState() {
-                delete form.dataset.quickVoucherCashback;
-                delete form.dataset.quickVoucherMinimum;
-                delete form.dataset.quickVoucherClientId;
-                input.setCustomValidity('');
-                if (status) {
-                    status.textContent = 'Opcional';
-                    status.className = '';
-                }
-                refreshQuickVoucherForm(form);
+            state.hasCodes = true;
+            state.count += 1;
+            if (input.dataset.quickVoucherState !== 'valid' || input.validationMessage) {
+                state.allValid = false;
+            }
+            if (input.validationMessage && input.dataset.quickVoucherState !== 'pending') {
+                state.hasError = true;
+            }
+            cashbackCents += Math.round(Number(input.dataset.quickVoucherCashback || 0) * 100);
+            var linkedClientId = Number(input.dataset.quickVoucherClientId || 0);
+            if (linkedClientId > 0 && state.linkedClientIds.indexOf(linkedClientId) === -1) {
+                state.linkedClientIds.push(linkedClientId);
+            }
+        });
+
+        state.cashback = cashbackCents / 100;
+        state.minimum = Math.ceil(cashbackCents * multiplier) / 100;
+        return state;
+    }
+
+    function setQuickVoucherBaseState(input, state, statusText, statusClass, validityMessage) {
+        input.dataset.quickVoucherState = state;
+        input.dataset.quickVoucherStatus = statusText;
+        input.dataset.quickVoucherStatusClass = statusClass;
+        input.dataset.quickVoucherValidity = validityMessage;
+    }
+
+    function applyQuickVoucherInputValidity(form) {
+        var inputs = quickVoucherInputs(form);
+        var counts = {};
+        var selectedClient = form.querySelector('[name="cliente_id"]');
+        var selectedClientId = selectedClient ? Number(selectedClient.value || 0) : 0;
+
+        inputs.forEach(function (input) {
+            var code = String(input.value || '').trim();
+            if (code) {
+                counts[code] = (counts[code] || 0) + 1;
+            }
+        });
+
+        inputs.forEach(function (input) {
+            var code = String(input.value || '').trim();
+            var status = input.closest('[data-quick-voucher-entry]').querySelector('[data-quick-voucher-status]');
+            var invalidMessage = input.dataset.quickVoucherValidity || '';
+            var statusText = input.dataset.quickVoucherStatus || '4 antigo ou 5 atual';
+            var statusClass = input.dataset.quickVoucherStatusClass || '';
+            var linkedClientId = Number(input.dataset.quickVoucherClientId || 0);
+
+            if (code && counts[code] > 1) {
+                invalidMessage = 'Este codigo foi adicionado mais de uma vez.';
+                statusText = 'Codigo repetido';
+                statusClass = 'is-error';
+            } else if (input.dataset.quickVoucherState === 'valid' && form.hasAttribute('data-initial-purchase-form') && input.dataset.quickVoucherLinked === '1') {
+                invalidMessage = 'Codigo ja vinculado. Use o cliente cadastrado em Gastar/Usar Cashback.';
+                statusText = invalidMessage;
+                statusClass = 'is-error';
+            } else if (input.dataset.quickVoucherState === 'valid' && form.hasAttribute('data-redeem-form') && linkedClientId > 0 && linkedClientId !== selectedClientId) {
+                invalidMessage = 'Codigo vinculado a outro cliente. Selecione o cliente correto.';
+                statusText = invalidMessage;
+                statusClass = 'is-error';
             }
 
-            input.addEventListener('input', function () {
-                var code = String(input.value || '').replace(/\D/g, '').slice(0, 5);
-                input.value = code;
-                clearTimeout(timer);
-                requestVersion += 1;
-                var currentRequest = requestVersion;
-
-                if (!code) {
-                    clearVoucherState();
-                    return;
-                }
-
-                if (code.length < 4) {
-                    delete form.dataset.quickVoucherCashback;
-                    delete form.dataset.quickVoucherMinimum;
-                    delete form.dataset.quickVoucherClientId;
-                    input.setCustomValidity('Informe os 4 ou 5 digitos do codigo.');
-                    if (status) {
-                        status.textContent = 'Digite 4 antigos ou 5 atuais';
-                        status.className = 'is-pending';
-                    }
-                    refreshQuickVoucherForm(form);
-                    return;
-                }
-
-                input.setCustomValidity('Validando codigo...');
-                if (status) {
-                    status.textContent = 'Validando...';
-                    status.className = 'is-pending';
-                }
-
-                timer = window.setTimeout(function () {
-                    fetch('api-cashback-rapido.php?codigo=' + encodeURIComponent(code), {
-                        credentials: 'same-origin',
-                        headers: { 'Accept': 'application/json' }
-                    })
-                        .then(function (response) {
-                            return response.json().then(function (payload) {
-                                if (!response.ok) {
-                                    throw new Error(payload && payload.message ? payload.message : 'Codigo indisponivel.');
-                                }
-                                return payload;
-                            });
-                        })
-                        .then(function (payload) {
-                            if (currentRequest !== requestVersion || String(input.value || '') !== code) {
-                                return;
-                            }
-                            var selectedClient = form.querySelector('[name="cliente_id"]');
-                            var selectedClientId = selectedClient ? Number(selectedClient.value || 0) : 0;
-                            var linkedClientId = Number(payload.cliente_id || 0);
-                            var invalidMessage = '';
-
-                            if (form.hasAttribute('data-initial-purchase-form') && payload.vinculado) {
-                                invalidMessage = 'Codigo ja vinculado. Use o cliente cadastrado em Gastar/Usar Cashback.';
-                            } else if (form.hasAttribute('data-redeem-form') && linkedClientId > 0 && linkedClientId !== selectedClientId) {
-                                invalidMessage = 'Codigo vinculado a outro cliente. Selecione o cliente correto.';
-                            }
-
-                            form.dataset.quickVoucherCashback = String(payload.cashback_raw || 0);
-                            form.dataset.quickVoucherMinimum = String(payload.compra_minima_raw || 0);
-                            form.dataset.quickVoucherClientId = String(linkedClientId || 0);
-                            input.setCustomValidity(invalidMessage);
-                            if (status) {
-                                status.textContent = invalidMessage || ('Valido ate ' + payload.validade + ': ' + payload.cashback + ' | compra minima ' + payload.compra_minima);
-                                status.className = invalidMessage ? 'is-error' : 'is-valid';
-                            }
-                            refreshQuickVoucherForm(form);
-                        })
-                        .catch(function (error) {
-                            if (currentRequest !== requestVersion || String(input.value || '') !== code) {
-                                return;
-                            }
-                            delete form.dataset.quickVoucherCashback;
-                            delete form.dataset.quickVoucherMinimum;
-                            delete form.dataset.quickVoucherClientId;
-                            input.setCustomValidity(error.message || 'Codigo indisponivel.');
-                            if (status) {
-                                status.textContent = error.message || 'Codigo indisponivel.';
-                                status.className = 'is-error';
-                            }
-                            refreshQuickVoucherForm(form);
-                        });
-                }, code.length === 4 ? 450 : 160);
-            });
+            input.setCustomValidity(invalidMessage);
+            status.textContent = statusText;
+            status.className = statusClass;
         });
+    }
+
+    function updateQuickVoucherListSummary(form) {
+        applyQuickVoucherInputValidity(form);
+        var state = quickVoucherFormState(form);
+        var summary = form.querySelector('[data-quick-voucher-total]');
+        if (!summary) {
+            return;
+        }
+
+        if (!state.hasCodes) {
+            summary.textContent = 'Nenhum codigo aplicado';
+            summary.className = 'quick-code-list-summary';
+        } else if (state.hasError) {
+            summary.textContent = 'Revise os codigos destacados antes de continuar';
+            summary.className = 'quick-code-list-summary is-error';
+        } else if (!state.allValid) {
+            summary.textContent = state.count + (state.count === 1 ? ' codigo aguardando validacao' : ' codigos aguardando validacao');
+            summary.className = 'quick-code-list-summary is-pending';
+        } else {
+            summary.textContent = state.count + (state.count === 1 ? ' codigo valido: ' : ' codigos validos: ') + formatMoney(state.cashback) + ' | compra minima ' + formatMoney(state.minimum);
+            summary.className = 'quick-code-list-summary is-valid';
+        }
+    }
+
+    function clearQuickVoucherData(input) {
+        delete input.dataset.quickVoucherCashback;
+        delete input.dataset.quickVoucherMinimum;
+        delete input.dataset.quickVoucherClientId;
+        delete input.dataset.quickVoucherLinked;
+    }
+
+    function bindQuickVoucherInput(input) {
+        if (input.dataset.quickVoucherBound === '1') {
+            return;
+        }
+        input.dataset.quickVoucherBound = '1';
+        var form = input.closest('form');
+        var timer = null;
+        var requestVersion = 0;
+        if (!form) {
+            return;
+        }
+
+        setQuickVoucherBaseState(input, 'empty', '4 antigo ou 5 atual', '', '');
+        input.addEventListener('input', function () {
+            var code = String(input.value || '').replace(/\D/g, '').slice(0, 5);
+            input.value = code;
+            clearTimeout(timer);
+            requestVersion += 1;
+            var currentRequest = requestVersion;
+            clearQuickVoucherData(input);
+
+            if (!code) {
+                setQuickVoucherBaseState(input, 'empty', '4 antigo ou 5 atual', '', '');
+                refreshQuickVoucherForm(form);
+                return;
+            }
+
+            if (code.length < 4) {
+                setQuickVoucherBaseState(input, 'pending', 'Digite 4 antigos ou 5 atuais', 'is-pending', 'Informe os 4 ou 5 digitos do codigo.');
+                refreshQuickVoucherForm(form);
+                return;
+            }
+
+            setQuickVoucherBaseState(input, 'pending', 'Validando...', 'is-pending', 'Validando codigo...');
+            refreshQuickVoucherForm(form);
+            if (quickVoucherInputs(form).filter(function (candidate) {
+                return String(candidate.value || '').trim() === code;
+            }).length > 1) {
+                return;
+            }
+
+            timer = window.setTimeout(function () {
+                fetch('api-cashback-rapido.php?codigo=' + encodeURIComponent(code), {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                })
+                    .then(function (response) {
+                        return response.json().then(function (payload) {
+                            if (!response.ok) {
+                                throw new Error(payload && payload.message ? payload.message : 'Codigo indisponivel.');
+                            }
+                            return payload;
+                        });
+                    })
+                    .then(function (payload) {
+                        if (currentRequest !== requestVersion || String(input.value || '') !== code) {
+                            return;
+                        }
+                        input.dataset.quickVoucherCashback = String(payload.cashback_raw || 0);
+                        input.dataset.quickVoucherMinimum = String(payload.compra_minima_raw || 0);
+                        input.dataset.quickVoucherClientId = String(Number(payload.cliente_id || 0));
+                        input.dataset.quickVoucherLinked = payload.vinculado ? '1' : '0';
+                        setQuickVoucherBaseState(
+                            input,
+                            'valid',
+                            'Valido ate ' + payload.validade + ': ' + payload.cashback + ' | compra minima ' + payload.compra_minima,
+                            'is-valid',
+                            ''
+                        );
+                        refreshQuickVoucherForm(form);
+                    })
+                    .catch(function (error) {
+                        if (currentRequest !== requestVersion || String(input.value || '') !== code) {
+                            return;
+                        }
+                        clearQuickVoucherData(input);
+                        setQuickVoucherBaseState(input, 'error', error.message || 'Codigo indisponivel.', 'is-error', error.message || 'Codigo indisponivel.');
+                        refreshQuickVoucherForm(form);
+                    });
+            }, code.length === 4 ? 450 : 160);
+        });
+    }
+
+    function refreshQuickVoucherEntryIndexes(list) {
+        var entries = Array.prototype.slice.call(list.querySelectorAll('[data-quick-voucher-entry]'));
+        var addButton = list.querySelector('[data-add-quick-voucher]');
+        var maxCodes = Number(list.getAttribute('data-max-codes')) || 10;
+
+        entries.forEach(function (entry, index) {
+            entry.querySelector('[data-quick-code-index]').textContent = 'Codigo ' + (index + 1);
+            entry.querySelector('[data-remove-quick-voucher]').hidden = entries.length === 1;
+        });
+        if (addButton) {
+            addButton.disabled = entries.length >= maxCodes;
+            addButton.title = addButton.disabled ? 'Limite de ' + maxCodes + ' codigos atingido' : 'Adicionar outro codigo';
+        }
+    }
+
+    function bindQuickVoucherLists() {
+        document.querySelectorAll('[data-quick-voucher-list]').forEach(function (list) {
+            if (list.dataset.quickVoucherListBound === '1') {
+                return;
+            }
+            list.dataset.quickVoucherListBound = '1';
+            var form = list.closest('form');
+            var entriesRoot = list.querySelector('[data-quick-voucher-entries]');
+            var addButton = list.querySelector('[data-add-quick-voucher]');
+            if (!form || !entriesRoot || !addButton) {
+                return;
+            }
+
+            addButton.addEventListener('click', function () {
+                var entries = list.querySelectorAll('[data-quick-voucher-entry]');
+                var maxCodes = Number(list.getAttribute('data-max-codes')) || 10;
+                if (entries.length >= maxCodes) {
+                    return;
+                }
+                var clone = entries[0].cloneNode(true);
+                var input = clone.querySelector('[data-quick-voucher-code]');
+                input.value = '';
+                input.removeAttribute('data-quick-voucher-bound');
+                clearQuickVoucherData(input);
+                clone.querySelector('[data-quick-voucher-status]').textContent = '4 antigo ou 5 atual';
+                entriesRoot.appendChild(clone);
+                bindQuickVoucherInput(input);
+                refreshQuickVoucherEntryIndexes(list);
+                refreshQuickVoucherForm(form);
+                input.focus();
+            });
+
+            list.addEventListener('click', function (event) {
+                var removeButton = event.target.closest('[data-remove-quick-voucher]');
+                if (!removeButton) {
+                    return;
+                }
+                var entry = removeButton.closest('[data-quick-voucher-entry]');
+                if (entry && list.querySelectorAll('[data-quick-voucher-entry]').length > 1) {
+                    entry.remove();
+                    refreshQuickVoucherEntryIndexes(list);
+                    refreshQuickVoucherForm(form);
+                }
+            });
+
+            refreshQuickVoucherEntryIndexes(list);
+        });
+    }
+
+    function bindQuickVoucherCodes() {
+        document.querySelectorAll('[data-quick-voucher-code]').forEach(bindQuickVoucherInput);
     }
 
     function bindInitialPurchasePreview() {
@@ -523,7 +686,6 @@
             var charge = form.querySelector('.js-initial-charge');
             var cashbackValue = form.querySelector('.js-initial-cashback');
             var preview = form.querySelector('.js-initial-preview');
-            var codeInput = form.querySelector('[name="codigo_cashback"]');
             var defaultPercent = Number(String(form.getAttribute('data-default-percent') || '5').replace(',', '.')) || 5;
 
             if (!valueInput || !percentInput || !preview) {
@@ -534,13 +696,13 @@
                 var total = parseMoney(valueInput.value);
                 var percent = parseMoney(percentInput.value);
                 var cashback = total * (percent / 100);
-                var quickCode = codeInput ? String(codeInput.value || '').trim() : '';
-                var quickCashback = Number(form.dataset.quickVoucherCashback || 0);
-                var minimumPurchase = Number(form.dataset.quickVoucherMinimum || 0);
+                var quickState = quickVoucherFormState(form);
+                var quickCashback = quickState.cashback;
+                var minimumPurchase = quickState.minimum;
                 var chargedTotal = total;
 
-                if (quickCode) {
-                    if (quickCashback <= 0) {
+                if (quickState.hasCodes) {
+                    if (!quickState.allValid || quickCashback <= 0) {
                         if (charge) {
                             charge.textContent = formatMoney(total);
                         }
@@ -573,7 +735,7 @@
                         cashbackValue.textContent = formatMoney(cashback);
                     }
                     preview.className = 'live-preview full js-initial-preview ok';
-                    preview.textContent = 'Codigo aplicado: descontar ' + formatMoney(quickCashback) + ', cobrar ' + formatMoney(chargedTotal) + ' e gerar o proximo codigo de ' + formatMoney(cashback) + '.';
+                    preview.textContent = quickState.count + (quickState.count === 1 ? ' codigo aplicado: descontar ' : ' codigos aplicados: descontar ') + formatMoney(quickCashback) + ', cobrar ' + formatMoney(chargedTotal) + ' e gerar um novo codigo de ' + formatMoney(cashback) + '.';
                     return;
                 }
 
@@ -602,13 +764,13 @@
     }
 
     function updateRedeemForm(form) {
+        updateQuickVoucherListSummary(form);
         var purchaseInput = form.querySelector('[name="valor_compra"]');
         var redeemInput = form.querySelector('[name="valor_resgate"]');
         var preview = form.querySelector('.js-redeem-preview');
         var applied = form.querySelector('.js-redeem-auto');
         var charged = form.querySelector('.js-amount-charged');
         var newCashback = form.querySelector('.js-new-cashback');
-        var quickCodeInput = form.querySelector('[name="codigo_cashback"]');
         var multiplier = Number(form.getAttribute('data-multiplier')) || 4;
         var percent = Number(String(form.getAttribute('data-default-percent') || '5').replace(',', '.')) || 5;
         var available = Number(form.getAttribute('data-available-balance')) || 0;
@@ -618,18 +780,15 @@
         }
 
         var purchase = parseMoney(purchaseInput.value);
-        var quickCode = quickCodeInput ? String(quickCodeInput.value || '').trim() : '';
-        var quickCashback = Number(form.dataset.quickVoucherCashback || 0);
-        var minimumPurchase = Number(form.dataset.quickVoucherMinimum || 0);
-        var linkedClientId = Number(form.dataset.quickVoucherClientId || 0);
-        var selectedClientInput = form.querySelector('[name="cliente_id"]');
-        var selectedClientId = selectedClientInput ? Number(selectedClientInput.value || 0) : 0;
-        if (quickCode) {
+        var quickState = quickVoucherFormState(form);
+        var quickCashback = quickState.cashback;
+        var minimumPurchase = quickState.minimum;
+        if (quickState.hasCodes) {
             available = quickCashback;
         }
         var maxByRule = Math.floor((purchase / multiplier) * 100) / 100;
-        var redeem = quickCode
-            ? (quickCashback > 0 && purchase >= minimumPurchase ? quickCashback : 0)
+        var redeem = quickState.hasCodes
+            ? (quickState.allValid && quickCashback > 0 && purchase >= minimumPurchase ? quickCashback : 0)
             : Math.max(0, Math.min(available, maxByRule));
         var charge = Math.max(0, purchase - redeem);
         var cashback = charge * (percent / 100);
@@ -655,26 +814,19 @@
             return;
         }
 
-        if (quickCode) {
-            if (quickCashback <= 0) {
+        if (quickState.hasCodes) {
+            if (!quickState.allValid || quickCashback <= 0) {
                 preview.className = 'live-preview full js-redeem-preview';
-                preview.textContent = 'Valide o codigo para calcular o desconto.';
+                preview.textContent = 'Valide todos os codigos para calcular o desconto.';
                 return;
             }
-            if (linkedClientId > 0 && linkedClientId !== selectedClientId) {
-                quickCodeInput.setCustomValidity('Codigo vinculado a outro cliente.');
-                preview.className = 'live-preview full js-redeem-preview blocked';
-                preview.textContent = 'Selecione o cliente correto para usar este codigo.';
-                return;
-            }
-            quickCodeInput.setCustomValidity('');
             if (purchase < minimumPurchase) {
                 preview.className = 'live-preview full js-redeem-preview blocked';
-                preview.textContent = 'Compra minima para usar este codigo: ' + formatMoney(minimumPurchase) + '.';
+                preview.textContent = 'Compra minima para usar os codigos: ' + formatMoney(minimumPurchase) + '.';
                 return;
             }
             preview.className = 'live-preview full js-redeem-preview ok';
-            preview.textContent = 'Codigo aplicado: descontar ' + formatMoney(quickCashback) + ', cobrar ' + formatMoney(charge) + ' e gerar o proximo codigo de ' + formatMoney(cashback) + '.';
+            preview.textContent = quickState.count + (quickState.count === 1 ? ' codigo aplicado: descontar ' : ' codigos aplicados: descontar ') + formatMoney(quickCashback) + ', cobrar ' + formatMoney(charge) + ' e gerar um novo codigo de ' + formatMoney(cashback) + '.';
             return;
         }
 
@@ -1436,6 +1588,7 @@
         bindQuickCashbackForm();
         bindInitialPurchasePreview();
         bindRedeemPreview();
+        bindQuickVoucherLists();
         bindQuickVoucherCodes();
         bindSmartPrinter();
         triggerRequestedReceiptPrint();
