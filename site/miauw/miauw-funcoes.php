@@ -4765,6 +4765,11 @@ function miauw_password_matches(array $user, string $password): bool
 
 function miauw_user_can_access_module(array $user, string $moduleKey = 'miauw'): bool
 {
+    $moduleKey = strtolower(trim($moduleKey));
+    if ($moduleKey === 'miauw') {
+        return true;
+    }
+
     $username = strtolower(trim((string) ($user['username'] ?? '')));
     $role = strtolower(trim((string) ($user['role'] ?? '')));
     if ($username === 'adm' || $role === 'admin') {

@@ -2327,6 +2327,7 @@ $homeModulePermissions = wf_home_module_permissions(
     array_map(static fn (array $module): string => (string) ($module['module_key'] ?? ''), $modules),
     array('login_senha')
 );
+$homeModulePermissions['miauw'] = true;
 $modules = array_values(array_filter(
     $modules,
     static function (array $module) use ($homeModulePermissions, $homeUserIdentity, $homeUserLogin): bool {

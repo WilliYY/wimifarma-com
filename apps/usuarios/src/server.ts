@@ -172,6 +172,7 @@ const MODULES: ModuleDefinition[] = [
 ];
 
 const MODULE_KEYS = new Set(MODULES.map((module) => module.key));
+const ALWAYS_ALLOWED_MODULE_KEYS = new Set(['miauw']);
 const ROLE_OPTIONS = ['user', 'gerente', 'admin', 'farmacia'];
 const WHATSAPP_MODULES: WhatsappModuleDefinition[] = [
   { key: 'cashback', label: 'Cashback' },
@@ -381,6 +382,7 @@ function canManageUsers(user: User | null | undefined): boolean {
 }
 
 async function canAccessModule(user: User, moduleKey: string): Promise<boolean> {
+  if (ALWAYS_ALLOWED_MODULE_KEYS.has(moduleKey)) return true;
   const username = normalizeUsername(user.username);
   const role = normalizeUsername(user.role);
   if (username === 'adm' || role === 'admin') return true;
@@ -562,6 +564,9 @@ function selectedModuleKeys(input: unknown): Set<string> {
       selected.add(key);
     }
   }
+  for (const key of ALWAYS_ALLOWED_MODULE_KEYS) {
+    selected.add(key);
+  }
   return selected;
 }
 
@@ -596,7 +601,8 @@ function permissionsForView(row: UserViewRow): Record<string, boolean> {
   const permissions = row.permissions || {};
   const result: Record<string, boolean> = {};
   for (const module of MODULES) {
-    result[module.key] = explicitCount === 0 ? true : Boolean(permissions[module.key]);
+    result[module.key] = ALWAYS_ALLOWED_MODULE_KEYS.has(module.key)
+      || (explicitCount === 0 ? true : Boolean(permissions[module.key]));
   }
   return result;
 }
@@ -1361,6 +1367,7 @@ async function saveModulePermissions(
   client: pg.Pool | pg.PoolClient = corePgPool,
 ): Promise<void> {
   for (const module of MODULES) {
+    const canAccess = ALWAYS_ALLOWED_MODULE_KEYS.has(module.key) || selected.has(module.key);
     await client.query(
       `INSERT INTO core_user_module_permissions (user_id, module_key, can_access, granted_by, granted_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -1368,7 +1375,7 @@ async function saveModulePermissions(
          can_access = EXCLUDED.can_access,
          granted_by = EXCLUDED.granted_by,
          updated_at = NOW()`,
-      [targetUserId, module.key, selected.has(module.key), actorUserId],
+      [targetUserId, module.key, canAccess, actorUserId],
     );
   }
 }
@@ -2155,7 +2162,13 @@ function renderXpOptions(employees: XpEmployeeRow[], selectedId: string | null):
 }
 
 function renderModuleChecks(name: string, permissions: Record<string, boolean>, disabled = false): string {
-  return `<div class="users-modules">${MODULES.map((module) => `<label class="users-check"><input type="checkbox" name="${e(name)}" value="${e(module.key)}"${permissions[module.key] ? ' checked' : ''}${disabled ? ' disabled' : ''}><span>${e(module.label)}</span></label>`).join('')}</div>`;
+  const checks = MODULES.map((module) => {
+    const alwaysAllowed = ALWAYS_ALLOWED_MODULE_KEYS.has(module.key);
+    const checked = alwaysAllowed || permissions[module.key];
+    const inputDisabled = disabled || alwaysAllowed;
+    return `<label class="users-check${alwaysAllowed ? ' is-required' : ''}"><input type="checkbox" name="${e(name)}" value="${e(module.key)}"${checked ? ' checked' : ''}${inputDisabled ? ' disabled' : ''}><span>${e(module.label)}</span>${alwaysAllowed ? '<small class="users-required-access">Sempre</small>' : ''}</label>`;
+  });
+  return `<div class="users-modules">${checks.join('')}</div>`;
 }
 
 function renderWhatsappModuleChecks(selectedKeys: string[]): string {

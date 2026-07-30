@@ -1188,7 +1188,8 @@ Manter Postgres/Redis como fonte oficial e seguir migracao JS -> TypeScript por 
 
 - Login PHP interno usa `core_users` por `WIMIFARMA_INTERNAL_AUTH_PROVIDER=core`.
 - Rollback MySQL fica opt-in por `WIMIFARMA_INTERNAL_AUTH_MYSQL_FALLBACK_ENABLED=true`.
-- Chat exige usuario interno autenticado.
+- Chat exige usuario interno ativo e autenticado. O modulo interno `miauw` e sempre liberado para essas contas, mesmo quando existem permissoes explicitas para outros modulos ou uma linha historica `can_access=false`.
+- A liberacao permanente nao inclui o bridge/painel `miauw_whatsapp`, que continua separado e controlado por permissao individual.
 - `/miauw/diagnostico.php` e `/miauw/treino.php` exigem username `adm`, role `admin` ou role `gerente`.
 - `api.php` exige sessao e CSRF para escrita/interacao do operador.
 - Ponte Node/WhatsApp exige tokens internos (`MIAUW_AGENT_INTERNAL_TOKEN` ou `MIAUW_GUARDIAN_TOKEN`).

@@ -21,7 +21,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Gestao para contas a pagar manuais, itens de composicao, pagamentos parciais, vencimentos, categorias livres e total pago por mes;
 - XP para gamificar vendas dos atendentes com cadastro de funcionarios, fotos, pontos e niveis;
 - Tarefas internas;
-- Miauby, assistente interno com integracao OpenAI e recursos de diagnostico.
+- Miauby, assistente interno com integracao OpenAI e recursos de diagnostico, liberado automaticamente para toda conta ativa autenticada; o painel Miauby WhatsApp continua com permissao individual separada.
 - Miauby Whatsapp para acompanhar canal, webhook, fila, outbox, Evolution API, Meta Cloud API e automacoes n8n de smoke/watchdog, chegada de pedidos e fechamento de caixa por endpoint interno tokenizado.
 
 O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evoluir em uma VPS mais flexivel, com Docker, controle de versao, deploy rastreavel e espaco para novos modulos.

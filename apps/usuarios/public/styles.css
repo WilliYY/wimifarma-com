@@ -1118,6 +1118,19 @@ a {
   hyphens: none;
 }
 
+.users-check.is-required {
+  border-color: #92d8c3;
+  background: #effbf7;
+}
+
+.users-required-access {
+  margin-left: auto;
+  color: #087052;
+  font-size: 0.65rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .users-create-form .users-modules {
   grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
 }
