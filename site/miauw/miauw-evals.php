@@ -406,6 +406,29 @@ miauw_eval_add('fase17_treinador_compilado', static function (): void {
     }
 });
 
+miauw_eval_add('fase17_treino_palavra_numerica', static function (): void {
+    $words = miauw_training_words('sangria 800');
+
+    miauw_eval_assert(in_array('800', $words, true), 'Valor numerico precisa continuar texto no roteador de treino.');
+    foreach ($words as $word) {
+        miauw_eval_assert(is_string($word), 'Toda palavra do roteador de treino precisa ser string.');
+    }
+
+    $score = miauw_training_row_score(
+        array(
+            'pergunta' => 'to perdido',
+            'resposta_ideal' => 'Me diga a tela e a acao feita.',
+            'categoria' => 'geral',
+            'estilo' => 'direto',
+        ),
+        'sangria 800',
+        $words,
+        array()
+    );
+
+    miauw_eval_assert(is_array($score), 'Comando com valor numerico nao pode quebrar a avaliacao de treino.');
+});
+
 miauw_eval_add('fase10_persona_contract_preservado', static function (): void {
     $contract = miauw_agent_personality_contract();
     $json = json_encode($contract, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';

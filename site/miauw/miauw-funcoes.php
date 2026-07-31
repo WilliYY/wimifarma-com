@@ -5572,7 +5572,7 @@ function miauw_training_words(string $text): array
         $selected[$word] = true;
     }
 
-    return array_keys($selected);
+    return array_map('strval', array_keys($selected));
 }
 
 function miauw_training_row_score(array $row, string $message, array $messageWords, array $route): array
@@ -5606,6 +5606,7 @@ function miauw_training_row_score(array $row, string $message, array $messageWor
     }
 
     foreach ($messageWords as $word) {
+        $word = trim((string) $word);
         $hit = false;
         if ($word !== '' && strpos($questionNormalized, $word) !== false) {
             $score += 8;
