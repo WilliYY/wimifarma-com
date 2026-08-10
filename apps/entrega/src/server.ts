@@ -16,6 +16,7 @@ import {
   previousMonth,
   validateCommissionPaymentInput,
   validateDeliveryInput,
+  validateResponsibleUserId,
   type HistoryFilters,
   type SessionUser,
 } from './domain.js';
@@ -88,7 +89,7 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 
 const SERVICE_NAME = 'entrega';
-const SERVICE_VERSION = '1.1.0';
+const SERVICE_VERSION = '1.2.0';
 const TIME_ZONE = 'America/Sao_Paulo';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/entrega');
 const PORT = Number.parseInt(env.PORT || '3980', 10);
@@ -512,7 +513,17 @@ const DELIVERY_SELECT = `
     FROM deliveries d
     JOIN delivery_commissions c ON c.delivery_id = d.id
     LEFT JOIN delivery_commission_payment_items pi ON pi.commission_id = c.id
-    LEFT JOIN delivery_commission_payments p ON p.id = pi.payment_id`;
+     LEFT JOIN delivery_commission_payments p ON p.id = pi.payment_id`;
+
+async function deliveryById(id: number): Promise<DeliveryRow | null> {
+  const result = await deliveryPool.query<DeliveryRow & QueryResultRow>(
+    `${DELIVERY_SELECT}
+      WHERE d.id = $1
+      LIMIT 1`,
+    [id],
+  );
+  return result.rows[0] || null;
+}
 
 async function deliveryForUser(id: number, user: SessionUser, lockClient?: PoolClient): Promise<DeliveryRow | null> {
   const client = lockClient || deliveryPool;
@@ -798,7 +809,7 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
     loadMineSummary(user.id, selectedMonth),
     manager ? loadSummary(null, selectedMonth) : Promise.resolve({ generated: 0, active: 0, cancelled: 0, commissionCents: 0, pendingCommissionCents: 0, paidCommissionCents: 0 }),
     manager ? loadLeaders(selectedMonth) : Promise.resolve([]),
-    manager ? loadUsers() : Promise.resolve([]),
+    loadUsers(),
     manager ? loadCommissionOverview(selectedMonth) : Promise.resolve([]),
     manager ? loadRecentPayments(selectedMonth) : Promise.resolve([]),
     loadHistory(filters, user, selectedMonth),
@@ -843,6 +854,12 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
     setFlash(req, 'error', parsed.errors.join(' '));
     return res.redirect(`${BASE_PATH}/`);
   }
+  const responsibleUserId = validateResponsibleUserId(req.body.responsible_user_id);
+  const responsibleUser = responsibleUserId ? await eligibleUserById(responsibleUserId) : null;
+  if (!responsibleUser) {
+    setFlash(req, 'error', 'Selecione um usuario ativo para ficar responsavel pela entrega.');
+    return res.redirect(`${BASE_PATH}/`);
+  }
 
   const client = await deliveryPool.connect();
   let deliveryId = 0;
@@ -855,7 +872,7 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
        ) VALUES ($1::uuid, $2, $3, $4, $5, $6)
        ON CONFLICT (request_token) DO NOTHING
        RETURNING id::text, created_by_user_id::text, status`,
-      [req.session.creationToken, parsed.value.customerName, parsed.value.customerPhone, parsed.value.address, user.id, user.displayName],
+       [req.session.creationToken, parsed.value.customerName, parsed.value.customerPhone, parsed.value.address, responsibleUser.id, responsibleUser.display_name],
     );
     let row = inserted.rows[0];
     if (!row) {
@@ -864,7 +881,7 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
         [req.session.creationToken],
       );
       row = existing.rows[0];
-      if (!row || Number(row.created_by_user_id) !== user.id) throw new Error('request_token_conflict');
+      if (!row || Number(row.created_by_user_id) !== Number(responsibleUser.id)) throw new Error('request_token_conflict');
     } else {
       created = true;
     }
@@ -875,7 +892,7 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
         `INSERT INTO delivery_commissions (delivery_id, user_id, user_name, amount_cents)
          VALUES ($1, $2, $3, 100)
          RETURNING id`,
-        [deliveryId, user.id, user.displayName],
+        [deliveryId, responsibleUser.id, responsibleUser.display_name],
       );
       if (commission.rowCount !== 1) throw new Error('commission_not_created');
       await insertAudit(client, deliveryId, user, 'DELIVERY_CREATED', {
@@ -883,6 +900,10 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
         customer_phone: parsed.value.customerPhone,
         address: parsed.value.address,
         commission_cents: 100,
+        responsible_user_id: Number(responsibleUser.id),
+        responsible_user_name: responsibleUser.display_name,
+        registered_by_user_id: user.id,
+        registered_by_name: user.displayName,
       });
     }
     await client.query('COMMIT');
@@ -894,11 +915,15 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
   }
 
   if (created) {
-    await logCoreAudit(user.id, 'DELIVERY_CREATED', deliveryId, 'Entrega criada com comissao unica de R$ 1,00.', { commission_cents: 100 });
+    await logCoreAudit(user.id, 'DELIVERY_CREATED', deliveryId, `Entrega criada para ${responsibleUser.display_name} com comissao unica de R$ 1,00.`, {
+      commission_cents: 100,
+      responsible_user_id: Number(responsibleUser.id),
+      responsible_user_name: responsibleUser.display_name,
+    });
   }
   delete req.session.creationToken;
   req.session.printDeliveryId = deliveryId;
-  setFlash(req, 'success', created ? 'Entrega registrada. A impressao sera aberta agora.' : 'A entrega ja estava registrada; nenhum valor foi duplicado.');
+  setFlash(req, 'success', created ? `Entrega registrada para ${responsibleUser.display_name}. A impressao sera aberta agora.` : 'A entrega ja estava registrada; nenhum valor foi duplicado.');
   await saveSession(req);
   return res.redirect(`${BASE_PATH}/print/${deliveryId}`);
 }));
@@ -1181,13 +1206,12 @@ app.post(`${BASE_PATH}/cancel`, asyncRoute(async (req, res) => {
 }));
 
 app.get(`${BASE_PATH}/print/:id`, asyncRoute(async (req, res) => {
-  const user = await requireUser(req, res);
-  if (!user) return;
+  if (!(await requireUser(req, res))) return;
   const deliveryId = parsePositiveId(req.params.id);
   if (!deliveryId || req.session.printDeliveryId !== deliveryId) return res.redirect(`${BASE_PATH}/`);
   delete req.session.printDeliveryId;
   await saveSession(req);
-  const delivery = await deliveryForUser(deliveryId, user);
+  const delivery = await deliveryById(deliveryId);
   if (!delivery || delivery.status !== 'ACTIVE') {
     setFlash(req, 'error', 'O comprovante nao esta disponivel para impressao.');
     return res.redirect(`${BASE_PATH}/`);

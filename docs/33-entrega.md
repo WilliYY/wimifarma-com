@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e contabiliza R$ 1,00 de comissao para o usuario que criou cada entrega valida.
+O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e contabiliza R$ 1,00 de comissao para o usuario ativo escolhido como responsavel por cada entrega valida.
 
 ## Arquitetura
 
@@ -20,14 +20,15 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 - `id BIGSERIAL` e o numero sequencial, exibido como `#000123`.
 - `request_token UUID UNIQUE` torna a criacao idempotente.
 - Nome, telefone/WhatsApp e endereco sao obrigatorios.
-- `created_by_user_id`, `created_by_name` e `created_at` sao permanentes.
+- `created_by_user_id` e `created_by_name` preservam o responsavel escolhido no cadastro; o ator real da operacao fica na auditoria.
+- Responsavel e `created_at` sao permanentes depois da criacao.
 - `status` aceita `ACTIVE` e `CANCELLED`; cancelamento grava ator e horario.
 
 ### `delivery_commissions`
 
 - `delivery_id UNIQUE` garante uma linha por entrega.
 - `amount_cents=100` e protegido por CHECK e trigger.
-- A comissao pertence ao criador original.
+- A comissao pertence ao responsavel escolhido na criacao.
 - Cancelar muda o status para `CANCELLED`; nao apaga nem zera o valor historico.
 
 ### Pagamento de comissao
@@ -47,19 +48,20 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 
 ## Permissoes
 
-- Toda conta ativa abre e cria entrega.
-- Usuario comum consulta, edita dados do cliente e reimprime somente entregas proprias.
+- Toda conta ativa abre, cria entrega e escolhe como responsavel uma conta humana ativa da Wimifarma.
+- Usuario comum consulta, edita dados do cliente e reimprime somente entregas atribuidas a ele.
 - `adm`, `admin` e `gerente` consultam equipe, filtram por usuario, editam, cancelam antes da baixa e pagam comissoes.
 - Somente gestores veem o painel, executam a baixa e reimprimem o relatorio de pagamento.
-- A interface nunca altera responsavel, data/hora original, numero ou comissao.
+- A interface escolhe o responsavel somente na criacao e nunca o altera depois, assim como data/hora original, numero ou comissao.
 
 ## Criacao idempotente
 
 1. A pagina emite UUID ligado a sessao.
-2. O POST valida sessao, CSRF, UUID e dados.
-3. Entrega, comissao e auditoria entram na mesma transacao.
-4. Clique duplo ou retry encontra o UUID existente e nao duplica.
-5. A sessao autoriza uma unica abertura da rota de impressao.
+2. O POST valida sessao, CSRF, UUID, dados e revalida no core o responsavel ativo escolhido.
+3. Entrega e comissao ficam com o responsavel selecionado; a auditoria guarda o usuario realmente logado como ator da acao.
+4. Entrega, comissao e auditoria entram na mesma transacao.
+5. Clique duplo ou retry encontra o UUID existente e nao duplica.
+6. A sessao autoriza uma unica abertura da rota de impressao.
 
 ## Edicao, reimpressao e cancelamento
 
@@ -91,7 +93,9 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 
 - Dialogo local do navegador no computador atual.
 - Papel de 80 mm, bloco de 76 mm e altura variavel.
-- Mostra marca, `ENTREGA`, numero, cliente, telefone, endereco, responsavel e data/hora.
+- O cadastro mostra uma previa ao vivo com cliente, telefone, endereco e responsavel antes de salvar.
+- A previa e o cupom final usam `apps/entrega/public/logo-wimifarma-receipt.png`, convertida para preto e branco no CSS termico.
+- Mostra marca, `ENTREGA`, numero, cliente, telefone, endereco, responsavel pela entrega e data/hora.
 - Nao mostra comissao nem afirma que o papel saiu fisicamente.
 - O relatorio de pagamento usa o mesmo papel e mostra somente usuario, mes, entregas pagas, total, numero do lote, pagador e data/hora; nao lista clientes, telefones ou enderecos.
 

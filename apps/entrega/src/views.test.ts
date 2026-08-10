@@ -46,7 +46,10 @@ function model(manager: boolean): DashboardViewModel {
     leaders: [],
     commissionOverview: [{ user_id: '7', user_name: 'Ana', pending_count: '1', pending_cents: '100', paid_count: '1', paid_cents: '100' }],
     recentPayments: [payment],
-    users: [],
+    users: [
+      { id: '7', display_name: 'Ana', username: 'ana' },
+      { id: '8', display_name: 'Bruno', username: 'bruno' },
+    ],
     filters: { query: '', period: 'month', startDate: '', endDate: '', userId: null, status: '', page: 1 },
     history: [delivery],
     historyTotal: 1,
@@ -72,6 +75,15 @@ test('painel gestor mostra resumo geral e equipe', () => {
   assert.match(html, /Pagar e imprimir/);
 });
 
+test('cadastro identifica o responsavel e mostra previa fiel do cupom', () => {
+  const html = renderDashboard(model(true));
+  assert.match(html, /name="responsible_user_id"/);
+  assert.match(html, /value="7"[^>]* selected/);
+  assert.match(html, /data-delivery-preview/);
+  assert.match(html, /data-preview-responsible>Ana</);
+  assert.match(html, /logo-wimifarma-receipt\.png/);
+});
+
 test('entrega com comissao paga nao oferece cancelamento', () => {
   const paidDelivery: DeliveryRow = { ...delivery, commission_payment_id: '12', commission_paid_at: payment.paid_at };
   const managerModel = model(true);
@@ -87,6 +99,8 @@ test('comprovante escapa dados e nao revela comissao', () => {
   assert.match(html, /Maria &lt;Teste&gt;/);
   assert.doesNotMatch(html, /comiss/i);
   assert.doesNotMatch(html, /R\$ 1,00/);
+  assert.match(html, /RESPONSAVEL PELA ENTREGA/);
+  assert.match(html, /logo-wimifarma-receipt\.png/);
   assert.match(html, /data-auto-print/);
 });
 
@@ -97,5 +111,6 @@ test('relatorio de pagamento e curto, escapa dados e nao lista clientes', () => 
   assert.match(html, /Ana &lt;Silva&gt;/);
   assert.match(html, /ENTREGAS PAGAS/);
   assert.doesNotMatch(html, /Maria|telefone|endereco/i);
+  assert.match(html, /logo-wimifarma-receipt\.png/);
   assert.match(html, /data-auto-print/);
 });

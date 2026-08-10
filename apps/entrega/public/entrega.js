@@ -28,6 +28,35 @@
     });
   });
 
+  const deliveryForm = document.querySelector('[data-delivery-form]');
+  const preview = document.querySelector('[data-delivery-preview]');
+
+  function previewText(selector, value, fallback) {
+    const target = preview?.querySelector(selector);
+    if (target) target.textContent = value.trim() || fallback;
+  }
+
+  function syncDeliveryPreview() {
+    if (!(deliveryForm instanceof HTMLFormElement) || !preview) return;
+    const customer = deliveryForm.elements.namedItem('customer_name');
+    const phone = deliveryForm.elements.namedItem('customer_phone');
+    const address = deliveryForm.elements.namedItem('address');
+    const responsible = deliveryForm.elements.namedItem('responsible_user_id');
+    previewText('[data-preview-customer]', customer instanceof HTMLInputElement ? customer.value : '', 'Nome do cliente');
+    previewText('[data-preview-phone]', phone instanceof HTMLInputElement ? phone.value : '', '(44) 99999-9999');
+    previewText('[data-preview-address]', address instanceof HTMLInputElement ? address.value : '', 'Rua, numero, bairro e referencia');
+    const selectedOption = responsible instanceof HTMLSelectElement ? responsible.selectedOptions[0] : null;
+    previewText('[data-preview-responsible]', selectedOption?.dataset.displayName || '', 'Usuario responsavel');
+    previewText('[data-preview-date]', new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(new Date()), '-');
+  }
+
+  deliveryForm?.addEventListener('input', syncDeliveryPreview);
+  deliveryForm?.addEventListener('change', syncDeliveryPreview);
+  syncDeliveryPreview();
+
   document.querySelectorAll('[data-lock-submit]').forEach((form) => {
     form.addEventListener('submit', (event) => {
       window.setTimeout(() => {

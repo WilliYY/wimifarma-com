@@ -276,6 +276,8 @@ function renderCommissionManagement(model: DashboardViewModel): string {
 export function renderDashboard(model: DashboardViewModel): string {
   const pageCount = Math.max(1, Math.ceil(model.historyTotal / model.pageSize));
   const userOptions = model.users.map((user) => `<option value="${e(user.id)}"${selected(user.id, model.filters.userId)}>${e(user.display_name)} (@${e(user.username)})</option>`).join('');
+  const deliveryUserOptions = model.users.map((user) => `<option value="${e(user.id)}" data-display-name="${e(user.display_name)}"${selected(user.id, model.user.id)}>${e(user.display_name)} (@${e(user.username)})</option>`).join('');
+  const defaultResponsible = model.users.find((user) => Number(user.id) === model.user.id)?.display_name || model.user.displayName;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -284,11 +286,11 @@ export function renderDashboard(model: DashboardViewModel): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Entrega | Wimifarma</title>
-  <link rel="stylesheet" href="${e(model.basePath)}/entrega.css?v=1.1.0">
+  <link rel="stylesheet" href="${e(model.basePath)}/entrega.css?v=1.2.0">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Voltar para a Home"><span>+</span> WimiFarma</a>
+    <a class="brand" href="/" aria-label="Voltar para a Home"><span class="brand-plus">+</span><i aria-hidden="true"></i><span>WimiFarma</span></a>
     <div class="topbar-title">Entrega</div>
     <div class="topbar-actions"><span>${e(model.user.displayName)}</span><a href="/">Home</a></div>
   </header>
@@ -306,23 +308,45 @@ export function renderDashboard(model: DashboardViewModel): string {
 
     <section class="registration-band" aria-labelledby="new-delivery-title">
       <div class="section-heading">
-        <div><p class="eyebrow">NOVA ENTREGA</p><h2 id="new-delivery-title">Cadastro rapido</h2><p>Uma entrega valida gera automaticamente <strong>R$ 1,00</strong> de comissao para voce.</p></div>
+        <div><p class="eyebrow">NOVA ENTREGA</p><h2 id="new-delivery-title">Cadastro rapido</h2><p>Uma entrega valida gera automaticamente <strong>R$ 1,00</strong> de comissao para o usuario escolhido.</p></div>
         <span class="commission-badge">+ R$ 1,00</span>
       </div>
-      <form class="delivery-form" method="post" action="${e(model.basePath)}/create" data-lock-submit>
-        ${csrfField(model.csrfToken)}
-        <input type="hidden" name="request_token" value="${e(model.creationToken)}">
-        <label>Nome do cliente <span>*</span>
-          <input name="customer_name" maxlength="160" required autocomplete="name" placeholder="Ex.: Maria da Silva">
-        </label>
-        <label>Telefone / WhatsApp <span>*</span>
-          <input name="customer_phone" maxlength="40" required inputmode="tel" autocomplete="tel" data-phone placeholder="(44) 99999-9999">
-        </label>
-        <label class="address-field">Endereco completo <span>*</span>
-          <input name="address" maxlength="500" required autocomplete="street-address" placeholder="Rua, numero, bairro e referencia">
-        </label>
-        <button class="button button--primary button--create" type="submit"><strong>Gerar entrega e imprimir</strong><small>Salva uma vez e abre a impressao local</small></button>
-      </form>
+      <div class="registration-layout">
+        <form class="delivery-form" method="post" action="${e(model.basePath)}/create" data-lock-submit data-delivery-form>
+          ${csrfField(model.csrfToken)}
+          <input type="hidden" name="request_token" value="${e(model.creationToken)}">
+          <label>Nome do cliente <span>*</span>
+            <input name="customer_name" maxlength="160" required autocomplete="name" data-preview-input="customer" placeholder="Ex.: Maria da Silva">
+          </label>
+          <label>Telefone / WhatsApp <span>*</span>
+            <input name="customer_phone" maxlength="40" required inputmode="tel" autocomplete="tel" data-phone data-preview-input="phone" placeholder="(44) 99999-9999">
+          </label>
+          <label class="address-field">Endereco completo <span>*</span>
+            <input name="address" maxlength="500" required autocomplete="street-address" data-preview-input="address" placeholder="Rua, numero, bairro e referencia">
+          </label>
+          <label class="responsible-field">Usuario responsavel <span>*</span>
+            <select name="responsible_user_id" required data-responsible-user>${deliveryUserOptions}</select>
+            <small>A entrega e a comissao ficam registradas para esta pessoa.</small>
+          </label>
+          <button class="button button--primary button--create" type="submit"><strong>Gerar entrega e imprimir</strong><small>Salva uma vez e abre a impressao local</small></button>
+        </form>
+        <aside class="receipt-preview-panel" aria-labelledby="receipt-preview-title">
+          <div class="receipt-preview-heading"><div><p class="eyebrow">PREVIA DE IMPRESSAO</p><h3 id="receipt-preview-title">Cupom da entrega</h3></div><span>80 mm</span></div>
+          <article class="receipt receipt--preview" data-delivery-preview>
+            <img class="receipt-logo" src="${e(model.basePath)}/logo-wimifarma-receipt.png" alt="WimiFarma" width="731" height="292">
+            <h1>ENTREGA</h1>
+            <div class="receipt-number">#000000</div>
+            <dl>
+              <div><dt>CLIENTE</dt><dd data-preview-customer>Nome do cliente</dd></div>
+              <div><dt>TELEFONE / WHATSAPP</dt><dd data-preview-phone>(44) 99999-9999</dd></div>
+              <div><dt>ENDERECO</dt><dd data-preview-address>Rua, numero, bairro e referencia</dd></div>
+              <div><dt>RESPONSAVEL PELA ENTREGA</dt><dd data-preview-responsible>${e(defaultResponsible)}</dd></div>
+              <div><dt>DATA E HORA</dt><dd data-preview-date>${e(dateTime(new Date()))}</dd></div>
+            </dl>
+          </article>
+          <p class="receipt-preview-note">O numero e o horario finais entram no cupom depois que a entrega for salva.</p>
+        </aside>
+      </div>
     </section>
 
     <section class="summary-section" aria-labelledby="summary-title">
@@ -401,7 +425,7 @@ export function renderDashboard(model: DashboardViewModel): string {
       </nav>` : ''}
     </section>
   </main>
-  <script src="${e(model.basePath)}/entrega.js?v=1.1.0" defer></script>
+  <script src="${e(model.basePath)}/entrega.js?v=1.2.0" defer></script>
 </body>
 </html>`;
 }
@@ -413,23 +437,23 @@ export function renderPrintReceipt(basePath: string, delivery: DeliveryRow): str
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${e(formatDeliveryNumber(delivery.id))} | Entrega Wimifarma</title>
-  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.0.0">
+  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.2.0">
 </head>
 <body class="print-page" data-auto-print>
   <main class="receipt" aria-label="Comprovante de entrega">
-    <div class="receipt-brand"><span>+</span> WimiFarma</div>
+    <img class="receipt-logo" src="${e(basePath)}/logo-wimifarma-receipt.png" alt="WimiFarma" width="731" height="292">
     <h1>ENTREGA</h1>
     <div class="receipt-number">${e(formatDeliveryNumber(delivery.id))}</div>
     <dl>
       <div><dt>CLIENTE</dt><dd>${e(delivery.customer_name)}</dd></div>
       <div><dt>TELEFONE / WHATSAPP</dt><dd>${e(delivery.customer_phone)}</dd></div>
       <div><dt>ENDERECO</dt><dd>${e(delivery.address)}</dd></div>
-      <div><dt>REGISTRADO POR</dt><dd>${e(delivery.created_by_name)}</dd></div>
+      <div><dt>RESPONSAVEL PELA ENTREGA</dt><dd>${e(delivery.created_by_name)}</dd></div>
       <div><dt>DATA E HORA</dt><dd>${e(dateTime(delivery.created_at))}</dd></div>
     </dl>
   </main>
   <div class="print-controls"><button class="button button--primary" type="button" data-print-now>Imprimir</button><a class="button button--quiet" href="${e(basePath)}/">Voltar</a></div>
-  <script src="${e(basePath)}/entrega-print.js?v=1.0.0" defer></script>
+  <script src="${e(basePath)}/entrega-print.js?v=1.2.0" defer></script>
 </body>
 </html>`;
 }
@@ -441,11 +465,11 @@ export function renderCommissionPaymentReceipt(basePath: string, payment: Commis
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pagamento #${e(payment.id)} | Comissao de entrega</title>
-  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.1.0">
+  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.2.0">
 </head>
 <body class="print-page" data-auto-print>
   <main class="receipt commission-receipt" aria-label="Relatorio de pagamento de comissao">
-    <div class="receipt-brand"><span>+</span> WimiFarma</div>
+    <img class="receipt-logo" src="${e(basePath)}/logo-wimifarma-receipt.png" alt="WimiFarma" width="731" height="292">
     <h1>PAGAMENTO DE COMISSAO</h1>
     <div class="payment-total"><small>TOTAL PAGO</small><strong>${e(money(payment.total_cents))}</strong></div>
     <dl>
@@ -459,7 +483,7 @@ export function renderCommissionPaymentReceipt(basePath: string, payment: Commis
     <p class="receipt-note">Cada entrega valida corresponde a R$ 1,00.</p>
   </main>
   <div class="print-controls"><button class="button button--primary" type="button" data-print-now>Imprimir</button><a class="button button--quiet" href="${e(basePath)}/">Voltar</a></div>
-  <script src="${e(basePath)}/entrega-print.js?v=1.0.0" defer></script>
+  <script src="${e(basePath)}/entrega-print.js?v=1.2.0" defer></script>
 </body>
 </html>`;
 }

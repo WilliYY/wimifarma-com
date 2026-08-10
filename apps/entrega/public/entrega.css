@@ -61,7 +61,9 @@ button, input, select { font: inherit; letter-spacing: 0; }
   text-decoration: none;
 }
 
-.brand span { font-size: 20px; line-height: 1; }
+.brand span { line-height: 1; }
+.brand .brand-plus { font-size: 20px; }
+.brand i { height: 20px; border-left: 2px solid currentColor; opacity: .75; }
 .topbar-title { font-size: 18px; font-weight: 850; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 750; }
 .topbar-actions span { padding: 6px 10px; background: rgba(255,255,255,.12); border-radius: 999px; }
@@ -135,18 +137,48 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
 .heading-status { margin-left: 6px; vertical-align: middle; }
 .commission-badge { flex: 0 0 auto; padding: 8px 13px; border: 1px solid #9bd7bd; border-radius: 999px; color: var(--green); background: var(--green-soft); font-weight: 900; }
 
-.delivery-form {
+.registration-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, .85fr) minmax(330px, 1.5fr) minmax(220px, .8fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 18px;
+  align-items: start;
+}
+
+.delivery-form {
+  min-width: 0;
+  padding: 15px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 13px;
+  align-content: start;
   align-items: end;
+  border: 1px solid #b8dcd4;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #fff 0%, #f2fbf8 100%);
 }
 
 .delivery-form label, .edit-form label, .filter-form label { color: #624650; font-size: 12px; font-weight: 850; }
 .delivery-form label > span { color: var(--danger); }
-.delivery-form input { margin-top: 6px; }
-.button--create { min-height: 62px; flex-direction: column; line-height: 1.15; }
+.delivery-form input, .delivery-form select { margin-top: 6px; }
+.delivery-form label > small { margin-top: 5px; display: block; color: var(--muted); font-size: 10px; font-weight: 700; }
+.address-field { grid-column: 1 / -1; }
+.responsible-field, .button--create { grid-column: 1 / -1; }
+.button--create { min-height: 58px; flex-direction: column; line-height: 1.15; }
 .button--create small { font-size: 10px; font-weight: 650; opacity: .86; }
+
+.receipt-preview-panel { min-width: 0; padding: 13px; border: 1px solid #b8d6e9; border-radius: 8px; background: var(--blue-soft); }
+.receipt-preview-heading { margin-bottom: 10px; display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.receipt-preview-heading h3 { margin: 0; color: var(--blue); }
+.receipt-preview-heading > span { padding: 4px 8px; border: 1px solid #a8ceeb; border-radius: 999px; color: var(--blue); background: #fff; font-size: 10px; font-weight: 900; white-space: nowrap; }
+.receipt--preview { width: min(72mm, 100%); margin: 0 auto; padding: 3mm 2mm 2mm; border: 1px dashed #71808a; border-radius: 4px; box-shadow: 0 8px 18px rgba(23, 105, 170, .09); }
+.receipt--preview .receipt-number { color: #4b4b4b; }
+.receipt--preview .receipt-logo { width: 42mm; margin-bottom: 1mm; }
+.receipt--preview h1 { padding: .8mm 0; font-size: 15pt; }
+.receipt--preview .receipt-number { padding: 1.2mm 0; font-size: 21pt; }
+.receipt--preview dl div { padding: .9mm .5mm; }
+.receipt--preview dt { margin-bottom: .3mm; font-size: 7.5pt; }
+.receipt--preview dd { font-size: 10.5pt; line-height: 1.18; }
+.receipt-preview-note { margin: 9px 0 0; color: var(--muted); font-size: 10px; font-weight: 700; text-align: center; }
 
 .summary-section, .leader-section, .payment-section, .history-section, .detail-panel { padding: 18px; }
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
@@ -213,8 +245,7 @@ td small { margin-top: 3px; display: block; color: var(--muted); font-size: 11px
 
 .print-page { background: #fff; }
 .receipt { width: 76mm; margin: 2mm auto; padding: 3mm 2mm 2mm; color: #000; background: #fff; font-family: Arial, Helvetica, sans-serif; text-align: center; }
-.receipt-brand { width: fit-content; margin: 0 auto 3mm; padding: 1mm 2.5mm; border: .6mm solid #000; border-radius: 8mm; font-size: 15pt; font-weight: 900; line-height: 1; }
-.receipt-brand span { font-size: 18pt; }
+.receipt-logo { display: block; width: 48mm; max-width: 100%; height: auto; margin: 0 auto 2mm; filter: grayscale(1) contrast(6) invert(1); }
 .receipt h1 { margin: 0; padding: 1.2mm 0; color: #000; border-top: .35mm dashed #000; border-bottom: .35mm dashed #000; font-size: 18pt; line-height: 1.1; }
 .receipt-number { padding: 2mm 0; border-bottom: .4mm solid #000; font-size: 25pt; font-weight: 900; line-height: 1; }
 .receipt dl { margin: 0; text-align: left; }
@@ -226,8 +257,11 @@ td small { margin-top: 3px; display: block; color: var(--muted); font-size: 11px
 .print-controls { width: min(76mm, calc(100% - 24px)); margin: 16px auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 @media (max-width: 1180px) {
-  .delivery-form { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
-  .address-field { grid-column: 1 / -1; }
+  .registration-layout { grid-template-columns: 1fr; }
+  .receipt-preview-panel { display: grid; grid-template-columns: minmax(180px, .55fr) minmax(260px, 1fr); align-items: center; gap: 14px; }
+  .receipt-preview-heading, .receipt-preview-note { align-self: start; }
+  .receipt-preview-note { grid-column: 1; text-align: left; }
+  .receipt--preview { grid-column: 2; grid-row: 1 / span 2; }
   .summary-grid { grid-template-columns: repeat(3, minmax(160px, 1fr)); }
   .payment-layout { grid-template-columns: 1fr; }
   .payment-form { grid-template-columns: 1fr 1fr; }.payment-submit { grid-column: 1 / -1; }
@@ -242,8 +276,10 @@ td small { margin-top: 3px; display: block; color: var(--muted); font-size: 11px
   .page-title { align-items: stretch; flex-direction: column; }.month-picker { min-width: 0; }
   .registration-band, .summary-section, .leader-section, .payment-section, .history-section, .detail-panel { padding: 14px; }
   .section-heading { flex-direction: column; }.commission-badge { align-self: flex-start; }
-  .delivery-form, .summary-grid, .leader-grid, .detail-grid, .edit-form, .filter-form { grid-template-columns: 1fr; }
+  .delivery-form, .summary-grid, .leader-grid, .detail-grid, .edit-form, .filter-form, .receipt-preview-panel { grid-template-columns: 1fr; }
   .address-field, .field-wide, .search-field { grid-column: auto; }
+  .receipt--preview { grid-column: auto; grid-row: auto; }
+  .receipt-preview-note { grid-column: auto; text-align: center; }
   .button--create { min-height: 56px; }
   .detail-footer, .edit-actions { align-items: stretch; flex-direction: column; }.detail-footer form, .detail-footer button { width: 100%; }
   .filter-form .button { width: 100%; }

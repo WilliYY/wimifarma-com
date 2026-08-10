@@ -63,6 +63,13 @@ export function validateDeliveryInput(input: Record<string, unknown>): {
   };
 }
 
+export function validateResponsibleUserId(value: unknown): number | null {
+  const normalized = cleanSingleLine(value, 20);
+  if (!/^\d+$/.test(normalized)) return null;
+  const userId = Number(normalized);
+  return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
+}
+
 export function normalizeUsername(value: unknown): string {
   return cleanSingleLine(value, 100).toLowerCase();
 }

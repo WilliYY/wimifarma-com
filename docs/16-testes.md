@@ -162,7 +162,7 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 
 ## Entrega - 2026-08-10
 
-- `apps/entrega/src/domain.test.ts` cobre campos obrigatorios, telefone, perfis gestores, numero, datas/mes, filtro por usuario e entrada idempotente do pagamento.
-- `apps/entrega/src/views.test.ts` cobre isolamento do painel de pagamento, bloqueio visual de cancelamento pago e relatorio resumido sem dados de clientes.
+- `apps/entrega/src/domain.test.ts` cobre campos obrigatorios, telefone, responsavel valido, perfis gestores, numero, datas/mes, filtro por usuario e entrada idempotente do pagamento.
+- `apps/entrega/src/views.test.ts` cobre responsavel padrao, previa termica, logo compartilhada, isolamento do painel de pagamento, bloqueio visual de cancelamento pago e relatorio resumido sem dados de clientes.
 - Antes de publicar: `npm ci`, `npm run check`, `npm test`, validar Compose e construir containers.
 - No VPS: validar `/entrega/health`, uma comissao por entrega, pagamento sem duplicacao, total igual aos itens, reimpressao sem nova baixa, bloqueio de cancelamento pago e cancelamento anterior com estorno logico.

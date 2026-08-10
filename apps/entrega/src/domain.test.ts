@@ -9,6 +9,7 @@ import {
   normalizeMonth,
   previousMonth,
   validateDeliveryInput,
+  validateResponsibleUserId,
   validateCommissionPaymentInput,
 } from './domain.js';
 
@@ -31,6 +32,13 @@ test('rejeita cadastro incompleto e telefone inviavel', () => {
   const result = validateDeliveryInput({ customer_name: '', customer_phone: '123', address: '' });
   assert.equal(result.value, null);
   assert.equal(result.errors.length, 3);
+});
+
+test('valida o usuario responsavel escolhido para a entrega', () => {
+  assert.equal(validateResponsibleUserId('55'), 55);
+  assert.equal(validateResponsibleUserId(7), 7);
+  assert.equal(validateResponsibleUserId('0'), null);
+  assert.equal(validateResponsibleUserId('usuario'), null);
 });
 
 test('identifica adm, admin e gerente como gestores', () => {

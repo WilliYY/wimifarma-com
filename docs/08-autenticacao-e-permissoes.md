@@ -142,7 +142,8 @@ Tabelas:
 - Toda conta `core_users.active=TRUE` recebe acesso permanente ao card e a `/entrega/`.
 - `entrega` fica em `ALWAYS_ALLOWED_MODULE_KEYS` no modulo Usuarios e e forcado como permitido na Home.
 - O app revalida `WFHOME_SSO` e cria a sessao `WFENTREGA`.
-- Usuario comum ve, edita e reimprime somente registros proprios.
+- Toda conta autenticada pode escolher como responsavel somente uma conta humana ativa do core; o servidor revalida o ID e rejeita valor livre, conta inativa ou institucional.
+- Usuario comum ve, edita e reimprime somente registros atribuidos a ele.
 - `adm`, `admin` e `gerente` consultam a equipe, cancelam entregas ainda nao pagas, pagam comissoes e reimprimem o relatorio.
 - Usuario comum nao ve nem acessa as rotas de pagamento de comissao.
-- Nenhum formulario troca responsavel, data original, numero, valor ou status isolado da comissao.
+- O responsavel pode ser escolhido apenas na criacao; depois nenhum formulario troca responsavel, data original, numero, valor ou status isolado da comissao.
