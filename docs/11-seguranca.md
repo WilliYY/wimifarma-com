@@ -204,6 +204,6 @@ Os quatro primeiros devem responder 403. O status detalhado sem token deve respo
 - Consultas e mutacoes aplicam ownership no servidor.
 - Cancelamento e exclusivo de `adm`, `admin` e `gerente` e muda entrega/comissao na mesma transacao.
 - Pagamento e exclusivo de gestor, usa CSRF, UUID ligado a sessao, lock transacional por usuario e item unico por comissao.
-- Uma entrega ja paga nao pode ser cancelada; isso evita saldo contabil quitado sem estorno correspondente.
+- Uma entrega ja paga nao pode ser cancelada pela aplicacao nem ter sua comissao cancelada diretamente no banco; isso evita saldo contabil quitado sem estorno correspondente.
 - SQL usa parametros, HTML e escapado e entradas recebem limites de tamanho.
 - Banco impede DELETE, duplicacao de comissao, pagamento repetido, mudanca de identidade, edicao de lote pago e reativacao.

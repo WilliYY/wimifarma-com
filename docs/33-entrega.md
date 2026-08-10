@@ -66,7 +66,7 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 - Edicao muda somente nome, telefone e endereco e audita antes/depois.
 - Reimpressao usa o registro existente e nao escreve em entrega/comissao.
 - Cancelamento usa lock, muda entrega e comissao atomicamente e mantem o historico.
-- Comissao ja paga bloqueia cancelamento da entrega; um estorno futuro precisa ser um fluxo contabil explicito.
+- Comissao ja paga bloqueia cancelamento da entrega na aplicacao e no trigger do banco; um estorno futuro precisa ser um fluxo contabil explicito.
 - Registros cancelados nao podem ser reativados nem reimpressos.
 
 ## Pagar comissao

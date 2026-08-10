@@ -467,4 +467,4 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `delivery_commission_payment_audit_logs`: registra criacao e reimpressao do relatorio de pagamento.
 - `delivery_audit_logs`: ator, nome, acao, horario e metadata JSONB.
 - `entrega_sessions`: sessoes `WFENTREGA` por `connect-pg-simple`.
-- Triggers impedem DELETE, alteracao da identidade da entrega/comissao, reativacao depois do cancelamento e alteracao dos lotes/itens de pagamento.
+- Triggers impedem DELETE, alteracao da identidade da entrega/comissao, reativacao depois do cancelamento, cancelamento de comissao ja paga e alteracao dos lotes/itens de pagamento.

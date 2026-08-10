@@ -446,6 +446,11 @@ async function ensureSchema(): Promise<void> {
       IF OLD.status = 'CANCELLED' AND NEW.status <> OLD.status THEN
         RAISE EXCEPTION 'cancelled commission cannot be reactivated';
       END IF;
+      IF OLD.status = 'ACTIVE' AND NEW.status = 'CANCELLED' AND EXISTS (
+        SELECT 1 FROM delivery_commission_payment_items WHERE commission_id = OLD.id
+      ) THEN
+        RAISE EXCEPTION 'paid commission cannot be cancelled';
+      END IF;
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
