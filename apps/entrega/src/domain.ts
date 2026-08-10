@@ -60,6 +60,10 @@ export function normalizeUsername(value: unknown): string {
   return cleanSingleLine(value, 100).toLowerCase();
 }
 
+export function isBareBasePath(pathname: string, basePath: string): boolean {
+  return pathname === basePath;
+}
+
 export function canManageAll(user: Pick<SessionUser, 'username' | 'role'>): boolean {
   const username = normalizeUsername(user.username);
   const role = normalizeUsername(user.role);

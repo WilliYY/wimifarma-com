@@ -8,6 +8,7 @@ import pg, { type PoolClient, type QueryResultRow } from 'pg';
 import {
   canManageAll,
   cleanSingleLine,
+  isBareBasePath,
   localDateParts,
   normalizeHistoryFilters,
   normalizeMonth,
@@ -607,7 +608,10 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   });
 }));
 
-app.get(BASE_PATH, (_req, res) => res.redirect(`${BASE_PATH}/`));
+app.get(BASE_PATH, (req, res, next) => {
+  if (!isBareBasePath(req.path, BASE_PATH)) return next();
+  return res.redirect(`${BASE_PATH}/`);
+});
 
 app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);

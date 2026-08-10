@@ -3,12 +3,18 @@ import test from 'node:test';
 import {
   canManageAll,
   formatDeliveryNumber,
+  isBareBasePath,
   normalizeDate,
   normalizeHistoryFilters,
   normalizeMonth,
   previousMonth,
   validateDeliveryInput,
 } from './domain.js';
+
+test('redireciona somente a rota sem barra final', () => {
+  assert.equal(isBareBasePath('/entrega', '/entrega'), true);
+  assert.equal(isBareBasePath('/entrega/', '/entrega'), false);
+});
 
 test('valida os tres dados obrigatorios da entrega', () => {
   const result = validateDeliveryInput({
