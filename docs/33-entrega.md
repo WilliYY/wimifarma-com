@@ -30,6 +30,15 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 - A comissao pertence ao criador original.
 - Cancelar muda o status para `CANCELLED`; nao apaga nem zera o valor historico.
 
+### Pagamento de comissao
+
+- `delivery_commission_payments` guarda um lote imutavel com UUID idempotente, usuario, mes, quantidade, total, pagador e data/hora.
+- `delivery_commission_payment_items` vincula cada comissao e entrega a no maximo um lote por constraints `UNIQUE`.
+- Cada item continua valendo exatamente 100 centavos; lote exige `total_cents = commission_count * 100`.
+- O mesmo usuario pode receber um novo lote no mesmo mes se novas entregas forem criadas depois da primeira baixa.
+- `delivery_commission_payment_audit_logs` preserva `PAYMENT_CREATED` e `PAYMENT_REPRINTED`.
+- Lotes, itens e auditoria de pagamento nao podem ser alterados nem apagados.
+
 ### `delivery_audit_logs`
 
 - Acoes: `DELIVERY_CREATED`, `DELIVERY_EDITED`, `DELIVERY_REPRINTED`, `DELIVERY_CANCELLED`.
@@ -40,7 +49,8 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 
 - Toda conta ativa abre e cria entrega.
 - Usuario comum consulta, edita dados do cliente e reimprime somente entregas proprias.
-- `adm`, `admin` e `gerente` consultam equipe, filtram por usuario, editam e cancelam.
+- `adm`, `admin` e `gerente` consultam equipe, filtram por usuario, editam, cancelam antes da baixa e pagam comissoes.
+- Somente gestores veem o painel, executam a baixa e reimprimem o relatorio de pagamento.
 - A interface nunca altera responsavel, data/hora original, numero ou comissao.
 
 ## Criacao idempotente
@@ -56,11 +66,23 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 - Edicao muda somente nome, telefone e endereco e audita antes/depois.
 - Reimpressao usa o registro existente e nao escreve em entrega/comissao.
 - Cancelamento usa lock, muda entrega e comissao atomicamente e mantem o historico.
+- Comissao ja paga bloqueia cancelamento da entrega; um estorno futuro precisa ser um fluxo contabil explicito.
 - Registros cancelados nao podem ser reativados nem reimpressos.
+
+## Pagar comissao
+
+1. O gestor escolhe o usuario no mes que ja esta selecionado no painel.
+2. O POST valida sessao, perfil, CSRF, UUID idempotente, usuario ativo e mes.
+3. Uma trava transacional serializa baixas do mesmo usuario.
+4. Somente comissoes `ACTIVE`, ligadas a entregas `ACTIVE` e sem item de pagamento entram no lote.
+5. Lote, itens e auditoria sao gravados na mesma transacao; qualquer falha reverte tudo.
+6. Clique duplo/retry reutiliza o lote do UUID e nao duplica valor.
+7. O relatorio abre uma vez pela sessao; reimpressao cria somente auditoria.
 
 ## Indicadores e historico
 
-- Mes selecionavel, resumo pessoal, totais e ranking por usuario para gestores.
+- Mes selecionavel, resumo pessoal, valores a receber/ja pagos e ranking por usuario para gestores.
+- Painel `Pagar comissao` mostra pendente, pago, pessoas pendentes e comprovantes recentes do mes.
 - Busca por cliente, telefone, endereco, numero ou responsavel.
 - Filtros por hoje, mes, mes anterior, periodo personalizado, usuario e status.
 - Historico paginado em 50 linhas.
@@ -71,6 +93,11 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 - Papel de 80 mm, bloco de 76 mm e altura variavel.
 - Mostra marca, `ENTREGA`, numero, cliente, telefone, endereco, responsavel e data/hora.
 - Nao mostra comissao nem afirma que o papel saiu fisicamente.
+- O relatorio de pagamento usa o mesmo papel e mostra somente usuario, mes, entregas pagas, total, numero do lote, pagador e data/hora; nao lista clientes, telefones ou enderecos.
+
+## Diagnostico
+
+- `/entrega/health` falha quando encontra entrega sem comissao, status divergente, lote com quantidade/total diferente dos itens ou comissao paga depois marcada como cancelada.
 
 ## Validacao
 

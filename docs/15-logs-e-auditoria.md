@@ -136,3 +136,6 @@ Arquivos:
 - Edicao guarda antes/depois; cancelamento registra estorno de 100 centavos.
 - Eventos tambem vao em melhor esforco para `core_audit_logs`; falha central depois do commit nao desfaz entrega valida.
 - Reimpressao significa solicitacao local, nao confirmacao de papel impresso.
+- `delivery_commission_payment_audit_logs` registra `PAYMENT_CREATED` e `PAYMENT_REPRINTED` por lote.
+- O lote guarda snapshots do recebedor e do pagador; cada item aponta para a comissao e entrega originais.
+- Criacao e reimpressao de pagamento tambem tentam gravar `core_audit_logs` depois da transacao principal.

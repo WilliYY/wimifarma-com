@@ -9,6 +9,7 @@ import {
   normalizeMonth,
   previousMonth,
   validateDeliveryInput,
+  validateCommissionPaymentInput,
 } from './domain.js';
 
 test('redireciona somente a rota sem barra final', () => {
@@ -59,4 +60,18 @@ test('usuario comum nao consegue aplicar filtro de outro responsavel', () => {
 
   const manager = normalizeHistoryFilters({ period: 'all', user_id: '55' }, { manager: true });
   assert.equal(manager.userId, 55);
+});
+
+test('valida pagamento de comissao com usuario, mes e token idempotente', () => {
+  const valid = validateCommissionPaymentInput({
+    user_id: '55',
+    period_month: '2026-08',
+    request_token: '11111111-1111-4111-8111-111111111111',
+  });
+  assert.deepEqual(valid.errors, []);
+  assert.equal(valid.value?.userId, 55);
+
+  const invalid = validateCommissionPaymentInput({ user_id: '0', period_month: '2026-13', request_token: 'repetido' });
+  assert.equal(invalid.value, null);
+  assert.equal(invalid.errors.length, 3);
 });

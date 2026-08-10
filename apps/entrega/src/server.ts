@@ -14,18 +14,22 @@ import {
   normalizeMonth,
   normalizeUsername,
   previousMonth,
+  validateCommissionPaymentInput,
   validateDeliveryInput,
   type HistoryFilters,
   type SessionUser,
 } from './domain.js';
 import {
   renderDashboard,
+  renderCommissionPaymentReceipt,
   renderPrintReceipt,
   type AuditRow,
   type DeliveryRow,
   type Flash,
   type LeaderRow,
   type MineSummary,
+  type CommissionOverviewRow,
+  type CommissionPaymentRow,
   type Summary,
   type UserOption,
 } from './views.js';
@@ -45,10 +49,13 @@ type CountRow = QueryResultRow & {
   active: string;
   cancelled: string;
   commission_cents: string;
+  pending_commission_cents: string;
+  paid_commission_cents: string;
   today?: string;
 };
 
 type DeliveryIdRow = QueryResultRow & { id: string; created_by_user_id: string; status: 'ACTIVE' | 'CANCELLED' };
+type CommissionIdRow = QueryResultRow & { id: string; delivery_id: string; amount_cents: string };
 type TotalRow = QueryResultRow & { total: string };
 type HealthRow = QueryResultRow & {
   generated: string;
@@ -56,14 +63,19 @@ type HealthRow = QueryResultRow & {
   cancelled: string;
   orphan_deliveries: string;
   status_mismatches: string;
+  payment_count_mismatches: string;
+  payment_total_mismatches: string;
+  paid_cancelled_commissions: string;
 };
 
 declare module 'express-session' {
   interface SessionData {
     csrfToken?: string;
     creationToken?: string;
+    paymentToken?: string;
     flash?: Flash;
     printDeliveryId?: number;
+    printPaymentId?: number;
     returnTo?: string;
     user?: SessionUser;
   }
@@ -76,7 +88,7 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 
 const SERVICE_NAME = 'entrega';
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.1.0';
 const TIME_ZONE = 'America/Sao_Paulo';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/entrega');
 const PORT = Number.parseInt(env.PORT || '3980', 10);
@@ -228,6 +240,11 @@ function ensureCreationToken(req: Request): string {
   return req.session.creationToken;
 }
 
+function ensurePaymentToken(req: Request): string {
+  if (!req.session.paymentToken) req.session.paymentToken = crypto.randomUUID();
+  return req.session.paymentToken;
+}
+
 function safeEqual(left: string, right: string): boolean {
   const leftHash = crypto.createHash('sha256').update(left).digest();
   const rightHash = crypto.createHash('sha256').update(right).digest();
@@ -271,12 +288,13 @@ async function logCoreAudit(
   deliveryId: number,
   detail: string,
   metadata: Record<string, unknown> = {},
+  entityType = 'delivery',
 ): Promise<void> {
   try {
     await corePool.query(
       `INSERT INTO core_audit_logs (actor_user_id, action, entity_type, entity_id, detail, metadata)
-       VALUES ($1, $2, 'delivery', $3, $4, $5::jsonb)`,
-      [userId, action, String(deliveryId), cleanSingleLine(detail, 500), JSON.stringify(metadata)],
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [userId, action, entityType, String(deliveryId), cleanSingleLine(detail, 500), JSON.stringify(metadata)],
     );
   } catch (error) {
     console.error('[entrega] core audit failed', error);
@@ -338,6 +356,30 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await deliveryPool.query(`
+    CREATE TABLE IF NOT EXISTS delivery_commission_payments (
+      id BIGSERIAL PRIMARY KEY,
+      request_token UUID NOT NULL UNIQUE,
+      user_id BIGINT NOT NULL,
+      user_name VARCHAR(160) NOT NULL,
+      period_month DATE NOT NULL CHECK (period_month = DATE_TRUNC('month', period_month)::date),
+      commission_count INTEGER NOT NULL CHECK (commission_count > 0),
+      total_cents INTEGER NOT NULL CHECK (total_cents > 0 AND total_cents = commission_count * 100),
+      paid_by_user_id BIGINT NOT NULL,
+      paid_by_name VARCHAR(160) NOT NULL,
+      paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await deliveryPool.query(`
+    CREATE TABLE IF NOT EXISTS delivery_commission_payment_items (
+      id BIGSERIAL PRIMARY KEY,
+      payment_id BIGINT NOT NULL REFERENCES delivery_commission_payments(id) ON DELETE RESTRICT,
+      commission_id BIGINT NOT NULL UNIQUE REFERENCES delivery_commissions(id) ON DELETE RESTRICT,
+      delivery_id BIGINT NOT NULL UNIQUE REFERENCES deliveries(id) ON DELETE RESTRICT,
+      amount_cents INTEGER NOT NULL CHECK (amount_cents = 100),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await deliveryPool.query(`
     CREATE TABLE IF NOT EXISTS delivery_audit_logs (
       id BIGSERIAL PRIMARY KEY,
       delivery_id BIGINT NOT NULL REFERENCES deliveries(id) ON DELETE RESTRICT,
@@ -349,10 +391,25 @@ async function ensureSchema(): Promise<void> {
     )
   `);
   await deliveryPool.query(`
+    CREATE TABLE IF NOT EXISTS delivery_commission_payment_audit_logs (
+      id BIGSERIAL PRIMARY KEY,
+      payment_id BIGINT NOT NULL REFERENCES delivery_commission_payments(id) ON DELETE RESTRICT,
+      user_id BIGINT NOT NULL,
+      actor_name VARCHAR(160) NOT NULL,
+      action VARCHAR(40) NOT NULL CHECK (action IN ('PAYMENT_CREATED', 'PAYMENT_REPRINTED')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+    )
+  `);
+  await deliveryPool.query(`
     CREATE INDEX IF NOT EXISTS deliveries_created_idx ON deliveries (created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS deliveries_creator_created_idx ON deliveries (created_by_user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS deliveries_status_created_idx ON deliveries (status, created_at DESC);
     CREATE INDEX IF NOT EXISTS delivery_audit_delivery_idx ON delivery_audit_logs (delivery_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS delivery_payment_user_period_idx ON delivery_commission_payments (user_id, period_month, paid_at DESC);
+    CREATE INDEX IF NOT EXISTS delivery_payment_paid_at_idx ON delivery_commission_payments (paid_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS delivery_payment_items_payment_idx ON delivery_commission_payment_items (payment_id, id);
+    CREATE INDEX IF NOT EXISTS delivery_payment_audit_idx ON delivery_commission_payment_audit_logs (payment_id, created_at DESC, id DESC);
   `);
   await deliveryPool.query(`
     CREATE OR REPLACE FUNCTION entrega_protect_delivery_identity() RETURNS trigger AS $$
@@ -413,6 +470,31 @@ async function ensureSchema(): Promise<void> {
     DROP TRIGGER IF EXISTS entrega_no_delete_audit ON delivery_audit_logs;
     CREATE TRIGGER entrega_no_delete_audit BEFORE DELETE ON delivery_audit_logs
       FOR EACH ROW EXECUTE FUNCTION entrega_prevent_history_delete();
+    DROP TRIGGER IF EXISTS entrega_no_delete_payments ON delivery_commission_payments;
+    CREATE TRIGGER entrega_no_delete_payments BEFORE DELETE ON delivery_commission_payments
+      FOR EACH ROW EXECUTE FUNCTION entrega_prevent_history_delete();
+    DROP TRIGGER IF EXISTS entrega_no_delete_payment_items ON delivery_commission_payment_items;
+    CREATE TRIGGER entrega_no_delete_payment_items BEFORE DELETE ON delivery_commission_payment_items
+      FOR EACH ROW EXECUTE FUNCTION entrega_prevent_history_delete();
+    DROP TRIGGER IF EXISTS entrega_no_delete_payment_audit ON delivery_commission_payment_audit_logs;
+    CREATE TRIGGER entrega_no_delete_payment_audit BEFORE DELETE ON delivery_commission_payment_audit_logs
+      FOR EACH ROW EXECUTE FUNCTION entrega_prevent_history_delete();
+
+    CREATE OR REPLACE FUNCTION entrega_prevent_payment_update() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'delivery commission payment history is immutable';
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS entrega_no_update_payments ON delivery_commission_payments;
+    CREATE TRIGGER entrega_no_update_payments BEFORE UPDATE ON delivery_commission_payments
+      FOR EACH ROW EXECUTE FUNCTION entrega_prevent_payment_update();
+    DROP TRIGGER IF EXISTS entrega_no_update_payment_items ON delivery_commission_payment_items;
+    CREATE TRIGGER entrega_no_update_payment_items BEFORE UPDATE ON delivery_commission_payment_items
+      FOR EACH ROW EXECUTE FUNCTION entrega_prevent_payment_update();
+    DROP TRIGGER IF EXISTS entrega_no_update_payment_audit ON delivery_commission_payment_audit_logs;
+    CREATE TRIGGER entrega_no_update_payment_audit BEFORE UPDATE ON delivery_commission_payment_audit_logs
+      FOR EACH ROW EXECUTE FUNCTION entrega_prevent_payment_update();
   `);
 }
 
@@ -420,9 +502,12 @@ const DELIVERY_SELECT = `
   SELECT d.id::text, d.customer_name, d.customer_phone, d.address,
          d.created_by_user_id::text, d.created_by_name, d.created_at, d.updated_at,
          d.status, d.cancelled_at, d.cancelled_by_name,
-         c.amount_cents::text AS commission_amount_cents, c.status AS commission_status
+         c.amount_cents::text AS commission_amount_cents, c.status AS commission_status,
+         pi.payment_id::text AS commission_payment_id, p.paid_at AS commission_paid_at
     FROM deliveries d
-    JOIN delivery_commissions c ON c.delivery_id = d.id`;
+    JOIN delivery_commissions c ON c.delivery_id = d.id
+    LEFT JOIN delivery_commission_payment_items pi ON pi.commission_id = c.id
+    LEFT JOIN delivery_commission_payments p ON p.id = pi.payment_id`;
 
 async function deliveryForUser(id: number, user: SessionUser, lockClient?: PoolClient): Promise<DeliveryRow | null> {
   const client = lockClient || deliveryPool;
@@ -442,9 +527,12 @@ async function loadSummary(userId: number | null, month: string): Promise<Summar
     `SELECT COUNT(*)::text AS generated,
             COUNT(*) FILTER (WHERE d.status = 'ACTIVE')::text AS active,
             COUNT(*) FILTER (WHERE d.status = 'CANCELLED')::text AS cancelled,
-            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE'), 0)::text AS commission_cents
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE'), 0)::text AS commission_cents,
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NULL), 0)::text AS pending_commission_cents,
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NOT NULL), 0)::text AS paid_commission_cents
        FROM deliveries d
        JOIN delivery_commissions c ON c.delivery_id = d.id
+       LEFT JOIN delivery_commission_payment_items pi ON pi.commission_id = c.id
       WHERE TO_CHAR(d.created_at AT TIME ZONE '${TIME_ZONE}', 'YYYY-MM') = $1
         AND ($2::bigint IS NULL OR d.created_by_user_id = $2)`,
     [month, userId],
@@ -455,6 +543,8 @@ async function loadSummary(userId: number | null, month: string): Promise<Summar
     active: Number(row?.active || 0),
     cancelled: Number(row?.cancelled || 0),
     commissionCents: Number(row?.commission_cents || 0),
+    pendingCommissionCents: Number(row?.pending_commission_cents || 0),
+    paidCommissionCents: Number(row?.paid_commission_cents || 0),
   };
 }
 
@@ -478,15 +568,64 @@ async function loadLeaders(month: string): Promise<LeaderRow[]> {
             COUNT(*)::text AS generated,
             COUNT(*) FILTER (WHERE d.status = 'ACTIVE')::text AS active,
             COUNT(*) FILTER (WHERE d.status = 'CANCELLED')::text AS cancelled,
-            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE'), 0)::text AS commission_cents
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE'), 0)::text AS commission_cents,
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NULL), 0)::text AS pending_commission_cents,
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NOT NULL), 0)::text AS paid_commission_cents
        FROM deliveries d
        JOIN delivery_commissions c ON c.delivery_id = d.id
+       LEFT JOIN delivery_commission_payment_items pi ON pi.commission_id = c.id
       WHERE TO_CHAR(d.created_at AT TIME ZONE '${TIME_ZONE}', 'YYYY-MM') = $1
       GROUP BY d.created_by_user_id
       ORDER BY COUNT(*) FILTER (WHERE d.status = 'ACTIVE') DESC, user_name ASC`,
     [month],
   );
   return result.rows;
+}
+
+async function loadCommissionOverview(month: string): Promise<CommissionOverviewRow[]> {
+  const result = await deliveryPool.query<CommissionOverviewRow & QueryResultRow>(
+    `SELECT c.user_id::text,
+            (ARRAY_AGG(c.user_name ORDER BY c.created_at DESC, c.id DESC))[1] AS user_name,
+            COUNT(*) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NULL)::text AS pending_count,
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NULL), 0)::text AS pending_cents,
+            COUNT(*) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NOT NULL)::text AS paid_count,
+            COALESCE(SUM(c.amount_cents) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NOT NULL), 0)::text AS paid_cents
+       FROM delivery_commissions c
+       JOIN deliveries d ON d.id = c.delivery_id
+       LEFT JOIN delivery_commission_payment_items pi ON pi.commission_id = c.id
+      WHERE TO_CHAR(d.created_at AT TIME ZONE '${TIME_ZONE}', 'YYYY-MM') = $1
+      GROUP BY c.user_id
+      HAVING COUNT(*) FILTER (WHERE c.status = 'ACTIVE') > 0
+      ORDER BY COUNT(*) FILTER (WHERE c.status = 'ACTIVE' AND pi.id IS NULL) DESC, user_name ASC`,
+    [month],
+  );
+  return result.rows;
+}
+
+async function loadRecentPayments(month: string): Promise<CommissionPaymentRow[]> {
+  const result = await deliveryPool.query<CommissionPaymentRow & QueryResultRow>(
+    `SELECT id::text, user_id::text, user_name, period_month, commission_count::text,
+            total_cents::text, paid_by_name, paid_at
+       FROM delivery_commission_payments
+      WHERE TO_CHAR(period_month, 'YYYY-MM') = $1
+      ORDER BY paid_at DESC, id DESC
+      LIMIT 12`,
+    [month],
+  );
+  return result.rows;
+}
+
+async function commissionPaymentForManager(id: number, user: SessionUser): Promise<CommissionPaymentRow | null> {
+  if (!canManageAll(user)) return null;
+  const result = await deliveryPool.query<CommissionPaymentRow & QueryResultRow>(
+    `SELECT id::text, user_id::text, user_name, period_month, commission_count::text,
+            total_cents::text, paid_by_name, paid_at
+       FROM delivery_commission_payments
+      WHERE id = $1
+      LIMIT 1`,
+    [id],
+  );
+  return result.rows[0] || null;
 }
 
 async function loadUsers(): Promise<UserOption[]> {
@@ -497,6 +636,17 @@ async function loadUsers(): Promise<UserOption[]> {
       ORDER BY COALESCE(NULLIF(BTRIM(display_name), ''), username), id`,
   );
   return result.rows;
+}
+
+async function eligibleUserById(userId: number): Promise<UserOption | null> {
+  const result = await corePool.query<UserOption & QueryResultRow>(
+    `SELECT id::text, COALESCE(NULLIF(BTRIM(display_name), ''), username) AS display_name, username
+       FROM core_users
+      WHERE id = $1 AND active = TRUE AND COALESCE(role, 'user') <> 'farmacia'
+      LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] || null;
 }
 
 function buildHistoryWhere(
@@ -593,12 +743,32 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
             COUNT(*) FILTER (WHERE d.status = 'ACTIVE')::text AS active,
             COUNT(*) FILTER (WHERE d.status = 'CANCELLED')::text AS cancelled,
             COUNT(*) FILTER (WHERE c.id IS NULL)::text AS orphan_deliveries,
-            COUNT(*) FILTER (WHERE c.id IS NOT NULL AND c.status <> d.status)::text AS status_mismatches
+            COUNT(*) FILTER (WHERE c.id IS NOT NULL AND c.status <> d.status)::text AS status_mismatches,
+            (SELECT COUNT(*)::text
+               FROM delivery_commission_payments p
+               LEFT JOIN (
+                 SELECT payment_id, COUNT(*) AS item_count FROM delivery_commission_payment_items GROUP BY payment_id
+               ) i ON i.payment_id = p.id
+              WHERE p.commission_count <> COALESCE(i.item_count, 0)) AS payment_count_mismatches,
+            (SELECT COUNT(*)::text
+               FROM delivery_commission_payments p
+               LEFT JOIN (
+                 SELECT payment_id, COALESCE(SUM(amount_cents), 0) AS item_total FROM delivery_commission_payment_items GROUP BY payment_id
+               ) i ON i.payment_id = p.id
+              WHERE p.total_cents <> COALESCE(i.item_total, 0)) AS payment_total_mismatches,
+            (SELECT COUNT(*)::text
+               FROM delivery_commission_payment_items pi
+               JOIN delivery_commissions paid_commission ON paid_commission.id = pi.commission_id
+              WHERE paid_commission.status <> 'ACTIVE') AS paid_cancelled_commissions
        FROM deliveries d
        LEFT JOIN delivery_commissions c ON c.delivery_id = d.id`,
   );
   const row = counts.rows[0];
-  const consistent = Number(row?.orphan_deliveries || 0) === 0 && Number(row?.status_mismatches || 0) === 0;
+  const consistent = Number(row?.orphan_deliveries || 0) === 0
+    && Number(row?.status_mismatches || 0) === 0
+    && Number(row?.payment_count_mismatches || 0) === 0
+    && Number(row?.payment_total_mismatches || 0) === 0
+    && Number(row?.paid_cancelled_commissions || 0) === 0;
   res.status(consistent ? 200 : 503).json({
     ok: consistent,
     service: SERVICE_NAME,
@@ -619,11 +789,13 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
   const manager = canManageAll(user);
   const selectedMonth = normalizeMonth(req.query.month, localDateParts().month);
   const filters = normalizeHistoryFilters(req.query as Record<string, unknown>, { manager });
-  const [mine, global, leaders, users, history] = await Promise.all([
+  const [mine, global, leaders, users, commissionOverview, recentPayments, history] = await Promise.all([
     loadMineSummary(user.id, selectedMonth),
-    manager ? loadSummary(null, selectedMonth) : Promise.resolve({ generated: 0, active: 0, cancelled: 0, commissionCents: 0 }),
+    manager ? loadSummary(null, selectedMonth) : Promise.resolve({ generated: 0, active: 0, cancelled: 0, commissionCents: 0, pendingCommissionCents: 0, paidCommissionCents: 0 }),
     manager ? loadLeaders(selectedMonth) : Promise.resolve([]),
     manager ? loadUsers() : Promise.resolve([]),
+    manager ? loadCommissionOverview(selectedMonth) : Promise.resolve([]),
+    manager ? loadRecentPayments(selectedMonth) : Promise.resolve([]),
     loadHistory(filters, user, selectedMonth),
   ]);
 
@@ -636,11 +808,14 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
     isManager: manager,
     csrfToken: ensureCsrf(req),
     creationToken: ensureCreationToken(req),
+    paymentToken: manager ? ensurePaymentToken(req) : '',
     flash: takeFlash(req),
     selectedMonth,
     mine,
     global,
     leaders,
+    commissionOverview,
+    recentPayments,
     users,
     filters,
     history: history.rows,
@@ -795,6 +970,144 @@ app.post(`${BASE_PATH}/reprint`, asyncRoute(async (req, res) => {
   return res.redirect(`${BASE_PATH}/print/${deliveryId}`);
 }));
 
+app.post(`${BASE_PATH}/pay-commission`, asyncRoute(async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const parsed = validateCommissionPaymentInput(req.body as Record<string, unknown>);
+  const expectedToken = req.session.paymentToken || '';
+  if (!csrfMatches(req) || !canManageAll(user) || !parsed.value || !expectedToken || !safeEqual(expectedToken, parsed.value.requestToken)) {
+    setFlash(req, 'error', parsed.errors.join(' ') || 'Somente ADM ou gerente pode pagar comissoes.');
+    return res.redirect(`${BASE_PATH}/`);
+  }
+
+  const selectedUser = await eligibleUserById(parsed.value.userId);
+  if (!selectedUser) {
+    setFlash(req, 'error', 'O usuario selecionado nao esta ativo ou nao pode receber comissao.');
+    return res.redirect(`${BASE_PATH}/?month=${parsed.value.periodMonth}#pagar-comissao`);
+  }
+
+  const client = await deliveryPool.connect();
+  let paymentId = 0;
+  let created = false;
+  let commissionCount = 0;
+  let totalCents = 0;
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [parsed.value.userId]);
+    const existing = await client.query<{ id: string; paid_by_user_id: string; user_id: string; period_month: string } & QueryResultRow>(
+      `SELECT id::text, paid_by_user_id::text, user_id::text, TO_CHAR(period_month, 'YYYY-MM') AS period_month
+         FROM delivery_commission_payments
+        WHERE request_token = $1::uuid
+        FOR SHARE`,
+      [parsed.value.requestToken],
+    );
+    if (existing.rows[0]) {
+      if (Number(existing.rows[0].paid_by_user_id) !== user.id
+          || Number(existing.rows[0].user_id) !== parsed.value.userId
+          || existing.rows[0].period_month !== parsed.value.periodMonth) throw new Error('payment_token_conflict');
+      paymentId = Number(existing.rows[0].id);
+    } else {
+      const payable = await client.query<CommissionIdRow>(
+        `SELECT c.id::text, c.delivery_id::text, c.amount_cents::text
+           FROM deliveries d
+           JOIN delivery_commissions c ON c.delivery_id = d.id
+          WHERE c.user_id = $1
+            AND c.status = 'ACTIVE'
+            AND d.status = 'ACTIVE'
+            AND TO_CHAR(d.created_at AT TIME ZONE '${TIME_ZONE}', 'YYYY-MM') = $2
+            AND NOT EXISTS (
+              SELECT 1 FROM delivery_commission_payment_items pi WHERE pi.commission_id = c.id
+            )
+          ORDER BY d.id
+          FOR UPDATE OF d, c`,
+        [parsed.value.userId, parsed.value.periodMonth],
+      );
+      if (payable.rowCount === 0) {
+        await client.query('ROLLBACK');
+        delete req.session.paymentToken;
+        setFlash(req, 'error', 'Nao ha comissoes pendentes para este usuario no mes selecionado.');
+        return res.redirect(`${BASE_PATH}/?month=${parsed.value.periodMonth}#pagar-comissao`);
+      }
+
+      commissionCount = payable.rows.length;
+      totalCents = payable.rows.reduce((sum, row) => sum + Number(row.amount_cents), 0);
+      const payment = await client.query<{ id: string } & QueryResultRow>(
+        `INSERT INTO delivery_commission_payments (
+           request_token, user_id, user_name, period_month, commission_count, total_cents,
+           paid_by_user_id, paid_by_name
+         ) VALUES ($1::uuid, $2, $3, ($4 || '-01')::date, $5, $6, $7, $8)
+         RETURNING id::text`,
+        [parsed.value.requestToken, parsed.value.userId, selectedUser.display_name, parsed.value.periodMonth, commissionCount, totalCents, user.id, user.displayName],
+      );
+      paymentId = Number(payment.rows[0]?.id || 0);
+      if (!paymentId) throw new Error('commission_payment_not_created');
+
+      const commissionIds = payable.rows.map((row) => Number(row.id));
+      const items = await client.query(
+        `INSERT INTO delivery_commission_payment_items (payment_id, commission_id, delivery_id, amount_cents)
+         SELECT $1, c.id, c.delivery_id, c.amount_cents
+           FROM delivery_commissions c
+          WHERE c.id = ANY($2::bigint[])
+         RETURNING id`,
+        [paymentId, commissionIds],
+      );
+      if (items.rowCount !== commissionCount) throw new Error('commission_payment_items_incomplete');
+      await client.query(
+        `INSERT INTO delivery_commission_payment_audit_logs (payment_id, user_id, actor_name, action, metadata)
+         VALUES ($1, $2, $3, 'PAYMENT_CREATED', $4::jsonb)`,
+        [paymentId, user.id, user.displayName, JSON.stringify({ user_id: parsed.value.userId, period_month: parsed.value.periodMonth, commission_count: commissionCount, total_cents: totalCents })],
+      );
+      created = true;
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (created) {
+    await logCoreAudit(
+      user.id,
+      'DELIVERY_COMMISSION_PAYMENT_CREATED',
+      paymentId,
+      `Pagamento de comissao criado para ${selectedUser.display_name}.`,
+      { paid_user_id: parsed.value.userId, period_month: parsed.value.periodMonth, commission_count: commissionCount, total_cents: totalCents },
+      'delivery_commission_payment',
+    );
+  }
+  delete req.session.paymentToken;
+  req.session.printPaymentId = paymentId;
+  setFlash(req, 'success', created ? 'Comissao paga e registrada. O relatorio resumido sera aberto para impressao.' : 'Este pagamento ja estava registrado; nenhum valor foi duplicado.');
+  await saveSession(req);
+  return res.redirect(`${BASE_PATH}/print-commission/${paymentId}`);
+}));
+
+app.post(`${BASE_PATH}/reprint-commission`, asyncRoute(async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const paymentId = parsePositiveId(req.body.payment_id);
+  if (!csrfMatches(req) || !paymentId || !canManageAll(user)) {
+    setFlash(req, 'error', 'Somente ADM ou gerente pode reimprimir pagamentos de comissao.');
+    return res.redirect(`${BASE_PATH}/`);
+  }
+  const payment = await commissionPaymentForManager(paymentId, user);
+  if (!payment) {
+    setFlash(req, 'error', 'Pagamento de comissao nao encontrado.');
+    return res.redirect(`${BASE_PATH}/`);
+  }
+  await deliveryPool.query(
+    `INSERT INTO delivery_commission_payment_audit_logs (payment_id, user_id, actor_name, action, metadata)
+     VALUES ($1, $2, $3, 'PAYMENT_REPRINTED', '{}'::jsonb)`,
+    [paymentId, user.id, user.displayName],
+  );
+  await logCoreAudit(user.id, 'DELIVERY_COMMISSION_PAYMENT_REPRINTED', paymentId, 'Reimpressao do pagamento de comissao solicitada.', {}, 'delivery_commission_payment');
+  req.session.printPaymentId = paymentId;
+  await saveSession(req);
+  return res.redirect(`${BASE_PATH}/print-commission/${paymentId}`);
+}));
+
 app.post(`${BASE_PATH}/cancel`, asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
@@ -819,6 +1132,19 @@ app.post(`${BASE_PATH}/cancel`, asyncRoute(async (req, res) => {
       return res.redirect(`${BASE_PATH}/`);
     }
     if (row.status === 'ACTIVE') {
+      const paid = await client.query<{ payment_id: string } & QueryResultRow>(
+        `SELECT pi.payment_id::text
+           FROM delivery_commissions c
+           JOIN delivery_commission_payment_items pi ON pi.commission_id = c.id
+          WHERE c.delivery_id = $1
+          LIMIT 1`,
+        [deliveryId],
+      );
+      if (paid.rows[0]) {
+        await client.query('ROLLBACK');
+        setFlash(req, 'error', `A entrega nao pode ser cancelada porque a comissao ja foi paga no relatorio #${String(paid.rows[0].payment_id).padStart(6, '0')}.`);
+        return res.redirect(`${BASE_PATH}/?view_id=${deliveryId}#entrega-detalhe`);
+      }
       await client.query(
         `UPDATE deliveries
             SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_user_id = $1,
@@ -862,6 +1188,21 @@ app.get(`${BASE_PATH}/print/:id`, asyncRoute(async (req, res) => {
     return res.redirect(`${BASE_PATH}/`);
   }
   return res.type('html').send(renderPrintReceipt(BASE_PATH, delivery));
+}));
+
+app.get(`${BASE_PATH}/print-commission/:id`, asyncRoute(async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const paymentId = parsePositiveId(req.params.id);
+  if (!paymentId || !canManageAll(user) || req.session.printPaymentId !== paymentId) return res.redirect(`${BASE_PATH}/`);
+  delete req.session.printPaymentId;
+  await saveSession(req);
+  const payment = await commissionPaymentForManager(paymentId, user);
+  if (!payment) {
+    setFlash(req, 'error', 'O relatorio de pagamento nao esta disponivel para impressao.');
+    return res.redirect(`${BASE_PATH}/`);
+  }
+  return res.type('html').send(renderCommissionPaymentReceipt(BASE_PATH, payment));
 }));
 
 app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {

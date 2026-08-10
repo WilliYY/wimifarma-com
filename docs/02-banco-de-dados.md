@@ -462,6 +462,9 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Banco `wimifarma_entrega`, container `wimifarma-entrega-db`.
 - `deliveries`: numero sequencial, UUID idempotente, cliente, responsavel original, datas, status e cancelamento logico.
 - `delivery_commissions`: uma linha por entrega, `delivery_id UNIQUE`, `amount_cents=100` e status `ACTIVE`/`CANCELLED`.
+- `delivery_commission_payments`: lote imutavel e idempotente por UUID, usuario, mes, quantidade, total, pagador e horario.
+- `delivery_commission_payment_items`: vincula cada comissao a no maximo um lote; `commission_id` e `delivery_id` sao unicos.
+- `delivery_commission_payment_audit_logs`: registra criacao e reimpressao do relatorio de pagamento.
 - `delivery_audit_logs`: ator, nome, acao, horario e metadata JSONB.
 - `entrega_sessions`: sessoes `WFENTREGA` por `connect-pg-simple`.
-- Triggers impedem DELETE, alteracao da identidade da entrega/comissao e reativacao depois do cancelamento.
+- Triggers impedem DELETE, alteracao da identidade da entrega/comissao, reativacao depois do cancelamento e alteracao dos lotes/itens de pagamento.

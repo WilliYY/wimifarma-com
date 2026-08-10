@@ -21,8 +21,15 @@ export type HistoryFilters = {
   page: number;
 };
 
+export type CommissionPaymentInput = {
+  userId: number;
+  periodMonth: string;
+  requestToken: string;
+};
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_RE = /^(\d{4})-(\d{2})$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function cleanSingleLine(value: unknown, limit: number): string {
   const clean = String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -94,6 +101,26 @@ export function normalizeMonth(value: unknown, fallback = localDateParts().month
   if (!match) return fallback;
   const month = Number(match[2]);
   return month >= 1 && month <= 12 ? text : fallback;
+}
+
+export function validateCommissionPaymentInput(input: Record<string, unknown>): {
+  value: CommissionPaymentInput | null;
+  errors: string[];
+} {
+  const userId = Number.parseInt(String(input.user_id || ''), 10);
+  const periodMonth = cleanSingleLine(input.period_month, 7);
+  const requestToken = cleanSingleLine(input.request_token, 36);
+  const monthMatch = MONTH_RE.exec(periodMonth);
+  const errors: string[] = [];
+
+  if (!Number.isSafeInteger(userId) || userId <= 0) errors.push('Selecione um usuario valido.');
+  if (!monthMatch || Number(monthMatch[2]) < 1 || Number(monthMatch[2]) > 12) errors.push('Selecione um mes valido.');
+  if (!UUID_RE.test(requestToken)) errors.push('Recarregue a pagina antes de pagar a comissao.');
+
+  return {
+    value: errors.length === 0 ? { userId, periodMonth, requestToken } : null,
+    errors,
+  };
 }
 
 export function previousMonth(month: string): string {

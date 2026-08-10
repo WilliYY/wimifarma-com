@@ -16,6 +16,8 @@ export type DeliveryRow = {
   cancelled_by_name: string | null;
   commission_amount_cents: string;
   commission_status: 'ACTIVE' | 'CANCELLED';
+  commission_payment_id: string | null;
+  commission_paid_at: Date | string | null;
 };
 
 export type AuditRow = {
@@ -32,6 +34,8 @@ export type Summary = {
   active: number;
   cancelled: number;
   commissionCents: number;
+  pendingCommissionCents: number;
+  paidCommissionCents: number;
 };
 
 export type MineSummary = Summary & { today: number };
@@ -43,6 +47,28 @@ export type LeaderRow = {
   active: string;
   cancelled: string;
   commission_cents: string;
+  pending_commission_cents: string;
+  paid_commission_cents: string;
+};
+
+export type CommissionOverviewRow = {
+  user_id: string;
+  user_name: string;
+  pending_count: string;
+  pending_cents: string;
+  paid_count: string;
+  paid_cents: string;
+};
+
+export type CommissionPaymentRow = {
+  id: string;
+  user_id: string;
+  user_name: string;
+  period_month: Date | string;
+  commission_count: string;
+  total_cents: string;
+  paid_by_name: string;
+  paid_at: Date | string;
 };
 
 export type DashboardViewModel = {
@@ -51,11 +77,14 @@ export type DashboardViewModel = {
   isManager: boolean;
   csrfToken: string;
   creationToken: string;
+  paymentToken: string;
   flash: Flash;
   selectedMonth: string;
   mine: MineSummary;
   global: Summary;
   leaders: LeaderRow[];
+  commissionOverview: CommissionOverviewRow[];
+  recentPayments: CommissionPaymentRow[];
   users: UserOption[];
   filters: HistoryFilters;
   history: DeliveryRow[];
@@ -129,7 +158,7 @@ function renderDeliveryActions(model: DashboardViewModel, delivery: DeliveryRow)
         <input type="hidden" name="delivery_id" value="${e(delivery.id)}">
         <button class="button button--outline" type="submit">Reimprimir</button>
       </form>` : ''}
-      ${model.isManager && active ? `<form method="post" action="${e(model.basePath)}/cancel" data-confirm-cancel>
+      ${model.isManager && active && !delivery.commission_payment_id ? `<form method="post" action="${e(model.basePath)}/cancel" data-confirm-cancel>
         ${csrfField(model.csrfToken)}
         <input type="hidden" name="delivery_id" value="${e(delivery.id)}">
         <button class="button button--danger" type="submit">Cancelar</button>
@@ -140,7 +169,7 @@ function renderDeliveryActions(model: DashboardViewModel, delivery: DeliveryRow)
 function renderSelectedDelivery(model: DashboardViewModel): string {
   const delivery = model.selectedDelivery;
   if (!delivery) return '';
-  const canCancel = model.isManager && delivery.status === 'ACTIVE';
+  const canCancel = model.isManager && delivery.status === 'ACTIVE' && !delivery.commission_payment_id;
   return `
     <section class="detail-panel" id="entrega-detalhe" aria-labelledby="detail-title">
       <div class="section-heading">
@@ -167,6 +196,7 @@ function renderSelectedDelivery(model: DashboardViewModel): string {
           <div class="edit-actions field-wide">
             <button class="button button--primary" type="submit">Salvar dados</button>
             ${delivery.status === 'CANCELLED' ? '<span class="muted">Entrega cancelada; o historico permanece preservado.</span>' : ''}
+            ${delivery.commission_payment_id ? `<span class="muted">Comissao quitada no pagamento #${e(String(delivery.commission_payment_id).padStart(6, '0'))}; cancelamento bloqueado.</span>` : ''}
           </div>
         </form>
         <aside class="audit-list" aria-label="Auditoria da entrega">
@@ -193,6 +223,56 @@ function renderSelectedDelivery(model: DashboardViewModel): string {
     </section>`;
 }
 
+function renderCommissionManagement(model: DashboardViewModel): string {
+  if (!model.isManager) return '';
+  const pendingRows = model.commissionOverview.filter((row) => Number(row.pending_count) > 0);
+  const pendingCents = model.commissionOverview.reduce((sum, row) => sum + Number(row.pending_cents || 0), 0);
+  const paidCents = model.commissionOverview.reduce((sum, row) => sum + Number(row.paid_cents || 0), 0);
+  const paymentOptions = pendingRows.map((row) => `<option value="${e(row.user_id)}">${e(row.user_name)} - ${e(row.pending_count)} entrega(s) - ${e(money(row.pending_cents))}</option>`).join('');
+
+  return `<section class="payment-section" id="pagar-comissao" aria-labelledby="payment-title">
+    <div class="payment-heading">
+      <div><p class="eyebrow">FECHAMENTO</p><h2 id="payment-title">Pagar comissao</h2><p>Quite somente valores ativos e ainda pendentes do mes selecionado.</p></div>
+      <span class="payment-period">${e(monthLabel(model.selectedMonth))}</span>
+    </div>
+    <div class="payment-layout">
+      <div class="payment-operation">
+        <div class="payment-metrics">
+          <article><span>A pagar</span><strong>${e(money(pendingCents))}</strong><small>${pendingRows.length} usuario(s) pendente(s)</small></article>
+          <article><span>Ja pago</span><strong>${e(money(paidCents))}</strong><small>neste mes de referencia</small></article>
+        </div>
+        <form class="payment-form" method="post" action="${e(model.basePath)}/pay-commission" data-lock-submit data-confirm-payment>
+          ${csrfField(model.csrfToken)}
+          <input type="hidden" name="request_token" value="${e(model.paymentToken)}">
+          <input type="hidden" name="period_month" value="${e(model.selectedMonth)}">
+          <label>Usuario que vai receber
+            <select name="user_id" required${pendingRows.length ? '' : ' disabled'}>
+              <option value="">Selecione</option>${paymentOptions}
+            </select>
+          </label>
+          <div class="payment-assurance"><strong>Baixa segura</strong><span>Cada entrega entra uma unica vez e o relatorio fica salvo para reimpressao.</span></div>
+          <button class="button button--primary payment-submit" type="submit"${pendingRows.length ? '' : ' disabled'}>Pagar e imprimir</button>
+        </form>
+        <p class="payment-warning">Depois do pagamento, as entregas quitadas ficam protegidas contra cancelamento para manter o caixa correto.</p>
+      </div>
+      <div class="payment-history">
+        <div class="payment-history-title"><div><p class="eyebrow">COMPROVANTES</p><h3>Pagamentos do mes</h3></div><span>${model.recentPayments.length} registro(s)</span></div>
+        <div class="payment-list">
+          ${model.recentPayments.length ? model.recentPayments.map((payment) => `<article class="payment-row">
+            <div><small>#${e(String(payment.id).padStart(6, '0'))}</small><strong>${e(payment.user_name)}</strong><span>${e(payment.commission_count)} entrega(s) - ${e(dateTime(payment.paid_at))}</span></div>
+            <b>${e(money(payment.total_cents))}</b>
+            <form method="post" action="${e(model.basePath)}/reprint-commission">
+              ${csrfField(model.csrfToken)}
+              <input type="hidden" name="payment_id" value="${e(payment.id)}">
+              <button class="button button--quiet" type="submit">Reimprimir</button>
+            </form>
+          </article>`).join('') : '<p class="empty-copy">Nenhuma comissao foi paga neste mes.</p>'}
+        </div>
+      </div>
+    </div>
+  </section>`;
+}
+
 export function renderDashboard(model: DashboardViewModel): string {
   const pageCount = Math.max(1, Math.ceil(model.historyTotal / model.pageSize));
   const userOptions = model.users.map((user) => `<option value="${e(user.id)}"${selected(user.id, model.filters.userId)}>${e(user.display_name)} (@${e(user.username)})</option>`).join('');
@@ -204,7 +284,7 @@ export function renderDashboard(model: DashboardViewModel): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Entrega | Wimifarma</title>
-  <link rel="stylesheet" href="${e(model.basePath)}/entrega.css?v=1.0.0">
+  <link rel="stylesheet" href="${e(model.basePath)}/entrega.css?v=1.1.0">
 </head>
 <body>
   <header class="topbar">
@@ -250,21 +330,23 @@ export function renderDashboard(model: DashboardViewModel): string {
       <div class="summary-grid${model.isManager ? '' : ' summary-grid--personal'}">
         <article class="metric metric--blue"><span>Minhas hoje</span><strong>${model.mine.today}</strong><small>entregas validas</small></article>
         <article class="metric metric--teal"><span>Minhas no mes</span><strong>${model.mine.active}</strong><small>de ${model.mine.generated} geradas</small></article>
-        <article class="metric metric--green"><span>Minha comissao</span><strong>${e(money(model.mine.commissionCents))}</strong><small>somente entregas validas</small></article>
+        <article class="metric metric--green"><span>Minha comissao a receber</span><strong>${e(money(model.mine.pendingCommissionCents))}</strong><small>${e(money(model.mine.paidCommissionCents))} ja pago</small></article>
         ${model.isManager ? `<article class="metric metric--wine"><span>Total gerado</span><strong>${model.global.generated}</strong><small>no periodo selecionado</small></article>
         <article class="metric metric--amber"><span>Validas / canceladas</span><strong>${model.global.active} / ${model.global.cancelled}</strong><small>historico preservado</small></article>
-        <article class="metric metric--green"><span>Comissoes validas</span><strong>${e(money(model.global.commissionCents))}</strong><small>total da equipe</small></article>` : ''}
+        <article class="metric metric--green"><span>Comissoes a pagar</span><strong>${e(money(model.global.pendingCommissionCents))}</strong><small>${e(money(model.global.paidCommissionCents))} ja pago</small></article>` : ''}
       </div>
     </section>
 
     ${model.isManager ? `<section class="leader-section" aria-labelledby="leader-title">
-      <div class="section-heading compact"><div><p class="eyebrow">GESTAO</p><h2 id="leader-title">Entregas por usuario</h2></div><span class="muted">Comissoes validas em ${e(monthLabel(model.selectedMonth))}</span></div>
+      <div class="section-heading compact"><div><p class="eyebrow">GESTAO</p><h2 id="leader-title">Entregas por usuario</h2></div><span class="muted">Valores de ${e(monthLabel(model.selectedMonth))}</span></div>
       <div class="leader-grid">
         ${model.leaders.length ? model.leaders.map((row, index) => `<article class="leader-row">
-          <span class="rank">${index + 1}</span><div><strong>${e(row.user_name)}</strong><small>${e(row.active)} validas · ${e(row.cancelled)} canceladas</small></div><b>${e(money(row.commission_cents))}</b>
+          <span class="rank">${index + 1}</span><div><strong>${e(row.user_name)}</strong><small>${e(row.active)} validas - ${e(row.cancelled)} canceladas - ${e(money(row.paid_commission_cents))} pago</small></div><b>${e(money(row.pending_commission_cents))}<small>a pagar</small></b>
         </article>`).join('') : '<p class="empty-copy">Nenhuma entrega neste mes.</p>'}
       </div>
     </section>` : ''}
+
+    ${renderCommissionManagement(model)}
 
     ${renderSelectedDelivery(model)}
 
@@ -306,7 +388,7 @@ export function renderDashboard(model: DashboardViewModel): string {
             <td class="address-cell">${e(delivery.address)}</td>
             <td>${e(delivery.created_by_name)}</td>
             <td>${renderStatus(delivery)}${delivery.cancelled_at ? `<small>${e(dateTime(delivery.cancelled_at))}</small>` : ''}</td>
-            <td><strong>${delivery.commission_status === 'ACTIVE' ? e(money(delivery.commission_amount_cents)) : 'R$ 0,00'}</strong><small>${delivery.commission_status === 'ACTIVE' ? 'Valida' : 'Estornada'}</small></td>
+            <td><strong>${delivery.commission_status === 'ACTIVE' ? e(money(delivery.commission_amount_cents)) : 'R$ 0,00'}</strong><small>${delivery.commission_status !== 'ACTIVE' ? 'Estornada' : delivery.commission_payment_id ? `Paga #${e(String(delivery.commission_payment_id).padStart(6, '0'))}` : 'A pagar'}</small></td>
             <td>${renderDeliveryActions(model, delivery)}</td>
           </tr>`).join('') : '<tr><td colspan="7" class="empty-cell">Nenhuma entrega encontrada com estes filtros.</td></tr>'}
           </tbody>
@@ -319,7 +401,7 @@ export function renderDashboard(model: DashboardViewModel): string {
       </nav>` : ''}
     </section>
   </main>
-  <script src="${e(model.basePath)}/entrega.js?v=1.0.0" defer></script>
+  <script src="${e(model.basePath)}/entrega.js?v=1.1.0" defer></script>
 </body>
 </html>`;
 }
@@ -345,6 +427,36 @@ export function renderPrintReceipt(basePath: string, delivery: DeliveryRow): str
       <div><dt>REGISTRADO POR</dt><dd>${e(delivery.created_by_name)}</dd></div>
       <div><dt>DATA E HORA</dt><dd>${e(dateTime(delivery.created_at))}</dd></div>
     </dl>
+  </main>
+  <div class="print-controls"><button class="button button--primary" type="button" data-print-now>Imprimir</button><a class="button button--quiet" href="${e(basePath)}/">Voltar</a></div>
+  <script src="${e(basePath)}/entrega-print.js?v=1.0.0" defer></script>
+</body>
+</html>`;
+}
+
+export function renderCommissionPaymentReceipt(basePath: string, payment: CommissionPaymentRow): string {
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pagamento #${e(payment.id)} | Comissao de entrega</title>
+  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.1.0">
+</head>
+<body class="print-page" data-auto-print>
+  <main class="receipt commission-receipt" aria-label="Relatorio de pagamento de comissao">
+    <div class="receipt-brand"><span>+</span> WimiFarma</div>
+    <h1>PAGAMENTO DE COMISSAO</h1>
+    <div class="payment-total"><small>TOTAL PAGO</small><strong>${e(money(payment.total_cents))}</strong></div>
+    <dl>
+      <div><dt>USUARIO</dt><dd>${e(payment.user_name)}</dd></div>
+      <div><dt>MES DE REFERENCIA</dt><dd>${e(monthLabel(String(payment.period_month).slice(0, 7)))}</dd></div>
+      <div><dt>ENTREGAS PAGAS</dt><dd>${e(payment.commission_count)}</dd></div>
+      <div><dt>PAGAMENTO</dt><dd>#${e(String(payment.id).padStart(6, '0'))}</dd></div>
+      <div><dt>PAGO POR</dt><dd>${e(payment.paid_by_name)}</dd></div>
+      <div><dt>DATA E HORA</dt><dd>${e(dateTime(payment.paid_at))}</dd></div>
+    </dl>
+    <p class="receipt-note">Cada entrega valida corresponde a R$ 1,00.</p>
   </main>
   <div class="print-controls"><button class="button button--primary" type="button" data-print-now>Imprimir</button><a class="button button--quiet" href="${e(basePath)}/">Voltar</a></div>
   <script src="${e(basePath)}/entrega-print.js?v=1.0.0" defer></script>

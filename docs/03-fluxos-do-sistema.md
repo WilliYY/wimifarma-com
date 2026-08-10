@@ -617,5 +617,8 @@ Cuidados:
 2. `Gerar entrega e imprimir` valida CSRF/token, grava entrega/comissao/auditoria na mesma transacao e abre a impressao local.
 3. Reimprimir audita e usa o registro existente, sem nova entrega ou comissao.
 4. Editar muda somente nome, telefone e endereco; responsavel, data, numero e comissao ficam imutaveis.
-5. `adm`, `admin` ou `gerente` cancelam com lock; entrega e comissao mudam atomicamente para `CANCELLED`.
-6. Usuario comum consulta somente as proprias entregas; gestores usam resumo por usuario e historico completo.
+5. `adm`, `admin` ou `gerente` cancelam com lock apenas antes do pagamento; entrega e comissao mudam atomicamente para `CANCELLED`.
+6. Gestor escolhe usuario e mes em `Pagar comissao`; o servidor trava os registros, inclui somente comissoes ativas ainda nao pagas e grava lote/itens/auditoria na mesma transacao.
+7. Clique duplo ou retry reutiliza o UUID do lote sem pagar novamente; novas entregas posteriores podem formar outro lote do mesmo mes.
+8. O relatorio resumido abre uma vez por autorizacao de sessao e pode ser reimpresso pelo historico sem alterar valores.
+9. Usuario comum consulta somente as proprias entregas; gestores usam resumo por usuario e historico completo.

@@ -29,18 +29,32 @@
   });
 
   document.querySelectorAll('[data-lock-submit]').forEach((form) => {
-    form.addEventListener('submit', () => {
-      const button = form.querySelector('button[type="submit"]');
-      if (!(button instanceof HTMLButtonElement)) return;
-      button.disabled = true;
-      button.setAttribute('aria-busy', 'true');
-      window.setTimeout(() => { button.disabled = false; button.removeAttribute('aria-busy'); }, 8000);
+    form.addEventListener('submit', (event) => {
+      window.setTimeout(() => {
+        if (event.defaultPrevented) return;
+        const button = form.querySelector('button[type="submit"]');
+        if (!(button instanceof HTMLButtonElement)) return;
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        window.setTimeout(() => { button.disabled = false; button.removeAttribute('aria-busy'); }, 8000);
+      }, 0);
     });
   });
 
   document.querySelectorAll('[data-confirm-cancel]').forEach((form) => {
     form.addEventListener('submit', (event) => {
       if (!window.confirm('Cancelar esta entrega e estornar a comissao de R$ 1,00? O historico sera mantido.')) {
+        event.preventDefault();
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-confirm-payment]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      const select = form.querySelector('select[name="user_id"]');
+      const option = select instanceof HTMLSelectElement ? select.selectedOptions[0] : null;
+      const label = option?.textContent?.trim() || 'o usuario selecionado';
+      if (!window.confirm(`Confirmar o pagamento de ${label}? Esta baixa nao podera ser alterada.`)) {
         event.preventDefault();
       }
     });
