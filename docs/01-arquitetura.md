@@ -240,3 +240,11 @@ Tambem nao apontar o Nginx Proxy Manager nem o Apache para `wimifarma-miauby-app
 - Criar rotinas de backup automatico do Postgres da Cotacao V2.
 - Separar jobs/cron em container proprio quando Miauby e sincronizacao crescerem.
 - Evoluir a Cotacao V2 com conflito por campo, diagnostico de sync e import/export Google Sheets.
+
+## Modulo Entrega - 2026-08-10
+
+- `/entrega/` passa pelo Apache para `wimifarma-entrega-app:3980`.
+- O app usa Node.js 22, TypeScript, Express, SSO da Home e sessao `WFENTREGA`.
+- `wimifarma-entrega-db` usa Postgres 17 dedicado em `./entrega-data/postgres`.
+- O app consulta identidade ativa no `wimifarma_core`; entregas, comissoes, sessoes e auditoria ficam em `wimifarma_entrega`.
+- A impressao e local pelo navegador, sem fila ou agente de impressao.

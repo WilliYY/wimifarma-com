@@ -744,3 +744,18 @@ dig @ns49.domaincontrol.com www.wimifarma.com +short
 - Criar scripts `scripts/audit.ps1` e `scripts/audit-vps.sh`.
 - Criar script de backup MySQL com data.
 - Criar checklist de deploy com rollback.
+
+## Entrega Node/Postgres
+
+```powershell
+cd apps/entrega
+npm ci
+npm run check
+npm test
+```
+
+```bash
+docker compose up -d --build wimifarma-entrega-db wimifarma-entrega-app wimifarma-com-web
+docker compose logs --tail=100 wimifarma-entrega-app wimifarma-entrega-db
+curl -fsS http://127.0.0.1:3002/entrega/health
+```

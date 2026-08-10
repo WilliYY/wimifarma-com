@@ -129,3 +129,10 @@ Arquivos:
 - Criar painel de saude do sistema.
 - Integrar Miauby para resumir erros recorrentes.
 - Exportar auditoria para CSV quando necessario.
+
+## Entrega - 2026-08-10
+
+- `delivery_audit_logs` registra `DELIVERY_CREATED`, `DELIVERY_EDITED`, `DELIVERY_REPRINTED` e `DELIVERY_CANCELLED`.
+- Edicao guarda antes/depois; cancelamento registra estorno de 100 centavos.
+- Eventos tambem vao em melhor esforco para `core_audit_logs`; falha central depois do commit nao desfaz entrega valida.
+- Reimpressao significa solicitacao local, nao confirmacao de papel impresso.

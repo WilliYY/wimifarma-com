@@ -610,3 +610,12 @@ Cuidados:
 - Criar docs por modulo quando cada fluxo ganhar mais regras.
 - Adicionar diagnostico central com status de banco, API, proxy e jobs.
 - Integrar Miauby para resumir pendencias, divergencias e alertas operacionais.
+
+## Fluxo Entrega - 2026-08-10
+
+1. Conta ativa informa nome, telefone/WhatsApp e endereco completo.
+2. `Gerar entrega e imprimir` valida CSRF/token, grava entrega/comissao/auditoria na mesma transacao e abre a impressao local.
+3. Reimprimir audita e usa o registro existente, sem nova entrega ou comissao.
+4. Editar muda somente nome, telefone e endereco; responsavel, data, numero e comissao ficam imutaveis.
+5. `adm`, `admin` ou `gerente` cancelam com lock; entrega e comissao mudam atomicamente para `CANCELLED`.
+6. Usuario comum consulta somente as proprias entregas; gestores usam resumo por usuario e historico completo.

@@ -197,3 +197,11 @@ Os quatro primeiros devem responder 403. O status detalhado sem token deve respo
 - Criar testes de permissao por rota.
 - Adicionar monitoramento de tentativas de login.
 - Integrar alertas do Miauby com eventos de seguranca.
+
+## Entrega - 2026-08-10
+
+- POSTs exigem sessao ativa e CSRF; criacao exige UUID idempotente ligado a sessao.
+- Consultas e mutacoes aplicam ownership no servidor.
+- Cancelamento e exclusivo de `adm`, `admin` e `gerente` e muda entrega/comissao na mesma transacao.
+- SQL usa parametros, HTML e escapado e entradas recebem limites de tamanho.
+- Banco impede DELETE, duplicacao de comissao, mudanca de identidade e reativacao.

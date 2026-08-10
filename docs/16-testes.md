@@ -159,3 +159,9 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - Criar `scripts/audit-vps.sh`.
 - Adicionar Playwright ou ferramenta equivalente para fluxos visuais.
 - Adicionar testes unitarios para regras de calculo.
+
+## Entrega - 2026-08-10
+
+- `apps/entrega/src/domain.test.ts` cobre campos obrigatorios, telefone, perfis gestores, numero, datas/mes e filtro por usuario.
+- Antes de publicar: `npm ci`, `npm run check`, `npm test`, validar Compose e construir containers.
+- No VPS: validar `/entrega/health`, uma comissao por entrega, reimpressao sem nova linha e cancelamento com estorno logico.

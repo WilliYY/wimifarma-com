@@ -275,3 +275,10 @@ Higiene de pastas no VPS:
 - Criar backup automatico antes de `docker compose up -d --build`.
 - Separar Compose local/producao se as configuracoes divergirem.
 - Adicionar monitoramento de uptime e validade SSL.
+
+## Entrega - 2026-08-10
+
+- App interno `wimifarma-entrega-app:3980`; rota `/entrega/` pelo Apache.
+- Banco `wimifarma-entrega-db:5432`, sem porta publicada, volume `./entrega-data/postgres` ignorado pelo Git.
+- Variaveis: `ENTREGA_POSTGRES_PASSWORD`, `ENTREGA_SESSION_SECRET`, `CORE_POSTGRES_*` e `WIMIFARMA_HOME_SSO_INTERNAL_URL`.
+- Subir banco e app antes de reconstruir `wimifarma-com-web`, pois o proxy resolve o hostname do app na inicializacao.

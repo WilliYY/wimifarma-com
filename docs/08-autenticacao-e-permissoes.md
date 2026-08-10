@@ -136,3 +136,12 @@ Tabelas:
 - Adicionar auditoria central de login/logout/falhas.
 - Evoluir o limite de tentativas para painel de monitoramento/alerta, preservando os bloqueios atuais.
 - Criar testes automatizados para login, logout, CSRF e acesso negado.
+
+## Entrega - 2026-08-10
+
+- Toda conta `core_users.active=TRUE` recebe acesso permanente ao card e a `/entrega/`.
+- `entrega` fica em `ALWAYS_ALLOWED_MODULE_KEYS` no modulo Usuarios e e forcado como permitido na Home.
+- O app revalida `WFHOME_SSO` e cria a sessao `WFENTREGA`.
+- Usuario comum ve, edita e reimprime somente registros proprios.
+- `adm`, `admin` e `gerente` consultam a equipe e cancelam entregas.
+- Nenhum formulario troca responsavel, data original, numero, valor ou status isolado da comissao.

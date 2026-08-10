@@ -444,6 +444,7 @@ function wf_home_clear_module_session_cookies(): void
         'WFUSUARIOS',
         'WFLOGINSENHA',
         'WFWCASHBACK',
+        'WFENTREGA',
     );
 
     foreach ($cookies as $name) {
@@ -2238,6 +2239,14 @@ $modules = array(
         'accent' => 'amber',
     ),
     array(
+        'name' => 'Entrega',
+        'label' => 'Balcao',
+        'description' => 'Registrar e imprimir entregas.',
+        'module_key' => 'entrega',
+        'href' => '/entrega/',
+        'accent' => 'green',
+    ),
+    array(
         'name' => 'Bloco de notas/lembretes',
         'label' => 'Lembretes',
         'description' => 'Anotacoes internas, notas rapidas e ordem por arrasto.',
@@ -2328,6 +2337,7 @@ $homeModulePermissions = wf_home_module_permissions(
     array('login_senha')
 );
 $homeModulePermissions['miauw'] = true;
+$homeModulePermissions['entrega'] = true;
 $modules = array_values(array_filter(
     $modules,
     static function (array $module) use ($homeModulePermissions, $homeUserIdentity, $homeUserLogin): bool {

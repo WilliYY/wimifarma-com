@@ -35,6 +35,7 @@ services:
       - wimifarma-usuarios-app
       - wimifarma-login-senha-app
       - wimifarma-notas-app
+      - wimifarma-entrega-app
       - wimifarma-miauw-agent
       - wimifarma-miauw-whatsapp
     environment:
@@ -259,6 +260,19 @@ services:
       POSTGRES_PASSWORD: ${NOTAS_POSTGRES_PASSWORD:-wimifarma_notas_dev_pass}
     volumes:
       - ./notas-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-entrega-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-entrega-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_entrega
+      POSTGRES_USER: wimifarma_entrega
+      POSTGRES_PASSWORD: ${ENTREGA_POSTGRES_PASSWORD:-wimifarma_entrega_dev_pass}
+    volumes:
+      - ./entrega-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -756,6 +770,36 @@ services:
       NOTAS_INTERNAL_TOKEN: ${NOTAS_INTERNAL_TOKEN:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
       MIAUW_AGENT_INTERNAL_TOKEN: ${MIAUW_AGENT_INTERNAL_TOKEN:-}
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-entrega-app:
+    build:
+      context: ./apps/entrega
+      dockerfile: Dockerfile
+    container_name: wimifarma-entrega-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-core-db
+      - wimifarma-entrega-db
+    environment:
+      NODE_ENV: production
+      PORT: 3980
+      BASE_PATH: /entrega
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      POSTGRES_HOST: wimifarma-entrega-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_entrega
+      POSTGRES_USER: wimifarma_entrega
+      POSTGRES_PASSWORD: ${ENTREGA_POSTGRES_PASSWORD:-wimifarma_entrega_dev_pass}
+      ENTREGA_SESSION_SECRET: ${ENTREGA_SESSION_SECRET:-wimifarma_entrega_dev_secret_change_me}
+      WIMIFARMA_HOME_SSO_INTERNAL_URL: http://wimifarma-com-web/home-sso.php
+      WIMIFARMA_HOME_SSO_TIMEOUT_MS: ${WIMIFARMA_HOME_SSO_TIMEOUT_MS:-1200}
+      TZ: America/Sao_Paulo
     networks:
       - wimifarma-com-network
 

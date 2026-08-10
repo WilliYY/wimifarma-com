@@ -456,3 +456,12 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - Adicionar scripts de backup/restore.
 - Criar migrador com historico de versao.
 - Criar testes de integridade para Cashback, Cotacao e Financeiro.
+
+## Tabelas do Entrega em Postgres - 2026-08-10
+
+- Banco `wimifarma_entrega`, container `wimifarma-entrega-db`.
+- `deliveries`: numero sequencial, UUID idempotente, cliente, responsavel original, datas, status e cancelamento logico.
+- `delivery_commissions`: uma linha por entrega, `delivery_id UNIQUE`, `amount_cents=100` e status `ACTIVE`/`CANCELLED`.
+- `delivery_audit_logs`: ator, nome, acao, horario e metadata JSONB.
+- `entrega_sessions`: sessoes `WFENTREGA` por `connect-pg-simple`.
+- Triggers impedem DELETE, alteracao da identidade da entrega/comissao e reativacao depois do cancelamento.

@@ -130,3 +130,9 @@ docker compose ps wimifarma-usuarios-app wimifarma-com-web
 docker compose logs --tail=80 wimifarma-usuarios-app
 curl -fsS https://wimifarma.com/usuarios/health
 ```
+
+## Entrega sempre liberada - 2026-08-10
+
+- `entrega` aparece no cadastro de modulos para deixar a rota conhecida pelo sistema, mas integra `ALWAYS_ALLOWED_MODULE_KEYS`.
+- A Home tambem forca `entrega=true`; um POST de criacao/edicao de usuario nao pode gravar ou aplicar bloqueio efetivo a esse card.
+- O backend de `/entrega/` exige apenas uma conta core ativa. As restricoes internas usam ownership e role, nao a visibilidade do card.

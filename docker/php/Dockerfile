@@ -141,6 +141,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/entrega/" "http://wimifarma-entrega-app:3980/entrega/"'; \
+        echo 'ProxyPassReverse "/entrega/" "http://wimifarma-entrega-app:3980/entrega/"'; \
+        echo 'ProxyPass "/entrega" "http://wimifarma-entrega-app:3980/entrega"'; \
+        echo 'ProxyPassReverse "/entrega" "http://wimifarma-entrega-app:3980/entrega"'; \
+    } > /etc/apache2/conf-available/wimifarma-entrega-proxy.conf \
+    && a2enconf wimifarma-entrega-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
         echo 'ProxyPassReverse "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
         echo 'ProxyPass "/cashback" "http://wimifarma-cashback-app:4000/cashback"'; \

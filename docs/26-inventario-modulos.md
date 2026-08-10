@@ -1312,3 +1312,12 @@ Proxima rodada segura:
 1. Validar no VPS Financeiro sem `mysql2`/fallback/espelho, incluindo health, login, Caixa, Relatorio, CSV, endpoints internos e Pix CNPJ.
 2. Iniciar a trilha do Miauby interno em `docs/28-miauby-migracao.md`, sem quebrar `/miauw/`.
 3. Inventariar WordPress/Home somente quando a decisao for remover MySQL 100% do site publico.
+
+## Entrega - inventario 2026-08-10
+
+- Rota: `/entrega/`.
+- App/banco: `apps/entrega`, `wimifarma-entrega-app:3980`, `wimifarma-entrega-db`.
+- Acesso: permanente para conta core ativa; ownership para usuario comum e visao global/cancelamento para `adm`, `admin` e `gerente`.
+- Escritas: `deliveries`, `delivery_commissions`, `delivery_audit_logs` e `entrega_sessions`.
+- Integracoes: Home SSO, identidade `core_users`, auditoria central em melhor esforco e impressao local do navegador.
+- Risco principal: qualquer mudanca deve preservar uma comissao de 100 centavos por entrega, criacao idempotente e cancelamento sem DELETE.

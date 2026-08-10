@@ -9,6 +9,7 @@
 /calendario-data/
 /financeiro-data/
 /notas-data/
+/entrega-data/
 /cashback-data/
 /login-senha-data/
 /miauw-whatsapp-data/
@@ -28,6 +29,7 @@ apps/codigos/dist/
 apps/calendario/dist/
 apps/financeiro/dist/
 apps/notas/dist/
+apps/entrega/dist/
 apps/cashback/dist/
 apps/wimi-impressora/bin/
 apps/wimi-impressora/obj/

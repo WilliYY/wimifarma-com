@@ -374,3 +374,9 @@ Documento especifico:
 - Criar camada de servicos para integracoes externas.
 - Adicionar fila/job para sincronizacoes longas.
 - Usar Miauby para resumo de divergencias e alertas.
+
+## Entrega - 2026-08-10
+
+- Integra com a Home por `WFHOME_SSO` e com `core_users` para identidade ativa, nome e role.
+- O comprovante usa impressao local do navegador. Nao existe agente, executavel, fila remota ou confirmacao fisica de papel.
+- A comissao de R$ 1,00 fica por linha em `delivery_commissions` e e estornada logicamente no cancelamento.
