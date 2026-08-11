@@ -90,6 +90,8 @@ export type DashboardViewModel = {
   selectedCoupon: CouponRow | null;
 };
 
+const ASSET_VERSION = '1.1.0';
+
 function e(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -175,20 +177,26 @@ function renderFoundCoupon(model: DashboardViewModel): string {
 
 function renderRedemptionRows(rows: RedemptionRow[], isAdmin: boolean, model: DashboardViewModel): string {
   if (!rows.length) return `<div class="empty-state">Nenhuma utilizacao registrada.</div>`;
-  return `<div class="table-wrap"><table>
+  return `<div class="table-wrap"><table class="data-table">
     <thead><tr><th>Data</th><th>Codigo e oferta</th><th>Indicador</th><th>Comissao</th><th>Funcionario</th><th>XP</th><th>Status</th>${isAdmin ? '<th>Acao</th>' : ''}</tr></thead>
-    <tbody>${rows.map((row) => `<tr>
-      <td>${e(dateTime(row.created_at))}</td>
-      <td><strong>${e(row.coupon_code)}</strong><small>${e(row.product_name)}</small></td>
-      <td>${e(row.person_name)}</td>
-      <td>${e(money(row.commission_cents))}</td>
-      <td>${e(row.redeemed_by_name)}</td>
-      <td><strong class="xp-copy">+${e(row.xp_points)} XP</strong>${row.xp_status && row.xp_status !== 'AWARDED' && row.xp_status !== 'REVOKED' ? '<small class="warning-copy">Conferir XP</small>' : ''}</td>
-      <td><span class="status status--${row.status === 'ACTIVE' ? 'active' : 'closed'}">${row.status === 'ACTIVE' ? 'Valido' : 'Cancelado'}</span></td>
-      ${isAdmin ? `<td>${row.status === 'ACTIVE' ? `<form method="post" action="${e(model.basePath)}/cancel-redemption" class="inline-form" data-confirm="Cancelar esta utilizacao e estornar comissao e XP?">
-        ${csrf(model.csrfToken)}<input type="hidden" name="redemption_id" value="${e(row.id)}"><input name="reason" maxlength="240" placeholder="Motivo" required><button class="button button--danger button--small" type="submit">Cancelar</button>
-      </form>` : `<small>${e(row.cancellation_reason || 'Cancelado')}</small>`}</td>` : ''}
-    </tr>`).join('')}</tbody>
+    <tbody>${rows.map((row) => {
+      const canRetryXp = row.status === 'ACTIVE' && ['PENDING', 'SKIPPED', 'FAILED'].includes(row.xp_status || '');
+      const adminActions = row.status === 'ACTIVE' ? `<div class="row-actions row-actions--stacked">
+        ${canRetryXp ? `<form method="post" action="${e(model.basePath)}/retry-xp" data-confirm="Tentar gerar novamente os 300 XP para ${e(row.redeemed_by_name)}?">${csrf(model.csrfToken)}<input type="hidden" name="redemption_id" value="${e(row.id)}"><button class="button button--secondary button--small" type="submit">Corrigir XP</button></form>` : ''}
+        <form method="post" action="${e(model.basePath)}/cancel-redemption" class="inline-form" data-confirm="Cancelar esta utilizacao e estornar comissao e XP?">
+          ${csrf(model.csrfToken)}<input type="hidden" name="redemption_id" value="${e(row.id)}"><input name="reason" maxlength="240" placeholder="Motivo" aria-label="Motivo do cancelamento" required><button class="button button--danger button--small" type="submit">Cancelar</button>
+        </form></div>` : `<small>${e(row.cancellation_reason || 'Cancelado')}</small>`;
+      return `<tr>
+        <td data-label="Data">${e(dateTime(row.created_at))}</td>
+        <td data-label="Codigo e oferta"><strong>${e(row.coupon_code)}</strong><small>${e(row.product_name)}</small></td>
+        <td data-label="Indicador">${e(row.person_name)}</td>
+        <td data-label="Comissao">${e(money(row.commission_cents))}</td>
+        <td data-label="Funcionario">${e(row.redeemed_by_name)}</td>
+        <td data-label="XP"><strong class="xp-copy">+${e(row.xp_points)} XP</strong>${row.xp_status && row.xp_status !== 'AWARDED' && row.xp_status !== 'REVOKED' ? '<small class="warning-copy">Conferir XP</small>' : ''}</td>
+        <td data-label="Status"><span class="status status--${row.status === 'ACTIVE' ? 'active' : 'closed'}">${row.status === 'ACTIVE' ? 'Valido' : 'Cancelado'}</span></td>
+        ${isAdmin ? `<td class="cell-wide" data-label="Acao">${adminActions}</td>` : ''}
+      </tr>`;
+    }).join('')}</tbody>
   </table></div>`;
 }
 
@@ -203,7 +211,7 @@ function renderPeople(model: DashboardViewModel): string {
 
 function renderCouponPreview(coupon?: Partial<CouponRow> | null): string {
   return `<div class="receipt receipt--preview" data-coupon-preview>
-    <img class="receipt-logo" src="/comissao/logo-wimifarma-receipt.png?v=1.0.0" alt="WimiFarma">
+    <img class="receipt-logo" src="/comissao/logo-wimifarma-receipt.png?v=${ASSET_VERSION}" alt="WimiFarma">
     <h3>Cupom de indicacao</h3>
     <strong class="receipt-product" data-preview="product">${e(coupon?.product_name || 'PRODUTO / MEDICAMENTO')}</strong>
     <div class="receipt-offer"><span>DE <del data-preview="normal">R$ 0,00</del></span><strong>POR <b data-preview="promotional">R$ 0,00</b></strong></div>
@@ -260,11 +268,11 @@ function renderSelectedPerson(model: DashboardViewModel): string {
         <label>Valor a pagar *<input name="amount" inputmode="decimal" required value="${balance > 0 ? e((balance / 100).toFixed(2).replace('.', ',')) : ''}" ${balance <= 0 ? 'disabled' : ''}></label>
         <label>Forma<select name="payment_method"><option value="PIX">PIX</option><option value="CASH">Dinheiro</option><option value="OTHER">Outro</option></select></label>
         <label>Observacao<textarea name="notes" maxlength="500" placeholder="Opcional"></textarea></label>
-        <button class="button button--primary" type="submit" ${balance <= 0 ? 'disabled' : ''}>Registrar pagamento</button>
+        <button class="button button--primary" type="submit" ${balance <= 0 ? 'disabled' : ''}>Pagar e imprimir</button>
       </form>
     </div>
     <div class="subsection-heading"><h3>Cupons do indicador</h3><span>${e(model.selectedPersonCoupons.length)} cadastrado(s)</span></div>
-    ${model.selectedPersonCoupons.length ? `<div class="table-wrap"><table><thead><tr><th>Codigo</th><th>Oferta</th><th>Comissao</th><th>Usos</th><th>Status</th><th>Acoes</th></tr></thead><tbody>${model.selectedPersonCoupons.map((coupon) => `<tr><td><strong>${e(coupon.code)}</strong></td><td>${e(coupon.product_name)}<small><del>${e(money(coupon.normal_price_cents))}</del> por ${e(money(coupon.promotional_price_cents))}</small></td><td>${e(money(coupon.commission_cents))}</td><td>${e(coupon.uses_count || '0')}</td><td><span class="status status--${e(coupon.status.toLowerCase())}">${e(statusLabel(coupon.status))}</span></td><td><div class="row-actions"><a class="button button--ghost button--small" href="${e(model.basePath)}/?person_id=${e(person.id)}&coupon_id=${e(coupon.id)}#editar-cupom">Editar</a><form method="post" action="${e(model.basePath)}/print-coupon">${csrf(model.csrfToken)}<input type="hidden" name="coupon_id" value="${e(coupon.id)}"><button class="button button--secondary button--small" type="submit">Imprimir</button></form></div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-state">Nenhum cupom deste indicador.</div>'}
+    ${model.selectedPersonCoupons.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Codigo</th><th>Oferta</th><th>Comissao</th><th>Usos</th><th>Status</th><th>Acoes</th></tr></thead><tbody>${model.selectedPersonCoupons.map((coupon) => `<tr><td data-label="Codigo"><strong>${e(coupon.code)}</strong></td><td data-label="Oferta">${e(coupon.product_name)}<small><del>${e(money(coupon.normal_price_cents))}</del> por ${e(money(coupon.promotional_price_cents))}</small></td><td data-label="Comissao">${e(money(coupon.commission_cents))}</td><td data-label="Usos">${e(coupon.uses_count || '0')}</td><td data-label="Status"><span class="status status--${e(coupon.status.toLowerCase())}">${e(statusLabel(coupon.status))}</span></td><td class="cell-wide" data-label="Acoes"><div class="row-actions"><a class="button button--ghost button--small" href="${e(model.basePath)}/?person_id=${e(person.id)}&coupon_id=${e(coupon.id)}#editar-cupom">Editar</a><form method="post" action="${e(model.basePath)}/print-coupon">${csrf(model.csrfToken)}<input type="hidden" name="coupon_id" value="${e(coupon.id)}"><button class="button button--secondary button--small" type="submit">Imprimir</button></form></div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-state">Nenhum cupom deste indicador.</div>'}
   </section>`;
 }
 
@@ -294,14 +302,14 @@ function renderAdmin(model: DashboardViewModel): string {
     <section class="surface" id="ranking"><div class="section-heading"><div><span class="eyebrow">Desempenho</span><h2>Indicadores que mais trouxeram clientes</h2></div></div>${model.ranking.length ? `<ol class="ranking-list">${model.ranking.map((row, index) => `<li><span>${index + 1}</span><strong>${e(row.person_name)}</strong><b>${e(row.uses_count)} utilizacao(oes)</b><small>${e(money(row.generated_cents))} gerados</small></li>`).join('')}</ol>` : '<div class="empty-state">O ranking aparece depois da primeira utilizacao.</div>'}</section>
     <section class="surface" id="historicos"><div class="section-heading"><div><span class="eyebrow">Auditoria</span><h2>Historico de utilizacoes</h2></div></div>${renderRedemptionRows(model.recentRedemptions, true, model)}
       <div class="subsection-heading"><h3>Pagamentos aos indicadores</h3><span>${e(model.recentPayments.length)} recente(s)</span></div>
-      ${model.recentPayments.length ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Indicador</th><th>Valor</th><th>Usuario</th><th>Forma</th><th>Observacao</th></tr></thead><tbody>${model.recentPayments.map((payment) => `<tr><td>${e(dateTime(payment.created_at))}</td><td>${e(payment.person_name)}</td><td><strong>${e(money(payment.amount_cents))}</strong></td><td>${e(payment.registered_by_name)}</td><td>${e(methodLabel(payment.payment_method))}</td><td>${e(payment.notes || '-')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-state">Nenhum pagamento registrado.</div>'}
+      ${model.recentPayments.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Indicador</th><th>Valor</th><th>Usuario</th><th>Forma</th><th>Observacao</th><th>Acao</th></tr></thead><tbody>${model.recentPayments.map((payment) => `<tr><td data-label="Data">${e(dateTime(payment.created_at))}</td><td data-label="Indicador">${e(payment.person_name)}</td><td data-label="Valor"><strong>${e(money(payment.amount_cents))}</strong></td><td data-label="Usuario">${e(payment.registered_by_name)}</td><td data-label="Forma">${e(methodLabel(payment.payment_method))}</td><td data-label="Observacao">${e(payment.notes || '-')}</td><td class="cell-wide" data-label="Acao"><form method="post" action="${e(model.basePath)}/print-payment">${csrf(model.csrfToken)}<input type="hidden" name="payment_id" value="${e(payment.id)}"><button class="button button--ghost button--small" type="submit">Reimprimir</button></form></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-state">Nenhum pagamento registrado.</div>'}
     </section>
   </div>`;
 }
 
 export function renderDashboard(model: DashboardViewModel): string {
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Comissao | WimiFarma</title><link rel="stylesheet" href="${e(model.basePath)}/comissao.css?v=1.0.0"></head>
-  <body><header class="topbar"><a class="brand" href="/"><img src="${e(model.basePath)}/logo-wimifarma-receipt.png?v=1.0.0" alt="WimiFarma"><span>Comissao</span></a><nav><a class="active" href="${e(model.basePath)}/">Painel</a><a href="/">Home</a></nav></header>
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Comissao | WimiFarma</title><link rel="stylesheet" href="${e(model.basePath)}/comissao.css?v=${ASSET_VERSION}"></head>
+  <body><header class="topbar"><a class="brand" href="/"><img src="${e(model.basePath)}/logo-wimifarma-receipt.png?v=${ASSET_VERSION}" alt="WimiFarma"><span>Comissao</span></a><nav><a class="active" href="${e(model.basePath)}/">Painel</a><a href="/">Home</a></nav></header>
   <main class="shell">
     <div class="page-title"><div><span class="eyebrow">Operacao de indicacao</span><h1>Comissao</h1><p>Valide cupons, reconheca parceiros e premie quem atende.</p></div><span class="user-chip">Usuario: ${e(model.user.displayName)}</span></div>
     ${model.flash ? `<div class="flash flash--${e(model.flash.type)}" role="status">${e(model.flash.message)}</div>` : ''}
@@ -317,13 +325,13 @@ export function renderDashboard(model: DashboardViewModel): string {
     </section>
     <section class="surface own-history"><div class="section-heading compact"><div><span class="eyebrow">Minha operacao</span><h2>Minhas utilizacoes recentes</h2></div></div>${renderRedemptionRows(model.ownRedemptions, false, model)}</section>
     ${renderAdmin(model)}
-  </main><footer>Wimifarma | Indicacao, comissao e XP separados com auditoria.</footer><script src="${e(model.basePath)}/comissao.js?v=1.0.0" defer></script></body></html>`;
+  </main><footer>Wimifarma | Indicacao, comissao e XP separados com auditoria.</footer><script src="${e(model.basePath)}/comissao.js?v=${ASSET_VERSION}" defer></script></body></html>`;
 }
 
 export function renderCouponReceipt(basePath: string, coupon: CouponRow): string {
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cupom de indicacao ${e(coupon.code)}</title><link rel="stylesheet" href="${e(basePath)}/comissao.css?v=1.0.0"></head><body class="print-page">
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cupom de indicacao ${e(coupon.code)}</title><link rel="stylesheet" href="${e(basePath)}/comissao.css?v=${ASSET_VERSION}"></head><body class="print-page">
     <main class="receipt receipt--print">
-      <img class="receipt-logo" src="${e(basePath)}/logo-wimifarma-receipt.png?v=1.0.0" alt="WimiFarma">
+      <img class="receipt-logo" src="${e(basePath)}/logo-wimifarma-receipt.png?v=${ASSET_VERSION}" alt="WimiFarma">
       <h1>Cupom de indicacao</h1>
       <strong class="receipt-product">${e(coupon.product_name)}</strong>
       <div class="receipt-offer"><span>DE <del>${e(money(coupon.normal_price_cents))}</del></span><strong>POR <b>${e(money(coupon.promotional_price_cents))}</b></strong></div>
@@ -332,6 +340,20 @@ export function renderCouponReceipt(basePath: string, coupon: CouponRow): string
       <dl><div><dt>Indicacao</dt><dd>${e(coupon.person_name)}</dd></div><div><dt>Validade</dt><dd>${e(dateBr(coupon.expiration_date))}</dd></div></dl>
     </main>
     <div class="print-controls"><button class="button button--primary" type="button" data-print>Imprimir cupom</button><a class="button button--ghost" href="${e(basePath)}/?person_id=${e(coupon.person_id)}#indicador-detalhe">Voltar</a></div>
-    <script src="${e(basePath)}/comissao-print.js?v=1.0.0" defer></script>
+    <script src="${e(basePath)}/comissao-print.js?v=${ASSET_VERSION}" defer></script>
+  </body></html>`;
+}
+
+export function renderPaymentReceipt(basePath: string, payment: PaymentRow): string {
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pagamento de comissao #${e(payment.id)}</title><link rel="stylesheet" href="${e(basePath)}/comissao.css?v=${ASSET_VERSION}"></head><body class="print-page">
+    <main class="receipt receipt--print receipt--payment">
+      <img class="receipt-logo" src="${e(basePath)}/logo-wimifarma-receipt.png?v=${ASSET_VERSION}" alt="WimiFarma">
+      <h1>Pagamento de comissao</h1>
+      <div class="receipt-payment-value"><span>VALOR PAGO</span><strong>${e(money(payment.amount_cents))}</strong></div>
+      <dl><div><dt>Indicador</dt><dd>${e(payment.person_name)}</dd></div><div><dt>Forma</dt><dd>${e(methodLabel(payment.payment_method))}</dd></div><div><dt>Registrado por</dt><dd>${e(payment.registered_by_name)}</dd></div><div><dt>Data e hora</dt><dd>${e(dateTime(payment.created_at))}</dd></div></dl>
+      <p>Comprovante interno Wimifarma</p>
+    </main>
+    <div class="print-controls"><button class="button button--primary" type="button" data-print>Imprimir comprovante</button><a class="button button--ghost" href="${e(basePath)}/?person_id=${e(payment.person_id)}#indicador-detalhe">Voltar</a></div>
+    <script src="${e(basePath)}/comissao-print.js?v=${ASSET_VERSION}" defer></script>
   </body></html>`;
 }

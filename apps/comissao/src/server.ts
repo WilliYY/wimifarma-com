@@ -21,6 +21,7 @@ import {
 import {
   renderCouponReceipt,
   renderDashboard,
+  renderPaymentReceipt,
   type CouponRow,
   type DashboardViewModel,
   type Flash,
@@ -61,6 +62,7 @@ declare module 'express-session' {
     paymentToken?: string;
     flash?: Flash;
     printCouponId?: number;
+    printPaymentId?: number;
     returnTo?: string;
     user?: SessionUser;
   }
@@ -71,7 +73,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
-const SERVICE_VERSION = '1.0.0';
+const SERVICE_VERSION = '1.1.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/comissao');
 const PORT = Number.parseInt(env.PORT || '3990', 10);
 const SESSION_SECRET = env.COMISSAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -132,13 +134,17 @@ function publicUser(row: CoreUserRow): SessionUser {
   return { id: Number(row.id), username: row.username, displayName: cleanSingleLine(row.display_name, 160) || row.username, role: row.role || 'user' };
 }
 
-async function currentUser(user?: SessionUser): Promise<SessionUser | null> {
-  if (!user?.id) return null;
+async function activeUserById(userId: number): Promise<SessionUser | null> {
+  if (!Number.isSafeInteger(userId) || userId <= 0) return null;
   const result = await corePool.query<CoreUserRow>(
     `SELECT id::text, username, display_name, role, active FROM core_users WHERE id = $1 AND active = TRUE LIMIT 1`,
-    [user.id],
+    [userId],
   );
   return result.rows[0] ? publicUser(result.rows[0]) : null;
+}
+
+async function currentUser(user?: SessionUser): Promise<SessionUser | null> {
+  return user?.id ? activeUserById(user.id) : null;
 }
 
 function hasHomeSsoCookie(req: Request): boolean {
@@ -618,6 +624,14 @@ async function loadPayments(): Promise<PaymentRow[]> {
   return result.rows;
 }
 
+async function loadPaymentById(id: number): Promise<PaymentRow | null> {
+  const result = await referralPool.query<PaymentRow & QueryResultRow>(
+    `SELECT id::text, referral_person_id::text AS person_id, person_name, amount_cents::text, payment_method, registered_by_name, notes, created_at FROM referral_payments WHERE id = $1 LIMIT 1`,
+    [id],
+  );
+  return result.rows[0] || null;
+}
+
 async function loadSummary(): Promise<Summary> {
   const result = await referralPool.query<QueryResultRow & { today_uses: string; month_uses: string; today_commission: string; month_commission: string; active_people: string }>(`
     SELECT COUNT(*) FILTER (WHERE r.status = 'ACTIVE' AND (r.created_at AT TIME ZONE 'America/Sao_Paulo')::date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date)::text AS today_uses,
@@ -1016,7 +1030,43 @@ app.post(`${BASE_PATH}/pay`, asyncRoute(async (req, res) => {
   delete req.session.paymentToken;
   if (created) await logCoreAudit(user.id, 'REFERRAL_PAYMENT_CREATED', 'referral_payment', paymentId, `Pagamento de comissao registrado para ${personName}.`, { person_id: personId, amount_cents: amountCents });
   setFlash(req, 'success', created ? 'Pagamento registrado. Saldo e historico foram atualizados.' : 'Este pagamento ja estava registrado; nada foi duplicado.');
-  return res.redirect(`${BASE_PATH}/?person_id=${personId}#indicador-detalhe`);
+  req.session.printPaymentId = paymentId;
+  await saveSession(req);
+  return res.redirect(`${BASE_PATH}/payment-receipt/${paymentId}`);
+}));
+
+app.post(`${BASE_PATH}/retry-xp`, asyncRoute(async (req, res) => {
+  const actor = await requireUser(req, res);
+  if (!actor) return;
+  if (!canAdmin(actor)) return res.status(403).send('Acesso negado.');
+  const redemptionId = parsePositiveId(req.body.redemption_id);
+  if (!csrfMatches(req) || !redemptionId) {
+    setFlash(req, 'error', 'Utilizacao invalida para corrigir o XP.');
+    return res.redirect(`${BASE_PATH}/#historicos`);
+  }
+  const result = await referralPool.query<QueryResultRow & { status: string; redeemed_by_user_id: string; redeemed_by_name: string }>(
+    `SELECT status, redeemed_by_user_id::text, redeemed_by_name FROM referral_redemptions WHERE id = $1 LIMIT 1`,
+    [redemptionId],
+  );
+  const redemption = result.rows[0];
+  if (!redemption || redemption.status !== 'ACTIVE') {
+    setFlash(req, 'error', 'Somente uma utilizacao valida pode receber XP.');
+    return res.redirect(`${BASE_PATH}/#historicos`);
+  }
+  const recipient = await activeUserById(Number(redemption.redeemed_by_user_id));
+  if (!recipient) {
+    await setRedemptionXpStatus(redemptionId, 'SKIPPED');
+    await insertAuditSafe('redemption', redemptionId, actor, 'XP_RETRY_SKIPPED', { reason: 'core_user_inactive', redeemed_by_user_id: redemption.redeemed_by_user_id });
+    setFlash(req, 'error', `O usuario ${redemption.redeemed_by_name} nao esta ativo para receber XP.`);
+    return res.redirect(`${BASE_PATH}/#historicos`);
+  }
+  const xpResult = await awardXp(redemptionId, recipient);
+  const currentStatus = await referralPool.query<QueryResultRow & { status: string }>(`SELECT status FROM referral_redemptions WHERE id = $1`, [redemptionId]);
+  if (currentStatus.rows[0]?.status !== 'ACTIVE') await revokeXp(redemptionId, actor);
+  await insertAuditSafe('redemption', redemptionId, actor, 'XP_RETRY_REQUESTED', { recipient_user_id: recipient.id, result: xpResult.message });
+  await logCoreAudit(actor.id, 'REFERRAL_XP_RETRY_REQUESTED', 'referral_redemption', redemptionId, `Correcao de XP solicitada para ${recipient.displayName}.`, { recipient_user_id: recipient.id });
+  setFlash(req, xpResult.awarded || xpResult.alreadyAwarded ? 'success' : 'error', xpResult.message);
+  return res.redirect(`${BASE_PATH}/#historicos`);
 }));
 
 app.post(`${BASE_PATH}/cancel-redemption`, asyncRoute(async (req, res) => {
@@ -1061,6 +1111,34 @@ app.post(`${BASE_PATH}/cancel-redemption`, asyncRoute(async (req, res) => {
   if (cancelled) await logCoreAudit(user.id, 'REFERRAL_REDEMPTION_CANCELLED', 'referral_redemption', redemptionId, 'Utilizacao de cupom cancelada.', { person_id: personId, commission_cents: commissionCents, reason });
   setFlash(req, 'success', cancelled ? `Utilizacao cancelada. A comissao foi estornada. ${xpResult.message}` : `Esta utilizacao ja estava cancelada. ${xpResult.message}`);
   return res.redirect(`${BASE_PATH}/#historicos`);
+}));
+
+app.post(`${BASE_PATH}/print-payment`, asyncRoute(async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!canAdmin(user)) return res.status(403).send('Acesso negado.');
+  const paymentId = parsePositiveId(req.body.payment_id);
+  if (!csrfMatches(req) || !paymentId || !(await loadPaymentById(paymentId))) {
+    setFlash(req, 'error', 'Pagamento indisponivel para reimpressao.');
+    return res.redirect(`${BASE_PATH}/#historicos`);
+  }
+  req.session.printPaymentId = paymentId;
+  await saveSession(req);
+  return res.redirect(`${BASE_PATH}/payment-receipt/${paymentId}`);
+}));
+
+app.get(`${BASE_PATH}/payment-receipt/:id`, asyncRoute(async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!canAdmin(user)) return res.status(403).send('Acesso negado.');
+  const paymentId = parsePositiveId(req.params.id);
+  if (!paymentId || req.session.printPaymentId !== paymentId) return res.redirect(`${BASE_PATH}/`);
+  delete req.session.printPaymentId;
+  const payment = await loadPaymentById(paymentId);
+  if (!payment) return res.redirect(`${BASE_PATH}/`);
+  await insertAuditSafe('payment', paymentId, user, 'PAYMENT_RECEIPT_PRINTED');
+  await logCoreAudit(user.id, 'REFERRAL_PAYMENT_RECEIPT_PRINTED', 'referral_payment', paymentId, 'Impressao do comprovante de pagamento de comissao solicitada.');
+  res.type('html').send(renderPaymentReceipt(BASE_PATH, payment));
 }));
 
 app.post(`${BASE_PATH}/print-coupon`, asyncRoute(async (req, res) => {

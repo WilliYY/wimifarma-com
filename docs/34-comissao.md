@@ -42,7 +42,7 @@ O modulo `/comissao/` controla campanhas de indicacao por cupom. O indicador e u
 5. Confirma a transacao local.
 6. Depois do `COMMIT`, tenta gerar +300 XP para o usuario realmente logado e vinculado em `core_user_xp_links`.
 
-O XP usa `xp_sales.source='referral_coupon_redemption'` e `source_entity_id=<referral_redemptions.id>`. O indice unico oficial impede duplicacao em clique repetido ou retry. Ausencia de vinculo ou indisponibilidade do XP nao desfaz a utilizacao/comissao ja confirmada; o estado fica visivel e auditado.
+O XP usa `xp_sales.source='referral_coupon_redemption'` e `source_entity_id=<referral_redemptions.id>`. O indice unico oficial impede duplicacao em clique repetido ou retry. Ausencia de vinculo ou indisponibilidade do XP nao desfaz a utilizacao/comissao ja confirmada; o estado fica visivel e auditado. `adm`, `admin` e `gerente` podem tentar novamente um XP `PENDING`, `SKIPPED` ou `FAILED`; a idempotencia mantem um unico premio para o usuario original da utilizacao, e a tentativa fica auditada.
 
 ## Comissoes e pagamentos
 
@@ -52,6 +52,7 @@ O XP usa `xp_sales.source='referral_coupon_redemption'` e `source_entity_id=<ref
 - Cada pagamento usa UUID idempotente, guarda forma `PIX`, `CASH` ou `OTHER`, observacao opcional, pagador e data/hora.
 - Pagamento e transacao correspondente sao imutaveis e nao podem ser apagados.
 - O perfil do indicador exibe saldo, total gerado, total pago e historico.
+- `Pagar e imprimir` confirma a baixa antes de abrir um comprovante termico resumido com indicador, valor, forma, responsavel e data/hora; o historico permite reimprimir o mesmo registro sem recalcular nem duplicar o pagamento.
 
 ## Cancelamento
 
@@ -75,7 +76,9 @@ O XP usa `xp_sales.source='referral_coupon_redemption'` e `source_entity_id=<ref
 - A previa termica mostra a marca Wimifarma, produto, preco normal, preco promocional, codigo, indicador e validade.
 - O cupom entregue ao cliente nunca mostra comissao.
 - Imprimir reutiliza o cupom salvo e nao cria utilizacao, comissao ou XP.
+- O comprovante de pagamento nao lista clientes, cupons ou observacoes; mostra somente os dados essenciais da baixa.
 - O registro de impressao significa solicitacao ao navegador, nao confirmacao fisica do papel.
+- Em telas estreitas, os historicos sao reorganizados em blocos rotulados para preservar todas as informacoes sem depender de uma tabela cortada.
 
 ## Validacao
 
