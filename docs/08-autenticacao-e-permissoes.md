@@ -143,6 +143,7 @@ Tabelas:
 - `entrega` fica em `ALWAYS_ALLOWED_MODULE_KEYS` no modulo Usuarios e e forcado como permitido na Home.
 - O app revalida `WFHOME_SSO` e cria a sessao `WFENTREGA`.
 - Toda conta autenticada pode escolher como responsavel somente uma conta humana ativa do core; o servidor revalida o ID e rejeita valor livre, conta inativa ou institucional.
+- Os +400 XP usam somente o `core_user_xp_links` do responsavel revalidado; o ator realmente logado continua em `xp_sales.created_by` e nas auditorias.
 - Usuario comum ve, edita e reimprime somente registros atribuidos a ele.
 - `adm`, `admin` e `gerente` consultam a equipe, cancelam entregas ainda nao pagas, pagam comissoes e reimprimem o relatorio.
 - Usuario comum nao ve nem acessa as rotas de pagamento de comissao.

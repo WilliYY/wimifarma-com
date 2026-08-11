@@ -782,6 +782,7 @@ services:
     depends_on:
       - wimifarma-core-db
       - wimifarma-entrega-db
+      - wimifarma-xp-db
     environment:
       NODE_ENV: production
       PORT: 3980
@@ -791,6 +792,11 @@ services:
       CORE_POSTGRES_DB: wimifarma_core
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      XP_POSTGRES_HOST: wimifarma-xp-db
+      XP_POSTGRES_PORT: 5432
+      XP_POSTGRES_DB: wimifarma_xp
+      XP_POSTGRES_USER: wimifarma_xp
+      XP_POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
       POSTGRES_HOST: wimifarma-entrega-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: wimifarma_entrega

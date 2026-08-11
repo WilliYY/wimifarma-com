@@ -4,6 +4,27 @@ export type DeliveryInput = {
   address: string;
 };
 
+export const XP_DELIVERY_CREATION_POINTS = 400;
+export const XP_DELIVERY_CREATION_SOURCE = 'delivery_creation';
+
+export type XpRewardDescriptor = {
+  points: number;
+  source: string;
+  sourceEntityId: string;
+};
+
+export function deliveryCreationXpReward(deliveryId: number): XpRewardDescriptor {
+  const normalizedDeliveryId = Math.trunc(deliveryId);
+  if (!Number.isSafeInteger(normalizedDeliveryId) || normalizedDeliveryId <= 0) {
+    throw new Error('Entrega invalida para premiacao de XP.');
+  }
+  return {
+    points: XP_DELIVERY_CREATION_POINTS,
+    source: XP_DELIVERY_CREATION_SOURCE,
+    sourceEntityId: String(normalizedDeliveryId),
+  };
+}
+
 export type SessionUser = {
   id: number;
   username: string;

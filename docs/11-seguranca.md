@@ -203,6 +203,7 @@ Os quatro primeiros devem responder 403. O status detalhado sem token deve respo
 - POSTs exigem sessao ativa e CSRF; criacao exige UUID idempotente ligado a sessao.
 - Consultas e mutacoes aplicam ownership no servidor.
 - A criacao revalida no core o responsavel escolhido e aceita somente conta humana ativa. A impressao imediata usa um unico ID autorizado na sessao e o consome ao abrir o comprovante, permitindo que o registrador imprima sem ampliar acesso ao historico do responsavel.
+- O XP usa somente o vinculo servidor-side `core_user_xp_links`, SQL parametrizado e chave idempotente `delivery_creation + delivery_id`; o navegador nao envia pontos, funcionario XP, origem nem identidade do lancamento.
 - Cancelamento e exclusivo de `adm`, `admin` e `gerente` e muda entrega/comissao na mesma transacao.
 - Pagamento e exclusivo de gestor, usa CSRF, UUID ligado a sessao, lock transacional por usuario e item unico por comissao.
 - Uma entrega ja paga nao pode ser cancelada pela aplicacao nem ter sua comissao cancelada diretamente no banco; isso evita saldo contabil quitado sem estorno correspondente.

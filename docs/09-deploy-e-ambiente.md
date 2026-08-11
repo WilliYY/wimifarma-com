@@ -280,5 +280,6 @@ Higiene de pastas no VPS:
 
 - App interno `wimifarma-entrega-app:3980`; rota `/entrega/` pelo Apache.
 - Banco `wimifarma-entrega-db:5432`, sem porta publicada, volume `./entrega-data/postgres` ignorado pelo Git.
-- Variaveis: `ENTREGA_POSTGRES_PASSWORD`, `ENTREGA_SESSION_SECRET`, `CORE_POSTGRES_*` e `WIMIFARMA_HOME_SSO_INTERNAL_URL`.
+- Variaveis: `ENTREGA_POSTGRES_PASSWORD`, `ENTREGA_SESSION_SECRET`, `CORE_POSTGRES_*`, `XP_POSTGRES_*` e `WIMIFARMA_HOME_SSO_INTERNAL_URL`.
+- O app depende de `wimifarma-xp-db` para premiar/estornar os 400 XP, mas indisponibilidade do XP nao pode desfazer uma entrega ja confirmada.
 - Subir banco e app antes de reconstruir `wimifarma-com-web`, pois o proxy resolve o hostname do app na inicializacao.

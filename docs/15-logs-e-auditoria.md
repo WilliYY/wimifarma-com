@@ -132,9 +132,10 @@ Arquivos:
 
 ## Entrega - 2026-08-10
 
-- `delivery_audit_logs` registra `DELIVERY_CREATED`, `DELIVERY_EDITED`, `DELIVERY_REPRINTED` e `DELIVERY_CANCELLED`.
+- `delivery_audit_logs` registra `DELIVERY_CREATED`, `DELIVERY_EDITED`, `DELIVERY_REPRINTED`, `DELIVERY_CANCELLED` e os resultados `DELIVERY_XP_AWARDED`, `DELIVERY_XP_SKIPPED`, `DELIVERY_XP_FAILED`, `DELIVERY_XP_REVOKED` e `DELIVERY_XP_REVOCATION_FAILED`.
 - `DELIVERY_CREATED` guarda o responsavel escolhido e o usuario realmente logado como ator, permitindo distinguir atribuicao de autoria operacional.
 - Edicao guarda antes/depois; cancelamento registra estorno de 100 centavos.
+- O XP grava `xp_entrega_lancado`/`xp_entrega_estornado` em `xp_audit_events`; `xp_sales.created_by` e a conta realmente logada e o beneficiario vem do responsavel escolhido.
 - Eventos tambem vao em melhor esforco para `core_audit_logs`; falha central depois do commit nao desfaz entrega valida.
 - Reimpressao significa solicitacao local, nao confirmacao de papel impresso.
 - `delivery_commission_payment_audit_logs` registra `PAYMENT_CREATED` e `PAYMENT_REPRINTED` por lote.

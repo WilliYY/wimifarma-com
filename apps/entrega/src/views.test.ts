@@ -82,6 +82,7 @@ test('cadastro identifica o responsavel e mostra previa fiel do cupom', () => {
   assert.match(html, /data-delivery-preview/);
   assert.match(html, /data-preview-responsible>Ana</);
   assert.match(html, /logo-wimifarma-receipt\.png/);
+  assert.match(html, /\+400 XP/);
 });
 
 test('entrega com comissao paga nao oferece cancelamento', () => {

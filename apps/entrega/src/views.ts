@@ -286,7 +286,7 @@ export function renderDashboard(model: DashboardViewModel): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Entrega | Wimifarma</title>
-  <link rel="stylesheet" href="${e(model.basePath)}/entrega.css?v=1.2.0">
+  <link rel="stylesheet" href="${e(model.basePath)}/entrega.css?v=1.3.0">
 </head>
 <body>
   <header class="topbar">
@@ -308,8 +308,8 @@ export function renderDashboard(model: DashboardViewModel): string {
 
     <section class="registration-band" aria-labelledby="new-delivery-title">
       <div class="section-heading">
-        <div><p class="eyebrow">NOVA ENTREGA</p><h2 id="new-delivery-title">Cadastro rapido</h2><p>Uma entrega valida gera automaticamente <strong>R$ 1,00</strong> de comissao para o usuario escolhido.</p></div>
-        <span class="commission-badge">+ R$ 1,00</span>
+        <div><p class="eyebrow">NOVA ENTREGA</p><h2 id="new-delivery-title">Cadastro rapido</h2><p>Uma entrega valida gera automaticamente <strong>R$ 1,00</strong> de comissao e <strong>400 XP</strong> para o usuario escolhido.</p></div>
+        <div class="reward-badges" aria-label="Recompensas da entrega"><span class="commission-badge">+ R$ 1,00</span><span class="xp-badge">+400 XP</span></div>
       </div>
       <div class="registration-layout">
         <form class="delivery-form" method="post" action="${e(model.basePath)}/create" data-lock-submit data-delivery-form>
@@ -425,7 +425,7 @@ export function renderDashboard(model: DashboardViewModel): string {
       </nav>` : ''}
     </section>
   </main>
-  <script src="${e(model.basePath)}/entrega.js?v=1.2.0" defer></script>
+  <script src="${e(model.basePath)}/entrega.js?v=1.3.0" defer></script>
 </body>
 </html>`;
 }
@@ -437,7 +437,7 @@ export function renderPrintReceipt(basePath: string, delivery: DeliveryRow): str
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${e(formatDeliveryNumber(delivery.id))} | Entrega Wimifarma</title>
-  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.2.0">
+  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.3.0">
 </head>
 <body class="print-page" data-auto-print>
   <main class="receipt" aria-label="Comprovante de entrega">
@@ -453,7 +453,7 @@ export function renderPrintReceipt(basePath: string, delivery: DeliveryRow): str
     </dl>
   </main>
   <div class="print-controls"><button class="button button--primary" type="button" data-print-now>Imprimir</button><a class="button button--quiet" href="${e(basePath)}/">Voltar</a></div>
-  <script src="${e(basePath)}/entrega-print.js?v=1.2.0" defer></script>
+  <script src="${e(basePath)}/entrega-print.js?v=1.3.0" defer></script>
 </body>
 </html>`;
 }
@@ -465,7 +465,7 @@ export function renderCommissionPaymentReceipt(basePath: string, payment: Commis
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pagamento #${e(payment.id)} | Comissao de entrega</title>
-  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.2.0">
+  <link rel="stylesheet" href="${e(basePath)}/entrega.css?v=1.3.0">
 </head>
 <body class="print-page" data-auto-print>
   <main class="receipt commission-receipt" aria-label="Relatorio de pagamento de comissao">
@@ -483,7 +483,7 @@ export function renderCommissionPaymentReceipt(basePath: string, payment: Commis
     <p class="receipt-note">Cada entrega valida corresponde a R$ 1,00.</p>
   </main>
   <div class="print-controls"><button class="button button--primary" type="button" data-print-now>Imprimir</button><a class="button button--quiet" href="${e(basePath)}/">Voltar</a></div>
-  <script src="${e(basePath)}/entrega-print.js?v=1.2.0" defer></script>
+  <script src="${e(basePath)}/entrega-print.js?v=1.3.0" defer></script>
 </body>
 </html>`;
 }

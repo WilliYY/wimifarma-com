@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  XP_DELIVERY_CREATION_POINTS,
+  XP_DELIVERY_CREATION_SOURCE,
   canManageAll,
+  deliveryCreationXpReward,
   formatDeliveryNumber,
   isBareBasePath,
   normalizeDate,
@@ -12,6 +15,21 @@ import {
   validateResponsibleUserId,
   validateCommissionPaymentInput,
 } from './domain.js';
+
+test('entrega gera 400 XP com identidade idempotente', () => {
+  assert.deepEqual(deliveryCreationXpReward(123), {
+    points: 400,
+    source: 'delivery_creation',
+    sourceEntityId: '123',
+  });
+  assert.equal(XP_DELIVERY_CREATION_POINTS, 400);
+  assert.equal(XP_DELIVERY_CREATION_SOURCE, 'delivery_creation');
+});
+
+test('XP da entrega rejeita identificador invalido', () => {
+  assert.throws(() => deliveryCreationXpReward(0), /Entrega invalida/);
+  assert.throws(() => deliveryCreationXpReward(Number.NaN), /Entrega invalida/);
+});
 
 test('redireciona somente a rota sem barra final', () => {
   assert.equal(isBareBasePath('/entrega', '/entrega'), true);

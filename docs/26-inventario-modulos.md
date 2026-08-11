@@ -1316,8 +1316,8 @@ Proxima rodada segura:
 ## Entrega - inventario 2026-08-10
 
 - Rota: `/entrega/`.
-- App/banco: `apps/entrega`, `wimifarma-entrega-app:3980`, `wimifarma-entrega-db`.
+- App/banco: `apps/entrega`, `wimifarma-entrega-app:3980`, `wimifarma-entrega-db` e integracao idempotente com `wimifarma-xp-db`.
 - Acesso: permanente para conta core ativa; ownership para usuario comum e visao global/cancelamento para `adm`, `admin` e `gerente`.
 - Escritas: `deliveries`, `delivery_commissions`, `delivery_audit_logs` e `entrega_sessions`.
-- Integracoes: Home SSO, identidade `core_users`, auditoria central em melhor esforco e impressao local do navegador.
-- Risco principal: qualquer mudanca deve preservar uma comissao de 100 centavos por entrega, criacao idempotente e cancelamento sem DELETE.
+- Integracoes: Home SSO, identidade `core_users`, `core_user_xp_links`, +400 XP em `xp_sales`, auditoria central em melhor esforco e impressao local do navegador.
+- Risco principal: qualquer mudanca deve preservar uma comissao de 100 centavos e um premio idempotente de 400 XP por entrega, com cancelamento logico de ambos e sem DELETE.

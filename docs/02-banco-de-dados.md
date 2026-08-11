@@ -467,4 +467,5 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `delivery_commission_payment_audit_logs`: registra criacao e reimpressao do relatorio de pagamento.
 - `delivery_audit_logs`: ator, nome, acao, horario e metadata JSONB.
 - `entrega_sessions`: sessoes `WFENTREGA` por `connect-pg-simple`.
+- O premio de +400 XP nao cria tabela paralela: usa o Postgres oficial do XP em `xp_sales`, com `source='delivery_creation'`, `source_entity_id=<deliveries.id>` e estorno logico por `deleted_at`/`deleted_by` quando a entrega e cancelada.
 - Triggers impedem DELETE, alteracao da identidade da entrega/comissao, reativacao depois do cancelamento, cancelamento de comissao ja paga e alteracao dos lotes/itens de pagamento.

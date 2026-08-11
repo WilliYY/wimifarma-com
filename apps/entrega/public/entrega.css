@@ -135,7 +135,9 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
 .section-heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
 .section-heading.compact { align-items: center; margin-bottom: 12px; }
 .heading-status { margin-left: 6px; vertical-align: middle; }
+.reward-badges { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; }
 .commission-badge { flex: 0 0 auto; padding: 8px 13px; border: 1px solid #9bd7bd; border-radius: 999px; color: var(--green); background: var(--green-soft); font-weight: 900; }
+.xp-badge { padding: 8px 13px; border: 1px solid #a8ceeb; border-radius: 999px; color: var(--blue); background: var(--blue-soft); font-weight: 900; }
 
 .registration-layout {
   display: grid;

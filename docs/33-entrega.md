@@ -2,13 +2,14 @@
 
 ## Objetivo
 
-O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e contabiliza R$ 1,00 de comissao para o usuario ativo escolhido como responsavel por cada entrega valida.
+O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e contabiliza R$ 1,00 de comissao mais 400 XP para o usuario ativo escolhido como responsavel por cada entrega valida.
 
 ## Arquitetura
 
 - App: `apps/entrega`, Node.js 22, TypeScript e Express.
 - Container: `wimifarma-entrega-app`, porta interna `3980`.
 - Banco: Postgres 17 dedicado `wimifarma_entrega` em `wimifarma-entrega-db`.
+- XP: Postgres oficial `wimifarma_xp` em `wimifarma-xp-db`, ligado pelo core em `core_user_xp_links`.
 - Sessao: cookie `WFENTREGA` em `entrega_sessions`.
 - Entrada: Apache publica `/entrega/` e o card aparece para toda conta ativa.
 - Identidade: `WFHOME_SSO` e `core_users`; nao existe login paralelo nem permissao removivel.
@@ -42,7 +43,7 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 
 ### `delivery_audit_logs`
 
-- Acoes: `DELIVERY_CREATED`, `DELIVERY_EDITED`, `DELIVERY_REPRINTED`, `DELIVERY_CANCELLED`.
+- Acoes: `DELIVERY_CREATED`, `DELIVERY_EDITED`, `DELIVERY_REPRINTED`, `DELIVERY_CANCELLED` e resultados de premiacao/estorno XP.
 - Guarda ator, nome, data/hora e metadata JSONB.
 - Triggers bloqueiam DELETE nas tabelas de negocio e auditoria.
 
@@ -60,14 +61,17 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 2. O POST valida sessao, CSRF, UUID, dados e revalida no core o responsavel ativo escolhido.
 3. Entrega e comissao ficam com o responsavel selecionado; a auditoria guarda o usuario realmente logado como ator da acao.
 4. Entrega, comissao e auditoria entram na mesma transacao.
-5. Clique duplo ou retry encontra o UUID existente e nao duplica.
-6. A sessao autoriza uma unica abertura da rota de impressao.
+5. Depois do commit, +400 XP sao gravados para o vinculo XP ativo do responsavel com `source='delivery_creation'` e `source_entity_id=<deliveries.id>`.
+6. Clique duplo ou retry encontra o UUID existente e a chave de origem existente, sem duplicar entrega, comissao ou XP.
+7. Falha ou ausencia de vinculo XP fica visivel/auditada e nao desfaz entrega/comissao confirmadas.
+8. A sessao autoriza uma unica abertura da rota de impressao.
 
 ## Edicao, reimpressao e cancelamento
 
 - Edicao muda somente nome, telefone e endereco e audita antes/depois.
 - Reimpressao usa o registro existente e nao escreve em entrega/comissao.
 - Cancelamento usa lock, muda entrega e comissao atomicamente e mantem o historico.
+- Depois do commit do cancelamento, o lancamento XP recebe `deleted_at`/`deleted_by`; falha no XP nao reativa a entrega e fica auditada para conferencia.
 - Comissao ja paga bloqueia cancelamento da entrega na aplicacao e no trigger do banco; um estorno futuro precisa ser um fluxo contabil explicito.
 - Registros cancelados nao podem ser reativados nem reimpressos.
 

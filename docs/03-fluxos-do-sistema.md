@@ -614,11 +614,12 @@ Cuidados:
 ## Fluxo Entrega - 2026-08-10
 
 1. Conta ativa informa nome, telefone/WhatsApp e endereco completo, escolhe um usuario humano ativo como responsavel e confere a previa termica ao vivo.
-2. `Gerar entrega e imprimir` valida CSRF/token, revalida o responsavel no core, grava entrega/comissao para o escolhido e auditoria com o ator realmente logado na mesma transacao, depois abre a impressao local.
-3. Reimprimir audita e usa o registro existente, sem nova entrega ou comissao.
-4. Editar muda somente nome, telefone e endereco; responsavel, data, numero e comissao ficam imutaveis.
-5. `adm`, `admin` ou `gerente` cancelam com lock apenas antes do pagamento; entrega e comissao mudam atomicamente para `CANCELLED`.
-6. Gestor escolhe usuario e mes em `Pagar comissao`; o servidor trava os registros, inclui somente comissoes ativas ainda nao pagas e grava lote/itens/auditoria na mesma transacao.
-7. Clique duplo ou retry reutiliza o UUID do lote sem pagar novamente; novas entregas posteriores podem formar outro lote do mesmo mes.
-8. O relatorio resumido abre uma vez por autorizacao de sessao e pode ser reimpresso pelo historico sem alterar valores.
-9. Usuario comum consulta somente as entregas atribuidas a ele; gestores usam resumo por usuario e historico completo.
+2. `Gerar entrega e imprimir` valida CSRF/token, revalida o responsavel no core, grava entrega/comissao para o escolhido e auditoria com o ator realmente logado na mesma transacao.
+3. Depois do `COMMIT`, o sistema tenta gerar +400 XP para o vinculo ativo do responsavel, com `delivery_creation + delivery_id`; retry nao duplica e falha do XP nao desfaz a entrega.
+4. A impressao local abre; reimprimir audita e usa o registro existente, sem nova entrega, comissao ou XP.
+5. Editar muda somente nome, telefone e endereco; responsavel, data, numero, comissao e XP ficam imutaveis.
+6. `adm`, `admin` ou `gerente` cancelam com lock apenas antes do pagamento; entrega e comissao mudam atomicamente para `CANCELLED`, e o XP e estornado logicamente depois do commit.
+7. Gestor escolhe usuario e mes em `Pagar comissao`; o servidor trava os registros, inclui somente comissoes ativas ainda nao pagas e grava lote/itens/auditoria na mesma transacao.
+8. Clique duplo ou retry reutiliza o UUID do lote sem pagar novamente; novas entregas posteriores podem formar outro lote do mesmo mes.
+9. O relatorio resumido abre uma vez por autorizacao de sessao e pode ser reimpresso pelo historico sem alterar valores.
+10. Usuario comum consulta somente as entregas atribuidas a ele; gestores usam resumo por usuario e historico completo.

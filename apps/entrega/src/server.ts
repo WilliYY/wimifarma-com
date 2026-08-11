@@ -8,6 +8,7 @@ import pg, { type PoolClient, type QueryResultRow } from 'pg';
 import {
   canManageAll,
   cleanSingleLine,
+  deliveryCreationXpReward,
   isBareBasePath,
   localDateParts,
   normalizeHistoryFilters,
@@ -58,6 +59,8 @@ type CountRow = QueryResultRow & {
 type DeliveryIdRow = QueryResultRow & { id: string; created_by_user_id: string; status: 'ACTIVE' | 'CANCELLED' };
 type CommissionIdRow = QueryResultRow & { id: string; delivery_id: string; amount_cents: string };
 type TotalRow = QueryResultRow & { total: string };
+type XpAwardResult = { awarded: boolean; alreadyAwarded?: boolean; employeeName?: string; message: string };
+type XpRevocationResult = { revoked: boolean; alreadyRevoked?: boolean; message: string };
 type HealthRow = QueryResultRow & {
   generated: string;
   active: string;
@@ -89,7 +92,7 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 
 const SERVICE_NAME = 'entrega';
-const SERVICE_VERSION = '1.2.0';
+const SERVICE_VERSION = '1.3.0';
 const TIME_ZONE = 'America/Sao_Paulo';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/entrega');
 const PORT = Number.parseInt(env.PORT || '3980', 10);
@@ -114,6 +117,15 @@ const corePool = new Pool({
   user: env.CORE_POSTGRES_USER || 'wimifarma_core',
   password: env.CORE_POSTGRES_PASSWORD || '',
   max: 5,
+});
+
+const xpPool = new Pool({
+  host: env.XP_POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.XP_POSTGRES_PORT || 5432),
+  database: env.XP_POSTGRES_DB || 'wimifarma_xp',
+  user: env.XP_POSTGRES_USER || 'wimifarma_xp',
+  password: env.XP_POSTGRES_PASSWORD || '',
+  max: 3,
 });
 
 const app = express();
@@ -314,6 +326,207 @@ async function insertAudit(
      VALUES ($1, $2, $3, $4, $5::jsonb)`,
     [deliveryId, user.id, user.displayName, action, JSON.stringify(metadata)],
   );
+}
+
+async function insertAuditSafe(
+  deliveryId: number,
+  user: SessionUser,
+  action: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  let client: PoolClient | null = null;
+  try {
+    client = await deliveryPool.connect();
+    await insertAudit(client, deliveryId, user, action, metadata);
+  } catch (error) {
+    console.error('[entrega] delivery audit failed', error);
+  } finally {
+    client?.release();
+  }
+}
+
+let xpRewardSchemaReady = false;
+
+async function ensureXpRewardSchema(): Promise<void> {
+  if (xpRewardSchemaReady) return;
+  await xpPool.query(`
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source TEXT;
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS source_entity_id TEXT;
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE xp_sales ADD COLUMN IF NOT EXISTS deleted_by BIGINT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_sales_source_entity
+      ON xp_sales(source, source_entity_id)
+      WHERE source IS NOT NULL AND source_entity_id IS NOT NULL;
+  `);
+  xpRewardSchemaReady = true;
+}
+
+async function linkedXpEmployeeForUser(userId: number): Promise<{ id: number; name: string } | null> {
+  const link = await corePool.query<{ xp_employee_id: string | null } & QueryResultRow>(
+    `SELECT xp_employee_id::text
+       FROM core_user_xp_links
+      WHERE user_id = $1
+      LIMIT 1`,
+    [userId],
+  );
+  const employeeId = Number(link.rows[0]?.xp_employee_id || 0);
+  if (!Number.isSafeInteger(employeeId) || employeeId <= 0) return null;
+  const employee = await xpPool.query<{ id: string; name: string; system_key: string | null } & QueryResultRow>(
+    `SELECT id::text, name, system_key
+       FROM xp_employees
+      WHERE id = $1 AND status = 'ativo' AND deleted_at IS NULL
+      LIMIT 1`,
+    [employeeId],
+  );
+  const row = employee.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    name: cleanSingleLine(row.name, 180) || (row.system_key === 'adm' ? 'ADM' : 'Funcionario XP'),
+  };
+}
+
+async function awardXpForDelivery(deliveryId: number, responsibleUserId: number, actor: SessionUser): Promise<XpAwardResult> {
+  const reward = deliveryCreationXpReward(deliveryId);
+  try {
+    await ensureXpRewardSchema();
+    const employee = await linkedXpEmployeeForUser(responsibleUserId);
+    if (!employee) {
+      await insertAuditSafe(deliveryId, actor, 'DELIVERY_XP_SKIPPED', {
+        points: reward.points,
+        responsible_user_id: responsibleUserId,
+        reason: 'xp_link_not_found',
+      });
+      return { awarded: false, message: '400 XP nao gerados: o usuario escolhido nao possui vinculo ativo no XP.' };
+    }
+
+    const client = await xpPool.connect();
+    try {
+      await client.query('BEGIN');
+      const existing = await client.query<{ id: string } & QueryResultRow>(
+        'SELECT id::text FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1',
+        [reward.source, reward.sourceEntityId],
+      );
+      if (existing.rows[0]) {
+        await client.query('COMMIT');
+        return {
+          awarded: false,
+          alreadyAwarded: true,
+          employeeName: employee.name,
+          message: `400 XP ja estavam registrados para ${employee.name}.`,
+        };
+      }
+
+      const inserted = await client.query<{ id: string } & QueryResultRow>(
+        `INSERT INTO xp_sales (employee_id, sale_date, amount_cents, xp_points, note, created_by, source, source_entity_id)
+         VALUES ($1, CURRENT_DATE, 0, $2, $3, $4, $5, $6)
+         RETURNING id::text`,
+        [
+          employee.id,
+          reward.points,
+          cleanSingleLine(`Entrega #${deliveryId} registrada.`, 220),
+          actor.id,
+          reward.source,
+          reward.sourceEntityId,
+        ],
+      );
+      const saleId = Number(inserted.rows[0]?.id || 0);
+      await client.query(
+        `INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary)
+         VALUES ($1, 'xp_entrega_lancado', 'xp_sale', $2, $3)`,
+        [actor.id, String(saleId), cleanSingleLine(`+${reward.points} XP pela entrega #${deliveryId}.`, 255)],
+      );
+      await client.query('COMMIT');
+      await insertAuditSafe(deliveryId, actor, 'DELIVERY_XP_AWARDED', {
+        points: reward.points,
+        responsible_user_id: responsibleUserId,
+        xp_employee_id: employee.id,
+        xp_sale_id: saleId,
+      });
+      await logCoreAudit(actor.id, 'DELIVERY_XP_AWARDED', deliveryId, `+${reward.points} XP gerados para ${employee.name}.`, {
+        responsible_user_id: responsibleUserId,
+        xp_employee_id: employee.id,
+        xp_sale_id: saleId,
+        points: reward.points,
+      });
+      return { awarded: true, employeeName: employee.name, message: `+${reward.points} XP para ${employee.name}.` };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+      if (code === '23505') {
+        return { awarded: false, alreadyAwarded: true, employeeName: employee.name, message: `400 XP ja estavam registrados para ${employee.name}.` };
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('[entrega] XP award failed', error);
+    await insertAuditSafe(deliveryId, actor, 'DELIVERY_XP_FAILED', {
+      points: reward.points,
+      responsible_user_id: responsibleUserId,
+      source: reward.source,
+      source_entity_id: reward.sourceEntityId,
+    });
+    return { awarded: false, message: 'Entrega salva, mas os 400 XP nao foram gerados agora. Confira o vinculo do usuario no XP.' };
+  }
+}
+
+async function revokeXpForDelivery(deliveryId: number, actor: SessionUser): Promise<XpRevocationResult> {
+  const reward = deliveryCreationXpReward(deliveryId);
+  try {
+    await ensureXpRewardSchema();
+    const client = await xpPool.connect();
+    try {
+      await client.query('BEGIN');
+      const existing = await client.query<{ id: string; deleted_at: string | null } & QueryResultRow>(
+        `SELECT id::text, deleted_at
+           FROM xp_sales
+          WHERE source = $1 AND source_entity_id = $2
+          LIMIT 1
+          FOR UPDATE`,
+        [reward.source, reward.sourceEntityId],
+      );
+      const row = existing.rows[0];
+      if (!row) {
+        await client.query('COMMIT');
+        return { revoked: false, message: 'Nenhum XP desta entrega precisava ser estornado.' };
+      }
+      if (row.deleted_at) {
+        await client.query('COMMIT');
+        return { revoked: false, alreadyRevoked: true, message: 'Os 400 XP desta entrega ja estavam estornados.' };
+      }
+      await client.query(
+        `UPDATE xp_sales SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2`,
+        [actor.id, Number(row.id)],
+      );
+      await client.query(
+        `INSERT INTO xp_audit_events (actor_user_id, action, entity_type, entity_id, summary)
+         VALUES ($1, 'xp_entrega_estornado', 'xp_sale', $2, $3)`,
+        [actor.id, row.id, cleanSingleLine(`-${reward.points} XP pelo cancelamento da entrega #${deliveryId}.`, 255)],
+      );
+      await client.query('COMMIT');
+      await insertAuditSafe(deliveryId, actor, 'DELIVERY_XP_REVOKED', { points: reward.points, xp_sale_id: Number(row.id) });
+      await logCoreAudit(actor.id, 'DELIVERY_XP_REVOKED', deliveryId, `${reward.points} XP estornados pelo cancelamento da entrega.`, {
+        points: reward.points,
+        xp_sale_id: Number(row.id),
+      });
+      return { revoked: true, message: `${reward.points} XP estornados.` };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('[entrega] XP revocation failed', error);
+    await insertAuditSafe(deliveryId, actor, 'DELIVERY_XP_REVOCATION_FAILED', {
+      points: reward.points,
+      source: reward.source,
+      source_entity_id: reward.sourceEntityId,
+    });
+    return { revoked: false, message: 'Entrega cancelada, mas o estorno dos 400 XP precisa ser conferido.' };
+  }
 }
 
 async function ensureSchema(): Promise<void> {
@@ -864,6 +1077,7 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
   const client = await deliveryPool.connect();
   let deliveryId = 0;
   let created = false;
+  let deliveryStatus: 'ACTIVE' | 'CANCELLED' = 'ACTIVE';
   try {
     await client.query('BEGIN');
     const inserted = await client.query<DeliveryIdRow>(
@@ -886,6 +1100,7 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
       created = true;
     }
     deliveryId = Number(row.id);
+    deliveryStatus = row.status;
 
     if (created) {
       const commission = await client.query(
@@ -917,13 +1132,23 @@ app.post(`${BASE_PATH}/create`, asyncRoute(async (req, res) => {
   if (created) {
     await logCoreAudit(user.id, 'DELIVERY_CREATED', deliveryId, `Entrega criada para ${responsibleUser.display_name} com comissao unica de R$ 1,00.`, {
       commission_cents: 100,
+      xp_points: 400,
       responsible_user_id: Number(responsibleUser.id),
       responsible_user_name: responsibleUser.display_name,
     });
   }
+  const xpResult = deliveryStatus === 'ACTIVE'
+    ? await awardXpForDelivery(deliveryId, Number(responsibleUser.id), user)
+    : { awarded: false, message: 'XP nao gerado porque esta entrega esta cancelada.' };
   delete req.session.creationToken;
   req.session.printDeliveryId = deliveryId;
-  setFlash(req, 'success', created ? `Entrega registrada para ${responsibleUser.display_name}. A impressao sera aberta agora.` : 'A entrega ja estava registrada; nenhum valor foi duplicado.');
+  setFlash(
+    req,
+    'success',
+    created
+      ? `Entrega registrada para ${responsibleUser.display_name}. ${xpResult.message} A impressao sera aberta agora.`
+      : `A entrega ja estava registrada; nenhum valor foi duplicado. ${xpResult.message}`,
+  );
   await saveSession(req);
   return res.redirect(`${BASE_PATH}/print/${deliveryId}`);
 }));
@@ -1149,6 +1374,7 @@ app.post(`${BASE_PATH}/cancel`, asyncRoute(async (req, res) => {
 
   const client = await deliveryPool.connect();
   let cancelled = false;
+  let reconcileXp = false;
   try {
     await client.query('BEGIN');
     const delivery = await client.query<DeliveryIdRow>(
@@ -1161,6 +1387,7 @@ app.post(`${BASE_PATH}/cancel`, asyncRoute(async (req, res) => {
       setFlash(req, 'error', 'Entrega nao encontrada.');
       return res.redirect(`${BASE_PATH}/`);
     }
+    reconcileXp = row.status === 'CANCELLED';
     if (row.status === 'ACTIVE') {
       const paid = await client.query<{ payment_id: string } & QueryResultRow>(
         `SELECT pi.payment_id::text
@@ -1192,6 +1419,7 @@ app.post(`${BASE_PATH}/cancel`, asyncRoute(async (req, res) => {
       if (commission.rowCount !== 1) throw new Error('commission_not_cancelled');
       await insertAudit(client, deliveryId, user, 'DELIVERY_CANCELLED', { commission_reversed_cents: 100 });
       cancelled = true;
+      reconcileXp = true;
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -1200,8 +1428,23 @@ app.post(`${BASE_PATH}/cancel`, asyncRoute(async (req, res) => {
   } finally {
     client.release();
   }
-  if (cancelled) await logCoreAudit(user.id, 'DELIVERY_CANCELLED', deliveryId, 'Entrega cancelada e comissao estornada.', { commission_reversed_cents: 100 });
-  setFlash(req, cancelled ? 'success' : 'error', cancelled ? 'Entrega cancelada. A comissao de R$ 1,00 foi estornada e o historico foi mantido.' : 'Esta entrega ja estava cancelada.');
+  const xpRevocation: XpRevocationResult = reconcileXp
+    ? await revokeXpForDelivery(deliveryId, user)
+    : { revoked: false, message: 'Nenhum XP precisava ser conferido.' };
+  if (cancelled) {
+    await logCoreAudit(user.id, 'DELIVERY_CANCELLED', deliveryId, 'Entrega cancelada e comissao estornada.', {
+      commission_reversed_cents: 100,
+      xp_points: 400,
+      xp_revoked: xpRevocation.revoked || xpRevocation.alreadyRevoked || false,
+    });
+  }
+  setFlash(
+    req,
+    cancelled ? 'success' : 'error',
+    cancelled
+      ? `Entrega cancelada. A comissao de R$ 1,00 foi estornada e o historico foi mantido. ${xpRevocation.message}`
+      : `Esta entrega ja estava cancelada. ${xpRevocation.message}`,
+  );
   return res.redirect(`${BASE_PATH}/?view_id=${deliveryId}#entrega-detalhe`);
 }));
 
