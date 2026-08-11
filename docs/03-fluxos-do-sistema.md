@@ -623,3 +623,13 @@ Cuidados:
 8. Clique duplo ou retry reutiliza o UUID do lote sem pagar novamente; novas entregas posteriores podem formar outro lote do mesmo mes.
 9. O relatorio resumido abre uma vez por autorizacao de sessao e pode ser reimpresso pelo historico sem alterar valores.
 10. Usuario comum consulta somente as entregas atribuidas a ele; gestores usam resumo por usuario e historico completo.
+
+## Fluxo do Comissao - 2026-08-11
+
+1. Gestor cadastra indicador externo e cupom com oferta, comissao, periodo/status e codigo manual ou automatico.
+2. Imprimir abre o cupom salvo no navegador; a comissao nao aparece no papel.
+3. Usuario consulta o codigo; a consulta apenas mostra a oferta e nao grava nada.
+4. Ao confirmar, o servidor trava/revalida o cupom, cria utilizacao e `COMMISSION` atomicamente e, depois do commit, tenta +300 XP idempotentes para o usuario logado.
+5. Gestor paga parte ou todo o saldo; pagamento e ledger ficam imutaveis e o perfil do indicador e atualizado.
+6. Gestor pode cancelar uma utilizacao ativa, criando `REVERSAL` e estorno logico do XP sem apagar historico.
+7. Usuario comum ve as proprias utilizacoes; gestores veem resumo, ranking e historicos gerais.

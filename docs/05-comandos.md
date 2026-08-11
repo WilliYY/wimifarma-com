@@ -759,3 +759,18 @@ docker compose up -d --build wimifarma-entrega-db wimifarma-entrega-app wimifarm
 docker compose logs --tail=100 wimifarma-entrega-app wimifarma-entrega-db
 curl -fsS http://127.0.0.1:3002/entrega/health
 ```
+
+## Comissao Node/Postgres
+
+```powershell
+cd apps/comissao
+npm ci
+npm run check
+npm test
+```
+
+```bash
+docker compose up -d --build wimifarma-comissao-db wimifarma-comissao-app wimifarma-com-web
+docker compose logs --tail=100 wimifarma-comissao-app wimifarma-comissao-db
+curl -fsS http://127.0.0.1:3002/comissao/health
+```

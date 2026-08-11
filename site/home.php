@@ -445,6 +445,7 @@ function wf_home_clear_module_session_cookies(): void
         'WFLOGINSENHA',
         'WFWCASHBACK',
         'WFENTREGA',
+        'WFCOMISSAO',
     );
 
     foreach ($cookies as $name) {
@@ -2247,6 +2248,14 @@ $modules = array(
         'accent' => 'green',
     ),
     array(
+        'name' => 'Comissao',
+        'label' => 'Indicacao',
+        'description' => 'Cupons, parceiros, comissoes e XP.',
+        'module_key' => 'comissao',
+        'href' => '/comissao/',
+        'accent' => 'blue',
+    ),
+    array(
         'name' => 'Bloco de notas/lembretes',
         'label' => 'Lembretes',
         'description' => 'Anotacoes internas, notas rapidas e ordem por arrasto.',
@@ -2338,6 +2347,7 @@ $homeModulePermissions = wf_home_module_permissions(
 );
 $homeModulePermissions['miauw'] = true;
 $homeModulePermissions['entrega'] = true;
+$homeModulePermissions['comissao'] = true;
 $modules = array_values(array_filter(
     $modules,
     static function (array $module) use ($homeModulePermissions, $homeUserIdentity, $homeUserLogin): bool {

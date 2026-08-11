@@ -148,3 +148,12 @@ Tabelas:
 - `adm`, `admin` e `gerente` consultam a equipe, cancelam entregas ainda nao pagas, pagam comissoes e reimprimem o relatorio.
 - Usuario comum nao ve nem acessa as rotas de pagamento de comissao.
 - O responsavel pode ser escolhido apenas na criacao; depois nenhum formulario troca responsavel, data original, numero, valor ou status isolado da comissao.
+
+## Comissao - 2026-08-11
+
+- Toda conta `core_users.active=TRUE` recebe acesso permanente ao card e a `/comissao/`.
+- `comissao` fica em `ALWAYS_ALLOWED_MODULE_KEYS` e e forcado como permitido na Home.
+- O app revalida `WFHOME_SSO` e cria a sessao `WFCOMISSAO`.
+- Usuario comum consulta/confirma cupom e ve somente as proprias utilizacoes.
+- `adm`, `admin` e `gerente` administram indicadores/cupons, pagamentos, cancelamentos, ranking e historicos completos.
+- Os +300 XP usam o vinculo servidor-side do usuario realmente logado; indicador externo nao recebe login nem XP.

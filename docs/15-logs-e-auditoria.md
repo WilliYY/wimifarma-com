@@ -141,3 +141,11 @@ Arquivos:
 - `delivery_commission_payment_audit_logs` registra `PAYMENT_CREATED` e `PAYMENT_REPRINTED` por lote.
 - O lote guarda snapshots do recebedor e do pagador; cada item aponta para a comissao e entrega originais.
 - Criacao e reimpressao de pagamento tambem tentam gravar `core_audit_logs` depois da transacao principal.
+
+## Comissao - 2026-08-11
+
+- `referral_audit_logs` registra criacao/edicao de indicador e cupom, impressao, utilizacao, pagamento, cancelamento e resultados do XP.
+- `core_audit_logs` recebe espelho em melhor esforco depois da operacao principal; falha central nao desfaz dado local confirmado.
+- `xp_audit_events` registra lancamento e estorno do premio de indicacao.
+- `referral_redemptions` e pagamentos guardam snapshots e ator para preservar leitura historica mesmo apos edicoes cadastrais.
+- Impressao significa solicitacao local ao navegador, nao confirmacao de papel.

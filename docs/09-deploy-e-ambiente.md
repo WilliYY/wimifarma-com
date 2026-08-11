@@ -283,3 +283,11 @@ Higiene de pastas no VPS:
 - Variaveis: `ENTREGA_POSTGRES_PASSWORD`, `ENTREGA_SESSION_SECRET`, `CORE_POSTGRES_*`, `XP_POSTGRES_*` e `WIMIFARMA_HOME_SSO_INTERNAL_URL`.
 - O app depende de `wimifarma-xp-db` para premiar/estornar os 400 XP, mas indisponibilidade do XP nao pode desfazer uma entrega ja confirmada.
 - Subir banco e app antes de reconstruir `wimifarma-com-web`, pois o proxy resolve o hostname do app na inicializacao.
+
+## Comissao - 2026-08-11
+
+- App interno `wimifarma-comissao-app:3990`; rota `/comissao/` pelo Apache.
+- Banco `wimifarma-comissao-db:5432`, sem porta publicada, volume `./comissao-data/postgres` ignorado pelo Git.
+- Variaveis: `COMISSAO_POSTGRES_PASSWORD`, `COMISSAO_SESSION_SECRET`, `CORE_POSTGRES_*`, `XP_POSTGRES_*` e `WIMIFARMA_HOME_SSO_INTERNAL_URL`.
+- Falha do XP nao desfaz utilizacao/comissao confirmada; o health aponta divergencias para conferencia.
+- Subir banco/app antes de reconstruir o web para o proxy resolver o hostname.

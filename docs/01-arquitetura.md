@@ -248,3 +248,11 @@ Tambem nao apontar o Nginx Proxy Manager nem o Apache para `wimifarma-miauby-app
 - `wimifarma-entrega-db` usa Postgres 17 dedicado em `./entrega-data/postgres`.
 - O app consulta identidade ativa e `core_user_xp_links` no `wimifarma_core`; entregas, comissoes, lotes de pagamento, sessoes e auditoria ficam em `wimifarma_entrega`, enquanto os +400 XP idempotentes usam `wimifarma_xp`.
 - A impressao e local pelo navegador, sem fila ou agente de impressao.
+
+## Modulo Comissao - 2026-08-11
+
+- `/comissao/` passa pelo Apache para `wimifarma-comissao-app:3990`.
+- O app usa Node.js 22, TypeScript, Express, SSO da Home e sessao `WFCOMISSAO`.
+- `wimifarma-comissao-db` usa Postgres 17 dedicado em `./comissao-data/postgres`.
+- Indicadores, cupons, utilizacoes, ledger, pagamentos, sessoes e auditoria ficam em `wimifarma_comissao`; identidade/vinculo ficam no core e os +300 XP idempotentes no `wimifarma_xp`.
+- A impressao e local pelo navegador, sem agente ou fila remota.

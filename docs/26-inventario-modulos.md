@@ -1321,3 +1321,12 @@ Proxima rodada segura:
 - Escritas: `deliveries`, `delivery_commissions`, `delivery_audit_logs` e `entrega_sessions`.
 - Integracoes: Home SSO, identidade `core_users`, `core_user_xp_links`, +400 XP em `xp_sales`, auditoria central em melhor esforco e impressao local do navegador.
 - Risco principal: qualquer mudanca deve preservar uma comissao de 100 centavos e um premio idempotente de 400 XP por entrega, com cancelamento logico de ambos e sem DELETE.
+
+## Comissao - inventario 2026-08-11
+
+- Rota: `/comissao/`.
+- App/banco: `apps/comissao`, `wimifarma-comissao-app:3990`, `wimifarma-comissao-db` e integracao idempotente com `wimifarma-xp-db`.
+- Acesso: permanente para conta core ativa; ownership das utilizacoes para usuario comum e administracao para `adm`, `admin` e `gerente`.
+- Escritas: `referral_people`, `referral_coupons`, `referral_redemptions`, `referral_commission_transactions`, `referral_payments`, auditoria e sessoes.
+- Integracoes: Home SSO, identidade/role core, vinculo XP, +300 XP em `xp_sales`, auditoria central e impressao local.
+- Risco principal: preservar idempotencia, ledger imutavel, estorno logico, separacao indicador externo/usuario interno e cupom sem comissao impressa.

@@ -166,3 +166,10 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - `apps/entrega/src/views.test.ts` cobre responsavel padrao, indicacao de +400 XP, previa termica, logo compartilhada, isolamento do painel de pagamento, bloqueio visual de cancelamento pago e relatorio resumido sem dados de clientes.
 - Antes de publicar: `npm ci`, `npm run check`, `npm test`, validar Compose e construir containers.
 - No VPS: validar `/entrega/health`, uma comissao e um `xp_sales` por entrega, pagamento sem duplicacao, total igual aos itens, reimpressao sem nova baixa/XP, bloqueio de cancelamento pago e cancelamento anterior com estorno logico de comissao/XP.
+
+## Comissao - 2026-08-11
+
+- `apps/comissao/src/domain.test.ts` cobre normalizacao/geracao de codigo, dinheiro, indicador externo, oferta/datas/status, +300 XP idempotente, sinais do ledger e limite de pagamento.
+- `apps/comissao/src/views.test.ts` cobre isolamento comum/gestor, painel de uso, +300 XP, administracao, cupom termico sem comissao e escape de HTML externo.
+- Antes de publicar: `npm ci`, `npm run check`, `npm test`, `npm audit --omit=dev`, Compose e build dos containers.
+- No VPS: validar health, schema/triggers, uso idempotente, uma comissao e um XP, pagamento parcial, cancelamento/reversao, ownership e impressao sem comissao.

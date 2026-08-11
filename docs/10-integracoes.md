@@ -381,3 +381,10 @@ Documento especifico:
 - O comprovante usa impressao local do navegador. Nao existe agente, executavel, fila remota ou confirmacao fisica de papel.
 - A comissao de R$ 1,00 fica por linha em `delivery_commissions` e e estornada logicamente no cancelamento.
 - Integra com `core_user_xp_links` e o Postgres oficial `wimifarma_xp`: cada entrega gera +400 XP idempotentes para o responsavel escolhido em `xp_sales` com origem `delivery_creation`; cancelamento estorna logicamente esse lancamento.
+
+## Comissao - 2026-08-11
+
+- Integra com a Home por `WFHOME_SSO` e com `core_users` para identidade ativa e role.
+- Integra com `core_user_xp_links` e `wimifarma_xp`: uso confirmado gera +300 XP por `referral_coupon_redemption + redemption id`; cancelamento estorna logicamente.
+- O indicador permanece externo ao core e recebe somente ledger/pagamento financeiro local.
+- A impressao usa o navegador e o logo termico local; nao existe fila remota nem confirmacao fisica de papel.

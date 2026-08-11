@@ -160,6 +160,7 @@ const MODULES: ModuleDefinition[] = [
   { key: 'pedidos', label: 'Pedidos', href: '/pedidos/' },
   { key: 'financeiro', label: 'Financeiro', href: '/financeiro/' },
   { key: 'entrega', label: 'Entrega', href: '/entrega/' },
+  { key: 'comissao', label: 'Comissao', href: '/comissao/' },
   { key: 'notas', label: 'Bloco de notas', href: '/notas/' },
   { key: 'tarefa', label: 'Tarefas', href: '/tarefa/' },
   { key: 'codigos', label: 'Codigos', href: '/codigos/' },
@@ -173,7 +174,7 @@ const MODULES: ModuleDefinition[] = [
 ];
 
 const MODULE_KEYS = new Set(MODULES.map((module) => module.key));
-const ALWAYS_ALLOWED_MODULE_KEYS = new Set(['miauw', 'entrega']);
+const ALWAYS_ALLOWED_MODULE_KEYS = new Set(['miauw', 'entrega', 'comissao']);
 const ROLE_OPTIONS = ['user', 'gerente', 'admin', 'farmacia'];
 const WHATSAPP_MODULES: WhatsappModuleDefinition[] = [
   { key: 'cashback', label: 'Cashback' },

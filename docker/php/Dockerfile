@@ -150,6 +150,15 @@ RUN { \
 
 RUN { \
         echo 'ProxyPreserveHost On'; \
+        echo 'ProxyPass "/comissao/" "http://wimifarma-comissao-app:3990/comissao/"'; \
+        echo 'ProxyPassReverse "/comissao/" "http://wimifarma-comissao-app:3990/comissao/"'; \
+        echo 'ProxyPass "/comissao" "http://wimifarma-comissao-app:3990/comissao"'; \
+        echo 'ProxyPassReverse "/comissao" "http://wimifarma-comissao-app:3990/comissao"'; \
+    } > /etc/apache2/conf-available/wimifarma-comissao-proxy.conf \
+    && a2enconf wimifarma-comissao-proxy
+
+RUN { \
+        echo 'ProxyPreserveHost On'; \
         echo 'ProxyPass "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
         echo 'ProxyPassReverse "/cashback/" "http://wimifarma-cashback-app:4000/cashback/"'; \
         echo 'ProxyPass "/cashback" "http://wimifarma-cashback-app:4000/cashback"'; \

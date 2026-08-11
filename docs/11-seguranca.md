@@ -209,3 +209,12 @@ Os quatro primeiros devem responder 403. O status detalhado sem token deve respo
 - Uma entrega ja paga nao pode ser cancelada pela aplicacao nem ter sua comissao cancelada diretamente no banco; isso evita saldo contabil quitado sem estorno correspondente.
 - SQL usa parametros, HTML e escapado e entradas recebem limites de tamanho.
 - Banco impede DELETE, duplicacao de comissao, pagamento repetido, mudanca de identidade, edicao de lote pago e reativacao.
+
+## Comissao - 2026-08-11
+
+- Toda mutacao usa CSRF, limite de formulario, SQL parametrizado e UUID idempotente ligado a sessao.
+- O servidor revalida cupom, status e datas dentro de transacao e usa `FOR UPDATE` antes de confirmar uso ou pagamento.
+- Consulta nao grava comissao/XP; somente confirmacao explicita cria efeito financeiro.
+- Codigo usa chave normalizada unica; HTML externo e escapado e a previa JS escreve com `textContent`.
+- Usuario comum tem ownership por `confirmed_by_user_id`; rotas administrativas revalidam role no servidor.
+- Triggers bloqueiam DELETE e alteracoes no ledger/pagamentos; cancelamento e estorno logico preservam auditoria.

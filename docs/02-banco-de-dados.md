@@ -469,3 +469,14 @@ Essa abordagem preserva compatibilidade na migracao, mas deve evoluir para migra
 - `entrega_sessions`: sessoes `WFENTREGA` por `connect-pg-simple`.
 - O premio de +400 XP nao cria tabela paralela: usa o Postgres oficial do XP em `xp_sales`, com `source='delivery_creation'`, `source_entity_id=<deliveries.id>` e estorno logico por `deleted_at`/`deleted_by` quando a entrega e cancelada.
 - Triggers impedem DELETE, alteracao da identidade da entrega/comissao, reativacao depois do cancelamento, cancelamento de comissao ja paga e alteracao dos lotes/itens de pagamento.
+
+## Tabelas do Comissao em Postgres - 2026-08-11
+
+- Banco `wimifarma_comissao`, container `wimifarma-comissao-db`.
+- `referral_people`: indicadores externos e seus dados de pagamento/contato.
+- `referral_coupons`: oferta, codigo normalizado globalmente unico, periodo e status.
+- `referral_redemptions`: uso idempotente com snapshots, usuario, estado do XP e cancelamento logico.
+- `referral_commission_transactions`: ledger imutavel de `COMMISSION`, `REVERSAL` e `PAYMENT`.
+- `referral_payments`: pagamentos idempotentes e imutaveis.
+- `referral_audit_logs` e `comissao_sessions`: auditoria e sessao.
+- O XP usa `xp_sales` oficial com `referral_coupon_redemption + redemption id`; triggers impedem DELETE e alteracoes em pagamentos/ledger.

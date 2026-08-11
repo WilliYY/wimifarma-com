@@ -36,6 +36,7 @@ services:
       - wimifarma-login-senha-app
       - wimifarma-notas-app
       - wimifarma-entrega-app
+      - wimifarma-comissao-app
       - wimifarma-miauw-agent
       - wimifarma-miauw-whatsapp
     environment:
@@ -273,6 +274,19 @@ services:
       POSTGRES_PASSWORD: ${ENTREGA_POSTGRES_PASSWORD:-wimifarma_entrega_dev_pass}
     volumes:
       - ./entrega-data/postgres:/var/lib/postgresql/data
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-comissao-db:
+    image: postgres:17-alpine
+    container_name: wimifarma-comissao-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wimifarma_comissao
+      POSTGRES_USER: wimifarma_comissao
+      POSTGRES_PASSWORD: ${COMISSAO_POSTGRES_PASSWORD:-wimifarma_comissao_dev_pass}
+    volumes:
+      - ./comissao-data/postgres:/var/lib/postgresql/data
     networks:
       - wimifarma-com-network
 
@@ -803,6 +817,42 @@ services:
       POSTGRES_USER: wimifarma_entrega
       POSTGRES_PASSWORD: ${ENTREGA_POSTGRES_PASSWORD:-wimifarma_entrega_dev_pass}
       ENTREGA_SESSION_SECRET: ${ENTREGA_SESSION_SECRET:-wimifarma_entrega_dev_secret_change_me}
+      WIMIFARMA_HOME_SSO_INTERNAL_URL: http://wimifarma-com-web/home-sso.php
+      WIMIFARMA_HOME_SSO_TIMEOUT_MS: ${WIMIFARMA_HOME_SSO_TIMEOUT_MS:-1200}
+      TZ: America/Sao_Paulo
+    networks:
+      - wimifarma-com-network
+
+  wimifarma-comissao-app:
+    build:
+      context: ./apps/comissao
+      dockerfile: Dockerfile
+    container_name: wimifarma-comissao-app
+    restart: unless-stopped
+    depends_on:
+      - wimifarma-core-db
+      - wimifarma-comissao-db
+      - wimifarma-xp-db
+    environment:
+      NODE_ENV: production
+      PORT: 3990
+      BASE_PATH: /comissao
+      CORE_POSTGRES_HOST: wimifarma-core-db
+      CORE_POSTGRES_PORT: 5432
+      CORE_POSTGRES_DB: wimifarma_core
+      CORE_POSTGRES_USER: wimifarma_core
+      CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
+      XP_POSTGRES_HOST: wimifarma-xp-db
+      XP_POSTGRES_PORT: 5432
+      XP_POSTGRES_DB: wimifarma_xp
+      XP_POSTGRES_USER: wimifarma_xp
+      XP_POSTGRES_PASSWORD: ${XP_POSTGRES_PASSWORD:-wimifarma_xp_dev_pass}
+      POSTGRES_HOST: wimifarma-comissao-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wimifarma_comissao
+      POSTGRES_USER: wimifarma_comissao
+      POSTGRES_PASSWORD: ${COMISSAO_POSTGRES_PASSWORD:-wimifarma_comissao_dev_pass}
+      COMISSAO_SESSION_SECRET: ${COMISSAO_SESSION_SECRET:-wimifarma_comissao_dev_secret_change_me}
       WIMIFARMA_HOME_SSO_INTERNAL_URL: http://wimifarma-com-web/home-sso.php
       WIMIFARMA_HOME_SSO_TIMEOUT_MS: ${WIMIFARMA_HOME_SSO_TIMEOUT_MS:-1200}
       TZ: America/Sao_Paulo
