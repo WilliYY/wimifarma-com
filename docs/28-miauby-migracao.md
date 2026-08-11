@@ -443,6 +443,8 @@ Rollback:
 - Mover contracts de tools para fonte versionada em Postgres/Node.
 - Cada tool deve declarar modulo, risco, permissao, entrada, saida, auditoria, efeito e executor.
 - Escrita forte continua por endpoint interno do modulo dono, com confirmacao humana.
+- O frontend deve aguardar a resposta da confirmacao e substituir os botoes pelo resultado final: confirmado, cancelado ou falho.
+- A idempotencia de sangria/lancamento financeiro nasce na confirmacao e acompanha a chamada ao modulo dono; retry da mesma confirmacao reutiliza a chave, mas uma nova confirmacao recebe outra chave.
 - Node nao deve abrir conexao direta para bancos de outros modulos quando existir endpoint interno.
 
 ### Fase 6 - Corte parcial do motor

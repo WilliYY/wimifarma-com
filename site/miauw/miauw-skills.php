@@ -5523,7 +5523,7 @@ function miauw_skill_financeiro_command_from_message(string $message): ?array
     );
 }
 
-function miauw_skill_create_financeiro_lancamento(string $category, float $value, string $observation = '', ?string $date = null, string $responsible = '', ?int $actorUserId = null): array
+function miauw_skill_create_financeiro_lancamento(string $category, float $value, string $observation = '', ?string $date = null, string $responsible = '', ?int $actorUserId = null, ?string $idempotencyKey = null): array
 {
     $category = miauw_skill_clean_category($category);
     if ($category === '') {
@@ -5540,6 +5540,10 @@ function miauw_skill_create_financeiro_lancamento(string $category, float $value
     }
 
     $date = $date !== null && trim((string) $date) !== '' ? (string) $date : date('Y-m-d');
+    $idempotencyKey = miauw_substr(trim((string) $idempotencyKey), 0, 160);
+    if ($idempotencyKey === '') {
+        $idempotencyKey = hash('sha256', implode('|', array($category, (string) $value, $date, $responsible, $observation)));
+    }
 
     if (miauw_skill_financeiro_internal_configured()) {
         try {
@@ -5550,7 +5554,7 @@ function miauw_skill_create_financeiro_lancamento(string $category, float $value
                 'responsavel' => $responsible,
                 'observacao' => $observation,
                 'actor_user_id' => $actorUserId !== null && $actorUserId > 0 ? $actorUserId : (int) ($_SESSION['user_id'] ?? 0),
-                'idempotency_key' => hash('sha256', implode('|', array($category, (string) $value, $date, $responsible, $observation))),
+                'idempotency_key' => $idempotencyKey,
             ));
             if (is_array($response) && !empty($response['ok'])) {
                 return array(
@@ -5574,7 +5578,7 @@ function miauw_skill_create_financeiro_lancamento(string $category, float $value
     throw new RuntimeException('Financeiro moderno sem token interno. Nao gravei no legado para evitar divergencia.');
 }
 
-function miauw_skill_create_sangria(float $value, string $responsible, string $observation = '', ?string $date = null, ?int $actorUserId = null): array
+function miauw_skill_create_sangria(float $value, string $responsible, string $observation = '', ?string $date = null, ?int $actorUserId = null, ?string $idempotencyKey = null): array
 {
     $responsible = trim($responsible);
     if ($value <= 0) {
@@ -5587,7 +5591,7 @@ function miauw_skill_create_sangria(float $value, string $responsible, string $o
 
     $obs = miauw_skill_financeiro_obs_from_parts('Sangria', $responsible, $observation);
 
-    return miauw_skill_create_financeiro_lancamento('Sangria', $value, $obs, $date, $responsible, $actorUserId);
+    return miauw_skill_create_financeiro_lancamento('Sangria', $value, $obs, $date, $responsible, $actorUserId, $idempotencyKey);
 }
 
 function miauw_skill_create_financeiro_lancamento_from_message(string $message): ?array

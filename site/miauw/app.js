@@ -72,6 +72,36 @@
     .replace(/(https?:\/\/[^\s<]+|\/miauw\/relatorios\/[^\s<]+)/g, (url) => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`)
     .replaceAll('\n', '<br>');
 
+  const settleConfirmationCard = (card, state) => {
+    if (!card) return;
+
+    const states = {
+      confirmed: {
+        title: 'Acao confirmada',
+        detail: 'Concluida e registrada.',
+      },
+      cancelled: {
+        title: 'Acao cancelada',
+        detail: 'Nenhum dado foi alterado.',
+      },
+      failed: {
+        title: 'Nao foi possivel concluir',
+        detail: 'Confira a resposta abaixo antes de tentar novamente.',
+      },
+    };
+    const result = states[state] || states.failed;
+    const title = card.querySelector('strong');
+    const actions = card.querySelector('nav');
+
+    card.dataset.confirmationState = state;
+    card.classList.remove('is-confirmed', 'is-cancelled', 'is-failed');
+    card.classList.add(`is-${state}`);
+    if (title) title.textContent = result.title;
+    if (actions) {
+      actions.innerHTML = `<small class="confirmation-result">${escapeHtml(result.detail)}</small>`;
+    }
+  };
+
   const renderConfirmation = (bubble, confirmation) => {
     if (!bubble || !confirmation || !confirmation.id) return;
 
@@ -87,11 +117,20 @@
     `;
 
     card.querySelectorAll('button').forEach((button) => {
-      button.addEventListener('click', () => {
+      button.addEventListener('click', async () => {
         const action = button.dataset.confirmAction || 'cancelar';
         card.querySelectorAll('button').forEach((item) => { item.disabled = true; });
         button.textContent = action === 'confirmar' ? 'Confirmando...' : 'Cancelando...';
-        sendMessage(`${action} ${confirmation.id}`, { silentConfirmation: true });
+        const confirmationRequest = await sendMessage(`${action} ${confirmation.id}`, { silentConfirmation: true });
+        const responseModel = String(confirmationRequest && confirmationRequest.data ? confirmationRequest.data.model || '' : '');
+
+        if (action === 'confirmar' && confirmationRequest && confirmationRequest.ok && responseModel === 'miauw-action-confirmed') {
+          settleConfirmationCard(card, 'confirmed');
+        } else if (action === 'cancelar' && confirmationRequest && confirmationRequest.ok) {
+          settleConfirmationCard(card, 'cancelled');
+        } else {
+          settleConfirmationCard(card, 'failed');
+        }
       });
     });
 
@@ -876,7 +915,7 @@
 
   const sendMessage = async (message, options = {}) => {
     const text = String(message || '').trim();
-    if (!text) return;
+    if (!text) return { ok: false, data: null };
 
     if (options.userAudio && options.userAudio.url) {
       addAudioMessage('user', options.userAudio);
@@ -913,7 +952,7 @@
       if (!data.ok) {
         hideTyping();
         addMessage('assistant', data.message || 'Nao consegui concluir agora. Tente de novo.');
-        return;
+        return { ok: false, data };
       }
 
       hideTyping();
@@ -931,7 +970,7 @@
             messageId: data.assistant_message_id || 0,
             autoPlay: true,
           });
-          return;
+          return { ok: true, data };
         }
       }
 
@@ -942,10 +981,12 @@
         fallbackText: data.reply,
         messageId: data.assistant_message_id || 0,
       });
+      return { ok: true, data };
     } catch (error) {
       await typingDelay;
       hideTyping();
       addMessage('assistant', 'Nao consegui falar com o Miauby agora. Tente novamente em instantes.');
+      return { ok: false, data: null };
     } finally {
       hideTyping();
       setLoading(false);

@@ -55,7 +55,7 @@ if (!defined('MIAUW_APP_NAME')) {
 }
 
 if (!defined('MIAUW_VERSION')) {
-    define('MIAUW_VERSION', '20260529a');
+    define('MIAUW_VERSION', '20260811a');
 }
 
 if (!defined('MIAUW_AGENT_VERSION')) {
@@ -4183,6 +4183,10 @@ function miauw_queue_confirmation(string $tool, array $command, ?string $summary
     if ($userId === null && (int) ($actor['user_id'] ?? 0) > 0) {
         $userId = (int) $actor['user_id'];
     }
+    if (in_array($tool, array('registrar_sangria', 'criar_lancamento_financeiro'), true)
+        && trim((string) ($command['idempotency_key'] ?? '')) === '') {
+        $command['idempotency_key'] = 'miauby-confirmation:' . $id . ':user-' . max(0, (int) $userId);
+    }
 
     $summary = $summary !== null && trim($summary) !== '' ? trim($summary) : miauw_confirmation_summary($tool, $command);
     $confirmation = array(
@@ -4311,7 +4315,8 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
                 (string) ($command['responsavel'] ?? ''),
                 (string) ($command['observacao'] ?? ''),
                 isset($command['data']) ? (string) $command['data'] : null,
-                $userId
+                $userId,
+                (string) ($command['idempotency_key'] ?? '')
             )
             : miauw_skill_create_financeiro_lancamento(
                 'Sangria',
@@ -4319,7 +4324,8 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
                 (string) ($command['observacao'] ?? ''),
                 isset($command['data']) ? (string) $command['data'] : null,
                 (string) ($command['responsavel'] ?? ''),
-                $userId
+                $userId,
+                (string) ($command['idempotency_key'] ?? '')
             );
 
         return "Sangria registrada.\n"
@@ -4338,7 +4344,8 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
             (string) ($command['observacao'] ?? ''),
             isset($command['data']) ? (string) $command['data'] : null,
             (string) ($command['responsavel'] ?? ''),
-            $userId
+            $userId,
+            (string) ($command['idempotency_key'] ?? '')
         );
 
         return miauw_skill_financeiro_action_reply($result);
@@ -8096,7 +8103,8 @@ function miauw_openai_tool_result(string $name, array $args): string
                 (string) ($command['responsavel'] ?? ''),
                 (string) ($command['observacao'] ?? ''),
                 isset($command['data']) ? (string) $command['data'] : null,
-                isset($command['actor_user_id']) ? (int) $command['actor_user_id'] : null
+                isset($command['actor_user_id']) ? (int) $command['actor_user_id'] : null,
+                (string) ($command['idempotency_key'] ?? '')
             );
         } catch (Throwable $error) {
             error_log('Miauby OpenAI tool registrar_sangria failed: ' . $error->getMessage());
@@ -8140,7 +8148,8 @@ function miauw_openai_tool_result(string $name, array $args): string
                 (string) ($command['observacao'] ?? ''),
                 isset($command['data']) ? (string) $command['data'] : null,
                 (string) ($command['responsavel'] ?? ''),
-                isset($command['actor_user_id']) ? (int) $command['actor_user_id'] : null
+                isset($command['actor_user_id']) ? (int) $command['actor_user_id'] : null,
+                (string) ($command['idempotency_key'] ?? '')
             );
         } catch (Throwable $error) {
             error_log('Miauby OpenAI tool criar_lancamento_financeiro failed: ' . $error->getMessage());

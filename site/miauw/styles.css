@@ -464,6 +464,45 @@ a {
     cursor: wait;
 }
 
+.miauw-confirmation-card.is-confirmed {
+    border-color: rgba(5, 150, 105, .48);
+    background: #ecfdf5;
+}
+
+.miauw-confirmation-card.is-confirmed strong,
+.miauw-confirmation-card.is-confirmed .confirmation-result {
+    color: #047857;
+}
+
+.miauw-confirmation-card.is-cancelled {
+    border-color: rgba(100, 116, 139, .35);
+    background: #f8fafc;
+}
+
+.miauw-confirmation-card.is-cancelled strong,
+.miauw-confirmation-card.is-cancelled .confirmation-result {
+    color: #475569;
+}
+
+.miauw-confirmation-card.is-failed {
+    border-color: rgba(190, 24, 93, .42);
+    background: #fff1f2;
+}
+
+.miauw-confirmation-card.is-failed strong,
+.miauw-confirmation-card.is-failed .confirmation-result {
+    color: #9f1239;
+}
+
+.miauw-confirmation-card .confirmation-result {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1.35;
+}
+
 .training-actions {
     display: flex;
     align-items: center;

@@ -912,6 +912,42 @@ miauw_eval_add('fase5_confirmacao_acao_forte', static function (): void {
     miauw_eval_reset_action_state();
 });
 
+miauw_eval_add('frontend_confirmacao_finaliza_card', static function (): void {
+    $script = file_get_contents(__DIR__ . '/app.js');
+    miauw_eval_assert(is_string($script) && $script !== '', 'Frontend do Miauby nao foi carregado para validar confirmacao.');
+    miauw_eval_assert_contains('const settleConfirmationCard =', $script, 'Frontend precisa finalizar visualmente o card de confirmacao.');
+    miauw_eval_assert_contains('const confirmationRequest = await sendMessage', $script, 'Clique de confirmacao precisa aguardar a resposta real do servidor.');
+    miauw_eval_assert_contains("settleConfirmationCard(card, 'confirmed')", $script, 'Sucesso precisa trocar Confirmando por Acao confirmada.');
+    miauw_eval_assert_contains("settleConfirmationCard(card, 'cancelled')", $script, 'Cancelamento precisa encerrar visualmente o card.');
+    miauw_eval_assert_contains("settleConfirmationCard(card, 'failed')", $script, 'Falha precisa encerrar visualmente o card sem fingir sucesso.');
+});
+
+miauw_eval_add('confirmacao_financeira_tem_idempotencia_propria', static function (): void {
+    miauw_eval_reset_action_state();
+    $command = array(
+        'categoria' => 'Sangria',
+        'valor' => 1.0,
+        'responsavel' => 'Operador teste',
+        'observacao' => 'eval sem escrita real',
+        'data' => date('Y-m-d'),
+    );
+
+    $first = miauw_confirmation_request_reply('registrar_sangria', $command, 1);
+    $firstPending = $_SESSION['miauw_pending_confirm_action'] ?? null;
+    miauw_eval_assert(is_array($firstPending), 'Primeira confirmacao financeira nao ficou pendente.');
+    $firstKey = (string) (($firstPending['command']['idempotency_key'] ?? ''));
+    miauw_eval_assert_contains('miauby-confirmation:' . (string) $first['confirmation']['id'], $firstKey, 'Idempotencia precisa acompanhar a confirmacao unica.');
+    miauw_try_controlled_action('cancelar ' . (string) $first['confirmation']['id'], 1);
+
+    $second = miauw_confirmation_request_reply('registrar_sangria', $command, 1);
+    $secondPending = $_SESSION['miauw_pending_confirm_action'] ?? null;
+    miauw_eval_assert(is_array($secondPending), 'Segunda confirmacao financeira nao ficou pendente.');
+    $secondKey = (string) (($secondPending['command']['idempotency_key'] ?? ''));
+    miauw_eval_assert($firstKey !== $secondKey, 'Duas acoes legitimas iguais nao podem compartilhar a mesma idempotencia.');
+    miauw_try_controlled_action('cancelar ' . (string) $second['confirmation']['id'], 1);
+    miauw_eval_reset_action_state();
+});
+
 miauw_eval_add('fase5_traces_diagnostico', static function (): void {
     miauw_ensure_schema();
     miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
