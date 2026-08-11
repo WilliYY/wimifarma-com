@@ -11,6 +11,7 @@ const baseModel: DashboardViewModel = {
   paymentToken: '44444444-4444-4444-8444-444444444444',
   user: { id: 1, username: 'thiago', displayName: 'Thiago', role: 'user' },
   isAdmin: false,
+  canCreateOffers: false,
   flash: null,
   codeQuery: '',
   foundCoupon: null,
@@ -27,6 +28,7 @@ const baseModel: DashboardViewModel = {
 
 test('painel comum prioriza uso do codigo e XP sem expor administracao', () => {
   const html = renderDashboard(baseModel);
+  assert.match(html, /Indica&ccedil;&atilde;o/);
   assert.match(html, /Utilizar codigo/i);
   assert.match(html, /\+300 XP/);
   assert.doesNotMatch(html, /Novo indicador/);
@@ -37,6 +39,7 @@ test('painel administrativo inclui gestao, correcao de XP e reimpressao', () => 
   const html = renderDashboard({
     ...baseModel,
     isAdmin: true,
+    canCreateOffers: true,
     user: { ...baseModel.user, role: 'admin' },
     selectedPerson: {
       id: '2', name: 'Miro', phone: null, pix: null, notes: null, active: true,
@@ -62,6 +65,20 @@ test('painel administrativo inclui gestao, correcao de XP e reimpressao', () => 
   assert.match(html, /Corrigir XP/);
   assert.match(html, /print-payment/);
   assert.match(html, /data-label="Indicador"/);
+  assert.ok(html.indexOf('Criar indicador e oferta') < html.indexOf('Utilizar codigo'));
+});
+
+test('gerente utiliza codigo e administra historicos sem criar indicador ou oferta', () => {
+  const html = renderDashboard({
+    ...baseModel,
+    isAdmin: true,
+    canCreateOffers: false,
+    user: { ...baseModel.user, role: 'gerente' },
+  });
+  assert.match(html, /Utilizar codigo/i);
+  assert.match(html, /Historico de utilizacoes/i);
+  assert.doesNotMatch(html, /Criar indicador e oferta/i);
+  assert.doesNotMatch(html, /create-person|create-coupon/);
 });
 
 test('cupom termico mostra oferta e indicador sem mostrar comissao', () => {

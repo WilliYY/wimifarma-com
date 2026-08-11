@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import session from 'express-session';
 import pg, { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import {
+  canCreateReferralOffers,
   cleanSingleLine,
   couponAvailability,
   couponCodeKey,
@@ -73,7 +74,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
-const SERVICE_VERSION = '1.1.0';
+const SERVICE_VERSION = '1.2.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/comissao');
 const PORT = Number.parseInt(env.PORT || '3990', 10);
 const SESSION_SECRET = env.COMISSAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -707,6 +708,7 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
   const isAdmin = canAdmin(user);
+  const canCreateOffers = canCreateReferralOffers(user);
   const codeQuery = cleanSingleLine(req.query.code, 24);
   const foundCoupon = codeQuery ? await loadCouponByCode(codeQuery) : null;
   const availability = foundCoupon
@@ -734,6 +736,7 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
     paymentToken: ensureToken(req, 'paymentToken'),
     user,
     isAdmin,
+    canCreateOffers,
     flash: takeFlash(req),
     codeQuery,
     foundCoupon,
@@ -755,7 +758,7 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
 app.post(`${BASE_PATH}/create-person`, asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!canAdmin(user)) return res.status(403).send('Acesso negado.');
+  if (!canCreateReferralOffers(user)) return res.status(403).send('Acesso negado.');
   if (!csrfMatches(req) || !tokenMatches(req, 'personToken')) {
     setFlash(req, 'error', 'Formulario expirado. Atualize a pagina e tente novamente.');
     return res.redirect(`${BASE_PATH}/#cadastros`);
@@ -821,7 +824,7 @@ app.post(`${BASE_PATH}/update-person`, asyncRoute(async (req, res) => {
 app.post(`${BASE_PATH}/create-coupon`, asyncRoute(async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!canAdmin(user)) return res.status(403).send('Acesso negado.');
+  if (!canCreateReferralOffers(user)) return res.status(403).send('Acesso negado.');
   if (!csrfMatches(req) || !tokenMatches(req, 'couponToken')) {
     setFlash(req, 'error', 'Formulario expirado. Atualize a pagina e tente novamente.');
     return res.redirect(`${BASE_PATH}/#cadastros`);

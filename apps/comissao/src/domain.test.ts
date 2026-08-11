@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   REFERRAL_REDEMPTION_XP_POINTS,
   REFERRAL_REDEMPTION_XP_SOURCE,
+  canCreateReferralOffers,
   couponAvailability,
   couponCodeKey,
   formatAutomaticCouponCode,
@@ -14,6 +15,13 @@ import {
   validatePaymentInput,
   validatePersonInput,
 } from './domain.js';
+
+test('somente adm ou perfil admin cria indicador e oferta', () => {
+  assert.equal(canCreateReferralOffers({ username: 'adm', role: 'user' }), true);
+  assert.equal(canCreateReferralOffers({ username: 'willian', role: 'admin' }), true);
+  assert.equal(canCreateReferralOffers({ username: 'gerente', role: 'gerente' }), false);
+  assert.equal(canCreateReferralOffers({ username: 'thiago', role: 'user' }), false);
+});
 
 test('redireciona somente a rota sem barra final', () => {
   assert.equal(isBareBasePath('/comissao', '/comissao'), true);

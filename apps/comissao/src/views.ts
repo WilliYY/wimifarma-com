@@ -74,6 +74,7 @@ export type DashboardViewModel = {
   paymentToken: string;
   user: SessionUser;
   isAdmin: boolean;
+  canCreateOffers: boolean;
   flash: Flash | null;
   codeQuery: string;
   foundCoupon: CouponRow | null;
@@ -90,7 +91,7 @@ export type DashboardViewModel = {
   selectedCoupon: CouponRow | null;
 };
 
-const ASSET_VERSION = '1.1.0';
+const ASSET_VERSION = '1.2.0';
 
 function e(value: unknown): string {
   return String(value ?? '')
@@ -276,11 +277,9 @@ function renderSelectedPerson(model: DashboardViewModel): string {
   </section>`;
 }
 
-function renderAdmin(model: DashboardViewModel): string {
-  if (!model.isAdmin) return '';
-  return `<div class="admin-area">
-    <nav class="jump-nav" aria-label="Administracao"><a href="#cadastros">Cadastros</a><a href="#indicadores">Indicadores</a><a href="#ranking">Ranking</a><a href="#historicos">Historicos</a></nav>
-    <section class="surface" id="cadastros">
+function renderAdminCreation(model: DashboardViewModel): string {
+  if (!model.canCreateOffers) return '';
+  return `<section class="surface admin-creation" id="cadastros">
       <div class="section-heading"><div><span class="eyebrow">Administracao</span><h2>Criar indicador e oferta</h2><p>Indicador externo recebe dinheiro. Usuario Wimifarma recebe XP.</p></div></div>
       <div class="creation-grid">
         <form class="person-form" method="post" action="${e(model.basePath)}/create-person">
@@ -295,7 +294,13 @@ function renderAdmin(model: DashboardViewModel): string {
         <div class="coupon-creation"><div><span class="step-number step-number--blue">2</span><h3>Novo cupom</h3></div>${renderCouponFields(model, null, '/create-coupon', 'Criar cupom')}</div>
         <aside class="preview-panel"><span class="eyebrow">Previa termica</span><p>O valor da comissao nao aparece no papel.</p>${renderCouponPreview()}</aside>
       </div>
-    </section>
+    </section>`;
+}
+
+function renderAdminManagement(model: DashboardViewModel): string {
+  if (!model.isAdmin) return '';
+  return `<div class="admin-area">
+    <nav class="jump-nav" aria-label="Administracao">${model.canCreateOffers ? '<a href="#cadastros">Criar oferta</a>' : ''}<a href="#indicadores">Indicadores</a><a href="#ranking">Ranking</a><a href="#historicos">Historicos</a></nav>
     <section class="surface" id="indicadores"><div class="section-heading"><div><span class="eyebrow">Parceiros</span><h2>Indicadores</h2></div><span class="count-pill">${e(model.people.length)} cadastrado(s)</span></div>${renderPeople(model)}</section>
     ${renderSelectedPerson(model)}
     ${model.selectedCoupon ? `<section class="surface edit-coupon-section" id="editar-cupom"><div class="section-heading"><div><span class="eyebrow">Oferta #${e(model.selectedCoupon.id)}</span><h2>Editar cupom ${e(model.selectedCoupon.code)}</h2></div><a class="button button--ghost" href="${e(model.basePath)}/?person_id=${e(model.selectedCoupon.person_id)}#indicador-detalhe">Fechar</a></div><div class="coupon-edit-grid">${renderCouponFields(model, model.selectedCoupon, '/update-coupon', 'Salvar cupom')}${renderCouponPreview(model.selectedCoupon)}</div></section>` : ''}
@@ -308,11 +313,12 @@ function renderAdmin(model: DashboardViewModel): string {
 }
 
 export function renderDashboard(model: DashboardViewModel): string {
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Comissao | WimiFarma</title><link rel="stylesheet" href="${e(model.basePath)}/comissao.css?v=${ASSET_VERSION}"></head>
-  <body><header class="topbar"><a class="brand" href="/"><img src="${e(model.basePath)}/logo-wimifarma-receipt.png?v=${ASSET_VERSION}" alt="WimiFarma"><span>Comissao</span></a><nav><a class="active" href="${e(model.basePath)}/">Painel</a><a href="/">Home</a></nav></header>
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Indica&ccedil;&atilde;o | WimiFarma</title><link rel="stylesheet" href="${e(model.basePath)}/comissao.css?v=${ASSET_VERSION}"></head>
+  <body><header class="topbar"><a class="brand" href="/"><img src="${e(model.basePath)}/logo-wimifarma-receipt.png?v=${ASSET_VERSION}" alt="WimiFarma"><span>Indica&ccedil;&atilde;o</span></a><nav><a class="active" href="${e(model.basePath)}/">Painel</a><a href="/">Home</a></nav></header>
   <main class="shell">
-    <div class="page-title"><div><span class="eyebrow">Operacao de indicacao</span><h1>Comissao</h1><p>Valide cupons, reconheca parceiros e premie quem atende.</p></div><span class="user-chip">Usuario: ${e(model.user.displayName)}</span></div>
+    <div class="page-title"><div><span class="eyebrow">Operacao de indicacao</span><h1>Indica&ccedil;&atilde;o</h1><p>Valide cupons, reconheca parceiros e premie quem atende.</p></div><span class="user-chip">Usuario: ${e(model.user.displayName)}</span></div>
     ${model.flash ? `<div class="flash flash--${e(model.flash.type)}" role="status">${e(model.flash.message)}</div>` : ''}
+    ${renderAdminCreation(model)}
     <section class="surface redemption-section">
       <div class="section-heading"><div><span class="eyebrow">Atendimento</span><h2>Utilizar codigo</h2><p>Consulte primeiro. Comissao e XP so nascem depois da confirmacao.</p></div><span class="xp-badge">+300 XP por uso valido</span></div>
       <form class="lookup-form" method="get" action="${e(model.basePath)}/"><label for="coupon-code">Codigo do cupom</label><div><input id="coupon-code" name="code" maxlength="24" autocomplete="off" value="${e(model.codeQuery)}" placeholder="Ex.: MIRO15" autofocus><button class="button button--primary" type="submit">Buscar codigo</button></div></form>
@@ -324,7 +330,7 @@ export function renderDashboard(model: DashboardViewModel): string {
       ${model.isAdmin ? `<article class="metric-money"><span>Comissoes do mes</span><strong>${e(money(model.summary.monthCommissionCents))}</strong><small>${e(money(model.summary.todayCommissionCents))} hoje</small></article><article><span>Indicadores ativos</span><strong>${e(model.summary.activePeople)}</strong><small>parceiros cadastrados</small></article>` : `<article class="metric-xp"><span>Meu premio por uso</span><strong>+300 XP</strong><small>apos confirmar corretamente</small></article>`}
     </section>
     <section class="surface own-history"><div class="section-heading compact"><div><span class="eyebrow">Minha operacao</span><h2>Minhas utilizacoes recentes</h2></div></div>${renderRedemptionRows(model.ownRedemptions, false, model)}</section>
-    ${renderAdmin(model)}
+    ${renderAdminManagement(model)}
   </main><footer>Wimifarma | Indicacao, comissao e XP separados com auditoria.</footer><script src="${e(model.basePath)}/comissao.js?v=${ASSET_VERSION}" defer></script></body></html>`;
 }
 

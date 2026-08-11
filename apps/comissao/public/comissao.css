@@ -100,6 +100,7 @@ button:disabled, input:disabled { cursor: not-allowed; opacity: .55; }
 .jump-nav { margin: 0 0 12px; padding: 7px; display: flex; flex-wrap: wrap; gap: 7px; border: 1px solid var(--line); border-radius: 8px; background: #fff; position: sticky; top: 8px; z-index: 4; box-shadow: 0 8px 24px rgba(81,18,39,.08); }
 .jump-nav a { padding: 7px 11px; border-radius: 6px; color: var(--wine-800); background: var(--rose-50); font-size: 12px; font-weight: 900; text-decoration: none; }
 .creation-grid { display: grid; grid-template-columns: minmax(230px, .62fr) minmax(520px, 1.35fr) 310px; gap: 14px; align-items: start; }
+.admin-creation { border-top: 5px solid var(--blue); scroll-margin-top: 12px; }
 .person-form, .coupon-creation, .preview-panel, .edit-person-form, .payment-form { padding: 14px; border: 1px solid; border-radius: 8px; }
 .person-form { display: grid; gap: 10px; border-color: #e6bdc9; background: var(--rose-50); }
 .coupon-creation { border-color: #bdd9ed; background: var(--blue-soft); }

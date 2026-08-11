@@ -8,6 +8,10 @@ export type SessionUser = {
   role: string;
 };
 
+export function canCreateReferralOffers(user: Pick<SessionUser, 'username' | 'role'>): boolean {
+  return user.username.trim().toLowerCase() === 'adm' || user.role.trim().toLowerCase() === 'admin';
+}
+
 export type PersonInput = {
   name: string;
   phone: string;

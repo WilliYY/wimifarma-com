@@ -1,4 +1,4 @@
-# Modulo Comissao
+# Modulo Indicacao
 
 ## Objetivo
 
@@ -20,7 +20,8 @@ O modulo `/comissao/` controla campanhas de indicacao por cupom. O indicador e u
 - Toda conta ativa autenticada pode abrir o card, consultar e confirmar um cupom.
 - `/comissao` redireciona uma vez para `/comissao/`; sem sessao valida, `/comissao/` retorna para a Home sem criar laco de redirecionamento.
 - Usuario comum ve apenas as proprias utilizacoes.
-- `adm`, `admin` e `gerente` administram indicadores, cupons, pagamentos, cancelamentos, ranking e historicos completos.
+- Somente o login mestre `adm` ou perfil `admin` cria novos indicadores e ofertas; a interface mostra esse cadastro no topo e o backend repete a mesma autorizacao nos POSTs.
+- `adm`, `admin` e `gerente` administram indicadores e cupons existentes, pagamentos, cancelamentos, ranking e historicos completos.
 - Indicadores sao pessoas externas e nunca recebem login automaticamente.
 
 ## Regras do cupom

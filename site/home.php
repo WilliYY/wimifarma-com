@@ -2248,8 +2248,8 @@ $modules = array(
         'accent' => 'green',
     ),
     array(
-        'name' => 'Comissao',
-        'label' => 'Indicacao',
+        'name' => 'Indicação',
+        'label' => 'Indicação',
         'description' => 'Cupons, parceiros, comissoes e XP.',
         'module_key' => 'comissao',
         'href' => '/comissao/',
