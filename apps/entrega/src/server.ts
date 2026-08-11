@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import session from 'express-session';
 import pg, { type PoolClient, type QueryResultRow } from 'pg';
 import {
+  canAccessDelivery,
   canManageAll,
   cleanSingleLine,
   deliveryCreationXpReward,
@@ -92,7 +93,7 @@ const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
 
 const SERVICE_NAME = 'entrega';
-const SERVICE_VERSION = '1.3.0';
+const SERVICE_VERSION = '1.4.0';
 const TIME_ZONE = 'America/Sao_Paulo';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/entrega');
 const PORT = Number.parseInt(env.PORT || '3980', 10);
@@ -237,6 +238,10 @@ async function requireUser(req: Request, res: Response): Promise<SessionUser | n
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect('/');
+    return null;
+  }
+  if (!canAccessDelivery(user)) {
+    res.status(403).type('text/plain').send('Acesso restrito ao administrador.');
     return null;
   }
   req.session.user = user;

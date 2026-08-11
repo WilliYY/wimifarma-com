@@ -2246,6 +2246,7 @@ $modules = array(
         'module_key' => 'entrega',
         'href' => '/entrega/',
         'accent' => 'green',
+        'username_gate' => 'adm',
     ),
     array(
         'name' => 'Indicação',

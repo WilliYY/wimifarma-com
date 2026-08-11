@@ -11,8 +11,9 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 - Banco: Postgres 17 dedicado `wimifarma_entrega` em `wimifarma-entrega-db`.
 - XP: Postgres oficial `wimifarma_xp` em `wimifarma-xp-db`, ligado pelo core em `core_user_xp_links`.
 - Sessao: cookie `WFENTREGA` em `entrega_sessions`.
-- Entrada: Apache publica `/entrega/` e o card aparece para toda conta ativa.
-- Identidade: `WFHOME_SSO` e `core_users`; nao existe login paralelo nem permissao removivel.
+- Entrada: Apache publica `/entrega/`, mas a Home mostra o card somente ao login mestre exato `adm`.
+- Identidade: `WFHOME_SSO` e `core_users`; nao existe login paralelo. O backend revalida `username='adm'` em toda pagina e acao operacional, respondendo HTTP 403 para qualquer outra conta.
+- Monitoramento: `/entrega/health` e assets estaticos permanecem acessiveis sem sessao; nenhuma rota operacional herda essa excecao.
 
 ## Dados e invariantes
 
@@ -49,10 +50,10 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 
 ## Permissoes
 
-- Toda conta ativa abre, cria entrega e escolhe como responsavel uma conta humana ativa da Wimifarma.
-- Usuario comum consulta, edita dados do cliente e reimprime somente entregas atribuidas a ele.
-- `adm`, `admin` e `gerente` consultam equipe, filtram por usuario, editam, cancelam antes da baixa e pagam comissoes.
-- Somente gestores veem o painel, executam a baixa e reimprimem o relatorio de pagamento.
+- Somente o login mestre exato `adm` abre o modulo, cria, consulta, edita, reimprime, cancela e paga comissoes.
+- Perfis `admin`, `gerente` e usuarios comuns nao veem o card e recebem HTTP 403 no acesso direto.
+- `adm` pode escolher como responsavel qualquer conta humana ativa da Wimifarma; o escolhido recebe entrega, comissao e XP, mas nao recebe acesso ao modulo.
+- Somente `adm` ve o painel, executa a baixa e reimprime o relatorio de pagamento.
 - A interface escolhe o responsavel somente na criacao e nunca o altera depois, assim como data/hora original, numero ou comissao.
 
 ## Criacao idempotente
@@ -77,7 +78,7 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 
 ## Pagar comissao
 
-1. O gestor escolhe o usuario no mes que ja esta selecionado no painel.
+1. `adm` escolhe o usuario no mes que ja esta selecionado no painel.
 2. O POST valida sessao, perfil, CSRF, UUID idempotente, usuario ativo e mes.
 3. Uma trava transacional serializa baixas do mesmo usuario.
 4. Somente comissoes `ACTIVE`, ligadas a entregas `ACTIVE` e sem item de pagamento entram no lote.
@@ -87,7 +88,7 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 
 ## Indicadores e historico
 
-- Mes selecionavel, resumo pessoal, valores a receber/ja pagos e ranking por usuario para gestores.
+- Mes selecionavel, resumo pessoal, valores a receber/ja pagos e ranking por usuario para `adm`.
 - Painel `Pagar comissao` mostra pendente, pago, pessoas pendentes e comprovantes recentes do mes.
 - Busca por cliente, telefone, endereco, numero ou responsavel.
 - Filtros por hoje, mes, mes anterior, periodo personalizado, usuario e status.

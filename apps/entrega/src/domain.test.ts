@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   XP_DELIVERY_CREATION_POINTS,
   XP_DELIVERY_CREATION_SOURCE,
+  canAccessDelivery,
   canManageAll,
   deliveryCreationXpReward,
   formatDeliveryNumber,
@@ -64,6 +65,13 @@ test('identifica adm, admin e gerente como gestores', () => {
   assert.equal(canManageAll({ username: 'ana', role: 'admin' }), true);
   assert.equal(canManageAll({ username: 'bia', role: 'gerente' }), true);
   assert.equal(canManageAll({ username: 'caio', role: 'user' }), false);
+});
+
+test('restringe o modulo Entrega ao login mestre adm', () => {
+  assert.equal(canAccessDelivery({ username: 'adm' }), true);
+  assert.equal(canAccessDelivery({ username: ' ADM ' }), true);
+  assert.equal(canAccessDelivery({ username: 'ana' }), false);
+  assert.equal(canAccessDelivery({ username: 'admin' }), false);
 });
 
 test('formata o numero sequencial do comprovante', () => {

@@ -99,6 +99,10 @@ export function isBareBasePath(pathname: string, basePath: string): boolean {
   return pathname === basePath;
 }
 
+export function canAccessDelivery(user: Pick<SessionUser, 'username'>): boolean {
+  return normalizeUsername(user.username) === 'adm';
+}
+
 export function canManageAll(user: Pick<SessionUser, 'username' | 'role'>): boolean {
   const username = normalizeUsername(user.username);
   const role = normalizeUsername(user.role);
