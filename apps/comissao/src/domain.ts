@@ -61,6 +61,10 @@ export function parsePositiveId(value: unknown): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+export function isBareBasePath(pathname: string, basePath: string): boolean {
+  return pathname === basePath;
+}
+
 export function parseMoneyToCents(value: unknown): number | null {
   let raw = String(value ?? '').replace(/R\$/gi, '').replace(/\s+/g, '').trim();
   if (!raw || !/^[0-9.,]+$/.test(raw)) return null;

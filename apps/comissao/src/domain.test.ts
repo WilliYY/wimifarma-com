@@ -6,6 +6,7 @@ import {
   couponAvailability,
   couponCodeKey,
   formatAutomaticCouponCode,
+  isBareBasePath,
   parseMoneyToCents,
   referralRedemptionXpReward,
   signedLedgerAmount,
@@ -13,6 +14,11 @@ import {
   validatePaymentInput,
   validatePersonInput,
 } from './domain.js';
+
+test('redireciona somente a rota sem barra final', () => {
+  assert.equal(isBareBasePath('/comissao', '/comissao'), true);
+  assert.equal(isBareBasePath('/comissao/', '/comissao'), false);
+});
 
 test('normaliza codigo para busca sem depender de hifen ou caixa', () => {
   assert.equal(couponCodeKey(' mir-8472 '), 'MIR8472');

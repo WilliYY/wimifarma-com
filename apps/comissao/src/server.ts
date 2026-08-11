@@ -10,6 +10,7 @@ import {
   couponAvailability,
   couponCodeKey,
   formatAutomaticCouponCode,
+  isBareBasePath,
   parsePositiveId,
   referralRedemptionXpReward,
   validateCouponInput,
@@ -682,7 +683,8 @@ app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
   res.json({ ok: true, service: 'comissao', version: SERVICE_VERSION, storage: 'postgres', referrals: result.rows[0] });
 }));
 
-app.get(BASE_PATH, (req, res) => {
+app.get(BASE_PATH, (req, res, next) => {
+  if (!isBareBasePath(req.path, BASE_PATH)) return next();
   const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
   return res.redirect(`${BASE_PATH}/${query}`);
 });

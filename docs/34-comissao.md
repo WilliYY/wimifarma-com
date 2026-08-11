@@ -18,6 +18,7 @@ O modulo `/comissao/` controla campanhas de indicacao por cupom. O indicador e u
 ## Acesso
 
 - Toda conta ativa autenticada pode abrir o card, consultar e confirmar um cupom.
+- `/comissao` redireciona uma vez para `/comissao/`; sem sessao valida, `/comissao/` retorna para a Home sem criar laco de redirecionamento.
 - Usuario comum ve apenas as proprias utilizacoes.
 - `adm`, `admin` e `gerente` administram indicadores, cupons, pagamentos, cancelamentos, ranking e historicos completos.
 - Indicadores sao pessoas externas e nunca recebem login automaticamente.
