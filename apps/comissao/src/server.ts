@@ -1096,10 +1096,26 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
   res.status(500).redirect(`${BASE_PATH}/`);
 });
 
+async function waitForStartupDependencies(maxAttempts = 30): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await ensureSchema();
+      await corePool.query('SELECT 1 FROM core_users LIMIT 1');
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) break;
+      console.warn(`[comissao] dependencias indisponiveis (${attempt}/${maxAttempts}); nova tentativa em 1s.`);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+  throw lastError;
+}
+
 async function start(): Promise<void> {
   if (!env.COMISSAO_SESSION_SECRET) console.warn('[comissao] COMISSAO_SESSION_SECRET ausente; usando segredo temporario desta inicializacao.');
-  await ensureSchema();
-  await corePool.query('SELECT 1 FROM core_users LIMIT 1');
+  await waitForStartupDependencies();
   app.listen(PORT, () => console.log(`[comissao] listening on ${PORT}${BASE_PATH}`));
 }
 

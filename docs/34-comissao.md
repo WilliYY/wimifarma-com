@@ -13,6 +13,7 @@ O modulo `/comissao/` controla campanhas de indicacao por cupom. O indicador e u
 - Identidade, roles e vinculo XP: `wimifarma_core`.
 - Premio: Postgres oficial `wimifarma_xp`, sem tabela XP paralela.
 - Impressao: navegador local, papel de 80 mm, sem agente ou fila remota.
+- O startup tolera a janela de criacao do Postgres com ate 30 tentativas de um segundo e falha de forma explicita se banco/core continuarem indisponiveis.
 
 ## Acesso
 

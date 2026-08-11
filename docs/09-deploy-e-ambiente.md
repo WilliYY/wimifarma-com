@@ -290,4 +290,5 @@ Higiene de pastas no VPS:
 - Banco `wimifarma-comissao-db:5432`, sem porta publicada, volume `./comissao-data/postgres` ignorado pelo Git.
 - Variaveis: `COMISSAO_POSTGRES_PASSWORD`, `COMISSAO_SESSION_SECRET`, `CORE_POSTGRES_*`, `XP_POSTGRES_*` e `WIMIFARMA_HOME_SSO_INTERNAL_URL`.
 - Falha do XP nao desfaz utilizacao/comissao confirmada; o health aponta divergencias para conferencia.
+- Na inicializacao, o app aguarda banco local e core por ate 30 tentativas de um segundo; falha persistente encerra o processo para o Docker reiniciar e sinalizar o problema.
 - Subir banco/app antes de reconstruir o web para o proxy resolver o hostname.
