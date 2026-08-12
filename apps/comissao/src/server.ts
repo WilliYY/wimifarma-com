@@ -10,7 +10,10 @@ import {
   cleanSingleLine,
   couponAvailability,
   couponCodeKey,
+  defaultReferralCouponDates,
+  findAvailableReferralCouponCode,
   formatAutomaticCouponCode,
+  REFERRAL_COUPON_CODE_SPACE,
   isBareBasePath,
   parsePositiveId,
   referralRedemptionXpReward,
@@ -74,7 +77,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.resolve(rootDir, 'public');
-const SERVICE_VERSION = '1.2.0';
+const SERVICE_VERSION = '1.3.0';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || '/comissao');
 const PORT = Number.parseInt(env.PORT || '3990', 10);
 const SESSION_SECRET = env.COMISSAO_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -104,6 +107,14 @@ const xpPool = new PgPool({
   user: env.XP_POSTGRES_USER || 'wimifarma_xp',
   password: env.XP_POSTGRES_PASSWORD || '',
   max: 3,
+});
+const cashbackPool = new PgPool({
+  host: env.CASHBACK_POSTGRES_HOST || '127.0.0.1',
+  port: Number(env.CASHBACK_POSTGRES_PORT || 5432),
+  database: env.CASHBACK_POSTGRES_DB || 'wimifarma_cashback',
+  user: env.CASHBACK_POSTGRES_USER || 'wimifarma_cashback',
+  password: env.CASHBACK_POSTGRES_PASSWORD || '',
+  max: 2,
 });
 
 const app = express();
@@ -660,15 +671,21 @@ async function balanceForPerson(client: PoolClient, personId: number): Promise<n
   return Number(result.rows[0]?.balance_cents || 0);
 }
 
-async function uniqueAutomaticCode(client: PoolClient, personName: string, preferred: string): Promise<{ code: string; key: string }> {
-  const candidates = [preferred];
-  for (let index = 0; index < 40; index += 1) candidates.push(formatAutomaticCouponCode(personName, crypto.randomInt(0, 10_000)));
-  for (const code of candidates) {
-    const key = couponCodeKey(code);
-    const exists = await client.query(`SELECT 1 FROM referral_coupons WHERE code_key = $1 LIMIT 1`, [key]);
-    if (!exists.rows[0]) return { code, key };
-  }
-  throw new Error('Nao foi possivel reservar um codigo automatico unico.');
+async function uniqueAutomaticCode(client: PoolClient): Promise<{ code: string; key: string }> {
+  await client.query('SELECT pg_advisory_xact_lock($1)', [74_321]);
+  const [referralCodes, cashbackCodes] = await Promise.all([
+    client.query<QueryResultRow & { code_key: string }>(`SELECT code_key FROM referral_coupons WHERE code_key ~ '^[0-9]{5}$'`),
+    cashbackPool.query<QueryResultRow & { code: string }>(
+      `SELECT code FROM cashback_quick_vouchers WHERE char_length(code) = 5`,
+    ),
+  ]);
+  const reserved = new Set<string>([
+    ...referralCodes.rows.map((row) => row.code_key),
+    ...cashbackCodes.rows.map((row) => row.code),
+  ]);
+  const code = findAvailableReferralCouponCode(reserved, crypto.randomInt(0, REFERRAL_COUPON_CODE_SPACE));
+  if (!code) throw new Error('Todos os codigos de Indicacao estao reservados.');
+  return { code, key: couponCodeKey(code) };
 }
 
 app.disable('x-powered-by');
@@ -727,6 +744,7 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
     selectedPersonId ? loadPersonCoupons(selectedPersonId) : Promise.resolve([]),
     selectedCouponId ? loadCouponById(selectedCouponId) : Promise.resolve(null),
   ]);
+  const defaultCouponDates = defaultReferralCouponDates(localDateKey());
   const model: DashboardViewModel = {
     basePath: BASE_PATH,
     csrfToken: ensureCsrf(req),
@@ -751,6 +769,8 @@ app.get(`${BASE_PATH}/`, asyncRoute(async (req, res) => {
     selectedPerson,
     selectedPersonCoupons,
     selectedCoupon,
+    defaultCouponStartDate: defaultCouponDates.startDate,
+    defaultCouponExpirationDate: defaultCouponDates.expirationDate,
   };
   res.type('html').send(renderDashboard(model));
 }));
@@ -829,29 +849,26 @@ app.post(`${BASE_PATH}/create-coupon`, asyncRoute(async (req, res) => {
     setFlash(req, 'error', 'Formulario expirado. Atualize a pagina e tente novamente.');
     return res.redirect(`${BASE_PATH}/#cadastros`);
   }
-  const parsed = validateCouponInput(req.body as Record<string, unknown>);
+  const defaultDates = defaultReferralCouponDates(localDateKey());
+  const parsed = validateCouponInput({
+    ...(req.body as Record<string, unknown>),
+    code: '',
+    automatic_code: '1',
+    start_date: req.body.start_date || defaultDates.startDate,
+    expiration_date: req.body.expiration_date || defaultDates.expirationDate,
+  });
   if (!parsed.ok) { setFlash(req, 'error', parsed.message); return res.redirect(`${BASE_PATH}/#cadastros`); }
   const client = await referralPool.connect();
   let couponId = 0;
   let created = false;
-  let finalCode = parsed.value.code;
+  let finalCode = '';
   try {
     await client.query('BEGIN');
     const person = await client.query<QueryResultRow & { name: string; active: boolean }>(`SELECT name, active FROM referral_people WHERE id = $1 FOR UPDATE`, [parsed.value.personId]);
     if (!person.rows[0]?.active) throw new Error('Selecione um indicador ativo.');
-    let codeKey = parsed.value.codeKey;
-    if (parsed.value.automaticCode) {
-      const reserved = await uniqueAutomaticCode(client, person.rows[0].name, finalCode);
-      finalCode = reserved.code;
-      codeKey = reserved.key;
-    } else {
-      const duplicate = await client.query(`SELECT 1 FROM referral_coupons WHERE code_key = $1 LIMIT 1`, [codeKey]);
-      if (duplicate.rows[0]) {
-        await client.query('ROLLBACK');
-        setFlash(req, 'error', 'Este codigo ja existe. Escolha outro codigo.');
-        return res.redirect(`${BASE_PATH}/#cadastros`);
-      }
-    }
+    const reserved = await uniqueAutomaticCode(client);
+    finalCode = reserved.code;
+    const codeKey = reserved.key;
     const inserted = await client.query<IdRow>(
       `INSERT INTO referral_coupons (request_token, referral_person_id, code, code_key, product_name, normal_price_cents, promotional_price_cents, commission_cents, start_date, expiration_date, status, created_by_user_id, created_by_name)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10::date,$11,$12,$13)
@@ -904,8 +921,8 @@ app.post(`${BASE_PATH}/update-coupon`, asyncRoute(async (req, res) => {
       throw new Error('Cupom ativo exige um indicador ativo.');
     }
     await client.query(
-      `UPDATE referral_coupons SET referral_person_id=$1, code=$2, code_key=$3, product_name=$4, normal_price_cents=$5, promotional_price_cents=$6, commission_cents=$7, start_date=$8::date, expiration_date=$9::date, status=$10, updated_at=NOW() WHERE id=$11`,
-      [parsed.value.personId, parsed.value.code, parsed.value.codeKey, parsed.value.productName, parsed.value.normalPriceCents, parsed.value.promotionalPriceCents, parsed.value.commissionCents, parsed.value.startDate, parsed.value.expirationDate, parsed.value.status, couponId],
+      `UPDATE referral_coupons SET referral_person_id=$1, product_name=$2, normal_price_cents=$3, promotional_price_cents=$4, commission_cents=$5, start_date=$6::date, expiration_date=$7::date, status=$8, updated_at=NOW() WHERE id=$9`,
+      [parsed.value.personId, parsed.value.productName, parsed.value.normalPriceCents, parsed.value.promotionalPriceCents, parsed.value.commissionCents, parsed.value.startDate, parsed.value.expirationDate, parsed.value.status, couponId],
     );
     await insertAudit(client, 'coupon', couponId, user, 'COUPON_UPDATED', { code: parsed.value.code, status: parsed.value.status, commission_cents: parsed.value.commissionCents });
     await client.query('COMMIT');

@@ -1,6 +1,7 @@
 export const LEGACY_QUICK_VOUCHER_CODE_DIGITS = 4;
 export const CURRENT_QUICK_VOUCHER_CODE_DIGITS = 5;
-export const QUICK_VOUCHER_CODE_SPACE = 10 ** CURRENT_QUICK_VOUCHER_CODE_DIGITS;
+export const QUICK_VOUCHER_CODE_SPACE = 50_000;
+export const QUICK_VOUCHER_CODE_MAX = QUICK_VOUCHER_CODE_SPACE - 1;
 
 export function normalizeQuickVoucherCode(value: unknown): string {
   const code = String(value ?? '').replace(/\D+/g, '');

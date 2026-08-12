@@ -832,6 +832,7 @@ services:
     depends_on:
       - wimifarma-core-db
       - wimifarma-comissao-db
+      - wimifarma-cashback-db
       - wimifarma-xp-db
     environment:
       NODE_ENV: production
@@ -852,6 +853,11 @@ services:
       POSTGRES_DB: wimifarma_comissao
       POSTGRES_USER: wimifarma_comissao
       POSTGRES_PASSWORD: ${COMISSAO_POSTGRES_PASSWORD:-wimifarma_comissao_dev_pass}
+      CASHBACK_POSTGRES_HOST: wimifarma-cashback-db
+      CASHBACK_POSTGRES_PORT: 5432
+      CASHBACK_POSTGRES_DB: wimifarma_cashback
+      CASHBACK_POSTGRES_USER: wimifarma_cashback
+      CASHBACK_POSTGRES_PASSWORD: ${CASHBACK_POSTGRES_PASSWORD:-wimifarma_cashback_dev_pass}
       COMISSAO_SESSION_SECRET: ${COMISSAO_SESSION_SECRET:-wimifarma_comissao_dev_secret_change_me}
       WIMIFARMA_HOME_SSO_INTERNAL_URL: http://wimifarma-com-web/home-sso.php
       WIMIFARMA_HOME_SSO_TIMEOUT_MS: ${WIMIFARMA_HOME_SSO_TIMEOUT_MS:-1200}

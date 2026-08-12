@@ -89,9 +89,11 @@ export type DashboardViewModel = {
   selectedPerson: PersonRow | null;
   selectedPersonCoupons: CouponRow[];
   selectedCoupon: CouponRow | null;
+  defaultCouponStartDate: string;
+  defaultCouponExpirationDate: string;
 };
 
-const ASSET_VERSION = '1.2.0';
+const ASSET_VERSION = '1.3.0';
 
 function e(value: unknown): string {
   return String(value ?? '')
@@ -210,15 +212,15 @@ function renderPeople(model: DashboardViewModel): string {
   </a>`).join('')}</div>`;
 }
 
-function renderCouponPreview(coupon?: Partial<CouponRow> | null): string {
+function renderCouponPreview(model: DashboardViewModel, coupon?: Partial<CouponRow> | null): string {
   return `<div class="receipt receipt--preview" data-coupon-preview>
     <img class="receipt-logo" src="/comissao/logo-wimifarma-receipt.png?v=${ASSET_VERSION}" alt="WimiFarma">
     <h3>Cupom de indicacao</h3>
     <strong class="receipt-product" data-preview="product">${e(coupon?.product_name || 'PRODUTO / MEDICAMENTO')}</strong>
     <div class="receipt-offer"><span>DE <del data-preview="normal">R$ 0,00</del></span><strong>POR <b data-preview="promotional">R$ 0,00</b></strong></div>
-    <div class="receipt-code"><span>CODIGO</span><strong data-preview="code">${e(coupon?.code || 'CODIGO')}</strong></div>
+    <div class="receipt-code"><span>CODIGO</span><strong data-preview="code">${e(coupon?.code || '-----')}</strong></div>
     <p>Apresente este cupom na Wimifarma.</p>
-    <dl><div><dt>Indicacao</dt><dd data-preview="person">${e(coupon?.person_name || 'Indicador')}</dd></div><div><dt>Validade</dt><dd data-preview="expiration">${e(dateBr(coupon?.expiration_date || null))}</dd></div></dl>
+    <dl><div><dt>Validade</dt><dd data-preview="expiration">${e(dateBr(coupon?.expiration_date || model.defaultCouponExpirationDate))}</dd></div></dl>
   </div>`;
 }
 
@@ -226,15 +228,15 @@ function renderCouponFields(model: DashboardViewModel, coupon: CouponRow | null,
   return `<form class="coupon-form" method="post" action="${e(model.basePath)}${e(action)}" data-coupon-form>
     ${csrf(model.csrfToken)}
     ${coupon ? `<input type="hidden" name="coupon_id" value="${e(coupon.id)}">` : `<input type="hidden" name="request_token" value="${e(model.couponToken)}">`}
-    <input type="hidden" name="automatic_code" value="0" data-auto-code>
-    <label>Indicador *<select name="referral_person_id" required data-preview-source="person"><option value="">Selecione</option>${model.people.filter((person) => person.active || person.id === coupon?.person_id).map((person) => `<option value="${e(person.id)}" data-person-name="${e(person.name)}"${selected(person.id, coupon?.person_id)}>${e(person.name)}</option>`).join('')}</select></label>
+    <input type="hidden" name="automatic_code" value="${coupon ? '0' : '1'}">
+    <label>Indicador *<select name="referral_person_id" required><option value="">Selecione</option>${model.people.filter((person) => person.active || person.id === coupon?.person_id).map((person) => `<option value="${e(person.id)}"${selected(person.id, coupon?.person_id)}>${e(person.name)}</option>`).join('')}</select></label>
     <label class="field-wide">Produto/Medicamento *<input name="product_name" maxlength="220" required value="${e(coupon?.product_name || '')}" placeholder="Ex.: Dipirona 500mg 20 comprimidos" data-preview-source="product"></label>
     <label>Preco normal *<input name="normal_price" inputmode="decimal" required value="${coupon ? e((cents(coupon.normal_price_cents) / 100).toFixed(2).replace('.', ',')) : ''}" placeholder="25,00" data-preview-source="normal"></label>
     <label>Preco promocional *<input name="promotional_price" inputmode="decimal" required value="${coupon ? e((cents(coupon.promotional_price_cents) / 100).toFixed(2).replace('.', ',')) : ''}" placeholder="15,00" data-preview-source="promotional"></label>
     <label>Comissao por uso *<input name="commission_amount" inputmode="decimal" required value="${coupon ? e((cents(coupon.commission_cents) / 100).toFixed(2).replace('.', ',')) : ''}" placeholder="3,00"></label>
-    <label class="code-field">Codigo *<span><input name="code" maxlength="24" required value="${e(coupon?.code || '')}" placeholder="MIRO15" data-preview-source="code"><button class="icon-button" type="button" data-generate-code title="Gerar codigo automaticamente" aria-label="Gerar codigo automaticamente">+</button></span></label>
-    <label>Data de inicio<input type="date" name="start_date" value="${e(coupon?.start_date || '')}"></label>
-    <label>Data de validade<input type="date" name="expiration_date" value="${e(coupon?.expiration_date || '')}" data-preview-source="expiration"></label>
+    ${coupon ? `<label class="automatic-code-field">Codigo<input type="hidden" name="code" value="${e(coupon.code)}"><span data-preview-source="code">${e(coupon.code)}</span><small>Codigo permanente; nao pode ser alterado.</small></label>` : '<label class="automatic-code-field">Codigo automatico<input type="hidden" name="code" value=""><span>Gerado automaticamente ao criar</span><small>5 numeros, sem repetir nenhum codigo do Cashback.</small></label>'}
+    <label>Data de inicio<input type="date" name="start_date" value="${e(coupon?.start_date || model.defaultCouponStartDate)}"></label>
+    <label>Data de validade<input type="date" name="expiration_date" value="${e(coupon?.expiration_date || model.defaultCouponExpirationDate)}" data-preview-source="expiration"><small>Padrao: 3 meses</small></label>
     <label>Status<select name="status"><option value="ACTIVE"${selected('ACTIVE', coupon?.status || 'ACTIVE')}>Ativo</option><option value="PAUSED"${selected('PAUSED', coupon?.status)}>Pausado</option><option value="CLOSED"${selected('CLOSED', coupon?.status)}>Encerrado</option></select></label>
     <button class="button button--primary field-wide" type="submit">${e(submitLabel)}</button>
   </form>`;
@@ -292,7 +294,7 @@ function renderAdminCreation(model: DashboardViewModel): string {
           <button class="button button--secondary" type="submit">Cadastrar indicador</button>
         </form>
         <div class="coupon-creation"><div><span class="step-number step-number--blue">2</span><h3>Novo cupom</h3></div>${renderCouponFields(model, null, '/create-coupon', 'Criar cupom')}</div>
-        <aside class="preview-panel"><span class="eyebrow">Previa termica</span><p>O valor da comissao nao aparece no papel.</p>${renderCouponPreview()}</aside>
+        <aside class="preview-panel"><span class="eyebrow">Previa termica</span><p>O valor da comissao nao aparece no papel.</p>${renderCouponPreview(model)}</aside>
       </div>
     </section>`;
 }
@@ -303,7 +305,7 @@ function renderAdminManagement(model: DashboardViewModel): string {
     <nav class="jump-nav" aria-label="Administracao">${model.canCreateOffers ? '<a href="#cadastros">Criar oferta</a>' : ''}<a href="#indicadores">Indicadores</a><a href="#ranking">Ranking</a><a href="#historicos">Historicos</a></nav>
     <section class="surface" id="indicadores"><div class="section-heading"><div><span class="eyebrow">Parceiros</span><h2>Indicadores</h2></div><span class="count-pill">${e(model.people.length)} cadastrado(s)</span></div>${renderPeople(model)}</section>
     ${renderSelectedPerson(model)}
-    ${model.selectedCoupon ? `<section class="surface edit-coupon-section" id="editar-cupom"><div class="section-heading"><div><span class="eyebrow">Oferta #${e(model.selectedCoupon.id)}</span><h2>Editar cupom ${e(model.selectedCoupon.code)}</h2></div><a class="button button--ghost" href="${e(model.basePath)}/?person_id=${e(model.selectedCoupon.person_id)}#indicador-detalhe">Fechar</a></div><div class="coupon-edit-grid">${renderCouponFields(model, model.selectedCoupon, '/update-coupon', 'Salvar cupom')}${renderCouponPreview(model.selectedCoupon)}</div></section>` : ''}
+    ${model.selectedCoupon ? `<section class="surface edit-coupon-section" id="editar-cupom"><div class="section-heading"><div><span class="eyebrow">Oferta #${e(model.selectedCoupon.id)}</span><h2>Editar cupom ${e(model.selectedCoupon.code)}</h2></div><a class="button button--ghost" href="${e(model.basePath)}/?person_id=${e(model.selectedCoupon.person_id)}#indicador-detalhe">Fechar</a></div><div class="coupon-edit-grid">${renderCouponFields(model, model.selectedCoupon, '/update-coupon', 'Salvar cupom')}${renderCouponPreview(model, model.selectedCoupon)}</div></section>` : ''}
     <section class="surface" id="ranking"><div class="section-heading"><div><span class="eyebrow">Desempenho</span><h2>Indicadores que mais trouxeram clientes</h2></div></div>${model.ranking.length ? `<ol class="ranking-list">${model.ranking.map((row, index) => `<li><span>${index + 1}</span><strong>${e(row.person_name)}</strong><b>${e(row.uses_count)} utilizacao(oes)</b><small>${e(money(row.generated_cents))} gerados</small></li>`).join('')}</ol>` : '<div class="empty-state">O ranking aparece depois da primeira utilizacao.</div>'}</section>
     <section class="surface" id="historicos"><div class="section-heading"><div><span class="eyebrow">Auditoria</span><h2>Historico de utilizacoes</h2></div></div>${renderRedemptionRows(model.recentRedemptions, true, model)}
       <div class="subsection-heading"><h3>Pagamentos aos indicadores</h3><span>${e(model.recentPayments.length)} recente(s)</span></div>
@@ -343,7 +345,7 @@ export function renderCouponReceipt(basePath: string, coupon: CouponRow): string
       <div class="receipt-offer"><span>DE <del>${e(money(coupon.normal_price_cents))}</del></span><strong>POR <b>${e(money(coupon.promotional_price_cents))}</b></strong></div>
       <div class="receipt-code"><span>CODIGO</span><strong>${e(coupon.code)}</strong></div>
       <p>Apresente este cupom na Wimifarma.</p>
-      <dl><div><dt>Indicacao</dt><dd>${e(coupon.person_name)}</dd></div><div><dt>Validade</dt><dd>${e(dateBr(coupon.expiration_date))}</dd></div></dl>
+      <dl><div><dt>Validade</dt><dd>${e(dateBr(coupon.expiration_date))}</dd></div></dl>
     </main>
     <div class="print-controls"><button class="button button--primary" type="button" data-print>Imprimir cupom</button><a class="button button--ghost" href="${e(basePath)}/?person_id=${e(coupon.person_id)}#indicador-detalhe">Voltar</a></div>
     <script src="${e(basePath)}/comissao-print.js?v=${ASSET_VERSION}" defer></script>

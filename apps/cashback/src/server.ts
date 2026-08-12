@@ -1940,7 +1940,7 @@ async function issueQuickVoucher(
   const firstCandidate = crypto.randomInt(0, QUICK_VOUCHER_CODE_SPACE);
   const code = findAvailableQuickVoucherCode(reservedCodes, firstCandidate);
   if (!code) {
-    throw new Error('Todos os 100.000 codigos de 5 digitos ainda estao reservados. Aguarde a liberacao apos o vencimento.');
+    throw new Error('Todos os codigos de 5 digitos reservados ao Cashback ainda estao ocupados. Aguarde a liberacao apos o vencimento.');
   }
 
   const inserted = await client.query(

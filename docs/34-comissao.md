@@ -10,6 +10,7 @@ O modulo `/comissao/` controla campanhas de indicacao por cupom. O indicador e u
 - Rota publica interna: `/comissao/`, via proxy Apache para `wimifarma-comissao-app:3990`.
 - Sessao: `WFCOMISSAO`, criada somente depois da validacao de `WFHOME_SSO` e de `core_users.active=TRUE`.
 - Banco operacional: Postgres 17 dedicado `wimifarma_comissao`, em `wimifarma-comissao-db`.
+- Reserva de codigos: consulta somente leitura no Postgres do Cashback para evitar colisao com qualquer comprovante historico de cinco digitos.
 - Identidade, roles e vinculo XP: `wimifarma_core`.
 - Premio: Postgres oficial `wimifarma_xp`, sem tabela XP paralela.
 - Impressao: navegador local, papel de 80 mm, sem agente ou fila remota.
@@ -26,10 +27,11 @@ O modulo `/comissao/` controla campanhas de indicacao por cupom. O indicador e u
 
 ## Regras do cupom
 
-- O codigo pode ser digitado pelo gestor ou gerado automaticamente.
-- A chave de busca ignora hifens, espacos, pontuacao e diferenca entre maiusculas/minusculas.
-- A chave normalizada e unica em todo o sistema.
-- Produto, preco normal, preco promocional, comissao, inicio, validade opcional e status ficam persistidos.
+- Todo novo cupom recebe automaticamente um codigo numerico de cinco digitos na faixa exclusiva `50000` a `99999`.
+- O Cashback gera novos codigos somente na faixa `00000` a `49999`; antes de reservar, a Indicacao tambem rejeita qualquer numero ja usado em um comprovante historico de cinco digitos do Cashback.
+- A chave normalizada e unica no banco de Indicacao e o codigo fica permanente depois da criacao. Cupons historicos alfanumericos continuam validos e pesquisaveis.
+- Produto, preco normal, preco promocional, comissao, inicio, validade e status ficam persistidos.
+- A tela preenche inicio com a data atual e validade padrao de tres meses, respeitando o ultimo dia do mes. O backend repete esse padrao quando as datas nao chegam no POST.
 - O preco promocional precisa ser menor que o normal; a comissao precisa ser positiva e nao pode superar o promocional.
 - `ACTIVE` aceita uso somente dentro do periodo; `PAUSED` e `CLOSED` bloqueiam confirmacao.
 - A consulta nao cria utilizacao, comissao nem XP. A gravacao ocorre somente no botao explicito de confirmar.
@@ -74,7 +76,7 @@ O XP usa `xp_sales.source='referral_coupon_redemption'` e `source_entity_id=<ref
 
 ## Impressao
 
-- A previa termica mostra a marca Wimifarma, produto, preco normal, preco promocional, codigo, indicador e validade.
+- A previa termica mostra a marca Wimifarma, produto, preco normal, preco promocional, codigo e validade. O bloco redundante `Indicacao / Indicador` nao aparece no papel.
 - O cupom entregue ao cliente nunca mostra comissao.
 - Imprimir reutiliza o cupom salvo e nao cria utilizacao, comissao ou XP.
 - O comprovante de pagamento nao lista clientes, cupons ou observacoes; mostra somente os dados essenciais da baixa.

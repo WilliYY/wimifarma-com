@@ -1,5 +1,8 @@
 export const REFERRAL_REDEMPTION_XP_POINTS = 300;
 export const REFERRAL_REDEMPTION_XP_SOURCE = 'referral_coupon_redemption';
+export const REFERRAL_COUPON_CODE_MIN = 50_000;
+export const REFERRAL_COUPON_CODE_SPACE = 50_000;
+export const REFERRAL_COUPON_VALIDITY_MONTHS = 3;
 
 export type SessionUser = {
   id: number;
@@ -98,10 +101,29 @@ export function couponCodeKey(value: unknown): string {
   return normalizedLatin(value).replace(/[^A-Z0-9]/g, '');
 }
 
-export function formatAutomaticCouponCode(personName: unknown, digits: number): string {
-  const letters = normalizedLatin(personName).replace(/[^A-Z]/g, '').slice(0, 3).padEnd(3, 'X');
-  const suffix = Math.abs(Math.trunc(digits)) % 10_000;
-  return `${letters}-${String(suffix).padStart(4, '0')}`;
+export function formatAutomaticCouponCode(candidateIndex: number): string {
+  const offset = ((Math.trunc(candidateIndex) % REFERRAL_COUPON_CODE_SPACE) + REFERRAL_COUPON_CODE_SPACE)
+    % REFERRAL_COUPON_CODE_SPACE;
+  return String(REFERRAL_COUPON_CODE_MIN + offset);
+}
+
+export function findAvailableReferralCouponCode(reservedCodes: ReadonlySet<string>, firstCandidate: number): string {
+  for (let attempt = 0; attempt < REFERRAL_COUPON_CODE_SPACE; attempt += 1) {
+    const code = formatAutomaticCouponCode(firstCandidate + attempt);
+    if (!reservedCodes.has(code)) return code;
+  }
+  return '';
+}
+
+export function defaultReferralCouponDates(today: string): { startDate: string; expirationDate: string } {
+  if (!DATE_RE.test(today)) throw new Error('Data base invalida para validade do cupom.');
+  const [year = 0, month = 0, day = 0] = today.split('-').map(Number);
+  const targetMonthIndex = month - 1 + REFERRAL_COUPON_VALIDITY_MONTHS;
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const targetMonth = (targetMonthIndex % 12 + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const expirationDate = new Date(Date.UTC(targetYear, targetMonth, Math.min(day, lastDay))).toISOString().slice(0, 10);
+  return { startDate: today, expirationDate };
 }
 
 export function validatePersonInput(input: Record<string, unknown>): ValidationResult<PersonInput> {
@@ -133,9 +155,10 @@ export function validateCouponInput(input: Record<string, unknown>): ValidationR
   const personId = parsePositiveId(input.referral_person_id);
   if (!personId) return { ok: false, message: 'Selecione um indicador valido.' };
 
+  const automaticCode = ['1', 'true', 'on'].includes(String(input.automatic_code ?? ''));
   const code = normalizeCouponCode(input.code);
   const codeKey = couponCodeKey(code);
-  if (!COUPON_RE.test(code) || codeKey.length < 4) {
+  if (!automaticCode && (!COUPON_RE.test(code) || codeKey.length < 4)) {
     return { ok: false, message: 'Use um codigo de 4 a 24 caracteres com letras, numeros ou hifen.' };
   }
 
@@ -178,7 +201,7 @@ export function validateCouponInput(input: Record<string, unknown>): ValidationR
       startDate,
       expirationDate,
       status,
-      automaticCode: ['1', 'true', 'on'].includes(String(input.automatic_code ?? '')),
+      automaticCode,
     },
   };
 }

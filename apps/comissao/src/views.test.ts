@@ -24,6 +24,8 @@ const baseModel: DashboardViewModel = {
   selectedPerson: null,
   selectedPersonCoupons: [],
   selectedCoupon: null,
+  defaultCouponStartDate: '2026-08-12',
+  defaultCouponExpirationDate: '2026-11-12',
 };
 
 test('painel comum prioriza uso do codigo e XP sem expor administracao', () => {
@@ -59,6 +61,11 @@ test('painel administrativo inclui gestao, correcao de XP e reimpressao', () => 
   });
   assert.match(html, /Novo indicador/);
   assert.match(html, /Novo cupom/);
+  assert.match(html, /Gerado automaticamente ao criar/i);
+  assert.match(html, /sem repetir nenhum codigo do Cashback/i);
+  assert.match(html, /name="automatic_code" value="1"/);
+  assert.doesNotMatch(html, />00000</);
+  assert.doesNotMatch(html, /data-generate-code/);
   assert.match(html, /Pagar comissao/i);
   assert.match(html, /Historico de utilizacoes/i);
   assert.match(html, /retry-xp/);
@@ -81,15 +88,15 @@ test('gerente utiliza codigo e administra historicos sem criar indicador ou ofer
   assert.doesNotMatch(html, /create-person|create-coupon/);
 });
 
-test('cupom termico mostra oferta e indicador sem mostrar comissao', () => {
+test('cupom termico mostra oferta e validade sem bloco redundante de indicador', () => {
   const html = renderCouponReceipt('/comissao', {
     id: '7', person_id: '2', person_name: 'Miro', code: 'MIRO15', product_name: 'Dipirona 500mg',
     normal_price_cents: '2500', promotional_price_cents: '1500', commission_cents: '300', start_date: null,
     expiration_date: '2026-08-31', status: 'ACTIVE', created_at: '2026-08-11T12:00:00Z',
   });
   assert.match(html, /MIRO15/);
-  assert.match(html, /Miro/);
   assert.match(html, /R\$\s*15,00/);
+  assert.doesNotMatch(html, /<dt>Indicacao<\/dt>/i);
   assert.doesNotMatch(html, />\s*Comissao\s*</i);
   assert.doesNotMatch(html, /R\$ 3,00/);
 });
@@ -114,5 +121,5 @@ test('escapa texto externo em todas as saidas', () => {
     commission_cents: '300', start_date: null, expiration_date: null, status: 'ACTIVE', created_at: '2026-08-11T12:00:00Z',
   });
   assert.doesNotMatch(html, /<script>alert|<img src=x/i);
-  assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
 });

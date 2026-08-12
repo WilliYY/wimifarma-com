@@ -3,9 +3,13 @@ import test from 'node:test';
 import {
   REFERRAL_REDEMPTION_XP_POINTS,
   REFERRAL_REDEMPTION_XP_SOURCE,
+  REFERRAL_COUPON_CODE_MIN,
+  REFERRAL_COUPON_CODE_SPACE,
   canCreateReferralOffers,
   couponAvailability,
   couponCodeKey,
+  defaultReferralCouponDates,
+  findAvailableReferralCouponCode,
   formatAutomaticCouponCode,
   isBareBasePath,
   parseMoneyToCents,
@@ -33,9 +37,20 @@ test('normaliza codigo para busca sem depender de hifen ou caixa', () => {
   assert.equal(couponCodeKey('MIR 8472'), 'MIR8472');
 });
 
-test('gera formato automatico legivel a partir do indicador', () => {
-  assert.equal(formatAutomaticCouponCode('Miro da Silva', 47), 'MIR-0047');
-  assert.equal(formatAutomaticCouponCode('Joao', 9876), 'JOA-9876');
+test('gera codigo automatico de cinco digitos na faixa exclusiva da indicacao', () => {
+  assert.equal(REFERRAL_COUPON_CODE_MIN, 50_000);
+  assert.equal(REFERRAL_COUPON_CODE_SPACE, 50_000);
+  assert.equal(formatAutomaticCouponCode(0), '50000');
+  assert.equal(formatAutomaticCouponCode(49_999), '99999');
+  assert.equal(findAvailableReferralCouponCode(new Set(['50000']), 0), '50001');
+});
+
+test('aplica validade padrao de tres meses respeitando o fim do mes', () => {
+  assert.deepEqual(defaultReferralCouponDates('2026-08-12'), {
+    startDate: '2026-08-12',
+    expirationDate: '2026-11-12',
+  });
+  assert.equal(defaultReferralCouponDates('2026-11-30').expirationDate, '2027-02-28');
 });
 
 test('converte valores brasileiros em centavos sem ponto flutuante', () => {
@@ -71,6 +86,16 @@ test('valida oferta, comissao e datas do cupom', () => {
     assert.equal(result.value.promotionalPriceCents, 1500);
     assert.equal(result.value.commissionCents, 300);
   }
+});
+
+test('aceita criacao com codigo automatico sem codigo enviado pelo navegador', () => {
+  const result = validateCouponInput({
+    referral_person_id: '8', automatic_code: '1', code: '', product_name: 'Dipirona 500mg',
+    normal_price: '25,00', promotional_price: '15,00', commission_amount: '3,00',
+    start_date: '2026-08-12', expiration_date: '2026-11-12', status: 'ACTIVE',
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.code, '');
 });
 
 test('rejeita promocao sem desconto e data final anterior ao inicio', () => {
