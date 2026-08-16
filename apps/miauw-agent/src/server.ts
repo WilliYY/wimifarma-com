@@ -8,7 +8,7 @@ import { hasInvalidDailyReportDate, inferDailyReportToolRequest, reportPeriodArg
 import { interpretSemanticCommand, type SemanticChannel } from './semantic-command.js';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.17.1';
+const SERVICE_VERSION = '0.17.2';
 const AGENT_VERSION = '2.1-fase22';
 const PHASE = 'fase22-semantic-command-layer';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';

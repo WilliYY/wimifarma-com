@@ -83,4 +83,5 @@ Para cada familia, cobrir:
 - Nenhuma escrita nova ocorre no interpretador.
 - Confirmacoes e idempotencia atuais permanecem obrigatorias.
 - Suites PHP e TypeScript passam, inclusive exemplos antigos.
+- `npm audit --omit=dev` fica sem vulnerabilidades conhecidas no Agent e no WhatsApp.
 - Health dos servicos e smoke de producao ficam verdes depois do deploy.
