@@ -1854,3 +1854,23 @@ Riscos/cuidados:
 - Antes de mover uma pasta, confirmar com `docker inspect` se ela nao esta montada por containers ativos.
 - Preservar `.env`, `mysql/`, `cotacao-data/`, backups e `config.local.php` unicos.
 - A quarentena serve para reduzir poluicao visual, nao como autorizacao para apagar dados sem revisao.
+
+## 2026-08-16 - Evolution atualiza somente o protocolo do WhatsApp Web
+
+Decisao:
+
+- Manter a imagem validada `evoapicloud/evolution-api:v2.3.0`.
+- Atualizar `CONFIG_SESSION_PHONE_VERSION` de `2.3000.1033773198` para `2.3000.1043857760`.
+- Obter futuros pins com `fetchLatestBaileysVersion()` na propria imagem antes de qualquer mudanca.
+
+Motivo:
+
+- A instancia ficou presa em `connecting`, o logout retornou sucesso sem gerar QR e os logs mostraram timeout em `validateConnection`.
+- O HTTPS e o WebSocket do VPS para `web.whatsapp.com` responderam normalmente, isolando a falha no protocolo fixado e nao na rede.
+- A propria biblioteca Baileys empacotada retornou `2.3000.1043857760` como versao atual.
+
+Riscos/cuidados:
+
+- Nao atualizar a Evolution para `latest`, `v2.3.6` ou `v2.3.7` sem stack isolada, backup e pareamento real.
+- Recriar somente `wimifarma-evolution-api`; preservar Postgres, Redis, instancia, API key e webhook.
+- Depois do QR, validar `connectionState=open`, webhook, recebimento real e envio real.

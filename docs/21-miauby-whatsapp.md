@@ -491,7 +491,7 @@ Nao atualizar a Evolution API em producao direto para `latest` ou release candid
 
 O manager operacional, quando necessario, deve ser acessado pelo manager embutido da API em `http://127.0.0.1:8080/manager` via acesso local/tunel. Nao manter container manager separado.
 
-Para reduzir falhas de pareamento QR/codigo na Evolution/Baileys, a stack deve manter cache local, historico/contatos/chats/labels desligados e `CONFIG_SESSION_PHONE_VERSION=2.3000.1033773198`. Esse ajuste evita sobrecarga e erros como `Invalid buffer` durante o login.
+Para reduzir falhas de pareamento QR/codigo na Evolution/Baileys, a stack deve manter cache local, historico/contatos/chats/labels desligados e `CONFIG_SESSION_PHONE_VERSION=2.3000.1043857760`. Esse ajuste evita sobrecarga e erros como `Invalid buffer` durante o login. O pin foi atualizado em 2026-08-16 porque a versao anterior `2.3000.1033773198` passou a expirar em `validateConnection`, deixando a instancia em `connecting` sem gerar QR; a versao nova foi obtida pela propria funcao `fetchLatestBaileysVersion()` do Baileys empacotado na Evolution `v2.3.0`.
 
 Em 2026-05-30, a Evolution no VPS estava conectada (`connectionState=open`) e os logs mostravam timeouts pontuais do Baileys em `executeInitQueries`/`fetchProps`: 5 ocorrencias em 24h e 0 nas 12h mais recentes. Esse erro, quando isolado, nao deve ser tratado como queda do WhatsApp. O runbook seguro e medir antes de reiniciar:
 
